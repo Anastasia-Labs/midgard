@@ -3945,14 +3945,29 @@ test script_sources_commits_unique_supported_redeemers() {
     empty_frontier,
     12,
   )
+  let item_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: item_post,
+  }
+  let final_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: item_work_witness_cbor,
+    claimed_successor: final_post,
+  }
   and {
+    validation_machine_v1.verify_script_sources_stage_one_redeemer_raw_semantics_v1(
+      pre,
+      item_transition,
+      collection_proof,
+      redeemer,
+    ),
+    validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+      item_post,
+      final_transition,
+    ),
     validation_machine_v1.verify_one_step_evidence(
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor,
-          claimed_successor: item_post,
-        },
+        transition: item_transition,
         auxiliary: validation_machine_v1.TransactionRedeemerItemWitness {
           collection_proof,
           redeemer,
@@ -3962,10 +3977,7 @@ test script_sources_commits_unique_supported_redeemers() {
     validation_machine_v1.verify_one_step_evidence(
       item_post,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: item_work_witness_cbor,
-          claimed_successor: final_post,
-        },
+        transition: final_transition,
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
     ),
@@ -4018,16 +4030,23 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
     empty_frontier,
     11,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+      pre,
+      transition,
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
-    },
-  )
+    ),
+  }
 }
 
 test script_sources_binds_resolved_input_replay_schedule() {

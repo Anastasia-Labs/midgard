@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 14, 3, 4, 0, 0, 8,
+  2, 1, 1, 2, 4, 14, 2, 6, 16, 3, 4, 0, 0, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 46, 49, -1, -1, 53,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 48, 51, -1, -1, 55,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -344,6 +344,8 @@ const auxiliaryShapeV1 = ({
                   : semanticResolverIndex >= 10 &&
                       semanticResolverIndex <= 12
                     ? [14, 8]
+                    : semanticResolverIndex === 15
+                      ? [34, 2]
                     : [0, 0];
     if (!(auxiliary instanceof Constr)) {
       throw new Error(
@@ -2363,6 +2365,20 @@ const semanticActionFieldsV1 = ({
       auxiliary.fields.length === 0
     ) {
       return base;
+    }
+    if (
+      semanticResolverIndex === 14 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (
+      semanticResolverIndex === 15 &&
+      auxiliary.index === 34 &&
+      auxiliary.fields.length === 2
+    ) {
+      return [...base, ...auxiliary.fields];
     }
     throw new Error(
       "ScriptSources auxiliary witness cannot construct the selected semantic redeemer",

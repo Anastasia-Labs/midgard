@@ -176,6 +176,22 @@ describe("validation-dispute transaction validity", () => {
       "22".repeat(32),
       [],
     ] as const;
+    const redeemerItemProof = new Constr(0, [
+      1n,
+      8n,
+      1n,
+      0n,
+      1n,
+      "22".repeat(32),
+      [],
+      [],
+    ]);
+    const redeemerWitness = new Constr(0, [
+      new Constr(0, []),
+      0n,
+      "00",
+      new Constr(0, [1n, 1n]),
+    ]);
     for (const selected of [
       {
         index: 10,
@@ -202,9 +218,22 @@ describe("validation-dispute transaction validity", () => {
         auxiliary: new Constr(0, []),
         module: "script_sources_stage_nine_missing_semantic_v1",
       },
+      {
+        index: 14,
+        auxiliary: new Constr(0, []),
+        module: "script_sources_stage_one_finish_semantic_v1",
+      },
+      {
+        index: 15,
+        auxiliary: new Constr(34, [
+          redeemerItemProof,
+          redeemerWitness,
+        ]),
+        module: "script_sources_stage_one_redeemer_semantic_v1",
+      },
     ] as const) {
       const auxiliaryCbor = Buffer.from(
-        Data.to(selected.auxiliary),
+        Data.to(selected.auxiliary as never),
         "hex",
       );
       const cbor = encodeValidationSemanticResolutionRedeemerV1({
@@ -213,7 +242,6 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: selected.index,
           transitionCbor,
           auxiliaryCbor,
-          evidenceCbor: Buffer.alloc(0),
         },
         inputIndex: 0n,
         outputIndex: 0n,
@@ -235,10 +263,9 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: 13,
           transitionCbor,
           auxiliaryCbor: Buffer.from(
-            Data.to(new Constr(14, [...sourceFields])),
+            Data.to(new Constr(14, [...sourceFields]) as never),
             "hex",
           ),
-          evidenceCbor: Buffer.alloc(0),
         },
         inputIndex: 0n,
         outputIndex: 0n,
@@ -305,10 +332,9 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: selected.index,
           transitionCbor,
           auxiliaryCbor: Buffer.from(
-            Data.to(selected.auxiliary),
+            Data.to(selected.auxiliary as never),
             "hex",
           ),
-          evidenceCbor: Buffer.alloc(0),
         },
         inputIndex: 0n,
         outputIndex: 0n,
@@ -330,10 +356,11 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: 2,
           transitionCbor,
           auxiliaryCbor: Buffer.from(
-            Data.to(new Constr(42, [...nativeDescriptorFields])),
+            Data.to(
+              new Constr(42, [...nativeDescriptorFields]) as never,
+            ),
             "hex",
           ),
-          evidenceCbor: Buffer.alloc(0),
         },
         inputIndex: 0n,
         outputIndex: 0n,

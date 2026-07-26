@@ -8064,6 +8064,287 @@ fn script_sources_stage_zero(
   }
 }
 
+fn script_sources_stage_one_raw_common_control_is_initial(
+  resolved_item_peaks_data: Data,
+  source_count_data: Data,
+  replay_cursor_data: Data,
+  spend_index_data: Data,
+  purpose_count_data: Data,
+  output_cursor_data: Data,
+  output_count_data: Data,
+  receive_scan_data: Data,
+  source_total_count_data: Data,
+) -> Bool {
+  expect
+      [
+        receive_source_count_data, receive_source_peaks_data,
+        receive_count_data, receive_previous_hash_data,
+        receive_candidate_hash_data, receive_descriptor_peaks_data,
+      ]
+    = builtin.un_list_data(receive_scan_data)
+  and {
+    builtin.un_i_data(source_total_count_data) == builtin.un_i_data(
+      source_count_data,
+    ),
+    builtin.un_list_data(resolved_item_peaks_data) == [],
+    builtin.un_i_data(replay_cursor_data) == 0,
+    builtin.un_i_data(spend_index_data) == 0,
+    builtin.un_i_data(purpose_count_data) == 0,
+    builtin.un_i_data(output_cursor_data) == 0,
+    builtin.un_i_data(output_count_data) == 0,
+    builtin.un_i_data(receive_source_count_data) == 0,
+    builtin.un_list_data(receive_source_peaks_data) == [],
+    builtin.un_i_data(receive_count_data) == 0,
+    builtin.un_b_data(receive_previous_hash_data) == #"",
+    builtin.un_b_data(receive_candidate_hash_data) == #"",
+    builtin.un_list_data(receive_descriptor_peaks_data) == [],
+  }
+}
+
+pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+) -> Bool {
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  expect
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data,
+        resolved_input_count_data, resolved_inputs_accumulator_data,
+        signer_count_data, signer_frontier_commitment_data,
+        resolved_item_peaks_data, stage_data, source_count_data, _,
+        redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
+        spend_index_data, purpose_count_data, _, output_cursor_data,
+        output_count_data, _, _, receive_scan_data, source_total_count_data,
+        redeemer_total_count_data, _, _,
+      ]
+    = builtin.un_list_data(control_data)
+  let compact_cbor = builtin.un_b_data(compact_cbor_data)
+  let witness_set_compact_cbor = builtin.un_b_data(
+    witness_set_compact_cbor_data,
+  )
+  let field_preimage_lengths_cbor = builtin.un_b_data(
+    field_preimage_lengths_cbor_data,
+  )
+  let witness_set = decode_native_tx_witness_set_compact(
+    witness_set_compact_cbor,
+  )
+  let redeemer_count = builtin.un_i_data(redeemer_count_data)
+  let redeemer_peaks = decode_frontier_peaks(redeemer_peaks_data)
+  let redeemer_total_count = builtin.un_i_data(redeemer_total_count_data)
+  let redeemer_commitment = witness_set.redeemer_tx_wits_hash
+  let empty_redeemer_commitment = bounded_collection_v1.from_items(8, [])
+  let scan_is_complete = if redeemer_commitment == empty_redeemer_commitment {
+    and {
+      redeemer_count == 0,
+      redeemer_total_count == 0,
+      redeemer_peaks == [],
+    }
+  } else {
+    and {
+      redeemer_total_count > 0,
+      redeemer_count == redeemer_total_count,
+      validation_merkle_v1.frontier_is_well_formed(
+        redeemer_count,
+        redeemer_peaks,
+      ),
+    }
+  }
+  let stage_prefix =
+    encode_definite_array_header(29)
+      |> bytearray.concat(cbor.serialise(compact_cbor_data))
+      |> bytearray.concat(cbor.serialise(witness_set_compact_cbor_data))
+      |> bytearray.concat(
+          cbor.serialise(field_preimage_lengths_cbor_data),
+        )
+      |> bytearray.concat(cbor.serialise(context_cbor_data))
+      |> bytearray.concat(cbor.serialise(resolved_input_count_data))
+      |> bytearray.concat(
+          cbor.serialise(resolved_inputs_accumulator_data),
+        )
+      |> bytearray.concat(cbor.serialise(signer_count_data))
+      |> bytearray.concat(
+          cbor.serialise(signer_frontier_commitment_data),
+        )
+      |> bytearray.concat(cbor.serialise(resolved_item_peaks_data))
+  let stage_offset = bytearray.length(stage_prefix)
+  let next_work_witness_cbor =
+    stage_prefix
+      |> bytearray.concat(#"02")
+      |> bytearray.concat(
+          builtin.slice_bytearray(
+            stage_offset + 1,
+            bytearray.length(witness.work_witness_cbor) - stage_offset - 1,
+            witness.work_witness_cbor,
+          ),
+        )
+  and {
+    cbor.serialise(control_data) == witness.work_witness_cbor,
+    builtin.un_i_data(stage_data) == 1,
+    native_tx_proof_commitment_v1(
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    script_sources_stage_one_raw_common_control_is_initial(
+      resolved_item_peaks_data,
+      source_count_data,
+      replay_cursor_data,
+      spend_index_data,
+      purpose_count_data,
+      output_cursor_data,
+      output_count_data,
+      receive_scan_data,
+      source_total_count_data,
+    ),
+    bytearray.length(redeemer_commitment) == 32,
+    redeemer_total_count <= max_tx_size_derived_collection_item_count,
+    scan_is_complete,
+    builtin.slice_bytearray(
+      0,
+      stage_offset,
+      witness.work_witness_cbor,
+    ) == stage_prefix,
+    builtin.slice_bytearray(
+      stage_offset,
+      1,
+      witness.work_witness_cbor,
+    ) == #"01",
+    script_sources_stage_zero_successor_work_is_exact(
+      pre,
+      witness,
+      next_work_witness_cbor,
+    ),
+  }
+}
+
+pub fn verify_script_sources_stage_one_redeemer_raw_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  redeemer: MidgardRedeemerWitness,
+) -> Bool {
+  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
+  expect
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data,
+        resolved_input_count_data, resolved_inputs_accumulator_data,
+        signer_count_data, signer_frontier_commitment_data,
+        resolved_item_peaks_data, stage_data, source_count_data,
+        source_peaks_data, redeemer_count_data, redeemer_peaks_data,
+        replay_cursor_data, replay_accumulator_data,
+        replay_remaining_schedule_hash_data, spend_index_data,
+        purpose_count_data, purpose_peaks_data, output_cursor_data,
+        output_count_data, output_peaks_data, output_total_count_data,
+        receive_scan_data, source_total_count_data, redeemer_total_count_data,
+        observer_scan_data, mint_fold_data,
+      ]
+    = builtin.un_list_data(control_data)
+  let compact_cbor = builtin.un_b_data(compact_cbor_data)
+  let witness_set_compact_cbor = builtin.un_b_data(
+    witness_set_compact_cbor_data,
+  )
+  let field_preimage_lengths_cbor = builtin.un_b_data(
+    field_preimage_lengths_cbor_data,
+  )
+  let witness_set = decode_native_tx_witness_set_compact(
+    witness_set_compact_cbor,
+  )
+  let redeemer_commitment = witness_set.redeemer_tx_wits_hash
+  let redeemer_count = builtin.un_i_data(redeemer_count_data)
+  let redeemer_peaks = decode_frontier_peaks(redeemer_peaks_data)
+  let redeemer_total_count = builtin.un_i_data(redeemer_total_count_data)
+  let active_total_count = if redeemer_total_count == 0 {
+    collection_proof.item_count
+  } else {
+    redeemer_total_count
+  }
+  let item_commitment = bounded_item_v1.from_bytes(
+    8,
+    collection_proof.item_index,
+    encode_midgard_redeemer_witness(redeemer),
+  )
+  let common_is_valid = and {
+    cbor.serialise(control_data) == witness.work_witness_cbor,
+    builtin.un_i_data(stage_data) == 1,
+    native_tx_proof_commitment_v1(
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    ) == pre.transaction_commitment,
+    script_sources_stage_one_raw_common_control_is_initial(
+      resolved_item_peaks_data,
+      source_count_data,
+      replay_cursor_data,
+      spend_index_data,
+      purpose_count_data,
+      output_cursor_data,
+      output_count_data,
+      receive_scan_data,
+      source_total_count_data,
+    ),
+    active_total_count > 0,
+    active_total_count <= max_tx_size_derived_collection_item_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      redeemer_count,
+      redeemer_peaks,
+    ),
+    collection_proof.field_index == 8,
+    collection_proof.item_count == active_total_count,
+    collection_proof.item_index == redeemer_count,
+    collection_proof.item_commitment == item_commitment,
+    bounded_collection_v1.verify_item(redeemer_commitment, collection_proof),
+  }
+  if !redeemer_is_well_formed(redeemer) {
+    and {
+      common_is_valid,
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_invalid_field_type,
+      ),
+    }
+  } else {
+    let next_redeemer_count = redeemer_count + 1
+    let next_redeemer_peaks = validation_merkle_v1.append_leaf(
+      redeemer_count,
+      redeemer_peaks,
+      script_proof_v1.redeemer_item_leaf_hash(
+        redeemer_count,
+        item_commitment,
+      ),
+    )
+    expect Some(next_redeemer_peaks_data) = cbor.deserialise(
+      validation_merkle_v1.encode_frontier(next_redeemer_peaks),
+    )
+    let next_control_data = builtin.list_data(
+      [
+        compact_cbor_data, witness_set_compact_cbor_data,
+        field_preimage_lengths_cbor_data, context_cbor_data,
+        resolved_input_count_data, resolved_inputs_accumulator_data,
+        signer_count_data, signer_frontier_commitment_data,
+        resolved_item_peaks_data, stage_data, source_count_data,
+        source_peaks_data, builtin.i_data(next_redeemer_count),
+        next_redeemer_peaks_data, replay_cursor_data, replay_accumulator_data,
+        replay_remaining_schedule_hash_data, spend_index_data,
+        purpose_count_data, purpose_peaks_data, output_cursor_data,
+        output_count_data, output_peaks_data, output_total_count_data,
+        receive_scan_data, source_total_count_data,
+        builtin.i_data(active_total_count), observer_scan_data, mint_fold_data,
+      ],
+    )
+    and {
+      common_is_valid,
+      script_sources_stage_zero_successor_work_is_exact(
+        pre,
+        witness,
+        cbor.serialise(next_control_data),
+      ),
+    }
+  }
+}
+
 fn script_sources_stage_one(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
