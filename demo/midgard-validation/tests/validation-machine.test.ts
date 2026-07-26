@@ -265,20 +265,7 @@ describe("deterministic validation machine", () => {
       "resolveInputs",
       "resolveInputs",
       "resolveInputs",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
-      "scriptSources",
+      ...Array<string>(22).fill("scriptSources"),
       "nativeScripts",
       "scriptIntegrity",
       "cek",
@@ -304,7 +291,7 @@ describe("deterministic validation machine", () => {
     const scriptSourceWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "scriptSources",
     );
-    expect(scriptSourceWitnesses).toHaveLength(14);
+    expect(scriptSourceWitnesses).toHaveLength(22);
     expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
@@ -318,15 +305,28 @@ describe("deterministic validation machine", () => {
       "transactionFieldItem",
     );
     expect(scriptSourceWitnesses[6]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[7]?.auxiliary?.kind).toBe("outputReplay");
-    expect(scriptSourceWitnesses[8]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[9]?.auxiliary?.kind).toBe(
+    expect(scriptSourceWitnesses[7]?.auxiliary?.kind).toBe(
+      "ledgerOutputProofBegin",
+    );
+    expect(
+      scriptSourceWitnesses
+        .slice(8, 15)
+        .every(
+          (witness) =>
+            witness.auxiliary?.kind === "ledgerOutputProofStep",
+        ),
+    ).toBe(true);
+    expect(scriptSourceWitnesses[15]?.auxiliary?.kind).toBe(
+      "ledgerOutputProofFinalize",
+    );
+    expect(scriptSourceWitnesses[16]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[17]?.auxiliary?.kind).toBe(
       "transactionFieldPreimage",
     );
-    expect(scriptSourceWitnesses[10]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[11]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[12]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[13]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[18]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[19]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[20]?.auxiliary).toBeNull();
+    expect(scriptSourceWitnesses[21]?.auxiliary).toBeNull();
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;

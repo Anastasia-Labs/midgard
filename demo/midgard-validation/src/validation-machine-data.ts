@@ -1,6 +1,8 @@
 import type {
   MidgardBoundedCollectionItemProofV1,
   MidgardBoundedItemChunkProofV1,
+  MidgardCekDataFrameV1,
+  MidgardLedgerOutputProofWitnessV1,
   MidgardValidationMachineStateV1,
   MidgardValidationMerkleFrontierV1,
   MidgardValidationPhaseName,
@@ -172,6 +174,130 @@ const sequenceSummaryData = (
     summary.payloadCborLength,
     summary.memory,
   ]);
+
+const dataTraverseFrameData = (
+  frame: MidgardCekDataFrameV1,
+): ConstructorData => {
+  const kind =
+    frame.kind === "constrSmall"
+      ? 0
+      : frame.kind === "constrLarge"
+        ? 1
+        : frame.kind === "list"
+          ? 2
+          : 3;
+  const constructor =
+    frame.kind === "constrSmall" ? frame.constructor : 0n;
+  const constructorCborRoot =
+    frame.kind === "constrLarge"
+      ? frame.constructorCborRoot
+      : Buffer.alloc(0);
+  const constructorCborLength =
+    frame.kind === "constrLarge"
+      ? frame.constructorCborLength
+      : 0n;
+  const constructorMemory =
+    frame.kind === "constrLarge"
+      ? frame.constructorMemory
+      : 0n;
+  return record([
+    int(kind),
+    constructor,
+    bytes(constructorCborRoot),
+    constructorCborLength,
+    constructorMemory,
+    bytes(frame.tail),
+    int(frame.expectedChildren),
+    int(frame.childCount),
+    frontierPeaksData(frame.childFrontier),
+    int(frame.foldCursor),
+    sequenceSummaryData(frame.sequence),
+  ]);
+};
+
+const dataTraverseActionData = (
+  action: Extract<
+    MidgardLedgerOutputProofWitnessV1,
+    { readonly kind: "datum" }
+  >["action"],
+): ConstructorData => {
+  if (action === null) return new Constr(0, []);
+  switch (action.kind) {
+    case "headScalar":
+      return new Constr(1, [int(action.itemLength)]);
+    case "headSequence":
+      return new Constr(2, [int(action.expectedChildren)]);
+    case "headMap":
+      return new Constr(3, []);
+    case "headLargeConstructor":
+      return new Constr(4, [
+        int(action.constructorCborLength),
+        int(action.expectedChildren),
+      ]);
+    case "attachScalar":
+      return new Constr(5, [
+        option(action.parent, dataTraverseFrameData),
+      ]);
+    case "foldList":
+      return new Constr(6, [
+        dataTraverseFrameData(action.frame),
+        int(action.childIndex),
+        summaryData(action.child),
+        byteList(action.siblings),
+      ]);
+    case "foldMap":
+      return new Constr(7, [
+        dataTraverseFrameData(action.frame),
+        int(action.pairIndex),
+        summaryData(action.key),
+        summaryData(action.value),
+        byteList(action.keySiblings),
+        byteList(action.valueSiblings),
+      ]);
+    case "finalizeFrame":
+      return new Constr(8, [
+        dataTraverseFrameData(action.frame),
+        option(action.parent, dataTraverseFrameData),
+      ]);
+  }
+};
+
+const ledgerOutputProofWitnessData = (
+  witness: MidgardLedgerOutputProofWitnessV1,
+): ConstructorData => {
+  if (witness === null) return new Constr(0, []);
+  switch (witness.kind) {
+    case "chunks":
+      return new Constr(1, [
+        chunkProofData(witness.chunkProof),
+        option(witness.nextChunkProof, chunkProofData),
+      ]);
+    case "value":
+      return new Constr(2, [
+        bytes(witness.policyId),
+        bytes(witness.assetName),
+        witness.quantity,
+        byteList(witness.siblings),
+      ]);
+    case "datum":
+      return new Constr(3, [
+        dataTraverseActionData(witness.action),
+        option(witness.chunkProof, chunkProofData),
+        option(witness.nextChunkProof, chunkProofData),
+      ]);
+    case "nativeFrame":
+      return new Constr(4, [
+        record([
+          bytes(witness.frame.tail),
+          int(witness.frame.kind),
+          int(witness.frame.childCount),
+          int(witness.frame.remaining),
+          int(witness.frame.validCount),
+          witness.frame.required,
+        ]),
+      ]);
+  }
+};
 
 const redeemerControlData = (
   control: MidgardCekRedeemerContextControlV1,
@@ -867,6 +993,22 @@ export const validationAuxiliaryWitnessDataV1 = (
     case "transactionFieldItem":
       return new Constr(35, [
         collectionProofData(auxiliary.collectionProof),
+      ]);
+    case "ledgerOutputProofBegin":
+      return new Constr(36, [
+        int(auxiliary.outputIndex),
+        int(auxiliary.totalLength),
+        bytes(auxiliary.itemCommitment),
+        byteList(auxiliary.siblings),
+      ]);
+    case "ledgerOutputProofStep":
+      return new Constr(37, [
+        ledgerOutputProofWitnessData(auxiliary.witness),
+      ]);
+    case "ledgerOutputProofFinalize":
+      return new Constr(38, [
+        bytes(auxiliary.descriptorCbor),
+        signerProofData(auxiliary.signerProof),
       ]);
   }
 };

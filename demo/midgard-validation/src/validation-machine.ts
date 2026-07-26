@@ -3,6 +3,7 @@ import {
   appendMidgardValidationMerkleLeafV1,
   buildMidgardBoundedCollectionItemProofV1,
   buildMidgardBoundedItemChunkProofV1,
+  buildMidgardLedgerOutputProofTraceV1,
   buildMidgardValidationLedgerDeltaFrontierV1,
   buildMidgardValidationMerkleFrontierV1,
   buildMidgardValidationMerkleMembershipV1,
@@ -16,6 +17,7 @@ import {
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardLedgerOutputProofControlV1,
   hashMidgardCekMachineStateV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputItemLeafV1,
@@ -40,6 +42,8 @@ import {
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
   type MidgardConsensusProfileV1,
+  type MidgardLedgerOutputProofControlV1,
+  type MidgardLedgerOutputProofWitnessV1,
   type MidgardValidationMachineStateV1,
   type MidgardValidationMerkleFrontierV1,
   type MidgardValidationPhaseName,
@@ -97,6 +101,9 @@ import {
   type MidgardCekExecutionStepV1,
   type MidgardCekStructuralExecutionV1,
 } from "./cek-executor.js";
+import {
+  buildCanonicalMidgardLedgerOutputMaterialV1,
+} from "./ledger-output-descriptor.js";
 import type { LocalScriptEvalResult } from "./local-script-eval.js";
 import {
   cardanoScriptPurposeData,
@@ -221,6 +228,22 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "transactionFieldItem";
         readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+      }
+    | {
+        readonly kind: "ledgerOutputProofBegin";
+        readonly outputIndex: number;
+        readonly totalLength: number;
+        readonly itemCommitment: Buffer;
+        readonly siblings: readonly Buffer[];
+      }
+    | {
+        readonly kind: "ledgerOutputProofStep";
+        readonly witness: MidgardLedgerOutputProofWitnessV1;
+      }
+    | {
+        readonly kind: "ledgerOutputProofFinalize";
+        readonly descriptorCbor: Buffer;
+        readonly signerProof: ValidationMachineSignerSetProof;
       }
     | {
         readonly kind: "requiredSignerItem";
@@ -1589,6 +1612,7 @@ export const buildDeterministicValidationMachineTrace = (
         readonly seen: number;
         readonly previousHash: Buffer;
       };
+      readonly outputProof?: MidgardLedgerOutputProofControlV1 | null;
       readonly discovery?: ScriptDiscoveryTraceControl;
     }): Buffer => {
       const observerScan = input.observerScan ?? {
@@ -1645,7 +1669,12 @@ export const buildDeterministicValidationMachineTrace = (
           BigInt(observerScan.seen),
         ],
       ];
-      if (input.stage >= 8) {
+      if (input.stage === 5 && input.outputProof !== undefined &&
+        input.outputProof !== null) {
+        fields.push(
+          encodeMidgardLedgerOutputProofControlV1(input.outputProof),
+        );
+      } else if (input.stage >= 8) {
         fields.push(
           scriptDiscoveryControlCbor(
             input.discovery ?? emptyScriptDiscoveryControl,
@@ -3066,6 +3095,27 @@ export const buildDeterministicValidationMachineTrace = (
                 "missing witness for protected output signer ",
               ) === true;
             for (const outputCbor of outputCbors) {
+              const outputItem = outputsCollection.items[outputCursor];
+              if (
+                outputItem === undefined ||
+                !outputItem.bytes.equals(outputCbor)
+              ) {
+                return yield* Effect.fail(
+                  new Error(
+                    "output admission lost its authenticated bounded item",
+                  ),
+                );
+              }
+              const outputProof =
+                buildMidgardLedgerOutputProofTraceV1({
+                  outputIndex: outputCursor,
+                  outputCbor,
+                });
+              const outputMaterial =
+                buildCanonicalMidgardLedgerOutputMaterialV1({
+                  outputIndex: outputCursor,
+                  outputCbor,
+                });
               const signerProof = protectedOutputSignerProof(outputCbor);
               pushWitness(
                 "scriptSources",
@@ -3084,10 +3134,57 @@ export const buildDeterministicValidationMachineTrace = (
                   receiveScan: receiveSourceScan(),
                 }),
                 {
-                  kind: "outputReplay",
+                  kind: "ledgerOutputProofBegin",
                   outputIndex: outputCursor,
-                  outputCbor,
+                  totalLength: outputItem.bytes.length,
+                  itemCommitment: outputItem.commitment,
                   siblings: outputMembership(outputCursor).siblings,
+                },
+              );
+              for (const proofStep of outputProof.steps) {
+                pushWitness(
+                  "scriptSources",
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 5,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: replayPurposeFrontier,
+                    outputCursor,
+                    outputFrontier,
+                    receiveScan: receiveSourceScan(),
+                    outputProof: proofStep.control,
+                  }),
+                  {
+                    kind: "ledgerOutputProofStep",
+                    witness: proofStep.witness,
+                  },
+                );
+              }
+              pushWitness(
+                "scriptSources",
+                scriptSourcesWitnessCbor({
+                  ...scriptSourceControl,
+                  stage: 5,
+                  sourceFrontier: replaySourceFrontier,
+                  redeemerFrontier,
+                  replayCursor,
+                  replayAccumulator,
+                  replayRemainingScheduleHash,
+                  spendIndex: replaySpendIndex,
+                  purposeFrontier: replayPurposeFrontier,
+                  outputCursor,
+                  outputFrontier,
+                  receiveScan: receiveSourceScan(),
+                  outputProof: outputProof.terminal,
+                }),
+                {
+                  kind: "ledgerOutputProofFinalize",
+                  descriptorCbor: outputMaterial.descriptorCbor,
                   signerProof,
                 },
               );

@@ -38,6 +38,8 @@ use midgard/fraud_proofs/native_tx/types.{
   RewardRedeemer, ScriptCredential, SpendRedeemer, TxIsValid,
   native_tx_version_v1,
 }
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_v1
 use midgard/native_script_scan_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -870,6 +872,201 @@ fn script_sources_output_step_fixture(
   )
 }
 
+type AuthenticatedOutputMaterialV1 {
+  item_commitment: ByteArray,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  initial: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  first_successor: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  terminal: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+}
+
+fn advanced_output_proof(
+  result: Option<ledger_output_proof_v1.LedgerOutputProofStepResultV1>,
+) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
+  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) =
+    result
+  control
+}
+
+fn authenticated_output_material(
+  output_cbor: ByteArray,
+) -> AuthenticatedOutputMaterialV1 {
+  let Pair(_, chunk_proof) = singleton_field_item_proofs(2, output_cbor)
+  let item_commitment = bounded_item_v1.from_bytes(2, 0, output_cbor)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(output_cbor),
+    item_commitment,
+  )
+  let first_successor = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      initial,
+      ledger_output_proof_v1.LedgerOutputProofChunks {
+        chunk_proof,
+        next_chunk_proof: None,
+      },
+    ),
+  )
+  let optional_field = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      first_successor,
+      ledger_output_proof_v1.LedgerOutputProofChunks {
+        chunk_proof,
+        next_chunk_proof: None,
+      },
+    ),
+  )
+  let scan_terminal = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      optional_field,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let value_ready = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      scan_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let value_finalize = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      value_ready,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let value_terminal = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      value_finalize,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let terminal = advanced_output_proof(
+    ledger_output_proof_v1.step_v1(
+      value_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  expect Some(cardano_tx_out) =
+    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal)
+  expect Some(midgard_tx_out) =
+    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal)
+  expect Some(cardano_spend_datum) =
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal)
+  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    version: ledger_output_commitment_v1.version,
+    output_index: terminal.output_index,
+    total_length: terminal.total_length,
+    item_commitment: terminal.item_commitment,
+    address: terminal.output_scan.address,
+    lovelace: terminal.output_scan.lovelace,
+    asset_count: terminal.output_scan.asset_count,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      terminal.output_scan.asset_count,
+      terminal.output_scan.asset_peaks,
+    ),
+    cardano_value_size: terminal.output_scan.cardano_value_size,
+    reference_script_language: -1,
+    reference_script_hash: #"",
+    reference_script_total_length: 0,
+    reference_script_item_commitment: #"",
+    cardano_tx_out,
+    midgard_tx_out,
+    cardano_spend_datum,
+  }
+  AuthenticatedOutputMaterialV1 {
+    item_commitment,
+    chunk_proof,
+    initial,
+    first_successor,
+    terminal,
+    descriptor_cbor: ledger_output_commitment_v1.encode(descriptor),
+  }
+}
+
+fn script_sources_active_output_proof_fixture(
+  tx: MidgardTransaction,
+  output_cursor: Int,
+  output_frontier: validation_merkle_v1.BuiltFrontier,
+  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
+  output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = signer_frontier_for_tx(tx)
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let control = validation_machine_v1.ScriptSourcesControlV1 {
+    compact_cbor: proof_source.compact_cbor,
+    witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+    field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+    context_cbor: validation_context_cbor,
+    resolved_input_count: 0,
+    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    signer_count: signer_frontier.count,
+    signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      signer_frontier.count,
+      signer_frontier.peaks,
+    ),
+    resolved_item_peaks: validation_merkle_v1.empty_frontier(),
+    stage: 5,
+    source_count: 0,
+    source_peaks: validation_merkle_v1.empty_frontier(),
+    redeemer_count: 0,
+    redeemer_peaks: validation_merkle_v1.empty_frontier(),
+    replay_cursor: 0,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    spend_index: 0,
+    purpose_count: 0,
+    purpose_peaks: validation_merkle_v1.empty_frontier(),
+    output_cursor,
+    output_count: output_frontier.count,
+    output_peaks: output_frontier.peaks,
+    output_total_count: output_frontier.count,
+    receive_scan,
+    source_total_count: 0,
+    redeemer_total_count: 0,
+    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
+    discovery: validation_machine_v1.empty_script_discovery_control(),
+    output_proof: Some(output_proof),
+  }
+  let work_witness_cbor =
+    validation_machine_v1.encode_script_sources_output_proof_witness(
+      control,
+      output_proof,
+    )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id: tx_id,
+      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.ScriptSources,
+      program_counter,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ScriptSources,
+        program_counter,
+        work_witness_cbor,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    },
+    work_witness_cbor,
+  )
+}
+
 fn script_sources_step_fixture_with_resolved_items(
   tx: MidgardTransaction,
   resolved_input_count: Int,
@@ -1020,6 +1217,7 @@ fn script_discovery_step_fixture_with_output_frontier(
     redeemer_total_count: redeemer_frontier.count,
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
+    output_proof: None,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     base_control,
@@ -4010,6 +4208,110 @@ test script_sources_finishes_authenticated_output_commitment() {
   canonical_output_commitment_step(1)
 }
 
+fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: ScriptCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 0, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let output_cbor = encode_midgard_tx_output(output)
+  let material = authenticated_output_material(output_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, outputs: [output] },
+  }
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let output_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.output_leaf_hash(0, output_cbor)],
+  )
+  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let Pair(before_begin, before_begin_work_witness_cbor) =
+    script_sources_output_step_fixture(
+      tx,
+      0,
+      accumulator,
+      5,
+      empty_frontier,
+      empty_frontier,
+      0,
+      accumulator,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      0,
+      empty_frontier,
+      0,
+      output_frontier,
+      16,
+    )
+  let Pair(before_step, before_step_work_witness_cbor) =
+    script_sources_active_output_proof_fixture(
+      tx,
+      0,
+      output_frontier,
+      validation_machine_v1.empty_receive_purpose_scan_control(),
+      material.initial,
+      17,
+    )
+  let Pair(after_step, _) = script_sources_active_output_proof_fixture(
+    tx,
+    0,
+    output_frontier,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    material.first_successor,
+    18,
+  )
+  if step_to_verify == 0 {
+    validation_machine_v1.verify_one_step_evidence(
+      before_begin,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: before_begin_work_witness_cbor,
+          claimed_successor: before_step,
+        },
+        auxiliary: validation_machine_v1.LedgerOutputProofBeginWitness {
+          output_index: 0,
+          total_length: bytearray.length(output_cbor),
+          item_commitment: material.item_commitment,
+          siblings: [],
+        },
+      },
+    )
+  } else {
+    and {
+      step_to_verify == 1,
+      validation_machine_v1.verify_one_step_evidence(
+        before_step,
+        validation_machine_v1.ValidationOneStepEvidenceV1 {
+          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+            work_witness_cbor: before_step_work_witness_cbor,
+            claimed_successor: after_step,
+          },
+          auxiliary: validation_machine_v1.LedgerOutputProofStepWitness {
+            witness: ledger_output_proof_v1.LedgerOutputProofChunks {
+              chunk_proof: material.chunk_proof,
+              next_chunk_proof: None,
+            },
+          },
+        },
+      ),
+    }
+  }
+}
+
+test script_sources_begins_an_authenticated_output_proof() {
+  authenticated_output_proof_step(0)
+}
+
+test script_sources_advances_one_bounded_output_proof_step() {
+  authenticated_output_proof_step(1)
+}
+
 test script_sources_collects_protected_receive_source() {
   let output = MidgardTxOutput {
     address: MidgardAddress {
@@ -4023,6 +4325,7 @@ test script_sources_collects_protected_receive_source() {
     script_ref: None,
   }
   let output_cbor = encode_midgard_tx_output(output)
+  let material = authenticated_output_material(output_cbor)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -4037,25 +4340,13 @@ test script_sources_collects_protected_receive_source() {
   )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) =
-    script_sources_output_step_fixture_with_resolved_items(
+    script_sources_active_output_proof_fixture(
       tx,
       0,
-      accumulator,
-      5,
-      empty_frontier,
-      empty_frontier,
-      0,
-      empty_frontier,
-      accumulator,
-      validation_machine_v1.empty_resolution_schedule_hash(),
-      0,
-      empty_frontier,
-      0,
       output_frontier,
-      1,
       validation_machine_v1.empty_receive_purpose_scan_control(),
-      validation_machine_v1.empty_observer_purpose_scan_control(),
-      14,
+      material.terminal,
+      22,
     )
   let Pair(post, _) =
     script_sources_output_step_fixture_with_resolved_items(
@@ -4082,7 +4373,7 @@ test script_sources_collects_protected_receive_source() {
         candidate_hash: #"",
       },
       validation_machine_v1.empty_observer_purpose_scan_control(),
-      15,
+      23,
     )
   validation_machine_v1.verify_one_step_evidence(
     pre,
@@ -4091,10 +4382,8 @@ test script_sources_collects_protected_receive_source() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.OutputReplayWitness {
-        output_index: 0,
-        output_cbor,
-        siblings: [],
+      auxiliary: validation_machine_v1.LedgerOutputProofFinalizeWitness {
+        descriptor_cbor: material.descriptor_cbor,
         signer_proof: validation_machine_v1.NoSignerSetProof,
       },
     },
@@ -4291,6 +4580,7 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     script_ref: None,
   }
   let output_cbor = encode_midgard_tx_output(output)
+  let material = authenticated_output_material(output_cbor)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -4300,21 +4590,13 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
+  let Pair(pre, work_witness_cbor) =
+    script_sources_active_output_proof_fixture(
     tx,
     0,
-    accumulator,
-    5,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
-    0,
     output_frontier,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    material.terminal,
     15,
   )
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
@@ -4340,10 +4622,8 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
         work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: validation_machine_v1.OutputReplayWitness {
-        output_index: 0,
-        output_cbor,
-        siblings: [],
+      auxiliary: validation_machine_v1.LedgerOutputProofFinalizeWitness {
+        descriptor_cbor: material.descriptor_cbor,
         signer_proof: validation_machine_v1.EmptySignerSetProof { peaks: [] },
       },
     },
@@ -7390,6 +7670,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     redeemer_total_count: 15,
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
+    output_proof: None,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     control,

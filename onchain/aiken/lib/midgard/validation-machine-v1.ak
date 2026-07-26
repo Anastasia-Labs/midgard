@@ -36,13 +36,15 @@ use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_mint_preimage_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  CertRedeemer, MidgardRedeemerWitness,
-  MidgardScriptWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
+  CertRedeemer, MidgardCredential, MidgardRedeemerWitness,
+  MidgardAddress, MidgardScriptWitness, MidgardTxInput, MidgardTxOutput, MidgardValue,
   MintRedeemer, NativeCardanoScript, NativeTxBodyCompact, NativeTxCompact,
   NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact, ProposeRedeemer,
   PubKeyCredential, ReceiveRedeemer, RewardRedeemer, ScriptCredential,
   SpendRedeemer, VerifiedMidgardNativeTxCompact, VoteRedeemer,
 }
+use midgard/ledger_output_commitment_v1
+use midgard/ledger_output_proof_v1
 use midgard/ledger_output_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_v1
@@ -316,6 +318,19 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   TransactionFieldItemWitness {
     collection_proof: bounded_collection_v1.ItemProofV1,
+  }
+  LedgerOutputProofBeginWitness {
+    output_index: Int,
+    total_length: Int,
+    item_commitment: ByteArray,
+    siblings: List<ByteArray>,
+  }
+  LedgerOutputProofStepWitness {
+    witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
+  }
+  LedgerOutputProofFinalizeWitness {
+    descriptor_cbor: ByteArray,
+    signer_proof: SignerSetProofV1,
   }
 }
 
@@ -1020,8 +1035,6 @@ pub fn encode_terminal_rejection_witness(
 }
 
 const reject_field_preimage_size = #"455f4649454c445f505245494d4147455f53495a45"
-
-const reject_ledger_output_size = #"455f4c45444745525f4f55545055545f53495a45"
 
 const reject_asset_count = #"455f41535345545f434f554e54"
 
@@ -5665,7 +5678,22 @@ fn input_signer_authorization(
     }
   } else {
     expect source_kind == 0
-    when output.address.payment_credential is {
+    payment_credential_signer_authorization(
+      output.address.payment_credential,
+      signer_count,
+      signer_frontier_commitment,
+      signer_proof,
+    )
+  }
+}
+
+fn payment_credential_signer_authorization(
+  payment_credential: MidgardCredential,
+  signer_count: Int,
+  signer_frontier_commitment: ByteArray,
+  signer_proof: SignerSetProofV1,
+) -> InputSignerAuthorizationV1 {
+  when payment_credential is {
       ScriptCredential(_) ->
         if signer_proof == NoSignerSetProof {
           InputSignerAuthorized
@@ -5699,7 +5727,6 @@ fn input_signer_authorization(
               InputSignerProofMalformed
             }
         }
-    }
   }
 }
 
@@ -5869,6 +5896,9 @@ fn resolve_lookup_step(
     LedgerDeltaOutputWitness { .. } -> False
     TransactionRedeemerItemWitness { .. } -> False
     TransactionFieldItemWitness { .. } -> False
+    LedgerOutputProofBeginWitness { .. } -> False
+    LedgerOutputProofStepWitness { .. } -> False
+    LedgerOutputProofFinalizeWitness { .. } -> False
     RequiredSignerItemWitness { .. } -> False
     NativeScriptTokenWitness { .. } -> False
     NativeScriptFrameWitness { .. } -> False
@@ -6181,6 +6211,7 @@ pub type ScriptSourcesControlV1 {
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
   discovery: ScriptDiscoveryControlV1,
+  output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
 }
 
 pub type ScriptDiscoveryControlV1 {
@@ -6309,6 +6340,7 @@ fn split_last_data(items: List<Data>) -> Pair<List<Data>, Data> {
 fn script_sources_control_from_data_items(
   items: List<Data>,
   discovery: ScriptDiscoveryControlV1,
+  output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
 ) -> ScriptSourcesControlV1 {
   expect
       [
@@ -6388,6 +6420,7 @@ fn script_sources_control_from_data_items(
       previous_hash: builtin.un_b_data(observer_previous_hash_data),
     },
     discovery,
+    output_proof,
   }
 }
 
@@ -6400,16 +6433,34 @@ fn script_sources_control_from_witness(
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
+      None,
     )
   } else {
     expect list.length(items) == 29
-    let Pair(base_items, discovery_data) = split_last_data(items)
-    script_sources_control_from_data_items(
+    let Pair(base_items, extension_data) = split_last_data(items)
+    let base_control = script_sources_control_from_data_items(
       base_items,
-      discovery_data
-        |> builtin.un_b_data
-        |> script_discovery_control_from_cbor,
+      empty_script_discovery_control(),
+      None,
     )
+    if base_control.stage == 5 {
+      ScriptSourcesControlV1 {
+        ..base_control,
+        output_proof: Some(
+          extension_data
+            |> builtin.un_b_data
+            |> ledger_output_proof_v1.decode_control_v1,
+        ),
+      }
+    } else {
+      expect base_control.stage >= 8
+      ScriptSourcesControlV1 {
+        ..base_control,
+        discovery: extension_data
+          |> builtin.un_b_data
+          |> script_discovery_control_from_cbor,
+      }
+    }
   }
 }
 
@@ -6437,6 +6488,50 @@ fn redeemer_is_well_formed(redeemer: MidgardRedeemerWitness) -> Bool {
     redeemer_purpose_is_supported(redeemer),
     redeemer_data_is_canonical(redeemer),
   }
+}
+
+pub fn encode_script_sources_output_proof_witness(
+  control: ScriptSourcesControlV1,
+  output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
+) -> ByteArray {
+  expect control.stage == 5
+  let base = encode_script_sources_witness(
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+    control.context_cbor,
+    control.resolved_input_count,
+    control.resolved_inputs_accumulator,
+    control.signer_count,
+    control.signer_frontier_commitment,
+    control.resolved_item_peaks,
+    control.stage,
+    control.source_count,
+    control.source_peaks,
+    control.redeemer_count,
+    control.redeemer_peaks,
+    control.replay_cursor,
+    control.replay_accumulator,
+    control.replay_remaining_schedule_hash,
+    control.spend_index,
+    control.purpose_count,
+    control.purpose_peaks,
+    control.output_cursor,
+    control.output_count,
+    control.output_peaks,
+    control.output_total_count,
+    control.receive_scan,
+    control.source_total_count,
+    control.redeemer_total_count,
+    control.observer_scan,
+  )
+  encode_definite_array_header(29)
+    |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
+    |> bytearray.concat(
+        encode_definite_bytes(
+          ledger_output_proof_v1.encode_control_v1(output_proof),
+        ),
+      )
 }
 
 pub fn encode_script_sources_discovery_witness(
@@ -6517,7 +6612,44 @@ fn script_discovery_control_is_well_formed(
 }
 
 fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
-  if control.stage < 8 {
+  if control.stage == 5 {
+    when control.output_proof is {
+      None ->
+        encode_script_sources_witness(
+          control.compact_cbor,
+          control.witness_set_compact_cbor,
+          control.field_preimage_lengths_cbor,
+          control.context_cbor,
+          control.resolved_input_count,
+          control.resolved_inputs_accumulator,
+          control.signer_count,
+          control.signer_frontier_commitment,
+          control.resolved_item_peaks,
+          control.stage,
+          control.source_count,
+          control.source_peaks,
+          control.redeemer_count,
+          control.redeemer_peaks,
+          control.replay_cursor,
+          control.replay_accumulator,
+          control.replay_remaining_schedule_hash,
+          control.spend_index,
+          control.purpose_count,
+          control.purpose_peaks,
+          control.output_cursor,
+          control.output_count,
+          control.output_peaks,
+          control.output_total_count,
+          control.receive_scan,
+          control.source_total_count,
+          control.redeemer_total_count,
+          control.observer_scan,
+        )
+      Some(output_proof) ->
+        encode_script_sources_output_proof_witness(control, output_proof)
+    }
+  } else if control.stage < 8 {
+    expect control.output_proof == None
     encode_script_sources_witness(
       control.compact_cbor,
       control.witness_set_compact_cbor,
@@ -6549,6 +6681,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.observer_scan,
     )
   } else {
+    expect control.output_proof == None
     encode_script_sources_discovery_witness(
       control,
       control.stage,
@@ -7226,15 +7359,14 @@ fn script_sources_stage_four(
 }
 
 fn protected_output_authorization(
-  output: MidgardTxOutput,
+  address: MidgardAddress,
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
   signer_proof: SignerSetProofV1,
 ) -> InputSignerAuthorizationV1 {
-  if output.address.protected {
-    input_signer_authorization(
-      0,
-      output,
+  if address.protected {
+    payment_credential_signer_authorization(
+      address.payment_credential,
       signer_count,
       signer_frontier_commitment,
       signer_proof,
@@ -7248,10 +7380,10 @@ fn protected_output_authorization(
 
 fn receive_source_successor(
   scan: ReceivePurposeScanControlV1,
-  output: MidgardTxOutput,
+  address: MidgardAddress,
 ) -> ReceivePurposeScanControlV1 {
-  if output.address.protected {
-    when output.address.payment_credential is {
+  if address.protected {
+    when address.payment_credential is {
       PubKeyCredential(_) -> scan
       ScriptCredential(script_hash) ->
         ReceivePurposeScanControlV1 {
@@ -7274,113 +7406,146 @@ fn receive_source_successor(
   }
 }
 
-fn script_sources_output_item(
+fn script_sources_output_proof_begin(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
   output_index: Int,
-  output_cbor: ByteArray,
+  total_length: Int,
+  item_commitment: ByteArray,
   siblings: List<ByteArray>,
-  signer_proof: SignerSetProofV1,
 ) -> Bool {
-  if and {
+  and {
+    control.output_proof == None,
     output_index == control.output_cursor,
+    total_length > 0,
+    bytearray.length(item_commitment) == 32,
     validation_merkle_v1.verify_membership(
       control.output_count,
       control.output_peaks,
       output_index,
-      script_proof_v1.output_leaf_hash(output_index, output_cbor),
+      script_proof_v1.output_item_leaf_hash(
+        output_index,
+        item_commitment,
+      ),
       siblings,
     ),
-  } {
-    if bytearray.length(output_cbor) > 4095 {
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_ledger_output_size,
-      )
-    } else {
-      when ledger_output_v1.decode_canonical_output(output_cbor) is {
-        None ->
+    script_sources_control_successor_is_exact(
+      pre,
+      witness,
+      ScriptSourcesControlV1 {
+        ..control,
+        output_proof: Some(
+          ledger_output_proof_v1.initial_control_v1(
+            output_index,
+            total_length,
+            item_commitment,
+          ),
+        ),
+      },
+    ),
+  }
+}
+
+fn script_sources_output_proof_step(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  proof_witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
+) -> Bool {
+  when ledger_output_proof_v1.step_v1(output_proof, proof_witness) is {
+    None -> False
+    Some(result) ->
+      when result is {
+        ledger_output_proof_v1.LedgerOutputProofAdvanced {
+          control: next_output_proof,
+        } ->
+          script_sources_control_successor_is_exact(
+            pre,
+            witness,
+            ScriptSourcesControlV1 {
+              ..control,
+              output_proof: Some(next_output_proof),
+            },
+          )
+        ledger_output_proof_v1.LedgerOutputProofInvalidOutput ->
           rejected_successor_is_exact(
             pre,
             witness.claimed_successor,
             reject_invalid_output,
           )
-        Some(output) ->
-          when reference_script_bound_rejection(output) is {
-            Some(rejection_code) ->
-              rejected_successor_is_exact(
-                pre,
-                witness.claimed_successor,
-                rejection_code,
-              )
-            None ->
-              when
-                protected_output_authorization(
-                  output,
-                  control.signer_count,
-                  control.signer_frontier_commitment,
-                  signer_proof,
-                )
-              is {
-                InputSignerMissing ->
-                  rejected_successor_is_exact(
-                    pre,
-                    witness.claimed_successor,
-                    reject_missing_required_witness,
-                  )
-                InputSignerProofMalformed -> False
-                InputSignerAuthorized -> {
-                  let next_receive_scan = receive_source_successor(
-                    control.receive_scan,
-                    output,
-                  )
-                  let next_control = encode_script_sources_witness(
-                    control.compact_cbor,
-                    control.witness_set_compact_cbor,
-                    control.field_preimage_lengths_cbor,
-                    control.context_cbor,
-                    control.resolved_input_count,
-                    control.resolved_inputs_accumulator,
-                    control.signer_count,
-                    control.signer_frontier_commitment,
-                    control.resolved_item_peaks,
-                    5,
-                    control.source_count,
-                    control.source_peaks,
-                    control.redeemer_count,
-                    control.redeemer_peaks,
-                    control.replay_cursor,
-                    control.replay_accumulator,
-                    control.replay_remaining_schedule_hash,
-                    control.spend_index,
-                    control.purpose_count,
-                    control.purpose_peaks,
-                    control.output_cursor + 1,
-                    control.output_count,
-                    control.output_peaks,
-                    control.output_total_count,
-                    next_receive_scan,
-                    control.source_total_count,
-                    control.redeemer_total_count,
-                    control.observer_scan,
-                  )
-                  and {
-                    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-                    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-                      validation_trace_v1.ScriptSources,
-                      pre.program_counter + 1,
-                      next_control,
-                    ),
-                  }
-                }
-              }
-          }
+        ledger_output_proof_v1.LedgerOutputProofInvalidReferenceScript ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        ledger_output_proof_v1.LedgerOutputProofNativeScriptNodeLimit ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_native_script_node_count,
+          )
+        ledger_output_proof_v1.LedgerOutputProofNativeScriptDepthLimit ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_native_script_depth,
+          )
       }
-    }
-  } else {
+  }
+}
+
+fn script_sources_output_proof_finalize(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
+  descriptor_cbor: ByteArray,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  if
+    !ledger_output_proof_v1.descriptor_is_exact_v1(
+      output_proof,
+      descriptor,
+    )
+  {
     False
+  } else {
+    expect Some(address) =
+      ledger_output_v1.decode_canonical_address_bytes(descriptor.address)
+    when
+      protected_output_authorization(
+        address,
+        control.signer_count,
+        control.signer_frontier_commitment,
+        signer_proof,
+      )
+    is {
+      InputSignerMissing ->
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_missing_required_witness,
+      )
+      InputSignerProofMalformed -> False
+      InputSignerAuthorized ->
+        script_sources_control_successor_is_exact(
+          pre,
+          witness,
+          ScriptSourcesControlV1 {
+            ..control,
+            output_cursor: control.output_cursor + 1,
+            receive_scan: receive_source_successor(
+              control.receive_scan,
+              address,
+            ),
+            output_proof: None,
+          },
+        )
+      }
   }
 }
 
@@ -7391,58 +7556,66 @@ fn script_sources_stage_five(
   control: ScriptSourcesControlV1,
 ) -> Bool {
   if control.output_cursor == control.output_count {
-    let next_control = encode_script_sources_witness(
-      control.compact_cbor,
-      control.witness_set_compact_cbor,
-      control.field_preimage_lengths_cbor,
-      control.context_cbor,
-      control.resolved_input_count,
-      control.resolved_inputs_accumulator,
-      control.signer_count,
-      control.signer_frontier_commitment,
-      control.resolved_item_peaks,
-      6,
-      control.source_count,
-      control.source_peaks,
-      control.redeemer_count,
-      control.redeemer_peaks,
-      control.replay_cursor,
-      control.replay_accumulator,
-      control.replay_remaining_schedule_hash,
-      control.spend_index,
-      control.purpose_count,
-      control.purpose_peaks,
-      control.output_cursor,
-      control.output_count,
-      control.output_peaks,
-      control.output_total_count,
-      control.receive_scan,
-      control.source_total_count,
-      control.redeemer_total_count,
-      control.observer_scan,
-    )
     and {
+      control.output_proof == None,
       auxiliary == NoAuxiliaryWitness,
-      witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-        validation_trace_v1.ScriptSources,
-        pre.program_counter + 1,
-        next_control,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 { ..control, stage: 6 },
       ),
     }
   } else {
-    when auxiliary is {
-      OutputReplayWitness { output_index, output_cbor, siblings, signer_proof } ->
-        script_sources_output_item(
-          pre,
-          witness,
-          control,
-          output_index,
-          output_cbor,
-          siblings,
-          signer_proof,
-        )
-      _ -> False
+    when control.output_proof is {
+      None ->
+        when auxiliary is {
+          LedgerOutputProofBeginWitness {
+            output_index,
+            total_length,
+            item_commitment,
+            siblings,
+          } ->
+            script_sources_output_proof_begin(
+              pre,
+              witness,
+              control,
+              output_index,
+              total_length,
+              item_commitment,
+              siblings,
+            )
+          _ -> False
+        }
+      Some(output_proof) ->
+        if ledger_output_proof_v1.terminal_is_exact_v1(output_proof) {
+          when auxiliary is {
+            LedgerOutputProofFinalizeWitness {
+              descriptor_cbor,
+              signer_proof,
+            } ->
+              script_sources_output_proof_finalize(
+                pre,
+                witness,
+                control,
+                output_proof,
+                descriptor_cbor,
+                signer_proof,
+              )
+            _ -> False
+          }
+        } else {
+          when auxiliary is {
+            LedgerOutputProofStepWitness { witness: proof_witness } ->
+              script_sources_output_proof_step(
+                pre,
+                witness,
+                control,
+                output_proof,
+                proof_witness,
+              )
+            _ -> False
+          }
+        }
     }
   }
 }
@@ -8617,6 +8790,19 @@ fn script_sources_control_is_bound(
     ),
     control.output_total_count >= control.output_count,
     control.output_total_count <= max_tx_size_derived_collection_item_count,
+    if control.stage == 5 {
+      when control.output_proof is {
+        None -> True
+        Some(output_proof) ->
+          and {
+            ledger_output_proof_v1.control_is_well_formed(output_proof),
+            output_proof.output_index == control.output_cursor,
+            output_proof.output_index < control.output_count,
+          }
+      }
+    } else {
+      control.output_proof == None
+    },
     if control.stage < 4 {
       and {
         control.output_count == 0,
@@ -8797,55 +8983,6 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
       validation_trace_v1.ScriptSources,
       pre.program_counter + 1,
       next_control,
-    ),
-  }
-}
-
-pub fn verify_script_sources_stage_five_replay_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  output_index: Int,
-  output_cbor: ByteArray,
-  siblings: List<ByteArray>,
-  signer_proof: SignerSetProofV1,
-) -> Bool {
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  and {
-    script_sources_control_is_bound(pre, witness, control),
-    control.stage == 5,
-    control.output_cursor < control.output_count,
-    script_sources_output_item(
-      pre,
-      witness,
-      control,
-      output_index,
-      output_cbor,
-      siblings,
-      signer_proof,
-    ),
-  }
-}
-
-pub fn verify_prepared_script_sources_stage_five_replay_transition_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  output_index: Int,
-  output_cbor: ByteArray,
-  siblings: List<ByteArray>,
-  signer_proof: SignerSetProofV1,
-) -> Bool {
-  let control = script_sources_control_from_witness(witness.work_witness_cbor)
-  and {
-    control.stage == 5,
-    control.output_cursor < control.output_count,
-    script_sources_output_item(
-      pre,
-      witness,
-      control,
-      output_index,
-      output_cbor,
-      siblings,
-      signer_proof,
     ),
   }
 }
