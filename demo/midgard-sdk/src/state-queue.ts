@@ -835,6 +835,8 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
         } satisfies StateQueueRedeemer,
         StateQueueRedeemer,
       )) satisfies BuildTxWithRedeemer;
+    const stateQueueCommitSpendRedeemer = (() =>
+      STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER) satisfies BuildTxWithRedeemer;
 
     const additionalInputs = params.additionalInputs ?? [];
     let tx = lucid.newTx();
@@ -842,10 +844,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       tx = tx.collectFrom([...additionalInputs]);
     }
     tx = tx
-      .collectFrom(
-        [params.anchorUTxO.utxo],
-        STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
-      )
+      .collectFrom([params.anchorUTxO.utxo], stateQueueCommitSpendRedeemer)
       .collectFrom(
         [params.activeOperatorInput],
         encodeActiveOperatorSpendRedeemer(params.activeOperatorSpendRedeemer),

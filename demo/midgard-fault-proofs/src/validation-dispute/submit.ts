@@ -63,6 +63,7 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  type TxSigned,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -147,17 +148,21 @@ const requireValidityRange = (
     !Number.isSafeInteger(range.validFrom) ||
     !Number.isSafeInteger(range.validTo) ||
     range.validFrom < 0 ||
-    range.validTo < range.validFrom ||
+    range.validTo <= range.validFrom ||
     range.validTo - range.validFrom >
       VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS +
         VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS
   ) {
     throw new Error(
-      "Validation-dispute validity range must be a non-negative closed range no longer than 120 seconds",
+      "Validation-dispute validity range must yield a non-empty, non-negative closed range no longer than 120 seconds",
     );
   }
   return range;
 };
+
+const inclusiveValidityUpperBound = (
+  range: ValidationDisputeValidityRange,
+): number => range.validTo - 1;
 
 const threadAssets = (threadUtxo: UTxO, threadUnit: string) => ({
   lovelace: threadUtxo.assets.lovelace ?? 0n,
@@ -600,15 +605,13 @@ const makeOpenRedeemer = ({
       {
         Continue: [
           {
-            Open: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-              hub_ref_input_index: layout.hubOracleRefInputIndex,
-              state_queue_node_ref_input_index:
-                layout.stateQueueNodeRefInputIndex,
-              claim,
-              challenger_descriptor: challengerDescriptor,
-            },
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            hub_ref_input_index: layout.hubOracleRefInputIndex,
+            state_queue_node_ref_input_index:
+              layout.stateQueueNodeRefInputIndex,
+            claim,
+            challenger_descriptor: challengerDescriptor,
           },
         ],
       },
@@ -656,10 +659,8 @@ const makeVerifySourceRedeemer = ({
       {
         Continue: [
           {
-            VerifySource: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-            },
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
           },
         ],
       },
@@ -790,19 +791,7 @@ export type SubmitValidationDisputeOpenResult = {
   readonly awaitedConfirmation: boolean;
 };
 
-export const submitValidationDisputeOpen = async ({
-  lucid,
-  blueprint,
-  deploymentInfo,
-  network,
-  signer,
-  threadOutRef,
-  stateQueueBlockOutRef,
-  claim,
-  challengerDescriptor,
-  validityRange = validationDisputeValidityRange(Date.now()),
-  awaitConfirmation = true,
-}: {
+export type BuildValidationDisputeOpenParams = {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly deploymentInfo: unknown;
@@ -813,8 +802,31 @@ export const submitValidationDisputeOpen = async ({
   readonly claim: ValidationClaimWitnessV1;
   readonly challengerDescriptor: ValidationTraceDescriptorV1;
   readonly validityRange?: ValidationDisputeValidityRange;
-  readonly awaitConfirmation?: boolean;
-}): Promise<SubmitValidationDisputeOpenResult> => {
+};
+
+export type BuildValidationDisputeOpenResult = {
+  readonly signed: TxSigned;
+  readonly threadOutRef: string;
+  readonly fraudulentHeaderHash: string;
+  readonly inputIndex: number;
+  readonly outputIndex: number;
+  readonly hubOracleRefInputIndex: number;
+  readonly stateQueueNodeRefInputIndex: number;
+  readonly responseDeadline: number;
+};
+
+export const buildValidationDisputeOpen = async ({
+  lucid,
+  blueprint,
+  deploymentInfo,
+  network,
+  signer,
+  threadOutRef,
+  stateQueueBlockOutRef,
+  claim,
+  challengerDescriptor,
+  validityRange = validationDisputeValidityRange(Date.now()),
+}: BuildValidationDisputeOpenParams): Promise<BuildValidationDisputeOpenResult> => {
   const range = requireValidityRange(validityRange);
   const resolved = await resolveValidationTraceDisputeDeploymentContracts({
     blueprint,
@@ -885,14 +897,15 @@ export const submitValidationDisputeOpen = async ({
   );
   const challengerDescriptorCore =
     validationTraceDescriptorCoreFromData(challengerDescriptor);
+  const currentTimeUpper = inclusiveValidityUpperBound(range);
   const dispute = openMidgardValidationDispute({
     operatorDescriptor,
     challengerDescriptor: challengerDescriptorCore,
-    currentTime: range.validTo,
+    currentTime: currentTimeUpper,
   });
   if (
     !canOpenMidgardValidationDisputeBeforeMaturity({
-      currentTimeUpper: range.validTo,
+      currentTimeUpper,
       challengedBlockEndTime: safeUnsignedNumber(
         header.endTime,
         "header.endTime",
@@ -912,7 +925,7 @@ export const submitValidationDisputeOpen = async ({
         challenged_header: header,
         claim,
         challenger_descriptor: challengerDescriptor,
-        open_time_upper: BigInt(range.validTo),
+        open_time_upper: BigInt(currentTimeUpper),
       },
     },
     PendingValidationClaimDatumV1,
@@ -957,21 +970,40 @@ export const submitValidationDisputeOpen = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute open");
-  const txHash = await signed.submit();
-  if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
-  }
   return {
-    txHash,
+    signed,
     threadOutRef,
-    nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
     fraudulentHeaderHash,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     hubOracleRefInputIndex: Number(layout.hubOracleRefInputIndex),
     stateQueueNodeRefInputIndex: Number(layout.stateQueueNodeRefInputIndex),
     responseDeadline: dispute.responseDeadline,
+  };
+};
+
+export const submitValidationDisputeOpen = async ({
+  awaitConfirmation = true,
+  ...params
+}: BuildValidationDisputeOpenParams & {
+  readonly awaitConfirmation?: boolean;
+}): Promise<SubmitValidationDisputeOpenResult> => {
+  const built = await buildValidationDisputeOpen(params);
+  requireL1ProofEnvelope(built.signed.toCBOR(), "Validation-dispute open");
+  const txHash = await built.signed.submit();
+  if (awaitConfirmation) {
+    await params.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
+  return {
+    txHash,
+    threadOutRef: built.threadOutRef,
+    nextThreadOutRef: `${txHash}#${built.outputIndex.toString()}`,
+    fraudulentHeaderHash: built.fraudulentHeaderHash,
+    inputIndex: built.inputIndex,
+    outputIndex: built.outputIndex,
+    hubOracleRefInputIndex: built.hubOracleRefInputIndex,
+    stateQueueNodeRefInputIndex: built.stateQueueNodeRefInputIndex,
+    responseDeadline: built.responseDeadline,
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -1195,12 +1227,9 @@ const makeTimeoutSpendRedeemer = ({
       {
         Continue: [
           {
-            ChallengerTimeout: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-              fraud_proof_mint_redeemer_index:
-                layout.fraudProofMintRedeemerIndex,
-            },
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
           },
         ],
       },
@@ -1339,17 +1368,18 @@ export const submitValidationDisputeReveal = async ({
     );
   }
   const inputDispute = validationDisputeCoreFromData(inputDatum.data.dispute);
+  const currentTimeUpper = inclusiveValidityUpperBound(range);
   const nextDispute =
     role === "operator"
       ? revealMidgardValidationOperatorMidpoint({
           dispute: inputDispute,
           proof,
-          currentTime: range.validTo,
+          currentTime: currentTimeUpper,
         })
       : revealMidgardValidationChallengerMidpoint({
           dispute: inputDispute,
           proof,
-          currentTime: range.validTo,
+          currentTime: currentTimeUpper,
         });
   const outputDatum = Data.to(
     {
@@ -1761,15 +1791,13 @@ const makePrepareResolutionRedeemer = ({
       {
         Continue: [
           {
-            PrepareResolution: {
-              input_index: layout.inputIndex,
-              output_index: layout.outputIndex,
-              resolver_index: resolverIndex,
-              evidence: {
-                pre_state: preState,
-                operator_post: operatorPost,
-                challenger_post: challengerPost,
-              },
+            input_index: layout.inputIndex,
+            output_index: layout.outputIndex,
+            resolver_index: resolverIndex,
+            evidence: {
+              pre_state: preState,
+              operator_post: operatorPost,
+              challenger_post: challengerPost,
             },
           },
         ],

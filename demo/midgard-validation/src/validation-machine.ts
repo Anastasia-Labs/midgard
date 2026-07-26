@@ -1,5 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeafV1,
   buildMidgardBlake2b224TraceV1,
   buildMidgardBoundedCollectionItemProofV1,
@@ -678,6 +679,7 @@ export type ValidationMachineSignerSetProof =
     };
 
 export type DeterministicValidationMachineTrace = {
+  readonly validationContextCbor: Buffer;
   readonly states: readonly MidgardValidationMachineStateV1[];
   readonly witnesses: readonly ValidationMachineWorkWitness[];
   readonly tree: MidgardValidationTraceTree;
@@ -1137,15 +1139,20 @@ export const buildDeterministicValidationMachineTrace = (
   input: ValidationMachineReplayInput,
 ): Effect.Effect<DeterministicValidationMachineTrace, Error> =>
   Effect.gen(function* () {
-    const contextCbor = encodeCbor([
-      1n,
-      Buffer.from(input.consensusProfile.profileId, "ascii"),
-      safeBlockEndTime(input.blockEndTimeMs),
-      input.expectedNetworkId,
-      input.minFeeA,
-      input.minFeeB,
-      input.blockSlot,
-    ]);
+    const contextCbor = Buffer.from(
+      aikenSerialisedPlutusDataCbor(
+        encodeCbor([
+          1n,
+          Buffer.from(input.consensusProfile.profileId, "ascii"),
+          safeBlockEndTime(input.blockEndTimeMs),
+          input.expectedNetworkId,
+          input.minFeeA,
+          input.minFeeB,
+          input.blockSlot,
+        ]).toString("hex"),
+      ),
+      "hex",
+    );
     const validationContextHash = hashMidgardValidationContextV1(contextCbor);
     const priorLedgerRoot = exactHash32(input.priorUtxosRoot, "priorUtxosRoot");
     const postLedgerRoot = exactHash32(input.postUtxosRoot, "postUtxosRoot");
@@ -7102,6 +7109,7 @@ export const buildDeterministicValidationMachineTrace = (
       );
     }
     return {
+      validationContextCbor: contextCbor,
       states,
       witnesses,
       tree,

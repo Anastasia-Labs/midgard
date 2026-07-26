@@ -67,7 +67,6 @@ import {
   type FraudProofs,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
-  GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
@@ -156,6 +155,7 @@ import {
   buildCountedRoot,
   buildInvalidForcedTransactionNoOpWitness,
   buildTransitionFaultProof,
+  buildValidationDisputeOpen,
   encodeData,
   keyValuePhasProof,
   keyValuePhasRootWithCount,
@@ -180,7 +180,6 @@ import {
   submitTransitionTraceProof,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
-  submitValidationDisputeOpen,
   submitValidationDisputePrepareResolution,
   submitValidationDisputePrepareSelected,
   submitValidationDisputeReveal,
@@ -597,13 +596,14 @@ const buildMinimalFaultProofContracts = async (
         withScheduler.scheduler.policyId,
         doubleSpendContracts.fraudProof.policyId,
         withScheduler.settlement.policyId,
+        withScheduler.daAttestation.policyId,
       ],
     ),
   );
   const stateQueueSpending = makeSpendingValidator(
     applyParamsToScript(
       getCompiledScript(realBlueprint, "state_queue.spend.spend"),
-      [stateQueueMinting.policyId],
+      [stateQueueMinting.policyId, withScheduler.daAttestation.policyId],
     ),
   );
 
@@ -1564,15 +1564,6 @@ const buildInvalidForcedValidationDisputeFixture = async ({
     },
     operator_validity: "TxIsValid" as const,
   };
-  const contextCbor = encodeCbor([
-    1n,
-    Buffer.from(MIDGARD_CONSENSUS_PROFILE_V1.profileId, "ascii"),
-    BigInt(now + 1_000),
-    0n,
-    0n,
-    0n,
-    0n,
-  ]);
   const challengerTrace = await Effect.runPromise(
     buildDeterministicValidationMachineTrace({
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
@@ -1727,10 +1718,9 @@ const buildInvalidForcedValidationDisputeFixture = async ({
         },
       },
     },
-    validation_context_cbor: contextCbor.toString("hex"),
-    initial_state: validationMachineStateDataFromCore(
-      operatorTrace.states[0]!,
-    ),
+    validation_context_cbor:
+      operatorTrace.validationContextCbor.toString("hex"),
+    initial_state: validationMachineStateDataFromCore(operatorTrace.states[0]!),
     terminal_state: validationMachineStateDataFromCore(
       operatorTrace.states.at(-1)!,
     ),
@@ -1769,11 +1759,90 @@ const runEmulatorLifecycleStage = async <T>(
   try {
     return await operation();
   } catch (cause) {
-    const detail =
-      cause instanceof Error ? cause.message : String(cause);
-    throw new Error(
-      `emulator lifecycle stage ${stage} failed: ${detail}`,
-    );
+    const serializedCause =
+      typeof cause === "object" && cause !== null
+        ? JSON.stringify(
+            cause,
+            (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+            2,
+          )
+        : undefined;
+    const detail = [
+      cause instanceof Error ? (cause.stack ?? cause.message) : String(cause),
+      serializedCause,
+    ]
+      .filter((value) => value !== undefined && value.length > 0)
+      .join("\n");
+    throw new Error(`emulator lifecycle stage ${stage} failed: ${detail}`);
+  }
+};
+
+type CompleteSignedTransactionMeasurement = {
+  readonly completeSignedBytes: number;
+  readonly l1ByteMargin: number;
+  readonly executionMemory: bigint;
+  readonly executionSteps: bigint;
+  readonly inputCount: number;
+  readonly referenceInputCount: number;
+  readonly outputCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly redeemerCount: number;
+  readonly datumCount: number;
+  readonly plutusV3ScriptCount: number;
+};
+
+const measureCompleteSignedTransaction = (
+  transactionCbor: string,
+): CompleteSignedTransactionMeasurement => {
+  const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const redeemers = witnessSet.redeemers()?.to_flat_format();
+  let executionMemory = 0n;
+  let executionSteps = 0n;
+  for (let index = 0; index < (redeemers?.len() ?? 0); index += 1) {
+    const exUnits = redeemers!.get(index).ex_units();
+    executionMemory += exUnits.mem();
+    executionSteps += exUnits.steps();
+  }
+  const completeSignedBytes = transactionCbor.length / 2;
+  return {
+    completeSignedBytes,
+    l1ByteMargin: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize - completeSignedBytes,
+    executionMemory,
+    executionSteps,
+    inputCount: body.inputs().len(),
+    referenceInputCount: body.reference_inputs()?.len() ?? 0,
+    outputCount: body.outputs().len(),
+    vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
+    redeemerCount: redeemers?.len() ?? 0,
+    datumCount: witnessSet.plutus_datums()?.len() ?? 0,
+    plutusV3ScriptCount: witnessSet.plutus_v3_scripts()?.len() ?? 0,
+  };
+};
+
+const captureEmulatorSubmission = async <T>(
+  emulator: Emulator,
+  operation: () => Promise<T>,
+): Promise<{
+  readonly result: T;
+  readonly measurement: CompleteSignedTransactionMeasurement;
+}> => {
+  const submit = emulator.submitTx.bind(emulator);
+  let measurement: CompleteSignedTransactionMeasurement | undefined;
+  emulator.submitTx = async (transaction) => {
+    measurement = measureCompleteSignedTransaction(transaction);
+    return submit(transaction);
+  };
+  try {
+    const result = await operation();
+    if (measurement === undefined) {
+      throw new Error("Expected emulator operation to submit a transaction");
+    }
+    return { result, measurement };
+  } finally {
+    emulator.submitTx = submit;
   }
 };
 
@@ -1848,7 +1917,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: header.startTime,
     endTime: header.startTime,
-    protocolVersion: GENESIS_PROTOCOL_VERSION,
+    protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
   };
   const unsigned = await lucid
     .newTx()
@@ -2229,7 +2298,10 @@ const submitSetupTx = async ({
     next: "Empty",
     data: Data.castTo(
       {
-        bond_unlock_time: commitValidTo - 1n + 30n,
+        bond_unlock_time:
+          commitValidTo -
+          1n +
+          BigInt(MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs),
         inactivity_strikes: 0n,
       },
       ActiveOperatorDatum,
@@ -2406,7 +2478,10 @@ const submitSuccessorBlockTx = async ({
     next: "Empty",
     data: Data.castTo(
       {
-        bond_unlock_time: commitValidTo - 1n + 30n,
+        bond_unlock_time:
+          commitValidTo -
+          1n +
+          BigInt(MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs),
         inactivity_strikes: 0n,
       },
       ActiveOperatorDatum,
@@ -4334,8 +4409,34 @@ describe("fault-proof emulator integration", () => {
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
     const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const feeUtxoCount = 12;
+    const feeUtxoLovelace = 100_000_000n;
     const emulator = new Emulator(
-      [operator, challenger],
+      [
+        {
+          ...operator,
+          assets: {
+            lovelace:
+              operator.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
+          },
+        },
+        ...Array.from({ length: feeUtxoCount }, () => ({
+          ...operator,
+          assets: { lovelace: feeUtxoLovelace },
+        })),
+        {
+          ...challenger,
+          assets: {
+            lovelace:
+              challenger.assets.lovelace -
+              BigInt(feeUtxoCount) * feeUtxoLovelace,
+          },
+        },
+        ...Array.from({ length: feeUtxoCount }, () => ({
+          ...challenger,
+          assets: { lovelace: feeUtxoLovelace },
+        })),
+      ],
       EMULATOR_PROTOCOL_PARAMETERS,
     );
     const operatorLucid = await Lucid(emulator, "Custom");
@@ -4417,10 +4518,10 @@ describe("fault-proof emulator integration", () => {
       initResult.firstStepAddress,
       initResult.computationThreadUnit,
     );
-    const openResult = await runEmulatorLifecycleStage(
-      "open",
+    const builtOpen = await runEmulatorLifecycleStage(
+      "open.build-functional-diagnostic",
       () =>
-        submitValidationDisputeOpen({
+        buildValidationDisputeOpen({
           lucid: challengerLucid,
           blueprint: realBlueprint,
           deploymentInfo,
@@ -4431,101 +4532,213 @@ describe("fault-proof emulator integration", () => {
           claim: fixture.claim,
           challengerDescriptor: fixture.challengerDescriptor,
           validityRange: validityRange(),
-          awaitConfirmation: true,
         }),
     );
-    const sourceResult = await submitValidationDisputeVerifySource({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef: openResult.nextThreadOutRef,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
+    const publicationMeasurement = measureCompleteSignedTransaction(
+      builtOpen.signed.toCBOR(),
+    );
+    const functionalProtocolParameters = emulator.protocolParameters;
+    emulator.protocolParameters = {
+      ...functionalProtocolParameters,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    };
+    const functionalSlotConfig = challengerLucid.config().slotConfig;
+    if (functionalSlotConfig === undefined) {
+      throw new Error(
+        "Expected functional emulator Lucid to expose its Custom slot config",
+      );
+    }
+    const targetFitChallengerLucid = await Lucid(emulator, "Custom", {
+      slotConfig: functionalSlotConfig,
     });
-
-    let threadOutRef = sourceResult.nextThreadOutRef;
-    for (const move of fixture.evidence.moves) {
-      const revealResult = await submitValidationDisputeReveal({
-        lucid:
-          move.role === "operator" ? operatorLucid : challengerLucid,
+    targetFitChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+    let targetPublicationFailure: string | undefined;
+    try {
+      await buildValidationDisputeOpen({
+        lucid: targetFitChallengerLucid,
         blueprint: realBlueprint,
         deploymentInfo,
         network,
-        signer:
-          move.role === "operator" ? operatorSigner : challengerSigner,
-        threadOutRef,
-        role: move.role,
-        proof: move.proof,
+        signer: challengerSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        claim: fixture.claim,
+        challengerDescriptor: fixture.challengerDescriptor,
+        validityRange: validityRange(),
+      });
+    } catch (cause) {
+      targetPublicationFailure =
+        cause instanceof Error ? cause.message : String(cause);
+    } finally {
+      emulator.protocolParameters = functionalProtocolParameters;
+    }
+    expect(targetPublicationFailure).toMatch(
+      /Max transaction size of 16384 exceeded/u,
+    );
+    const openResult = await runEmulatorLifecycleStage(
+      "open.submit-functional-diagnostic",
+      async () => {
+        const txHash = await builtOpen.signed.submit();
+        await challengerLucid.awaitTx(txHash);
+        return {
+          nextThreadOutRef: `${txHash}#${builtOpen.outputIndex.toString()}`,
+        };
+      },
+    );
+    emulator.protocolParameters = {
+      ...functionalProtocolParameters,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    };
+    const targetOperatorLucid = await Lucid(emulator, "Custom", {
+      slotConfig: functionalSlotConfig,
+    });
+    const targetChallengerLucid = await Lucid(emulator, "Custom", {
+      slotConfig: functionalSlotConfig,
+    });
+    targetOperatorLucid.selectWallet.fromSeed(operator.seedPhrase);
+    targetChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+    const sourceResult = await runEmulatorLifecycleStage("source", () =>
+      submitValidationDisputeVerifySource({
+        lucid: targetChallengerLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: challengerSigner,
+        threadOutRef: openResult.nextThreadOutRef,
         validityRange: validityRange(),
         awaitConfirmation: true,
-      });
+      }),
+    );
+
+    let threadOutRef = sourceResult.nextThreadOutRef;
+    for (const move of fixture.evidence.moves) {
+      const revealResult = await runEmulatorLifecycleStage(
+        `reveal.${move.role}`,
+        () =>
+          submitValidationDisputeReveal({
+            lucid:
+              move.role === "operator"
+                ? targetOperatorLucid
+                : targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer:
+              move.role === "operator" ? operatorSigner : challengerSigner,
+            threadOutRef,
+            role: move.role,
+            proof: move.proof,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
+      );
       threadOutRef = revealResult.nextThreadOutRef;
     }
 
-    const resolutionResult = await submitValidationDisputeEnterResolution({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
+    const resolutionResult = await runEmulatorLifecycleStage(
+      "enter-resolution",
+      () =>
+        submitValidationDisputeEnterResolution({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+    );
     const { lowIndex, highIndex } = fixture.evidence.finalDispute;
-    const prepareResult = await submitValidationDisputePrepareResolution({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef: resolutionResult.nextThreadOutRef,
-      preState: validationMachineStateDataFromCore(
-        fixture.operatorTrace.states[lowIndex]!,
+    const prepareResult = await runEmulatorLifecycleStage(
+      "prepare-resolution",
+      () =>
+        submitValidationDisputePrepareResolution({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: resolutionResult.nextThreadOutRef,
+          preState: validationMachineStateDataFromCore(
+            fixture.operatorTrace.states[lowIndex]!,
+          ),
+          operatorPost: validationTraceProofDataFromCore(
+            fixture.operatorTrace.tree.proofs[highIndex]!,
+          ),
+          challengerPost: validationTraceProofDataFromCore(
+            fixture.challengerTrace.tree.proofs[highIndex]!,
+          ),
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+    );
+    const selectedResult = await runEmulatorLifecycleStage(
+      "prepare-selected",
+      () =>
+        submitValidationDisputePrepareSelected({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: prepareResult.nextThreadOutRef,
+          oneStepArgument: fixture.evidence.oneStepArgument,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
+    );
+    const semanticSubmission = await runEmulatorLifecycleStage(
+      "semantic-resolution",
+      () =>
+        captureEmulatorSubmission(emulator, () =>
+          submitValidationDisputeSemanticResolution({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: selectedResult.nextThreadOutRef,
+            oneStepArgument: fixture.evidence.oneStepArgument,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
+        ),
+    );
+    const semanticResult = semanticSubmission.result;
+    const awardSubmission = await runEmulatorLifecycleStage("award", () =>
+      captureEmulatorSubmission(emulator, () =>
+        submitValidationDisputeAward({
+          lucid: targetChallengerLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: challengerSigner,
+          threadOutRef: semanticResult.nextThreadOutRef,
+          validityRange: validityRange(),
+          awaitConfirmation: true,
+        }),
       ),
-      operatorPost: validationTraceProofDataFromCore(
-        fixture.operatorTrace.tree.proofs[highIndex]!,
-      ),
-      challengerPost: validationTraceProofDataFromCore(
-        fixture.challengerTrace.tree.proofs[highIndex]!,
-      ),
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
-    const selectedResult = await submitValidationDisputePrepareSelected({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef: prepareResult.nextThreadOutRef,
-      oneStepArgument: fixture.evidence.oneStepArgument,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
-    const semanticResult = await submitValidationDisputeSemanticResolution({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef: selectedResult.nextThreadOutRef,
-      oneStepArgument: fixture.evidence.oneStepArgument,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
-    const awardResult = await submitValidationDisputeAward({
-      lucid: challengerLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: challengerSigner,
-      threadOutRef: semanticResult.nextThreadOutRef,
-      validityRange: validityRange(),
-      awaitConfirmation: true,
-    });
+    );
+    const awardResult = awardSubmission.result;
+    const proofTransactionMeasurements = {
+      publication: publicationMeasurement,
+      resolution: semanticSubmission.measurement,
+      award: awardSubmission.measurement,
+    };
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            targetPublicationFailure,
+            transactions: proofTransactionMeasurements,
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
 
     expect(fixture.evidence.finalDispute.turn).toEqual({
       type: "readyForOneStep",
@@ -4547,8 +4760,11 @@ describe("fault-proof emulator integration", () => {
         initResult.computationThreadAssetName,
       ),
     );
+    expect(publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+    expect(semanticSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
+    expect(awardSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
     await expect(
-      challengerLucid.utxosAtWithUnit(
+      targetChallengerLucid.utxosAtWithUnit(
         contracts.fraudProof.spendingScriptAddress,
         awardResult.fraudProofUnit,
       ),

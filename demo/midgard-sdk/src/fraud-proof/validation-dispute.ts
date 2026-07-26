@@ -300,18 +300,17 @@ const cancelActionSchema = Data.Object({
   }),
 });
 
-export const ValidationDisputeOpenActionV1Schema = Data.Enum([
-  Data.Object({
-    Open: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      hub_ref_input_index: Data.Integer(),
-      state_queue_node_ref_input_index: Data.Integer(),
-      claim: ValidationClaimWitnessV1Schema,
-      challenger_descriptor: ValidationTraceDescriptorV1Schema,
-    }),
-  }),
-]);
+// These action types each have one Aiken constructor. Lucid unwraps a
+// one-member Data.Enum, so model the constructor fields as a record; Data.Object
+// still emits the required constructor-0 wire shape.
+export const ValidationDisputeOpenActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  state_queue_node_ref_input_index: Data.Integer(),
+  claim: ValidationClaimWitnessV1Schema,
+  challenger_descriptor: ValidationTraceDescriptorV1Schema,
+});
 export type ValidationDisputeOpenActionV1 = Data.Static<
   typeof ValidationDisputeOpenActionV1Schema
 >;
@@ -330,14 +329,10 @@ export type ValidationDisputeOpenSpendRedeemerV1 = Data.Static<
 export const ValidationDisputeOpenSpendRedeemerV1 =
   ValidationDisputeOpenSpendRedeemerV1Schema as unknown as ValidationDisputeOpenSpendRedeemerV1;
 
-export const ValidationSourceActionV1Schema = Data.Enum([
-  Data.Object({
-    VerifySource: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-    }),
-  }),
-]);
+export const ValidationSourceActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+});
 export type ValidationSourceActionV1 = Data.Static<
   typeof ValidationSourceActionV1Schema
 >;
@@ -409,16 +404,12 @@ export type ValidationBoundaryEvidenceV1 = Data.Static<
 export const ValidationBoundaryEvidenceV1 =
   ValidationBoundaryEvidenceV1Schema as unknown as ValidationBoundaryEvidenceV1;
 
-export const ValidationBoundaryActionV1Schema = Data.Enum([
-  Data.Object({
-    PrepareResolution: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      resolver_index: Data.Integer(),
-      evidence: ValidationBoundaryEvidenceV1Schema,
-    }),
-  }),
-]);
+export const ValidationBoundaryActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  resolver_index: Data.Integer(),
+  evidence: ValidationBoundaryEvidenceV1Schema,
+});
 export type ValidationBoundaryActionV1 = Data.Static<
   typeof ValidationBoundaryActionV1Schema
 >;
@@ -510,15 +501,11 @@ export type ValidationAwardSpendRedeemerV1 = Data.Static<
 export const ValidationAwardSpendRedeemerV1 =
   ValidationAwardSpendRedeemerV1Schema as unknown as ValidationAwardSpendRedeemerV1;
 
-export const ValidationTimeoutActionV1Schema = Data.Enum([
-  Data.Object({
-    ChallengerTimeout: Data.Object({
-      input_index: Data.Integer(),
-      output_index: Data.Integer(),
-      fraud_proof_mint_redeemer_index: Data.Integer(),
-    }),
-  }),
-]);
+export const ValidationTimeoutActionV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  fraud_proof_mint_redeemer_index: Data.Integer(),
+});
 export type ValidationTimeoutActionV1 = Data.Static<
   typeof ValidationTimeoutActionV1Schema
 >;
@@ -551,6 +538,18 @@ const verdictData = (
 ): "Accepted" | "Rejected" =>
   verdict === "accepted" ? "Accepted" : "Rejected";
 
+const verdictCore = (
+  verdict: Data.Static<typeof ValidationTraceDescriptorV1Schema>["verdict"],
+): MidgardValidationTraceDescriptorV1["verdict"] => {
+  if (verdict === "Accepted") {
+    return "accepted";
+  }
+  if (verdict === "Rejected") {
+    return "rejected";
+  }
+  throw new Error("descriptor.verdict must be Accepted or Rejected");
+};
+
 export const validationTraceDescriptorDataFromCore = (
   descriptor: MidgardValidationTraceDescriptorV1,
 ): Data.Static<typeof ValidationTraceDescriptorV1Schema> => ({
@@ -579,7 +578,7 @@ export const validationTraceDescriptorCoreFromData = (
   stepCount: safeNumber(descriptor.step_count, "descriptor.step_count"),
   initialStateHash: Buffer.from(descriptor.initial_state_hash, "hex"),
   terminalStateHash: Buffer.from(descriptor.terminal_state_hash, "hex"),
-  verdict: descriptor.verdict === "Accepted" ? "accepted" : "rejected",
+  verdict: verdictCore(descriptor.verdict),
   rejectionCodeHash: Buffer.from(descriptor.rejection_code_hash, "hex"),
 });
 

@@ -617,6 +617,11 @@ export type TransitionStep = Data.Static<typeof TransitionStepSchema>;
 export const TransitionStep = TransitionStepSchema as unknown as TransitionStep;
 
 export const ValidationVerdictV1Schema = Data.Enum([
+  // Preserve the exact Aiken constructor indexes. Pending is not a valid
+  // terminal descriptor verdict and is rejected by semantic conversion, but
+  // omitting it here would encode Accepted/Rejected as constructors 0/1
+  // instead of 1/2.
+  Data.Literal("Pending"),
   Data.Literal("Accepted"),
   Data.Literal("Rejected"),
 ]);
