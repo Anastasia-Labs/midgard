@@ -11,6 +11,9 @@ const output_without_optional_fields =
 const non_minimal_output_map =
   #"b80200581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a0"
 
+const empty_inline_datum =
+  #"a300581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a00240"
+
 const multi_asset_output =
   #"a200581d601111111111111111111111111111111111111111111111111111111101821a007a1200a1581c55555555555555555555555555555555555555555555555555555555a241ff07420000182a"
 
@@ -206,4 +209,27 @@ test rejects_non_minimal_cbor_and_malformed_control_state() {
       0,
     ) == None,
   }
+}
+
+test rejects_inline_datum_without_plutus_data_bytes() {
+  let total_length = bytearray.length(empty_inline_datum)
+  let initial = ledger_output_scan_v1.initial_control_v1()
+  expect Some(value_control) = ledger_output_scan_v1.step_v1(
+    initial,
+    total_length,
+    empty_inline_datum,
+    0,
+  )
+  expect Some(optional_control) = ledger_output_scan_v1.step_v1(
+    value_control,
+    total_length,
+    empty_inline_datum,
+    value_control.cursor,
+  )
+  ledger_output_scan_v1.step_v1(
+    optional_control,
+    total_length,
+    empty_inline_datum,
+    optional_control.cursor,
+  ) == None
 }

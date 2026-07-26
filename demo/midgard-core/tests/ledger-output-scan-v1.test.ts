@@ -144,4 +144,15 @@ describe("ledger output scan V1", () => {
       }),
     ).toBeNull();
   });
+
+  it("fails closed when an inline datum has no Plutus Data bytes", () => {
+    const emptyInlineDatum = Buffer.from(
+      `a300581d60${"11".repeat(28)}01821a004c4b40a00240`,
+      "hex",
+    );
+
+    expect(() =>
+      buildMidgardLedgerOutputScanTraceV1(emptyInlineDatum),
+    ).toThrow(/canonical Plutus Data|failed closed/);
+  });
 });

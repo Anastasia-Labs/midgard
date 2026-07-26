@@ -676,32 +676,32 @@ fn step_optional_field(
       Some(datum_offset) ->
         when
           canonical_cbor_scan_v1.head_at_v1(window, datum_offset, 2)
-        is {
-          None -> None
-          Some(datum) ->
-            Some(
-              LedgerOutputScanControlV1 {
-                ..control,
-                stage: if datum.value == 0 {
-                  stage_optional_field
-                } else {
-                  stage_datum_payload
-                },
-                cursor: absolute_offset(
-                  control,
-                  window_offset,
-                  datum.next_offset,
-                ),
-                optional_field_count: 1,
-                datum_offset: absolute_offset(
-                  control,
-                  window_offset,
-                  datum.next_offset,
-                ),
-                datum_length: datum.value,
-                payload_remaining: datum.value,
-              },
-            )
+          is {
+            None -> None
+            Some(datum) ->
+              if datum.value == 0 {
+                None
+              } else {
+                Some(
+                  LedgerOutputScanControlV1 {
+                    ..control,
+                    stage: stage_datum_payload,
+                    cursor: absolute_offset(
+                      control,
+                      window_offset,
+                      datum.next_offset,
+                    ),
+                    optional_field_count: 1,
+                    datum_offset: absolute_offset(
+                      control,
+                      window_offset,
+                      datum.next_offset,
+                    ),
+                    datum_length: datum.value,
+                    payload_remaining: datum.value,
+                  },
+                )
+              }
         }
     }
   } else {
@@ -711,32 +711,32 @@ fn step_optional_field(
         if key.value == 2 {
           when
             canonical_cbor_scan_v1.head_at_v1(window, key.next_offset, 2)
-          is {
-            None -> None
-            Some(datum) ->
-              Some(
-                LedgerOutputScanControlV1 {
-                  ..control,
-                  stage: if datum.value == 0 {
-                    stage_terminal
-                  } else {
-                    stage_datum_payload
-                  },
-                  cursor: absolute_offset(
-                    control,
-                    window_offset,
-                    datum.next_offset,
-                  ),
-                  optional_field_count: control.optional_field_count + 1,
-                  datum_offset: absolute_offset(
-                    control,
-                    window_offset,
-                    datum.next_offset,
-                  ),
-                  datum_length: datum.value,
-                  payload_remaining: datum.value,
-                },
-              )
+            is {
+              None -> None
+              Some(datum) ->
+                if datum.value == 0 {
+                  None
+                } else {
+                  Some(
+                    LedgerOutputScanControlV1 {
+                      ..control,
+                      stage: stage_datum_payload,
+                      cursor: absolute_offset(
+                        control,
+                        window_offset,
+                        datum.next_offset,
+                      ),
+                      optional_field_count: control.optional_field_count + 1,
+                      datum_offset: absolute_offset(
+                        control,
+                        window_offset,
+                        datum.next_offset,
+                      ),
+                      datum_length: datum.value,
+                      payload_remaining: datum.value,
+                    },
+                  )
+                }
           }
         } else if key.value == 3 {
           reference_script_header(control, window, window_offset)
@@ -887,7 +887,7 @@ pub fn terminal_is_exact_v1(
     } else {
       and {
         control.datum_offset >= 0,
-        control.datum_length >= 0,
+        control.datum_length > 0,
         control.datum_offset + control.datum_length <= total_length,
       }
     },

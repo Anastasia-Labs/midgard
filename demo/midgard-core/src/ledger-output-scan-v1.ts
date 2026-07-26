@@ -580,12 +580,10 @@ const stepDatumHeader = ({
   control,
   window,
   windowOffset,
-  terminalWhenEmpty,
 }: {
   readonly control: MidgardLedgerOutputScanControlV1;
   readonly window: Uint8Array;
   readonly windowOffset: number;
-  readonly terminalWhenEmpty: boolean;
 }): MidgardLedgerOutputScanControlV1 => {
   const datumOffset = readKey(window, windowOffset, 2n);
   const datum = readCborBytesHeader(
@@ -593,6 +591,9 @@ const stepDatumHeader = ({
     datumOffset,
     "ledger_output.datum",
   );
+  if (datum.length === 0) {
+    throw new Error("V1 inline datum must contain canonical Plutus Data");
+  }
   const payloadOffset = absoluteOffset({
     control,
     windowOffset,
@@ -600,12 +601,7 @@ const stepDatumHeader = ({
   });
   return {
     ...control,
-    stage:
-      datum.length === 0
-        ? terminalWhenEmpty
-          ? MidgardLedgerOutputScanStagesV1.Terminal
-          : MidgardLedgerOutputScanStagesV1.OptionalField
-        : MidgardLedgerOutputScanStagesV1.DatumPayload,
+    stage: MidgardLedgerOutputScanStagesV1.DatumPayload,
     cursor: payloadOffset,
     optionalFieldCount: control.optionalFieldCount + 1,
     datumOffset: payloadOffset,
@@ -634,7 +630,6 @@ const stepOptionalField = ({
       control,
       window,
       windowOffset,
-      terminalWhenEmpty: false,
     });
   }
   const key = readCborUnsigned(window, windowOffset, "ledger_output.key");
@@ -643,7 +638,6 @@ const stepOptionalField = ({
       control,
       window,
       windowOffset,
-      terminalWhenEmpty: true,
     });
   }
   if (key.value === 3n) {
@@ -786,7 +780,7 @@ export const isExactMidgardLedgerOutputScanTerminalV1 = ({
   (control.datumOffset === -1
     ? control.datumLength === 0
     : control.datumOffset >= 0 &&
-      control.datumLength >= 0 &&
+      control.datumLength > 0 &&
       control.datumOffset + control.datumLength <= totalLength) &&
   (control.referenceScriptLanguage === -1
     ? control.referenceScriptItemOffset === -1 &&
