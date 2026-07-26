@@ -5,6 +5,7 @@ import {
 import {
   DataB,
   DataConstr,
+  dataFromCbor,
   DataI,
   DataList,
   DataMap,
@@ -19,6 +20,57 @@ import {
 import { commitMidgardCekDataTreeV1 } from "../src/cek-data-tree.js";
 
 describe("V1 semantic Data commitment", () => {
+  it("encodes the complete signed Cardano integer domain canonically", () => {
+    const uint64Max = 0xffff_ffff_ffff_ffffn;
+    const positiveBignum = uint64Max + 1n;
+    const negativeMajorOneBoundary = -positiveBignum;
+    const negativeBignum = negativeMajorOneBoundary - 1n;
+
+    expect(
+      encodeMidgardCekPlutusDataV1(
+        new DataI(uint64Max),
+      ).toString("hex"),
+    ).toBe("1bffffffffffffffff");
+    expect(
+      encodeMidgardCekPlutusDataV1(
+        new DataI(positiveBignum),
+      ).toString("hex"),
+    ).toBe("c249010000000000000000");
+    expect(
+      encodeMidgardCekPlutusDataV1(
+        new DataI(negativeMajorOneBoundary),
+      ).toString("hex"),
+    ).toBe("3bffffffffffffffff");
+    expect(
+      encodeMidgardCekPlutusDataV1(
+        new DataI(negativeBignum),
+      ).toString("hex"),
+    ).toBe("c349010000000000000000");
+    const decodedNegative = dataFromCbor(
+      encodeMidgardCekPlutusDataV1(new DataI(negativeBignum)),
+    );
+    expect(decodedNegative).toBeInstanceOf(DataI);
+    expect((decodedNegative as DataI).int).toBe(negativeBignum);
+
+    const hugeMagnitude = (1n << 2_048n) - 1n;
+    const positive = encodeMidgardCekPlutusDataV1(
+      new DataI(hugeMagnitude),
+    );
+    const negative = encodeMidgardCekPlutusDataV1(
+      new DataI(-(1n << 2_048n)),
+    );
+    expect(positive.subarray(0, 4).toString("hex")).toBe("c2590100");
+    expect(negative.subarray(0, 4).toString("hex")).toBe("c3590100");
+    expect(positive.length).toBe(260);
+    expect(negative.length).toBe(260);
+    expect(midgardCekDataMemorySizeV1(new DataI(hugeMagnitude))).toBe(
+      261n,
+    );
+    expect(
+      midgardCekDataMemorySizeV1(new DataI(-(1n << 2_048n))),
+    ).toBe(261n);
+  });
+
   it("streams large leaves instead of imposing a whole-value cap", () => {
     const largeBytes = Buffer.alloc(10_000, 0xa5);
     const value = new DataConstr(128, [

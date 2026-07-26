@@ -12,7 +12,6 @@ import {
   DataI,
   DataList,
   DataMap,
-  dataToCbor,
   isData,
 } from "@harmoniclabs/plutus-data";
 import {
@@ -303,17 +302,43 @@ const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
         Buffer.from([0xff]),
       ]);
 
+const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
+
+const shortestBigEndianMagnitude = (value: bigint): Buffer => {
+  if (value <= UINT64_MAX) {
+    throw new Error("CBOR bignum magnitude must exceed uint64");
+  }
+  const hex = value.toString(16);
+  return Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+};
+
+const encodeCardanoInteger = (value: bigint): Buffer => {
+  if (value >= 0n) {
+    return value <= UINT64_MAX
+      ? encodeSmallCborArgument(0, value)
+      : Buffer.concat([
+          Buffer.from([0xc2]),
+          encodeCborBytes(shortestBigEndianMagnitude(value)),
+        ]);
+  }
+  const magnitude = -value - 1n;
+  return magnitude <= UINT64_MAX
+    ? encodeSmallCborArgument(1, magnitude)
+    : Buffer.concat([
+        Buffer.from([0xc3]),
+        encodeCborBytes(shortestBigEndianMagnitude(magnitude)),
+      ]);
+};
+
 /**
  * Exact `cbor.serialise(Data)`/cardano-node representation. The upstream
- * harmonic serializer currently loses every byte after the first 64 when
- * paired with its CBOR v2 dependency, so consensus code must not use it for
- * dynamic byte strings.
+ * harmonic serializer currently loses every byte after the first 64 in
+ * dynamic byte strings and rejects negative bignums below the uint64 major-1
+ * domain. Consensus code therefore encodes both scalar classes directly.
  */
 export const encodeMidgardCekPlutusDataV1 = (data: Data): Buffer => {
   if (data instanceof DataI) {
-    // The upstream integer path correctly handles both native and bignum
-    // domains; the byte-string defect does not affect this leaf.
-    return Buffer.from(asByteArray(dataToCbor(data)));
+    return encodeCardanoInteger(data.int);
   }
   if (data instanceof DataB) {
     return encodeCardanoBytes(asByteArray(data.bytes));
@@ -351,7 +376,7 @@ export const encodeMidgardCekPlutusDataV1 = (data: Data): Buffer => {
     return Buffer.concat([
       encodeSmallCborArgument(6, 102n),
       Buffer.from([0x82]),
-      Buffer.from(asByteArray(dataToCbor(new DataI(data.constr)))),
+      encodeCardanoInteger(data.constr),
       fields,
     ]);
   }

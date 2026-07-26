@@ -1,5 +1,19 @@
 use aiken/builtin
+use aiken/cbor
 use midgard/cek_data_v1
+
+test canonical_signed_integer_boundaries_match_the_evidence_constructor() {
+  and {
+    cbor.serialise(builtin.i_data(18_446_744_073_709_551_615))
+      == #"1bffffffffffffffff",
+    cbor.serialise(builtin.i_data(18_446_744_073_709_551_616))
+      == #"c249010000000000000000",
+    cbor.serialise(builtin.i_data(-18_446_744_073_709_551_616))
+      == #"3bffffffffffffffff",
+    cbor.serialise(builtin.i_data(-18_446_744_073_709_551_617))
+      == #"c349010000000000000000",
+  }
+}
 
 test offchain_semantic_data_root_vector() {
   let bytes = cek_data_v1.BytesData {
