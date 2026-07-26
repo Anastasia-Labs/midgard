@@ -385,6 +385,11 @@ export type ValidationMachineWorkWitness = {
         readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
       }
     | {
+        readonly kind: "mintFoldAsset";
+        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
+      }
+    | {
         readonly kind: "transactionFieldPairPreimage";
         readonly firstFieldIndex: number;
         readonly firstPreimageCbor: Buffer;
@@ -1400,6 +1405,10 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 4,
       preimageCbor: fieldPreimages[4]!.preimageCbor,
     });
+    const mintCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: 5,
+      preimageCbor: fieldPreimages[5]!.preimageCbor,
+    });
     const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
       fieldIndex: 6,
       preimageCbor: fieldPreimages[6]!.preimageCbor,
@@ -1818,8 +1827,51 @@ export const buildDeterministicValidationMachineTrace = (
         scriptCount: scriptWitnessesCollection.items.length === 0 ? 0 : -1,
         scriptSeen: 0,
         containsNonNativeScript: 0,
-      });
+    });
     let resolvedItemFrontier = emptyValidationFrontier;
+    type MintFoldTraceControl = {
+      readonly policyCount: number;
+      readonly policyCursor: number;
+      readonly previousPolicy: Buffer;
+      readonly activePolicy: Buffer;
+      readonly itemLength: number;
+      readonly itemCommitment: Buffer;
+      readonly itemCursor: number;
+      readonly assetsRemaining: number;
+      readonly policyAssetCursor: number;
+      readonly previousAsset: Buffer;
+      readonly assetFrontier: MidgardValidationMerkleFrontierV1;
+    };
+    const emptyMintFoldControl: MintFoldTraceControl = {
+      policyCount: -1,
+      policyCursor: 0,
+      previousPolicy: Buffer.alloc(0),
+      activePolicy: Buffer.alloc(0),
+      itemLength: 0,
+      itemCommitment: Buffer.alloc(0),
+      itemCursor: 0,
+      assetsRemaining: 0,
+      policyAssetCursor: 0,
+      previousAsset: Buffer.alloc(0),
+      assetFrontier: emptyValidationFrontier,
+    };
+    let mintFoldControl = emptyMintFoldControl;
+    const encodeMintFoldControl = (
+      control: MintFoldTraceControl,
+    ): readonly unknown[] => [
+      BigInt(control.policyCount),
+      BigInt(control.policyCursor),
+      control.previousPolicy,
+      control.activePolicy,
+      BigInt(control.itemLength),
+      control.itemCommitment,
+      BigInt(control.itemCursor),
+      BigInt(control.assetsRemaining),
+      BigInt(control.policyAssetCursor),
+      control.previousAsset,
+      BigInt(control.assetFrontier.count),
+      encodeFrontierPeaks(control.assetFrontier),
+    ];
     type ScriptDiscoveryTraceControl = {
       readonly purposeCursor: number;
       readonly sourceCursor: number;
@@ -1965,6 +2017,7 @@ export const buildDeterministicValidationMachineTrace = (
           observerScan.previousHash,
           BigInt(observerScan.seen),
         ],
+        encodeMintFoldControl(mintFoldControl),
       ];
       if (input.stage === 0 && input.pendingSource !== undefined &&
         input.pendingSource !== null) {
@@ -3848,6 +3901,185 @@ export const buildDeterministicValidationMachineTrace = (
                   receiveScan: receiveSourceScan(),
                 }),
               );
+              let mintPurposeFrontier = replayPurposeFrontier;
+              for (const policyItem of mintCollection.items) {
+                pushWitness(
+                  "scriptSources",
+                  scriptSourcesWitnessCbor({
+                    ...scriptSourceControl,
+                    stage: 6,
+                    sourceFrontier: replaySourceFrontier,
+                    redeemerFrontier,
+                    replayCursor,
+                    replayAccumulator,
+                    replayRemainingScheduleHash,
+                    spendIndex: replaySpendIndex,
+                    purposeFrontier: mintPurposeFrontier,
+                    outputCursor,
+                    outputFrontier,
+                    receiveScan: receiveSourceScan(),
+                  }),
+                  {
+                    kind: "transactionFieldChunk",
+                    collectionProof:
+                      buildMidgardBoundedCollectionItemProofV1(
+                        mintCollection,
+                        policyItem.itemIndex,
+                      ),
+                    chunkProof: buildMidgardBoundedItemChunkProofV1(
+                      policyItem,
+                      0,
+                    ),
+                  },
+                );
+                const itemHeader = readCborArrayHeader(
+                  policyItem.bytes,
+                  0,
+                  `v1.mint.policy[${policyItem.itemIndex}]`,
+                );
+                if (itemHeader.length !== 2) {
+                  throw new Error("V1 mint policy item must contain two fields");
+                }
+                const policy = readCborBytes(
+                  policyItem.bytes,
+                  itemHeader.nextOffset,
+                  `v1.mint.policy[${policyItem.itemIndex}].id`,
+                );
+                const assets = readCborMapHeader(
+                  policyItem.bytes,
+                  policy.nextOffset,
+                  `v1.mint.policy[${policyItem.itemIndex}].assets`,
+                );
+                const policyId = Buffer.from(policy.value);
+                const purposeEntry: ScriptPurposeProofEntry = {
+                  purposeKind: 1,
+                  purposeIndex: BigInt(policyItem.itemIndex),
+                  scriptHash: policyId,
+                  subject: policyId,
+                  leaf: hashMidgardScriptPurposeLeafV1({
+                    purposeKind: 1,
+                    purposeIndex: BigInt(policyItem.itemIndex),
+                    scriptHash: policyId,
+                    subject: policyId,
+                  }),
+                };
+                scriptPurposeEntries.push(purposeEntry);
+                mintPurposeFrontier = appendMidgardValidationMerkleLeafV1(
+                  mintPurposeFrontier,
+                  purposeEntry.leaf,
+                );
+                mintFoldControl = {
+                  ...mintFoldControl,
+                  policyCount: mintCollection.items.length,
+                  activePolicy: policyId,
+                  itemLength: policyItem.bytes.length,
+                  itemCommitment: Buffer.from(policyItem.commitment),
+                  itemCursor: assets.nextOffset,
+                  assetsRemaining: assets.length,
+                  policyAssetCursor: 0,
+                  previousAsset: Buffer.alloc(0),
+                };
+                let assetCursor = assets.nextOffset;
+                for (
+                  let assetIndex = 0;
+                  assetIndex < assets.length;
+                  assetIndex += 1
+                ) {
+                  const expectedChunkIndex = Math.floor(
+                    assetCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+                  );
+                  const nextChunkIndex =
+                    expectedChunkIndex + 1 <
+                    midgardBoundedItemChunkCountV1(policyItem.bytes.length)
+                      ? expectedChunkIndex + 1
+                      : null;
+                  pushWitness(
+                    "scriptSources",
+                    scriptSourcesWitnessCbor({
+                      ...scriptSourceControl,
+                      stage: 6,
+                      sourceFrontier: replaySourceFrontier,
+                      redeemerFrontier,
+                      replayCursor,
+                      replayAccumulator,
+                      replayRemainingScheduleHash,
+                      spendIndex: replaySpendIndex,
+                      purposeFrontier: mintPurposeFrontier,
+                      outputCursor,
+                      outputFrontier,
+                      receiveScan: receiveSourceScan(),
+                    }),
+                    {
+                      kind: "mintFoldAsset",
+                      chunkProof: buildMidgardBoundedItemChunkProofV1(
+                        policyItem,
+                        expectedChunkIndex,
+                      ),
+                      nextChunkProof:
+                        nextChunkIndex === null
+                          ? null
+                          : buildMidgardBoundedItemChunkProofV1(
+                              policyItem,
+                              nextChunkIndex,
+                            ),
+                    },
+                  );
+                  const asset = readCborBytes(
+                    policyItem.bytes,
+                    assetCursor,
+                    `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].name`,
+                  );
+                  const quantity = readCborInteger(
+                    policyItem.bytes,
+                    asset.nextOffset,
+                    `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].quantity`,
+                  );
+                  assetCursor = quantity.nextOffset;
+                  const nextAssetFrontier =
+                    appendMidgardValidationMerkleLeafV1(
+                      mintFoldControl.assetFrontier,
+                      hashMidgardMintAssetLeafV1({
+                        policyId,
+                        assetName: asset.value,
+                        quantity: quantity.value,
+                      }),
+                    );
+                  const finishedPolicy = assetIndex + 1 === assets.length;
+                  mintFoldControl = finishedPolicy
+                    ? {
+                        ...mintFoldControl,
+                        policyCursor: mintFoldControl.policyCursor + 1,
+                        previousPolicy: policyId,
+                        activePolicy: Buffer.alloc(0),
+                        itemLength: 0,
+                        itemCommitment: Buffer.alloc(0),
+                        itemCursor: 0,
+                        assetsRemaining: 0,
+                        policyAssetCursor: 0,
+                        previousAsset: Buffer.alloc(0),
+                        assetFrontier: nextAssetFrontier,
+                      }
+                    : {
+                        ...mintFoldControl,
+                        itemCursor: assetCursor,
+                        assetsRemaining:
+                          mintFoldControl.assetsRemaining - 1,
+                        policyAssetCursor:
+                          mintFoldControl.policyAssetCursor + 1,
+                        previousAsset: Buffer.from(asset.value),
+                        assetFrontier: nextAssetFrontier,
+                      };
+                }
+                if (assetCursor !== policyItem.bytes.length) {
+                  throw new Error("V1 mint policy item has trailing bytes");
+                }
+              }
+              if (mintCollection.items.length === 0) {
+                mintFoldControl = {
+                  ...mintFoldControl,
+                  policyCount: 0,
+                };
+              }
               pushWitness(
                 "scriptSources",
                 scriptSourcesWitnessCbor({
@@ -3859,48 +4091,12 @@ export const buildDeterministicValidationMachineTrace = (
                   replayAccumulator,
                   replayRemainingScheduleHash,
                   spendIndex: replaySpendIndex,
-                  purposeFrontier: replayPurposeFrontier,
+                  purposeFrontier: mintPurposeFrontier,
                   outputCursor,
                   outputFrontier,
                   receiveScan: receiveSourceScan(),
                 }),
-                {
-                  kind: "transactionFieldPreimage",
-                  preimageCbor: fieldPreimages[5]!.preimageCbor,
-                },
               );
-              const mintPolicyIds = [...(phaseALedgerTx?.mint.assets ?? [])]
-                .map((asset) => Buffer.from(asset.policyId))
-                .sort(Buffer.compare)
-                .filter(
-                  (policyId, index, policies) =>
-                    index === 0 || !policyId.equals(policies[index - 1]!),
-                );
-              let mintPurposeFrontier = replayPurposeFrontier;
-              for (
-                let policyIndex = 0;
-                policyIndex < mintPolicyIds.length;
-                policyIndex += 1
-              ) {
-                const policyId = mintPolicyIds[policyIndex]!;
-                const purposeEntry: ScriptPurposeProofEntry = {
-                  purposeKind: 1,
-                  purposeIndex: BigInt(policyIndex),
-                  scriptHash: policyId,
-                  subject: policyId,
-                  leaf: hashMidgardScriptPurposeLeafV1({
-                    purposeKind: 1,
-                    purposeIndex: BigInt(policyIndex),
-                    scriptHash: policyId,
-                    subject: policyId,
-                  }),
-                };
-                scriptPurposeEntries.push(purposeEntry);
-                mintPurposeFrontier = appendMidgardValidationMerkleLeafV1(
-                  mintPurposeFrontier,
-                  purposeEntry.leaf,
-                );
-              }
               let observerPurposeFrontier = mintPurposeFrontier;
               let observerTotalCount = 0;
               let observerSeen = 0;
@@ -4478,6 +4674,8 @@ export const buildDeterministicValidationMachineTrace = (
                     BigInt(outputFrontier.count),
                     encodeFrontierPeaks(outputFrontier),
                     encodeFrontierPeaks(outputDescriptorFrontier),
+                    BigInt(mintFoldControl.assetFrontier.count),
+                    encodeFrontierPeaks(mintFoldControl.assetFrontier),
                     BigInt(discovery.executionFrontier.count),
                     encodeFrontierPeaks(discovery.executionFrontier),
                   ];

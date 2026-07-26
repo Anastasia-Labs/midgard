@@ -355,9 +355,7 @@ describe("deterministic validation machine", () => {
       "ledgerOutputProofFinalize",
     );
     expect(scriptSourceWitnesses[16]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[17]?.auxiliary?.kind).toBe(
-      "transactionFieldPreimage",
-    );
+    expect(scriptSourceWitnesses[17]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[18]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[19]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[20]?.auxiliary).toBeNull();
@@ -375,7 +373,7 @@ describe("deterministic validation machine", () => {
     expect(() =>
       validationSemanticResolverIndexV1({
         ...scriptSourceWitnesses[7]!,
-        auxiliary: scriptSourceWitnesses[17]!.auxiliary,
+        auxiliary: scriptSourceWitnesses[2]!.auxiliary,
       }),
     ).toThrow("has no semantic resolver");
     expect(
@@ -1047,6 +1045,33 @@ describe("deterministic validation machine", () => {
       }),
     );
 
+    const mintFoldWitnesses = trace.witnesses
+      .filter((witness) => witness.phase === "scriptSources")
+      .flatMap((witness) => {
+        const auxiliary = witness.auxiliary;
+        if (
+          auxiliary?.kind === "transactionFieldChunk" &&
+          auxiliary.collectionProof.fieldIndex === 5
+        ) {
+          return [auxiliary];
+        }
+        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
+      });
+    expect(mintFoldWitnesses.map(({ kind }) => kind)).toEqual([
+      "transactionFieldChunk",
+      "mintFoldAsset",
+    ]);
+    expect(
+      mintFoldWitnesses.every((witness) => {
+        if (witness.kind === "transactionFieldChunk") {
+          return witness.chunkProof.chunk.length <= 4_095;
+        }
+        return (
+          witness.chunkProof.chunk.length <= 4_095 &&
+          (witness.nextChunkProof?.chunk.length ?? 0) <= 4_095
+        );
+      }),
+    ).toBe(true);
     expect(
       trace.witnesses.filter(
         (witness) => witness.auxiliary?.kind === "valueMintAsset",
@@ -1146,6 +1171,22 @@ describe("deterministic validation machine", () => {
       }),
     );
 
+    const burnFoldWitnesses = trace.witnesses
+      .filter((witness) => witness.phase === "scriptSources")
+      .flatMap((witness) => {
+        const auxiliary = witness.auxiliary;
+        if (
+          auxiliary?.kind === "transactionFieldChunk" &&
+          auxiliary.collectionProof.fieldIndex === 5
+        ) {
+          return [auxiliary];
+        }
+        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
+      });
+    expect(burnFoldWitnesses.map(({ kind }) => kind)).toEqual([
+      "transactionFieldChunk",
+      "mintFoldAsset",
+    ]);
     expect(
       trace.witnesses.find(
         (witness) => witness.auxiliary?.kind === "valueMintAsset",
@@ -1163,6 +1204,74 @@ describe("deterministic validation machine", () => {
       ]),
     );
   });
+
+  it("constructs bounded mint proofs across an authenticated chunk boundary", async () => {
+    const spent = outRefFromByte(0x23);
+    const spentOutput = makeOutput(10n);
+    const policyId = Buffer.alloc(28, 0xaa);
+    const assets = new Map<Buffer, bigint>();
+    for (let assetIndex = 0; assetIndex < 128; assetIndex += 1) {
+      const assetName = Buffer.alloc(32);
+      assetName.writeUInt32BE(assetIndex, 28);
+      assets.set(assetName, 1n);
+    }
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [makeOutput(10n)],
+      mintPreimageCbor: encodeCbor(new Map([[policyId, assets]])),
+    });
+    const unchangedRoot = root(0x23);
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: unchangedRoot,
+        postUtxosRoot: unchangedRoot,
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps: [],
+        ledgerMutationSteps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.MissingRequiredWitness,
+      }),
+    );
+
+    const mintFoldWitnesses = trace.witnesses
+      .filter((witness) => witness.phase === "scriptSources")
+      .flatMap((witness) => {
+        const auxiliary = witness.auxiliary;
+        if (
+          auxiliary?.kind === "transactionFieldChunk" &&
+          auxiliary.collectionProof.fieldIndex === 5
+        ) {
+          return [auxiliary];
+        }
+        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
+      });
+    expect(mintFoldWitnesses).toHaveLength(129);
+    const crossingWitness = mintFoldWitnesses[117];
+    expect(crossingWitness).toMatchObject({
+      kind: "mintFoldAsset",
+      chunkProof: { chunkIndex: 0 },
+      nextChunkProof: { chunkIndex: 1 },
+    });
+    expect(
+      mintFoldWitnesses.every((witness) => {
+        if (witness.kind === "transactionFieldChunk") {
+          return witness.chunkProof.chunk.length <= 4_095;
+        }
+        return (
+          witness.chunkProof.chunk.length <= 4_095 &&
+          (witness.nextChunkProof?.chunk.length ?? 0) <= 4_095
+        );
+      }),
+    ).toBe(true);
+    expect(trace.states.at(-1)).toMatchObject({
+      phase: "terminal",
+      verdict: "rejected",
+    });
+  }, 15_000);
 
   it("commits an invalid forced transaction as a proved no-op", async () => {
     const spent = outRefFromByte(0x11);

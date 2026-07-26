@@ -786,6 +786,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
     source_frontier.count,
     redeemer_frontier.count,
     observer_scan,
+    validation_machine_v1.empty_mint_fold_control(),
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -870,6 +871,83 @@ fn script_sources_output_step_fixture(
     validation_machine_v1.empty_receive_purpose_scan_control(),
     validation_machine_v1.empty_observer_purpose_scan_control(),
     program_counter,
+  )
+}
+
+fn script_sources_mint_fold_fixture(
+  tx: MidgardTransaction,
+  purpose_frontier: validation_merkle_v1.BuiltFrontier,
+  mint_fold: validation_machine_v1.MintFoldControlV1,
+  stage: Int,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = signer_frontier_for_tx(tx)
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let work_witness_cbor = validation_machine_v1.encode_script_sources_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    0,
+    validation_machine_v1.initial_resolution_accumulator(),
+    signer_frontier.count,
+    validation_merkle_v1.frontier_commitment(
+      signer_frontier.count,
+      signer_frontier.peaks,
+    ),
+    empty_frontier.peaks,
+    stage,
+    0,
+    empty_frontier.peaks,
+    0,
+    empty_frontier.peaks,
+    0,
+    validation_machine_v1.initial_resolution_accumulator(),
+    validation_machine_v1.empty_resolution_schedule_hash(),
+    0,
+    purpose_frontier.count,
+    purpose_frontier.peaks,
+    0,
+    0,
+    empty_frontier.peaks,
+    0,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    0,
+    0,
+    validation_machine_v1.empty_observer_purpose_scan_control(),
+    mint_fold,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id: tx_id,
+      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.ScriptSources,
+      program_counter,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ScriptSources,
+        program_counter,
+        work_witness_cbor,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    },
+    work_witness_cbor,
   )
 }
 
@@ -1037,6 +1115,7 @@ fn script_sources_active_output_proof_fixture(
     discovery: validation_machine_v1.empty_script_discovery_control(),
     output_proof: Some(output_proof),
     pending_source_cbor: #"",
+    mint_fold: validation_machine_v1.empty_mint_fold_control(),
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_output_proof_witness(
     control,
@@ -1226,6 +1305,7 @@ fn script_discovery_step_fixture_with_output_frontier(
     discovery,
     output_proof: None,
     pending_source_cbor: #"",
+    mint_fold: validation_machine_v1.empty_mint_fold_control(),
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     base_control,
@@ -1323,6 +1403,8 @@ fn native_scripts_step_fixture(
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: execution_frontier.count,
     execution_peaks: execution_frontier.peaks,
     execution_cursor,
@@ -1387,6 +1469,8 @@ fn empty_native_control_fixture(
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: 0,
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
@@ -1578,6 +1662,8 @@ fn maximum_mint_native_control_fixture() -> validation_machine_v1.NativeScriptsC
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: 1,
     execution_peaks: singleton.peaks,
     execution_cursor: 1,
@@ -3740,6 +3826,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         0,
         validation_machine_v1.empty_observer_purpose_scan_control(),
+        validation_machine_v1.empty_mint_fold_control(),
       ),
     ),
   }
@@ -4754,8 +4841,11 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   )
 }
 
-test script_sources_appends_mint_and_burn_policy_purposes() {
+test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
   let mint_cbor = #"a1581c"
+    |> bytearray.concat(h_28_a)
+    |> bytearray.concat(#"a1410124")
+  let policy_item_cbor = #"82581c"
     |> bytearray.concat(h_28_a)
     |> bytearray.concat(#"a1410124")
   let mint = decode_midgard_tx_mint_preimage_cbor(mint_cbor)
@@ -4768,51 +4858,260 @@ test script_sources_appends_mint_and_burn_policy_purposes() {
   let mint_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(1, 0, h_28_a, h_28_a)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
+  let mint_asset_frontier = validation_merkle_v1.build_frontier(
+    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)],
+  )
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    5,
+    policy_item_cbor,
+  )
+  let initial_fold = validation_machine_v1.empty_mint_fold_control()
+  let active_fold = validation_machine_v1.MintFoldControlV1 {
+    policy_count: 1,
+    policy_cursor: 0,
+    previous_policy: #"",
+    active_policy: h_28_a,
+    item_length: bytearray.length(policy_item_cbor),
+    item_commitment: collection_proof.item_commitment,
+    item_cursor: 32,
+    assets_remaining: 1,
+    policy_asset_cursor: 0,
+    previous_asset: #"",
+    asset_count: 0,
+    asset_peaks: empty_frontier.peaks,
+  }
+  let completed_fold = validation_machine_v1.MintFoldControlV1 {
+    policy_count: 1,
+    policy_cursor: 1,
+    previous_policy: h_28_a,
+    active_policy: #"",
+    item_length: 0,
+    item_commitment: #"",
+    item_cursor: 0,
+    assets_remaining: 0,
+    policy_asset_cursor: 0,
+    previous_asset: #"",
+    asset_count: 1,
+    asset_peaks: mint_asset_frontier.peaks,
+  }
+  let Pair(begin_pre, begin_work_witness_cbor) = script_sources_mint_fold_fixture(
     tx,
-    0,
-    accumulator,
+    empty_frontier,
+    initial_fold,
     6,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
-    empty_frontier,
-    0,
-    empty_frontier,
     17,
   )
-  let Pair(post, _) = script_sources_output_step_fixture(
+  let Pair(begin_post, _) = script_sources_mint_fold_fixture(
     tx,
-    0,
-    accumulator,
-    7,
-    empty_frontier,
-    empty_frontier,
-    0,
-    accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
-    0,
     mint_purpose_frontier,
-    0,
-    empty_frontier,
+    active_fold,
+    6,
     18,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  let begin_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+    begin_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: begin_work_witness_cbor,
+      claimed_successor: begin_post,
+    },
+    validation_machine_v1.TransactionFieldChunkWitness {
+      collection_proof,
+      chunk_proof,
+    },
+  )
+  let Pair(asset_pre, asset_work_witness_cbor) = script_sources_mint_fold_fixture(
+    tx,
+    mint_purpose_frontier,
+    active_fold,
+    6,
+    18,
+  )
+  let Pair(asset_post, _) = script_sources_mint_fold_fixture(
+    tx,
+    mint_purpose_frontier,
+    completed_fold,
+    6,
+    19,
+  )
+  let asset_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+    asset_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: asset_work_witness_cbor,
+      claimed_successor: asset_post,
+    },
+    validation_machine_v1.MintFoldAssetWitness {
+      chunk_proof,
+      next_chunk_proof: None,
+    },
+  )
+  let Pair(finish_pre, finish_work_witness_cbor) = script_sources_mint_fold_fixture(
+    tx,
+    mint_purpose_frontier,
+    completed_fold,
+    6,
+    19,
+  )
+  let Pair(finish_post, _) = script_sources_mint_fold_fixture(
+    tx,
+    mint_purpose_frontier,
+    completed_fold,
+    7,
+    20,
+  )
+  let finish_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+    finish_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: finish_work_witness_cbor,
+      claimed_successor: finish_post,
+    },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+  and { begin_step, asset_step, finish_step }
+}
+
+fn maximum_mint_asset_leaves(
+  asset_index: Int,
+  asset_count: Int,
+) -> List<ByteArray> {
+  if asset_index == asset_count {
+    []
+  } else {
+    [
+      validation_machine_v1.mint_asset_leaf_hash(
+        h_28_a,
+        bytearray.from_int_big_endian(asset_index, 32),
+        1,
+      ),
+      ..maximum_mint_asset_leaves(asset_index + 1, asset_count)
+    ]
+  }
+}
+
+fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
+  let mint = decode_midgard_tx_mint_preimage_cbor(maximum_mint_preimage_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, mint },
+  }
+  let item_cbor = #"82"
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          1,
+          bytearray.length(maximum_mint_preimage_cbor) - 1,
+          maximum_mint_preimage_cbor,
+        ),
+      )
+  let first_chunk = builtin.slice_bytearray(
+    0,
+    bounded_item_v1.chunk_bytes,
+    item_cbor,
+  )
+  let second_chunk = builtin.slice_bytearray(
+    bounded_item_v1.chunk_bytes,
+    bytearray.length(item_cbor) - bounded_item_v1.chunk_bytes,
+    item_cbor,
+  )
+  let first_hash = bounded_item_v1.hash_chunk(5, 0, 0, first_chunk)
+  let second_hash = bounded_item_v1.hash_chunk(5, 0, 1, second_chunk)
+  let chunk_frontier = validation_merkle_v1.build_frontier(
+    [first_hash, second_hash],
+  )
+  let item_commitment = bounded_item_v1.commitment(
+    5,
+    0,
+    bytearray.length(item_cbor),
+    chunk_frontier.peaks,
+  )
+  let current_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 5,
+    item_index: 0,
+    total_length: bytearray.length(item_cbor),
+    chunk_index: 0,
+    chunk: first_chunk,
+    frontier: chunk_frontier.peaks,
+    siblings: [second_hash],
+  }
+  let next_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 5,
+    item_index: 0,
+    total_length: bytearray.length(item_cbor),
+    chunk_index: 1,
+    chunk: second_chunk,
+    frontier: chunk_frontier.peaks,
+    siblings: [first_hash],
+  }
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(1, 0, h_28_a, h_28_a)],
+  )
+  let prior_asset_frontier = validation_merkle_v1.build_frontier(
+    maximum_mint_asset_leaves(0, 116),
+  )
+  let next_asset_frontier = validation_merkle_v1.build_frontier(
+    maximum_mint_asset_leaves(0, 117),
+  )
+  let pre_fold = validation_machine_v1.MintFoldControlV1 {
+    policy_count: 1,
+    policy_cursor: 0,
+    previous_policy: #"",
+    active_policy: h_28_a,
+    item_length: bytearray.length(item_cbor),
+    item_commitment,
+    item_cursor: 4_093,
+    assets_remaining: 12,
+    policy_asset_cursor: 116,
+    previous_asset: bytearray.from_int_big_endian(115, 32),
+    asset_count: 116,
+    asset_peaks: prior_asset_frontier.peaks,
+  }
+  let post_fold = validation_machine_v1.MintFoldControlV1 {
+    ..pre_fold,
+    item_cursor: 4_128,
+    assets_remaining: 11,
+    policy_asset_cursor: 117,
+    previous_asset: bytearray.from_int_big_endian(116, 32),
+    asset_count: 117,
+    asset_peaks: next_asset_frontier.peaks,
+  }
+  let Pair(pre, work_witness_cbor) = script_sources_mint_fold_fixture(
+    tx,
+    purpose_frontier,
+    pre_fold,
+    6,
+    51,
+  )
+  let Pair(post, _) = script_sources_mint_fold_fixture(
+    tx,
+    purpose_frontier,
+    post_fold,
+    6,
+    52,
+  )
+  validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_mint_preimage(tx.body.mint),
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    validation_machine_v1.MintFoldAssetWitness {
+      chunk_proof: current_chunk_proof,
+      next_chunk_proof: if withhold_next_chunk {
+        None
+      } else {
+        Some(next_chunk_proof)
       },
     },
   )
+}
+
+test script_sources_mint_fold_authenticates_a_chunk_boundary() {
+  crossing_mint_fold_step(False)
+}
+
+test script_sources_mint_fold_fails_closed_when_boundary_data_is_withheld() fail {
+  crossing_mint_fold_step(True)
 }
 
 fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
@@ -8713,6 +9012,8 @@ test value_asset_output_instruction_evidence_is_bounded() {
     output_count: 63,
     output_peaks: dense_frontier_six,
     output_descriptor_peaks: dense_frontier_six,
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: 15,
     execution_peaks: dense_frontier_four,
     execution_cursor: 15,
@@ -8887,6 +9188,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     discovery,
     output_proof: None,
     pending_source_cbor: #"",
+    mint_fold: validation_machine_v1.empty_mint_fold_control(),
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     control,
@@ -8968,6 +9270,7 @@ fn stage_zero_script_sources_control(
     discovery: validation_machine_v1.empty_script_discovery_control(),
     output_proof: None,
     pending_source_cbor,
+    mint_fold: validation_machine_v1.empty_mint_fold_control(),
   }
 }
 
@@ -9004,6 +9307,7 @@ fn stage_zero_script_sources_work_witness(
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
+      control.mint_fold,
     )
   } else {
     validation_machine_v1.encode_script_sources_pending_source_witness(

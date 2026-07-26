@@ -579,7 +579,7 @@ const scriptSourcesControlStatus = (
     decodeSingleCbor(witness.cbor),
     "script_sources_control",
   );
-  if (control.length !== 28 && control.length !== 29) {
+  if (control.length !== 29 && control.length !== 30) {
     throw new Error("script_sources_control has an invalid field count");
   }
   const stage = Number(
@@ -588,11 +588,11 @@ const scriptSourcesControlStatus = (
   if (!Number.isSafeInteger(stage) || stage < 0) {
     throw new Error("script_sources_control stage is invalid");
   }
-  if (stage !== 0 || control.length === 28) {
+  if (stage !== 0 || control.length === 29) {
     return { stage, pendingHashStage: null };
   }
   const pendingCbor = asBytes(
-    control[28],
+    control[29],
     "script_sources_control.pending_source",
   );
   if (pendingCbor.length === 0) {
@@ -649,7 +649,7 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
     "script_sources_control",
   );
   if (
-    control.length !== 29 ||
+    control.length !== 30 ||
     asBigInt(control[9], "script_sources_control.stage") !== 9n
   ) {
     throw new Error("script_sources_control is not at discovery stage 9");
@@ -657,7 +657,7 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
   const discovery = asArray(
     decodeSingleCbor(
       asBytes(
-        control[28],
+        control[29],
         "script_sources_control.discovery",
       ),
     ),
@@ -1358,6 +1358,11 @@ export const validationAuxiliaryWitnessDataV1 = (
       ]);
     case "scriptSourceHashBlock":
       return new Constr(41, [
+        chunkProofData(auxiliary.chunkProof),
+        option(auxiliary.nextChunkProof, chunkProofData),
+      ]);
+    case "mintFoldAsset":
+      return new Constr(44, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);

@@ -31,7 +31,6 @@ use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at, decode_midgard_tx_byte_list_preimage_cbor,
   decode_midgard_tx_inputs_preimage_cbor, decode_midgard_tx_mint_preimage_cbor,
-  encode_mint_preimage,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_field_preimage_v1,
@@ -386,6 +385,10 @@ pub type ValidationAuxiliaryWitnessV1 {
     output_index: Int,
     descriptor_cbor: ByteArray,
     siblings: List<ByteArray>,
+  }
+  MintFoldAssetWitness {
+    chunk_proof: bounded_item_v1.ChunkProofV1,
+    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
 }
 
@@ -1070,6 +1073,7 @@ pub fn encode_script_sources_witness(
   source_total_count: Int,
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
+  mint_fold: MintFoldControlV1,
 ) -> ByteArray {
   expect resolved_input_count >= 0
   expect bytearray.length(resolved_inputs_accumulator) == 32
@@ -1102,7 +1106,7 @@ pub fn encode_script_sources_witness(
   expect output_total_count >= output_count
   expect source_total_count >= source_count
   expect redeemer_total_count >= redeemer_count
-  encode_definite_array_header(28)
+  encode_definite_array_header(29)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -1133,6 +1137,7 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(cbor.serialise(source_total_count))
     |> bytearray.concat(cbor.serialise(redeemer_total_count))
     |> bytearray.concat(encode_observer_purpose_scan_control(observer_scan))
+    |> bytearray.concat(encode_mint_fold_control(mint_fold))
 }
 
 pub fn resolved_input_accumulator_successor(
@@ -6238,6 +6243,7 @@ fn verify_resolve_inputs(
             0,
             0,
             empty_observer_purpose_scan_control(),
+            empty_mint_fold_control(),
           ),
         ),
       }
@@ -6341,6 +6347,7 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
         0,
         0,
         empty_observer_purpose_scan_control(),
+        empty_mint_fold_control(),
       ),
     ),
   }
@@ -6478,6 +6485,57 @@ pub type ScriptSourcesControlV1 {
   discovery: ScriptDiscoveryControlV1,
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
   pending_source_cbor: ByteArray,
+  mint_fold: MintFoldControlV1,
+}
+
+pub type MintFoldControlV1 {
+  policy_count: Int,
+  policy_cursor: Int,
+  previous_policy: ByteArray,
+  active_policy: ByteArray,
+  item_length: Int,
+  item_commitment: ByteArray,
+  item_cursor: Int,
+  assets_remaining: Int,
+  policy_asset_cursor: Int,
+  previous_asset: ByteArray,
+  asset_count: Int,
+  asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+}
+
+pub fn empty_mint_fold_control() -> MintFoldControlV1 {
+  MintFoldControlV1 {
+    policy_count: -1,
+    policy_cursor: 0,
+    previous_policy: #"",
+    active_policy: #"",
+    item_length: 0,
+    item_commitment: #"",
+    item_cursor: 0,
+    assets_remaining: 0,
+    policy_asset_cursor: 0,
+    previous_asset: #"",
+    asset_count: 0,
+    asset_peaks: validation_merkle_v1.empty_frontier(),
+  }
+}
+
+pub fn encode_mint_fold_control(control: MintFoldControlV1) -> ByteArray {
+  encode_definite_array_header(12)
+    |> bytearray.concat(cbor.serialise(control.policy_count))
+    |> bytearray.concat(cbor.serialise(control.policy_cursor))
+    |> bytearray.concat(encode_definite_bytes(control.previous_policy))
+    |> bytearray.concat(encode_definite_bytes(control.active_policy))
+    |> bytearray.concat(cbor.serialise(control.item_length))
+    |> bytearray.concat(encode_definite_bytes(control.item_commitment))
+    |> bytearray.concat(cbor.serialise(control.item_cursor))
+    |> bytearray.concat(cbor.serialise(control.assets_remaining))
+    |> bytearray.concat(cbor.serialise(control.policy_asset_cursor))
+    |> bytearray.concat(encode_definite_bytes(control.previous_asset))
+    |> bytearray.concat(cbor.serialise(control.asset_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.asset_peaks),
+      )
 }
 
 pub type ScriptDiscoveryControlV1 {
@@ -6603,6 +6661,31 @@ fn split_last_data(items: List<Data>) -> Pair<List<Data>, Data> {
   }
 }
 
+fn mint_fold_control_from_data(data: Data) -> MintFoldControlV1 {
+  expect
+      [
+        policy_count_data, policy_cursor_data, previous_policy_data,
+        active_policy_data, item_length_data, item_commitment_data,
+        item_cursor_data, assets_remaining_data, policy_asset_cursor_data,
+        previous_asset_data, asset_count_data, asset_peaks_data,
+      ]
+    = builtin.un_list_data(data)
+  MintFoldControlV1 {
+    policy_count: builtin.un_i_data(policy_count_data),
+    policy_cursor: builtin.un_i_data(policy_cursor_data),
+    previous_policy: builtin.un_b_data(previous_policy_data),
+    active_policy: builtin.un_b_data(active_policy_data),
+    item_length: builtin.un_i_data(item_length_data),
+    item_commitment: builtin.un_b_data(item_commitment_data),
+    item_cursor: builtin.un_i_data(item_cursor_data),
+    assets_remaining: builtin.un_i_data(assets_remaining_data),
+    policy_asset_cursor: builtin.un_i_data(policy_asset_cursor_data),
+    previous_asset: builtin.un_b_data(previous_asset_data),
+    asset_count: builtin.un_i_data(asset_count_data),
+    asset_peaks: decode_frontier_peaks(asset_peaks_data),
+  }
+}
+
 fn script_sources_control_from_data_items(
   items: List<Data>,
   discovery: ScriptDiscoveryControlV1,
@@ -6621,7 +6704,7 @@ fn script_sources_control_from_data_items(
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
         receive_scan_data, source_total_count_data, redeemer_total_count_data,
-        observer_scan_data,
+        observer_scan_data, mint_fold_data,
       ]
     = items
   expect
@@ -6688,6 +6771,7 @@ fn script_sources_control_from_data_items(
     discovery,
     output_proof,
     pending_source_cbor: #"",
+    mint_fold: mint_fold_control_from_data(mint_fold_data),
   }
 }
 
@@ -6696,14 +6780,14 @@ fn script_sources_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 28 {
+  if list.length(items) == 29 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
       None,
     )
   } else {
-    expect list.length(items) == 29
+    expect list.length(items) == 30
     let Pair(base_items, extension_data) = split_last_data(items)
     let base_control = script_sources_control_from_data_items(
       base_items,
@@ -6870,8 +6954,9 @@ pub fn encode_script_sources_pending_source_witness(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
-  encode_definite_array_header(29)
+  encode_definite_array_header(30)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
 }
@@ -6910,8 +6995,9 @@ pub fn encode_script_sources_output_proof_witness(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
-  encode_definite_array_header(29)
+  encode_definite_array_header(30)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(
@@ -6955,8 +7041,9 @@ pub fn encode_script_sources_discovery_witness(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
-  encode_definite_array_header(29)
+  encode_definite_array_header(30)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(encode_script_discovery_control(discovery)),
@@ -7035,6 +7122,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
           control.source_total_count,
           control.redeemer_total_count,
           control.observer_scan,
+          control.mint_fold,
         )
       Some(output_proof) ->
         encode_script_sources_output_proof_witness(control, output_proof)
@@ -7070,6 +7158,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
+      control.mint_fold,
     )
   } else {
     expect control.output_proof == None
@@ -7086,14 +7175,14 @@ fn script_sources_stage_zero_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 28 {
+  if list.length(items) == 29 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
       None,
     )
   } else {
-    expect list.length(items) == 29
+    expect list.length(items) == 30
     let Pair(base_items, extension_data) = split_last_data(items)
     let base_control = script_sources_control_from_data_items(
       base_items,
@@ -7117,9 +7206,9 @@ fn script_sources_stage_zero_work_witness_has_canonical_shape(
     0,
   )
   let expected_item_count = if pending_source_cbor == #"" {
-    28
-  } else {
     29
+  } else {
+    30
   }
   and {
     offset == 2,
@@ -7218,6 +7307,7 @@ fn script_sources_stage_zero_control_is_bound(
     control.output_total_count == 0,
     control.receive_scan == empty_receive_purpose_scan_control(),
     control.observer_scan == empty_observer_purpose_scan_control(),
+    control.mint_fold == empty_mint_fold_control(),
     control.discovery == empty_script_discovery_control(),
     control.output_proof == None,
     pending_is_bound,
@@ -7248,7 +7338,7 @@ fn script_sources_stage_zero_finish_successor_is_exact(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 28)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
   let stage_offset = bytearray.length(prefix)
   let work_length = bytearray.length(witness.work_witness_cbor)
   expect
@@ -7294,6 +7384,7 @@ fn script_sources_stage_zero_begin_successor_is_exact(
     cbor.serialise(control.source_total_count)
       |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
       |> bytearray.concat(encoded_observer_scan)
+      |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
   let work_length = bytearray.length(witness.work_witness_cbor)
   let suffix_offset = work_length - bytearray.length(old_suffix)
   expect suffix_offset >= 2
@@ -7304,7 +7395,7 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       witness.work_witness_cbor,
     ) == old_suffix
   let next_work_witness_cbor =
-    encode_definite_array_header(29)
+    encode_definite_array_header(30)
       |> bytearray.concat(
           builtin.slice_bytearray(
             2,
@@ -7315,6 +7406,7 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       |> bytearray.concat(cbor.serialise(source_total_count))
       |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
       |> bytearray.concat(encoded_observer_scan)
+      |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
       |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
   script_sources_stage_zero_successor_work_is_exact(
     pre,
@@ -7356,7 +7448,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
   source_count: Int,
   source_peaks: List<validation_merkle_v1.FrontierPeak>,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
     |> bytearray.concat(#"00")
   let source_offset = bytearray.length(prefix)
   let old_source_fields =
@@ -7389,7 +7481,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
       witness.work_witness_cbor,
     ) == old_pending
   let next_work_witness_cbor =
-    encode_definite_array_header(28)
+    encode_definite_array_header(29)
       |> bytearray.concat(
           builtin.slice_bytearray(2, source_offset - 2, prefix),
         )
@@ -8146,6 +8238,7 @@ fn script_sources_stage_two(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
   and {
     fields_verified,
@@ -8310,6 +8403,7 @@ fn script_sources_replay_item(
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
+      control.mint_fold,
     )
     and {
       witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -8360,6 +8454,7 @@ fn script_sources_stage_three(
       control.source_total_count,
       control.redeemer_total_count,
       control.observer_scan,
+      control.mint_fold,
     )
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -8731,127 +8826,244 @@ fn script_sources_stage_five(
   }
 }
 
-fn proof_data_is_map(data: Data) -> Bool {
-  builtin.choose_data(data, False, True, False, False, False)
+type MintChunkWindowV1 {
+  bytes: ByteArray,
+  offset: Int,
+  chunk_index: Int,
 }
 
-fn proof_data_is_int(data: Data) -> Bool {
-  builtin.choose_data(data, False, False, False, True, False)
-}
-
-fn proof_data_is_bytes(data: Data) -> Bool {
-  builtin.choose_data(data, False, False, False, False, True)
-}
-
-fn canonical_asset_name_precedes(left: ByteArray, right: ByteArray) -> Bool {
-  let left_length = bytearray.length(left)
-  let right_length = bytearray.length(right)
-  if left_length < right_length {
-    True
-  } else if left_length > right_length {
-    False
+fn mint_fold_chunk_window(
+  control: MintFoldControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<MintChunkWindowV1> {
+  let expected_chunk_index = control.item_cursor / bounded_item_v1.chunk_bytes
+  let count = bounded_item_v1.chunk_count(control.item_length)
+  let current_matches = and {
+    chunk_proof.field_index == 5,
+    chunk_proof.item_index == control.policy_cursor,
+    chunk_proof.total_length == control.item_length,
+    chunk_proof.chunk_index == expected_chunk_index,
+    bounded_item_v1.verify_chunk(control.item_commitment, chunk_proof),
+  }
+  if !current_matches {
+    None
+  } else if expected_chunk_index + 1 < count {
+    when next_chunk_proof is {
+      None -> None
+      Some(next) ->
+        if and {
+          next.field_index == 5,
+          next.item_index == control.policy_cursor,
+          next.total_length == control.item_length,
+          next.chunk_index == expected_chunk_index + 1,
+          bounded_item_v1.verify_chunk(control.item_commitment, next),
+        } {
+          Some(
+            MintChunkWindowV1 {
+              bytes: bytearray.concat(chunk_proof.chunk, next.chunk),
+              offset: control.item_cursor -
+                expected_chunk_index * bounded_item_v1.chunk_bytes,
+              chunk_index: expected_chunk_index,
+            },
+          )
+        } else {
+          None
+        }
+    }
+  } else if next_chunk_proof == None {
+    Some(
+      MintChunkWindowV1 {
+        bytes: chunk_proof.chunk,
+        offset: control.item_cursor -
+          expected_chunk_index * bounded_item_v1.chunk_bytes,
+        chunk_index: expected_chunk_index,
+      },
+    )
   } else {
-    bytearray.compare(left, right) == Less
+    None
   }
 }
 
-fn mint_assets_are_canonical(
-  assets: List<Pair<Data, Data>>,
-  previous_name: Option<ByteArray>,
+fn script_sources_begin_mint_policy(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  expected_commitment: ByteArray,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
 ) -> Bool {
-  when assets is {
-    [] -> True
-    [Pair(name_data, quantity_data), ..rest] ->
-      if and {
-        proof_data_is_bytes(name_data),
-        proof_data_is_int(quantity_data),
-      } {
-        let name = builtin.un_b_data(name_data)
-        let quantity = builtin.un_i_data(quantity_data)
-        and {
-          bytearray.length(name) <= 32,
-          quantity != 0,
-          when previous_name is {
-            None -> True
-            Some(previous) -> canonical_asset_name_precedes(previous, name)
-          },
-          mint_assets_are_canonical(rest, Some(name)),
-        }
-      } else {
-        False
-      }
+  let fold = control.mint_fold
+  let Pair(policy_offset, item_count) = decode_definite_array_header_at(
+    chunk_proof.chunk,
+    0,
+  )
+  expect item_count == 2
+  let Pair(assets_header_offset, policy_id) = decode_canonical_bytes_at(
+    chunk_proof.chunk,
+    policy_offset,
+  )
+  let Pair(assets_offset, asset_count) = decode_canonical_map_header_at(
+    chunk_proof.chunk,
+    assets_header_offset,
+  )
+  let active_policy_count = if fold.policy_count == -1 {
+    collection_proof.item_count
+  } else {
+    fold.policy_count
   }
-}
-
-fn mint_policies_are_canonical(
-  policies: List<Pair<Data, Data>>,
-  previous_policy: Option<ByteArray>,
-) -> Bool {
-  when policies is {
-    [] -> True
-    [Pair(policy_data, assets_data), ..rest] ->
-      if and {
-        proof_data_is_bytes(policy_data),
-        proof_data_is_map(assets_data),
-      } {
-        let policy_id = builtin.un_b_data(policy_data)
-        let assets = builtin.un_map_data(assets_data)
-        and {
-          bytearray.length(policy_id) == 28,
-          !list.is_empty(assets),
-          when previous_policy is {
-            None -> True
-            Some(previous) -> bytearray.compare(previous, policy_id) == Less
-          },
-          mint_assets_are_canonical(assets, None),
-          mint_policies_are_canonical(rest, Some(policy_id)),
-        }
-      } else {
-        False
-      }
+  let common_is_valid = and {
+    fold.active_policy == #"",
+    fold.policy_cursor < active_policy_count,
+    collection_proof.field_index == 5,
+    collection_proof.item_count == active_policy_count,
+    collection_proof.item_count <= max_tx_size_derived_collection_item_count,
+    collection_proof.item_index == fold.policy_cursor,
+    collection_proof.item_length > assets_offset,
+    collection_proof.item_length <= max_aggregate_field_preimage_bytes,
+    chunk_proof.field_index == 5,
+    chunk_proof.item_index == fold.policy_cursor,
+    chunk_proof.total_length == collection_proof.item_length,
+    chunk_proof.chunk_index == 0,
+    bounded_collection_v1.verify_item(
+      expected_commitment,
+      collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      collection_proof.item_commitment,
+      chunk_proof,
+    ),
+    bytearray.length(policy_id) == 28,
+    asset_count > 0,
+    or {
+      fold.policy_cursor == 0,
+      bytearray.compare(fold.previous_policy, policy_id) == Less,
+    },
   }
-}
-
-fn mint_is_canonical(mint: Data, preimage_cbor: ByteArray) -> Bool {
-  let empty_mint: Data = []
-  if mint == empty_mint {
-    preimage_cbor == #"80"
-  } else if proof_data_is_map(mint) {
+  if and {
+    common_is_valid,
+    fold.asset_count + asset_count > ledger_output_v1.max_distinct_asset_count,
+  } {
+    rejected_successor_is_exact(
+      pre,
+      witness.claimed_successor,
+      reject_asset_count,
+    )
+  } else {
     and {
-      mint_policies_are_canonical(builtin.un_map_data(mint), None),
-      encode_mint_preimage(mint) == preimage_cbor,
+      common_is_valid,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          purpose_count: control.purpose_count + 1,
+          purpose_peaks: validation_merkle_v1.append_leaf(
+            control.purpose_count,
+            control.purpose_peaks,
+            script_proof_v1.purpose_leaf_hash(
+              1,
+              fold.policy_cursor,
+              policy_id,
+              policy_id,
+            ),
+          ),
+          mint_fold: MintFoldControlV1 {
+            ..fold,
+            policy_count: active_policy_count,
+            active_policy: policy_id,
+            item_length: collection_proof.item_length,
+            item_commitment: collection_proof.item_commitment,
+            item_cursor: assets_offset,
+            assets_remaining: asset_count,
+            policy_asset_cursor: 0,
+            previous_asset: #"",
+          },
+        },
+      ),
     }
-  } else {
-    False
   }
 }
 
-fn mint_purpose_frontier(
-  policies: List<Pair<Data, Data>>,
-  policy_index: Int,
-  count: Int,
-  peaks: List<validation_merkle_v1.FrontierPeak>,
-) -> validation_merkle_v1.BuiltFrontier {
-  when policies is {
-    [] -> validation_merkle_v1.BuiltFrontier { count, peaks }
-    [Pair(policy_data, _assets_data), ..rest] -> {
-      let policy_id = builtin.un_b_data(policy_data)
-      mint_purpose_frontier(
-        rest,
-        policy_index + 1,
-        count + 1,
-        validation_merkle_v1.append_leaf(
-          count,
-          peaks,
-          script_proof_v1.purpose_leaf_hash(
-            1,
-            policy_index,
-            policy_id,
-            policy_id,
-          ),
-        ),
-      )
+fn script_sources_fold_mint_asset(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  control: ScriptSourcesControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Bool {
+  let fold = control.mint_fold
+  expect Some(window) =
+    mint_fold_chunk_window(fold, chunk_proof, next_chunk_proof)
+  let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
+    window.bytes,
+    window.offset,
+  )
+  let Pair(next_window_offset, quantity) = decode_canonical_int_at(
+    window.bytes,
+    quantity_offset,
+  )
+  let next_item_cursor = window.chunk_index * bounded_item_v1.chunk_bytes +
+    next_window_offset
+  let next_asset_count = fold.asset_count + 1
+  let common_is_valid = and {
+    bytearray.length(fold.active_policy) == 28,
+    fold.assets_remaining > 0,
+    fold.policy_asset_cursor >= 0,
+    bytearray.length(asset_name) <= 32,
+    quantity != 0,
+    next_asset_count <= ledger_output_v1.max_distinct_asset_count,
+    or {
+      fold.policy_asset_cursor == 0,
+      canonical_bytes_key_precedes(fold.previous_asset, asset_name),
+    },
+    if fold.assets_remaining == 1 {
+      next_item_cursor == fold.item_length
+    } else {
+      next_item_cursor < fold.item_length
+    },
+  }
+  let next_fold = if fold.assets_remaining == 1 {
+    MintFoldControlV1 {
+      ..fold,
+      policy_cursor: fold.policy_cursor + 1,
+      previous_policy: fold.active_policy,
+      active_policy: #"",
+      item_length: 0,
+      item_commitment: #"",
+      item_cursor: 0,
+      assets_remaining: 0,
+      policy_asset_cursor: 0,
+      previous_asset: #"",
+      asset_count: next_asset_count,
+      asset_peaks: validation_merkle_v1.append_leaf(
+        fold.asset_count,
+        fold.asset_peaks,
+        mint_asset_leaf_hash(fold.active_policy, asset_name, quantity),
+      ),
     }
+  } else {
+    MintFoldControlV1 {
+      ..fold,
+      item_cursor: next_item_cursor,
+      assets_remaining: fold.assets_remaining - 1,
+      policy_asset_cursor: fold.policy_asset_cursor + 1,
+      previous_asset: asset_name,
+      asset_count: next_asset_count,
+      asset_peaks: validation_merkle_v1.append_leaf(
+        fold.asset_count,
+        fold.asset_peaks,
+        mint_asset_leaf_hash(fold.active_policy, asset_name, quantity),
+      ),
+    }
+  }
+  and {
+    common_is_valid,
+    script_sources_control_successor_is_exact(
+      pre,
+      witness,
+      ScriptSourcesControlV1 { ..control, mint_fold: next_fold },
+    ),
   }
 }
 
@@ -8861,75 +9073,69 @@ fn script_sources_stage_six(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(verified, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
     control.compact_cbor,
     control.witness_set_compact_cbor,
     control.field_preimage_lengths_cbor,
-    5,
-    preimage_cbor,
   )
-  let mint = decode_midgard_tx_mint_preimage_cbor(preimage_cbor)
-  let empty_mint: Data = []
-  if and {
-    field_verified,
-    mint_is_canonical(mint, preimage_cbor),
-  } {
-    let next_purposes = if mint == empty_mint {
-      validation_merkle_v1.BuiltFrontier {
-        count: control.purpose_count,
-        peaks: control.purpose_peaks,
-      }
-    } else {
-      mint_purpose_frontier(
-        builtin.un_map_data(mint),
-        0,
-        control.purpose_count,
-        control.purpose_peaks,
-      )
-    }
-    let next_control = encode_script_sources_witness(
-      control.compact_cbor,
-      control.witness_set_compact_cbor,
-      control.field_preimage_lengths_cbor,
-      control.context_cbor,
-      control.resolved_input_count,
-      control.resolved_inputs_accumulator,
-      control.signer_count,
-      control.signer_frontier_commitment,
-      control.resolved_item_peaks,
-      7,
-      control.source_count,
-      control.source_peaks,
-      control.redeemer_count,
-      control.redeemer_peaks,
-      control.replay_cursor,
-      control.replay_accumulator,
-      control.replay_remaining_schedule_hash,
-      control.spend_index,
-      next_purposes.count,
-      next_purposes.peaks,
-      0,
-      control.output_count,
-      control.output_peaks,
-      control.output_total_count,
-      control.receive_scan,
-      control.source_total_count,
-      control.redeemer_total_count,
-      control.observer_scan,
-    )
+  let expected_commitment = verified.tx_compact.body.mint_hash
+  let fold = control.mint_fold
+  if fold.policy_count == -1 && expected_commitment == bounded_collection_v1.from_items(
+    5,
+    [],
+  ) {
     and {
-      witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-      witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-        validation_trace_v1.ScriptSources,
-        pre.program_counter + 1,
-        next_control,
+      auxiliary == NoAuxiliaryWitness,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          stage: 7,
+          output_cursor: 0,
+          mint_fold: MintFoldControlV1 { ..fold, policy_count: 0 },
+        },
       ),
     }
+  } else if and {
+    fold.policy_count >= 0,
+    fold.policy_cursor == fold.policy_count,
+    fold.active_policy == #"",
+  } {
+    and {
+      auxiliary == NoAuxiliaryWitness,
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          stage: 7,
+          output_cursor: 0,
+        },
+      ),
+    }
+  } else if fold.active_policy == #"" {
+    expect
+        TransactionFieldChunkWitness { collection_proof, chunk_proof }
+      = auxiliary
+    script_sources_begin_mint_policy(
+      pre,
+      witness,
+      control,
+      expected_commitment,
+      collection_proof,
+      chunk_proof,
+    )
   } else {
-    False
+    expect MintFoldAssetWitness { chunk_proof, next_chunk_proof } = auxiliary
+    script_sources_fold_mint_asset(
+      pre,
+      witness,
+      control,
+      chunk_proof,
+      next_chunk_proof,
+    )
   }
 }
 
@@ -9265,7 +9471,7 @@ fn script_discovery_successor_is_exact(
   stage: Int,
   discovery: ScriptDiscoveryControlV1,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
   let stage_offset = bytearray.length(prefix)
   let old_stage = cbor.serialise(control.stage)
   let old_discovery = encode_definite_bytes(
@@ -9568,7 +9774,7 @@ fn script_sources_stage_nine_control_is_bound(
   control: ScriptSourcesControlV1,
 ) -> Bool {
   let discovery = control.discovery
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
   let stage_offset = bytearray.length(prefix)
   let encoded_discovery = encode_definite_bytes(
     encode_script_discovery_control(discovery),
@@ -9670,7 +9876,7 @@ fn script_sources_stage_nine_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 29
+  expect list.length(items) == 30
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -9987,7 +10193,7 @@ pub fn encode_native_scripts_witness_v1(
   expect execution_cursor <= control.discovery.execution_count
   expect language_bitmap >= 0
   expect language_bitmap <= 3
-  encode_definite_array_header(23)
+  encode_definite_array_header(25)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -10026,6 +10232,10 @@ pub fn encode_native_scripts_witness_v1(
         validation_merkle_v1.encode_frontier(
           control.receive_scan.descriptor_peaks,
         ),
+      )
+    |> bytearray.concat(cbor.serialise(control.mint_fold.asset_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.mint_fold.asset_peaks),
       )
     |> bytearray.concat(cbor.serialise(control.discovery.execution_count))
     |> bytearray.concat(
@@ -10243,6 +10453,80 @@ fn script_discovery_stage_is_well_formed(
   }
 }
 
+fn mint_fold_active_state_is_empty(control: MintFoldControlV1) -> Bool {
+  and {
+    control.active_policy == #"",
+    control.item_length == 0,
+    control.item_commitment == #"",
+    control.item_cursor == 0,
+    control.assets_remaining == 0,
+    control.policy_asset_cursor == 0,
+    control.previous_asset == #"",
+  }
+}
+
+fn mint_fold_control_is_well_formed(
+  stage: Int,
+  control: MintFoldControlV1,
+) -> Bool {
+  let common_is_valid = and {
+    control.policy_count >= -1,
+    control.policy_count <= max_tx_size_derived_collection_item_count,
+    control.policy_cursor >= 0,
+    control.asset_count >= 0,
+    control.asset_count <= ledger_output_v1.max_distinct_asset_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.asset_count,
+      control.asset_peaks,
+    ),
+    if control.policy_cursor == 0 {
+      control.previous_policy == #""
+    } else {
+      bytearray.length(control.previous_policy) == 28
+    },
+  }
+  if stage < 6 {
+    control == empty_mint_fold_control()
+  } else if stage == 6 {
+    and {
+      common_is_valid,
+      if control.policy_count == -1 {
+        control == empty_mint_fold_control()
+      } else if control.active_policy == #"" {
+        and {
+          control.policy_cursor <= control.policy_count,
+          mint_fold_active_state_is_empty(control),
+        }
+      } else {
+        and {
+          control.policy_cursor < control.policy_count,
+          bytearray.length(control.active_policy) == 28,
+          control.item_length > 0,
+          control.item_length <= max_aggregate_field_preimage_bytes,
+          bytearray.length(control.item_commitment) == 32,
+          control.item_cursor > 0,
+          control.item_cursor < control.item_length,
+          control.assets_remaining > 0,
+          control.policy_asset_cursor >= 0,
+          if control.policy_asset_cursor == 0 {
+            control.previous_asset == #""
+          } else {
+            bytearray.length(control.previous_asset) <= 32
+          },
+          control.asset_count + control.assets_remaining <= ledger_output_v1.max_distinct_asset_count,
+        }
+      },
+    }
+  } else {
+    and {
+      common_is_valid,
+      control.policy_count >= 0,
+      control.policy_cursor == control.policy_count,
+      mint_fold_active_state_is_empty(control),
+    }
+  }
+}
+
 fn script_sources_control_is_bound(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -10346,6 +10630,7 @@ fn script_sources_control_is_bound(
       control.receive_scan,
     ),
     observer_purpose_scan_is_well_formed(control.stage, control.observer_scan),
+    mint_fold_control_is_well_formed(control.stage, control.mint_fold),
     script_discovery_control_is_well_formed(control.discovery),
     script_discovery_stage_is_well_formed(control),
     witness.work_witness_cbor == exact_script_sources_control(control),
@@ -10386,6 +10671,7 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),
@@ -10489,6 +10775,7 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
     control.source_total_count,
     control.redeemer_total_count,
     control.observer_scan,
+    control.mint_fold,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),
@@ -10897,6 +11184,8 @@ pub type NativeScriptsControlV1 {
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
+  mint_count: Int,
+  mint_peaks: List<validation_merkle_v1.FrontierPeak>,
   execution_count: Int,
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
   execution_cursor: Int,
@@ -10916,8 +11205,9 @@ fn native_scripts_control_from_witness(
         signer_frontier_commitment_data, source_count_data, source_peaks_data,
         redeemer_count_data, redeemer_peaks_data, purpose_count_data,
         purpose_peaks_data, output_count_data, output_peaks_data,
-        output_descriptor_peaks_data, execution_count_data, execution_peaks_data,
-        execution_cursor_data, language_bitmap_data,
+        output_descriptor_peaks_data, mint_count_data, mint_peaks_data,
+        execution_count_data, execution_peaks_data, execution_cursor_data,
+        language_bitmap_data,
       ]
     = builtin.un_list_data(data)
   NativeScriptsControlV1 {
@@ -10946,6 +11236,8 @@ fn native_scripts_control_from_witness(
     output_count: builtin.un_i_data(output_count_data),
     output_peaks: decode_frontier_peaks(output_peaks_data),
     output_descriptor_peaks: decode_frontier_peaks(output_descriptor_peaks_data),
+    mint_count: builtin.un_i_data(mint_count_data),
+    mint_peaks: decode_frontier_peaks(mint_peaks_data),
     execution_count: builtin.un_i_data(execution_count_data),
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
     execution_cursor: builtin.un_i_data(execution_cursor_data),
@@ -10956,7 +11248,7 @@ fn native_scripts_control_from_witness(
 pub fn encode_native_scripts_control_v1(
   control: NativeScriptsControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(23)
+  encode_definite_array_header(25)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -10993,6 +11285,10 @@ pub fn encode_native_scripts_control_v1(
       )
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.output_descriptor_peaks),
+      )
+    |> bytearray.concat(cbor.serialise(control.mint_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.mint_peaks),
       )
     |> bytearray.concat(cbor.serialise(control.execution_count))
     |> bytearray.concat(
@@ -11043,6 +11339,12 @@ fn native_scripts_control_is_well_formed(
     validation_merkle_v1.frontier_is_well_formed(
       control.output_count,
       control.output_descriptor_peaks,
+    ),
+    control.mint_count >= 0,
+    control.mint_count <= ledger_output_v1.max_distinct_asset_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.mint_count,
+      control.mint_peaks,
     ),
     validation_merkle_v1.frontier_is_well_formed(
       control.execution_count,
