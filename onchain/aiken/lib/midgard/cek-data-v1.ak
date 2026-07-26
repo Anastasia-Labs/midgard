@@ -688,14 +688,35 @@ pub fn large_constr_data_summary_v1(
   fields: DataSequenceSummaryV1,
 ) -> DataSummaryV1 {
   expect constructor > 127
-  expect bytearray.length(constructor_cbor_root) == 32
   let constructor_cbor_length = bytearray.length(
     cbor.serialise(builtin.i_data(constructor)),
   )
+  large_constr_data_summary_from_cbor_v1(
+    constructor_cbor_root,
+    constructor_cbor_length,
+    4 + integer_memory_size(constructor),
+    fields,
+  )
+}
+
+/// Builds a large-constructor semantic node from the authenticated integer
+/// submachine's fixed-size summary. This avoids revealing or materializing an
+/// arbitrary-size constructor alternative in a frame proof.
+pub fn large_constr_data_summary_from_cbor_v1(
+  constructor_cbor_root: ByteArray,
+  constructor_cbor_length: Int,
+  constructor_memory: Int,
+  fields: DataSequenceSummaryV1,
+) -> DataSummaryV1 {
+  expect bytearray.length(constructor_cbor_root) == 32
+  expect constructor_cbor_length > 0
+  expect constructor_cbor_length <= uint32_max
+  expect constructor_memory >= 5
+  expect constructor_memory <= uint64_max
   let node = ConstrLargeData {
     constructor_cbor_root,
     constructor_cbor_length,
-    constructor_memory: 4 + integer_memory_size(constructor),
+    constructor_memory,
     fields_count: fields.length,
     fields_root: fields.root,
     cbor_length: 3 + constructor_cbor_length + list_cbor_length(

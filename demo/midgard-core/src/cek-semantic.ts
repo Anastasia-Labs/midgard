@@ -578,3 +578,190 @@ export const midgardCekDataBytesMemoryV1 = (
   uint32(bytesLength, "cek_data.bytes.bytes_length");
   return 4n + (bytesLength === 0n ? 1n : bytesLength);
 };
+
+export type MidgardCekDataSummaryV1 = {
+  readonly root: Bytes;
+  readonly cborLength: bigint;
+  readonly memory: bigint;
+};
+
+export type MidgardCekDataSequenceSummaryV1 = {
+  readonly root: Bytes;
+  readonly length: bigint;
+  readonly payloadCborLength: bigint;
+  readonly memory: bigint;
+};
+
+export const emptyMidgardCekDataListSummaryV1 =
+  (): MidgardCekDataSequenceSummaryV1 => ({
+    root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+    length: 0n,
+    payloadCborLength: 0n,
+    memory: 0n,
+  });
+
+export const prependMidgardCekDataListSummaryV1 = (
+  head: MidgardCekDataSummaryV1,
+  tail: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSequenceSummaryV1 => {
+  const node: MidgardCekDataListNodeV1 = {
+    head: head.root,
+    headCborLength: head.cborLength,
+    headMemory: head.memory,
+    tail: tail.root,
+    length: tail.length + 1n,
+    payloadCborLength:
+      head.cborLength + tail.payloadCborLength,
+    memory: head.memory + tail.memory,
+  };
+  return {
+    root: hashMidgardCekDataListNodeV1(node),
+    length: node.length,
+    payloadCborLength: node.payloadCborLength,
+    memory: node.memory,
+  };
+};
+
+export const emptyMidgardCekDataPairSummaryV1 =
+  (): MidgardCekDataSequenceSummaryV1 => ({
+    root: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
+    length: 0n,
+    payloadCborLength: 0n,
+    memory: 0n,
+  });
+
+export const prependMidgardCekDataPairSummaryV1 = (
+  key: MidgardCekDataSummaryV1,
+  value: MidgardCekDataSummaryV1,
+  tail: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSequenceSummaryV1 => {
+  const node: MidgardCekDataPairNodeV1 = {
+    key: key.root,
+    keyCborLength: key.cborLength,
+    keyMemory: key.memory,
+    value: value.root,
+    valueCborLength: value.cborLength,
+    valueMemory: value.memory,
+    tail: tail.root,
+    length: tail.length + 1n,
+    payloadCborLength:
+      key.cborLength +
+      value.cborLength +
+      tail.payloadCborLength,
+    memory: key.memory + value.memory + tail.memory,
+  };
+  return {
+    root: hashMidgardCekDataPairNodeV1(node),
+    length: node.length,
+    payloadCborLength: node.payloadCborLength,
+    memory: node.memory,
+  };
+};
+
+const summarizeMidgardCekDataNodeV1 = (
+  node: MidgardCekDataNodeV1,
+): MidgardCekDataSummaryV1 => ({
+  root: hashMidgardCekDataNodeV1(node),
+  cborLength: node.cborLength,
+  memory: node.memory,
+});
+
+export const summarizeMidgardCekSmallConstrDataV1 = (
+  constructor: bigint,
+  fields: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSummaryV1 =>
+  summarizeMidgardCekDataNodeV1({
+    kind: "constrSmall",
+    constructor,
+    fieldsCount: fields.length,
+    fieldsRoot: fields.root,
+    cborLength: midgardCekDataConstrCborLengthV1(
+      constructor,
+      fields.length,
+      fields.payloadCborLength,
+    ),
+    memory: 4n + fields.memory,
+  });
+
+/**
+ * Builds the semantic node for a constructor above 127 without materializing
+ * its arbitrary-size alternative on L1. The authenticated integer submachine
+ * supplies the canonical CBOR root, exact length, and exact integer memory.
+ */
+export const summarizeMidgardCekLargeConstrDataV1 = ({
+  constructorCborRoot,
+  constructorCborLength,
+  constructorMemory,
+  fields,
+}: {
+  readonly constructorCborRoot: Bytes;
+  readonly constructorCborLength: bigint;
+  readonly constructorMemory: bigint;
+  readonly fields: MidgardCekDataSequenceSummaryV1;
+}): MidgardCekDataSummaryV1 => {
+  exactHash(
+    constructorCborRoot,
+    "cek_data.constr_large.constructor_cbor_root",
+  );
+  uint32(
+    constructorCborLength,
+    "cek_data.constr_large.constructor_cbor_length",
+  );
+  uint64(
+    constructorMemory,
+    "cek_data.constr_large.constructor_memory",
+  );
+  if (constructorCborLength === 0n) {
+    throw new RangeError(
+      "cek_data.constr_large.constructor_cbor_length must be positive",
+    );
+  }
+  if (constructorMemory < 5n) {
+    throw new RangeError(
+      "cek_data.constr_large.constructor_memory must be at least 5",
+    );
+  }
+  const fieldsCborLength = midgardCekDataListCborLengthV1(
+    fields.length,
+    fields.payloadCborLength,
+  );
+  return summarizeMidgardCekDataNodeV1({
+    kind: "constrLarge",
+    constructorCborRoot,
+    constructorCborLength,
+    constructorMemory,
+    fieldsCount: fields.length,
+    fieldsRoot: fields.root,
+    cborLength:
+      3n + constructorCborLength + fieldsCborLength,
+    memory: 4n + fields.memory,
+  });
+};
+
+export const summarizeMidgardCekListDataV1 = (
+  items: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSummaryV1 =>
+  summarizeMidgardCekDataNodeV1({
+    kind: "list",
+    itemsCount: items.length,
+    itemsRoot: items.root,
+    cborLength: midgardCekDataListCborLengthV1(
+      items.length,
+      items.payloadCborLength,
+    ),
+    memory: 4n + items.memory,
+  });
+
+export const summarizeMidgardCekMapDataV1 = (
+  entries: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSummaryV1 =>
+  summarizeMidgardCekDataNodeV1({
+    kind: "map",
+    entriesCount: entries.length,
+    entriesRoot: entries.root,
+    cborLength: midgardCekDataMapCborLengthV1(
+      entries.length,
+      entries.payloadCborLength,
+    ),
+    memory: 4n + entries.memory,
+  });
