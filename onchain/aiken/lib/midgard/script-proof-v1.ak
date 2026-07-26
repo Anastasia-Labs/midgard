@@ -61,12 +61,22 @@ pub fn versioned_script_hash(script: MidgardVersionedScript) -> ByteArray {
 /// `source_key` is the inline index encoding or canonical reference out-ref.
 pub fn inline_source_leaf_hash(
   source_index: Int,
+  script_language_tag: Int,
+  script_hash: ByteArray,
   item_commitment: ByteArray,
 ) -> ByteArray {
   expect source_index >= 0
+  expect or {
+      script_language_tag == 0,
+      script_language_tag == 3,
+      script_language_tag == 128,
+    }
+  expect bytearray.length(script_hash) == 28
   expect bytearray.length(item_commitment) == 32
   inline_source_leaf_domain
     |> bytearray.concat(cbor.serialise(source_index))
+    |> bytearray.concat(cbor.serialise(script_language_tag))
+    |> bytearray.concat(encode_definite_bytes(script_hash))
     |> bytearray.concat(encode_definite_bytes(item_commitment))
     |> blake2b_256
 }
@@ -87,6 +97,8 @@ pub fn source_leaf_hash(
     expect cbor.serialise(source_index) == source_key
     inline_source_leaf_hash(
       source_index,
+      language_tag(script.language),
+      versioned_script_hash(script),
       bounded_item_v1.from_bytes(
         7,
         source_index,

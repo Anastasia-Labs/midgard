@@ -493,8 +493,25 @@ describe("deterministic validation machine", () => {
         chunkIndex: 0,
       },
     });
-    expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[2]?.auxiliary).toMatchObject({
+    const sourceHashBlocks = scriptSourceWitnesses.filter(
+      (witness) =>
+        witness.auxiliary?.kind === "scriptSourceHashBlock",
+    );
+    expect(sourceHashBlocks).toHaveLength(1);
+    expect(sourceHashBlocks[0]?.auxiliary).toMatchObject({
+      kind: "scriptSourceHashBlock",
+      chunkProof: {
+        fieldIndex: 7,
+        itemIndex: 0,
+        chunkIndex: 0,
+      },
+      nextChunkProof: null,
+    });
+    const redeemerSourceWitness = scriptSourceWitnesses.find(
+      (witness) =>
+        witness.auxiliary?.kind === "transactionRedeemerItem",
+    );
+    expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItem",
       collectionProof: {
         fieldIndex: 8,
@@ -502,7 +519,6 @@ describe("deterministic validation machine", () => {
         itemIndex: 0,
       },
     });
-    expect(scriptSourceWitnesses[3]?.auxiliary).toBeNull();
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",

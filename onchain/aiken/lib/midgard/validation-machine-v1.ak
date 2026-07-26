@@ -7,6 +7,7 @@ use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
+use midgard/blake2b_224_trace_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
@@ -346,6 +347,10 @@ pub type ValidationAuxiliaryWitnessV1 {
     key: ByteArray,
     value: ByteArray,
     operation_proof: LedgerDeltaOperationProofV1,
+  }
+  ScriptSourceHashBlockWitness {
+    chunk_proof: bounded_item_v1.ChunkProofV1,
+    next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
   }
 }
 
@@ -6371,6 +6376,7 @@ pub type ScriptSourcesControlV1 {
   observer_scan: ObserverPurposeScanControlV1,
   discovery: ScriptDiscoveryControlV1,
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
+  pending_source_cbor: ByteArray,
 }
 
 pub type ScriptDiscoveryControlV1 {
@@ -6580,6 +6586,7 @@ fn script_sources_control_from_data_items(
     },
     discovery,
     output_proof,
+    pending_source_cbor: #"",
   }
 }
 
@@ -6602,7 +6609,12 @@ fn script_sources_control_from_witness(
       empty_script_discovery_control(),
       None,
     )
-    if base_control.stage == 5 {
+    if base_control.stage == 0 {
+      ScriptSourcesControlV1 {
+        ..base_control,
+        pending_source_cbor: builtin.un_b_data(extension_data),
+      }
+    } else if base_control.stage == 5 {
       ScriptSourcesControlV1 {
         ..base_control,
         output_proof: Some(
@@ -6647,6 +6659,120 @@ fn redeemer_is_well_formed(redeemer: MidgardRedeemerWitness) -> Bool {
     redeemer_purpose_is_supported(redeemer),
     redeemer_data_is_canonical(redeemer),
   }
+}
+
+pub type InlineSourceHashControlV1 {
+  version: Int,
+  source_index: Int,
+  source_total_count: Int,
+  language_tag: Int,
+  payload_offset: Int,
+  payload_length: Int,
+  item_length: Int,
+  item_commitment: ByteArray,
+  hash_control: blake2b_224_trace_v1.Blake2b224TraceControlV1,
+}
+
+pub fn encode_inline_source_hash_control_v1(
+  control: InlineSourceHashControlV1,
+) -> ByteArray {
+  expect control.version == 1
+  expect control.source_index >= 0
+  expect control.source_total_count > control.source_index
+  expect or {
+      control.language_tag == 0,
+      control.language_tag == 3,
+      control.language_tag == 128,
+  }
+  expect control.payload_offset > 0
+  expect control.payload_length >= 0
+  expect control.item_length == control.payload_offset + control.payload_length
+  expect control.item_length > 0
+  expect control.item_length <= max_aggregate_field_preimage_bytes
+  expect bytearray.length(control.item_commitment) == 32
+  expect blake2b_224_trace_v1.control_is_well_formed(control.hash_control)
+  #"89"
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(cbor.serialise(control.source_index))
+    |> bytearray.concat(cbor.serialise(control.source_total_count))
+    |> bytearray.concat(cbor.serialise(control.language_tag))
+    |> bytearray.concat(cbor.serialise(control.payload_offset))
+    |> bytearray.concat(cbor.serialise(control.payload_length))
+    |> bytearray.concat(cbor.serialise(control.item_length))
+    |> bytearray.concat(encode_definite_bytes(control.item_commitment))
+    |> bytearray.concat(
+        encode_definite_bytes(
+          blake2b_224_trace_v1.encode_control_v1(control.hash_control),
+        ),
+      )
+}
+
+fn inline_source_hash_control_from_cbor(
+  control_cbor: ByteArray,
+) -> InlineSourceHashControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  expect
+      [
+        version_data, source_index_data, source_total_count_data,
+        language_tag_data, payload_offset_data, payload_length_data,
+        item_length_data, item_commitment_data, hash_control_data,
+      ]
+    = builtin.un_list_data(data)
+  let control = InlineSourceHashControlV1 {
+    version: builtin.un_i_data(version_data),
+    source_index: builtin.un_i_data(source_index_data),
+    source_total_count: builtin.un_i_data(source_total_count_data),
+    language_tag: builtin.un_i_data(language_tag_data),
+    payload_offset: builtin.un_i_data(payload_offset_data),
+    payload_length: builtin.un_i_data(payload_length_data),
+    item_length: builtin.un_i_data(item_length_data),
+    item_commitment: builtin.un_b_data(item_commitment_data),
+    hash_control: builtin.un_b_data(hash_control_data)
+      |> blake2b_224_trace_v1.decode_control_v1,
+  }
+  expect encode_inline_source_hash_control_v1(control) == control_cbor
+  control
+}
+
+pub fn encode_script_sources_pending_source_witness(
+  control: ScriptSourcesControlV1,
+  pending_source_cbor: ByteArray,
+) -> ByteArray {
+  expect control.stage == 0
+  expect pending_source_cbor != #""
+  let base = encode_script_sources_witness(
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+    control.context_cbor,
+    control.resolved_input_count,
+    control.resolved_inputs_accumulator,
+    control.signer_count,
+    control.signer_frontier_commitment,
+    control.resolved_item_peaks,
+    control.stage,
+    control.source_count,
+    control.source_peaks,
+    control.redeemer_count,
+    control.redeemer_peaks,
+    control.replay_cursor,
+    control.replay_accumulator,
+    control.replay_remaining_schedule_hash,
+    control.spend_index,
+    control.purpose_count,
+    control.purpose_peaks,
+    control.output_cursor,
+    control.output_count,
+    control.output_peaks,
+    control.output_total_count,
+    control.receive_scan,
+    control.source_total_count,
+    control.redeemer_total_count,
+    control.observer_scan,
+  )
+  encode_definite_array_header(29)
+    |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
+    |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
 }
 
 pub fn encode_script_sources_output_proof_witness(
@@ -6771,7 +6897,12 @@ fn script_discovery_control_is_well_formed(
 }
 
 fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
-  if control.stage == 5 {
+  if control.stage == 0 && control.pending_source_cbor != #"" {
+    encode_script_sources_pending_source_witness(
+      control,
+      control.pending_source_cbor,
+    )
+  } else if control.stage == 5 {
     when control.output_proof is {
       None ->
         encode_script_sources_witness(
@@ -6864,6 +6995,108 @@ fn script_sources_control_successor_is_exact(
   }
 }
 
+pub fn inline_source_hash_block_v1(
+  pending: InlineSourceHashControlV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+  next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
+) -> Option<ByteArray> {
+  let hash_control = pending.hash_control
+  if hash_control.stage != blake2b_224_trace_v1.stage_ready {
+    None
+  } else {
+    let remaining = hash_control.total_length - hash_control.cursor
+    let block_length = if remaining < blake2b_224_trace_v1.block_bytes {
+      remaining
+    } else {
+      blake2b_224_trace_v1.block_bytes
+    }
+    let content_length = if hash_control.cursor == 0 {
+      block_length - 1
+    } else {
+      block_length
+    }
+    let item_cursor = if hash_control.cursor == 0 {
+      pending.payload_offset
+    } else {
+      pending.payload_offset + hash_control.cursor - 1
+    }
+    let expected_chunk_index = if content_length == 0 {
+      0
+    } else {
+      item_cursor / bounded_item_v1.chunk_bytes
+    }
+    let offset = if content_length == 0 {
+      pending.payload_offset
+    } else {
+      item_cursor - expected_chunk_index * bounded_item_v1.chunk_bytes
+    }
+    if !and {
+      hash_control.total_length == pending.payload_length + 1,
+      chunk_proof.field_index == 7,
+      chunk_proof.item_index == pending.source_index,
+      chunk_proof.total_length == pending.item_length,
+      chunk_proof.chunk_index == expected_chunk_index,
+      bounded_item_v1.verify_chunk(
+        pending.item_commitment,
+        chunk_proof,
+      ),
+      offset >= 0,
+      offset <= bytearray.length(chunk_proof.chunk),
+    } {
+      None
+    } else {
+      let available = bytearray.length(chunk_proof.chunk) - offset
+      let crosses_chunk = content_length > available
+      let authenticated_window = if crosses_chunk {
+        when next_chunk_proof is {
+          None -> None
+          Some(next) ->
+            if and {
+              next.field_index == 7,
+              next.item_index == pending.source_index,
+              next.total_length == pending.item_length,
+              next.chunk_index == expected_chunk_index + 1,
+              bounded_item_v1.verify_chunk(
+                pending.item_commitment,
+                next,
+              ),
+            } {
+              Some(bytearray.concat(chunk_proof.chunk, next.chunk))
+            } else {
+              None
+            }
+        }
+      } else if next_chunk_proof == None {
+        Some(chunk_proof.chunk)
+      } else {
+        None
+      }
+      when authenticated_window is {
+        None -> None
+        Some(window) -> {
+          let content = builtin.slice_bytearray(
+            offset,
+            content_length,
+            window,
+          )
+          let block = if hash_control.cursor == 0 {
+            #""
+              |> bytearray.push(pending.language_tag)
+              |> bytearray.concat(content)
+          } else {
+            content
+          }
+          if bytearray.length(block) == block_length {
+            Some(block)
+          } else {
+            None
+          }
+        }
+      }
+    }
+  }
+}
+
 fn script_sources_stage_zero(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -6890,7 +7123,94 @@ fn script_sources_stage_zero(
     control.output_count == 0,
     control.receive_scan == empty_receive_purpose_scan_control(),
   }
-  if script_commitment == empty_script_commitment {
+  if control.pending_source_cbor != #"" {
+    let pending = inline_source_hash_control_from_cbor(
+      control.pending_source_cbor,
+    )
+    let hash_control = pending.hash_control
+    if hash_control.stage == blake2b_224_trace_v1.stage_ready {
+      expect
+          ScriptSourceHashBlockWitness {
+            chunk_proof,
+            next_chunk_proof,
+          }
+        = auxiliary
+      when
+        inline_source_hash_block_v1(
+          pending,
+          chunk_proof,
+          next_chunk_proof,
+        )
+      is {
+        None -> False
+        Some(block) -> {
+          expect Some(next_hash_control) =
+            blake2b_224_trace_v1.step_v1(hash_control, Some(block))
+          and {
+            common_control_is_initial,
+            script_sources_control_successor_is_exact(
+              pre,
+              witness,
+              ScriptSourcesControlV1 {
+                ..control,
+                pending_source_cbor: encode_inline_source_hash_control_v1(
+                  InlineSourceHashControlV1 {
+                    ..pending,
+                    hash_control: next_hash_control,
+                  },
+                ),
+              },
+            ),
+          }
+        }
+      }
+    } else if hash_control.stage == blake2b_224_trace_v1.stage_terminal {
+      expect Some(script_hash) = blake2b_224_trace_v1.digest_v1(hash_control)
+      and {
+        common_control_is_initial,
+        auxiliary == NoAuxiliaryWitness,
+        script_sources_control_successor_is_exact(
+          pre,
+          witness,
+          ScriptSourcesControlV1 {
+            ..control,
+            source_count: control.source_count + 1,
+            source_peaks: validation_merkle_v1.append_leaf(
+              control.source_count,
+              control.source_peaks,
+              script_proof_v1.inline_source_leaf_hash(
+                control.source_count,
+                pending.language_tag,
+                script_hash,
+                pending.item_commitment,
+              ),
+            ),
+            pending_source_cbor: #"",
+          },
+        ),
+      }
+    } else {
+      expect Some(next_hash_control) =
+        blake2b_224_trace_v1.step_v1(hash_control, None)
+      and {
+        common_control_is_initial,
+        auxiliary == NoAuxiliaryWitness,
+        script_sources_control_successor_is_exact(
+          pre,
+          witness,
+          ScriptSourcesControlV1 {
+            ..control,
+            pending_source_cbor: encode_inline_source_hash_control_v1(
+              InlineSourceHashControlV1 {
+                ..pending,
+                hash_control: next_hash_control,
+              },
+            ),
+          },
+        ),
+      }
+    }
+  } else if script_commitment == empty_script_commitment {
     and {
       common_control_is_initial,
       auxiliary == NoAuxiliaryWitness,
@@ -6923,10 +7243,16 @@ fn script_sources_stage_zero(
     } else {
       control.source_total_count
     }
+    let header = native_script_scan_v1.versioned_script_header_v1(
+      chunk_proof.chunk,
+      collection_proof.item_length,
+    )
     and {
       common_control_is_initial,
       active_total_count > 0,
       active_total_count <= max_tx_size_derived_collection_item_count,
+      collection_proof.item_length > 0,
+      collection_proof.item_length <= max_aggregate_field_preimage_bytes,
       collection_proof.field_index == 7,
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.source_count,
@@ -6939,23 +7265,38 @@ fn script_sources_stage_zero(
         collection_proof.item_commitment,
         chunk_proof,
       ),
-      script_sources_control_successor_is_exact(
-        pre,
-        witness,
-        ScriptSourcesControlV1 {
-          ..control,
-          source_count: control.source_count + 1,
-          source_peaks: validation_merkle_v1.append_leaf(
-            control.source_count,
-            control.source_peaks,
-            script_proof_v1.inline_source_leaf_hash(
-              control.source_count,
-              collection_proof.item_commitment,
-            ),
-          ),
-          source_total_count: active_total_count,
-        },
-      ),
+      when header is {
+        None ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          )
+        Some(item_header) ->
+          script_sources_control_successor_is_exact(
+            pre,
+            witness,
+            ScriptSourcesControlV1 {
+              ..control,
+              source_total_count: active_total_count,
+              pending_source_cbor: encode_inline_source_hash_control_v1(
+                InlineSourceHashControlV1 {
+                  version: 1,
+                  source_index: control.source_count,
+                  source_total_count: active_total_count,
+                  language_tag: item_header.language_tag,
+                  payload_offset: item_header.payload_offset,
+                  payload_length: item_header.payload_length,
+                  item_length: collection_proof.item_length,
+                  item_commitment: collection_proof.item_commitment,
+                  hash_control: blake2b_224_trace_v1.initial_control_v1(
+                    item_header.payload_length + 1,
+                  ),
+                },
+              ),
+            },
+          )
+      },
     }
   }
 }
@@ -8907,6 +9248,22 @@ fn script_sources_control_is_bound(
     ),
     control.output_total_count >= control.output_count,
     control.output_total_count <= max_tx_size_derived_collection_item_count,
+    if control.stage == 0 {
+      if control.pending_source_cbor == #"" {
+        True
+      } else {
+        let pending = inline_source_hash_control_from_cbor(
+          control.pending_source_cbor,
+        )
+        and {
+          pending.source_index == control.source_count,
+          control.source_total_count == 0 ||
+            pending.source_total_count == control.source_total_count,
+        }
+      }
+    } else {
+      control.pending_source_cbor == #""
+    },
     if control.stage == 5 {
       when control.output_proof is {
         None -> True

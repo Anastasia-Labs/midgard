@@ -1,6 +1,7 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   appendMidgardValidationMerkleLeafV1,
+  buildMidgardBlake2b224TraceV1,
   buildMidgardBoundedCollectionItemProofV1,
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardLedgerOutputProofTraceV1,
@@ -17,6 +18,7 @@ import {
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
+  encodeMidgardBlake2b224TraceControlV1,
   encodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardLedgerOutputProofControlV1,
   encodeMidgardMpfProofDescriptorV1,
@@ -42,6 +44,8 @@ import {
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_VALIDATION_MACHINE_V1_VERSION,
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  type MidgardBlake2b224TraceControlV1,
+  MidgardBlake2b224TraceStagesV1,
   type MidgardBoundedCollectionItemProofV1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
@@ -330,6 +334,11 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "nativeScriptFrame";
         readonly frame: ValidationMachineNativeScriptFrameV1;
+      }
+    | {
+        readonly kind: "scriptSourceHashBlock";
+        readonly chunkProof: MidgardBoundedItemChunkProofV1;
+        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
       }
     | {
         readonly kind: "transactionFieldPairPreimage";
@@ -1745,6 +1754,16 @@ export const buildDeterministicValidationMachineTrace = (
       };
       readonly outputProof?: MidgardLedgerOutputProofControlV1 | null;
       readonly discovery?: ScriptDiscoveryTraceControl;
+      readonly pendingSource?: {
+        readonly sourceIndex: number;
+        readonly sourceTotalCount: number;
+        readonly languageTag: 0 | 3 | 128;
+        readonly payloadOffset: number;
+        readonly payloadLength: number;
+        readonly itemLength: number;
+        readonly itemCommitment: Buffer;
+        readonly hashControl: MidgardBlake2b224TraceControlV1;
+      } | null;
     }): Buffer => {
       const observerScan = input.observerScan ?? {
         totalCount: 0,
@@ -1802,7 +1821,24 @@ export const buildDeterministicValidationMachineTrace = (
           BigInt(observerScan.seen),
         ],
       ];
-      if (input.stage === 5 && input.outputProof !== undefined &&
+      if (input.stage === 0 && input.pendingSource !== undefined &&
+        input.pendingSource !== null) {
+        fields.push(
+          encodeCbor([
+            1n,
+            BigInt(input.pendingSource.sourceIndex),
+            BigInt(input.pendingSource.sourceTotalCount),
+            BigInt(input.pendingSource.languageTag),
+            BigInt(input.pendingSource.payloadOffset),
+            BigInt(input.pendingSource.payloadLength),
+            BigInt(input.pendingSource.itemLength),
+            input.pendingSource.itemCommitment,
+            encodeMidgardBlake2b224TraceControlV1(
+              input.pendingSource.hashControl,
+            ),
+          ]),
+        );
+      } else if (input.stage === 5 && input.outputProof !== undefined &&
         input.outputProof !== null) {
         fields.push(
           encodeMidgardLedgerOutputProofControlV1(input.outputProof),
@@ -2968,7 +3004,18 @@ export const buildDeterministicValidationMachineTrace = (
           };
           let authenticatedInlineSourceFrontier = emptyValidationFrontier;
           let inlineSourceTotalCount = 0;
-          const currentInlineSourceWitness = (): Buffer =>
+          const currentInlineSourceWitness = (
+            pendingSource?: {
+              readonly sourceIndex: number;
+              readonly sourceTotalCount: number;
+              readonly languageTag: 0 | 3 | 128;
+              readonly payloadOffset: number;
+              readonly payloadLength: number;
+              readonly itemLength: number;
+              readonly itemCommitment: Buffer;
+              readonly hashControl: MidgardBlake2b224TraceControlV1;
+            } | null,
+          ): Buffer =>
             scriptSourcesWitnessCbor({
               ...scriptSourceControl,
               stage: 0,
@@ -2976,6 +3023,7 @@ export const buildDeterministicValidationMachineTrace = (
               redeemerFrontier: emptyValidationFrontier,
               sourceTotalCount: inlineSourceTotalCount,
               redeemerTotalCount: 0,
+              pendingSource,
             });
           for (const item of scriptWitnessesCollection.items) {
             pushWitness("scriptSources", currentInlineSourceWitness(), {
@@ -2989,6 +3037,147 @@ export const buildDeterministicValidationMachineTrace = (
             if (inlineSourceTotalCount === 0) {
               inlineSourceTotalCount = scriptWitnessesCollection.items.length;
             }
+            const source = scriptSourceEntries[item.itemIndex];
+            if (
+              source === undefined ||
+              source.originKind !== "inline"
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "bounded inline script item lost its canonical source entry",
+                ),
+              );
+            }
+            const scriptArray = readCborArrayHeader(
+              item.bytes,
+              0,
+              "v1.script_source",
+            );
+            const scriptLanguage = readCborInteger(
+              item.bytes,
+              scriptArray.nextOffset,
+              "v1.script_source.language",
+            );
+            const scriptPayload = readCborBytes(
+              item.bytes,
+              scriptLanguage.nextOffset,
+              "v1.script_source.payload",
+            );
+            const payloadOffset =
+              scriptPayload.nextOffset - scriptPayload.value.length;
+            if (
+              scriptArray.length !== 2 ||
+              scriptPayload.nextOffset !== item.bytes.length ||
+              scriptPayload.value.length !== source.script.scriptBytes.length ||
+              !scriptPayload.value.equals(source.script.scriptBytes)
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "bounded inline script item is not its exact canonical versioned-script encoding",
+                ),
+              );
+            }
+            const exactLanguageTag: 0 | 3 | 128 =
+              source.script.language === "NativeCardano"
+                ? 0
+                : source.script.language === "PlutusV3"
+                  ? 3
+                  : 128;
+            if (scriptLanguage.value !== BigInt(exactLanguageTag)) {
+              return yield* Effect.fail(
+                new Error(
+                  "bounded inline script language diverged from its canonical source",
+                ),
+              );
+            }
+            const hashMessage = Buffer.concat([
+              Buffer.from([exactLanguageTag]),
+              source.script.scriptBytes,
+            ]);
+            const hashTrace = buildMidgardBlake2b224TraceV1(hashMessage);
+            let pendingSource = {
+              sourceIndex: item.itemIndex,
+              sourceTotalCount: inlineSourceTotalCount,
+              languageTag: exactLanguageTag,
+              payloadOffset,
+              payloadLength: scriptPayload.value.length,
+              itemLength: item.bytes.length,
+              itemCommitment: item.commitment,
+              hashControl: hashTrace[0]!.control,
+            };
+            for (const hashStep of hashTrace) {
+              let auxiliary:
+                | {
+                    readonly kind: "scriptSourceHashBlock";
+                    readonly chunkProof: MidgardBoundedItemChunkProofV1;
+                    readonly nextChunkProof:
+                      | MidgardBoundedItemChunkProofV1
+                      | null;
+                  }
+                | undefined;
+              if (hashStep.block !== null) {
+                const contentLength =
+                  hashStep.block.length -
+                  (hashStep.control.cursor === 0 ? 1 : 0);
+                const itemCursor = hashStep.control.cursor === 0
+                  ? payloadOffset
+                  : payloadOffset + hashStep.control.cursor - 1;
+                const chunkIndex = contentLength === 0
+                  ? 0
+                  : Math.floor(
+                      itemCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+                    );
+                const chunkProof =
+                  buildMidgardBoundedItemChunkProofV1(item, chunkIndex);
+                const offset = contentLength === 0
+                  ? payloadOffset
+                  : itemCursor -
+                    chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+                const crossesChunk =
+                  contentLength > chunkProof.chunk.length - offset;
+                auxiliary = {
+                  kind: "scriptSourceHashBlock",
+                  chunkProof,
+                  nextChunkProof: crossesChunk
+                    ? buildMidgardBoundedItemChunkProofV1(
+                        item,
+                        chunkIndex + 1,
+                      )
+                    : null,
+                };
+              }
+              pushWitness(
+                "scriptSources",
+                currentInlineSourceWitness(pendingSource),
+                auxiliary,
+              );
+              pendingSource = {
+                ...pendingSource,
+                hashControl: hashStep.next,
+              };
+            }
+            if (
+              pendingSource.hashControl.stage !==
+                MidgardBlake2b224TraceStagesV1.Terminal ||
+              !pendingSource.hashControl.chainingValue
+                .subarray(0, 28)
+                .equals(
+                  Buffer.from(
+                    hashMidgardVersionedScript(source.script),
+                    "hex",
+                  ),
+                )
+            ) {
+              return yield* Effect.fail(
+                new Error(
+                  "bounded inline script hash trace diverged from its canonical identity",
+                ),
+              );
+            }
+            pushWitness(
+              "scriptSources",
+              currentInlineSourceWitness(pendingSource),
+            );
             authenticatedInlineSourceFrontier =
               appendMidgardValidationMerkleLeafV1(
                 authenticatedInlineSourceFrontier,

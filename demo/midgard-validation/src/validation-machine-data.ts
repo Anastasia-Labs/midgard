@@ -1229,6 +1229,11 @@ export const validationAuxiliaryWitnessDataV1 = (
         bytes(auxiliary.descriptorCbor),
         signerProofData(auxiliary.signerProof),
       ]);
+    case "scriptSourceHashBlock":
+      return new Constr(41, [
+        chunkProofData(auxiliary.chunkProof),
+        option(auxiliary.nextChunkProof, chunkProofData),
+      ]);
   }
 };
 

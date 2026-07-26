@@ -8,6 +8,7 @@ use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
+use midgard/blake2b_224_trace_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
@@ -1032,6 +1033,7 @@ fn script_sources_active_output_proof_fixture(
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery: validation_machine_v1.empty_script_discovery_control(),
     output_proof: Some(output_proof),
+    pending_source_cbor: #"",
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_output_proof_witness(
     control,
@@ -1220,6 +1222,7 @@ fn script_discovery_step_fixture_with_output_frontier(
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
     output_proof: None,
+    pending_source_cbor: #"",
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     base_control,
@@ -8336,6 +8339,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
     discovery,
     output_proof: None,
+    pending_source_cbor: #"",
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     control,
@@ -8372,4 +8376,373 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     },
   }
   bytearray.length(cbor.serialise(evidence)) < 16_384
+}
+
+fn stage_zero_script_sources_control(
+  tx: MidgardTransaction,
+  source_frontier: validation_merkle_v1.BuiltFrontier,
+  source_total_count: Int,
+  pending_source_cbor: ByteArray,
+) -> validation_machine_v1.ScriptSourcesControlV1 {
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = signer_frontier_for_tx(tx)
+  validation_machine_v1.ScriptSourcesControlV1 {
+    compact_cbor: proof_source.compact_cbor,
+    witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+    field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+    context_cbor: validation_context_cbor,
+    resolved_input_count: 0,
+    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    signer_count: signer_frontier.count,
+    signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      signer_frontier.count,
+      signer_frontier.peaks,
+    ),
+    resolved_item_peaks: validation_merkle_v1.empty_frontier(),
+    stage: 0,
+    source_count: source_frontier.count,
+    source_peaks: source_frontier.peaks,
+    redeemer_count: 0,
+    redeemer_peaks: validation_merkle_v1.empty_frontier(),
+    replay_cursor: 0,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    spend_index: 0,
+    purpose_count: 0,
+    purpose_peaks: validation_merkle_v1.empty_frontier(),
+    output_cursor: 0,
+    output_count: 0,
+    output_peaks: validation_merkle_v1.empty_frontier(),
+    output_total_count: 0,
+    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    source_total_count,
+    redeemer_total_count: 0,
+    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
+    discovery: validation_machine_v1.empty_script_discovery_control(),
+    output_proof: None,
+    pending_source_cbor,
+  }
+}
+
+fn stage_zero_script_sources_work_witness(
+  control: validation_machine_v1.ScriptSourcesControlV1,
+) -> ByteArray {
+  if control.pending_source_cbor == #"" {
+    validation_machine_v1.encode_script_sources_witness(
+      control.compact_cbor,
+      control.witness_set_compact_cbor,
+      control.field_preimage_lengths_cbor,
+      control.context_cbor,
+      control.resolved_input_count,
+      control.resolved_inputs_accumulator,
+      control.signer_count,
+      control.signer_frontier_commitment,
+      control.resolved_item_peaks,
+      control.stage,
+      control.source_count,
+      control.source_peaks,
+      control.redeemer_count,
+      control.redeemer_peaks,
+      control.replay_cursor,
+      control.replay_accumulator,
+      control.replay_remaining_schedule_hash,
+      control.spend_index,
+      control.purpose_count,
+      control.purpose_peaks,
+      control.output_cursor,
+      control.output_count,
+      control.output_peaks,
+      control.output_total_count,
+      control.receive_scan,
+      control.source_total_count,
+      control.redeemer_total_count,
+      control.observer_scan,
+    )
+  } else {
+    validation_machine_v1.encode_script_sources_pending_source_witness(
+      control,
+      control.pending_source_cbor,
+    )
+  }
+}
+
+fn stage_zero_script_sources_state(
+  tx: MidgardTransaction,
+  control: validation_machine_v1.ScriptSourcesControlV1,
+  program_counter: Int,
+) -> validation_trace_v1.ValidationMachineStateV1 {
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = stage_zero_script_sources_work_witness(control)
+  validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ScriptSources,
+    program_counter,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptSources,
+      program_counter,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+}
+
+test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
+  let base = empty_v1_transaction()
+  let payload = v1_program_envelope()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: payload,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let item_cbor = encode_midgard_versioned_script(script)
+  let Pair(_collection_proof, chunk_proof) = singleton_field_item_proofs(
+    7,
+    item_cbor,
+  )
+  let hash_control = blake2b_224_trace_v1.initial_control_v1(
+    bytearray.length(payload) + 1,
+  )
+  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+    version: 1,
+    source_index: 0,
+    source_total_count: 1,
+    language_tag: 3,
+    payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
+    payload_length: bytearray.length(payload),
+    item_length: bytearray.length(item_cbor),
+    item_commitment: bounded_item_v1.from_bytes(7, 0, item_cbor),
+    hash_control,
+  }
+  let pending_cbor = validation_machine_v1.encode_inline_source_hash_control_v1(
+    pending,
+  )
+  let control = stage_zero_script_sources_control(
+    tx,
+    validation_merkle_v1.build_frontier([]),
+    1,
+    pending_cbor,
+  )
+  let block = #"03" |> bytearray.concat(payload)
+  expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+    hash_control,
+    Some(block),
+  )
+  let next_pending_cbor = validation_machine_v1.encode_inline_source_hash_control_v1(
+    validation_machine_v1.InlineSourceHashControlV1 {
+      ..pending,
+      hash_control: next_hash_control,
+    },
+  )
+  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..control,
+    pending_source_cbor: next_pending_cbor,
+  }
+  let pre = stage_zero_script_sources_state(tx, control, 60)
+  let post = stage_zero_script_sources_state(tx, successor_control, 61)
+  validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: stage_zero_script_sources_work_witness(control),
+      claimed_successor: post,
+    },
+    validation_machine_v1.ScriptSourceHashBlockWitness {
+      chunk_proof,
+      next_chunk_proof: None,
+    },
+  )
+}
+
+test script_sources_stage_zero_commits_the_terminal_script_identity() {
+  let base = empty_v1_transaction()
+  let payload = v1_program_envelope()
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: payload,
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+    },
+  }
+  let item_cbor = encode_midgard_versioned_script(script)
+  let item_commitment = bounded_item_v1.from_bytes(7, 0, item_cbor)
+  let script_hash = #"03" |> bytearray.concat(payload) |> blake2b_224
+  let terminal_hash_control = blake2b_224_trace_v1.Blake2b224TraceControlV1 {
+    version: 1,
+    stage: blake2b_224_trace_v1.stage_terminal,
+    cursor: bytearray.length(payload) + 1,
+    total_length: bytearray.length(payload) + 1,
+    chaining_value: script_hash
+      |> bytearray.concat(builtin.replicate_byte(36, 0)),
+    active_block: #"",
+    active_block_length: 0,
+    working_value: #"",
+    round: 0,
+  }
+  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+    version: 1,
+    source_index: 0,
+    source_total_count: 1,
+    language_tag: 3,
+    payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
+    payload_length: bytearray.length(payload),
+    item_length: bytearray.length(item_cbor),
+    item_commitment,
+    hash_control: terminal_hash_control,
+  }
+  let control = stage_zero_script_sources_control(
+    tx,
+    validation_merkle_v1.build_frontier([]),
+    1,
+    validation_machine_v1.encode_inline_source_hash_control_v1(pending),
+  )
+  let successor_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.inline_source_leaf_hash(
+        0,
+        3,
+        script_hash,
+        item_commitment,
+      ),
+    ],
+  )
+  let successor_control = stage_zero_script_sources_control(
+    tx,
+    successor_frontier,
+    1,
+    #"",
+  )
+  let pre = stage_zero_script_sources_state(tx, control, 61)
+  let post = stage_zero_script_sources_state(tx, successor_control, 62)
+  validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: stage_zero_script_sources_work_witness(control),
+      claimed_successor: post,
+    },
+    validation_machine_v1.NoAuxiliaryWitness,
+  )
+}
+
+fn crossing_inline_source_hash_fixture() ->
+  Pair<
+    validation_machine_v1.InlineSourceHashControlV1,
+    Pair<bounded_item_v1.ChunkProofV1, bounded_item_v1.ChunkProofV1>,
+  > {
+  let payload = builtin.replicate_byte(4_200, 171)
+  let item_cbor = encode_midgard_versioned_script(
+    MidgardVersionedScript {
+      language: PlutusV3Script,
+      script_bytes: payload,
+    },
+  )
+  let first_chunk = builtin.slice_bytearray(
+    0,
+    bounded_item_v1.chunk_bytes,
+    item_cbor,
+  )
+  let second_chunk = builtin.slice_bytearray(
+    bounded_item_v1.chunk_bytes,
+    bytearray.length(item_cbor) - bounded_item_v1.chunk_bytes,
+    item_cbor,
+  )
+  let first_hash = bounded_item_v1.hash_chunk(7, 0, 0, first_chunk)
+  let second_hash = bounded_item_v1.hash_chunk(7, 0, 1, second_chunk)
+  let frontier = validation_merkle_v1.build_frontier(
+    [first_hash, second_hash],
+  )
+  let item_commitment = bounded_item_v1.commitment(
+    7,
+    0,
+    bytearray.length(item_cbor),
+    frontier.peaks,
+  )
+  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+    version: 1,
+    source_index: 0,
+    source_total_count: 1,
+    language_tag: 3,
+    payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
+    payload_length: bytearray.length(payload),
+    item_length: bytearray.length(item_cbor),
+    item_commitment,
+    hash_control: blake2b_224_trace_v1.Blake2b224TraceControlV1 {
+      version: 1,
+      stage: blake2b_224_trace_v1.stage_ready,
+      cursor: 3_968,
+      total_length: bytearray.length(payload) + 1,
+      chaining_value: builtin.replicate_byte(64, 17),
+      active_block: #"",
+      active_block_length: 0,
+      working_value: #"",
+      round: 0,
+    },
+  }
+  Pair(
+    pending,
+    Pair(
+      bounded_item_v1.ChunkProofV1 {
+        version: 1,
+        field_index: 7,
+        item_index: 0,
+        total_length: bytearray.length(item_cbor),
+        chunk_index: 0,
+        chunk: first_chunk,
+        frontier: frontier.peaks,
+        siblings: [second_hash],
+      },
+      bounded_item_v1.ChunkProofV1 {
+        version: 1,
+        field_index: 7,
+        item_index: 0,
+        total_length: bytearray.length(item_cbor),
+        chunk_index: 1,
+        chunk: second_chunk,
+        frontier: frontier.peaks,
+        siblings: [first_hash],
+      },
+    ),
+  )
+}
+
+test inline_source_hash_block_authenticates_a_chunk_boundary() {
+  let Pair(pending, Pair(current, next)) = crossing_inline_source_hash_fixture()
+  validation_machine_v1.inline_source_hash_block_v1(
+    pending,
+    current,
+    Some(next),
+  ) == Some(builtin.replicate_byte(128, 171))
+}
+
+test inline_source_hash_block_fails_closed_when_boundary_data_is_withheld() {
+  let Pair(pending, Pair(current, _next)) = crossing_inline_source_hash_fixture()
+  validation_machine_v1.inline_source_hash_block_v1(
+    pending,
+    current,
+    None,
+  ) == None
 }

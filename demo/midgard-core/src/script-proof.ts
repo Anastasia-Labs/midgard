@@ -173,6 +173,13 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     });
     return hashMidgardInlineScriptSourceLeafV1({
       sourceIndex,
+      scriptLanguageTag: Number(
+        MidgardVersionedScriptTags[input.script.language],
+      ) as 0 | 3 | 128,
+      scriptHash: Buffer.from(
+        hashMidgardVersionedScript(input.script),
+        "hex",
+      ),
       itemCommitment: item.commitment,
     });
   }
@@ -211,19 +218,34 @@ export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
 
 export const hashMidgardInlineScriptSourceLeafV1 = (input: {
   readonly sourceIndex: bigint;
+  readonly scriptLanguageTag: 0 | 3 | 128;
+  readonly scriptHash: Uint8Array;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
   if (input.sourceIndex < 0n) {
     throw new Error("inline script source index must be non-negative");
   }
+  if (
+    input.scriptLanguageTag !== 0 &&
+    input.scriptLanguageTag !== 3 &&
+    input.scriptLanguageTag !== 128
+  ) {
+    throw new Error("inline script language tag is not supported");
+  }
   const itemCommitment = ensureHash32(
     input.itemCommitment,
     "inline script source item commitment",
   );
+  const scriptHash = Buffer.from(input.scriptHash);
+  if (scriptHash.length !== 28) {
+    throw new Error("inline script hash must contain exactly 28 bytes");
+  }
   return hash32(
     Buffer.concat([
       INLINE_SOURCE_LEAF_DOMAIN,
       encodeCbor(input.sourceIndex),
+      encodeCbor(input.scriptLanguageTag),
+      encodeCbor(scriptHash),
       encodeCbor(itemCommitment),
     ]),
   );
