@@ -12370,8 +12370,6 @@ pub type ValueAndMintControlV1 {
   replay_remaining_schedule_hash: ByteArray,
   output_cursor: Int,
   output_asset_cursor: Int,
-  mint_count: Int,
-  mint_peaks: List<validation_merkle_v1.FrontierPeak>,
   mint_cursor: Int,
   value_accumulator: ValueAccumulatorV1,
 }
@@ -12537,60 +12535,10 @@ pub fn mint_asset_leaf_hash(
     |> blake2b_256
 }
 
-fn mint_asset_leaf_hashes(
-  policy_id: ByteArray,
-  assets: List<Pair<Data, Data>>,
-) -> List<ByteArray> {
-  when assets is {
-    [] -> []
-    [Pair(asset_name_data, quantity_data), ..rest] -> {
-      let asset_name = builtin.un_b_data(asset_name_data)
-      let quantity = builtin.un_i_data(quantity_data)
-      [
-        mint_asset_leaf_hash(policy_id, asset_name, quantity),
-        ..mint_asset_leaf_hashes(policy_id, rest)
-      ]
-    }
-  }
-}
-
-fn append_byte_arrays(
-  left: List<ByteArray>,
-  right: List<ByteArray>,
-) -> List<ByteArray> {
-  when left is {
-    [] -> right
-    [item, ..rest] -> [item, ..append_byte_arrays(rest, right)]
-  }
-}
-
-fn mint_policy_leaf_hashes(policies: List<Pair<Data, Data>>) -> List<ByteArray> {
-  when policies is {
-    [] -> []
-    [Pair(policy_id_data, assets_data), ..rest] ->
-      append_byte_arrays(
-        mint_asset_leaf_hashes(
-          builtin.un_b_data(policy_id_data),
-          builtin.un_map_data(assets_data),
-        ),
-        mint_policy_leaf_hashes(rest),
-      )
-  }
-}
-
-fn mint_leaf_hashes(mint: Data) -> List<ByteArray> {
-  let empty_mint: Data = []
-  if mint == empty_mint {
-    []
-  } else {
-    mint_policy_leaf_hashes(builtin.un_map_data(mint))
-  }
-}
-
 pub fn encode_value_and_mint_control_v1(
   control: ValueAndMintControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(14)
+  encode_definite_array_header(12)
     |> bytearray.concat(
         encode_definite_bytes(
           encode_native_scripts_control_v1(control.native_control),
@@ -12607,10 +12555,6 @@ pub fn encode_value_and_mint_control_v1(
       )
     |> bytearray.concat(cbor.serialise(control.output_cursor))
     |> bytearray.concat(cbor.serialise(control.output_asset_cursor))
-    |> bytearray.concat(cbor.serialise(control.mint_count))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(control.mint_peaks),
-      )
     |> bytearray.concat(cbor.serialise(control.mint_cursor))
     |> bytearray.concat(
         encode_definite_bytes(
@@ -12628,8 +12572,8 @@ fn value_and_mint_control_from_witness(
         native_control_cbor_data, stage_data, replay_schedule_hash_data,
         replay_cursor_data, replay_asset_cursor_data, replay_value_hash_data,
         replay_accumulator_data, replay_remaining_schedule_hash_data,
-        output_cursor_data, output_asset_cursor_data, mint_count_data,
-        mint_peaks_data, mint_cursor_data, value_accumulator_cbor_data,
+        output_cursor_data, output_asset_cursor_data, mint_cursor_data,
+        value_accumulator_cbor_data,
       ]
     = builtin.un_list_data(data)
   ValueAndMintControlV1 {
@@ -12647,8 +12591,6 @@ fn value_and_mint_control_from_witness(
     ),
     output_cursor: builtin.un_i_data(output_cursor_data),
     output_asset_cursor: builtin.un_i_data(output_asset_cursor_data),
-    mint_count: builtin.un_i_data(mint_count_data),
-    mint_peaks: decode_frontier_peaks(mint_peaks_data),
     mint_cursor: builtin.un_i_data(mint_cursor_data),
     value_accumulator: value_accumulator_from_cbor(
       builtin.un_b_data(value_accumulator_cbor_data),
@@ -12680,8 +12622,6 @@ pub fn encode_value_and_mint_witness_v1(
       replay_remaining_schedule_hash: empty_resolution_schedule_hash(),
       output_cursor: 0,
       output_asset_cursor: 0,
-      mint_count: 0,
-      mint_peaks: [],
       mint_cursor: 0,
       value_accumulator: initial_value_accumulator(),
     },
@@ -15149,8 +15089,6 @@ fn value_and_mint_stage_zero(
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
     control.output_cursor == 0,
     control.output_asset_cursor == 0,
-    control.mint_count == 0,
-    control.mint_peaks == [],
     control.mint_cursor == 0,
     control.value_accumulator == initial_value_accumulator(),
     value_and_mint_successor_is_exact(pre, witness, next_control),
@@ -15163,40 +15101,13 @@ fn value_and_mint_stage_one(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ValueAndMintControlV1,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let native_control = control.native_control
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
-    pre.transaction_id,
-    pre.transaction_commitment,
-    native_control.compact_cbor,
-    native_control.witness_set_compact_cbor,
-    native_control.field_preimage_lengths_cbor,
-    5,
-    preimage_cbor,
-  )
-  let mint = decode_midgard_tx_mint_preimage_cbor(preimage_cbor)
-  let leaves = mint_leaf_hashes(mint)
-  let mint_frontier = validation_merkle_v1.build_frontier(leaves)
   and {
-    field_verified,
-    if mint_frontier.count > ledger_output_v1.max_distinct_asset_count {
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_asset_count,
-      )
-    } else {
-      value_and_mint_successor_is_exact(
-        pre,
-        witness,
-        ValueAndMintControlV1 {
-          ..control,
-          stage: 2,
-          mint_count: mint_frontier.count,
-          mint_peaks: mint_frontier.peaks,
-        },
-      )
-    },
+    auxiliary == NoAuxiliaryWitness,
+    value_and_mint_successor_is_exact(
+      pre,
+      witness,
+      ValueAndMintControlV1 { ..control, stage: 2 },
+    ),
   }
 }
 
@@ -15510,7 +15421,8 @@ fn value_and_mint_stage_four(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ValueAndMintControlV1,
 ) -> Bool {
-  if control.mint_cursor == control.mint_count {
+  let native_control = control.native_control
+  if control.mint_cursor == native_control.mint_count {
     and {
       auxiliary == NoAuxiliaryWitness,
       value_and_mint_successor_is_exact(
@@ -15536,8 +15448,8 @@ fn value_and_mint_stage_four(
       bytearray.length(asset_name) <= 32,
       quantity != 0,
       validation_merkle_v1.verify_membership(
-        control.mint_count,
-        control.mint_peaks,
+        native_control.mint_count,
+        native_control.mint_peaks,
         mint_index,
         mint_asset_leaf_hash(policy_id, asset_name, quantity),
         siblings,
@@ -15591,7 +15503,7 @@ fn value_and_mint_stage_five(
     control.replay_remaining_schedule_hash == empty_resolution_schedule_hash(),
     control.output_cursor == control.native_control.output_count,
     control.output_asset_cursor == 0,
-    control.mint_cursor == control.mint_count,
+    control.mint_cursor == control.native_control.mint_count,
     if or {
       control.value_accumulator.lovelace_delta - body.fee != 0,
       control.value_accumulator.nonzero_asset_count != 0,
@@ -15665,14 +15577,8 @@ fn verify_value_and_mint(
     control.value_accumulator.seen_asset_count <= ledger_output_v1.max_distinct_asset_count,
     control.value_accumulator.nonzero_asset_count >= 0,
     control.value_accumulator.nonzero_asset_count <= control.value_accumulator.seen_asset_count,
-    validation_merkle_v1.frontier_is_well_formed(
-      control.mint_count,
-      control.mint_peaks,
-    ),
-    control.mint_count >= 0,
-    control.mint_count <= ledger_output_v1.max_distinct_asset_count,
     control.mint_cursor >= 0,
-    control.mint_cursor <= control.mint_count,
+    control.mint_cursor <= native_control.mint_count,
     control.stage >= 0,
     control.stage <= 5,
     witness.work_witness_cbor == encode_value_and_mint_control_v1(control),

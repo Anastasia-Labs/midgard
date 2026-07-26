@@ -8534,8 +8534,6 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
       lovelace_delta: 0,
@@ -8609,6 +8607,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
       42,
       invalid_work_witness_cbor,
     ),
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
   let rejection_code = #"455f56414c55455f4e4f545f505245534552564544"
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
@@ -8627,7 +8626,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    validation_machine_v1.verify_value_and_mint_one_step_v1(
       valid_pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -8637,7 +8636,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
         auxiliary: validation_machine_v1.NoAuxiliaryWitness,
       },
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    validation_machine_v1.verify_value_and_mint_one_step_v1(
       invalid_pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -8650,9 +8649,101 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
   }
 }
 
+test value_and_mint_uses_authenticated_native_mint_frontier() {
+  let mint_cbor = #"a1581c"
+    |> bytearray.concat(h_28_a)
+    |> bytearray.concat(#"a1410124")
+  let mint = decode_midgard_tx_mint_preimage_cbor(mint_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, mint },
+  }
+  let mint_leaf = validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)
+  let mint_frontier = validation_merkle_v1.build_frontier([mint_leaf])
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
+  let control = validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage: 1,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_cursor: 0,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: null_hash,
+      seen_asset_count: 0,
+      nonzero_asset_count: 0,
+    },
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+    control,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 40,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      40,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      41,
+      validation_machine_v1.encode_value_and_mint_control_v1(
+        validation_machine_v1.ValueAndMintControlV1 {
+          ..control,
+          stage: 2,
+        },
+      ),
+    ),
+  }
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    },
+  )
+}
+
 test value_and_mint_replays_signed_burn_leaf_on_l1() {
   let tx = empty_v1_transaction()
-  let native_control = empty_native_control_fixture(tx)
   let policy_id = #"11111111111111111111111111111111111111111111111111111111"
   let asset_name = #"beef"
   let unit = policy_id |> bytearray.concat(asset_name)
@@ -8662,6 +8753,11 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     -5,
   )
   let mint_frontier = validation_merkle_v1.build_frontier([leaf])
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    mint_count: mint_frontier.count,
+    mint_peaks: mint_frontier.peaks,
+  }
   let control = validation_machine_v1.ValueAndMintControlV1 {
     native_control,
     stage: 4,
@@ -8673,8 +8769,6 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
-    mint_count: 1,
-    mint_peaks: mint_frontier.peaks,
     mint_cursor: 0,
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
       lovelace_delta: 0,
@@ -8733,7 +8827,7 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
       validation_machine_v1.encode_value_and_mint_control_v1(next_control),
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_value_and_mint_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -8829,8 +8923,6 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
-    mint_count: 0,
-    mint_peaks: validation_merkle_v1.empty_frontier(),
     mint_cursor: 0,
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
       lovelace_delta: 0,
@@ -9030,8 +9122,6 @@ test value_asset_output_instruction_evidence_is_bounded() {
     replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 1,
-    mint_count: 0,
-    mint_peaks: [],
     mint_cursor: 0,
     value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
       lovelace_delta: 0,

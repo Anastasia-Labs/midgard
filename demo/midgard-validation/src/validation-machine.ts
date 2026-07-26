@@ -6248,8 +6248,6 @@ export const buildDeterministicValidationMachineTrace = (
               quantity: asset.quantity,
             }),
           );
-          const mintFrontier =
-            buildMidgardValidationMerkleFrontierV1(mintLeaves);
           const valueContributions: ValidationValueContribution[] = [];
           for (const node of resolutionScheduleNodes) {
             if (node.sourceKind !== "spend") continue;
@@ -6311,7 +6309,6 @@ export const buildDeterministicValidationMachineTrace = (
             readonly replayAccumulator?: Buffer;
             readonly replayRemainingScheduleHash?: Buffer;
             readonly outputCursor?: number;
-            readonly mintFrontier?: MidgardValidationMerkleFrontierV1;
             readonly mintCursor?: number;
           }): Buffer =>
             encodeCbor([
@@ -6326,10 +6323,6 @@ export const buildDeterministicValidationMachineTrace = (
                 valueReplayRemainingScheduleHash,
               BigInt(input.outputCursor ?? valueOutputCursor),
               BigInt(valueOutputAssetCursor),
-              BigInt(input.mintFrontier?.count ?? 0),
-              encodeFrontierPeaks(
-                input.mintFrontier ?? emptyValidationFrontier,
-              ),
               BigInt(input.mintCursor ?? valueMintCursor),
               encodeValidationValueAccumulator(valueAccumulator),
             ]);
@@ -6355,28 +6348,7 @@ export const buildDeterministicValidationMachineTrace = (
               stage: 1,
               replayScheduleHash: resolutionScheduleHash,
             }),
-            {
-              kind: "transactionFieldPreimage",
-              preimageCbor: fieldPreimages[5]!.preimageCbor,
-            },
           );
-          if (
-            mintFrontier.count >
-            input.consensusProfile.limits.maxDistinctAssetCount
-          ) {
-            if (
-              rejection === null ||
-              terminalPhase !== "valueAndMint" ||
-              rejection.code !== RejectCodes.AssetCount
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  "V1 mint frontier exceeds the asset bound but validation did not reject it in ValueAndMint",
-                ),
-              );
-            }
-            stoppedAtRejection = true;
-          }
 
           if (!stoppedAtRejection) {
             for (const node of resolutionScheduleNodes) {
@@ -6395,7 +6367,6 @@ export const buildDeterministicValidationMachineTrace = (
                 valueAndMintControlCbor({
                   stage: 2,
                   replayScheduleHash: resolutionScheduleHash,
-                  mintFrontier,
                 }),
                 {
                   kind: "resolvedInputReplay",
@@ -6437,7 +6408,6 @@ export const buildDeterministicValidationMachineTrace = (
                     valueAndMintControlCbor({
                       stage: 2,
                       replayScheduleHash: resolutionScheduleHash,
-                      mintFrontier,
                     }),
                     {
                       kind: "valueInputAsset",
@@ -6505,7 +6475,6 @@ export const buildDeterministicValidationMachineTrace = (
               valueAndMintControlCbor({
                 stage: 2,
                 replayScheduleHash: resolutionScheduleHash,
-                mintFrontier,
               }),
             );
             for (
@@ -6528,7 +6497,6 @@ export const buildDeterministicValidationMachineTrace = (
                 valueAndMintControlCbor({
                   stage: 3,
                   replayScheduleHash: resolutionScheduleHash,
-                  mintFrontier,
                 }),
                 {
                   kind: "valueOutputDescriptor",
@@ -6567,7 +6535,6 @@ export const buildDeterministicValidationMachineTrace = (
                     valueAndMintControlCbor({
                       stage: 3,
                       replayScheduleHash: resolutionScheduleHash,
-                      mintFrontier,
                     }),
                     {
                       kind: "valueOutputAsset",
@@ -6625,7 +6592,6 @@ export const buildDeterministicValidationMachineTrace = (
               valueAndMintControlCbor({
                 stage: 3,
                 replayScheduleHash: resolutionScheduleHash,
-                mintFrontier,
               }),
             );
             for (
@@ -6639,7 +6605,6 @@ export const buildDeterministicValidationMachineTrace = (
                 valueAndMintControlCbor({
                   stage: 4,
                   replayScheduleHash: resolutionScheduleHash,
-                  mintFrontier,
                 }),
                 {
                   kind: "valueMintAsset",
@@ -6692,7 +6657,6 @@ export const buildDeterministicValidationMachineTrace = (
               valueAndMintControlCbor({
                 stage: 4,
                 replayScheduleHash: resolutionScheduleHash,
-                mintFrontier,
               }),
             );
             const valueIsPreserved =
@@ -6703,7 +6667,6 @@ export const buildDeterministicValidationMachineTrace = (
               valueAndMintControlCbor({
                 stage: 5,
                 replayScheduleHash: resolutionScheduleHash,
-                mintFrontier,
               }),
             );
             if (!valueIsPreserved) {
