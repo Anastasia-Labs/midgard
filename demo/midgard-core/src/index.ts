@@ -6,6 +6,7 @@ export * from "./bounded-collection-v1.js";
 export * from "./bounded-item-v1.js";
 export * from "./capability-parity-v1.js";
 export * from "./cek-blob-frontier-v1.js";
+export * from "./cek-data-bytes-v1.js";
 export * from "./cek-data-integer-v1.js";
 export * from "./cek-proof.js";
 export * from "./cek-semantic.js";
