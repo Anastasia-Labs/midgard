@@ -17,6 +17,7 @@ export * from "./error-format.js";
 export * from "./hex.js";
 export * from "./ledger-output-commitment-v1.js";
 export * from "./ledger-output-scan-v1.js";
+export * from "./native-script-scan-v1.js";
 export * from "./out-ref.js";
 export * from "./plutus-data-cbor.js";
 export * from "./script-proof.js";

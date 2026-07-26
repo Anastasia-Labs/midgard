@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
@@ -23,6 +24,16 @@ pub const before_node: Int = 5
 pub const max_native_script_nodes: Int = 16384
 
 pub const max_native_script_depth: Int = 16384
+
+pub const version: Int = 1
+
+pub const structure_stage_token: Int = 0
+
+pub const structure_stage_frame: Int = 1
+
+pub const structure_stage_finalize: Int = 2
+
+pub const structure_stage_terminal: Int = 3
 
 pub type VersionedScriptHeaderV1 {
   language_tag: Int,
@@ -52,6 +63,26 @@ pub type NativeScriptFrameV1 {
   remaining: Int,
   valid_count: Int,
   required: Int,
+}
+
+pub type NativeScriptStructureControlV1 {
+  version: Int,
+  stage: Int,
+  start_offset: Int,
+  cursor: Int,
+  end_offset: Int,
+  stack_root: ByteArray,
+  stack_depth: Int,
+  node_count: Int,
+}
+
+pub type NativeScriptStructureStepResultV1 {
+  NativeScriptStructureAdvanced {
+    control: NativeScriptStructureControlV1,
+  }
+  NativeScriptStructureInvalid
+  NativeScriptStructureNodeLimit
+  NativeScriptStructureDepthLimit
 }
 
 pub type NativeFrameResultV1 {
@@ -637,5 +668,285 @@ pub fn apply_child_v1(
         },
       )
     }
+  }
+}
+
+fn structure_control_is_well_formed_v1(
+  control: NativeScriptStructureControlV1,
+) -> Bool {
+  and {
+    control.version == version,
+    control.stage >= structure_stage_token,
+    control.stage <= structure_stage_terminal,
+    control.start_offset >= 0,
+    control.end_offset > control.start_offset,
+    control.cursor >= control.start_offset,
+    control.cursor <= control.end_offset,
+    control.stack_depth >= 0,
+    control.stack_depth <= max_native_script_depth,
+    control.node_count >= 0,
+    control.node_count <= max_native_script_nodes,
+    if control.stack_depth == 0 {
+      control.stack_root == #""
+    } else {
+      bytearray.length(control.stack_root) == 32
+    },
+    if control.stage == structure_stage_token {
+      control.cursor < control.end_offset
+    } else if control.stage == structure_stage_frame {
+      and {
+        control.stack_depth > 0,
+        bytearray.length(control.stack_root) == 32,
+      }
+    } else if control.stage == structure_stage_finalize {
+      and {
+        control.stack_depth == 0,
+        control.stack_root == #"",
+      }
+    } else {
+      and {
+        control.cursor == control.end_offset,
+        control.stack_depth == 0,
+        control.stack_root == #"",
+        control.node_count > 0,
+      }
+    },
+  }
+}
+
+pub fn initial_structure_control_v1(
+  start_offset: Int,
+  total_length: Int,
+) -> NativeScriptStructureControlV1 {
+  let control = NativeScriptStructureControlV1 {
+    version,
+    stage: structure_stage_token,
+    start_offset,
+    cursor: start_offset,
+    end_offset: start_offset + total_length,
+    stack_root: #"",
+    stack_depth: 0,
+    node_count: 0,
+  }
+  expect structure_control_is_well_formed_v1(control)
+  control
+}
+
+pub fn encode_structure_control_v1(
+  control: NativeScriptStructureControlV1,
+) -> ByteArray {
+  expect structure_control_is_well_formed_v1(control)
+  encode_definite_array_header(8)
+    |> bytearray.concat(cbor.serialise(version))
+    |> bytearray.concat(cbor.serialise(control.stage))
+    |> bytearray.concat(cbor.serialise(control.start_offset))
+    |> bytearray.concat(cbor.serialise(control.cursor))
+    |> bytearray.concat(cbor.serialise(control.end_offset))
+    |> bytearray.concat(encode_definite_bytes(control.stack_root))
+    |> bytearray.concat(cbor.serialise(control.stack_depth))
+    |> bytearray.concat(cbor.serialise(control.node_count))
+}
+
+pub fn decode_structure_control_v1(
+  control_cbor: ByteArray,
+) -> NativeScriptStructureControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  expect
+    [
+      version_data, stage_data, start_offset_data, cursor_data,
+      end_offset_data, stack_root_data, stack_depth_data, node_count_data,
+    ] = builtin.un_list_data(data)
+  let control = NativeScriptStructureControlV1 {
+    version: builtin.un_i_data(version_data),
+    stage: builtin.un_i_data(stage_data),
+    start_offset: builtin.un_i_data(start_offset_data),
+    cursor: builtin.un_i_data(cursor_data),
+    end_offset: builtin.un_i_data(end_offset_data),
+    stack_root: builtin.un_b_data(stack_root_data),
+    stack_depth: builtin.un_i_data(stack_depth_data),
+    node_count: builtin.un_i_data(node_count_data),
+  }
+  expect structure_control_is_well_formed_v1(control)
+  expect encode_structure_control_v1(control) == control_cbor
+  control
+}
+
+fn advanced_structure_v1(
+  control: NativeScriptStructureControlV1,
+) -> NativeScriptStructureStepResultV1 {
+  if structure_control_is_well_formed_v1(control) {
+    NativeScriptStructureAdvanced { control }
+  } else {
+    NativeScriptStructureInvalid
+  }
+}
+
+fn complete_structure_node_v1(
+  control: NativeScriptStructureControlV1,
+  cursor: Int,
+  node_count: Int,
+) -> NativeScriptStructureStepResultV1 {
+  advanced_structure_v1(
+    NativeScriptStructureControlV1 {
+      ..control,
+      stage: if control.stack_depth > 0 {
+        structure_stage_frame
+      } else {
+        structure_stage_finalize
+      },
+      cursor,
+      node_count,
+    },
+  )
+}
+
+/// Parses one complete canonical native-script node from an authenticated
+/// window. A token is smaller than one output chunk, but the caller may
+/// provide the adjacent authenticated chunk when it crosses a boundary.
+pub fn structure_token_step_v1(
+  control: NativeScriptStructureControlV1,
+  window: ByteArray,
+  window_offset: Int,
+) -> Option<NativeScriptStructureStepResultV1> {
+  if and {
+    structure_control_is_well_formed_v1(control),
+    control.stage == structure_stage_token,
+    window_offset >= 0,
+    window_offset < bytearray.length(window),
+  } {
+    when token_at_v1(window, window_offset, control.cursor) is {
+      None -> Some(NativeScriptStructureInvalid)
+      Some(token) ->
+        if or {
+          token.next_offset <= control.cursor,
+          token.next_offset > control.end_offset,
+        } {
+          Some(NativeScriptStructureInvalid)
+        } else {
+          let node_count = control.node_count + 1
+          if node_count > max_native_script_nodes {
+            Some(NativeScriptStructureNodeLimit)
+          } else if and {
+            token.kind >= all_node,
+            token.kind <= at_least_node,
+            token.child_count > 0,
+          } {
+            let stack_depth = control.stack_depth + 1
+            if stack_depth > max_native_script_depth {
+              Some(NativeScriptStructureDepthLimit)
+            } else {
+              when frame_for_token_v1(token, control.stack_root) is {
+                None -> Some(NativeScriptStructureInvalid)
+                Some(frame) ->
+                  Some(
+                    advanced_structure_v1(
+                      NativeScriptStructureControlV1 {
+                        ..control,
+                        cursor: token.next_offset,
+                        stack_root: hash_frame_v1(frame),
+                        stack_depth,
+                        node_count,
+                      },
+                    ),
+                  )
+              }
+            }
+          } else {
+            Some(
+              complete_structure_node_v1(
+                control,
+                token.next_offset,
+                node_count,
+              ),
+            )
+          }
+        }
+    }
+  } else {
+    None
+  }
+}
+
+/// Reveals one authenticated stack-frame preimage and records completion of
+/// one child. Child validity is deliberately ignored: output admission checks
+/// native-script syntax here and evaluates the script only when it is used.
+pub fn structure_frame_step_v1(
+  control: NativeScriptStructureControlV1,
+  frame: NativeScriptFrameV1,
+) -> Option<NativeScriptStructureStepResultV1> {
+  if and {
+    structure_control_is_well_formed_v1(control),
+    control.stage == structure_stage_frame,
+    frame_is_well_formed_v1(frame),
+    hash_frame_v1(frame) == control.stack_root,
+  } {
+    when apply_child_v1(frame, False) is {
+      None -> None
+      Some(NativeFramePending { frame: next_frame }) ->
+        Some(
+          advanced_structure_v1(
+            NativeScriptStructureControlV1 {
+              ..control,
+              stage: structure_stage_token,
+              stack_root: hash_frame_v1(next_frame),
+            },
+          ),
+        )
+      Some(NativeFrameComplete { tail, .. }) -> {
+        let stack_depth = control.stack_depth - 1
+        Some(
+          advanced_structure_v1(
+            NativeScriptStructureControlV1 {
+              ..control,
+              stage: if stack_depth > 0 {
+                structure_stage_frame
+              } else {
+                structure_stage_finalize
+              },
+              stack_root: tail,
+              stack_depth,
+            },
+          ),
+        )
+      }
+    }
+  } else {
+    None
+  }
+}
+
+pub fn finalize_structure_v1(
+  control: NativeScriptStructureControlV1,
+) -> Option<NativeScriptStructureStepResultV1> {
+  if and {
+    structure_control_is_well_formed_v1(control),
+    control.stage == structure_stage_finalize,
+  } {
+    if and {
+      control.cursor == control.end_offset,
+      control.node_count > 0,
+    } {
+      Some(
+        advanced_structure_v1(
+          NativeScriptStructureControlV1 {
+            ..control,
+            stage: structure_stage_terminal,
+          },
+        ),
+      )
+    } else {
+      Some(NativeScriptStructureInvalid)
+    }
+  } else {
+    None
+  }
+}
+
+pub fn structure_terminal_is_exact_v1(
+  control: NativeScriptStructureControlV1,
+) -> Bool {
+  and {
+    structure_control_is_well_formed_v1(control),
+    control.stage == structure_stage_terminal,
   }
 }
