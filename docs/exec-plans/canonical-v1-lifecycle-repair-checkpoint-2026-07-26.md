@@ -34,7 +34,7 @@ control.
 
 ## Validation-dispute mismatches exposed after commit repair
 
-The complete invalid-forced lifecycle then exposed four independent,
+The complete invalid-forced lifecycle then exposed six independent,
 fail-closed wire/time mismatches:
 
 - Lucid unwraps a one-constructor `Data.Enum`; the Open, VerifySource,
@@ -63,22 +63,22 @@ Aiken source edits and blueprints are excluded from this checkpoint.
 ## Lifecycle evidence
 
 Both commands use one Vitest fork and one in-memory emulator. Commands are run
-from `demo/`.
+from `demo/midgard-fault-proofs/`.
 
 Established transition-trace control:
 
 ```sh
-cd demo
+cd demo/midgard-fault-proofs
 
 NODE_OPTIONS=--max-old-space-size=4096 \
-pnpm --filter @al-ft/midgard-fault-proofs exec vitest run \
+./node_modules/.bin/vitest run \
   tests/submit-init-emulator.test.ts \
   -t "submits and removes a tail transition-trace fraud proof end to end" \
   --pool=forks --poolOptions.forks.singleFork=true \
   --testTimeout=300000 --hookTimeout=300000
 ```
 
-Result: **PASS** (1 passed, 10 skipped; lifecycle 2.408 s, total 4.22 s).
+Result: **PASS** (1 passed, 10 skipped; lifecycle 2.331 s, total 4.12 s).
 
 Invalid-forced validation dispute:
 
@@ -87,12 +87,12 @@ curl -sS \
   "https://preprod.koios.rest/api/v1/epoch_params?epoch_no=eq.303" \
   -o /tmp/midgard-preprod-epoch-params-2026-07-26.json
 
-cd demo
+cd demo/midgard-fault-proofs
 
 NODE_OPTIONS=--max-old-space-size=4096 \
 MIDGARD_DIAGNOSTIC_CARDANO_PARAMETERS=/tmp/midgard-preprod-epoch-params-2026-07-26.json \
 MIDGARD_PRINT_PROOF_FIT=1 \
-pnpm --filter @al-ft/midgard-fault-proofs exec vitest run \
+./node_modules/.bin/vitest run \
   tests/submit-init-emulator.test.ts \
   -t "opens, bisects, resolves, and awards a validation dispute end to end" \
   --pool=forks --poolOptions.forks.singleFork=true \
@@ -101,8 +101,8 @@ pnpm --filter @al-ft/midgard-fault-proofs exec vitest run \
 
 Result: **PASS** through open, source authentication, all generated midpoint
 reveals, boundary preparation, selected one-step resolution, semantic
-resolution, and award (1 passed, 10 skipped; lifecycle 104.923 s, total
-107.41 s). The snapshot loader validates the required numeric fields, all
+resolution, and award (1 passed, 10 skipped; lifecycle 109.970 s, total
+111.78 s). The snapshot loader validates the required numeric fields, all
 three cost-model vectors, and the 16,384-byte target before applying it.
 
 ## Concrete proof-transaction measurements
@@ -178,6 +178,16 @@ deployment gates, not authority to submit or mutate preprod state.
 | P4 forced/misclassification        | FAIL     | **FAIL overall; lifecycle subpath PASS** | The invalid-forced accepted-operator/rejected-challenger path now reaches award, but the opposite direction, retained-data construction, preprod, and the matrix's other fund-safety rows remain incomplete. |
 
 Unsupported/incomplete activation therefore still fails closed.
+
+## Narrow verification
+
+The final worktree copy passed:
+
+- `tsc --noEmit` in `demo/midgard-sdk`,
+  `demo/midgard-validation`, and `demo/midgard-fault-proofs`;
+- targeted ESLint with zero warnings for all six touched TypeScript source/test
+  files; and
+- `git diff --check`.
 
 ## Remaining blocker and smallest next milestone
 
