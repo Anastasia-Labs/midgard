@@ -9,14 +9,16 @@ use midgard/fraud_proofs/native_tx/types.{
   PubKeyCredential, ScriptCredential,
 }
 
-/// A ledger membership one-step reserves 12 KiB for the transition states,
-/// MPF path, redeemer framing, and Cardano transaction overhead. The revealed
-/// output is therefore strictly below the remaining 4 KiB. Values and datums
-/// have no separate arbitrary cap: they share this concrete output-preimage
-/// envelope with the address and optional reference script.
-pub const max_output_canonical_cbor_bytes: Int = 4095
+/// Cardano mainnet's complete transaction envelope is the output byte bound.
+/// Consensus proofs consume larger outputs through authenticated descriptors
+/// and bounded chunks rather than revealing the complete output in one L1
+/// transaction.
+pub const max_output_canonical_cbor_bytes: Int = 16384
 
-pub const max_distinct_asset_count: Int = 128
+/// One byte per item is an impossible-to-beat lower serialization floor under
+/// Cardano's 16,384-byte transaction limit. Real assets consume more bytes, so
+/// this guardrail cannot reject a Value that Cardano mainnet could admit.
+pub const max_distinct_asset_count: Int = 16384
 
 type ParsedAssets {
   assets: List<Pair<ByteArray, Int>>,

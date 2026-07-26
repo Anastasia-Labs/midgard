@@ -14,6 +14,8 @@ pub const version: Int = 1
 
 pub const output_field_index: Int = 2
 
+pub const max_cardano_value_cbor_bytes: Int = 5000
+
 const uint64_max = 18446744073709551615
 
 const asset_leaf_domain =
@@ -119,6 +121,7 @@ fn descriptor_is_well_formed(
     descriptor.asset_count <= validation_merkle_v1.maximum_leaf_count,
     bytearray.length(descriptor.asset_frontier_commitment) == 32,
     descriptor.cardano_value_size >= 0,
+    descriptor.cardano_value_size <= max_cardano_value_cbor_bytes,
     reference_script_language_is_valid(
       descriptor.reference_script_language,
     ),

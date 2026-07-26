@@ -21,6 +21,8 @@ import {
 
 export const MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION = 1 as const;
 export const MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1 = 2 as const;
+export const MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES_V1 = 5_000 as const;
+export const MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT_V1 = 16_384 as const;
 
 const LEDGER_OUTPUT_ASSET_LEAF_DOMAIN = Buffer.from(
   "MidgardLedgerOutputAssetLeafV1",
@@ -110,9 +112,22 @@ const exactLength = (value: number, field = "length"): number => {
 
 const exactAssetCount = (value: number): number => {
   const exact = exactLength(value, "asset count");
-  if (exact > MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT) {
+  if (
+    exact > MIDGARD_TX_SIZE_DERIVED_ASSET_COUNT_V1 ||
+    exact > MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT
+  ) {
     throw new Error(
-      "V1 ledger output asset count exceeds the uint32 proof envelope",
+      "V1 ledger output asset count exceeds the Cardano-size-derived proof envelope",
+    );
+  }
+  return exact;
+};
+
+const exactCardanoValueSize = (value: number): number => {
+  const exact = exactLength(value, "Cardano Value size");
+  if (exact > MIDGARD_CARDANO_MAX_VALUE_CBOR_BYTES_V1) {
+    throw new Error(
+      "V1 ledger output Cardano Value exceeds the 5,000-byte mainnet bound",
     );
   }
   return exact;
@@ -313,7 +328,7 @@ export const encodeMidgardLedgerOutputCommitmentV1 = (
       descriptor.assetFrontierCommitment,
       "ledger_output_commitment_v1.asset_frontier_commitment",
     ),
-    BigInt(exactLength(descriptor.cardanoValueSize, "Cardano Value size")),
+    BigInt(exactCardanoValueSize(descriptor.cardanoValueSize)),
     BigInt(referenceScript.language),
     referenceScript.hash,
     BigInt(referenceScript.totalLength),
@@ -368,10 +383,7 @@ export const decodeMidgardLedgerOutputCommitmentV1 = (
       ),
       "ledger_output_commitment_v1.asset_frontier_commitment",
     ),
-    cardanoValueSize: exactLength(
-      decodedSafeInteger(value[8]),
-      "Cardano Value size",
-    ),
+    cardanoValueSize: exactCardanoValueSize(decodedSafeInteger(value[8])),
     referenceScriptLanguage: referenceScript.language,
     referenceScriptHash: referenceScript.hash,
     referenceScriptTotalLength: referenceScript.totalLength,

@@ -1267,16 +1267,31 @@ export const validationAuxiliaryWitnessDataV1 = (
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
-        bytes(auxiliary.value),
+        bytes(auxiliary.descriptorCbor),
         int(auxiliary.assetIndex),
+        bytes(auxiliary.policyId),
+        bytes(auxiliary.assetName),
+        auxiliary.quantity,
+        frontierPeaksData(auxiliary.assetFrontier),
+        byteList(auxiliary.assetSiblings),
         valueMutationData(auxiliary.mutationStep),
+      ]);
+    case "valueOutputDescriptor":
+      return new Constr(43, [
+        int(auxiliary.outputIndex),
+        bytes(auxiliary.descriptorCbor),
+        byteList(auxiliary.siblings),
       ]);
     case "valueOutputAsset":
       return new Constr(30, [
         int(auxiliary.outputIndex),
-        bytes(auxiliary.outputCbor),
-        byteList(auxiliary.siblings),
+        bytes(auxiliary.descriptorCbor),
         int(auxiliary.assetIndex),
+        bytes(auxiliary.policyId),
+        bytes(auxiliary.assetName),
+        auxiliary.quantity,
+        frontierPeaksData(auxiliary.assetFrontier),
+        byteList(auxiliary.assetSiblings),
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueMintAsset":

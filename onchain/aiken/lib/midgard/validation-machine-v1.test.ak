@@ -8457,6 +8457,222 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
   )
 }
 
+type ValueOutputDescriptorFixture {
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  active_state: validation_trace_v1.ValidationMachineStateV1,
+  final_state: validation_trace_v1.ValidationMachineStateV1,
+  initial_work: ByteArray,
+  active_work: ByteArray,
+  descriptor_cbor: ByteArray,
+  policy_id: ByteArray,
+  asset_name: ByteArray,
+  quantity: Int,
+  asset_peaks: List<validation_merkle_v1.FrontierPeak>,
+}
+
+fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
+  let tx = empty_v1_transaction()
+  let policy_id = h_28_a
+  let asset_name = #"beef"
+  let quantity = 7
+  let unit = policy_id |> bytearray.concat(asset_name)
+  let asset_frontier = validation_merkle_v1.build_frontier([
+    ledger_output_commitment_v1.asset_leaf_hash(
+      policy_id,
+      asset_name,
+      quantity,
+    ),
+  ])
+  let empty_summary = cek_data_v1.DataSummaryV1 {
+    root: h_a,
+    cbor_length: 0,
+    memory: 0,
+  }
+  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    version: ledger_output_commitment_v1.version,
+    output_index: 0,
+    total_length: 16384,
+    item_commitment: h_b,
+    address: #"60" |> bytearray.concat(h_28_b),
+    lovelace: 3,
+    asset_count: 1,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(
+      asset_frontier.count,
+      asset_frontier.peaks,
+    ),
+    cardano_value_size: 5000,
+    reference_script_language: -1,
+    reference_script_hash: #"",
+    reference_script_total_length: 0,
+    reference_script_item_commitment: #"",
+    cardano_tx_out: empty_summary,
+    midgard_tx_out: empty_summary,
+    cardano_spend_datum: empty_summary,
+  }
+  let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
+  let descriptor_frontier = validation_merkle_v1.build_frontier([
+    script_proof_v1.output_descriptor_leaf_hash(0, descriptor_cbor),
+  ])
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    output_count: 1,
+    output_peaks: validation_merkle_v1.build_frontier([h_c]).peaks,
+    output_descriptor_peaks: descriptor_frontier.peaks,
+  }
+  let initial_control = validation_machine_v1.ValueAndMintControlV1 {
+    native_control,
+    stage: 3,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_asset_cursor: 0,
+    replay_value_hash: zero,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    output_cursor: 0,
+    output_asset_cursor: 0,
+    mint_count: 0,
+    mint_peaks: validation_merkle_v1.empty_frontier(),
+    mint_cursor: 0,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: 0,
+      asset_root: null_hash,
+      seen_asset_count: 0,
+      nonzero_asset_count: 0,
+    },
+  }
+  let active_control = validation_machine_v1.ValueAndMintControlV1 {
+    ..initial_control,
+    output_asset_cursor: 1,
+    replay_value_hash: blake2b_256(descriptor_cbor),
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      ..initial_control.value_accumulator,
+      lovelace_delta: -3,
+    },
+  }
+  let final_control = validation_machine_v1.ValueAndMintControlV1 {
+    ..active_control,
+    output_cursor: 1,
+    output_asset_cursor: 0,
+    replay_value_hash: zero,
+    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      lovelace_delta: -3,
+      asset_root: singleton_root(unit, cbor.serialise(-7)),
+      seen_asset_count: 1,
+      nonzero_asset_count: 1,
+    },
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let initial_work = validation_machine_v1.encode_value_and_mint_control_v1(
+    initial_control,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_c,
+    phase: validation_trace_v1.ValueAndMint,
+    program_counter: 46,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      46,
+      initial_work,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+  let active_work = validation_machine_v1.encode_value_and_mint_control_v1(
+    active_control,
+  )
+  let active_state = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 47,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      47,
+      active_work,
+    ),
+  }
+  let final_state = validation_trace_v1.ValidationMachineStateV1 {
+    ..active_state,
+    program_counter: 48,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ValueAndMint,
+      48,
+      validation_machine_v1.encode_value_and_mint_control_v1(final_control),
+    ),
+  }
+  ValueOutputDescriptorFixture {
+    pre,
+    active_state,
+    final_state,
+    initial_work,
+    active_work,
+    descriptor_cbor,
+    policy_id,
+    asset_name,
+    quantity,
+    asset_peaks: asset_frontier.peaks,
+  }
+}
+
+test value_and_mint_authenticates_output_descriptor_on_l1() {
+  let fixture = value_output_descriptor_fixture()
+  validation_machine_v1.verify_one_step_evidence(
+    fixture.pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: fixture.initial_work,
+        claimed_successor: fixture.active_state,
+      },
+      auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+        output_index: 0,
+        descriptor_cbor: fixture.descriptor_cbor,
+        siblings: [],
+      },
+    },
+  )
+}
+
+test value_and_mint_replays_output_descriptor_asset_on_l1() {
+  let fixture = value_output_descriptor_fixture()
+  validation_machine_v1.verify_one_step_evidence(
+    fixture.active_state,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: fixture.active_work,
+        claimed_successor: fixture.final_state,
+      },
+      auxiliary: validation_machine_v1.ValueOutputAssetWitness {
+        output_index: 0,
+        descriptor_cbor: fixture.descriptor_cbor,
+        asset_index: 0,
+        policy_id: fixture.policy_id,
+        asset_name: fixture.asset_name,
+        quantity: fixture.quantity,
+        asset_peaks: fixture.asset_peaks,
+        asset_siblings: [],
+        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+          delta_was_present: False,
+          old_delta: 0,
+          delta_proof: [],
+        },
+      },
+    },
+  )
+}
+
 test value_asset_output_instruction_evidence_is_bounded() {
   let tx = empty_v1_transaction()
   let dense_frontier_four = [
@@ -8571,9 +8787,13 @@ test value_asset_output_instruction_evidence_is_bounded() {
     },
     auxiliary: validation_machine_v1.ValueOutputAssetWitness {
       output_index: 63,
-      output_cbor: bytearray.from_int_big_endian(0, 4095),
-      siblings: list.repeat(zero, 6),
+      descriptor_cbor: bytearray.from_int_big_endian(0, 512),
       asset_index: 127,
+      policy_id: h_28_a,
+      asset_name: bytearray.from_int_big_endian(0, 32),
+      quantity: 9_223_372_036_854_775_807,
+      asset_peaks: dense_frontier_seven,
+      asset_siblings: list.repeat(zero, 7),
       mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
         delta_was_present: True,
         old_delta: -9_223_372_036_854_775_808,

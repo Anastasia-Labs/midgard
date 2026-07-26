@@ -5,6 +5,7 @@ import {
   buildMidgardBoundedCollectionItemProofV1,
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
+  buildMidgardLedgerOutputAssetFrontierV1,
   buildMidgardLedgerOutputProofTraceV1,
   buildMidgardMpfProofFoldTraceV1,
   buildMidgardValidationLedgerDeltaFrontierV1,
@@ -51,6 +52,7 @@ import {
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
   type MidgardConsensusProfileV1,
+  type MidgardLedgerOutputAssetV1,
   type MidgardLedgerOutputProofControlV1,
   type MidgardLedgerOutputProofWitnessV1,
   type MidgardMpfProofFoldTraceV1,
@@ -571,16 +573,31 @@ export type ValidationMachineWorkWitness = {
         readonly sourceKind: "spend";
         readonly key: Buffer;
         readonly nextScheduleHash: Buffer;
-        readonly value: Buffer;
+        readonly descriptorCbor: Buffer;
         readonly assetIndex: number;
+        readonly policyId: Buffer;
+        readonly assetName: Buffer;
+        readonly quantity: bigint;
+        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
+        readonly assetSiblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineValueMutationStep;
+      }
+    | {
+        readonly kind: "valueOutputDescriptor";
+        readonly outputIndex: number;
+        readonly descriptorCbor: Buffer;
+        readonly siblings: readonly Buffer[];
       }
     | {
         readonly kind: "valueOutputAsset";
         readonly outputIndex: number;
-        readonly outputCbor: Buffer;
-        readonly siblings: readonly Buffer[];
+        readonly descriptorCbor: Buffer;
         readonly assetIndex: number;
+        readonly policyId: Buffer;
+        readonly assetName: Buffer;
+        readonly quantity: bigint;
+        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
+        readonly assetSiblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineValueMutationStep;
       }
     | {
@@ -994,21 +1011,25 @@ type ValidationValueContribution = {
   readonly quantityDelta: bigint;
 };
 
+const midgardValueAssets = (
+  value: MidgardValue,
+): readonly MidgardLedgerOutputAssetV1[] =>
+  [...value.assets.entries()].flatMap(([policyId, policyAssets]) =>
+    [...policyAssets.entries()].map(([assetName, quantity]) => ({
+      policyId: Buffer.from(policyId, "hex"),
+      assetName: Buffer.from(assetName, "hex"),
+      quantity,
+    })),
+  );
+
 const midgardValueContributions = (
   value: MidgardValue,
   multiplier: 1n | -1n,
-): readonly ValidationValueContribution[] => {
-  const contributions: ValidationValueContribution[] = [];
-  for (const [policyId, policyAssets] of value.assets) {
-    for (const [assetName, quantity] of policyAssets) {
-      contributions.push({
-        unit: Buffer.from(`${policyId}${assetName}`, "hex"),
-        quantityDelta: quantity * multiplier,
-      });
-    }
-  }
-  return contributions;
-};
+): readonly ValidationValueContribution[] =>
+  midgardValueAssets(value).map(({ policyId, assetName, quantity }) => ({
+    unit: Buffer.concat([policyId, assetName]),
+    quantityDelta: quantity * multiplier,
+  }));
 
 const buildValidationValueMutationSteps = async (
   contributions: readonly ValidationValueContribution[],
@@ -6161,11 +6182,13 @@ export const buildDeterministicValidationMachineTrace = (
 
           if (!stoppedAtRejection) {
             for (const node of resolutionScheduleNodes) {
-              const value = ledgerState.get(node.key.toString("hex"));
-              if (value === undefined) {
+              const outRefHex = node.key.toString("hex");
+              const outputCbor = ledgerState.get(outRefHex);
+              const descriptorCbor = ledgerDescriptorState.get(outRefHex);
+              if (outputCbor === undefined || descriptorCbor === undefined) {
                 return yield* Effect.fail(
                   new Error(
-                    "value replay lost a previously authenticated ledger value",
+                    "value replay lost a previously authenticated ledger descriptor",
                   ),
                 );
               }
@@ -6181,25 +6204,28 @@ export const buildDeterministicValidationMachineTrace = (
                   sourceKind: node.sourceKind,
                   key: node.key,
                   nextScheduleHash: node.nextScheduleHash,
-                  value,
+                  value: descriptorCbor,
                 },
               );
-              const decodedValue = decodeMidgardTxOutput(value).value;
-              const contributions =
+              const decodedValue = decodeMidgardTxOutput(outputCbor).value;
+              const assets =
                 node.sourceKind === "spend"
-                  ? midgardValueContributions(decodedValue, 1n)
+                  ? midgardValueAssets(decodedValue)
                   : [];
+              const assetMaterial =
+                buildMidgardLedgerOutputAssetFrontierV1(assets);
               if (node.sourceKind === "spend") {
                 valueAccumulator.lovelaceDelta += decodedValue.lovelace;
               }
-              if (contributions.length > 0) {
+              if (assets.length > 0) {
                 valueReplayAssetCursor = 1;
-                valueReplayValueHash = hash32(value);
+                valueReplayValueHash = hash32(descriptorCbor);
                 for (
                   let assetIndex = 0;
-                  assetIndex < contributions.length;
+                  assetIndex < assets.length;
                   assetIndex += 1
                 ) {
+                  const asset = assets[assetIndex]!;
                   const mutationStep = valueMutationSteps[valueMutationCursor];
                   if (mutationStep === undefined) {
                     return yield* Effect.fail(
@@ -6220,8 +6246,17 @@ export const buildDeterministicValidationMachineTrace = (
                       sourceKind: "spend",
                       key: node.key,
                       nextScheduleHash: node.nextScheduleHash,
-                      value,
+                      descriptorCbor,
                       assetIndex,
+                      policyId: asset.policyId,
+                      assetName: asset.assetName,
+                      quantity: asset.quantity,
+                      assetFrontier: assetMaterial.frontier,
+                      assetSiblings:
+                        buildMidgardValidationMerkleMembershipV1(
+                          assetMaterial.leaves,
+                          assetIndex,
+                        ).siblings,
                       mutationStep,
                     },
                   );
@@ -6259,7 +6294,7 @@ export const buildDeterministicValidationMachineTrace = (
                   accumulator: valueReplayAccumulator,
                   sourceKind: node.sourceKind,
                   key: node.key,
-                  value,
+                  value: descriptorCbor,
                 });
               valueReplayRemainingScheduleHash = node.nextScheduleHash;
               valueReplayCursor += 1;
@@ -6281,6 +6316,15 @@ export const buildDeterministicValidationMachineTrace = (
               outputIndex += 1
             ) {
               const outputCbor = outputCbors[outputIndex]!;
+              const descriptorCbor =
+                admittedOutputDescriptorCbors[outputIndex];
+              if (descriptorCbor === undefined) {
+                return yield* Effect.fail(
+                  new Error(
+                    "value replay lost an authenticated transaction-output descriptor",
+                  ),
+                );
+              }
               pushWitness(
                 "valueAndMint",
                 valueAndMintControlCbor({
@@ -6289,26 +6333,29 @@ export const buildDeterministicValidationMachineTrace = (
                   mintFrontier,
                 }),
                 {
-                  kind: "outputReplay",
+                  kind: "valueOutputDescriptor",
                   outputIndex,
-                  outputCbor,
-                  siblings: outputMembership(outputIndex).siblings,
-                  signerProof: { kind: "none" },
+                  descriptorCbor,
+                  siblings: buildMidgardValidationMerkleMembershipV1(
+                    admittedOutputDescriptorLeafHashes,
+                    outputIndex,
+                  ).siblings,
                 },
               );
               const decodedValue = decodeMidgardTxOutput(outputCbor).value;
               valueAccumulator.lovelaceDelta -= decodedValue.lovelace;
-              const contributions = midgardValueContributions(
-                decodedValue,
-                -1n,
-              );
-              if (contributions.length > 0) {
+              const assets = midgardValueAssets(decodedValue);
+              const assetMaterial =
+                buildMidgardLedgerOutputAssetFrontierV1(assets);
+              if (assets.length > 0) {
                 valueOutputAssetCursor = 1;
+                valueReplayValueHash = hash32(descriptorCbor);
                 for (
                   let assetIndex = 0;
-                  assetIndex < contributions.length;
+                  assetIndex < assets.length;
                   assetIndex += 1
                 ) {
+                  const asset = assets[assetIndex]!;
                   const mutationStep = valueMutationSteps[valueMutationCursor];
                   if (mutationStep === undefined) {
                     return yield* Effect.fail(
@@ -6327,9 +6374,17 @@ export const buildDeterministicValidationMachineTrace = (
                     {
                       kind: "valueOutputAsset",
                       outputIndex,
-                      outputCbor,
-                      siblings: outputMembership(outputIndex).siblings,
+                      descriptorCbor,
                       assetIndex,
+                      policyId: asset.policyId,
+                      assetName: asset.assetName,
+                      quantity: asset.quantity,
+                      assetFrontier: assetMaterial.frontier,
+                      assetSiblings:
+                        buildMidgardValidationMerkleMembershipV1(
+                          assetMaterial.leaves,
+                          assetIndex,
+                        ).siblings,
                       mutationStep,
                     },
                   );
@@ -6361,6 +6416,7 @@ export const buildDeterministicValidationMachineTrace = (
               }
               if (stoppedAtRejection) break;
               valueOutputAssetCursor = 0;
+              valueReplayValueHash = Buffer.alloc(32);
               valueOutputCursor += 1;
             }
           }

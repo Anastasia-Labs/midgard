@@ -94,6 +94,44 @@ describe("ledger output commitment V1", () => {
     }
   });
 
+  it("admits the exact Cardano Value byte bound and fails closed above it", () => {
+    const atBound = buildMidgardLedgerOutputMaterialV1({
+      outputIndex: 7,
+      outputCbor: Buffer.alloc(16_384, 0x5a),
+      facts: {
+        ...facts(),
+        cardanoValueSize: 5_000,
+      },
+    });
+    expect(
+      decodeMidgardLedgerOutputCommitmentV1(atBound.descriptorCbor)
+        .cardanoValueSize,
+    ).toBe(5_000);
+    expect(() =>
+      buildMidgardLedgerOutputMaterialV1({
+        outputIndex: 7,
+        outputCbor: Buffer.alloc(16_384, 0x5a),
+        facts: {
+          ...facts(),
+          cardanoValueSize: 5_001,
+        },
+      }),
+    ).toThrow(/5,000-byte mainnet bound/);
+  });
+
+  it("uses a transaction-size-derived asset guardrail rather than 128", () => {
+    expect(() =>
+      buildMidgardLedgerOutputMaterialV1({
+        outputIndex: 7,
+        outputCbor: Buffer.alloc(16_384, 0x5a),
+        facts: {
+          ...facts(),
+          assetCount: 16_385,
+        },
+      }),
+    ).toThrow(/Cardano-size-derived proof envelope/);
+  });
+
   it("authenticates every chunk of a reference script independently", () => {
     const referenceScript = buildMidgardBoundedItemV1({
       fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,

@@ -144,3 +144,22 @@ test descriptor_substitution_fails_closed() {
     },
   )
 }
+
+test exact_cardano_value_size_bound_is_supported() {
+  let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    ..descriptor_fixture(),
+    cardano_value_size: ledger_output_commitment_v1.max_cardano_value_cbor_bytes,
+  }
+  ledger_output_commitment_v1.decode(
+    ledger_output_commitment_v1.encode(descriptor),
+  ) == descriptor
+}
+
+test cardano_value_above_mainnet_bound_fails_closed() fail {
+  ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      ..descriptor_fixture(),
+      cardano_value_size: ledger_output_commitment_v1.max_cardano_value_cbor_bytes + 1,
+    },
+  ) == #""
+}
