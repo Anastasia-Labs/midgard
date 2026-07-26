@@ -11,18 +11,25 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasRoot } from "@/workers/utils/mpf.js";
+import {
+  keyValuePhasRoot,
+  ledgerOutputToInsertBatchOpV1,
+} from "@/workers/utils/mpf.js";
 
 import { deterministicFixtureBytes } from "./utils.js";
 
 const fixture = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`da-payload:${label}`, length);
 
-const root = (entries: readonly [Buffer, Buffer][]) =>
-  keyValuePhasRoot(
-    entries.map(([key]) => key),
-    entries.map(([, value]) => value),
+const ledgerRoot = (entries: readonly [Buffer, Buffer][]) => {
+  const operations = entries.map(([outRef, outputCbor]) =>
+    ledgerOutputToInsertBatchOpV1({ outRef, outputCbor }),
   );
+  return keyValuePhasRoot(
+    operations.map((operation) => operation.key),
+    operations.map((operation) => operation.value),
+  );
+};
 
 const sourceRoot = (
   domain: SDK.RootDomain,
@@ -120,6 +127,23 @@ const retainedPairs = (
   Array.from({ length: count }, (_, index) => [
     fixture(`${label}-key-${index}`, 4),
     fixture(`${label}-value-${index}`, 16),
+  ]);
+
+const LEDGER_OUTPUT_CBOR = Buffer.from(
+  "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+  "hex",
+);
+
+const ledgerEntries = (
+  label: string,
+  count: number,
+): readonly [Buffer, Buffer][] =>
+  Array.from({ length: count }, (_, index) => [
+    Buffer.from(
+      `825820${fixture(`${label}-tx-id-${index}`, 32).toString("hex")}00`,
+      "hex",
+    ),
+    Buffer.from(LEDGER_OUTPUT_CBOR),
   ]);
 
 const member = (
@@ -316,7 +340,7 @@ const buildJournalFixture = async ({
         utxosRoot:
           utxoEntries.length === 0
             ? Effect.succeed(SDK.EMPTY_MERKLE_TREE_ROOT)
-            : root(utxoEntries),
+            : ledgerRoot(utxoEntries),
         forcedTransactionsRoot: sourceRootOrEmpty(
           SDK.ROOT_DOMAINS.forcedTransactionsV1,
           forcedTransactionEntries,
@@ -426,10 +450,7 @@ describe("DaPayloadV1 builder", () => {
   });
 
   it("builds a canonical payload whose roots, counts, and header match the journal", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("utxo-b", 34), fixture("utxo-value-b", 41)],
-      [fixture("utxo-a", 34), fixture("utxo-value-a", 39)],
-    ];
+    const utxoEntries = ledgerEntries("utxo", 2);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("deposit", 34), fixture("deposit-info", 48)],
     ];
@@ -494,10 +515,7 @@ describe("DaPayloadV1 builder", () => {
   });
 
   it("backfills a missing DA payload from complete journal payload members", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("backfill-utxo-b", 34), fixture("backfill-utxo-value-b", 41)],
-      [fixture("backfill-utxo-a", 34), fixture("backfill-utxo-value-a", 39)],
-    ];
+    const utxoEntries = ledgerEntries("backfill-utxo", 2);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("backfill-deposit", 34), fixture("backfill-deposit-info", 48)],
     ];
@@ -620,9 +638,7 @@ describe("DaPayloadV1 builder", () => {
   });
 
   it("rejects a payload whose recomputed roots do not match the journal", async () => {
-    const utxoEntries: readonly [Buffer, Buffer][] = [
-      [fixture("bad-utxo", 34), fixture("bad-utxo-value", 41)],
-    ];
+    const utxoEntries = ledgerEntries("bad-utxo", 1);
     const depositEntries: readonly [Buffer, Buffer][] = [
       [fixture("bad-deposit", 34), fixture("bad-deposit-info", 48)],
     ];

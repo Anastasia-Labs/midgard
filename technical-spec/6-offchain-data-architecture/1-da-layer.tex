@@ -19,6 +19,12 @@ withdrawal members, forced and normal compact transaction sources, their full
 canonical preimages, CEK program material, deposit members, transition trace
 members, event-to-step members, validation-trace descriptors, and counts.
 Committee nodes recompute every root and count against the L1 header before signing an attestation.
+Final UTxO members carry canonical output-reference and full-output CBOR bytes.
+For \code{utxos\_root}, committee nodes and challengers independently fold each
+full output into its exact \code{LedgerOutputCommitmentV1} descriptor and use
+that descriptor as the MPT value. The full bytes are retained rather than
+replaced by the descriptor so all bounded output and reference-script openings
+remain constructible.
 
 Independent challengers retrieve the retained payload from DA committee routes keyed by deployment fingerprint and header hash, then reconstruct the roots and proof witnesses locally.
 Operator debug endpoints are not a production DA source; challenger tooling must be able to build transition-trace proofs from the L1 header plus committee-retained data.

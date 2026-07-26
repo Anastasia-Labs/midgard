@@ -10,10 +10,11 @@ import { afterAll, beforeAll, describe, expect, expectTypeOf } from "vitest";
 import * as Ledger from "../src/database/utils/ledger.js";
 import * as Tx from "../src/database/utils/tx.js";
 import {
-  applyLedgerOpsToUtxoPayloadAggregate,
+  applyLedgerOpsToUtxoPayloadAggregateFromFullValues,
   applyTraceLedgerOpsToMpf,
   buildTransitionTraceResult,
   computeLedgerMpfRootFromLedgerEntries,
+  computeUtxoPayloadRoot,
   configureMpfArenaLimits,
   configureMpfPathHydration,
   DecodedMempoolTxForCommit,
@@ -29,6 +30,7 @@ import {
   keyValuePhasProof,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
+  ledgerOutputToInsertBatchOpV1,
   type LedgerOverlayHandle,
   MidgardMpf,
   MpfBatchOp,
@@ -515,14 +517,26 @@ describe("Midgard MPF wrapper", () => {
         { type: "insert", key: key3, value: value3 },
       ]);
 
+      const firstOutRef = Buffer.from(
+        `825820${"11".repeat(32)}00`,
+        "hex",
+      );
+      const secondOutRef = Buffer.from(
+        `825820${"22".repeat(32)}00`,
+        "hex",
+      );
+      const outputCbor = Buffer.from(
+        "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+        "hex",
+      );
       const entries: Ledger.MinimalEntry[] = [
         {
-          [Ledger.Columns.OUTREF]: key1,
-          [Ledger.Columns.OUTPUT]: value1,
+          [Ledger.Columns.OUTREF]: firstOutRef,
+          [Ledger.Columns.OUTPUT]: outputCbor,
         },
         {
-          [Ledger.Columns.OUTREF]: key2,
-          [Ledger.Columns.OUTPUT]: value2,
+          [Ledger.Columns.OUTREF]: secondOutRef,
+          [Ledger.Columns.OUTPUT]: outputCbor,
         },
       ];
       const expectedRoot =
@@ -531,10 +545,31 @@ describe("Midgard MPF wrapper", () => {
         mpf,
         entries,
       );
+      const payloadRoot = yield* computeUtxoPayloadRoot(
+        entries.map((entry) => ({
+          outref: entry[Ledger.Columns.OUTREF],
+          output: entry[Ledger.Columns.OUTPUT],
+        })),
+      );
+      const obsoleteRawOutputRoot = yield* keyValuePhasRoot(
+        entries.map((entry) => entry[Ledger.Columns.OUTREF]),
+        entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
+      );
       const removedStaleEntry = yield* mpf.get(key3);
+      const hydratedDescriptor = yield* mpf.get(firstOutRef);
+      const expectedDescriptor = ledgerOutputToInsertBatchOpV1({
+        outRef: firstOutRef,
+        outputCbor,
+      }).value;
 
       expect(hydratedRoot).toBe(expectedRoot);
+      expect(payloadRoot).toBe(expectedRoot);
+      expect(obsoleteRawOutputRoot).not.toBe(expectedRoot);
       expect(removedStaleEntry._tag).toBe("None");
+      expect(hydratedDescriptor._tag).toBe("Some");
+      if (hydratedDescriptor._tag === "Some") {
+        expect(hydratedDescriptor.value).toEqual(expectedDescriptor);
+      }
     }),
   );
 
@@ -3951,21 +3986,29 @@ describe("Midgard MPF wrapper", () => {
         ];
 
         for (const testCase of cases) {
-          const mpf = yield* MidgardMpf.createScratch(
-            `aggregate-${testCase.label}`,
-          );
-          yield* hydrateLedgerMpfFromLedgerEntries(
-            mpf,
-            testCase.base.map((entry) => ({
-              [Ledger.Columns.OUTREF]: entry.outref,
-              [Ledger.Columns.OUTPUT]: entry.output,
-            })),
-          );
-          const actual = yield* applyLedgerOpsToUtxoPayloadAggregate(
-            mpf,
-            utxoPayloadAggregateFromEntries(testCase.base),
-            testCase.ops,
-          );
+          const actual =
+            yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
+              utxoPayloadAggregateFromEntries(testCase.base),
+              testCase.ops,
+              new Map(
+                testCase.base.map((entry) => [
+                  entry.outref.toString("hex"),
+                  entry.output,
+                ]),
+              ),
+              new Map(
+                testCase.ops.flatMap((operation) =>
+                  operation.type === "delete"
+                    ? []
+                    : [
+                        [
+                          operation.key.toString("hex"),
+                          operation.value,
+                        ] as const,
+                      ],
+                ),
+              ),
+            );
           const materialized = new Map(
             testCase.base.map((entry) => [
               entry.outref.toString("hex"),
@@ -4043,7 +4086,6 @@ describe("Midgard MPF wrapper", () => {
             SDK.daPayloadV1EncodedSizeFromUtxoAggregate(payload, actual),
             testCase.label,
           ).toBe(SDK.encodeDaPayloadV1(payload).length);
-          yield* mpf.close();
         }
       }),
   );

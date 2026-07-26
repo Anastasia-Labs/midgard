@@ -26,6 +26,7 @@ import {
   encodeDaTraceStepByIndexResponseV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -158,6 +159,27 @@ const sorted = (entries: readonly SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
     left < right ? -1 : left > right ? 1 : 0,
   );
 
+const LEDGER_OUTPUT_CBOR =
+  "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0";
+
+const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
+  `825820${h32(byte)}00`,
+  LEDGER_OUTPUT_CBOR,
+];
+
+const utxoRootWithDescriptors = (
+  utxos: readonly SDK.DaPayloadEntry[],
+): Promise<Awaited<ReturnType<typeof keyValuePhasRootWithCount>>> =>
+  keyValuePhasRootWithCount(
+    utxos.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: Buffer.from(key, "hex"),
+        outputCbor: Buffer.from(value, "hex"),
+      }).descriptorCbor,
+    })),
+  );
+
 const encodedEntry = <K, V>({
   key,
   keySchema,
@@ -263,12 +285,7 @@ const buildPayloadFixture = async ({
         valueSchema: SDK.ValidationTraceDescriptorV1Schema,
       }),
   );
-  const utxoRoot = await keyValuePhasRootWithCount(
-    utxos.map(([key, value]) => ({
-      key: Buffer.from(key, "hex"),
-      value: Buffer.from(value, "hex"),
-    })),
-  );
+  const utxoRoot = await utxoRootWithDescriptors(utxos);
   const roots = {
     withdrawals: await buildCountedRoot(
       SDK.ROOT_DOMAINS.withdrawals,
@@ -425,10 +442,8 @@ describe("transition-trace challenger tooling", () => {
   it("reconstructs every DA payload V1 root and rejects header/root mismatches", async () => {
     const txOrderId = outRef(1);
     const forced = forcedTx(10);
-    const finalUtxo = entry(Buffer.from("01", "hex"), Buffer.from("02", "hex"));
-    const finalRoot = await keyValuePhasRootWithCount([
-      { key: Buffer.from("01", "hex"), value: Buffer.from("02", "hex") },
-    ]);
+    const finalUtxo = rawLedgerEntry(1);
+    const finalRoot = await utxoRootWithDescriptors([finalUtxo]);
     const eventKey = forcedEventKey(txOrderId);
     const step: SDK.TransitionStep = {
       schema_version: 1n,
@@ -634,10 +649,8 @@ describe("transition-trace challenger tooling", () => {
 
   it("detects a wrong final root caused by an invalid forced no-op step", async () => {
     const txOrderId = outRef(5);
-    const finalUtxo = entry(Buffer.from("05", "hex"), Buffer.from("06", "hex"));
-    const finalRoot = await keyValuePhasRootWithCount([
-      { key: Buffer.from("05", "hex"), value: Buffer.from("06", "hex") },
-    ]);
+    const finalUtxo = rawLedgerEntry(5);
+    const finalRoot = await utxoRootWithDescriptors([finalUtxo]);
     const fixture = await buildPayloadFixture({
       utxos: [finalUtxo],
       forcedTransactions: [

@@ -308,7 +308,7 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   LedgerDeltaOutputWitness {
     output_index: Int,
-    output_cbor: ByteArray,
+    descriptor_cbor: ByteArray,
     siblings: List<ByteArray>,
     proof: Proof,
   }
@@ -13800,11 +13800,13 @@ fn ledger_delta_replay_step(
         proof,
       }
     = auxiliary
+  let descriptor = ledger_output_commitment_v1.decode(value)
+  let input = decode_midgard_tx_input_cbor(key)
   if and {
     source_kind == 0 || source_kind == 1,
     resolution_schedule_node_hash(source_kind, key, next_schedule_hash) == control.replay_remaining_schedule_hash,
     control.replay_cursor < control.native_control.resolved_input_count,
-    ledger_output_v1.decode_canonical_output(value) != None,
+    input.output_index == descriptor.output_index,
   } {
     let next_accumulator = resolved_input_accumulator_successor(
       control.replay_accumulator,
@@ -13899,20 +13901,28 @@ fn ledger_delta_stage_two(
     }
   } else {
     expect
-        LedgerDeltaOutputWitness { output_index, output_cbor, siblings, proof }
+        LedgerDeltaOutputWitness {
+          output_index,
+          descriptor_cbor,
+          siblings,
+          proof,
+        }
       = auxiliary
     let key = encode_midgard_tx_input(
       MidgardTxInput { tx_id: pre.transaction_id, output_index },
     )
+    let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
     if and {
       output_index == control.output_cursor,
-      bytearray.length(output_cbor) <= ledger_output_v1.max_output_canonical_cbor_bytes,
-      ledger_output_v1.decode_canonical_output(output_cbor) != None,
+      descriptor.output_index == output_index,
       validation_merkle_v1.verify_membership(
         control.native_control.output_count,
-        control.native_control.output_peaks,
+        control.native_control.output_descriptor_peaks,
         output_index,
-        script_proof_v1.output_leaf_hash(output_index, output_cbor),
+        script_proof_v1.output_descriptor_leaf_hash(
+          output_index,
+          descriptor_cbor,
+        ),
         siblings,
       ),
       mpf_proof_v1.proof_has_at_most_steps(proof, 16),
@@ -13921,7 +13931,7 @@ fn ledger_delta_stage_two(
         mpf_proof_v1.insert_root(
           control.current_ledger_root,
           key,
-          output_cbor,
+          descriptor_cbor,
           proof,
         )
       is {
@@ -13930,7 +13940,7 @@ fn ledger_delta_stage_two(
           let next_peaks = validation_merkle_v1.append_leaf(
             control.operation_count,
             control.operation_peaks,
-            ledger_delta_operation_leaf_hash(1, key, output_cbor),
+            ledger_delta_operation_leaf_hash(1, key, descriptor_cbor),
           )
           ledger_delta_successor_is_exact(
             pre,

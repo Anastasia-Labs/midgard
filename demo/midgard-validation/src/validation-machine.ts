@@ -135,6 +135,7 @@ export type ValidationMachineLedgerEntry = {
 
 export type ValidationMachineLedgerOp =
   | { readonly type: "delete"; readonly key: Buffer }
+  /** Insert values are exact canonical Midgard ledger output descriptors. */
   | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer };
 
 export type ValidationMachineLedgerMutationStep = {
@@ -181,6 +182,21 @@ export type ValidationMachineReplayInput = {
 const exactTrieRoot = (trie: Trie): Buffer =>
   trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
 
+export const buildValidationMachineLedgerInsertOpV1 = ({
+  key,
+  outputCbor,
+}: {
+  readonly key: Uint8Array;
+  readonly outputCbor: Uint8Array;
+}): Extract<ValidationMachineLedgerOp, { readonly type: "insert" }> => ({
+  type: "insert",
+  key: Buffer.from(key),
+  value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    outRef: key,
+    outputCbor,
+  }).descriptorCbor,
+});
+
 export const buildValidationMachineLedgerMutationSteps = async (input: {
   readonly initialEntries: readonly ValidationMachineLedgerEntry[];
   readonly operations: readonly ValidationMachineLedgerOp[];
@@ -191,7 +207,13 @@ export const buildValidationMachineLedgerMutationSteps = async (input: {
   for (const entry of [...input.initialEntries].sort((left, right) =>
     Buffer.compare(left.outRef, right.outRef),
   )) {
-    await trie.insert(entry.outRef, entry.output);
+    await trie.insert(
+      entry.outRef,
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: entry.outRef,
+        outputCbor: entry.output,
+      }).descriptorCbor,
+    );
   }
   const steps: ValidationMachineLedgerMutationStep[] = [];
   for (const operation of input.operations) {
@@ -458,7 +480,7 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "ledgerDeltaOutput";
         readonly outputIndex: number;
-        readonly outputCbor: Buffer;
+        readonly descriptorCbor: Buffer;
         readonly siblings: readonly Buffer[];
         readonly mutationStep: ValidationMachineLedgerMutationStep;
       }
@@ -1099,11 +1121,12 @@ export const buildDeterministicValidationMachineTrace = (
             type: "delete" as const,
             key: Buffer.from(outRef, "hex"),
           })),
-          ...phaseB.statePatch.upsertedOutRefs.map(([outRef, output]) => ({
-            type: "insert" as const,
-            key: Buffer.from(outRef, "hex"),
-            value: Buffer.from(output),
-          })),
+          ...phaseB.statePatch.upsertedOutRefs.map(([outRef, output]) =>
+            buildValidationMachineLedgerInsertOpV1({
+              key: Buffer.from(outRef, "hex"),
+              outputCbor: output,
+            }),
+          ),
         ];
       }
     }
@@ -1437,6 +1460,8 @@ export const buildDeterministicValidationMachineTrace = (
       buildMidgardValidationMerkleFrontierV1(outputLeafHashes);
     const outputMembership = (outputIndex: number) =>
       buildMidgardValidationMerkleMembershipV1(outputLeafHashes, outputIndex);
+    const admittedOutputDescriptorCbors: Buffer[] = [];
+    const admittedOutputDescriptorLeafHashes: Buffer[] = [];
     const decodedProofRedeemers = decodeMidgardRedeemers(
       fieldPreimages[8]!.preimageCbor,
     );
@@ -3347,6 +3372,13 @@ export const buildDeterministicValidationMachineTrace = (
                     descriptorCbor: outputMaterial.descriptorCbor,
                   }),
                 );
+              admittedOutputDescriptorCbors.push(outputMaterial.descriptorCbor);
+              admittedOutputDescriptorLeafHashes.push(
+                hashMidgardOutputDescriptorLeafV1({
+                  outputIndex: outputCursor,
+                  descriptorCbor: outputMaterial.descriptorCbor,
+                }),
+              );
               if (
                 address.protected &&
                 address.paymentCredential.kind === "Script"
@@ -5773,11 +5805,13 @@ export const buildDeterministicValidationMachineTrace = (
               );
               ledgerReplayRemainingScheduleHash = resolutionScheduleHash;
               for (const node of resolutionScheduleNodes) {
-                const value = ledgerState.get(node.key.toString("hex"));
+                const value = ledgerDescriptorState.get(
+                  node.key.toString("hex"),
+                );
                 if (value === undefined) {
                   return yield* Effect.fail(
                     new Error(
-                      "ledger-delta replay lost a previously authenticated ledger value",
+                      "ledger-delta replay lost a previously authenticated ledger descriptor",
                     ),
                   );
                 }
@@ -5844,7 +5878,15 @@ export const buildDeterministicValidationMachineTrace = (
                 outputIndex < outputCbors.length;
                 outputIndex += 1
               ) {
-                const outputCbor = outputCbors[outputIndex]!;
+                const descriptorCbor =
+                  admittedOutputDescriptorCbors[outputIndex];
+                if (descriptorCbor === undefined) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "ledger-delta insertion lost an admitted output descriptor",
+                    ),
+                  );
+                }
                 const mutationStep = input.ledgerMutationSteps[mutationIndex];
                 const outputKey = encodeCbor([
                   input.transactionId,
@@ -5854,7 +5896,7 @@ export const buildDeterministicValidationMachineTrace = (
                   mutationStep === undefined ||
                   mutationStep.operation.type !== "insert" ||
                   !mutationStep.operation.key.equals(outputKey) ||
-                  !mutationStep.operation.value.equals(outputCbor) ||
+                  !mutationStep.operation.value.equals(descriptorCbor) ||
                   !mutationStep.preRoot.equals(currentLedgerRoot)
                 ) {
                   return yield* Effect.fail(
@@ -5872,8 +5914,11 @@ export const buildDeterministicValidationMachineTrace = (
                   {
                     kind: "ledgerDeltaOutput",
                     outputIndex,
-                    outputCbor,
-                    siblings: outputMembership(outputIndex).siblings,
+                    descriptorCbor,
+                    siblings: buildMidgardValidationMerkleMembershipV1(
+                      admittedOutputDescriptorLeafHashes,
+                      outputIndex,
+                    ).siblings,
                     mutationStep,
                   },
                 );

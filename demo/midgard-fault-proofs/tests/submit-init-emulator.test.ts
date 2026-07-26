@@ -105,6 +105,7 @@ import {
   ValidationTraceDescriptorV1Schema,
   type WithdrawalValidator as SdkWithdrawalValidator,
 } from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import {
   applyDoubleCborEncoding,
   applyParamsToScript,
@@ -1243,11 +1244,19 @@ const buildInvalidForcedTransitionTraceFixture = async ({
 }) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
-  const finalUtxo = transitionTraceRawEntry("01", "02");
+  const finalUtxo = transitionTraceRawEntry(
+    `825820${h32("01")}00`,
+    "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+  );
+  const finalDescriptor =
+    buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      outRef: Buffer.from(finalUtxo[0], "hex"),
+      outputCbor: Buffer.from(finalUtxo[1], "hex"),
+    }).descriptorCbor;
   const finalUtxosRoot = await keyValuePhasRootWithCount([
     {
       key: Buffer.from(finalUtxo[0], "hex"),
-      value: Buffer.from(finalUtxo[1], "hex"),
+      value: finalDescriptor,
     },
   ]);
   const forcedNativeTx = makeNativeTx({

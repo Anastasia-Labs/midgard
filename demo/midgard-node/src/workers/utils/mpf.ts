@@ -33,6 +33,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildDeterministicValidationMachineTrace,
   type RejectCode,
   RejectCodes,
@@ -168,8 +169,9 @@ export const ledgerPayloadAggregateFromEntries = (
     })),
   );
 
-export const collapseLedgerDelta = (
+const collapseLedgerDelta = (
   ops: readonly MpfBatchOp[],
+  insertedValues: ReadonlyMap<string, Buffer>,
 ): LedgerDelta => {
   const finalByOutref = new Map<string, MpfBatchOp>();
   for (const op of ops) finalByOutref.set(op.key.toString("hex"), op);
@@ -177,11 +179,18 @@ export const collapseLedgerDelta = (
   const produced: UtxoPayloadEntry[] = [];
   for (const op of finalByOutref.values()) {
     if (op.type === "delete") spent.push(Buffer.from(op.key));
-    else
+    else {
+      const output = insertedValues.get(op.key.toString("hex"));
+      if (output === undefined) {
+        throw new Error(
+          `Missing full output bytes for ledger delta insertion ${op.key.toString("hex")}`,
+        );
+      }
       produced.push({
         outref: Buffer.from(op.key),
-        output: Buffer.from(op.value),
+        output: Buffer.from(output),
       });
+    }
   }
   return { spent, produced };
 };
@@ -687,14 +696,14 @@ export const makeMpfs: Effect.Effect<
     const genesisEntries = yield* Effect.forEach(
       nodeConfig.GENESIS_UTXOS,
       (u: UTxO) =>
-        utxoToInsertBatchOp(u).pipe(
+        utxoToLedgerInsertMaterialV1(u).pipe(
           Effect.mapError((e) => MpfError.rootBuild("ledger genesis", e)),
-          Effect.map((op) => ({
-            op,
+          Effect.map(({ ledgerOp, outputCbor }) => ({
+            op: ledgerOp,
             ledgerEntry: {
               [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(u.txHash, "hex"),
-              [MempoolLedgerDB.Columns.OUTREF]: op.key,
-              [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+              [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
+              [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
               [MempoolLedgerDB.Columns.ADDRESS]: u.address,
               [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
             } satisfies MempoolLedgerDB.EntryNoTimeStamp,
@@ -720,18 +729,40 @@ export const makeMpfs: Effect.Effect<
 
 export const ledgerEntryToInsertBatchOp = (
   entry: Ledger.MinimalEntry,
-): MpfInsertBatchOp => ({
+): MpfInsertBatchOp =>
+  ledgerOutputToInsertBatchOpV1({
+    outRef: entry[Ledger.Columns.OUTREF],
+    outputCbor: entry[Ledger.Columns.OUTPUT],
+  });
+
+export const ledgerOutputToInsertBatchOpV1 = ({
+  outRef,
+  outputCbor,
+}: {
+  readonly outRef: Uint8Array;
+  readonly outputCbor: Uint8Array;
+}): MpfInsertBatchOp => ({
   type: "insert",
-  key: Buffer.from(entry[Ledger.Columns.OUTREF]),
-  value: Buffer.from(entry[Ledger.Columns.OUTPUT]),
+  key: Buffer.from(outRef),
+  value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    outRef,
+    outputCbor,
+  }).descriptorCbor,
 });
 
 export const computeLedgerMpfRootFromLedgerEntries = (
   entries: readonly Ledger.MinimalEntry[],
 ): Effect.Effect<string, MpfError> =>
-  keyValuePhasRoot(
-    entries.map((entry) => entry[Ledger.Columns.OUTREF]),
-    entries.map((entry) => entry[Ledger.Columns.OUTPUT]),
+  Effect.try({
+    try: () => entries.map(ledgerEntryToInsertBatchOp),
+    catch: (cause) => MpfError.rootBuild("ledger descriptor root", cause),
+  }).pipe(
+    Effect.flatMap((ops) =>
+      keyValuePhasRoot(
+        ops.map((op) => op.key),
+        ops.map((op) => op.value),
+      ),
+    ),
   );
 
 export const hydrateLedgerMpfFromLedgerEntries = (
@@ -740,7 +771,12 @@ export const hydrateLedgerMpfFromLedgerEntries = (
 ): Effect.Effect<string, MpfError> =>
   Effect.gen(function* () {
     yield* ledgerMpf.resetToEmpty();
-    yield* ledgerMpf.applyBatch(entries.map(ledgerEntryToInsertBatchOp));
+    const ops = yield* Effect.try({
+      try: () => entries.map(ledgerEntryToInsertBatchOp),
+      catch: (cause) =>
+        MpfError.rootBuild("ledger descriptor hydration", cause),
+    });
+    yield* ledgerMpf.applyBatch(ops);
     return yield* ledgerMpf.rootHex();
   });
 
@@ -803,9 +839,15 @@ export const synchronizeCommitMpfStoresFromConfirmedLedger: Effect.Effect<
   return yield* synchronizeCommitMpfStoresFromLedgerEntries(confirmedEntries);
 });
 
-export const utxoToInsertBatchOp = (
+export const utxoToLedgerInsertMaterialV1 = (
   utxo: UTxO,
-): Effect.Effect<MpfInsertBatchOp, SDK.CmlDeserializationError> =>
+): Effect.Effect<
+  {
+    readonly ledgerOp: MpfInsertBatchOp;
+    readonly outputCbor: Buffer;
+  },
+  SDK.CmlDeserializationError
+> =>
   Effect.gen(function* () {
     const input = yield* Effect.try({
       try: () =>
@@ -832,11 +874,16 @@ export const utxoToInsertBatchOp = (
           cause: e,
         }),
     });
-    return {
-      type: "insert",
-      key: Buffer.from(input.to_cbor_bytes()),
-      value: output,
-    };
+    const outRef = Buffer.from(input.to_cbor_bytes());
+    const ledgerOp = yield* Effect.try({
+      try: () => ledgerOutputToInsertBatchOpV1({ outRef, outputCbor: output }),
+      catch: (e) =>
+        new SDK.CmlDeserializationError({
+          message: "Failed to derive the canonical V1 genesis descriptor",
+          cause: e,
+        }),
+    });
+    return { ledgerOp, outputCbor: output };
   });
 
 export const deleteMpfStore = (
@@ -958,65 +1005,11 @@ export type UtxoPayloadEntry = {
   readonly output: Buffer;
 };
 
-export const applyLedgerOpsToUtxoPayloadAggregate = (
-  ledgerMpf: MidgardMpf,
-  base: UtxoPayloadSizeAggregate,
-  ops: readonly MpfBatchOp[],
-): Effect.Effect<UtxoPayloadSizeAggregate, MpfError> =>
-  Effect.gen(function* () {
-    let entryCount = base.entryCount;
-    let encodedTupleBytes = base.encodedTupleBytes;
-    const currentValues = new Map<string, Buffer | null>();
-    for (const op of ops) {
-      const keyHex = op.key.toString("hex");
-      let current = currentValues.get(keyHex);
-      if (!currentValues.has(keyHex)) {
-        const existing = yield* ledgerMpf.get(op.key);
-        current = Option.isSome(existing) ? existing.value : null;
-        currentValues.set(keyHex, current);
-      }
-      if (current !== null && current !== undefined) {
-        entryCount -= 1;
-        encodedTupleBytes -= utxoPayloadEntryEncodedSize({
-          outref: op.key,
-          output: current,
-        });
-      } else if (op.type === "delete") {
-        return yield* Effect.fail(
-          MpfError.rootBuild(
-            "DA UTxO size aggregate",
-            new Error(
-              `Cannot size deletion of missing UTxO ${op.key.toString("hex")}`,
-            ),
-          ),
-        );
-      }
-      if (op.type === "insert") {
-        entryCount += 1;
-        encodedTupleBytes += utxoPayloadEntryEncodedSize({
-          outref: op.key,
-          output: op.value,
-        });
-        currentValues.set(keyHex, Buffer.from(op.value));
-      } else {
-        currentValues.set(keyHex, null);
-      }
-    }
-    const aggregate = { entryCount, encodedTupleBytes };
-    try {
-      SDK.daPayloadEntriesEncodedSizeFromAggregate(aggregate);
-    } catch (cause) {
-      return yield* Effect.fail(
-        MpfError.rootBuild("DA UTxO size aggregate", cause),
-      );
-    }
-    return aggregate;
-  });
-
-const applyLedgerOpsToUtxoPayloadAggregateFromValues = (
+export const applyLedgerOpsToUtxoPayloadAggregateFromFullValues = (
   base: UtxoPayloadSizeAggregate,
   ops: readonly MpfBatchOp[],
   initialValues: ReadonlyMap<string, Buffer>,
+  insertedValues: ReadonlyMap<string, Buffer>,
 ): Effect.Effect<UtxoPayloadSizeAggregate, MpfError> =>
   Effect.gen(function* () {
     let entryCount = base.entryCount;
@@ -1042,12 +1035,21 @@ const applyLedgerOpsToUtxoPayloadAggregateFromValues = (
         );
       }
       if (op.type === "insert") {
+        const inserted = insertedValues.get(keyHex);
+        if (inserted === undefined) {
+          return yield* Effect.fail(
+            MpfError.rootBuild(
+              "DA UTxO size aggregate",
+              new Error(`Missing full output bytes for insertion ${keyHex}`),
+            ),
+          );
+        }
         entryCount += 1;
         encodedTupleBytes += utxoPayloadEntryEncodedSize({
           outref: op.key,
-          output: op.value,
+          output: inserted,
         });
-        currentValues.set(keyHex, Buffer.from(op.value));
+        currentValues.set(keyHex, Buffer.from(inserted));
       } else {
         currentValues.set(keyHex, null);
       }
@@ -1439,6 +1441,7 @@ const compareBufferHex = (left: Buffer, right: Buffer): number => {
 const materializeUtxoPayloadEntries = (
   initialLedgerEntries: readonly Ledger.MinimalEntry[],
   ledgerOps: readonly MpfBatchOp[],
+  insertedValues: ReadonlyMap<string, Buffer>,
 ): readonly UtxoPayloadEntry[] => {
   const entries = new Map<string, UtxoPayloadEntry>();
   for (const entry of initialLedgerEntries) {
@@ -1453,9 +1456,13 @@ const materializeUtxoPayloadEntries = (
       entries.delete(key);
       continue;
     }
+    const output = insertedValues.get(key);
+    if (output === undefined) {
+      throw new Error(`Missing full output bytes for insertion ${key}`);
+    }
     entries.set(key, {
       outref: Buffer.from(op.key),
-      output: Buffer.from(op.value),
+      output: Buffer.from(output),
     });
   }
   return [...entries.values()].sort((left, right) =>
@@ -1466,9 +1473,22 @@ const materializeUtxoPayloadEntries = (
 export const computeUtxoPayloadRoot = (
   entries: readonly UtxoPayloadEntry[],
 ): Effect.Effect<string, MpfError> =>
-  keyValuePhasRoot(
-    entries.map((entry) => entry.outref),
-    entries.map((entry) => entry.output),
+  Effect.try({
+    try: () =>
+      entries.map((entry) =>
+        ledgerOutputToInsertBatchOpV1({
+          outRef: entry.outref,
+          outputCbor: entry.output,
+        }),
+      ),
+    catch: (cause) => MpfError.rootBuild("DA UTxO descriptor root", cause),
+  }).pipe(
+    Effect.flatMap((ops) =>
+      keyValuePhasRoot(
+        ops.map((op) => op.key),
+        ops.map((op) => op.value),
+      ),
+    ),
   );
 
 const encodeUnsignedBigEndian = (value: bigint): Buffer => {
@@ -2887,7 +2907,10 @@ const forcedValidityForRejection = (
 
 export type ClassifiedForcedTransactionV1 = {
   readonly entry: ForcedTransactionsDB.Entry;
+  /** Consensus MPF operations; insert values are canonical descriptors. */
   readonly ledgerOps: readonly MpfBatchOp[];
+  /** Full-output operations used only for Phase B state and DA material. */
+  readonly rawLedgerOps: readonly MpfBatchOp[];
   readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
   readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
   readonly rejectionCode: RejectCode | null;
@@ -2974,10 +2997,12 @@ export const classifyForcedTransactionsV1 = <R>({
     const mutationTrie = yield* Effect.tryPromise({
       try: () =>
         Trie.fromList(
-          [...state.entries()].map(([key, value]) => ({
-            key: Buffer.from(key, "hex"),
-            value,
-          })),
+          [...state.entries()].map(([key, value]) =>
+            ledgerOutputToInsertBatchOpV1({
+              outRef: Buffer.from(key, "hex"),
+              outputCbor: value,
+            }),
+          ),
           new Store(undefined),
         ),
       catch: (cause) =>
@@ -3066,6 +3091,7 @@ export const classifyForcedTransactionsV1 = <R>({
 
       let operatorValidity: SDK.MidgardTxValidity;
       let ledgerOps: readonly MpfBatchOp[] = [];
+      let rawLedgerOps: readonly MpfBatchOp[] = [];
       let ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[] = [];
       let ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[] =
         [];
@@ -3136,7 +3162,7 @@ export const classifyForcedTransactionsV1 = <R>({
           operatorValidity = forcedValidityForRejection(rejectionCode);
         } else {
           operatorValidity = "TxIsValid";
-          ledgerOps = [
+          rawLedgerOps = [
             ...phaseB.statePatch.deletedOutRefs.map((outRef) => ({
               type: "delete" as const,
               key: Buffer.from(outRef, "hex"),
@@ -3147,6 +3173,14 @@ export const classifyForcedTransactionsV1 = <R>({
               value: Buffer.from(output),
             })),
           ];
+          ledgerOps = rawLedgerOps.map((operation) =>
+            operation.type === "delete"
+              ? operation
+              : ledgerOutputToInsertBatchOpV1({
+                  outRef: operation.key,
+                  outputCbor: operation.value,
+                }),
+          );
           ledgerMutationSteps = yield* Effect.tryPromise({
             try: () => applyValidationLedgerMutations(mutationTrie, ledgerOps),
             catch: (cause) =>
@@ -3194,6 +3228,7 @@ export const classifyForcedTransactionsV1 = <R>({
             sha256(programMaterialSidecarCbor),
         },
         ledgerOps,
+        rawLedgerOps,
         ledgerWitnessEntries,
         ledgerMutationSteps,
         rejectionCode,
@@ -3410,6 +3445,9 @@ export const processMpfs = (
         Buffer.from(entry[Ledger.Columns.OUTPUT]),
       ]),
     );
+    const rawInsertedLedgerOutputsByOutRef = new Map(
+      sameBlockDepositOutputsByOutRef,
+    );
 
     let includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[] =
       [];
@@ -3478,27 +3516,23 @@ export const processMpfs = (
           );
         }
 
-        const mpfLedgerOutput =
-          ledgerMpf === undefined
-            ? yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
-                Effect.map((entries) => {
-                  const entry = entries.find((candidate) =>
-                    candidate[MempoolLedgerDB.Columns.OUTREF].equals(
-                      ledgerOutRef,
-                    ),
+        const rawLedgerOutput =
+          yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
+            Effect.map((entries) => {
+              const entry = entries.find((candidate) =>
+                candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
+              );
+              return entry === undefined
+                ? Option.none<Buffer>()
+                : Option.some(
+                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
                   );
-                  return entry === undefined
-                    ? Option.none<Buffer>()
-                    : Option.some(
-                        Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-                      );
-                }),
-              )
-            : yield* ledgerMpf.get(ledgerOutRef);
+            }),
+          );
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
-          ledgerOutput: mpfLedgerOutput,
+          ledgerOutput: rawLedgerOutput,
         });
         mutableClassifiedWithdrawals.push(classifiedWithdrawal);
         seenWithdrawalTarget.set(
@@ -3602,6 +3636,16 @@ export const processMpfs = (
     includedForcedTransactionEntries = classifiedForcedTransactionsV1.map(
       ({ entry }) => entry,
     );
+    for (const classified of classifiedForcedTransactionsV1) {
+      for (const operation of classified.rawLedgerOps) {
+        if (operation.type === "insert") {
+          rawInsertedLedgerOutputsByOutRef.set(
+            operation.key.toString("hex"),
+            Buffer.from(operation.value),
+          );
+        }
+      }
+    }
     if (
       config?.deferDatabaseWrites !== true &&
       classifiedForcedTransactionsV1.length > 0
@@ -3761,7 +3805,7 @@ export const processMpfs = (
         proofPreState.delete(classifiedWithdrawal.ledgerOutRef.toString("hex"));
       }
       for (const classified of classifiedForcedTransactionsV1) {
-        for (const op of classified.ledgerOps) {
+        for (const op of classified.rawLedgerOps) {
           if (op.type === "delete") {
             proofPreState.delete(op.key.toString("hex"));
           } else {
@@ -3843,10 +3887,12 @@ export const processMpfs = (
       const proofNormalMutationTrie = yield* Effect.tryPromise({
         try: () =>
           Trie.fromList(
-            [...proofNormalReplayState.entries()].map(([key, value]) => ({
-              key: Buffer.from(key, "hex"),
-              value,
-            })),
+            [...proofNormalReplayState.entries()].map(([key, value]) =>
+              ledgerOutputToInsertBatchOpV1({
+                outRef: Buffer.from(key, "hex"),
+                outputCbor: value,
+              }),
+            ),
             new Store(undefined),
           ),
         catch: (cause) =>
@@ -3871,11 +3917,12 @@ export const processMpfs = (
             type: "delete" as const,
             key: Buffer.from(outRef, "hex"),
           })),
-          ...accepted.graph.produced.map((produced) => ({
-            type: "insert" as const,
-            key: Buffer.from(produced[Ledger.Columns.OUTREF]),
-            value: Buffer.from(produced[Ledger.Columns.OUTPUT]),
-          })),
+          ...accepted.graph.produced.map((produced) =>
+            ledgerOutputToInsertBatchOpV1({
+              outRef: produced[Ledger.Columns.OUTREF],
+              outputCbor: produced[Ledger.Columns.OUTPUT],
+            }),
+          ),
         ];
         proofNormalLedgerOpsByTxId.set(txIdHex, ledgerOps);
         proofNormalLedgerWitnessesByTxId.set(
@@ -3902,15 +3949,18 @@ export const processMpfs = (
               }),
           }),
         );
-        for (const operation of ledgerOps) {
-          if (operation.type === "delete") {
-            proofNormalReplayState.delete(operation.key.toString("hex"));
-          } else {
-            proofNormalReplayState.set(
-              operation.key.toString("hex"),
-              Buffer.from(operation.value),
-            );
-          }
+        for (const outRef of accepted.graph.spentOutRefHexes) {
+          proofNormalReplayState.delete(outRef);
+        }
+        for (const produced of accepted.graph.produced) {
+          rawInsertedLedgerOutputsByOutRef.set(
+            produced[Ledger.Columns.OUTREF].toString("hex"),
+            Buffer.from(produced[Ledger.Columns.OUTPUT]),
+          );
+          proofNormalReplayState.set(
+            produced[Ledger.Columns.OUTREF].toString("hex"),
+            Buffer.from(produced[Ledger.Columns.OUTPUT]),
+          );
         }
         processedMempoolTxs.push(decoded.entry);
         mempoolTxHashes.push(Buffer.from(decoded.txHash));
@@ -3960,7 +4010,11 @@ export const processMpfs = (
       config?.selectedBaseUtxoRoot ??
       (shouldCheckPayloadRoot
         ? yield* computeUtxoPayloadRoot(
-            materializeUtxoPayloadEntries(initialLedgerEntries, []),
+            materializeUtxoPayloadEntries(
+              initialLedgerEntries,
+              [],
+              rawInsertedLedgerOutputsByOutRef,
+            ),
           )
         : ledgerRootBeforeApplyHex);
     if (selectedBaseUtxoRoot !== ledgerRootBeforeApplyHex) {
@@ -4079,11 +4133,7 @@ export const processMpfs = (
             eventKey: yield* depositTraceEventKey(entry),
             phase: "Deposit" as const,
             ledgerOps: [
-              {
-                type: "insert" as const,
-                key: ledgerEntry[Ledger.Columns.OUTREF],
-                value: ledgerEntry[Ledger.Columns.OUTPUT],
-              },
+              ledgerEntryToInsertBatchOp(ledgerEntry),
             ],
           } satisfies TransitionTraceSourceEvent;
         }),
@@ -4101,30 +4151,17 @@ export const processMpfs = (
       config?.baseUtxoPayloadAggregate ??
       ledgerPayloadAggregateFromEntries(initialLedgerEntries);
     const utxoPayloadAggregate =
-      ledgerMpf === undefined
-        ? yield* MempoolLedgerDB.retrieveByTxOutRefs([
-            ...new Map(
-              transitionLedgerOps.map((op) => [op.key.toString("hex"), op.key]),
-            ).values(),
-          ]).pipe(
-            Effect.flatMap((entries) =>
-              applyLedgerOpsToUtxoPayloadAggregateFromValues(
-                baseUtxoPayloadAggregate,
-                transitionLedgerOps,
-                new Map(
-                  entries.map((entry) => [
-                    entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
-                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-                  ]),
-                ),
-              ),
-            ),
-          )
-        : yield* applyLedgerOpsToUtxoPayloadAggregate(
-            ledgerMpf,
-            baseUtxoPayloadAggregate,
-            transitionLedgerOps,
-          );
+      yield* applyLedgerOpsToUtxoPayloadAggregateFromFullValues(
+        baseUtxoPayloadAggregate,
+        transitionLedgerOps,
+        new Map(
+          initialLedgerEntries.map((entry) => [
+            entry[Ledger.Columns.OUTREF].toString("hex"),
+            Buffer.from(entry[Ledger.Columns.OUTPUT]),
+          ]),
+        ),
+        rawInsertedLedgerOutputsByOutRef,
+      );
     const txRootFiber = yield* buildTransactionsSourceRoot(
       transactionSourceOps,
       SDK.ROOT_DOMAINS.transactionsV1,
@@ -4225,7 +4262,11 @@ export const processMpfs = (
       },
     );
     const utxoPayloadEntries = shouldCheckPayloadRoot
-      ? materializeUtxoPayloadEntries(initialLedgerEntries, transitionLedgerOps)
+      ? materializeUtxoPayloadEntries(
+          initialLedgerEntries,
+          transitionLedgerOps,
+          rawInsertedLedgerOutputsByOutRef,
+        )
       : [];
     const transactionMpfApplyStartedAtMs = Date.now();
     const transactionMpfApplyDurationMs =
@@ -4505,6 +4546,7 @@ export const processMpfs = (
       const finalUtxoEntries = materializeUtxoPayloadEntries(
         initialLedgerEntries,
         transitionLedgerOps,
+        rawInsertedLedgerOutputsByOutRef,
       );
       const deposits = includedDepositEntries.map((entry) => ({
         key: Buffer.from(entry[DepositsDB.Columns.ID]),
@@ -4563,10 +4605,7 @@ export const processMpfs = (
         version: 1,
         label: `commit-${Date.now().toString()}`,
         initialLedgerEntries: initialLedgerEntries.map((entry) =>
-          encodeEntry({
-            key: entry[Ledger.Columns.OUTREF],
-            value: entry[Ledger.Columns.OUTPUT],
-          }),
+          encodeEntry(ledgerEntryToInsertBatchOp(entry)),
         ),
         sourceEvents: yield* Effect.forEach(sourceEvents, (event) =>
           eventKeyCbor(event.eventKey).pipe(
@@ -4582,7 +4621,12 @@ export const processMpfs = (
         withdrawals: withdrawals.map(encodeEntry),
         forcedTransactions: forcedTransactions.map(encodeEntry),
         finalUtxoEntries: finalUtxoEntries.map((entry) =>
-          encodeEntry({ key: entry.outref, value: entry.output }),
+          encodeEntry(
+            ledgerOutputToInsertBatchOpV1({
+              outRef: entry.outref,
+              outputCbor: entry.output,
+            }),
+          ),
         ),
         expected: {
           utxoRoot,
@@ -4643,7 +4687,10 @@ export const processMpfs = (
       validationTraceCount: validationTraceBuild.validationTraceCount,
       totalEventCount: transitionTraceBuild.totalEventCount,
       utxoPayloadEntries,
-      ledgerDelta: collapseLedgerDelta(transitionLedgerOps),
+      ledgerDelta: collapseLedgerDelta(
+        transitionLedgerOps,
+        rawInsertedLedgerOutputsByOutRef,
+      ),
       utxoPayloadAggregate,
       mempoolTxHashes,
       processedMempoolTxs,

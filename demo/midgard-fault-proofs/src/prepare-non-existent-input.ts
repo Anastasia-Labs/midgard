@@ -166,8 +166,10 @@ const parseBadInputIndex = (value: string | number | undefined): number => {
  * - Non-empty ledger: reconstructed from the **previous** block's DA payload,
  *   whose `utxos_root` is exactly this block's `prev_utxos_root`. The payload
  *   carries the full post-block ledger snapshot (`materializeUtxoPayloadEntries`
- *   on the node), so its utxos trie is the historical ledger at that root. We
- *   verify the reconstruction opens `prevUtxosRoot` before proving exclusion.
+ *   on the node). Reconstruction projects each full output to its exact
+ *   canonical descriptor, so its UTxO trie is the historical consensus ledger
+ *   at that root. We verify the reconstruction opens `prevUtxosRoot` before
+ *   proving exclusion.
  *
  * The `utxos_root` is a raw PHAS/MPF root (unlike the counted `transactions_root`),
  * so this exclusion proof verifies directly against `prev_utxos_root` on-chain via

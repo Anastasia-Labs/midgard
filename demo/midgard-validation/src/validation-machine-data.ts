@@ -1040,7 +1040,7 @@ export const validationAuxiliaryWitnessDataV1 = (
     case "ledgerDeltaOutput":
       return new Constr(33, [
         int(auxiliary.outputIndex),
-        bytes(auxiliary.outputCbor),
+        bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
         proofData(auxiliary.mutationStep.proofCbor),
       ]);

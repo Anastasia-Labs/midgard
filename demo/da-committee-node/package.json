@@ -18,6 +18,7 @@
     "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
     "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
+    "@al-ft/midgard-validation": "workspace:*",
     "@chainsafe/libp2p-noise": "17.0.0",
     "@chainsafe/libp2p-yamux": "8.0.1",
     "@libp2p/bootstrap": "12.0.25",

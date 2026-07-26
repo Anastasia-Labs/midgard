@@ -20,7 +20,7 @@ directly to the protocol's source objects:
 
 ```text
 utxos_root:
-  outref -> output
+  outref -> LedgerOutputCommitmentV1 descriptor
 
 withdrawals_root:
   withdrawal_id -> WithdrawalInfo CBOR
@@ -40,6 +40,14 @@ transition_trace_root:
 event_to_step_root:
   EventKey -> EventToStepValue
 ```
+
+The final `utxos` members retained in DA and durable ledger records contain the
+exact full output CBOR. Each independent root verifier folds those bytes into
+the canonical V1 descriptor before recomputing `utxos_root`. The descriptor
+binds the complete output through its bounded-item commitment and records the
+independently proven address, Value/asset frontier, datum/CEK summaries, and
+reference-script facts needed by L1 proofs. A malformed output or a full output
+that cannot produce that exact descriptor fails closed.
 
 The production model is:
 

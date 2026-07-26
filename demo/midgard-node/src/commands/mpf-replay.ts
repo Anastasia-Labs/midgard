@@ -10,19 +10,17 @@ import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 
-import * as Ledger from "@/database/utils/ledger.js";
 import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
 import {
   buildNativeProductionRootProbe,
   buildTransactionsSourceRoot,
   buildTransitionTraceResult,
-  computeUtxoPayloadRoot,
   configureMpfPathHydration,
   getMpfPathHydrationConfig,
-  hydrateLedgerMpfFromLedgerEntries,
   keyValuePhasNonMembershipProof,
   keyValuePhasProof,
+  keyValuePhasRoot,
   MidgardMpf,
   type MpfBatchOp,
   type MpfReplayCorpusBlock,
@@ -176,11 +174,11 @@ const replayOne = (
       `${block.label}-${engine}-${scratchBuild}-ledger`,
       { engine },
     );
-    yield* hydrateLedgerMpfFromLedgerEntries(
-      ledger,
+    yield* ledger.applyBatch(
       initial.map((entry) => ({
-        [Ledger.Columns.OUTREF]: entry.key,
-        [Ledger.Columns.OUTPUT]: entry.value,
+        type: "insert" as const,
+        key: entry.key,
+        value: entry.value,
       })),
     );
     if (engine !== "legacy") yield* ledger.beginBlockOverlay();
@@ -233,11 +231,9 @@ const replayOne = (
         { concurrency: "unbounded" },
       );
     const finalEntries = block.finalUtxoEntries.map(decodeEntry);
-    const payloadRoot = yield* computeUtxoPayloadRoot(
-      finalEntries.map((entry) => ({
-        outref: entry.key,
-        output: entry.value,
-      })),
+    const payloadRoot = yield* keyValuePhasRoot(
+      finalEntries.map((entry) => entry.key),
+      finalEntries.map((entry) => entry.value),
     );
     const utxoRoot = yield* ledger.rootHex();
     if (payloadRoot !== utxoRoot) {
@@ -343,11 +339,11 @@ const seedNativeOwnerFixture = async ({
           );
           try {
             await Effect.runPromise(
-              hydrateLedgerMpfFromLedgerEntries(
-                created,
+              created.applyBatch(
                 initial.map((entry) => ({
-                  [Ledger.Columns.OUTREF]: entry.key,
-                  [Ledger.Columns.OUTPUT]: entry.value,
+                  type: "insert" as const,
+                  key: entry.key,
+                  value: entry.value,
                 })),
               ),
             );

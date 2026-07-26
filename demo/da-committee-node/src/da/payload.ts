@@ -29,6 +29,7 @@ import {
 } from "@al-ft/midgard-core/script-proof";
 import { decodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -196,6 +197,27 @@ const computeDaPayloadRootsForForcedDomain = async (
 ): Promise<PayloadRootSet> => {
   const body = payload.block_body;
   const transactionValues: Buffer[] = [];
+  const utxoDescriptorValues: Buffer[] = [];
+  const utxoKeys: Buffer[] = [];
+  for (const [outRefHex, outputHex] of body.utxos) {
+    try {
+      const outRef = hexToBytes(outRefHex, "utxos key");
+      const outputCbor = hexToBytes(outputHex, "utxos value");
+      utxoKeys.push(outRef);
+      utxoDescriptorValues.push(
+        buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+          outRef,
+          outputCbor,
+        }).descriptorCbor,
+      );
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_da",
+        "failed to project a full V1 UTxO to its exact canonical descriptor",
+        { cause },
+      );
+    }
+  }
   for (const [, value] of body.transactions) {
     try {
       transactionValues.push(hexToBytes(value, "tx value"));
@@ -216,7 +238,7 @@ const computeDaPayloadRootsForForcedDomain = async (
     transitionTraceRoot,
     eventToStepRoot,
   ] = await Promise.all([
-    keyValuePhasRoot(body.utxos),
+    keyValuePhasRootWithValues(utxoKeys, utxoDescriptorValues),
     countedRoot(SDK.ROOT_DOMAINS.withdrawals, body.withdrawals),
     countedRoot(
       SDK.ROOT_DOMAINS.forcedTransactionsV1,
@@ -1291,14 +1313,6 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
     }
   }
 };
-
-const keyValuePhasRoot = async (
-  entries: readonly SDK.DaPayloadEntry[],
-): Promise<string> =>
-  keyValuePhasRootWithValues(
-    entries.map(([key]) => hexToBytes(key, "entry key")),
-    entries.map(([, value]) => hexToBytes(value, "entry value")),
-  );
 
 const keyValuePhasRootWithValues = async (
   keys: readonly Buffer[],

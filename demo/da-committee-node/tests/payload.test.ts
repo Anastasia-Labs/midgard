@@ -93,7 +93,12 @@ describe("canonical V1 DA payload verification", () => {
       ...fixture.payload,
       block_body: {
         ...fixture.payload.block_body,
-        utxos: [["01", "aa"]],
+        utxos: [
+          [
+            `825820${"01".repeat(32)}00`,
+            "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
+          ],
+        ],
       },
     });
     const stored = await wrapDaPayloadV1(inner, { mode: "identity" });

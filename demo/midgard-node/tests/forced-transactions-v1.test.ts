@@ -25,7 +25,10 @@ import {
 import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
-import { RejectCodes } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
+  RejectCodes,
+} from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -399,10 +402,24 @@ describe("V1 forced transaction material", () => {
       );
       expect(result.rejectionCode).toBeNull();
       expect(result.ledgerOps).toHaveLength(2);
+      expect(result.rawLedgerOps).toHaveLength(2);
       expect(result.ledgerMutationSteps).toHaveLength(2);
       expect(result.ledgerWitnessEntries).toHaveLength(1);
     }
+    const firstOutputDescriptor =
+      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: firstOutput,
+        outputCbor: output,
+      }).descriptorCbor;
     expect(classified[0]!.ledgerOps).toMatchObject([
+      { type: "delete", key: initialInput },
+      {
+        type: "insert",
+        key: firstOutput,
+        value: firstOutputDescriptor,
+      },
+    ]);
+    expect(classified[0]!.rawLedgerOps).toMatchObject([
       { type: "delete", key: initialInput },
       { type: "insert", key: firstOutput, value: output },
     ]);

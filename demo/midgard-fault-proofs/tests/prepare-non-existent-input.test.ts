@@ -15,6 +15,7 @@ import {
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -32,6 +33,8 @@ const h32 = (byte: string): string => byte.repeat(32);
 const EMPTY_CBOR_LIST = encodeCbor([]);
 const EMPTY_CBOR_NULL = encodeCbor(null);
 const EMPTY_NULL_ROOT = computeHash32(EMPTY_CBOR_NULL);
+const LEDGER_OUTPUT_CBOR =
+  "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0";
 
 const inputCbor = (txHash: string, outputIndex: bigint): Buffer =>
   Buffer.from(
@@ -119,7 +122,10 @@ const buildPrevBlockPayload = async (
   const utxoRoot = await keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
-      value: Buffer.from(value, "hex"),
+      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: Buffer.from(key, "hex"),
+        outputCbor: Buffer.from(value, "hex"),
+      }).descriptorCbor,
     })),
   );
   const header: SDK.HeaderV1 = {
@@ -359,7 +365,7 @@ describe("prepare-non-existent-input", () => {
 
   it("reconstructs the ledger from the previous block's DA payload for a non-first block", async () => {
     const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
-      [LEDGER_UTXO_KEY, "abcd"],
+      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
     ]);
     expect(utxosRoot).not.toBe(EMPTY_MERKLE_TREE_ROOT);
 
@@ -378,7 +384,7 @@ describe("prepare-non-existent-input", () => {
 
   it("rejects a prev-block payload whose utxos_root does not match --prev-utxos-root", async () => {
     const { payloadEnvelopeCbor } = await buildPrevBlockPayload([
-      [LEDGER_UTXO_KEY, "abcd"],
+      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
     ]);
     await expect(
       prepareNonExistentInputFromTransactions({
@@ -392,8 +398,8 @@ describe("prepare-non-existent-input", () => {
 
   it("refuses to prove non-membership when the input is present in the reconstructed ledger", async () => {
     const { payloadEnvelopeCbor, utxosRoot } = await buildPrevBlockPayload([
-      [LEDGER_UTXO_KEY, "abcd"],
-      [PHANTOM_LEDGER_KEY, "ef01"],
+      [LEDGER_UTXO_KEY, LEDGER_OUTPUT_CBOR],
+      [PHANTOM_LEDGER_KEY, LEDGER_OUTPUT_CBOR],
     ]);
     await expect(
       prepareNonExistentInputFromTransactions({

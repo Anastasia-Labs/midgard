@@ -24,6 +24,7 @@ import {
   advanceMidgardResolvedInputsAccumulatorV1,
   buildDeterministicValidationMachineTrace,
   buildMidgardCanonicalCekProgramV1,
+  buildValidationMachineLedgerInsertOpV1,
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgumentV1,
   type DeterministicValidationMachineTrace,
@@ -238,11 +239,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -433,11 +433,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -546,11 +545,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -661,11 +659,10 @@ describe("deterministic validation machine", () => {
       });
       const expectedLedgerOps = [
         { type: "delete" as const, key: spent },
-        {
-          type: "insert" as const,
+        buildValidationMachineLedgerInsertOpV1({
           key: outRefFromTxId(transaction.txId),
-          value: output,
-        },
+          outputCbor: output,
+        }),
       ];
       const ledgerMutationSteps =
         await buildValidationMachineLedgerMutationSteps({
@@ -743,11 +740,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -827,11 +823,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -977,11 +972,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: mintedOutput,
-      },
+        outputCbor: mintedOutput,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -1064,11 +1058,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: burnedOutput,
-      },
+        outputCbor: burnedOutput,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {
@@ -1162,11 +1155,10 @@ describe("deterministic validation machine", () => {
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
       {

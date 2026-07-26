@@ -8,6 +8,7 @@ import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -764,8 +765,26 @@ export const reconstructDaPayloadV1 = async ({
     entries: body.transactions,
     preimages: body.transaction_preimages,
   });
+  const rawUtxos = rawEntries("utxos", body.utxos);
+  const descriptorUtxos = rawUtxos.map((entry) => {
+    try {
+      return {
+        key: Buffer.from(entry.key),
+        value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+          outRef: entry.key,
+          outputCbor: entry.value,
+        }).descriptorCbor,
+      };
+    } catch (cause) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        `UTxO ${entry.key.toString("hex")} cannot produce an exact canonical V1 descriptor.`,
+        cause,
+      );
+    }
+  });
   const rootData = {
-    utxos: await keyValuePhasRootWithCount(rawEntries("utxos", body.utxos)),
+    utxos: await keyValuePhasRootWithCount(descriptorUtxos),
     withdrawals: await buildCountedRoot(
       SDK.ROOT_DOMAINS.withdrawals,
       rawEntries("withdrawals", body.withdrawals),
@@ -888,7 +907,7 @@ export const reconstructDaPayloadV1 = async ({
     headerHash,
     roots,
     counts,
-    utxos: rootData.utxos.entries,
+    utxos: rawUtxos,
     withdrawals,
     forcedTransactions,
     transactions,

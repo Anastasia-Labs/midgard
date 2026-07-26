@@ -17,6 +17,10 @@ Before signing an attestation, a committee node must verify:
     \item The payload \code{header\_hash} equals the L1 state-queue header hash being attested.
     \item The embedded header is byte-for-byte the L1 header.
     \item Every member array is sorted by canonical key bytes and has no duplicate keys.
+    \item Every final UTxO member contains canonical output-reference and
+      full-output CBOR that folds to one exact
+      \code{LedgerOutputCommitmentV1}; \code{utxos\_root} is recomputed with
+      that descriptor as the MPT value, not with the full output bytes.
     \item The source roots, \code{utxos\_root},
       \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and
       \code{validation\_traces\_root} recompute to the roots in the header.

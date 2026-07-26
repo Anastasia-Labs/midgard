@@ -18,6 +18,7 @@ import { DatabaseError } from "@/database/utils/common.js";
 import {
   encodeTransactionRootValue,
   keyValuePhasRoot,
+  ledgerOutputToInsertBatchOpV1,
   type MpfError,
 } from "@/workers/utils/mpf.js";
 
@@ -125,6 +126,22 @@ export const computeDaPayloadRoots = (
   Effect.gen(function* () {
     const body = payload.block_body;
     const transactionValues = entryValues(body.transactions);
+    const utxoDescriptorOps = yield* Effect.try({
+      try: () =>
+        body.utxos.map(([outRef, output]) =>
+          ledgerOutputToInsertBatchOpV1({
+            outRef: Buffer.from(outRef, "hex"),
+            outputCbor: Buffer.from(output, "hex"),
+          }),
+        ),
+      catch: (cause) =>
+        new DatabaseError({
+          table: DaPayloadsDB.tableName,
+          message:
+            "Refusing a V1 DA payload whose full UTxOs cannot produce exact canonical descriptors",
+          cause,
+        }),
+    });
     const [
       utxosRoot,
       withdrawalsRoot,
@@ -136,7 +153,10 @@ export const computeDaPayloadRoots = (
       validationTracesRoot,
     ] = yield* Effect.all(
       [
-        keyValuePhasRoot(entryKeys(body.utxos), entryValues(body.utxos)),
+        keyValuePhasRoot(
+          utxoDescriptorOps.map((op) => op.key),
+          utxoDescriptorOps.map((op) => op.value),
+        ),
         authenticatedPayloadRoot(
           SDK.ROOT_DOMAINS.withdrawals,
           body.withdrawals,

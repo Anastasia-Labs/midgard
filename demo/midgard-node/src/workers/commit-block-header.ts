@@ -124,7 +124,7 @@ import {
   type ParkedEventFlatOverlayV1,
   type ParkedMpfOverlayV1,
   processMpfs,
-  utxoToInsertBatchOp,
+  utxoToLedgerInsertMaterialV1,
   withMpfBlockOverlays,
   withMpfRootTransactions,
 } from "@/workers/utils/mpf.js";
@@ -895,10 +895,10 @@ const resolveCommitBaseLedgerEntries = ({
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
-              utxoToInsertBatchOp(utxo).pipe(
-                Effect.map((op) => ({
-                  [Ledger.Columns.OUTREF]: op.key,
-                  [Ledger.Columns.OUTPUT]: op.value,
+              utxoToLedgerInsertMaterialV1(utxo).pipe(
+                Effect.map(({ ledgerOp, outputCbor }) => ({
+                  [Ledger.Columns.OUTREF]: ledgerOp.key,
+                  [Ledger.Columns.OUTPUT]: outputCbor,
                 })),
               ),
           );

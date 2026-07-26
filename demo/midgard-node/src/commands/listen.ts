@@ -94,7 +94,10 @@ import {
   writeBehindFiber,
 } from "@/services/index.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
-import { MidgardMpf, utxoToInsertBatchOp } from "@/workers/utils/mpf.js";
+import {
+  MidgardMpf,
+  utxoToLedgerInsertMaterialV1,
+} from "@/workers/utils/mpf.js";
 
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
@@ -228,16 +231,16 @@ const initializeArchitectureGOwner = (
           const genesisEntries = yield* Effect.forEach(
             nodeConfig.GENESIS_UTXOS,
             (utxo) =>
-              utxoToInsertBatchOp(utxo).pipe(
-                Effect.map((op) => ({
-                  op,
+              utxoToLedgerInsertMaterialV1(utxo).pipe(
+                Effect.map(({ ledgerOp, outputCbor }) => ({
+                  op: ledgerOp,
                   ledgerEntry: {
                     [MempoolLedgerDB.Columns.TX_ID]: Buffer.from(
                       utxo.txHash,
                       "hex",
                     ),
-                    [MempoolLedgerDB.Columns.OUTREF]: op.key,
-                    [MempoolLedgerDB.Columns.OUTPUT]: op.value,
+                    [MempoolLedgerDB.Columns.OUTREF]: ledgerOp.key,
+                    [MempoolLedgerDB.Columns.OUTPUT]: outputCbor,
                     [MempoolLedgerDB.Columns.ADDRESS]: utxo.address,
                     [MempoolLedgerDB.Columns.SOURCE_EVENT_ID]: null,
                   } satisfies MempoolLedgerDB.EntryNoTimeStamp,

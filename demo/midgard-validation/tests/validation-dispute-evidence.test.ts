@@ -17,6 +17,7 @@ import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-bl
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationDisputeEvidenceBundleV1,
+  buildValidationMachineLedgerInsertOpV1,
   buildValidationMachineLedgerMutationSteps,
   type DeterministicValidationMachineTrace,
   RejectCodes,
@@ -90,11 +91,10 @@ const buildAcceptedForcedTrace =
     });
     const expectedLedgerOps = [
       { type: "delete" as const, key: spent },
-      {
-        type: "insert" as const,
+      buildValidationMachineLedgerInsertOpV1({
         key: outRefFromTxId(transaction.txId),
-        value: output,
-      },
+        outputCbor: output,
+      }),
     ];
     const ledgerMutationSteps =
       await buildValidationMachineLedgerMutationSteps({

@@ -7236,26 +7236,23 @@ test cek_active_core_step_replays_exact_machine_transition() {
 }
 
 test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
-  let tx = empty_v1_transaction()
-  let key = #"010203"
-  let output = MidgardTxOutput {
-    address: MidgardAddress {
-      protected: False,
-      network_id: 0,
-      payment_credential: PubKeyCredential(h_28_a),
-      stake_credential: None,
-    },
-    value: MidgardValue { lovelace: 1, assets: [] },
-    datum_cbor: None,
-    script_ref: None,
+  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let value = encode_midgard_tx_output(output)
+  let key = encode_midgard_tx_input(input)
+  let output_cbor =
+    #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
+  let descriptor_cbor =
+    authenticated_output_material(output_cbor).descriptor_cbor
   let initial_accumulator = validation_machine_v1.initial_resolution_accumulator()
   let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
     initial_accumulator,
     0,
     key,
-    value,
+    descriptor_cbor,
   )
   let native_control = validation_machine_v1.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
@@ -7263,7 +7260,14 @@ test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
     resolved_inputs_accumulator: resolved_accumulator,
     spend_input_count: 1,
     resolved_item_peaks: validation_merkle_v1.build_frontier(
-      [script_proof_v1.resolved_context_item_leaf_hash(0, 0, key, value)],
+      [
+        script_proof_v1.resolved_context_item_leaf_hash(
+          0,
+          0,
+          key,
+          descriptor_cbor,
+        ),
+      ],
     ).peaks,
   }
   let empty_schedule = validation_machine_v1.empty_resolution_schedule_hash()
@@ -7272,7 +7276,7 @@ test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
     key,
     empty_schedule,
   )
-  let current_root = singleton_root(key, value)
+  let current_root = singleton_root(key, descriptor_cbor)
   let control = validation_machine_v1.LedgerDeltaControlV1 {
     native_control,
     stage: 1,
@@ -7354,7 +7358,131 @@ test ledger_delta_spend_step_deletes_authenticated_utxo_root() {
         source_kind: 0,
         key,
         next_schedule_hash: empty_schedule,
-        value,
+        value: descriptor_cbor,
+        proof: [],
+      },
+    },
+  )
+}
+
+test ledger_delta_output_step_inserts_authenticated_descriptor_root() {
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected: False,
+      network_id: 0,
+      payment_credential: PubKeyCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 1, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let output_cbor = encode_midgard_tx_output(output)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, outputs: [output] },
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let descriptor_cbor =
+    authenticated_output_material(output_cbor).descriptor_cbor
+  let descriptor_leaf = script_proof_v1.output_descriptor_leaf_hash(
+    0,
+    descriptor_cbor,
+  )
+  let descriptor_frontier = validation_merkle_v1.build_frontier(
+    [descriptor_leaf],
+  )
+  let output_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.output_leaf_hash(0, output_cbor)],
+  )
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..empty_native_control_fixture(tx),
+    output_count: 1,
+    output_peaks: output_frontier.peaks,
+    output_descriptor_peaks: descriptor_frontier.peaks,
+  }
+  let key = encode_midgard_tx_input(
+    MidgardTxInput { tx_id, output_index: 0 },
+  )
+  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
+    1,
+    key,
+    descriptor_cbor,
+  )
+  let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
+  let control = validation_machine_v1.LedgerDeltaControlV1 {
+    native_control,
+    stage: 2,
+    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_cursor: 0,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    current_ledger_root: zero,
+    output_cursor: 0,
+    operation_count: 0,
+    operation_peaks: [],
+  }
+  let next_control = validation_machine_v1.LedgerDeltaControlV1 {
+    ..control,
+    current_ledger_root: singleton_root(key, descriptor_cbor),
+    output_cursor: 1,
+    operation_count: 1,
+    operation_peaks: operation_frontier.peaks,
+  }
+  let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
+    control,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: tx_id,
+    transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: zero,
+    phase: validation_trace_v1.LedgerDelta,
+    program_counter: 49,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.LedgerDelta,
+      49,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(
+      operation_frontier.count,
+      operation_frontier.peaks,
+    ),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 50,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.LedgerDelta,
+      50,
+      validation_machine_v1.encode_ledger_delta_control_v1(next_control),
+    ),
+  }
+  validation_machine_v1.verify_one_step_evidence(
+    pre,
+    validation_machine_v1.ValidationOneStepEvidenceV1 {
+      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: post,
+      },
+      auxiliary: validation_machine_v1.LedgerDeltaOutputWitness {
+        output_index: 0,
+        descriptor_cbor,
+        siblings: [],
         proof: [],
       },
     },

@@ -40,6 +40,9 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
       '@chainsafe/libp2p-noise':
         specifier: 17.0.0
         version: 17.0.0
@@ -184,6 +187,9 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
       '@harmoniclabs/cbor':
         specifier: 1.6.6
         version: 1.6.6
