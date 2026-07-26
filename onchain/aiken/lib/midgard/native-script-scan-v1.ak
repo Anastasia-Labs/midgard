@@ -671,7 +671,7 @@ pub fn apply_child_v1(
   }
 }
 
-fn structure_control_is_well_formed_v1(
+pub fn structure_control_is_well_formed_v1(
   control: NativeScriptStructureControlV1,
 ) -> Bool {
   and {
@@ -747,10 +747,9 @@ pub fn encode_structure_control_v1(
     |> bytearray.concat(cbor.serialise(control.node_count))
 }
 
-pub fn decode_structure_control_v1(
-  control_cbor: ByteArray,
+pub fn structure_control_from_data_v1(
+  data: Data,
 ) -> NativeScriptStructureControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
   expect
     [
       version_data, stage_data, start_offset_data, cursor_data,
@@ -767,6 +766,14 @@ pub fn decode_structure_control_v1(
     node_count: builtin.un_i_data(node_count_data),
   }
   expect structure_control_is_well_formed_v1(control)
+  control
+}
+
+pub fn decode_structure_control_v1(
+  control_cbor: ByteArray,
+) -> NativeScriptStructureControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  let control = structure_control_from_data_v1(data)
   expect encode_structure_control_v1(control) == control_cbor
   control
 }

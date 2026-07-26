@@ -1,4 +1,5 @@
-import { encodeCbor } from "./codec/cbor.js";
+import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
+import { aikenSerialisedPlutusDataBytes } from "./plutus-data-cbor.js";
 
 export const MIDGARD_BLAKE2B_224_TRACE_V1_VERSION = 1 as const;
 export const MIDGARD_BLAKE2B_BLOCK_BYTES = 128;
@@ -250,7 +251,7 @@ const emptyActiveState = {
   round: 0,
 } as const;
 
-const controlIsWellFormed = (
+export const isWellFormedMidgardBlake2b224TraceControlV1 = (
   control: MidgardBlake2b224TraceControlV1,
 ): boolean => {
   if (
@@ -321,7 +322,7 @@ export const initialMidgardBlake2b224TraceControlV1 = (
     chainingValue: initialChainingValue(),
     ...emptyActiveState,
   } satisfies MidgardBlake2b224TraceControlV1;
-  if (!controlIsWellFormed(control)) {
+  if (!isWellFormedMidgardBlake2b224TraceControlV1(control)) {
     throw new Error("Invalid V1 BLAKE2b-224 trace total length");
   }
   return control;
@@ -330,19 +331,19 @@ export const initialMidgardBlake2b224TraceControlV1 = (
 export const encodeMidgardBlake2b224TraceControlV1 = (
   control: MidgardBlake2b224TraceControlV1,
 ): Buffer => {
-  if (!controlIsWellFormed(control)) {
+  if (!isWellFormedMidgardBlake2b224TraceControlV1(control)) {
     throw new Error("Invalid V1 BLAKE2b-224 trace control");
   }
-  return encodeCbor([
-    1n,
-    BigInt(control.stage),
-    BigInt(control.cursor),
-    BigInt(control.totalLength),
-    control.chainingValue,
-    control.activeBlock,
-    BigInt(control.activeBlockLength),
-    control.workingValue,
-    BigInt(control.round),
+  return encodeCborArrayRaw([
+    encodeCbor(1n),
+    encodeCbor(BigInt(control.stage)),
+    encodeCbor(BigInt(control.cursor)),
+    encodeCbor(BigInt(control.totalLength)),
+    aikenSerialisedPlutusDataBytes(control.chainingValue),
+    aikenSerialisedPlutusDataBytes(control.activeBlock),
+    encodeCbor(BigInt(control.activeBlockLength)),
+    aikenSerialisedPlutusDataBytes(control.workingValue),
+    encodeCbor(BigInt(control.round)),
   ]);
 };
 
@@ -354,7 +355,7 @@ export const advanceMidgardBlake2b224TraceV1 = ({
   readonly block?: Uint8Array | null;
 }): MidgardBlake2b224TraceControlV1 | null => {
   try {
-    if (!controlIsWellFormed(control)) return null;
+    if (!isWellFormedMidgardBlake2b224TraceControlV1(control)) return null;
     if (control.stage === MidgardBlake2b224TraceStagesV1.Ready) {
       const expectedLength = Math.min(
         MIDGARD_BLAKE2B_BLOCK_BYTES,
@@ -382,7 +383,9 @@ export const advanceMidgardBlake2b224TraceV1 = ({
         }),
         round: 0,
       };
-      return controlIsWellFormed(next) ? next : null;
+      return isWellFormedMidgardBlake2b224TraceControlV1(next)
+        ? next
+        : null;
     }
     if (block !== null && block !== undefined) return null;
     if (control.stage === MidgardBlake2b224TraceStagesV1.Round) {
@@ -400,7 +403,9 @@ export const advanceMidgardBlake2b224TraceV1 = ({
         }),
         round,
       };
-      return controlIsWellFormed(next) ? next : null;
+      return isWellFormedMidgardBlake2b224TraceControlV1(next)
+        ? next
+        : null;
     }
     if (control.stage === MidgardBlake2b224TraceStagesV1.Finish) {
       const cursor = control.cursor + control.activeBlockLength;
@@ -417,7 +422,9 @@ export const advanceMidgardBlake2b224TraceV1 = ({
         }),
         ...emptyActiveState,
       };
-      return controlIsWellFormed(next) ? next : null;
+      return isWellFormedMidgardBlake2b224TraceControlV1(next)
+        ? next
+        : null;
     }
     return null;
   } catch {
@@ -428,7 +435,7 @@ export const advanceMidgardBlake2b224TraceV1 = ({
 export const digestMidgardBlake2b224TraceV1 = (
   control: MidgardBlake2b224TraceControlV1,
 ): Buffer | null =>
-  controlIsWellFormed(control) &&
+  isWellFormedMidgardBlake2b224TraceControlV1(control) &&
   control.stage === MidgardBlake2b224TraceStagesV1.Terminal
     ? control.chainingValue.subarray(0, MIDGARD_BLAKE2B_224_DIGEST_BYTES)
     : null;
@@ -448,7 +455,10 @@ export const buildMidgardBlake2b224TraceV1 = (
           )
         : null;
     const next = advanceMidgardBlake2b224TraceV1({ control, block });
-    if (next === null || !controlIsWellFormed(next)) {
+    if (
+      next === null ||
+      !isWellFormedMidgardBlake2b224TraceControlV1(next)
+    ) {
       throw new Error("V1 BLAKE2b-224 trace failed closed");
     }
     steps.push({ control, block, next });

@@ -138,7 +138,7 @@ const decodedSafeInteger = (value: unknown, field: string): number => {
   throw new Error(`Invalid V1 native-script scan ${field}`);
 };
 
-const controlIsWellFormed = (
+export const isWellFormedMidgardNativeScriptStructureControlV1 = (
   control: MidgardNativeScriptStructureControlV1,
 ): boolean => {
   try {
@@ -237,7 +237,7 @@ export const initialMidgardNativeScriptStructureControlV1 = ({
     stackDepth: 0,
     nodeCount: 0,
   } satisfies MidgardNativeScriptStructureControlV1;
-  if (!controlIsWellFormed(control)) {
+  if (!isWellFormedMidgardNativeScriptStructureControlV1(control)) {
     throw new Error("Invalid V1 native-script scan span");
   }
   return control;
@@ -246,7 +246,7 @@ export const initialMidgardNativeScriptStructureControlV1 = ({
 export const encodeMidgardNativeScriptStructureControlV1 = (
   control: MidgardNativeScriptStructureControlV1,
 ): Buffer => {
-  if (!controlIsWellFormed(control)) {
+  if (!isWellFormedMidgardNativeScriptStructureControlV1(control)) {
     throw new Error("Invalid V1 native-script structure control");
   }
   return encodeCbor([
@@ -289,7 +289,7 @@ export const decodeMidgardNativeScriptStructureControlV1 = (
     nodeCount: decodedSafeInteger(value[7], "node count"),
   } satisfies MidgardNativeScriptStructureControlV1;
   if (
-    !controlIsWellFormed(control) ||
+    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
     !encodeMidgardNativeScriptStructureControlV1(control).equals(
       Buffer.from(controlCbor),
     )
@@ -449,7 +449,7 @@ const readToken = ({
 const advanced = (
   control: MidgardNativeScriptStructureControlV1,
 ): MidgardNativeScriptStructureStepResultV1 =>
-  controlIsWellFormed(control)
+  isWellFormedMidgardNativeScriptStructureControlV1(control)
     ? {
         kind: MidgardNativeScriptStructureResultKindsV1.Advanced,
         control,
@@ -466,7 +466,7 @@ export const advanceMidgardNativeScriptStructureTokenV1 = ({
   readonly windowOffset: number;
 }): MidgardNativeScriptStructureStepResultV1 | null => {
   if (
-    !controlIsWellFormed(control) ||
+    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
     control.stage !== MidgardNativeScriptStructureStagesV1.Token ||
     !Number.isSafeInteger(windowOffset) ||
     windowOffset < 0 ||
@@ -534,7 +534,7 @@ export const advanceMidgardNativeScriptStructureFrameV1 = ({
   readonly frame: MidgardNativeScriptScanFrameV1;
 }): MidgardNativeScriptStructureStepResultV1 | null => {
   if (
-    !controlIsWellFormed(control) ||
+    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
     control.stage !== MidgardNativeScriptStructureStagesV1.Frame ||
     !midgardNativeScriptScanFrameIsWellFormedV1(frame)
   ) {
@@ -578,7 +578,7 @@ export const finalizeMidgardNativeScriptStructureV1 = (
   control: MidgardNativeScriptStructureControlV1,
 ): MidgardNativeScriptStructureStepResultV1 | null => {
   if (
-    !controlIsWellFormed(control) ||
+    !isWellFormedMidgardNativeScriptStructureControlV1(control) ||
     control.stage !== MidgardNativeScriptStructureStagesV1.Finalize
   ) {
     return null;
@@ -594,15 +594,16 @@ export const finalizeMidgardNativeScriptStructureV1 = (
 export const isExactMidgardNativeScriptStructureTerminalV1 = (
   control: MidgardNativeScriptStructureControlV1,
 ): boolean =>
-  controlIsWellFormed(control) &&
+  isWellFormedMidgardNativeScriptStructureControlV1(control) &&
   control.stage === MidgardNativeScriptStructureStagesV1.Terminal;
 
 export const buildMidgardNativeScriptStructureTraceV1 = (
   scriptBytes: Uint8Array,
+  startOffset = 0,
 ): readonly MidgardNativeScriptStructureTraceStepV1[] => {
   const bytes = Buffer.from(scriptBytes);
   let control = initialMidgardNativeScriptStructureControlV1({
-    startOffset: 0,
+    startOffset,
     totalLength: bytes.length,
   });
   const frames: MidgardNativeScriptScanFrameV1[] = [];
@@ -621,12 +622,12 @@ export const buildMidgardNativeScriptStructureTraceV1 = (
       const token = readToken({
         control,
         window: bytes,
-        windowOffset: control.cursor,
+        windowOffset: control.cursor - startOffset,
       });
       result = advanceMidgardNativeScriptStructureTokenV1({
         control,
         window: bytes,
-        windowOffset: control.cursor,
+        windowOffset: control.cursor - startOffset,
       });
       if (
         isMidgardNativeScriptContainerKindV1(token.kind) &&

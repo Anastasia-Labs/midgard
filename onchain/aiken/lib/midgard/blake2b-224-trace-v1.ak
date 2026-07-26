@@ -3,7 +3,7 @@ use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
-  encode_definite_array_header, encode_definite_bytes,
+  encode_definite_array_header,
 }
 
 pub const version: Int = 1
@@ -325,7 +325,7 @@ fn active_block_padding_is_zero(
   }
 }
 
-fn control_is_well_formed(
+pub fn control_is_well_formed(
   control: Blake2b224TraceControlV1,
 ) -> Bool {
   and {
@@ -400,17 +400,18 @@ pub fn encode_control_v1(
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.cursor))
     |> bytearray.concat(cbor.serialise(control.total_length))
-    |> bytearray.concat(encode_definite_bytes(control.chaining_value))
-    |> bytearray.concat(encode_definite_bytes(control.active_block))
+    |> bytearray.concat(
+        cbor.serialise(builtin.b_data(control.chaining_value)),
+      )
+    |> bytearray.concat(cbor.serialise(builtin.b_data(control.active_block)))
     |> bytearray.concat(cbor.serialise(control.active_block_length))
-    |> bytearray.concat(encode_definite_bytes(control.working_value))
+    |> bytearray.concat(cbor.serialise(builtin.b_data(control.working_value)))
     |> bytearray.concat(cbor.serialise(control.round))
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
+pub fn control_from_data_v1(
+  data: Data,
 ) -> Blake2b224TraceControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
   expect
     [
       version_data, stage_data, cursor_data, total_length_data,
@@ -429,6 +430,14 @@ pub fn decode_control_v1(
     round: builtin.un_i_data(round_data),
   }
   expect control_is_well_formed(control)
+  control
+}
+
+pub fn decode_control_v1(
+  control_cbor: ByteArray,
+) -> Blake2b224TraceControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control
 }

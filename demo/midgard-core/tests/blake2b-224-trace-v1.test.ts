@@ -56,6 +56,40 @@ describe("bounded BLAKE2b-224 trace V1", () => {
     );
   });
 
+  it("encodes active 128-byte fields as canonical Plutus Data chunks", () => {
+    const initial = initialMidgardBlake2b224TraceControlV1(129);
+    const active = advanceMidgardBlake2b224TraceV1({
+      control: initial,
+      block: Buffer.alloc(128, 0x6b),
+    })!;
+    const initialChainingValue = Buffer.from(
+      "14c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b",
+      "hex",
+    );
+    const ivWithCounter = Buffer.from(
+      "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa55182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b",
+      "hex",
+    );
+    const expected = Buffer.concat([
+      Buffer.from("8901010018815840", "hex"),
+      initialChainingValue,
+      Buffer.from("5f5840", "hex"),
+      Buffer.alloc(64, 0x6b),
+      Buffer.from("5840", "hex"),
+      Buffer.alloc(64, 0x6b),
+      Buffer.from("ff18805f5840", "hex"),
+      initialChainingValue,
+      Buffer.from("5840", "hex"),
+      ivWithCounter,
+      Buffer.from("ff00", "hex"),
+    ]);
+    const encoded = encodeMidgardBlake2b224TraceControlV1(active);
+    expect(encoded).toStrictEqual(expected);
+    expect(encoded.toString("hex")).not.toBe(
+      "890101001881584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b5f58406b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b58406b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6bff18805f584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b584008c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa55182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05bff00",
+    );
+  });
+
   it.each([
     {
       language: "NativeCardano",

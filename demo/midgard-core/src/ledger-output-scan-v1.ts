@@ -235,7 +235,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
   ]);
 };
 
-const isWellFormedMidgardLedgerOutputScanControlV1 = (
+export const isWellFormedMidgardLedgerOutputScanControlV1 = (
   control: MidgardLedgerOutputScanControlV1,
 ): boolean => {
   try {

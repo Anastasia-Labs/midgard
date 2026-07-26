@@ -1,4 +1,5 @@
 use aiken/builtin
+use aiken/cbor
 use aiken/crypto.{blake2b_224}
 use aiken/primitive/bytearray
 use midgard/blake2b_224_trace_v1
@@ -9,6 +10,19 @@ use midgard/script_proof_v1
 
 const cross_language_terminal_control_cbor =
   #"8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000"
+
+const malformed_overlong_active_control_cbor =
+  #"890101001881584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b5f58406b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b58406b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6bff18805f584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b584008c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa55182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05bff00"
+
+fn cross_language_active_control_cbor() -> ByteArray {
+  #"890101001881584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b5f5840"
+    |> bytearray.concat(builtin.replicate_byte(64, 107))
+    |> bytearray.concat(#"5840")
+    |> bytearray.concat(builtin.replicate_byte(64, 107))
+    |> bytearray.concat(
+        #"ff18805f584014c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b584008c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa55182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05bff00",
+      )
+}
 
 fn finish_one_block(
   initial: blake2b_224_trace_v1.Blake2b224TraceControlV1,
@@ -91,6 +105,27 @@ test decodes_the_typescript_multiblock_terminal_state() {
     blake2b_224_trace_v1.encode_control_v1(control)
       == cross_language_terminal_control_cbor,
   }
+}
+
+test decodes_the_typescript_active_state_with_chunked_byte_strings() {
+  let control_cbor = cross_language_active_control_cbor()
+  let control = blake2b_224_trace_v1.decode_control_v1(
+    control_cbor,
+  )
+  and {
+    control.stage == blake2b_224_trace_v1.stage_round,
+    control.cursor == 0,
+    control.total_length == 129,
+    control.active_block_length == 128,
+    bytearray.length(control.active_block) == 128,
+    bytearray.length(control.working_value) == 128,
+    blake2b_224_trace_v1.encode_control_v1(control)
+      == control_cbor,
+  }
+}
+
+test fails_closed_for_malformed_overlong_plutus_data_chunks() {
+  cbor.deserialise(malformed_overlong_active_control_cbor) == None
 }
 
 test fails_closed_for_wrong_boundaries_and_malformed_state() {

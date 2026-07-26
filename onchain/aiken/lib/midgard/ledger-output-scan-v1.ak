@@ -95,7 +95,7 @@ fn decode_peak_items(
   }
 }
 
-fn control_is_well_formed(
+pub fn control_is_well_formed(
   control: LedgerOutputScanControlV1,
 ) -> Bool {
   and {
@@ -187,10 +187,9 @@ pub fn encode_control_v1(
     |> bytearray.concat(cbor.serialise(control.reference_script_length))
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
+pub fn control_from_data_v1(
+  data: Data,
 ) -> LedgerOutputScanControlV1 {
-  expect Some(data) = cbor.deserialise(control_cbor)
   expect
     [
       version_data, stage_data, cursor_data, map_entry_count_data,
@@ -233,6 +232,14 @@ pub fn decode_control_v1(
     ),
   }
   expect control_is_well_formed(control)
+  control
+}
+
+pub fn decode_control_v1(
+  control_cbor: ByteArray,
+) -> LedgerOutputScanControlV1 {
+  expect Some(data) = cbor.deserialise(control_cbor)
+  let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
   control
 }

@@ -378,6 +378,19 @@ const encodeCborNodeWithDefiniteMaps = (
   }
 };
 
+/**
+ * Mirrors `cbor.serialise(builtin.b_data(bytes))`. Plutus Data byte strings
+ * longer than 64 bytes use an indefinite byte string containing definite
+ * chunks of at most 64 bytes.
+ */
+export const aikenSerialisedPlutusDataBytes = (
+  bytes: Uint8Array,
+): Buffer =>
+  encodeCborNodeWithDefiniteMaps(
+    { kind: "bytes", value: Buffer.from(bytes) },
+    true,
+  );
+
 const aikenSerialisedPlutusDataCborWithMapOrder = (
   cbor: string,
   sortMaps: boolean,
