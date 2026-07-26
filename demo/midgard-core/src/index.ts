@@ -1,5 +1,6 @@
 export * from "./assets.js";
 export * from "./blake2b-224-trace-v1.js";
+export * from "./blake2b-256-trace-v1.js";
 export * from "./bounded-blob-v1.js";
 export * from "./bounded-collection-v1.js";
 export * from "./bounded-item-v1.js";

@@ -131,14 +131,16 @@ fn merge_peak(
   }
 }
 
-pub fn append_chunk_v1(
+pub fn append_chunk_root_v1(
   frontier: CekBlobFrontierV1,
-  chunk: ByteArray,
+  chunk_root: ByteArray,
+  chunk_length: Int,
 ) -> Option<CekBlobFrontierV1> {
-  let chunk_length = bytearray.length(chunk)
   if and {
     frontier_is_well_formed(frontier),
     frontier.count < validation_merkle_v1.maximum_leaf_count,
+    bytearray.length(chunk_root) == 32,
+    chunk_length >= 0,
     chunk_length <= cek_proof_v1.max_blob_chunk_bytes,
     if frontier.count == 0 {
       frontier.byte_length == 0
@@ -154,7 +156,7 @@ pub fn append_chunk_v1(
         frontier.peaks,
         CekBlobFrontierPeakV1 {
           height: 0,
-          root: cek_proof_v1.hash_blob_chunk_v1(chunk),
+          root: chunk_root,
           byte_length: chunk_length,
         },
       ),
@@ -167,6 +169,17 @@ pub fn append_chunk_v1(
   } else {
     None
   }
+}
+
+pub fn append_chunk_v1(
+  frontier: CekBlobFrontierV1,
+  chunk: ByteArray,
+) -> Option<CekBlobFrontierV1> {
+  append_chunk_root_v1(
+    frontier,
+    cek_proof_v1.hash_blob_chunk_v1(chunk),
+    bytearray.length(chunk),
+  )
 }
 
 fn aggregate_peaks(

@@ -112,9 +112,12 @@ export const emptyMidgardCekBlobFrontierV1 =
       peaks: Object.freeze([]),
     });
 
-export const appendMidgardCekBlobFrontierChunkV1 = (
+export const appendMidgardCekBlobFrontierChunkRootV1 = (
   frontier: MidgardCekBlobFrontierV1,
-  chunk: Uint8Array,
+  chunk: {
+    readonly root: Uint8Array;
+    readonly byteLength: number;
+  },
 ): MidgardCekBlobFrontierV1 => {
   validateMidgardCekBlobFrontierV1(frontier);
   if (
@@ -126,16 +129,22 @@ export const appendMidgardCekBlobFrontierChunkV1 = (
   ) {
     throw new Error("V1 CEK blob frontier cannot append after a final leaf");
   }
-  const bytes = Buffer.from(chunk);
-  if (bytes.length > MIDGARD_CEK_BLOB_CHUNK_BYTES) {
+  if (
+    !Number.isSafeInteger(chunk.byteLength) ||
+    chunk.byteLength < 0 ||
+    chunk.byteLength > MIDGARD_CEK_BLOB_CHUNK_BYTES
+  ) {
     throw new Error("V1 CEK blob frontier chunk exceeds 4,095 bytes");
   }
 
   const peaks = [...frontier.peaks];
   let peak: MidgardCekBlobFrontierPeakV1 = {
     height: 0,
-    root: hashMidgardCekBlobChunkV1(bytes),
-    byteLength: BigInt(bytes.length),
+    root: ensureHash32(
+      chunk.root,
+      "cek_blob_frontier_v1.appended_chunk.root",
+    ),
+    byteLength: BigInt(chunk.byteLength),
   };
   while (peaks[0]?.height === peak.height) {
     const left = peaks.shift()!;
@@ -152,11 +161,22 @@ export const appendMidgardCekBlobFrontierChunkV1 = (
   }
   const next = Object.freeze({
     count: frontier.count + 1,
-    byteLength: frontier.byteLength + BigInt(bytes.length),
+    byteLength: frontier.byteLength + BigInt(chunk.byteLength),
     peaks: Object.freeze([peak, ...peaks]),
   });
   validateMidgardCekBlobFrontierV1(next);
   return next;
+};
+
+export const appendMidgardCekBlobFrontierChunkV1 = (
+  frontier: MidgardCekBlobFrontierV1,
+  chunk: Uint8Array,
+): MidgardCekBlobFrontierV1 => {
+  const bytes = Buffer.from(chunk);
+  return appendMidgardCekBlobFrontierChunkRootV1(frontier, {
+    root: hashMidgardCekBlobChunkV1(bytes),
+    byteLength: bytes.length,
+  });
 };
 
 export const finalizeMidgardCekBlobFrontierV1 = (
