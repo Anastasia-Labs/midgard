@@ -180,12 +180,30 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     hashMidgardVersionedScript(input.script),
     "hex",
   );
+  return hashMidgardReferenceScriptSourceLeafV1({
+    sourceKey: input.sourceKey,
+    scriptLanguageTag: Number(
+      MidgardVersionedScriptTags[input.script.language],
+    ) as 0 | 3 | 128,
+    scriptHash,
+  });
+};
+
+export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
+  readonly sourceKey: Uint8Array;
+  readonly scriptLanguageTag: 0 | 3 | 128;
+  readonly scriptHash: Uint8Array;
+}): Hash32 => {
+  const scriptHash = Buffer.from(input.scriptHash);
+  if (scriptHash.length !== 28) {
+    throw new Error("reference script hash must contain exactly 28 bytes");
+  }
   return hash32(
     Buffer.concat([
       SOURCE_LEAF_DOMAIN,
       encodeCbor(1n),
       encodeCbor(Buffer.from(input.sourceKey)),
-      encodeCbor(MidgardVersionedScriptTags[input.script.language]),
+      encodeCbor(input.scriptLanguageTag),
       encodeCbor(scriptHash),
     ]),
   );

@@ -693,11 +693,12 @@ fn resolve_inputs_step_fixture(
       tx.body.reference_inputs,
     ),
     signer_frontier.count,
-    validation_merkle_v1.frontier_commitment(
-      signer_frontier.count,
-      signer_frontier.peaks,
-    ),
-  )
+      validation_merkle_v1.frontier_commitment(
+        signer_frontier.count,
+        signer_frontier.peaks,
+      ),
+      None,
+    )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -3149,11 +3150,12 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
           tx.body.reference_inputs,
         ),
         signer_frontier.count,
-        validation_merkle_v1.frontier_commitment(
-          signer_frontier.count,
-          signer_frontier.peaks,
+          validation_merkle_v1.frontier_commitment(
+            signer_frontier.count,
+            signer_frontier.peaks,
+          ),
+          None,
         ),
-      ),
     ),
   }
   validation_machine_v1.verify_one_step_evidence(
@@ -3337,6 +3339,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       signer_frontier.count,
       signer_frontier.peaks,
     ),
+    None,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -3359,11 +3362,14 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
   )
 }
 
-test resolve_inputs_proves_one_membership_per_instruction() {
+fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let key = encode_midgard_tx_input(input)
-  let value = #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
-  let root = singleton_root(key, value)
+  let output_cbor =
+    #"a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0"
+  let material = authenticated_output_material(output_cbor)
+  let descriptor_cbor = material.descriptor_cbor
+  let root = singleton_root(key, descriptor_cbor)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -3380,51 +3386,198 @@ test resolve_inputs_proves_one_membership_per_instruction() {
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
   let empty_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
-  let next_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
-    accumulator,
-    0,
-    key,
-    value,
+  let signer_frontier_commitment = validation_merkle_v1.frontier_commitment(
+    signer_frontier.count,
+    signer_frontier.peaks,
   )
-  let post = validation_trace_v1.ValidationMachineStateV1 {
+  let pending_initial = validation_machine_v1.ResolveInputOutputProofV1 {
+    source_kind: 0,
+    key,
+    next_schedule_hash: empty_schedule_hash,
+    descriptor_cbor,
+    output_proof: material.initial,
+  }
+  let begin_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    1,
+    accumulator,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    signer_frontier.count,
+    signer_frontier_commitment,
+    Some(pending_initial),
+  )
+  let begin_post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     program_counter: 9,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ResolveInputs,
       9,
-      validation_machine_v1.encode_resolve_inputs_witness(
-        proof_source.compact_cbor,
-        proof_source.witness_set_compact_cbor,
-        proof_source.field_preimage_lengths_cbor,
-        validation_context_cbor,
-        2,
-        next_accumulator,
-        empty_schedule_hash,
-        signer_frontier.count,
-        validation_merkle_v1.frontier_commitment(
-          signer_frontier.count,
-          signer_frontier.peaks,
-        ),
-      ),
+      begin_post_cbor,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.ScheduledLedgerMembershipWitness {
-        source_kind: 0,
-        key,
-        next_schedule_hash: empty_schedule_hash,
-        value,
-        proof: [],
-        signer_proof: validation_machine_v1.NoSignerSetProof,
-      },
-    },
+  let pending_first_successor = validation_machine_v1.ResolveInputOutputProofV1 {
+    ..pending_initial,
+    output_proof: material.first_successor,
+  }
+  let step_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    1,
+    accumulator,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    signer_frontier.count,
+    signer_frontier_commitment,
+    Some(pending_first_successor),
   )
+  let step_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..begin_post,
+    program_counter: 10,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      10,
+      step_post_cbor,
+    ),
+  }
+  let pending_terminal = validation_machine_v1.ResolveInputOutputProofV1 {
+    ..pending_initial,
+    output_proof: material.terminal,
+  }
+  let finalize_pre_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    1,
+    accumulator,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    signer_frontier.count,
+    signer_frontier_commitment,
+    Some(pending_terminal),
+  )
+  let finalize_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..step_post,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      10,
+      finalize_pre_cbor,
+    ),
+  }
+  let next_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+    accumulator,
+    0,
+    key,
+    descriptor_cbor,
+  )
+  let finalize_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    2,
+    next_accumulator,
+    empty_schedule_hash,
+    signer_frontier.count,
+    signer_frontier_commitment,
+    None,
+  )
+  let finalize_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..finalize_pre,
+    program_counter: 11,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      11,
+      finalize_post_cbor,
+    ),
+  }
+  if step_to_verify == 0 {
+    validation_machine_v1.verify_resolve_inputs_membership_begin_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: begin_post,
+      },
+      0,
+      key,
+      empty_schedule_hash,
+      descriptor_cbor,
+      [],
+      validation_machine_v1.NoSignerSetProof,
+    )
+  } else if step_to_verify == 1 {
+    validation_machine_v1.verify_resolve_inputs_membership_step_semantics_v1(
+      begin_post,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: begin_post_cbor,
+        claimed_successor: step_post,
+      },
+      ledger_output_proof_v1.LedgerOutputProofChunks {
+        chunk_proof: material.chunk_proof,
+        next_chunk_proof: None,
+      },
+    )
+  } else {
+    and {
+      step_to_verify == 2,
+      validation_machine_v1.verify_resolve_inputs_membership_finalize_semantics_v1(
+        finalize_pre,
+        validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: finalize_pre_cbor,
+          claimed_successor: finalize_post,
+        },
+        descriptor_cbor,
+        validation_machine_v1.NoSignerSetProof,
+      ),
+    }
+  }
+}
+
+test resolve_inputs_begins_authenticated_membership_output() {
+  resolve_inputs_authenticated_membership_step(0)
+}
+
+test resolve_inputs_empty_pending_witness_decodes_as_exact_array_10() {
+  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, inputs: [input] },
+  }
+  let Pair(_, work_witness_cbor) = resolve_inputs_step_fixture(
+    tx,
+    null_hash,
+    1,
+    validation_machine_v1.initial_resolution_accumulator(),
+    8,
+  )
+  expect Some(data) = cbor.deserialise(work_witness_cbor)
+  let fields = builtin.un_list_data(data)
+  expect Some(pending_data) = list.at(fields, 9)
+  and {
+    list.length(fields) == 10,
+    builtin.un_b_data(pending_data) == #"00",
+  }
+}
+
+test resolve_inputs_streams_authenticated_membership_output() {
+  resolve_inputs_authenticated_membership_step(1)
+}
+
+test resolve_inputs_finalizes_authenticated_membership_output() {
+  resolve_inputs_authenticated_membership_step(2)
 }
 
 test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
@@ -3471,59 +3624,6 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
         key,
         next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
         proof: [],
-      },
-    },
-  )
-}
-
-test resolve_inputs_rejects_a_malformed_ledger_output_exactly() {
-  let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
-  let key = encode_midgard_tx_input(input)
-  let malformed_value = #"8200"
-  let root = singleton_root(key, malformed_value)
-  let base = empty_v1_transaction()
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody { ..base.body, inputs: [input] },
-  }
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
-    tx,
-    root,
-    1,
-    accumulator,
-    8,
-  )
-  let rejection_code = #"455f494e56414c49445f4f5554505554"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 9,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      9,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      auxiliary: validation_machine_v1.ScheduledLedgerMembershipWitness {
-        source_kind: 0,
-        key,
-        next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
-        value: malformed_value,
-        proof: [],
-        signer_proof: validation_machine_v1.NoSignerSetProof,
       },
     },
   )

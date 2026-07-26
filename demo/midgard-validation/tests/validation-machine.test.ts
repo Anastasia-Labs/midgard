@@ -81,6 +81,12 @@ const semanticResolverDefinitionsV1 = [
   "phase_a_native_scripts_frame_semantic_v1",
   "phase_a_script_preconditions_semantic_v1",
   "phase_a_script_preconditions_item_semantic_v1",
+  "resolve_inputs_initial_semantic_v1",
+  "resolve_inputs_finish_semantic_v1",
+  "resolve_inputs_membership_begin_semantic_v1",
+  "resolve_inputs_membership_step_semantic_v1",
+  "resolve_inputs_membership_finalize_semantic_v1",
+  "resolve_inputs_non_membership_semantic_v1",
   "script_sources_non_output_semantic_v1",
   "script_sources_output_proof_begin_semantic_v1",
   "script_sources_output_proof_step_semantic_v1",
@@ -88,7 +94,7 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_output_proof_finish_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 26,
+  0, 2, 3, 4, 6, 10, 24, 26, 32,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -269,9 +275,7 @@ describe("deterministic validation machine", () => {
       "signatures",
       "phaseANativeScripts",
       "phaseAScriptPreconditions",
-      "resolveInputs",
-      "resolveInputs",
-      "resolveInputs",
+      ...Array<string>(11).fill("resolveInputs"),
       ...Array<string>(22).fill("scriptSources"),
       "nativeScripts",
       "scriptIntegrity",
@@ -1405,7 +1409,7 @@ describe("deterministic validation machine", () => {
     expect(trace.verdict).toBe("rejected");
   });
 
-  it("commits malformed authenticated ledger output rejection at its lookup instruction", async () => {
+  it("fails closed before proving a malformed persisted ledger output", async () => {
     const spent = outRefFromByte(0x11);
     const transaction = makeNativeTx({
       version: 1n,
@@ -1413,39 +1417,25 @@ describe("deterministic validation machine", () => {
       outputs: [makeOutput(10n)],
     });
     const unchangedRoot = root(6);
-    const trace = await Effect.runPromise(
-      buildDeterministicValidationMachineTrace({
-        ...context,
-        sourceKind: "forced",
-        transactionId: transaction.txId,
-        canonicalTransactionCbor: transaction.txCbor,
-        priorUtxosRoot: unchangedRoot,
-        postUtxosRoot: unchangedRoot,
-        ledgerWitnessEntries: [
-          { outRef: spent, output: Buffer.from("8200", "hex") },
-        ],
-        expectedLedgerOps: [],
-        expectedVerdict: "rejected",
-        expectedRejectionCode: RejectCodes.InvalidOutput,
-      }),
-    );
-
-    expect(trace.states.map((state) => state.phase)).toEqual([
-      ...Array<string>(9).fill("canonicalDecode"),
-      "compactBinding",
-      "staticLedgerRules",
-      "inputSets",
-      "signatures",
-      "signatures",
-      "signatures",
-      "phaseANativeScripts",
-      "phaseAScriptPreconditions",
-      "resolveInputs",
-      "resolveInputs",
-      "terminal",
-    ]);
-    expect(validateBoundaryAbiAndCollectAuxiliaryKinds(trace).kinds).toContain(
-      "scheduledLedgerLookup",
+    await expect(
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...context,
+          sourceKind: "forced",
+          transactionId: transaction.txId,
+          canonicalTransactionCbor: transaction.txCbor,
+          priorUtxosRoot: unchangedRoot,
+          postUtxosRoot: unchangedRoot,
+          ledgerWitnessEntries: [
+            { outRef: spent, output: Buffer.from("8200", "hex") },
+          ],
+          expectedLedgerOps: [],
+          expectedVerdict: "rejected",
+          expectedRejectionCode: RejectCodes.InvalidOutput,
+        }),
+      ),
+    ).rejects.toThrow(
+      "cannot produce an exact V1 descriptor",
     );
   });
 

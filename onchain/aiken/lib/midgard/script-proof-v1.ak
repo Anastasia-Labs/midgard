@@ -94,13 +94,31 @@ pub fn source_leaf_hash(
       ),
     )
   } else {
-    source_leaf_domain
-      |> bytearray.concat(cbor.serialise(origin_kind))
-      |> bytearray.concat(encode_definite_bytes(source_key))
-      |> bytearray.concat(cbor.serialise(language_tag(script.language)))
-      |> bytearray.concat(encode_definite_bytes(versioned_script_hash(script)))
-      |> blake2b_256
+    reference_source_leaf_hash(
+      source_key,
+      language_tag(script.language),
+      versioned_script_hash(script),
+    )
   }
+}
+
+pub fn reference_source_leaf_hash(
+  source_key: ByteArray,
+  script_language_tag: Int,
+  script_hash: ByteArray,
+) -> ByteArray {
+  expect or {
+      script_language_tag == 0,
+      script_language_tag == 3,
+      script_language_tag == 128,
+    }
+  expect bytearray.length(script_hash) == 28
+  source_leaf_domain
+    |> bytearray.concat(cbor.serialise(1))
+    |> bytearray.concat(encode_definite_bytes(source_key))
+    |> bytearray.concat(cbor.serialise(script_language_tag))
+    |> bytearray.concat(encode_definite_bytes(script_hash))
+    |> blake2b_256
 }
 
 pub fn redeemer_purpose_tag(purpose: MidgardRedeemerPurpose) -> Int {

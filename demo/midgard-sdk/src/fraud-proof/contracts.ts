@@ -79,6 +79,8 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
+    resolveInputs:
+      "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
     scriptSources:
       "fraud_proofs/validation_trace/script_sources_v1.main.spend",
   },
@@ -135,6 +137,18 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_script_preconditions_semantic_v1.main.spend",
     phaseAScriptPreconditionsItem:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_item_semantic_v1.main.spend",
+    resolveInputsInitial:
+      "fraud_proofs/validation_trace/resolve_inputs_initial_semantic_v1.main.spend",
+    resolveInputsFinish:
+      "fraud_proofs/validation_trace/resolve_inputs_finish_semantic_v1.main.spend",
+    resolveInputsMembershipBegin:
+      "fraud_proofs/validation_trace/resolve_inputs_membership_begin_semantic_v1.main.spend",
+    resolveInputsMembershipStep:
+      "fraud_proofs/validation_trace/resolve_inputs_membership_step_semantic_v1.main.spend",
+    resolveInputsMembershipFinalize:
+      "fraud_proofs/validation_trace/resolve_inputs_membership_finalize_semantic_v1.main.spend",
+    resolveInputsNonMembership:
+      "fraud_proofs/validation_trace/resolve_inputs_non_membership_semantic_v1.main.spend",
     scriptSourcesNonOutput:
       "fraud_proofs/validation_trace/script_sources_non_output_semantic_v1.main.spend",
     scriptSourcesOutputProofBegin:
@@ -147,7 +161,6 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/script_sources_output_proof_finish_semantic_v1.main.spend",
   },
   directResolvers: {
-    resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
     nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
     scriptIntegrity:
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
@@ -252,6 +265,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
+      SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
       SpendingValidator,
@@ -285,9 +299,14 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
     ];
     readonly directResolvers: readonly [
-      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -900,7 +919,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtSemanticResolvers.length !== 31) {
+    if (builtSemanticResolvers.length !== 37) {
       return yield* Effect.fail(
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
@@ -937,6 +956,12 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[28]!,
       builtSemanticResolvers[29]!,
       builtSemanticResolvers[30]!,
+      builtSemanticResolvers[31]!,
+      builtSemanticResolvers[32]!,
+      builtSemanticResolvers[33]!,
+      builtSemanticResolvers[34]!,
+      builtSemanticResolvers[35]!,
+      builtSemanticResolvers[36]!,
     ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
@@ -972,6 +997,14 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[28],
         semanticResolvers[29],
         semanticResolvers[30],
+        semanticResolvers[31],
+      ],
+      [
+        semanticResolvers[32],
+        semanticResolvers[33],
+        semanticResolvers[34],
+        semanticResolvers[35],
+        semanticResolvers[36],
       ],
     ] as const;
     const semanticResolverHashesSchema = Data.Array(Data.Bytes());
@@ -1008,7 +1041,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtPrepareResolvers.length !== 8) {
+    if (builtPrepareResolvers.length !== 9) {
       return yield* Effect.fail(
         new Error("Validation-trace prepare resolver set is incomplete"),
       );
@@ -1022,6 +1055,7 @@ const buildValidationTraceDisputeChain = ({
       builtPrepareResolvers[5]!,
       builtPrepareResolvers[6]!,
       builtPrepareResolvers[7]!,
+      builtPrepareResolvers[8]!,
     ] as const;
 
     const directTitles = Object.values(
@@ -1044,7 +1078,7 @@ const buildValidationTraceDisputeChain = ({
         ),
       );
     }
-    if (builtDirectResolvers.length !== 6) {
+    if (builtDirectResolvers.length !== 5) {
       return yield* Effect.fail(
         new Error("Validation-trace direct resolver set is incomplete"),
       );
@@ -1055,7 +1089,6 @@ const buildValidationTraceDisputeChain = ({
       builtDirectResolvers[2]!,
       builtDirectResolvers[3]!,
       builtDirectResolvers[4]!,
-      builtDirectResolvers[5]!,
     ] as const;
     const resolvers = [
       prepareResolvers[0],
@@ -1065,13 +1098,13 @@ const buildValidationTraceDisputeChain = ({
       prepareResolvers[4],
       prepareResolvers[5],
       prepareResolvers[6],
-      directResolvers[0],
       prepareResolvers[7],
+      prepareResolvers[8],
+      directResolvers[0],
       directResolvers[1],
       directResolvers[2],
       directResolvers[3],
       directResolvers[4],
-      directResolvers[5],
     ] as const;
     if (
       new Set(resolvers.map(({ spendingScriptHash }) => spendingScriptHash))

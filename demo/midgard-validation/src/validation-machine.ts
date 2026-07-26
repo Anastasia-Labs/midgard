@@ -25,6 +25,7 @@ import {
   hashMidgardOutputLeafV1,
   hashMidgardRedeemerItemLeafV1,
   hashMidgardRedeemerLeafV1,
+  hashMidgardReferenceScriptSourceLeafV1,
   hashMidgardResolvedContextItemLeafV1,
   hashMidgardScriptExecutionLeafV1,
   hashMidgardScriptPurposeLeafV1,
@@ -103,6 +104,7 @@ import {
   type MidgardCekStructuralExecutionV1,
 } from "./cek-executor.js";
 import {
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildCanonicalMidgardLedgerOutputMaterialV1,
 } from "./ledger-output-descriptor.js";
 import type { LocalScriptEvalResult } from "./local-script-eval.js";
@@ -991,6 +993,7 @@ export const buildDeterministicValidationMachineTrace = (
     });
 
     const ledgerState = new Map<string, Buffer>();
+    const ledgerDescriptorState = new Map<string, Buffer>();
     for (const entry of input.ledgerWitnessEntries) {
       const outRefHex = entry.outRef.toString("hex");
       if (ledgerState.has(outRefHex)) {
@@ -999,6 +1002,21 @@ export const buildDeterministicValidationMachineTrace = (
         );
       }
       ledgerState.set(outRefHex, Buffer.from(entry.output));
+      const outputMaterial = yield* Effect.try({
+        try: () =>
+          buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+            outRef: entry.outRef,
+            outputCbor: entry.output,
+          }),
+        catch: () =>
+          new Error(
+            `persisted ledger output ${outRefHex} cannot produce an exact V1 descriptor`,
+          ),
+      });
+      ledgerDescriptorState.set(
+        outRefHex,
+        outputMaterial.descriptorCbor,
+      );
     }
     const phaseALedgerTx = "ledgerTx" in phaseA ? phaseA.ledgerTx : null;
     const scriptEvaluations: {
@@ -1241,7 +1259,15 @@ export const buildDeterministicValidationMachineTrace = (
         for (const entry of [...input.ledgerWitnessEntries].sort(
           (left, right) => Buffer.compare(left.outRef, right.outRef),
         )) {
-          await trie.insert(entry.outRef, entry.output);
+          const descriptorCbor = ledgerDescriptorState.get(
+            entry.outRef.toString("hex"),
+          );
+          if (descriptorCbor === undefined) {
+            throw new Error(
+              "input-resolution descriptor state lost a persisted ledger entry",
+            );
+          }
+          await trie.insert(entry.outRef, descriptorCbor);
         }
         return await Promise.all(
           resolutionScheduleNodes.map(async (node) =>
@@ -1249,7 +1275,7 @@ export const buildDeterministicValidationMachineTrace = (
               (
                 await trie.prove(
                   node.key,
-                  !ledgerState.has(node.key.toString("hex")),
+                  !ledgerDescriptorState.has(node.key.toString("hex")),
                 )
               ).toCBOR(),
             ),
@@ -2667,41 +2693,39 @@ export const buildDeterministicValidationMachineTrace = (
       let resolutionAccumulator = initialMidgardResolvedInputsAccumulatorV1();
       let remainingScheduleHash = resolutionScheduleHash;
       let resolutionCursor = 0;
-      const pushResolutionWitness = (
-        node: (typeof resolutionScheduleNodes)[number] | undefined,
-      ): void => {
-        const value =
-          node === undefined
-            ? null
-            : (ledgerState.get(node.key.toString("hex")) ?? null);
-        pushWitness(
-          "resolveInputs",
-          encodeCbor([
-            proofSource.compactCbor,
-            proofSource.witnessSetCompactCbor,
-            proofSource.fieldPreimageLengthsCbor,
-            contextCbor,
-            BigInt(resolutionCursor),
-            resolutionAccumulator,
-            remainingScheduleHash,
-            BigInt(signerFrontier.count),
-            signerFrontierCommitment,
-          ]),
-          node === undefined
-            ? null
-            : {
-                kind: "scheduledLedgerLookup",
-                sourceKind: node.sourceKind,
-                key: node.key,
-                nextScheduleHash: node.nextScheduleHash,
-                value,
-                proofCbor: node.proofCbor,
-                signerProof: signerSetProof(node.sourceKind, value),
-              },
-        );
-      };
+      const resolutionWitnessCbor = (
+        pending:
+          | {
+              readonly node: (typeof resolutionScheduleNodes)[number];
+              readonly descriptorCbor: Buffer;
+              readonly outputProof: MidgardLedgerOutputProofControlV1;
+            }
+          | undefined,
+      ): Buffer =>
+        encodeCbor([
+          proofSource.compactCbor,
+          proofSource.witnessSetCompactCbor,
+          proofSource.fieldPreimageLengthsCbor,
+          contextCbor,
+          BigInt(resolutionCursor),
+          resolutionAccumulator,
+          remainingScheduleHash,
+          BigInt(signerFrontier.count),
+          signerFrontierCommitment,
+          pending === undefined
+            ? Buffer.from([0])
+            : encodeCbor([
+                pending.node.sourceKind === "spend" ? 0n : 1n,
+                pending.node.key,
+                pending.node.nextScheduleHash,
+                pending.descriptorCbor,
+                encodeMidgardLedgerOutputProofControlV1(
+                  pending.outputProof,
+                ),
+              ]),
+        ]);
 
-      pushResolutionWitness(undefined);
+      pushWitness("resolveInputs", resolutionWitnessCbor(undefined));
       if (
         terminalPhase === "resolveInputs" &&
         rejectionCode === RejectCodes.ValidityIntervalMismatch
@@ -2709,7 +2733,6 @@ export const buildDeterministicValidationMachineTrace = (
         stoppedAtRejection = true;
       } else {
         resolutionCursor = 1;
-        pushResolutionWitness(resolutionScheduleNodes[0]);
 
         for (
           let index = 0;
@@ -2724,8 +2747,23 @@ export const buildDeterministicValidationMachineTrace = (
               ),
             );
           }
-          const value = ledgerState.get(item.key.toString("hex"));
-          if (value === undefined) {
+          const outRefHex = item.key.toString("hex");
+          const outputCbor = ledgerState.get(outRefHex);
+          const descriptorCbor = ledgerDescriptorState.get(outRefHex);
+          if (outputCbor === undefined || descriptorCbor === undefined) {
+            pushWitness(
+              "resolveInputs",
+              resolutionWitnessCbor(undefined),
+              {
+                kind: "scheduledLedgerLookup",
+                sourceKind: item.sourceKind,
+                key: item.key,
+                nextScheduleHash: item.nextScheduleHash,
+                value: null,
+                proofCbor: item.proofCbor,
+                signerProof: { kind: "none" },
+              },
+            );
             if (
               terminalPhase !== "resolveInputs" ||
               rejectionCode !== RejectCodes.InputNotFound
@@ -2739,31 +2777,74 @@ export const buildDeterministicValidationMachineTrace = (
             stoppedAtRejection = true;
             break;
           }
-          try {
-            decodeMidgardTxOutput(value);
-          } catch (cause) {
-            if (
-              terminalPhase !== "resolveInputs" ||
-              rejectionCode !== RejectCodes.InvalidOutput
-            ) {
-              return yield* Effect.fail(
-                new Error(
-                  `input resolution found a malformed ledger output but replay rejected at ${terminalPhase}/${rejectionCode ?? "none"}: ${String(cause)}`,
-                ),
-              );
-            }
+
+          const outputProof = buildMidgardLedgerOutputProofTraceV1({
+            outputIndex:
+              buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+                outRef: item.key,
+                outputCbor,
+              }).descriptor.outputIndex,
+            outputCbor,
+          });
+          pushWitness(
+            "resolveInputs",
+            resolutionWitnessCbor(undefined),
+            {
+              kind: "scheduledLedgerLookup",
+              sourceKind: item.sourceKind,
+              key: item.key,
+              nextScheduleHash: item.nextScheduleHash,
+              value: descriptorCbor,
+              proofCbor: item.proofCbor,
+              signerProof: { kind: "none" },
+            },
+          );
+          for (const proofStep of outputProof.steps) {
+            pushWitness(
+              "resolveInputs",
+              resolutionWitnessCbor({
+                node: item,
+                descriptorCbor,
+                outputProof: proofStep.control,
+              }),
+              {
+                kind: "ledgerOutputProofStep",
+                witness: proofStep.witness,
+              },
+            );
+          }
+          const signerProof = signerSetProof(item.sourceKind, outputCbor);
+          pushWitness(
+            "resolveInputs",
+            resolutionWitnessCbor({
+              node: item,
+              descriptorCbor,
+              outputProof: outputProof.terminal,
+            }),
+            {
+              kind: "ledgerOutputProofFinalize",
+              descriptorCbor,
+              signerProof,
+            },
+          );
+          if (
+            terminalPhase === "resolveInputs" &&
+            rejectionCode === RejectCodes.MissingRequiredWitness &&
+            item.sourceKind === "spend" &&
+            signerProof.kind !== "membership"
+          ) {
             stoppedAtRejection = true;
             break;
           }
+
           resolutionAccumulator = advanceMidgardResolvedInputsAccumulatorV1({
             accumulator: resolutionAccumulator,
             sourceKind: item.sourceKind,
             key: item.key,
-            value,
+            value: descriptorCbor,
           });
           remainingScheduleHash = item.nextScheduleHash;
           resolutionCursor += 1;
-          pushResolutionWitness(resolutionScheduleNodes[index + 1]);
         }
 
         if (!stoppedAtRejection) {
@@ -2774,6 +2855,10 @@ export const buildDeterministicValidationMachineTrace = (
               ),
             );
           }
+          pushWitness(
+            "resolveInputs",
+            resolutionWitnessCbor(undefined),
+          );
           const scriptSourceControl = {
             resolvedInputCount: resolutionItems.length,
             resolvedInputsAccumulator: resolutionAccumulator,
@@ -2904,14 +2989,32 @@ export const buildDeterministicValidationMachineTrace = (
             let replaySourceFrontier = inlineScriptSourceFrontier;
             let replayPurposeFrontier = emptyValidationFrontier;
             for (const node of resolutionScheduleNodes) {
-              const value = ledgerState.get(node.key.toString("hex"));
-              if (value === undefined) {
+              const outRefHex = node.key.toString("hex");
+              const outputCbor = ledgerState.get(outRefHex);
+              const descriptorCbor = ledgerDescriptorState.get(outRefHex);
+              if (
+                outputCbor === undefined ||
+                descriptorCbor === undefined
+              ) {
                 return yield* Effect.fail(
                   new Error(
-                    "resolved-input replay lost a previously authenticated ledger value",
+                    "resolved-input replay lost previously authenticated output material",
                   ),
                 );
               }
+              const outputMaterial =
+                buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+                  outRef: node.key,
+                  outputCbor,
+                });
+              if (!outputMaterial.descriptorCbor.equals(descriptorCbor)) {
+                return yield* Effect.fail(
+                  new Error(
+                    "resolved-input replay descriptor differs from retained output material",
+                  ),
+                );
+              }
+              const descriptor = outputMaterial.descriptor;
               pushWitness(
                 "scriptSources",
                 scriptSourcesWitnessCbor({
@@ -2930,7 +3033,7 @@ export const buildDeterministicValidationMachineTrace = (
                   sourceKind: node.sourceKind,
                   key: node.key,
                   nextScheduleHash: node.nextScheduleHash,
-                  value,
+                  value: descriptorCbor,
                 },
               );
               if (!replayRemainingScheduleHash.equals(node.scheduleHash)) {
@@ -2940,20 +3043,44 @@ export const buildDeterministicValidationMachineTrace = (
                   ),
                 );
               }
-              const output = decodeMidgardTxOutput(value);
               if (
                 node.sourceKind === "reference" &&
-                output.script_ref !== undefined
+                descriptor.referenceScriptLanguage !== -1
               ) {
+                const output = decodeMidgardTxOutput(outputCbor);
+                if (output.script_ref === undefined) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "reference-input descriptor commits a missing retained reference script",
+                    ),
+                  );
+                }
+                const leaf = hashMidgardReferenceScriptSourceLeafV1({
+                  sourceKey: node.key,
+                  scriptLanguageTag:
+                    descriptor.referenceScriptLanguage,
+                  scriptHash: descriptor.referenceScriptHash,
+                });
+                if (
+                  !leaf.equals(
+                    hashMidgardScriptSourceLeafV1({
+                      originKind: "reference",
+                      sourceKey: node.key,
+                      script: output.script_ref,
+                    }),
+                  )
+                ) {
+                  return yield* Effect.fail(
+                    new Error(
+                      "retained reference script differs from its authenticated descriptor facts",
+                    ),
+                  );
+                }
                 const sourceEntry: ScriptSourceProofEntry = {
                   originKind: "reference",
                   sourceKey: node.key,
                   script: output.script_ref,
-                  leaf: hashMidgardScriptSourceLeafV1({
-                    originKind: "reference",
-                    sourceKey: node.key,
-                    script: output.script_ref,
-                  }),
+                  leaf,
                 };
                 scriptSourceEntries.push(sourceEntry);
                 replaySourceFrontier = appendMidgardValidationMerkleLeafV1(
@@ -2963,7 +3090,7 @@ export const buildDeterministicValidationMachineTrace = (
               }
               if (node.sourceKind === "spend") {
                 const credential = decodeMidgardAddressBytes(
-                  output.address,
+                  descriptor.address,
                 ).paymentCredential;
                 if (credential.kind === "Script") {
                   const purposeEntry: ScriptPurposeProofEntry = {
@@ -2992,14 +3119,14 @@ export const buildDeterministicValidationMachineTrace = (
                   sourceKind: node.sourceKind,
                   itemIndex: replayCursor,
                   key: node.key,
-                  outputCbor: value,
+                  outputCbor: descriptorCbor,
                 }),
               );
               replayAccumulator = advanceMidgardResolvedInputsAccumulatorV1({
                 accumulator: replayAccumulator,
                 sourceKind: node.sourceKind,
                 key: node.key,
-                value,
+                value: descriptorCbor,
               });
               replayRemainingScheduleHash = node.nextScheduleHash;
               replayCursor += 1;

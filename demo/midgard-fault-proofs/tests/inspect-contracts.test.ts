@@ -257,9 +257,9 @@ describe("inspect-contracts", () => {
       "boundary",
       "timeout",
       "award",
-      ...Array.from({ length: 31 }, (_, index) => `semantic-resolver-${index}`),
-      ...Array.from({ length: 8 }, (_, index) => `prepare-resolver-${index}`),
-      ...Array.from({ length: 6 }, (_, index) => `direct-resolver-${index}`),
+      ...Array.from({ length: 37 }, (_, index) => `semantic-resolver-${index}`),
+      ...Array.from({ length: 9 }, (_, index) => `prepare-resolver-${index}`),
+      ...Array.from({ length: 5 }, (_, index) => `direct-resolver-${index}`),
     ]);
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);

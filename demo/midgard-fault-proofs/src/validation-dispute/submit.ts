@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 0, 5,
+  2, 1, 1, 2, 4, 14, 2, 6, 5,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 26,
+  0, 2, 3, 4, 6, 10, 24, 26, 32,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -288,6 +288,24 @@ const auxiliaryShapeV1 = ({
   readonly semanticResolverIndex: number;
   readonly auxiliary: PlutusDataValue;
 }): Constr<PlutusDataValue> => {
+  if (resolverIndex === 7) {
+    const expected =
+      semanticResolverIndex === 0 || semanticResolverIndex === 1
+        ? [0, 0]
+        : semanticResolverIndex === 2
+          ? [9, 6]
+          : semanticResolverIndex === 3
+            ? [37, 1]
+            : semanticResolverIndex === 4
+              ? [38, 2]
+              : [10, 4];
+    return requireConstr({
+      value: auxiliary,
+      index: expected[0],
+      fields: expected[1],
+      label: "validation ResolveInputs auxiliary witness",
+    });
+  }
   if (resolverIndex === 8) {
     const outputExpected =
       semanticResolverIndex === 0
@@ -378,7 +396,6 @@ const requireStagedOneStepArgumentV1 = (
     argument.resolverIndex < 0 ||
     argument.resolverIndex >=
       VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
-    || argument.resolverIndex === 7
   ) {
     throw new Error(
       "Staged validation one-step argument must select a prepare resolver",
@@ -438,13 +455,12 @@ const requireDirectOneStepArgumentV1 = (
 } => {
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
-    argument.resolverIndex < 7 ||
+    argument.resolverIndex < 9 ||
     argument.resolverIndex >= 14 ||
-    argument.resolverIndex === 8 ||
     argument.semanticResolverIndex !== null
   ) {
     throw new Error(
-      "Direct validation one-step argument must select resolver 7 through 13",
+      "Direct validation one-step argument must select resolver 9 through 13",
     );
   }
   const transitionData = exactPlutusDataFromCbor(
@@ -2166,6 +2182,26 @@ const semanticActionFieldsV1 = ({
     outputIndex,
     transition,
   ];
+  if (resolverIndex === 7) {
+    if (
+      (semanticResolverIndex === 0 || semanticResolverIndex === 1) &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (
+      (semanticResolverIndex === 2 && auxiliary.index === 9) ||
+      (semanticResolverIndex === 3 && auxiliary.index === 37) ||
+      (semanticResolverIndex === 4 && auxiliary.index === 38) ||
+      (semanticResolverIndex === 5 && auxiliary.index === 10)
+    ) {
+      return [...base, ...auxiliary.fields];
+    }
+    throw new Error(
+      "ResolveInputs auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
   if (resolverIndex === 8) {
     if (semanticResolverIndex === 0) {
       return [...base, auxiliary];

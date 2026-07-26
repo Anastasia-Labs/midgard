@@ -448,16 +448,16 @@ describe("fault-proof deployment contract resolution", () => {
       network: "Preprod",
     });
     expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(51);
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(57);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(31);
+    ).toHaveLength(37);
     expect(
       resolved.contracts.validationTraceDispute.prepareResolvers,
-    ).toHaveLength(8);
+    ).toHaveLength(9);
     expect(
       resolved.contracts.validationTraceDispute.directResolvers,
-    ).toHaveLength(6);
+    ).toHaveLength(5);
     expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
       14,
     );

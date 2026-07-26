@@ -527,6 +527,25 @@ const scriptSourcesStage = (
   return stage;
 };
 
+const resolveInputsCursor = (
+  witness: ValidationMachineWorkWitness,
+): number => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "resolve_inputs_control",
+  );
+  if (control.length !== 10) {
+    throw new Error("resolve_inputs_control has an invalid field count");
+  }
+  const cursor = Number(
+    asBigInt(control[4], "resolve_inputs_control.cursor"),
+  );
+  if (!Number.isSafeInteger(cursor) || cursor < 0) {
+    throw new Error("resolve_inputs_control cursor is invalid");
+  }
+  return cursor;
+};
+
 const nativeScanCursor = (
   witness: ValidationMachineWorkWitness,
 ): {
@@ -694,7 +713,17 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary.kind === "transactionFieldChunk") return 1;
       break;
     case "resolveInputs":
-      return null;
+      if (auxiliary === null) {
+        return resolveInputsCursor(witness) === 0 ? 0 : 1;
+      }
+      if (
+        auxiliary.kind === "scheduledLedgerLookup"
+      ) {
+        return auxiliary.value === null ? 5 : 2;
+      }
+      if (auxiliary.kind === "ledgerOutputProofStep") return 3;
+      if (auxiliary.kind === "ledgerOutputProofFinalize") return 4;
+      break;
     case "scriptSources": {
       if (scriptSourcesStage(witness) !== 5) return 0;
       if (auxiliary?.kind === "ledgerOutputProofBegin") return 1;
