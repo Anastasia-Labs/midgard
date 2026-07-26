@@ -8987,6 +8987,124 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
   }
 }
 
+pub fn verify_script_sources_output_proof_begin_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  output_index: Int,
+  total_length: Int,
+  item_commitment: ByteArray,
+  siblings: List<ByteArray>,
+) -> Bool {
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  and {
+    script_sources_control_is_bound(pre, witness, control),
+    control.stage == 5,
+    control.output_cursor < control.output_count,
+    script_sources_output_proof_begin(
+      pre,
+      witness,
+      control,
+      output_index,
+      total_length,
+      item_commitment,
+      siblings,
+    ),
+  }
+}
+
+pub fn verify_script_sources_output_proof_step_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  proof_witness: ledger_output_proof_v1.LedgerOutputProofWitnessV1,
+) -> Bool {
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  expect Some(output_proof) = control.output_proof
+  and {
+    script_sources_control_is_bound(pre, witness, control),
+    control.stage == 5,
+    control.output_cursor < control.output_count,
+    !ledger_output_proof_v1.terminal_is_exact_v1(output_proof),
+    script_sources_output_proof_step(
+      pre,
+      witness,
+      control,
+      output_proof,
+      proof_witness,
+    ),
+  }
+}
+
+pub fn verify_script_sources_output_proof_finalize_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  descriptor_cbor: ByteArray,
+  signer_proof: SignerSetProofV1,
+) -> Bool {
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  expect Some(output_proof) = control.output_proof
+  and {
+    script_sources_control_is_bound(pre, witness, control),
+    control.stage == 5,
+    control.output_cursor < control.output_count,
+    ledger_output_proof_v1.terminal_is_exact_v1(output_proof),
+    script_sources_output_proof_finalize(
+      pre,
+      witness,
+      control,
+      output_proof,
+      descriptor_cbor,
+      signer_proof,
+    ),
+  }
+}
+
+pub fn verify_script_sources_non_output_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  evidence: ValidationOneStepEvidenceV1,
+) -> Bool {
+  let witness = evidence.transition
+  let auxiliary = evidence.auxiliary
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
+    pre.transaction_id,
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+  )
+  and {
+    verified_source.version == 1,
+    script_sources_control_is_bound(pre, witness, control),
+    control.stage != 5,
+    if control.stage == 0 {
+      script_sources_stage_zero(pre, witness, auxiliary, control)
+    } else if control.stage == 1 {
+      script_sources_stage_one(pre, witness, auxiliary, control)
+    } else if control.stage == 2 {
+      script_sources_stage_two(pre, witness, auxiliary, control)
+    } else if control.stage == 3 {
+      script_sources_stage_three(pre, witness, auxiliary, control)
+    } else if control.stage == 4 {
+      script_sources_stage_four(pre, witness, auxiliary, control)
+    } else if control.stage == 6 {
+      script_sources_stage_six(pre, witness, auxiliary, control)
+    } else if control.stage == 7 {
+      script_sources_stage_seven(pre, witness, auxiliary, control)
+    } else if control.stage == 8 {
+      script_sources_stage_eight(pre, witness, auxiliary, control)
+    } else if control.stage == 9 {
+      script_sources_stage_nine(pre, witness, auxiliary, control)
+    } else if control.stage == 10 {
+      script_sources_stage_ten(pre, witness, auxiliary, control)
+    } else if control.stage == 11 {
+      script_sources_stage_eleven(pre, witness, auxiliary, control)
+    } else if control.stage == 12 {
+      script_sources_stage_twelve(pre, witness, auxiliary, control)
+    } else {
+      False
+    },
+  }
+}
+
 fn verify_script_sources_semantic_stage(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

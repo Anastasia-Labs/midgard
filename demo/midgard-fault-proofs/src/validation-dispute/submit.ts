@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2,
+  2, 1, 1, 2, 4, 14, 2, 0, 5,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24,
+  0, 2, 3, 4, 6, 10, 24, 26, 26,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -288,6 +288,36 @@ const auxiliaryShapeV1 = ({
   readonly semanticResolverIndex: number;
   readonly auxiliary: PlutusDataValue;
 }): Constr<PlutusDataValue> => {
+  if (resolverIndex === 8) {
+    const outputExpected =
+      semanticResolverIndex === 0
+        ? null
+        : semanticResolverIndex === 1
+          ? [36, 4]
+          : semanticResolverIndex === 2
+            ? [37, 1]
+            : semanticResolverIndex === 3
+              ? [38, 2]
+              : [0, 0];
+    if (!(auxiliary instanceof Constr)) {
+      throw new Error(
+        "validation auxiliary witness must be a constructor",
+      );
+    }
+    const outputAuxiliary = auxiliary;
+    if (
+      outputExpected !== null &&
+      (
+        outputAuxiliary.index !== outputExpected[0] ||
+        outputAuxiliary.fields.length !== outputExpected[1]
+      )
+    ) {
+      throw new Error(
+        "validation auxiliary witness does not match the selected ScriptSources proof family",
+      );
+    }
+    return outputAuxiliary;
+  }
   const expected =
     resolverIndex === 0
       ? semanticResolverIndex === 0
@@ -348,6 +378,7 @@ const requireStagedOneStepArgumentV1 = (
     argument.resolverIndex < 0 ||
     argument.resolverIndex >=
       VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
+    || argument.resolverIndex === 7
   ) {
     throw new Error(
       "Staged validation one-step argument must select a prepare resolver",
@@ -409,6 +440,7 @@ const requireDirectOneStepArgumentV1 = (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 7 ||
     argument.resolverIndex >= 14 ||
+    argument.resolverIndex === 8 ||
     argument.semanticResolverIndex !== null
   ) {
     throw new Error(
@@ -2134,6 +2166,30 @@ const semanticActionFieldsV1 = ({
     outputIndex,
     transition,
   ];
+  if (resolverIndex === 8) {
+    if (semanticResolverIndex === 0) {
+      return [...base, auxiliary];
+    }
+    if (semanticResolverIndex === 1 && auxiliary.index === 36) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (semanticResolverIndex === 2 && auxiliary.index === 37) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (semanticResolverIndex === 3 && auxiliary.index === 38) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (
+      semanticResolverIndex === 4 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    throw new Error(
+      "ScriptSources auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
   if (
     auxiliary.index === 0 &&
     auxiliary.fields.length === 0
@@ -2551,7 +2607,9 @@ export const submitValidationDisputePrepareSelected = async ({
   }
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
   const prepareContract =
-    contracts.validationTraceDispute.prepareResolvers[resolverIndex];
+    contracts.validationTraceDispute.prepareResolvers[
+      resolverIndex === 8 ? 7 : resolverIndex
+    ];
   const semanticContract =
     contracts.validationTraceDispute.semanticResolvers[
       staged.semanticResolverGlobalIndex
@@ -2932,7 +2990,7 @@ export const submitValidationDisputeDirectResolution = async ({
   const direct = requireDirectOneStepArgumentV1(oneStepArgument);
   const directContract =
     contracts.validationTraceDispute.directResolvers[
-      resolverIndex - 7
+      resolverIndex === 7 ? 0 : resolverIndex - 8
     ];
   if (directContract === undefined) {
     throw new Error(

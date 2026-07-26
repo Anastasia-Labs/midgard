@@ -81,8 +81,15 @@ const semanticResolverDefinitionsV1 = [
   "phase_a_native_scripts_frame_semantic_v1",
   "phase_a_script_preconditions_semantic_v1",
   "phase_a_script_preconditions_item_semantic_v1",
+  "script_sources_non_output_semantic_v1",
+  "script_sources_output_proof_begin_semantic_v1",
+  "script_sources_output_proof_step_semantic_v1",
+  "script_sources_output_proof_finalize_semantic_v1",
+  "script_sources_output_proof_finish_semantic_v1",
 ] as const;
-const semanticResolverOffsetsV1 = [0, 2, 3, 4, 6, 10, 24] as const;
+const semanticResolverOffsetsV1 = [
+  0, 2, 3, 4, 6, 10, 24, 26, 26,
+] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
   trace: DeterministicValidationMachineTrace,
@@ -327,6 +334,22 @@ describe("deterministic validation machine", () => {
     expect(scriptSourceWitnesses[19]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[20]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[21]?.auxiliary).toBeNull();
+    expect(
+      scriptSourceWitnesses.map(validationSemanticResolverIndexV1),
+    ).toEqual([
+      0, 0, 0, 0, 0, 0, 0,
+      1,
+      2, 2, 2, 2, 2, 2, 2,
+      3,
+      4,
+      0, 0, 0, 0, 0,
+    ]);
+    expect(() =>
+      validationSemanticResolverIndexV1({
+        ...scriptSourceWitnesses[7]!,
+        auxiliary: scriptSourceWitnesses[17]!.auxiliary,
+      }),
+    ).toThrow("has no semantic resolver");
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;

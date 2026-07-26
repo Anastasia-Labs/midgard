@@ -13,6 +13,9 @@ import {
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import {
+  asArray,
+  asBigInt,
+  decodeSingleCbor,
   readCborArrayHeader,
   readCborBytes,
   readCborInteger,
@@ -505,6 +508,25 @@ const scanStage = (
   return exact;
 };
 
+const scriptSourcesStage = (
+  witness: ValidationMachineWorkWitness,
+): number => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "script_sources_control",
+  );
+  if (control.length !== 28 && control.length !== 29) {
+    throw new Error("script_sources_control has an invalid field count");
+  }
+  const stage = Number(
+    asBigInt(control[9], "script_sources_control.stage"),
+  );
+  if (!Number.isSafeInteger(stage) || stage < 0) {
+    throw new Error("script_sources_control stage is invalid");
+  }
+  return stage;
+};
+
 const nativeScanCursor = (
   witness: ValidationMachineWorkWitness,
 ): {
@@ -672,7 +694,15 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary.kind === "transactionFieldChunk") return 1;
       break;
     case "resolveInputs":
-    case "scriptSources":
+      return null;
+    case "scriptSources": {
+      if (scriptSourcesStage(witness) !== 5) return 0;
+      if (auxiliary?.kind === "ledgerOutputProofBegin") return 1;
+      if (auxiliary?.kind === "ledgerOutputProofStep") return 2;
+      if (auxiliary?.kind === "ledgerOutputProofFinalize") return 3;
+      if (auxiliary === null) return 4;
+      break;
+    }
     case "nativeScripts":
     case "scriptIntegrity":
     case "cek":

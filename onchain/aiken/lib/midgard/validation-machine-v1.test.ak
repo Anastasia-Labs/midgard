@@ -4266,38 +4266,45 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
     material.first_successor,
     18,
   )
+  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: before_begin_work_witness_cbor,
+    claimed_successor: before_step,
+  }
+  let begin_auxiliary = validation_machine_v1.LedgerOutputProofBeginWitness {
+    output_index: 0,
+    total_length: bytearray.length(output_cbor),
+    item_commitment: material.item_commitment,
+    siblings: [],
+  }
   if step_to_verify == 0 {
-    validation_machine_v1.verify_one_step_evidence(
+    validation_machine_v1.verify_script_sources_output_proof_begin_semantics_v1(
+      before_begin,
+      begin_transition,
+      0,
+      bytearray.length(output_cbor),
+      material.item_commitment,
+      [],
+    )
+  } else if step_to_verify == 2 {
+    !validation_machine_v1.verify_script_sources_non_output_semantics_v1(
       before_begin,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: before_begin_work_witness_cbor,
-          claimed_successor: before_step,
-        },
-        auxiliary: validation_machine_v1.LedgerOutputProofBeginWitness {
-          output_index: 0,
-          total_length: bytearray.length(output_cbor),
-          item_commitment: material.item_commitment,
-          siblings: [],
-        },
+        transition: begin_transition,
+        auxiliary: begin_auxiliary,
       },
     )
   } else {
     and {
       step_to_verify == 1,
-      validation_machine_v1.verify_one_step_evidence(
+      validation_machine_v1.verify_script_sources_output_proof_step_semantics_v1(
         before_step,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
-          transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-            work_witness_cbor: before_step_work_witness_cbor,
-            claimed_successor: after_step,
-          },
-          auxiliary: validation_machine_v1.LedgerOutputProofStepWitness {
-            witness: ledger_output_proof_v1.LedgerOutputProofChunks {
-              chunk_proof: material.chunk_proof,
-              next_chunk_proof: None,
-            },
-          },
+        validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor: before_step_work_witness_cbor,
+          claimed_successor: after_step,
+        },
+        ledger_output_proof_v1.LedgerOutputProofChunks {
+          chunk_proof: material.chunk_proof,
+          next_chunk_proof: None,
         },
       ),
     }
@@ -4310,6 +4317,10 @@ test script_sources_begins_an_authenticated_output_proof() {
 
 test script_sources_advances_one_bounded_output_proof_step() {
   authenticated_output_proof_step(1)
+}
+
+test script_sources_output_proof_cannot_use_non_output_resolver() {
+  authenticated_output_proof_step(2)
 }
 
 test script_sources_collects_protected_receive_source() {
@@ -4375,18 +4386,14 @@ test script_sources_collects_protected_receive_source() {
       validation_machine_v1.empty_observer_purpose_scan_control(),
       23,
     )
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.LedgerOutputProofFinalizeWitness {
-        descriptor_cbor: material.descriptor_cbor,
-        signer_proof: validation_machine_v1.NoSignerSetProof,
-      },
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
     },
+    material.descriptor_cbor,
+    validation_machine_v1.NoSignerSetProof,
   )
 }
 
@@ -4615,18 +4622,14 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: terminal,
-      },
-      auxiliary: validation_machine_v1.LedgerOutputProofFinalizeWitness {
-        descriptor_cbor: material.descriptor_cbor,
-        signer_proof: validation_machine_v1.EmptySignerSetProof { peaks: [] },
-      },
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: terminal,
     },
+    material.descriptor_cbor,
+    validation_machine_v1.EmptySignerSetProof { peaks: [] },
   )
 }
 
