@@ -40,7 +40,10 @@ import type {
   MidgardCekDataScanFrameV1,
   MidgardCekDataScanStepV1,
 } from "./cek-data-scan.js";
-import type { DecodedMidgardRedeemer } from "./midgard-redeemers.js";
+import {
+  type DecodedMidgardRedeemer,
+  MidgardRedeemerTag,
+} from "./midgard-redeemers.js";
 import type {
   MidgardCekDataSequenceSummaryV1,
   MidgardCekDataSummaryV1,
@@ -680,6 +683,59 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
   return scriptHash;
 };
 
+const scriptSourcesDiscoveryCurrentPurpose = (
+  witness: ValidationMachineWorkWitness,
+): {
+  readonly purposeKind: 0 | 1 | 2 | 3;
+  readonly purposeIndex: bigint;
+} => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "script_sources_control",
+  );
+  if (
+    control.length !== 30 ||
+    asBigInt(control[9], "script_sources_control.stage") !== 10n
+  ) {
+    throw new Error("script_sources_control is not at discovery stage 10");
+  }
+  const discovery = asArray(
+    decodeSingleCbor(
+      asBytes(
+        control[29],
+        "script_sources_control.discovery",
+      ),
+    ),
+    "script_sources_discovery",
+  );
+  if (discovery.length !== 14) {
+    throw new Error("script_sources discovery has an invalid field count");
+  }
+  const purposeKind = Number(
+    asBigInt(
+      discovery[3],
+      "script_sources_discovery.current_purpose_kind",
+    ),
+  );
+  if (
+    purposeKind !== 0 &&
+    purposeKind !== 1 &&
+    purposeKind !== 2 &&
+    purposeKind !== 3
+  ) {
+    throw new Error(
+      "script_sources discovery current purpose kind is invalid",
+    );
+  }
+  return {
+    purposeKind,
+    purposeIndex: asBigInt(
+      discovery[4],
+      "script_sources_discovery.current_purpose_index",
+    ),
+  };
+};
+
 const scriptIntegrityStage = (
   witness: ValidationMachineWorkWitness,
 ): number => {
@@ -975,6 +1031,24 @@ export const validationSemanticResolverIndexV1 = (
       if (stage === 12) {
         if (auxiliary === null) return 18;
         if (auxiliary.kind === "redeemerScan") return 19;
+        break;
+      }
+      if (stage === 10) {
+        if (auxiliary === null) return 20;
+        if (auxiliary.kind === "redeemerScan") {
+          const currentPurpose =
+            scriptSourcesDiscoveryCurrentPurpose(witness);
+          const expectedTag = [
+            MidgardRedeemerTag.Spend,
+            MidgardRedeemerTag.Mint,
+            MidgardRedeemerTag.Reward,
+            MidgardRedeemerTag.Receiving,
+          ][currentPurpose.purposeKind];
+          return auxiliary.redeemer.tag === expectedTag &&
+            auxiliary.redeemer.index === currentPurpose.purposeIndex
+            ? 22
+            : 21;
+        }
         break;
       }
       if (stage !== 5) return 0;

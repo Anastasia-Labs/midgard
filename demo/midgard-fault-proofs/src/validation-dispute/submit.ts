@@ -273,10 +273,10 @@ export const validationOneStepEvidenceHashV1 = ({
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
-  2, 1, 1, 2, 4, 14, 2, 6, 20, 3, 4, 0, 0, 8,
+  2, 1, 1, 2, 4, 14, 2, 6, 23, 3, 4, 0, 0, 8,
 ] as const;
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 52, 55, -1, -1, 59,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 55, 58, -1, -1, 62,
 ] as const;
 
 const auxiliaryShapeV1 = ({
@@ -348,6 +348,9 @@ const auxiliaryShapeV1 = ({
                       ? [14, 8]
                       : semanticResolverIndex === 19
                         ? [15, 3]
+                        : semanticResolverIndex === 21 ||
+                            semanticResolverIndex === 22
+                          ? [15, 3]
                     : semanticResolverIndex === 15
                       ? [34, 2]
                     : [0, 0];
@@ -2407,6 +2410,21 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 19 &&
+      auxiliary.index === 15 &&
+      auxiliary.fields.length === 3
+    ) {
+      return [...base, ...auxiliary.fields];
+    }
+    if (
+      semanticResolverIndex === 20 &&
+      auxiliary.index === 0 &&
+      auxiliary.fields.length === 0
+    ) {
+      return base;
+    }
+    if (
+      (semanticResolverIndex === 21 ||
+        semanticResolverIndex === 22) &&
       auxiliary.index === 15 &&
       auxiliary.fields.length === 3
     ) {

@@ -5384,6 +5384,10 @@ test script_sources_discovers_an_exact_non_native_execution() {
     completed,
     23,
   )
+  let stage_ten_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_ten_cbor,
+    claimed_successor: stage_eight_done,
+  }
   and {
     validation_machine_v1.verify_one_step_evidence(
       stage_eight,
@@ -5423,15 +5427,95 @@ test script_sources_discovers_an_exact_non_native_execution() {
     validation_machine_v1.verify_one_step_evidence(
       stage_ten,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: stage_ten_cbor,
-          claimed_successor: stage_eight_done,
-        },
+        transition: stage_ten_transition,
         auxiliary: validation_machine_v1.RedeemerScanWitness {
           redeemer_index: 0,
           redeemer,
           siblings: [],
         },
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+      stage_ten,
+      stage_ten_transition,
+      0,
+      redeemer,
+      [],
+    ),
+  }
+}
+
+test script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly() {
+  let redeemer = MidgardRedeemerWitness {
+    purpose: SpendRedeemer,
+    index: 0,
+    redeemer_cbor: #"d87980",
+    execution_units: MidgardExecutionUnits { memory: 3, steps: 4 },
+  }
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      redeemer_tx_wits: [redeemer],
+    },
+  }
+  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
+  let singleton_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 1, h_28_a, #"0102")],
+  )
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    source_cursor: 1,
+    current_purpose_kind: 0,
+    current_purpose_index: 1,
+    current_script_hash: h_28_a,
+    current_subject: #"0102",
+    matched_source_index: 0,
+    matched_language_tag: 3,
+    matched_source_leaf: redeemer_leaf,
+  }
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    10,
+    singleton_frontier,
+    singleton_frontier,
+    purpose_frontier,
+    discovery,
+    30,
+  )
+  let Pair(after_mismatch, after_mismatch_work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    10,
+    singleton_frontier,
+    singleton_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..discovery,
+      redeemer_cursor: 1,
+    },
+    31,
+  )
+  and {
+    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: after_mismatch,
+      },
+      0,
+      redeemer,
+      [],
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
+      after_mismatch,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: after_mismatch_work_witness_cbor,
+        claimed_successor: exact_rejection_post(
+          after_mismatch,
+          #"455f4d495353494e475f52455155495245445f5749544e455353",
+        ),
       },
     ),
   }
