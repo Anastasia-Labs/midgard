@@ -30,6 +30,9 @@ const signer_leaf_domain = #"4d6964676172645369676e65724c6561665631"
 const output_item_leaf_domain =
   #"4d6964676172644f75747075744974656d4c6561665631"
 
+const output_descriptor_leaf_domain =
+  #"4d6964676172644f757470757444657363726970746f724c6561665631"
+
 const execution_leaf_domain =
   #"4d696467617264536372697074457865637574696f6e4c6561665631"
 
@@ -162,6 +165,19 @@ pub fn output_leaf_hash(output_index: Int, output_cbor: ByteArray) -> ByteArray 
     output_index,
     bounded_item_v1.from_bytes(2, output_index, output_cbor),
   )
+}
+
+/// Commits the exact compact ledger descriptor derived by the bounded output
+/// proof. Full output bytes remain available through transaction DA.
+pub fn output_descriptor_leaf_hash(
+  output_index: Int,
+  descriptor_cbor: ByteArray,
+) -> ByteArray {
+  expect output_index >= 0
+  output_descriptor_leaf_domain
+    |> bytearray.concat(cbor.serialise(output_index))
+    |> bytearray.concat(encode_definite_bytes(descriptor_cbor))
+    |> blake2b_256
 }
 
 /// Commits the exact purpose/source/redeemer tuple discovered for one script

@@ -831,7 +831,7 @@ test receive_purpose_scan_control_cbor_is_canonical() {
   let encoded = validation_machine_v1.encode_receive_purpose_scan_control(
     validation_machine_v1.empty_receive_purpose_scan_control(),
   )
-  encoded == #"850080004040"
+  encoded == #"86008000404080"
 }
 
 fn script_sources_output_step_fixture(
@@ -1174,6 +1174,7 @@ fn script_discovery_step_fixture_with_output_frontier(
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
+  output_descriptor_frontier: validation_merkle_v1.BuiltFrontier,
   discovery: validation_machine_v1.ScriptDiscoveryControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
@@ -1212,7 +1213,10 @@ fn script_discovery_step_fixture_with_output_frontier(
     output_count: output_frontier.count,
     output_peaks: output_frontier.peaks,
     output_total_count: output_frontier.count,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: validation_machine_v1.ReceivePurposeScanControlV1 {
+      ..validation_machine_v1.empty_receive_purpose_scan_control(),
+      descriptor_peaks: output_descriptor_frontier.peaks,
+    },
     source_total_count: source_frontier.count,
     redeemer_total_count: redeemer_frontier.count,
     observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
@@ -1269,6 +1273,7 @@ fn script_discovery_step_fixture(
     purpose_frontier,
     0,
     validation_merkle_v1.build_frontier([]),
+    validation_merkle_v1.build_frontier([]),
     discovery,
     program_counter,
   )
@@ -1313,6 +1318,7 @@ fn native_scripts_step_fixture(
     purpose_peaks: purpose_frontier.peaks,
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
+    output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: execution_frontier.count,
     execution_peaks: execution_frontier.peaks,
     execution_cursor,
@@ -1376,6 +1382,7 @@ fn empty_native_control_fixture(
     purpose_peaks: validation_merkle_v1.empty_frontier(),
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
+    output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: 0,
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
@@ -1566,6 +1573,7 @@ fn maximum_mint_native_control_fixture() -> validation_machine_v1.NativeScriptsC
     purpose_peaks: singleton.peaks,
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
+    output_descriptor_peaks: validation_merkle_v1.empty_frontier(),
     execution_count: 1,
     execution_peaks: singleton.peaks,
     execution_cursor: 1,
@@ -4349,6 +4357,14 @@ test script_sources_collects_protected_receive_source() {
   let receive_source_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
+  let output_descriptor_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.output_descriptor_leaf_hash(
+        0,
+        material.descriptor_cbor,
+      ),
+    ],
+  )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) =
     script_sources_active_output_proof_fixture(
@@ -4382,6 +4398,7 @@ test script_sources_collects_protected_receive_source() {
         receive_count: 0,
         previous_hash: #"",
         candidate_hash: #"",
+        descriptor_peaks: output_descriptor_frontier.peaks,
       },
       validation_machine_v1.empty_observer_purpose_scan_control(),
       23,
@@ -4410,6 +4427,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     script_ref: None,
   }
   let output_cbor = encode_midgard_tx_output(output)
+  let material = authenticated_output_material(output_cbor)
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -4422,6 +4440,14 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   let receive_source_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
+  let output_descriptor_frontier = validation_merkle_v1.build_frontier(
+    [
+      script_proof_v1.output_descriptor_leaf_hash(
+        0,
+        material.descriptor_cbor,
+      ),
+    ],
+  )
   let empty_receive_scan =
     validation_machine_v1.ReceivePurposeScanControlV1 {
       source_count: receive_source_frontier.count,
@@ -4429,6 +4455,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
       receive_count: 0,
       previous_hash: #"",
       candidate_hash: #"",
+      descriptor_peaks: output_descriptor_frontier.peaks,
     }
   let selected_receive_scan =
     validation_machine_v1.ReceivePurposeScanControlV1 {
@@ -4437,6 +4464,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
       receive_count: 0,
       previous_hash: #"",
       candidate_hash: h_28_a,
+      descriptor_peaks: output_descriptor_frontier.peaks,
     }
   let committed_receive_scan =
     validation_machine_v1.ReceivePurposeScanControlV1 {
@@ -4445,6 +4473,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
       receive_count: 1,
       previous_hash: h_28_a,
       candidate_hash: #"",
+      descriptor_peaks: output_descriptor_frontier.peaks,
     }
   let receive_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
@@ -4493,6 +4522,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     receive_purpose_frontier,
     1,
     output_frontier,
+    output_descriptor_frontier,
     validation_machine_v1.empty_script_discovery_control(),
     19,
   )
@@ -7505,6 +7535,7 @@ test value_asset_output_instruction_evidence_is_bounded() {
     purpose_peaks: dense_frontier_four,
     output_count: 63,
     output_peaks: dense_frontier_six,
+    output_descriptor_peaks: dense_frontier_six,
     execution_count: 15,
     execution_peaks: dense_frontier_four,
     execution_cursor: 15,

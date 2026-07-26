@@ -19,6 +19,7 @@ import {
 import {
   collectMidgardV1ReferencedProgramEnvelopes,
   hashMidgardMintAssetLeafV1,
+  hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputLeafV1,
   hashMidgardRedeemerLeafV1,
   hashMidgardScriptContextItemLeafV1,
@@ -86,6 +87,14 @@ describe("script proof primitives", () => {
       }).toString("hex"),
     ).toBe(
       "f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
+    );
+    expect(
+      hashMidgardOutputDescriptorLeafV1({
+        outputIndex: 2,
+        descriptorCbor: Buffer.from("820102", "hex"),
+      }).toString("hex"),
+    ).toBe(
+      "7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4",
     );
     expect(
       hashMidgardMintAssetLeafV1({

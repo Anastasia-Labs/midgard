@@ -35,6 +35,7 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
       redeemer_leaf,
     ) == #"76121c2a1da2a92f2f114199ff6c3905bb8d7fb3dfcf48ca4f2a447883c9d845",
     script_proof_v1.output_leaf_hash(2, #"0102") == #"f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
+    script_proof_v1.output_descriptor_leaf_hash(2, #"820102") == #"7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4",
     script_proof_v1.context_item_leaf_hash(
       0,
       2,

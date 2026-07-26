@@ -20,6 +20,7 @@ import {
   encodeMidgardLedgerOutputProofControlV1,
   hashMidgardCekMachineStateV1,
   hashMidgardMintAssetLeafV1,
+  hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputItemLeafV1,
   hashMidgardOutputLeafV1,
   hashMidgardRedeemerItemLeafV1,
@@ -1604,6 +1605,7 @@ export const buildDeterministicValidationMachineTrace = (
         readonly receiveCount: number;
         readonly previousHash: Buffer;
         readonly candidateHash: Buffer;
+        readonly descriptorFrontier: MidgardValidationMerkleFrontierV1;
       };
       readonly sourceTotalCount?: number;
       readonly redeemerTotalCount?: number;
@@ -1625,6 +1627,7 @@ export const buildDeterministicValidationMachineTrace = (
         receiveCount: 0,
         previousHash: Buffer.alloc(0),
         candidateHash: Buffer.alloc(0),
+        descriptorFrontier: emptyValidationFrontier,
       };
       const fields: unknown[] = [
         proofSource.compactCbor,
@@ -1660,6 +1663,7 @@ export const buildDeterministicValidationMachineTrace = (
           BigInt(receiveScan.receiveCount),
           receiveScan.previousHash,
           receiveScan.candidateHash,
+          encodeFrontierPeaks(receiveScan.descriptorFrontier),
         ],
         BigInt(input.sourceTotalCount ?? input.sourceFrontier.count),
         BigInt(input.redeemerTotalCount ?? input.redeemerFrontier.count),
@@ -3080,12 +3084,21 @@ export const buildDeterministicValidationMachineTrace = (
             }
             let outputCursor = 0;
             let receiveSourceFrontier = emptyValidationFrontier;
+            let outputDescriptorFrontier = emptyValidationFrontier;
             const receiveSourceEntries: ScriptPurposeProofEntry[] = [];
             const receiveSourceScan = () => ({
               sourceFrontier: receiveSourceFrontier,
               receiveCount: 0,
               previousHash: Buffer.alloc(0),
               candidateHash: Buffer.alloc(0),
+              descriptorFrontier: outputDescriptorFrontier,
+            });
+            const retainedOutputDescriptorScan = () => ({
+              sourceFrontier: emptyValidationFrontier,
+              receiveCount: 0,
+              previousHash: Buffer.alloc(0),
+              candidateHash: Buffer.alloc(0),
+              descriptorFrontier: outputDescriptorFrontier,
             });
             const protectedSignerRejection =
               rejection !== null &&
@@ -3199,6 +3212,14 @@ export const buildDeterministicValidationMachineTrace = (
                 stoppedAtRejection = true;
                 break;
               }
+              outputDescriptorFrontier =
+                appendMidgardValidationMerkleLeafV1(
+                  outputDescriptorFrontier,
+                  hashMidgardOutputDescriptorLeafV1({
+                    outputIndex: outputCursor,
+                    descriptorCbor: outputMaterial.descriptorCbor,
+                  }),
+                );
               if (
                 address.protected &&
                 address.paymentCredential.kind === "Script"
@@ -3386,6 +3407,7 @@ export const buildDeterministicValidationMachineTrace = (
                     receiveCount,
                     previousHash: receivePreviousHash,
                     candidateHash: receiveCandidateHash,
+                    descriptorFrontier: outputDescriptorFrontier,
                   },
                   observerScan: {
                     totalCount: observerTotalCount,
@@ -3479,6 +3501,7 @@ export const buildDeterministicValidationMachineTrace = (
                     purposeFrontier: allPurposeFrontier,
                     outputCursor: outputFrontier.count,
                     outputFrontier,
+                    receiveScan: retainedOutputDescriptorScan(),
                     discovery,
                   });
                 const sourceMembership = (sourceIndex: number) =>
@@ -3864,6 +3887,7 @@ export const buildDeterministicValidationMachineTrace = (
                     encodeFrontierPeaks(allPurposeFrontier),
                     BigInt(outputFrontier.count),
                     encodeFrontierPeaks(outputFrontier),
+                    encodeFrontierPeaks(outputDescriptorFrontier),
                     BigInt(discovery.executionFrontier.count),
                     encodeFrontierPeaks(discovery.executionFrontier),
                   ];

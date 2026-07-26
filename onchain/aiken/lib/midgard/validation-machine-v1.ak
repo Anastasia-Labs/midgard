@@ -863,6 +863,7 @@ pub type ReceivePurposeScanControlV1 {
   receive_count: Int,
   previous_hash: ByteArray,
   candidate_hash: ByteArray,
+  descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
 }
 
 pub fn empty_receive_purpose_scan_control() -> ReceivePurposeScanControlV1 {
@@ -872,6 +873,7 @@ pub fn empty_receive_purpose_scan_control() -> ReceivePurposeScanControlV1 {
     receive_count: 0,
     previous_hash: #"",
     candidate_hash: #"",
+    descriptor_peaks: [],
   }
 }
 
@@ -905,7 +907,7 @@ pub fn encode_receive_purpose_scan_control(
         },
       },
     }
-  #"85"
+  #"86"
     |> bytearray.concat(cbor.serialise(control.source_count))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.source_peaks),
@@ -913,6 +915,9 @@ pub fn encode_receive_purpose_scan_control(
     |> bytearray.concat(cbor.serialise(control.receive_count))
     |> bytearray.concat(encode_definite_bytes(control.previous_hash))
     |> bytearray.concat(encode_definite_bytes(control.candidate_hash))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.descriptor_peaks),
+      )
 }
 
 pub fn encode_script_sources_witness(
@@ -6369,7 +6374,7 @@ fn script_sources_control_from_data_items(
       [
         receive_source_count_data, receive_source_peaks_data,
         receive_count_data, receive_previous_hash_data,
-        receive_candidate_hash_data,
+        receive_candidate_hash_data, receive_descriptor_peaks_data,
       ]
     = builtin.un_list_data(receive_scan_data)
   ScriptSourcesControlV1 {
@@ -6411,6 +6416,7 @@ fn script_sources_control_from_data_items(
       receive_count: builtin.un_i_data(receive_count_data),
       previous_hash: builtin.un_b_data(receive_previous_hash_data),
       candidate_hash: builtin.un_b_data(receive_candidate_hash_data),
+      descriptor_peaks: decode_frontier_peaks(receive_descriptor_peaks_data),
     },
     source_total_count: builtin.un_i_data(source_total_count_data),
     redeemer_total_count: builtin.un_i_data(redeemer_total_count_data),
@@ -7539,7 +7545,17 @@ fn script_sources_output_proof_finalize(
             ..control,
             output_cursor: control.output_cursor + 1,
             receive_scan: receive_source_successor(
-              control.receive_scan,
+              ReceivePurposeScanControlV1 {
+                ..control.receive_scan,
+                descriptor_peaks: validation_merkle_v1.append_leaf(
+                  control.output_cursor,
+                  control.receive_scan.descriptor_peaks,
+                  script_proof_v1.output_descriptor_leaf_hash(
+                    control.output_cursor,
+                    descriptor_cbor,
+                  ),
+                ),
+              },
               address,
             ),
             output_proof: None,
@@ -7849,10 +7865,22 @@ fn observer_purpose_scan_is_well_formed(
 
 fn receive_purpose_scan_is_well_formed(
   stage: Int,
+  output_cursor: Int,
   output_count: Int,
   scan: ReceivePurposeScanControlV1,
 ) -> Bool {
+  let descriptor_count = if stage < 5 {
+    0
+  } else if stage == 5 {
+    output_cursor
+  } else {
+    output_count
+  }
   and {
+    validation_merkle_v1.frontier_is_well_formed(
+      descriptor_count,
+      scan.descriptor_peaks,
+    ),
     scan.source_count >= 0,
     scan.source_count <= output_count,
     validation_merkle_v1.frontier_is_well_formed(
@@ -7890,7 +7918,13 @@ fn receive_purpose_scan_is_well_formed(
     } else if stage == 7 {
       True
     } else {
-      scan == empty_receive_purpose_scan_control()
+      and {
+        scan.source_count == 0,
+        scan.source_peaks == [],
+        scan.receive_count == 0,
+        scan.previous_hash == #"",
+        scan.candidate_hash == #"",
+      }
     },
   }
 }
@@ -7981,7 +8015,10 @@ fn script_sources_receive_scan_finish(
           ..control,
           stage: 8,
           output_cursor: control.output_count,
-          receive_scan: empty_receive_purpose_scan_control(),
+          receive_scan: ReceivePurposeScanControlV1 {
+            ..empty_receive_purpose_scan_control(),
+            descriptor_peaks: control.receive_scan.descriptor_peaks,
+          },
           observer_scan: empty_observer_purpose_scan_control(),
           discovery: empty_script_discovery_control(),
         },
@@ -8011,6 +8048,7 @@ fn script_sources_receive_scan_finish(
             receive_count: control.receive_scan.receive_count + 1,
             previous_hash: script_hash,
             candidate_hash: #"",
+            descriptor_peaks: control.receive_scan.descriptor_peaks,
           },
         },
       )
@@ -8500,7 +8538,7 @@ pub fn encode_native_scripts_witness_v1(
   expect execution_cursor <= control.discovery.execution_count
   expect language_bitmap >= 0
   expect language_bitmap <= 3
-  encode_definite_array_header(22)
+  encode_definite_array_header(23)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -8534,6 +8572,11 @@ pub fn encode_native_scripts_witness_v1(
     |> bytearray.concat(cbor.serialise(control.output_count))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.output_peaks),
+      )
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(
+          control.receive_scan.descriptor_peaks,
+        ),
       )
     |> bytearray.concat(cbor.serialise(control.discovery.execution_count))
     |> bytearray.concat(
@@ -8826,6 +8869,7 @@ fn script_sources_control_is_bound(
     },
     receive_purpose_scan_is_well_formed(
       control.stage,
+      control.output_cursor,
       control.output_count,
       control.receive_scan,
     ),
@@ -9380,6 +9424,7 @@ pub type NativeScriptsControlV1 {
   purpose_peaks: List<validation_merkle_v1.FrontierPeak>,
   output_count: Int,
   output_peaks: List<validation_merkle_v1.FrontierPeak>,
+  output_descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
   execution_count: Int,
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
   execution_cursor: Int,
@@ -9399,8 +9444,8 @@ fn native_scripts_control_from_witness(
         signer_frontier_commitment_data, source_count_data, source_peaks_data,
         redeemer_count_data, redeemer_peaks_data, purpose_count_data,
         purpose_peaks_data, output_count_data, output_peaks_data,
-        execution_count_data, execution_peaks_data, execution_cursor_data,
-        language_bitmap_data,
+        output_descriptor_peaks_data, execution_count_data,
+        execution_peaks_data, execution_cursor_data, language_bitmap_data,
       ]
     = builtin.un_list_data(data)
   NativeScriptsControlV1 {
@@ -9428,6 +9473,9 @@ fn native_scripts_control_from_witness(
     purpose_peaks: decode_frontier_peaks(purpose_peaks_data),
     output_count: builtin.un_i_data(output_count_data),
     output_peaks: decode_frontier_peaks(output_peaks_data),
+    output_descriptor_peaks: decode_frontier_peaks(
+      output_descriptor_peaks_data,
+    ),
     execution_count: builtin.un_i_data(execution_count_data),
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
     execution_cursor: builtin.un_i_data(execution_cursor_data),
@@ -9438,7 +9486,7 @@ fn native_scripts_control_from_witness(
 pub fn encode_native_scripts_control_v1(
   control: NativeScriptsControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(22)
+  encode_definite_array_header(23)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -9472,6 +9520,9 @@ pub fn encode_native_scripts_control_v1(
     |> bytearray.concat(cbor.serialise(control.output_count))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.output_peaks),
+      )
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.output_descriptor_peaks),
       )
     |> bytearray.concat(cbor.serialise(control.execution_count))
     |> bytearray.concat(
@@ -9736,6 +9787,10 @@ fn verify_native_scripts(
     validation_merkle_v1.frontier_is_well_formed(
       control.output_count,
       control.output_peaks,
+    ),
+    validation_merkle_v1.frontier_is_well_formed(
+      control.output_count,
+      control.output_descriptor_peaks,
     ),
     validation_merkle_v1.frontier_is_well_formed(
       control.execution_count,

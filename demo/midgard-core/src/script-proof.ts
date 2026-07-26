@@ -38,6 +38,10 @@ const OUTPUT_ITEM_LEAF_DOMAIN = Buffer.from(
   "MidgardOutputItemLeafV1",
   "ascii",
 );
+const OUTPUT_DESCRIPTOR_LEAF_DOMAIN = Buffer.from(
+  "MidgardOutputDescriptorLeafV1",
+  "ascii",
+);
 const EXECUTION_LEAF_DOMAIN = Buffer.from(
   "MidgardScriptExecutionLeafV1",
   "ascii",
@@ -311,6 +315,26 @@ export const hashMidgardOutputLeafV1 = (input: {
     outputIndex: input.outputIndex,
     itemCommitment: item.commitment,
   });
+};
+
+/**
+ * Commits the exact compact ledger descriptor derived by the bounded output
+ * proof. Full output bytes remain available through transaction DA.
+ */
+export const hashMidgardOutputDescriptorLeafV1 = (input: {
+  readonly outputIndex: number;
+  readonly descriptorCbor: Uint8Array;
+}): Hash32 => {
+  if (!Number.isSafeInteger(input.outputIndex) || input.outputIndex < 0) {
+    throw new Error("output index must be a non-negative safe integer");
+  }
+  return hash32(
+    Buffer.concat([
+      OUTPUT_DESCRIPTOR_LEAF_DOMAIN,
+      encodeCbor(BigInt(input.outputIndex)),
+      encodeCbor(Buffer.from(input.descriptorCbor)),
+    ]),
+  );
 };
 
 export const hashMidgardScriptExecutionLeafV1 = (input: {
