@@ -474,6 +474,9 @@ const makeAlwaysSucceedsContracts = (
       alwaysScript(blueprint, "midgard", "reserve", "withdraw"),
     ),
   };
+  const alwaysValidationTraceDispute = makeSpendingValidator(
+    alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
+  );
   const fraudProofs: FraudProofs = {
     doubleSpend: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "double_spend", "spend"),
@@ -495,9 +498,14 @@ const makeAlwaysSucceedsContracts = (
     transitionTrace: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
     ),
-    validationTraceDispute: makeSpendingValidator(
-      alwaysScript(blueprint, "fraud_proofs", "transition_trace", "spend"),
-    ),
+    validationTraceDispute: {
+      ...alwaysValidationTraceDispute,
+      source: alwaysValidationTraceDispute,
+      game: alwaysValidationTraceDispute,
+      boundary: alwaysValidationTraceDispute,
+      timeout: alwaysValidationTraceDispute,
+      award: alwaysValidationTraceDispute,
+    },
   };
   const fieldPreimageV1 = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),
@@ -787,8 +795,22 @@ const buildMinimalFaultProofContracts = async (
         transitionTraceContracts?.transitionTrace.firstStep ??
         withActiveOperators.fraudProofs.transitionTrace,
       validationTraceDispute:
-        validationTraceDisputeContracts?.validationTraceDispute.firstStep ??
-        withActiveOperators.fraudProofs.validationTraceDispute,
+        validationTraceDisputeContracts === undefined
+          ? withActiveOperators.fraudProofs.validationTraceDispute
+          : {
+              ...validationTraceDisputeContracts.validationTraceDispute
+                .firstStep,
+              source:
+                validationTraceDisputeContracts.validationTraceDispute.source,
+              game: validationTraceDisputeContracts.validationTraceDispute.game,
+              boundary:
+                validationTraceDisputeContracts.validationTraceDispute
+                  .boundary,
+              timeout:
+                validationTraceDisputeContracts.validationTraceDispute.timeout,
+              award:
+                validationTraceDisputeContracts.validationTraceDispute.award,
+            },
     },
   };
 };
@@ -2753,27 +2775,65 @@ const submitSuccessorBlockTx = async ({
 const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
   "V1 validation-trace dispute";
 
-const publishValidationDisputeReferenceScript = async ({
+const validationDisputeControlPublicationTargets = (
+  contracts: MidgardValidators,
+) =>
+  [
+    {
+      control: "dispute",
+      name: VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
+      script: contracts.fraudProofs.validationTraceDispute.spendingScript,
+    },
+    {
+      control: "source",
+      name: "V1 validation-trace source",
+      script:
+        contracts.fraudProofs.validationTraceDispute.source.spendingScript,
+    },
+    {
+      control: "game",
+      name: "V1 validation-trace game",
+      script: contracts.fraudProofs.validationTraceDispute.game.spendingScript,
+    },
+    {
+      control: "boundary",
+      name: "V1 validation-trace boundary",
+      script:
+        contracts.fraudProofs.validationTraceDispute.boundary.spendingScript,
+    },
+    {
+      control: "timeout",
+      name: "V1 validation-trace timeout",
+      script:
+        contracts.fraudProofs.validationTraceDispute.timeout.spendingScript,
+    },
+    {
+      control: "award",
+      name: "V1 validation-trace award",
+      script: contracts.fraudProofs.validationTraceDispute.award.spendingScript,
+    },
+  ] as const;
+
+type ValidationDisputeControlPublicationTarget = ReturnType<
+  typeof validationDisputeControlPublicationTargets
+>[number];
+
+const publishAuthenticatedValidationDisputeControl = async ({
   lucid,
-  contracts,
-  now,
+  target,
+  authPolicy,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly contracts: MidgardValidators;
-  readonly now: number;
+  readonly target: ValidationDisputeControlPublicationTarget;
+  readonly authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
 }) => {
-  const target = {
-    name: VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE,
-    script: contracts.fraudProofs.validationTraceDispute.spendingScript,
-  };
-  const authPolicy = createReferenceScriptAuthPolicy(lucid, now);
   const selectedFundingInputs = selectReferenceScriptFundingUtxos(
     await lucid.wallet().getUtxos(),
     referenceScriptPublicationFundingTarget(1),
   );
   if (selectedFundingInputs.length === 0) {
     throw new Error(
-      "Expected a plain-Ada input for authenticated validation-dispute reference-script publication",
+      `Expected a plain-Ada input for authenticated validation-dispute ${target.control} reference-script publication`,
     );
   }
   const referenceScriptsAddress = await lucid.wallet().address();
@@ -2790,7 +2850,7 @@ const publishValidationDisputeReferenceScript = async ({
   const localOutput = layout.localReferenceOutputs.get(target.name);
   if (localOutput === undefined) {
     throw new Error(
-      "Authenticated publication transaction omitted the validation-dispute reference-script output",
+      `Authenticated publication transaction omitted the validation-dispute ${target.control} reference-script output`,
     );
   }
   const signed = await tx.sign.withWallet().complete();
@@ -2799,7 +2859,7 @@ const publishValidationDisputeReferenceScript = async ({
   );
   if (publicationMeasurement.l1ByteMargin <= 0) {
     throw new Error(
-      `Authenticated validation-dispute reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
+      `Authenticated validation-dispute ${target.control} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
     );
   }
   const txHash = await signed.submit();
@@ -2811,7 +2871,7 @@ const publishValidationDisputeReferenceScript = async ({
   const published = await lucid.utxosByOutRef([outRef]);
   if (published.length !== 1) {
     throw new Error(
-      `Expected one live validation-dispute reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}, found ${published.length.toString()}`,
+      `Expected one live validation-dispute ${target.control} reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}, found ${published.length.toString()}`,
     );
   }
   return {
@@ -2820,6 +2880,23 @@ const publishValidationDisputeReferenceScript = async ({
     publicationMeasurement,
     utxo: published[0]!,
   };
+};
+
+const publishValidationDisputeReferenceScript = async ({
+  lucid,
+  contracts,
+  now,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+  readonly now: number;
+}) => {
+  const target = validationDisputeControlPublicationTargets(contracts)[0];
+  return publishAuthenticatedValidationDisputeControl({
+    lucid,
+    target,
+    authPolicy: createReferenceScriptAuthPolicy(lucid, now),
+  });
 };
 
 const buildRemovalDeploymentInfo = (
@@ -3524,6 +3601,87 @@ const expectRemovedFraudProofState = async (
 };
 
 describe("fault-proof emulator integration", () => {
+  it("publishes every authenticated validation-dispute control under the exact L1 envelope", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const publisher = generateEmulatorAccount({
+      lovelace: 40_000_000_000n,
+    });
+    const emulator = new Emulator(
+      [publisher],
+      {
+        ...EMULATOR_PROTOCOL_PARAMETERS,
+        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      },
+    );
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(publisher.seedPhrase);
+    const nonceUtxo = (await lucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected publisher wallet to expose a nonce UTxO");
+    }
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      {
+        realValidationTraceDispute: true,
+        alwaysFraudProofCatalogue: true,
+      },
+    );
+    const targets = validationDisputeControlPublicationTargets(contracts);
+    const authPolicy = createReferenceScriptAuthPolicy(lucid, emulator.now());
+    const measurements = {} as Record<
+      ValidationDisputeControlPublicationTarget["control"],
+      CompleteSignedTransactionMeasurement
+    >;
+
+    for (const target of targets) {
+      const publication = await runEmulatorLifecycleStage(
+        `reference-script.publish-authenticated.${target.control}`,
+        () =>
+          publishAuthenticatedValidationDisputeControl({
+            lucid,
+            target,
+            authPolicy,
+          }),
+      );
+      measurements[target.control] = publication.publicationMeasurement;
+    }
+
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          { validationDisputeControlPublications: measurements },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
+
+    expect(Object.keys(measurements)).toHaveLength(targets.length);
+    for (const measurement of Object.values(measurements)) {
+      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(measurement.executionMemory).toBeLessThanOrEqual(
+        emulator.protocolParameters.maxTxExMem,
+      );
+      expect(measurement.executionSteps).toBeLessThanOrEqual(
+        emulator.protocolParameters.maxTxExSteps,
+      );
+      expect(measurement.inputCount).toBe(1);
+      expect(measurement.referenceInputCount).toBe(0);
+      expect(measurement.outputCount).toBe(3);
+      expect(measurement.vkeyWitnessCount).toBe(1);
+      expect(measurement.nativeScriptCount).toBe(1);
+      expect(measurement.redeemerCount).toBe(0);
+      expect(measurement.datumCount).toBe(0);
+      expect(measurement.plutusV1ScriptCount).toBe(0);
+      expect(measurement.plutusV2ScriptCount).toBe(0);
+      expect(measurement.plutusV3ScriptCount).toBe(0);
+    }
+  }, 300_000);
+
   it("proves and removes a non-tail double-spend block by pruning successors first", async () => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
