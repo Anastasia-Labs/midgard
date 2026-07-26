@@ -58,6 +58,7 @@ export type MidgardLedgerOutputScanControlV1 = {
   readonly datumLength: number;
   readonly payloadRemaining: number;
   readonly referenceScriptLanguage: -1 | 0 | 3 | 128;
+  readonly referenceScriptItemOffset: number;
   readonly referenceScriptOffset: number;
   readonly referenceScriptLength: number;
 };
@@ -96,6 +97,7 @@ export const initialMidgardLedgerOutputScanControlV1 =
     datumLength: 0,
     payloadRemaining: 0,
     referenceScriptLanguage: -1,
+    referenceScriptItemOffset: -1,
     referenceScriptOffset: -1,
     referenceScriptLength: 0,
   });
@@ -187,6 +189,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
   validateMidgardValidationMerkleFrontierV1(control.assetFrontier);
   for (const [field, value] of [
     ["datum offset", control.datumOffset],
+    ["reference script item offset", control.referenceScriptItemOffset],
     ["reference script offset", control.referenceScriptOffset],
   ] as const) {
     assertSafeControlInteger({ value, field, minimum: -1 });
@@ -204,9 +207,11 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
   }
   if (
     control.referenceScriptLanguage === -1
-      ? control.referenceScriptOffset !== -1 ||
+      ? control.referenceScriptItemOffset !== -1 ||
+        control.referenceScriptOffset !== -1 ||
         control.referenceScriptLength !== 0
-      : control.referenceScriptOffset < 0
+      : control.referenceScriptItemOffset < 0 ||
+        control.referenceScriptOffset < control.referenceScriptItemOffset
   ) {
     throw new Error("Invalid V1 ledger output scan reference span");
   }
@@ -234,6 +239,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
     BigInt(control.datumLength),
     BigInt(control.payloadRemaining),
     BigInt(control.referenceScriptLanguage),
+    BigInt(control.referenceScriptItemOffset),
     BigInt(control.referenceScriptOffset),
     BigInt(control.referenceScriptLength),
   ]);
@@ -519,6 +525,11 @@ const stepReferenceScriptHeader = ({
   readonly windowOffset: number;
 }): MidgardLedgerOutputScanControlV1 => {
   const scriptOffset = readKey(window, windowOffset, 3n);
+  const scriptItemOffset = absoluteOffset({
+    control,
+    windowOffset,
+    localOffset: scriptOffset,
+  });
   const script = readCborArrayHeader(
     window,
     scriptOffset,
@@ -559,6 +570,7 @@ const stepReferenceScriptHeader = ({
     optionalFieldCount: control.optionalFieldCount + 1,
     payloadRemaining: payload.length,
     referenceScriptLanguage: Number(language.value) as 0 | 3 | 128,
+    referenceScriptItemOffset: scriptItemOffset,
     referenceScriptOffset: payloadOffset,
     referenceScriptLength: payload.length,
   };
@@ -777,9 +789,11 @@ export const isExactMidgardLedgerOutputScanTerminalV1 = ({
       control.datumLength >= 0 &&
       control.datumOffset + control.datumLength <= totalLength) &&
   (control.referenceScriptLanguage === -1
-    ? control.referenceScriptOffset === -1 &&
+    ? control.referenceScriptItemOffset === -1 &&
+      control.referenceScriptOffset === -1 &&
       control.referenceScriptLength === 0
-    : control.referenceScriptOffset >= 0 &&
+    : control.referenceScriptItemOffset >= 0 &&
+      control.referenceScriptItemOffset < control.referenceScriptOffset &&
       control.referenceScriptLength >= 0 &&
       control.referenceScriptOffset + control.referenceScriptLength ===
         totalLength);

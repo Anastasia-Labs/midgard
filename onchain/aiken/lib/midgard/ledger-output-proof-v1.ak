@@ -8,6 +8,7 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/ledger_output_scan_v1
 use midgard/native_script_scan_v1
+use midgard/validation_merkle_v1
 
 pub const version: Int = 1
 
@@ -15,11 +16,13 @@ pub const output_field_index: Int = 2
 
 pub const stage_structure: Int = 0
 
-pub const stage_script_hash: Int = 1
+pub const stage_reference_script_commitment: Int = 1
 
-pub const stage_native_script: Int = 2
+pub const stage_script_hash: Int = 2
 
-pub const stage_terminal: Int = 3
+pub const stage_native_script: Int = 3
+
+pub const stage_terminal: Int = 4
 
 pub type LedgerOutputProofControlV1 {
   version: Int,
@@ -28,6 +31,8 @@ pub type LedgerOutputProofControlV1 {
   total_length: Int,
   item_commitment: ByteArray,
   output_scan: ledger_output_scan_v1.LedgerOutputScanControlV1,
+  reference_script_count: Int,
+  reference_script_peaks: List<validation_merkle_v1.FrontierPeak>,
   script_hash: Option<blake2b_224_trace_v1.Blake2b224TraceControlV1>,
   native_script: Option<native_script_scan_v1.NativeScriptStructureControlV1>,
 }
@@ -120,6 +125,19 @@ pub fn control_is_well_formed(
     control.total_length,
   )
   let reference_language = control.output_scan.reference_script_language
+  let reference_item_length = control.total_length - control.output_scan.reference_script_item_offset
+  let reference_chunk_count = bounded_item_v1.chunk_count(
+    reference_item_length,
+  )
+  let reference_frontier_is_complete = and {
+    reference_language != -1,
+    reference_item_length > 0,
+    control.reference_script_count == reference_chunk_count,
+    validation_merkle_v1.frontier_is_well_formed(
+      control.reference_script_count,
+      control.reference_script_peaks,
+    ),
+  }
   and {
     control.version == version,
     control.stage >= stage_structure,
@@ -131,21 +149,41 @@ pub fn control_is_well_formed(
     control.output_scan.cursor <= control.total_length,
     if control.stage == stage_structure {
       and {
+        control.reference_script_count == 0,
+        control.reference_script_peaks == [],
+        control.script_hash == None,
+        control.native_script == None,
+      }
+    } else if !scan_terminal {
+      False
+    } else if reference_language == -1 {
+      and {
+        control.stage == stage_terminal,
+        control.reference_script_count == 0,
+        control.reference_script_peaks == [],
         control.script_hash == None,
         control.native_script == None,
       }
     } else if or {
-      !scan_terminal,
-      reference_language == -1,
-      !script_hash_is_well_formed(control),
+      reference_item_length <= 0,
+      control.reference_script_count < 0,
+      control.reference_script_count > reference_chunk_count,
+      !validation_merkle_v1.frontier_is_well_formed(
+        control.reference_script_count,
+        control.reference_script_peaks,
+      ),
     } {
+      False
+    } else if control.stage == stage_reference_script_commitment {
       and {
-        control.stage == stage_terminal,
-        scan_terminal,
-        reference_language == -1,
         control.script_hash == None,
         control.native_script == None,
       }
+    } else if or {
+      !reference_frontier_is_complete,
+      !script_hash_is_well_formed(control),
+    } {
+      False
     } else if control.stage == stage_script_hash {
       control.native_script == None
     } else if and {
@@ -182,6 +220,8 @@ pub fn initial_control_v1(
     total_length,
     item_commitment,
     output_scan: ledger_output_scan_v1.initial_control_v1(),
+    reference_script_count: 0,
+    reference_script_peaks: validation_merkle_v1.empty_frontier(),
     script_hash: None,
     native_script: None,
   }
@@ -240,17 +280,39 @@ fn optional_native_script_from_data(
   }
 }
 
+fn decode_peak_items(
+  items: List<Data>,
+) -> List<validation_merkle_v1.FrontierPeak> {
+  when items is {
+    [] -> []
+    [item, ..rest] -> {
+      expect [height_data, hash_data] = builtin.un_list_data(item)
+      [
+        validation_merkle_v1.FrontierPeak {
+          height: builtin.un_i_data(height_data),
+          hash: builtin.un_b_data(hash_data),
+        },
+        ..decode_peak_items(rest)
+      ]
+    }
+  }
+}
+
 pub fn encode_control_v1(
   control: LedgerOutputProofControlV1,
 ) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(8)
+  encode_definite_array_header(10)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.output_index))
     |> bytearray.concat(cbor.serialise(control.total_length))
     |> bytearray.concat(cbor.serialise(builtin.b_data(control.item_commitment)))
     |> bytearray.concat(ledger_output_scan_v1.encode_control_v1(control.output_scan))
+    |> bytearray.concat(cbor.serialise(control.reference_script_count))
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.reference_script_peaks),
+      )
     |> bytearray.concat(encode_optional_script_hash(control.script_hash))
     |> bytearray.concat(encode_optional_native_script(control.native_script))
 }
@@ -262,8 +324,8 @@ pub fn decode_control_v1(
   expect
     [
       version_data, stage_data, output_index_data, total_length_data,
-      item_commitment_data, output_scan_data, script_hash_data,
-      native_script_data,
+      item_commitment_data, output_scan_data, reference_script_count_data,
+      reference_script_peaks_data, script_hash_data, native_script_data,
     ] = builtin.un_list_data(data)
   let control = LedgerOutputProofControlV1 {
     version: builtin.un_i_data(version_data),
@@ -274,6 +336,10 @@ pub fn decode_control_v1(
     output_scan: ledger_output_scan_v1.control_from_data_v1(
       output_scan_data,
     ),
+    reference_script_count: builtin.un_i_data(reference_script_count_data),
+    reference_script_peaks: reference_script_peaks_data
+      |> builtin.un_list_data
+      |> decode_peak_items,
     script_hash: optional_script_hash_from_data(script_hash_data),
     native_script: optional_native_script_from_data(native_script_data),
   }
@@ -356,7 +422,7 @@ fn authenticated_output_span(
 ) -> Option<ByteArray> {
   if or {
     length <= 0,
-    length > blake2b_224_trace_v1.block_bytes,
+    length > bounded_item_v1.chunk_bytes,
     absolute_start < 0,
     absolute_start + length > control.total_length,
   } {
@@ -465,12 +531,7 @@ fn structure_step(
     } else {
       advanced(LedgerOutputProofControlV1 {
         ..control,
-        stage: stage_script_hash,
-        script_hash: Some(
-          blake2b_224_trace_v1.initial_control_v1(
-            control.output_scan.reference_script_length + 1,
-          ),
-        ),
+        stage: stage_reference_script_commitment,
       })
     }
   } else {
@@ -517,6 +578,63 @@ fn structure_step(
                 })
             }
         }
+    }
+  }
+}
+
+fn reference_script_commitment_step(
+  control: LedgerOutputProofControlV1,
+  witness: LedgerOutputProofWitnessV1,
+) -> Option<LedgerOutputProofStepResultV1> {
+  let item_offset = control.output_scan.reference_script_item_offset
+  let item_length = control.total_length - item_offset
+  let chunk_count = bounded_item_v1.chunk_count(item_length)
+  let chunk_index = control.reference_script_count
+  if chunk_index == chunk_count {
+    if witness == LedgerOutputProofNoWitness {
+      advanced(LedgerOutputProofControlV1 {
+        ..control,
+        stage: stage_script_hash,
+        script_hash: Some(
+          blake2b_224_trace_v1.initial_control_v1(
+            control.output_scan.reference_script_length + 1,
+          ),
+        ),
+      })
+    } else {
+      None
+    }
+  } else {
+    let chunk_length = bounded_item_v1.expected_chunk_length(
+      item_length,
+      chunk_index,
+    )
+    let absolute_start = item_offset
+      + chunk_index * bounded_item_v1.chunk_bytes
+    when
+      authenticated_output_span(
+        control,
+        absolute_start,
+        chunk_length,
+        witness,
+      )
+    is {
+      None -> None
+      Some(chunk) ->
+        advanced(LedgerOutputProofControlV1 {
+          ..control,
+          reference_script_count: chunk_index + 1,
+          reference_script_peaks: validation_merkle_v1.append_leaf(
+            chunk_index,
+            control.reference_script_peaks,
+            bounded_item_v1.hash_chunk(
+              output_field_index,
+              control.output_index,
+              chunk_index,
+              chunk,
+            ),
+          ),
+        })
     }
   }
 }
@@ -689,6 +807,8 @@ pub fn step_v1(
       Some(hash_control) ->
         script_hash_step(control, witness, hash_control)
     }
+  } else if control.stage == stage_reference_script_commitment {
+    reference_script_commitment_step(control, witness)
   } else if control.stage == stage_native_script {
     when control.native_script is {
       None -> None
@@ -697,6 +817,26 @@ pub fn step_v1(
     }
   } else {
     None
+  }
+}
+
+pub fn reference_script_item_commitment_v1(
+  control: LedgerOutputProofControlV1,
+) -> Option<ByteArray> {
+  if or {
+    !terminal_is_exact_v1(control),
+    control.output_scan.reference_script_language == -1,
+  } {
+    None
+  } else {
+    Some(
+      bounded_item_v1.commitment(
+        output_field_index,
+        control.output_index,
+        ( control.total_length - control.output_scan.reference_script_item_offset ),
+        control.reference_script_peaks,
+      ),
+    )
   }
 }
 

@@ -12,9 +12,12 @@ import {
 import {
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
+  commitMidgardBoundedItemV1,
+  hashMidgardBoundedItemChunkV1,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
+  midgardBoundedItemExpectedChunkLengthV1,
   type MidgardBoundedItemV1,
   verifyMidgardBoundedItemChunkProofV1,
 } from "./bounded-item-v1.js";
@@ -46,15 +49,22 @@ import {
   MidgardNativeScriptStructureStagesV1,
 } from "./native-script-scan-v1.js";
 import { aikenSerialisedPlutusDataBytes } from "./plutus-data-cbor.js";
+import {
+  appendMidgardValidationMerkleLeafV1,
+  emptyMidgardValidationMerkleFrontierV1,
+  type MidgardValidationMerkleFrontierV1,
+  validateMidgardValidationMerkleFrontierV1,
+} from "./validation-merkle.js";
 
 export const MIDGARD_LEDGER_OUTPUT_PROOF_V1_VERSION = 1 as const;
 export const MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1 = 2 as const;
 
 export const MidgardLedgerOutputProofStagesV1 = Object.freeze({
   Structure: 0,
-  ScriptHash: 1,
-  NativeScript: 2,
-  Terminal: 3,
+  ReferenceScriptCommitment: 1,
+  ScriptHash: 2,
+  NativeScript: 3,
+  Terminal: 4,
 } as const);
 
 export type MidgardLedgerOutputProofStageV1 =
@@ -75,6 +85,7 @@ export type MidgardLedgerOutputProofControlV1 = {
   readonly totalLength: number;
   readonly itemCommitment: Buffer;
   readonly outputScan: MidgardLedgerOutputScanControlV1;
+  readonly referenceScriptFrontier: MidgardValidationMerkleFrontierV1;
   readonly scriptHash: MidgardBlake2b224TraceControlV1 | null;
   readonly nativeScript: MidgardNativeScriptStructureControlV1 | null;
 };
@@ -182,6 +193,17 @@ export const isWellFormedMidgardLedgerOutputProofControlV1 = (
     const referenceLanguage =
       control.outputScan.referenceScriptLanguage;
     const referenceLength = control.outputScan.referenceScriptLength;
+    const referenceItemLength =
+      control.totalLength -
+      control.outputScan.referenceScriptItemOffset;
+    validateMidgardValidationMerkleFrontierV1(
+      control.referenceScriptFrontier,
+    );
+    const referenceFrontierComplete =
+      referenceLanguage !== -1 &&
+      referenceItemLength > 0 &&
+      control.referenceScriptFrontier.count ===
+        midgardBoundedItemChunkCountV1(referenceItemLength);
     const hashWellFormed =
       control.scriptHash !== null &&
       isWellFormedMidgardBlake2b224TraceControlV1(control.scriptHash) &&
@@ -204,21 +226,35 @@ export const isWellFormedMidgardLedgerOutputProofControlV1 = (
         control.nativeScript!,
       );
     if (control.stage === MidgardLedgerOutputProofStagesV1.Structure) {
-      return control.scriptHash === null && control.nativeScript === null;
-    }
-    if (
-      !scanTerminal ||
-      referenceLanguage === -1 ||
-      !hashWellFormed
-    ) {
       return (
-        control.stage === MidgardLedgerOutputProofStagesV1.Terminal &&
-        scanTerminal &&
-        referenceLanguage === -1 &&
+        control.referenceScriptFrontier.count === 0 &&
         control.scriptHash === null &&
         control.nativeScript === null
       );
     }
+    if (!scanTerminal) return false;
+    if (referenceLanguage === -1) {
+      return (
+        control.stage === MidgardLedgerOutputProofStagesV1.Terminal &&
+        control.referenceScriptFrontier.count === 0 &&
+        control.scriptHash === null &&
+        control.nativeScript === null
+      );
+    }
+    if (
+      referenceItemLength <= 0 ||
+      control.referenceScriptFrontier.count >
+        midgardBoundedItemChunkCountV1(referenceItemLength)
+    ) {
+      return false;
+    }
+    if (
+      control.stage ===
+      MidgardLedgerOutputProofStagesV1.ReferenceScriptCommitment
+    ) {
+      return control.scriptHash === null && control.nativeScript === null;
+    }
+    if (!referenceFrontierComplete || !hashWellFormed) return false;
     if (
       control.stage === MidgardLedgerOutputProofStagesV1.ScriptHash
     ) {
@@ -263,6 +299,8 @@ export const initialMidgardLedgerOutputProofControlV1 = ({
       "ledger_output_proof_v1.item_commitment",
     ),
     outputScan: initialMidgardLedgerOutputScanControlV1(),
+    referenceScriptFrontier:
+      emptyMidgardValidationMerkleFrontierV1(),
     scriptHash: null,
     nativeScript: null,
   } satisfies MidgardLedgerOutputProofControlV1;
@@ -285,6 +323,13 @@ export const encodeMidgardLedgerOutputProofControlV1 = (
     encodeCbor(BigInt(control.totalLength)),
     aikenSerialisedPlutusDataBytes(control.itemCommitment),
     encodeMidgardLedgerOutputScanControlV1(control.outputScan),
+    encodeCbor(BigInt(control.referenceScriptFrontier.count)),
+    encodeCbor(
+      control.referenceScriptFrontier.peaks.map(({ height, hash }) => [
+        BigInt(height),
+        hash,
+      ]),
+    ),
     optionalNestedControlDataCbor(control.scriptHash),
     optionalNestedControlDataCbor(control.nativeScript),
   ]);
@@ -378,7 +423,7 @@ const authenticatedOutputSpan = ({
 }): Buffer | null => {
   if (
     length <= 0 ||
-    length > MIDGARD_BLAKE2B_BLOCK_BYTES ||
+    length > MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 ||
     absoluteStart < 0 ||
     absoluteStart + length > control.totalLength ||
     witness === null ||
@@ -509,10 +554,8 @@ export const advanceMidgardLedgerOutputProofV1 = ({
         }
         return advancedOutputProof({
           ...control,
-          stage: MidgardLedgerOutputProofStagesV1.ScriptHash,
-          scriptHash: initialMidgardBlake2b224TraceControlV1(
-            control.outputScan.referenceScriptLength + 1,
-          ),
+          stage:
+            MidgardLedgerOutputProofStagesV1.ReferenceScriptCommitment,
         });
       }
       const finished = finishMidgardLedgerOutputScanV1({
@@ -542,6 +585,55 @@ export const advanceMidgardLedgerOutputProofV1 = ({
       return nextScan === null
         ? { kind: MidgardLedgerOutputProofResultKindsV1.InvalidOutput }
         : advancedOutputProof({ ...control, outputScan: nextScan });
+    }
+    if (
+      control.stage ===
+      MidgardLedgerOutputProofStagesV1.ReferenceScriptCommitment
+    ) {
+      const itemOffset =
+        control.outputScan.referenceScriptItemOffset;
+      const itemLength = control.totalLength - itemOffset;
+      const chunkCount =
+        midgardBoundedItemChunkCountV1(itemLength);
+      const chunkIndex = control.referenceScriptFrontier.count;
+      if (chunkIndex === chunkCount) {
+        if (witness !== null) return null;
+        return advancedOutputProof({
+          ...control,
+          stage: MidgardLedgerOutputProofStagesV1.ScriptHash,
+          scriptHash: initialMidgardBlake2b224TraceControlV1(
+            control.outputScan.referenceScriptLength + 1,
+          ),
+        });
+      }
+      const chunkLength =
+        midgardBoundedItemExpectedChunkLengthV1({
+          totalLength: itemLength,
+          chunkIndex,
+        });
+      const chunk = authenticatedOutputSpan({
+        control,
+        absoluteStart:
+          itemOffset +
+          chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+        length: chunkLength,
+        witness,
+      });
+      if (chunk === null) return null;
+      return advancedOutputProof({
+        ...control,
+        referenceScriptFrontier:
+          appendMidgardValidationMerkleLeafV1(
+            control.referenceScriptFrontier,
+            hashMidgardBoundedItemChunkV1({
+              fieldIndex:
+                MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
+              itemIndex: control.outputIndex,
+              chunkIndex,
+              chunk,
+            }),
+          ),
+      });
     }
     if (control.stage === MidgardLedgerOutputProofStagesV1.ScriptHash) {
       const scriptHash = control.scriptHash!;
@@ -790,6 +882,46 @@ export const buildMidgardLedgerOutputProofTraceV1 = ({
     return { item, initial, steps, terminal: control };
   }
 
+  const referenceItemOffset =
+    outputScanTrace.terminal.referenceScriptItemOffset;
+  const referenceItemLength = bytes.length - referenceItemOffset;
+  const referenceItem = buildMidgardBoundedItemV1({
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
+    itemIndex: outputIndex,
+    bytes: bytes.subarray(referenceItemOffset),
+  });
+  for (
+    let chunkIndex = 0;
+    chunkIndex < referenceItem.frontier.count;
+    chunkIndex += 1
+  ) {
+    append(
+      spanChunkWitness({
+        item,
+        absoluteStart:
+          referenceItemOffset +
+          chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+        length: midgardBoundedItemExpectedChunkLengthV1({
+          totalLength: referenceItemLength,
+          chunkIndex,
+        }),
+      }),
+    );
+  }
+  append(null);
+  if (
+    !commitMidgardBoundedItemV1({
+      fieldIndex: MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
+      itemIndex: outputIndex,
+      totalLength: referenceItemLength,
+      frontier: control.referenceScriptFrontier,
+    }).equals(referenceItem.commitment)
+  ) {
+    throw new Error(
+      "V1 output proof diverged from reference-script commitment",
+    );
+  }
+
   const referenceOffset =
     outputScanTrace.terminal.referenceScriptOffset;
   const referenceLength =
@@ -911,3 +1043,23 @@ export const digestMidgardLedgerOutputReferenceScriptV1 = (
   control.scriptHash !== null
     ? digestMidgardBlake2b224TraceV1(control.scriptHash)
     : null;
+
+export const commitMidgardLedgerOutputReferenceScriptItemV1 = (
+  control: MidgardLedgerOutputProofControlV1,
+): Buffer | null => {
+  if (
+    !isExactMidgardLedgerOutputProofTerminalV1(control) ||
+    control.outputScan.referenceScriptLanguage === -1
+  ) {
+    return null;
+  }
+  const totalLength =
+    control.totalLength -
+    control.outputScan.referenceScriptItemOffset;
+  return commitMidgardBoundedItemV1({
+    fieldIndex: MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
+    itemIndex: control.outputIndex,
+    totalLength,
+    frontier: control.referenceScriptFrontier,
+  });
+};

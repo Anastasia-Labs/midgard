@@ -3,13 +3,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceMidgardLedgerOutputProofV1,
+  buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputProofTraceV1,
+  commitMidgardLedgerOutputReferenceScriptItemV1,
   decodeMidgardDatum,
   digestMidgardLedgerOutputReferenceScriptV1,
   encodeMidgardLedgerOutputProofControlV1,
   encodeMidgardNativeScript,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
+  MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
   MidgardLedgerOutputProofResultKindsV1,
   MidgardLedgerOutputProofStagesV1,
   type MidgardNativeScript,
@@ -63,6 +67,18 @@ describe("bounded ledger output proof V1", () => {
       )!.toString("hex"),
     ).toBe(hashMidgardVersionedScript(script));
     expect(
+      commitMidgardLedgerOutputReferenceScriptItemV1(
+        trace.terminal,
+      ),
+    ).toStrictEqual(
+      buildMidgardBoundedItemV1({
+        fieldIndex: MIDGARD_LEDGER_OUTPUT_PROOF_FIELD_INDEX_V1,
+        itemIndex: 0,
+        bytes: encodeMidgardVersionedScript(script),
+      }).commitment,
+    );
+    expect(trace.terminal.referenceScriptFrontier.count).toBe(2);
+    expect(
       trace.steps.filter(
         ({ control }) =>
           control.stage ===
@@ -113,6 +129,11 @@ describe("bounded ledger output proof V1", () => {
     expect(trace.terminal.nativeScript).toBeNull();
     expect(
       digestMidgardLedgerOutputReferenceScriptV1(trace.terminal),
+    ).toBeNull();
+    expect(
+      commitMidgardLedgerOutputReferenceScriptItemV1(
+        trace.terminal,
+      ),
     ).toBeNull();
   });
 
@@ -167,6 +188,29 @@ describe("bounded ledger output proof V1", () => {
         },
       }),
     ).toBeNull();
+
+    const referenceCommitmentStep = validTrace.steps.find(
+      ({ control, witness: stepWitness }) =>
+        control.stage ===
+          MidgardLedgerOutputProofStagesV1.ReferenceScriptCommitment &&
+        stepWitness?.kind === "chunks",
+    )!;
+    const referenceWitness = referenceCommitmentStep.witness!;
+    if (referenceWitness.kind !== "chunks") {
+      throw new Error("missing reference commitment chunk witness");
+    }
+    expect(
+      advanceMidgardLedgerOutputProofV1({
+        control: referenceCommitmentStep.control,
+        witness: {
+          ...referenceWitness,
+          chunkProof: {
+            ...referenceWitness.chunkProof,
+            chunk: Buffer.alloc(referenceWitness.chunkProof.chunk.length),
+          },
+        },
+      }),
+    ).toBeNull();
   });
 
   it("encodes the long terminal control canonically for Aiken", () => {
@@ -182,7 +226,7 @@ describe("bounded ledger output proof V1", () => {
     const terminalCbor =
       encodeMidgardLedgerOutputProofControlV1(trace.terminal);
     expect(terminalCbor.toString("hex")).toBe(
-      "88010300192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec960107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe18541914270003191481191770d8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80",
+      "8a010400192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c19148119177002818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80",
     );
     expect(terminalCbor.length).toBeLessThan(512);
     expect(

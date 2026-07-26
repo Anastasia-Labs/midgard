@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeMidgardDatum,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScript,
   type MidgardTxOutput,
   midgardValueToCmlValue,
 } from "../src/codec/index.js";
@@ -88,9 +89,14 @@ describe("ledger output scan V1", () => {
     expect(terminal.referenceScriptLanguage).toBe(3);
     expect(terminal.referenceScriptLength).toBe(6_000);
     expect(
+      terminal.cursor - terminal.referenceScriptItemOffset,
+    ).toBe(
+      encodeMidgardVersionedScript(fixture.output.script_ref!).length,
+    );
+    expect(
       encodeMidgardLedgerOutputScanControlV1(terminal).toString("hex"),
     ).toBe(
-      "960107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe18541914270003191481191770",
+      "970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c191481191770",
     );
     expect(
       trace.steps

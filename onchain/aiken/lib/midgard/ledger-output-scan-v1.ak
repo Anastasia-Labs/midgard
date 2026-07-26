@@ -48,6 +48,7 @@ pub type LedgerOutputScanControlV1 {
   datum_length: Int,
   payload_remaining: Int,
   reference_script_language: Int,
+  reference_script_item_offset: Int,
   reference_script_offset: Int,
   reference_script_length: Int,
 }
@@ -74,6 +75,7 @@ pub fn initial_control_v1() -> LedgerOutputScanControlV1 {
     datum_length: 0,
     payload_remaining: 0,
     reference_script_language: -1,
+    reference_script_item_offset: -1,
     reference_script_offset: -1,
     reference_script_length: 0,
   }
@@ -147,15 +149,20 @@ pub fn control_is_well_formed(
       control.reference_script_language == 3,
       control.reference_script_language == 128,
     },
+    control.reference_script_item_offset >= -1,
     control.reference_script_offset >= -1,
     control.reference_script_length >= 0,
     if control.reference_script_language == -1 {
       and {
+        control.reference_script_item_offset == -1,
         control.reference_script_offset == -1,
         control.reference_script_length == 0,
       }
     } else {
-      control.reference_script_offset >= 0
+      and {
+        control.reference_script_item_offset >= 0,
+        control.reference_script_offset > control.reference_script_item_offset,
+      }
     },
   }
 }
@@ -164,7 +171,7 @@ pub fn encode_control_v1(
   control: LedgerOutputScanControlV1,
 ) -> ByteArray {
   expect control_is_well_formed(control)
-  encode_definite_array_header(22)
+  encode_definite_array_header(23)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.cursor))
@@ -187,6 +194,7 @@ pub fn encode_control_v1(
     |> bytearray.concat(cbor.serialise(control.datum_length))
     |> bytearray.concat(cbor.serialise(control.payload_remaining))
     |> bytearray.concat(cbor.serialise(control.reference_script_language))
+    |> bytearray.concat(cbor.serialise(control.reference_script_item_offset))
     |> bytearray.concat(cbor.serialise(control.reference_script_offset))
     |> bytearray.concat(cbor.serialise(control.reference_script_length))
 }
@@ -202,8 +210,8 @@ pub fn control_from_data_v1(
       policy_asset_cursor_data, previous_policy_data, current_policy_data,
       previous_asset_name_data, asset_count_data, asset_peaks_data,
       datum_offset_data, datum_length_data, payload_remaining_data,
-      reference_script_language_data, reference_script_offset_data,
-      reference_script_length_data,
+      reference_script_language_data, reference_script_item_offset_data,
+      reference_script_offset_data, reference_script_length_data,
     ] = builtin.un_list_data(data)
   let control = LedgerOutputScanControlV1 {
     version: builtin.un_i_data(version_data),
@@ -229,6 +237,9 @@ pub fn control_from_data_v1(
     payload_remaining: builtin.un_i_data(payload_remaining_data),
     reference_script_language: builtin.un_i_data(
       reference_script_language_data,
+    ),
+    reference_script_item_offset: builtin.un_i_data(
+      reference_script_item_offset_data,
     ),
     reference_script_offset: builtin.un_i_data(
       reference_script_offset_data,
@@ -578,7 +589,12 @@ fn reference_script_header(
 ) -> Option<LedgerOutputScanControlV1> {
   when canonical_key_at(window, window_offset, 3) is {
     None -> None
-    Some(script_offset) ->
+    Some(script_offset) -> {
+      let script_item_offset = absolute_offset(
+        control,
+        window_offset,
+        script_offset,
+      )
       when canonical_cbor_scan_v1.head_at_v1(window, script_offset, 4) is {
         None -> None
         Some(script_array) ->
@@ -624,6 +640,7 @@ fn reference_script_header(
                           optional_field_count: control.optional_field_count + 1,
                           payload_remaining: payload.value,
                           reference_script_language: language.value,
+                          reference_script_item_offset: script_item_offset,
                           reference_script_offset: absolute_offset(
                             control,
                             window_offset,
@@ -639,6 +656,7 @@ fn reference_script_header(
             }
           }
       }
+    }
   }
 }
 
@@ -875,6 +893,7 @@ pub fn terminal_is_exact_v1(
     },
     if control.reference_script_language == -1 {
       and {
+        control.reference_script_item_offset == -1,
         control.reference_script_offset == -1,
         control.reference_script_length == 0,
       }
@@ -885,6 +904,9 @@ pub fn terminal_is_exact_v1(
           control.reference_script_language == 3,
           control.reference_script_language == 128,
         },
+        control.reference_script_item_offset >= 0,
+        control.reference_script_item_offset
+          < control.reference_script_offset,
         control.reference_script_offset >= 0,
         control.reference_script_length >= 0,
         control.reference_script_offset + control.reference_script_length == total_length,

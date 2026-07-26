@@ -1,7 +1,11 @@
 import {
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
+  buildMidgardLedgerOutputProofTraceV1,
+  commitMidgardLedgerOutputReferenceScriptItemV1,
+  commitMidgardValidationMerkleFrontierV1,
   decodeMidgardLedgerOutputCommitmentV1,
+  digestMidgardLedgerOutputReferenceScriptV1,
   encodeMidgardLedgerOutputCommitmentV1,
   MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
   verifyMidgardLedgerOutputChunkV1,
@@ -130,5 +134,42 @@ describe("canonical ledger output descriptor V1", () => {
         }),
       ).toBe(true);
     }
+  });
+
+  it("matches every descriptor fact currently authenticated by the L1 scan", () => {
+    const fixture = outputFixture();
+    const material = buildCanonicalMidgardLedgerOutputMaterialV1({
+      outputIndex: 7,
+      outputCbor: fixture.cbor,
+    });
+    const terminal = buildMidgardLedgerOutputProofTraceV1({
+      outputIndex: 7,
+      outputCbor: fixture.cbor,
+    }).terminal;
+    const scan = terminal.outputScan;
+
+    expect(scan.address).toStrictEqual(material.descriptor.address);
+    expect(scan.lovelace).toBe(material.descriptor.lovelace);
+    expect(scan.assetFrontier.count).toBe(material.descriptor.assetCount);
+    expect(
+      commitMidgardValidationMerkleFrontierV1(scan.assetFrontier),
+    ).toStrictEqual(material.descriptor.assetFrontierCommitment);
+    expect(scan.cardanoValueSize).toBe(
+      material.descriptor.cardanoValueSize,
+    );
+    expect(scan.referenceScriptLanguage).toBe(
+      material.descriptor.referenceScriptLanguage,
+    );
+    expect(
+      terminal.totalLength - scan.referenceScriptItemOffset,
+    ).toBe(material.descriptor.referenceScriptTotalLength);
+    expect(
+      digestMidgardLedgerOutputReferenceScriptV1(terminal),
+    ).toStrictEqual(material.descriptor.referenceScriptHash);
+    expect(
+      commitMidgardLedgerOutputReferenceScriptItemV1(terminal),
+    ).toStrictEqual(
+      material.descriptor.referenceScriptItemCommitment,
+    );
   });
 });
