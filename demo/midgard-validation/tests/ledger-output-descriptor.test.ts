@@ -2,6 +2,7 @@ import {
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputProofTraceV1,
+  commitMidgardLedgerOutputDatumItemV1,
   commitMidgardLedgerOutputReferenceScriptItemV1,
   commitMidgardValidationMerkleFrontierV1,
   decodeMidgardLedgerOutputCommitmentV1,
@@ -159,6 +160,15 @@ describe("canonical ledger output descriptor V1", () => {
     );
     expect(scan.referenceScriptLanguage).toBe(
       material.descriptor.referenceScriptLanguage,
+    );
+    expect(
+      commitMidgardLedgerOutputDatumItemV1(terminal),
+    ).toStrictEqual(
+      buildMidgardBoundedItemV1({
+        fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
+        itemIndex: 7,
+        bytes: fixture.output.datum!.cbor,
+      }).commitment,
     );
     expect(
       terminal.totalLength - scan.referenceScriptItemOffset,

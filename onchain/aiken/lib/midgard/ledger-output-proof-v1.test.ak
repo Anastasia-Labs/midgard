@@ -10,11 +10,14 @@ const no_reference_output =
 const small_reference_output =
   #"a300581d7811111111111111111111111111111111111111111111111111111111018200a0038203436b6b6b"
 
+const small_datum_output =
+  #"a300581d7811111111111111111111111111111111111111111111111111111111018200a00243d87980"
+
 const malformed_nonminimal_output =
   #"b80200581d7811111111111111111111111111111111111111111111111111111111018200a0"
 
 const cross_language_long_terminal_control =
-  #"8a010400192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c19148119177002818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80"
+  #"8c010500192bf15820a023c9459077b4fc906660cacfa81a46eea15b9ad1f21fb20fbd745d2678f9ec970107192bf10402581d78111111111111111111111111111111111111111111111111111111111a007a1200182e000000581c555555555555555555555555555555555555555555555555555555554040028182015820fdd05992e96e478560b718d45058402827072f35e5220f396e2569800a2b76fe1854191427000319147c1914811917700281820158208849db60de54cc79779154d18787e4382a58ea895b9133f12bdea300c72bfdc002818201582028f935b37d798dd5f68f23fa40e9d9dd02037d6b1e1fa7ad7edfdcb84b63a26cd8799f8901031917711917715840634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098dbdd88d3a54a6646cce0bede0423668a5079fb08595004db249d66dbc8e10681056a775c40004000ffd87a80"
 
 fn one_chunk_material(
   output_index: Int,
@@ -156,6 +159,55 @@ test derives_the_first_script_hash_block_from_the_output_chunk() {
   }
 }
 
+test authenticates_an_independently_chunked_inline_datum() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_datum_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let datum_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(datum_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let datum_ready = advanced(
+    ledger_output_proof_v1.step_v1(
+      scan_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let datum_committed = advanced(
+    ledger_output_proof_v1.step_v1(datum_ready, chunks(proof)),
+  )
+  let terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      datum_committed,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  and {
+    datum_ready.stage == ledger_output_proof_v1.stage_datum_commitment,
+    datum_committed.datum_count == 1,
+    ledger_output_proof_v1.datum_item_commitment_v1(terminal)
+      == Some(bounded_item_v1.from_bytes(2, 0, #"d87980")),
+    ledger_output_proof_v1.terminal_is_exact_v1(terminal),
+  }
+}
+
 test reports_authenticated_invalid_output_bytes() {
   let Pair(commitment, proof) = one_chunk_material(
     0,
@@ -228,15 +280,60 @@ test fails_closed_for_a_substituted_reference_script_item_chunk() {
   ) == None
 }
 
+test fails_closed_for_a_substituted_inline_datum_item_chunk() {
+  let Pair(commitment, proof) = one_chunk_material(0, small_datum_output)
+  let initial = ledger_output_proof_v1.initial_control_v1(
+    0,
+    bytearray.length(small_datum_output),
+    commitment,
+  )
+  let value_header = advanced(
+    ledger_output_proof_v1.step_v1(initial, chunks(proof)),
+  )
+  let optional_field = advanced(
+    ledger_output_proof_v1.step_v1(value_header, chunks(proof)),
+  )
+  let datum_payload = advanced(
+    ledger_output_proof_v1.step_v1(optional_field, chunks(proof)),
+  )
+  let optional_complete = advanced(
+    ledger_output_proof_v1.step_v1(datum_payload, chunks(proof)),
+  )
+  let scan_terminal = advanced(
+    ledger_output_proof_v1.step_v1(
+      optional_complete,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let datum_ready = advanced(
+    ledger_output_proof_v1.step_v1(
+      scan_terminal,
+      ledger_output_proof_v1.LedgerOutputProofNoWitness,
+    ),
+  )
+  let substituted = bounded_item_v1.ChunkProofV1 {
+    ..proof,
+    chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
+  }
+  ledger_output_proof_v1.step_v1(
+    datum_ready,
+    chunks(substituted),
+  ) == None
+}
+
 test decodes_the_long_typescript_terminal_control_canonically() {
   let control = ledger_output_proof_v1.decode_control_v1(
     cross_language_long_terminal_control,
   )
+  expect Some(datum_item_commitment) =
+    ledger_output_proof_v1.datum_item_commitment_v1(control)
   expect Some(reference_item_commitment) =
     ledger_output_proof_v1.reference_script_item_commitment_v1(control)
   and {
     ledger_output_proof_v1.terminal_is_exact_v1(control),
+    control.datum_count == 2,
     control.reference_script_count == 2,
+    bytearray.length(datum_item_commitment) == 32,
     bytearray.length(reference_item_commitment) == 32,
     ledger_output_proof_v1.reference_script_digest_v1(control)
       == Some(
