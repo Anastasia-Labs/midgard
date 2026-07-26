@@ -32,6 +32,7 @@ import {
   initialMidgardResolvedInputsAccumulatorV1,
   MidgardRedeemerTag,
   RejectCodes,
+  type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
 } from "../src/index.js";
 import {
@@ -111,6 +112,8 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_stage_ten_missing_semantic_v1",
   "script_sources_stage_ten_mismatch_semantic_v1",
   "script_sources_stage_ten_match_semantic_v1",
+  "script_sources_stage_eight_finish_semantic_v1",
+  "script_sources_stage_eight_purpose_semantic_v1",
   "native_scripts_terminal_semantic_v1",
   "native_scripts_native_semantic_v1",
   "native_scripts_effectful_semantic_v1",
@@ -128,8 +131,28 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, 55, 58, -1, -1, 62,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, 57, 60, -1, -1, 64,
 ] as const;
+
+type MintFoldWitnessV1 = Extract<
+  NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
+  {
+    readonly kind: "transactionFieldChunk" | "mintFoldAsset";
+  }
+>;
+
+const collectMintFoldWitnessesV1 = (
+  trace: DeterministicValidationMachineTrace,
+): readonly MintFoldWitnessV1[] =>
+  trace.witnesses
+    .filter((witness) => witness.phase === "scriptSources")
+    .map((witness) => witness.auxiliary)
+    .filter(
+      (auxiliary): auxiliary is MintFoldWitnessV1 =>
+        auxiliary?.kind === "mintFoldAsset" ||
+        (auxiliary?.kind === "transactionFieldChunk" &&
+          auxiliary.collectionProof.fieldIndex === 5),
+    );
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
   trace: DeterministicValidationMachineTrace,
@@ -377,7 +400,7 @@ describe("deterministic validation machine", () => {
       2, 2, 2, 2, 2, 2, 2,
       3,
       4,
-      0, 0, 0, 16, 18,
+      0, 0, 23, 16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndexV1({
@@ -566,6 +589,13 @@ describe("deterministic validation machine", () => {
         (witness) =>
           witness.auxiliary?.kind === "redeemerScan" &&
           validationSemanticResolverIndexV1(witness) === 22,
+      ),
+    ).toBe(true);
+    expect(
+      scriptSourceWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "scriptPurposeScan" &&
+          validationSemanticResolverIndexV1(witness) === 24,
       ),
     ).toBe(true);
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
@@ -1093,18 +1123,7 @@ describe("deterministic validation machine", () => {
       }),
     );
 
-    const mintFoldWitnesses = trace.witnesses
-      .filter((witness) => witness.phase === "scriptSources")
-      .flatMap((witness) => {
-        const auxiliary = witness.auxiliary;
-        if (
-          auxiliary?.kind === "transactionFieldChunk" &&
-          auxiliary.collectionProof.fieldIndex === 5
-        ) {
-          return [auxiliary];
-        }
-        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
-      });
+    const mintFoldWitnesses = collectMintFoldWitnessesV1(trace);
     expect(mintFoldWitnesses.map(({ kind }) => kind)).toEqual([
       "transactionFieldChunk",
       "mintFoldAsset",
@@ -1219,18 +1238,7 @@ describe("deterministic validation machine", () => {
       }),
     );
 
-    const burnFoldWitnesses = trace.witnesses
-      .filter((witness) => witness.phase === "scriptSources")
-      .flatMap((witness) => {
-        const auxiliary = witness.auxiliary;
-        if (
-          auxiliary?.kind === "transactionFieldChunk" &&
-          auxiliary.collectionProof.fieldIndex === 5
-        ) {
-          return [auxiliary];
-        }
-        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
-      });
+    const burnFoldWitnesses = collectMintFoldWitnessesV1(trace);
     expect(burnFoldWitnesses.map(({ kind }) => kind)).toEqual([
       "transactionFieldChunk",
       "mintFoldAsset",
@@ -1285,18 +1293,7 @@ describe("deterministic validation machine", () => {
       }),
     );
 
-    const mintFoldWitnesses = trace.witnesses
-      .filter((witness) => witness.phase === "scriptSources")
-      .flatMap((witness) => {
-        const auxiliary = witness.auxiliary;
-        if (
-          auxiliary?.kind === "transactionFieldChunk" &&
-          auxiliary.collectionProof.fieldIndex === 5
-        ) {
-          return [auxiliary];
-        }
-        return auxiliary?.kind === "mintFoldAsset" ? [auxiliary] : [];
-      });
+    const mintFoldWitnesses = collectMintFoldWitnessesV1(trace);
     expect(mintFoldWitnesses).toHaveLength(129);
     const crossingWitness = mintFoldWitnesses[117];
     expect(crossingWitness).toMatchObject({

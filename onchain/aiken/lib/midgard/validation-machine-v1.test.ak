@@ -5262,20 +5262,64 @@ test script_sources_discovers_more_than_sixteen_purposes() {
     selected_purpose,
     20,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_eight_cbor,
+    claimed_successor: stage_nine,
+  }
+  let siblings = first_leaf_power_of_two_siblings(first_peak_leaves)
+  and {
+    validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
+      stage_eight,
+      transition,
+      0,
+      0,
+      h_28_a,
+      cbor.serialise(0),
+      siblings,
+    ),
+    validation_machine_v1.verify_one_step_evidence(
+      stage_eight,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition,
+        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+          purpose_kind: 0,
+          purpose_index: 0,
+          script_hash: h_28_a,
+          subject: cbor.serialise(0),
+          siblings,
+        },
+      },
+    ),
+  }
+}
+
+test script_sources_stage_eight_finishes_empty_discovery_exactly() {
+  let tx = empty_v1_transaction()
+  let empty_frontier = validation_merkle_v1.build_frontier([])
+  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
+  let Pair(stage_eight, stage_eight_cbor) = script_discovery_step_fixture(
+    tx,
+    8,
+    empty_frontier,
+    empty_frontier,
+    empty_frontier,
+    empty_discovery,
+    19,
+  )
+  let Pair(stage_eleven, _) = script_discovery_step_fixture(
+    tx,
+    11,
+    empty_frontier,
+    empty_frontier,
+    empty_frontier,
+    empty_discovery,
+    20,
+  )
+  validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
     stage_eight,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: stage_eight_cbor,
-        claimed_successor: stage_nine,
-      },
-      auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
-        purpose_kind: 0,
-        purpose_index: 0,
-        script_hash: h_28_a,
-        subject: cbor.serialise(0),
-        siblings: first_leaf_power_of_two_siblings(first_peak_leaves),
-      },
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: stage_eight_cbor,
+      claimed_successor: stage_eleven,
     },
   )
 }

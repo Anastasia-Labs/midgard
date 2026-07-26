@@ -1051,6 +1051,11 @@ export const validationSemanticResolverIndexV1 = (
         }
         break;
       }
+      if (stage === 8) {
+        if (auxiliary === null) return 23;
+        if (auxiliary.kind === "scriptPurposeScan") return 24;
+        break;
+      }
       if (stage !== 5) return 0;
       if (auxiliary?.kind === "ledgerOutputProofBegin") return 1;
       if (auxiliary?.kind === "ledgerOutputProofStep") return 2;
