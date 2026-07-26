@@ -93,6 +93,10 @@ const semanticResolverDefinitionsV1 = [
   "script_sources_output_proof_step_semantic_v1",
   "script_sources_output_proof_finalize_semantic_v1",
   "script_sources_output_proof_finish_semantic_v1",
+  "script_integrity_authentication_semantic_v1",
+  "script_integrity_compact_semantic_v1",
+  "script_integrity_witness_set_semantic_v1",
+  "script_integrity_finalize_semantic_v1",
   "ledger_delta_operation_semantic_v1",
   "ledger_delta_replay_semantic_v1",
   "ledger_delta_replay_finish_semantic_v1",
@@ -103,7 +107,7 @@ const semanticResolverDefinitionsV1 = [
   "ledger_delta_terminal_semantic_v1",
 ] as const;
 const semanticResolverOffsetsV1 = [
-  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, -1, -1, -1, 37,
+  0, 2, 3, 4, 6, 10, 24, 26, 32, -1, 37, -1, -1, 41,
 ] as const;
 
 const validateBoundaryAbiAndCollectAuxiliaryKinds = (
@@ -286,7 +290,7 @@ describe("deterministic validation machine", () => {
       ...Array<string>(11).fill("resolveInputs"),
       ...Array<string>(22).fill("scriptSources"),
       "nativeScripts",
-      "scriptIntegrity",
+      ...Array<string>(4).fill("scriptIntegrity"),
       "cek",
       ...Array<string>(8).fill("valueAndMint"),
       ...Array<string>(9).fill("ledgerDelta"),

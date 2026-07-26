@@ -15,7 +15,8 @@ use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
-  encode_native_tx_body_compact, native_tx_id_for_version,
+  decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
+  native_tx_id_for_version,
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_redeemer_witness,
@@ -5360,15 +5361,19 @@ test script_integrity_is_recomputed_before_cek() {
     },
   }
   let valid_control = empty_native_control_fixture(valid_tx)
-  let valid_work_witness_cbor = validation_machine_v1.encode_script_integrity_witness_v1(
+  let valid_source = midgard_transaction_proof_source_v1(valid_tx)
+  let valid_compact = midgard_transaction_to_compact(valid_tx)
+  let valid_witness_set = decode_native_tx_witness_set_compact(
+    valid_source.witness_set_compact_cbor,
+  )
+  let authentication_witness_cbor = validation_machine_v1.encode_script_integrity_witness_v1(
     valid_control,
   )
-  let compact = midgard_transaction_to_compact(valid_tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
-    encode_native_tx_body_compact(compact.body),
+    encode_native_tx_body_compact(valid_compact.body),
   )
-  let valid_pre = validation_trace_v1.ValidationMachineStateV1 {
+  let authentication_pre = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
     transaction_id: tx_id,
@@ -5383,21 +5388,61 @@ test script_integrity_is_recomputed_before_cek() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptIntegrity,
       34,
-      valid_work_witness_cbor,
+      authentication_witness_cbor,
     ),
     execution_cpu: 0,
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
-  let valid_post = validation_trace_v1.ValidationMachineStateV1 {
-    ..valid_pre,
-    phase: validation_trace_v1.Cek,
+  let compact_witness_cbor = validation_machine_v1.encode_script_integrity_compact_witness_v1(
+    valid_control,
+  )
+  let compact_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..authentication_pre,
     program_counter: 35,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Cek,
+      validation_trace_v1.ScriptIntegrity,
       35,
+      compact_witness_cbor,
+    ),
+  }
+  let witness_set_witness_cbor = validation_machine_v1.encode_script_integrity_witness_set_witness_v1(
+    valid_control,
+    valid_compact.body.script_integrity_hash,
+    valid_compact.witness_set_hash,
+  )
+  let witness_set_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..compact_pre,
+    program_counter: 36,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptIntegrity,
+      36,
+      witness_set_witness_cbor,
+    ),
+  }
+  let finalize_witness_cbor = validation_machine_v1.encode_script_integrity_finalize_witness_v1(
+    valid_control,
+    valid_compact.body.script_integrity_hash,
+    valid_witness_set.redeemer_tx_wits_hash,
+  )
+  let finalize_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..witness_set_pre,
+    program_counter: 37,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptIntegrity,
+      37,
+      finalize_witness_cbor,
+    ),
+  }
+  let valid_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..finalize_pre,
+    phase: validation_trace_v1.Cek,
+    program_counter: 38,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      38,
       validation_machine_v1.encode_cek_witness_v1(
         valid_control,
         #"",
@@ -5410,45 +5455,57 @@ test script_integrity_is_recomputed_before_cek() {
       ),
     ),
   }
-  let valid_step = validation_machine_v1.verify_one_step_evidence(
-    valid_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: valid_work_witness_cbor,
-        claimed_successor: valid_post,
-      },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
-    },
-  )
+  let authentication_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: authentication_witness_cbor,
+    claimed_successor: compact_pre,
+  }
+  let compact_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: compact_witness_cbor,
+    claimed_successor: witness_set_pre,
+  }
+  let witness_set_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: witness_set_witness_cbor,
+    claimed_successor: finalize_pre,
+  }
+  let finalize_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: finalize_witness_cbor,
+    claimed_successor: valid_post,
+  }
   let invalid_tx = base
   let invalid_control = empty_native_control_fixture(invalid_tx)
-  let invalid_work_witness_cbor = validation_machine_v1.encode_script_integrity_witness_v1(
-    invalid_control,
+  let invalid_source = midgard_transaction_proof_source_v1(invalid_tx)
+  let invalid_witness_set = decode_native_tx_witness_set_compact(
+    invalid_source.witness_set_compact_cbor,
   )
   let invalid_compact = midgard_transaction_to_compact(invalid_tx)
   let invalid_tx_id = native_tx_id_for_version(
     native_tx_version_v1,
     encode_native_tx_body_compact(invalid_compact.body),
   )
+  let invalid_finalize_witness_cbor = validation_machine_v1.encode_script_integrity_finalize_witness_v1(
+    invalid_control,
+    invalid_compact.body.script_integrity_hash,
+    invalid_witness_set.redeemer_tx_wits_hash,
+  )
   let invalid_pre = validation_trace_v1.ValidationMachineStateV1 {
-    ..valid_pre,
+    ..authentication_pre,
     transaction_id: invalid_tx_id,
     transaction_commitment: midgard_transaction_proof_commitment_v1(invalid_tx),
-    program_counter: 36,
+    program_counter: 40,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptIntegrity,
-      36,
-      invalid_work_witness_cbor,
+      40,
+      invalid_finalize_witness_cbor,
     ),
   }
   let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
   let terminal = validation_trace_v1.ValidationMachineStateV1 {
     ..invalid_pre,
     phase: validation_trace_v1.Terminal,
-    program_counter: 37,
+    program_counter: 41,
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
-      37,
+      41,
       validation_machine_v1.encode_terminal_rejection_witness(
         rejection_code,
         invalid_pre.prior_ledger_root,
@@ -5458,15 +5515,27 @@ test script_integrity_is_recomputed_before_cek() {
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   and {
-    valid_step,
-    validation_machine_v1.verify_one_step_evidence(
+    validation_machine_v1.verify_script_integrity_authentication_semantics_v1(
+      authentication_pre,
+      authentication_transition,
+    ),
+    validation_machine_v1.verify_script_integrity_compact_semantics_v1(
+      compact_pre,
+      compact_transition,
+    ),
+    validation_machine_v1.verify_script_integrity_witness_set_semantics_v1(
+      witness_set_pre,
+      witness_set_transition,
+    ),
+    validation_machine_v1.verify_script_integrity_finalize_semantics_v1(
+      finalize_pre,
+      finalize_transition,
+    ),
+    validation_machine_v1.verify_script_integrity_finalize_semantics_v1(
       invalid_pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-          work_witness_cbor: invalid_work_witness_cbor,
-          claimed_successor: terminal,
-        },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor: invalid_finalize_witness_cbor,
+        claimed_successor: terminal,
       },
     ),
   }

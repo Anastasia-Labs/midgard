@@ -588,6 +588,31 @@ const scriptSourcesStage = (
   return stage;
 };
 
+const scriptIntegrityStage = (
+  witness: ValidationMachineWorkWitness,
+): number => {
+  const control = asArray(
+    decodeSingleCbor(witness.cbor),
+    "script_integrity_control",
+  );
+  if (control.length !== 2 && control.length !== 4) {
+    throw new Error("script_integrity_control has an invalid field count");
+  }
+  const stage = Number(
+    asBigInt(control[1], "script_integrity_control.stage"),
+  );
+  if (
+    !Number.isSafeInteger(stage) ||
+    stage < 0 ||
+    stage > 3 ||
+    (stage < 2 && control.length !== 2) ||
+    (stage >= 2 && control.length !== 4)
+  ) {
+    throw new Error("script_integrity_control stage is invalid");
+  }
+  return stage;
+};
+
 const resolveInputsCursor = (
   witness: ValidationMachineWorkWitness,
 ): number => {
@@ -855,8 +880,10 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary.kind === "ledgerDeltaProofFrame") return 5;
       break;
     }
-    case "nativeScripts":
     case "scriptIntegrity":
+      if (auxiliary === null) return scriptIntegrityStage(witness);
+      break;
+    case "nativeScripts":
     case "cek":
     case "valueAndMint":
       return null;

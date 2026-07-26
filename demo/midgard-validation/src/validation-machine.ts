@@ -61,6 +61,7 @@ import {
   decodeMidgardAddressBytes,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
+  decodeMidgardNativeTxWitnessSetCompactV1,
   decodeMidgardTxOutput,
   hashMidgardVersionedScript,
   type MidgardValue,
@@ -1271,6 +1272,10 @@ export const buildDeterministicValidationMachineTrace = (
     const compactProofTransaction = decodeMidgardNativeTxCompactV1(
       proofSource.compactCbor,
     );
+    const compactProofWitnessSet =
+      decodeMidgardNativeTxWitnessSetCompactV1(
+        proofSource.witnessSetCompactCbor,
+      );
     const transactionCommitment =
       computeMidgardNativeTxProofCommitmentV1(proofSource);
     const fieldPreimages = deriveMidgardV1TxFieldPreimages(
@@ -4277,6 +4282,28 @@ export const buildDeterministicValidationMachineTrace = (
           0n,
         ]);
         pushWitness("scriptIntegrity", scriptIntegrityWitnessCbor);
+        pushWitness(
+          "scriptIntegrity",
+          encodeCbor([authenticatedNativeControlCbor, 1n]),
+        );
+        pushWitness(
+          "scriptIntegrity",
+          encodeCbor([
+            authenticatedNativeControlCbor,
+            2n,
+            compactProofTransaction.transactionBody.scriptIntegrityHash,
+            compactProofTransaction.transactionWitnessSetHash,
+          ]),
+        );
+        pushWitness(
+          "scriptIntegrity",
+          encodeCbor([
+            authenticatedNativeControlCbor,
+            3n,
+            compactProofTransaction.transactionBody.scriptIntegrityHash,
+            compactProofWitnessSet.redeemerTxWitsHash,
+          ]),
+        );
         if (rejection !== null && terminalPhase === "scriptIntegrity") {
           stoppedAtRejection = true;
         } else {
