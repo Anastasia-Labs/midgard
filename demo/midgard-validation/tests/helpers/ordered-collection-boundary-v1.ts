@@ -20,6 +20,8 @@ import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-mac
 
 export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
 export const CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 = 5_000;
+export const CARDANO_BOUNDARY_OBSERVER_TTL_V1 = 10_000n;
+export const CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 = 20_000n;
 export const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1 = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   minFeeA: 44,
@@ -621,6 +623,139 @@ export const buildSignedCardanoReferenceInputsCandidateV1 = async ({
   );
 };
 
+export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
+  privateKeyBech32,
+  fundingInput,
+  recipientAddress,
+  requestedObserverCount,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly fundingInput: UTxO;
+  readonly recipientAddress: string;
+  readonly requestedObserverCount: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  if (
+    !Number.isSafeInteger(requestedObserverCount) ||
+    requestedObserverCount <= 0
+  ) {
+    throw new Error(
+      "Requested Cardano observer/native-script count must be positive",
+    );
+  }
+  const fundingLovelace = fundingInput.assets.lovelace ?? 0n;
+  const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
+  const signerHash = privateKey.to_public().hash();
+  const address = CML.Address.from_bech32(recipientAddress);
+  const linearFee = CML.LinearFee.new(
+    BigInt(minFeeA),
+    BigInt(minFeeB),
+    BigInt(minFeeRefScriptCostPerByte),
+  );
+  const makeObserverScript = (
+    observerIndex: number,
+  ): CML.NativeScript => {
+    const clauses = CML.NativeScriptList.new();
+    clauses.add(CML.NativeScript.new_script_pubkey(signerHash));
+    clauses.add(
+      CML.NativeScript.new_script_invalid_hereafter(
+        CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
+          BigInt(observerIndex),
+      ),
+    );
+    return CML.NativeScript.new_script_all(clauses);
+  };
+  const makeSigned = (
+    fee: bigint,
+  ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
+    const outputLovelace = fundingLovelace - fee;
+    if (outputLovelace <= 0n) {
+      throw new Error(
+        `Cardano observer/native-script candidate ${requestedObserverCount.toString()} exhausts its funding input`,
+      );
+    }
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(fundingInput.txHash),
+        BigInt(fundingInput.outputIndex),
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutputBuilder.new()
+        .with_address(address)
+        .next()
+        .with_value(CML.Value.from_coin(outputLovelace))
+        .build()
+        .output(),
+    );
+    const withdrawals = CML.MapRewardAccountToCoin.new();
+    const nativeScripts = CML.NativeScriptList.new();
+    for (
+      let observerIndex = 0;
+      observerIndex < requestedObserverCount;
+      observerIndex += 1
+    ) {
+      const script = makeObserverScript(observerIndex);
+      withdrawals.insert(
+        CML.RewardAddress.new(
+          0,
+          CML.Credential.new_script(script.hash()),
+        ),
+        0n,
+      );
+      nativeScripts.add(script);
+    }
+    const body = CML.TransactionBody.new(inputs, outputs, fee);
+    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
+    body.set_withdrawals(withdrawals);
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), privateKey),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    witnessSet.set_native_scripts(nativeScripts);
+    const transaction = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
+    return {
+      transaction,
+      cborHex: transaction.to_cbor_hex(),
+    };
+  };
+
+  let fee = BigInt(minFeeB);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const signed = makeSigned(fee);
+    const nextFee = CML.min_no_script_fee(
+      signed.transaction,
+      linearFee,
+    );
+    if (nextFee === fee) {
+      return {
+        requestedItemCount: requestedObserverCount,
+        cborHex: signed.cborHex,
+        signedBytes: signed.cborHex.length / 2,
+        fee,
+      };
+    }
+    fee = nextFee;
+  }
+  throw new Error(
+    `Cardano observer/native-script candidate ${requestedObserverCount.toString()} fee did not converge`,
+  );
+};
+
 /**
  * Converts exact signed Cardano CBOR through the production bridge, verifies
  * every reveal for one typed field, and then runs the complete canonical
@@ -787,5 +922,85 @@ export const measureSignedCardanoReferenceInputsV1 = (
     vkeyWitnessCount:
       transaction.witness_set().vkeywitnesses()?.len() ?? 0,
     outputCount: transaction.body().outputs().len(),
+  };
+};
+
+export const measureSignedCardanoObserverNativeScriptsV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly inputCount: number;
+  readonly withdrawalCount: number;
+  readonly nativeScriptWitnessCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputCount: number;
+  readonly validityStart: bigint | undefined;
+  readonly ttl: bigint | undefined;
+  readonly rewardAddressBech32s: readonly string[];
+  readonly observerScriptHashHexes: readonly string[];
+  readonly nativeScriptHashHexes: readonly string[];
+  readonly withdrawalAmounts: readonly bigint[];
+  readonly hasPlutusScripts: boolean;
+  readonly hasRedeemers: boolean;
+  readonly hasDatums: boolean;
+  readonly collateralInputCount: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const withdrawals = body.withdrawals();
+  const nativeScripts = witnessSet.native_scripts();
+  const rewardAddressBech32s: string[] = [];
+  const observerScriptHashHexes: string[] = [];
+  const withdrawalAmounts: bigint[] = [];
+  if (withdrawals !== undefined) {
+    const keys = withdrawals.keys();
+    for (let index = 0; index < keys.len(); index += 1) {
+      const rewardAddress = keys.get(index);
+      const scriptHash = rewardAddress.payment().as_script();
+      if (scriptHash === undefined) {
+        throw new Error(
+          "Measured Cardano observer withdrawal is not script-credentialed",
+        );
+      }
+      const amount = withdrawals.get(rewardAddress);
+      if (amount === undefined) {
+        throw new Error(
+          "Measured Cardano observer withdrawal has no amount",
+        );
+      }
+      rewardAddressBech32s.push(
+        rewardAddress.to_address().to_bech32(),
+      );
+      observerScriptHashHexes.push(scriptHash.to_hex());
+      withdrawalAmounts.push(amount);
+    }
+  }
+  const nativeScriptHashHexes: string[] = [];
+  if (nativeScripts !== undefined) {
+    for (let index = 0; index < nativeScripts.len(); index += 1) {
+      nativeScriptHashHexes.push(nativeScripts.get(index).hash().to_hex());
+    }
+  }
+  return {
+    inputCount: body.inputs().len(),
+    withdrawalCount: withdrawals?.len() ?? 0,
+    nativeScriptWitnessCount: nativeScripts?.len() ?? 0,
+    vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
+    outputCount: body.outputs().len(),
+    validityStart: body.validity_interval_start(),
+    ttl: body.ttl(),
+    rewardAddressBech32s,
+    observerScriptHashHexes,
+    nativeScriptHashHexes,
+    withdrawalAmounts,
+    hasPlutusScripts:
+      (witnessSet.plutus_v1_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v2_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v3_scripts()?.len() ?? 0) > 0,
+    hasRedeemers: witnessSet.redeemers() !== undefined,
+    hasDatums: witnessSet.plutus_datums() !== undefined,
+    collateralInputCount: body.collateral_inputs()?.len() ?? 0,
   };
 };
