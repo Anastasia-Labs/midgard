@@ -1,34 +1,17 @@
 import {
   CML,
   Emulator,
-  PROTOCOL_PARAMETERS_DEFAULT,
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   buildSignedCardanoOutputsCandidateV1,
   CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
   exerciseMidgardOrderedCollectionBoundaryV1,
   findSignedCardanoCollectionBoundaryV1,
   measureSignedCardanoOutputsV1,
+  PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
-
-const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS = {
-  ...PROTOCOL_PARAMETERS_DEFAULT,
-  minFeeA: 44,
-  minFeeB: 155_381,
-  maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-  maxValSize: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
-  maxTxExMem: 16_500_000n,
-  maxTxExSteps: 10_000_000_000n,
-  priceMem: 0.0577,
-  priceStep: 0.0000721,
-  coinsPerUtxoByte: 4_310n,
-  collateralPercentage: 150,
-  maxCollateralInputs: 3,
-  minFeeRefScriptCostPerByte: 15,
-} as const;
 
 describe("canonical V1 ordered-collection Cardano boundaries", () => {
   it("derives and reveals the exact signed outputs boundary without a Midgard count cap", async () => {
@@ -48,7 +31,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     };
     const emulator = new Emulator(
       [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS,
+      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
     );
 
     const boundary = await findSignedCardanoCollectionBoundaryV1({
@@ -62,10 +45,12 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
           recipientAddress: funder.address,
           requestedOutputCount,
           lovelacePerOutput: 2_000_000n,
-          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA,
-          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
+          minFeeA:
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB:
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
           minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeRefScriptCostPerByte,
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
         }),
     });
     const cardanoMeasurement = measureSignedCardanoOutputsV1(
@@ -91,16 +76,16 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     );
     expect(boundary.accepted.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
           boundary.accepted.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
       ),
     );
     expect(boundary.adjacent.fee).toBe(
       BigInt(
-        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeA *
+        PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA *
           boundary.adjacent.signedBytes +
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS.minFeeB,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
       ),
     );
     expect(cardanoMeasurement.vkeyWitnessCount).toBe(1);
