@@ -61,6 +61,67 @@ const spendingScript: SpendingValidator = {
   script: applyDoubleCborEncoding(alwaysSucceedsCompiledCode),
 };
 
+const maximumRedeemerTerminalFoldVectorV1 = {
+  fieldCommitmentHex:
+    "07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133",
+  fieldPreimageHashHex:
+    "680079f9aebb6ab20240bf0a4b46a9b607181843413e0cdfbb293942aebe3d0a",
+  transactionIdHex:
+    "82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40",
+  transactionCommitmentHex:
+    "1c732fdaae878c2c07957dd7e21f9eebf81988ed8de8602fd32aa438c0c89ed8",
+  preWorkRootHex:
+    "759a815cdb2475e891089fa279d80fbe44ce6fe5e4552183e144a5ca85a602ed",
+  postWorkRootHex:
+    "79855e6bc07c2c112afdee7d7a1255d3f451bf94c4b025b6ec289bf21a5df1f2",
+  encodedLengthBeforeItem: 5_035,
+  collectionProof: {
+    fieldIndex: 8,
+    itemCount: 296,
+    itemIndex: 295,
+    itemLength: 18,
+    itemCommitmentHex:
+      "0b7517c996b4be98c145b61a84789c337d9a394529322f0e4ff2b00825a13fe5",
+    frontier: [
+      {
+        height: 3,
+        hashHex:
+          "599fb8883e9753ebff787e9ba693c9d266a94e2e4c2412f5cc8def17a37efc4b",
+      },
+      {
+        height: 5,
+        hashHex:
+          "d3ee1a26b14495f4b4e5196a4035453be00e5947a29d7a106e78df0ffb840942",
+      },
+      {
+        height: 8,
+        hashHex:
+          "baff8cd322326841f8dbf9a8fa0464a67cdf9c4161e429fbb569e0346adffde1",
+      },
+    ],
+    siblingHexes: [
+      "b2a18a9249e13b7f2c75032bf73d6d447b196d970097d8276f450ddcbd45ff21",
+      "8277569ed239c02bb472113a2804537ce7e9977f6fc3e8e01104f1c38c696c18",
+      "07c8bf5bbf9c9e2b477a1c8ccfe1a7d4ce62846164c5fbebc6481c4da4fc6f22",
+    ],
+  },
+  chunkProof: {
+    fieldIndex: 8,
+    itemIndex: 295,
+    totalLength: 18,
+    chunkIndex: 0,
+    chunkHex: "840019012843d87980821906411a0004d2f5",
+    frontier: [
+      {
+        height: 0,
+        hashHex:
+          "bd5765879c3e766f6cbc89ea728e263b73af278ed4091e26cabaf5b7fb04d91e",
+      },
+    ],
+    siblingHexes: [],
+  },
+} as const;
+
 describe("canonical V1 spend-redeemer Cardano boundary", () => {
   it("derives the exact field-8 cardinality from Cardano bytes and execution limits", async () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
@@ -383,6 +444,28 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(redeemerField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
+    expect({
+      fieldCommitmentHex:
+        redeemerField.fieldCommitmentHex,
+      fieldPreimageHashHex:
+        redeemerField.fieldPreimageHashHex,
+      transactionIdHex:
+        redeemerField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        redeemerField.terminalFoldVector
+          .transactionCommitmentHex,
+      preWorkRootHex:
+        redeemerField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex:
+        redeemerField.terminalFoldVector.postWorkRootHex,
+      encodedLengthBeforeItem:
+        redeemerField.terminalFoldVector
+          .encodedLengthBeforeItem,
+      collectionProof:
+        redeemerField.terminalFoldVector.collectionProof,
+      chunkProof:
+        redeemerField.terminalFoldVector.chunkProof,
+    }).toEqual(maximumRedeemerTerminalFoldVectorV1);
     const parallelNative =
       decodeMidgardNativeTxFullV1FromCanonicalCbor(
         cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
@@ -511,6 +594,8 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
             redeemerField.fieldCommitmentHex,
           redeemerFieldPreimageHashHex:
             redeemerField.fieldPreimageHashHex,
+          terminalFoldVector:
+            redeemerField.terminalFoldVector,
         }),
       );
     }

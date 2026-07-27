@@ -7,6 +7,8 @@ import {
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardV1TxFieldChunks,
   deriveMidgardV1TxFieldPreimages,
+  encodeCbor,
+  hashMidgardValidationWorkWitnessV1,
   reconstructMidgardTransactionV1FromChunks,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core";
@@ -113,6 +115,43 @@ export type MidgardOrderedCollectionBoundaryMeasurementV1 = {
   readonly completeFoldStepCount: number;
   readonly maxRevealBytes: number;
   readonly maxChunkBytes: number;
+  readonly terminalFoldVector: {
+    readonly transactionIdHex: string;
+    readonly transactionCommitmentHex: string;
+    readonly compactCborHex: string;
+    readonly witnessSetCompactCborHex: string;
+    readonly fieldPreimageLengthsCborHex: string;
+    readonly validationContextCborHex: string;
+    readonly workWitnessCborHex: string;
+    readonly compactBindingWitnessCborHex: string;
+    readonly preWorkRootHex: string;
+    readonly postWorkRootHex: string;
+    readonly encodedLengthBeforeItem: number;
+    readonly collectionProof: {
+      readonly fieldIndex: number;
+      readonly itemCount: number;
+      readonly itemIndex: number;
+      readonly itemLength: number;
+      readonly itemCommitmentHex: string;
+      readonly frontier: readonly {
+        readonly height: number;
+        readonly hashHex: string;
+      }[];
+      readonly siblingHexes: readonly string[];
+    };
+    readonly chunkProof: {
+      readonly fieldIndex: number;
+      readonly itemIndex: number;
+      readonly totalLength: number;
+      readonly chunkIndex: number;
+      readonly chunkHex: string;
+      readonly frontier: readonly {
+        readonly height: number;
+        readonly hashHex: string;
+      }[];
+      readonly siblingHexes: readonly string[];
+    };
+  };
 };
 
 type FindSignedCardanoCollectionBoundaryV1Options = {
@@ -1501,6 +1540,52 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
       `Canonical Midgard field ${fieldIndex.toString()} did not terminate at its committed length`,
     );
   }
+  const validationContextCbor = Buffer.from(
+    "8701546d6964676172642d636f6e73656e7375732d763118640000001864",
+    "hex",
+  );
+  const firstTerminalItemStepIndex = fieldChunks.findIndex(
+    (step) =>
+      step.proof.itemIndex === terminalFieldStep.proof.itemIndex,
+  );
+  const precedingItemStep =
+    firstTerminalItemStepIndex > 0
+      ? fieldChunks[firstTerminalItemStepIndex - 1]
+      : undefined;
+  const itemCount =
+    terminalFieldStep.collectionProof.itemCount;
+  const collectionHeaderBytes =
+    itemCount < 24
+      ? 1
+      : itemCount <= 0xff
+        ? 2
+        : itemCount <= 0xffff
+          ? 3
+          : itemCount <= 0xffff_ffff
+            ? 5
+            : 9;
+  const encodedLengthBeforeItem =
+    precedingItemStep?.fieldEncodedSize ??
+    collectionHeaderBytes;
+  const workWitnessCbor = encodeCbor([
+    source.compactCbor,
+    source.witnessSetCompactCbor,
+    source.fieldPreimageLengthsCbor,
+    validationContextCbor,
+    BigInt(fieldIndex),
+    BigInt(terminalFieldStep.proof.itemIndex),
+    BigInt(terminalFieldStep.proof.chunkIndex),
+    BigInt(terminalFieldStep.collectionProof.itemCount),
+    BigInt(encodedLengthBeforeItem),
+  ]);
+  const compactBindingWitnessCbor = encodeCbor([
+    transactionId,
+    transactionCommitment,
+    source.compactCbor,
+    source.witnessSetCompactCbor,
+    source.fieldPreimageLengthsCbor,
+    validationContextCbor,
+  ]);
 
   return {
     nativeCanonicalBytes: nativeCanonicalCbor.length,
@@ -1525,6 +1610,69 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     maxChunkBytes: Math.max(
       ...fieldChunks.map((chunk) => chunk.proof.chunk.length),
     ),
+    terminalFoldVector: {
+      transactionIdHex: transactionId.toString("hex"),
+      transactionCommitmentHex:
+        transactionCommitment.toString("hex"),
+      compactCborHex: source.compactCbor.toString("hex"),
+      witnessSetCompactCborHex:
+        source.witnessSetCompactCbor.toString("hex"),
+      fieldPreimageLengthsCborHex:
+        source.fieldPreimageLengthsCbor.toString("hex"),
+      validationContextCborHex:
+        validationContextCbor.toString("hex"),
+      workWitnessCborHex: workWitnessCbor.toString("hex"),
+      compactBindingWitnessCborHex:
+        compactBindingWitnessCbor.toString("hex"),
+      preWorkRootHex: hashMidgardValidationWorkWitnessV1({
+        phase: "canonicalDecode",
+        programCounter: 40,
+        witnessCbor: workWitnessCbor,
+      }).toString("hex"),
+      postWorkRootHex: hashMidgardValidationWorkWitnessV1({
+        phase: "compactBinding",
+        programCounter: 41,
+        witnessCbor: compactBindingWitnessCbor,
+      }).toString("hex"),
+      encodedLengthBeforeItem,
+      collectionProof: {
+        fieldIndex: terminalFieldStep.collectionProof.fieldIndex,
+        itemCount: terminalFieldStep.collectionProof.itemCount,
+        itemIndex: terminalFieldStep.collectionProof.itemIndex,
+        itemLength: terminalFieldStep.collectionProof.itemLength,
+        itemCommitmentHex:
+          terminalFieldStep.collectionProof.itemCommitment.toString(
+            "hex",
+          ),
+        frontier:
+          terminalFieldStep.collectionProof.frontier.peaks.map(
+            (peak) => ({
+              height: peak.height,
+              hashHex: peak.hash.toString("hex"),
+            }),
+          ),
+        siblingHexes:
+          terminalFieldStep.collectionProof.siblings.map((sibling) =>
+            sibling.toString("hex"),
+          ),
+      },
+      chunkProof: {
+        fieldIndex: terminalFieldStep.proof.fieldIndex,
+        itemIndex: terminalFieldStep.proof.itemIndex,
+        totalLength: terminalFieldStep.proof.totalLength,
+        chunkIndex: terminalFieldStep.proof.chunkIndex,
+        chunkHex: terminalFieldStep.proof.chunk.toString("hex"),
+        frontier: terminalFieldStep.proof.frontier.peaks.map(
+          (peak) => ({
+            height: peak.height,
+            hashHex: peak.hash.toString("hex"),
+          }),
+        ),
+        siblingHexes: terminalFieldStep.proof.siblings.map(
+          (sibling) => sibling.toString("hex"),
+        ),
+      },
+    },
   };
 };
 

@@ -2,6 +2,7 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
+use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_redeemer_witness}
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_redeemer_witnesses_preimage_cbor,
@@ -10,6 +11,9 @@ use midgard/fraud_proofs/native_tx/preimages.{
 use midgard/fraud_proofs/native_tx/types.{
   MidgardExecutionUnits, MidgardRedeemerWitness, SpendRedeemer,
 }
+use midgard/validation_machine_v1
+use midgard/validation_merkle_v1
+use midgard/validation_trace_v1
 
 // Derived by the genuine Cardano boundary fixture in
 // demo/midgard-validation/tests/ordered-collection-redeemer-boundary-v1.test.ts.
@@ -22,6 +26,32 @@ const maximum_cardano_spend_redeemer_preimage_hash =
 
 const maximum_cardano_spend_redeemer_collection_commitment =
   #"07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133"
+
+const maximum_cardano_transaction_id =
+  #"82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40"
+
+const maximum_cardano_transaction_commitment =
+  #"1c732fdaae878c2c07957dd7e21f9eebf81988ed8de8602fd32aa438c0c89ed8"
+
+const maximum_cardano_compact_cbor =
+  #"84018c58207fac00ce59ee1a8c6f84fe48c8ff61af01e76a9f4cfe210a6245f0cbbe7781265820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58205581fd909e08e4dea9336a8928f0d2731f2f31e1ce31a16cb1f5b2ebc2c9dccf1a000de2ec20205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d5820e650a24c14c0e6a48877805b4185f8ff2ee711e964e6aa63ce05c29ddeb1bd26582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582092bdca67e739f8a2cef73d965f81d65ba846bb104f8c124567480f5aa05db27600"
+
+const maximum_cardano_witness_set_compact_cbor =
+  #"835820bdd06f961346484d73fe4c659de76996a3002d8ba3f40af1ee416a14d87f2dba5820648941abab9cefe2466bccbdf9317676490753f56f11156294ef8748fe17c41b582007da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133"
+
+const maximum_cardano_field_preimage_lengths_cbor =
+  #"89192d550118300101011868161913bd"
+
+const maximum_cardano_validation_context_cbor =
+  #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
+
+const maximum_cardano_terminal_pre_work_root =
+  #"759a815cdb2475e891089fa279d80fbe44ce6fe5e4552183e144a5ca85a602ed"
+
+const maximum_cardano_terminal_post_work_root =
+  #"79855e6bc07c2c112afdee7d7a1255d3f451bf94c4b025b6ec289bf21a5df1f2"
+
+const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 fn maximum_cardano_spend_redeemers_from(
   pointer_index: Int,
@@ -84,5 +114,120 @@ test maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment
     bytearray.length(preimage_cbor) == maximum_cardano_spend_redeemer_preimage_bytes,
     blake2b_256(preimage_cbor) == maximum_cardano_spend_redeemer_preimage_hash,
     bounded_collection_v1.from_items(8, item_cbors) == maximum_cardano_spend_redeemer_collection_commitment,
+  }
+}
+
+test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
+  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+    maximum_cardano_compact_cbor,
+    maximum_cardano_witness_set_compact_cbor,
+    maximum_cardano_field_preimage_lengths_cbor,
+    maximum_cardano_validation_context_cbor,
+    8,
+    295,
+    0,
+    maximum_cardano_spend_redeemer_count,
+    5035,
+  )
+  let compact_binding_witness_cbor = validation_machine_v1.encode_compact_binding_witness(
+    maximum_cardano_transaction_id,
+    maximum_cardano_transaction_commitment,
+    maximum_cardano_compact_cbor,
+    maximum_cardano_witness_set_compact_cbor,
+    maximum_cardano_field_preimage_lengths_cbor,
+    maximum_cardano_validation_context_cbor,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: maximum_cardano_transaction_id,
+    transaction_id: maximum_cardano_transaction_id,
+    transaction_commitment: maximum_cardano_transaction_commitment,
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      maximum_cardano_validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: maximum_cardano_transaction_commitment,
+    phase: validation_trace_v1.CanonicalDecode,
+    program_counter: 40,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      40,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.CompactBinding,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CompactBinding,
+      41,
+      compact_binding_witness_cbor,
+    ),
+  }
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 8,
+    item_count: maximum_cardano_spend_redeemer_count,
+    item_index: 295,
+    item_length: 18,
+    item_commitment: #"0b7517c996b4be98c145b61a84789c337d9a394529322f0e4ff2b00825a13fe5",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 3,
+        hash: #"599fb8883e9753ebff787e9ba693c9d266a94e2e4c2412f5cc8def17a37efc4b",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"d3ee1a26b14495f4b4e5196a4035453be00e5947a29d7a106e78df0ffb840942",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"baff8cd322326841f8dbf9a8fa0464a67cdf9c4161e429fbb569e0346adffde1",
+      },
+    ],
+    siblings: [
+      #"b2a18a9249e13b7f2c75032bf73d6d447b196d970097d8276f450ddcbd45ff21",
+      #"8277569ed239c02bb472113a2804537ce7e9977f6fc3e8e01104f1c38c696c18",
+      #"07c8bf5bbf9c9e2b477a1c8ccfe1a7d4ce62846164c5fbebc6481c4da4fc6f22",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 8,
+    item_index: 295,
+    total_length: 18,
+    chunk_index: 0,
+    chunk: #"840019012843d87980821906411a0004d2f5",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"bd5765879c3e766f6cbc89ea728e263b73af278ed4091e26cabaf5b7fb04d91e",
+      },
+    ],
+    siblings: [],
+  }
+
+  and {
+    pre.work_root == maximum_cardano_terminal_pre_work_root,
+    post.work_root == maximum_cardano_terminal_post_work_root,
+    validation_machine_v1.verify_canonical_decode_one_step_v1(
+      pre,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: post,
+        },
+        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+          collection_proof,
+          chunk_proof,
+        },
+      },
+    ),
   }
 }
