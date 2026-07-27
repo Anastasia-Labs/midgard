@@ -61,6 +61,8 @@ body hash. Its exact field-8 evidence is:
 | --- | ---: |
 | Canonical Midgard transaction bytes | 16,933 |
 | Field preimage bytes | 5,053 |
+| Field preimage Blake2b-256 | `680079f9aebb6ab20240bf0a4b46a9b607181843413e0cdfbb293942aebe3d0a` |
+| Field collection commitment | `07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133` |
 | Committed items | 296 |
 | Item reveal steps | 296 |
 | Maximum item chunk | 18 bytes |
@@ -71,6 +73,16 @@ Every item is revealed and the exact terminal fold completes. Converting the
 parallel transaction through the production Cardano-to-Midgard bridge and
 back reconstructs the accepted transaction's redeemer purposes, indexes,
 canonical Data, memory, and steps exactly.
+
+The focused Aiken maximum vector independently constructs the same 296
+ordered witnesses, encodes and decodes their canonical preimage, and reaches
+both hashes above through the Aiken codec and
+`bounded_collection_v1.from_items`. It checks exact pointers `1..296`,
+purpose, inline `d87980` Data bytes, and per-item execution units. This binds
+the TypeScript terminal field commitment to the Aiken implementation without
+using a whole-field witness in the production path. The aggregate Aiken unit
+test is diagnostic; the applicable production shape remains 296 individually
+bounded reveal steps.
 
 ## Verification
 
@@ -106,14 +118,25 @@ NODE_OPTIONS=--max-old-space-size=2048 \
 
 Result: **PASS**.
 
+```sh
+cd onchain/aiken
+aiken fmt --check \
+  lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak
+aiken check \
+  -m maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment
+```
+
+Result: **PASS** (`1` unit test).
+
 The staged scope contains exactly the shared ordered-collection helper, one
-field-8 boundary test, and this checkpoint document. `git diff --cached
---check` is clean.
+field-8 boundary test, one focused Aiken agreement test, and this checkpoint
+document across the two focused commits. `git diff --cached --check` is
+clean.
 
 ## Remaining P2 gate
 
 The TypeScript ordered-field boundary cells now have concrete Cardano-envelope
 evidence for fields 0 through 8. P2 remains open: retained-DA reconstruction,
-on-chain terminal lifecycle agreement, and maximum applicable Data/content
-shape evidence are not established by this checkpoint. No activation or
-release-evidence digest may rely on this result alone.
+applied normal/forced on-chain lifecycle agreement, and maximum applicable
+Data/content shape evidence are not established by this checkpoint. No
+activation or release-evidence digest may rely on this result alone.
