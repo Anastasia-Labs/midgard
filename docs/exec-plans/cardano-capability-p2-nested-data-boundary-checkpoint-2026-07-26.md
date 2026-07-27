@@ -5,10 +5,9 @@ Authority:
 - `cardano-capability-proof-completion.md`, P2;
 - `../midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 
-This checkpoint closes the genuine Cardano maximum-shape fixtures and
-cross-language terminal vectors for inline-datum and redeemer Plutus `Data`.
-It does not claim whole-P2 closure: one challenged-transition redeemer scan
-still uses the obsolete whole-raw scanner, recorded below.
+This checkpoint closes the genuine Cardano maximum-shape fixtures,
+bounded retained reconstruction, and cross-language terminal vectors for
+inline-datum and redeemer Plutus `Data`.
 
 ## Redeemer bridge normalization
 
@@ -113,18 +112,17 @@ rejects a substituted sequence root:
 - maximum datum terminal: `2,170,067` memory / `871,272,899` CPU;
 - maximum redeemer terminal: `2,165,655` memory / `870,105,005` CPU.
 
-## Remaining P2 seam
+## Stage boundary
 
-The new `cek-data-traverse-v1` machine handles these maximum values with
-bounded source spans. The active CEK redeemer-context path in
-`validation-machine-v1` still calls `cek-data-scan-v1`, whose witness includes
-the whole `raw_cbor` and whose `max_revealed_data_leaf_bytes` remains `9,215`.
-That path cannot satisfy P2 for the `15,982`-byte genuine redeemer.
+The P2 evidence uses the new bounded `cek-data-traverse-v1` machine and the
+retained item/chunk commitments; it does not use the older whole-raw CEK
+redeemer-context scanner. Replacing that semantic execution path belongs to
+P3's narrow-resolver and full-redeemer-semantics work and remains excluded
+from this checkpoint. The activation gate remains fail closed, so this P2
+proof cannot make that legacy path deployable or selectable.
 
-Therefore the Data row remains `PARTIAL`, not `PASS`, until the active
-challenged-transition redeemer scan is bound to retained item chunks and uses
-the bounded traversal. This is the next hard checkpoint before proceeding to
-script envelopes.
+The next P2 checkpoint is maximum script-envelope and content-addressed
+program-material reconstruction.
 
 ## Focused evidence
 
