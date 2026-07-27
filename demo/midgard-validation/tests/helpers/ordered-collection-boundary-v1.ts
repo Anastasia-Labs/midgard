@@ -13,6 +13,7 @@ import {
 import {
   CML,
   PROTOCOL_PARAMETERS_DEFAULT,
+  type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
@@ -61,6 +62,20 @@ export const deterministicCardanoBoundaryPrivateKeyV1 = (
         encodedIndex,
       ]),
     ),
+  );
+};
+
+export const deriveCardanoGenesisInputSupplyV1 = (
+  maxTxSize: number,
+): number => {
+  if (!Number.isSafeInteger(maxTxSize) || maxTxSize <= 0) {
+    throw new Error("Cardano maxTxSize must be a positive safe integer");
+  }
+  const transactionIdBytesPerInput = 32;
+  const adjacentCandidateReserve = 2;
+  return (
+    Math.floor(maxTxSize / transactionIdBytesPerInput) +
+    adjacentCandidateReserve
   );
 };
 
@@ -383,6 +398,114 @@ export const buildSignedCardanoSignersCandidateV1 = async ({
   );
 };
 
+export const buildSignedCardanoSpendInputsCandidateV1 = async ({
+  privateKeyBech32,
+  availableInputs,
+  recipientAddress,
+  requestedInputCount,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly availableInputs: readonly UTxO[];
+  readonly recipientAddress: string;
+  readonly requestedInputCount: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  if (
+    !Number.isSafeInteger(requestedInputCount) ||
+    requestedInputCount <= 0
+  ) {
+    throw new Error("Requested Cardano input count must be positive");
+  }
+  if (requestedInputCount > availableInputs.length) {
+    throw new Error(
+      `Requested ${requestedInputCount.toString()} Cardano inputs, but only ${availableInputs.length.toString()} real emulator UTxOs are available`,
+    );
+  }
+  const selectedInputs = availableInputs.slice(0, requestedInputCount);
+  const selectedLovelace = selectedInputs.reduce(
+    (total, input) => total + (input.assets.lovelace ?? 0n),
+    0n,
+  );
+  const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
+  const address = CML.Address.from_bech32(recipientAddress);
+  const linearFee = CML.LinearFee.new(
+    BigInt(minFeeA),
+    BigInt(minFeeB),
+    BigInt(minFeeRefScriptCostPerByte),
+  );
+  const makeSigned = (
+    fee: bigint,
+  ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
+    const outputLovelace = selectedLovelace - fee;
+    if (outputLovelace <= 0n) {
+      throw new Error(
+        `Cardano input candidate ${requestedInputCount.toString()} exhausts its selected inputs`,
+      );
+    }
+    const inputs = CML.TransactionInputList.new();
+    for (const input of selectedInputs) {
+      inputs.add(
+        CML.TransactionInput.new(
+          CML.TransactionHash.from_hex(input.txHash),
+          BigInt(input.outputIndex),
+        ),
+      );
+    }
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutputBuilder.new()
+        .with_address(address)
+        .next()
+        .with_value(CML.Value.from_coin(outputLovelace))
+        .build()
+        .output(),
+    );
+    const body = CML.TransactionBody.new(inputs, outputs, fee);
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), privateKey),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    const transaction = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
+    return {
+      transaction,
+      cborHex: transaction.to_cbor_hex(),
+    };
+  };
+
+  let fee = BigInt(minFeeB);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const signed = makeSigned(fee);
+    const nextFee = CML.min_no_script_fee(
+      signed.transaction,
+      linearFee,
+    );
+    if (nextFee === fee) {
+      return {
+        requestedItemCount: requestedInputCount,
+        cborHex: signed.cborHex,
+        signedBytes: signed.cborHex.length / 2,
+        fee,
+      };
+    }
+    fee = nextFee;
+  }
+  throw new Error(
+    `Cardano input candidate ${requestedInputCount.toString()} fee did not converge`,
+  );
+};
+
 /**
  * Converts exact signed Cardano CBOR through the production bridge, verifies
  * every reveal for one typed field, and then runs the complete canonical
@@ -507,6 +630,24 @@ export const measureSignedCardanoSignersV1 = (
   return {
     requiredSignerCount:
       transaction.body().required_signers()?.len() ?? 0,
+    vkeyWitnessCount:
+      transaction.witness_set().vkeywitnesses()?.len() ?? 0,
+    outputCount: transaction.body().outputs().len(),
+  };
+};
+
+export const measureSignedCardanoSpendInputsV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly inputCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputCount: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  return {
+    inputCount: transaction.body().inputs().len(),
     vkeyWitnessCount:
       transaction.witness_set().vkeywitnesses()?.len() ?? 0,
     outputCount: transaction.body().outputs().len(),
