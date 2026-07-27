@@ -4369,9 +4369,15 @@ fn verify_maximum_input_schedule_terminal_vector(
     work_witness_cbor: pre_work_witness_cbor,
     claimed_successor: finish,
   }
+  let malformed_terminal_cursor_peaks = validation_merkle_v1.append_leaf(
+    434,
+    terminal_resolved_item_peaks,
+    h_a,
+  )
   let malformed_terminal_cursor_control = validation_machine_v1.ScriptSourcesControlV1 {
-    ..pre_control,
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    ..terminal_control,
+    resolved_item_peaks: malformed_terminal_cursor_peaks,
+    replay_cursor: 435,
   }
   let malformed_terminal_cursor_finish_control = validation_machine_v1.ScriptSourcesControlV1 {
     ..malformed_terminal_cursor_control,
