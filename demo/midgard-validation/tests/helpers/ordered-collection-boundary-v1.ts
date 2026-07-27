@@ -1,4 +1,5 @@
 import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
   computeHash32,
   computeMidgardNativeTxIdV1,
@@ -23,6 +24,37 @@ import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-mac
 
 export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
 export const CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 = 5_000;
+export const CARDANO_BOUNDARY_PROTOCOL_MAJOR_V1 = 11;
+export const CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 = 1_592;
+export const CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1 =
+  30_000_000n;
+export const CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1 =
+  Array.from(
+    { length: 7 },
+    (_, policyIndex) =>
+      (0x11 + policyIndex).toString(16).padStart(2, "0").repeat(28),
+  );
+export const cardanoBoundaryNestedDataCborV1 = (
+  nestedMapCellCount: number,
+): string => {
+  if (
+    !Number.isSafeInteger(nestedMapCellCount) ||
+    nestedMapCellCount <= 0
+  ) {
+    throw new Error(
+      "Cardano nested Data map-cell count must be positive",
+    );
+  }
+  return [
+    "d8668218809f",
+    "9f",
+    "d87980",
+    "a10000".repeat(nestedMapCellCount),
+    "4101",
+    "ff",
+    "ff",
+  ].join("");
+};
 export const CARDANO_BOUNDARY_OBSERVER_TTL_V1 = 10_000n;
 export const CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 = 20_000n;
 export const CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1 =
@@ -102,6 +134,52 @@ export type SignedCardanoCollectionBoundaryV1 = {
   readonly accepted: SignedCardanoCollectionCandidateV1;
   readonly adjacent: SignedCardanoCollectionCandidateV1;
   readonly adjacentFailure: string;
+};
+
+export type CardanoBoundaryNestedValueAssetV1 = {
+  readonly policyIdHex: string;
+  readonly assetNameHex: string;
+  readonly quantity: bigint;
+};
+
+export const cardanoBoundaryNestedValueAssetsV1 = (
+  requestedValueCborBytes: number,
+): readonly CardanoBoundaryNestedValueAssetV1[] => {
+  if (
+    requestedValueCborBytes !==
+      CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 &&
+    requestedValueCborBytes !==
+      CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1
+  ) {
+    throw new Error(
+      "Nested Cardano Value boundary shape only supports 5,000 or 5,001 bytes",
+    );
+  }
+  const adjacent =
+    requestedValueCborBytes ===
+    CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1;
+  return CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.flatMap(
+    (policyIdHex, policyIndex) => {
+      const assetCount = policyIndex < 3 ? 228 : 227;
+      return Array.from(
+        { length: assetCount },
+        (_, policyAssetIndex): CardanoBoundaryNestedValueAssetV1 => ({
+          policyIdHex,
+          assetNameHex:
+            policyAssetIndex === 0
+              ? ""
+              : Buffer.from([policyAssetIndex - 1]).toString("hex"),
+          quantity:
+            adjacent &&
+            policyIndex + 1 ===
+              CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.length &&
+            policyAssetIndex + 1 === assetCount
+              ? 24n
+              : 1n,
+        }),
+      );
+    },
+  );
 };
 
 export type MidgardOrderedCollectionBoundaryMeasurementV1 = {
@@ -344,18 +422,15 @@ export const buildSignedCardanoOutputsCandidateV1 = async ({
   );
 };
 
-/**
- * Builds one signed Cardano output whose inline Plutus Data is a byte string
- * of the requested payload length. The shape isolates a single dynamic item
- * so the exact maxTxSize boundary also exercises multi-chunk item proofs.
- */
-export const buildSignedCardanoInlineDatumCandidateV1 = async ({
+const buildSignedCardanoInlineDataCandidateV1 = async ({
   privateKeyBech32,
   inputTransactionId,
   inputOutputIndex,
   inputLovelace,
   recipientAddress,
-  requestedDatumPayloadBytes,
+  datum,
+  requestedItemCount,
+  diagnosticKind,
   minFeeA,
   minFeeB,
   minFeeRefScriptCostPerByte,
@@ -365,24 +440,23 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
   readonly inputOutputIndex: bigint;
   readonly inputLovelace: bigint;
   readonly recipientAddress: string;
-  readonly requestedDatumPayloadBytes: number;
+  readonly datum: CML.PlutusData;
+  readonly requestedItemCount: number;
+  readonly diagnosticKind: string;
   readonly minFeeA: number;
   readonly minFeeB: number;
   readonly minFeeRefScriptCostPerByte: number;
 }): Promise<SignedCardanoCollectionCandidateV1> => {
   if (
-    !Number.isSafeInteger(requestedDatumPayloadBytes) ||
-    requestedDatumPayloadBytes <= 0
+    !Number.isSafeInteger(requestedItemCount) ||
+    requestedItemCount <= 0
   ) {
     throw new Error(
-      "Requested Cardano inline-datum payload bytes must be positive",
+      `Requested Cardano ${diagnosticKind} count must be positive`,
     );
   }
   const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
   const address = CML.Address.from_bech32(recipientAddress);
-  const datum = CML.PlutusData.new_bytes(
-    Buffer.alloc(requestedDatumPayloadBytes, 0x5a),
-  );
   const linearFee = CML.LinearFee.new(
     BigInt(minFeeA),
     BigInt(minFeeB),
@@ -394,7 +468,7 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
     const outputLovelace = inputLovelace - fee;
     if (outputLovelace <= 0n) {
       throw new Error(
-        `Cardano inline-datum candidate ${requestedDatumPayloadBytes.toString()} exhausts its funding input`,
+        `Cardano ${diagnosticKind} candidate ${requestedItemCount.toString()} exhausts its funding input`,
       );
     }
     const inputs = CML.TransactionInputList.new();
@@ -441,7 +515,7 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
     );
     if (nextFee === fee) {
       return {
-        requestedItemCount: requestedDatumPayloadBytes,
+        requestedItemCount,
         cborHex: signed.cborHex,
         signedBytes: signed.cborHex.length / 2,
         fee,
@@ -450,7 +524,240 @@ export const buildSignedCardanoInlineDatumCandidateV1 = async ({
     fee = nextFee;
   }
   throw new Error(
-    `Cardano inline-datum candidate ${requestedDatumPayloadBytes.toString()} fee did not converge`,
+    `Cardano ${diagnosticKind} candidate ${requestedItemCount.toString()} fee did not converge`,
+  );
+};
+
+/**
+ * Builds one signed Cardano output whose inline Plutus Data is a byte string
+ * of the requested payload length. The shape isolates a single dynamic item
+ * so the exact maxTxSize boundary also exercises multi-chunk item proofs.
+ */
+export const buildSignedCardanoInlineDatumCandidateV1 = async ({
+  privateKeyBech32,
+  inputTransactionId,
+  inputOutputIndex,
+  inputLovelace,
+  recipientAddress,
+  requestedDatumPayloadBytes,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly inputTransactionId: string;
+  readonly inputOutputIndex: bigint;
+  readonly inputLovelace: bigint;
+  readonly recipientAddress: string;
+  readonly requestedDatumPayloadBytes: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> =>
+  buildSignedCardanoInlineDataCandidateV1({
+    privateKeyBech32,
+    inputTransactionId,
+    inputOutputIndex,
+    inputLovelace,
+    recipientAddress,
+    datum: CML.PlutusData.new_bytes(
+      Buffer.alloc(requestedDatumPayloadBytes, 0x5a),
+    ),
+    requestedItemCount: requestedDatumPayloadBytes,
+    diagnosticKind: "inline-datum payload",
+    minFeeA,
+    minFeeB,
+    minFeeRefScriptCostPerByte,
+  });
+
+export const buildSignedCardanoNestedDatumCandidateV1 = async ({
+  privateKeyBech32,
+  inputTransactionId,
+  inputOutputIndex,
+  inputLovelace,
+  recipientAddress,
+  requestedNestedCellCount,
+  nestedDatumCborHex,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly inputTransactionId: string;
+  readonly inputOutputIndex: bigint;
+  readonly inputLovelace: bigint;
+  readonly recipientAddress: string;
+  readonly requestedNestedCellCount: number;
+  readonly nestedDatumCborHex: string;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  const normalized =
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      nestedDatumCborHex,
+    );
+  if (normalized !== nestedDatumCborHex.toLowerCase()) {
+    throw new Error(
+      "Cardano nested inline datum must use exact Aiken serialiseData CBOR",
+    );
+  }
+  return buildSignedCardanoInlineDataCandidateV1({
+    privateKeyBech32,
+    inputTransactionId,
+    inputOutputIndex,
+    inputLovelace,
+    recipientAddress,
+    datum: CML.PlutusData.from_cbor_hex(normalized),
+    requestedItemCount: requestedNestedCellCount,
+    diagnosticKind: "nested inline-datum cell",
+    minFeeA,
+    minFeeB,
+    minFeeRefScriptCostPerByte,
+  });
+};
+
+/**
+ * Builds a signed Cardano transaction with one fixed-lovelace multi-asset
+ * output whose CML Value CBOR is exactly 5,000 or 5,001 bytes. A separate
+ * ADA-only change output keeps the measured Value independent of the fee.
+ */
+export const buildSignedCardanoNestedValueCandidateV1 = async ({
+  privateKeyBech32,
+  inputTransactionId,
+  inputOutputIndex,
+  inputLovelace,
+  recipientAddress,
+  requestedValueCborBytes,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly inputTransactionId: string;
+  readonly inputOutputIndex: bigint;
+  readonly inputLovelace: bigint;
+  readonly recipientAddress: string;
+  readonly requestedValueCborBytes: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  const valueAssets = cardanoBoundaryNestedValueAssetsV1(
+    requestedValueCborBytes,
+  );
+  const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
+  const address = CML.Address.from_bech32(recipientAddress);
+  const multiasset = CML.MultiAsset.new();
+  const policyAssets = new Map<string, CML.MapAssetNameToCoin>();
+  for (const asset of valueAssets) {
+    const assets =
+      policyAssets.get(asset.policyIdHex) ??
+      CML.MapAssetNameToCoin.new();
+    assets.insert(
+      CML.AssetName.from_raw_bytes(
+        Buffer.from(asset.assetNameHex, "hex"),
+      ),
+      asset.quantity,
+    );
+    policyAssets.set(asset.policyIdHex, assets);
+  }
+  for (const [policyIdHex, assets] of policyAssets) {
+    multiasset.insert_assets(
+      CML.ScriptHash.from_hex(policyIdHex),
+      assets,
+    );
+  }
+  const boundaryValue = CML.Value.new(
+    CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1,
+    multiasset,
+  );
+  const actualValueCborBytes =
+    boundaryValue.to_cbor_bytes().length;
+  if (actualValueCborBytes !== requestedValueCborBytes) {
+    throw new Error(
+      `Nested Cardano Value shape encoded to ${actualValueCborBytes.toString()} bytes instead of ${requestedValueCborBytes.toString()}`,
+    );
+  }
+  const linearFee = CML.LinearFee.new(
+    BigInt(minFeeA),
+    BigInt(minFeeB),
+    BigInt(minFeeRefScriptCostPerByte),
+  );
+  const makeSigned = (
+    fee: bigint,
+  ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
+    const changeLovelace =
+      inputLovelace -
+      CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1 -
+      fee;
+    if (changeLovelace <= 0n) {
+      throw new Error(
+        `Nested Cardano Value candidate ${requestedValueCborBytes.toString()} exhausts its funding input`,
+      );
+    }
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(inputTransactionId),
+        inputOutputIndex,
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutputBuilder.new()
+        .with_address(address)
+        .next()
+        .with_value(boundaryValue)
+        .build()
+        .output(),
+    );
+    outputs.add(
+      CML.TransactionOutputBuilder.new()
+        .with_address(address)
+        .next()
+        .with_value(CML.Value.from_coin(changeLovelace))
+        .build()
+        .output(),
+    );
+    const body = CML.TransactionBody.new(inputs, outputs, fee);
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), privateKey),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    const transaction = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
+    return {
+      transaction,
+      cborHex: transaction.to_cbor_hex(),
+    };
+  };
+
+  let fee = BigInt(minFeeB);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const signed = makeSigned(fee);
+    const nextFee = CML.min_no_script_fee(
+      signed.transaction,
+      linearFee,
+    );
+    if (nextFee === fee) {
+      return {
+        requestedItemCount: requestedValueCborBytes,
+        cborHex: signed.cborHex,
+        signedBytes: signed.cborHex.length / 2,
+        fee,
+      };
+    }
+    fee = nextFee;
+  }
+  throw new Error(
+    `Nested Cardano Value candidate ${requestedValueCborBytes.toString()} fee did not converge`,
   );
 };
 
@@ -1295,11 +1602,13 @@ export const buildSignedCardanoSpendRedeemersCandidateV1 = async ({
   const redeemerData =
     CML.PlutusData.from_cbor_hex(redeemerDataCborHex);
   if (
-    redeemerData.to_canonical_cbor_hex() !==
+    aikenSerialisedPlutusDataCborPreservingMapOrder(
+      redeemerDataCborHex,
+    ) !==
     redeemerDataCborHex.toLowerCase()
   ) {
     throw new Error(
-      "Cardano spend-redeemer Data must use canonical CBOR",
+      "Cardano spend-redeemer Data must use exact Aiken serialiseData CBOR",
     );
   }
   const cmlCostModels = createCostModels(costModels);
@@ -1862,6 +2171,149 @@ export const measureSignedCardanoInlineDatumV1 = (
     datumCborHex: datumCbor.toString("hex"),
     datumCborBytes: datumCbor.length,
     datumPayloadBytes: datumBytes.length,
+  };
+};
+
+export const measureSignedCardanoNestedDatumV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly outputCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputAddress: string;
+  readonly outputLovelace: bigint;
+  readonly datumCborHex: string;
+  readonly datumCborBytes: number;
+  readonly hasWithdrawals: boolean;
+  readonly hasMint: boolean;
+  readonly hasPlutusScripts: boolean;
+  readonly hasRedeemers: boolean;
+  readonly collateralInputCount: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const outputs = body.outputs();
+  const datum = outputs.get(0).datum()?.as_datum();
+  if (datum === undefined) {
+    throw new Error(
+      "Measured Cardano nested-datum transaction has no inline datum",
+    );
+  }
+  const datumCbor = Buffer.from(datum.to_cbor_bytes());
+  return {
+    outputCount: outputs.len(),
+    vkeyWitnessCount:
+      witnessSet.vkeywitnesses()?.len() ?? 0,
+    outputAddress: outputs.get(0).address().to_bech32(),
+    outputLovelace: outputs.get(0).amount().coin(),
+    datumCborHex: datumCbor.toString("hex"),
+    datumCborBytes: datumCbor.length,
+    hasWithdrawals: body.withdrawals() !== undefined,
+    hasMint: body.mint() !== undefined,
+    hasPlutusScripts:
+      (witnessSet.plutus_v1_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v2_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v3_scripts()?.len() ?? 0) > 0,
+    hasRedeemers: witnessSet.redeemers() !== undefined,
+    collateralInputCount: body.collateral_inputs()?.len() ?? 0,
+  };
+};
+
+export const measureSignedCardanoNestedValueV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly outputCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputAddress: string;
+  readonly outputLovelace: bigint;
+  readonly valueCborHex: string;
+  readonly valueCborBytes: number;
+  readonly policyHashHexes: readonly string[];
+  readonly assetPolicyHashHexes: readonly string[];
+  readonly assetNameHexes: readonly string[];
+  readonly assetQuantities: readonly bigint[];
+  readonly hasWithdrawals: boolean;
+  readonly hasMint: boolean;
+  readonly hasPlutusScripts: boolean;
+  readonly hasRedeemers: boolean;
+  readonly hasDatums: boolean;
+  readonly collateralInputCount: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const outputs = body.outputs();
+  const output = outputs.get(0);
+  const value = output.amount();
+  const multiasset = value.multi_asset();
+  if (multiasset === undefined) {
+    throw new Error(
+      "Measured nested Cardano Value output has no assets",
+    );
+  }
+  const policyHashHexes: string[] = [];
+  const assetPolicyHashHexes: string[] = [];
+  const assetNameHexes: string[] = [];
+  const assetQuantities: bigint[] = [];
+  const policies = multiasset.keys();
+  for (
+    let policyIndex = 0;
+    policyIndex < policies.len();
+    policyIndex += 1
+  ) {
+    const policy = policies.get(policyIndex);
+    const assets = multiasset.get_assets(policy);
+    if (assets === undefined) {
+      throw new Error(
+        "Measured nested Cardano Value policy has no assets",
+      );
+    }
+    policyHashHexes.push(policy.to_hex());
+    const assetNames = assets.keys();
+    for (
+      let assetIndex = 0;
+      assetIndex < assetNames.len();
+      assetIndex += 1
+    ) {
+      const assetName = assetNames.get(assetIndex);
+      const quantity = assets.get(assetName);
+      if (quantity === undefined) {
+        throw new Error(
+          "Measured nested Cardano Value asset has no quantity",
+        );
+      }
+      assetPolicyHashHexes.push(policy.to_hex());
+      assetNameHexes.push(
+        Buffer.from(assetName.to_raw_bytes()).toString("hex"),
+      );
+      assetQuantities.push(quantity);
+    }
+  }
+  const valueCbor = Buffer.from(value.to_cbor_bytes());
+  return {
+    outputCount: outputs.len(),
+    vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
+    outputAddress: output.address().to_bech32(),
+    outputLovelace: value.coin(),
+    valueCborHex: valueCbor.toString("hex"),
+    valueCborBytes: valueCbor.length,
+    policyHashHexes,
+    assetPolicyHashHexes,
+    assetNameHexes,
+    assetQuantities,
+    hasWithdrawals: body.withdrawals() !== undefined,
+    hasMint: body.mint() !== undefined,
+    hasPlutusScripts:
+      (witnessSet.plutus_v1_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v2_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v3_scripts()?.len() ?? 0) > 0,
+    hasRedeemers: witnessSet.redeemers() !== undefined,
+    hasDatums: witnessSet.plutus_datums() !== undefined,
+    collateralInputCount: body.collateral_inputs()?.len() ?? 0,
   };
 };
 
