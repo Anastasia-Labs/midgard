@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 import {
   collectMidgardV1AttachedProgramEnvelopes,
@@ -43,15 +44,21 @@ type BoundaryCorpusEntryV1 = {
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
 };
 
-const corpus = JSON.parse(
-  readFileSync(
-    new URL(
+const boundaryCorpusInput = (): string | URL => {
+  const override = process.env.MIDGARD_BOUNDARY_CORPUS_JSON;
+  if (override === undefined) {
+    return new URL(
       "./fixtures/cardano-capability-p2-boundary-corpus-v1.json",
       import.meta.url,
-    ),
-    "utf8",
-  ),
-) as {
+    );
+  }
+  if (!isAbsolute(override)) {
+    throw new Error("MIDGARD_BOUNDARY_CORPUS_JSON must be an absolute path");
+  }
+  return override;
+};
+
+const corpus = JSON.parse(readFileSync(boundaryCorpusInput(), "utf8")) as {
   readonly schema: string;
   readonly entries: readonly BoundaryCorpusEntryV1[];
 };

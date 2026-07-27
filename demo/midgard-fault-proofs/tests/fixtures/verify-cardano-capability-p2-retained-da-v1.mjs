@@ -88,32 +88,49 @@ try {
     },
   );
   run(process.execPath, [converterPath, jsonlPath, regeneratedPath]);
-  if (mode === "--update") {
-    copyFileSync(regeneratedPath, checkedFixturePath);
+  if (mode === undefined) {
+    run("cmp", [regeneratedPath, checkedFixturePath]);
   }
-  run("cmp", [regeneratedPath, checkedFixturePath]);
-  run("pnpm", [
-    "--filter",
-    "midgard-watcher",
-    "exec",
-    "vitest",
-    "run",
-    "tests/cardano-capability-retained-da-corpus-v1.test.ts",
-    "--pool=forks",
-    "--poolOptions.forks.singleFork=true",
-    "--testTimeout=180000",
-  ]);
-  run("pnpm", [
-    "--filter",
-    "@al-ft/midgard-fault-proofs",
-    "exec",
-    "vitest",
-    "run",
-    "tests/cardano-capability-retained-da-v1.test.ts",
-    "--pool=forks",
-    "--poolOptions.forks.singleFork=true",
-    "--testTimeout=180000",
-  ]);
+  const generatedCorpusEnvironment = {
+    ...process.env,
+    MIDGARD_BOUNDARY_CORPUS_JSON: regeneratedPath,
+  };
+  run(
+    "pnpm",
+    [
+      "--filter",
+      "midgard-watcher",
+      "exec",
+      "vitest",
+      "run",
+      "tests/cardano-capability-retained-da-corpus-v1.test.ts",
+      "--pool=forks",
+      "--poolOptions.forks.singleFork=true",
+      "--testTimeout=180000",
+    ],
+    generatedCorpusEnvironment,
+  );
+  run(
+    "pnpm",
+    [
+      "--filter",
+      "@al-ft/midgard-fault-proofs",
+      "exec",
+      "vitest",
+      "run",
+      "tests/cardano-capability-retained-da-v1.test.ts",
+      "--pool=forks",
+      "--poolOptions.forks.singleFork=true",
+      "--testTimeout=180000",
+    ],
+    generatedCorpusEnvironment,
+  );
+  if (mode === "--update") {
+    // Promote the regenerated fixture only after every strict production
+    // consumer has accepted that exact temporary artifact.
+    copyFileSync(regeneratedPath, checkedFixturePath);
+    run("cmp", [regeneratedPath, checkedFixturePath]);
+  }
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }
