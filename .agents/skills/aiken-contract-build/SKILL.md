@@ -25,6 +25,34 @@ For a normal blueprint without traces, use:
 aiken build
 ```
 
+## Focused Checks
+
+The project and CI compiler version in `aiken.toml` remains authoritative.
+Record the actual local `aiken --version`; a newer diagnostic binary does not
+replace the pinned CI or release check.
+
+Run large Midgard vectors one process at a time. Use the repository guard for
+one exact test:
+
+```bash
+node scripts/run-focused-check.mjs \
+  midgard/validation_machine_v1 \
+  exact_test_name
+```
+
+The guard constructs Aiken's module-qualified exact selector and fails unless
+exactly one test is collected and passes. Do not combine a bare test name with
+`aiken check -e`: Aiken can collect zero tests and still exit successfully.
+When invoking Aiken directly, use:
+
+```bash
+aiken check \
+  -m 'midgard/validation_machine_v1.{exact_test_name}' \
+  -e --plain-numbers
+```
+
+Evidence must report a nonzero collected total, not only the process exit code.
+
 ## Repo Workflow
 
 - Treat `onchain/aiken/plutus.json` as the generated blueprint output unless a task explicitly chooses another `--out` path.
