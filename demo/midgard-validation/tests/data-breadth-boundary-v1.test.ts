@@ -354,12 +354,29 @@ const exactBroadFrontierVector = (
   kind: DataBreadthKind,
   steps: readonly ProductionDataTraverseStepV1[],
 ) => {
-  const step = steps.find(({ action }) =>
-    kind === "map" ? action?.kind === "foldMap" : action?.kind === "foldList",
-  );
+  let step: ProductionDataTraverseStepV1 | undefined;
+  let membershipDepth = -1;
+  for (const candidate of steps) {
+    const action = candidate.action;
+    const candidateDepth =
+      kind === "map"
+        ? action?.kind === "foldMap" &&
+          action.keySiblings.length > 0 &&
+          action.valueSiblings.length > 0
+          ? action.keySiblings.length + action.valueSiblings.length
+          : -1
+        : action?.kind === "foldList"
+          ? action.siblings.length
+          : -1;
+    if (candidateDepth > membershipDepth) {
+      step = candidate;
+      membershipDepth = candidateDepth;
+    }
+  }
   if (step?.action?.kind !== "foldList" && step?.action?.kind !== "foldMap") {
     throw new Error("Broad Data trace lost its frontier fold");
   }
+  expect(membershipDepth).toBeGreaterThan(0);
   const action = step.action;
   const mutatedAction =
     action.kind === "foldList"
@@ -378,11 +395,56 @@ const exactBroadFrontierVector = (
       action: mutatedAction,
     }),
   ).toBeNull();
+  const mutateFirstSibling = (
+    siblings: readonly Uint8Array[],
+  ): readonly Buffer[] => {
+    expect(siblings.length).toBeGreaterThan(0);
+    const mutatedFirst = Buffer.from(siblings[0]!);
+    mutatedFirst[0] = mutatedFirst[0]! ^ 0x01;
+    return [
+      mutatedFirst,
+      ...siblings.slice(1).map((sibling) => Buffer.from(sibling)),
+    ];
+  };
+  if (action.kind === "foldList") {
+    expect(
+      advanceMidgardCekDataTraverseV1({
+        control: step.control,
+        sourceBytes: null,
+        action: {
+          ...action,
+          siblings: mutateFirstSibling(action.siblings),
+        },
+      }),
+    ).toBeNull();
+  } else {
+    expect(
+      advanceMidgardCekDataTraverseV1({
+        control: step.control,
+        sourceBytes: null,
+        action: {
+          ...action,
+          keySiblings: mutateFirstSibling(action.keySiblings),
+        },
+      }),
+    ).toBeNull();
+    expect(
+      advanceMidgardCekDataTraverseV1({
+        control: step.control,
+        sourceBytes: null,
+        action: {
+          ...action,
+          valueSiblings: mutateFirstSibling(action.valueSiblings),
+        },
+      }),
+    ).toBeNull();
+  }
   return {
     preControlCborHex: encodeMidgardCekDataTraverseControlV1(
       step.control,
     ).toString("hex"),
     sourceBytesHex: null,
+    membershipDepth,
     action:
       action.kind === "foldList"
         ? {
