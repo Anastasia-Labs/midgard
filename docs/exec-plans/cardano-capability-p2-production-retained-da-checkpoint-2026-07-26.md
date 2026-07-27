@@ -100,46 +100,30 @@ No mismatch is bypassed or normalized away.
 
 ## Verification
 
-From `demo/`:
+From `demo/`, one repo-owned command creates a private temporary directory,
+runs all `12` producers, converts and sorts the fixed label set, compares the
+regenerated JSON byte-for-byte with the checked fixture, and only then runs
+the strict reconstruction test. Per-run temporary paths prevent concurrent
+verifiers from cross-contaminating the append-only JSONL:
 
 ```sh
-MIDGARD_BOUNDARY_CORPUS_JSONL=/tmp/midgard-cardano-p2-boundary-corpus-v1.jsonl \
-pnpm --filter @al-ft/midgard-validation exec vitest run \
-  tests/ordered-collection-boundary-v1.test.ts \
-  tests/ordered-collection-signer-witness-boundary-v1.test.ts \
-  tests/ordered-collection-spend-inputs-boundary-v1.test.ts \
-  tests/ordered-collection-reference-inputs-boundary-v1.test.ts \
-  tests/ordered-collection-observer-native-script-boundary-v1.test.ts \
-  tests/ordered-collection-mint-boundary-v1.test.ts \
-  tests/ordered-collection-redeemer-boundary-v1.test.ts \
-  tests/blob-chunk-boundary-v1.test.ts \
-  tests/nested-value-boundary-v1.test.ts \
-  tests/nested-data-boundary-v1.test.ts \
-  tests/nested-redeemer-data-boundary-v1.test.ts \
-  tests/retained-da-boundary-v1.test.ts \
-  --pool=forks --poolOptions.forks.singleFork=true
+pnpm --filter @al-ft/midgard-fault-proofs \
+  run test:cardano-capability-p2-retained-da
 ```
 
-Result: **PASS** (`12` files / `12` tests; `79.15 s`). Rebuilding the JSON
-fixture from the emitted rows is byte-identical to the checked corpus
-(`sha256 68ff4ab46ede05f6194b84e9f82f1abdb9f0436339356d8baa5ac897a2492ec3`).
-
-Generate the checked JSON from that fresh JSONL file with:
-
-```sh
-node midgard-fault-proofs/tests/fixtures/build-cardano-capability-p2-boundary-corpus-v1.mjs \
-  /tmp/midgard-cardano-p2-boundary-corpus-v1.jsonl \
-  midgard-fault-proofs/tests/fixtures/cardano-capability-p2-boundary-corpus-v1.json
-```
+The converter validates the exact label set and lowercase hex shape and sorts
+deterministically. The strict test independently decodes every canonical
+transaction and recomputes its transaction ID and proof commitment before DA
+reconstruction. Thus byte stability and semantic identity are separate,
+executable checks. Repeated labels remain an error, so an internally duplicated
+producer cannot be normalized away.
 
 ```sh
 pnpm --filter @al-ft/midgard-fault-proofs run typecheck
-pnpm --filter @al-ft/midgard-fault-proofs exec vitest run \
-  tests/cardano-capability-retained-da-v1.test.ts \
-  --pool=forks --poolOptions.forks.singleFork=true
 ```
 
-Result: **PASS** (typecheck; `1` file / `2` tests; `16.19 s`).
+Result: **PASS** (typecheck; producer `12/12`; converter + `cmp`; strict
+`2/2`).
 
 ## Scope stop
 
