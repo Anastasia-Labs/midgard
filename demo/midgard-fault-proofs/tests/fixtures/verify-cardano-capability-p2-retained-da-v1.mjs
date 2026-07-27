@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,15 @@ const converterPath = resolve(
   fixtureDirectory,
   "build-cardano-capability-p2-boundary-corpus-v1.mjs",
 );
+const [mode, ...unexpectedArguments] = process.argv.slice(2);
+if (
+  unexpectedArguments.length !== 0 ||
+  (mode !== undefined && mode !== "--update")
+) {
+  throw new Error(
+    "usage: node verify-cardano-capability-p2-retained-da-v1.mjs [--update]",
+  );
+}
 
 const run = (command, arguments_, environment = process.env) => {
   const result = spawnSync(command, arguments_, {
@@ -66,16 +75,34 @@ try {
       "tests/nested-data-boundary-v1.test.ts",
       "tests/nested-redeemer-data-boundary-v1.test.ts",
       "tests/retained-da-boundary-v1.test.ts",
+      "tests/data-breadth-boundary-v1.test.ts",
       "--pool=forks",
       "--poolOptions.forks.singleFork=true",
+      "--testTimeout=360000",
+      "--hookTimeout=60000",
     ],
     {
       ...process.env,
+      NODE_OPTIONS: "--max-old-space-size=4096",
       MIDGARD_BOUNDARY_CORPUS_JSONL: jsonlPath,
     },
   );
   run(process.execPath, [converterPath, jsonlPath, regeneratedPath]);
+  if (mode === "--update") {
+    copyFileSync(regeneratedPath, checkedFixturePath);
+  }
   run("cmp", [regeneratedPath, checkedFixturePath]);
+  run("pnpm", [
+    "--filter",
+    "midgard-watcher",
+    "exec",
+    "vitest",
+    "run",
+    "tests/cardano-capability-retained-da-corpus-v1.test.ts",
+    "--pool=forks",
+    "--poolOptions.forks.singleFork=true",
+    "--testTimeout=180000",
+  ]);
   run("pnpm", [
     "--filter",
     "@al-ft/midgard-fault-proofs",
@@ -85,6 +112,7 @@ try {
     "tests/cardano-capability-retained-da-v1.test.ts",
     "--pool=forks",
     "--poolOptions.forks.singleFork=true",
+    "--testTimeout=180000",
   ]);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

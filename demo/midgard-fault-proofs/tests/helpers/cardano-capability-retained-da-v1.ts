@@ -1,11 +1,21 @@
 import {
+  decodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialDaValueV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+  MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { encodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -55,22 +65,19 @@ const countedRoot = (
 const validationDescriptor = (
   eventKey: SDK.EventKey,
   index: number,
-): SDK.DaPayloadEntry =>
-  encodedEntry({
-    key: eventKey,
-    keySchema: SDK.EventKeySchema,
-    value: {
-      schema_version: 1n,
-      machine_version: 1n,
-      trace_root: hash32(0xa0 + index),
-      step_count: 1n,
-      initial_state_hash: hash32(0xb0 + index),
-      terminal_state_hash: hash32(0xc0 + index),
-      verdict: "Accepted",
-      rejection_code_hash: hash32(0xd0 + index),
-    } satisfies SDK.ValidationTraceDescriptorV1,
-    valueSchema: SDK.ValidationTraceDescriptorV1Schema,
-  });
+): SDK.DaPayloadEntry => [
+  Data.to(eventKey as never, SDK.EventKeySchema as never),
+  encodeMidgardValidationTraceDescriptorV1({
+    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
+    machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
+    traceRoot: Buffer.from(hash32(0xa0 + index), "hex"),
+    stepCount: 1,
+    initialStateHash: Buffer.from(hash32(0xb0 + index), "hex"),
+    terminalStateHash: Buffer.from(hash32(0xc0 + index), "hex"),
+    verdict: "accepted",
+    rejectionCodeHash: Buffer.alloc(32),
+  }).toString("hex"),
+];
 
 export type StrictRetainedDaPairFixtureV1 = {
   readonly payload: SDK.DaPayloadV1;
@@ -82,9 +89,15 @@ export type StrictRetainedDaPairFixtureV1 = {
   readonly forcedOrderIdHex: string;
 };
 
-export const buildStrictRetainedDaPairFixtureV1 = async (
-  canonicalTransactionCbor: Uint8Array,
-): Promise<StrictRetainedDaPairFixtureV1> => {
+export const buildStrictRetainedDaPairFixtureV1 = async ({
+  canonicalTransactionCbor,
+  canonicalMaterialSidecarCbor,
+  resolvedReferenceUtxos,
+}: {
+  readonly canonicalTransactionCbor: Uint8Array;
+  readonly canonicalMaterialSidecarCbor?: Uint8Array;
+  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
+}): Promise<StrictRetainedDaPairFixtureV1> => {
   const canonicalCbor = Buffer.from(canonicalTransactionCbor);
   const transaction =
     decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
@@ -124,23 +137,32 @@ export const buildStrictRetainedDaPairFixtureV1 = async (
       tx_id: transactionIdHex,
     },
   };
-  const emptyUtxoRoot = await keyValuePhasRootWithCount([]);
+  const utxos = sorted(resolvedReferenceUtxos ?? []);
+  const utxoRoot = await keyValuePhasRootWithCount(
+    utxos.map(([outRefHex, outputHex]) => ({
+      key: Buffer.from(outRefHex, "hex"),
+      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: Buffer.from(outRefHex, "hex"),
+        outputCbor: Buffer.from(outputHex, "hex"),
+      }).descriptorCbor,
+    })),
+  );
   const steps: readonly SDK.TransitionStep[] = [
     {
       schema_version: 1n,
       step_index: 0n,
       event_key: forcedEventKey,
       phase: "ForcedTransaction",
-      pre_utxos_root: emptyUtxoRoot.root,
-      post_utxos_root: emptyUtxoRoot.root,
+      pre_utxos_root: utxoRoot.root,
+      post_utxos_root: utxoRoot.root,
     },
     {
       schema_version: 1n,
       step_index: 1n,
       event_key: normalEventKey,
       phase: "L2Transaction",
-      pre_utxos_root: emptyUtxoRoot.root,
-      post_utxos_root: emptyUtxoRoot.root,
+      pre_utxos_root: utxoRoot.root,
+      post_utxos_root: utxoRoot.root,
     },
   ];
   const forcedTransactions = [
@@ -190,6 +212,17 @@ export const buildStrictRetainedDaPairFixtureV1 = async (
     validationDescriptor(forcedEventKey, 0),
     validationDescriptor(normalEventKey, 1),
   ];
+  const cekProgramMaterial = sorted(
+    (canonicalMaterialSidecarCbor === undefined
+      ? []
+      : decodeMidgardCekProgramMaterialSidecarV1(canonicalMaterialSidecarCbor)
+    ).map(
+      (entry): SDK.DaPayloadEntry => [
+        Buffer.from(entry.root).toString("hex"),
+        encodeMidgardCekProgramMaterialDaValueV1(entry).toString("hex"),
+      ],
+    ),
+  );
   const roots = {
     withdrawals: await countedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
     forcedTransactions: await countedRoot(
@@ -221,8 +254,8 @@ export const buildStrictRetainedDaPairFixtureV1 = async (
     validationTraceCount: 2n,
   };
   const header: SDK.HeaderV1 = {
-    prevUtxosRoot: emptyUtxoRoot.root,
-    utxosRoot: emptyUtxoRoot.root,
+    prevUtxosRoot: utxoRoot.root,
+    utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
     forcedTransactionsRoot: roots.forcedTransactions.root,
     transactionsRoot: roots.transactions.root,
@@ -247,7 +280,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async (
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
+      utxos,
       withdrawals: [],
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),
@@ -257,7 +290,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async (
       forced_transaction_preimages: [
         [forcedOrderIdHex, canonicalCbor.toString("hex")],
       ],
-      cek_program_material: [],
+      cek_program_material: cekProgramMaterial,
       deposits: [],
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),

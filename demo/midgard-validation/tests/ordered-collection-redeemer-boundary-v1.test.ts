@@ -28,7 +28,11 @@ import {
   measureCollateralizedPlutusFeasibilityCandidateV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import {
+  buildMidgardRetainedDaCanonicalScriptProjectionV1,
+  exerciseMidgardRetainedDaBoundaryV1,
+  exerciseMidgardRetainedDaCanonicalBoundaryV1,
+} from "./helpers/retained-da-boundary-v1.js";
 
 type BlueprintValidator = {
   readonly title: string;
@@ -447,7 +451,6 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     );
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: parallel.cborHex,
-      corpusLabel: "maximum-redeemers",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       redeemerField.nativeCanonicalBytes,
@@ -461,6 +464,29 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(retainedDa.forced.revealStepCount).toBe(
       redeemerField.completeFoldStepCount,
     );
+    const retainedProjection =
+      buildMidgardRetainedDaCanonicalScriptProjectionV1({
+        canonicalTransactionCbor:
+          cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+            Buffer.from(parallel.cborHex, "hex"),
+          ),
+      });
+    const productionRetainedDa =
+      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+        canonicalTransactionCbor:
+          retainedProjection.canonicalTransactionCbor,
+        corpusLabel: "maximum-redeemers",
+        canonicalMaterialSidecarCbor:
+          retainedProjection.canonicalMaterialSidecarCbor,
+        sourceRawScriptAuditHash:
+          retainedProjection.sourceRawScriptAuditHash,
+      });
+    expect(
+      productionRetainedDa.normal.reconstructedCanonicalBytes,
+    ).toBe(retainedProjection.canonicalTransactionCbor.length);
+    expect(
+      productionRetainedDa.forced.reconstructedCanonicalBytes,
+    ).toBe(retainedProjection.canonicalTransactionCbor.length);
     expect({
       fieldCommitmentHex:
         redeemerField.fieldCommitmentHex,

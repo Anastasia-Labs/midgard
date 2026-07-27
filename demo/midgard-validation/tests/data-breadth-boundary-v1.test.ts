@@ -60,6 +60,7 @@ import {
   measureSignedCardanoNestedDatumV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 type DataBreadthKind = "constructor" | "list" | "map";
 
@@ -708,6 +709,10 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       const txHash = await emulator.submitTx(boundary.accepted.cborHex);
       await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
+      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+        canonicalTransactionCbor: canonical,
+        corpusLabel: `maximum-${kind}-datum-breadth`,
+      });
 
       vectors[`datum_${kind}`] = {
         breadth: boundary.accepted.requestedItemCount,
@@ -1153,6 +1158,12 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       );
       const txHash = await emulator.submitTx(boundary.accepted.cborHex);
       await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
+      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+        canonicalTransactionCbor: canonical,
+        corpusLabel: `maximum-${kind}-redeemer-breadth`,
+        canonicalMaterialSidecarCbor: artifact.canonicalMaterialSidecarCbor,
+        sourceRawScriptAuditHash: artifact.sourceRawScriptAuditHash,
+      });
 
       vectors[`redeemer_${kind}`] = {
         breadth: boundary.accepted.requestedItemCount,

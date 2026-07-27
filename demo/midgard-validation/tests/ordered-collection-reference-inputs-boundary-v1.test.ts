@@ -1,3 +1,4 @@
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -73,9 +74,35 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         signedCardanoCborHex: boundary.accepted.cborHex,
         fieldIndex: 1,
       });
+    const resolvedReferenceUtxos = availableInputs
+      .slice(1, boundary.accepted.requestedItemCount + 1)
+      .map((input): [string, string] => {
+        expect(Object.keys(input.assets)).toEqual(["lovelace"]);
+        const lovelace = input.assets.lovelace;
+        expect(lovelace).toBeDefined();
+        return [
+          Buffer.from(
+            CML.TransactionInput.new(
+              CML.TransactionHash.from_hex(input.txHash),
+              BigInt(input.outputIndex),
+            ).to_cbor_bytes(),
+          ).toString("hex"),
+          encodeMidgardTxOutput({
+            address: Buffer.from(
+              CML.Address.from_bech32(input.address).to_raw_bytes(),
+            ),
+            value: {
+              lovelace: lovelace!,
+              assets: new Map(),
+            },
+          }).toString("hex"),
+        ];
+      })
+      .sort(([left], [right]) => left.localeCompare(right));
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-reference-inputs",
+      resolvedReferenceUtxos,
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       referenceInputField.nativeCanonicalBytes,

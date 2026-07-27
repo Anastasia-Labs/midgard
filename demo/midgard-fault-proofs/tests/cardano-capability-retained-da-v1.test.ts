@@ -1,13 +1,22 @@
 import { readFileSync } from "node:fs";
 
 import {
+  collectMidgardV1AttachedProgramEnvelopes,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardCekProgramMaterialDaEntryV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardTxOutput,
+  decodeMidgardVersionedScriptListPreimage,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardV1TxFieldChunks,
+  encodeMidgardCekProgramMaterialDaValueV1,
+  encodeMidgardTxOutput,
+  hashMidgardVersionedScript,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   reconstructMidgardTransactionV1FromChunks,
+  verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
@@ -26,6 +35,12 @@ type BoundaryCorpusEntryV1 = {
   readonly transactionIdHex: string;
   readonly transactionCommitmentHex: string;
   readonly canonicalCborHex: string;
+  readonly canonicalMaterialSidecarCborHex?: string;
+  readonly sourceRawScriptAuditHash?: string;
+  readonly productionAdmission:
+    | "required"
+    | "diagnostic-synthetic-script-witnesses";
+  readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
 };
 
 const corpus = JSON.parse(
@@ -44,7 +59,13 @@ const corpus = JSON.parse(
 const expectedLabels = [
   "balanced-nested-datum",
   "balanced-nested-redeemer",
+  "maximum-constructor-datum-breadth",
+  "maximum-constructor-redeemer-breadth",
   "maximum-inline-datum-blob",
+  "maximum-list-datum-breadth",
+  "maximum-list-redeemer-breadth",
+  "maximum-map-datum-breadth",
+  "maximum-map-redeemer-breadth",
   "maximum-mint-and-native-policies",
   "maximum-nested-value",
   "maximum-observers-and-native-scripts",
@@ -68,11 +89,30 @@ const recomputeCorpusIdentityV1 = (
   const source =
     deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(exactCanonicalCbor);
   return {
-    transactionIdHex:
-      computeMidgardNativeTxIdV1(transaction).toString("hex"),
+    transactionIdHex: computeMidgardNativeTxIdV1(transaction).toString("hex"),
     transactionCommitmentHex:
       computeMidgardNativeTxProofCommitmentV1(source).toString("hex"),
   };
+};
+
+const verifyFixtureProgramMaterialV1 = ({
+  canonicalCbor,
+  payload,
+}: {
+  readonly canonicalCbor: Uint8Array;
+  readonly payload: SDK.DaPayloadV1;
+}) => {
+  const transaction =
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+  const envelopes = collectMidgardV1AttachedProgramEnvelopes(transaction);
+  const material = payload.block_body.cek_program_material.map(
+    ([rootHex, valueHex]) =>
+      decodeMidgardCekProgramMaterialDaEntryV1(
+        Buffer.from(rootHex, "hex"),
+        Buffer.from(valueHex, "hex"),
+      ),
+  );
+  return verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
 };
 
 const reconstructAuthenticatedCanonicalTransactionFromFieldChunksV1 = (
@@ -131,7 +171,15 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         transactionCommitmentHex: boundary.transactionCommitmentHex,
       });
 
-      const fixture = await buildStrictRetainedDaPairFixtureV1(canonicalCbor);
+      const materialSidecar =
+        boundary.canonicalMaterialSidecarCborHex === undefined
+          ? undefined
+          : Buffer.from(boundary.canonicalMaterialSidecarCborHex, "hex");
+      const fixture = await buildStrictRetainedDaPairFixtureV1({
+        canonicalTransactionCbor: canonicalCbor,
+        canonicalMaterialSidecarCbor: materialSidecar,
+        resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
+      });
       expect({
         transactionIdHex: fixture.transactionIdHex,
         transactionCommitmentHex: fixture.transactionCommitmentHex,
@@ -139,6 +187,59 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         transactionIdHex: boundary.transactionIdHex,
         transactionCommitmentHex: boundary.transactionCommitmentHex,
       });
+      const transaction =
+        decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCbor);
+      expect(fixture.payload.block_body.utxos).toEqual(
+        boundary.resolvedReferenceUtxos ?? [],
+      );
+      const diagnosticSyntheticScripts =
+        boundary.productionAdmission ===
+        "diagnostic-synthetic-script-witnesses";
+      expect(diagnosticSyntheticScripts).toBe(
+        boundary.label === "mixed-size-balanced",
+      );
+      if (diagnosticSyntheticScripts) {
+        expect(materialSidecar).toBeUndefined();
+        expect(boundary.sourceRawScriptAuditHash).toBeUndefined();
+        expect(fixture.payload.block_body.cek_program_material).toEqual([]);
+      } else if (materialSidecar === undefined) {
+        const attachedPrograms =
+          collectMidgardV1AttachedProgramEnvelopes(transaction);
+        expect(boundary.sourceRawScriptAuditHash).toBeUndefined();
+        expect(attachedPrograms).toHaveLength(0);
+        expect(fixture.payload.block_body.cek_program_material).toEqual([]);
+      } else {
+        const attachedPrograms =
+          collectMidgardV1AttachedProgramEnvelopes(transaction);
+        const sidecarEntries =
+          decodeMidgardCekProgramMaterialSidecarV1(materialSidecar);
+        expect(sidecarEntries.length).toBeGreaterThan(0);
+        expect(fixture.payload.block_body.cek_program_material).toEqual(
+          sidecarEntries
+            .map(
+              (entry): SDK.DaPayloadEntry => [
+                Buffer.from(entry.root).toString("hex"),
+                encodeMidgardCekProgramMaterialDaValueV1(entry).toString("hex"),
+              ],
+            )
+            .sort(([left], [right]) => left.localeCompare(right)),
+        );
+        expect(attachedPrograms).toHaveLength(1);
+        expect(
+          verifyFixtureProgramMaterialV1({
+            canonicalCbor,
+            payload: fixture.payload,
+          }),
+        ).toHaveLength(1);
+        const scripts = decodeMidgardVersionedScriptListPreimage(
+          transaction.witnessSet.scriptTxWitsPreimageCbor,
+        );
+        expect(scripts).toHaveLength(1);
+        expect(boundary.sourceRawScriptAuditHash).toMatch(/^[0-9a-f]{56}$/u);
+        expect(boundary.sourceRawScriptAuditHash).not.toBe(
+          hashMidgardVersionedScript(scripts[0]!),
+        );
+      }
 
       const reconstruction = await reconstructDaPayloadV1({
         payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
@@ -229,15 +330,85 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         expect(folded.reconstructed).toEqual(canonicalCbor);
       }
     }
-  }, 60_000);
+  }, 120_000);
 
-  it("keeps roots, counts, and forced-preimage authentication fail closed", async () => {
+  it("keeps material, roots, counts, and forced-preimage authentication fail closed", async () => {
     const canonicalCbor = Buffer.from(
-      corpus.entries.find(({ label }) => label === "maximum-redeemers")!
-        .canonicalCborHex,
+      corpus.entries.find(
+        ({ label }) => label === "maximum-list-redeemer-breadth",
+      )!.canonicalCborHex,
       "hex",
     );
-    const fixture = await buildStrictRetainedDaPairFixtureV1(canonicalCbor);
+    const materialSidecar = Buffer.from(
+      corpus.entries.find(
+        ({ label }) => label === "maximum-list-redeemer-breadth",
+      )!.canonicalMaterialSidecarCborHex!,
+      "hex",
+    );
+    const fixture = await buildStrictRetainedDaPairFixtureV1({
+      canonicalTransactionCbor: canonicalCbor,
+      canonicalMaterialSidecarCbor: materialSidecar,
+    });
+    const missingMaterialPayload: SDK.DaPayloadV1 = {
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        cek_program_material: [],
+      },
+    };
+    expect(() =>
+      verifyFixtureProgramMaterialV1({
+        canonicalCbor,
+        payload: missingMaterialPayload,
+      }),
+    ).toThrow();
+
+    const [materialRootHex, materialValueHex] =
+      fixture.payload.block_body.cek_program_material[0]!;
+    const [materialEntry] =
+      decodeMidgardCekProgramMaterialSidecarV1(materialSidecar);
+    const mutatedPreimage = Buffer.from(materialEntry!.preimage);
+    mutatedPreimage[mutatedPreimage.length - 1] ^= 0x01;
+    const mutatedMaterialPayload: SDK.DaPayloadV1 = {
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        cek_program_material: [
+          [
+            materialRootHex,
+            encodeMidgardCekProgramMaterialDaValueV1({
+              kind: materialEntry!.kind,
+              preimage: mutatedPreimage,
+            }).toString("hex"),
+          ],
+          ...fixture.payload.block_body.cek_program_material.slice(1),
+        ],
+      },
+    };
+    expect(() =>
+      verifyFixtureProgramMaterialV1({
+        canonicalCbor,
+        payload: mutatedMaterialPayload,
+      }),
+    ).toThrow();
+
+    const wrongMaterialRootPayload: SDK.DaPayloadV1 = {
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        cek_program_material: [
+          ["ff".repeat(32), materialValueHex] satisfies SDK.DaPayloadEntry,
+          ...fixture.payload.block_body.cek_program_material.slice(1),
+        ].sort(([left], [right]) => left.localeCompare(right)),
+      },
+    };
+    expect(() =>
+      verifyFixtureProgramMaterialV1({
+        canonicalCbor,
+        payload: wrongMaterialRootPayload,
+      }),
+    ).toThrow();
+
     const badRootHeader: SDK.HeaderV1 = {
       ...fixture.header,
       transactionsRoot: "ff".repeat(32),
@@ -307,5 +478,62 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         committedHeader: fixture.header,
       }),
     ).rejects.toMatchObject({ code: "malformedPayload" });
+  });
+
+  it("keeps resolved reference UTxO coverage and descriptor roots fail closed", async () => {
+    const boundary = corpus.entries.find(
+      ({ label }) => label === "maximum-reference-inputs",
+    )!;
+    const canonicalCbor = Buffer.from(boundary.canonicalCborHex, "hex");
+    const fixture = await buildStrictRetainedDaPairFixtureV1({
+      canonicalTransactionCbor: canonicalCbor,
+      resolvedReferenceUtxos: boundary.resolvedReferenceUtxos,
+    });
+    expect(fixture.payload.block_body.utxos.length).toBeGreaterThan(0);
+
+    const missing: SDK.DaPayloadV1 = {
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        utxos: [],
+      },
+    };
+    await expect(
+      reconstructDaPayloadV1({
+        payloadEnvelopeCbor: await wrapDaPayloadV1(
+          SDK.encodeDaPayloadV1(missing),
+          { mode: "identity" },
+        ),
+        expectedHeaderHash: fixture.headerHash,
+        committedHeader: fixture.header,
+      }),
+    ).rejects.toMatchObject({ code: "rootMismatch" });
+
+    const [first, ...remaining] = fixture.payload.block_body.utxos;
+    const decodedOutput = decodeMidgardTxOutput(Buffer.from(first![1], "hex"));
+    const substitutedOutput = encodeMidgardTxOutput({
+      ...decodedOutput,
+      value: {
+        ...decodedOutput.value,
+        lovelace: decodedOutput.value.lovelace + 1n,
+      },
+    });
+    const substituted: SDK.DaPayloadV1 = {
+      ...fixture.payload,
+      block_body: {
+        ...fixture.payload.block_body,
+        utxos: [[first![0], substitutedOutput.toString("hex")], ...remaining],
+      },
+    };
+    await expect(
+      reconstructDaPayloadV1({
+        payloadEnvelopeCbor: await wrapDaPayloadV1(
+          SDK.encodeDaPayloadV1(substituted),
+          { mode: "identity" },
+        ),
+        expectedHeaderHash: fixture.headerHash,
+        committedHeader: fixture.header,
+      }),
+    ).rejects.toMatchObject({ code: "rootMismatch" });
   });
 });

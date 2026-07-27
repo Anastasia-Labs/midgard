@@ -30,6 +30,8 @@ describe("canonical V1 retained-DA boundary harness", () => {
           "hex",
         ),
         corpusLabel: "mixed-size-balanced",
+        productionAdmission:
+          "diagnostic-synthetic-script-witnesses",
       });
 
     expect(measurement.transactionIdHex).toBe(
