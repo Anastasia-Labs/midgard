@@ -17,6 +17,14 @@ import {
 const NORMALIZED_REDEEMERS_CBOR_HEX =
   "8284000043d8798082050784030142182a820b0d";
 
+const NESTED_REDEEMER_DATA_CBOR_HEX = [
+  "a2019fd87980ff",
+  "5f5840",
+  "71".repeat(64),
+  "4171ff",
+  "d8668218809f00ff",
+].join("");
+
 const makeCanonical = (
   redeemerTxWitsPreimageCbor: Buffer,
 ): MidgardNativeTxCanonicalV1 => ({
@@ -57,6 +65,16 @@ const integerRedeemer = (): CML.LegacyRedeemer =>
     1n,
     CML.PlutusData.from_cbor_hex("182a"),
     CML.ExUnits.new(11n, 13n),
+  );
+
+const nestedRedeemer = (
+  dataCborHex: string,
+): CML.LegacyRedeemer =>
+  CML.LegacyRedeemer.new(
+    CML.RedeemerTag.Spend,
+    2n,
+    CML.PlutusData.from_cbor_hex(dataCborHex),
+    CML.ExUnits.new(17n, 19n),
   );
 
 const cardanoTxWithRedeemers = (redeemers: CML.Redeemers): Buffer => {
@@ -165,6 +183,83 @@ describe("canonical V1 Cardano redeemer bridge", () => {
     expect(roundTrip.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
       preimageCbor,
     );
+  });
+
+  it("normalizes nested Cardano Data to exact Aiken serialiseData bytes in both directions", () => {
+    const aikenData = CML.PlutusData.from_cbor_hex(
+      NESTED_REDEEMER_DATA_CBOR_HEX,
+    );
+    const cmlCanonicalDataCborHex =
+      aikenData.to_canonical_cbor_hex();
+    expect(cmlCanonicalDataCborHex).not.toBe(
+      NESTED_REDEEMER_DATA_CBOR_HEX,
+    );
+
+    const fromAiken = cardanoTxBytesToMidgardNativeTxFullV1(
+      cardanoTxWithRedeemers(
+        cardanoMapRedeemers([
+          nestedRedeemer(NESTED_REDEEMER_DATA_CBOR_HEX),
+        ]),
+      ),
+    );
+    const fromCmlCanonical =
+      cardanoTxBytesToMidgardNativeTxFullV1(
+        cardanoTxWithRedeemers(
+          cardanoMapRedeemers([
+            nestedRedeemer(cmlCanonicalDataCborHex),
+          ]),
+        ),
+      );
+    const expectedPreimage = encodeCbor([
+      [
+        CML.RedeemerTag.Spend,
+        2n,
+        Buffer.from(NESTED_REDEEMER_DATA_CBOR_HEX, "hex"),
+        [17n, 19n],
+      ],
+    ]);
+    expect(
+      fromAiken.witnessSet.redeemerTxWitsPreimageCbor,
+    ).toEqual(expectedPreimage);
+    expect(
+      fromCmlCanonical.witnessSet.redeemerTxWitsPreimageCbor,
+    ).toEqual(expectedPreimage);
+
+    const reconstructed = CML.Transaction.from_cbor_bytes(
+      midgardNativeTxFullToCardanoTxEncoding(
+        materializeMidgardNativeTxFromCanonicalV1(
+          makeCanonical(expectedPreimage),
+        ),
+      ),
+    )
+      .witness_set()
+      .redeemers()!
+      .to_flat_format()
+      .get(0);
+    expect({
+      tag: reconstructed.tag(),
+      index: reconstructed.index(),
+      dataCborHex: reconstructed.data().to_cbor_hex(),
+      memory: reconstructed.ex_units().mem(),
+      steps: reconstructed.ex_units().steps(),
+    }).toEqual({
+      tag: CML.RedeemerTag.Spend,
+      index: 2n,
+      dataCborHex: NESTED_REDEEMER_DATA_CBOR_HEX,
+      memory: 17n,
+      steps: 19n,
+    });
+
+    const roundTrip = cardanoTxBytesToMidgardNativeTxFullV1(
+      midgardNativeTxFullToCardanoTxEncoding(
+        materializeMidgardNativeTxFromCanonicalV1(
+          makeCanonical(expectedPreimage),
+        ),
+      ),
+    );
+    expect(
+      roundTrip.witnessSet.redeemerTxWitsPreimageCbor,
+    ).toEqual(expectedPreimage);
   });
 
   it("rejects duplicate pointers and purposes that cannot cross the bridge", () => {

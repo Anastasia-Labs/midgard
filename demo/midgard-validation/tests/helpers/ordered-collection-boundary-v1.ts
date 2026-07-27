@@ -35,23 +35,39 @@ export const CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1 =
       (0x11 + policyIndex).toString(16).padStart(2, "0").repeat(28),
   );
 export const cardanoBoundaryNestedDataCborV1 = (
-  nestedMapCellCount: number,
+  nestedLeafCount: number,
 ): string => {
   if (
-    !Number.isSafeInteger(nestedMapCellCount) ||
-    nestedMapCellCount <= 0
+    !Number.isSafeInteger(nestedLeafCount) ||
+    nestedLeafCount <= 0
   ) {
     throw new Error(
-      "Cardano nested Data map-cell count must be positive",
+      "Cardano nested Data leaf count must be positive",
     );
   }
+  const balancedList = (
+    firstLeafIndex: number,
+    leafCount: number,
+  ): string => {
+    if (leafCount === 1) {
+      return firstLeafIndex === 0 ? "4101" : "00";
+    }
+    const leftCount = Math.floor(leafCount / 2);
+    return [
+      "9f",
+      balancedList(firstLeafIndex, leftCount),
+      balancedList(
+        firstLeafIndex + leftCount,
+        leafCount - leftCount,
+      ),
+      "ff",
+    ].join("");
+  };
   return [
     "d8668218809f",
-    "9f",
+    "a1",
     "d87980",
-    "a10000".repeat(nestedMapCellCount),
-    "4101",
-    "ff",
+    balancedList(0, nestedLeafCount),
     "ff",
   ].join("");
 };
@@ -576,7 +592,7 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
   inputOutputIndex,
   inputLovelace,
   recipientAddress,
-  requestedNestedCellCount,
+  requestedNestedLeafCount,
   nestedDatumCborHex,
   minFeeA,
   minFeeB,
@@ -587,7 +603,7 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
   readonly inputOutputIndex: bigint;
   readonly inputLovelace: bigint;
   readonly recipientAddress: string;
-  readonly requestedNestedCellCount: number;
+  readonly requestedNestedLeafCount: number;
   readonly nestedDatumCborHex: string;
   readonly minFeeA: number;
   readonly minFeeB: number;
@@ -609,8 +625,8 @@ export const buildSignedCardanoNestedDatumCandidateV1 = async ({
     inputLovelace,
     recipientAddress,
     datum: CML.PlutusData.from_cbor_hex(normalized),
-    requestedItemCount: requestedNestedCellCount,
-    diagnosticKind: "nested inline-datum cell",
+    requestedItemCount: requestedNestedLeafCount,
+    diagnosticKind: "nested inline-datum leaf",
     minFeeA,
     minFeeB,
     minFeeRefScriptCostPerByte,
@@ -2653,7 +2669,9 @@ export const measureCollateralizedPlutusFeasibilityCandidateV1 = (
     redeemerTags.push(redeemer.tag());
     redeemerIndexes.push(redeemer.index());
     redeemerDataCborHexes.push(
-      redeemer.data().to_canonical_cbor_hex(),
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        redeemer.data().to_cbor_hex(),
+      ),
     );
     executionMemory += redeemer.ex_units().mem();
     executionSteps += redeemer.ex_units().steps();

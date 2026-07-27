@@ -1,5 +1,6 @@
 import { CML } from "@lucid-evolution/lucid";
 
+import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../plutus-data-cbor.js";
 import {
   asArray,
   asBytes,
@@ -70,9 +71,10 @@ const canonicalPlutusData = (
   dataCbor: Uint8Array,
   fieldName: string,
 ): { readonly data: CML.PlutusData; readonly cbor: Buffer } => {
+  const source = Buffer.from(dataCbor);
   let data: CML.PlutusData;
   try {
-    data = CML.PlutusData.from_cbor_bytes(dataCbor);
+    data = CML.PlutusData.from_cbor_bytes(source);
   } catch (error) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
@@ -80,14 +82,48 @@ const canonicalPlutusData = (
       String(error),
     );
   }
-  const canonical = Buffer.from(data.to_canonical_cbor_bytes());
-  if (!canonical.equals(dataCbor)) {
+  let canonical: Buffer;
+  try {
+    canonical = Buffer.from(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        source.toString("hex"),
+      ),
+      "hex",
+    );
+  } catch (error) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must contain supported Plutus Data`,
+      String(error),
+    );
+  }
+  if (!canonical.equals(source)) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
       `${fieldName} must contain canonical Plutus Data CBOR`,
     );
   }
   return { data, cbor: canonical };
+};
+
+const normalizeCardanoPlutusData = (
+  data: CML.PlutusData,
+  fieldName: string,
+): Buffer => {
+  try {
+    return Buffer.from(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(
+        data.to_cbor_hex(),
+      ),
+      "hex",
+    );
+  } catch (error) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must contain supported Plutus Data`,
+      String(error),
+    );
+  }
 };
 
 export const cardanoRedeemersToMidgardPreimageCbor = (
@@ -106,8 +142,9 @@ export const cardanoRedeemersToMidgardPreimageCbor = (
       redeemer.tag(),
       `${fieldName}[${index}]`,
     );
-    const dataCbor = Buffer.from(
-      redeemer.data().to_canonical_cbor_bytes(),
+    const dataCbor = normalizeCardanoPlutusData(
+      redeemer.data(),
+      `${fieldName}[${index}].data`,
     );
     const executionUnits = redeemer.ex_units();
     normalized.push({
