@@ -31,6 +31,19 @@ export type MidgardValidationMerkleMembershipV1 = {
   readonly siblings: readonly Hash32[];
 };
 
+export type MidgardValidationMerkleMembershipIndexV1 = {
+  readonly frontier: MidgardValidationMerkleFrontierV1;
+  readonly membershipAt: (
+    leafIndex: number,
+  ) => MidgardValidationMerkleMembershipV1;
+};
+
+type PrecomputedMidgardValidationMerklePeakV1 = {
+  readonly height: number;
+  readonly start: number;
+  readonly levels: readonly (readonly Hash32[])[];
+};
+
 const hash32 = (bytes: Uint8Array): Hash32 =>
   ensureHash32(blake2b(bytes, { dkLen: 32 }), "validation_merkle_hash");
 
@@ -167,6 +180,119 @@ const locatePeak = (
     offset += size;
   }
   throw new Error("validation Merkle leaf is outside the frontier");
+};
+
+const cloneMidgardValidationMerkleFrontierV1 = (
+  frontier: MidgardValidationMerkleFrontierV1,
+): MidgardValidationMerkleFrontierV1 => ({
+  count: frontier.count,
+  peaks: frontier.peaks.map((peak) => ({
+    height: peak.height,
+    hash: Buffer.from(peak.hash),
+  })),
+});
+
+export const buildMidgardValidationMerkleMembershipIndexV1 = (
+  leafHashes: readonly Uint8Array[],
+): MidgardValidationMerkleMembershipIndexV1 => {
+  boundedCount(leafHashes.length, "validation_merkle.leaves.length");
+  const leaves = leafHashes.map((leaf, index) =>
+    ensureHash32(leaf, `validation_merkle.leaves[${index}]`),
+  );
+  const peaks: PrecomputedMidgardValidationMerklePeakV1[] = [];
+  let start = 0;
+  for (
+    let height =
+      leaves.length === 0
+        ? -1
+        : Math.floor(Math.log2(leaves.length));
+    height >= 0;
+    height -= 1
+  ) {
+    if (!bitIsSet(leaves.length, height)) continue;
+    const levels: Hash32[][] = [
+      leaves.slice(start, start + 2 ** height),
+    ];
+    while (levels.at(-1)!.length > 1) {
+      const level = levels.at(-1)!;
+      const next: Hash32[] = [];
+      for (let index = 0; index < level.length; index += 2) {
+        next.push(
+          hashMidgardValidationMerkleBranchV1(
+            level[index]!,
+            level[index + 1]!,
+          ),
+        );
+      }
+      levels.push(next);
+    }
+    peaks.push({ height, start, levels });
+    start += 2 ** height;
+  }
+  const cachedFrontier: MidgardValidationMerkleFrontierV1 = {
+    count: leaves.length,
+    peaks: peaks
+      .map((peak) => ({
+        height: peak.height,
+        hash: peak.levels.at(-1)![0]!,
+      }))
+      .reverse(),
+  };
+  validateMidgardValidationMerkleFrontierV1(cachedFrontier);
+
+  return {
+    frontier:
+      cloneMidgardValidationMerkleFrontierV1(
+        cachedFrontier,
+      ),
+    membershipAt: (
+      leafIndex: number,
+    ): MidgardValidationMerkleMembershipV1 => {
+      if (
+        !Number.isSafeInteger(leafIndex) ||
+        leafIndex < 0 ||
+        leafIndex >= leaves.length
+      ) {
+        throw new Error(
+          "validation Merkle membership leaf index is out of range",
+        );
+      }
+      const location = locatePeak(leaves.length, leafIndex);
+      const peak = peaks.find(
+        (candidate) =>
+          candidate.height === location.height &&
+          candidate.start === location.start,
+      );
+      if (peak === undefined) {
+        throw new Error(
+          "validation Merkle membership peak was not precomputed",
+        );
+      }
+      let localIndex = leafIndex - peak.start;
+      const siblings: Hash32[] = [];
+      for (
+        let levelIndex = 0;
+        levelIndex < peak.levels.length - 1;
+        levelIndex += 1
+      ) {
+        siblings.push(
+          Buffer.from(
+            peak.levels[levelIndex]![localIndex ^ 1]!,
+          ),
+        );
+        localIndex = Math.floor(localIndex / 2);
+      }
+      return {
+        frontier:
+          cloneMidgardValidationMerkleFrontierV1(
+            cachedFrontier,
+          ),
+        leafIndex,
+        leafHash: Buffer.from(leaves[leafIndex]!),
+        siblings,
+      };
+    },
+  };
 };
 
 export const buildMidgardValidationMerkleMembershipV1 = (

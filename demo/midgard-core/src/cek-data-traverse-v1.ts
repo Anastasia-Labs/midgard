@@ -51,7 +51,7 @@ import {
 } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
-  buildMidgardValidationMerkleMembershipV1,
+  buildMidgardValidationMerkleMembershipIndexV1,
 } from "./validation-merkle.js";
 
 export const MIDGARD_CEK_DATA_TRAVERSE_V1_VERSION = 1 as const;
@@ -1972,6 +1972,8 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
     const leaves = childSummaries.map((child, index) =>
       hashMidgardCekDataFrameChildV1(index, child),
     );
+    const memberships =
+      buildMidgardValidationMerkleMembershipIndexV1(leaves);
     let frame = context.frame;
     if (node.kind === "map") {
       for (
@@ -1984,15 +1986,9 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         const key = childSummaries[keyIndex]!;
         const value = childSummaries[valueIndex]!;
         const keySiblings =
-          buildMidgardValidationMerkleMembershipV1(
-            leaves,
-            keyIndex,
-          ).siblings;
+          memberships.membershipAt(keyIndex).siblings;
         const valueSiblings =
-          buildMidgardValidationMerkleMembershipV1(
-            leaves,
-            valueIndex,
-          ).siblings;
+          memberships.membershipAt(valueIndex).siblings;
         emit({
           kind: "foldMap",
           frame,
@@ -2025,10 +2021,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
       ) {
         const child = childSummaries[childIndex]!;
         const siblings =
-          buildMidgardValidationMerkleMembershipV1(
-            leaves,
-            childIndex,
-          ).siblings;
+          memberships.membershipAt(childIndex).siblings;
         emit({
           kind: "foldList",
           frame,

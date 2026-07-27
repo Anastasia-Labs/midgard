@@ -6,6 +6,8 @@ import {
   buildMidgardCekDataTraverseTraceV1,
   buildMidgardValidationMerkleMembershipV1,
   encodeCborBytes,
+  encodeCborInteger,
+  encodeCborMapRaw,
   encodeMidgardCekDataTraverseControlV1,
   finalizeMidgardCekDataBytesV1,
   finalizeMidgardCekDataFrameV1,
@@ -478,6 +480,113 @@ describe("authenticated CEK Data traversal V1", () => {
         }),
       ).toStrictEqual(step.next);
     }
+  });
+
+  it("reuses exact membership paths across broad nested list and map frames", () => {
+    const listChildCount = 65;
+    const mapPairCount = 33;
+    const broadList = Buffer.concat([
+      Buffer.from([0x9f]),
+      ...Array.from({ length: listChildCount }, (_, index) =>
+        encodeCborInteger(BigInt(index)),
+      ),
+      Buffer.from([0xff]),
+    ]);
+    const broadMap = encodeCborMapRaw(
+      Array.from({ length: mapPairCount }, (_, index) => [
+        encodeCborInteger(BigInt(index + 100)),
+        encodeCborInteger(BigInt(index + 1_000)),
+      ]),
+    );
+    const source = Buffer.concat([
+      Buffer.from([0x9f]),
+      broadList,
+      broadMap,
+      Buffer.from([0xff]),
+    ]);
+    const trace = buildMidgardCekDataTraverseTraceV1({
+      sourceStart: 43,
+      source,
+    });
+    const listFolds = trace.steps.flatMap(({ action }) =>
+      action?.kind === "foldList" ? [action] : [],
+    );
+    const mapFolds = trace.steps.flatMap(({ action }) =>
+      action?.kind === "foldMap" ? [action] : [],
+    );
+
+    expect(
+      listFolds.map(({ childIndex }) => childIndex),
+    ).toStrictEqual([
+      ...Array.from(
+        { length: listChildCount },
+        (_, index) => listChildCount - index - 1,
+      ),
+      1,
+      0,
+    ]);
+    expect(
+      mapFolds.map(({ pairIndex }) => pairIndex),
+    ).toStrictEqual(
+      Array.from(
+        { length: mapPairCount },
+        (_, index) => mapPairCount - index - 1,
+      ),
+    );
+
+    const listChildren =
+      new Array<MidgardCekDataSummaryV1>(listChildCount);
+    for (const action of listFolds.slice(0, listChildCount)) {
+      listChildren[action.childIndex] = action.child;
+    }
+    const listLeaves = listChildren.map((child, index) =>
+      hashMidgardCekDataFrameChildV1(index, child),
+    );
+    for (const action of listFolds.slice(0, listChildCount)) {
+      expect(action.siblings).toStrictEqual(
+        buildMidgardValidationMerkleMembershipV1(
+          listLeaves,
+          action.childIndex,
+        ).siblings,
+      );
+    }
+
+    const mapChildren =
+      new Array<MidgardCekDataSummaryV1>(mapPairCount * 2);
+    for (const action of mapFolds) {
+      mapChildren[action.pairIndex * 2] = action.key;
+      mapChildren[action.pairIndex * 2 + 1] = action.value;
+    }
+    const mapLeaves = mapChildren.map((child, index) =>
+      hashMidgardCekDataFrameChildV1(index, child),
+    );
+    for (const action of mapFolds) {
+      expect(action.keySiblings).toStrictEqual(
+        buildMidgardValidationMerkleMembershipV1(
+          mapLeaves,
+          action.pairIndex * 2,
+        ).siblings,
+      );
+      expect(action.valueSiblings).toStrictEqual(
+        buildMidgardValidationMerkleMembershipV1(
+          mapLeaves,
+          action.pairIndex * 2 + 1,
+        ).siblings,
+      );
+    }
+
+    for (const step of trace.steps) {
+      expect(
+        advanceMidgardCekDataTraverseV1({
+          control: step.control,
+          sourceBytes: step.sourceBytes,
+          action: step.action,
+        }),
+      ).toStrictEqual(step.next);
+    }
+    expect(
+      finalizeMidgardCekDataTraverseV1(trace.terminal),
+    ).not.toBeNull();
   });
 
   it("constructs deeply nested evidence without a JavaScript call-stack limit", () => {
