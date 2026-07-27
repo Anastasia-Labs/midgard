@@ -124,6 +124,8 @@ export type MidgardOrderedCollectionBoundaryMeasurementV1 = {
     readonly validationContextCborHex: string;
     readonly workWitnessCborHex: string;
     readonly compactBindingWitnessCborHex: string;
+    readonly successorPhase: "canonicalDecode" | "compactBinding";
+    readonly successorWitnessCborHex: string;
     readonly preWorkRootHex: string;
     readonly postWorkRootHex: string;
     readonly encodedLengthBeforeItem: number;
@@ -339,6 +341,116 @@ export const buildSignedCardanoOutputsCandidateV1 = async ({
   }
   throw new Error(
     `Cardano outputs candidate ${requestedOutputCount.toString()} fee did not converge`,
+  );
+};
+
+/**
+ * Builds one signed Cardano output whose inline Plutus Data is a byte string
+ * of the requested payload length. The shape isolates a single dynamic item
+ * so the exact maxTxSize boundary also exercises multi-chunk item proofs.
+ */
+export const buildSignedCardanoInlineDatumCandidateV1 = async ({
+  privateKeyBech32,
+  inputTransactionId,
+  inputOutputIndex,
+  inputLovelace,
+  recipientAddress,
+  requestedDatumPayloadBytes,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly inputTransactionId: string;
+  readonly inputOutputIndex: bigint;
+  readonly inputLovelace: bigint;
+  readonly recipientAddress: string;
+  readonly requestedDatumPayloadBytes: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  if (
+    !Number.isSafeInteger(requestedDatumPayloadBytes) ||
+    requestedDatumPayloadBytes <= 0
+  ) {
+    throw new Error(
+      "Requested Cardano inline-datum payload bytes must be positive",
+    );
+  }
+  const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
+  const address = CML.Address.from_bech32(recipientAddress);
+  const datum = CML.PlutusData.new_bytes(
+    Buffer.alloc(requestedDatumPayloadBytes, 0x5a),
+  );
+  const linearFee = CML.LinearFee.new(
+    BigInt(minFeeA),
+    BigInt(minFeeB),
+    BigInt(minFeeRefScriptCostPerByte),
+  );
+  const makeSigned = (
+    fee: bigint,
+  ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
+    const outputLovelace = inputLovelace - fee;
+    if (outputLovelace <= 0n) {
+      throw new Error(
+        `Cardano inline-datum candidate ${requestedDatumPayloadBytes.toString()} exhausts its funding input`,
+      );
+    }
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(inputTransactionId),
+        inputOutputIndex,
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    outputs.add(
+      CML.TransactionOutput.new(
+        address,
+        CML.Value.from_coin(outputLovelace),
+        CML.DatumOption.new_datum(datum),
+        undefined,
+      ),
+    );
+    const body = CML.TransactionBody.new(inputs, outputs, fee);
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), privateKey),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    const transaction = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
+    return {
+      transaction,
+      cborHex: transaction.to_cbor_hex(),
+    };
+  };
+
+  let fee = BigInt(minFeeB);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const signed = makeSigned(fee);
+    const nextFee = CML.min_no_script_fee(
+      signed.transaction,
+      linearFee,
+    );
+    if (nextFee === fee) {
+      return {
+        requestedItemCount: requestedDatumPayloadBytes,
+        cborHex: signed.cborHex,
+        signedBytes: signed.cborHex.length / 2,
+        fee,
+      };
+    }
+    fee = nextFee;
+  }
+  throw new Error(
+    `Cardano inline-datum candidate ${requestedDatumPayloadBytes.toString()} fee did not converge`,
   );
 };
 
@@ -1586,6 +1698,24 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
     source.fieldPreimageLengthsCbor,
     validationContextCbor,
   ]);
+  const successorPhase =
+    fieldIndex === 8
+      ? "compactBinding"
+      : "canonicalDecode";
+  const successorWitnessCbor =
+    fieldIndex === 8
+      ? compactBindingWitnessCbor
+      : encodeCbor([
+          source.compactCbor,
+          source.witnessSetCompactCbor,
+          source.fieldPreimageLengthsCbor,
+          validationContextCbor,
+          BigInt(fieldIndex + 1),
+          0n,
+          0n,
+          -1n,
+          0n,
+        ]);
 
   return {
     nativeCanonicalBytes: nativeCanonicalCbor.length,
@@ -1624,15 +1754,18 @@ export const exerciseMidgardOrderedCollectionBoundaryV1 = ({
       workWitnessCborHex: workWitnessCbor.toString("hex"),
       compactBindingWitnessCborHex:
         compactBindingWitnessCbor.toString("hex"),
+      successorPhase,
+      successorWitnessCborHex:
+        successorWitnessCbor.toString("hex"),
       preWorkRootHex: hashMidgardValidationWorkWitnessV1({
         phase: "canonicalDecode",
         programCounter: 40,
         witnessCbor: workWitnessCbor,
       }).toString("hex"),
       postWorkRootHex: hashMidgardValidationWorkWitnessV1({
-        phase: "compactBinding",
+        phase: successorPhase,
         programCounter: 41,
-        witnessCbor: compactBindingWitnessCbor,
+        witnessCbor: successorWitnessCbor,
       }).toString("hex"),
       encodedLengthBeforeItem,
       collectionProof: {
@@ -1689,6 +1822,46 @@ export const measureSignedCardanoOutputsV1 = (
     outputCount: transaction.body().outputs().len(),
     vkeyWitnessCount:
       transaction.witness_set().vkeywitnesses()?.len() ?? 0,
+  };
+};
+
+export const measureSignedCardanoInlineDatumV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly outputCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputAddress: string;
+  readonly outputLovelace: bigint;
+  readonly datumCborHex: string;
+  readonly datumCborBytes: number;
+  readonly datumPayloadBytes: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  const outputs = transaction.body().outputs();
+  const datum = outputs.get(0).datum()?.as_datum();
+  if (datum === undefined) {
+    throw new Error(
+      "Measured Cardano inline-datum transaction has no inline datum",
+    );
+  }
+  const datumBytes = datum.as_bytes();
+  if (datumBytes === undefined) {
+    throw new Error(
+      "Measured Cardano inline datum is not a byte string",
+    );
+  }
+  const datumCbor = Buffer.from(datum.to_cbor_bytes());
+  return {
+    outputCount: outputs.len(),
+    vkeyWitnessCount:
+      transaction.witness_set().vkeywitnesses()?.len() ?? 0,
+    outputAddress: outputs.get(0).address().to_bech32(),
+    outputLovelace: outputs.get(0).amount().coin(),
+    datumCborHex: datumCbor.toString("hex"),
+    datumCborBytes: datumCbor.length,
+    datumPayloadBytes: datumBytes.length,
   };
 };
 

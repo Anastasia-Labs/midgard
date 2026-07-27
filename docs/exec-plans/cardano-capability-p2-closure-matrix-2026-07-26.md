@@ -56,9 +56,9 @@ the semantic reverse bridge.
 | Dynamic-content family | Normal/forced retained source | Typed count/length | Individually bounded reveal | TypeScript terminal result | Aiken terminal agreement | Cardano maximum + adjacent reject | Gate |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Ordered transaction fields `0`–`8` | **PASS** — exact proof source and canonical preimage retained in both paths | **PASS** — field directory plus exact item counts/lengths | **PASS** — every item/chunk verified; complete fold step counts checked | **PASS** — byte-exact canonical reconstruction for all maximum fixtures | **PARTIAL** — exact maximum field-8 applied terminal vector passes; maximum-specific agreement is not yet recorded for fields `0`–`7` | **PASS** — accepted maxima and immediately adjacent signed-Cardano rejection fixtures exist for all fields | **PARTIAL** |
-| General byte blobs/chunks | **PARTIAL** — canonical field bytes are retained, but no dedicated maximum blob fixture is carried through both classifications | **PASS (machinery)** — commitment binds field domain and total byte length | **PASS (machinery)** — TS/Aiken chunk proofs cover multi-chunk content and tampering | **PARTIAL** — generic reconstruction tests exist, not the applicable maximum retained fixture | **PARTIAL** — generic bounded-blob vectors exist, not an exact maximum retained terminal vector | **OPEN** — no Cardano-derived maximum blob and adjacent rejection pair is recorded | **PARTIAL** |
+| General byte blobs/chunks | **PASS** — the exact maximum inline-datum transaction and proof source survive both classifications | **PASS** — one field-2 item binds exact item count `1`, item length `16,221`, field length `16,225`, and chunk count `4` | **PASS** — four exact reveals use at most `4,095` bytes and reconstruct the retained source | **PASS** — the field terminal advances to the exact next canonical-scan state and the complete fold reconstructs byte exactly | **PASS** — the applied Aiken terminal step agrees with the TypeScript roots, proof, terminal chunk, and next-field successor | **PASS** — `15,680` datum payload bytes produce `16,383` signed bytes; the adjacent `15,681`-byte payload produces `16,385` signed bytes and rejects | **PASS** |
 | Nested output `Value` policy/asset content | **PARTIAL** — transactions containing Values are retained, but not an exact maximum nested-Value proof source in both classifications | **PARTIAL** — authenticated asset-map machinery exists | **PARTIAL** — value/mint mutation and chunk-boundary tests exist; the full maximum nested Value reveal is not evidenced | **OPEN** — no retained maximum-Value terminal fixture | **OPEN** — no exact maximum-Value TypeScript/Aiken terminal vector | **OPEN** — the `maxValueSize = 5,000` accepted shape and immediate adjacent rejection are not yet proven end to end | **PARTIAL** |
-| Datum and redeemer Plutus `Data` maximum shapes | **PARTIAL** — maximum redeemer *cardinality* is retained, but its Data is the minimal `d87980`; no maximum datum/redeemer Data shape is retained | **PARTIAL** — Data scan frames bind child counts and blob lengths in generic tests | **PARTIAL** — bounded Data-node/leaf scan machinery exists | **PARTIAL** — generic Data scans pass, not maximum retained datum and redeemer shapes | **PARTIAL** — cross-language scan vectors exist, not maximum-shape terminal vectors | **OPEN** — no accepted maximum Data-shape transaction plus adjacent rejection fixture | **PARTIAL** |
+| Datum and redeemer Plutus `Data` maximum shapes | **PARTIAL** — a maximum scalar byte-string datum and maximum redeemer *cardinality* are retained, but the redeemers use minimal `d87980` and maximum nested Data shapes are absent | **PARTIAL** — Data scan frames bind child counts and blob lengths in generic tests | **PARTIAL** — the maximum datum blob reveals in bounded field chunks; semantic Data-node traversal remains generic | **PARTIAL** — exact scalar bytes reconstruct, not maximum constructor/list/map terminal scans | **PARTIAL** — the maximum field-chunk terminal agrees, but semantic maximum-shape Data scan vectors remain absent | **PARTIAL** — scalar byte-string max/adjacent passes; nested datum and redeemer shapes remain open | **PARTIAL** |
 | Script envelopes and content-addressed program material | **PARTIAL** — maximum native-script cardinality is retained, but the harness has no Plutus program-material sidecar entries | **PARTIAL** — envelope and program-material schemas bind kinds, roots, and byte lengths | **PARTIAL** — content-addressed traversal and bounded-node tests exist | **PARTIAL** — generic material traversal passes, not a maximum retained envelope/material terminal fixture | **PARTIAL** — envelope/material limits and nodes have Aiken tests, not an exact maximum retained terminal vector | **OPEN** — no applicable maximum script envelope/program-material fixture and adjacent rejection path | **PARTIAL** |
 | Incremental canonical-CBOR scan states | **PARTIAL** — canonical transaction bytes are retained, but no maximum semantic scan-state fixture is selected from each path | **PASS (machinery)** — scan controls bind cursor, source, and terminal state | **PARTIAL** — generic control-step scans exist; maximum source traversal is not evidenced | **PARTIAL** — generic terminal scan vectors exist | **PARTIAL** — generic cross-language control hashes exist, not a maximum retained terminal scan | **OPEN** — no maximum/adjacent source pair is tied to the complete incremental scan | **PARTIAL** |
 
@@ -75,7 +75,9 @@ Focused Aiken checks pass:
 
 - the exact `296`-redeemer field commitment/codec vector;
 - the exact applied terminal-fold vector, at `2,068,700` memory and
-  `856,755,810` CPU.
+  `856,755,810` CPU;
+- the exact maximum Cardano inline-datum blob terminal step, at `1,921,043`
+  memory and `808,043,728` CPU.
 
 The aggregate field codec fixture uses `124,272,878` memory and
 `50,949,000,952` CPU. It is diagnostic construction evidence, not the
@@ -86,13 +88,11 @@ tests.
 
 Reuse the retained-DA harness rather than build a node lifecycle:
 
-1. close general maximum blob/chunk retention and exact TS/Aiken terminal
-   agreement;
-2. close the `5,000`-byte nested Value boundary;
-3. close maximum datum and redeemer Data shapes;
-4. close script-envelope and program-material nodes;
-5. close maximum incremental CBOR scans;
-6. backfill any remaining maximum-specific ordered-field Aiken terminal
+1. close the `5,000`-byte nested Value boundary;
+2. close maximum datum and redeemer Data shapes;
+3. close script-envelope and program-material nodes;
+4. close maximum incremental CBOR scans;
+5. backfill any remaining maximum-specific ordered-field Aiken terminal
    vectors, then rerun the complete matrix.
 
 No row may be promoted from `PARTIAL` based only on generic unit machinery or
