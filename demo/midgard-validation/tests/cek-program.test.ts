@@ -1,6 +1,13 @@
 import {
+  decodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  hashMidgardVersionedScript,
+  verifyMidgardCekProgramMaterialBundleV1,
+} from "@al-ft/midgard-core";
+import {
   Application,
   Builtin,
+  ErrorUPLC,
   Lambda,
   UPLCConst,
   UPLCEncoder,
@@ -11,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMidgardCanonicalCekProgramV1,
+  buildMidgardCanonicalScriptArtifactV1,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "../src/cek-program.js";
@@ -40,6 +48,31 @@ const compileLargeString = (byteLength: number): Buffer => {
   );
   return Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
 };
+
+const compileError = (): Buffer =>
+  Buffer.from(
+    UPLCEncoder.compile(
+      new UPLCProgram([1, 1, 0], new ErrorUPLC()),
+    ).toBuffer().buffer,
+  );
+
+const materialShape = (
+  entries: Iterable<{
+    readonly kind: string;
+    readonly root: Uint8Array;
+    readonly preimage: Uint8Array;
+  }>,
+): readonly (readonly [string, string, string])[] =>
+  [...entries]
+    .map(
+      (entry) =>
+        [
+          entry.kind,
+          Buffer.from(entry.root).toString("hex"),
+          Buffer.from(entry.preimage).toString("hex"),
+        ] as const,
+    )
+    .sort((left, right) => left[1].localeCompare(right[1]));
 
 describe("canonical V1 CEK programs", () => {
   it("turns raw UPLC into one deterministic content-addressed graph", () => {
@@ -107,4 +140,190 @@ describe("canonical V1 CEK programs", () => {
     ).toThrow(/exactly the builtin forces/u);
   });
 
+});
+
+describe("canonical V1 script artifacts", () => {
+  it("binds the existing program to one deterministic credential and exact sidecar", () => {
+    const source = compile([1, 1, 0]);
+    const program = buildMidgardCanonicalCekProgramV1(source);
+    const first = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: source,
+    });
+    const second = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: source,
+    });
+
+    expect(first.canonicalProgram.envelope).toEqual(program.envelope);
+    expect(first.canonicalProgram.envelopeCbor).toEqual(program.envelopeCbor);
+    expect(first.canonicalProgram.envelopeHash).toEqual(program.envelopeHash);
+    expect(materialShape(first.canonicalMaterialEntries)).toEqual(
+      materialShape(program.material.values()),
+    );
+    const orderedRoots = first.canonicalMaterialEntries.map((entry) =>
+      Buffer.from(entry.root).toString("hex"),
+    );
+    expect(orderedRoots).toEqual([...orderedRoots].sort());
+    expect(first.canonicalMidgardCredentialScript).toEqual({
+      language: "PlutusV3",
+      scriptBytes: program.envelopeCbor,
+    });
+    expect(first.canonicalMidgardCredentialScriptHash).toBe(
+      hashMidgardVersionedScript(first.canonicalMidgardCredentialScript),
+    );
+    expect(first.sourceRawScriptAuditHash).toBe(
+      hashMidgardVersionedScript({
+        language: "PlutusV3",
+        scriptBytes: source,
+      }),
+    );
+    expect(first.sourceRawScriptAuditHash).not.toBe(
+      first.canonicalMidgardCredentialScriptHash,
+    );
+    expect(first.canonicalMaterialSidecarCbor).toEqual(
+      encodeMidgardCekProgramMaterialSidecarV1([
+        ...program.material.values(),
+      ]),
+    );
+    expect(first.canonicalMaterialSidecarCbor).toEqual(
+      second.canonicalMaterialSidecarCbor,
+    );
+    expect(first.canonicalMidgardCredentialScriptHash).toBe(
+      second.canonicalMidgardCredentialScriptHash,
+    );
+
+    const decoded = decodeMidgardCekProgramMaterialSidecarV1(
+      first.canonicalMaterialSidecarCbor,
+    );
+    expect(materialShape(decoded)).toEqual(
+      materialShape(first.canonicalMaterialEntries),
+    );
+    expect(
+      verifyMidgardCekProgramMaterialBundleV1(
+        [first.canonicalProgram.envelope],
+        decoded,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("uses the requested canonical MidgardV1 language tag", () => {
+    const source = compile([1, 1, 0]);
+    const plutus = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: source,
+    });
+    const midgard = buildMidgardCanonicalScriptArtifactV1({
+      language: "MidgardV1",
+      sourceRawFlatProgramBytes: source,
+    });
+
+    expect(midgard.canonicalMidgardCredentialScript.language).toBe(
+      "MidgardV1",
+    );
+    expect(midgard.canonicalMidgardCredentialScript.scriptBytes).toEqual(
+      plutus.canonicalMidgardCredentialScript.scriptBytes,
+    );
+    expect(midgard.canonicalMidgardCredentialScriptHash).not.toBe(
+      plutus.canonicalMidgardCredentialScriptHash,
+    );
+    expect(midgard.canonicalMidgardCredentialScriptHash).toBe(
+      hashMidgardVersionedScript(midgard.canonicalMidgardCredentialScript),
+    );
+  });
+
+  it("rejects mutated preimages and valid unreachable material", () => {
+    const source = compile([1, 1, 0]);
+    const artifact = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: source,
+    });
+    const mutated = artifact.canonicalMaterialEntries.map((entry, index) => {
+      const preimage = Buffer.from(entry.preimage);
+      if (index === 0) preimage[preimage.length - 1]! ^= 0x01;
+      return {
+        kind: entry.kind,
+        root: Buffer.from(entry.root),
+        preimage,
+      };
+    });
+    expect(() =>
+      verifyMidgardCekProgramMaterialBundleV1(
+        [artifact.canonicalProgram.envelope],
+        mutated,
+      ),
+    ).toThrow();
+
+    const unreachable = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: compileError(),
+    });
+    const merged = new Map(
+      artifact.canonicalMaterialEntries.map((entry) => [
+        Buffer.from(entry.root).toString("hex"),
+        entry,
+      ]),
+    );
+    for (const entry of unreachable.canonicalMaterialEntries) {
+      merged.set(Buffer.from(entry.root).toString("hex"), entry);
+    }
+    expect(merged.size).toBeGreaterThan(
+      artifact.canonicalMaterialEntries.length,
+    );
+    expect(() =>
+      verifyMidgardCekProgramMaterialBundleV1(
+        [artifact.canonicalProgram.envelope],
+        merged.values(),
+      ),
+    ).toThrow(/unreachable/u);
+  });
+
+  it("isolates all returned bytes from caller and cross-view mutation", () => {
+    const source = compile([1, 1, 0]);
+    const artifact = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: source,
+    });
+    const fresh = buildMidgardCanonicalScriptArtifactV1({
+      language: "PlutusV3",
+      sourceRawFlatProgramBytes: Buffer.from(source),
+    });
+    const script = artifact.canonicalMidgardCredentialScript;
+    const program = artifact.canonicalProgram;
+    const material = artifact.canonicalMaterialEntries[0]!;
+
+    source.fill(0);
+    script.scriptBytes.fill(0);
+    program.envelopeCbor.fill(0);
+    program.envelopeHash.fill(0);
+    const termRoot = program.envelope.termRoot;
+    termRoot.fill(0);
+    material.root.fill(0);
+    material.preimage.fill(0);
+    artifact.canonicalMaterialSidecarCbor.fill(0);
+    const programMaterial = program.material.values().next().value;
+    if (programMaterial !== undefined) {
+      programMaterial.root.fill(0);
+      programMaterial.preimage.fill(0);
+    }
+
+    expect(artifact.canonicalMidgardCredentialScript).toEqual(
+      fresh.canonicalMidgardCredentialScript,
+    );
+    expect(artifact.canonicalProgram.envelope).toEqual(
+      fresh.canonicalProgram.envelope,
+    );
+    expect(artifact.canonicalProgram.envelopeCbor).toEqual(
+      fresh.canonicalProgram.envelopeCbor,
+    );
+    expect(artifact.canonicalProgram.envelopeHash).toEqual(
+      fresh.canonicalProgram.envelopeHash,
+    );
+    expect(materialShape(artifact.canonicalMaterialEntries)).toEqual(
+      materialShape(fresh.canonicalMaterialEntries),
+    );
+    expect(artifact.canonicalMaterialSidecarCbor).toEqual(
+      fresh.canonicalMaterialSidecarCbor,
+    );
+  });
 });

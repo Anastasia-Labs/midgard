@@ -1,6 +1,8 @@
 import {
   commitMidgardCekBlobV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardCekSequenceNodeV1,
   encodeMidgardCekTermNodeV1,
   encodeMidgardCekValueNodeV1,
@@ -9,11 +11,14 @@ import {
   hashMidgardCekSequenceNodeV1,
   hashMidgardCekTermNodeV1,
   hashMidgardCekValueNodeV1,
+  hashMidgardVersionedScript,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
   MIDGARD_CONSENSUS_LIMITS_V1,
   type MidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
   type MidgardCekTermNodeV1,
+  type MidgardVersionedScript,
+  verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardCekProgramMaterialV1,
 } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
@@ -61,6 +66,33 @@ export type MidgardCanonicalCekProgramV1 = {
     string,
     MidgardCekConstantValueWitnessV1
   >;
+};
+
+export type MidgardCanonicalScriptArtifactLanguageV1 =
+  | "PlutusV3"
+  | "MidgardV1";
+
+export type MidgardCanonicalScriptArtifactInputV1 = {
+  readonly language: MidgardCanonicalScriptArtifactLanguageV1;
+  readonly sourceRawFlatProgramBytes: Uint8Array;
+};
+
+/**
+ * A canonical script authoring result with deliberately distinct source and
+ * consensus identities. The source hash is audit/remapping metadata only;
+ * credentials must use canonicalMidgardCredentialScriptHash.
+ *
+ * Byte-bearing accessors return defensive values so callers cannot mutate the
+ * artifact or create aliases between its script, program, material, or sidecar
+ * representations.
+ */
+export type MidgardCanonicalScriptArtifactV1 = {
+  readonly canonicalMidgardCredentialScript: MidgardVersionedScript;
+  readonly canonicalMidgardCredentialScriptHash: string;
+  readonly sourceRawScriptAuditHash: string;
+  readonly canonicalProgram: MidgardCanonicalCekProgramV1;
+  readonly canonicalMaterialEntries: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly canonicalMaterialSidecarCbor: Buffer;
 };
 
 const rootHex = (root: Uint8Array): string =>
@@ -384,5 +416,172 @@ export const buildMidgardCanonicalCekProgramV1 = (
     envelopeHash: hashMidgardCekProgramEnvelopeV1(envelope),
     material,
     constantWitnesses,
+  });
+};
+
+const copyProgramEnvelopeV1 = (
+  envelope: MidgardCekProgramEnvelopeV1,
+): MidgardCekProgramEnvelopeV1 => {
+  const termRoot = Buffer.from(envelope.termRoot);
+  return Object.freeze({
+    uplcVersion: Object.freeze([...envelope.uplcVersion]) as readonly [
+      bigint,
+      bigint,
+      bigint,
+    ],
+    get termRoot(): Buffer {
+      return Buffer.from(termRoot);
+    },
+    nodeCount: envelope.nodeCount,
+    materialByteLength: envelope.materialByteLength,
+  });
+};
+
+const copyProgramMaterialEntryV1 = (
+  entry: MidgardCekProgramMaterialEntryV1,
+): MidgardCekProgramMaterialEntryV1 => {
+  const root = Buffer.from(entry.root);
+  const preimage = Buffer.from(entry.preimage);
+  return Object.freeze({
+    kind: entry.kind,
+    get root(): Hash32 {
+      return Buffer.from(root) as Hash32;
+    },
+    get preimage(): Buffer {
+      return Buffer.from(preimage);
+    },
+  });
+};
+
+const copyConstantValueWitnessV1 = (
+  value: MidgardCekConstantValueWitnessV1,
+): MidgardCekConstantValueWitnessV1 => {
+  if (value.kind === "constant") {
+    const typeCbor = Buffer.from(value.witness.typeCbor);
+    const payloadCbor = Buffer.from(value.witness.payloadCbor);
+    return Object.freeze({
+      kind: "constant",
+      get witness() {
+        return Object.freeze({
+          get typeCbor(): Buffer {
+            return Buffer.from(typeCbor);
+          },
+          get payloadCbor(): Buffer {
+            return Buffer.from(payloadCbor);
+          },
+        });
+      },
+    });
+  }
+  const typeCbor = Buffer.from(value.witness.typeCbor);
+  const payloadRoot = Buffer.from(value.witness.payload.root);
+  return Object.freeze({
+    kind: "semanticConstant",
+    get witness() {
+      return Object.freeze({
+        get typeCbor(): Buffer {
+          return Buffer.from(typeCbor);
+        },
+        get payload() {
+          return Object.freeze({
+            get root(): Buffer {
+              return Buffer.from(payloadRoot);
+            },
+            cborLength: value.witness.payload.cborLength,
+            memory: value.witness.payload.memory,
+          });
+        },
+        memory: value.witness.memory,
+      });
+    },
+  });
+};
+
+const copyCanonicalProgramV1 = (
+  program: MidgardCanonicalCekProgramV1,
+): MidgardCanonicalCekProgramV1 =>
+  Object.freeze({
+    envelope: copyProgramEnvelopeV1(program.envelope),
+    envelopeCbor: Buffer.from(program.envelopeCbor),
+    envelopeHash: Buffer.from(program.envelopeHash) as Hash32,
+    material: new Map(
+      [...program.material].map(([key, entry]) => [
+        key,
+        copyProgramMaterialEntryV1(entry),
+      ]),
+    ),
+    constantWitnesses: new Map(
+      [...program.constantWitnesses].map(([key, value]) => [
+        key,
+        copyConstantValueWitnessV1(value),
+      ]),
+    ),
+  });
+
+const copyCanonicalCredentialScriptV1 = (
+  language: MidgardCanonicalScriptArtifactLanguageV1,
+  envelopeCbor: Uint8Array,
+): MidgardVersionedScript => {
+  const scriptBytes = Buffer.from(envelopeCbor);
+  return Object.freeze({
+    language,
+    get scriptBytes(): Buffer {
+      return Buffer.from(scriptBytes);
+    },
+  });
+};
+
+/**
+ * Builds the exact canonical V1 script artifact used for Midgard credentials
+ * from raw PlutusV3 or MidgardV1 Flat authoring input.
+ */
+export const buildMidgardCanonicalScriptArtifactV1 = ({
+  language,
+  sourceRawFlatProgramBytes,
+}: MidgardCanonicalScriptArtifactInputV1): MidgardCanonicalScriptArtifactV1 => {
+  const sourceBytes = Buffer.from(sourceRawFlatProgramBytes);
+  const canonicalProgram =
+    buildMidgardCanonicalCekProgramV1(sourceBytes);
+  const sourceRawScriptAuditHash = hashMidgardVersionedScript({
+    language,
+    scriptBytes: sourceBytes,
+  });
+  const canonicalCredentialScript = copyCanonicalCredentialScriptV1(
+    language,
+    canonicalProgram.envelopeCbor,
+  );
+  const canonicalMidgardCredentialScriptHash = hashMidgardVersionedScript(
+    canonicalCredentialScript,
+  );
+  const encodedSidecar = encodeMidgardCekProgramMaterialSidecarV1([
+    ...canonicalProgram.material.values(),
+  ]);
+  const canonicalMaterialEntries =
+    decodeMidgardCekProgramMaterialSidecarV1(encodedSidecar);
+  verifyMidgardCekProgramMaterialBundleV1(
+    [canonicalProgram.envelope],
+    canonicalMaterialEntries,
+  );
+
+  return Object.freeze({
+    get canonicalMidgardCredentialScript(): MidgardVersionedScript {
+      return copyCanonicalCredentialScriptV1(
+        language,
+        canonicalProgram.envelopeCbor,
+      );
+    },
+    canonicalMidgardCredentialScriptHash,
+    sourceRawScriptAuditHash,
+    get canonicalProgram(): MidgardCanonicalCekProgramV1 {
+      return copyCanonicalProgramV1(canonicalProgram);
+    },
+    get canonicalMaterialEntries(): readonly MidgardCekProgramMaterialEntryV1[] {
+      return Object.freeze(
+        canonicalMaterialEntries.map(copyProgramMaterialEntryV1),
+      );
+    },
+    get canonicalMaterialSidecarCbor(): Buffer {
+      return Buffer.from(encodedSidecar);
+    },
   });
 };
