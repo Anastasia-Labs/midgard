@@ -43,6 +43,9 @@ node scripts/run-focused-check.mjs \
 The guard constructs Aiken's module-qualified exact selector and fails unless
 exactly one test is collected and passes. Do not combine a bare test name with
 `aiken check -e`: Aiken can collect zero tests and still exit successfully.
+For a dotted test filename, pass the source module before its first dotted
+test suffix; for example, tests in `cek-data-traverse.max-cardano.test.ak` use
+`midgard/cek_data_traverse` plus the exact test name.
 When invoking Aiken directly, use:
 
 ```bash

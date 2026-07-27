@@ -57,6 +57,9 @@ targets another environment.
   boundary.
 - Dirty worktrees and generated artifacts have been mistaken for cleanup
   targets. Leave unrelated state alone.
+- When a path is explicitly protected, search only individually named tracked
+  files. Shell wildcards expand before tool-level exclusions, so a later
+  `--glob` or ignore rule does not protect an argument the shell already added.
 - Loose smoke tests have replaced plan-requested checks. Run named checks
   first.
 - Demo or benchmark behavior has leaked into defaults. Keep production
