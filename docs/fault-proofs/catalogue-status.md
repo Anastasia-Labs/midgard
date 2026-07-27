@@ -185,7 +185,7 @@ trace fault and **must** be an independent step proof (W-C14), built on
 Gaps that are **fixes, not catalogue entries** (no new proof type):
 
 - **D-S12** — commit `end_time` bound (commit-time check).
-- **W-C13** — port the seven remaining legacy-binding proofs to the native counted-root path
+- **W-C13** — port the six remaining legacy-binding proofs to the native counted-root path
   (§1a); subsumes the witness-set encoding split.
 - **W-C9** — descendant-removal semantics.
 - **W-C15 / D-DA4** — DA committee rotation is not retroactive: an attestation that
