@@ -9,6 +9,7 @@ import {
   buildMidgardLedgerOutputAssetFrontierV1,
   buildMidgardLedgerOutputProofTraceV1,
   buildMidgardMpfProofFoldTraceV1,
+  buildMidgardRedeemerItemProofTraceV1,
   buildMidgardValidationLedgerDeltaFrontierV1,
   buildMidgardValidationMerkleFrontierV1,
   buildMidgardValidationMerkleMembershipV1,
@@ -25,12 +26,14 @@ import {
   encodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardLedgerOutputProofControlV1,
   encodeMidgardMpfProofDescriptorV1,
+  finalizeMidgardRedeemerItemProofV1,
   hashMidgardCekMachineStateV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputItemLeafV1,
   hashMidgardOutputLeafV1,
   hashMidgardRedeemerItemLeafV1,
+  hashMidgardRedeemerItemProofControlV1,
   hashMidgardRedeemerLeafV1,
   hashMidgardReferenceScriptSourceLeafV1,
   hashMidgardResolvedContextItemLeafV1,
@@ -58,6 +61,10 @@ import {
   type MidgardLedgerOutputProofWitnessV1,
   type MidgardMpfProofFoldTraceV1,
   type MidgardMpfProofFrameV1,
+  type MidgardRedeemerItemProofControlV1,
+  MidgardRedeemerItemProofModesV1,
+  MidgardRedeemerItemProofStagesV1,
+  type MidgardRedeemerItemProofWitnessV1,
   type MidgardValidationMachineStateV1,
   type MidgardValidationMerkleFrontierV1,
   type MidgardValidationMerkleMembershipV1,
@@ -113,12 +120,6 @@ import {
   validateMidgardCekObserverCollectionV1,
 } from "./cek-context.js";
 import {
-  buildMidgardCekDataScanTraceV1,
-  hashMidgardCekDataScanControlV1,
-  type MidgardCekDataScanControlV1,
-  type MidgardCekDataScanStepV1,
-} from "./cek-data-scan.js";
-import {
   buildMidgardCekExecutionGraphV1,
   executeMidgardCekStructuralProgramV1,
   type MidgardCekExecutionGraphV1,
@@ -148,6 +149,10 @@ import {
   summarizeMidgardCekMapDataV1,
 } from "./script-context-proof.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
+
+const redeemerTagForPurposeKind = (
+  purposeKind: 0 | 1 | 2 | 3,
+): number => [0, 1, 3, 6][purposeKind]!;
 import { RejectCodes } from "./types.js";
 
 type ValidationControlDataV1 =
@@ -436,15 +441,16 @@ export type ValidationMachineWorkWitness = {
         readonly siblings: readonly Buffer[];
       }
     | {
-        readonly kind: "redeemerScan";
-        readonly redeemerIndex: number;
-        readonly redeemer: DecodedMidgardRedeemer;
+        readonly kind: "redeemerScanBegin";
+        readonly itemIndex: number;
+        readonly itemCount: number;
+        readonly totalLength: number;
+        readonly itemCommitment: Buffer;
         readonly siblings: readonly Buffer[];
       }
     | {
-        readonly kind: "transactionRedeemerItem";
+        readonly kind: "transactionRedeemerItemBegin";
         readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-        readonly redeemer: DecodedMidgardRedeemer;
       }
     | {
         readonly kind: "nativeExecutionScan";
@@ -528,8 +534,10 @@ export type ValidationMachineWorkWitness = {
     | {
         readonly kind: "cekRedeemerContextSelect";
         readonly control: MidgardCekRedeemerContextControlV1;
-        readonly redeemerIndex: number;
-        readonly redeemer: DecodedMidgardRedeemer;
+        readonly itemIndex: number;
+        readonly itemCount: number;
+        readonly totalLength: number;
+        readonly itemCommitment: Buffer;
         readonly redeemerSiblings: readonly Buffer[];
         readonly purposeFrontierIndex: number;
         readonly purpose: {
@@ -541,10 +549,10 @@ export type ValidationMachineWorkWitness = {
         };
       }
     | {
-        readonly kind: "cekDataScanStep";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1;
-        readonly control: MidgardCekDataScanControlV1;
-        readonly step: MidgardCekDataScanStepV1;
+        readonly kind: "redeemerItemStep";
+        readonly redeemerControl: MidgardCekRedeemerContextControlV1 | null;
+        readonly control: MidgardRedeemerItemProofControlV1;
+        readonly witness: MidgardRedeemerItemProofWitnessV1;
       }
     | {
         readonly kind: "cekContextFinalize";
@@ -1889,6 +1897,7 @@ export const buildDeterministicValidationMachineTrace = (
       readonly usedInlineBitmap: bigint;
       readonly usedRedeemerBitmap: bigint;
       readonly executionFrontier: MidgardValidationMerkleFrontierV1;
+      readonly redeemerItemControlHash: Buffer;
     };
     const emptyScriptDiscoveryControl: ScriptDiscoveryTraceControl = {
       purposeCursor: 0,
@@ -1904,6 +1913,7 @@ export const buildDeterministicValidationMachineTrace = (
       usedInlineBitmap: 0n,
       usedRedeemerBitmap: 0n,
       executionFrontier: emptyValidationFrontier,
+      redeemerItemControlHash: Buffer.alloc(0),
     };
     const scriptDiscoveryControlCbor = (
       discovery: ScriptDiscoveryTraceControl,
@@ -1923,6 +1933,7 @@ export const buildDeterministicValidationMachineTrace = (
         discovery.usedRedeemerBitmap,
         BigInt(discovery.executionFrontier.count),
         encodeFrontierPeaks(discovery.executionFrontier),
+        discovery.redeemerItemControlHash,
       ]);
     const scriptSourcesWitnessCbor = (input: {
       readonly resolvedInputCount: number;
@@ -1964,6 +1975,7 @@ export const buildDeterministicValidationMachineTrace = (
         readonly itemCommitment: Buffer;
         readonly hashControl: MidgardBlake2b224TraceControlV1;
       } | null;
+      readonly redeemerItemControlHash?: Buffer;
     }): Buffer => {
       const observerScan = input.observerScan ?? {
         totalCount: 0,
@@ -2040,6 +2052,12 @@ export const buildDeterministicValidationMachineTrace = (
             ),
           ]),
         );
+      } else if (
+        input.stage === 1 &&
+        input.redeemerItemControlHash !== undefined &&
+        input.redeemerItemControlHash.length > 0
+      ) {
+        fields.push(input.redeemerItemControlHash);
       } else if (input.stage === 5 && input.outputProof !== undefined &&
         input.outputProof !== null) {
         fields.push(
@@ -3405,7 +3423,9 @@ export const buildDeterministicValidationMachineTrace = (
           }
           let authenticatedRedeemerFrontier = emptyValidationFrontier;
           let redeemerTotalCount = 0;
-          const currentRedeemerWitness = (): Buffer =>
+          const currentRedeemerWitness = (
+            redeemerItemControlHash: Buffer = Buffer.alloc(0),
+          ): Buffer =>
             scriptSourcesWitnessCbor({
               ...scriptSourceControl,
               stage: 1,
@@ -3413,6 +3433,7 @@ export const buildDeterministicValidationMachineTrace = (
               redeemerFrontier: authenticatedRedeemerFrontier,
               sourceTotalCount: inlineSourceTotalCount,
               redeemerTotalCount,
+              redeemerItemControlHash,
             });
           for (const item of redeemerWitnessesCollection.items) {
             const redeemer = decodedProofRedeemers[item.itemIndex];
@@ -3430,23 +3451,59 @@ export const buildDeterministicValidationMachineTrace = (
               );
             }
             pushWitness("scriptSources", currentRedeemerWitness(), {
-              kind: "transactionRedeemerItem",
+              kind: "transactionRedeemerItemBegin",
               collectionProof: buildMidgardBoundedCollectionItemProofV1(
                 redeemerWitnessesCollection,
                 item.itemIndex,
               ),
-              redeemer,
             });
             if (redeemerTotalCount === 0) {
               redeemerTotalCount = redeemerWitnessesCollection.items.length;
             }
-            authenticatedRedeemerFrontier = appendMidgardValidationMerkleLeafV1(
-              authenticatedRedeemerFrontier,
-              hashMidgardRedeemerItemLeafV1({
-                redeemerIndex: item.itemIndex,
-                itemCommitment: item.commitment,
-              }),
-            );
+            const itemTrace = buildMidgardRedeemerItemProofTraceV1({
+              itemIndex: item.itemIndex,
+              itemCount: redeemerTotalCount,
+              itemBytes: item.bytes,
+              mode: MidgardRedeemerItemProofModesV1.Data,
+            });
+            let activeItemControlHash =
+              hashMidgardRedeemerItemProofControlV1(itemTrace.initial);
+            for (const itemStep of itemTrace.steps) {
+              pushWitness(
+                "scriptSources",
+                currentRedeemerWitness(activeItemControlHash),
+                {
+                  kind: "redeemerItemStep",
+                  redeemerControl: null,
+                  control: itemStep.control,
+                  witness: itemStep.witness,
+                },
+              );
+              if (
+                itemStep.next.stage ===
+                MidgardRedeemerItemProofStagesV1.Terminal
+              ) {
+                authenticatedRedeemerFrontier =
+                  appendMidgardValidationMerkleLeafV1(
+                    authenticatedRedeemerFrontier,
+                    hashMidgardRedeemerItemLeafV1({
+                      redeemerIndex: item.itemIndex,
+                      itemCommitment: item.commitment,
+                    }),
+                  );
+                activeItemControlHash = Buffer.alloc(0);
+              } else {
+                activeItemControlHash =
+                  hashMidgardRedeemerItemProofControlV1(itemStep.next);
+              }
+            }
+            if (activeItemControlHash.length !== 0) {
+              return yield* Effect.fail(
+                new Error(
+                  "redeemer item proof did not reach its terminal control",
+                ),
+              );
+            }
           }
           pushWitness("scriptSources", currentRedeemerWitness());
           if (
@@ -4307,9 +4364,6 @@ export const buildDeterministicValidationMachineTrace = (
                       return 128;
                   }
                 };
-                const purposeRedeemerTag = (
-                  purposeKind: 0 | 1 | 2 | 3,
-                ): number => [0, 1, 3, 6][purposeKind]!;
                 const setDiscoveryBit = (
                   bitmap: bigint,
                   index: number,
@@ -4327,6 +4381,7 @@ export const buildDeterministicValidationMachineTrace = (
                   matchedSourceIndex: -1,
                   matchedLanguageTag: -1,
                   matchedSourceLeaf: Buffer.alloc(0),
+                  redeemerItemControlHash: Buffer.alloc(0),
                 });
 
                 let discovery = emptyScriptDiscoveryControl;
@@ -4473,52 +4528,99 @@ export const buildDeterministicValidationMachineTrace = (
                     redeemerIndex += 1
                   ) {
                     const redeemer = decodedProofRedeemers[redeemerIndex]!;
+                    const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+                    const itemTrace = buildMidgardRedeemerItemProofTraceV1({
+                      itemIndex: redeemerIndex,
+                      itemCount: decodedProofRedeemers.length,
+                      itemBytes: item.bytes,
+                      mode: MidgardRedeemerItemProofModesV1.Descriptor,
+                    });
                     pushWitness(
                       "scriptSources",
                       discoveryWitnessCbor(10, discovery),
                       {
-                        kind: "redeemerScan",
-                        redeemerIndex,
-                        redeemer,
+                        kind: "redeemerScanBegin",
+                        itemIndex: redeemerIndex,
+                        itemCount: decodedProofRedeemers.length,
+                        totalLength: item.bytes.length,
+                        itemCommitment: item.commitment,
                         siblings: redeemerMembership(redeemerIndex).siblings,
                       },
                     );
                     discovery = {
                       ...discovery,
-                      redeemerCursor: redeemerIndex + 1,
+                      redeemerItemControlHash:
+                        hashMidgardRedeemerItemProofControlV1(
+                          itemTrace.initial,
+                        ),
                     };
-                    if (
-                      redeemer.tag ===
-                        purposeRedeemerTag(purpose.purposeKind) &&
-                      redeemer.index === purpose.purposeIndex
-                    ) {
-                      matchedRedeemerIndex = redeemerIndex;
-                      const executionLeaf = hashMidgardScriptExecutionLeafV1({
-                        languageTag: matchedSource.languageTag,
-                        purposeLeaf: purpose.leaf,
-                        sourceLeaf: matchedSource.entry.leaf,
-                        redeemerLeaf: redeemerLeaves[redeemerIndex]!,
-                      });
-                      scriptExecutionEntries.push({
-                        purpose,
-                        source: matchedSource.entry,
-                        sourceIndex: matchedSource.sourceIndex,
-                        languageTag: matchedSource.languageTag,
-                        redeemerLeaf: redeemerLeaves[redeemerIndex]!,
-                        leaf: executionLeaf,
-                      });
-                      discovery = resetCurrent({
-                        ...discovery,
-                        purposeCursor: purposeCursor + 1,
-                        usedRedeemerBitmap: setDiscoveryBit(
-                          discovery.usedRedeemerBitmap,
-                          redeemerIndex,
-                        ),
-                        executionFrontier: appendMidgardValidationMerkleLeafV1(
-                          discovery.executionFrontier,
-                          executionLeaf,
-                        ),
-                      });
+                    for (const itemStep of itemTrace.steps) {
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(10, discovery),
+                        {
+                          kind: "redeemerItemStep",
+                          redeemerControl: null,
+                          control: itemStep.control,
+                          witness: itemStep.witness,
+                        },
+                      );
+                      if (
+                        itemStep.next.stage !==
+                        MidgardRedeemerItemProofStagesV1.Terminal
+                      ) {
+                        discovery = {
+                          ...discovery,
+                          redeemerItemControlHash:
+                            hashMidgardRedeemerItemProofControlV1(
+                              itemStep.next,
+                            ),
+                        };
+                        continue;
+                      }
+                      if (
+                        redeemer.tag ===
+                          redeemerTagForPurposeKind(purpose.purposeKind) &&
+                        redeemer.index === purpose.purposeIndex
+                      ) {
+                        matchedRedeemerIndex = redeemerIndex;
+                        const executionLeaf =
+                          hashMidgardScriptExecutionLeafV1({
+                            languageTag: matchedSource.languageTag,
+                            purposeLeaf: purpose.leaf,
+                            sourceLeaf: matchedSource.entry.leaf,
+                            redeemerLeaf: redeemerLeaves[redeemerIndex]!,
+                          });
+                        scriptExecutionEntries.push({
+                          purpose,
+                          source: matchedSource.entry,
+                          sourceIndex: matchedSource.sourceIndex,
+                          languageTag: matchedSource.languageTag,
+                          redeemerLeaf: redeemerLeaves[redeemerIndex]!,
+                          leaf: executionLeaf,
+                        });
+                        discovery = resetCurrent({
+                          ...discovery,
+                          purposeCursor: purposeCursor + 1,
+                          usedRedeemerBitmap: setDiscoveryBit(
+                            discovery.usedRedeemerBitmap,
+                            redeemerIndex,
+                          ),
+                          executionFrontier:
+                            appendMidgardValidationMerkleLeafV1(
+                              discovery.executionFrontier,
+                              executionLeaf,
+                            ),
+                        });
+                      } else {
+                        discovery = {
+                          ...discovery,
+                          redeemerCursor: redeemerIndex + 1,
+                          redeemerItemControlHash: Buffer.alloc(0),
+                        };
+                      }
+                    }
+                    if (matchedRedeemerIndex >= 0) {
                       break;
                     }
                   }
@@ -4615,16 +4717,56 @@ export const buildDeterministicValidationMachineTrace = (
                     redeemerIndex < decodedProofRedeemers.length;
                     redeemerIndex += 1
                   ) {
+                    const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+                    const itemTrace = buildMidgardRedeemerItemProofTraceV1({
+                      itemIndex: redeemerIndex,
+                      itemCount: decodedProofRedeemers.length,
+                      itemBytes: item.bytes,
+                      mode: MidgardRedeemerItemProofModesV1.Descriptor,
+                    });
                     pushWitness(
                       "scriptSources",
                       discoveryWitnessCbor(12, discovery),
                       {
-                        kind: "redeemerScan",
-                        redeemerIndex,
-                        redeemer: decodedProofRedeemers[redeemerIndex]!,
+                        kind: "redeemerScanBegin",
+                        itemIndex: redeemerIndex,
+                        itemCount: decodedProofRedeemers.length,
+                        totalLength: item.bytes.length,
+                        itemCommitment: item.commitment,
                         siblings: redeemerMembership(redeemerIndex).siblings,
                       },
                     );
+                    discovery = {
+                      ...discovery,
+                      redeemerItemControlHash:
+                        hashMidgardRedeemerItemProofControlV1(
+                          itemTrace.initial,
+                        ),
+                    };
+                    for (const itemStep of itemTrace.steps) {
+                      pushWitness(
+                        "scriptSources",
+                        discoveryWitnessCbor(12, discovery),
+                        {
+                          kind: "redeemerItemStep",
+                          redeemerControl: null,
+                          control: itemStep.control,
+                          witness: itemStep.witness,
+                        },
+                      );
+                      if (
+                        itemStep.next.stage !==
+                        MidgardRedeemerItemProofStagesV1.Terminal
+                      ) {
+                        discovery = {
+                          ...discovery,
+                          redeemerItemControlHash:
+                            hashMidgardRedeemerItemProofControlV1(
+                              itemStep.next,
+                            ),
+                        };
+                      }
+                    }
                     if (
                       (discovery.usedRedeemerBitmap &
                         (1n << BigInt(redeemerIndex))) ===
@@ -4647,6 +4789,7 @@ export const buildDeterministicValidationMachineTrace = (
                     discovery = {
                       ...discovery,
                       redeemerCursor: redeemerIndex + 1,
+                      redeemerItemControlHash: Buffer.alloc(0),
                     };
                   }
                 }
@@ -5361,6 +5504,21 @@ export const buildDeterministicValidationMachineTrace = (
             );
 
             let redeemerControl = initialMidgardCekRedeemerContextControlV1();
+            const selectedItem =
+              redeemerWitnessesCollection.items[selected.index]!;
+            const selectionTrace =
+              buildMidgardRedeemerItemProofTraceV1({
+                itemIndex: selected.index,
+                itemCount: decodedProofRedeemers.length,
+                itemBytes: selectedItem.bytes,
+                mode: MidgardRedeemerItemProofModesV1.Descriptor,
+                expectedPurposeTag: redeemerTagForPurposeKind(
+                  executionEntry.purpose.purposeKind,
+                ),
+                expectedPointerIndex: Number(
+                  executionEntry.purpose.purposeIndex,
+                ),
+              });
             pushWitness(
               "cek",
               cekWitness({
@@ -5370,9 +5528,11 @@ export const buildDeterministicValidationMachineTrace = (
                 completedMemory,
               }),
               {
-                kind: "redeemerScan",
-                redeemerIndex: selected.index,
-                redeemer: selected.value,
+                kind: "redeemerScanBegin",
+                itemIndex: selected.index,
+                itemCount: decodedProofRedeemers.length,
+                totalLength: selectedItem.bytes.length,
+                itemCommitment: selectedItem.commitment,
                 siblings: buildMidgardValidationMerkleMembershipV1(
                   redeemerLeaves,
                   selected.index,
@@ -5381,12 +5541,50 @@ export const buildDeterministicValidationMachineTrace = (
             );
             contextControl = {
               ...contextControl,
-              stage: 1,
-              executionMemoryLimit: selected.value.exUnits.memory,
-              executionCpuLimit: selected.value.exUnits.steps,
               redeemerContextControlHash:
-                hashMidgardCekRedeemerContextControlV1(redeemerControl),
+                hashMidgardRedeemerItemProofControlV1(
+                  selectionTrace.initial,
+                ),
             };
+            for (const itemStep of selectionTrace.steps) {
+              pushWitness(
+                "cek",
+                cekWitness({
+                  contextControl,
+                  executionCursor: executionIndex,
+                  completedCpu,
+                  completedMemory,
+                }),
+                {
+                  kind: "redeemerItemStep",
+                  redeemerControl: null,
+                  control: itemStep.control,
+                  witness: itemStep.witness,
+                },
+              );
+              contextControl =
+                itemStep.next.stage ===
+                MidgardRedeemerItemProofStagesV1.Terminal
+                  ? {
+                      ...contextControl,
+                      stage: 1,
+                      executionMemoryLimit:
+                        itemStep.next.executionMemory,
+                      executionCpuLimit:
+                        itemStep.next.executionSteps,
+                      redeemerContextControlHash:
+                        hashMidgardCekRedeemerContextControlV1(
+                          redeemerControl,
+                        ),
+                    }
+                  : {
+                      ...contextControl,
+                      redeemerContextControlHash:
+                        hashMidgardRedeemerItemProofControlV1(
+                          itemStep.next,
+                        ),
+                    };
+            }
 
             const spendCount = resolutionScheduleNodes.filter(
               (node) => node.sourceKind === "spend",
@@ -5883,6 +6081,22 @@ export const buildDeterministicValidationMachineTrace = (
                 );
               }
               const purpose = scriptPurposeEntries[purposeFrontierIndex]!;
+              const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+              const descriptorOnly =
+                executionEntry.languageTag === 3 &&
+                purpose.purposeKind === 3;
+              const itemTrace = buildMidgardRedeemerItemProofTraceV1({
+                itemIndex: redeemerIndex,
+                itemCount: decodedProofRedeemers.length,
+                itemBytes: item.bytes,
+                mode: descriptorOnly
+                  ? MidgardRedeemerItemProofModesV1.Descriptor
+                  : MidgardRedeemerItemProofModesV1.Data,
+                expectedPurposeTag: redeemerTagForPurposeKind(
+                  purpose.purposeKind,
+                ),
+                expectedPointerIndex: Number(purpose.purposeIndex),
+              });
               pushWitness(
                 "cek",
                 cekWitness({
@@ -5894,8 +6108,10 @@ export const buildDeterministicValidationMachineTrace = (
                 {
                   kind: "cekRedeemerContextSelect",
                   control: redeemerControl,
-                  redeemerIndex,
-                  redeemer,
+                  itemIndex: redeemerIndex,
+                  itemCount: decodedProofRedeemers.length,
+                  totalLength: item.bytes.length,
+                  itemCommitment: item.commitment,
                   redeemerSiblings: buildMidgardValidationMerkleMembershipV1(
                     redeemerLeaves,
                     redeemerIndex,
@@ -5913,31 +6129,15 @@ export const buildDeterministicValidationMachineTrace = (
                   },
                 },
               );
-              if (
-                executionEntry.languageTag === 3 &&
-                purpose.purposeKind === 3
-              ) {
-                redeemerControl = {
-                  ...redeemerControl,
-                  cursor: redeemerControl.cursor + 1,
-                };
-                contextControl = {
-                  ...contextControl,
-                  redeemerContextControlHash:
-                    hashMidgardCekRedeemerContextControlV1(redeemerControl),
-                };
-                continue;
-              }
-              const semanticPurpose = purposeSummary(
-                purpose,
-                executionEntry.languageTag,
-              );
-              const scan = buildMidgardCekDataScanTraceV1(
-                Buffer.from(redeemer.dataCborHex, "hex"),
-              );
+              const semanticPurpose = descriptorOnly
+                ? initialMidgardCekRedeemerContextControlV1().activePurpose
+                : purposeSummary(purpose, executionEntry.languageTag);
               redeemerControl = {
                 ...redeemerControl,
-                activeScanHash: hashMidgardCekDataScanControlV1(scan.initial),
+                activeScanHash:
+                  hashMidgardRedeemerItemProofControlV1(
+                    itemTrace.initial,
+                  ),
                 activeRedeemerLeaf: redeemerLeaves[redeemerIndex]!,
                 activePurpose: semanticPurpose,
               };
@@ -5946,12 +6146,7 @@ export const buildDeterministicValidationMachineTrace = (
                 redeemerContextControlHash:
                   hashMidgardCekRedeemerContextControlV1(redeemerControl),
               };
-              for (
-                let scanIndex = 0;
-                scanIndex < scan.steps.length;
-                scanIndex += 1
-              ) {
-                const scanStep = scan.steps[scanIndex]!;
+              for (const itemStep of itemTrace.steps) {
                 pushWitness(
                   "cek",
                   cekWitness({
@@ -5961,26 +6156,47 @@ export const buildDeterministicValidationMachineTrace = (
                     completedMemory,
                   }),
                   {
-                    kind: "cekDataScanStep",
+                    kind: "redeemerItemStep",
                     redeemerControl,
-                    control: scanStep.control,
-                    step: scanStep.step,
+                    control: itemStep.control,
+                    witness: itemStep.witness,
                   },
                 );
-                const nextScan =
-                  scan.steps[scanIndex + 1]?.control ?? scan.terminal;
-                if (nextScan.result !== null) {
+                if (
+                  itemStep.next.stage ===
+                  MidgardRedeemerItemProofStagesV1.Terminal
+                ) {
+                  if (descriptorOnly) {
+                    redeemerControl = {
+                      ...redeemerControl,
+                      cursor: redeemerControl.cursor + 1,
+                      activeScanHash: Buffer.alloc(0),
+                      activeRedeemerLeaf: Buffer.alloc(0),
+                      activePurpose:
+                        initialMidgardCekRedeemerContextControlV1()
+                          .activePurpose,
+                    };
+                  } else {
+                    const nextSummary =
+                      finalizeMidgardRedeemerItemProofV1(
+                        itemStep.next,
+                      );
+                    if (nextSummary === null) {
+                      throw new Error(
+                        "terminal redeemer item proof lacks a Data summary",
+                      );
+                    }
                   const nextCurrent = redeemerLeaves[redeemerIndex]!.equals(
                     executionEntry.redeemerLeaf,
                   )
-                    ? nextScan.result
+                      ? nextSummary
                     : redeemerControl.currentRedeemer;
                   redeemerControl = {
                     ...redeemerControl,
                     cursor: redeemerControl.cursor + 1,
                     mapItems: prependMidgardCekDataPairSummaryV1(
                       redeemerControl.activePurpose,
-                      nextScan.result,
+                        nextSummary,
                       redeemerControl.mapItems,
                     ),
                     activeScanHash: Buffer.alloc(0),
@@ -5989,10 +6205,14 @@ export const buildDeterministicValidationMachineTrace = (
                       initialMidgardCekRedeemerContextControlV1().activePurpose,
                     currentRedeemer: nextCurrent,
                   };
+                  }
                 } else {
                   redeemerControl = {
                     ...redeemerControl,
-                    activeScanHash: hashMidgardCekDataScanControlV1(nextScan),
+                    activeScanHash:
+                      hashMidgardRedeemerItemProofControlV1(
+                        itemStep.next,
+                      ),
                   };
                 }
                 contextControl = {

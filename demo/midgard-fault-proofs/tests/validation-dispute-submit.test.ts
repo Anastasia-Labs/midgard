@@ -186,11 +186,38 @@ describe("validation-dispute transaction validity", () => {
       [],
       [],
     ]);
-    const redeemerWitness = new Constr(0, [
-      new Constr(0, []),
+    const redeemerChunkProof = new Constr(0, [
+      1n,
+      8n,
       0n,
-      "00",
-      new Constr(0, [1n, 1n]),
+      8n,
+      0n,
+      "8400004100820101",
+      [],
+      [],
+    ]);
+    const redeemerItemControl = new Constr(0, [
+      1n,
+      0n,
+      0n,
+      0n,
+      1n,
+      8n,
+      "22".repeat(32),
+      -1n,
+      -1n,
+      -1n,
+      -1n,
+      0n,
+      0n,
+      -1n,
+      -1n,
+      new Constr(1, []),
+    ]);
+    const redeemerItemWitness = new Constr(0, [
+      new Constr(0, []),
+      new Constr(0, [redeemerChunkProof]),
+      new Constr(1, []),
     ]);
     for (const selected of [
       {
@@ -225,10 +252,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 15,
-        auxiliary: new Constr(33, [
-          redeemerItemProof,
-          redeemerWitness,
-        ]),
+        auxiliary: new Constr(33, [redeemerItemProof]),
         module: "script_sources_stage_one_redeemer_semantic_v1",
       },
       {
@@ -250,7 +274,9 @@ describe("validation-dispute transaction validity", () => {
         index: 19,
         auxiliary: new Constr(14, [
           0n,
-          redeemerWitness,
+          1n,
+          8n,
+          "22".repeat(32),
           [],
         ]),
         module: "script_sources_stage_twelve_redeemer_semantic_v1",
@@ -264,17 +290,19 @@ describe("validation-dispute transaction validity", () => {
         index: 21,
         auxiliary: new Constr(14, [
           0n,
-          redeemerWitness,
+          1n,
+          8n,
+          "22".repeat(32),
           [],
         ]),
         module: "script_sources_stage_ten_mismatch_semantic_v1",
       },
       {
         index: 22,
-        auxiliary: new Constr(14, [
-          0n,
-          redeemerWitness,
-          [],
+        auxiliary: new Constr(22, [
+          new Constr(1, []),
+          redeemerItemControl,
+          redeemerItemWitness,
         ]),
         module: "script_sources_stage_ten_match_semantic_v1",
       },

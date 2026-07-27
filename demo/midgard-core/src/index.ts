@@ -30,6 +30,7 @@ export * from "./mpf-proof-fold-v1.js";
 export * from "./native-script-scan-v1.js";
 export * from "./out-ref.js";
 export * from "./plutus-data-cbor.js";
+export * from "./redeemer-item-proof-v1.js";
 export * from "./script-proof.js";
 export * from "./validation-dispute.js";
 export * from "./validation-merkle.js";

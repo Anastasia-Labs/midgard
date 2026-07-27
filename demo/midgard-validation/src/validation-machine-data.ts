@@ -1,19 +1,28 @@
 import type {
+  MidgardBlake2b256TraceControlV1,
   MidgardBoundedCollectionItemProofV1,
   MidgardBoundedItemChunkProofV1,
+  MidgardCekDataBytesControlV1,
   MidgardCekDataFrameV1,
+  MidgardCekDataIntegerControlV1,
+  MidgardCekDataTraverseControlV1,
+  MidgardCekSourceBlobControlV1,
   MidgardLedgerOutputProofWitnessV1,
   MidgardMpfProofDescriptorV1,
   MidgardMpfProofFrameV1,
   MidgardMpfProofStepV1,
+  MidgardRedeemerItemProofControlV1,
+  MidgardRedeemerItemProofWitnessV1,
   MidgardValidationMachineStateV1,
   MidgardValidationMerkleFrontierV1,
   MidgardValidationMerkleMembershipV1,
   MidgardValidationPhaseName,
 } from "@al-ft/midgard-core";
 import {
+  advanceMidgardRedeemerItemProofV1,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_CONSENSUS_LIMITS_V1,
+  midgardRedeemerItemDescriptorV1,
 } from "@al-ft/midgard-core";
 import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import {
@@ -35,15 +44,6 @@ import type {
   MidgardCekTxInfoAssemblyControlV1,
 } from "./cek-context.js";
 import { midgardCekCoreStepDataV1 } from "./cek-data.js";
-import type {
-  MidgardCekDataScanControlV1,
-  MidgardCekDataScanFrameV1,
-  MidgardCekDataScanStepV1,
-} from "./cek-data-scan.js";
-import {
-  type DecodedMidgardRedeemer,
-  MidgardRedeemerTag,
-} from "./midgard-redeemers.js";
 import type {
   MidgardCekDataSequenceSummaryV1,
   MidgardCekDataSummaryV1,
@@ -214,16 +214,6 @@ const scriptData = (script: MidgardVersionedScript): ConstructorData => {
     bytes(script.scriptBytes),
   ]);
 };
-
-const redeemerData = (
-  redeemer: DecodedMidgardRedeemer,
-): ConstructorData =>
-  record([
-    new Constr(redeemer.tag, []),
-    redeemer.index,
-    redeemer.dataCborHex,
-    record([redeemer.exUnits.memory, redeemer.exUnits.steps]),
-  ]);
 
 const summaryData = (summary: MidgardCekDataSummaryV1): ConstructorData =>
   record([
@@ -405,95 +395,119 @@ const txInfoAssemblyControlData = (
     summaryData(control.scriptInfo),
   ]);
 
-const dataScanFrameData = (
-  frame: MidgardCekDataScanFrameV1,
-): ConstructorData =>
-  record([
-    int(frame.kind),
-    frame.constructor,
-    bytes(frame.tail),
-    int(frame.expectedChildren),
-    int(frame.childCount),
-    frontierPeaksData(frame.childFrontier),
-    int(frame.foldCursor),
-    sequenceSummaryData(frame.sequence),
-  ]);
-
-const dataScanControlData = (
-  control: MidgardCekDataScanControlV1,
-): ConstructorData =>
-  record([
-    bytes(control.rawHash),
-    int(control.rawLength),
-    int(control.offset),
-    bytes(control.frameRoot),
-    bool(control.frameClosed),
-    summaryData(
-      control.result ?? {
-        root: Buffer.alloc(0),
-        cborLength: 0n,
-        memory: 0n,
-      },
-    ),
-  ]);
-
-const dataScanStepData = (
-  step: MidgardCekDataScanStepV1,
+const redeemerItemControlData = (
+  control: MidgardRedeemerItemProofControlV1,
 ): ConstructorData => {
-  const parent = (value: MidgardCekDataScanFrameV1 | null) =>
-    option(value, dataScanFrameData);
-  switch (step.kind) {
-    case "openConstructor":
-      return new Constr(0, [
-        bytes(step.rawCbor),
-        parent(step.parent),
-        step.constructor,
-        int(step.expectedChildren),
-      ]);
-    case "openList":
-      return new Constr(1, [
-        bytes(step.rawCbor),
-        parent(step.parent),
-        int(step.expectedChildren),
-      ]);
-    case "openMap":
-      return new Constr(2, [
-        bytes(step.rawCbor),
-        parent(step.parent),
-      ]);
-    case "revealLeaf":
-      return new Constr(3, [
-        bytes(step.rawCbor),
-        parent(step.parent),
-        int(step.itemLength),
-      ]);
-    case "closeSequence":
-      return new Constr(4, [
-        bytes(step.rawCbor),
-        dataScanFrameData(step.frame),
-      ]);
-    case "foldList":
-      return new Constr(5, [
-        dataScanFrameData(step.frame),
-        int(step.childIndex),
-        summaryData(step.child),
-        byteList(step.siblings),
-      ]);
-    case "foldMap":
-      return new Constr(6, [
-        dataScanFrameData(step.frame),
-        int(step.pairIndex),
-        summaryData(step.key),
-        summaryData(step.value),
-        byteList(step.keySiblings),
-        byteList(step.valueSiblings),
-      ]);
-    case "finalizeFrame":
-      return new Constr(7, [
-        dataScanFrameData(step.frame),
-        parent(step.parent),
-      ]);
-  }
+  const blake2b256ControlData = (
+    hash: MidgardBlake2b256TraceControlV1,
+  ): ConstructorData =>
+    record([
+      int(hash.version),
+      int(hash.stage),
+      int(hash.cursor),
+      int(hash.totalLength),
+      bytes(hash.chainingValue),
+      bytes(hash.activeBlock),
+      int(hash.activeBlockLength),
+      bytes(hash.workingValue),
+      int(hash.round),
+    ]);
+  const sourceBlobData = (
+    blob: MidgardCekSourceBlobControlV1,
+  ): ConstructorData =>
+    record([
+      int(blob.version),
+      int(blob.stage),
+      int(blob.sourceStart),
+      int(blob.sourceLength),
+      record([
+        int(blob.frontier.count),
+        blob.frontier.byteLength,
+        blob.frontier.peaks.map((peak) =>
+          record([
+            int(peak.height),
+            bytes(peak.root),
+            peak.byteLength,
+          ])
+        ),
+      ]),
+      option(blob.activeHash, blake2b256ControlData),
+    ]);
+  const integerControlData = (
+    integer: MidgardCekDataIntegerControlV1,
+  ): ConstructorData =>
+    record([
+      int(integer.version),
+      int(integer.stage),
+      int(integer.sourceStart),
+      int(integer.sourceLength),
+      integer.memory,
+      option(integer.blob, sourceBlobData),
+    ]);
+  const bytesControlData = (
+    byteControl: MidgardCekDataBytesControlV1,
+  ): ConstructorData =>
+    record([
+      int(byteControl.version),
+      int(byteControl.stage),
+      int(byteControl.sourceStart),
+      int(byteControl.sourceLength),
+      int(byteControl.bytesLength),
+      option(byteControl.blob, sourceBlobData),
+    ]);
+  const traversalData = (
+    traversal: MidgardCekDataTraverseControlV1,
+  ): ConstructorData =>
+    record([
+      int(traversal.version),
+      int(traversal.stage),
+      int(traversal.sourceStart),
+      int(traversal.sourceLength),
+      int(traversal.offset),
+      bytes(traversal.frameRoot),
+      option(traversal.pendingLargeExpectedChildren, int),
+      option(traversal.integer, integerControlData),
+      option(traversal.bytes, bytesControlData),
+      option(traversal.result, summaryData),
+    ]);
+  return record([
+    int(control.version),
+    int(control.mode),
+    int(control.stage),
+    int(control.itemIndex),
+    int(control.itemCount),
+    int(control.totalLength),
+    bytes(control.itemCommitment),
+    int(control.expectedPurposeTag),
+    int(control.expectedPointerIndex),
+    int(control.purposeTag),
+    int(control.pointerIndex),
+    int(control.dataOffset),
+    int(control.dataLength),
+    control.executionMemory,
+    control.executionSteps,
+    option(control.traversal, traversalData),
+  ]);
+};
+
+const redeemerItemProofWitnessData = (
+  witness: MidgardRedeemerItemProofWitnessV1,
+): ConstructorData => {
+  const action =
+    witness.action.kind === "openHeader"
+      ? new Constr(0, [])
+      : witness.action.kind === "openTail"
+        ? new Constr(1, [])
+        : witness.action.kind === "traverseData"
+          ? new Constr(2, [
+              dataTraverseActionData(witness.action.action),
+            ])
+          : new Constr(3, []);
+  return record([
+    action,
+    option(witness.chunkProof, chunkProofData),
+    option(witness.nextChunkProof, chunkProofData),
+  ]);
 };
 
 const valueMutationData = (
@@ -666,7 +680,7 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
     ),
     "script_sources_discovery",
   );
-  if (discovery.length !== 14) {
+  if (discovery.length !== 15) {
     throw new Error("script_sources discovery has an invalid field count");
   }
   const scriptHash = Buffer.from(
@@ -708,7 +722,7 @@ const scriptSourcesDiscoveryCurrentPurpose = (
     ),
     "script_sources_discovery",
   );
-  if (discovery.length !== 14) {
+  if (discovery.length !== 15) {
     throw new Error("script_sources discovery has an invalid field count");
   }
   const purposeKind = Number(
@@ -1020,7 +1034,13 @@ export const validationSemanticResolverIndexV1 = (
       }
       if (stage === 1) {
         if (auxiliary === null) return 14;
-        if (auxiliary.kind === "transactionRedeemerItem") return 15;
+        if (
+          auxiliary.kind === "transactionRedeemerItemBegin" ||
+          (auxiliary.kind === "redeemerItemStep" &&
+            auxiliary.redeemerControl === null)
+        ) {
+          return 15;
+        }
         break;
       }
       if (stage === 11) {
@@ -1030,22 +1050,36 @@ export const validationSemanticResolverIndexV1 = (
       }
       if (stage === 12) {
         if (auxiliary === null) return 18;
-        if (auxiliary.kind === "redeemerScan") return 19;
+        if (
+          auxiliary.kind === "redeemerScanBegin" ||
+          (auxiliary.kind === "redeemerItemStep" &&
+            auxiliary.redeemerControl === null)
+        ) {
+          return 19;
+        }
         break;
       }
       if (stage === 10) {
         if (auxiliary === null) return 20;
-        if (auxiliary.kind === "redeemerScan") {
-          const currentPurpose =
+        if (auxiliary.kind === "redeemerScanBegin") return 21;
+        if (
+          auxiliary.kind === "redeemerItemStep" &&
+          auxiliary.redeemerControl === null
+        ) {
+          const next = advanceMidgardRedeemerItemProofV1({
+            control: auxiliary.control,
+            witness: auxiliary.witness,
+          });
+          const descriptor =
+            next === null
+              ? null
+              : midgardRedeemerItemDescriptorV1(next);
+          if (descriptor === null) return 21;
+          const purpose =
             scriptSourcesDiscoveryCurrentPurpose(witness);
-          const expectedTag = [
-            MidgardRedeemerTag.Spend,
-            MidgardRedeemerTag.Mint,
-            MidgardRedeemerTag.Reward,
-            MidgardRedeemerTag.Receiving,
-          ][currentPurpose.purposeKind];
-          return auxiliary.redeemer.tag === expectedTag &&
-            auxiliary.redeemer.index === currentPurpose.purposeIndex
+          return descriptor.purposeTag ===
+              [0, 1, 3, 6][purpose.purposeKind] &&
+            BigInt(descriptor.pointerIndex) === purpose.purposeIndex
             ? 22
             : 21;
         }
@@ -1257,10 +1291,12 @@ export const validationAuxiliaryWitnessDataV1 = (
         bytes(auxiliary.scriptItemCommitment),
         byteList(auxiliary.siblings),
       ]);
-    case "redeemerScan":
+    case "redeemerScanBegin":
       return new Constr(14, [
-        int(auxiliary.redeemerIndex),
-        redeemerData(auxiliary.redeemer),
+        int(auxiliary.itemIndex),
+        int(auxiliary.itemCount),
+        int(auxiliary.totalLength),
+        bytes(auxiliary.itemCommitment),
         byteList(auxiliary.siblings),
       ]);
     case "nativeExecutionScan":
@@ -1315,8 +1351,10 @@ export const validationAuxiliaryWitnessDataV1 = (
     case "cekRedeemerContextSelect":
       return new Constr(21, [
         redeemerControlData(auxiliary.control),
-        int(auxiliary.redeemerIndex),
-        redeemerData(auxiliary.redeemer),
+        int(auxiliary.itemIndex),
+        int(auxiliary.itemCount),
+        int(auxiliary.totalLength),
+        bytes(auxiliary.itemCommitment),
         byteList(auxiliary.redeemerSiblings),
         int(auxiliary.purposeFrontierIndex),
         int(auxiliary.purpose.purposeKind),
@@ -1325,11 +1363,11 @@ export const validationAuxiliaryWitnessDataV1 = (
         bytes(auxiliary.purpose.subject),
         byteList(auxiliary.purpose.siblings),
       ]);
-    case "cekDataScanStep":
+    case "redeemerItemStep":
       return new Constr(22, [
-        redeemerControlData(auxiliary.redeemerControl),
-        dataScanControlData(auxiliary.control),
-        dataScanStepData(auxiliary.step),
+        option(auxiliary.redeemerControl, redeemerControlData),
+        redeemerItemControlData(auxiliary.control),
+        redeemerItemProofWitnessData(auxiliary.witness),
       ]);
     case "cekContextFinalize":
       return new Constr(23, [
@@ -1424,10 +1462,9 @@ export const validationAuxiliaryWitnessDataV1 = (
         mpfProofFrameData(auxiliary.frame),
         byteList(auxiliary.siblings),
       ]);
-    case "transactionRedeemerItem":
+    case "transactionRedeemerItemBegin":
       return new Constr(33, [
         collectionProofData(auxiliary.collectionProof),
-        redeemerData(auxiliary.redeemer),
       ]);
     case "transactionFieldItem":
       return new Constr(34, [

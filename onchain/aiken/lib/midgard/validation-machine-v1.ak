@@ -9,7 +9,6 @@ use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
 use midgard/blake2b_224_trace_v1
 use midgard/cek_constant_v1
-use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
@@ -25,18 +24,17 @@ use midgard/fraud_proofs/native_tx/compact.{
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_address_witness_cbor, decode_midgard_tx_input_cbor,
-  encode_midgard_redeemer_witness, encode_midgard_tx_input,
+  encode_midgard_tx_input,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at,
 }
 use midgard/fraud_proofs/native_tx/types.{
-  CertRedeemer, MidgardAddress, MidgardCredential, MidgardRedeemerWitness,
-  MidgardScriptWitness, MidgardTxInput, MintRedeemer, NativeTxBodyCompact,
+  MidgardAddress, MidgardCredential, MidgardScriptWitness, MidgardTxInput,
+  NativeTxBodyCompact,
   NativeTxCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
-  ProposeRedeemer, PubKeyCredential, ReceiveRedeemer, RewardRedeemer,
-  ScriptCredential, SpendRedeemer, VerifiedMidgardNativeTxCompact, VoteRedeemer,
+  PubKeyCredential, ScriptCredential, VerifiedMidgardNativeTxCompact,
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -44,6 +42,7 @@ use midgard/ledger_output_v1
 use midgard/mpf_proof_fold_v1
 use midgard/mpf_proof_v1
 use midgard/native_script_scan_v1
+use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_language_views_v1
 use midgard/script_proof_v1
@@ -53,51 +52,6 @@ use midgard/validation_trace_v1
 pub type ValidationOneStepWitnessV1 {
   work_witness_cbor: ByteArray,
   claimed_successor: validation_trace_v1.ValidationMachineStateV1,
-}
-
-pub type CekDataScanStepV1 {
-  CekDataOpenConstructor {
-    raw_cbor: ByteArray,
-    parent: Option<cek_data_scan_v1.DataScanFrameV1>,
-    constructor: Int,
-    expected_children: Int,
-  }
-  CekDataOpenList {
-    raw_cbor: ByteArray,
-    parent: Option<cek_data_scan_v1.DataScanFrameV1>,
-    expected_children: Int,
-  }
-  CekDataOpenMap {
-    raw_cbor: ByteArray,
-    parent: Option<cek_data_scan_v1.DataScanFrameV1>,
-  }
-  CekDataRevealLeaf {
-    raw_cbor: ByteArray,
-    parent: Option<cek_data_scan_v1.DataScanFrameV1>,
-    item_length: Int,
-  }
-  CekDataCloseSequence {
-    raw_cbor: ByteArray,
-    frame: cek_data_scan_v1.DataScanFrameV1,
-  }
-  CekDataFoldList {
-    frame: cek_data_scan_v1.DataScanFrameV1,
-    child_index: Int,
-    child: cek_data_v1.DataSummaryV1,
-    siblings: List<ByteArray>,
-  }
-  CekDataFoldMap {
-    frame: cek_data_scan_v1.DataScanFrameV1,
-    pair_index: Int,
-    key: cek_data_v1.DataSummaryV1,
-    value: cek_data_v1.DataSummaryV1,
-    key_siblings: List<ByteArray>,
-    value_siblings: List<ByteArray>,
-  }
-  CekDataFinalizeFrame {
-    frame: cek_data_scan_v1.DataScanFrameV1,
-    parent: Option<cek_data_scan_v1.DataScanFrameV1>,
-  }
 }
 
 pub type CekRedeemerContextControlV1 {
@@ -198,9 +152,11 @@ pub type ValidationAuxiliaryWitnessV1 {
     script_item_commitment: ByteArray,
     siblings: List<ByteArray>,
   }
-  RedeemerScanWitness {
-    redeemer_index: Int,
-    redeemer: MidgardRedeemerWitness,
+  RedeemerScanBeginWitness {
+    item_index: Int,
+    item_count: Int,
+    total_length: Int,
+    item_commitment: ByteArray,
     siblings: List<ByteArray>,
   }
   NativeExecutionScanWitness {
@@ -248,8 +204,10 @@ pub type ValidationAuxiliaryWitnessV1 {
   }
   CekRedeemerContextSelectWitness {
     control: CekRedeemerContextControlV1,
-    redeemer_index: Int,
-    redeemer: MidgardRedeemerWitness,
+    item_index: Int,
+    item_count: Int,
+    total_length: Int,
+    item_commitment: ByteArray,
     redeemer_siblings: List<ByteArray>,
     purpose_frontier_index: Int,
     purpose_kind: Int,
@@ -258,10 +216,10 @@ pub type ValidationAuxiliaryWitnessV1 {
     subject: ByteArray,
     purpose_siblings: List<ByteArray>,
   }
-  CekDataScanStepWitness {
-    redeemer_control: CekRedeemerContextControlV1,
-    control: cek_data_scan_v1.DataScanControlV1,
-    step: CekDataScanStepV1,
+  RedeemerItemStepWitness {
+    redeemer_control: Option<CekRedeemerContextControlV1>,
+    control: redeemer_item_proof_v1.RedeemerItemProofControlV1,
+    witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1,
   }
   CekContextFinalizeWitness { redeemer_control: CekRedeemerContextControlV1 }
   CekContextFinalizeSpendWitness {
@@ -317,9 +275,8 @@ pub type ValidationAuxiliaryWitnessV1 {
     descriptor_cbor: ByteArray,
     siblings: List<ByteArray>,
   }
-  TransactionRedeemerItemWitness {
+  TransactionRedeemerItemBeginWitness {
     collection_proof: bounded_collection_v1.ItemProofV1,
-    redeemer: MidgardRedeemerWitness,
   }
   TransactionFieldItemWitness {
     collection_proof: bounded_collection_v1.ItemProofV1,
@@ -6567,6 +6524,7 @@ pub type ScriptDiscoveryControlV1 {
   used_redeemer_bitmap: Int,
   execution_count: Int,
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
+  redeemer_item_control_hash: ByteArray,
 }
 
 pub fn empty_script_discovery_control() -> ScriptDiscoveryControlV1 {
@@ -6585,13 +6543,14 @@ pub fn empty_script_discovery_control() -> ScriptDiscoveryControlV1 {
     used_redeemer_bitmap: 0,
     execution_count: 0,
     execution_peaks: validation_merkle_v1.empty_frontier(),
+    redeemer_item_control_hash: #"",
   }
 }
 
 pub fn encode_script_discovery_control(
   control: ScriptDiscoveryControlV1,
 ) -> ByteArray {
-  #"8e"
+  encode_definite_array_header(15)
     |> bytearray.concat(cbor.serialise(control.purpose_cursor))
     |> bytearray.concat(cbor.serialise(control.source_cursor))
     |> bytearray.concat(cbor.serialise(control.redeemer_cursor))
@@ -6608,6 +6567,9 @@ pub fn encode_script_discovery_control(
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.execution_peaks),
       )
+    |> bytearray.concat(
+        encode_definite_bytes(control.redeemer_item_control_hash),
+      )
 }
 
 fn script_discovery_control_from_cbor(
@@ -6622,6 +6584,7 @@ fn script_discovery_control_from_cbor(
         matched_source_index_data, matched_language_tag_data,
         matched_source_leaf_data, used_inline_bitmap_data,
         used_redeemer_bitmap_data, execution_count_data, execution_peaks_data,
+        redeemer_item_control_hash_data,
       ]
     = builtin.un_list_data(data)
   ScriptDiscoveryControlV1 {
@@ -6639,6 +6602,9 @@ fn script_discovery_control_from_cbor(
     used_redeemer_bitmap: builtin.un_i_data(used_redeemer_bitmap_data),
     execution_count: builtin.un_i_data(execution_count_data),
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
+    redeemer_item_control_hash: builtin.un_b_data(
+      redeemer_item_control_hash_data,
+    ),
   }
 }
 
@@ -6817,6 +6783,11 @@ fn script_sources_control_from_witness(
         ..base_control,
         pending_source_cbor: builtin.un_b_data(extension_data),
       }
+    } else if base_control.stage == 1 {
+      ScriptSourcesControlV1 {
+        ..base_control,
+        pending_source_cbor: builtin.un_b_data(extension_data),
+      }
     } else if base_control.stage == 5 {
       ScriptSourcesControlV1 {
         ..base_control,
@@ -6835,32 +6806,6 @@ fn script_sources_control_from_witness(
           |> script_discovery_control_from_cbor,
       }
     }
-  }
-}
-
-fn redeemer_purpose_is_supported(redeemer: MidgardRedeemerWitness) -> Bool {
-  when redeemer.purpose is {
-    SpendRedeemer -> True
-    MintRedeemer -> True
-    RewardRedeemer -> True
-    ReceiveRedeemer -> True
-    CertRedeemer -> False
-    VoteRedeemer -> False
-    ProposeRedeemer -> False
-  }
-}
-
-fn redeemer_data_is_canonical(redeemer: MidgardRedeemerWitness) -> Bool {
-  when cbor.deserialise(redeemer.redeemer_cbor) is {
-    None -> False
-    Some(data) -> cbor.serialise(data) == redeemer.redeemer_cbor
-  }
-}
-
-fn redeemer_is_well_formed(redeemer: MidgardRedeemerWitness) -> Bool {
-  and {
-    redeemer_purpose_is_supported(redeemer),
-    redeemer_data_is_canonical(redeemer),
   }
 }
 
@@ -7026,6 +6971,49 @@ pub fn encode_script_sources_output_proof_witness(
       )
 }
 
+pub fn encode_script_sources_redeemer_item_witness(
+  control: ScriptSourcesControlV1,
+  redeemer_item_control_hash: ByteArray,
+) -> ByteArray {
+  expect control.stage == 1
+  expect bytearray.length(redeemer_item_control_hash) == 32
+  let base = encode_script_sources_witness(
+    control.compact_cbor,
+    control.witness_set_compact_cbor,
+    control.field_preimage_lengths_cbor,
+    control.context_cbor,
+    control.resolved_input_count,
+    control.resolved_inputs_accumulator,
+    control.signer_count,
+    control.signer_frontier_commitment,
+    control.resolved_item_peaks,
+    control.stage,
+    control.source_count,
+    control.source_peaks,
+    control.redeemer_count,
+    control.redeemer_peaks,
+    control.replay_cursor,
+    control.replay_accumulator,
+    control.replay_remaining_schedule_hash,
+    control.spend_index,
+    control.purpose_count,
+    control.purpose_peaks,
+    control.output_cursor,
+    control.output_count,
+    control.output_peaks,
+    control.output_total_count,
+    control.receive_scan,
+    control.source_total_count,
+    control.redeemer_total_count,
+    control.observer_scan,
+    control.mint_fold,
+    control.resolution_schedule_hash,
+  )
+  encode_definite_array_header(31)
+    |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
+    |> bytearray.concat(encode_definite_bytes(redeemer_item_control_hash))
+}
+
 pub fn encode_script_sources_discovery_witness(
   control: ScriptSourcesControlV1,
   stage: Int,
@@ -7102,12 +7090,19 @@ fn script_discovery_control_is_well_formed(
       control.execution_count,
       control.execution_peaks,
     ),
+    bytearray.length(control.redeemer_item_control_hash) == 0
+      || bytearray.length(control.redeemer_item_control_hash) == 32,
   }
 }
 
 fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
   if control.stage == 0 && control.pending_source_cbor != #"" {
     encode_script_sources_pending_source_witness(
+      control,
+      control.pending_source_cbor,
+    )
+  } else if control.stage == 1 && control.pending_source_cbor != #"" {
+    encode_script_sources_redeemer_item_witness(
       control,
       control.pending_source_cbor,
     )
@@ -8250,135 +8245,6 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   }
 }
 
-pub fn verify_script_sources_stage_one_redeemer_raw_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  collection_proof: bounded_collection_v1.ItemProofV1,
-  redeemer: MidgardRedeemerWitness,
-) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  expect
-      [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-        resolved_input_count_data, resolved_inputs_accumulator_data,
-        signer_count_data, signer_frontier_commitment_data,
-        resolved_item_peaks_data, stage_data, source_count_data,
-        source_peaks_data, redeemer_count_data, redeemer_peaks_data,
-        replay_cursor_data, replay_accumulator_data,
-        replay_remaining_schedule_hash_data, spend_index_data,
-        purpose_count_data, purpose_peaks_data, output_cursor_data,
-        output_count_data, output_peaks_data, output_total_count_data,
-        receive_scan_data, source_total_count_data, redeemer_total_count_data,
-        observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
-      ]
-    = builtin.un_list_data(control_data)
-  let compact_cbor = builtin.un_b_data(compact_cbor_data)
-  let witness_set_compact_cbor = builtin.un_b_data(
-    witness_set_compact_cbor_data,
-  )
-  let field_preimage_lengths_cbor = builtin.un_b_data(
-    field_preimage_lengths_cbor_data,
-  )
-  let witness_set = decode_native_tx_witness_set_compact(
-    witness_set_compact_cbor,
-  )
-  let redeemer_commitment = witness_set.redeemer_tx_wits_hash
-  let redeemer_count = builtin.un_i_data(redeemer_count_data)
-  let redeemer_peaks = decode_frontier_peaks(redeemer_peaks_data)
-  let redeemer_total_count = builtin.un_i_data(redeemer_total_count_data)
-  let active_total_count = if redeemer_total_count == 0 {
-    collection_proof.item_count
-  } else {
-    redeemer_total_count
-  }
-  let item_commitment = bounded_item_v1.from_bytes(
-    8,
-    collection_proof.item_index,
-    encode_midgard_redeemer_witness(redeemer),
-  )
-  let common_is_valid = and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
-    builtin.un_i_data(stage_data) == 1,
-    native_tx_proof_commitment_v1(
-      compact_cbor,
-      witness_set_compact_cbor,
-      field_preimage_lengths_cbor,
-    ) == pre.transaction_commitment,
-    script_sources_stage_one_raw_common_control_is_initial(
-      resolved_item_peaks_data,
-      source_count_data,
-      replay_cursor_data,
-      spend_index_data,
-      purpose_count_data,
-      output_cursor_data,
-      output_count_data,
-      receive_scan_data,
-      source_total_count_data,
-    ),
-    bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
-    active_total_count > 0,
-    active_total_count <= max_tx_size_derived_collection_item_count,
-    validation_merkle_v1.frontier_is_well_formed(
-      redeemer_count,
-      redeemer_peaks,
-    ),
-    collection_proof.field_index == 8,
-    collection_proof.item_count == active_total_count,
-    collection_proof.item_index == redeemer_count,
-    collection_proof.item_commitment == item_commitment,
-    bounded_collection_v1.verify_item(redeemer_commitment, collection_proof),
-  }
-  if !redeemer_is_well_formed(redeemer) {
-    and {
-      common_is_valid,
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_invalid_field_type,
-      ),
-    }
-  } else {
-    let next_redeemer_count = redeemer_count + 1
-    let next_redeemer_peaks = validation_merkle_v1.append_leaf(
-      redeemer_count,
-      redeemer_peaks,
-      script_proof_v1.redeemer_item_leaf_hash(
-        redeemer_count,
-        item_commitment,
-      ),
-    )
-    expect Some(next_redeemer_peaks_data) = cbor.deserialise(
-      validation_merkle_v1.encode_frontier(next_redeemer_peaks),
-    )
-    let next_control_data = builtin.list_data(
-      [
-        compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-        resolved_input_count_data, resolved_inputs_accumulator_data,
-        signer_count_data, signer_frontier_commitment_data,
-        resolved_item_peaks_data, stage_data, source_count_data,
-        source_peaks_data, builtin.i_data(next_redeemer_count),
-        next_redeemer_peaks_data, replay_cursor_data, replay_accumulator_data,
-        replay_remaining_schedule_hash_data, spend_index_data,
-        purpose_count_data, purpose_peaks_data, output_cursor_data,
-        output_count_data, output_peaks_data, output_total_count_data,
-        receive_scan_data, source_total_count_data,
-        builtin.i_data(active_total_count), observer_scan_data, mint_fold_data,
-        resolution_schedule_hash_data,
-      ],
-    )
-    and {
-      common_is_valid,
-      script_sources_stage_zero_successor_work_is_exact(
-        pre,
-        witness,
-        cbor.serialise(next_control_data),
-      ),
-    }
-  }
-}
-
 fn script_sources_stage_one(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -8407,6 +8273,7 @@ fn script_sources_stage_one(
     and {
       common_control_is_initial,
       auxiliary == NoAuxiliaryWitness,
+      control.pending_source_cbor == #"",
       control.redeemer_count == 0,
       control.redeemer_total_count == 0,
       control.redeemer_peaks == [],
@@ -8417,6 +8284,7 @@ fn script_sources_stage_one(
       ),
     }
   } else if and {
+    control.pending_source_cbor == #"",
     control.redeemer_total_count > 0,
     control.redeemer_count == control.redeemer_total_count,
   } {
@@ -8429,17 +8297,21 @@ fn script_sources_stage_one(
         ScriptSourcesControlV1 { ..control, stage: 2 },
       ),
     }
-  } else {
-    expect TransactionRedeemerItemWitness { collection_proof, redeemer } = auxiliary
+  } else if control.pending_source_cbor == #"" {
+    expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary
     let active_total_count = if control.redeemer_total_count == 0 {
       collection_proof.item_count
     } else {
       control.redeemer_total_count
     }
-    let item_commitment = bounded_item_v1.from_bytes(
-      8,
+    let item_control = redeemer_item_proof_v1.initial_control_v1(
+      redeemer_item_proof_v1.mode_data,
       collection_proof.item_index,
-      encode_midgard_redeemer_witness(redeemer),
+      active_total_count,
+      collection_proof.item_length,
+      collection_proof.item_commitment,
+      -1,
+      -1,
     )
     and {
       common_control_is_initial,
@@ -8448,33 +8320,83 @@ fn script_sources_stage_one(
       collection_proof.field_index == 8,
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.redeemer_count,
-      collection_proof.item_commitment == item_commitment,
       bounded_collection_v1.verify_item(redeemer_commitment, collection_proof),
-      if !redeemer_is_well_formed(redeemer) {
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          reject_invalid_field_type,
-        )
-      } else {
-        script_sources_control_successor_is_exact(
-          pre,
-          witness,
-          ScriptSourcesControlV1 {
-            ..control,
-            redeemer_count: control.redeemer_count + 1,
-            redeemer_peaks: validation_merkle_v1.append_leaf(
-              control.redeemer_count,
-              control.redeemer_peaks,
-              script_proof_v1.redeemer_item_leaf_hash(
-                control.redeemer_count,
-                item_commitment,
-              ),
+      script_sources_control_successor_is_exact(
+        pre,
+        witness,
+        ScriptSourcesControlV1 {
+          ..control,
+          redeemer_total_count: active_total_count,
+          pending_source_cbor: redeemer_item_proof_v1.hash_control_v1(
+            item_control,
+          ),
+        },
+      ),
+    }
+  } else {
+    expect
+      RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: item_witness,
+      } = auxiliary
+    let current_matches = and {
+      common_control_is_initial,
+      redeemer_item_proof_v1.control_is_well_formed(item_control),
+      item_control.mode == redeemer_item_proof_v1.mode_data,
+      item_control.item_index == control.redeemer_count,
+      item_control.item_count == control.redeemer_total_count,
+      redeemer_item_proof_v1.hash_control_v1(item_control) == control.pending_source_cbor,
+    }
+    when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
+      None -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) ->
+        and {
+          current_matches,
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_invalid_field_type,
+          ),
+        }
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
+        if next.stage == redeemer_item_proof_v1.stage_terminal {
+          and {
+            current_matches,
+            redeemer_item_proof_v1.finalize_v1(next) != None,
+            script_sources_control_successor_is_exact(
+              pre,
+              witness,
+              ScriptSourcesControlV1 {
+                ..control,
+                redeemer_count: control.redeemer_count + 1,
+                redeemer_peaks: validation_merkle_v1.append_leaf(
+                  control.redeemer_count,
+                  control.redeemer_peaks,
+                  script_proof_v1.redeemer_item_leaf_hash(
+                    control.redeemer_count,
+                    next.item_commitment,
+                  ),
+                ),
+                pending_source_cbor: #"",
+              },
             ),
-            redeemer_total_count: active_total_count,
-          },
-        )
-      },
+          }
+        } else {
+          and {
+            current_matches,
+            script_sources_control_successor_is_exact(
+              pre,
+              witness,
+              ScriptSourcesControlV1 {
+                ..control,
+                pending_source_cbor: redeemer_item_proof_v1.hash_control_v1(
+                  next,
+                ),
+              },
+            ),
+          }
+        }
     }
   }
 }
@@ -10267,6 +10189,7 @@ fn reset_script_discovery_current(
     matched_source_index: -1,
     matched_language_tag: -1,
     matched_source_leaf: #"",
+    redeemer_item_control_hash: #"",
   }
 }
 
@@ -10960,23 +10883,28 @@ pub fn verify_script_sources_stage_nine_missing_semantics_v1(
   }
 }
 
-fn redeemer_matches_current_purpose(
-  redeemer: MidgardRedeemerWitness,
+fn purpose_kind_to_redeemer_tag(purpose_kind: Int) -> Int {
+  if purpose_kind == 0 {
+    0
+  } else if purpose_kind == 1 {
+    1
+  } else if purpose_kind == 2 {
+    3
+  } else {
+    expect purpose_kind == 3
+    6
+  }
+}
+
+fn redeemer_descriptor_matches_current_purpose(
+  descriptor: redeemer_item_proof_v1.RedeemerItemDescriptorV1,
   discovery: ScriptDiscoveryControlV1,
 ) -> Bool {
   and {
-    redeemer.index == discovery.current_purpose_index,
-    if discovery.current_purpose_kind == 0 {
-      redeemer.purpose == SpendRedeemer
-    } else if discovery.current_purpose_kind == 1 {
-      redeemer.purpose == MintRedeemer
-    } else if discovery.current_purpose_kind == 2 {
-      redeemer.purpose == RewardRedeemer
-    } else if discovery.current_purpose_kind == 3 {
-      redeemer.purpose == ReceiveRedeemer
-    } else {
-      False
-    },
+    descriptor.pointer_index == discovery.current_purpose_index,
+    descriptor.purpose_tag == purpose_kind_to_redeemer_tag(
+      discovery.current_purpose_kind,
+    ),
   }
 }
 
@@ -10989,6 +10917,7 @@ fn script_sources_stage_ten(
   let discovery = control.discovery
   if discovery.redeemer_cursor == control.redeemer_count {
     and {
+      discovery.redeemer_item_control_hash == #"",
       auxiliary == NoAuxiliaryWitness,
       rejected_successor_is_exact(
         pre,
@@ -10996,57 +10925,146 @@ fn script_sources_stage_ten(
         reject_missing_required_witness,
       ),
     }
-  } else {
-    expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
-      redeemer_index,
-      redeemer,
+  } else if discovery.redeemer_item_control_hash == #"" {
+    expect
+      RedeemerScanBeginWitness {
+        item_index,
+        item_count,
+        total_length,
+        item_commitment,
+        siblings,
+      } = auxiliary
+    let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+      item_index,
+      item_commitment,
     )
-    if and {
-      redeemer_index == discovery.redeemer_cursor,
+    let item_control = redeemer_item_proof_v1.initial_control_v1(
+      redeemer_item_proof_v1.mode_descriptor,
+      item_index,
+      item_count,
+      total_length,
+      item_commitment,
+      -1,
+      -1,
+    )
+    and {
+      item_index == discovery.redeemer_cursor,
+      item_count == control.redeemer_count,
       validation_merkle_v1.verify_membership(
         control.redeemer_count,
         control.redeemer_peaks,
-        redeemer_index,
+        item_index,
         redeemer_leaf,
         siblings,
       ),
-    } {
-      if redeemer_matches_current_purpose(redeemer, discovery) {
-        let next_execution = append_script_execution(
-          discovery,
-          current_script_purpose_leaf(discovery),
-          discovery.matched_source_leaf,
-          discovery.matched_language_tag,
-          redeemer_leaf,
-        )
-        let completed = reset_script_discovery_current(
-          ScriptDiscoveryControlV1 {
-            ..discovery,
-            purpose_cursor: discovery.purpose_cursor + 1,
-            used_redeemer_bitmap: script_discovery_bitmap_insert(
-              discovery.used_redeemer_bitmap,
-              redeemer_index,
+      script_discovery_successor_is_exact(
+        pre,
+        witness,
+        control,
+        10,
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+            item_control,
+          ),
+        },
+      ),
+    }
+  } else {
+    expect
+      RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: item_witness,
+      } = auxiliary
+    let current_matches = and {
+      item_control.mode == redeemer_item_proof_v1.mode_descriptor,
+      item_control.item_index == discovery.redeemer_cursor,
+      item_control.item_count == control.redeemer_count,
+      redeemer_item_proof_v1.hash_control_v1(item_control) == discovery.redeemer_item_control_hash,
+    }
+    when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
+      None -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
+        if next.stage == redeemer_item_proof_v1.stage_terminal {
+          when redeemer_item_proof_v1.descriptor_v1(next) is {
+            None -> False
+            Some(descriptor) -> {
+              let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+                descriptor.item_index,
+                descriptor.item_commitment,
+              )
+              if
+                redeemer_descriptor_matches_current_purpose(
+                  descriptor,
+                  discovery,
+                )
+              {
+                let next_execution = append_script_execution(
+                  discovery,
+                  current_script_purpose_leaf(discovery),
+                  discovery.matched_source_leaf,
+                  discovery.matched_language_tag,
+                  redeemer_leaf,
+                )
+                let completed = reset_script_discovery_current(
+                  ScriptDiscoveryControlV1 {
+                    ..discovery,
+                    purpose_cursor: discovery.purpose_cursor + 1,
+                    used_redeemer_bitmap: script_discovery_bitmap_insert(
+                      discovery.used_redeemer_bitmap,
+                      descriptor.item_index,
+                    ),
+                    execution_count: next_execution.count,
+                    execution_peaks: next_execution.peaks,
+                  },
+                )
+                and {
+                  current_matches,
+                  script_discovery_successor_is_exact(
+                    pre,
+                    witness,
+                    control,
+                    8,
+                    completed,
+                  ),
+                }
+              } else {
+                and {
+                  current_matches,
+                  script_discovery_successor_is_exact(
+                    pre,
+                    witness,
+                    control,
+                    10,
+                    ScriptDiscoveryControlV1 {
+                      ..discovery,
+                      redeemer_cursor: descriptor.item_index + 1,
+                      redeemer_item_control_hash: #"",
+                    },
+                  ),
+                }
+              }
+            }
+          }
+        } else {
+          and {
+            current_matches,
+            script_discovery_successor_is_exact(
+              pre,
+              witness,
+              control,
+              10,
+              ScriptDiscoveryControlV1 {
+                ..discovery,
+                redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+                  next,
+                ),
+              },
             ),
-            execution_count: next_execution.count,
-            execution_peaks: next_execution.peaks,
-          },
-        )
-        script_discovery_successor_is_exact(pre, witness, control, 8, completed)
-      } else {
-        script_discovery_successor_is_exact(
-          pre,
-          witness,
-          control,
-          10,
-          ScriptDiscoveryControlV1 {
-            ..discovery,
-            redeemer_cursor: redeemer_index + 1,
-          },
-        )
-      }
-    } else {
-      False
+          }
+        }
     }
   }
 }
@@ -11135,24 +11153,6 @@ fn script_sources_stage_ten_control_is_bound(
   }
 }
 
-fn script_sources_stage_ten_redeemer_is_authenticated(
-  control: ScriptSourcesControlV1,
-  redeemer_index: Int,
-  redeemer: MidgardRedeemerWitness,
-  siblings: List<ByteArray>,
-) -> Bool {
-  and {
-    redeemer_index == control.discovery.redeemer_cursor,
-    validation_merkle_v1.verify_membership(
-      control.redeemer_count,
-      control.redeemer_peaks,
-      redeemer_index,
-      script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer),
-      siblings,
-    ),
-  }
-}
-
 pub fn verify_script_sources_stage_ten_missing_semantics_v1(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -11168,88 +11168,6 @@ pub fn verify_script_sources_stage_ten_missing_semantics_v1(
       witness.claimed_successor,
       reject_missing_required_witness,
     ),
-  }
-}
-
-pub fn verify_script_sources_stage_ten_mismatch_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  redeemer_index: Int,
-  redeemer: MidgardRedeemerWitness,
-  siblings: List<ByteArray>,
-) -> Bool {
-  let control = script_sources_stage_ten_control_from_witness(
-    witness.work_witness_cbor,
-  )
-  let discovery = control.discovery
-  and {
-    script_sources_stage_ten_control_is_bound(pre, witness, control),
-    discovery.redeemer_cursor < control.redeemer_count,
-    script_sources_stage_ten_redeemer_is_authenticated(
-      control,
-      redeemer_index,
-      redeemer,
-      siblings,
-    ),
-    !redeemer_matches_current_purpose(redeemer, discovery),
-    script_discovery_successor_is_exact(
-      pre,
-      witness,
-      control,
-      10,
-      ScriptDiscoveryControlV1 {
-        ..discovery,
-        redeemer_cursor: redeemer_index + 1,
-      },
-    ),
-  }
-}
-
-pub fn verify_script_sources_stage_ten_match_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  redeemer_index: Int,
-  redeemer: MidgardRedeemerWitness,
-  siblings: List<ByteArray>,
-) -> Bool {
-  let control = script_sources_stage_ten_control_from_witness(
-    witness.work_witness_cbor,
-  )
-  let discovery = control.discovery
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
-    redeemer_index,
-    redeemer,
-  )
-  let next_execution = append_script_execution(
-    discovery,
-    current_script_purpose_leaf(discovery),
-    discovery.matched_source_leaf,
-    discovery.matched_language_tag,
-    redeemer_leaf,
-  )
-  let completed = reset_script_discovery_current(
-    ScriptDiscoveryControlV1 {
-      ..discovery,
-      purpose_cursor: discovery.purpose_cursor + 1,
-      used_redeemer_bitmap: script_discovery_bitmap_insert(
-        discovery.used_redeemer_bitmap,
-        redeemer_index,
-      ),
-      execution_count: next_execution.count,
-      execution_peaks: next_execution.peaks,
-    },
-  )
-  and {
-    script_sources_stage_ten_control_is_bound(pre, witness, control),
-    discovery.redeemer_cursor < control.redeemer_count,
-    script_sources_stage_ten_redeemer_is_authenticated(
-      control,
-      redeemer_index,
-      redeemer,
-      siblings,
-    ),
-    redeemer_matches_current_purpose(redeemer, discovery),
-    script_discovery_successor_is_exact(pre, witness, control, 8, completed),
   }
 }
 
@@ -11560,6 +11478,7 @@ fn script_sources_stage_twelve(
   if discovery.redeemer_cursor == control.redeemer_count {
     let next_control = encode_native_scripts_witness_v1(control, 0, 0)
     and {
+      discovery.redeemer_item_control_hash == #"",
       auxiliary == NoAuxiliaryWitness,
       witness.claimed_successor.phase == validation_trace_v1.NativeScripts,
       witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
@@ -11568,45 +11487,115 @@ fn script_sources_stage_twelve(
         next_control,
       ),
     }
-  } else {
-    expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-    let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
-      redeemer_index,
-      redeemer,
+  } else if discovery.redeemer_item_control_hash == #"" {
+    expect
+      RedeemerScanBeginWitness {
+        item_index,
+        item_count,
+        total_length,
+        item_commitment,
+        siblings,
+      } = auxiliary
+    let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+      item_index,
+      item_commitment,
     )
-    if and {
-      redeemer_index == discovery.redeemer_cursor,
+    let item_control = redeemer_item_proof_v1.initial_control_v1(
+      redeemer_item_proof_v1.mode_descriptor,
+      item_index,
+      item_count,
+      total_length,
+      item_commitment,
+      -1,
+      -1,
+    )
+    and {
+      item_index == discovery.redeemer_cursor,
+      item_count == control.redeemer_count,
       validation_merkle_v1.verify_membership(
         control.redeemer_count,
         control.redeemer_peaks,
-        redeemer_index,
+        item_index,
         redeemer_leaf,
         siblings,
       ),
-    } {
-      if !script_discovery_bitmap_has(
-        discovery.used_redeemer_bitmap,
-        redeemer_index,
-      ) {
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          reject_invalid_field_type,
-        )
-      } else {
-        script_discovery_successor_is_exact(
-          pre,
-          witness,
-          control,
-          12,
-          ScriptDiscoveryControlV1 {
-            ..discovery,
-            redeemer_cursor: redeemer_index + 1,
-          },
-        )
-      }
-    } else {
-      False
+      script_discovery_successor_is_exact(
+        pre,
+        witness,
+        control,
+        12,
+        ScriptDiscoveryControlV1 {
+          ..discovery,
+          redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+            item_control,
+          ),
+        },
+      ),
+    }
+  } else {
+    expect
+      RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: item_witness,
+      } = auxiliary
+    let current_matches = and {
+      item_control.mode == redeemer_item_proof_v1.mode_descriptor,
+      item_control.item_index == discovery.redeemer_cursor,
+      item_control.item_count == control.redeemer_count,
+      redeemer_item_proof_v1.hash_control_v1(item_control) == discovery.redeemer_item_control_hash,
+    }
+    when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
+      None -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
+        if next.stage == redeemer_item_proof_v1.stage_terminal {
+          when redeemer_item_proof_v1.descriptor_v1(next) is {
+            None -> False
+            Some(descriptor) ->
+              and {
+                current_matches,
+                if !script_discovery_bitmap_has(
+                  discovery.used_redeemer_bitmap,
+                  descriptor.item_index,
+                ) {
+                  rejected_successor_is_exact(
+                    pre,
+                    witness.claimed_successor,
+                    reject_invalid_field_type,
+                  )
+                } else {
+                  script_discovery_successor_is_exact(
+                    pre,
+                    witness,
+                    control,
+                    12,
+                    ScriptDiscoveryControlV1 {
+                      ..discovery,
+                      redeemer_cursor: descriptor.item_index + 1,
+                      redeemer_item_control_hash: #"",
+                    },
+                  )
+                },
+              }
+          }
+        } else {
+          and {
+            current_matches,
+            script_discovery_successor_is_exact(
+              pre,
+              witness,
+              control,
+              12,
+              ScriptDiscoveryControlV1 {
+                ..discovery,
+                redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+                  next,
+                ),
+              },
+            ),
+          }
+        }
     }
   }
 }
@@ -11709,56 +11698,6 @@ pub fn verify_script_sources_stage_twelve_finish_semantics_v1(
   }
 }
 
-pub fn verify_script_sources_stage_twelve_redeemer_semantics_v1(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  redeemer_index: Int,
-  redeemer: MidgardRedeemerWitness,
-  siblings: List<ByteArray>,
-) -> Bool {
-  let control = script_sources_stage_twelve_control_from_witness(
-    witness.work_witness_cbor,
-  )
-  let discovery = control.discovery
-  let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
-    redeemer_index,
-    redeemer,
-  )
-  and {
-    script_sources_stage_twelve_control_is_bound(pre, witness, control),
-    discovery.redeemer_cursor < control.redeemer_count,
-    redeemer_index == discovery.redeemer_cursor,
-    validation_merkle_v1.verify_membership(
-      control.redeemer_count,
-      control.redeemer_peaks,
-      redeemer_index,
-      redeemer_leaf,
-      siblings,
-    ),
-    if !script_discovery_bitmap_has(
-      discovery.used_redeemer_bitmap,
-      redeemer_index,
-    ) {
-      rejected_successor_is_exact(
-        pre,
-        witness.claimed_successor,
-        reject_invalid_field_type,
-      )
-    } else {
-      script_discovery_successor_is_exact(
-        pre,
-        witness,
-        control,
-        12,
-        ScriptDiscoveryControlV1 {
-          ..discovery,
-          redeemer_cursor: redeemer_index + 1,
-        },
-      )
-    },
-  }
-}
-
 fn script_discovery_stage_is_well_formed(
   control: ScriptSourcesControlV1,
 ) -> Bool {
@@ -11778,6 +11717,7 @@ fn script_discovery_stage_is_well_formed(
       ),
       if control.stage == 8 {
         and {
+          discovery.redeemer_item_control_hash == #"",
           discovery.current_purpose_kind == -1,
           discovery.current_purpose_index == -1,
           discovery.current_script_hash == #"",
@@ -11788,6 +11728,7 @@ fn script_discovery_stage_is_well_formed(
         }
       } else if control.stage == 9 {
         and {
+          discovery.redeemer_item_control_hash == #"",
           discovery.purpose_cursor < control.purpose_count,
           discovery.current_purpose_kind >= 0,
           discovery.current_purpose_kind <= 3,
@@ -11816,6 +11757,11 @@ fn script_discovery_stage_is_well_formed(
         }
       } else {
         and {
+          if control.stage == 11 {
+            discovery.redeemer_item_control_hash == #""
+          } else {
+            True
+          },
           discovery.purpose_cursor == control.purpose_count,
           discovery.current_purpose_kind == -1,
           discovery.current_purpose_index == -1,
@@ -11964,6 +11910,9 @@ fn script_sources_control_is_bound(
             pending.source_total_count == control.source_total_count,
         }
       }
+    } else if control.stage == 1 {
+      bytearray.length(control.pending_source_cbor) == 0
+        || bytearray.length(control.pending_source_cbor) == 32
     } else {
       control.pending_source_cbor == #""
     },
@@ -13371,7 +13320,8 @@ fn cek_redeemer_context_control_is_well_formed(
         control.cursor < redeemer_count,
         bytearray.length(control.active_scan_hash) == 32,
         bytearray.length(control.active_redeemer_leaf) == 32,
-        bytearray.length(control.active_purpose.root) == 32,
+        control.active_purpose == empty_data_summary_v1()
+          || bytearray.length(control.active_purpose.root) == 32,
       }
     },
   }
@@ -13531,10 +13481,6 @@ fn observer_context_is_complete(control: CekContextControlV1) -> Bool {
   }
 }
 
-fn redeemer_data_scan_is_pristine(control: CekContextControlV1) -> Bool {
-  control.redeemer_context_control_hash == #""
-}
-
 fn redeemer_data_scan_is_initial(control: CekContextControlV1) -> Bool {
   bytearray.length(control.redeemer_context_control_hash) == 32
 }
@@ -13607,7 +13553,6 @@ fn cek_context_control_is_well_formed(
         control.output_items.length == 0,
         control.signer_items.length == 0,
         observer_context_is_pristine(control),
-        redeemer_data_scan_is_pristine(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 1 {
@@ -14798,26 +14743,6 @@ fn verify_cek_execution_selection(
   }
 }
 
-fn redeemer_matches_cek_context(
-  redeemer: MidgardRedeemerWitness,
-  control: CekContextControlV1,
-) -> Bool {
-  and {
-    redeemer.index == control.purpose_index,
-    if control.purpose_kind == 0 {
-      redeemer.purpose == SpendRedeemer
-    } else if control.purpose_kind == 1 {
-      redeemer.purpose == MintRedeemer
-    } else if control.purpose_kind == 2 {
-      redeemer.purpose == RewardRedeemer
-    } else if control.purpose_kind == 3 {
-      redeemer.purpose == ReceiveRedeemer
-    } else {
-      False
-    },
-  }
-}
-
 fn verify_cek_redeemer_selection(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -14828,41 +14753,122 @@ fn verify_cek_redeemer_selection(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect RedeemerScanWitness { redeemer_index, redeemer, siblings } = auxiliary
-  let leaf = script_proof_v1.redeemer_leaf_hash(redeemer_index, redeemer)
-  let selected = CekContextControlV1 {
-    ..context_control,
-    stage: 1,
-    execution_memory_limit: redeemer.execution_units.memory,
-    execution_cpu_limit: redeemer.execution_units.steps,
-  }
-  let redeemer_context = initial_cek_redeemer_context_control_v1()
-  let next = CekContextControlV1 {
-    ..selected,
-    redeemer_context_control_hash: hash_cek_redeemer_context_control_v1(
-      redeemer_context,
-    ),
-  }
-  and {
-    context_control.stage == 0,
-    leaf == context_control.redeemer_leaf,
-    redeemer_matches_cek_context(redeemer, context_control),
-    validation_merkle_v1.verify_membership(
-      native_control.redeemer_count,
-      native_control.redeemer_peaks,
-      redeemer_index,
-      leaf,
-      siblings,
-    ),
-    cek_context_successor_is_exact(
-      pre,
-      witness,
-      native_control,
-      next,
-      execution_cursor,
-      completed_cpu,
-      completed_memory,
-    ),
+  if context_control.redeemer_context_control_hash == #"" {
+    expect
+      RedeemerScanBeginWitness {
+        item_index,
+        item_count,
+        total_length,
+        item_commitment,
+        siblings,
+      } = auxiliary
+    let leaf = script_proof_v1.redeemer_item_leaf_hash(
+      item_index,
+      item_commitment,
+    )
+    let item_control = redeemer_item_proof_v1.initial_control_v1(
+      redeemer_item_proof_v1.mode_descriptor,
+      item_index,
+      item_count,
+      total_length,
+      item_commitment,
+      purpose_kind_to_redeemer_tag(context_control.purpose_kind),
+      context_control.purpose_index,
+    )
+    and {
+      context_control.stage == 0,
+      item_count == native_control.redeemer_count,
+      leaf == context_control.redeemer_leaf,
+      validation_merkle_v1.verify_membership(
+        native_control.redeemer_count,
+        native_control.redeemer_peaks,
+        item_index,
+        leaf,
+        siblings,
+      ),
+      cek_context_successor_is_exact(
+        pre,
+        witness,
+        native_control,
+        CekContextControlV1 {
+          ..context_control,
+          redeemer_context_control_hash: redeemer_item_proof_v1.hash_control_v1(
+            item_control,
+          ),
+        },
+        execution_cursor,
+        completed_cpu,
+        completed_memory,
+      ),
+    }
+  } else {
+    expect
+      RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: item_witness,
+      } = auxiliary
+    let leaf = script_proof_v1.redeemer_item_leaf_hash(
+      item_control.item_index,
+      item_control.item_commitment,
+    )
+    let current_matches = and {
+      context_control.stage == 0,
+      item_control.mode == redeemer_item_proof_v1.mode_descriptor,
+      item_control.item_count == native_control.redeemer_count,
+      item_control.expected_purpose_tag == purpose_kind_to_redeemer_tag(
+        context_control.purpose_kind,
+      ),
+      item_control.expected_pointer_index == context_control.purpose_index,
+      leaf == context_control.redeemer_leaf,
+      redeemer_item_proof_v1.hash_control_v1(item_control) == context_control.redeemer_context_control_hash,
+    }
+    when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
+      None -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) ->
+        if next.stage == redeemer_item_proof_v1.stage_terminal {
+          let redeemer_context = initial_cek_redeemer_context_control_v1()
+          and {
+            current_matches,
+            cek_context_successor_is_exact(
+              pre,
+              witness,
+              native_control,
+              CekContextControlV1 {
+                ..context_control,
+                stage: 1,
+                redeemer_context_control_hash: hash_cek_redeemer_context_control_v1(
+                  redeemer_context,
+                ),
+                execution_memory_limit: next.execution_memory,
+                execution_cpu_limit: next.execution_steps,
+              },
+              execution_cursor,
+              completed_cpu,
+              completed_memory,
+            ),
+          }
+        } else {
+          and {
+            current_matches,
+            cek_context_successor_is_exact(
+              pre,
+              witness,
+              native_control,
+              CekContextControlV1 {
+                ..context_control,
+                redeemer_context_control_hash: redeemer_item_proof_v1.hash_control_v1(
+                  next,
+                ),
+              },
+              execution_cursor,
+              completed_cpu,
+              completed_memory,
+            ),
+          }
+        }
+    }
   }
 }
 
@@ -15442,88 +15448,6 @@ fn verify_cek_mint_context_item(
   }
 }
 
-fn cek_data_scan_successor(
-  scan: cek_data_scan_v1.DataScanControlV1,
-  step: CekDataScanStepV1,
-) -> Option<cek_data_scan_v1.DataScanControlV1> {
-  when step is {
-    CekDataOpenConstructor { raw_cbor, parent, constructor, expected_children } ->
-      cek_data_scan_v1.open_constructor_control_step_v1(
-        scan,
-        raw_cbor,
-        parent,
-        constructor,
-        expected_children,
-      )
-    CekDataOpenList { raw_cbor, parent, expected_children } ->
-      cek_data_scan_v1.open_list_control_step_v1(
-        scan,
-        raw_cbor,
-        parent,
-        expected_children,
-      )
-    CekDataOpenMap { raw_cbor, parent } ->
-      cek_data_scan_v1.open_map_control_step_v1(scan, raw_cbor, parent)
-    CekDataRevealLeaf { raw_cbor, parent, item_length } ->
-      cek_data_scan_v1.reveal_leaf_control_step_v1(
-        scan,
-        raw_cbor,
-        parent,
-        item_length,
-      )
-    CekDataCloseSequence { raw_cbor, frame } ->
-      cek_data_scan_v1.close_sequence_control_step_v1(scan, raw_cbor, frame)
-    CekDataFoldList { frame, child_index, child, siblings } ->
-      cek_data_scan_v1.fold_list_control_step_v1(
-        scan,
-        frame,
-        child_index,
-        child,
-        siblings,
-      )
-    CekDataFoldMap {
-      frame,
-      pair_index,
-      key,
-      value,
-      key_siblings,
-      value_siblings,
-    } ->
-      cek_data_scan_v1.fold_map_control_step_v1(
-        scan,
-        frame,
-        pair_index,
-        key,
-        value,
-        key_siblings,
-        value_siblings,
-      )
-    CekDataFinalizeFrame { frame, parent } ->
-      cek_data_scan_v1.finalize_frame_control_step_v1(scan, frame, parent)
-  }
-}
-
-fn redeemer_matches_purpose_fields(
-  redeemer: MidgardRedeemerWitness,
-  purpose_kind: Int,
-  purpose_index: Int,
-) -> Bool {
-  and {
-    redeemer.index == purpose_index,
-    if purpose_kind == 0 {
-      redeemer.purpose == SpendRedeemer
-    } else if purpose_kind == 1 {
-      redeemer.purpose == MintRedeemer
-    } else if purpose_kind == 2 {
-      redeemer.purpose == RewardRedeemer
-    } else if purpose_kind == 3 {
-      redeemer.purpose == ReceiveRedeemer
-    } else {
-      False
-    },
-  }
-}
-
 fn cek_redeemer_context_main_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -15583,8 +15507,10 @@ fn verify_cek_redeemer_data_step(
   when auxiliary is {
     CekRedeemerContextSelectWitness {
       control,
-      redeemer_index,
-      redeemer,
+      item_index,
+      item_count,
+      total_length,
+      item_commitment,
       redeemer_siblings,
       purpose_frontier_index,
       purpose_kind,
@@ -15593,9 +15519,9 @@ fn verify_cek_redeemer_data_step(
       subject,
       purpose_siblings,
     } -> {
-      let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(
-        redeemer_index,
-        redeemer,
+      let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+        item_index,
+        item_commitment,
       )
       let purpose_leaf = script_proof_v1.purpose_leaf_hash(
         purpose_kind,
@@ -15612,11 +15538,12 @@ fn verify_cek_redeemer_data_step(
         control.active_scan_hash == #"",
       }
       let membership_matches = and {
-        redeemer_index == native_control.redeemer_count - control.cursor - 1,
+        item_index == native_control.redeemer_count - control.cursor - 1,
+        item_count == native_control.redeemer_count,
         validation_merkle_v1.verify_membership(
           native_control.redeemer_count,
           native_control.redeemer_peaks,
-          redeemer_index,
+          item_index,
           redeemer_leaf,
           redeemer_siblings,
         ),
@@ -15629,7 +15556,6 @@ fn verify_cek_redeemer_data_step(
           purpose_leaf,
           purpose_siblings,
         ),
-        redeemer_matches_purpose_fields(redeemer, purpose_kind, purpose_index),
       }
       when
         script_context_v1.script_purpose_summary_v1(
@@ -15646,6 +15572,15 @@ fn verify_cek_redeemer_data_step(
             purpose_kind == 3,
             context_control.language_tag == 3,
           } {
+            let item_control = redeemer_item_proof_v1.initial_control_v1(
+              redeemer_item_proof_v1.mode_descriptor,
+              item_index,
+              item_count,
+              total_length,
+              item_commitment,
+              purpose_kind_to_redeemer_tag(purpose_kind),
+              purpose_index,
+            )
             cek_redeemer_context_main_successor(
               pre,
               witness,
@@ -15653,7 +15588,10 @@ fn verify_cek_redeemer_data_step(
               context_control,
               CekRedeemerContextControlV1 {
                 ..control,
-                cursor: control.cursor + 1,
+                active_scan_hash: redeemer_item_proof_v1.hash_control_v1(
+                  item_control,
+                ),
+                active_redeemer_leaf: redeemer_leaf,
               },
               execution_cursor,
               completed_cpu,
@@ -15663,9 +15601,14 @@ fn verify_cek_redeemer_data_step(
             False
           }
         Some(purpose) -> {
-          let scan = cek_data_scan_v1.initial_control_v1(
-            blake2b_256(redeemer.redeemer_cbor),
-            bytearray.length(redeemer.redeemer_cbor),
+          let item_control = redeemer_item_proof_v1.initial_control_v1(
+            redeemer_item_proof_v1.mode_data,
+            item_index,
+            item_count,
+            total_length,
+            item_commitment,
+            purpose_kind_to_redeemer_tag(purpose_kind),
+            purpose_index,
           )
           and {
             current_matches,
@@ -15677,7 +15620,9 @@ fn verify_cek_redeemer_data_step(
               context_control,
               CekRedeemerContextControlV1 {
                 ..control,
-                active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
+                active_scan_hash: redeemer_item_proof_v1.hash_control_v1(
+                  item_control,
+                ),
                 active_redeemer_leaf: redeemer_leaf,
                 active_purpose: purpose,
               },
@@ -15689,48 +15634,80 @@ fn verify_cek_redeemer_data_step(
         }
       }
     }
-    CekDataScanStepWitness { redeemer_control, control: scan, step } -> {
+    RedeemerItemStepWitness {
+      redeemer_control: Some(redeemer_control),
+      control: item_control,
+      witness: item_witness,
+    } -> {
       let current_matches = and {
         cek_redeemer_context_control_is_well_formed(
           native_control.redeemer_count,
           redeemer_control,
         ),
         hash_cek_redeemer_context_control_v1(redeemer_control) == context_control.redeemer_context_control_hash,
-        redeemer_control.active_scan_hash == cek_data_scan_v1.hash_control_v1(
-          scan,
+        item_control.item_count == native_control.redeemer_count,
+        item_control.item_index
+          == native_control.redeemer_count - redeemer_control.cursor - 1,
+        script_proof_v1.redeemer_item_leaf_hash(
+          item_control.item_index,
+          item_control.item_commitment,
+        ) == redeemer_control.active_redeemer_leaf,
+        redeemer_control.active_scan_hash == redeemer_item_proof_v1.hash_control_v1(
+          item_control,
         ),
       }
-      when cek_data_scan_successor(scan, step) is {
+      when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
         None -> False
-        Some(next_scan) -> {
-          let scan_completed = bytearray.length(next_scan.result.root) == 32
-          let next_redeemers = if scan_completed {
-            let next_current = if redeemer_control.active_redeemer_leaf == context_control.redeemer_leaf {
-              next_scan.result
-            } else {
-              redeemer_control.current_redeemer
-            }
-            CekRedeemerContextControlV1 {
-              ..redeemer_control,
-              cursor: redeemer_control.cursor + 1,
-              map_items: cek_data_v1.prepend_data_pair_summary_v1(
-                redeemer_control.active_purpose,
-                next_scan.result,
-                redeemer_control.map_items,
-              ),
-              active_scan_hash: #"",
-              active_redeemer_leaf: #"",
-              active_purpose: empty_data_summary_v1(),
-              current_redeemer: next_current,
-            }
+        Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
+        Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) -> {
+          let next_redeemers =
+            if next.stage == redeemer_item_proof_v1.stage_terminal {
+              if next.mode == redeemer_item_proof_v1.mode_descriptor {
+                CekRedeemerContextControlV1 {
+                  ..redeemer_control,
+                  cursor: redeemer_control.cursor + 1,
+                  active_scan_hash: #"",
+                  active_redeemer_leaf: #"",
+                  active_purpose: empty_data_summary_v1(),
+                }
+              } else {
+                expect Some(summary) = redeemer_item_proof_v1.finalize_v1(next)
+                let next_current =
+                  if redeemer_control.active_redeemer_leaf == context_control.redeemer_leaf {
+                    summary
+                  } else {
+                    redeemer_control.current_redeemer
+                  }
+                CekRedeemerContextControlV1 {
+                  cursor: redeemer_control.cursor + 1,
+                  map_items: cek_data_v1.prepend_data_pair_summary_v1(
+                    redeemer_control.active_purpose,
+                    summary,
+                    redeemer_control.map_items,
+                  ),
+                  active_scan_hash: #"",
+                  active_redeemer_leaf: #"",
+                  active_purpose: empty_data_summary_v1(),
+                  current_redeemer: next_current,
+                }
+              }
           } else {
             CekRedeemerContextControlV1 {
               ..redeemer_control,
-              active_scan_hash: cek_data_scan_v1.hash_control_v1(next_scan),
+              active_scan_hash: redeemer_item_proof_v1.hash_control_v1(next),
             }
           }
           and {
             current_matches,
+            if next.mode == redeemer_item_proof_v1.mode_descriptor {
+              and {
+                item_control.expected_purpose_tag == 6,
+                context_control.language_tag == 3,
+                redeemer_control.active_purpose == empty_data_summary_v1(),
+              }
+            } else {
+              bytearray.length(redeemer_control.active_purpose.root) == 32
+            },
             cek_redeemer_context_main_successor(
               pre,
               witness,

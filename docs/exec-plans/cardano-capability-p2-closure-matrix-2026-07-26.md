@@ -74,7 +74,7 @@ the semantic reverse bridge.
 | Ordered transaction fields `0`–`8` | **PASS** — production reconstruction authenticates exact proof sources and canonical preimages in both paths | **PASS** — field directory plus exact item counts/lengths | **PASS** — spend/reference scheduling retains its authenticated linked schedule, and CEK observer construction now authenticates one field-3 item and one 28-byte chunk per step; no active challenged transition decodes a complete ordered field | **PARTIAL** — byte-exact generic reconstruction passes for all maximum fixtures; exhaustive TypeScript folds pass for the `434`-spend, mixed `1`-spend/`433`-reference, and semantic maximum-`16` observer controls | **PARTIAL** — exact terminal vectors now agree for maximum fields `0`, `1`, `3`, and `8`, including schedule, accumulator, resolved-item frontier, and observer Data-summary commitments; the other maximum-specific field vectors remain open | **PASS** — accepted maxima and immediately adjacent signed-Cardano rejection fixtures exist for all fields; the CEK observer semantic bound additionally accepts `16` and rejects authenticated adjacent `17` | **PARTIAL** |
 | General byte blobs/chunks | **PASS** — production reconstruction authenticates the exact maximum inline-datum transaction and proof source in both classifications | **PASS** — one field-2 item binds exact item count `1`, item length `16,221`, field length `16,225`, and chunk count `4` | **PASS** — four exact reveals use at most `4,095` bytes and reconstruct the authenticated source | **PASS** — the field terminal advances to the exact next canonical-scan state and the complete fold reconstructs byte exactly | **PASS** — the applied Aiken terminal step agrees with the TypeScript roots, proof, terminal chunk, and next-field successor | **PASS** — `15,680` datum payload bytes produce `16,383` signed bytes; the adjacent `15,681`-byte payload produces `16,385` signed bytes and rejects | **PASS** |
 | Nested output `Value` policy/asset content | **PASS** — production reconstruction authenticates the exact 5,000-byte maximum-Value transaction and canonical output in both classifications | **PASS** — seven policies and the maximum 1,592 distinct policy/asset entries are bound by the output descriptor and asset frontier | **PASS** — two output chunks and 1,592 authenticated reverse-membership steps; the largest asset witness payload is 358 bytes | **PASS** — 3,198 typed output-proof steps reach the exact terminal Value summary and descriptor | **PASS** — exact maximum terminal and cross-policy membership transitions match TypeScript; substituted quantity rejects | **PASS** — at protocol major `11`, exact canonical Value sizes `5,000`/`5,001` satisfy/violate the official `validateOutputTooBigUTxO` snapshot rule against `maxValueSize = 5,000`, while both signed transactions remain below `maxTxSize`; independent Midgard parity rejects the adjacent case with `E_VALUE_SIZE` | **PASS** |
-| Datum and redeemer Plutus `Data` maximum shapes | **PARTIAL** — production reconstruction authenticates the balanced maximum-cardinality datum and schema-parallel redeemer in both classifications, and the genuine collateralized redeemer remains fail closed; broad and unary-depth shapes are not yet retained fixtures | **PARTIAL** — exact lengths and `10,776`/`10,650` semantic-node counts are bound for the balanced family, not yet for maximum constructor/list breadth, map-pair breadth, or unary depth | **PARTIAL** — the balanced datum is chunk-bound inside the output proof, the redeemer field is four bounded chunks, and every Data-machine source span is at most `14` bytes; the active challenged-transition redeemer scanner still carries whole `raw_cbor` and an obsolete `9,215`-byte cap | **PARTIAL** — every action kind and the exact terminal reconstruct for the balanced maximum-cardinality trace; broad, unary-depth, and active scanner paths remain open | **PARTIAL** — real balanced-trace HeadLargeConstructor, HeadSequence, HeadMap, HeadScalar, FoldList, FoldMap, internal FinalizeFrame, and terminal controls agree with TypeScript and mutations reject; broad, unary-depth, and active scanner vectors remain open | **PARTIAL** — balanced datum `5,387` leaves / `16,382` signed bytes and redeemer `5,324` leaves / `16,382` signed bytes pass, and their one-leaf adjacent shapes are `16,385` bytes; separate broad and unary-depth envelope boundaries are not yet evidenced | **PARTIAL** |
+| Datum and redeemer Plutus `Data` maximum shapes | **PARTIAL** — production reconstruction authenticates the balanced maximum-cardinality datum and schema-parallel redeemer in both classifications, and the genuine collateralized redeemer remains fail closed; broad and unary-depth shapes are not yet retained fixtures | **PARTIAL** — the retained field-8 descriptor binds exact item index/count/length/commitment, purpose/index, Data offset/length, and execution units; exact `10,776`/`10,650` semantic-node counts are bound for the balanced family, not yet for maximum constructor/list breadth, map-pair breadth, or unary depth | **PARTIAL** — the balanced datum is chunk-bound inside the output proof; every active challenged redeemer path now authenticates one retained field-8 item, exact outer header/tail spans, and at most one adjacent `4,095`-byte chunk for each Data-machine source span of at most `132` bytes; no production auxiliary carries a whole redeemer or whole Data preimage | **PARTIAL** — the accepted validation trace uses the retained item control for frontier ingestion, discovery match, unused-redeemer audit, CEK execution-limit selection, and CEK-context Data selection; the checked `15,982`-byte maximum retained Data payload reaches its exact terminal summary; broad and unary-depth paths remain open | **PARTIAL** — exact outer descriptor/header/tail controls and the maximum balanced nested-Data terminal agree with TypeScript; malformed descriptor, chunk, traversal, successor, and summary relations reject; broad and unary-depth vectors remain open | **PARTIAL** — balanced datum `5,387` leaves / `16,382` signed bytes and redeemer `5,324` leaves / `16,382` signed bytes pass, and their one-leaf adjacent shapes are `16,385` bytes; separate broad and unary-depth envelope boundaries are not yet evidenced | **PARTIAL** |
 | Script envelopes and content-addressed program material | **PARTIAL** — maximum native-script cardinality is retained, but the harness has no Plutus program-material sidecar entries | **PARTIAL** — envelope and program-material schemas bind kinds, roots, and byte lengths | **PARTIAL** — content-addressed traversal and bounded-node tests exist | **PARTIAL** — generic material traversal passes, not a maximum retained envelope/material terminal fixture | **PARTIAL** — envelope/material limits and nodes have Aiken tests, not an exact maximum retained terminal vector | **OPEN** — no applicable maximum script envelope/program-material fixture and adjacent rejection path | **PARTIAL** |
 | Incremental canonical-CBOR scan states | **PARTIAL** — canonical transaction bytes are retained, but no maximum semantic scan-state fixture is selected from each path | **PASS (machinery)** — scan controls bind cursor, source, and terminal state | **PARTIAL** — generic control-step scans exist; maximum source traversal is not evidenced | **PARTIAL** — generic terminal scan vectors exist | **PARTIAL** — generic cross-language control hashes exist, not a maximum retained terminal scan | **OPEN** — no maximum/adjacent source pair is tied to the complete incremental scan | **PARTIAL** |
 
@@ -103,6 +103,13 @@ Focused TypeScript checks pass:
 - all `21` deterministic validation-machine regressions pass; the real
   PlutusV3 observer trace carries one field-3 `TransactionFieldChunkWitness`,
   then a `NoAuxiliaryWitness` finalizer, and no CEK whole-field preimage.
+- the checked balanced-redeemer transaction opens its only field-8 item
+  through the production retained descriptor and traverses the exact
+  `15,982`-byte Data payload with source spans no larger than `132` bytes;
+  removing the required adjacent chunk proof at a boundary rejects;
+- the accepted validation trace and fault-proof ABI contain retained
+  redeemer begin/step witnesses for all five active consumers and contain no
+  `redeemer`, `rawCbor`, or `dataCborHex` payload field.
 
 Focused Aiken checks pass:
 
@@ -133,6 +140,13 @@ Focused Aiken checks pass:
   established observer codec, while an otherwise valid `17`-item proof,
   non-NoAux empty finalization, malformed successor/index/count/field/item/
   chunk/order, and a well-formed but wrong final summary reject.
+- the retained redeemer descriptor authenticates the canonical outer header,
+  tail, purpose/index, Data bounds, and execution units; mutated header, tail,
+  chunk evidence, descriptor/control bindings, and cross-language terminal
+  summaries reject or disagree exactly;
+- the maximum nested redeemer Data terminal still agrees with TypeScript after
+  the production path switches from the removed whole-`raw_cbor` scanner to
+  the retained field-8 item control.
 
 The aggregate field codec fixture uses `124,272,878` memory and
 `50,949,000,952` CPU. It is diagnostic construction evidence, not the
@@ -142,13 +156,11 @@ production one-step path.
 
 Reuse the retained-DA harness rather than build a node lifecycle:
 
-1. replace the active whole-`raw_cbor` challenged-transition redeemer scan
-   and its obsolete `9,215`-byte cap with retained bounded Data traversal;
-2. add distinct constructor/list breadth, map-pair breadth, and iterative
+1. add distinct constructor/list breadth, map-pair breadth, and iterative
    unary-depth envelope fixtures for both datum and genuine-redeemer paths;
-3. close script-envelope and program-material nodes;
-4. close maximum incremental CBOR scans;
-5. backfill any remaining maximum-specific ordered-field Aiken terminal
+2. close script-envelope and program-material nodes;
+3. close maximum incremental CBOR scans;
+4. backfill any remaining maximum-specific ordered-field Aiken terminal
    vectors, then rerun the complete matrix.
 
 No row may be promoted from `PARTIAL` based only on generic unit machinery or

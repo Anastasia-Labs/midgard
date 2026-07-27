@@ -3,10 +3,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
-use midgard/fraud_proofs/native_tx/types.{MidgardRedeemerWitness}
 use midgard/validation_machine_v1.{
-  RedeemerScanWitness, ValidationOneStepWitnessV1,
-  verify_script_sources_stage_ten_match_semantics_v1,
+  ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
+  verify_script_sources_stage_ten_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{ScriptSources}
@@ -16,9 +15,7 @@ pub type ActionV1 {
     input_index: Int,
     output_index: Int,
     transition: ValidationOneStepWitnessV1,
-    redeemer_index: Int,
-    redeemer: MidgardRedeemerWitness,
-    siblings: List<ByteArray>,
+    auxiliary: ValidationAuxiliaryWitnessV1,
   }
 }
 
@@ -49,15 +46,9 @@ validator main(
         input_index,
         output_index,
         transition,
-        redeemer_index,
-        redeemer,
-        siblings,
+        auxiliary,
       }) -> {
-        let auxiliary_data: Data = RedeemerScanWitness {
-          redeemer_index,
-          redeemer,
-          siblings,
-        }
+        let auxiliary_data: Data = auxiliary
         continue_winning(
           ScriptSources,
           award_script_hash,
@@ -67,12 +58,10 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_script_sources_stage_ten_match_semantics_v1(
+          verify_script_sources_stage_ten_semantics_v1(
             datum |> semantic_pre_state,
             transition,
-            redeemer_index,
-            redeemer,
-            siblings,
+            auxiliary,
           ),
           own_out_ref,
           tx,

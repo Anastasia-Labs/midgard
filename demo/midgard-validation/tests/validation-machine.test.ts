@@ -632,10 +632,10 @@ describe("deterministic validation machine", () => {
     });
     const redeemerSourceWitness = scriptSourceWitnesses.find(
       (witness) =>
-        witness.auxiliary?.kind === "transactionRedeemerItem",
+        witness.auxiliary?.kind === "transactionRedeemerItemBegin",
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
-      kind: "transactionRedeemerItem",
+      kind: "transactionRedeemerItemBegin",
       collectionProof: {
         fieldIndex: 8,
         itemCount: 1,
@@ -661,14 +661,21 @@ describe("deterministic validation machine", () => {
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
-          witness.auxiliary?.kind === "redeemerScan" &&
+          witness.auxiliary?.kind === "redeemerScanBegin" &&
           validationSemanticResolverIndexV1(witness) === 19,
       ),
     ).toBe(true);
     expect(
       scriptSourceWitnesses.some(
         (witness) =>
-          witness.auxiliary?.kind === "redeemerScan" &&
+          witness.auxiliary?.kind === "redeemerScanBegin" &&
+          validationSemanticResolverIndexV1(witness) === 21,
+      ),
+    ).toBe(true);
+    expect(
+      scriptSourceWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "redeemerItemStep" &&
           validationSemanticResolverIndexV1(witness) === 22,
       ),
     ).toBe(true);
@@ -682,12 +689,12 @@ describe("deterministic validation machine", () => {
     expect(cekWitnesses.map((witness) => witness.auxiliary?.kind)).toEqual(
       expect.arrayContaining([
         "nativeExecutionScan",
-        "redeemerScan",
+        "redeemerScanBegin",
+        "redeemerItemStep",
         "cekResolvedContextItem",
         "cekOutputContextItem",
         "cekSignerContextItem",
         "cekRedeemerContextSelect",
-        "cekDataScanStep",
         "cekContextFinalizeSpend",
         "cekContextAssemble",
         "cekTxInfoFinalize",
@@ -695,6 +702,45 @@ describe("deterministic validation machine", () => {
         "cekCoreStep",
       ]),
     );
+    expect(
+      cekWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "redeemerScanBegin",
+      ),
+    ).toBe(true);
+    expect(
+      cekWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "cekRedeemerContextSelect",
+      ),
+    ).toBe(true);
+    expect(
+      cekWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "redeemerItemStep" &&
+          witness.auxiliary.redeemerControl === null,
+      ),
+    ).toBe(true);
+    expect(
+      cekWitnesses.some(
+        (witness) =>
+          witness.auxiliary?.kind === "redeemerItemStep" &&
+          witness.auxiliary.redeemerControl !== null,
+      ),
+    ).toBe(true);
+    expect(
+      trace.witnesses.some((witness) => {
+        const auxiliary = witness.auxiliary as
+          | Record<string, unknown>
+          | null
+          | undefined;
+        return auxiliary !== null &&
+          auxiliary !== undefined &&
+          ("redeemer" in auxiliary ||
+            "rawCbor" in auxiliary ||
+            "dataCborHex" in auxiliary);
+      }),
+    ).toBe(false);
     const cekStates = trace.states.filter((state) => state.phase === "cek");
     expect(cekStates.at(-1)!.executionCpu).toBeGreaterThan(0n);
     expect(cekStates.at(-1)!.executionMemory).toBeGreaterThan(0n);
@@ -1160,7 +1206,7 @@ describe("deterministic validation machine", () => {
         "cekCoreStep",
       ]),
     );
-  });
+  }, 10_000);
 
   it("proves duplicate observers at the second authenticated item", async () => {
     const spent = outRefFromByte(0x35);

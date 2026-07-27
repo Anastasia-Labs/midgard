@@ -27,6 +27,7 @@ import { Effect } from "effect";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationOneStepArgumentV1,
+  buildValidationMachineLedgerInsertOpV1,
   buildValidationMachineLedgerMutationSteps,
   encodeValidationBoundaryEvidenceCborV1,
   encodeValidationDisputeDataCborV1,
@@ -115,7 +116,10 @@ const createdOutRef = Buffer.from(
 );
 const expectedLedgerOps = [
   { type: "delete", key: spent },
-  { type: "insert", key: createdOutRef, value: output },
+  buildValidationMachineLedgerInsertOpV1({
+    key: createdOutRef,
+    outputCbor: output,
+  }),
 ];
 const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps({
   initialEntries: [{ outRef: spent, output }],

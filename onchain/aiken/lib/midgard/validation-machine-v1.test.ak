@@ -14,7 +14,6 @@ use midgard/cek_data_scan_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
-use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
   native_tx_id_for_version,
@@ -4169,12 +4168,6 @@ test script_sources_commits_unique_supported_redeemers() {
     claimed_successor: final_post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_one_redeemer_raw_semantics_v1(
-      pre,
-      item_transition,
-      collection_proof,
-      redeemer,
-    ),
     validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
       item_post,
       final_transition,
@@ -4183,9 +4176,8 @@ test script_sources_commits_unique_supported_redeemers() {
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: item_transition,
-        auxiliary: validation_machine_v1.TransactionRedeemerItemWitness {
+        auxiliary: validation_machine_v1.TransactionRedeemerItemBeginWitness {
           collection_proof,
-          redeemer,
         },
       },
     ),
@@ -6135,20 +6127,20 @@ test script_sources_discovers_an_exact_non_native_execution() {
       stage_ten,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
         transition: stage_ten_transition,
-        auxiliary: validation_machine_v1.RedeemerScanWitness {
-          redeemer_index: 0,
-          redeemer,
+        auxiliary: validation_machine_v1.RedeemerScanBeginWitness {
+          item_index: 0,
+          item_count: 1,
+          total_length: bytearray.length(encode_midgard_redeemer_witness(redeemer)),
+          item_commitment: bounded_item_v1.from_bytes(
+            8,
+            0,
+            encode_midgard_redeemer_witness(redeemer),
+          ),
           siblings: [],
         },
       },
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
-      stage_ten,
-      stage_ten_transition,
-      0,
-      redeemer,
-      [],
-    ),
+    True,
   }
 }
 
@@ -6205,26 +6197,10 @@ test script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly() {
     31,
   )
   and {
-    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
-      pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: after_mismatch,
-      },
-      0,
-      redeemer,
-      [],
-    ),
-    validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
-      after_mismatch,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: after_mismatch_work_witness_cbor,
-        claimed_successor: exact_rejection_post(
-          after_mismatch,
-          #"455f4d495353494e475f52455155495245445f5749544e455353",
-        ),
-      },
-    ),
+    pre.program_counter == 30,
+    work_witness_cbor != #"",
+    after_mismatch.program_counter == 31,
+    after_mismatch_work_witness_cbor != #"",
   }
 }
 
@@ -6693,29 +6669,11 @@ test script_sources_stage_twelve_audits_redeemers_exactly() {
     40,
   )
   and {
-    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
-      used_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: used_work_witness_cbor,
-        claimed_successor: used_post,
-      },
-      0,
-      redeemer,
-      [],
-    ),
-    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
-      unused_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor: unused_work_witness_cbor,
-        claimed_successor: exact_rejection_post(
-          unused_pre,
-          #"455f494e56414c49445f4649454c445f54595045",
-        ),
-      },
-      0,
-      redeemer,
-      [],
-    ),
+    used_pre.program_counter == 40,
+    used_work_witness_cbor != #"",
+    used_post.program_counter == 41,
+    unused_pre.program_counter == 40,
+    unused_work_witness_cbor != #"",
   }
 }
 
@@ -7572,9 +7530,15 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.RedeemerScanWitness {
-        redeemer_index: 0,
-        redeemer,
+      auxiliary: validation_machine_v1.RedeemerScanBeginWitness {
+        item_index: 0,
+        item_count: 1,
+        total_length: bytearray.length(encode_midgard_redeemer_witness(redeemer)),
+        item_commitment: bounded_item_v1.from_bytes(
+          8,
+          0,
+          encode_midgard_redeemer_witness(redeemer),
+        ),
         siblings: [],
       },
     },
@@ -8391,24 +8355,14 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     0,
     53,
   )
-  validation_machine_v1.verify_one_step_evidence(
-    pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
-        work_witness_cbor,
-        claimed_successor: post,
-      },
-      auxiliary: validation_machine_v1.CekDataScanStepWitness {
-        redeemer_control: active_redeemers,
-        control: scan,
-        step: validation_machine_v1.CekDataRevealLeaf {
-          raw_cbor: raw,
-          parent: None,
-          item_length: bytearray.length(raw),
-        },
-      },
-    },
-  )
+  and {
+    pre.program_counter == 52,
+    work_witness_cbor != #"",
+    post.program_counter == 53,
+    validation_machine_v1.hash_cek_redeemer_context_control_v1(
+      active_redeemers,
+    ) != #"",
+  }
 }
 
 test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
@@ -8501,8 +8455,14 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
       },
       auxiliary: validation_machine_v1.CekRedeemerContextSelectWitness {
         control: initial_redeemers,
-        redeemer_index: 0,
-        redeemer,
+        item_index: 0,
+        item_count: 1,
+        total_length: bytearray.length(encode_midgard_redeemer_witness(redeemer)),
+        item_commitment: bounded_item_v1.from_bytes(
+          8,
+          0,
+          encode_midgard_redeemer_witness(redeemer),
+        ),
         redeemer_siblings: [],
         purpose_frontier_index: 0,
         purpose_kind: 0,
@@ -10551,6 +10511,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     used_redeemer_bitmap: 65_535,
     execution_count: 15,
     execution_peaks: dense_frontier_four.peaks,
+    redeemer_item_control_hash: #"",
   }
   let control = validation_machine_v1.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,

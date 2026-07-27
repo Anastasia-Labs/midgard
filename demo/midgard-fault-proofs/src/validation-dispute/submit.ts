@@ -381,6 +381,39 @@ const auxiliaryShapeV1 = ({
     });
   }
   if (resolverIndex === 8) {
+    if (!(auxiliary instanceof Constr)) {
+      throw new Error(
+        "validation auxiliary witness must be a constructor",
+      );
+    }
+    const isRedeemerItemStage =
+      auxiliary.index === 22 && auxiliary.fields.length === 3;
+    if (
+      semanticResolverIndex === 15 &&
+      !(
+        (auxiliary.index === 33 &&
+          auxiliary.fields.length === 1) ||
+        isRedeemerItemStage
+      )
+    ) {
+      throw new Error(
+        "validation auxiliary witness does not match the selected ScriptSources redeemer-ingestion proof family",
+      );
+    }
+    if (
+      (semanticResolverIndex === 19 ||
+        semanticResolverIndex === 21 ||
+        semanticResolverIndex === 22) &&
+      !(
+        (auxiliary.index === 14 &&
+          auxiliary.fields.length === 5) ||
+        isRedeemerItemStage
+      )
+    ) {
+      throw new Error(
+        "validation auxiliary witness does not match the selected ScriptSources redeemer-scan proof family",
+      );
+    }
     const outputExpected =
       semanticResolverIndex === 0
         ? null
@@ -399,11 +432,11 @@ const auxiliaryShapeV1 = ({
                     ? [13, 8]
                     : semanticResolverIndex === 17
                       ? [13, 8]
-                      : semanticResolverIndex === 19
-                        ? [14, 3]
+                    : semanticResolverIndex === 19
+                        ? null
                         : semanticResolverIndex === 21 ||
                             semanticResolverIndex === 22
-                          ? [14, 3]
+                          ? null
                           : semanticResolverIndex === 24
                             ? [12, 5]
                             : semanticResolverIndex === 25
@@ -411,13 +444,8 @@ const auxiliaryShapeV1 = ({
                               : semanticResolverIndex === 26
                                 ? [12, 5]
                     : semanticResolverIndex === 15
-                      ? [33, 2]
+                      ? null
                     : [0, 0];
-    if (!(auxiliary instanceof Constr)) {
-      throw new Error(
-        "validation auxiliary witness must be a constructor",
-      );
-    }
     const outputAuxiliary = auxiliary;
     if (
       outputExpected !== null &&
@@ -2498,10 +2526,10 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      auxiliary.index === 33 &&
-      auxiliary.fields.length === 2
+      ((auxiliary.index === 33 && auxiliary.fields.length === 1) ||
+        (auxiliary.index === 22 && auxiliary.fields.length === 3))
     ) {
-      return [...base, ...auxiliary.fields];
+      return [...base, auxiliary];
     }
     if (
       semanticResolverIndex === 16 &&
@@ -2526,10 +2554,10 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 19 &&
-      auxiliary.index === 14 &&
-      auxiliary.fields.length === 3
+      ((auxiliary.index === 14 && auxiliary.fields.length === 5) ||
+        (auxiliary.index === 22 && auxiliary.fields.length === 3))
     ) {
-      return [...base, ...auxiliary.fields];
+      return [...base, auxiliary];
     }
     if (
       semanticResolverIndex === 20 &&
@@ -2541,10 +2569,10 @@ const semanticActionFieldsV1 = ({
     if (
       (semanticResolverIndex === 21 ||
         semanticResolverIndex === 22) &&
-      auxiliary.index === 14 &&
-      auxiliary.fields.length === 3
+      ((auxiliary.index === 14 && auxiliary.fields.length === 5) ||
+        (auxiliary.index === 22 && auxiliary.fields.length === 3))
     ) {
-      return [...base, ...auxiliary.fields];
+      return [...base, auxiliary];
     }
     if (
       semanticResolverIndex === 23 &&
