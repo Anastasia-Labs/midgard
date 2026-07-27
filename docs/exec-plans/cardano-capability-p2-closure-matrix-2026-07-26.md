@@ -71,7 +71,7 @@ the semantic reverse bridge.
 
 | Dynamic-content family | Normal/forced retained source | Typed count/length | Individually bounded reveal | TypeScript terminal result | Aiken terminal agreement | Cardano maximum + adjacent reject | Gate |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Ordered transaction fields `0`–`8` | **PASS** — production reconstruction authenticates exact proof sources and canonical preimages in both paths | **PASS** — field directory plus exact item counts/lengths | **FAIL (active transition)** — retained proofs reveal every item/chunk boundedly, but `validation-machine-v1.ak` still decodes complete spend/reference-input preimages at `8464`–`8467` and `16194`–`16195`, and the complete observer preimage at `15045` | **PARTIAL** — byte-exact generic reconstruction passes for all maximum fixtures, but the three active whole-field consumers remain | **PARTIAL** — exact maximum field-8 applied terminal vector passes; maximum-specific agreement is not yet recorded for fields `0`–`7`, and the active whole-field consumers are not replaced | **PASS** — accepted maxima and immediately adjacent signed-Cardano rejection fixtures exist for all fields | **PARTIAL** |
+| Ordered transaction fields `0`–`8` | **PASS** — production reconstruction authenticates exact proof sources and canonical preimages in both paths | **PASS** — field directory plus exact item counts/lengths | **FAIL (active transition)** — spend/reference-input scheduling is now retained from the authenticated InputSets schedule and replayed item by item without either former pair-preimage decode, but the complete observer preimage is still decoded in CEK context construction | **PARTIAL** — byte-exact generic reconstruction passes for all maximum fixtures, and exhaustive TypeScript folds now pass for the `434`-spend and mixed `1`-spend/`433`-reference maxima; observer replay remains whole-field | **PARTIAL** — exact terminal vectors now agree for maximum fields `0`, `1`, and `8`, including schedule, accumulator, and resolved-item frontier commitments; observer and the other maximum-specific field vectors remain open | **PASS** — accepted maxima and immediately adjacent signed-Cardano rejection fixtures exist for all fields | **PARTIAL** |
 | General byte blobs/chunks | **PASS** — production reconstruction authenticates the exact maximum inline-datum transaction and proof source in both classifications | **PASS** — one field-2 item binds exact item count `1`, item length `16,221`, field length `16,225`, and chunk count `4` | **PASS** — four exact reveals use at most `4,095` bytes and reconstruct the authenticated source | **PASS** — the field terminal advances to the exact next canonical-scan state and the complete fold reconstructs byte exactly | **PASS** — the applied Aiken terminal step agrees with the TypeScript roots, proof, terminal chunk, and next-field successor | **PASS** — `15,680` datum payload bytes produce `16,383` signed bytes; the adjacent `15,681`-byte payload produces `16,385` signed bytes and rejects | **PASS** |
 | Nested output `Value` policy/asset content | **PASS** — production reconstruction authenticates the exact 5,000-byte maximum-Value transaction and canonical output in both classifications | **PASS** — seven policies and the maximum 1,592 distinct policy/asset entries are bound by the output descriptor and asset frontier | **PASS** — two output chunks and 1,592 authenticated reverse-membership steps; the largest asset witness payload is 358 bytes | **PASS** — 3,198 typed output-proof steps reach the exact terminal Value summary and descriptor | **PASS** — exact maximum terminal and cross-policy membership transitions match TypeScript; substituted quantity rejects | **PASS** — at protocol major `11`, exact canonical Value sizes `5,000`/`5,001` satisfy/violate the official `validateOutputTooBigUTxO` snapshot rule against `maxValueSize = 5,000`, while both signed transactions remain below `maxTxSize`; independent Midgard parity rejects the adjacent case with `E_VALUE_SIZE` | **PASS** |
 | Datum and redeemer Plutus `Data` maximum shapes | **PARTIAL** — production reconstruction authenticates the balanced maximum-cardinality datum and schema-parallel redeemer in both classifications, and the genuine collateralized redeemer remains fail closed; broad and unary-depth shapes are not yet retained fixtures | **PARTIAL** — exact lengths and `10,776`/`10,650` semantic-node counts are bound for the balanced family, not yet for maximum constructor/list breadth, map-pair breadth, or unary depth | **PARTIAL** — the balanced datum is chunk-bound inside the output proof, the redeemer field is four bounded chunks, and every Data-machine source span is at most `14` bytes; the active challenged-transition redeemer scanner still carries whole `raw_cbor` and an obsolete `9,215`-byte cap | **PARTIAL** — every action kind and the exact terminal reconstruct for the balanced maximum-cardinality trace; broad, unary-depth, and active scanner paths remain open | **PARTIAL** — real balanced-trace HeadLargeConstructor, HeadSequence, HeadMap, HeadScalar, FoldList, FoldMap, internal FinalizeFrame, and terminal controls agree with TypeScript and mutations reject; broad, unary-depth, and active scanner vectors remain open | **PARTIAL** — balanced datum `5,387` leaves / `16,382` signed bytes and redeemer `5,324` leaves / `16,382` signed bytes pass, and their one-leaf adjacent shapes are `16,385` bytes; separate broad and unary-depth envelope boundaries are not yet evidenced | **PARTIAL** |
@@ -90,6 +90,12 @@ Focused TypeScript checks pass:
   `reconstructDaPayloadV1` in both classifications before generic bounded
   field/item chunk reconstruction, and deliberate
   root/count/forced-preimage mismatches reject.
+- exhaustive retained-schedule folds pass twice, deterministically, for the
+  `434`-spend maximum and the mixed `1`-spend/`433`-reference maximum;
+- the accepted deterministic trace keeps its exact `22` ScriptSources and
+  `8` ValueAndMint states, carries one immutable resolution-schedule head at
+  every ResolveInputs/ScriptSources/NativeScripts/ValueAndMint array position,
+  and emits no transaction-field pair-preimage witness.
 
 Focused Aiken checks pass:
 
@@ -110,6 +116,12 @@ Focused Aiken checks pass:
   at `7,441,306` memory and `2,843,553,783` CPU;
 - exact FoldList, FoldMap, and internal FinalizeFrame controls plus mutated
   fold proofs, at `8,608,081` memory and `3,527,543,832` CPU.
+- maximum spend and reference-input terminal schedule vectors agree with the
+  exhaustive TypeScript results; each Aiken argument carries only the last
+  item and logarithmic frontier peaks;
+- the NoAux ScriptSources stage-two handoff preserves the immutable original
+  schedule head, while duplicate, altered head/source/key/tail, premature
+  terminal, and terminal count/accumulator controls reject.
 
 The aggregate field codec fixture uses `124,272,878` memory and
 `50,949,000,952` CPU. It is diagnostic construction evidence, not the
@@ -119,18 +131,15 @@ production one-step path.
 
 Reuse the retained-DA harness rather than build a node lifecycle:
 
-1. replace the active whole-field spend/reference-input decoders in script
-   source scheduling and Value/mint initialization with bounded retained item
-   folds;
-2. replace the active whole-field observer decoder in CEK context construction
+1. replace the active whole-field observer decoder in CEK context construction
    with a bounded retained observer fold;
-3. replace the active whole-`raw_cbor` challenged-transition redeemer scan
+2. replace the active whole-`raw_cbor` challenged-transition redeemer scan
    and its obsolete `9,215`-byte cap with retained bounded Data traversal;
-4. add distinct constructor/list breadth, map-pair breadth, and iterative
+3. add distinct constructor/list breadth, map-pair breadth, and iterative
    unary-depth envelope fixtures for both datum and genuine-redeemer paths;
-5. close script-envelope and program-material nodes;
-6. close maximum incremental CBOR scans;
-7. backfill any remaining maximum-specific ordered-field Aiken terminal
+4. close script-envelope and program-material nodes;
+5. close maximum incremental CBOR scans;
+6. backfill any remaining maximum-specific ordered-field Aiken terminal
    vectors, then rerun the complete matrix.
 
 No row may be promoted from `PARTIAL` based only on generic unit machinery or

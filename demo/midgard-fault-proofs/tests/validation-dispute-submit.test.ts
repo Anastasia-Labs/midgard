@@ -195,12 +195,12 @@ describe("validation-dispute transaction validity", () => {
     for (const selected of [
       {
         index: 10,
-        auxiliary: new Constr(14, [...sourceFields]),
+        auxiliary: new Constr(13, [...sourceFields]),
         module: "script_sources_stage_nine_mismatch_semantic_v1",
       },
       {
         index: 11,
-        auxiliary: new Constr(14, [
+        auxiliary: new Constr(13, [
           ...sourceFields.slice(0, 3),
           0n,
           ...sourceFields.slice(4),
@@ -209,7 +209,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 12,
-        auxiliary: new Constr(14, [...sourceFields]),
+        auxiliary: new Constr(13, [...sourceFields]),
         module:
           "script_sources_stage_nine_effectful_match_semantic_v1",
       },
@@ -225,7 +225,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 15,
-        auxiliary: new Constr(34, [
+        auxiliary: new Constr(33, [
           redeemerItemProof,
           redeemerWitness,
         ]),
@@ -238,7 +238,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 17,
-        auxiliary: new Constr(14, [...sourceFields]),
+        auxiliary: new Constr(13, [...sourceFields]),
         module: "script_sources_stage_eleven_source_semantic_v1",
       },
       {
@@ -248,7 +248,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 19,
-        auxiliary: new Constr(15, [
+        auxiliary: new Constr(14, [
           0n,
           redeemerWitness,
           [],
@@ -262,7 +262,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 21,
-        auxiliary: new Constr(15, [
+        auxiliary: new Constr(14, [
           0n,
           redeemerWitness,
           [],
@@ -271,7 +271,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 22,
-        auxiliary: new Constr(15, [
+        auxiliary: new Constr(14, [
           0n,
           redeemerWitness,
           [],
@@ -285,7 +285,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 24,
-        auxiliary: new Constr(13, [
+        auxiliary: new Constr(12, [
           0n,
           0n,
           "11".repeat(28),
@@ -304,7 +304,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 26,
-        auxiliary: new Constr(13, [
+        auxiliary: new Constr(12, [
           3n,
           0n,
           "11".repeat(28),
@@ -350,7 +350,7 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: 13,
           transitionCbor,
           auxiliaryCbor: Buffer.from(
-            Data.to(new Constr(14, [...sourceFields]) as never),
+            Data.to(new Constr(13, [...sourceFields]) as never),
             "hex",
           ),
         },
@@ -398,12 +398,12 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 1,
-        auxiliary: new Constr(42, [...nativeDescriptorFields]),
+        auxiliary: new Constr(41, [...nativeDescriptorFields]),
         module: "native_scripts_native_semantic_v1",
       },
       {
         index: 2,
-        auxiliary: new Constr(42, [
+        auxiliary: new Constr(41, [
           nativeDescriptorFields[0],
           3n,
           ...nativeDescriptorFields.slice(2, 15),
@@ -444,7 +444,7 @@ describe("validation-dispute transaction validity", () => {
           transitionCbor,
           auxiliaryCbor: Buffer.from(
             Data.to(
-              new Constr(42, [...nativeDescriptorFields]) as never,
+              new Constr(41, [...nativeDescriptorFields]) as never,
             ),
             "hex",
           ),

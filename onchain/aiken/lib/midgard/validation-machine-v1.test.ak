@@ -25,7 +25,7 @@ use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
-  decode_midgard_tx_mint_preimage_cbor, encode_input_preimage,
+  decode_midgard_tx_mint_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
@@ -356,17 +356,6 @@ fn next_phase_a_native_state(
   }
 }
 
-fn input_field_pair_auxiliary(
-  tx: MidgardTransaction,
-) -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
-  validation_machine_v1.TransactionFieldPairPreimageWitness {
-    first_field_index: 0,
-    first_preimage_cbor: encode_input_preimage(tx.body.inputs),
-    second_field_index: 1,
-    second_preimage_cbor: encode_input_preimage(tx.body.reference_inputs),
-  }
-}
-
 fn singleton_field_item_proofs(
   field_index: Int,
   key: ByteArray,
@@ -691,6 +680,10 @@ fn resolve_inputs_step_fixture(
       signer_frontier.peaks,
     ),
     None,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -780,6 +773,10 @@ fn script_sources_output_step_fixture_with_resolved_items(
     redeemer_frontier.count,
     observer_scan,
     validation_machine_v1.empty_mint_fold_control(),
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -915,6 +912,10 @@ fn script_sources_mint_fold_fixture(
     0,
     validation_machine_v1.empty_observer_purpose_scan_control(),
     mint_fold,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -1109,6 +1110,10 @@ fn script_sources_active_output_proof_fixture(
     output_proof: Some(output_proof),
     pending_source_cbor: #"",
     mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_output_proof_witness(
     control,
@@ -1299,6 +1304,10 @@ fn script_discovery_step_fixture_with_output_frontier(
     output_proof: None,
     pending_source_cbor: #"",
     mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     base_control,
@@ -1402,6 +1411,10 @@ fn native_scripts_step_fixture(
     execution_peaks: execution_frontier.peaks,
     execution_cursor,
     language_bitmap,
+    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
   let work_witness_cbor = validation_machine_v1.encode_native_scripts_control_v1(
     control,
@@ -1468,6 +1481,10 @@ fn empty_native_control_fixture(
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
     language_bitmap: 0,
+    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
 }
 
@@ -3207,6 +3224,10 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
           signer_frontier.peaks,
         ),
         None,
+        validation_machine_v1.transaction_resolution_schedule_hash(
+          tx.body.inputs,
+          tx.body.reference_inputs,
+        ),
       ),
     ),
   }
@@ -3388,6 +3409,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       signer_frontier.peaks,
     ),
     None,
+    resolution_schedule_hash,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -3458,6 +3480,10 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_initial),
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   let begin_post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -3486,6 +3512,10 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_first_successor),
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   let step_post = validation_trace_v1.ValidationMachineStateV1 {
     ..begin_post,
@@ -3514,6 +3544,10 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_terminal),
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   let finalize_pre = validation_trace_v1.ValidationMachineStateV1 {
     ..step_post,
@@ -3540,6 +3574,10 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     signer_frontier.count,
     signer_frontier_commitment,
     None,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   )
   let finalize_post = validation_trace_v1.ValidationMachineStateV1 {
     ..finalize_pre,
@@ -3596,7 +3634,7 @@ test resolve_inputs_begins_authenticated_membership_output() {
   resolve_inputs_authenticated_membership_step(0)
 }
 
-test resolve_inputs_empty_pending_witness_decodes_as_exact_array_10() {
+test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
@@ -3613,9 +3651,14 @@ test resolve_inputs_empty_pending_witness_decodes_as_exact_array_10() {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let fields = builtin.un_list_data(data)
   expect Some(pending_data) = list.at(fields, 9)
+  expect Some(schedule_data) = list.at(fields, 10)
   and {
-    list.length(fields) == 10,
+    list.length(fields) == 11,
     builtin.un_b_data(pending_data) == #"00",
+    builtin.un_b_data(schedule_data) == validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
 }
 
@@ -3774,6 +3817,10 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_machine_v1.empty_observer_purpose_scan_control(),
         validation_machine_v1.empty_mint_fold_control(),
+        validation_machine_v1.transaction_resolution_schedule_hash(
+          tx.body.inputs,
+          tx.body.reference_inputs,
+        ),
       ),
     ),
   }
@@ -4097,8 +4144,400 @@ test script_sources_binds_resolved_input_replay_schedule() {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: input_field_pair_auxiliary(tx),
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
+  )
+}
+
+type ResolutionScheduleTerminalVectorV1 {
+  original_schedule_hash: ByteArray,
+  terminal_accumulator: ByteArray,
+  terminal_frontier_commitment: ByteArray,
+  penultimate_accumulator: ByteArray,
+  penultimate_remaining_schedule_hash: ByteArray,
+  penultimate_spend_index: Int,
+  penultimate_resolved_item_peaks: List<validation_merkle_v1.FrontierPeak>,
+  last_source_kind: Int,
+  last_key: ByteArray,
+  last_value: ByteArray,
+}
+
+const maximum_input_schedule_last_key =
+  #"82582000000000000000000000000000000000000000000000000000000000000000001901b1"
+
+const maximum_input_schedule_last_value =
+  #"90011901b11829582075905d5cce7bbf39a2d566bf6f5ee2f9074354777ca4408ebd73e9d6d77cc9fb581d60111111111111111111111111111111111111111111111111111111111a00989680005820b6575c6c81264fc5d6802905bc4cb01d26fcca7c75412712fd4d4b7e5a23d6cd05204000408358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358208e037f86edc06fd63fbc01bf5e587d66127e73513943f7d1c294a3b6649b72b7183c18528358209525e1ea4350de9f831fc817b64355d7c3e26427effb7f4ca9bd29541d5eda390304"
+
+fn maximum_spend_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
+  ResolutionScheduleTerminalVectorV1 {
+    original_schedule_hash: #"3175ee405a7dab445d883a4e4912fa79c57399fbafd5fe8865e50ea2a4f900cc",
+    terminal_accumulator: #"10d18e38469596142ba1fa63fd7c2bbdd310770d811bda870a32ba11fa0c2949",
+    terminal_frontier_commitment: #"7d01f4857f245e957b13a07cdb54a66af980f29825235c7945fde902c2a5c8ee",
+    penultimate_accumulator: #"e66484cfb1266c895a9dc2765e44542ecc0e63e8ef9c08173fb6c6dd91f954d5",
+    penultimate_remaining_schedule_hash: #"6d5383cff6142a4e20298cf82b71837886eeb853245d068a8cf43a540e1d2b3d",
+    penultimate_spend_index: 433,
+    penultimate_resolved_item_peaks: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"490d3ccf112900b8af68cdf9873ea682bc41f5e3a18ce80e8cbaad97c7afe1f0",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"d01cd11a1af0cc1270e6f3f3a7dfff15c52f7710c1c12bdd3245c068f328c53b",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"4bd02c803151903ed7bb3a09e8c7823ba0391d78edfc6dacaf66badc3950d9bf",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"66b7b616caa9588056af4d6191ecd23ba077e9c7644e70bb2666fb08f759a0a6",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"a51dc8d5735d7e5ab600dfff6020801e6ae064e76b0cf8f7a880d05c7bcb91de",
+      },
+    ],
+    last_source_kind: 0,
+    last_key: maximum_input_schedule_last_key,
+    last_value: maximum_input_schedule_last_value,
+  }
+}
+
+fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTerminalVectorV1 {
+  ResolutionScheduleTerminalVectorV1 {
+    original_schedule_hash: #"95872510ce0c8c50c31d60b997049c0f7741916d7378a6cd264f7f6e60f26c75",
+    terminal_accumulator: #"a8e7978a7b04c06c22e93f148e20c4f05d1e52e342086d99dce07ebcf22162cd",
+    terminal_frontier_commitment: #"b3de0271b55374bf3aba6fed0bc45c7acbf89cf6cb94f28255f9642820e98e5c",
+    penultimate_accumulator: #"a626f4411517e88a5d3cbd4f557eaa3016c097ee9faceb9f9778a122c3aa2085",
+    penultimate_remaining_schedule_hash: #"11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329",
+    penultimate_spend_index: 1,
+    penultimate_resolved_item_peaks: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"c830521b7ad8c959ae55b31633e207388fae52161373666e11f0cfb8f2636258",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"fb7125a9b42801c60668ae85fbb63c9688ae6f1db51b66e808f887beb33ad939",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"d434d9b86a8a039067633f60db0b7028cd8c0e20d7738f136c71ba4ebb17f600",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"a0b8592e98857754eb7c710a2b73418391aef2bda4fcbd1e1bef9db50945bed7",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"ef9e52876a7b2b2de2f7864af0bd5d3bcb8992826ea07065fb586085e8ac8f28",
+      },
+    ],
+    last_source_kind: 1,
+    last_key: maximum_input_schedule_last_key,
+    last_value: maximum_input_schedule_last_value,
+  }
+}
+
+fn resolution_schedule_terminal_control(
+  vector: ResolutionScheduleTerminalVectorV1,
+) -> validation_machine_v1.ScriptSourcesControlV1 {
+  let base = stage_zero_script_sources_control(
+    empty_v1_transaction(),
+    validation_merkle_v1.build_frontier([]),
+    0,
+    #"",
+  )
+  validation_machine_v1.ScriptSourcesControlV1 {
+    ..base,
+    resolved_input_count: 434,
+    resolved_inputs_accumulator: vector.terminal_accumulator,
+    resolved_item_peaks: vector.penultimate_resolved_item_peaks,
+    stage: 3,
+    replay_cursor: 433,
+    replay_accumulator: vector.penultimate_accumulator,
+    replay_remaining_schedule_hash: vector.penultimate_remaining_schedule_hash,
+    spend_index: vector.penultimate_spend_index,
+    resolution_schedule_hash: vector.original_schedule_hash,
+  }
+}
+
+fn resolution_schedule_terminal_state(
+  control: validation_machine_v1.ScriptSourcesControlV1,
+  program_counter: Int,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let tx = empty_v1_transaction()
+  let compact = midgard_transaction_to_compact(tx)
+  let transaction_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = stage_zero_script_sources_work_witness(control)
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id,
+      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.ScriptSources,
+      program_counter,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.ScriptSources,
+        program_counter,
+        work_witness_cbor,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+      ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    },
+    work_witness_cbor,
+  )
+}
+
+fn verify_maximum_input_schedule_terminal_vector(
+  vector: ResolutionScheduleTerminalVectorV1,
+) -> Bool {
+  let pre_control = resolution_schedule_terminal_control(vector)
+  let terminal_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+    pre_control.replay_accumulator,
+    vector.last_source_kind,
+    vector.last_key,
+    vector.last_value,
+  )
+  let terminal_resolved_item_peaks = validation_merkle_v1.append_leaf(
+    pre_control.replay_cursor,
+    pre_control.resolved_item_peaks,
+    script_proof_v1.resolved_context_item_leaf_hash(
+      vector.last_source_kind,
+      pre_control.replay_cursor,
+      vector.last_key,
+      vector.last_value,
+    ),
+  )
+  let terminal_spend_index = pre_control.spend_index + 1 - vector.last_source_kind
+  let terminal_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..pre_control,
+    resolved_item_peaks: terminal_resolved_item_peaks,
+    replay_cursor: 434,
+    replay_accumulator: terminal_accumulator,
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    spend_index: terminal_spend_index,
+  }
+  let finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..terminal_control,
+    stage: 4,
+  }
+  let Pair(pre, pre_work_witness_cbor) = resolution_schedule_terminal_state(
+    pre_control,
+    12,
+  )
+  let Pair(terminal, terminal_work_witness_cbor) = resolution_schedule_terminal_state(
+    terminal_control,
+    13,
+  )
+  let Pair(finish, _) = resolution_schedule_terminal_state(finish_control, 14)
+  let replay_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: pre_work_witness_cbor,
+    claimed_successor: terminal,
+  }
+  let replay_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: replay_transition,
+    auxiliary: validation_machine_v1.ResolvedInputReplayWitness {
+      source_kind: vector.last_source_kind,
+      key: vector.last_key,
+      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      value: vector.last_value,
+    },
+  }
+  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: terminal_work_witness_cbor,
+    claimed_successor: finish,
+  }
+  let finish_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: finish_transition,
+    auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+  }
+  let premature_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: pre_work_witness_cbor,
+    claimed_successor: finish,
+  }
+  let malformed_terminal_cursor_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..pre_control,
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+  }
+  let malformed_terminal_cursor_finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..malformed_terminal_cursor_control,
+    stage: 4,
+  }
+  let
+      Pair(malformed_terminal_cursor,
+      malformed_terminal_cursor_work_witness_cbor)
+    = resolution_schedule_terminal_state(malformed_terminal_cursor_control, 13)
+  let Pair(malformed_terminal_cursor_finish, _) = resolution_schedule_terminal_state(
+    malformed_terminal_cursor_finish_control,
+    14,
+  )
+  let malformed_terminal_cursor_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: malformed_terminal_cursor_work_witness_cbor,
+    claimed_successor: malformed_terminal_cursor_finish,
+  }
+  let malformed_terminal_accumulator_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..terminal_control,
+    replay_accumulator: h_a,
+  }
+  let malformed_terminal_accumulator_finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..malformed_terminal_accumulator_control,
+    stage: 4,
+  }
+  let
+      Pair(malformed_terminal_accumulator,
+      malformed_terminal_accumulator_work_witness_cbor)
+    = resolution_schedule_terminal_state(
+    malformed_terminal_accumulator_control,
+    13,
+  )
+  let Pair(malformed_terminal_accumulator_finish, _) = resolution_schedule_terminal_state(
+    malformed_terminal_accumulator_finish_control,
+    14,
+  )
+  let malformed_terminal_accumulator_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: malformed_terminal_accumulator_work_witness_cbor,
+    claimed_successor: malformed_terminal_accumulator_finish,
+  }
+  let stage_two_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..pre_control,
+    resolved_item_peaks: [],
+    stage: 2,
+    replay_cursor: 0,
+    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    spend_index: 0,
+  }
+  let stage_three_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..stage_two_control,
+    stage: 3,
+    replay_remaining_schedule_hash: vector.original_schedule_hash,
+  }
+  let altered_head_control = validation_machine_v1.ScriptSourcesControlV1 {
+    ..stage_three_control,
+    resolution_schedule_hash: h_a,
+  }
+  let Pair(stage_two, stage_two_work_witness_cbor) = resolution_schedule_terminal_state(
+    stage_two_control,
+    10,
+  )
+  let Pair(stage_three, _) = resolution_schedule_terminal_state(
+    stage_three_control,
+    11,
+  )
+  let Pair(altered_head, _) = resolution_schedule_terminal_state(
+    altered_head_control,
+    11,
+  )
+  let stage_two_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_two_work_witness_cbor,
+    claimed_successor: stage_three,
+  }
+  let altered_head_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_two_work_witness_cbor,
+    claimed_successor: altered_head,
+  }
+  let mutated_source_kind = 1 - vector.last_source_kind
+  let mutated_key = bytearray.concat(
+    builtin.slice_bytearray(
+      0,
+      bytearray.length(vector.last_key) - 1,
+      vector.last_key,
+    ),
+    #"ff",
+  )
+  and {
+    terminal_accumulator == vector.terminal_accumulator,
+    validation_merkle_v1.frontier_commitment(434, terminal_resolved_item_peaks) == vector.terminal_frontier_commitment,
+    bytearray.length(cbor.serialise(replay_evidence)) < 16_384,
+    bytearray.length(cbor.serialise(finish_evidence)) < 16_384,
+    validation_machine_v1.verify_script_sources_stage_two_semantics_v1(
+      stage_two,
+      stage_two_transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_two_semantics_v1(
+      stage_two,
+      altered_head_transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
+    validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      vector.last_source_kind,
+      vector.last_key,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      vector.last_value,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      mutated_source_kind,
+      vector.last_key,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      vector.last_value,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      vector.last_source_kind,
+      mutated_key,
+      validation_machine_v1.empty_resolution_schedule_hash(),
+      vector.last_value,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+      pre,
+      replay_transition,
+      vector.last_source_kind,
+      vector.last_key,
+      h_a,
+      vector.last_value,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+      pre,
+      premature_transition,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+      malformed_terminal_cursor,
+      malformed_terminal_cursor_transition,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+      malformed_terminal_accumulator,
+      malformed_terminal_accumulator_transition,
+    ),
+    validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+      terminal,
+      finish_transition,
+    ),
+  }
+}
+
+// The TypeScript producer exhaustively derives these terminal controls from
+// the checked 434-spend Cardano boundary fixture. This Aiken argument contains
+// only the final bounded replay item plus logarithmic frontier peaks.
+test maximum_spend_input_schedule_terminal_matches_typescript() {
+  verify_maximum_input_schedule_terminal_vector(
+    maximum_spend_input_schedule_terminal_vector(),
+  )
+}
+
+// The mixed checked boundary contains one spend and 433 reference inputs.
+test maximum_reference_input_schedule_terminal_matches_typescript() {
+  verify_maximum_input_schedule_terminal_vector(
+    maximum_reference_input_schedule_terminal_vector(),
   )
 }
 
@@ -9630,6 +10069,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_proof: None,
     pending_source_cbor: #"",
     mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    resolution_schedule_hash: h_c,
   }
   let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
     control,
@@ -9712,6 +10152,10 @@ fn stage_zero_script_sources_control(
     output_proof: None,
     pending_source_cbor,
     mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
   }
 }
 
@@ -9749,6 +10193,7 @@ fn stage_zero_script_sources_work_witness(
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
+      control.resolution_schedule_hash,
     )
   } else {
     validation_machine_v1.encode_script_sources_pending_source_witness(

@@ -349,12 +349,12 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 7
         ? [0, 0]
         : semanticResolverIndex === 0
-          ? [40, 4]
+          ? [39, 4]
           : semanticResolverIndex === 1
-            ? [32, 4]
+            ? [31, 4]
             : semanticResolverIndex === 3
-              ? [33, 3]
-              : [39, 2];
+              ? [32, 3]
+              : [38, 2];
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -367,12 +367,12 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 0 || semanticResolverIndex === 1
         ? [0, 0]
         : semanticResolverIndex === 2
-          ? [9, 6]
+          ? [8, 6]
           : semanticResolverIndex === 3
-            ? [37, 1]
+            ? [36, 1]
             : semanticResolverIndex === 4
-              ? [38, 2]
-              : [10, 4];
+              ? [37, 2]
+              : [9, 4];
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -385,33 +385,33 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 0
         ? null
         : semanticResolverIndex === 1
-          ? [36, 4]
+          ? [35, 4]
           : semanticResolverIndex === 2
-            ? [37, 1]
+            ? [36, 1]
             : semanticResolverIndex === 3
-              ? [38, 2]
+              ? [37, 2]
               : semanticResolverIndex === 5
                 ? [2, 2]
                 : semanticResolverIndex === 7
-                  ? [41, 2]
+                  ? [40, 2]
                   : semanticResolverIndex >= 10 &&
                       semanticResolverIndex <= 12
-                    ? [14, 8]
+                    ? [13, 8]
                     : semanticResolverIndex === 17
-                      ? [14, 8]
+                      ? [13, 8]
                       : semanticResolverIndex === 19
-                        ? [15, 3]
+                        ? [14, 3]
                         : semanticResolverIndex === 21 ||
                             semanticResolverIndex === 22
-                          ? [15, 3]
+                          ? [14, 3]
                           : semanticResolverIndex === 24
-                            ? [13, 5]
+                            ? [12, 5]
                             : semanticResolverIndex === 25
                               ? [2, 2]
                               : semanticResolverIndex === 26
-                                ? [13, 5]
+                                ? [12, 5]
                     : semanticResolverIndex === 15
-                      ? [34, 2]
+                      ? [33, 2]
                     : [0, 0];
     if (!(auxiliary instanceof Constr)) {
       throw new Error(
@@ -434,7 +434,7 @@ const auxiliaryShapeV1 = ({
   }
   if (resolverIndex === 9) {
     const expected =
-      semanticResolverIndex === 0 ? [0, 0] : [42, 17];
+      semanticResolverIndex === 0 ? [0, 0] : [41, 17];
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -2387,10 +2387,10 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 0 && auxiliary.index === 40) ||
-      (semanticResolverIndex === 1 && auxiliary.index === 32) ||
-      (semanticResolverIndex === 3 && auxiliary.index === 33) ||
-      (semanticResolverIndex === 5 && auxiliary.index === 39)
+      (semanticResolverIndex === 0 && auxiliary.index === 39) ||
+      (semanticResolverIndex === 1 && auxiliary.index === 31) ||
+      (semanticResolverIndex === 3 && auxiliary.index === 32) ||
+      (semanticResolverIndex === 5 && auxiliary.index === 38)
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2407,10 +2407,10 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 2 && auxiliary.index === 9) ||
-      (semanticResolverIndex === 3 && auxiliary.index === 37) ||
-      (semanticResolverIndex === 4 && auxiliary.index === 38) ||
-      (semanticResolverIndex === 5 && auxiliary.index === 10)
+      (semanticResolverIndex === 2 && auxiliary.index === 8) ||
+      (semanticResolverIndex === 3 && auxiliary.index === 36) ||
+      (semanticResolverIndex === 4 && auxiliary.index === 37) ||
+      (semanticResolverIndex === 5 && auxiliary.index === 9)
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2422,13 +2422,13 @@ const semanticActionFieldsV1 = ({
     if (semanticResolverIndex === 0) {
       return [...base, auxiliary];
     }
-    if (semanticResolverIndex === 1 && auxiliary.index === 36) {
+    if (semanticResolverIndex === 1 && auxiliary.index === 35) {
       return [...base, ...auxiliary.fields];
     }
-    if (semanticResolverIndex === 2 && auxiliary.index === 37) {
+    if (semanticResolverIndex === 2 && auxiliary.index === 36) {
       return [...base, ...auxiliary.fields];
     }
-    if (semanticResolverIndex === 3 && auxiliary.index === 38) {
+    if (semanticResolverIndex === 3 && auxiliary.index === 37) {
       return [...base, ...auxiliary.fields];
     }
     if (
@@ -2448,7 +2448,7 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
-    if (semanticResolverIndex === 7 && auxiliary.index === 41) {
+    if (semanticResolverIndex === 7 && auxiliary.index === 40) {
       return [...base, ...auxiliary.fields];
     }
     if (
@@ -2461,14 +2461,14 @@ const semanticActionFieldsV1 = ({
     if (
       (semanticResolverIndex === 10 ||
         semanticResolverIndex === 12) &&
-      auxiliary.index === 14 &&
+      auxiliary.index === 13 &&
       auxiliary.fields.length === 8
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 11 &&
-      auxiliary.index === 14 &&
+      auxiliary.index === 13 &&
       auxiliary.fields.length === 8
     ) {
       return [
@@ -2498,7 +2498,7 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      auxiliary.index === 34 &&
+      auxiliary.index === 33 &&
       auxiliary.fields.length === 2
     ) {
       return [...base, ...auxiliary.fields];
@@ -2512,7 +2512,7 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 17 &&
-      auxiliary.index === 14 &&
+      auxiliary.index === 13 &&
       auxiliary.fields.length === 8
     ) {
       return [...base, ...auxiliary.fields];
@@ -2526,7 +2526,7 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 19 &&
-      auxiliary.index === 15 &&
+      auxiliary.index === 14 &&
       auxiliary.fields.length === 3
     ) {
       return [...base, ...auxiliary.fields];
@@ -2541,7 +2541,7 @@ const semanticActionFieldsV1 = ({
     if (
       (semanticResolverIndex === 21 ||
         semanticResolverIndex === 22) &&
-      auxiliary.index === 15 &&
+      auxiliary.index === 14 &&
       auxiliary.fields.length === 3
     ) {
       return [...base, ...auxiliary.fields];
@@ -2555,7 +2555,7 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 24 &&
-      auxiliary.index === 13 &&
+      auxiliary.index === 12 &&
       auxiliary.fields.length === 5
     ) {
       return [...base, ...auxiliary.fields];
@@ -2569,7 +2569,7 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 26 &&
-      auxiliary.index === 13 &&
+      auxiliary.index === 12 &&
       auxiliary.fields.length === 5
     ) {
       return [...base, ...auxiliary.fields];
@@ -2593,7 +2593,7 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
-    if (auxiliary.index === 42 && auxiliary.fields.length === 17) {
+    if (auxiliary.index === 41 && auxiliary.fields.length === 17) {
       if (semanticResolverIndex === 1) {
         const firstChunk = requireConstr({
           value: auxiliary.fields[15]!,

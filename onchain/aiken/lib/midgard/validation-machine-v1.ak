@@ -30,7 +30,6 @@ use midgard/fraud_proofs/native_tx/components.{
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
   decode_canonical_map_header_at, decode_midgard_tx_byte_list_preimage_cbor,
-  decode_midgard_tx_inputs_preimage_cbor,
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   verify_midgard_transaction_field_preimage_v1,
@@ -157,12 +156,6 @@ pub type ValidationAuxiliaryWitnessV1 {
     signer_proof: SignerSetProofV1,
   }
   NativeScriptFrameWitness { frame: native_script_scan_v1.NativeScriptFrameV1 }
-  TransactionFieldPairPreimageWitness {
-    first_field_index: Int,
-    first_preimage_cbor: ByteArray,
-    second_field_index: Int,
-    second_preimage_cbor: ByteArray,
-  }
   LedgerMembershipWitness { value: ByteArray, proof: Proof }
   LedgerNonMembershipWitness { proof: Proof }
   ScheduledLedgerMembershipWitness {
@@ -937,13 +930,15 @@ pub fn encode_resolve_inputs_witness(
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
   pending: Option<ResolveInputOutputProofV1>,
+  resolution_schedule_hash: ByteArray,
 ) -> ByteArray {
   expect cursor >= 0
   expect bytearray.length(accumulator) == 32
   expect bytearray.length(remaining_schedule_hash) == 32
   expect signer_count >= 0
   expect bytearray.length(signer_frontier_commitment) == 32
-  #"8a"
+  expect bytearray.length(resolution_schedule_hash) == 32
+  #"8b"
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -954,6 +949,7 @@ pub fn encode_resolve_inputs_witness(
     |> bytearray.concat(cbor.serialise(signer_count))
     |> bytearray.concat(encode_definite_bytes(signer_frontier_commitment))
     |> bytearray.concat(encode_optional_resolve_input_output_proof(pending))
+    |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
 }
 
 pub type ObserverPurposeScanControlV1 {
@@ -1073,6 +1069,7 @@ pub fn encode_script_sources_witness(
   redeemer_total_count: Int,
   observer_scan: ObserverPurposeScanControlV1,
   mint_fold: MintFoldControlV1,
+  resolution_schedule_hash: ByteArray,
 ) -> ByteArray {
   expect resolved_input_count >= 0
   expect bytearray.length(resolved_inputs_accumulator) == 32
@@ -1105,7 +1102,8 @@ pub fn encode_script_sources_witness(
   expect output_total_count >= output_count
   expect source_total_count >= source_count
   expect redeemer_total_count >= redeemer_count
-  encode_definite_array_header(29)
+  expect bytearray.length(resolution_schedule_hash) == 32
+  encode_definite_array_header(30)
     |> bytearray.concat(encode_definite_bytes(compact_cbor))
     |> bytearray.concat(encode_definite_bytes(witness_set_compact_cbor))
     |> bytearray.concat(encode_definite_bytes(field_preimage_lengths_cbor))
@@ -1137,6 +1135,7 @@ pub fn encode_script_sources_witness(
     |> bytearray.concat(cbor.serialise(redeemer_total_count))
     |> bytearray.concat(encode_observer_purpose_scan_control(observer_scan))
     |> bytearray.concat(encode_mint_fold_control(mint_fold))
+    |> bytearray.concat(encode_definite_bytes(resolution_schedule_hash))
 }
 
 pub fn resolved_input_accumulator_successor(
@@ -5468,6 +5467,7 @@ fn phase_a_script_preconditions_finalize(
             control.signer_count,
             control.signer_frontier_commitment,
             None,
+            control.resolution_schedule_hash,
           ),
         ),
       }
@@ -5588,6 +5588,7 @@ pub type ResolveInputsControlV1 {
   signer_count: Int,
   signer_frontier_commitment: ByteArray,
   pending: Option<ResolveInputOutputProofV1>,
+  resolution_schedule_hash: ByteArray,
 }
 
 fn resolve_inputs_control_from_witness(
@@ -5600,6 +5601,7 @@ fn resolve_inputs_control_from_witness(
         field_preimage_lengths_cbor_data, context_cbor_data, cursor_data,
         accumulator_data, remaining_schedule_hash_data, signer_count_data,
         signer_frontier_commitment_data, pending_cbor_data,
+        resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(data)
   ResolveInputsControlV1 {
@@ -5625,6 +5627,9 @@ fn resolve_inputs_control_from_witness(
           |> resolve_input_output_proof_from_cbor,
       )
     },
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
   }
 }
 
@@ -5845,6 +5850,7 @@ fn resolve_inputs_successor_is_exact(
         next_control.signer_count,
         next_control.signer_frontier_commitment,
         next_control.pending,
+        next_control.resolution_schedule_hash,
       ),
     ),
   }
@@ -6133,6 +6139,12 @@ fn resolve_inputs_control_is_bound(
     validation_trace_v1.hash_validation_context(control.context_cbor) == pre.validation_context_hash,
     bytearray.length(control.accumulator) == 32,
     bytearray.length(control.remaining_schedule_hash) == 32,
+    bytearray.length(control.resolution_schedule_hash) == 32,
+    if control.cursor <= 1 {
+      control.remaining_schedule_hash == control.resolution_schedule_hash
+    } else {
+      True
+    },
     control.signer_count >= 0,
     bytearray.length(control.signer_frontier_commitment) == 32,
     control.cursor >= 0,
@@ -6148,6 +6160,7 @@ fn resolve_inputs_control_is_bound(
       control.signer_count,
       control.signer_frontier_commitment,
       control.pending,
+      control.resolution_schedule_hash,
     ),
   }
 }
@@ -6186,6 +6199,7 @@ fn verify_resolve_inputs(
             control.signer_count,
             control.signer_frontier_commitment,
             None,
+            control.resolution_schedule_hash,
           )
           and {
             witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
@@ -6243,6 +6257,7 @@ fn verify_resolve_inputs(
             0,
             empty_observer_purpose_scan_control(),
             empty_mint_fold_control(),
+            control.resolution_schedule_hash,
           ),
         ),
       }
@@ -6284,6 +6299,7 @@ pub fn verify_resolve_inputs_initial_semantics_v1(
         control.signer_count,
         control.signer_frontier_commitment,
         None,
+        control.resolution_schedule_hash,
       )
       and {
         witness.claimed_successor.phase == validation_trace_v1.ResolveInputs,
@@ -6347,6 +6363,7 @@ pub fn verify_resolve_inputs_finish_semantics_v1(
         0,
         empty_observer_purpose_scan_control(),
         empty_mint_fold_control(),
+        control.resolution_schedule_hash,
       ),
     ),
   }
@@ -6485,6 +6502,7 @@ pub type ScriptSourcesControlV1 {
   output_proof: Option<ledger_output_proof_v1.LedgerOutputProofControlV1>,
   pending_source_cbor: ByteArray,
   mint_fold: MintFoldControlV1,
+  resolution_schedule_hash: ByteArray,
 }
 
 pub type MintFoldControlV1 {
@@ -6703,7 +6721,7 @@ fn script_sources_control_from_data_items(
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
         receive_scan_data, source_total_count_data, redeemer_total_count_data,
-        observer_scan_data, mint_fold_data,
+        observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
       ]
     = items
   expect
@@ -6719,6 +6737,7 @@ fn script_sources_control_from_data_items(
         receive_descriptor_peaks_data,
       ]
     = builtin.un_list_data(receive_scan_data)
+  expect bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
   ScriptSourcesControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
     witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
@@ -6771,6 +6790,9 @@ fn script_sources_control_from_data_items(
     output_proof,
     pending_source_cbor: #"",
     mint_fold: mint_fold_control_from_data(mint_fold_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
   }
 }
 
@@ -6779,14 +6801,14 @@ fn script_sources_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 29 {
+  if list.length(items) == 30 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
       None,
     )
   } else {
-    expect list.length(items) == 30
+    expect list.length(items) == 31
     let Pair(base_items, extension_data) = split_last_data(items)
     let base_control = script_sources_control_from_data_items(
       base_items,
@@ -6954,8 +6976,9 @@ pub fn encode_script_sources_pending_source_witness(
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
+    control.resolution_schedule_hash,
   )
-  encode_definite_array_header(30)
+  encode_definite_array_header(31)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
 }
@@ -6995,8 +7018,9 @@ pub fn encode_script_sources_output_proof_witness(
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
+    control.resolution_schedule_hash,
   )
-  encode_definite_array_header(30)
+  encode_definite_array_header(31)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(
@@ -7041,8 +7065,9 @@ pub fn encode_script_sources_discovery_witness(
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
+    control.resolution_schedule_hash,
   )
-  encode_definite_array_header(30)
+  encode_definite_array_header(31)
     |> bytearray.concat(bytearray.slice(base, 2, bytearray.length(base) - 1))
     |> bytearray.concat(
         encode_definite_bytes(encode_script_discovery_control(discovery)),
@@ -7122,6 +7147,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
           control.redeemer_total_count,
           control.observer_scan,
           control.mint_fold,
+          control.resolution_schedule_hash,
         )
       Some(output_proof) ->
         encode_script_sources_output_proof_witness(control, output_proof)
@@ -7158,6 +7184,7 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
+      control.resolution_schedule_hash,
     )
   } else {
     expect control.output_proof == None
@@ -7174,14 +7201,14 @@ fn script_sources_stage_zero_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  if list.length(items) == 29 {
+  if list.length(items) == 30 {
     script_sources_control_from_data_items(
       items,
       empty_script_discovery_control(),
       None,
     )
   } else {
-    expect list.length(items) == 30
+    expect list.length(items) == 31
     let Pair(base_items, extension_data) = split_last_data(items)
     let base_control = script_sources_control_from_data_items(
       base_items,
@@ -7205,9 +7232,9 @@ fn script_sources_stage_zero_work_witness_has_canonical_shape(
     0,
   )
   let expected_item_count = if pending_source_cbor == #"" {
-    29
-  } else {
     30
+  } else {
+    31
   }
   and {
     offset == 2,
@@ -7288,6 +7315,7 @@ fn script_sources_stage_zero_control_is_bound(
     control.replay_cursor == 0,
     bytearray.length(control.replay_accumulator) == 32,
     bytearray.length(control.replay_remaining_schedule_hash) == 32,
+    bytearray.length(control.resolution_schedule_hash) == 32,
     control.spend_index == 0,
     validation_merkle_v1.frontier_is_well_formed(
       control.source_count,
@@ -7337,7 +7365,7 @@ fn script_sources_stage_zero_finish_successor_is_exact(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 29)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
   let stage_offset = bytearray.length(prefix)
   let work_length = bytearray.length(witness.work_witness_cbor)
   expect
@@ -7384,6 +7412,9 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
       |> bytearray.concat(encoded_observer_scan)
       |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
+      |> bytearray.concat(
+          encode_definite_bytes(control.resolution_schedule_hash),
+        )
   let work_length = bytearray.length(witness.work_witness_cbor)
   let suffix_offset = work_length - bytearray.length(old_suffix)
   expect suffix_offset >= 2
@@ -7394,7 +7425,7 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       witness.work_witness_cbor,
     ) == old_suffix
   let next_work_witness_cbor =
-    encode_definite_array_header(30)
+    encode_definite_array_header(31)
       |> bytearray.concat(
           builtin.slice_bytearray(
             2,
@@ -7406,6 +7437,9 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
       |> bytearray.concat(encoded_observer_scan)
       |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
+      |> bytearray.concat(
+          encode_definite_bytes(control.resolution_schedule_hash),
+        )
       |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
   script_sources_stage_zero_successor_work_is_exact(
     pre,
@@ -7447,7 +7481,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
   source_count: Int,
   source_peaks: List<validation_merkle_v1.FrontierPeak>,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
     |> bytearray.concat(#"00")
   let source_offset = bytearray.length(prefix)
   let old_source_fields =
@@ -7480,7 +7514,7 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
       witness.work_witness_cbor,
     ) == old_pending
   let next_work_witness_cbor =
-    encode_definite_array_header(29)
+    encode_definite_array_header(30)
       |> bytearray.concat(
           builtin.slice_bytearray(2, source_offset - 2, prefix),
         )
@@ -8116,7 +8150,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
         redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
         spend_index_data, purpose_count_data, _, output_cursor_data,
         output_count_data, _, _, receive_scan_data, source_total_count_data,
-        redeemer_total_count_data, _, _,
+        redeemer_total_count_data, _, _, resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(control_data)
   let compact_cbor = builtin.un_b_data(compact_cbor_data)
@@ -8151,7 +8185,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
     }
   }
   let stage_prefix =
-    encode_definite_array_header(29)
+    encode_definite_array_header(30)
       |> bytearray.concat(cbor.serialise(compact_cbor_data))
       |> bytearray.concat(cbor.serialise(witness_set_compact_cbor_data))
       |> bytearray.concat(
@@ -8198,6 +8232,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
       source_total_count_data,
     ),
     bytearray.length(redeemer_commitment) == 32,
+    bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
     redeemer_total_count <= max_tx_size_derived_collection_item_count,
     scan_is_complete,
     builtin.slice_bytearray(
@@ -8238,7 +8273,7 @@ pub fn verify_script_sources_stage_one_redeemer_raw_semantics_v1(
         purpose_count_data, purpose_peaks_data, output_cursor_data,
         output_count_data, output_peaks_data, output_total_count_data,
         receive_scan_data, source_total_count_data, redeemer_total_count_data,
-        observer_scan_data, mint_fold_data,
+        observer_scan_data, mint_fold_data, resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(control_data)
   let compact_cbor = builtin.un_b_data(compact_cbor_data)
@@ -8284,6 +8319,7 @@ pub fn verify_script_sources_stage_one_redeemer_raw_semantics_v1(
       receive_scan_data,
       source_total_count_data,
     ),
+    bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
     active_total_count > 0,
     active_total_count <= max_tx_size_derived_collection_item_count,
     validation_merkle_v1.frontier_is_well_formed(
@@ -8332,6 +8368,7 @@ pub fn verify_script_sources_stage_one_redeemer_raw_semantics_v1(
         output_count_data, output_peaks_data, output_total_count_data,
         receive_scan_data, source_total_count_data,
         builtin.i_data(active_total_count), observer_scan_data, mint_fold_data,
+        resolution_schedule_hash_data,
       ],
     )
     and {
@@ -8451,80 +8488,9 @@ fn script_sources_stage_two(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
-      }
-    = auxiliary
-  expect first_field_index == 0
-  expect second_field_index == 1
-  let spend_inputs = decode_midgard_tx_inputs_preimage_cbor(first_preimage_cbor)
-  let reference_inputs = decode_midgard_tx_inputs_preimage_cbor(
-    second_preimage_cbor,
-  )
-  let initial_schedule = transaction_resolution_schedule_hash(
-    spend_inputs,
-    reference_inputs,
-  )
-  let fields_verified = and {
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      control.compact_cbor,
-      control.witness_set_compact_cbor,
-      control.field_preimage_lengths_cbor,
-      first_field_index,
-      first_preimage_cbor,
-    ),
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      control.compact_cbor,
-      control.witness_set_compact_cbor,
-      control.field_preimage_lengths_cbor,
-      second_field_index,
-      second_preimage_cbor,
-    ),
-  }
-  let next_control = encode_script_sources_witness(
-    control.compact_cbor,
-    control.witness_set_compact_cbor,
-    control.field_preimage_lengths_cbor,
-    control.context_cbor,
-    control.resolved_input_count,
-    control.resolved_inputs_accumulator,
-    control.signer_count,
-    control.signer_frontier_commitment,
-    control.resolved_item_peaks,
-    3,
-    control.source_count,
-    control.source_peaks,
-    control.redeemer_count,
-    control.redeemer_peaks,
-    0,
-    initial_resolution_accumulator(),
-    initial_schedule,
-    0,
-    0,
-    validation_merkle_v1.empty_frontier(),
-    0,
-    0,
-    validation_merkle_v1.empty_frontier(),
-    0,
-    empty_receive_purpose_scan_control(),
-    control.source_total_count,
-    control.redeemer_total_count,
-    control.observer_scan,
-    control.mint_fold,
-  )
   and {
-    fields_verified,
-    control.resolved_input_count == list.length(spend_inputs) + list.length(
-      reference_inputs,
-    ),
+    auxiliary == NoAuxiliaryWitness,
+    control.resolved_input_count > 0,
     control.replay_cursor == 0,
     control.resolved_item_peaks == [],
     control.replay_accumulator == initial_resolution_accumulator(),
@@ -8532,11 +8498,15 @@ fn script_sources_stage_two(
     control.spend_index == 0,
     control.purpose_count == 0,
     control.purpose_peaks == [],
-    witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
-    witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
-      validation_trace_v1.ScriptSources,
-      pre.program_counter + 1,
-      next_control,
+    control.resolution_schedule_hash != empty_resolution_schedule_hash(),
+    script_sources_control_successor_is_exact(
+      pre,
+      witness,
+      ScriptSourcesControlV1 {
+        ..control,
+        stage: 3,
+        replay_remaining_schedule_hash: control.resolution_schedule_hash,
+      },
     ),
   }
 }
@@ -8684,6 +8654,7 @@ fn script_sources_replay_item(
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
+      control.resolution_schedule_hash,
     )
     and {
       witness.claimed_successor.phase == validation_trace_v1.ScriptSources,
@@ -8735,6 +8706,7 @@ fn script_sources_stage_three(
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
+      control.resolution_schedule_hash,
     )
     and {
       auxiliary == NoAuxiliaryWitness,
@@ -9749,7 +9721,7 @@ fn script_sources_stage_seven_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 29
+  expect list.length(items) == 30
   let control = script_sources_control_from_data_items(
     items,
     empty_script_discovery_control(),
@@ -10215,7 +10187,7 @@ fn script_discovery_successor_is_exact(
   stage: Int,
   discovery: ScriptDiscoveryControlV1,
 ) -> Bool {
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
   let stage_offset = bytearray.length(prefix)
   let old_stage = cbor.serialise(control.stage)
   let old_discovery = encode_definite_bytes(
@@ -10371,7 +10343,7 @@ fn script_sources_stage_eight_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 30
+  expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -10672,7 +10644,7 @@ fn script_sources_stage_nine_control_is_bound(
   control: ScriptSourcesControlV1,
 ) -> Bool {
   let discovery = control.discovery
-  let prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
+  let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
   let stage_offset = bytearray.length(prefix)
   let encoded_discovery = encode_definite_bytes(
     encode_script_discovery_control(discovery),
@@ -10774,7 +10746,7 @@ fn script_sources_stage_nine_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 30
+  expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -11087,7 +11059,7 @@ fn script_sources_stage_ten_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 30
+  expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -11293,7 +11265,7 @@ pub fn encode_native_scripts_witness_v1(
   expect execution_cursor <= control.discovery.execution_count
   expect language_bitmap >= 0
   expect language_bitmap <= 3
-  encode_definite_array_header(25)
+  encode_definite_array_header(26)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -11343,6 +11315,9 @@ pub fn encode_native_scripts_witness_v1(
       )
     |> bytearray.concat(cbor.serialise(execution_cursor))
     |> bytearray.concat(cbor.serialise(language_bitmap))
+    |> bytearray.concat(
+        encode_definite_bytes(control.resolution_schedule_hash),
+      )
 }
 
 fn script_sources_stage_eleven(
@@ -11426,7 +11401,7 @@ fn script_sources_stage_eleven_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 30
+  expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -11644,7 +11619,7 @@ fn script_sources_stage_twelve_control_from_witness(
 ) -> ScriptSourcesControlV1 {
   expect Some(data) = cbor.deserialise(work_witness_cbor)
   let items = builtin.un_list_data(data)
-  expect list.length(items) == 30
+  expect list.length(items) == 31
   let Pair(base_items, extension_data) = split_last_data(items)
   let base_control = script_sources_control_from_data_items(
     base_items,
@@ -12077,6 +12052,7 @@ pub fn verify_script_sources_stage_three_finish_semantics_v1(
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
+    control.resolution_schedule_hash,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),
@@ -12181,6 +12157,7 @@ pub fn verify_script_sources_stage_five_finish_semantics_v1(
     control.redeemer_total_count,
     control.observer_scan,
     control.mint_fold,
+    control.resolution_schedule_hash,
   )
   and {
     script_sources_control_is_bound(pre, witness, control),
@@ -12595,6 +12572,7 @@ pub type NativeScriptsControlV1 {
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
   execution_cursor: Int,
   language_bitmap: Int,
+  resolution_schedule_hash: ByteArray,
 }
 
 fn native_scripts_control_from_witness(
@@ -12612,7 +12590,7 @@ fn native_scripts_control_from_witness(
         purpose_peaks_data, output_count_data, output_peaks_data,
         output_descriptor_peaks_data, mint_count_data, mint_peaks_data,
         execution_count_data, execution_peaks_data, execution_cursor_data,
-        language_bitmap_data,
+        language_bitmap_data, resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(data)
   NativeScriptsControlV1 {
@@ -12647,13 +12625,16 @@ fn native_scripts_control_from_witness(
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
     execution_cursor: builtin.un_i_data(execution_cursor_data),
     language_bitmap: builtin.un_i_data(language_bitmap_data),
+    resolution_schedule_hash: builtin.un_b_data(
+      resolution_schedule_hash_data,
+    ),
   }
 }
 
 pub fn encode_native_scripts_control_v1(
   control: NativeScriptsControlV1,
 ) -> ByteArray {
-  encode_definite_array_header(25)
+  encode_definite_array_header(26)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
     |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
@@ -12701,6 +12682,9 @@ pub fn encode_native_scripts_control_v1(
       )
     |> bytearray.concat(cbor.serialise(control.execution_cursor))
     |> bytearray.concat(cbor.serialise(control.language_bitmap))
+    |> bytearray.concat(
+        encode_definite_bytes(control.resolution_schedule_hash),
+      )
 }
 
 fn native_resolved_context_is_well_formed(
@@ -12722,6 +12706,7 @@ fn native_scripts_control_is_well_formed(
   and {
     control.resolved_input_count >= 0,
     bytearray.length(control.resolved_inputs_accumulator) == 32,
+    bytearray.length(control.resolution_schedule_hash) == 32,
     native_resolved_context_is_well_formed(control),
     control.signer_count >= 0,
     bytearray.length(control.signer_frontier_commitment) == 32,
@@ -16159,49 +16144,15 @@ fn value_and_mint_stage_zero(
   auxiliary: ValidationAuxiliaryWitnessV1,
   control: ValueAndMintControlV1,
 ) -> Bool {
-  expect
-      TransactionFieldPairPreimageWitness {
-        first_field_index,
-        first_preimage_cbor,
-        second_field_index,
-        second_preimage_cbor,
-      }
-    = auxiliary
-  expect first_field_index == 0
-  expect second_field_index == 1
   let native_control = control.native_control
-  let fields_verified = and {
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-      first_field_index,
-      first_preimage_cbor,
-    ),
-    verify_midgard_transaction_field_preimage_v1(
-      pre.transaction_id,
-      pre.transaction_commitment,
-      native_control.compact_cbor,
-      native_control.witness_set_compact_cbor,
-      native_control.field_preimage_lengths_cbor,
-      second_field_index,
-      second_preimage_cbor,
-    ),
-  }
-  let schedule_hash = transaction_resolution_schedule_hash(
-    decode_midgard_tx_inputs_preimage_cbor(first_preimage_cbor),
-    decode_midgard_tx_inputs_preimage_cbor(second_preimage_cbor),
-  )
   let next_control = ValueAndMintControlV1 {
     ..control,
     stage: 1,
-    replay_schedule_hash: schedule_hash,
-    replay_remaining_schedule_hash: schedule_hash,
+    replay_schedule_hash: native_control.resolution_schedule_hash,
+    replay_remaining_schedule_hash: native_control.resolution_schedule_hash,
   }
   and {
-    fields_verified,
+    auxiliary == NoAuxiliaryWitness,
     control.replay_schedule_hash == empty_resolution_schedule_hash(),
     control.replay_cursor == 0,
     control.replay_asset_cursor == 0,
@@ -16212,6 +16163,7 @@ fn value_and_mint_stage_zero(
     control.output_asset_cursor == 0,
     control.mint_cursor == 0,
     control.value_accumulator == initial_value_accumulator(),
+    native_control.resolution_schedule_hash != empty_resolution_schedule_hash(),
     value_and_mint_successor_is_exact(pre, witness, next_control),
   }
 }

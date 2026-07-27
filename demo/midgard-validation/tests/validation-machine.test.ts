@@ -13,7 +13,10 @@ import {
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
-import { protectMidgardAddress } from "@al-ft/midgard-core/codec";
+import {
+  decodeSingleCbor,
+  protectMidgardAddress,
+} from "@al-ft/midgard-core/codec";
 import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -364,12 +367,87 @@ describe("deterministic validation machine", () => {
     expect(scriptSourceWitnesses).toHaveLength(22);
     expect(scriptSourceWitnesses[0]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[1]?.auxiliary).toBeNull();
-    expect(scriptSourceWitnesses[2]?.auxiliary?.kind).toBe(
-      "transactionFieldPairPreimage",
-    );
+    expect(scriptSourceWitnesses[2]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[3]?.auxiliary?.kind).toBe(
       "resolvedInputReplay",
     );
+    expect(
+      scriptSourceWitnesses.map(
+        (witness) => witness.auxiliary?.kind ?? null,
+      ),
+    ).not.toContain("transactionFieldPairPreimage");
+    const decodeControl = (
+      witness: DeterministicValidationMachineTrace["witnesses"][number],
+    ): readonly unknown[] => {
+      const decoded = decodeSingleCbor(witness.cbor);
+      expect(Array.isArray(decoded)).toBe(true);
+      return decoded as readonly unknown[];
+    };
+    const resolveInputControls = trace.witnesses
+      .filter((witness) => witness.phase === "resolveInputs")
+      .map(decodeControl);
+    const originalResolutionScheduleHash = Buffer.from(
+      resolveInputControls[0]![10] as Uint8Array,
+    );
+    expect(
+      resolveInputControls.every(
+        (control) =>
+          control.length === 11 &&
+          Buffer.from(control[10] as Uint8Array).equals(
+            originalResolutionScheduleHash,
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      scriptSourceWitnesses
+        .map(decodeControl)
+        .every(
+          (control) =>
+            (control.length === 30 || control.length === 31) &&
+            Buffer.from(control[29] as Uint8Array).equals(
+              originalResolutionScheduleHash,
+            ),
+        ),
+    ).toBe(true);
+    const nativeScriptControls = trace.witnesses
+      .filter((witness) => witness.phase === "nativeScripts")
+      .map(decodeControl);
+    expect(
+      nativeScriptControls.every(
+        (control) =>
+          control.length === 26 &&
+          Buffer.from(control[25] as Uint8Array).equals(
+            originalResolutionScheduleHash,
+          ),
+      ),
+    ).toBe(true);
+    const valueAndMintWitnesses = trace.witnesses.filter(
+      (witness) => witness.phase === "valueAndMint",
+    );
+    expect(valueAndMintWitnesses).toHaveLength(8);
+    expect(valueAndMintWitnesses[0]?.auxiliary).toBeNull();
+    expect(
+      valueAndMintWitnesses.map(
+        (witness) => witness.auxiliary?.kind ?? null,
+      ),
+    ).not.toContain("transactionFieldPairPreimage");
+    expect(
+      valueAndMintWitnesses.every((witness) => {
+        const valueControl = decodeControl(witness);
+        expect(valueControl).toHaveLength(12);
+        const nestedNativeControl = decodeSingleCbor(
+          valueControl[0] as Uint8Array,
+        );
+        expect(Array.isArray(nestedNativeControl)).toBe(true);
+        const fields = nestedNativeControl as readonly unknown[];
+        return (
+          fields.length === 26 &&
+          Buffer.from(fields[25] as Uint8Array).equals(
+            originalResolutionScheduleHash,
+          )
+        );
+      }),
+    ).toBe(true);
     expect(scriptSourceWitnesses[4]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[5]?.auxiliary?.kind).toBe(
       "transactionFieldItem",
@@ -408,7 +486,7 @@ describe("deterministic validation machine", () => {
     expect(() =>
       validationSemanticResolverIndexV1({
         ...scriptSourceWitnesses[7]!,
-        auxiliary: scriptSourceWitnesses[2]!.auxiliary,
+        auxiliary: scriptSourceWitnesses[3]!.auxiliary,
       }),
     ).toThrow("has no semantic resolver");
     expect(

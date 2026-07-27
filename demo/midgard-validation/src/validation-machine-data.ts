@@ -582,7 +582,7 @@ const scriptSourcesControlStatus = (
     decodeSingleCbor(witness.cbor),
     "script_sources_control",
   );
-  if (control.length !== 29 && control.length !== 30) {
+  if (control.length !== 30 && control.length !== 31) {
     throw new Error("script_sources_control has an invalid field count");
   }
   const stage = Number(
@@ -591,11 +591,11 @@ const scriptSourcesControlStatus = (
   if (!Number.isSafeInteger(stage) || stage < 0) {
     throw new Error("script_sources_control stage is invalid");
   }
-  if (stage !== 0 || control.length === 29) {
+  if (stage !== 0 || control.length === 30) {
     return { stage, pendingHashStage: null };
   }
   const pendingCbor = asBytes(
-    control[29],
+    control[30],
     "script_sources_control.pending_source",
   );
   if (pendingCbor.length === 0) {
@@ -652,7 +652,7 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
     "script_sources_control",
   );
   if (
-    control.length !== 30 ||
+    control.length !== 31 ||
     asBigInt(control[9], "script_sources_control.stage") !== 9n
   ) {
     throw new Error("script_sources_control is not at discovery stage 9");
@@ -660,7 +660,7 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
   const discovery = asArray(
     decodeSingleCbor(
       asBytes(
-        control[29],
+        control[30],
         "script_sources_control.discovery",
       ),
     ),
@@ -694,7 +694,7 @@ const scriptSourcesDiscoveryCurrentPurpose = (
     "script_sources_control",
   );
   if (
-    control.length !== 30 ||
+    control.length !== 31 ||
     asBigInt(control[9], "script_sources_control.stage") !== 10n
   ) {
     throw new Error("script_sources_control is not at discovery stage 10");
@@ -702,7 +702,7 @@ const scriptSourcesDiscoveryCurrentPurpose = (
   const discovery = asArray(
     decodeSingleCbor(
       asBytes(
-        control[29],
+        control[30],
         "script_sources_control.discovery",
       ),
     ),
@@ -768,7 +768,7 @@ const resolveInputsCursor = (
     decodeSingleCbor(witness.cbor),
     "resolve_inputs_control",
   );
-  if (control.length !== 10) {
+  if (control.length !== 11) {
     throw new Error("resolve_inputs_control has an invalid field count");
   }
   const cursor = Number(
@@ -1206,13 +1206,6 @@ export const validationAuxiliaryWitnessDataV1 = (
           auxiliary.frame.required,
         ]),
       ]);
-    case "transactionFieldPairPreimage":
-      return new Constr(6, [
-        int(auxiliary.firstFieldIndex),
-        bytes(auxiliary.firstPreimageCbor),
-        int(auxiliary.secondFieldIndex),
-        bytes(auxiliary.secondPreimageCbor),
-      ]);
     case "scheduledLedgerLookup": {
       const fields = [
         sourceKind(auxiliary.sourceKind),
@@ -1220,11 +1213,11 @@ export const validationAuxiliaryWitnessDataV1 = (
         bytes(auxiliary.nextScheduleHash),
       ];
       return auxiliary.value === null
-        ? new Constr(10, [
+        ? new Constr(9, [
             ...fields,
             proofData(auxiliary.proofCbor),
           ])
-        : new Constr(9, [
+        : new Constr(8, [
             ...fields,
             bytes(auxiliary.value),
             proofData(auxiliary.proofCbor),
@@ -1232,21 +1225,21 @@ export const validationAuxiliaryWitnessDataV1 = (
           ]);
     }
     case "resolvedInputReplay":
-      return new Constr(11, [
+      return new Constr(10, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
       ]);
     case "outputReplay":
-      return new Constr(12, [
+      return new Constr(11, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.outputCbor),
         byteList(auxiliary.siblings),
         signerProofData(auxiliary.signerProof),
       ]);
     case "scriptPurposeScan":
-      return new Constr(13, [
+      return new Constr(12, [
         int(auxiliary.purposeKind),
         auxiliary.purposeIndex,
         bytes(auxiliary.scriptHash),
@@ -1254,7 +1247,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "scriptSourceScan":
-      return new Constr(14, [
+      return new Constr(13, [
         int(auxiliary.sourceIndex),
         originKind(auxiliary.originKind),
         bytes(auxiliary.sourceKey),
@@ -1265,13 +1258,13 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "redeemerScan":
-      return new Constr(15, [
+      return new Constr(14, [
         int(auxiliary.redeemerIndex),
         redeemerData(auxiliary.redeemer),
         byteList(auxiliary.siblings),
       ]);
     case "nativeExecutionScan":
-      return new Constr(16, [
+      return new Constr(15, [
         int(auxiliary.executionIndex),
         int(auxiliary.languageTag),
         int(auxiliary.purpose.purposeKind),
@@ -1289,9 +1282,9 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.signerHashes),
       ]);
     case "cekCoreStep":
-      return new Constr(17, [midgardCekCoreStepDataV1(auxiliary.step)]);
+      return new Constr(16, [midgardCekCoreStepDataV1(auxiliary.step)]);
     case "cekResolvedContextItem":
-      return new Constr(18, [
+      return new Constr(17, [
         sourceKind(auxiliary.sourceKind),
         int(auxiliary.itemIndex),
         bytes(auxiliary.key),
@@ -1299,20 +1292,20 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "cekOutputContextItem":
-      return new Constr(19, [
+      return new Constr(18, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.outputCbor),
         byteList(auxiliary.siblings),
       ]);
     case "cekSignerContextItem":
-      return new Constr(20, [
+      return new Constr(19, [
         frontierPeaksData(auxiliary.frontier),
         int(auxiliary.signerIndex),
         bytes(auxiliary.signerHash),
         byteList(auxiliary.siblings),
       ]);
     case "cekMintContextItem":
-      return new Constr(21, [
+      return new Constr(20, [
         int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
@@ -1320,7 +1313,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "cekRedeemerContextSelect":
-      return new Constr(22, [
+      return new Constr(21, [
         redeemerControlData(auxiliary.control),
         int(auxiliary.redeemerIndex),
         redeemerData(auxiliary.redeemer),
@@ -1333,17 +1326,17 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.purpose.siblings),
       ]);
     case "cekDataScanStep":
-      return new Constr(23, [
+      return new Constr(22, [
         redeemerControlData(auxiliary.redeemerControl),
         dataScanControlData(auxiliary.control),
         dataScanStepData(auxiliary.step),
       ]);
     case "cekContextFinalize":
-      return new Constr(24, [
+      return new Constr(23, [
         redeemerControlData(auxiliary.redeemerControl),
       ]);
     case "cekContextFinalizeSpend":
-      return new Constr(25, [
+      return new Constr(24, [
         redeemerControlData(auxiliary.redeemerControl),
         int(auxiliary.itemIndex),
         bytes(auxiliary.key),
@@ -1351,19 +1344,19 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "cekContextAssemble":
-      return new Constr(26, [
+      return new Constr(25, [
         contextPartsControlData(auxiliary.control),
       ]);
     case "cekTxInfoFinalize":
-      return new Constr(27, [
+      return new Constr(26, [
         txInfoAssemblyControlData(auxiliary.control),
       ]);
     case "cekContextSeed":
-      return new Constr(28, [
+      return new Constr(27, [
         finalContextControlData(auxiliary.control),
       ]);
     case "valueInputAsset":
-      return new Constr(29, [
+      return new Constr(28, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
@@ -1377,13 +1370,13 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueOutputDescriptor":
-      return new Constr(43, [
+      return new Constr(42, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "valueOutputAsset":
-      return new Constr(30, [
+      return new Constr(29, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         int(auxiliary.assetIndex),
@@ -1395,7 +1388,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueMintAsset":
-      return new Constr(31, [
+      return new Constr(30, [
         int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
@@ -1404,7 +1397,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "ledgerDeltaOperation":
-      return new Constr(40, [
+      return new Constr(39, [
         int(auxiliary.operationKind === "delete" ? 0 : 1),
         bytes(auxiliary.key),
         bytes(auxiliary.value),
@@ -1414,60 +1407,60 @@ export const validationAuxiliaryWitnessDataV1 = (
         ),
       ]);
     case "ledgerDeltaReplay":
-      return new Constr(32, [
+      return new Constr(31, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
       ]);
     case "ledgerDeltaOutput":
-      return new Constr(33, [
+      return new Constr(32, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "ledgerDeltaProofFrame":
-      return new Constr(39, [
+      return new Constr(38, [
         mpfProofFrameData(auxiliary.frame),
         byteList(auxiliary.siblings),
       ]);
     case "transactionRedeemerItem":
-      return new Constr(34, [
+      return new Constr(33, [
         collectionProofData(auxiliary.collectionProof),
         redeemerData(auxiliary.redeemer),
       ]);
     case "transactionFieldItem":
-      return new Constr(35, [
+      return new Constr(34, [
         collectionProofData(auxiliary.collectionProof),
       ]);
     case "ledgerOutputProofBegin":
-      return new Constr(36, [
+      return new Constr(35, [
         int(auxiliary.outputIndex),
         int(auxiliary.totalLength),
         bytes(auxiliary.itemCommitment),
         byteList(auxiliary.siblings),
       ]);
     case "ledgerOutputProofStep":
-      return new Constr(37, [
+      return new Constr(36, [
         ledgerOutputProofWitnessData(auxiliary.witness),
       ]);
     case "ledgerOutputProofFinalize":
-      return new Constr(38, [
+      return new Constr(37, [
         bytes(auxiliary.descriptorCbor),
         signerProofData(auxiliary.signerProof),
       ]);
     case "scriptSourceHashBlock":
-      return new Constr(41, [
+      return new Constr(40, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "mintFoldAsset":
-      return new Constr(44, [
+      return new Constr(43, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "nativeExecutionDescriptor":
-      return new Constr(42, [
+      return new Constr(41, [
         int(auxiliary.executionIndex),
         int(auxiliary.languageTag),
         int(auxiliary.purpose.purposeKind),

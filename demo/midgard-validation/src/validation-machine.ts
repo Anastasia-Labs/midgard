@@ -391,13 +391,6 @@ export type ValidationMachineWorkWitness = {
         readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
       }
     | {
-        readonly kind: "transactionFieldPairPreimage";
-        readonly firstFieldIndex: number;
-        readonly firstPreimageCbor: Buffer;
-        readonly secondFieldIndex: number;
-        readonly secondPreimageCbor: Buffer;
-      }
-    | {
         readonly kind: "scheduledLedgerLookup";
         readonly sourceKind: "spend" | "reference";
         readonly key: Buffer;
@@ -2025,6 +2018,7 @@ export const buildDeterministicValidationMachineTrace = (
           BigInt(observerScan.seen),
         ],
         encodeMintFoldControl(mintFoldControl),
+        resolutionScheduleHash,
       ];
       if (input.stage === 0 && input.pendingSource !== undefined &&
         input.pendingSource !== null) {
@@ -3067,6 +3061,7 @@ export const buildDeterministicValidationMachineTrace = (
                   pending.outputProof,
                 ),
               ]),
+          resolutionScheduleHash,
         ]);
 
       pushWitness("resolveInputs", resolutionWitnessCbor(undefined));
@@ -3471,13 +3466,6 @@ export const buildDeterministicValidationMachineTrace = (
                 sourceFrontier: inlineScriptSourceFrontier,
                 redeemerFrontier,
               }),
-              {
-                kind: "transactionFieldPairPreimage",
-                firstFieldIndex: 0,
-                firstPreimageCbor: fieldPreimages[0]!.preimageCbor,
-                secondFieldIndex: 1,
-                secondPreimageCbor: fieldPreimages[1]!.preimageCbor,
-              },
             );
             let replayCursor = 0;
             let replayAccumulator = initialMidgardResolvedInputsAccumulatorV1();
@@ -4690,6 +4678,7 @@ export const buildDeterministicValidationMachineTrace = (
                     ...nativeScriptBaseFields,
                     0n,
                     0n,
+                    resolutionScheduleHash,
                   ];
                   authenticatedNativeScriptsBaseFields = nativeScriptBaseFields;
                   authenticatedNativeScriptsWitnessCbor =
@@ -4733,6 +4722,7 @@ export const buildDeterministicValidationMachineTrace = (
           ...nativeBaseFields,
           BigInt(executionCursor),
           BigInt(languageBitmap),
+          resolutionScheduleHash,
         ]);
       const executionLeaves = scriptExecutionEntries.map((entry) => entry.leaf);
       const sourceLeaves = scriptSourceEntries.map((entry) => entry.leaf);
@@ -6256,13 +6246,6 @@ export const buildDeterministicValidationMachineTrace = (
               stage: 0,
               replayScheduleHash: emptyMidgardInputResolutionScheduleV1(),
             }),
-            {
-              kind: "transactionFieldPairPreimage",
-              firstFieldIndex: 0,
-              firstPreimageCbor: fieldPreimages[0]!.preimageCbor,
-              secondFieldIndex: 1,
-              secondPreimageCbor: fieldPreimages[1]!.preimageCbor,
-            },
           );
           valueReplayRemainingScheduleHash = resolutionScheduleHash;
           pushWitness(
