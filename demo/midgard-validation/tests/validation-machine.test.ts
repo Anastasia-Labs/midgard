@@ -1089,6 +1089,42 @@ describe("deterministic validation machine", () => {
         (witness) => witness.auxiliary?.kind === "cekCoreStep",
       ),
     ).toBe(true);
+    const cekObserverWitnesses = trace.witnesses.filter(
+      (witness) =>
+        witness.phase === "cek" &&
+        witness.auxiliary?.kind === "transactionFieldChunk" &&
+        witness.auxiliary.collectionProof.fieldIndex === 3,
+    );
+    expect(cekObserverWitnesses).toHaveLength(1);
+    expect(cekObserverWitnesses[0]?.auxiliary).toMatchObject({
+      kind: "transactionFieldChunk",
+      collectionProof: {
+        fieldIndex: 3,
+        itemCount: 1,
+        itemIndex: 0,
+        itemLength: 28,
+      },
+      chunkProof: {
+        fieldIndex: 3,
+        itemIndex: 0,
+        totalLength: 28,
+        chunkIndex: 0,
+      },
+    });
+    expect(
+      trace.witnesses.some(
+        (witness) =>
+          witness.phase === "cek" &&
+          witness.auxiliary?.kind === "transactionFieldPreimage",
+      ),
+    ).toBe(false);
+    const cekObserverWitnessIndex = trace.witnesses.indexOf(
+      cekObserverWitnesses[0]!,
+    );
+    expect(trace.witnesses[cekObserverWitnessIndex + 1]).toMatchObject({
+      phase: "cek",
+      auxiliary: null,
+    });
     const preconditionWitnesses = trace.witnesses.filter(
       (witness) => witness.phase === "phaseAScriptPreconditions",
     );

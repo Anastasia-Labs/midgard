@@ -95,6 +95,7 @@ import {
   composeMidgardCekContextSummaryV1,
   decodeMidgardCekContextV1,
   encodeMidgardCekValidationWitnessV1,
+  finalizeMidgardCekObserverItemsV1,
   hashMidgardCekContextPartsControlV1,
   hashMidgardCekFinalContextControlV1,
   hashMidgardCekRedeemerContextControlV1,
@@ -106,8 +107,10 @@ import {
   type MidgardCekFinalContextControlV1,
   type MidgardCekRedeemerContextControlV1,
   type MidgardCekTxInfoAssemblyControlV1,
+  prependMidgardCekObserverItemV1,
   summarizeMidgardCekContextPartsV1,
   summarizeMidgardCekLucidDataV1,
+  validateMidgardCekObserverCollectionV1,
 } from "./cek-context.js";
 import {
   buildMidgardCekDataScanTraceV1,
@@ -5626,6 +5629,64 @@ export const buildDeterministicValidationMachineTrace = (
               );
             }
 
+            const observerCount = requiredObserversCollection.items.length;
+            validateMidgardCekObserverCollectionV1(
+              requiredObserversCollection.items.map(
+                (observer) => observer.bytes,
+              ),
+            );
+            const midgardObserverEncoding =
+              executionEntry.languageTag === 128;
+            for (
+              let observerIndex = observerCount - 1;
+              observerIndex >= 0;
+              observerIndex -= 1
+            ) {
+              const observer =
+                requiredObserversCollection.items[observerIndex]!;
+              if (
+                contextControl.previousObserver.length > 0 &&
+                Buffer.compare(
+                  observer.bytes,
+                  contextControl.previousObserver,
+                ) >= 0
+              ) {
+                throw new Error(
+                  "CEK observer context is not strictly ordered and unique",
+                );
+              }
+              pushWitness(
+                "cek",
+                cekWitness({
+                  contextControl,
+                  executionCursor: executionIndex,
+                  completedCpu,
+                  completedMemory,
+                }),
+                {
+                  kind: "transactionFieldChunk",
+                  collectionProof:
+                    buildMidgardBoundedCollectionItemProofV1(
+                      requiredObserversCollection,
+                      observer.itemIndex,
+                    ),
+                  chunkProof: buildMidgardBoundedItemChunkProofV1(
+                    observer,
+                    0,
+                  ),
+                },
+              );
+              contextControl = {
+                ...contextControl,
+                observerCount,
+                observerItems: prependMidgardCekObserverItemV1({
+                  observerHash: observer.bytes,
+                  midgardEncoding: midgardObserverEncoding,
+                  tail: contextControl.observerItems,
+                }),
+                previousObserver: observer.bytes,
+              };
+            }
             pushWitness(
               "cek",
               cekWitness({
@@ -5634,16 +5695,21 @@ export const buildDeterministicValidationMachineTrace = (
                 completedCpu,
                 completedMemory,
               }),
-              {
-                kind: "transactionFieldPreimage",
-                preimageCbor: fieldPreimages[3]!.preimageCbor,
-              },
             );
+            const observerSummary = finalizeMidgardCekObserverItemsV1({
+              items: contextControl.observerItems,
+              midgardEncoding: midgardObserverEncoding,
+            });
             contextControl = {
               ...contextControl,
               stage: 6,
-              observerSummary: contextParts.observer,
+              observerSummary,
             };
+            if (!sameSummary(observerSummary, contextParts.observer)) {
+              throw new Error(
+                "CEK observer context differs from the evaluated context",
+              );
+            }
 
             pushWitness(
               "cek",

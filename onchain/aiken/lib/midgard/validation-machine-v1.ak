@@ -29,10 +29,7 @@ use midgard/fraud_proofs/native_tx/components.{
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   canonical_bytes_key_precedes, decode_canonical_bytes_at,
-  decode_canonical_map_header_at, decode_midgard_tx_byte_list_preimage_cbor,
-}
-use midgard/fraud_proofs/native_tx/transaction.{
-  verify_midgard_transaction_field_preimage_v1,
+  decode_canonical_map_header_at,
 }
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardAddress, MidgardCredential, MidgardRedeemerWitness,
@@ -13202,6 +13199,9 @@ pub type CekContextControlV1 {
   spend_items: cek_data_v1.DataSequenceSummaryV1,
   output_items: cek_data_v1.DataSequenceSummaryV1,
   signer_items: cek_data_v1.DataSequenceSummaryV1,
+  observer_count: Int,
+  observer_items: cek_data_v1.DataSequenceSummaryV1,
+  previous_observer: ByteArray,
   observer_summary: cek_data_v1.DataSummaryV1,
   mint_cursor: Int,
   current_mint_policy: ByteArray,
@@ -13211,7 +13211,7 @@ pub type CekContextControlV1 {
 }
 
 pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray {
-  encode_definite_array_header(21)
+  encode_definite_array_header(24)
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(encode_definite_bytes(control.program_term_root))
@@ -13231,6 +13231,9 @@ pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray 
     |> bytearray.concat(encode_data_sequence_summary_v1(control.spend_items))
     |> bytearray.concat(encode_data_sequence_summary_v1(control.output_items))
     |> bytearray.concat(encode_data_sequence_summary_v1(control.signer_items))
+    |> bytearray.concat(cbor.serialise(control.observer_count))
+    |> bytearray.concat(encode_data_sequence_summary_v1(control.observer_items))
+    |> bytearray.concat(encode_definite_bytes(control.previous_observer))
     |> bytearray.concat(encode_data_summary_v1(control.observer_summary))
     |> bytearray.concat(cbor.serialise(control.mint_cursor))
     |> bytearray.concat(encode_definite_bytes(control.current_mint_policy))
@@ -13249,7 +13252,8 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
         purpose_index_data, script_hash_data, subject_data, redeemer_leaf_data,
         redeemer_context_control_hash_data, execution_memory_limit_data,
         execution_cpu_limit_data, reference_items_data, spend_items_data,
-        output_items_data, signer_items_data, observer_summary_data,
+        output_items_data, signer_items_data, observer_count_data,
+        observer_items_data, previous_observer_data, observer_summary_data,
         mint_cursor_data, current_mint_policy_data, current_mint_assets_data,
         mint_policies_data, mint_summary_data,
       ]
@@ -13272,6 +13276,9 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
     spend_items: data_sequence_summary_from_data(spend_items_data),
     output_items: data_sequence_summary_from_data(output_items_data),
     signer_items: data_sequence_summary_from_data(signer_items_data),
+    observer_count: builtin.un_i_data(observer_count_data),
+    observer_items: data_sequence_summary_from_data(observer_items_data),
+    previous_observer: builtin.un_b_data(previous_observer_data),
     observer_summary: data_summary_from_data(observer_summary_data),
     mint_cursor: builtin.un_i_data(mint_cursor_data),
     current_mint_policy: builtin.un_b_data(current_mint_policy_data),
@@ -13459,6 +13466,71 @@ fn mint_context_is_pristine(control: CekContextControlV1) -> Bool {
   }
 }
 
+fn empty_observer_items_v1(
+  language_tag: Int,
+) -> cek_data_v1.DataSequenceSummaryV1 {
+  if language_tag == 128 {
+    cek_data_v1.empty_data_list_summary_v1()
+  } else {
+    cek_data_v1.empty_data_pair_summary_v1()
+  }
+}
+
+fn observer_context_is_pristine(control: CekContextControlV1) -> Bool {
+  and {
+    control.observer_count == 0,
+    control.observer_items == empty_observer_items_v1(control.language_tag),
+    control.previous_observer == #"",
+    control.observer_summary == empty_data_summary_v1(),
+  }
+}
+
+fn observer_context_is_partial(control: CekContextControlV1) -> Bool {
+  and {
+    control.observer_count >= 0,
+    control.observer_count <= 16,
+    control.observer_items.length <= control.observer_count,
+    control.observer_summary == empty_data_summary_v1(),
+    if control.observer_items.length == 0 {
+      and {
+        control.observer_count == 0,
+        control.observer_items == empty_observer_items_v1(
+          control.language_tag,
+        ),
+        control.previous_observer == #"",
+      }
+    } else {
+      and {
+        control.observer_count > 0,
+        bytearray.length(control.previous_observer) == 28,
+      }
+    },
+  }
+}
+
+fn observer_context_is_complete(control: CekContextControlV1) -> Bool {
+  and {
+    control.observer_count >= 0,
+    control.observer_count <= 16,
+    control.observer_items.length == control.observer_count,
+    bytearray.length(control.observer_summary.root) == 32,
+    control.observer_summary == finalize_cek_observer_items_v1(
+      control.observer_items,
+      control.language_tag == 128,
+    ),
+    if control.observer_count == 0 {
+      and {
+        control.observer_items == empty_observer_items_v1(
+          control.language_tag,
+        ),
+        control.previous_observer == #"",
+      }
+    } else {
+      bytearray.length(control.previous_observer) == 28
+    },
+  }
+}
+
 fn redeemer_data_scan_is_pristine(control: CekContextControlV1) -> Bool {
   control.redeemer_context_control_hash == #""
 }
@@ -13476,7 +13548,7 @@ fn mint_context_is_final(
   control: CekContextControlV1,
 ) -> Bool {
   and {
-    bytearray.length(control.observer_summary.root) == 32,
+    observer_context_is_complete(control),
     control.mint_cursor == native_control.mint_count,
     control.current_mint_policy == #"",
     control.current_mint_assets == cek_data_v1.empty_data_pair_summary_v1(),
@@ -13512,6 +13584,7 @@ fn cek_context_control_is_well_formed(
     data_sequence_summary_is_well_formed(control.spend_items),
     data_sequence_summary_is_well_formed(control.output_items),
     data_sequence_summary_is_well_formed(control.signer_items),
+    data_sequence_summary_is_well_formed(control.observer_items),
     optional_data_summary_is_well_formed(control.observer_summary),
     control.mint_cursor >= 0,
     control.mint_cursor <= native_control.mint_count,
@@ -13533,7 +13606,7 @@ fn cek_context_control_is_well_formed(
         control.spend_items.length == 0,
         control.output_items.length == 0,
         control.signer_items.length == 0,
-        control.observer_summary.root == #"",
+        observer_context_is_pristine(control),
         redeemer_data_scan_is_pristine(control),
         mint_context_is_pristine(control),
       }
@@ -13543,6 +13616,7 @@ fn cek_context_control_is_well_formed(
         control.spend_items.length == 0,
         control.output_items.length == 0,
         control.signer_items.length == 0,
+        observer_context_is_pristine(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 2 {
@@ -13551,6 +13625,7 @@ fn cek_context_control_is_well_formed(
         control.reference_items.length == reference_count,
         control.output_items.length == 0,
         control.signer_items.length == 0,
+        observer_context_is_pristine(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 3 {
@@ -13559,6 +13634,7 @@ fn cek_context_control_is_well_formed(
         control.reference_items.length == reference_count,
         control.spend_items.length == native_control.spend_input_count,
         control.signer_items.length == 0,
+        observer_context_is_pristine(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 4 {
@@ -13568,21 +13644,21 @@ fn cek_context_control_is_well_formed(
         control.spend_items.length == native_control.spend_input_count,
         control.output_items.length == native_control.output_count,
         control.signer_items.length <= native_control.signer_count,
-        control.observer_summary.root == #"",
+        observer_context_is_pristine(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 5 {
       and {
         redeemer_data_scan_is_initial(control),
         control.signer_items.length == native_control.signer_count,
-        control.observer_summary.root == #"",
+        observer_context_is_partial(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 6 {
       and {
         redeemer_data_scan_is_initial(control),
         control.signer_items.length == native_control.signer_count,
-        bytearray.length(control.observer_summary.root) == 32,
+        observer_context_is_complete(control),
         mint_context_is_pristine(control),
       }
     } else if control.stage == 7 {
@@ -13591,7 +13667,7 @@ fn cek_context_control_is_well_formed(
       and {
         redeemer_data_scan_is_initial(control),
         control.signer_items.length == native_control.signer_count,
-        bytearray.length(control.observer_summary.root) == 32,
+        observer_context_is_complete(control),
         native_control.mint_count > 0,
         if control.mint_cursor == 0 {
           and {
@@ -14608,6 +14684,9 @@ fn cek_selection_successor_is_exact(
             spend_items: cek_data_v1.empty_data_list_summary_v1(),
             output_items: cek_data_v1.empty_data_list_summary_v1(),
             signer_items: cek_data_v1.empty_data_list_summary_v1(),
+            observer_count: 0,
+            observer_items: empty_observer_items_v1(language_tag),
+            previous_observer: #"",
             observer_summary: empty_data_summary_v1(),
             mint_cursor: 0,
             current_mint_policy: #"",
@@ -15007,7 +15086,41 @@ fn verify_cek_signer_context_step(
   }
 }
 
-fn verify_cek_observer_context_step(
+pub fn prepend_cek_observer_item_v1(
+  observer_hash: ByteArray,
+  midgard_encoding: Bool,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+) -> cek_data_v1.DataSequenceSummaryV1 {
+  expect bytearray.length(observer_hash) == 28
+  if midgard_encoding {
+    cek_data_v1.prepend_data_list_summary_v1(
+      builtin.b_data(observer_hash)
+        |> cek_data_v1.semantic_data_summary_v1,
+      tail,
+    )
+  } else {
+    cek_data_v1.prepend_data_pair_summary_v1(
+      builtin.constr_data(1, [builtin.b_data(observer_hash)])
+        |> cek_data_v1.semantic_data_summary_v1,
+      builtin.i_data(0)
+        |> cek_data_v1.semantic_data_summary_v1,
+      tail,
+    )
+  }
+}
+
+pub fn finalize_cek_observer_items_v1(
+  items: cek_data_v1.DataSequenceSummaryV1,
+  midgard_encoding: Bool,
+) -> cek_data_v1.DataSummaryV1 {
+  if midgard_encoding {
+    cek_data_v1.list_data_summary_v1(items)
+  } else {
+    cek_data_v1.map_data_summary_v1(items)
+  }
+}
+
+pub fn verify_cek_observer_context_step(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
   auxiliary: ValidationAuxiliaryWitnessV1,
@@ -15017,26 +15130,21 @@ fn verify_cek_observer_context_step(
   completed_cpu: Int,
   completed_memory: Int,
 ) -> Bool {
-  expect TransactionFieldPreimageWitness { preimage_cbor } = auxiliary
-  let field_verified = verify_midgard_transaction_field_preimage_v1(
+  let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
-    pre.transaction_commitment,
     native_control.compact_cbor,
     native_control.witness_set_compact_cbor,
     native_control.field_preimage_lengths_cbor,
-    3,
-    preimage_cbor,
   )
-  let observers = decode_midgard_tx_byte_list_preimage_cbor(preimage_cbor)
-  when
-    script_context_v1.observer_collection_summary_v1(
-      observers,
-      context_control.language_tag == 128,
-    )
-  is {
-    None -> False
-    Some(summary) -> and {
-        field_verified,
+  let observer_commitment = verified_source.tx_compact.body.required_observers_hash
+  let empty_observer_commitment = bounded_collection_v1.from_items(3, [])
+  let midgard_encoding = context_control.language_tag == 128
+  and {
+    verified_source.version == 1,
+    if observer_commitment == empty_observer_commitment {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        observer_context_is_pristine(context_control),
         cek_context_successor_is_exact(
           pre,
           witness,
@@ -15044,13 +15152,100 @@ fn verify_cek_observer_context_step(
           CekContextControlV1 {
             ..context_control,
             stage: 6,
-            observer_summary: summary,
+            observer_summary: finalize_cek_observer_items_v1(
+              context_control.observer_items,
+              midgard_encoding,
+            ),
           },
           execution_cursor,
           completed_cpu,
           completed_memory,
         ),
       }
+    } else if and {
+      context_control.observer_count > 0,
+      context_control.observer_items.length == context_control.observer_count,
+    } {
+      and {
+        auxiliary == NoAuxiliaryWitness,
+        cek_context_successor_is_exact(
+          pre,
+          witness,
+          native_control,
+          CekContextControlV1 {
+            ..context_control,
+            stage: 6,
+            observer_summary: finalize_cek_observer_items_v1(
+              context_control.observer_items,
+              midgard_encoding,
+            ),
+          },
+          execution_cursor,
+          completed_cpu,
+          completed_memory,
+        ),
+      }
+    } else {
+      expect
+          TransactionFieldChunkWitness {
+            collection_proof,
+            chunk_proof,
+          }
+        = auxiliary
+      let active_count = if context_control.observer_count == 0 {
+        collection_proof.item_count
+      } else {
+        context_control.observer_count
+      }
+      let expected_index = active_count - context_control.observer_items.length - 1
+      let observer_hash = chunk_proof.chunk
+      let next_items = prepend_cek_observer_item_v1(
+        observer_hash,
+        midgard_encoding,
+        context_control.observer_items,
+      )
+      and {
+        active_count > 0,
+        active_count <= 16,
+        expected_index >= 0,
+        collection_proof.field_index == 3,
+        collection_proof.item_count == active_count,
+        collection_proof.item_index == expected_index,
+        collection_proof.item_length == 28,
+        chunk_proof.field_index == 3,
+        chunk_proof.item_index == expected_index,
+        chunk_proof.total_length == 28,
+        chunk_proof.chunk_index == 0,
+        bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
+        bounded_collection_v1.verify_item(
+          observer_commitment,
+          collection_proof,
+        ),
+        bounded_item_v1.verify_chunk(
+          collection_proof.item_commitment,
+          chunk_proof,
+        ),
+        if context_control.observer_items.length == 0 {
+          context_control.previous_observer == #""
+        } else {
+          bytearray.compare(observer_hash, context_control.previous_observer) == Less
+        },
+        cek_context_successor_is_exact(
+          pre,
+          witness,
+          native_control,
+          CekContextControlV1 {
+            ..context_control,
+            observer_count: active_count,
+            observer_items: next_items,
+            previous_observer: observer_hash,
+          },
+          execution_cursor,
+          completed_cpu,
+          completed_memory,
+        ),
+      }
+    },
   }
 }
 

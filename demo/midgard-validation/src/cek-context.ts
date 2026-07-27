@@ -110,6 +110,63 @@ export const summarizeMidgardCekLucidMapV1 = (
   return summary;
 };
 
+export const MIDGARD_CEK_MAX_OBSERVER_COUNT_V1 = 16;
+
+export const validateMidgardCekObserverCollectionV1 = (
+  observers: readonly Uint8Array[],
+): void => {
+  if (observers.length > MIDGARD_CEK_MAX_OBSERVER_COUNT_V1) {
+    throw new Error(
+      `CEK observer context exceeds the semantic maximum of ${MIDGARD_CEK_MAX_OBSERVER_COUNT_V1}`,
+    );
+  }
+  let previous = Buffer.alloc(0);
+  for (const value of observers) {
+    const observer = bytes(value);
+    if (observer.length !== 28) {
+      throw new Error("CEK observer hash must be exactly 28 bytes");
+    }
+    if (previous.length > 0 && Buffer.compare(previous, observer) >= 0) {
+      throw new Error(
+        "CEK observer context must be strictly ordered and unique",
+      );
+    }
+    previous = observer;
+  }
+};
+
+export const prependMidgardCekObserverItemV1 = (input: {
+  readonly observerHash: Uint8Array;
+  readonly midgardEncoding: boolean;
+  readonly tail: MidgardCekDataSequenceSummaryV1;
+}): MidgardCekDataSequenceSummaryV1 => {
+  const observerHash = bytes(input.observerHash);
+  if (observerHash.length !== 28) {
+    throw new Error("CEK observer hash must be exactly 28 bytes");
+  }
+  if (input.midgardEncoding) {
+    return prependMidgardCekDataListSummaryV1(
+      summarizeMidgardCekLucidDataV1(observerHash.toString("hex")),
+      input.tail,
+    );
+  }
+  return prependMidgardCekDataPairSummaryV1(
+    summarizeMidgardCekLucidDataV1(
+      new Constr(1, [observerHash.toString("hex")]),
+    ),
+    summarizeMidgardCekLucidDataV1(0n),
+    input.tail,
+  );
+};
+
+export const finalizeMidgardCekObserverItemsV1 = (input: {
+  readonly items: MidgardCekDataSequenceSummaryV1;
+  readonly midgardEncoding: boolean;
+}): MidgardCekDataSummaryV1 =>
+  input.midgardEncoding
+    ? summarizeMidgardCekListDataV1(input.items)
+    : summarizeMidgardCekMapDataV1(input.items);
+
 export type MidgardCekRedeemerContextControlV1 = {
   readonly cursor: number;
   readonly mapItems: MidgardCekDataSequenceSummaryV1;
@@ -244,6 +301,9 @@ export type MidgardCekContextControlV1 = {
   readonly spendItems: MidgardCekDataSequenceSummaryV1;
   readonly outputItems: MidgardCekDataSequenceSummaryV1;
   readonly signerItems: MidgardCekDataSequenceSummaryV1;
+  readonly observerCount: number;
+  readonly observerItems: MidgardCekDataSequenceSummaryV1;
+  readonly previousObserver: Buffer;
   readonly observerSummary: MidgardCekDataSummaryV1;
   readonly mintCursor: number;
   readonly currentMintPolicy: Buffer;
@@ -276,6 +336,12 @@ export const initialMidgardCekContextControlV1 = (input: {
   spendItems: emptyMidgardCekDataListSummaryV1(),
   outputItems: emptyMidgardCekDataListSummaryV1(),
   signerItems: emptyMidgardCekDataListSummaryV1(),
+  observerCount: 0,
+  observerItems:
+    input.languageTag === 128
+      ? emptyMidgardCekDataListSummaryV1()
+      : emptyMidgardCekDataPairSummaryV1(),
+  previousObserver: Buffer.alloc(0),
   observerSummary: emptyMidgardCekDataSummaryV1(),
   mintCursor: 0,
   currentMintPolicy: Buffer.alloc(0),
@@ -303,6 +369,9 @@ export const encodeMidgardCekContextControlV1 = (
     encodeMidgardCekDataSequenceSummaryV1(control.spendItems),
     encodeMidgardCekDataSequenceSummaryV1(control.outputItems),
     encodeMidgardCekDataSequenceSummaryV1(control.signerItems),
+    BigInt(control.observerCount),
+    encodeMidgardCekDataSequenceSummaryV1(control.observerItems),
+    control.previousObserver,
     encodeMidgardCekDataSummaryV1(control.observerSummary),
     BigInt(control.mintCursor),
     control.currentMintPolicy,

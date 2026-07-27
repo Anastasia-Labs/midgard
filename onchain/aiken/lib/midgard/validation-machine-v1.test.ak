@@ -649,6 +649,114 @@ fn duplicate_observer_field_item_proofs(
   )
 }
 
+fn observer_hash_at(item_index: Int) -> ByteArray {
+  bytearray.from_int_big_endian(item_index + 1, 28)
+}
+
+fn observer_hashes_from(
+  item_index: Int,
+  item_count: Int,
+) -> List<ByteArray> {
+  if item_index == item_count {
+    []
+  } else {
+    [observer_hash_at(item_index), ..observer_hashes_from(item_index + 1, item_count)]
+  }
+}
+
+fn observer_collection_leaves_from(
+  item_index: Int,
+  item_count: Int,
+) -> List<ByteArray> {
+  if item_index == item_count {
+    []
+  } else {
+    let observer_hash = observer_hash_at(item_index)
+    let item_commitment = bounded_item_v1.from_bytes(
+      3,
+      item_index,
+      observer_hash,
+    )
+    [
+      bounded_collection_v1.hash_item(
+        3,
+        item_index,
+        28,
+        item_commitment,
+      ),
+      ..observer_collection_leaves_from(item_index + 1, item_count)
+    ]
+  }
+}
+
+fn observer_collection_subtree_root(start: Int, size: Int) -> ByteArray {
+  if size == 1 {
+    let observer_hash = observer_hash_at(start)
+    bounded_collection_v1.hash_item(
+      3,
+      start,
+      28,
+      bounded_item_v1.from_bytes(3, start, observer_hash),
+    )
+  } else {
+    let half = size / 2
+    validation_merkle_v1.hash_branch(
+      observer_collection_subtree_root(start, half),
+      observer_collection_subtree_root(start + half, half),
+    )
+  }
+}
+
+fn last_observer_siblings_16() -> List<ByteArray> {
+  [
+    observer_collection_subtree_root(14, 1),
+    observer_collection_subtree_root(12, 2),
+    observer_collection_subtree_root(8, 4),
+    observer_collection_subtree_root(0, 8),
+  ]
+}
+
+fn observer_field_item_proofs(
+  item_count: Int,
+  item_index: Int,
+  siblings: List<ByteArray>,
+) -> Pair<bounded_collection_v1.ItemProofV1, bounded_item_v1.ChunkProofV1> {
+  let observer_hash = observer_hash_at(item_index)
+  let item_commitment = bounded_item_v1.from_bytes(
+    3,
+    item_index,
+    observer_hash,
+  )
+  let collection_frontier = validation_merkle_v1.build_frontier(
+    observer_collection_leaves_from(0, item_count),
+  )
+  let chunk_frontier = validation_merkle_v1.build_frontier(
+    [bounded_item_v1.hash_chunk(3, item_index, 0, observer_hash)],
+  )
+  Pair(
+    bounded_collection_v1.ItemProofV1 {
+      version: bounded_collection_v1.version,
+      field_index: 3,
+      item_count,
+      item_index,
+      item_length: 28,
+      item_commitment,
+      frontier: collection_frontier.peaks,
+      siblings,
+    },
+    bounded_item_v1.ChunkProofV1 {
+      version: bounded_item_v1.version,
+      field_index: 3,
+      item_index,
+      total_length: 28,
+      chunk_index: 0,
+      chunk: observer_hash,
+      frontier: chunk_frontier.peaks,
+      siblings: [],
+    },
+  )
+}
+
 fn resolve_inputs_step_fixture(
   tx: MidgardTransaction,
   prior_ledger_root: ByteArray,
@@ -1564,6 +1672,9 @@ fn empty_cek_context_control_fixture(
     spend_items: cek_data_v1.empty_data_list_summary_v1(),
     output_items: cek_data_v1.empty_data_list_summary_v1(),
     signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
     observer_summary: cek_data_v1.DataSummaryV1 {
       root: #"",
       cbor_length: 0,
@@ -1579,6 +1690,63 @@ fn empty_cek_context_control_fixture(
       memory: 0,
     },
   }
+}
+
+fn observer_items_summary_fixture(
+  observers: List<ByteArray>,
+  midgard_encoding: Bool,
+) -> cek_data_v1.DataSequenceSummaryV1 {
+  when observers is {
+    [] ->
+      if midgard_encoding {
+        cek_data_v1.empty_data_list_summary_v1()
+      } else {
+        cek_data_v1.empty_data_pair_summary_v1()
+      }
+    [observer, ..rest] ->
+      validation_machine_v1.prepend_cek_observer_item_v1(
+        observer,
+        midgard_encoding,
+        observer_items_summary_fixture(rest, midgard_encoding),
+      )
+  }
+}
+
+fn verify_cek_context_transition_fixture(
+  tx: MidgardTransaction,
+  native_control: validation_machine_v1.NativeScriptsControlV1,
+  context_control: validation_machine_v1.CekContextControlV1,
+  successor_control: validation_machine_v1.CekContextControlV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  program_counter: Int,
+) -> Bool {
+  let Pair(pre, work_witness_cbor) = cek_state_fixture(
+    tx,
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    0,
+    program_counter,
+  )
+  let Pair(post, _) = cek_state_fixture(
+    tx,
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    0,
+    program_counter + 1,
+  )
+  validation_machine_v1.verify_cek_observer_context_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    auxiliary,
+    native_control,
+    context_control,
+    0,
+    0,
+    0,
+  )
 }
 
 fn cek_context_native_control_fixture(
@@ -7169,6 +7337,9 @@ test cek_execution_selection_authenticates_program_and_context_subject() {
     spend_items: cek_data_v1.empty_data_list_summary_v1(),
     output_items: cek_data_v1.empty_data_list_summary_v1(),
     signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
     observer_summary: cek_data_v1.DataSummaryV1 {
       root: #"",
       cbor_length: 0,
@@ -7237,6 +7408,9 @@ test cross_language_cek_context_control_vectors() {
     spend_items: cek_data_v1.empty_data_list_summary_v1(),
     output_items: cek_data_v1.empty_data_list_summary_v1(),
     signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
     observer_summary: cek_data_v1.DataSummaryV1 {
       root: #"",
       cbor_length: 0,
@@ -7253,7 +7427,7 @@ test cross_language_cek_context_control_vectors() {
     },
   }
   and {
-    validation_machine_v1.encode_cek_context_control_v1(context) == #"9500035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
+    validation_machine_v1.encode_cek_context_control_v1(context) == #"981800035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
     validation_machine_v1.hash_cek_redeemer_context_control_v1(
       validation_machine_v1.initial_cek_redeemer_context_control_v1(),
     ) == #"c56f80a85b46a479d9a766ce7050e825484f42da6453a3ec217afc6b03d5f938",
@@ -7469,6 +7643,9 @@ test cek_context_spend_item_uses_authenticated_resolved_frontier() {
     spend_items: cek_data_v1.empty_data_list_summary_v1(),
     output_items: cek_data_v1.empty_data_list_summary_v1(),
     signer_items: cek_data_v1.empty_data_list_summary_v1(),
+    observer_count: 0,
+    observer_items: cek_data_v1.empty_data_pair_summary_v1(),
+    previous_observer: #"",
     observer_summary: cek_data_v1.DataSummaryV1 {
       root: #"",
       cbor_length: 0,
@@ -7592,51 +7769,384 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
   )
 }
 
-test cek_context_observers_use_authenticated_field_preimage() {
+test cek_context_observer_maximum_16_replays_and_finalizes() {
   let base = empty_v1_transaction()
+  let observers = observer_hashes_from(0, 16)
   let tx = MidgardTransaction {
     ..base,
     body: MidgardTransactionBody {
       ..base.body,
-      required_observers: [h_28_a, h_28_b],
+      required_observers: observers,
     },
   }
-  let control = cek_context_native_control_fixture(tx)
+  let native_control = cek_context_native_control_fixture(tx)
   let context_control = empty_cek_context_control_fixture(5)
-  expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
-    tx.body.required_observers,
+  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
+    16,
+    15,
+    last_observer_siblings_16(),
+  )
+  let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
+    observer_hash_at(15),
+    False,
+    context_control.observer_items,
+  )
+  let first_control = validation_machine_v1.CekContextControlV1 {
+    ..context_control,
+    observer_count: 16,
+    observer_items: first_items,
+    previous_observer: observer_hash_at(15),
+  }
+  let complete_items = observer_items_summary_fixture(observers, False)
+  let complete_control = validation_machine_v1.CekContextControlV1 {
+    ..context_control,
+    observer_count: 16,
+    observer_items: complete_items,
+    previous_observer: observer_hash_at(0),
+  }
+  let observer_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+    complete_items,
     False,
   )
+  expect Some(established_summary) = script_context_v1.observer_collection_summary_v1(
+    observers,
+    False,
+  )
+  let final_control = validation_machine_v1.CekContextControlV1 {
+    ..complete_control,
+    stage: 6,
+    observer_summary,
+  }
+  and {
+    observer_summary == established_summary,
+    verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof,
+        chunk_proof,
+      },
+      45,
+    ),
+    verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      complete_control,
+      final_control,
+      validation_machine_v1.NoAuxiliaryWitness,
+      46,
+    ),
+  }
+}
+
+test cek_context_observer_adjacent_17_fails_closed() {
+  let base = empty_v1_transaction()
+  let observers = observer_hashes_from(0, 17)
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      required_observers: observers,
+    },
+  }
+  let context_control = empty_cek_context_control_fixture(5)
+  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
+    17,
+    16,
+    [],
+  )
+  let successor_control = validation_machine_v1.CekContextControlV1 {
+    ..context_control,
+    observer_count: 17,
+    observer_items: validation_machine_v1.prepend_cek_observer_item_v1(
+      observer_hash_at(16),
+      False,
+      context_control.observer_items,
+    ),
+    previous_observer: observer_hash_at(16),
+  }
+  !verify_cek_context_transition_fixture(
+    tx,
+    cek_context_native_control_fixture(tx),
+    context_control,
+    successor_control,
+    validation_machine_v1.TransactionFieldChunkWitness {
+      collection_proof,
+      chunk_proof,
+    },
+    47,
+  )
+}
+
+test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
+  let tx = empty_v1_transaction()
+  let native_control = cek_context_native_control_fixture(tx)
+  let context_control = empty_cek_context_control_fixture(5)
+  let observer_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+    context_control.observer_items,
+    False,
+  )
+  let successor_control = validation_machine_v1.CekContextControlV1 {
+    ..context_control,
+    stage: 6,
+    observer_summary,
+  }
+  let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
+    3,
+    h_28_a,
+  )
+  and {
+    verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      successor_control,
+      validation_machine_v1.NoAuxiliaryWitness,
+      48,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      successor_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof,
+        chunk_proof,
+      },
+      49,
+    ),
+  }
+}
+
+test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
+  let base = empty_v1_transaction()
+  let observers = observer_hashes_from(0, 2)
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      required_observers: observers,
+    },
+  }
+  let native_control = cek_context_native_control_fixture(tx)
+  let context_control = empty_cek_context_control_fixture(5)
+  let first_leaf = observer_collection_subtree_root(0, 1)
+  let second_leaf = observer_collection_subtree_root(1, 1)
+  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
+    2,
+    1,
+    [first_leaf],
+  )
+  let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
+    observer_hash_at(1),
+    False,
+    context_control.observer_items,
+  )
+  let first_control = validation_machine_v1.CekContextControlV1 {
+    ..context_control,
+    observer_count: 2,
+    observer_items: first_items,
+    previous_observer: observer_hash_at(1),
+  }
+  let malformed_successor = validation_machine_v1.CekContextControlV1 {
+    ..first_control,
+    previous_observer: observer_hash_at(0),
+  }
+  let Pair(next_collection_proof, next_chunk_proof) = observer_field_item_proofs(
+    2,
+    0,
+    [second_leaf],
+  )
+  let next_items = validation_machine_v1.prepend_cek_observer_item_v1(
+    observer_hash_at(0),
+    False,
+    first_items,
+  )
+  let wrong_order_control = validation_machine_v1.CekContextControlV1 {
+    ..first_control,
+    previous_observer: observer_hash_at(0),
+  }
+  let complete_control = validation_machine_v1.CekContextControlV1 {
+    ..wrong_order_control,
+    observer_items: next_items,
+  }
+  let exact_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+    next_items,
+    False,
+  )
+  let wrong_summary = cek_data_v1.DataSummaryV1 {
+    ..exact_summary,
+    root: h_a,
+  }
+  let wrong_summary_control = validation_machine_v1.CekContextControlV1 {
+    ..complete_control,
+    stage: 6,
+    observer_summary: wrong_summary,
+  }
+  and {
+    verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof,
+        chunk_proof,
+      },
+      50,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      malformed_successor,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof,
+        chunk_proof,
+      },
+      51,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: bounded_collection_v1.ItemProofV1 {
+          ..collection_proof,
+          item_index: 0,
+        },
+        chunk_proof,
+      },
+      52,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: bounded_collection_v1.ItemProofV1 {
+          ..collection_proof,
+          item_count: 1,
+        },
+        chunk_proof,
+      },
+      53,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: bounded_collection_v1.ItemProofV1 {
+          ..collection_proof,
+          field_index: 2,
+        },
+        chunk_proof: bounded_item_v1.ChunkProofV1 {
+          ..chunk_proof,
+          field_index: 2,
+        },
+      },
+      54,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: bounded_collection_v1.ItemProofV1 {
+          ..collection_proof,
+          item_length: 27,
+        },
+        chunk_proof,
+      },
+      55,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      context_control,
+      first_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof,
+        chunk_proof: bounded_item_v1.ChunkProofV1 {
+          ..chunk_proof,
+          total_length: 27,
+        },
+      },
+      56,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      wrong_order_control,
+      complete_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: next_collection_proof,
+        chunk_proof: next_chunk_proof,
+      },
+      57,
+    ),
+    !verify_cek_context_transition_fixture(
+      tx,
+      native_control,
+      complete_control,
+      wrong_summary_control,
+      validation_machine_v1.NoAuxiliaryWitness,
+      58,
+    ),
+  }
+}
+
+test cek_context_observer_complete_summary_relation_is_exact() {
+  let tx = empty_v1_transaction()
+  let native_control = cek_context_native_control_fixture(tx)
+  let empty_items = cek_data_v1.empty_data_pair_summary_v1()
+  let exact_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+    empty_items,
+    False,
+  )
+  let malformed_control = validation_machine_v1.CekContextControlV1 {
+    ..empty_cek_context_control_fixture(6),
+    observer_summary: cek_data_v1.DataSummaryV1 {
+      ..exact_summary,
+      root: h_a,
+    },
+  }
+  let successor_control = validation_machine_v1.CekContextControlV1 {
+    ..empty_cek_context_control_fixture(9),
+    observer_summary: exact_summary,
+    mint_summary: cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+  }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
-    control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(malformed_control),
     0,
-    45,
+    59,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
-    control,
-    validation_machine_v1.encode_cek_context_control_v1(
-      validation_machine_v1.CekContextControlV1 {
-        ..context_control,
-        stage: 6,
-        observer_summary,
-      },
-    ),
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(successor_control),
     0,
-    46,
+    60,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  !validation_machine_v1.verify_cek_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.TransactionFieldPreimageWitness {
-        preimage_cbor: encode_native_byte_list(tx.body.required_observers),
-      },
+      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
     },
   )
 }
