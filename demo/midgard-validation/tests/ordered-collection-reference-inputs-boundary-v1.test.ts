@@ -11,6 +11,7 @@ import {
   measureSignedCardanoReferenceInputsV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 reference-inputs Cardano boundary", () => {
   it("derives and reveals field 1 using only distinct real emulator UTxOs", async () => {
@@ -72,6 +73,21 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
         signedCardanoCborHex: boundary.accepted.cborHex,
         fieldIndex: 1,
       });
+    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+    });
+    expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
+      referenceInputField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
+      referenceInputField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.normal.revealStepCount).toBe(
+      referenceInputField.completeFoldStepCount,
+    );
+    expect(retainedDa.forced.revealStepCount).toBe(
+      referenceInputField.completeFoldStepCount,
+    );
 
     const assertConcreteInputIndexes = (
       candidateCborHex: string,

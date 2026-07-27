@@ -11,6 +11,7 @@ import {
   measureSignedCardanoSpendInputsV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 spend-inputs Cardano boundary", () => {
   it("derives and reveals field 0 using only real emulator UTxOs", async () => {
@@ -71,6 +72,21 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 0,
     });
+    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+    });
+    expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
+      inputField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
+      inputField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.normal.revealStepCount).toBe(
+      inputField.completeFoldStepCount,
+    );
+    expect(retainedDa.forced.revealStepCount).toBe(
+      inputField.completeFoldStepCount,
+    );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,

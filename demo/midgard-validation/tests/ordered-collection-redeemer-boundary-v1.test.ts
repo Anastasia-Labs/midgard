@@ -28,6 +28,7 @@ import {
   measureCollateralizedPlutusFeasibilityCandidateV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 type BlueprintValidator = {
   readonly title: string;
@@ -443,6 +444,21 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(redeemerField.revealStepCount).toBe(acceptedCount);
     expect(redeemerField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+    );
+    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+      signedCardanoCborHex: parallel.cborHex,
+    });
+    expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
+      redeemerField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
+      redeemerField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.normal.revealStepCount).toBe(
+      redeemerField.completeFoldStepCount,
+    );
+    expect(retainedDa.forced.revealStepCount).toBe(
+      redeemerField.completeFoldStepCount,
     );
     expect({
       fieldCommitmentHex:

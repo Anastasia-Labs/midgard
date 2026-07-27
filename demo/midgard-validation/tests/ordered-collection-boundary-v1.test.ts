@@ -12,6 +12,7 @@ import {
   measureSignedCardanoOutputsV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 ordered-collection Cardano boundaries", () => {
   it("derives and reveals the exact signed outputs boundary without a Midgard count cap", async () => {
@@ -64,6 +65,21 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
         signedCardanoCborHex: boundary.accepted.cborHex,
         fieldIndex: 2,
       });
+    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+    });
+    expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
+      midgardMeasurement.nativeCanonicalBytes,
+    );
+    expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
+      midgardMeasurement.nativeCanonicalBytes,
+    );
+    expect(retainedDa.normal.revealStepCount).toBe(
+      midgardMeasurement.completeFoldStepCount,
+    );
+    expect(retainedDa.forced.revealStepCount).toBe(
+      midgardMeasurement.completeFoldStepCount,
+    );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,

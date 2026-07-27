@@ -10,6 +10,7 @@ import {
   measureSignedCardanoSignersV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
+import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 coupled signer/witness Cardano boundary", () => {
   it("derives and reveals fields 4 and 6 from one exact signed transaction", async () => {
@@ -63,6 +64,21 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
       signedCardanoCborHex: boundary.accepted.cborHex,
       fieldIndex: 6,
     });
+    const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+    });
+    expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
+      signerField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.forced.reconstructedCanonicalBytes).toBe(
+      signerField.nativeCanonicalBytes,
+    );
+    expect(retainedDa.normal.revealStepCount).toBe(
+      signerField.completeFoldStepCount,
+    );
+    expect(retainedDa.forced.revealStepCount).toBe(
+      signerField.completeFoldStepCount,
+    );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
