@@ -22,6 +22,12 @@ export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
 export const CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 = 5_000;
 export const CARDANO_BOUNDARY_OBSERVER_TTL_V1 = 10_000n;
 export const CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 = 20_000n;
+export const CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1 =
+  100_000_000n;
+export const CARDANO_BOUNDARY_MINT_ASSET_NAME_V1 = Buffer.from(
+  "MidgardV1",
+  "utf8",
+);
 export const PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1 = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   minFeeA: 44,
@@ -623,6 +629,24 @@ export const buildSignedCardanoReferenceInputsCandidateV1 = async ({
   );
 };
 
+const makeCardanoBoundaryNativeScriptV1 = ({
+  signerHash,
+  scriptIndex,
+}: {
+  readonly signerHash: CML.Ed25519KeyHash;
+  readonly scriptIndex: number;
+}): CML.NativeScript => {
+  const clauses = CML.NativeScriptList.new();
+  clauses.add(CML.NativeScript.new_script_pubkey(signerHash));
+  clauses.add(
+    CML.NativeScript.new_script_invalid_hereafter(
+      CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
+        BigInt(scriptIndex),
+    ),
+  );
+  return CML.NativeScript.new_script_all(clauses);
+};
+
 export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
   privateKeyBech32,
   fundingInput,
@@ -659,17 +683,11 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
   );
   const makeObserverScript = (
     observerIndex: number,
-  ): CML.NativeScript => {
-    const clauses = CML.NativeScriptList.new();
-    clauses.add(CML.NativeScript.new_script_pubkey(signerHash));
-    clauses.add(
-      CML.NativeScript.new_script_invalid_hereafter(
-        CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
-          BigInt(observerIndex),
-      ),
-    );
-    return CML.NativeScript.new_script_all(clauses);
-  };
+  ): CML.NativeScript =>
+    makeCardanoBoundaryNativeScriptV1({
+      signerHash,
+      scriptIndex: observerIndex,
+    });
   const makeSigned = (
     fee: bigint,
   ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
@@ -753,6 +771,234 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
   }
   throw new Error(
     `Cardano observer/native-script candidate ${requestedObserverCount.toString()} fee did not converge`,
+  );
+};
+
+export const buildSignedCardanoMintNativePoliciesCandidateV1 = async ({
+  privateKeyBech32,
+  fundingInput,
+  recipientAddress,
+  requestedPolicyCount,
+  maxValueSize,
+  minFeeA,
+  minFeeB,
+  minFeeRefScriptCostPerByte,
+}: {
+  readonly privateKeyBech32: string;
+  readonly fundingInput: UTxO;
+  readonly recipientAddress: string;
+  readonly requestedPolicyCount: number;
+  readonly maxValueSize: number;
+  readonly minFeeA: number;
+  readonly minFeeB: number;
+  readonly minFeeRefScriptCostPerByte: number;
+}): Promise<SignedCardanoCollectionCandidateV1> => {
+  if (
+    !Number.isSafeInteger(requestedPolicyCount) ||
+    requestedPolicyCount <= 0
+  ) {
+    throw new Error(
+      "Requested Cardano mint policy count must be positive",
+    );
+  }
+  if (!Number.isSafeInteger(maxValueSize) || maxValueSize <= 0) {
+    throw new Error(
+      "Cardano maxValueSize must be a positive safe integer",
+    );
+  }
+  const fundingLovelace = fundingInput.assets.lovelace ?? 0n;
+  const privateKey = CML.PrivateKey.from_bech32(privateKeyBech32);
+  const signerHash = privateKey.to_public().hash();
+  const address = CML.Address.from_bech32(recipientAddress);
+  const linearFee = CML.LinearFee.new(
+    BigInt(minFeeA),
+    BigInt(minFeeB),
+    BigInt(minFeeRefScriptCostPerByte),
+  );
+  const policyEntries = Array.from(
+    { length: requestedPolicyCount },
+    (_, scriptIndex) => ({
+      scriptIndex,
+      policyHashHex: makeCardanoBoundaryNativeScriptV1({
+        signerHash,
+        scriptIndex,
+      })
+        .hash()
+        .to_hex(),
+    }),
+  ).sort((left, right) =>
+    left.policyHashHex.localeCompare(right.policyHashHex),
+  );
+  type PolicyEntry = (typeof policyEntries)[number];
+  const makeValue = (
+    entries: readonly PolicyEntry[],
+    lovelace: bigint,
+  ): CML.Value => {
+    const multiasset = CML.MultiAsset.new();
+    for (const entry of entries) {
+      const assets = CML.MapAssetNameToCoin.new();
+      assets.insert(
+        CML.AssetName.from_raw_bytes(
+          CARDANO_BOUNDARY_MINT_ASSET_NAME_V1,
+        ),
+        1n,
+      );
+      multiasset.insert_assets(
+        CML.ScriptHash.from_hex(entry.policyHashHex),
+        assets,
+      );
+    }
+    return CML.Value.new(lovelace, multiasset);
+  };
+  const packPolicyEntries = (
+    fee: bigint,
+  ): {
+    readonly groups: readonly (readonly PolicyEntry[])[];
+    readonly firstOutputLovelace: bigint;
+  } => {
+    let expectedOutputCount = 1;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const firstOutputLovelace =
+        fundingLovelace -
+        fee -
+        BigInt(expectedOutputCount - 1) *
+          CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+      if (firstOutputLovelace <= 0n) {
+        throw new Error(
+          `Cardano mint candidate ${requestedPolicyCount.toString()} exhausts its funding input while packing Values`,
+        );
+      }
+      const groups: PolicyEntry[][] = [];
+      for (const entry of policyEntries) {
+        if (groups.length === 0) {
+          groups.push([entry]);
+          continue;
+        }
+        const groupIndex = groups.length - 1;
+        const group = groups[groupIndex]!;
+        const groupLovelace =
+          groupIndex === 0
+            ? firstOutputLovelace
+            : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+        const candidateGroup = [...group, entry];
+        if (
+          makeValue(candidateGroup, groupLovelace).to_cbor_bytes()
+            .length <= maxValueSize
+        ) {
+          groups[groupIndex] = candidateGroup;
+          continue;
+        }
+        if (
+          makeValue(
+            [entry],
+            CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1,
+          ).to_cbor_bytes().length > maxValueSize
+        ) {
+          throw new Error(
+            "One Cardano mint policy entry exceeds maxValueSize",
+          );
+        }
+        groups.push([entry]);
+      }
+      if (groups.length === expectedOutputCount) {
+        return { groups, firstOutputLovelace };
+      }
+      expectedOutputCount = groups.length;
+    }
+    throw new Error(
+      `Cardano mint candidate ${requestedPolicyCount.toString()} Value packing did not converge`,
+    );
+  };
+  const makeSigned = (
+    fee: bigint,
+  ): { readonly transaction: CML.Transaction; readonly cborHex: string } => {
+    const packed = packPolicyEntries(fee);
+    const inputs = CML.TransactionInputList.new();
+    inputs.add(
+      CML.TransactionInput.new(
+        CML.TransactionHash.from_hex(fundingInput.txHash),
+        BigInt(fundingInput.outputIndex),
+      ),
+    );
+    const outputs = CML.TransactionOutputList.new();
+    for (const [outputIndex, entries] of packed.groups.entries()) {
+      const lovelace =
+        outputIndex === 0
+          ? packed.firstOutputLovelace
+          : CARDANO_BOUNDARY_MINT_ADA_PER_EXTRA_OUTPUT_V1;
+      const value = makeValue(entries, lovelace);
+      if (value.to_cbor_bytes().length > maxValueSize) {
+        throw new Error(
+          `Packed Cardano output Value ${outputIndex.toString()} exceeds maxValueSize`,
+        );
+      }
+      outputs.add(
+        CML.TransactionOutputBuilder.new()
+          .with_address(address)
+          .next()
+          .with_value(value)
+          .build()
+          .output(),
+      );
+    }
+    const mint = CML.Mint.new();
+    const nativeScripts = CML.NativeScriptList.new();
+    for (const entry of policyEntries) {
+      const script = makeCardanoBoundaryNativeScriptV1({
+        signerHash,
+        scriptIndex: entry.scriptIndex,
+      });
+      const assets = CML.MapAssetNameToNonZeroInt64.new();
+      assets.insert(
+        CML.AssetName.from_raw_bytes(
+          CARDANO_BOUNDARY_MINT_ASSET_NAME_V1,
+        ),
+        1n,
+      );
+      mint.insert_assets(script.hash(), assets);
+      nativeScripts.add(script);
+    }
+    const body = CML.TransactionBody.new(inputs, outputs, fee);
+    body.set_ttl(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
+    body.set_mint(mint);
+    const vkeyWitnesses = CML.VkeywitnessList.new();
+    vkeyWitnesses.add(
+      CML.make_vkey_witness(CML.hash_transaction(body), privateKey),
+    );
+    const witnessSet = CML.TransactionWitnessSet.new();
+    witnessSet.set_vkeywitnesses(vkeyWitnesses);
+    witnessSet.set_native_scripts(nativeScripts);
+    const transaction = CML.Transaction.new(
+      body,
+      witnessSet,
+      true,
+      undefined,
+    );
+    return {
+      transaction,
+      cborHex: transaction.to_cbor_hex(),
+    };
+  };
+
+  let fee = BigInt(minFeeB);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const signed = makeSigned(fee);
+    const nextFee = CML.min_no_script_fee(
+      signed.transaction,
+      linearFee,
+    );
+    if (nextFee === fee) {
+      return {
+        requestedItemCount: requestedPolicyCount,
+        cborHex: signed.cborHex,
+        signedBytes: signed.cborHex.length / 2,
+        fee,
+      };
+    }
+    fee = nextFee;
+  }
+  throw new Error(
+    `Cardano mint candidate ${requestedPolicyCount.toString()} fee did not converge`,
   );
 };
 
@@ -995,6 +1241,149 @@ export const measureSignedCardanoObserverNativeScriptsV1 = (
     observerScriptHashHexes,
     nativeScriptHashHexes,
     withdrawalAmounts,
+    hasPlutusScripts:
+      (witnessSet.plutus_v1_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v2_scripts()?.len() ?? 0) > 0 ||
+      (witnessSet.plutus_v3_scripts()?.len() ?? 0) > 0,
+    hasRedeemers: witnessSet.redeemers() !== undefined,
+    hasDatums: witnessSet.plutus_datums() !== undefined,
+    collateralInputCount: body.collateral_inputs()?.len() ?? 0,
+  };
+};
+
+export const measureSignedCardanoMintNativePoliciesV1 = (
+  signedCardanoCborHex: string,
+): {
+  readonly inputCount: number;
+  readonly mintPolicyCount: number;
+  readonly mintAssetCount: number;
+  readonly nativeScriptWitnessCount: number;
+  readonly vkeyWitnessCount: number;
+  readonly outputCount: number;
+  readonly validityStart: bigint | undefined;
+  readonly ttl: bigint | undefined;
+  readonly mintPolicyHashHexes: readonly string[];
+  readonly nativeScriptHashHexes: readonly string[];
+  readonly policyAssetCounts: readonly number[];
+  readonly mintQuantities: readonly bigint[];
+  readonly outputValueByteLengths: readonly number[];
+  readonly outputPolicyCounts: readonly number[];
+  readonly outputAssetCount: number;
+  readonly outputPolicyHashHexes: readonly string[];
+  readonly outputAssetNameHexes: readonly string[];
+  readonly outputAssetQuantities: readonly bigint[];
+  readonly hasWithdrawals: boolean;
+  readonly hasPlutusScripts: boolean;
+  readonly hasRedeemers: boolean;
+  readonly hasDatums: boolean;
+  readonly collateralInputCount: number;
+} => {
+  const transaction = CML.Transaction.from_cbor_hex(
+    signedCardanoCborHex,
+  );
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const mint = body.mint();
+  const nativeScripts = witnessSet.native_scripts();
+  const mintPolicyHashHexes: string[] = [];
+  const policyAssetCounts: number[] = [];
+  const mintQuantities: bigint[] = [];
+  if (mint !== undefined) {
+    const policies = mint.keys();
+    for (let policyIndex = 0; policyIndex < policies.len(); policyIndex += 1) {
+      const policy = policies.get(policyIndex);
+      const assets = mint.get_assets(policy);
+      if (assets === undefined) {
+        throw new Error("Measured Cardano mint policy has no assets");
+      }
+      const assetNames = assets.keys();
+      mintPolicyHashHexes.push(policy.to_hex());
+      policyAssetCounts.push(assetNames.len());
+      for (
+        let assetIndex = 0;
+        assetIndex < assetNames.len();
+        assetIndex += 1
+      ) {
+        const quantity = assets.get(assetNames.get(assetIndex));
+        if (quantity === undefined) {
+          throw new Error(
+            "Measured Cardano mint policy asset has no quantity",
+          );
+        }
+        mintQuantities.push(quantity);
+      }
+    }
+  }
+  const nativeScriptHashHexes: string[] = [];
+  if (nativeScripts !== undefined) {
+    for (let index = 0; index < nativeScripts.len(); index += 1) {
+      nativeScriptHashHexes.push(nativeScripts.get(index).hash().to_hex());
+    }
+  }
+  const outputValueByteLengths: number[] = [];
+  const outputPolicyCounts: number[] = [];
+  const outputPolicyHashHexes: string[] = [];
+  const outputAssetNameHexes: string[] = [];
+  const outputAssetQuantities: bigint[] = [];
+  const outputs = body.outputs();
+  for (let outputIndex = 0; outputIndex < outputs.len(); outputIndex += 1) {
+    const value = outputs.get(outputIndex).amount();
+    outputValueByteLengths.push(value.to_cbor_bytes().length);
+    const multiasset = value.multi_asset();
+    if (multiasset === undefined) {
+      throw new Error("Measured Cardano mint output has no assets");
+    }
+    const policies = multiasset.keys();
+    outputPolicyCounts.push(policies.len());
+    for (let policyIndex = 0; policyIndex < policies.len(); policyIndex += 1) {
+      const policy = policies.get(policyIndex);
+      const assets = multiasset.get_assets(policy);
+      if (assets === undefined) {
+        throw new Error(
+          "Measured Cardano mint output policy has no assets",
+        );
+      }
+      const assetNames = assets.keys();
+      outputPolicyHashHexes.push(policy.to_hex());
+      for (
+        let assetIndex = 0;
+        assetIndex < assetNames.len();
+        assetIndex += 1
+      ) {
+        const assetName = assetNames.get(assetIndex);
+        const quantity = assets.get(assetName);
+        if (quantity === undefined) {
+          throw new Error(
+            "Measured Cardano mint output asset has no quantity",
+          );
+        }
+        outputAssetNameHexes.push(
+          Buffer.from(assetName.to_raw_bytes()).toString("hex"),
+        );
+        outputAssetQuantities.push(quantity);
+      }
+    }
+  }
+  return {
+    inputCount: body.inputs().len(),
+    mintPolicyCount: mint?.keys().len() ?? 0,
+    mintAssetCount: mintQuantities.length,
+    nativeScriptWitnessCount: nativeScripts?.len() ?? 0,
+    vkeyWitnessCount: witnessSet.vkeywitnesses()?.len() ?? 0,
+    outputCount: outputs.len(),
+    validityStart: body.validity_interval_start(),
+    ttl: body.ttl(),
+    mintPolicyHashHexes,
+    nativeScriptHashHexes,
+    policyAssetCounts,
+    mintQuantities,
+    outputValueByteLengths,
+    outputPolicyCounts,
+    outputAssetCount: outputAssetQuantities.length,
+    outputPolicyHashHexes,
+    outputAssetNameHexes,
+    outputAssetQuantities,
+    hasWithdrawals: body.withdrawals() !== undefined,
     hasPlutusScripts:
       (witnessSet.plutus_v1_scripts()?.len() ?? 0) > 0 ||
       (witnessSet.plutus_v2_scripts()?.len() ?? 0) > 0 ||
