@@ -100,6 +100,7 @@ describe("canonical V1 mint Cardano boundary", () => {
       });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-mint-and-native-policies",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       mintField.nativeCanonicalBytes,

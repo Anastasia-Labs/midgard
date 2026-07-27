@@ -74,6 +74,7 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
     });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-spend-inputs",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       inputField.nativeCanonicalBytes,

@@ -447,6 +447,7 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     expect(field.itemCount).toBe(1);
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "balanced-nested-datum",
     });
     expect(retained.normal.reconstructedCanonicalBytes).toBe(
       canonical.length,

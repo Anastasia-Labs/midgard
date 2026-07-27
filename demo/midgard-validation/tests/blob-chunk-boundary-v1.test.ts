@@ -202,6 +202,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
 
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-inline-datum-blob",
     });
     expect(retained.normal.reconstructedCanonicalBytes).toBe(
       midgard.nativeCanonicalBytes,

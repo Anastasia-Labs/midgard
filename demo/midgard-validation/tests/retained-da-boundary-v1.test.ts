@@ -29,6 +29,7 @@ describe("canonical V1 retained-DA boundary harness", () => {
           sizeBalancedFixture.fullTxCborHex,
           "hex",
         ),
+        corpusLabel: "mixed-size-balanced",
       });
 
     expect(measurement.transactionIdHex).toBe(

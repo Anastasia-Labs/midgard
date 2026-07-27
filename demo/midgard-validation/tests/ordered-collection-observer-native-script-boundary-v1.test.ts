@@ -101,6 +101,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-observers-and-native-scripts",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       observerField.nativeCanonicalBytes,

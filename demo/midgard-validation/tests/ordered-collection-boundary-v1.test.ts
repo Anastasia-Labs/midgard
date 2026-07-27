@@ -67,6 +67,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
       });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-outputs",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       midgardMeasurement.nativeCanonicalBytes,

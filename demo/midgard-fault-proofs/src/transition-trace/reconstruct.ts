@@ -60,6 +60,13 @@ export type DecodedTransactionEntry = {
   readonly fullTransactionCbor: Buffer;
 };
 
+export type DecodedForcedTransactionEntry = DecodedRootEntry<
+  SDK.OutputReference,
+  SDK.ForcedInclusionTxV1
+> & {
+  readonly fullTransactionCbor: Buffer;
+};
+
 export type SourceEventRecord =
   | {
       readonly phase: "Withdrawal";
@@ -71,10 +78,7 @@ export type SourceEventRecord =
       readonly phase: "ForcedTransaction";
       readonly eventKey: SDK.EventKey;
       readonly fingerprint: string;
-      readonly entry: DecodedRootEntry<
-        SDK.OutputReference,
-        SDK.ForcedInclusionTxV1
-      >;
+      readonly entry: DecodedForcedTransactionEntry;
     }
   | {
       readonly phase: "L2Transaction";
@@ -102,10 +106,7 @@ export type TransitionTraceReconstruction = {
     SDK.OutputReference,
     SDK.WithdrawalInfo
   >[];
-  readonly forcedTransactions: readonly DecodedRootEntry<
-    SDK.OutputReference,
-    SDK.ForcedInclusionTxV1
-  >[];
+  readonly forcedTransactions: readonly DecodedForcedTransactionEntry[];
   readonly transactions: readonly DecodedTransactionEntry[];
   readonly deposits: readonly DecodedRootEntry<
     SDK.OutputReference,
@@ -474,7 +475,7 @@ const authenticateForcedTransactionPreimages = (
     SDK.ForcedInclusionTxV1
   >[],
   preimages: readonly SDK.DaPayloadEntry[],
-): void => {
+): readonly DecodedForcedTransactionEntry[] => {
   const preimagesByKey = new Map(
     preimages.map(([key, value], index) => [
       normalizeEntryHex(
@@ -493,6 +494,7 @@ const authenticateForcedTransactionPreimages = (
       "forced_transaction_preimages contains duplicate transaction-order IDs.",
     );
   }
+  const authenticated: DecodedForcedTransactionEntry[] = [];
   for (const [index, entry] of entries.entries()) {
     const key = entry.keyBytes.toString("hex");
     const canonicalTransactionCbor = preimagesByKey.get(key);
@@ -536,6 +538,10 @@ const authenticateForcedTransactionPreimages = (
         cause,
       );
     }
+    authenticated.push({
+      ...entry,
+      fullTransactionCbor: canonicalTransactionCbor,
+    });
   }
   if (preimagesByKey.size !== entries.length) {
     throw transitionTraceError(
@@ -543,6 +549,7 @@ const authenticateForcedTransactionPreimages = (
       "forced_transaction_preimages contains entries without a matching forced transaction source.",
     );
   }
+  return authenticated;
 };
 
 const buildSourceEvents = ({
@@ -853,7 +860,7 @@ export const reconstructDaPayloadV1 = async ({
     keySchema: SDK.OutputReference as never,
     valueSchema: SDK.WithdrawalInfoSchema,
   });
-  const forcedTransactions = decodeTypedEntries<
+  const decodedForcedTransactions = decodeTypedEntries<
     SDK.OutputReference,
     SDK.ForcedInclusionTxV1
   >({
@@ -862,8 +869,8 @@ export const reconstructDaPayloadV1 = async ({
     keySchema: SDK.OutputReference as never,
     valueSchema: SDK.ForcedInclusionTxV1Schema,
   });
-  authenticateForcedTransactionPreimages(
-    forcedTransactions,
+  const forcedTransactions = authenticateForcedTransactionPreimages(
+    decodedForcedTransactions,
     body.forced_transaction_preimages,
   );
   const deposits = decodeTypedEntries<SDK.OutputReference, SDK.DepositInfo>({

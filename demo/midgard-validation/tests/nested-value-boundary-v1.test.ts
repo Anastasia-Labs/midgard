@@ -602,6 +602,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     );
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: acceptedCandidate.cborHex,
+      corpusLabel: "maximum-nested-value",
     });
     expect(retained.normal.reconstructedCanonicalBytes).toBe(
       acceptedCanonical.length,

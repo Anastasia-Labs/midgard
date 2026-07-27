@@ -66,6 +66,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-signers-and-witnesses",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       signerField.nativeCanonicalBytes,

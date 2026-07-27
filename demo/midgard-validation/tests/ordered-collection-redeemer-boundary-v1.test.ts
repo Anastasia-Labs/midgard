@@ -447,6 +447,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     );
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: parallel.cborHex,
+      corpusLabel: "maximum-redeemers",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       redeemerField.nativeCanonicalBytes,

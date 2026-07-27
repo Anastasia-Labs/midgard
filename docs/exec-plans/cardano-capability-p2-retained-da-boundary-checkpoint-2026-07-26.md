@@ -9,6 +9,13 @@ Cardano-derived maximum transaction fixture. It also exercises one populated
 all-nine-field canonical transaction through the same path and restores its
 stale TypeScript/Aiken compact-commitment vector.
 
+> Evidence correction: this historical checkpoint's helper exercised the SDK
+> codec and mandatory envelope, then reconstructed directly from its decoded
+> synthetic preimages. Its empty committed roots and zero validation traces
+> mean it did **not** pass production `reconstructDaPayloadV1`. The corrected
+> production integration and strict evidence are recorded in
+> `cardano-capability-p2-production-retained-da-checkpoint-2026-07-26.md`.
+
 This is a retained-DA and cross-language codec checkpoint, not a whole-P2
 claim. It does not change consensus limits, collateral policy, the canonical
 V1 schema, resolver behavior, activation, P3/P4/P5/P6, deployment, Docker,
@@ -45,10 +52,9 @@ For each classification independently, the harness:
 6. executes the terminal reconstruction fold and requires byte equality with
    the retained canonical preimage.
 
-The harness is intentionally not a replacement for the DA committee's
-existing strict header-root, count, trace-coverage, and program-material
-validation. P2 remains fail closed while the remaining dynamic-content cells
-are open.
+The harness is intentionally not a replacement for production DA
+reconstruction. P2 remains fail closed while the remaining dynamic-content
+cells are open.
 
 ## Cardano-derived maximum fixtures
 

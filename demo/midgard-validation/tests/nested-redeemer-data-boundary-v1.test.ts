@@ -477,6 +477,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
 
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: parallel.cborHex,
+      corpusLabel: "balanced-nested-redeemer",
     });
     expect(retained.normal.reconstructedCanonicalBytes).toBe(
       nativeCanonical.length,

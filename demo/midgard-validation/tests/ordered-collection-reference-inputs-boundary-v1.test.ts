@@ -75,6 +75,7 @@ describe("canonical V1 reference-inputs Cardano boundary", () => {
       });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
+      corpusLabel: "maximum-reference-inputs",
     });
     expect(retainedDa.normal.reconstructedCanonicalBytes).toBe(
       referenceInputField.nativeCanonicalBytes,

@@ -1,3 +1,6 @@
+import { appendFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
+
 import {
   aikenSerialisedPlutusDataCbor,
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
@@ -19,6 +22,39 @@ import { Data } from "@lucid-evolution/lucid";
 
 const ZERO_HASH_28 = "00".repeat(28);
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
+
+const appendBoundaryCorpusEntryV1 = ({
+  corpusLabel,
+  transactionIdHex,
+  transactionCommitmentHex,
+  canonicalTransactionCbor,
+}: {
+  readonly corpusLabel: string | undefined;
+  readonly transactionIdHex: string;
+  readonly transactionCommitmentHex: string;
+  readonly canonicalTransactionCbor: Buffer;
+}): void => {
+  const corpusPath =
+    process.env.MIDGARD_BOUNDARY_CORPUS_JSONL;
+  if (corpusPath === undefined || corpusLabel === undefined) {
+    return;
+  }
+  if (!isAbsolute(corpusPath)) {
+    throw new Error(
+      "MIDGARD_BOUNDARY_CORPUS_JSONL must be an absolute path",
+    );
+  }
+  appendFileSync(
+    corpusPath,
+    `${JSON.stringify({
+      label: corpusLabel,
+      transactionIdHex,
+      transactionCommitmentHex,
+      canonicalCborHex: canonicalTransactionCbor.toString("hex"),
+    })}\n`,
+    "utf8",
+  );
+};
 
 type RetainedClassificationMeasurementV1 = {
   readonly sourceKind: "normal" | "forced";
@@ -299,8 +335,10 @@ const reconstructRetainedClassificationV1 = ({
  */
 export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
   canonicalTransactionCbor,
+  corpusLabel,
 }: {
   readonly canonicalTransactionCbor: Uint8Array;
+  readonly corpusLabel?: string;
 }): Promise<RetainedDaBoundaryMeasurementV1> => {
   const exactCanonicalTransactionCbor = Buffer.from(
     canonicalTransactionCbor,
@@ -323,6 +361,12 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
   );
   const transactionCommitmentHex =
     transactionCommitment.toString("hex");
+  appendBoundaryCorpusEntryV1({
+    corpusLabel,
+    transactionIdHex,
+    transactionCommitmentHex,
+    canonicalTransactionCbor: exactCanonicalTransactionCbor,
+  });
   const retainedSource: SDK.L2TransactionSourceV1 = {
     tx_id: transactionIdHex,
     transaction_commitment: transactionCommitmentHex,
@@ -410,12 +454,15 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
 
 export const exerciseMidgardRetainedDaBoundaryV1 = ({
   signedCardanoCborHex,
+  corpusLabel,
 }: {
   readonly signedCardanoCborHex: string;
+  readonly corpusLabel?: string;
 }): Promise<RetainedDaBoundaryMeasurementV1> =>
   exerciseMidgardRetainedDaCanonicalBoundaryV1({
     canonicalTransactionCbor:
       cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
         Buffer.from(signedCardanoCborHex, "hex"),
       ),
+    corpusLabel,
   });
