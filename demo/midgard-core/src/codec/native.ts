@@ -29,6 +29,7 @@ import {
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
+import { midgardRedeemersToCardano } from "./native-redeemer.js";
 import {
   asFixedArray,
   asSigned,
@@ -978,11 +979,7 @@ export const decodeMidgardNativeMint = (
 const decodeNativeRedeemersToCardano = (
   preimageCbor: Uint8Array,
 ): CML.Redeemers | undefined => {
-  const decoded = decodeSingleCbor(preimageCbor);
-  if (Array.isArray(decoded) && decoded.length === 0) {
-    return undefined;
-  }
-  return CML.Redeemers.from_cbor_bytes(preimageCbor);
+  return midgardRedeemersToCardano(preimageCbor);
 };
 
 export type MidgardToCardanoTxEncodingOptions = {

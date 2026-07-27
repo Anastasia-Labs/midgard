@@ -5,6 +5,7 @@ import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { ensureHash32 } from "./hash.js";
 import { type MidgardNativeTxCanonicalV1 } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
+import { cardanoRedeemersToMidgardPreimageCbor } from "./native-redeemer.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import { type MidgardValue } from "./value.js";
@@ -491,7 +492,7 @@ export const cardanoTxBytesToMidgardNativeTxCanonicalV1 = (
     "transaction_witness_set.vkeywitnesses",
   );
   const scriptTxWitsPreimageCbor = scriptWitnessesToPreimageCbor(txWitnessSet);
-  const redeemerTxWitsPreimageCbor = cmlAnyToPreimageCbor(
+  const redeemerTxWitsPreimageCbor = cardanoRedeemersToMidgardPreimageCbor(
     txWitnessSet.redeemers(),
     "transaction_witness_set.redeemers",
   );

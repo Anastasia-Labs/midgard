@@ -37,7 +37,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionBodyPartialPreimages, MidgardTransactionWitnessSet,
   MidgardTransactionWitnessSetPartialPreimages, MidgardTxInput, MidgardTxOutput,
   MidgardValue, MidgardVersionedScript, NativeTxBodyCompact, NativeTxCompact,
-  PlutusV3Script, PubKeyCredential, SpendRedeemer, TxIsValid,
+  PlutusV3Script, PubKeyCredential, RewardRedeemer, SpendRedeemer, TxIsValid,
   native_tx_version_v1,
 }
 
@@ -233,6 +233,30 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
     view.tx_id == blake2b_256(body_cbor),
     view.tx_compact.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
     encode_native_tx_compact_v1(view.tx_compact) == compact_cbor,
+  }
+}
+
+test canonical_redeemer_bridge_golden_vector_is_stable() {
+  let golden_redeemers_cbor = #"8284000043d8798082050784030142182a820b0d"
+  let decoded = decode_midgard_tx_redeemer_witnesses_preimage_cbor(
+    golden_redeemers_cbor,
+  )
+  and {
+    decoded == [
+      MidgardRedeemerWitness {
+        purpose: SpendRedeemer,
+        index: 0,
+        redeemer_cbor: #"d87980",
+        execution_units: MidgardExecutionUnits { memory: 5, steps: 7 },
+      },
+      MidgardRedeemerWitness {
+        purpose: RewardRedeemer,
+        index: 1,
+        redeemer_cbor: #"182a",
+        execution_units: MidgardExecutionUnits { memory: 11, steps: 13 },
+      },
+    ],
+    encode_redeemer_witness_preimage(decoded) == golden_redeemers_cbor,
   }
 }
 
