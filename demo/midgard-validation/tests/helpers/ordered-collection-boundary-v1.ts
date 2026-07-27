@@ -1194,12 +1194,16 @@ export const buildSignedCardanoObserverNativeScriptsCandidateV1 = async ({
     );
     const withdrawals = CML.MapRewardAccountToCoin.new();
     const nativeScripts = CML.NativeScriptList.new();
-    for (
-      let observerIndex = 0;
-      observerIndex < requestedObserverCount;
-      observerIndex += 1
-    ) {
-      const script = makeObserverScript(observerIndex);
+    const observerScripts = Array.from(
+      { length: requestedObserverCount },
+      (_, observerIndex) => makeObserverScript(observerIndex),
+    ).sort((left, right) =>
+      Buffer.compare(
+        Buffer.from(left.hash().to_raw_bytes()),
+        Buffer.from(right.hash().to_raw_bytes()),
+      ),
+    );
+    for (const script of observerScripts) {
       withdrawals.insert(
         CML.RewardAddress.new(
           0,

@@ -226,8 +226,8 @@ test maximum_signer_frontier_item_fits_one_step() {
   sequence.length == 1
 }
 
-test maximum_observer_context_collections_fit_one_step() {
-  let observers = indexed_hashes(0, 16)
+test observer_context_collections_are_not_capped_at_16() {
+  let observers = indexed_hashes(0, 17)
   expect Some(cardano_observers) = script_context_v1.observer_collection_summary_v1(
     observers,
     False,

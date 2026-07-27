@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
+use midgard/bounded_collection_v1
 use midgard/cek_data_v1
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_input_cbor, encode_midgard_tx_input,
@@ -370,7 +371,7 @@ pub fn observer_collection_summary_v1(
     |> list.sort(bytearray.compare)
     |> list.unique
   if and {
-    list.length(canonical) <= 16,
+    list.length(canonical) <= bounded_collection_v1.max_tx_size_derived_item_count,
     list.all(canonical, fn(hash) { bytearray.length(hash) == 28 }),
   } {
     Some(

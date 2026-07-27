@@ -1728,7 +1728,8 @@ fn rejected_successor_is_exact(
   }
 }
 
-const max_tx_size_derived_collection_item_count: Int = 16384
+const max_tx_size_derived_collection_item_count: Int =
+  bounded_collection_v1.max_tx_size_derived_item_count
 
 const max_serialized_output_preimage_bytes: Int = 16384
 
@@ -13438,7 +13439,7 @@ fn observer_context_is_pristine(control: CekContextControlV1) -> Bool {
 fn observer_context_is_partial(control: CekContextControlV1) -> Bool {
   and {
     control.observer_count >= 0,
-    control.observer_count <= 16,
+    control.observer_count <= max_tx_size_derived_collection_item_count,
     control.observer_items.length <= control.observer_count,
     control.observer_summary == empty_data_summary_v1(),
     if control.observer_items.length == 0 {
@@ -13461,7 +13462,7 @@ fn observer_context_is_partial(control: CekContextControlV1) -> Bool {
 fn observer_context_is_complete(control: CekContextControlV1) -> Bool {
   and {
     control.observer_count >= 0,
-    control.observer_count <= 16,
+    control.observer_count <= max_tx_size_derived_collection_item_count,
     control.observer_items.length == control.observer_count,
     bytearray.length(control.observer_summary.root) == 32,
     control.observer_summary == finalize_cek_observer_items_v1(
@@ -15212,7 +15213,7 @@ pub fn verify_cek_observer_context_step(
       )
       and {
         active_count > 0,
-        active_count <= 16,
+        active_count <= max_tx_size_derived_collection_item_count,
         expected_index >= 0,
         collection_proof.field_index == 3,
         collection_proof.item_count == active_count,

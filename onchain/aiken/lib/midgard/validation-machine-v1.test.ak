@@ -706,15 +706,6 @@ fn observer_collection_subtree_root(start: Int, size: Int) -> ByteArray {
   }
 }
 
-fn last_observer_siblings_16() -> List<ByteArray> {
-  [
-    observer_collection_subtree_root(14, 1),
-    observer_collection_subtree_root(12, 2),
-    observer_collection_subtree_root(8, 4),
-    observer_collection_subtree_root(0, 8),
-  ]
-}
-
 fn observer_field_item_proofs(
   item_count: Int,
   item_index: Int,
@@ -1691,26 +1682,6 @@ fn empty_cek_context_control_fixture(
   }
 }
 
-fn observer_items_summary_fixture(
-  observers: List<ByteArray>,
-  midgard_encoding: Bool,
-) -> cek_data_v1.DataSequenceSummaryV1 {
-  when observers is {
-    [] ->
-      if midgard_encoding {
-        cek_data_v1.empty_data_list_summary_v1()
-      } else {
-        cek_data_v1.empty_data_pair_summary_v1()
-      }
-    [observer, ..rest] ->
-      validation_machine_v1.prepend_cek_observer_item_v1(
-        observer,
-        midgard_encoding,
-        observer_items_summary_fixture(rest, midgard_encoding),
-      )
-  }
-}
-
 fn verify_cek_context_transition_fixture(
   tx: MidgardTransaction,
   native_control: validation_machine_v1.NativeScriptsControlV1,
@@ -1733,6 +1704,55 @@ fn verify_cek_context_transition_fixture(
     0,
     program_counter + 1,
   )
+  validation_machine_v1.verify_cek_observer_context_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+    auxiliary,
+    native_control,
+    context_control,
+    0,
+    0,
+    0,
+  )
+}
+
+fn verify_cek_context_source_transition_fixture(
+  transaction_id: ByteArray,
+  transaction_commitment: ByteArray,
+  native_control: validation_machine_v1.NativeScriptsControlV1,
+  context_control: validation_machine_v1.CekContextControlV1,
+  successor_control: validation_machine_v1.CekContextControlV1,
+  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  program_counter: Int,
+) -> Bool {
+  let base = empty_v1_transaction()
+  let Pair(base_pre, work_witness_cbor) = cek_state_fixture(
+    base,
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    0,
+    program_counter,
+  )
+  let Pair(base_post, _) = cek_state_fixture(
+    base,
+    native_control,
+    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    0,
+    program_counter + 1,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..base_pre,
+    transaction_id,
+    transaction_commitment,
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..base_post,
+    transaction_id,
+    transaction_commitment,
+  }
   validation_machine_v1.verify_cek_observer_context_step(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -7733,58 +7753,110 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
   )
 }
 
-test cek_context_observer_maximum_16_replays_and_finalizes() {
+test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   let base = empty_v1_transaction()
-  let observers = observer_hashes_from(0, 16)
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody {
-      ..base.body,
-      required_observers: observers,
-    },
+  let transaction_id =
+    #"9e6740ff958462051886f6d64a5fb7d03ee47dc50bd627c5765734f1c32f4bde"
+  let transaction_commitment =
+    #"b40021e7183477a8f584b8f698f2ad45d8ad32d33cd44642affcee79b7be9dbd"
+  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+    ..cek_context_native_control_fixture(base),
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820e9de32eb40fdc4e81968e685032886fddf378fa3146fe2ded6ddc9522ce1a0f100",
+    witness_set_compact_cbor: #"8358201fd43ee6dd836f574173ec3c27d9ea8dea6c6d59a90a73514fea3a9509bcf0395820eb33a85187e4f3fdd8c8949a312213890ab3d4c313b0eebfca75f40fd74f061a5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"89182701182c191a420101186819268201",
   }
-  let native_control = cek_context_native_control_fixture(tx)
   let context_control = empty_cek_context_control_fixture(5)
-  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
-    16,
-    15,
-    last_observer_siblings_16(),
-  )
+  let observer_hash =
+    #"ffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167"
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 3,
+    item_count: 224,
+    item_index: 223,
+    item_length: 28,
+    item_commitment: #"eea077178a4c1efc0237062dd79d0e88e25f226a75c50e2941386c551c8dbdf1",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"b3d0869ae6f779e2a3bd2657550bad972479f7bd2bf30525d7d6ea1f6e273219",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 6,
+        hash: #"8b8872929417945fc60a184c86b36e6cb8b3f79f063a2b1bd74276e3e6dd4561",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"4f23682ce5aac57bdd356897e085c19da0956f3c43a4d0a590e06931693ec7aa",
+      },
+    ],
+    siblings: [
+      #"37a247add2ab2bb8dd1ca90bc7340ccbd288795241423781485f83f1d2404441",
+      #"12cbd11747b0ee2b75df2dbf849eb190bfa2ad508af765c0ef769438b6b697e4",
+      #"761dcb1c5ea56450765f089f956ac800528d0d03b602a5f2ebdbcfdc391aeb92",
+      #"38c8a30b4b417afa1434d182e99e1c5f595d57dfd0643c0e49e8c1975d60884c",
+      #"637359bdbf37e81101c411bd6f8f72efd3bf2983764dfe73da65ebc09e999582",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 3,
+    item_index: 223,
+    total_length: 28,
+    chunk_index: 0,
+    chunk: observer_hash,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"770f825142ee9790250392a5b0310c8e2a8e833eaa6c62ca6f7223b5ed9e2288",
+      },
+    ],
+    siblings: [],
+  }
   let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
-    observer_hash_at(15),
+    observer_hash,
     False,
     context_control.observer_items,
   )
   let first_control = validation_machine_v1.CekContextControlV1 {
     ..context_control,
-    observer_count: 16,
+    observer_count: 224,
     observer_items: first_items,
-    previous_observer: observer_hash_at(15),
+    previous_observer: observer_hash,
   }
-  let complete_items = observer_items_summary_fixture(observers, False)
+  let mismatched_count_control = validation_machine_v1.CekContextControlV1 {
+    ..first_control,
+    observer_count: 225,
+  }
+  let complete_items = cek_data_v1.DataSequenceSummaryV1 {
+    root: #"354faff8c56e5c2db595d2b0682336623a4de555e8426762630783d26921ab5d",
+    length: 224,
+    payload_cbor_length: 7840,
+    memory: 9184,
+  }
   let complete_control = validation_machine_v1.CekContextControlV1 {
     ..context_control,
-    observer_count: 16,
+    observer_count: 224,
     observer_items: complete_items,
-    previous_observer: observer_hash_at(0),
+    previous_observer: #"008b91b576da13635f7150f248cd133c23ac0a697f1ccae85617ea85",
   }
-  let observer_summary = validation_machine_v1.finalize_cek_observer_items_v1(
-    complete_items,
-    False,
-  )
-  expect Some(established_summary) = script_context_v1.observer_collection_summary_v1(
-    observers,
-    False,
-  )
+  let observer_summary = cek_data_v1.DataSummaryV1 {
+    root: #"61eff6b0a693f2da6f3fd45ae1b3d402937e3ab0de94da2fcbd5ed67ab61a726",
+    cbor_length: 7842,
+    memory: 9188,
+  }
   let final_control = validation_machine_v1.CekContextControlV1 {
     ..complete_control,
     stage: 6,
     observer_summary,
   }
   and {
-    observer_summary == established_summary,
-    verify_cek_context_transition_fixture(
-      tx,
+    observer_summary == validation_machine_v1.finalize_cek_observer_items_v1(
+      complete_items,
+      False,
+    ),
+    verify_cek_context_source_transition_fixture(
+      transaction_id,
+      transaction_commitment,
       native_control,
       context_control,
       first_control,
@@ -7794,54 +7866,31 @@ test cek_context_observer_maximum_16_replays_and_finalizes() {
       },
       45,
     ),
-    verify_cek_context_transition_fixture(
-      tx,
+    verify_cek_context_source_transition_fixture(
+      transaction_id,
+      transaction_commitment,
       native_control,
       complete_control,
       final_control,
       validation_machine_v1.NoAuxiliaryWitness,
       46,
     ),
-  }
-}
-
-test cek_context_observer_adjacent_17_fails_closed() {
-  let base = empty_v1_transaction()
-  let observers = observer_hashes_from(0, 17)
-  let tx = MidgardTransaction {
-    ..base,
-    body: MidgardTransactionBody {
-      ..base.body,
-      required_observers: observers,
-    },
-  }
-  let context_control = empty_cek_context_control_fixture(5)
-  let Pair(collection_proof, chunk_proof) = observer_field_item_proofs(
-    17,
-    16,
-    [],
-  )
-  let successor_control = validation_machine_v1.CekContextControlV1 {
-    ..context_control,
-    observer_count: 17,
-    observer_items: validation_machine_v1.prepend_cek_observer_item_v1(
-      observer_hash_at(16),
-      False,
-      context_control.observer_items,
+    !verify_cek_context_source_transition_fixture(
+      transaction_id,
+      transaction_commitment,
+      native_control,
+      context_control,
+      mismatched_count_control,
+      validation_machine_v1.TransactionFieldChunkWitness {
+        collection_proof: bounded_collection_v1.ItemProofV1 {
+          ..collection_proof,
+          item_count: 225,
+        },
+        chunk_proof,
+      },
+      47,
     ),
-    previous_observer: observer_hash_at(16),
   }
-  !verify_cek_context_transition_fixture(
-    tx,
-    cek_context_native_control_fixture(tx),
-    context_control,
-    successor_control,
-    validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof,
-      chunk_proof,
-    },
-    47,
-  )
 }
 
 test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {

@@ -1,4 +1,7 @@
-import { encodeCbor } from "@al-ft/midgard-core";
+import {
+  encodeCbor,
+  MIDGARD_CONSENSUS_LIMITS_V1,
+} from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
   Constr,
@@ -110,14 +113,15 @@ export const summarizeMidgardCekLucidMapV1 = (
   return summary;
 };
 
-export const MIDGARD_CEK_MAX_OBSERVER_COUNT_V1 = 16;
-
 export const validateMidgardCekObserverCollectionV1 = (
   observers: readonly Uint8Array[],
 ): void => {
-  if (observers.length > MIDGARD_CEK_MAX_OBSERVER_COUNT_V1) {
+  if (
+    observers.length >
+    MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount
+  ) {
     throw new Error(
-      `CEK observer context exceeds the semantic maximum of ${MIDGARD_CEK_MAX_OBSERVER_COUNT_V1}`,
+      "CEK observer context exceeds the transaction-size-derived collection guardrail",
     );
   }
   let previous = Buffer.alloc(0);

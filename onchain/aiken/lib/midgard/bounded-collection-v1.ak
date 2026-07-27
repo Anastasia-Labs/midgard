@@ -12,6 +12,10 @@ pub const version: Int = 1
 
 pub const field_count: Int = 9
 
+/// One byte per item is the absolute lower encoding floor under the preserved
+/// 16,384-byte Cardano transaction envelope.
+pub const max_tx_size_derived_item_count: Int = 16384
+
 const item_domain =
   #"4d696467617264426f756e646564436f6c6c656374696f6e4974656d5631"
 
