@@ -392,7 +392,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
     transactionIdHex,
     transactionCommitmentHex,
   });
-  return {
+  const measurement = {
     transactionIdHex,
     transactionCommitmentHex,
     innerPayloadBytes: innerPayloadCbor.length,
@@ -400,6 +400,12 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
     normal,
     forced,
   };
+  if (process.env.MIDGARD_PRINT_RETAINED_DA === "1") {
+    console.info(
+      JSON.stringify({ retainedDaBoundaryV1: measurement }),
+    );
+  }
+  return measurement;
 };
 
 export const exerciseMidgardRetainedDaBoundaryV1 = ({

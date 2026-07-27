@@ -14,6 +14,7 @@ const sizeBalancedFixture = JSON.parse(
     "utf8",
   ),
 ) as {
+  readonly txIdHex: string;
   readonly fullTxCborHex: string;
   readonly sizes: {
     readonly fullTxCborBytes: number;
@@ -30,6 +31,9 @@ describe("canonical V1 retained-DA boundary harness", () => {
         ),
       });
 
+    expect(measurement.transactionIdHex).toBe(
+      sizeBalancedFixture.txIdHex,
+    );
     expect(measurement.normal.sourceKind).toBe("normal");
     expect(measurement.forced.sourceKind).toBe("forced");
     expect(measurement.normal.retainedPreimageBytes).toBe(
