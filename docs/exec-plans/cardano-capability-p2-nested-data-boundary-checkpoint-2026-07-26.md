@@ -57,6 +57,30 @@ constructor has arity `1`, the map has one pair, lists are binary, and depth
 is logarithmic. Separate broad and iterative unary-depth fixtures are
 required before the Data-family row can pass.
 
+## Unary-depth tooling bracket
+
+An iterative raw fixture of the form `9f^N 00 ff^N` isolates unary list
+depth. Bounded probes locate the current host-tool boundary without treating
+it as a Cardano rule:
+
+- depth `2,400` passes CML Data decoding, signed transaction construction,
+  CML transaction reparse, Cardano-to-Midgard conversion, and bounded Data
+  traversal;
+- at depth `2,500`, CML construction still succeeds but CML transaction
+  reparse fails with a WASM memory-access error, so the production bridge
+  cannot ingest that fixture;
+- standalone CML Data decoding fails by approximately depth `2,518`;
+- after replacing the recursive Aiken-preserving parser/encoder with explicit
+  stacks, raw serialization passes at depth `4,000`; and
+- raw bounded Data traversal passes at depth `8,000`.
+
+The CML ceiling is a tooling blocker, not a ledger capability limit. These
+probes therefore do not satisfy the unary-depth maximum/adjacent Cardano
+cell. Closure still needs a raw canonical signed transaction near
+`maxTxSize`, decoded and admitted through a non-CML Cardano authority; an
+offline `cardano-cli transaction view`/`txid` smoke surface and a local pure
+cardano-ledger decode/UTxO validation are the preferred evidence.
+
 ### Inline datum
 
 - accepted leaves: `5,387`;

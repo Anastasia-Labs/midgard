@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildMidgardCekDataTraverseTraceV1,
+  finalizeMidgardCekDataTraverseV1,
+  MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+  nextMidgardCekDataTraverseSpanV1,
+} from "../src/cek-data-traverse-v1.js";
+import {
   aikenSerialisedPlutusDataCbor,
   aikenSerialisedPlutusDataCborPreservingMapOrder,
 } from "../src/plutus-data-cbor.js";
@@ -38,5 +44,51 @@ describe("Aiken PlutusData serialization", () => {
     expect(
       aikenSerialisedPlutusDataCborPreservingMapOrder(assetThenAda),
     ).toBe("a24111014002");
+  });
+
+  it("normalizes and traverses a unary depth beyond the former host stack ceiling", () => {
+    const depth = 4_000;
+    const unary = `${"9f".repeat(depth)}00${"ff".repeat(depth)}`;
+    expect(
+      aikenSerialisedPlutusDataCborPreservingMapOrder(unary),
+    ).toBe(unary);
+    expect(aikenSerialisedPlutusDataCbor(unary)).toBe(unary);
+
+    const trace = buildMidgardCekDataTraverseTraceV1({
+      sourceStart: 0,
+      source: Buffer.from(unary, "hex"),
+    });
+    const terminal = finalizeMidgardCekDataTraverseV1(
+      trace.terminal,
+    );
+    expect(terminal).not.toBeNull();
+    expect(terminal!.cborLength).toBe(BigInt(unary.length / 2));
+    expect(
+      trace.steps.reduce(
+        (maximum, { control }) =>
+          Math.max(
+            maximum,
+            nextMidgardCekDataTraverseSpanV1(control)?.length ?? 0,
+          ),
+        0,
+      ),
+    ).toBeLessThanOrEqual(
+      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+    );
+  });
+
+  it("still rejects trailing, broken, and truncated CBOR", () => {
+    expect(() => aikenSerialisedPlutusDataCbor("00ff")).toThrow(
+      /trailing bytes/u,
+    );
+    expect(() => aikenSerialisedPlutusDataCbor("ff")).toThrow(
+      /break marker/u,
+    );
+    expect(() => aikenSerialisedPlutusDataCbor("9f00")).toThrow(
+      /Unexpected end/u,
+    );
+    expect(() => aikenSerialisedPlutusDataCbor("bf00ff")).toThrow(
+      /missing a value/u,
+    );
   });
 });

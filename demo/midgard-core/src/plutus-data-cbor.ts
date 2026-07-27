@@ -57,133 +57,233 @@ const parseCborNode = (
   bytes: Buffer,
   offset: number,
 ): { readonly node: CborNode; readonly offset: number } => {
-  const initial = bytes[offset];
-  if (initial === undefined) {
-    throw new Error("Unexpected end of CBOR input");
-  }
-  if (initial === 0xff) {
-    throw new Error("Unexpected CBOR break marker");
-  }
+  type ParseFrame =
+    | {
+        readonly kind: "array";
+        readonly indefinite: boolean;
+        remaining: bigint | null;
+        readonly items: CborNode[];
+      }
+    | {
+        readonly kind: "map";
+        remaining: bigint | null;
+        pendingKey: CborNode | null;
+        readonly entries: (readonly [CborNode, CborNode])[];
+      }
+    | {
+        readonly kind: "tag";
+        readonly tag: bigint;
+      };
 
-  const major = initial >> 5;
-  const additional = initial & 0x1f;
-  const length = readCborLength(bytes, offset + 1, additional);
+  const frames: ParseFrame[] = [];
+  let cursor = offset;
+  let completed: CborNode | null = null;
 
-  if (major === 0) {
-    return {
-      node: { kind: "uint", value: expectCborLength(length.value, "uint") },
-      offset: length.offset,
-    };
-  }
-  if (major === 1) {
-    return {
-      node: { kind: "nint", value: expectCborLength(length.value, "nint") },
-      offset: length.offset,
-    };
-  }
-  if (major === 2) {
-    if (length.value === null) {
-      const chunks: Buffer[] = [];
-      let cursor = length.offset;
-      while (bytes[cursor] !== 0xff) {
-        const chunkInitial = bytes[cursor];
-        if (chunkInitial === undefined || chunkInitial >> 5 !== 2) {
-          throw new Error(
-            "Indefinite CBOR bytes must contain only definite byte chunks",
+  const attach = (
+    initialNode: CborNode,
+  ): CborNode | null => {
+    let node = initialNode;
+    while (frames.length > 0) {
+      const frame = frames.at(-1)!;
+      if (frame.kind === "tag") {
+        frames.pop();
+        node = { kind: "tag", tag: frame.tag, value: node };
+        continue;
+      }
+      if (frame.kind === "array") {
+        frame.items.push(node);
+        if (frame.remaining !== null) {
+          frame.remaining -= 1n;
+          if (frame.remaining === 0n) {
+            frames.pop();
+            node = {
+              kind: "array",
+              items: frame.items,
+              indefinite: false,
+            };
+            continue;
+          }
+        }
+        return null;
+      }
+      if (frame.pendingKey === null) {
+        frame.pendingKey = node;
+        return null;
+      }
+      frame.entries.push([frame.pendingKey, node]);
+      frame.pendingKey = null;
+      if (frame.remaining !== null) {
+        frame.remaining -= 1n;
+        if (frame.remaining === 0n) {
+          frames.pop();
+          node = { kind: "map", entries: frame.entries };
+          continue;
+        }
+      }
+      return null;
+    }
+    return node;
+  };
+
+  while (completed === null) {
+    const frame = frames.at(-1);
+    if (bytes[cursor] === 0xff) {
+      if (
+        frame === undefined ||
+        frame.kind === "tag" ||
+        frame.remaining !== null
+      ) {
+        throw new Error("Unexpected CBOR break marker");
+      }
+      if (frame.kind === "map" && frame.pendingKey !== null) {
+        throw new Error(
+          "Indefinite CBOR map is missing a value before its break",
+        );
+      }
+      frames.pop();
+      cursor += 1;
+      completed = attach(
+        frame.kind === "array"
+          ? {
+              kind: "array",
+              items: frame.items,
+              indefinite: true,
+            }
+          : { kind: "map", entries: frame.entries },
+      );
+      continue;
+    }
+
+    const initial = bytes[cursor];
+    if (initial === undefined) {
+      throw new Error("Unexpected end of CBOR input");
+    }
+    const major = initial >> 5;
+    const additional = initial & 0x1f;
+    const length = readCborLength(
+      bytes,
+      cursor + 1,
+      additional,
+    );
+    cursor = length.offset;
+
+    if (major === 0 || major === 1) {
+      const value = expectCborLength(
+        length.value,
+        major === 0 ? "uint" : "nint",
+      );
+      completed = attach(
+        major === 0
+          ? { kind: "uint", value }
+          : { kind: "nint", value },
+      );
+      continue;
+    }
+
+    if (major === 2) {
+      if (length.value === null) {
+        const chunks: Buffer[] = [];
+        while (bytes[cursor] !== 0xff) {
+          const chunkInitial = bytes[cursor];
+          if (
+            chunkInitial === undefined ||
+            chunkInitial >> 5 !== 2
+          ) {
+            throw new Error(
+              "Indefinite CBOR bytes must contain only definite byte chunks",
+            );
+          }
+          const chunkLength = readCborLength(
+            bytes,
+            cursor + 1,
+            chunkInitial & 0x1f,
           );
+          const definiteChunkLength = Number(
+            expectCborLength(
+              chunkLength.value,
+              "indefinite bytes chunk",
+            ),
+          );
+          const end = chunkLength.offset + definiteChunkLength;
+          if (end > bytes.length) {
+            throw new Error(
+              "Unexpected end of indefinite CBOR bytes",
+            );
+          }
+          chunks.push(bytes.subarray(chunkLength.offset, end));
+          cursor = end;
         }
-        const chunkLength = readCborLength(
-          bytes,
-          cursor + 1,
-          chunkInitial & 0x1f,
-        );
-        const definiteChunkLength = Number(
-          expectCborLength(chunkLength.value, "indefinite bytes chunk"),
-        );
-        const end = chunkLength.offset + definiteChunkLength;
-        if (end > bytes.length) {
-          throw new Error("Unexpected end of indefinite CBOR bytes");
+        if (bytes[cursor] !== 0xff) {
+          throw new Error("Unterminated indefinite CBOR bytes");
         }
-        chunks.push(bytes.subarray(chunkLength.offset, end));
-        cursor = end;
+        cursor += 1;
+        completed = attach({
+          kind: "bytes",
+          value: Buffer.concat(chunks),
+        });
+        continue;
       }
-      if (bytes[cursor] !== 0xff) {
-        throw new Error("Unterminated indefinite CBOR bytes");
+      const byteLength = Number(
+        expectCborLength(length.value, "bytes"),
+      );
+      const end = cursor + byteLength;
+      if (end > bytes.length) {
+        throw new Error("Unexpected end of CBOR bytes");
       }
-      return {
-        node: { kind: "bytes", value: Buffer.concat(chunks) },
-        offset: cursor + 1,
-      };
+      completed = attach({
+        kind: "bytes",
+        value: bytes.subarray(cursor, end),
+      });
+      cursor = end;
+      continue;
     }
-    const byteLength = Number(expectCborLength(length.value, "bytes"));
-    const end = length.offset + byteLength;
-    if (end > bytes.length) {
-      throw new Error("Unexpected end of CBOR bytes");
-    }
-    return {
-      node: { kind: "bytes", value: bytes.subarray(length.offset, end) },
-      offset: end,
-    };
-  }
-  if (major === 4) {
-    const items: CborNode[] = [];
-    if (length.value === null) {
-      let cursor = length.offset;
-      while (bytes[cursor] !== 0xff) {
-        const parsed = parseCborNode(bytes, cursor);
-        items.push(parsed.node);
-        cursor = parsed.offset;
+
+    if (major === 4) {
+      if (length.value === 0n) {
+        completed = attach({
+          kind: "array",
+          items: [],
+          indefinite: false,
+        });
+      } else {
+        frames.push({
+          kind: "array",
+          indefinite: length.value === null,
+          remaining: length.value,
+          items: [],
+        });
       }
-      return {
-        node: { kind: "array", items, indefinite: true },
-        offset: cursor + 1,
-      };
+      continue;
     }
-    let cursor = length.offset;
-    for (let i = 0n; i < length.value; i += 1n) {
-      const parsed = parseCborNode(bytes, cursor);
-      items.push(parsed.node);
-      cursor = parsed.offset;
-    }
-    return {
-      node: { kind: "array", items, indefinite: false },
-      offset: cursor,
-    };
-  }
-  if (major === 5) {
-    const entries: (readonly [CborNode, CborNode])[] = [];
-    if (length.value === null) {
-      let cursor = length.offset;
-      while (bytes[cursor] !== 0xff) {
-        const key = parseCborNode(bytes, cursor);
-        const value = parseCborNode(bytes, key.offset);
-        entries.push([key.node, value.node]);
-        cursor = value.offset;
+
+    if (major === 5) {
+      if (length.value === 0n) {
+        completed = attach({ kind: "map", entries: [] });
+      } else {
+        frames.push({
+          kind: "map",
+          remaining: length.value,
+          pendingKey: null,
+          entries: [],
+        });
       }
-      return { node: { kind: "map", entries }, offset: cursor + 1 };
+      continue;
     }
-    let cursor = length.offset;
-    for (let i = 0n; i < length.value; i += 1n) {
-      const key = parseCborNode(bytes, cursor);
-      const value = parseCborNode(bytes, key.offset);
-      entries.push([key.node, value.node]);
-      cursor = value.offset;
-    }
-    return { node: { kind: "map", entries }, offset: cursor };
-  }
-  if (major === 6) {
-    const parsed = parseCborNode(bytes, length.offset);
-    return {
-      node: {
+
+    if (major === 6) {
+      frames.push({
         kind: "tag",
         tag: expectCborLength(length.value, "tag"),
-        value: parsed.node,
-      },
-      offset: parsed.offset,
-    };
+      });
+      continue;
+    }
+
+    throw new Error(
+      `Unsupported PlutusData CBOR major type ${major}`,
+    );
   }
 
-  throw new Error(`Unsupported PlutusData CBOR major type ${major}`);
+  return { node: completed, offset: cursor };
 };
 
 const parseCborRange = (bytes: Buffer, offset: number): CborRange => ({
@@ -296,86 +396,150 @@ const encodeCborNodeWithDefiniteMaps = (
   node: CborNode,
   sortMaps: boolean,
 ): Buffer => {
-  switch (node.kind) {
-    case "uint":
-      return encodeCborHeader(0, node.value);
-    case "nint":
-      return encodeCborHeader(1, node.value);
-    case "bytes": {
-      if (node.value.length <= 64) {
-        return Buffer.concat([
-          encodeCborHeader(2, BigInt(node.value.length)),
-          node.value,
-        ]);
+  type EncodeVisit = {
+    readonly node: CborNode;
+    readonly expanded: boolean;
+  };
+  const encoded = new Map<CborNode, Buffer>();
+  const stack: EncodeVisit[] = [{ node, expanded: false }];
+
+  while (stack.length > 0) {
+    const visit = stack.pop()!;
+    const current = visit.node;
+    if (!visit.expanded) {
+      stack.push({ node: current, expanded: true });
+      if (current.kind === "array") {
+        for (
+          let index = current.items.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          stack.push({
+            node: current.items[index]!,
+            expanded: false,
+          });
+        }
+      } else if (current.kind === "map") {
+        for (
+          let index = current.entries.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          const [key, value] = current.entries[index]!;
+          stack.push({ node: value, expanded: false });
+          stack.push({ node: key, expanded: false });
+        }
+      } else if (current.kind === "tag") {
+        stack.push({ node: current.value, expanded: false });
       }
-      const chunks: Buffer[] = [];
-      for (let offset = 0; offset < node.value.length; offset += 64) {
-        const chunk = node.value.subarray(offset, offset + 64);
-        chunks.push(encodeCborHeader(2, BigInt(chunk.length)), chunk);
-      }
-      return Buffer.concat([
-        Buffer.from([0x5f]),
-        ...chunks,
-        Buffer.from([0xff]),
-      ]);
+      continue;
     }
-    case "array": {
-      const items = node.items.map((item) =>
-        encodeCborNodeWithDefiniteMaps(item, sortMaps),
-      );
-      return node.items.length === 0
-        ? Buffer.from([0x80])
-        : Buffer.concat([
-            Buffer.from([0x9f]),
-            ...items,
+
+    switch (current.kind) {
+      case "uint":
+        encoded.set(current, encodeCborHeader(0, current.value));
+        break;
+      case "nint":
+        encoded.set(current, encodeCborHeader(1, current.value));
+        break;
+      case "bytes": {
+        if (current.value.length <= 64) {
+          encoded.set(
+            current,
+            Buffer.concat([
+              encodeCborHeader(
+                2,
+                BigInt(current.value.length),
+              ),
+              current.value,
+            ]),
+          );
+          break;
+        }
+        const chunks: Buffer[] = [];
+        for (
+          let chunkOffset = 0;
+          chunkOffset < current.value.length;
+          chunkOffset += 64
+        ) {
+          const chunk = current.value.subarray(
+            chunkOffset,
+            chunkOffset + 64,
+          );
+          chunks.push(
+            encodeCborHeader(2, BigInt(chunk.length)),
+            chunk,
+          );
+        }
+        encoded.set(
+          current,
+          Buffer.concat([
+            Buffer.from([0x5f]),
+            ...chunks,
             Buffer.from([0xff]),
-          ]);
-    }
-    case "map": {
-      const entries = node.entries.map(([key, value]) => {
-        const encodedKey = encodeCborNodeWithDefiniteMaps(
-          key,
-          sortMaps,
+          ]),
         );
-        const encodedValue = encodeCborNodeWithDefiniteMaps(
-          value,
-          sortMaps,
-        );
-        return { encodedKey, encodedValue };
-      });
-      if (sortMaps) {
-        entries.sort((left, right) =>
-          Buffer.compare(left.encodedKey, right.encodedKey),
-        );
+        break;
       }
-      return Buffer.concat([
-        encodeCborHeader(5, BigInt(entries.length)),
-        ...entries.flatMap(({ encodedKey, encodedValue }) => [
-          encodedKey,
-          encodedValue,
-        ]),
-      ]);
-    }
-    case "tag": {
-      if (
-        node.tag === 102n &&
-        node.value.kind === "array" &&
-        node.value.items.length === 2
-      ) {
-        return Buffer.concat([
-          encodeCborHeader(6, node.tag),
-          Buffer.from([0x82]),
-          ...node.value.items.map((item) =>
-            encodeCborNodeWithDefiniteMaps(item, sortMaps),
-          ),
-        ]);
+      case "array":
+        encoded.set(
+          current,
+          current.items.length === 0
+            ? Buffer.from([0x80])
+            : Buffer.concat([
+                Buffer.from([0x9f]),
+                ...current.items.map((item) => encoded.get(item)!),
+                Buffer.from([0xff]),
+              ]),
+        );
+        break;
+      case "map": {
+        const entries = current.entries.map(([key, value]) => ({
+          encodedKey: encoded.get(key)!,
+          encodedValue: encoded.get(value)!,
+        }));
+        if (sortMaps) {
+          entries.sort((left, right) =>
+            Buffer.compare(left.encodedKey, right.encodedKey),
+          );
+        }
+        encoded.set(
+          current,
+          Buffer.concat([
+            encodeCborHeader(5, BigInt(entries.length)),
+            ...entries.flatMap(
+              ({ encodedKey, encodedValue }) => [
+                encodedKey,
+                encodedValue,
+              ],
+            ),
+          ]),
+        );
+        break;
       }
-      return Buffer.concat([
-        encodeCborHeader(6, node.tag),
-        encodeCborNodeWithDefiniteMaps(node.value, sortMaps),
-      ]);
+      case "tag":
+        encoded.set(
+          current,
+          current.tag === 102n &&
+            current.value.kind === "array" &&
+            current.value.items.length === 2
+            ? Buffer.concat([
+                encodeCborHeader(6, current.tag),
+                Buffer.from([0x82]),
+                ...current.value.items.map(
+                  (item) => encoded.get(item)!,
+                ),
+              ])
+            : Buffer.concat([
+                encodeCborHeader(6, current.tag),
+                encoded.get(current.value)!,
+              ]),
+        );
+        break;
     }
   }
+
+  return encoded.get(node)!;
 };
 
 /**
