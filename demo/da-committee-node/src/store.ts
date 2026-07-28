@@ -8,8 +8,14 @@ import type {
   DaPeerHealthRecord,
   DaPeerNonceRecord,
   DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredPayloadRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
+} from "./domain.js";
+import {
+  parseDaSignatureRecordV1,
+  parseDaStoredPayloadRecordV1,
 } from "./domain.js";
 
 type StoreData = {
@@ -21,8 +27,8 @@ type StoreData = {
   };
   readonly chainCursor?: Record<string, unknown>;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
-  readonly daPayloads: Record<string, DaPayloadRecord>;
-  readonly daSignatures: Record<string, DaSignatureRecord>;
+  readonly daPayloads: Record<string, DaStoredPayloadRecordV1>;
+  readonly daSignatures: Record<string, DaSignatureRecordV1>;
   readonly daAttestationCandidates: Record<
     string,
     DaAttestationCandidateRecord
@@ -156,33 +162,40 @@ export class JsonFileWatcherStore implements WatcherStore {
     return data.stateQueueHeaders[headerHash];
   }
 
-  async saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord> {
-    let saved = record;
+  async saveDaPayload(
+    record: DaPayloadRecord,
+  ): Promise<DaStoredPayloadRecordV1> {
+    const canonicalRecord = parseDaStoredPayloadRecordV1(record);
+    let saved: DaStoredPayloadRecordV1 = canonicalRecord;
     await this.mutate((data) => {
-      const existing = data.daPayloads[record.headerHash];
-      saved = resolveDaPayloadSave(existing, record);
+      const existing = data.daPayloads[canonicalRecord.headerHash];
+      saved = resolveDaPayloadSave(existing, canonicalRecord);
       return {
         ...data,
         daPayloads: {
           ...data.daPayloads,
-          [record.headerHash]: saved,
+          [canonicalRecord.headerHash]: saved,
         },
       };
     });
     return saved;
   }
 
-  async getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined> {
+  async getDaPayload(
+    headerHash: string,
+  ): Promise<DaStoredPayloadRecordV1 | undefined> {
     const data = await this.read();
     return data.daPayloads[headerHash];
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
+    const canonicalRecord = parseDaSignatureRecordV1(record);
     await this.mutate((data) => ({
       ...data,
       daSignatures: {
         ...data.daSignatures,
-        [signatureKey(record.headerHash, record.signerIndex)]: record,
+        [signatureKey(canonicalRecord.headerHash, canonicalRecord.signerIndex)]:
+          canonicalRecord,
       },
     }));
   }
@@ -190,14 +203,14 @@ export class JsonFileWatcherStore implements WatcherStore {
   async getDaSignature(args: {
     readonly headerHash: string;
     readonly signerIndex: number;
-  }): Promise<DaSignatureRecord | undefined> {
+  }): Promise<DaSignatureRecordV1 | undefined> {
     const data = await this.read();
     return data.daSignatures[signatureKey(args.headerHash, args.signerIndex)];
   }
 
   async listDaSignatures(
     headerHash?: string,
-  ): Promise<readonly DaSignatureRecord[]> {
+  ): Promise<readonly DaSignatureRecordV1[]> {
     const data = await this.read();
     return Object.values(data.daSignatures)
       .filter(
@@ -396,9 +409,9 @@ const terminalPayloadStatuses = new Set<DaPayloadRecord["validationStatus"]>([
 ]);
 
 export const resolveDaPayloadSave = (
-  existing: DaPayloadRecord | undefined,
-  record: DaPayloadRecord,
-): DaPayloadRecord => {
+  existing: DaStoredPayloadRecordV1 | undefined,
+  record: DaStoredPayloadRecordV1,
+): DaStoredPayloadRecordV1 => {
   if (existing === undefined) {
     return withDerivedPayloadFetchStatus(record);
   }
@@ -436,7 +449,7 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
   readonly payloadCbor: Uint8Array;
   readonly payloadSha256: string;
   readonly receivedAt: Date;
-}): DaPayloadRecord => ({
+}): DaStoredPayloadRecordV1 => ({
   deploymentFingerprint: args.deploymentFingerprint,
   headerHash: args.headerHash,
   payloadSchemaVersion: args.payloadSchemaVersion,
@@ -449,8 +462,8 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
 });
 
 const withDerivedPayloadFetchStatus = (
-  record: DaPayloadRecord,
-): DaPayloadRecord => {
+  record: DaStoredPayloadRecordV1,
+): DaStoredPayloadRecordV1 => {
   if (record.payloadFetchStatus !== undefined) {
     return record;
   }
@@ -476,21 +489,54 @@ const emptyStoreData = (): StoreData => ({
 
 const normalizeStoreData = (value: unknown): StoreData => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return emptyStoreData();
+    throw new Error("watcher store data must be an object");
   }
   const record = value as Partial<StoreData>;
   return {
     deployment: record.deployment,
     chainCursor: record.chainCursor,
     stateQueueHeaders: record.stateQueueHeaders ?? {},
-    daPayloads: record.daPayloads ?? {},
-    daSignatures: record.daSignatures ?? {},
+    daPayloads: parseStoredRecordMap(
+      record.daPayloads,
+      parseDaStoredPayloadRecordV1,
+      (entry) => entry.headerHash,
+      "DA stored payload records V1",
+    ),
+    daSignatures: parseStoredRecordMap(
+      record.daSignatures,
+      parseDaSignatureRecordV1,
+      (entry) => signatureKey(entry.headerHash, entry.signerIndex),
+      "DA signature records V1",
+    ),
     daAttestationCandidates: record.daAttestationCandidates ?? {},
     l1Submissions: record.l1Submissions ?? {},
     peerBroadcasts: record.peerBroadcasts ?? {},
     peerHealth: record.peerHealth ?? {},
     peerNonces: record.peerNonces ?? {},
   };
+};
+
+const parseStoredRecordMap = <T>(
+  value: unknown,
+  parseRecord: (entry: unknown) => T,
+  expectedKey: (entry: T) => string,
+  label: string,
+): Record<string, T> => {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, rawEntry]) => {
+      const entry = parseRecord(rawEntry);
+      if (key !== expectedKey(entry)) {
+        throw new Error(`${label} key ${key} does not match record identity`);
+      }
+      return [key, entry];
+    }),
+  );
 };
 
 const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
@@ -507,10 +553,19 @@ export const jsonReviver = (_key: string, value: unknown): unknown => {
     value !== null &&
     !Array.isArray(value) &&
     (value as { __midgardWatcherType?: unknown }).__midgardWatcherType ===
-      "bigint" &&
-    typeof (value as { value?: unknown }).value === "string"
+      "bigint"
   ) {
-    return BigInt((value as { value: string }).value);
+    const record = value as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 2 ||
+      !Object.hasOwn(record, "__midgardWatcherType") ||
+      !Object.hasOwn(record, "value") ||
+      typeof record.value !== "string" ||
+      !/^(?:0|-?[1-9][0-9]*)$/.test(record.value)
+    ) {
+      throw new Error("invalid canonical watcher bigint encoding");
+    }
+    return BigInt(record.value);
   }
   return value;
 };

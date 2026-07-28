@@ -24,8 +24,8 @@ import {
   DaLibp2pProofProtocolHandlers,
 } from "../src/da/libp2p/proof-protocols.js";
 import type {
+  DaStoredPayloadRootSetV1,
   HeaderV1,
-  PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
@@ -414,7 +414,7 @@ const saveVerifiedPayload = async ({
   readonly payloadHash: Buffer;
   readonly header: HeaderV1;
   readonly headerHash: string;
-  readonly rootSummary?: PayloadRootSet;
+  readonly rootSummary?: DaStoredPayloadRootSetV1;
 }): Promise<void> => {
   await store.saveDaPayload({
     deploymentFingerprint,
@@ -459,7 +459,9 @@ const stateQueueHeaderRecord = ({
   updatedAt: "2026-06-21T00:00:02.000Z",
 });
 
-const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
+const rootSummaryFromHeader = (
+  header: HeaderV1,
+): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -467,4 +469,5 @@ const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   depositsRoot: header.depositsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });

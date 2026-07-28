@@ -7,8 +7,14 @@ import type {
   DaPeerHealthRecord,
   DaPeerNonceRecord,
   DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredPayloadRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
+} from "../domain.js";
+import {
+  parseDaSignatureRecordV1,
+  parseDaStoredPayloadRecordV1,
 } from "../domain.js";
 import {
   jsonReplacer,
@@ -20,6 +26,8 @@ import {
 
 type JsonRecordRow = {
   readonly record: unknown;
+  readonly header_hash?: unknown;
+  readonly signer_index?: unknown;
 };
 
 export class PostgresWatcherStore implements WatcherStore {
@@ -143,20 +151,25 @@ export class PostgresWatcherStore implements WatcherStore {
     );
   }
 
-  async saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord> {
+  async saveDaPayload(
+    record: DaPayloadRecord,
+  ): Promise<DaStoredPayloadRecordV1> {
+    const canonicalRecord = parseDaStoredPayloadRecordV1(record);
     return this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
-        const existing = await queryOne<DaPayloadRecord>(
+        const existing = await queryOne(
           client,
-          "SELECT record FROM watcher_da_payloads WHERE header_hash = $1 FOR UPDATE",
-          [record.headerHash],
+          "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1 FOR UPDATE",
+          [canonicalRecord.headerHash],
+          parseDaStoredPayloadRecordV1,
+          assertPayloadRowIdentity,
         );
-        const saved = resolveDaPayloadSave(existing, record);
+        const saved = resolveDaPayloadSave(existing, canonicalRecord);
         await upsertRecordWithClient(
           client,
           "watcher_da_payloads",
-          record.headerHash,
+          canonicalRecord.headerHash,
           saved,
         );
         await client.query("COMMIT");
@@ -168,14 +181,19 @@ export class PostgresWatcherStore implements WatcherStore {
     });
   }
 
-  async getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined> {
-    return this.getRecord<DaPayloadRecord>(
-      "SELECT record FROM watcher_da_payloads WHERE header_hash = $1",
+  async getDaPayload(
+    headerHash: string,
+  ): Promise<DaStoredPayloadRecordV1 | undefined> {
+    return this.getParsedRecord(
+      "SELECT header_hash, record FROM watcher_da_payloads WHERE header_hash = $1",
       [headerHash],
+      parseDaStoredPayloadRecordV1,
+      assertPayloadRowIdentity,
     );
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
+    const canonicalRecord = parseDaSignatureRecordV1(record);
     await this.pool.query(
       `INSERT INTO watcher_da_signatures (
          header_hash,
@@ -187,32 +205,42 @@ export class PostgresWatcherStore implements WatcherStore {
        ON CONFLICT (header_hash, signer_index) DO UPDATE SET
          record = EXCLUDED.record,
          updated_at = NOW()`,
-      [record.headerHash, record.signerIndex, encodeRecord(record)],
+      [
+        canonicalRecord.headerHash,
+        canonicalRecord.signerIndex,
+        encodeRecord(canonicalRecord),
+      ],
     );
   }
 
   async getDaSignature(args: {
     readonly headerHash: string;
     readonly signerIndex: number;
-  }): Promise<DaSignatureRecord | undefined> {
-    return this.getRecord<DaSignatureRecord>(
-      `SELECT record FROM watcher_da_signatures
+  }): Promise<DaSignatureRecordV1 | undefined> {
+    return this.getParsedRecord(
+      `SELECT header_hash, signer_index, record FROM watcher_da_signatures
        WHERE header_hash = $1 AND signer_index = $2`,
       [args.headerHash, args.signerIndex],
+      parseDaSignatureRecordV1,
+      assertSignatureRowIdentity,
     );
   }
 
   async listDaSignatures(
     headerHash?: string,
-  ): Promise<readonly DaSignatureRecord[]> {
-    return this.listRecords<DaSignatureRecord>(
+  ): Promise<readonly DaSignatureRecordV1[]> {
+    return this.listParsedRecords(
       headerHash === undefined
-        ? `SELECT record FROM watcher_da_signatures
+        ? `SELECT header_hash, signer_index, record
+           FROM watcher_da_signatures
            ORDER BY header_hash, signer_index`
-        : `SELECT record FROM watcher_da_signatures
+        : `SELECT header_hash, signer_index, record
+           FROM watcher_da_signatures
            WHERE header_hash = $1
            ORDER BY header_hash, signer_index`,
       headerHash === undefined ? [] : [headerHash],
+      parseDaSignatureRecordV1,
+      assertSignatureRowIdentity,
     );
   }
 
@@ -460,12 +488,36 @@ export class PostgresWatcherStore implements WatcherStore {
     return decodeRow<T>(result.rows[0]);
   }
 
+  private async getParsedRecord<T>(
+    query: string,
+    values: readonly unknown[],
+    parseRecord: (record: unknown) => T,
+    validateRow: (row: JsonRecordRow, record: T) => void,
+  ): Promise<T | undefined> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return decodeParsedRow(result.rows[0], parseRecord, validateRow);
+  }
+
   private async listRecords<T>(
     query: string,
     values: readonly unknown[] = [],
   ): Promise<readonly T[]> {
     const result = await this.pool.query<JsonRecordRow>(query, [...values]);
     return result.rows.map((row) => decodeRecord<T>(row.record));
+  }
+
+  private async listParsedRecords<T>(
+    query: string,
+    values: readonly unknown[],
+    parseRecord: (record: unknown) => T,
+    validateRow: (row: JsonRecordRow, record: T) => void,
+  ): Promise<readonly T[]> {
+    const result = await this.pool.query<JsonRecordRow>(query, [...values]);
+    return result.rows.map((row) => {
+      const record = parseRecord(decodeRecord<unknown>(row.record));
+      validateRow(row, record);
+      return record;
+    });
   }
 
   private async withClient<T>(
@@ -516,9 +568,11 @@ const queryOne = async <T>(
   client: PoolClient,
   query: string,
   values: readonly unknown[],
+  parseRecord: (record: unknown) => T,
+  validateRow: (row: JsonRecordRow, record: T) => void,
 ): Promise<T | undefined> => {
   const result = await client.query<JsonRecordRow>(query, [...values]);
-  return decodeRow<T>(result.rows[0]);
+  return decodeParsedRow(result.rows[0], parseRecord, validateRow);
 };
 
 const encodeRecord = (record: unknown): string =>
@@ -526,6 +580,50 @@ const encodeRecord = (record: unknown): string =>
 
 const decodeRow = <T>(row: JsonRecordRow | undefined): T | undefined =>
   row === undefined ? undefined : decodeRecord<T>(row.record);
+
+const decodeParsedRow = <T>(
+  row: JsonRecordRow | undefined,
+  parseRecord: (record: unknown) => T,
+  validateRow: (row: JsonRecordRow, record: T) => void,
+): T | undefined =>
+  row === undefined
+    ? undefined
+    : validateParsedRow(row, parseRecord, validateRow);
+
+const validateParsedRow = <T>(
+  row: JsonRecordRow,
+  parseRecord: (record: unknown) => T,
+  validateRow: (row: JsonRecordRow, record: T) => void,
+): T => {
+  const record = parseRecord(decodeRecord<unknown>(row.record));
+  validateRow(row, record);
+  return record;
+};
+
+const assertPayloadRowIdentity = (
+  row: JsonRecordRow,
+  record: DaPayloadRecord,
+): void => {
+  if (row.header_hash !== record.headerHash) {
+    throw new Error(
+      "Postgres DA stored payload row key does not match record identity",
+    );
+  }
+};
+
+const assertSignatureRowIdentity = (
+  row: JsonRecordRow,
+  record: DaSignatureRecord,
+): void => {
+  if (
+    row.header_hash !== record.headerHash ||
+    row.signer_index !== record.signerIndex
+  ) {
+    throw new Error(
+      "Postgres DA signature row key does not match record identity",
+    );
+  }
+};
 
 const decodeRecord = <T>(record: unknown): T =>
   JSON.parse(JSON.stringify(record), jsonReviver) as T;

@@ -9,9 +9,9 @@ import type { DaPayloadCandidate, DaPayloadSource } from "../src/da/source.js";
 import type {
   DaAttestationCandidateRecord,
   DaSignatureRecord,
+  DaStoredPayloadCountSetV1,
+  DaStoredPayloadRootSetV1,
   HeaderV1,
-  PayloadCountSet,
-  PayloadRootSet,
 } from "../src/domain.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
 import {
@@ -31,7 +31,7 @@ import {
   tempDir,
 } from "./helpers.js";
 
-const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
+const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -39,15 +39,19 @@ const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   depositsRoot: header.depositsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });
 
-const countSummaryFromHeader = (header: HeaderV1): PayloadCountSet => ({
+const countSummaryFromHeader = (
+  header: HeaderV1,
+): DaStoredPayloadCountSetV1 => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
   depositCount: header.depositCount,
   totalEventCount: header.totalEventCount,
   transitionStepCount: header.transitionStepCount,
+  validationTraceCount: header.validationTraceCount,
 });
 
 describe("WatcherService", () => {
@@ -1058,6 +1062,7 @@ describe("WatcherService", () => {
       committeeSignersHash: signerValidation.committeeSignersHash,
       signedAt: new Date().toISOString(),
       broadcastStatus: "posted",
+      source: "peer",
       l1ChainPoint: {},
       validation: {
         payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
@@ -1088,6 +1093,7 @@ describe("WatcherService", () => {
       committeeSignersHash: signerValidation.committeeSignersHash,
       signedAt: new Date().toISOString(),
       broadcastStatus: "posted",
+      source: "peer",
       l1ChainPoint: {},
       validation: {
         payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
@@ -1218,6 +1224,7 @@ describe("WatcherService", () => {
         committeeSignersHash,
         signedAt: new Date().toISOString(),
         broadcastStatus: "posted",
+        source: "peer",
         l1ChainPoint: {},
         validation: {
           payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
@@ -1248,6 +1255,7 @@ describe("WatcherService", () => {
         committeeSignersHash,
         signedAt: new Date().toISOString(),
         broadcastStatus: "posted",
+        source: "peer",
         l1ChainPoint: {},
         validation: {
           payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),

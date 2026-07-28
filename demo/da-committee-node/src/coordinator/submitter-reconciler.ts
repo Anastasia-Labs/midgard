@@ -3,10 +3,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
-  PayloadCountSet,
+  DaStoredPayloadCountSetV1,
+  DaStoredPayloadRootSetV1,
+  DaStoredValidationSummaryV1,
   PayloadRootSet,
   StateQueueHeaderRecord,
-  ValidationSummary,
 } from "../domain.js";
 import {
   classifyDaAttestationMarker,
@@ -166,14 +167,14 @@ const contextFromHeader = ({
   l1ChainPoint: header.observedChainPoint,
   validation: validationSummaryFromHeader(
     header,
-    payload.rootSummary ?? rootSummaryFromHeader(header),
+    rootSummaryFromHeader(header, payload.rootSummary),
   ),
 });
 
 const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-  rootSummary: PayloadRootSet,
-): ValidationSummary => ({
+  rootSummary: DaStoredPayloadRootSetV1,
+): DaStoredValidationSummaryV1 => ({
   payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
   rootsMatch: true,
   stateQueueOutRef: header.stateQueueOutRef,
@@ -191,23 +192,28 @@ const validationSummaryFromHeader = (
 
 const rootSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-): PayloadRootSet => ({
-  utxosRoot: header.header.utxosRoot,
-  transactionsRoot: header.header.transactionsRoot,
-  depositsRoot: header.header.depositsRoot,
-  withdrawalsRoot: header.header.withdrawalsRoot,
-  forcedTransactionsRoot: header.header.forcedTransactionsRoot,
-  transitionTraceRoot: header.header.transitionTraceRoot,
-  eventToStepRoot: header.header.eventToStepRoot,
+  rootSummary?: PayloadRootSet,
+): DaStoredPayloadRootSetV1 => ({
+  ...(rootSummary ?? {
+    utxosRoot: header.header.utxosRoot,
+    transactionsRoot: header.header.transactionsRoot,
+    depositsRoot: header.header.depositsRoot,
+    withdrawalsRoot: header.header.withdrawalsRoot,
+    forcedTransactionsRoot: header.header.forcedTransactionsRoot,
+    transitionTraceRoot: header.header.transitionTraceRoot,
+    eventToStepRoot: header.header.eventToStepRoot,
+  }),
+  validationTracesRoot: header.header.validationTracesRoot,
 });
 
 const countSummaryFromHeader = (
   header: StateQueueHeaderRecord,
-): PayloadCountSet => ({
+): DaStoredPayloadCountSetV1 => ({
   withdrawalCount: header.header.withdrawalCount,
   forcedTransactionCount: header.header.forcedTransactionCount,
   l2TransactionCount: header.header.l2TransactionCount,
   depositCount: header.header.depositCount,
   totalEventCount: header.header.totalEventCount,
   transitionStepCount: header.header.transitionStepCount,
+  validationTraceCount: header.header.validationTraceCount,
 });

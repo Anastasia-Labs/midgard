@@ -13,13 +13,14 @@ import {
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import type {
   DaPayloadRecord,
-  DaSignatureRecord,
+  DaSignatureRecordV1,
+  DaStoredPayloadRootSetV1,
   HeaderV1,
-  PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
 import { PeerSignatureCoordinator } from "../src/peer/coordinator.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
+import { validateDaSignatureRecord } from "../src/peer/signatures.js";
 import { resolveRemoteDaAttestationTargets } from "../src/peer/targets.js";
 import {
   loadDaSigner,
@@ -78,6 +79,38 @@ describe("PeerSignatureCoordinator", () => {
         ],
       }),
     ).toThrow(/does not match/);
+  });
+
+  it("rejects missing, legacy, unknown, and malformed signature record fields", () => {
+    const record = signatureRecord({
+      deploymentFingerprint: "11".repeat(32),
+      headerHash: "22".repeat(28),
+      signerIndex: 0,
+      committeeSignersHash: "33".repeat(32),
+      signatureWitness: "00" + "44".repeat(64),
+    });
+    const { source: _, ...missingSource } = record;
+    void _;
+    const malformedRecords: readonly unknown[] = [
+      missingSource,
+      { ...record, source: "legacy" },
+      { ...record, source: "remote" },
+      { ...record, obsolete: true },
+      {
+        ...record,
+        validation: { ...record.validation, obsolete: true },
+      },
+    ];
+    for (const body of malformedRecords) {
+      expect(
+        validateDaSignatureRecord({
+          body: body as Partial<DaSignatureRecordV1>,
+          headerHash: record.headerHash,
+          deploymentFingerprint: record.deploymentFingerprint,
+          localSignerIndex: record.signerIndex,
+        }),
+      ).toBe("invalid signature record");
+    }
   });
 
   it("publishes signatures through the libp2p attestation exchange and persists broadcast state", async () => {
@@ -524,7 +557,7 @@ const signatureRecord = ({
   readonly committeeSignersHash: string;
   readonly payloadHash?: string;
   readonly signatureWitness: string;
-}): DaSignatureRecord => ({
+}): DaSignatureRecordV1 => ({
   deploymentFingerprint,
   headerHash,
   signerIndex,
@@ -533,6 +566,7 @@ const signatureRecord = ({
   committeeSignersHash,
   signedAt: new Date().toISOString(),
   broadcastStatus: "local",
+  source: "local",
   l1ChainPoint: {},
   validation: {
     payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
@@ -547,6 +581,7 @@ const signatureRecord = ({
       forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     },
     countSummary: {
       withdrawalCount: 0n,
@@ -555,6 +590,7 @@ const signatureRecord = ({
       depositCount: 0n,
       totalEventCount: 0n,
       transitionStepCount: 0n,
+      validationTraceCount: 0n,
     },
     l1Header: {
       startTime: "1",
@@ -628,7 +664,7 @@ const stateQueueRecord = ({
   updatedAt: new Date().toISOString(),
 });
 
-const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
+const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   transactionsRoot: header.transactionsRoot,
   depositsRoot: header.depositsRoot,
@@ -636,4 +672,5 @@ const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   forcedTransactionsRoot: header.forcedTransactionsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });

@@ -18,7 +18,10 @@ import {
   DaLibp2pPayloadProtocolHandlers,
 } from "../src/da/libp2p/payload-protocols.js";
 import { DaPayloadSubmitAdmission } from "../src/da/libp2p/payload-source.js";
-import type { HeaderV1, PayloadRootSet } from "../src/domain.js";
+import type {
+  DaStoredPayloadRootSetV1,
+  HeaderV1,
+} from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
@@ -294,7 +297,9 @@ const makeHandlers = async (
   };
 };
 
-const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
+const rootSummaryFromHeader = (
+  header: HeaderV1,
+): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -302,4 +307,5 @@ const rootSummaryFromHeader = (header: HeaderV1): PayloadRootSet => ({
   depositsRoot: header.depositsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });

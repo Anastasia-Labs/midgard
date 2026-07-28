@@ -16,6 +16,7 @@ import {
   encodeMidgardTxOutput,
   encodeMidgardValue,
   encodeMidgardVersionedScript,
+  hashMidgardVersionedScript,
   MIDGARD_PROTECTED_ADDRESS_HEADER_MASK,
   midgardAddressFromText,
   type MidgardTxOutput,
@@ -140,6 +141,30 @@ describe("Midgard output codec", () => {
 
     expect(encoded.subarray(0, 2).toString("hex")).toBe("8203");
     expect(decodeMidgardVersionedScript(encoded).language).toBe("PlutusV3");
+  });
+
+  it("pins the MidgardV1 script tag and hash prefix and rejects unknown tags", () => {
+    const scriptBytes = Buffer.from("010203", "hex");
+    const encoded = encodeMidgardVersionedScript({
+      language: "MidgardV1",
+      scriptBytes,
+    });
+
+    expect(encoded.subarray(0, 3).toString("hex")).toBe("821880");
+    expect(
+      hashMidgardVersionedScript({
+        language: "MidgardV1",
+        scriptBytes,
+      }),
+    ).toBe("760b621a49505853e1f4562d126e185f78483932825e0fb077a1ed80");
+    expect(() =>
+      decodeMidgardVersionedScript(
+        encodeCborArrayRaw([
+          encodeCborUnsigned(129n),
+          encodeCborBytes(scriptBytes),
+        ]),
+      ),
+    ).toThrow(/Unsupported Midgard versioned script tag/u);
   });
 
   it("rejects non-canonical value policy ordering", () => {

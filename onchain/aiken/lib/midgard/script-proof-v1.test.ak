@@ -1,8 +1,19 @@
 use midgard/fraud_proofs/native_tx/types.{
   MidgardExecutionUnits, MidgardRedeemerWitness, MidgardVersionedScript,
-  PlutusV3Script, SpendRedeemer,
+  MidgardV1Script, PlutusV3Script, SpendRedeemer,
 }
 use midgard/script_proof_v1
+
+test midgard_v1_script_tag_and_hash_prefix_vector_is_stable() {
+  let script = MidgardVersionedScript {
+    language: MidgardV1Script,
+    script_bytes: #"010203",
+  }
+  and {
+    script_proof_v1.language_tag(MidgardV1Script) == 128,
+    script_proof_v1.versioned_script_hash(script) == #"760b621a49505853e1f4562d126e185f78483932825e0fb077a1ed80",
+  }
+}
 
 test script_proof_source_and_redeemer_vectors_are_stable() {
   let script = MidgardVersionedScript {

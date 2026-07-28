@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type {
   DaAttestationCandidateRecord,
   DaPayloadRecord,
-  DaSignatureRecord,
+  DaSignatureRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
@@ -103,6 +103,29 @@ describe("PostgresWatcherStore", () => {
           store.listDaSignatures(signature.headerHash),
         ).resolves.toEqual([signature]);
 
+        const { payloadSchemaVersion: _, ...missingPayloadVersion } = payload;
+        void _;
+        await expect(
+          store.saveDaPayload(missingPayloadVersion as DaPayloadRecord),
+        ).rejects.toThrow(/missing required field payloadSchemaVersion/);
+        await expect(
+          store.saveDaPayload({
+            ...payload,
+            payloadSchemaVersion: 2,
+          } as unknown as DaPayloadRecord),
+        ).rejects.toThrow(/payloadSchemaVersion must be exactly 1/);
+        const { source: __, ...missingSignatureSource } = signature;
+        void __;
+        await expect(
+          store.saveDaSignature(missingSignatureSource as DaSignatureRecordV1),
+        ).rejects.toThrow(/missing required field source/);
+        await expect(
+          store.saveDaSignature({
+            ...signature,
+            source: "legacy",
+          } as unknown as DaSignatureRecordV1),
+        ).rejects.toThrow(/source must be one of local, peer/);
+
         const candidate = daCandidateRecord();
         await store.saveDaAttestationCandidate(candidate);
         await expect(
@@ -112,6 +135,29 @@ describe("PostgresWatcherStore", () => {
         const submission = l1SubmissionRecord();
         await store.saveL1Submission(submission);
         await expect(store.listL1Submissions()).resolves.toEqual([submission]);
+
+        await admin.query(
+          `UPDATE ${schema}.watcher_da_payloads
+           SET record = record - 'payloadSchemaVersion'
+           WHERE header_hash = $1`,
+          [payload.headerHash],
+        );
+        await expect(store.getDaPayload(payload.headerHash)).rejects.toThrow(
+          /missing required field payloadSchemaVersion/,
+        );
+
+        await admin.query(
+          `UPDATE ${schema}.watcher_da_signatures
+           SET record = record - 'source'
+           WHERE header_hash = $1 AND signer_index = $2`,
+          [signature.headerHash, signature.signerIndex],
+        );
+        await expect(
+          store.getDaSignature({
+            headerHash: signature.headerHash,
+            signerIndex: signature.signerIndex,
+          }),
+        ).rejects.toThrow(/missing required field source/);
       } finally {
         await store.close();
       }
@@ -164,7 +210,7 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
-const daSignatureRecord = (): DaSignatureRecord => ({
+const daSignatureRecord = (): DaSignatureRecordV1 => ({
   deploymentFingerprint: "dep",
   headerHash: "01".repeat(28),
   signerIndex: 1,
@@ -173,6 +219,7 @@ const daSignatureRecord = (): DaSignatureRecord => ({
   committeeSignersHash: "22".repeat(32),
   signedAt: "2026-06-13T00:00:02.000Z",
   broadcastStatus: "posted",
+  source: "local",
   l1ChainPoint: {
     providerSource: "test",
     depth: 12,
@@ -190,6 +237,7 @@ const daSignatureRecord = (): DaSignatureRecord => ({
       forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+      validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
     },
     countSummary: {
       withdrawalCount: 0n,
@@ -198,6 +246,7 @@ const daSignatureRecord = (): DaSignatureRecord => ({
       depositCount: 0n,
       totalEventCount: 0n,
       transitionStepCount: 0n,
+      validationTraceCount: 0n,
     },
     l1Header: {
       startTime: "1",

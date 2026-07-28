@@ -72,6 +72,10 @@ export type DaPayloadRecord = {
   readonly validationError?: string;
 };
 
+export type DaStoredPayloadRecordV1 = Omit<DaPayloadRecord, "rootSummary"> & {
+  readonly rootSummary?: DaStoredPayloadRootSetV1;
+};
+
 export type PayloadRootSet = {
   readonly utxosRoot: string;
   readonly withdrawalsRoot: string;
@@ -107,6 +111,22 @@ export type ValidationSummary = {
   };
 };
 
+export type DaStoredPayloadRootSetV1 = PayloadRootSet & {
+  readonly validationTracesRoot: string;
+};
+
+export type DaStoredPayloadCountSetV1 = PayloadCountSet & {
+  readonly validationTraceCount: bigint;
+};
+
+export type DaStoredValidationSummaryV1 = Omit<
+  ValidationSummary,
+  "rootSummary" | "countSummary"
+> & {
+  readonly rootSummary: DaStoredPayloadRootSetV1;
+  readonly countSummary: DaStoredPayloadCountSetV1;
+};
+
 export type DaSignatureRecord = {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
@@ -122,6 +142,14 @@ export type DaSignatureRecord = {
   readonly verifiedAt?: string;
   readonly l1ChainPoint: ChainPoint;
   readonly validation: ValidationSummary;
+};
+
+export type DaSignatureRecordV1 = Omit<
+  DaSignatureRecord,
+  "source" | "validation"
+> & {
+  readonly source: "local" | "peer";
+  readonly validation: DaStoredValidationSummaryV1;
 };
 
 export type DaAttestationCandidateRecord = {
@@ -185,4 +213,547 @@ export type DaPeerNonceRecord = {
   readonly nonce: string;
   readonly timestampMs: number;
   readonly receivedAt: string;
+};
+
+const payloadRootKeys = [
+  "utxosRoot",
+  "withdrawalsRoot",
+  "forcedTransactionsRoot",
+  "transactionsRoot",
+  "depositsRoot",
+  "transitionTraceRoot",
+  "eventToStepRoot",
+  "validationTracesRoot",
+] as const;
+
+const chainPointKeys = [
+  "slot",
+  "blockHash",
+  "blockHeight",
+  "observedAt",
+  "depth",
+  "finalized",
+  "providerSource",
+] as const;
+
+const payloadRecordRequiredKeys = [
+  "deploymentFingerprint",
+  "headerHash",
+  "payloadSchemaVersion",
+  "payloadCborHex",
+  "payloadSha256",
+  "sourcePeerId",
+  "fetchedAt",
+  "validationStatus",
+] as const;
+
+const payloadRecordOptionalKeys = [
+  "payloadFetchStatus",
+  "verifiedAt",
+  "rootSummary",
+  "conflictStatus",
+  "validationError",
+] as const;
+
+const validationSummaryKeys = [
+  "payloadVersion",
+  "rootsMatch",
+  "stateQueueOutRef",
+  "headerHash",
+  "rootSummary",
+  "countSummary",
+  "l1Header",
+] as const;
+
+const payloadCountKeys = [
+  "withdrawalCount",
+  "forcedTransactionCount",
+  "l2TransactionCount",
+  "depositCount",
+  "totalEventCount",
+  "transitionStepCount",
+  "validationTraceCount",
+] as const;
+
+const l1HeaderKeys = [
+  "startTime",
+  "endTime",
+  "operatorVkey",
+  "prevHeaderHash",
+  "protocolVersion",
+] as const;
+
+const signatureRecordRequiredKeys = [
+  "deploymentFingerprint",
+  "headerHash",
+  "signerIndex",
+  "signatureWitness",
+  "payloadHash",
+  "committeeSignersHash",
+  "signedAt",
+  "broadcastStatus",
+  "source",
+  "l1ChainPoint",
+  "validation",
+] as const;
+
+const signatureRecordOptionalKeys = [
+  "sourcePeer",
+  "receivedAt",
+  "verifiedAt",
+] as const;
+
+const payloadFetchStatuses = [
+  "not_attempted",
+  "missing_da",
+  "available",
+  "fetch_failed",
+] as const;
+
+const payloadValidationStatuses = [
+  "fetched",
+  "verified",
+  "missing_da",
+  "malformed_da",
+  "root_mismatch",
+  "conflicted",
+] as const;
+
+const payloadConflictStatuses = ["none", "conflicting_bytes"] as const;
+
+const signatureBroadcastStatuses = ["local", "posted", "post_failed"] as const;
+
+const signatureSources = ["local", "peer"] as const;
+
+export const parseDaStoredPayloadRecordV1 = (
+  value: unknown,
+): DaStoredPayloadRecordV1 => {
+  const record = requireExactObject(
+    value,
+    payloadRecordRequiredKeys,
+    payloadRecordOptionalKeys,
+    "DA stored payload record V1",
+  );
+  if (record.payloadSchemaVersion !== 1) {
+    throw new Error(
+      "DA stored payload record V1.payloadSchemaVersion must be exactly 1",
+    );
+  }
+  return {
+    deploymentFingerprint: requireString(
+      record.deploymentFingerprint,
+      "DA stored payload record V1.deploymentFingerprint",
+    ),
+    headerHash: requireString(
+      record.headerHash,
+      "DA stored payload record V1.headerHash",
+    ),
+    payloadSchemaVersion: 1,
+    payloadCborHex: requireString(
+      record.payloadCborHex,
+      "DA stored payload record V1.payloadCborHex",
+    ),
+    payloadSha256: requireString(
+      record.payloadSha256,
+      "DA stored payload record V1.payloadSha256",
+    ),
+    sourcePeerId: requireString(
+      record.sourcePeerId,
+      "DA stored payload record V1.sourcePeerId",
+    ),
+    fetchedAt: requireString(
+      record.fetchedAt,
+      "DA stored payload record V1.fetchedAt",
+    ),
+    ...optionalEnumProperty(
+      record,
+      "payloadFetchStatus",
+      payloadFetchStatuses,
+      "DA stored payload record V1.payloadFetchStatus",
+    ),
+    ...optionalStringProperty(
+      record,
+      "verifiedAt",
+      "DA stored payload record V1.verifiedAt",
+    ),
+    ...(record.rootSummary === undefined
+      ? {}
+      : { rootSummary: parsePayloadRootSet(record.rootSummary) }),
+    validationStatus: requireEnum(
+      record.validationStatus,
+      payloadValidationStatuses,
+      "DA stored payload record V1.validationStatus",
+    ),
+    ...optionalEnumProperty(
+      record,
+      "conflictStatus",
+      payloadConflictStatuses,
+      "DA stored payload record V1.conflictStatus",
+    ),
+    ...optionalStringProperty(
+      record,
+      "validationError",
+      "DA stored payload record V1.validationError",
+    ),
+  };
+};
+
+export const parseDaSignatureRecordV1 = (
+  value: unknown,
+): DaSignatureRecordV1 => {
+  const record = requireExactObject(
+    value,
+    signatureRecordRequiredKeys,
+    signatureRecordOptionalKeys,
+    "DA signature record V1",
+  );
+  const headerHash = requireString(
+    record.headerHash,
+    "DA signature record V1.headerHash",
+  );
+  const validation = parseValidationSummary(record.validation);
+  if (validation.headerHash !== headerHash) {
+    throw new Error(
+      "DA signature record V1.validation.headerHash must match headerHash",
+    );
+  }
+  return {
+    deploymentFingerprint: requireString(
+      record.deploymentFingerprint,
+      "DA signature record V1.deploymentFingerprint",
+    ),
+    headerHash,
+    signerIndex: requireUint8(
+      record.signerIndex,
+      "DA signature record V1.signerIndex",
+    ),
+    signatureWitness: requireString(
+      record.signatureWitness,
+      "DA signature record V1.signatureWitness",
+    ),
+    payloadHash: requireString(
+      record.payloadHash,
+      "DA signature record V1.payloadHash",
+    ),
+    committeeSignersHash: requireString(
+      record.committeeSignersHash,
+      "DA signature record V1.committeeSignersHash",
+    ),
+    signedAt: requireString(record.signedAt, "DA signature record V1.signedAt"),
+    broadcastStatus: requireEnum(
+      record.broadcastStatus,
+      signatureBroadcastStatuses,
+      "DA signature record V1.broadcastStatus",
+    ),
+    source: requireEnum(
+      record.source,
+      signatureSources,
+      "DA signature record V1.source",
+    ),
+    ...optionalStringProperty(
+      record,
+      "sourcePeer",
+      "DA signature record V1.sourcePeer",
+    ),
+    ...optionalStringProperty(
+      record,
+      "receivedAt",
+      "DA signature record V1.receivedAt",
+    ),
+    ...optionalStringProperty(
+      record,
+      "verifiedAt",
+      "DA signature record V1.verifiedAt",
+    ),
+    l1ChainPoint: parseChainPoint(record.l1ChainPoint),
+    validation,
+  };
+};
+
+const parsePayloadRootSet = (value: unknown): DaStoredPayloadRootSetV1 => {
+  const record = requireExactObject(
+    value,
+    payloadRootKeys,
+    [],
+    "DA payload root set",
+  );
+  return {
+    utxosRoot: requireString(record.utxosRoot, "DA payload root set.utxosRoot"),
+    withdrawalsRoot: requireString(
+      record.withdrawalsRoot,
+      "DA payload root set.withdrawalsRoot",
+    ),
+    forcedTransactionsRoot: requireString(
+      record.forcedTransactionsRoot,
+      "DA payload root set.forcedTransactionsRoot",
+    ),
+    transactionsRoot: requireString(
+      record.transactionsRoot,
+      "DA payload root set.transactionsRoot",
+    ),
+    depositsRoot: requireString(
+      record.depositsRoot,
+      "DA payload root set.depositsRoot",
+    ),
+    transitionTraceRoot: requireString(
+      record.transitionTraceRoot,
+      "DA payload root set.transitionTraceRoot",
+    ),
+    eventToStepRoot: requireString(
+      record.eventToStepRoot,
+      "DA payload root set.eventToStepRoot",
+    ),
+    validationTracesRoot: requireString(
+      record.validationTracesRoot,
+      "DA payload root set.validationTracesRoot",
+    ),
+  };
+};
+
+const parsePayloadCountSet = (value: unknown): DaStoredPayloadCountSetV1 => {
+  const record = requireExactObject(
+    value,
+    payloadCountKeys,
+    [],
+    "DA payload count set",
+  );
+  return {
+    withdrawalCount: requireNonNegativeBigInt(
+      record.withdrawalCount,
+      "DA payload count set.withdrawalCount",
+    ),
+    forcedTransactionCount: requireNonNegativeBigInt(
+      record.forcedTransactionCount,
+      "DA payload count set.forcedTransactionCount",
+    ),
+    l2TransactionCount: requireNonNegativeBigInt(
+      record.l2TransactionCount,
+      "DA payload count set.l2TransactionCount",
+    ),
+    depositCount: requireNonNegativeBigInt(
+      record.depositCount,
+      "DA payload count set.depositCount",
+    ),
+    totalEventCount: requireNonNegativeBigInt(
+      record.totalEventCount,
+      "DA payload count set.totalEventCount",
+    ),
+    transitionStepCount: requireNonNegativeBigInt(
+      record.transitionStepCount,
+      "DA payload count set.transitionStepCount",
+    ),
+    validationTraceCount: requireNonNegativeBigInt(
+      record.validationTraceCount,
+      "DA payload count set.validationTraceCount",
+    ),
+  };
+};
+
+const parseValidationSummary = (
+  value: unknown,
+): DaStoredValidationSummaryV1 => {
+  const record = requireExactObject(
+    value,
+    validationSummaryKeys,
+    [],
+    "DA validation summary",
+  );
+  const l1Header = requireExactObject(
+    record.l1Header,
+    l1HeaderKeys,
+    [],
+    "DA validation summary.l1Header",
+  );
+  if (record.payloadVersion !== 1) {
+    throw new Error("DA validation summary.payloadVersion must be exactly 1");
+  }
+  return {
+    payloadVersion: 1,
+    rootsMatch: requireBoolean(
+      record.rootsMatch,
+      "DA validation summary.rootsMatch",
+    ),
+    stateQueueOutRef: requireString(
+      record.stateQueueOutRef,
+      "DA validation summary.stateQueueOutRef",
+    ),
+    headerHash: requireString(
+      record.headerHash,
+      "DA validation summary.headerHash",
+    ),
+    rootSummary: parsePayloadRootSet(record.rootSummary),
+    countSummary: parsePayloadCountSet(record.countSummary),
+    l1Header: {
+      startTime: requireString(
+        l1Header.startTime,
+        "DA validation summary.l1Header.startTime",
+      ),
+      endTime: requireString(
+        l1Header.endTime,
+        "DA validation summary.l1Header.endTime",
+      ),
+      operatorVkey: requireString(
+        l1Header.operatorVkey,
+        "DA validation summary.l1Header.operatorVkey",
+      ),
+      prevHeaderHash: requireString(
+        l1Header.prevHeaderHash,
+        "DA validation summary.l1Header.prevHeaderHash",
+      ),
+      protocolVersion: requireString(
+        l1Header.protocolVersion,
+        "DA validation summary.l1Header.protocolVersion",
+      ),
+    },
+  };
+};
+
+const parseChainPoint = (value: unknown): ChainPoint => {
+  const record = requireExactObject(value, [], chainPointKeys, "chain point");
+  return {
+    ...optionalNonNegativeSafeIntegerProperty(
+      record,
+      "slot",
+      "chain point.slot",
+    ),
+    ...optionalStringProperty(record, "blockHash", "chain point.blockHash"),
+    ...optionalNonNegativeSafeIntegerProperty(
+      record,
+      "blockHeight",
+      "chain point.blockHeight",
+    ),
+    ...optionalStringProperty(record, "observedAt", "chain point.observedAt"),
+    ...optionalNonNegativeSafeIntegerProperty(
+      record,
+      "depth",
+      "chain point.depth",
+    ),
+    ...optionalBooleanProperty(record, "finalized", "chain point.finalized"),
+    ...optionalStringProperty(
+      record,
+      "providerSource",
+      "chain point.providerSource",
+    ),
+  };
+};
+
+const requireExactObject = (
+  value: unknown,
+  requiredKeys: readonly string[],
+  optionalKeys: readonly string[],
+  label: string,
+): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const record = value as Record<string, unknown>;
+  const allowedKeys = new Set([...requiredKeys, ...optionalKeys]);
+  for (const key of Object.keys(record)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error(`${label} contains unknown field ${key}`);
+    }
+  }
+  for (const key of requiredKeys) {
+    if (!Object.hasOwn(record, key)) {
+      throw new Error(`${label} is missing required field ${key}`);
+    }
+  }
+  return record;
+};
+
+const requireString = (value: unknown, label: string): string => {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+  return value;
+};
+
+const requireBoolean = (value: unknown, label: string): boolean => {
+  if (typeof value !== "boolean") {
+    throw new Error(`${label} must be a boolean`);
+  }
+  return value;
+};
+
+const requireNonNegativeSafeInteger = (
+  value: unknown,
+  label: string,
+): number => {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return value;
+};
+
+const requireUint8 = (value: unknown, label: string): number => {
+  const integer = requireNonNegativeSafeInteger(value, label);
+  if (integer > 255) {
+    throw new Error(`${label} must be at most 255`);
+  }
+  return integer;
+};
+
+const requireNonNegativeBigInt = (value: unknown, label: string): bigint => {
+  if (typeof value !== "bigint" || value < 0n) {
+    throw new Error(`${label} must be a non-negative bigint`);
+  }
+  return value;
+};
+
+const requireEnum = <T extends string>(
+  value: unknown,
+  values: readonly T[],
+  label: string,
+): T => {
+  if (typeof value !== "string" || !values.includes(value as T)) {
+    throw new Error(`${label} must be one of ${values.join(", ")}`);
+  }
+  return value as T;
+};
+
+const optionalStringProperty = <K extends string>(
+  record: Record<string, unknown>,
+  key: K,
+  label: string,
+): Readonly<Partial<Record<K, string>>> => {
+  if (record[key] === undefined) {
+    return {} as Partial<Record<K, string>>;
+  }
+  return { [key]: requireString(record[key], label) } as Record<K, string>;
+};
+
+const optionalBooleanProperty = <K extends string>(
+  record: Record<string, unknown>,
+  key: K,
+  label: string,
+): Readonly<Partial<Record<K, boolean>>> => {
+  if (record[key] === undefined) {
+    return {} as Partial<Record<K, boolean>>;
+  }
+  return { [key]: requireBoolean(record[key], label) } as Record<K, boolean>;
+};
+
+const optionalNonNegativeSafeIntegerProperty = <K extends string>(
+  record: Record<string, unknown>,
+  key: K,
+  label: string,
+): Readonly<Partial<Record<K, number>>> => {
+  if (record[key] === undefined) {
+    return {} as Partial<Record<K, number>>;
+  }
+  return {
+    [key]: requireNonNegativeSafeInteger(record[key], label),
+  } as Record<K, number>;
+};
+
+const optionalEnumProperty = <K extends string, T extends string>(
+  record: Record<string, unknown>,
+  key: K,
+  values: readonly T[],
+  label: string,
+): Readonly<Partial<Record<K, T>>> => {
+  if (record[key] === undefined) {
+    return {} as Partial<Record<K, T>>;
+  }
+  return { [key]: requireEnum(record[key], values, label) } as Record<K, T>;
 };

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { createServer } from "node:net";
 
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
@@ -83,13 +82,6 @@ describe("real multi-peer DA publication", () => {
     );
     let slowThirdPeer = false;
     let rejectEnvelopeOnThirdPeer = false;
-    const committeeHandlerMetrics: Array<{
-      readonly peerIndex: number;
-      readonly durationMs: number;
-      readonly rssBeforeBytes: number;
-      readonly rssAfterBytes: number;
-      readonly sharedProcessPeakRssBytes: number;
-    }> = [];
     const committeeNodes = committeeSeeds.map((seed, index) => {
       const config: Libp2pDaTransportConfig = {
         kind: "libp2p",
@@ -136,8 +128,6 @@ describe("real multi-peer DA publication", () => {
         if (index === 2 && slowThirdPeer) {
           await new Promise((resolve) => setTimeout(resolve, 14_000));
         }
-        const startedAt = performance.now();
-        const rssBeforeBytes = process.memoryUsage().rss;
         if (index === 2 && rejectEnvelopeOnThirdPeer) {
           const request = decodeDaPayloadSubmitRequestV1Cbor(
             await readSingleDaStreamFrame(context.stream, {
@@ -158,13 +148,6 @@ describe("real multi-peer DA publication", () => {
         } else {
           await submitHandler(context);
         }
-        committeeHandlerMetrics.push({
-          peerIndex: index,
-          durationMs: performance.now() - startedAt,
-          rssBeforeBytes,
-          rssAfterBytes: process.memoryUsage().rss,
-          sharedProcessPeakRssBytes: process.resourceUsage().maxRSS * 1024,
-        });
       });
       return new DaLibp2pNode({
         config,
@@ -215,7 +198,7 @@ describe("real multi-peer DA publication", () => {
       });
       expect(capabilities.every((result) => result.capable)).toBe(true);
       const fixture = await makePayloadFixture();
-      const envelope = await wrapDaPayloadV1(fixture.payloadCbor, {
+      const envelope = await wrapDaPayloadV1(fixture.innerPayloadCbor, {
         mode: "zstd",
         zstdLevel: 3,
       });
@@ -269,10 +252,14 @@ describe("real multi-peer DA publication", () => {
           header: secondHeader,
         },
       });
+      const secondEnvelope = await wrapDaPayloadV1(secondPayloadCbor, {
+        mode: "zstd",
+        zstdLevel: 3,
+      });
       rejectEnvelopeOnThirdPeer = false;
       const inverse = await publishDaPayloadInsert({
         insert: {
-          ...insertFromFixture(fixture, secondPayloadCbor),
+          ...insertFromFixture(fixture, secondEnvelope),
           [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(
             secondHeaderHash,
             "hex",
@@ -287,65 +274,6 @@ describe("real multi-peer DA publication", () => {
           (result) => result.status === "accepted",
         ),
       ).toBe(true);
-
-      const largeEnvelopePath =
-        process.env.MIDGARD_DA_LARGE_OPERATIONAL_ENVELOPE;
-      const largeReportPath = process.env.MIDGARD_DA_LARGE_OPERATIONAL_REPORT;
-      if (largeEnvelopePath !== undefined && largeReportPath !== undefined) {
-        const [largeEnvelope, reportBytes] = await Promise.all([
-          readFile(largeEnvelopePath),
-          readFile(largeReportPath),
-        ]);
-        const report = JSON.parse(reportBytes.toString("utf8")) as {
-          readonly measurements: readonly [{ readonly headerHash: string }];
-        };
-        const largeHeaderHash = report.measurements[0].headerHash;
-        const largeInsert = {
-          ...insertFromFixture(fixture, largeEnvelope),
-          [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(
-            largeHeaderHash,
-            "hex",
-          ),
-        };
-        committeeHandlerMetrics.length = 0;
-        const largeStartedAt = performance.now();
-        const large = await publishDaPayloadInsert({
-          insert: largeInsert,
-          manifest,
-          transport,
-        });
-        const largeThresholdDurationMs = performance.now() - largeStartedAt;
-        const largeAll = await large.allPeerResults;
-        const largeAllPeerDurationMs = performance.now() - largeStartedAt;
-        expect(large.acceptedPeers).toBeGreaterThanOrEqual(2);
-        expect(largeAll).toHaveLength(3);
-        expect(largeAll?.every((result) => result.status === "accepted")).toBe(
-          true,
-        );
-        expect(largeThresholdDurationMs).toBeLessThan(20_000);
-        await Promise.all(
-          stores.map(async (store) => {
-            const stored = await store.getDaPayload(largeHeaderHash);
-            expect(stored?.payloadSchemaVersion).toBe(1);
-            expect(stored?.payloadCborHex.length).toBe(
-              largeEnvelope.length * 2,
-            );
-          }),
-        );
-        process.stdout.write(
-          `${JSON.stringify({
-            schemaVersion: "midgard-phase-5-live-da-50k-v1",
-            peers: 3,
-            threshold: 2,
-            envelopeBytes: largeEnvelope.length,
-            thresholdDurationMs: largeThresholdDurationMs,
-            allPeerDurationMs: largeAllPeerDurationMs,
-            committeeHandlers: committeeHandlerMetrics.sort(
-              (left, right) => left.peerIndex - right.peerIndex,
-            ),
-          })}\n`,
-        );
-      }
 
       slowThirdPeer = true;
       const startedAt = performance.now();
@@ -395,19 +323,6 @@ describe("real multi-peer DA publication", () => {
             status: "duplicate",
           }),
         ]),
-      );
-      process.stdout.write(
-        `${JSON.stringify({
-          schemaVersion: "midgard-phase-5-live-da-v1",
-          peers: 3,
-          threshold: 2,
-          uncompressedBytes: fixture.payloadCbor.length,
-          envelopeBytes: envelope.length,
-          egressBytesAtThreePeers: envelope.length * 3,
-          thresholdDurationMs,
-          stragglerDurationMs,
-          readinessRecovered: true,
-        })}\n`,
       );
     } finally {
       await transport?.close?.();

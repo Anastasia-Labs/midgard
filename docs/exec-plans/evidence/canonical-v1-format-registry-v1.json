@@ -1,0 +1,3574 @@
+{
+  "schema": "midgard-canonical-v1-format-registry-v1",
+  "version": 1,
+  "source": "docs/exec-plans/canonical-v1-format-registry.md",
+  "unknownFormatPolicy": "reject",
+  "forbiddenActivePatterns": [
+    {
+      "id": "C01-obsolete-consensus-profiles",
+      "paths": [
+        "demo/da-committee-node/src",
+        "demo/lucid-midgard/src",
+        "demo/lucid-midgard/tests",
+        "demo/midgard-core/src",
+        "demo/midgard-core/tests",
+        "demo/midgard-fault-proofs/src",
+        "demo/midgard-fault-proofs/tests",
+        "demo/midgard-node/src",
+        "demo/midgard-node/tests",
+        "demo/midgard-sdk/src",
+        "demo/midgard-sdk/tests",
+        "demo/midgard-validation/src",
+        "demo/midgard-validation/tests"
+      ],
+      "patterns": [
+        "midgard-launch-consensus-v1",
+        "midgard-proof-consensus-v3"
+      ]
+    },
+    {
+      "id": "A22-retired-phase5-da-artifacts",
+      "paths": [
+        "demo/midgard-node/package.json",
+        "demo/midgard-node/scripts",
+        "demo/midgard-node/src",
+        "demo/midgard-node/tests"
+      ],
+      "patterns": [
+        "MIDGARD_DA_LARGE_OPERATIONAL_ENVELOPE",
+        "MIDGARD_DA_LARGE_OPERATIONAL_REPORT",
+        "midgard-phase-5-live-da-50k-v1",
+        "midgard-phase-5-live-da-v1",
+        "test:da-phase5-e2e"
+      ]
+    }
+  ],
+  "formats": [
+    {
+      "id": "C01",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "midgard-core/src/consensus-profile.ts`: launch profile `midgard-launch-consensus-v1",
+      "classification": "schema",
+      "canonicalResult": "Delete",
+      "boundaryBindingAndPersistence": "Removed pre-launch compile-time/runtime profile selector; no active source or test may name either retired profile identity.",
+      "requiredEvidence": "Repository-owned zero-match scan over every active TypeScript package source and test tree.",
+      "disposition": "delete",
+      "auditStatus": "PASS",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "Deleted pre-launch profile selectors have no canonical wire value or cross-language counterpart."
+      },
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "C01-obsolete-consensus-profiles"
+        }
+      ],
+      "notes": [
+        "The sole retained compiled profile is C02 midgard-consensus-v1."
+      ]
+    },
+    {
+      "id": "C02",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "midgard-core/src/proof-consensus-profile.ts`: `midgard-proof-consensus-v3",
+      "classification": "schema",
+      "canonicalResult": "MidgardConsensusProfileV1`; `midgard-consensus-v1",
+      "boundaryBindingAndPersistence": "Compiled tuple; manifest; protocol-info; node/DA startup; pending journals",
+      "requiredEvidence": "One canonical tuple/digest and exact startup equality",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "symbols": [
+            "MIDGARD_CONSENSUS_PROFILE_V1",
+            "MIDGARD_CONSENSUS_PROFILE_V1_DIGEST",
+            "encodeMidgardConsensusProfileV1",
+            "isMidgardConsensusProfileV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "MidgardConsensusProfileV1",
+          "kind": "exact authenticated JSON object",
+          "wireRepresentation": "UTF-8 stable JSON with recursively lexicographically sorted object keys, dense arrays, safe integers, and no unsupported values",
+          "versionPolicy": "profileId is exactly midgard-consensus-v1; every Midgard-owned numeric schema/version field is exactly 1",
+          "exactFields": [
+            "profileId",
+            "protocolVersion",
+            "nativeTransactionVersion",
+            "nativeTransactionProofSourceVersion",
+            "transitionStepSchemaVersion",
+            "headerSchemaVersion",
+            "stateQueueSchemaVersion",
+            "transactionOrderSchemaVersion",
+            "transactionFieldPublicationSchemaVersion",
+            "forcedTransactionJournalVersion",
+            "daPayloadVersion",
+            "daEnvelopeVersion",
+            "daTransportProtocolVersion",
+            "daRuntimeManifestSchemaVersion",
+            "validationMachineVersion",
+            "validationTraceDescriptorVersion",
+            "validationDisputeVersion",
+            "cekProgramEnvelopeVersion",
+            "cekValueSchemaVersion",
+            "cekProgramMaterialVersion",
+            "cekProgramMaterialSidecarVersion",
+            "proofSubmissionEnvelopeVersion",
+            "scriptProofSchemaVersion",
+            "ledgerOutputSchemaVersion",
+            "mpfProofSchemaVersion",
+            "deploymentManifestSchemaVersion",
+            "protocolInfoApiVersion",
+            "limits",
+            "features",
+            "requiredProofFamilies"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON object; no sum-type discriminator.",
+          "arrayArityNotApplicable": "Exact JSON object; nested array lengths and values are part of the frozen compiled tuple.",
+          "boundary": "Compiled consensus identity consumed by deployment manifest, protocol-info, node/DA startup, and pending journals",
+          "binding": "BLAKE2b-256 digest of the sole stable JSON encoding",
+          "persistence": "Embedded in authenticated deployment and public protocol identity; never parsed as a historical profile",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "symbols": [
+                "encodeMidgardConsensusProfileV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "symbols": [
+                "isMidgardConsensusProfileV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "testNames": [
+            "pins the indivisible V1 version tuple",
+            "accepts only the exact compiled V1 profile"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "testNames": [
+            "accepts only the exact compiled V1 profile",
+            "fails closed until validator-hash-bound L1 release evidence is compiled in"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "Aiken does not decode the off-chain stable-JSON profile object; its individual on-chain constants and encoded datums are independently audited by C03 and their format-family rows."
+      },
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "C01-obsolete-consensus-profiles"
+        }
+      ],
+      "notes": [
+        "The profile parser compares the complete stable JSON value, so missing, extra, reordered-semantic, invalid-number, or version-mutated content fails closed."
+      ]
+    },
+    {
+      "id": "C03",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "Proof protocol version `1`, native version `2`, transition schema `3`, validation machine `9`, descriptor `1`, dispute `2`, DA inner `4`, CEK `3`, submission `2`, API `8",
+      "classification": "schema",
+      "canonicalResult": "Every Midgard-owned tuple field becomes `1",
+      "boundaryBindingAndPersistence": "Canonical tuple digest and every consuming parser",
+      "requiredEvidence": "Tuple golden vector and consumer equality tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "C04",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "deployment-manifest-v2.ts`: launch manifest v3 and proof manifest v9",
+      "classification": "schema",
+      "canonicalResult": "DeploymentManifestV1`; `midgard-deployment-manifest-v1",
+      "boundaryBindingAndPersistence": "Exact JSON parser; node/DA config; final deployment identity",
+      "requiredEvidence": "Exact-object positive test; missing/extra/tampered field rejection",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "symbols": [
+            "DEPLOYMENT_MANIFEST_V1_ROOT_KEYS",
+            "computeDeploymentManifestV1Id",
+            "verifyDeploymentManifestV1Identity",
+            "verifyFinalizedDeploymentManifestV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+          "symbols": [
+            "DeploymentManifestV1Value",
+            "parseDeploymentManifestV1Value"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DeploymentManifestV1",
+          "kind": "exact authenticated JSON object",
+          "wireRepresentation": "JSON-safe object normalized to stable recursively key-sorted JSON; manifestId is lowercase SHA-256 of all exact root fields except manifestId",
+          "versionPolicy": "schemaVersion is exactly midgard-deployment-manifest-v1 and consensusProfile is exactly C02",
+          "exactFields": [
+            "schemaVersion",
+            "manifestId",
+            "consensusProfile",
+            "consensusProfileDigest",
+            "network",
+            "cardanoProtocolParameters",
+            "genesis",
+            "createdAt",
+            "updatedAt",
+            "referenceScriptDeployAddress",
+            "hubOracleOneShot",
+            "referenceScriptAuthPolicy",
+            "contracts",
+            "referenceScripts",
+            "da",
+            "proofEvidence",
+            "steps",
+            "validationDispute"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON object; nested enum values and contract/script types are checked by the full parser.",
+          "arrayArityNotApplicable": "Exact JSON object; required contract, reference-script, proof-family, and step sets are checked by name.",
+          "boundary": "Deployment creation, node/DA startup, SDK identity, release evidence, and final applied validator identity",
+          "binding": "SHA-256 manifestId plus exact C02 digest, network, Cardano parameters, script bytes/hashes, DA identity, proof evidence, and dispute schedule",
+          "persistence": "Canonical deployment manifest artifact and every deployment-bound durable marker",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "computeDeploymentManifestV1Id",
+                "normalizeDeploymentManifestV1JsonValue"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+              "symbols": [
+                "parseDeploymentManifestV1Value"
+              ]
+            },
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "verifyFinalizedDeploymentManifestV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "testNames": [
+            "accepts the sole exact authenticated V1 manifest",
+            "delegates canonical JSON normalization and digesting to core"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "recomputes the exact full-manifest identity"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "testNames": [
+            "rejects missing and unexpected root fields",
+            "rejects tampered script bytes even with a recomputed manifest ID",
+            "rejects tampered Cardano and DA identity fields"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "rejects tampering, missing fields, and extra fields"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "Aiken does not parse the off-chain JSON artifact; the manifest authenticates freshly compiled Aiken validator bytes and hashes, whose concrete ABI rows are audited separately."
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": [
+        "Core is the sole JSON normalization and digest owner; node imports it directly."
+      ]
+    },
+    {
+      "id": "C05",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "commands/protocol-info.ts`: API 2 and proof API 8; Lucid fallback accepts 2/4",
+      "classification": "schema",
+      "canonicalResult": "ProtocolInfoV1`; API `1`; no fallback",
+      "boundaryBindingAndPersistence": "HTTP `/protocol-info`; online SDK initialization",
+      "requiredEvidence": "Node/SDK round trip; absent endpoint and non-1 rejection",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-node/src/commands/protocol-info.ts",
+          "symbols": [
+            "PROTOCOL_INFO_API_VERSION",
+            "ProtocolInfo",
+            "encodeProtocolInfo"
+          ]
+        },
+        {
+          "path": "demo/lucid-midgard/src/provider/payload.ts",
+          "symbols": [
+            "parseProtocolInfo",
+            "assertExactObjectKeys"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "ProtocolInfoV1",
+          "kind": "exact public JSON API object",
+          "wireRepresentation": "JSON object with ten exact root keys and exact nested fee, submission-limit, validation, language, and C02 profile values",
+          "versionPolicy": "apiVersion and midgardNativeTxVersion are both exactly numeric 1; no fallback or historical API is accepted",
+          "exactFields": [
+            "apiVersion",
+            "network",
+            "midgardNativeTxVersion",
+            "currentSlot",
+            "consensusProfile",
+            "supportedScriptLanguages",
+            "codecSupportedScriptLanguages",
+            "protocolFeeParameters{minFeeA,minFeeB}",
+            "submissionLimits{maxSubmitTxCborBytes}",
+            "validation{strictnessProfile,localValidationIsAuthoritative}"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON object; script-language arrays are exact semantic string sets.",
+          "arrayArityNotApplicable": "Exact JSON object; both supported-language arrays are compared with the complete compiled language list.",
+          "boundary": "Unauthenticated HTTP transport made authoritative only after exact deployment/profile compatibility checks during online SDK initialization",
+          "binding": "C02 profile, canonical transaction bound, network, fee parameters, script languages, current slot, and strict local-validation policy",
+          "persistence": "Not persisted as compatibility state; fetched on provider initialization and fails closed when absent or incompatible",
+          "encoders": [
+            {
+              "path": "demo/midgard-node/src/commands/protocol-info.ts",
+              "symbols": [
+                "encodeProtocolInfo"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/lucid-midgard/src/provider/payload.ts",
+              "symbols": [
+                "parseProtocolInfo"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/lucid-midgard/tests/provider.test.ts",
+          "testNames": [
+            "accepts the exact current protocol-info shape from the node"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/lucid-midgard/tests/provider.test.ts",
+          "testNames": [
+            "rejects unknown root protocol-info fields",
+            "rejects unknown nested protocol-info fields",
+            "fails closed on incompatible V1 profiles and feature matrices",
+            "fails closed when the required protocol-info endpoint is unavailable"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "The public HTTP JSON payload is node-to-SDK and is not decoded by Aiken; embedded consensus and native format values are audited by C02/C03 and N01-N14."
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": [
+        "The node encoder remains fail closed until validator-hash-bound release evidence is compiled, while the SDK parser is permanently testable with the exact object."
+      ]
+    },
+    {
+      "id": "C06",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "Contract deployment marker and `manifestId` computation",
+      "classification": "schema",
+      "canonicalResult": "DeploymentMarkerV1` bound to canonical final manifest ID",
+      "boundaryBindingAndPersistence": "Postgres, MPF metadata, DA store, E2E run state",
+      "requiredEvidence": "Canonical preimage golden; exact marker mismatch rejection",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "C07",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "Target-network Cardano parameter snapshot",
+      "classification": "external",
+      "canonicalResult": "Preserve Cardano names/values; include snapshot in manifest",
+      "boundaryBindingAndPersistence": "Trusted provider input and release evidence",
+      "requiredEvidence": "Provider-derived snapshot and manifest binding",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "C08",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "GENESIS_PROTOCOL_VERSION = 0n` and Aiken `genesis_protocol_version = 0",
+      "classification": "sentinel",
+      "canonicalResult": "Preserve `0",
+      "boundaryBindingAndPersistence": "Genesis state-queue datum and initialization checks",
+      "requiredEvidence": "Genesis succeeds only with sentinel; ordinary header V1 remains distinct",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "C09",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "Cardano `PlutusV1/V2/V3`, Aiken `plutus = \"v3\"",
+      "classification": "external",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Cardano script language and compilation target",
+      "requiredEvidence": "Existing language/hash tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "C10",
+      "family": "C",
+      "sourceOwnerAndCurrentIdentity": "MidgardV1` script-language tag `128` and hash prefix `0x80",
+      "classification": "semantic",
+      "canonicalResult": "Preserve as the first Midgard script language",
+      "boundaryBindingAndPersistence": "Versioned-script CBOR and script hash",
+      "requiredEvidence": "Exact tag/hash vectors; unknown-language rejection",
+      "disposition": "semantic",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/codec/versioned-script.ts",
+          "symbols": [
+            "MidgardVersionedScriptTags",
+            "MidgardScriptHashPrefixes",
+            "encodeMidgardVersionedScript",
+            "decodeMidgardVersionedScript",
+            "hashMidgardVersionedScript"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/script-proof-v1.ak",
+          "symbols": [
+            "language_tag",
+            "versioned_script_hash"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
+          "symbols": [
+            "decode_midgard_versioned_script_at",
+            "encode_midgard_versioned_script"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "MidgardVersionedScript",
+          "kind": "canonical CBOR tuple and semantic hash domain",
+          "wireRepresentation": "definite CBOR array [language_tag, script_bytes]",
+          "versionPolicy": "NativeCardano=0, PlutusV3=3, MidgardV1=128; all other tags reject",
+          "exactFields": [
+            "0: language_tag unsigned integer",
+            "1: script_bytes definite byte string"
+          ],
+          "constructorTags": [
+            {
+              "name": "NativeCardano",
+              "tag": 0,
+              "arity": 2
+            },
+            {
+              "name": "PlutusV3",
+              "tag": 3,
+              "arity": 2
+            },
+            {
+              "name": "MidgardV1",
+              "tag": 128,
+              "arity": 2
+            }
+          ],
+          "arrayArity": 2,
+          "boundary": "Native transaction script witnesses, reference scripts, script proof leaves, and validation source discovery",
+          "binding": "BLAKE2b-224 over one-byte language hash prefix followed by exact script bytes; MidgardV1 prefix is 0x80",
+          "persistence": "Nested in canonical transaction/output/script-proof formats; no historical tag alias",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/codec/versioned-script.ts",
+              "symbols": [
+                "encodeMidgardVersionedScript"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
+              "symbols": [
+                "encode_midgard_versioned_script"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/codec/versioned-script.ts",
+              "symbols": [
+                "decodeMidgardVersionedScript"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
+              "symbols": [
+                "decode_midgard_versioned_script_at"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/output-codec.test.ts",
+          "testNames": [
+            "pins the MidgardV1 script tag and hash prefix and rejects unknown tags"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
+          "testNames": [
+            "midgard_v1_script_tag_and_hash_prefix_vector_is_stable"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/output-codec.test.ts",
+          "testNames": [
+            "pins the MidgardV1 script tag and hash prefix and rejects unknown tags"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/midgard-core/tests/output-codec.test.ts",
+            "testNames": [
+              "pins the MidgardV1 script tag and hash prefix and rejects unknown tags"
+            ]
+          },
+          {
+            "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
+            "testNames": [
+              "midgard_v1_script_tag_and_hash_prefix_vector_is_stable"
+            ]
+          }
+        ],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": [
+        "The shared 010203 golden vector is 760b621a49505853e1f4562d126e185f78483932825e0fb077a1ed80 in both TypeScript and Aiken."
+      ]
+    },
+    {
+      "id": "N01",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "codec/native.ts`: canonical/full native transaction, versions 1 and 2",
+      "classification": "schema",
+      "canonicalResult": "MidgardNativeTxCanonicalV1` / `MidgardNativeTxFullV1`; version `1`; retain current V2 semantics",
+      "boundaryBindingAndPersistence": "Submission API, admission payload, DA transaction member",
+      "requiredEvidence": "Canonical CBOR round trip and exact version check",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N02",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Compact native transaction",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxCompactV1",
+      "boundaryBindingAndPersistence": "Native tx ID and proof source",
+      "requiredEvidence": "TS/Aiken compact bytes and tx-ID vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N03",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Compact transaction body",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxBodyCompactV1",
+      "boundaryBindingAndPersistence": "Native tx ID preimage",
+      "requiredEvidence": "Field-order golden vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N04",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Canonical transaction body",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxBodyCanonicalV1",
+      "boundaryBindingAndPersistence": "Full transaction CBOR and field hashes",
+      "requiredEvidence": "Canonical field-preimage/hash vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N05",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Compact witness set",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxWitnessSetCompactV1",
+      "boundaryBindingAndPersistence": "Compact transaction witness hash",
+      "requiredEvidence": "Hash vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N06",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Canonical witness preimages",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxWitnessSetCanonicalV1",
+      "boundaryBindingAndPersistence": "Full transaction CBOR",
+      "requiredEvidence": "Round trip and consistency proof",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N07",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "MidgardNativeTxProofSourceV3`: compact CBOR, compact witness CBOR, field lengths",
+      "classification": "schema",
+      "canonicalResult": "MidgardNativeTxProofSourceV1",
+      "boundaryBindingAndPersistence": "Forced transaction source, DA, proof commitments",
+      "requiredEvidence": "Canonical source/commitment vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N08",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Proof field-length nine-tuple V3",
+      "classification": "nested-schema",
+      "canonicalResult": "MidgardNativeTxProofFieldLengthsV1",
+      "boundaryBindingAndPersistence": "Native proof source",
+      "requiredEvidence": "Exact length/count/canonical CBOR tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N09",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "computeMidgardNativeTxFullHashV2",
+      "classification": "nested-schema",
+      "canonicalResult": "computeMidgardNativeTxFullHashV1` with V1 domain",
+      "boundaryBindingAndPersistence": "Admission/full-source commitment",
+      "requiredEvidence": "Hash vector and TS/Aiken agreement",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N10",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "MidgardPartialWitnessBundle`, version `1",
+      "classification": "schema",
+      "canonicalResult": "MidgardPartialWitnessBundleV1`, version `1",
+      "boundaryBindingAndPersistence": "Lucid import/export and partial signing",
+      "requiredEvidence": "Canonical bundle, tx/body binding, unknown-version rejection",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N11",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Native transaction validity codes `0..5",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Native tx compact/canonical validity field",
+      "requiredEvidence": "Existing code-to-meaning tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N12",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "MIDGARD_POSIX_TIME_NONE = -1`, network-id-none `255",
+      "classification": "sentinel",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Native body validity/network fields",
+      "requiredEvidence": "Existing sentinel tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N13",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Native Cardano script constructors and tags",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Native script CBOR and phase-A evaluation",
+      "requiredEvidence": "Cardano-compatible native-script vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "N14",
+      "family": "N",
+      "sourceOwnerAndCurrentIdentity": "Redeemer purpose/tag/index values",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Witness preimage, script context, script proof",
+      "requiredEvidence": "Purpose/index binding tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D01",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "SDK `DaPayloadV2",
+      "classification": "schema",
+      "canonicalResult": "Delete",
+      "boundaryBindingAndPersistence": "Historical raw payload path",
+      "requiredEvidence": "No export/decoder/capability",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D02",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "SDK `DaPayloadV3",
+      "classification": "schema",
+      "canonicalResult": "Delete",
+      "boundaryBindingAndPersistence": "Historical envelope payload path",
+      "requiredEvidence": "No export/decoder/capability",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D03",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "SDK `DaPayloadV4` and DA-side `VerifiedDaPayloadV4",
+      "classification": "schema",
+      "canonicalResult": "DaPayloadV1` / `VerifiedDaPayloadV1`, version `1",
+      "boundaryBindingAndPersistence": "Commit worker, DA committee, watcher, reconstruction",
+      "requiredEvidence": "Canonical CBOR, roots, counts, and size vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D04",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadBodyV4`, retained `DaPayloadCountsV3`, and nested arrays/maps",
+      "classification": "nested-schema",
+      "canonicalResult": "DaPayloadBodyV1` / `DaPayloadCountsV1",
+      "boundaryBindingAndPersistence": "Mandatory payload envelope",
+      "requiredEvidence": "Field order and root/count validation",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D05",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadEnvelopeV3`, envelope `3`, inner `2/4`, raw inference",
+      "classification": "schema",
+      "canonicalResult": "DaPayloadEnvelopeV1`, envelope `1`, inner `1`; mandatory `identity` or `zstd` tag",
+      "boundaryBindingAndPersistence": "Stored bytes, libp2p submission/retrieval, DB payload rows",
+      "requiredEvidence": "Identity/zstd round trips; raw/off/inferred input rejected",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D06",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DA transport protocol version `1` and protocol IDs/topics",
+      "classification": "schema",
+      "canonicalResult": "Sole DA transport V1",
+      "boundaryBindingAndPersistence": "libp2p negotiation",
+      "requiredEvidence": "Exact protocol/capability handshake",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D07",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadAnnouncementV1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Gossip frame",
+      "requiredEvidence": "Canonical CBOR/signature/context validation",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D08",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadSubmitRequestV1/ResponseV1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Producer-to-committee stream",
+      "requiredEvidence": "Request/response bounds and error codes",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D09",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaCapabilitiesRequestV1/ResponseV1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1; advertise payload/envelope V1 only",
+      "boundaryBindingAndPersistence": "Capability negotiation",
+      "requiredEvidence": "No V2/V3/V4 payload advertisement",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D10",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadByHeaderRequestV1/ResponseV1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Retrieval stream",
+      "requiredEvidence": "Manifest/deployment/header binding",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D11",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DaPayloadChunkManifestV1`, chunk request/response V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Bounded retrieval chunks",
+      "requiredEvidence": "Chunk hash/length/order tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D12",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Metadata-by-header V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Retrieval metadata",
+      "requiredEvidence": "Exact deployment/header binding",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D13",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Proof-bundle-by-header V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
+      "requiredEvidence": "Root/member/preimage binding tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D14",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Trace-step-by-index V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
+      "requiredEvidence": "Index/root proof validation",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D15",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Event-to-step-by-event V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
+      "requiredEvidence": "Event/root proof validation",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D16",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Attestation gossip/query V1 and `MidgardDAAttestationV1` domain",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Committee signature and L1 attestation",
+      "requiredEvidence": "Signature preimage and threshold tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D17",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "Conflict evidence V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Peer evidence and persistence",
+      "requiredEvidence": "Conflicting signature/header tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D18",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DA runtime manifest v2 plus v1 fixture readers",
+      "classification": "artifact",
+      "canonicalResult": "DaRuntimeManifestV1`; `midgard-da-libp2p-runtime-manifest-v1",
+      "boundaryBindingAndPersistence": "Producer/watcher startup",
+      "requiredEvidence": "Exact manifest parser and deployment identity",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "D19",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DA persisted payload record with optional/missing schema defaulting to 2",
+      "classification": "schema",
+      "canonicalResult": "DaStoredPayloadRecordV1`; explicit V1 required",
+      "boundaryBindingAndPersistence": "DA Postgres/file store",
+      "requiredEvidence": "Missing/non-1 rejected; no default",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/da-committee-node/src/domain.ts",
+          "symbols": [
+            "DaStoredPayloadRecordV1",
+            "parseDaStoredPayloadRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store.ts",
+          "symbols": [
+            "parseDaStoredPayloadRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store/postgres.ts",
+          "symbols": [
+            "parseDaStoredPayloadRecordV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaStoredPayloadRecordV1",
+          "kind": "exact persisted JSON/Postgres record",
+          "wireRepresentation": "JSON object; bigint is not present at this outer record and every nested root field is a lowercase/string value validated at the store boundary",
+          "versionPolicy": "payloadSchemaVersion is required and exactly numeric 1; no missing/defaulted or historical value is accepted",
+          "exactFields": [
+            "required: deploymentFingerprint",
+            "required: headerHash",
+            "required: payloadSchemaVersion",
+            "required: payloadCborHex",
+            "required: payloadSha256",
+            "required: sourcePeerId",
+            "required: fetchedAt",
+            "required: validationStatus",
+            "optional: payloadFetchStatus",
+            "optional: verifiedAt",
+            "optional: rootSummary{utxosRoot,withdrawalsRoot,forcedTransactionsRoot,transactionsRoot,depositsRoot,transitionTraceRoot,eventToStepRoot,validationTracesRoot}",
+            "optional: conflictStatus",
+            "optional: validationError"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON record; status enums are validated string sets rather than constructor tags.",
+          "arrayArityNotApplicable": "Exact JSON record.",
+          "boundary": "Every JSON-file and Postgres DA payload write, read, and startup rehydration",
+          "binding": "Deployment fingerprint, header hash, payload SHA-256, canonical envelope bytes, complete root summary, fetch/validation/conflict status",
+          "persistence": "JSON watcher state or watcher_da_payloads Postgres JSON record",
+          "encoders": [
+            {
+              "path": "demo/da-committee-node/src/store.ts",
+              "symbols": [
+                "saveDaPayload"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/store/postgres.ts",
+              "symbols": [
+                "saveDaPayload"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/da-committee-node/src/domain.ts",
+              "symbols": [
+                "parseDaStoredPayloadRecordV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "accepts only exact explicit-V1 DA payload records on JSON writes"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/postgres-store.test.ts",
+          "testNames": [
+            "persists watcher state and detects payload conflicts"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "accepts only exact explicit-V1 DA payload records on JSON writes",
+            "rejects malformed DA records when opening an existing JSON store"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/postgres-store.test.ts",
+          "testNames": [
+            "persists watcher state and detects payload conflicts"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "This is a committee service storage record, not an Aiken datum; its embedded D03 payload bytes and roots have their own cross-language rows."
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": [
+        "The same parser runs on both writes and reads; corrupt historical JSON/Postgres rows fail closed rather than defaulting."
+      ]
+    },
+    {
+      "id": "D20",
+      "family": "D",
+      "sourceOwnerAndCurrentIdentity": "DA signature record `source: \"legacy\"",
+      "classification": "schema",
+      "canonicalResult": "DaSignatureRecordV1`; remove `legacy` source",
+      "boundaryBindingAndPersistence": "DA store",
+      "requiredEvidence": "Only local/peer sources accepted",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/da-committee-node/src/domain.ts",
+          "symbols": [
+            "DaSignatureRecordV1",
+            "parseDaSignatureRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/peer/signatures.ts",
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store.ts",
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store/postgres.ts",
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaSignatureRecordV1",
+          "kind": "exact persisted JSON/Postgres signature record",
+          "wireRepresentation": "JSON object with canonical decimal-string bigint values under validation.countSummary and exact nested chain-point, root, count, and L1-header objects",
+          "versionPolicy": "validation.payloadVersion is exactly 1 and source is required as exactly local or peer; legacy and missing values reject",
+          "exactFields": [
+            "required: deploymentFingerprint",
+            "required: headerHash",
+            "required: signerIndex",
+            "required: signatureWitness",
+            "required: payloadHash",
+            "required: committeeSignersHash",
+            "required: signedAt",
+            "required: broadcastStatus",
+            "required: source",
+            "required: l1ChainPoint",
+            "required: validation{payloadVersion,rootsMatch,stateQueueOutRef,headerHash,rootSummary,countSummary,l1Header}",
+            "optional: sourcePeer",
+            "optional: receivedAt",
+            "optional: verifiedAt"
+          ],
+          "constructorTags": [
+            {
+              "name": "local",
+              "tag": "local",
+              "arity": 1
+            },
+            {
+              "name": "peer",
+              "tag": "peer",
+              "arity": 1
+            }
+          ],
+          "arrayArityNotApplicable": "Exact JSON record.",
+          "boundary": "Peer attestation ingress and every JSON-file/Postgres signature write, read, list, and startup rehydration",
+          "binding": "Deployment/header/payload/committee identities, signer index and witness, source provenance, L1 chain point, exact payload roots/counts/header",
+          "persistence": "JSON watcher state or watcher_da_signatures Postgres JSON record",
+          "encoders": [
+            {
+              "path": "demo/da-committee-node/src/store.ts",
+              "symbols": [
+                "saveDaSignature"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/store/postgres.ts",
+              "symbols": [
+                "saveDaSignature"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/da-committee-node/src/domain.ts",
+              "symbols": [
+                "parseDaSignatureRecordV1"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/peer/signatures.ts",
+              "symbols": [
+                "parseDaSignatureRecordV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "accepts only exact explicit-source DA signature records on JSON writes"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+          "testNames": [
+            "publishes signatures through the libp2p attestation exchange and persists broadcast state"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "accepts only exact explicit-source DA signature records on JSON writes",
+            "rejects malformed DA records when opening an existing JSON store"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+          "testNames": [
+            "rejects missing, legacy, unknown, and malformed signature record fields"
+          ]
+        }
+      ],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "This is service persistence/provenance metadata, not an Aiken datum; the embedded signature witness and D16 attestation preimage are audited separately."
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": [
+        "Transient coordinator values may use the broader source-optional DaSignatureRecord type, but no persisted boundary accepts it without exact DaSignatureRecordV1 parsing."
+      ]
+    },
+    {
+      "id": "L01",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "SDK `HeaderV2",
+      "classification": "schema",
+      "canonicalResult": "HeaderV1",
+      "boundaryBindingAndPersistence": "State-queue datum, block hash, DA root checks",
+      "requiredEvidence": "TS/Aiken datum and hash vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L02",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "HeaderTransitionCommitmentsV2",
+      "classification": "nested-schema",
+      "canonicalResult": "HeaderTransitionCommitmentsV1",
+      "boundaryBindingAndPersistence": "Header datum",
+      "requiredEvidence": "Complete commitment/count validation",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L03",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "StateQueueNodeV2",
+      "classification": "schema",
+      "canonicalResult": "StateQueueNodeV1",
+      "boundaryBindingAndPersistence": "L1 state-queue datum",
+      "requiredEvidence": "Topology and datum round trip",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L04",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "InitV2`, `MergeToConfirmedStateV2`, current state-queue redeemers",
+      "classification": "schema",
+      "canonicalResult": "InitV1`, `MergeToConfirmedStateV1",
+      "boundaryBindingAndPersistence": "State-queue validator redeemers",
+      "requiredEvidence": "Initialization/merge emulator tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L05",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Launch transition schema 1",
+      "classification": "schema",
+      "canonicalResult": "Delete with launch profile",
+      "boundaryBindingAndPersistence": "Launch DA/trace path",
+      "requiredEvidence": "No runtime branch",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L06",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Proof transition schema 3",
+      "classification": "schema",
+      "canonicalResult": "TransitionStepV1`, schema `1",
+      "boundaryBindingAndPersistence": "DA trace member and on-chain membership",
+      "requiredEvidence": "TS/Aiken encoding/hash vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L07",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "TxOrderDatumV2`, event/payload/forced V2",
+      "classification": "schema",
+      "canonicalResult": "Delete",
+      "boundaryBindingAndPersistence": "Launch transaction-order path",
+      "requiredEvidence": "No validator/export/parser",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L08",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "TxOrderDatumV3`, event/payload/source/forced V3",
+      "classification": "schema",
+      "canonicalResult": "Corresponding `...V1` formats",
+      "boundaryBindingAndPersistence": "L1 tx-order UTxO, node ingestion, DA event",
+      "requiredEvidence": "Datum/redeemer/forced-key vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L09",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "TxFieldPreimageV3`, `TxOrderFieldFragmentV3`, and `TxOrderFragmentBundleV3",
+      "classification": "schema",
+      "canonicalResult": "TxFieldPreimageV1`, `TxOrderFieldFragmentV1`, and `TxOrderFragmentBundleV1",
+      "boundaryBindingAndPersistence": "L1 publication datum, SDK publication plan, and proof opening",
+      "requiredEvidence": "Field kind/hash/length and fragment-bundle tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L10",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "TxFieldReceiptV3`, receipt publication V3, and mint/spend/burn redeemers V3",
+      "classification": "schema",
+      "canonicalResult": "Corresponding `...V1` formats",
+      "boundaryBindingAndPersistence": "L1 receipt assets, SDK publication plan, and validator spends",
+      "requiredEvidence": "Mint/burn/consume authorization tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L11",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "CekProgramMaterialDatumV2`, publication V2, and publication config V2",
+      "classification": "schema",
+      "canonicalResult": "Corresponding `...V1` formats",
+      "boundaryBindingAndPersistence": "L1 material publication UTxO and SDK publication plan",
+      "requiredEvidence": "Datum/hash/material-kind tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L12",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Forced transaction journal member V5",
+      "classification": "schema",
+      "canonicalResult": "ForcedTransactionJournalMemberV1`, version `1",
+      "boundaryBindingAndPersistence": "Postgres pending/finalization journal",
+      "requiredEvidence": "Canonical encode/decode; no alias/default",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L13",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Pending-block-finalization launch/proof metadata union",
+      "classification": "schema",
+      "canonicalResult": "PendingBlockFinalizationV1",
+      "boundaryBindingAndPersistence": "Postgres crash/recovery journal",
+      "requiredEvidence": "Exact V1 metadata and replay tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L14",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Full finalized UTxO snapshot fallback",
+      "classification": "schema",
+      "canonicalResult": "Delete; retain canonical delta representation as V1",
+      "boundaryBindingAndPersistence": "Finalization recovery",
+      "requiredEvidence": "Delta-chain recovery only",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L15",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Foreign-tip reconciliation launch/proof evidence",
+      "classification": "schema",
+      "canonicalResult": "ForeignTipReconciliationV1",
+      "boundaryBindingAndPersistence": "Postgres and DA recovery",
+      "requiredEvidence": "Exact manifest/profile and evidence binding",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L16",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Ledger output preimage and compact commitment",
+      "classification": "nested-schema",
+      "canonicalResult": "LedgerOutputCommitmentV1`; full output CBOR remains in DA and persistence",
+      "boundaryBindingAndPersistence": "Ledger MPF value and bounded full-output proof opening",
+      "requiredEvidence": "TS/Aiken descriptor encode/decode/root vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L17",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "mpf-proof-v2.ak` proof steps",
+      "classification": "nested-schema",
+      "canonicalResult": "MpfProofV1",
+      "boundaryBindingAndPersistence": "Membership/non-membership/update/delete proofs",
+      "requiredEvidence": "Existing MPF differential/proof vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L18",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Deposit, withdrawal, reserve, and operator event constructors",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "L1 event datums/redeemers and event roots",
+      "requiredEvidence": "Existing event-flow tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "L19",
+      "family": "L",
+      "sourceOwnerAndCurrentIdentity": "Scheduler shift/status/action constructors",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Scheduler datum/redeemer",
+      "requiredEvidence": "Existing scheduler lifecycle tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S01",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "native-script-v2.ak",
+      "classification": "nested-schema",
+      "canonicalResult": "native-script-v1.ak`; `NativeScriptProofV1",
+      "boundaryBindingAndPersistence": "Phase-A native-script proof",
+      "requiredEvidence": "TS/Aiken valid/invalid script tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S02",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "script-context-v4.ak",
+      "classification": "nested-schema",
+      "canonicalResult": "script-context-v1.ak`; `ScriptContextProofV1",
+      "boundaryBindingAndPersistence": "CEK context construction",
+      "requiredEvidence": "Cross-language context root/summary vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S03",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "script-language-views-v3.ak",
+      "classification": "nested-schema",
+      "canonicalResult": "script-language-views-v1.ak",
+      "boundaryBindingAndPersistence": "Script-integrity hash",
+      "requiredEvidence": "Cardano language-view/hash vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S04",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "script-proof-v3.ak` and TS proof-v3 helpers",
+      "classification": "nested-schema",
+      "canonicalResult": "script-proof-v1.ak`; V1 helper names/domains",
+      "boundaryBindingAndPersistence": "Script/redeemer/signer/output/execution/context Merkle leaves",
+      "requiredEvidence": "TS/Aiken leaf/root vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S05",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "MidgardVersionedScript` language tags Native `0`, Plutus V3 `3`, Midgard V1 `128",
+      "classification": "UNVERIFIED",
+      "canonicalResult": "Preserve tag meanings",
+      "boundaryBindingAndPersistence": "Script witness preimage",
+      "requiredEvidence": "Exact tag/hash and unknown-tag rejection",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S06",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "Script-source attached/reference variants",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Resolution schedule and validation controls",
+      "requiredEvidence": "Source-kind and reference-script tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "S07",
+      "family": "S",
+      "sourceOwnerAndCurrentIdentity": "Script purpose/redeemer constructors",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Script context and proof leaves",
+      "requiredEvidence": "Purpose binding tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K01",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK program envelope version 3; Aiken file `cek-proof-v3.ak` with `ProgramEnvelopeV1",
+      "classification": "schema",
+      "canonicalResult": "MidgardCekProgramEnvelopeV1`; envelope version `1`; `cek-proof-v1.ak",
+      "boundaryBindingAndPersistence": "Native script witness, DA, L1 proof",
+      "requiredEvidence": "TS/Aiken envelope inspect/decode/hash vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K02",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK machine state V1",
+      "classification": "schema",
+      "canonicalResult": "Retain `MidgardCekMachineStateV1`, version `1",
+      "boundaryBindingAndPersistence": "Validation trace leaf",
+      "requiredEvidence": "TS/Aiken state hash vector",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K03",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK term/value/BLS/sequence/environment/continuation node V1 families",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1 names; move implementation modules to V1",
+      "boundaryBindingAndPersistence": "Program/material Merkle DAG",
+      "requiredEvidence": "Per-node TS/Aiken hash vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K04",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK blob chunk/branch/commitment V1",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Bounded program/data blobs",
+      "requiredEvidence": "Chunk/branch/root vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K05",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK Data node/list/pair/summary V1 in `cek-data-v3.ak",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1; module becomes `cek-data-v1.ak",
+      "boundaryBindingAndPersistence": "Semantic Data commitment",
+      "requiredEvidence": "TS/Aiken Data summary/hash vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K06",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK data-scan frame/control V1",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "One-step validation work witness",
+      "requiredEvidence": "Control/frame encoding and step tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K07",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK constant type/witness V1",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Program constants and direct witnesses",
+      "requiredEvidence": "Type/payload/root/memory tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K08",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK builtin witness/budget V1",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "One-step builtin execution",
+      "requiredEvidence": "Success/failure/budget tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K09",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK program-material entry/value version 3",
+      "classification": "schema",
+      "canonicalResult": "MidgardCekProgramMaterialValueV1`, version `1",
+      "boundaryBindingAndPersistence": "DA material set and L1 publication",
+      "requiredEvidence": "Canonical entry/value/material verification",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K10",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK program-material sidecar version 3",
+      "classification": "schema",
+      "canonicalResult": "MidgardCekProgramMaterialSidecarV1`, version `1",
+      "boundaryBindingAndPersistence": "Admission payload and pending finalization",
+      "requiredEvidence": "Merge/deduplicate/hash tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K11",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "Proof submission version 2",
+      "classification": "schema",
+      "canonicalResult": "MidgardProofSubmissionV1`, version `1",
+      "boundaryBindingAndPersistence": "Fault-proof CLI/L1 proof submission",
+      "requiredEvidence": "Canonical decode and exact version",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K12",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "CEK machine modes `0..8`, errors `0..7`, builtin tags, constant tags",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "CEK interpreter/one-step proof",
+      "requiredEvidence": "Existing exhaustive semantic transition tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "K13",
+      "family": "K",
+      "sourceOwnerAndCurrentIdentity": "UPLC program language tuple `[1,1,0]",
+      "classification": "external",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Flat/UPLC program semantics",
+      "requiredEvidence": "Existing program decode/evaluation tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V01",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation machine state version 9; TS/Aiken type currently named V1",
+      "classification": "schema",
+      "canonicalResult": "ValidationMachineStateV1`, machine version `1",
+      "boundaryBindingAndPersistence": "Trace leaf and dispute state",
+      "requiredEvidence": "TS/Aiken encode/hash/well-formed vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V02",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation trace descriptor schema 1 plus machine 9",
+      "classification": "schema",
+      "canonicalResult": "ValidationTraceDescriptorV1`, both exact `1",
+      "boundaryBindingAndPersistence": "DA trace descriptor and dispute datum",
+      "requiredEvidence": "Descriptor/root/count vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V03",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation trace proof V2",
+      "classification": "nested-schema",
+      "canonicalResult": "ValidationTraceProofV1",
+      "boundaryBindingAndPersistence": "Merkle trace membership",
+      "requiredEvidence": "Valid/invalid membership proof tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V04",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation Merkle frontier/membership in `validation-merkle-v3",
+      "classification": "nested-schema",
+      "canonicalResult": "V1 module/types",
+      "boundaryBindingAndPersistence": "Trace commitment and proof",
+      "requiredEvidence": "TS/Aiken frontier/membership vectors",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V05",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation claim witness version 1 in `validation-claim-v2.ak",
+      "classification": "schema",
+      "canonicalResult": "ValidationClaimWitnessV1`, version `1`; module V1",
+      "boundaryBindingAndPersistence": "L1 claim/dispute opening",
+      "requiredEvidence": "Claim/header/source membership tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V06",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation dispute version 2 and validator `dispute-v3.ak",
+      "classification": "schema",
+      "canonicalResult": "ValidationDisputeV1`, version `1`; validator/module V1",
+      "boundaryBindingAndPersistence": "L1 datum/redeemer and timeout",
+      "requiredEvidence": "Open/bisect/one-step/timeout tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V07",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Dispute turn/action/winner/redeemer constructors",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "L1 dispute state machine",
+      "requiredEvidence": "Constructor/authorization tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V08",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation phase/verdict/source-kind constructors",
+      "classification": "semantic",
+      "canonicalResult": "Preserve",
+      "boundaryBindingAndPersistence": "Trace state and validation engine",
+      "requiredEvidence": "Existing phase/verdict transition tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V09",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation one-step witness V1 and evidence V2",
+      "classification": "nested-schema",
+      "canonicalResult": "ValidationOneStepWitnessV1`, `ValidationOneStepEvidenceV1",
+      "boundaryBindingAndPersistence": "Dispute one-step resolution",
+      "requiredEvidence": "Cross-language one-step fixtures",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V10",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation auxiliary witness V2",
+      "classification": "nested-schema",
+      "canonicalResult": "ValidationAuxiliaryWitnessV1",
+      "boundaryBindingAndPersistence": "One-step work witness",
+      "requiredEvidence": "Canonical encode/hash tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V11",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Resolve-inputs control V2",
+      "classification": "nested-schema",
+      "canonicalResult": "ResolveInputsControlV1",
+      "boundaryBindingAndPersistence": "Validation work witness",
+      "requiredEvidence": "Input resolution step tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V12",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Script-sources control V3 and discovery control V1",
+      "classification": "nested-schema",
+      "canonicalResult": "ScriptSourcesControlV1`, `ScriptDiscoveryControlV1",
+      "boundaryBindingAndPersistence": "Validation work witness",
+      "requiredEvidence": "Attached/reference/discovery tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V13",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Native-scripts control/witness V3",
+      "classification": "nested-schema",
+      "canonicalResult": "Corresponding V1 formats",
+      "boundaryBindingAndPersistence": "Validation work witness",
+      "requiredEvidence": "Native-script fold tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V14",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "CEK context/redeemer/final/parts/tx-info controls V1",
+      "classification": "nested-schema",
+      "canonicalResult": "Retain V1",
+      "boundaryBindingAndPersistence": "Validation work witness",
+      "requiredEvidence": "Context assembly step tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V15",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Value accumulator/update/asset mutation/value-and-mint control V3",
+      "classification": "nested-schema",
+      "canonicalResult": "Corresponding V1 formats",
+      "boundaryBindingAndPersistence": "Validation work witness and ledger delta",
+      "requiredEvidence": "Value conservation and mint/burn tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V16",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Ledger-delta control/witness/operation V3; TS operation V2",
+      "classification": "nested-schema",
+      "canonicalResult": "Corresponding V1 formats",
+      "boundaryBindingAndPersistence": "Accepted transition work witness",
+      "requiredEvidence": "Operation leaf/frontier/delta tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V17",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Terminal acceptance/rejection witness V3/current",
+      "classification": "nested-schema",
+      "canonicalResult": "Corresponding V1 formats",
+      "boundaryBindingAndPersistence": "Final validation step",
+      "requiredEvidence": "Valid/misclassified outcome tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "V18",
+      "family": "V",
+      "sourceOwnerAndCurrentIdentity": "Validation source-membership record/enum V3",
+      "classification": "nested-schema",
+      "canonicalResult": "ValidationSourceMembershipV1`; preserve forced/normal constructor tags",
+      "boundaryBindingAndPersistence": "Claim witness",
+      "requiredEvidence": "Membership-kind and membership-proof tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P01",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "Main Postgres `0001_initial_schema` plus migration ledger",
+      "classification": "post-launch seam",
+      "canonicalResult": "Fresh V1 baseline remains migration `0001",
+      "boundaryBindingAndPersistence": "Node startup/database",
+      "requiredEvidence": "Checksum and exact baseline tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P02",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "DA Postgres startup column rename and old-column detection",
+      "classification": "schema",
+      "canonicalResult": "Delete; fresh V1 schema only",
+      "boundaryBindingAndPersistence": "DA startup",
+      "requiredEvidence": "Fresh schema test; no runtime ALTER/rename",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P03",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "Forced transaction alias column/encoder",
+      "classification": "schema",
+      "canonicalResult": "Delete",
+      "boundaryBindingAndPersistence": "Node database API",
+      "requiredEvidence": "Canonical column/encoder only",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P04",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "ParkedMpfOverlayV1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1 while engine remains authorized",
+      "boundaryBindingAndPersistence": "Pending/speculative worker transfer",
+      "requiredEvidence": "Park/resume/promote/crash tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P05",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "Event-flat parked/resumed overlay V2",
+      "classification": "schema",
+      "canonicalResult": "Corresponding V1 format",
+      "boundaryBindingAndPersistence": "Worker transfer",
+      "requiredEvidence": "Park/resume/promote tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P06",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "Architecture G owner/RPC/generation/full-index/replay domains V1",
+      "classification": "schema",
+      "canonicalResult": "Retain V1; engine selection remains out of scope",
+      "boundaryBindingAndPersistence": "Native owner process/LevelDB",
+      "requiredEvidence": "Existing protocol and recovery tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P07",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "Worker `WirePhaseACandidate` structured-clone shape",
+      "classification": "nested-schema",
+      "canonicalResult": "WirePhaseACandidateV1` if independently persisted/exchanged; otherwise registry marks process-local",
+      "boundaryBindingAndPersistence": "Validation worker boundary",
+      "requiredEvidence": "Exhaustiveness and round-trip worker tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "P08",
+      "family": "P",
+      "sourceOwnerAndCurrentIdentity": "MPF engine identifiers `legacy`, `overlay`, `event_flat`, `architecture_g",
+      "classification": "semantic/operational",
+      "canonicalResult": "Preserve until existing engine gate authorizes consolidation",
+      "boundaryBindingAndPersistence": "Runtime configuration",
+      "requiredEvidence": "Existing differential/config tests",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A01",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "DA libp2p runtime manifest v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-da-libp2p-runtime-manifest-v1`; `midgard-core/da-transport",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A02",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Contract/deployment manifest v2/v3/v9",
+      "classification": "artifact",
+      "canonicalResult": "midgard-deployment-manifest-v1`; node deployment manifest",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A03",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Deployment run state v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain `midgard-deployment-run-state-v1`; E2E run-state parser",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A04",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E step v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain `midgard-e2e-step-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A05",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E summary v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-e2e-summary-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A06",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E DA gate v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-e2e-da-gate-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A07",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E L2 stress v3",
+      "classification": "artifact",
+      "canonicalResult": "midgard-e2e-l2-stress-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A08",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E managed service/service supervisor/process ownership v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain their distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A09",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "E2E reconciliation v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain `midgard-e2e-reconciliation-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A10",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-4 local reset attestation v3",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase4-local-devnet-reset-attestation-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A11",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-4 matched snapshot identity v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase4-matched-snapshot-identity-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A12",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-4 environment, genesis, PHAS, T1, pipelined-acceptance families v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain their distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A13",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Stress wallet consolidate v1/v2 and upgrade/verification artifacts",
+      "classification": "artifact",
+      "canonicalResult": "Retain only current consolidate V1; delete upgrade/legacy verification formats",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A14",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Stress wallet, prepare, fanout, terminal-drain, readiness v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A15",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Stress corpus manifest/generation/verification/prefix evidence v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A16",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Historical stress-corpus extension and historical binding formats",
+      "classification": "artifact",
+      "canonicalResult": "Delete active readers/tooling; historical documents may describe them",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A17",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-1 live corpus binding v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase1-live-corpus-binding-v1` if still an active benchmark input",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A18",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-3 load-generator isolation v3",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase3-load-generator-isolation-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A19",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-3 clean live E2E v2",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase3-architecture-g-clean-live-e2e-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A20",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-3 live soak v4",
+      "classification": "artifact",
+      "canonicalResult": "midgard-phase3-architecture-g-live-soak-v1",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A21",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Architecture G candidate/runtime/gate/corpus/root/probe artifacts v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain their distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    },
+    {
+      "id": "A22",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Phase-5 DA measurement/distribution/fixture/strict-chain artifacts v1",
+      "classification": "artifact",
+      "canonicalResult": "Invalidate/remove; regenerate only after §2.5 follow-up can produce complete V1 bytes within bounded publication",
+      "boundaryBindingAndPersistence": "No active reader, writer, package command, or evidence boundary remains; future bounded-publication evidence must use a newly audited canonical format.",
+      "requiredEvidence": "Zero active matches for the retired package command, large-envelope/report inputs, and both Phase-5 evidence schema identities.",
+      "disposition": "delete",
+      "auditStatus": "PASS",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "PASS",
+        "tests": [],
+        "notApplicableReason": "Deleted local operational evidence had no Aiken encoding or protocol ABI counterpart."
+      },
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "A22-retired-phase5-da-artifacts"
+        }
+      ],
+      "notes": [
+        "Historical documents may describe the retired artifact, but executable source and package commands cannot consume or emit it."
+      ]
+    },
+    {
+      "id": "A23",
+      "family": "A",
+      "sourceOwnerAndCurrentIdentity": "Secret-scan and throughput-watchdog artifacts v1",
+      "classification": "artifact",
+      "canonicalResult": "Retain their distinct `-v1` identities",
+      "boundaryBindingAndPersistence": "UNVERIFIED",
+      "requiredEvidence": "UNVERIFIED",
+      "disposition": "UNVERIFIED",
+      "auditStatus": "UNVERIFIED",
+      "sourceEvidence": [],
+      "canonicalForms": [],
+      "positiveEvidence": [],
+      "rejectionEvidence": [],
+      "crossLanguageEvidence": {
+        "status": "UNVERIFIED",
+        "tests": [],
+        "notApplicableReason": null
+      },
+      "obsoleteBranchEvidence": [],
+      "notes": []
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { parseSignatureWitness } from "../coordinator/witnesses.js";
 import type { DaPayloadRecord, DaSignatureRecord } from "../domain.js";
+import { parseDaSignatureRecordV1 } from "../domain.js";
 import {
   type DaCommitteeValidation,
   verifyDaSignatureWitness,
@@ -22,30 +23,26 @@ export const validateDaSignatureRecord = ({
   signerValidation,
   verifiedPayload,
 }: SignatureRecordValidationArgs): string | undefined => {
+  let record: ReturnType<typeof parseDaSignatureRecordV1>;
+  try {
+    record = parseDaSignatureRecordV1(body);
+  } catch {
+    return "invalid signature record";
+  }
   if (
-    body.headerHash !== headerHash ||
-    body.deploymentFingerprint !== deploymentFingerprint ||
-    typeof body.signerIndex !== "number" ||
-    !Number.isSafeInteger(body.signerIndex) ||
-    body.signerIndex < 0 ||
-    body.signerIndex > 255 ||
-    typeof body.signatureWitness !== "string" ||
-    typeof body.payloadHash !== "string" ||
-    typeof body.committeeSignersHash !== "string" ||
-    typeof body.signedAt !== "string" ||
-    typeof body.validation !== "object" ||
-    body.validation === null
+    record.headerHash !== headerHash ||
+    record.deploymentFingerprint !== deploymentFingerprint
   ) {
     return "invalid signature record";
   }
-  const signerIndex = body.signerIndex;
-  const validation = body.validation;
+  const signerIndex = record.signerIndex;
+  const validation = record.validation;
   if (validation.headerHash !== headerHash || validation.rootsMatch !== true) {
     return "signature validation summary does not match header";
   }
   let parsedWitness: ReturnType<typeof parseSignatureWitness>;
   try {
-    parsedWitness = parseSignatureWitness(body.signatureWitness);
+    parsedWitness = parseSignatureWitness(record.signatureWitness);
   } catch {
     return "invalid signature witness";
   }
@@ -54,7 +51,7 @@ export const validateDaSignatureRecord = ({
   }
   if (verifiedPayload !== undefined) {
     const payloadError = validateSignatureMatchesVerifiedPayload(
-      body as DaSignatureRecord,
+      record,
       verifiedPayload,
     );
     if (payloadError !== undefined) {
@@ -66,7 +63,7 @@ export const validateDaSignatureRecord = ({
       ? undefined
       : "peer signatures require committee validation";
   }
-  if (body.committeeSignersHash !== signerValidation.committeeSignersHash) {
+  if (record.committeeSignersHash !== signerValidation.committeeSignersHash) {
     return "signature committee hash does not match this deployment";
   }
   if (signerIndex >= signerValidation.committeeKeys.length) {
@@ -76,7 +73,7 @@ export const validateDaSignatureRecord = ({
   return verifyDaSignatureWitness({
     publicKeyHex,
     headerHash,
-    witnessHex: body.signatureWitness,
+    witnessHex: record.signatureWitness,
   })
     ? undefined
     : "signature witness verification failed";
