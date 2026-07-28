@@ -29,9 +29,7 @@ import {
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
-const integer = (
-  payloadHex: string,
-): MidgardCekRuntimeValueWitnessV1 => ({
+const integer = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
   kind: "constant",
   witness: {
     typeCbor: Buffer.from("9f00ff", "hex"),
@@ -39,9 +37,7 @@ const integer = (
   },
 });
 
-const bytes = (
-  payloadHex: string,
-): MidgardCekRuntimeValueWitnessV1 => ({
+const bytes = (payloadHex: string): MidgardCekRuntimeValueWitnessV1 => ({
   kind: "constant",
   witness: {
     typeCbor: Buffer.from("9f01ff", "hex"),
@@ -53,8 +49,7 @@ const builtinRoot = (
   tag: bigint,
   arguments_: readonly MidgardCekRuntimeValueWitnessV1[],
 ): Uint8Array => {
-  const { root, count } =
-    hashMidgardCekRuntimeArgumentsV1(arguments_);
+  const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
   return hashMidgardCekValueNodeV1({
     kind: "builtin",
     tag,
@@ -135,18 +130,16 @@ describe("V1 builtin runtime type failures", () => {
 
   it("fails closed on a malformed or mismatched commitment", () => {
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
-        0n,
-        hash(9),
-        [integer("01"), integer("02")],
-      ),
+      verifyMidgardCekBuiltinTypeFailureV1(0n, hash(9), [
+        integer("01"),
+        integer("02"),
+      ]),
     ).toBe(false);
     expect(
-      verifyMidgardCekBuiltinTypeFailureV1(
-        0n,
-        hash(9),
-        [integer("1817"), integer("02")],
-      ),
+      verifyMidgardCekBuiltinTypeFailureV1(0n, hash(9), [
+        integer("1817"),
+        integer("02"),
+      ]),
     ).toBe(false);
   });
 });
@@ -181,16 +174,14 @@ const directBuiltinRoot = (
 
 describe("V1 direct builtin execution", () => {
   it("replays a successful integer builtin and its exact budget", () => {
-    const arguments_ = [direct(UPLCConst.int(41)), direct(UPLCConst.int(1))];
+    const arguments_ = [direct(UPLCConst.int(1)), direct(UPLCConst.int(128))];
     const evaluated = evaluateMidgardCekDirectBuiltinV1(0n, arguments_);
     expect(evaluated.kind).toBe("success");
     if (evaluated.kind !== "success") return;
     expect(evaluated.result.kind).toBe("constant");
     if (evaluated.result.kind !== "constant") return;
-    const result = decodeMidgardCekConstantWitnessV1(
-      evaluated.result.witness,
-    );
-    expect(result.payload).toMatchObject({ int: 42n });
+    const result = decodeMidgardCekConstantWitnessV1(evaluated.result.witness);
+    expect(result.payload).toMatchObject({ int: 129n });
     expect(
       verifyMidgardCekDirectBuiltinV1(
         0n,
@@ -199,8 +190,7 @@ describe("V1 direct builtin execution", () => {
         evaluated.result,
       ),
     ).toBe(true);
-    expect(evaluated.budget.cpu).toBeGreaterThan(0n);
-    expect(evaluated.budget.memory).toBeGreaterThan(0n);
+    expect(evaluated.budget).toEqual({ cpu: 101_628n, memory: 3n });
   });
 
   it("distinguishes paid division failures from zero-cost shape failures", () => {
@@ -221,10 +211,7 @@ describe("V1 direct builtin execution", () => {
       direct(UPLCConst.int(256)),
       direct(UPLCConst.byteString(new DataB(Buffer.alloc(0)).bytes)),
     ];
-    const shapeFailure = evaluateMidgardCekDirectBuiltinV1(
-      11n,
-      invalidByte,
-    );
+    const shapeFailure = evaluateMidgardCekDirectBuiltinV1(11n, invalidByte);
     expect(shapeFailure).toEqual({
       kind: "failure",
       budget: { cpu: 0n, memory: 0n },

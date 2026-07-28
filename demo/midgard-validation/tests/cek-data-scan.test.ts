@@ -8,17 +8,15 @@ import {
 } from "@harmoniclabs/plutus-data";
 import { describe, expect, it } from "vitest";
 
-import {
-  encodeMidgardCekPlutusDataV1,
-} from "../src/cek-constant.js";
+import { encodeMidgardCekPlutusDataV1 } from "../src/cek-constant.js";
 import {
   buildMidgardCekDataScanTraceV1,
   encodeMidgardCekDataScanControlV1,
+  hashMidgardCekDataScanChildV1,
   hashMidgardCekDataScanControlV1,
+  hashMidgardCekDataScanFrameV1,
 } from "../src/cek-data-scan.js";
-import {
-  commitMidgardCekDataTreeV1,
-} from "../src/cek-data-tree.js";
+import { commitMidgardCekDataTreeV1 } from "../src/cek-data-tree.js";
 
 describe("V1 content-addressed Data scanner", () => {
   it("reconstructs nested constructors, lists, and maps one bounded step at a time", () => {
@@ -39,6 +37,12 @@ describe("V1 content-addressed Data scanner", () => {
       cborLength: expected.cborLength,
       memory: expected.memory,
     });
+    expect(hashMidgardCekDataScanControlV1(trace.initial).toString("hex")).toBe(
+      "6b5258f74c54a3932194e3087c5ce5652fb1bbffb042b71572aab47bea7d07e4",
+    );
+    expect(
+      hashMidgardCekDataScanControlV1(trace.terminal).toString("hex"),
+    ).toBe("865b9c51d15222a3b33dbb422e212aa302d37e4a791268c0f22a8ff6b0a538fa");
     expect(trace.steps.map(({ step }) => step.kind)).toEqual([
       "openConstructor",
       "openList",
@@ -77,5 +81,47 @@ describe("V1 content-addressed Data scanner", () => {
       itemLength: raw.length,
     });
     expect(trace.terminal.result?.cborLength).toBe(BigInt(raw.length));
+  });
+
+  it("rejects malformed controls, frames, and child summaries before hashing", () => {
+    const data = new DataList([new DataI(1n)]);
+    const trace = buildMidgardCekDataScanTraceV1(
+      encodeMidgardCekPlutusDataV1(data),
+    );
+    expect(() =>
+      encodeMidgardCekDataScanControlV1({
+        ...trace.initial,
+        rawHash: Buffer.alloc(31),
+      }),
+    ).toThrow(/exactly 32 bytes/u);
+    expect(() =>
+      encodeMidgardCekDataScanControlV1({
+        ...trace.terminal,
+        offset: trace.terminal.offset - 1,
+      }),
+    ).toThrow(/canonical terminal state/u);
+
+    const frameStep = trace.steps.find(
+      ({ step }) => step.kind === "closeSequence",
+    );
+    const frame =
+      frameStep?.step.kind === "closeSequence"
+        ? frameStep.step.frame
+        : undefined;
+    expect(frame).toBeDefined();
+    if (frame === undefined) return;
+    expect(() =>
+      hashMidgardCekDataScanFrameV1({
+        ...frame,
+        childCount: frame.childCount + 1,
+      }),
+    ).toThrow(/child_count|authenticated frontier/u);
+    expect(() =>
+      hashMidgardCekDataScanChildV1(0, {
+        root: Buffer.alloc(31),
+        cborLength: 1n,
+        memory: 1n,
+      }),
+    ).toThrow(/exactly 32 bytes/u);
   });
 });

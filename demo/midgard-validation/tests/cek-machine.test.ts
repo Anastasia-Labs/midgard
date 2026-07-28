@@ -6,6 +6,7 @@ import {
   MIDGARD_CEK_EMPTY_CONTINUATION_ROOT_V1,
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+  MidgardCekMachineModes,
   type MidgardCekMachineStateV1,
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
@@ -14,7 +15,10 @@ import {
   hashMidgardCekRuntimeArgumentsV1,
   type MidgardCekRuntimeValueWitnessV1,
 } from "../src/cek-builtin.js";
-import { verifyMidgardCekCoreStepV1 } from "../src/cek-machine.js";
+import {
+  MidgardCekErrorCodes,
+  verifyMidgardCekCoreStepV1,
+} from "../src/cek-machine.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 
@@ -38,6 +42,30 @@ const state = (
 });
 
 describe("V1 structural CEK machine", () => {
+  it("pins every shared machine-mode and terminal-error tag", () => {
+    expect(Object.values(MidgardCekMachineModes)).toEqual([
+      0n,
+      1n,
+      2n,
+      3n,
+      4n,
+      5n,
+      6n,
+      7n,
+      8n,
+    ]);
+    expect(Object.values(MidgardCekErrorCodes)).toEqual([
+      0n,
+      1n,
+      2n,
+      3n,
+      4n,
+      5n,
+      6n,
+      7n,
+    ]);
+  });
+
   it("matches the Aiken application transition and rejects a budget drift", () => {
     const application = hashMidgardCekTermNodeV1({
       kind: "application",
@@ -384,8 +412,7 @@ describe("V1 structural CEK machine", () => {
         },
       },
     ];
-    const { root, count } =
-      hashMidgardCekRuntimeArgumentsV1(arguments_);
+    const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
     const pre = state(
       "builtin",
       hashMidgardCekValueNodeV1({

@@ -12,6 +12,32 @@ const h_02 = #"0202020202020202020202020202020202020202020202020202020202020202"
 
 const h_03 = #"0303030303030303030303030303030303030303030303030303030303030303"
 
+test canonical_machine_mode_and_error_tags_match_typescript() {
+  and {
+    [
+      cek_machine_v1.mode_compute,
+      cek_machine_v1.mode_return,
+      cek_machine_v1.mode_lookup,
+      cek_machine_v1.mode_builtin,
+      cek_machine_v1.mode_halt_success,
+      cek_machine_v1.mode_halt_error,
+      cek_machine_v1.mode_case_select,
+      cek_machine_v1.mode_case_apply,
+      cek_machine_v1.mode_semantic_builtin,
+    ] == [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    [
+      cek_machine_v1.error_explicit,
+      cek_machine_v1.error_unbound_variable,
+      cek_machine_v1.error_invalid_application,
+      cek_machine_v1.error_invalid_force,
+      cek_machine_v1.error_nonconstant_halt,
+      cek_machine_v1.error_invalid_case_scrutinee,
+      cek_machine_v1.error_case_branch_missing,
+      cek_machine_v1.error_builtin_failure,
+    ] == [0, 1, 2, 3, 4, 5, 6, 7],
+  }
+}
+
 test offchain_core_step_data_abi_vector() {
   let pre = cek_machine_v1.MachineStateV1 {
     mode: cek_machine_v1.mode_compute,

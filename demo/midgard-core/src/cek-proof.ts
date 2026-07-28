@@ -64,11 +64,7 @@ export const MIDGARD_CEK_PROGRAM_ENVELOPE_V1_VERSION = 1n;
 export const MIDGARD_CEK_MACHINE_STATE_V1_VERSION = 1n;
 export const MIDGARD_CEK_BLOB_CHUNK_BYTES = 4_095;
 export const MIDGARD_CEK_MAX_BUILTIN_TAG = 86n;
-export const MIDGARD_CEK_PROGRAM_UPLC_VERSION_V1 = [
-  1n,
-  1n,
-  0n,
-] as const;
+export const MIDGARD_CEK_PROGRAM_UPLC_VERSION_V1 = [1n, 1n, 0n] as const;
 /**
  * The canonical V1 DA envelope is the only aggregate program-size budget. The
  * constants below mirror its exact canonical Plutus-Data encoding:
@@ -88,14 +84,13 @@ export const MIDGARD_CEK_PROGRAM_UPLC_VERSION_V1 = [
 export const MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 = 64 * 1024 * 1024;
 export const MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1 = 446;
 export const MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1 = 42;
-export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 =
-  BigInt(
-    Math.floor(
-      (MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
-        MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1) /
-        MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1,
-    ),
-  );
+export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 = BigInt(
+  Math.floor(
+    (MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
+      MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1) /
+      MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1,
+  ),
+);
 export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1 = BigInt(
   MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
     MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1,
@@ -288,9 +283,8 @@ export const encodeMidgardCekTermNodeV1 = (
   }
 };
 
-export const hashMidgardCekTermNodeV1 = (
-  node: MidgardCekTermNodeV1,
-): Hash32 => hash32(TERM_NODE_DOMAIN, encodeMidgardCekTermNodeV1(node));
+export const hashMidgardCekTermNodeV1 = (node: MidgardCekTermNodeV1): Hash32 =>
+  hash32(TERM_NODE_DOMAIN, encodeMidgardCekTermNodeV1(node));
 
 export type MidgardCekValueNodeV1 =
   | {
@@ -365,10 +359,7 @@ export const encodeMidgardCekValueNodeV1 = (
       return encodeCbor([
         MidgardCekValueTags.Builtin,
         boundedBuiltinTag(node.tag),
-        uint32(
-          node.forcesRemaining,
-          "cek_value.builtin.forces_remaining",
-        ),
+        uint32(node.forcesRemaining, "cek_value.builtin.forces_remaining"),
         uint32(node.argumentsCount, "cek_value.builtin.arguments_count"),
         exactHash(node.argumentsRoot, "cek_value.builtin.arguments_root"),
       ]);
@@ -421,10 +412,7 @@ export const encodeMidgardCekBlsExpressionNodeV1 = (
 export const hashMidgardCekBlsExpressionNodeV1 = (
   node: MidgardCekBlsExpressionNodeV1,
 ): Hash32 =>
-  hash32(
-    BLS_EXPRESSION_NODE_DOMAIN,
-    encodeMidgardCekBlsExpressionNodeV1(node),
-  );
+  hash32(BLS_EXPRESSION_NODE_DOMAIN, encodeMidgardCekBlsExpressionNodeV1(node));
 
 const EMPTY_SEQUENCE_PREIMAGE = encodeCbor([0n]);
 const EMPTY_ENVIRONMENT_PREIMAGE = encodeCbor([0n]);
@@ -582,32 +570,17 @@ export const encodeMidgardCekContinuationFrameV1 = (
           frame.remainingTermsRoot,
           "cek_continuation.constr.remaining_terms_root",
         ),
-        uint32(
-          frame.valuesCount,
-          "cek_continuation.constr.values_count",
-        ),
-        exactHash(
-          frame.valuesRoot,
-          "cek_continuation.constr.values_root",
-        ),
-        exactHash(
-          frame.environment,
-          "cek_continuation.constr.environment",
-        ),
+        uint32(frame.valuesCount, "cek_continuation.constr.values_count"),
+        exactHash(frame.valuesRoot, "cek_continuation.constr.values_root"),
+        exactHash(frame.environment, "cek_continuation.constr.environment"),
         exactHash(frame.tail, "cek_continuation.constr.tail"),
       ]);
     case "case":
       return encodeCbor([
         1n,
         MidgardCekContinuationTags.Case,
-        uint32(
-          frame.branchesCount,
-          "cek_continuation.case.branches_count",
-        ),
-        exactHash(
-          frame.branchesRoot,
-          "cek_continuation.case.branches_root",
-        ),
+        uint32(frame.branchesCount, "cek_continuation.case.branches_count"),
+        exactHash(frame.branchesRoot, "cek_continuation.case.branches_root"),
         exactHash(frame.environment, "cek_continuation.case.environment"),
         exactHash(frame.tail, "cek_continuation.case.tail"),
       ]);
@@ -622,12 +595,12 @@ export const encodeMidgardCekContinuationFrameV1 = (
       return encodeCbor([
         1n,
         MidgardCekContinuationTags.CaseSelect,
-        exactHash(frame.environment, "cek_continuation.case_select.environment"),
-        exactHash(frame.tail, "cek_continuation.case_select.tail"),
-        uint32(
-          frame.valuesCount,
-          "cek_continuation.case_select.values_count",
+        exactHash(
+          frame.environment,
+          "cek_continuation.case_select.environment",
         ),
+        exactHash(frame.tail, "cek_continuation.case_select.tail"),
+        uint32(frame.valuesCount, "cek_continuation.case_select.values_count"),
       ]);
     case "caseApply":
       return encodeCbor([
@@ -645,10 +618,7 @@ export const encodeMidgardCekContinuationFrameV1 = (
 export const hashMidgardCekContinuationFrameV1 = (
   frame: MidgardCekContinuationFrameV1,
 ): Hash32 =>
-  hash32(
-    CONTINUATION_NODE_DOMAIN,
-    encodeMidgardCekContinuationFrameV1(frame),
-  );
+  hash32(CONTINUATION_NODE_DOMAIN, encodeMidgardCekContinuationFrameV1(frame));
 
 export const hashMidgardCekBlobChunkV1 = (chunk: Bytes): Hash32 => {
   return hash32(BLOB_CHUNK_DOMAIN, encodeMidgardCekBlobChunkV1(chunk));
@@ -680,8 +650,7 @@ export const encodeMidgardCekBlobBranchV1 = (
 
 export const hashMidgardCekBlobBranchV1 = (
   input: MidgardCekBlobBranchV1,
-): Hash32 =>
-  hash32(BLOB_BRANCH_DOMAIN, encodeMidgardCekBlobBranchV1(input));
+): Hash32 => hash32(BLOB_BRANCH_DOMAIN, encodeMidgardCekBlobBranchV1(input));
 
 export type MidgardCekBlobCommitmentV1 = {
   readonly root: Hash32;
@@ -792,9 +761,7 @@ export type MidgardCekMachineStateV1 = {
   readonly memory: bigint;
 };
 
-const machineModeTag = (
-  mode: MidgardCekMachineStateV1["mode"],
-): bigint => {
+const machineModeTag = (mode: MidgardCekMachineStateV1["mode"]): bigint => {
   switch (mode) {
     case "compute":
       return MidgardCekMachineModes.Compute;
@@ -874,11 +841,7 @@ export const decodeMidgardCekProgramEnvelopeV1 = (
     );
   }
 
-  const envelopeHeader = readCborArrayHeader(
-    source,
-    0,
-    "cek_program_envelope",
-  );
+  const envelopeHeader = readCborArrayHeader(source, 0, "cek_program_envelope");
   if (envelopeHeader.length !== 5) {
     throw new Error("CEK program envelope must contain exactly five fields");
   }
@@ -958,8 +921,7 @@ export const decodeMidgardCekProgramEnvelopeV1 = (
   }
   if (
     materialByteLength.value === 0n ||
-    materialByteLength.value >
-      MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1
+    materialByteLength.value > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1
   ) {
     throw new Error(
       `CEK program material length must be between 1 and ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1.toString()}`,
@@ -981,10 +943,7 @@ export const decodeMidgardCekProgramEnvelopeV1 = (
 export const hashMidgardCekProgramEnvelopeV1 = (
   envelope: MidgardCekProgramEnvelopeV1,
 ): Hash32 =>
-  hash32(
-    PROGRAM_ENVELOPE_DOMAIN,
-    encodeMidgardCekProgramEnvelopeV1(envelope),
-  );
+  hash32(PROGRAM_ENVELOPE_DOMAIN, encodeMidgardCekProgramEnvelopeV1(envelope));
 
 export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1 =
   MIDGARD_CEK_BLOB_CHUNK_BYTES + 3;
@@ -1020,6 +979,16 @@ export type MidgardCekProgramMaterialEntryV1 = {
   readonly root: Hash32;
   readonly preimage: Buffer;
 };
+
+/**
+ * Exact decoded body of the versioned K09 DA/publication value
+ * `[1, kind, preimage]`. The version is implicit in the V1 type and is
+ * emitted and checked by the encoder/decoder.
+ */
+export type MidgardCekProgramMaterialValueV1 = Pick<
+  MidgardCekProgramMaterialEntryV1,
+  "kind" | "preimage"
+>;
 
 export const midgardCekProgramMaterialKindTagV1 = (
   kind: MidgardCekProgramMaterialKindV1,
@@ -1071,9 +1040,7 @@ export const midgardCekProgramMaterialKindFromTagV1 = (
   }
 };
 
-const materialDomain = (
-  kind: MidgardCekProgramMaterialKindV1,
-): Buffer => {
+const materialDomain = (kind: MidgardCekProgramMaterialKindV1): Buffer => {
   switch (kind) {
     case "term":
       return TERM_NODE_DOMAIN;
@@ -1097,10 +1064,7 @@ const exactMaterialPreimage = (preimage: Uint8Array): Buffer => {
   if (exact.length === 0) {
     throw new Error("CEK program material preimage must not be empty");
   }
-  if (
-    exact.length >
-    MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1
-  ) {
+  if (exact.length > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1) {
     throw new Error(
       `CEK program material preimage exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1.toString()} bytes`,
     );
@@ -1137,10 +1101,7 @@ export const encodeMidgardCekProgramMaterialEntryV1 = (
     exactHash(entry.root, "cek_program_material.root"),
     exactMaterialPreimage(entry.preimage),
   ]);
-  if (
-    encoded.length >
-    MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1
-  ) {
+  if (encoded.length > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1) {
     throw new Error(
       `CEK program material entry exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1.toString()} bytes`,
     );
@@ -1152,19 +1113,12 @@ export const decodeMidgardCekProgramMaterialEntryV1 = (
   bytes: Uint8Array,
 ): MidgardCekProgramMaterialEntryV1 => {
   const source = Buffer.from(bytes);
-  if (
-    source.length >
-    MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1
-  ) {
+  if (source.length > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1) {
     throw new Error(
       `CEK program material entry exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1.toString()} bytes`,
     );
   }
-  const header = readCborArrayHeader(
-    source,
-    0,
-    "cek_program_material_entry",
-  );
+  const header = readCborArrayHeader(source, 0, "cek_program_material_entry");
   if (header.length !== 3) {
     throw new Error(
       "CEK program material entry must contain exactly three fields",
@@ -1199,10 +1153,7 @@ export const decodeMidgardCekProgramMaterialEntryV1 = (
   if (!encodeMidgardCekProgramMaterialEntryV1(decoded).equals(source)) {
     throw new Error("CEK program material entry CBOR is not canonical");
   }
-  const computed = hashMidgardCekProgramMaterialPreimageV1(
-    kind,
-    exactPreimage,
-  );
+  const computed = hashMidgardCekProgramMaterialPreimageV1(kind, exactPreimage);
   if (!Buffer.from(computed).equals(exactRoot)) {
     throw new Error("CEK program material root does not match its preimage");
   }
@@ -1215,17 +1166,14 @@ export const decodeMidgardCekProgramMaterialEntryV1 = (
  * exact node preimage.
  */
 export const encodeMidgardCekProgramMaterialDaValueV1 = (
-  entry: Pick<MidgardCekProgramMaterialEntryV1, "kind" | "preimage">,
+  entry: MidgardCekProgramMaterialValueV1,
 ): Buffer => {
   const encoded = encodeCbor([
     MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION,
     midgardCekProgramMaterialKindTagV1(entry.kind),
     exactMaterialPreimage(entry.preimage),
   ]);
-  if (
-    encoded.length >
-    MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1
-  ) {
+  if (encoded.length > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1) {
     throw new Error(
       `CEK program material DA value exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1.toString()} bytes`,
     );
@@ -1239,10 +1187,7 @@ export const decodeMidgardCekProgramMaterialDaEntryV1 = (
 ): MidgardCekProgramMaterialEntryV1 => {
   const exactRoot = exactHash(root, "cek_program_material_da.root") as Hash32;
   const source = Buffer.from(value);
-  if (
-    source.length >
-    MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1
-  ) {
+  if (source.length > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1) {
     throw new Error(
       `CEK program material DA value exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_DA_VALUE_BYTES_V1.toString()} bytes`,
     );
@@ -1262,9 +1207,7 @@ export const decodeMidgardCekProgramMaterialDaEntryV1 = (
     header.nextOffset,
     "cek_program_material_da.version",
   );
-  if (
-    version.value !== MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION
-  ) {
+  if (version.value !== MIDGARD_CEK_PROGRAM_MATERIAL_V1_VERSION) {
     throw new Error(
       `unsupported CEK program material DA value version ${version.value.toString()}`,
     );
@@ -1563,9 +1506,7 @@ export const decodeMidgardCekProgramValuePreimageV1 = (
 ): MidgardCekDecodedProgramValueV1 => {
   const header = readCborArrayHeader(preimage, 0, "cek_program_value");
   if (header.length !== 6) {
-    throw new Error(
-      "CEK source-program value must be a six-field constant",
-    );
+    throw new Error("CEK source-program value must be a six-field constant");
   }
   const tag = readCborUnsigned(
     preimage,
@@ -1590,10 +1531,7 @@ export const decodeMidgardCekProgramValuePreimageV1 = (
     payloadRoot.nextOffset,
     "cek_program_value.constant.payload_length",
   );
-  uint64(
-    payloadLength.value,
-    "cek_program_value.constant.payload_length",
-  );
+  uint64(payloadLength.value, "cek_program_value.constant.payload_length");
   const semanticRoot = readExactHashAt(
     preimage,
     payloadLength.nextOffset,
@@ -1605,11 +1543,7 @@ export const decodeMidgardCekProgramValuePreimageV1 = (
     "cek_program_value.constant.memory",
   );
   uint64(memory.value, "cek_program_value.constant.memory");
-  assertPreimageConsumed(
-    preimage,
-    memory.nextOffset,
-    "CEK constant value",
-  );
+  assertPreimageConsumed(preimage, memory.nextOffset, "CEK constant value");
   return {
     typeRoot: typeRoot.value,
     payloadRoot: payloadRoot.value,
@@ -1653,11 +1587,7 @@ export const decodeMidgardCekProgramSequencePreimageV1 = (
   if (length.value === 0n) {
     throw new Error("CEK non-empty sequence length must be positive");
   }
-  assertPreimageConsumed(
-    preimage,
-    length.nextOffset,
-    "CEK program sequence",
-  );
+  assertPreimageConsumed(preimage, length.nextOffset, "CEK program sequence");
   return { head: head.value, tail: tail.value, length: length.value };
 };
 
@@ -1699,11 +1629,7 @@ export const decodeMidgardCekProgramBlobPreimageV1 = (
     "cek_program_blob.branch.byte_length",
   );
   uint64(byteLength.value, "cek_program_blob.branch.byte_length");
-  assertPreimageConsumed(
-    preimage,
-    byteLength.nextOffset,
-    "CEK blob branch",
-  );
+  assertPreimageConsumed(preimage, byteLength.nextOffset, "CEK blob branch");
   return {
     kind: "branch",
     left: left.value,
@@ -1940,10 +1866,7 @@ const encodeSemanticBytesV1 = (value: Buffer): Buffer => {
   const chunks: Buffer[] = [Buffer.from([0x5f])];
   for (let offset = 0; offset < value.length; offset += 64) {
     const chunk = value.subarray(offset, offset + 64);
-    chunks.push(
-      semanticCborHeaderV1(2, BigInt(chunk.length)),
-      chunk,
-    );
+    chunks.push(semanticCborHeaderV1(2, BigInt(chunk.length)), chunk);
   }
   chunks.push(Buffer.from([0xff]));
   return Buffer.concat(chunks);
@@ -1960,9 +1883,7 @@ const encodeSemanticListV1 = (
         Buffer.from([0xff]),
       ]);
 
-const encodeSemanticDataV1 = (
-  value: SemanticDataValueV1,
-): Buffer => {
+const encodeSemanticDataV1 = (value: SemanticDataValueV1): Buffer => {
   if (typeof value === "bigint") {
     return Buffer.from(LucidData.to(value), "hex");
   }
@@ -1991,10 +1912,7 @@ const encodeSemanticDataV1 = (
     }
     if (value.constructor <= 127n) {
       return Buffer.concat([
-        semanticCborHeaderV1(
-          6,
-          1280n + value.constructor - 7n,
-        ),
+        semanticCborHeaderV1(6, 1280n + value.constructor - 7n),
         fields,
       ]);
     }
@@ -2042,8 +1960,7 @@ const commitSemanticDataV1 = (
         headMemory: head.memory,
         tail: summary.root,
         length: summary.length + 1n,
-        payloadCborLength:
-          head.cborLength + summary.payloadCborLength,
+        payloadCborLength: head.cborLength + summary.payloadCborLength,
         memory: head.memory + summary.memory,
       };
       summary = {
@@ -2056,9 +1973,7 @@ const commitSemanticDataV1 = (
     return summary;
   };
   const commitPairs = (
-    entries: readonly (
-      readonly [SemanticDataValueV1, SemanticDataValueV1]
-    )[],
+    entries: readonly (readonly [SemanticDataValueV1, SemanticDataValueV1])[],
   ): SemanticListSummaryV1 => {
     let summary: SemanticListSummaryV1 = {
       root: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
@@ -2080,9 +1995,7 @@ const commitSemanticDataV1 = (
         tail: summary.root,
         length: summary.length + 1n,
         payloadCborLength:
-          key.cborLength +
-          mapped.cborLength +
-          summary.payloadCborLength,
+          key.cborLength + mapped.cborLength + summary.payloadCborLength,
         memory: key.memory + mapped.memory + summary.memory,
       };
       summary = {
@@ -2125,11 +2038,10 @@ const commitSemanticDataV1 = (
       memory: 4n + items.memory,
     };
   } else if (value instanceof Map) {
-    const entries = commitPairs(
-      [...value.entries()] as readonly (
-        readonly [SemanticDataValueV1, SemanticDataValueV1]
-      )[],
-    );
+    const entries = commitPairs([...value.entries()] as readonly (readonly [
+      SemanticDataValueV1,
+      SemanticDataValueV1,
+    ])[]);
     node = {
       kind: "map",
       entriesCount: entries.length,
@@ -2157,14 +2069,10 @@ const commitSemanticDataV1 = (
         memory: 4n + fields.memory,
       };
     } else {
-      const constructorCbor = Buffer.from(
-        LucidData.to(constructor),
-        "hex",
-      );
+      const constructorCbor = Buffer.from(LucidData.to(constructor), "hex");
       node = {
         kind: "constrLarge",
-        constructorCborRoot:
-          commitMidgardCekBlobV1(constructorCbor).root,
+        constructorCborRoot: commitMidgardCekBlobV1(constructorCbor).root,
         constructorCborLength: BigInt(constructorCbor.length),
         constructorMemory: 4n + semanticIntegerMemoryV1(constructor),
         fieldsCount: fields.length,
@@ -2212,8 +2120,7 @@ const semanticConstantMemoryV1 = (
       throw new Error("CEK list payload is not a list");
     }
     return value.reduce(
-      (total, item) =>
-        total + semanticConstantMemoryV1(type.element, item),
+      (total, item) => total + semanticConstantMemoryV1(type.element, item),
       0n,
     );
   }
@@ -2226,14 +2133,8 @@ const semanticConstantMemoryV1 = (
       throw new Error("CEK pair payload is not a pair");
     }
     return (
-      semanticConstantMemoryV1(
-        type.first,
-        value.fields[0]!,
-      ) +
-      semanticConstantMemoryV1(
-        type.second,
-        value.fields[1]!,
-      )
+      semanticConstantMemoryV1(type.first, value.fields[0]!) +
+      semanticConstantMemoryV1(type.second, value.fields[1]!)
     );
   }
   if (type.kind === "data") return commitSemanticDataV1(value).memory;
@@ -2258,15 +2159,15 @@ const verifyOneProgramMaterialV1 = (
   const dataListLengthExpectations = new Map<string, Set<bigint>>();
   const dataPairLengthExpectations = new Map<string, Set<bigint>>();
   const tasks: ProgramMaterialTaskV1[] = [
-    { kind: "term", root: exactHash(envelope.termRoot, "cek_program.root") as Hash32 },
+    {
+      kind: "term",
+      root: exactHash(envelope.termRoot, "cek_program.root") as Hash32,
+    },
   ];
 
   const rootKey = (root: Uint8Array): string =>
     Buffer.from(root).toString("hex");
-  const addDependency = (
-    parent: string,
-    child: Uint8Array,
-  ): void => {
+  const addDependency = (parent: string, child: Uint8Array): void => {
     const childKey = rootKey(child);
     const prior = dependencies.get(parent) ?? [];
     dependencies.set(parent, [...prior, childKey]);
@@ -2423,9 +2324,7 @@ const verifyOneProgramMaterialV1 = (
     if (task.kind === "value") {
       const value = decodeMidgardCekProgramValuePreimageV1(entry.preimage);
       decodedValues.set(key, value);
-      if (
-        !Buffer.from(value.payloadRoot).equals(value.semanticRoot)
-      ) {
+      if (!Buffer.from(value.payloadRoot).equals(value.semanticRoot)) {
         throw new Error(
           "CEK constant payload root must equal its canonical semantic root",
         );
@@ -2452,9 +2351,7 @@ const verifyOneProgramMaterialV1 = (
       tasks.push({ kind: "term", root: sequence.head });
       if (sequence.length === 1n) {
         if (
-          !Buffer.from(sequence.tail).equals(
-            MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
-          )
+          !Buffer.from(sequence.tail).equals(MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1)
         ) {
           throw new Error(
             "one-item CEK sequence must end at the canonical empty root",
@@ -2569,9 +2466,7 @@ const verifyOneProgramMaterialV1 = (
       tasks.push({ kind: "dataNode", root: node.head as Hash32 });
       if (node.length === 1n) {
         if (
-          !Buffer.from(node.tail).equals(
-            MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
-          )
+          !Buffer.from(node.tail).equals(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1)
         ) {
           throw new Error(
             "one-item CEK Data list must end at the canonical empty root",
@@ -2604,9 +2499,7 @@ const verifyOneProgramMaterialV1 = (
       );
       if (node.length === 1n) {
         if (
-          !Buffer.from(node.tail).equals(
-            MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
-          )
+          !Buffer.from(node.tail).equals(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1)
         ) {
           throw new Error(
             "one-item CEK Data pair list must end at the canonical empty root",
@@ -2643,8 +2536,9 @@ const verifyOneProgramMaterialV1 = (
 
   for (const [key, expected] of sequenceLengthExpectations) {
     const entry = material.get(key)!;
-    const actual =
-      decodeMidgardCekProgramSequencePreimageV1(entry.preimage).length;
+    const actual = decodeMidgardCekProgramSequencePreimageV1(
+      entry.preimage,
+    ).length;
     for (const length of expected) {
       if (actual !== length) {
         throw new Error(
@@ -2751,7 +2645,9 @@ const verifyOneProgramMaterialV1 = (
     }
     const bytes = Buffer.concat([left.bytes, right.bytes]);
     if (BigInt(bytes.length) !== blob.byteLength) {
-      throw new Error("CEK blob branch byte length does not match its children");
+      throw new Error(
+        "CEK blob branch byte length does not match its children",
+      );
     }
     blobShapes.set(key, {
       bytes,
@@ -2793,8 +2689,7 @@ const verifyOneProgramMaterialV1 = (
       if (
         listNode.headCborLength !== head.cborLength ||
         listNode.headMemory !== head.memory ||
-        listNode.payloadCborLength !==
-          head.cborLength + tailPayload ||
+        listNode.payloadCborLength !== head.cborLength + tailPayload ||
         listNode.memory !== head.memory + tailMemory
       ) {
         throw new Error("CEK Data list cumulative summary is invalid");
@@ -2824,11 +2719,8 @@ const verifyOneProgramMaterialV1 = (
         pairNode.valueCborLength !== valueNode.cborLength ||
         pairNode.valueMemory !== valueNode.memory ||
         pairNode.payloadCborLength !==
-          keyNode.cborLength +
-            valueNode.cborLength +
-            tailPayload ||
-        pairNode.memory !==
-          keyNode.memory + valueNode.memory + tailMemory
+          keyNode.cborLength + valueNode.cborLength + tailPayload ||
+        pairNode.memory !== keyNode.memory + valueNode.memory + tailMemory
       ) {
         throw new Error("CEK Data map-entry cumulative summary is invalid");
       }
@@ -2837,10 +2729,7 @@ const verifyOneProgramMaterialV1 = (
 
     const dataNode = decodedDataNodes.get(key);
     if (dataNode === undefined) continue;
-    if (
-      dataNode.kind === "constrSmall" ||
-      dataNode.kind === "constrLarge"
-    ) {
+    if (dataNode.kind === "constrSmall" || dataNode.kind === "constrLarge") {
       const fields =
         dataNode.fieldsCount === 0n
           ? null
@@ -2859,10 +2748,7 @@ const verifyOneProgramMaterialV1 = (
             )
           : 3n +
             dataNode.constructorCborLength +
-            midgardCekDataListCborLengthV1(
-              dataNode.fieldsCount,
-              fieldsPayload,
-            );
+            midgardCekDataListCborLengthV1(dataNode.fieldsCount, fieldsPayload);
       if (
         dataNode.cborLength !== expectedLength ||
         dataNode.memory !== 4n + fieldsMemory
@@ -2951,9 +2837,7 @@ const verifyOneProgramMaterialV1 = (
       cursor = rootKey(link.tail);
       remaining -= 1n;
     }
-    if (
-      cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1)
-    ) {
+    if (cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1)) {
       throw new Error("CEK semantic Data list has a non-empty tail");
     }
     return items;
@@ -2962,8 +2846,7 @@ const verifyOneProgramMaterialV1 = (
     root: Uint8Array,
     length: bigint,
   ): ReadonlyMap<SemanticDataValueV1, SemanticDataValueV1> => {
-    const entries =
-      new Map<SemanticDataValueV1, SemanticDataValueV1>();
+    const entries = new Map<SemanticDataValueV1, SemanticDataValueV1>();
     let cursor = rootKey(root);
     let remaining = length;
     while (remaining > 0n) {
@@ -2975,9 +2858,7 @@ const verifyOneProgramMaterialV1 = (
       cursor = rootKey(link.tail);
       remaining -= 1n;
     }
-    if (
-      cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1)
-    ) {
+    if (cursor !== rootKey(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1)) {
       throw new Error("CEK semantic Data map has a non-empty tail");
     }
     return entries;
@@ -2994,9 +2875,7 @@ const verifyOneProgramMaterialV1 = (
     if (node.kind === "integer") {
       const bytes = blobShapes.get(rootKey(node.cborRoot))?.bytes;
       const decoded =
-        bytes === undefined
-          ? undefined
-          : LucidData.from(bytes.toString("hex"));
+        bytes === undefined ? undefined : LucidData.from(bytes.toString("hex"));
       if (typeof decoded !== "bigint") {
         throw new Error("CEK semantic integer leaf is invalid");
       }
@@ -3014,36 +2893,25 @@ const verifyOneProgramMaterialV1 = (
     } else {
       let constructor: bigint;
       if (node.kind === "constrLarge") {
-        const bytes = blobShapes.get(
-          rootKey(node.constructorCborRoot),
-        )?.bytes;
+        const bytes = blobShapes.get(rootKey(node.constructorCborRoot))?.bytes;
         const decoded =
           bytes === undefined
             ? undefined
             : LucidData.from(bytes.toString("hex"));
         if (typeof decoded !== "bigint") {
-          throw new Error(
-            "CEK semantic constructor index is invalid",
-          );
+          throw new Error("CEK semantic constructor index is invalid");
         }
         constructor = decoded;
       } else {
         constructor = node.constructor;
       }
       if (constructor < 0n) {
-        throw new Error(
-          "CEK semantic constructor index must be non-negative",
-        );
+        throw new Error("CEK semantic constructor index must be non-negative");
       }
       value = {
         kind: "constr",
         constructor,
-        fields: [
-          ...reconstructDataList(
-            node.fieldsRoot,
-            node.fieldsCount,
-          ),
-        ],
+        fields: [...reconstructDataList(node.fieldsRoot, node.fieldsCount)],
       };
     }
     reconstructedData.set(key, value);
@@ -3059,10 +2927,7 @@ const verifyOneProgramMaterialV1 = (
     }
     const decodedPayload = reconstructData(value.semanticRoot);
     const payloadCbor = encodeSemanticDataV1(decodedPayload);
-    if (
-      payloadCbor.length >
-      MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1
-    ) {
+    if (payloadCbor.length > MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1) {
       throw new Error(
         `CEK source constant payload exceeds the ${MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1.toString()}-byte L1 proof envelope`,
       );
@@ -3175,10 +3040,7 @@ export const verifyMidgardCekProgramMaterialBundleV1 = (
     for (const key of result.reachableRoots) reached.add(key);
     return result;
   });
-  if (
-    options.allowUnreachable !== true &&
-    reached.size !== material.size
-  ) {
+  if (options.allowUnreachable !== true && reached.size !== material.size) {
     throw new Error(
       "CEK program material bundle contains nodes unreachable from every envelope",
     );
@@ -3189,9 +3051,12 @@ export const verifyMidgardCekProgramMaterialBundleV1 = (
 export const MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION = 1n;
 export const MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION = 1n;
 
+export type MidgardCekProgramMaterialSidecarV1 =
+  readonly MidgardCekProgramMaterialEntryV1[];
+
 export type MidgardProofSubmissionV1 = {
   readonly transactionCbor: Buffer;
-  readonly programMaterial: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly programMaterial: MidgardCekProgramMaterialSidecarV1;
 };
 
 const canonicalizeMidgardCekProgramMaterialEntriesV1 = (
@@ -3206,9 +3071,7 @@ const canonicalizeMidgardCekProgramMaterialEntriesV1 = (
     )
     .sort((left, right) => compareBytes(left.root, right.root));
   for (let index = 1; index < material.length; index += 1) {
-    if (
-      Buffer.from(material[index - 1]!.root).equals(material[index]!.root)
-    ) {
+    if (Buffer.from(material[index - 1]!.root).equals(material[index]!.root)) {
       throw new Error(`${label} has duplicate material roots`);
     }
   }
@@ -3257,15 +3120,9 @@ const decodeMidgardCekProgramMaterialEntryListV1 = (
       previousRoot !== undefined &&
       compareBytes(previousRoot, exactRoot) >= 0
     ) {
-      throw new Error(
-        "V1 program material roots must be strictly sorted",
-      );
+      throw new Error("V1 program material roots must be strictly sorted");
     }
-    const value = readCborBytes(
-      source,
-      root.nextOffset,
-      `${entryLabel}.value`,
-    );
+    const value = readCborBytes(source, root.nextOffset, `${entryLabel}.value`);
     programMaterial.push(
       decodeMidgardCekProgramMaterialDaEntryV1(exactRoot, value.value),
     );
@@ -3284,7 +3141,7 @@ const decodeMidgardCekProgramMaterialEntryListV1 = (
  * fail closed if a future material encoding changes.
  */
 export const encodeMidgardCekProgramMaterialSidecarV1 = (
-  entries: readonly MidgardCekProgramMaterialEntryV1[],
+  entries: MidgardCekProgramMaterialSidecarV1,
 ): Buffer =>
   encodeCbor([
     MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION,
@@ -3296,7 +3153,7 @@ export const encodeMidgardCekProgramMaterialSidecarV1 = (
 
 export const decodeMidgardCekProgramMaterialSidecarV1 = (
   bytes: Uint8Array,
-): readonly MidgardCekProgramMaterialEntryV1[] => {
+): MidgardCekProgramMaterialSidecarV1 => {
   const source = Buffer.from(bytes);
   const header = readCborArrayHeader(source, 0, "program_material_sidecar");
   if (header.length !== 2) {
@@ -3309,9 +3166,7 @@ export const decodeMidgardCekProgramMaterialSidecarV1 = (
     header.nextOffset,
     "program_material_sidecar.version",
   );
-  if (
-    version.value !== MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION
-  ) {
+  if (version.value !== MIDGARD_CEK_PROGRAM_MATERIAL_SIDECAR_V1_VERSION) {
     throw new Error(
       `unsupported V1 program material sidecar version ${version.value.toString()}`,
     );
@@ -3353,18 +3208,14 @@ export const mergeMidgardCekProgramMaterialSidecarsV1 = (
       const encoded = encodeMidgardCekProgramMaterialEntryV1(entry);
       const existing = byRoot.get(rootHex);
       if (existing !== undefined && !existing.encoded.equals(encoded)) {
-        throw new Error(
-          `conflicting V1 program material for root ${rootHex}`,
-        );
+        throw new Error(`conflicting V1 program material for root ${rootHex}`);
       }
       byRoot.set(rootHex, { encoded, entry });
     }
   }
   return Object.freeze(
     [...byRoot.values()]
-      .sort((left, right) =>
-        compareBytes(left.entry.root, right.entry.root),
-      )
+      .sort((left, right) => compareBytes(left.entry.root, right.entry.root))
       .map(({ entry }) => entry),
   );
 };

@@ -118,15 +118,15 @@ test small_canonical_program_envelope_decodes() {
 }
 
 test program_envelope_rejects_noncanonical_and_out_of_bounds_claims() {
-  let noncanonical = #"8503830101005820"
+  let noncanonical = #"8501830101005820"
     |> bytearray.concat(h_01)
     |> bytearray.concat(#"18031890")
-  let legacy_v1 = #"8501830101005820"
+  let unsupported_version = #"8502830101005820"
     |> bytearray.concat(h_01)
     |> bytearray.concat(#"031890")
   and {
     cek_proof_v1.inspect_program_envelope_v1(noncanonical) == None,
-    cek_proof_v1.inspect_program_envelope_v1(legacy_v1) == None,
+    cek_proof_v1.inspect_program_envelope_v1(unsupported_version) == None,
     cek_proof_v1.inspect_program_envelope_v1(
       cek_proof_v1.encode_program_envelope_v1(1, 0, 0, h_01, 3, 144),
     ) == None,
