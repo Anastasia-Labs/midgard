@@ -1270,6 +1270,150 @@ export const resolveArchitectureGGateConfig = ({
   };
 };
 
+export const validateArchitectureGCommitCandidateInputV1 = (input) => {
+  requireExactObjectKeys(
+    input,
+    [
+      "schemaVersion",
+      "phase1FormalBinding",
+      "runtimeIdentity",
+      "levelPath",
+      "binaryPath",
+      "binarySha256",
+      "sidecarPath",
+      "expectedTransactionCount",
+      "corpusSha256",
+      "corpusSliceSha256",
+      "fundingMapSha256",
+      "fixtureCreationPath",
+      "fixtureCreationSha256",
+      "fixtureInitialUtxoCount",
+      "baseUtxoPayloadAggregate",
+      "workerInput",
+    ],
+    "Architecture G commit-candidate input",
+  );
+  validateArchitectureGPhase1FormalBindingIdentity(input.phase1FormalBinding);
+  validateArchitectureGRuntimeIdentity({
+    identity: input.runtimeIdentity,
+    expectedVersion: input.runtimeIdentity?.version,
+    expectedExecutableSha256: input.runtimeIdentity?.executableSha256,
+  });
+  requireExactObjectKeys(
+    input.baseUtxoPayloadAggregate,
+    ["entryCount", "encodedTupleBytes"],
+    "Architecture G candidate base UTxO aggregate",
+  );
+  requireExactObjectKeys(
+    input.workerInput,
+    ["data"],
+    "Architecture G candidate worker input",
+  );
+  const data = requireExactObjectKeys(
+    input.workerInput.data,
+    [
+      "availableConfirmedBlock",
+      "availableLocalFinalizationBlock",
+      "currentBlockStartTimeMs",
+      "localFinalizationPending",
+      "ledgerStoreLeaseOwner",
+      "mempoolTxsCountSoFar",
+      "sizeOfProcessedTxsSoFar",
+      "baseSnapshotId",
+      "stateQueueHasUnmergedTail",
+      "speculativeBuild",
+    ],
+    "Architecture G candidate worker data",
+  );
+  const speculativeBuild = requireExactObjectKeys(
+    data.speculativeBuild,
+    [
+      "base",
+      "watermarks",
+      "excludedMempoolTxIds",
+      "excludedDepositEventIds",
+      "excludedForcedTransactionEventIds",
+      "excludedWithdrawalEventIds",
+    ],
+    "Architecture G candidate speculative build",
+  );
+  const base = requireExactObjectKeys(
+    speculativeBuild.base,
+    ["headerHash", "utxosRoot", "blockEndTimeMs", "submittedTxHash"],
+    "Architecture G candidate speculative base",
+  );
+  const watermarks = requireExactObjectKeys(
+    speculativeBuild.watermarks,
+    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
+    "Architecture G candidate barrier watermarks",
+  );
+  const excludedFields = [
+    "excludedMempoolTxIds",
+    "excludedDepositEventIds",
+    "excludedForcedTransactionEventIds",
+    "excludedWithdrawalEventIds",
+  ];
+  if (
+    input.schemaVersion !==
+      "midgard-architecture-g-commit-candidate-input-v1" ||
+    ![
+      input.binarySha256,
+      input.corpusSha256,
+      input.corpusSliceSha256,
+      input.fundingMapSha256,
+      input.fixtureCreationSha256,
+    ].every(isHash) ||
+    ![
+      input.levelPath,
+      input.binaryPath,
+      input.sidecarPath,
+      input.fixtureCreationPath,
+    ].every(isCanonicalAbsolutePath) ||
+    !isPositiveSafeInteger(input.expectedTransactionCount) ||
+    !isPositiveSafeInteger(input.fixtureInitialUtxoCount) ||
+    input.baseUtxoPayloadAggregate.entryCount !==
+      input.fixtureInitialUtxoCount ||
+    !isPositiveSafeInteger(input.baseUtxoPayloadAggregate.encodedTupleBytes) ||
+    input.corpusSha256 !== input.phase1FormalBinding.corpus.corpusSha256 ||
+    data.availableConfirmedBlock !== "" ||
+    data.availableLocalFinalizationBlock !== "" ||
+    !isPositiveSafeInteger(data.currentBlockStartTimeMs) ||
+    data.localFinalizationPending !== false ||
+    !/^commit:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      data.ledgerStoreLeaseOwner,
+    ) ||
+    data.mempoolTxsCountSoFar !== 0 ||
+    data.sizeOfProcessedTxsSoFar !== 0 ||
+    data.stateQueueHasUnmergedTail !== true ||
+    !isHash(base.submittedTxHash) ||
+    base.headerHash !== base.submittedTxHash.slice(0, 56) ||
+    !isHash(base.utxosRoot) ||
+    base.blockEndTimeMs !== data.currentBlockStartTimeMs ||
+    data.baseSnapshotId !==
+      `architecture-g-candidate:${base.submittedTxHash}` ||
+    !Object.values(watermarks).every(isPositiveSafeInteger) ||
+    Math.max(
+      watermarks.depositMs,
+      watermarks.withdrawalMs,
+      watermarks.txOrderMs,
+    ) > watermarks.refreshedAtMs ||
+    base.blockEndTimeMs >=
+      Math.min(
+        watermarks.depositMs,
+        watermarks.withdrawalMs,
+        watermarks.txOrderMs,
+      ) ||
+    excludedFields.some(
+      (field) =>
+        !Array.isArray(speculativeBuild[field]) ||
+        speculativeBuild[field].length !== 0,
+    )
+  ) {
+    throw new Error("Architecture G commit-candidate input is invalid");
+  }
+  return input;
+};
+
 export const validateCommitCandidateProbeResult = ({
   result,
   transactions,

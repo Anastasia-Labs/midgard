@@ -11,6 +11,7 @@ import {
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
+  validateArchitectureGCommitCandidateInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateFixtureIdentity,
   validateArchitectureGCrossGateSourceIdentity,
@@ -290,11 +291,7 @@ for (const [fixtureSize, inputPath] of inputs) {
   const inputBytes = readFileSync(inputPath);
   const inputSha256 = createHash("sha256").update(inputBytes).digest("hex");
   const input = JSON.parse(inputBytes.toString("utf8"));
-  assert.equal(
-    input.schemaVersion,
-    "midgard-architecture-g-commit-candidate-input-v1",
-    "Unsupported commit-candidate input schema",
-  );
+  validateArchitectureGCommitCandidateInputV1(input);
   validateArchitectureGCrossGateEvidenceIdentity({
     expected: phase1FormalBinding,
     current: input.phase1FormalBinding,

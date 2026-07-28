@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -7,6 +7,7 @@ import { Level } from "level";
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
+  validateArchitectureGCommitCandidateInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGFixtureCreationEvidence,
 } from "./mpf-architecture-g-gate-config.mjs";
@@ -142,59 +143,57 @@ writeFileSync(
     2,
   )}\n`,
 );
-writeFileSync(
-  candidateInputPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
-      phase1FormalBinding,
-      runtimeIdentity,
-      levelPath,
-      binaryPath,
-      binarySha256,
-      sidecarPath,
-      expectedTransactionCount,
-      corpusSha256,
-      corpusSliceSha256,
-      fundingMapSha256,
-      fixtureCreationPath,
-      fixtureCreationSha256,
-      fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
-      baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
-      workerInput: {
-        data: {
-          availableConfirmedBlock: "",
-          availableLocalFinalizationBlock: "",
-          currentBlockStartTimeMs: baseBlockEndTimeMs,
-          localFinalizationPending: false,
-          mempoolTxsCountSoFar: 0,
-          sizeOfProcessedTxsSoFar: 0,
-          baseSnapshotId: `architecture-g-candidate:${identity}`,
-          stateQueueHasUnmergedTail: true,
-          speculativeBuild: {
-            base: {
-              headerHash: identity.slice(0, 56),
-              utxosRoot: durableRoot,
-              blockEndTimeMs: baseBlockEndTimeMs,
-              submittedTxHash: identity,
-            },
-            watermarks: {
-              depositMs: now,
-              withdrawalMs: now,
-              txOrderMs: now,
-              refreshedAtMs: now,
-            },
-            excludedMempoolTxIds: [],
-            excludedDepositEventIds: [],
-            excludedForcedTransactionEventIds: [],
-            excludedWithdrawalEventIds: [],
-          },
+const candidateInput = validateArchitectureGCommitCandidateInputV1({
+  schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
+  phase1FormalBinding,
+  runtimeIdentity,
+  levelPath,
+  binaryPath,
+  binarySha256,
+  sidecarPath,
+  expectedTransactionCount,
+  corpusSha256,
+  corpusSliceSha256,
+  fundingMapSha256,
+  fixtureCreationPath,
+  fixtureCreationSha256,
+  fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
+  baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
+  workerInput: {
+    data: {
+      availableConfirmedBlock: "",
+      availableLocalFinalizationBlock: "",
+      currentBlockStartTimeMs: baseBlockEndTimeMs,
+      localFinalizationPending: false,
+      ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
+      mempoolTxsCountSoFar: 0,
+      sizeOfProcessedTxsSoFar: 0,
+      baseSnapshotId: `architecture-g-candidate:${identity}`,
+      stateQueueHasUnmergedTail: true,
+      speculativeBuild: {
+        base: {
+          headerHash: identity.slice(0, 56),
+          utxosRoot: durableRoot,
+          blockEndTimeMs: baseBlockEndTimeMs,
+          submittedTxHash: identity,
         },
+        watermarks: {
+          depositMs: now,
+          withdrawalMs: now,
+          txOrderMs: now,
+          refreshedAtMs: now,
+        },
+        excludedMempoolTxIds: [],
+        excludedDepositEventIds: [],
+        excludedForcedTransactionEventIds: [],
+        excludedWithdrawalEventIds: [],
       },
     },
-    null,
-    2,
-  )}\n`,
+  },
+});
+writeFileSync(
+  candidateInputPath,
+  `${JSON.stringify(candidateInput, null, 2)}\n`,
 );
 validateArchitectureGCrossGateEvidenceIdentity({
   expected: phase1FormalBinding,

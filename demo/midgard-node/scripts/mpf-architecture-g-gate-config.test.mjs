@@ -17,6 +17,7 @@ import {
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
+  validateArchitectureGCommitCandidateInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateFixtureIdentity,
   validateArchitectureGCrossGateSourceIdentity,
@@ -1107,6 +1108,101 @@ test("numeric arguments reject partial, unsafe, zero, and negative values", () =
         transactions: "1",
       }),
     );
+  }
+});
+
+const candidateInputDocument = () => {
+  const submittedTxHash = hash(124);
+  const blockEndTimeMs = 1_700_000_000_000;
+  return {
+    schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
+    phase1FormalBinding: structuredClone(phase1FormalBindingIdentity),
+    runtimeIdentity: structuredClone(runtimeIdentity),
+    levelPath: "/fixtures/utxos-1000000-level",
+    binaryPath: "/release/native/architecture-g-owner",
+    binarySha256: hash(125),
+    sidecarPath: "/fixtures/utxos-1000000-level.candidate.sidecar",
+    expectedTransactionCount: 50_000,
+    corpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
+    corpusSliceSha256: hash(126),
+    fundingMapSha256: hash(127),
+    fixtureCreationPath: "/evidence/fixture-create-1000000.json",
+    fixtureCreationSha256: hash(128),
+    fixtureInitialUtxoCount: 1_000_000,
+    baseUtxoPayloadAggregate: {
+      entryCount: 1_000_000,
+      encodedTupleBytes: 80_000_000,
+    },
+    workerInput: {
+      data: {
+        availableConfirmedBlock: "",
+        availableLocalFinalizationBlock: "",
+        currentBlockStartTimeMs: blockEndTimeMs,
+        localFinalizationPending: false,
+        ledgerStoreLeaseOwner: "commit:123e4567-e89b-42d3-a456-426614174000",
+        mempoolTxsCountSoFar: 0,
+        sizeOfProcessedTxsSoFar: 0,
+        baseSnapshotId: `architecture-g-candidate:${submittedTxHash}`,
+        stateQueueHasUnmergedTail: true,
+        speculativeBuild: {
+          base: {
+            headerHash: submittedTxHash.slice(0, 56),
+            utxosRoot: hash(129),
+            blockEndTimeMs,
+            submittedTxHash,
+          },
+          watermarks: {
+            depositMs: blockEndTimeMs + 180_000,
+            withdrawalMs: blockEndTimeMs + 180_000,
+            txOrderMs: blockEndTimeMs + 180_000,
+            refreshedAtMs: blockEndTimeMs + 180_000,
+          },
+          excludedMempoolTxIds: [],
+          excludedDepositEventIds: [],
+          excludedForcedTransactionEventIds: [],
+          excludedWithdrawalEventIds: [],
+        },
+      },
+    },
+  };
+};
+
+test("candidate input validator accepts only the complete producer language", () => {
+  const valid = candidateInputDocument();
+  assert.equal(validateArchitectureGCommitCandidateInputV1(valid), valid);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
+    (value) => void (value.workerInput.unknown = true),
+    (value) => void (value.workerInput.data.unknown = true),
+    (value) => void delete value.workerInput.data.ledgerStoreLeaseOwner,
+    (value) =>
+      void (value.workerInput.data.ledgerStoreLeaseOwner = "commit:shared"),
+    (value) => void (value.workerInput.data.speculativeBuild.unknown = true),
+    (value) =>
+      void (value.workerInput.data.speculativeBuild.base.unknown = true),
+    (value) =>
+      void (value.workerInput.data.speculativeBuild.watermarks.unknown = true),
+    (value) =>
+      void (value.workerInput.data.speculativeBuild.base.headerHash = hash(1)),
+    (value) =>
+      void (value.workerInput.data.speculativeBuild.base.utxosRoot = "bad"),
+    (value) =>
+      void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
+        hash(2),
+      ),
+    (value) => void (value.levelPath = "relative/fixture"),
+    (value) => void (value.corpusSha256 = hash(3)),
+    (value) => void (value.baseUtxoPayloadAggregate.entryCount = 999_999),
+    (value) =>
+      void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
+        value.workerInput.data.currentBlockStartTimeMs),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() => validateArchitectureGCommitCandidateInputV1(invalid));
   }
 });
 
