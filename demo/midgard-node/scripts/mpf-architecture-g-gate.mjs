@@ -24,6 +24,7 @@ import {
   captureArchitectureGRuntimeIdentity,
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
+  validateArchitectureGCorpusPreparationV1,
   validateArchitectureGFixtureCreationEvidence,
   validateArchitectureGSourceFileList,
 } from "./mpf-architecture-g-gate-config.mjs";
@@ -338,6 +339,7 @@ const prepareCanonicalCorpusSlice = async () => {
     completeChainCount: selection.completeChainCount,
     finalChainPrefixLength: selection.finalChainPrefixLength,
     fundingRootOutrefs: selection.fundingRootOutrefs,
+    fundingRoots: selection.fundingRoots,
     fundingRootsSha256: selection.fundingRootsSha256,
     fundingMapPath,
     fundingMapSha256: createHash("sha256")
@@ -383,15 +385,17 @@ if (prepareCorpusOnly) {
       "--prepare-corpus-only=true requires canonical corpus inputs",
     );
   }
-  process.stdout.write(
-    `${JSON.stringify({
+  const corpusPreparation = validateArchitectureGCorpusPreparationV1({
+    artifact: {
       schemaVersion: "midgard-architecture-g-corpus-preparation-v1",
       formalGateEvidence: false,
       phase1FormalBinding,
       runtimeIdentity,
       canonicalCorpus,
-    })}\n`,
-  );
+    },
+    transactions: transactionCount,
+  });
+  process.stdout.write(`${JSON.stringify(corpusPreparation)}\n`);
   process.exit(0);
 }
 for (const path of [

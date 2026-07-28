@@ -18,6 +18,7 @@ import {
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
   validateArchitectureGCommitCandidateInputV1,
+  validateArchitectureGCorpusPreparationV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateFixtureIdentity,
   validateArchitectureGCrossGateSourceIdentity,
@@ -466,6 +467,11 @@ const rootGateProvenance = {
     "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
 };
 
+const rootGateFundingRoots = [
+  { walletId: "wallet-0", outref: `${"aa".repeat(32)}#0` },
+  { walletId: "wallet-1", outref: `${"bb".repeat(32)}#1` },
+];
+
 const rootGateCanonicalCorpus = {
   corpusPath: "/evidence/corpus.ndjson",
   manifestPath: "/evidence/corpus.ndjson.manifest.json",
@@ -475,7 +481,9 @@ const rootGateCanonicalCorpus = {
   indexSha256: hash(74),
   verificationPath: "/evidence/generate-result.json",
   verificationSha256: hash(75),
-  fundingRootsSha256: hash(76),
+  fundingRootsSha256: createHash("sha256")
+    .update(JSON.stringify(rootGateFundingRoots))
+    .digest("hex"),
   fundingMapPath: "/evidence/canonical-corpus-funding.json",
   fundingMapSha256: hash(77),
   fundingEntryCount: 2,
@@ -493,7 +501,8 @@ const rootGateCanonicalCorpus = {
   selectionAlgorithm: "named-slice-file-order-prefix-v1",
   sourceCorpusRowRange: { start: 11, end: 12 },
   sourceSliceOrdinalRange: { start: 1, end: 2 },
-  fundingRootOutrefs: [`${"aa".repeat(32)}#0`, `${"bb".repeat(32)}#1`],
+  fundingRootOutrefs: rootGateFundingRoots.map((root) => root.outref),
+  fundingRoots: structuredClone(rootGateFundingRoots),
 };
 
 const rootGateOwnerDiagnostics = (durableRoot) => ({
@@ -710,6 +719,44 @@ const validateRootGateSummary = (summary) =>
     cpuSet: "28-31",
   });
 
+test("corpus preparation uses the exact root-gate canonical corpus language", () => {
+  const summary = rootGateSummary();
+  const valid = {
+    schemaVersion: "midgard-architecture-g-corpus-preparation-v1",
+    formalGateEvidence: false,
+    phase1FormalBinding: structuredClone(summary.phase1FormalBinding),
+    runtimeIdentity: structuredClone(summary.runtimeIdentity),
+    canonicalCorpus: structuredClone(summary.canonicalCorpus),
+  };
+  const validate = (artifact) =>
+    validateArchitectureGCorpusPreparationV1({
+      artifact,
+      transactions: 2,
+    });
+  assert.equal(validate(valid), valid);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void (value.formalGateEvidence = true),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.canonicalCorpus.unknown = true),
+    (value) => void (value.canonicalCorpus.sourceCorpusRowRange.unknown = true),
+    (value) => void (value.canonicalCorpus.corpusSha256 = hash(90)),
+    (value) => void (value.canonicalCorpus.sliceSha256 = "bad"),
+    (value) => void (value.canonicalCorpus.sliceRowCount = 1),
+    (value) => void value.canonicalCorpus.fundingRootOutrefs.pop(),
+    (value) => void (value.canonicalCorpus.fundingRoots[0].unknown = true),
+    (value) =>
+      void (value.canonicalCorpus.fundingRoots[1].walletId =
+        value.canonicalCorpus.fundingRoots[0].walletId),
+    (value) => void (value.canonicalCorpus.fundingRootsSha256 = hash(91)),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() => validate(invalid));
+  }
+});
+
 test("formal root summary validator recomputes all 50k evidence and rejects mutations", () => {
   const valid = rootGateSummary();
   assert.equal(validateRootGateSummary(valid), valid);
@@ -765,6 +812,9 @@ test("formal root summary rejects incomplete, extended, or noncanonical V1 docum
     (value) => void (value.canonicalCorpus.sourceCorpusRowRange.unknown = true),
     (value) => void (value.canonicalCorpus.sliceChainsContiguous = false),
     (value) => void value.canonicalCorpus.fundingRootOutrefs.pop(),
+    (value) => void (value.canonicalCorpus.fundingRoots[0].unknown = true),
+    (value) =>
+      void (value.canonicalCorpus.fundingRoots[0].outref = `${hash(98)}#0`),
     (value) => void (value.cgroup.unknown = true),
     (value) => void (value.gitStatusSha256 = hash(99)),
     (value) => void value.sourceFiles.reverse(),
