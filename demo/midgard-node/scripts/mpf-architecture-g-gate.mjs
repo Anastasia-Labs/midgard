@@ -26,6 +26,7 @@ import {
   resolveArchitectureGGateConfig,
   validateArchitectureGCorpusPreparationV1,
   validateArchitectureGFixtureCreationEvidence,
+  validateArchitectureGRootGateSummary,
   validateArchitectureGSourceFileList,
 } from "./mpf-architecture-g-gate-config.mjs";
 
@@ -834,42 +835,48 @@ assert.deepEqual(
   runtimeIdentity,
   "Runtime identity mutated during root gate execution",
 );
-const summary = {
-  schemaVersion: gateConfig.formal
-    ? "midgard-architecture-g-production-root-gate-v1"
-    : "midgard-architecture-g-root-diagnostic-smoke-v1",
-  formal: gateConfig.formal,
-  profile,
-  requiredCardinality: gateConfig.required,
-  generatedAt: new Date().toISOString(),
-  mode,
-  freshProcessRunsPerFixture: runs,
-  transactionCount,
-  phase1FormalBinding,
-  runtimeIdentity,
-  canonicalCorpus,
-  binaryPath,
-  binarySha256,
-  probePath,
-  probeSha256,
-  gitHead,
-  sourceSha256,
-  diffSha256,
-  gitStatusSha256,
-  gitStatusEntries,
-  sourceFiles,
-  cpuSet,
-  nodeOptions: "--max-old-space-size=4096",
-  cgroup: {
-    membership: cgroupMembership,
-    memoryMaxPath: memoryMaxPath ?? "unavailable",
-    memoryMax: cgroupMemoryMax,
+const summary = validateArchitectureGRootGateSummary({
+  summary: {
+    schemaVersion: gateConfig.formal
+      ? "midgard-architecture-g-production-root-gate-v1"
+      : "midgard-architecture-g-root-diagnostic-smoke-v1",
+    formal: gateConfig.formal,
+    profile,
+    requiredCardinality: gateConfig.required,
+    generatedAt: new Date().toISOString(),
+    mode,
+    freshProcessRunsPerFixture: runs,
+    transactionCount,
+    phase1FormalBinding,
+    runtimeIdentity,
+    canonicalCorpus,
+    binaryPath,
+    binarySha256,
+    probePath,
+    probeSha256,
+    gitHead,
+    sourceSha256,
+    diffSha256,
+    gitStatusSha256,
+    gitStatusEntries,
+    sourceFiles,
+    cpuSet,
+    nodeOptions: "--max-old-space-size=4096",
+    cgroup: {
+      membership: cgroupMembership,
+      memoryMaxPath: memoryMaxPath ?? "unavailable",
+      memoryMax: cgroupMemoryMax,
+    },
+    percentileMethod:
+      "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
+    groups,
+    verdict,
   },
-  percentileMethod:
-    "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
-  groups,
-  verdict,
-};
+  mode,
+  runs,
+  transactions: transactionCount,
+  cpuSet,
+});
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);
 const markdownPath = outPath.replace(/\.json$/, ".md");

@@ -757,6 +757,43 @@ test("corpus preparation uses the exact root-gate canonical corpus language", ()
   }
 });
 
+const rootGateSmokeSummary = ({ canonical }) => {
+  const value = rootGateSummary();
+  value.schemaVersion = "midgard-architecture-g-root-diagnostic-smoke-v1";
+  value.formal = false;
+  value.profile = "smoke";
+  for (const group of value.groups) {
+    group.fixtureCreation = null;
+    if (!canonical) {
+      for (const result of group.results) {
+        result.canonicalCorpusSlice = null;
+        result.canonicalFunding = null;
+      }
+    }
+  }
+  if (!canonical) value.canonicalCorpus = null;
+  return value;
+};
+
+test("root smoke summary is exact and cannot claim formal evidence", () => {
+  for (const canonical of [true, false]) {
+    const valid = rootGateSmokeSummary({ canonical });
+    assert.equal(validateRootGateSummary(valid), valid);
+  }
+  for (const mutate of [
+    (value) =>
+      void (value.schemaVersion =
+        "midgard-architecture-g-production-root-gate-v1"),
+    (value) => void (value.formal = true),
+    (value) => void (value.groups[0].fixtureCreation = {}),
+    (value) => void (value.groups[0].results[0].canonicalFunding = {}),
+  ]) {
+    const invalid = rootGateSmokeSummary({ canonical: false });
+    mutate(invalid);
+    assert.throws(() => validateRootGateSummary(invalid));
+  }
+});
+
 test("formal root summary validator recomputes all 50k evidence and rejects mutations", () => {
   const valid = rootGateSummary();
   assert.equal(validateRootGateSummary(valid), valid);

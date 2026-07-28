@@ -626,16 +626,6 @@ const validateArchitectureGRootGateResultShape = (result) => {
   );
   for (const [value, keys, label] of [
     [
-      result.canonicalCorpusSlice,
-      ["path", "sha256", "rowCount"],
-      "Architecture G result corpus slice",
-    ],
-    [
-      result.canonicalFunding,
-      ["path", "sha256", "entryCount"],
-      "Architecture G result funding identity",
-    ],
-    [
       result.phaseMs,
       [
         "transactionSourceRoot",
@@ -687,6 +677,20 @@ const validateArchitectureGRootGateResultShape = (result) => {
     ],
   ]) {
     requireExactObjectKeys(value, keys, label);
+  }
+  for (const [value, keys, label] of [
+    [
+      result.canonicalCorpusSlice,
+      ["path", "sha256", "rowCount"],
+      "Architecture G result corpus slice",
+    ],
+    [
+      result.canonicalFunding,
+      ["path", "sha256", "entryCount"],
+      "Architecture G result funding identity",
+    ],
+  ]) {
+    if (value !== null) requireExactObjectKeys(value, keys, label);
   }
   for (const [owner, label] of [
     [result.ownerBefore, "Architecture G owner-before diagnostics"],
@@ -977,11 +981,14 @@ export const validateArchitectureGRootGateSummary = ({
     expectedVersion: summary?.runtimeIdentity?.version,
     expectedExecutableSha256: summary?.runtimeIdentity?.executableSha256,
   });
+  const formal = summary.formal === true;
   if (
     summary?.schemaVersion !==
-      "midgard-architecture-g-production-root-gate-v1" ||
-    summary.formal !== true ||
-    summary.profile !== "formal" ||
+      (formal
+        ? "midgard-architecture-g-production-root-gate-v1"
+        : "midgard-architecture-g-root-diagnostic-smoke-v1") ||
+    (summary.formal !== true && summary.formal !== false) ||
+    summary.profile !== (formal ? "formal" : "smoke") ||
     summary.mode !== mode ||
     !jsonEqual(
       summary.requiredCardinality,
@@ -1049,15 +1056,21 @@ export const validateArchitectureGRootGateSummary = ({
   ) {
     throw new Error("Architecture G root gate provenance is invalid");
   }
-  const {
-    canonicalCorpus,
-    canonicalSlice: expectedCanonicalSlice,
-    canonicalFunding: expectedCanonicalFunding,
-  } = validateArchitectureGCanonicalCorpusIdentity({
-    canonicalCorpus: summary.canonicalCorpus,
-    phase1FormalBinding: summary.phase1FormalBinding,
-    transactions,
-  });
+  const canonicalEvidence =
+    summary.canonicalCorpus === null
+      ? null
+      : validateArchitectureGCanonicalCorpusIdentity({
+          canonicalCorpus: summary.canonicalCorpus,
+          phase1FormalBinding: summary.phase1FormalBinding,
+          transactions,
+        });
+  if (formal && canonicalEvidence === null) {
+    throw new Error(
+      "Architecture G formal root gate requires canonical corpus evidence",
+    );
+  }
+  const expectedCanonicalSlice = canonicalEvidence?.canonicalSlice ?? null;
+  const expectedCanonicalFunding = canonicalEvidence?.canonicalFunding ?? null;
   const expectedSizes =
     mode === "50k" ? [1_000_000] : [100_000, 300_000, 1_000_000];
   if (
@@ -1087,16 +1100,28 @@ export const validateArchitectureGRootGateSummary = ({
     const fixture = group.fixtureBefore;
     const after = group.fixtureAfter;
     const creation = group.fixtureCreation;
-    requireExactObjectKeys(
-      creation,
-      ["path", "sha256", "initialUtxoCount", "marker", "utxoPayloadAggregate"],
-      "Architecture G fixture-creation identity",
-    );
-    requireExactObjectKeys(
-      creation.utxoPayloadAggregate,
-      ["entryCount", "encodedTupleBytes"],
-      "Architecture G fixture payload aggregate",
-    );
+    if (formal) {
+      requireExactObjectKeys(
+        creation,
+        [
+          "path",
+          "sha256",
+          "initialUtxoCount",
+          "marker",
+          "utxoPayloadAggregate",
+        ],
+        "Architecture G fixture-creation identity",
+      );
+      requireExactObjectKeys(
+        creation.utxoPayloadAggregate,
+        ["entryCount", "encodedTupleBytes"],
+        "Architecture G fixture payload aggregate",
+      );
+    } else if (creation !== null) {
+      throw new Error(
+        "Architecture G smoke root gate cannot claim formal fixture-creation evidence",
+      );
+    }
     for (const [value, label] of [
       [fixture, "Architecture G fixture-before identity"],
       [after, "Architecture G fixture-after identity"],
@@ -1108,15 +1133,16 @@ export const validateArchitectureGRootGateSummary = ({
       );
     }
     if (
-      creation?.initialUtxoCount !== group.initialUtxos ||
-      creation?.marker !== fixture?.marker ||
-      creation?.utxoPayloadAggregate?.entryCount !== group.initialUtxos ||
-      !Number.isSafeInteger(
-        creation?.utxoPayloadAggregate?.encodedTupleBytes,
-      ) ||
-      creation.utxoPayloadAggregate.encodedTupleBytes <= 0 ||
-      !isCanonicalAbsolutePath(creation?.path) ||
-      !isHash(creation?.sha256) ||
+      (formal &&
+        (creation?.initialUtxoCount !== group.initialUtxos ||
+          creation?.marker !== fixture?.marker ||
+          creation?.utxoPayloadAggregate?.entryCount !== group.initialUtxos ||
+          !Number.isSafeInteger(
+            creation?.utxoPayloadAggregate?.encodedTupleBytes,
+          ) ||
+          creation.utxoPayloadAggregate.encodedTupleBytes <= 0 ||
+          !isCanonicalAbsolutePath(creation?.path) ||
+          !isHash(creation?.sha256))) ||
       !isCanonicalAbsolutePath(fixture?.path) ||
       !isPositiveSafeInteger(fixture?.directoryBytes) ||
       !isHash(fixture?.marker) ||
