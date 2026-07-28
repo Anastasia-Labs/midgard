@@ -1060,9 +1060,36 @@ const candidateProbeResult = () => ({
   submissionAttempts: 0,
   journalRowsBefore: 0,
   journalRowsAfter: 0,
+  candidateConfig: {
+    mpfEngine: "architecture_g",
+    scratchBuild: "fromlist",
+    payloadRootCheck: "off",
+    parallelRoots: true,
+    costModel: "ewma",
+    mempoolRetrievePageSize: 50_000,
+    maxL2TxCount: 50_000,
+    maxLedgerOpCount: 150_000,
+    maxTransitionStepCount: 50_000,
+  },
   candidate: {
+    candidateId: "123e4567-e89b-42d3-a456-426614174000",
+    baseHeaderHash: hash(121),
+    endTimeMs: 1_700_000_000_000,
+    builtAtMs: 1_700_000_000_100,
     expectedL2TransactionCount: 50_000,
     buildDurationMs: 8_900,
+    invalidationKey: `${hash(121)}:1700000000000:1699999999000`,
+    watermarks: {
+      depositMs: 1_699_999_999_000,
+      withdrawalMs: 1_699_999_999_100,
+      txOrderMs: 1_699_999_999_200,
+      refreshedAtMs: 1_700_000_000_050,
+    },
+    expectedUserEventCounts: {
+      deposits: 0,
+      forcedTransactions: 0,
+      withdrawals: 0,
+    },
     roots: Object.fromEntries(
       [
         "utxos",
@@ -1079,6 +1106,8 @@ const candidateProbeResult = () => ({
       ]),
     ),
   },
+  ownerBefore: rootGateOwnerDiagnostics(hash(120)),
+  ownerAfter: rootGateOwnerDiagnostics(hash(120)),
 });
 
 test("candidate result validator binds count, affinity, no-scan, no-submit, journal, and roots", () => {
@@ -1113,7 +1142,47 @@ test("candidate result validator binds count, affinity, no-scan, no-submit, jour
     (value) => void (value.fundingMapSha256 = "bad"),
     (value) => void (value.fixtureCreationSha256 = "bad"),
     (value) => void (value.baseUtxoPayloadAggregate.entryCount = 99),
+    (value) => void (value.candidateConfig.scratchBuild = "overlay"),
+    (value) => void (value.candidateConfig.maxLedgerOpCount = 149_999),
+    (value) => void (value.candidate.candidateId = "not-a-uuid"),
+    (value) => void (value.candidate.baseHeaderHash = "bad"),
+    (value) => void (value.candidate.invalidationKey = "stale"),
+    (value) => void (value.candidate.watermarks.depositMs = -1),
+    (value) => void (value.candidate.expectedUserEventCounts.deposits = -1),
+    (value) => void (value.ownerAfter.durableRoot = hash(122)),
     (value) => void (value.candidate.roots.utxos = "bad"),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() =>
+      validateCommitCandidateProbeResult({
+        result: invalid,
+        transactions: 50_000,
+        cpuSet: "2-9",
+        fixtureSize: 1_000_000,
+        inputPath: valid.inputPath,
+        inputSha256: valid.inputSha256,
+        probePath: valid.probePath,
+        probeSha256: valid.probeSha256,
+        binarySha256: valid.binarySha256,
+      }),
+    );
+  }
+});
+
+test("candidate result validator rejects incomplete or extended V1 documents", () => {
+  const valid = candidateProbeResult();
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.candidateConfig,
+    (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
+    (value) => void (value.candidateConfig.unknown = true),
+    (value) => void (value.candidate.unknown = true),
+    (value) => void (value.candidate.watermarks.unknown = true),
+    (value) => void (value.candidate.expectedUserEventCounts.unknown = true),
+    (value) => void (value.candidate.roots.unknown = hash(123)),
+    (value) => void (value.ownerBefore.unknown = true),
+    (value) => void (value.ownerAfter.ownerEpoch.unknown = true),
   ]) {
     const invalid = structuredClone(valid);
     mutate(invalid);

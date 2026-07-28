@@ -453,6 +453,40 @@ export const validateArchitectureGCrossGateEvidenceIdentity = ({
 const isPositiveSafeInteger = (value) =>
   Number.isSafeInteger(value) && value > 0;
 
+const ARCHITECTURE_G_OWNER_DIAGNOSTIC_KEYS = Object.freeze([
+  "ownerEpoch",
+  "durableRoot",
+  "residentNodes",
+  "residentEdges",
+  "residentBytes",
+  "activeGenerations",
+  "generatedNodes",
+  "generatedBytes",
+  "rssBytes",
+  "peakRssBytes",
+  "childRestarts",
+]);
+
+const validateArchitectureGOwnerDiagnostics = (owner, label) => {
+  requireExactObjectKeys(owner, ARCHITECTURE_G_OWNER_DIAGNOSTIC_KEYS, label);
+  requireExactObjectKeys(owner.ownerEpoch, ["type", "data"], `${label} epoch`);
+  if (
+    owner.ownerEpoch.type !== "Buffer" ||
+    !Array.isArray(owner.ownerEpoch.data) ||
+    owner.ownerEpoch.data.length !== 16 ||
+    !owner.ownerEpoch.data.every(
+      (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+    ) ||
+    !isHash(owner.durableRoot) ||
+    !ARCHITECTURE_G_OWNER_DIAGNOSTIC_KEYS.slice(2).every((field) =>
+      isNonNegativeSafeInteger(owner[field]),
+    )
+  ) {
+    throw new Error(`${label} is invalid`);
+  }
+  return owner;
+};
+
 const validateArchitectureGRootGateResultShape = (result) => {
   requireExactObjectKeys(
     result,
@@ -555,43 +589,11 @@ const validateArchitectureGRootGateResultShape = (result) => {
   ]) {
     requireExactObjectKeys(value, keys, label);
   }
-  const ownerKeys = [
-    "ownerEpoch",
-    "durableRoot",
-    "residentNodes",
-    "residentEdges",
-    "residentBytes",
-    "activeGenerations",
-    "generatedNodes",
-    "generatedBytes",
-    "rssBytes",
-    "peakRssBytes",
-    "childRestarts",
-  ];
   for (const [owner, label] of [
     [result.ownerBefore, "Architecture G owner-before diagnostics"],
     [result.ownerAfter, "Architecture G owner-after diagnostics"],
   ]) {
-    requireExactObjectKeys(owner, ownerKeys, label);
-    requireExactObjectKeys(
-      owner.ownerEpoch,
-      ["type", "data"],
-      `${label} epoch`,
-    );
-    if (
-      owner.ownerEpoch.type !== "Buffer" ||
-      !Array.isArray(owner.ownerEpoch.data) ||
-      owner.ownerEpoch.data.length !== 16 ||
-      !owner.ownerEpoch.data.every(
-        (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
-      ) ||
-      !isHash(owner.durableRoot) ||
-      !ownerKeys
-        .slice(2)
-        .every((field) => isNonNegativeSafeInteger(owner[field]))
-    ) {
-      throw new Error(`${label} is invalid`);
-    }
+    validateArchitectureGOwnerDiagnostics(owner, label);
   }
   const hydrationTimingFields = new Set([
     "prefetchMs",
@@ -1180,6 +1182,105 @@ export const validateCommitCandidateProbeResult = ({
   probeSha256,
   binarySha256,
 }) => {
+  requireExactObjectKeys(
+    result,
+    [
+      "schemaVersion",
+      "probePath",
+      "probeSha256",
+      "inputPath",
+      "inputSha256",
+      "expectedTransactionCount",
+      "corpusSha256",
+      "corpusSliceSha256",
+      "fundingMapSha256",
+      "fixtureCreationSha256",
+      "fixtureInitialUtxoCount",
+      "baseUtxoPayloadAggregate",
+      "binarySha256",
+      "cpuAffinity",
+      "durationMs",
+      "confirmedLedgerFullScans",
+      "journalRowsBefore",
+      "journalRowsAfter",
+      "candidateConfig",
+      "providerBoundaryAttempts",
+      "submissionAttempts",
+      "candidate",
+      "ownerBefore",
+      "ownerAfter",
+    ],
+    "Architecture G commit-candidate probe result",
+  );
+  requireExactObjectKeys(
+    result.baseUtxoPayloadAggregate,
+    ["entryCount", "encodedTupleBytes"],
+    "Commit-candidate base UTxO payload aggregate",
+  );
+  requireExactObjectKeys(
+    result.candidateConfig,
+    [
+      "mpfEngine",
+      "scratchBuild",
+      "payloadRootCheck",
+      "parallelRoots",
+      "costModel",
+      "mempoolRetrievePageSize",
+      "maxL2TxCount",
+      "maxLedgerOpCount",
+      "maxTransitionStepCount",
+    ],
+    "Commit-candidate configuration evidence",
+  );
+  requireExactObjectKeys(
+    result.candidate,
+    [
+      "candidateId",
+      "baseHeaderHash",
+      "endTimeMs",
+      "builtAtMs",
+      "buildDurationMs",
+      "invalidationKey",
+      "watermarks",
+      "expectedUserEventCounts",
+      "expectedL2TransactionCount",
+      "roots",
+    ],
+    "Commit-candidate summary",
+  );
+  requireExactObjectKeys(
+    result.candidate.watermarks,
+    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
+    "Commit-candidate barrier watermarks",
+  );
+  requireExactObjectKeys(
+    result.candidate.expectedUserEventCounts,
+    ["deposits", "forcedTransactions", "withdrawals"],
+    "Commit-candidate expected user-event counts",
+  );
+  const rootKeys = [
+    "utxos",
+    "rawTransactions",
+    "transactions",
+    "deposits",
+    "forcedTransactions",
+    "withdrawals",
+    "transitionTrace",
+    "eventToStep",
+  ];
+  requireExactObjectKeys(
+    result.candidate.roots,
+    rootKeys,
+    "Commit-candidate roots",
+  );
+  validateArchitectureGOwnerDiagnostics(
+    result.ownerBefore,
+    "Commit-candidate owner-before diagnostics",
+  );
+  validateArchitectureGOwnerDiagnostics(
+    result.ownerAfter,
+    "Commit-candidate owner-after diagnostics",
+  );
   if (
     result?.schemaVersion !== "midgard-architecture-g-commit-candidate-probe-v1"
   ) {
@@ -1196,6 +1297,7 @@ export const validateCommitCandidateProbeResult = ({
   }
   if (
     result.inputPath !== inputPath ||
+    !isCanonicalAbsolutePath(result.inputPath) ||
     !isHash(inputSha256) ||
     result.inputSha256 !== inputSha256
   ) {
@@ -1203,6 +1305,7 @@ export const validateCommitCandidateProbeResult = ({
   }
   if (
     result.probePath !== probePath ||
+    !isCanonicalAbsolutePath(result.probePath) ||
     !isHash(probeSha256) ||
     result.probeSha256 !== probeSha256 ||
     !isHash(binarySha256) ||
@@ -1231,6 +1334,24 @@ export const validateCommitCandidateProbeResult = ({
       "Commit-candidate probe fixture aggregate/cardinality drifted",
     );
   }
+  const candidateConfig = result.candidateConfig;
+  if (
+    candidateConfig.mpfEngine !== "architecture_g" ||
+    candidateConfig.scratchBuild !== "fromlist" ||
+    candidateConfig.payloadRootCheck !== "off" ||
+    candidateConfig.parallelRoots !== true ||
+    candidateConfig.costModel !== "ewma" ||
+    !isPositiveSafeInteger(candidateConfig.mempoolRetrievePageSize) ||
+    candidateConfig.mempoolRetrievePageSize < transactions ||
+    !isPositiveSafeInteger(candidateConfig.maxL2TxCount) ||
+    candidateConfig.maxL2TxCount < transactions ||
+    !isPositiveSafeInteger(candidateConfig.maxLedgerOpCount) ||
+    candidateConfig.maxLedgerOpCount < transactions * 3 ||
+    !isPositiveSafeInteger(candidateConfig.maxTransitionStepCount) ||
+    candidateConfig.maxTransitionStepCount < transactions
+  ) {
+    throw new Error("Commit-candidate configuration evidence is invalid");
+  }
   if (result.confirmedLedgerFullScans !== 0) {
     throw new Error("Commit-candidate probe performed a confirmed-ledger scan");
   }
@@ -1241,6 +1362,25 @@ export const validateCommitCandidateProbeResult = ({
     throw new Error(
       "Commit-candidate probe crossed the provider/submission boundary",
     );
+  }
+  const candidate = result.candidate;
+  const watermarkValues = Object.values(candidate.watermarks);
+  const minimumWatermarkMs = Math.min(...watermarkValues);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      candidate.candidateId,
+    ) ||
+    !isHash(candidate.baseHeaderHash) ||
+    !isPositiveSafeInteger(candidate.endTimeMs) ||
+    !isPositiveSafeInteger(candidate.builtAtMs) ||
+    !watermarkValues.every(isNonNegativeSafeInteger) ||
+    !Object.values(candidate.expectedUserEventCounts).every(
+      isNonNegativeSafeInteger,
+    ) ||
+    candidate.invalidationKey !==
+      `${candidate.baseHeaderHash}:${candidate.endTimeMs.toString()}:${minimumWatermarkMs.toString()}`
+  ) {
+    throw new Error("Commit-candidate identity or barrier evidence is invalid");
   }
   if (result.journalRowsBefore !== 0 || result.journalRowsAfter !== 0) {
     throw new Error(
@@ -1256,14 +1396,15 @@ export const validateCommitCandidateProbeResult = ({
   ) {
     throw new Error("Commit-candidate worker build duration is invalid");
   }
-  const roots = result.candidate?.roots;
   if (
-    typeof roots !== "object" ||
-    roots === null ||
-    Object.values(roots).some(
-      (root) => typeof root !== "string" || !/^[0-9a-f]{64}$/u.test(root),
-    )
+    result.ownerBefore.durableRoot !== result.ownerAfter.durableRoot ||
+    !jsonEqual(result.ownerBefore.ownerEpoch, result.ownerAfter.ownerEpoch) ||
+    result.ownerBefore.childRestarts !== result.ownerAfter.childRestarts
   ) {
+    throw new Error("Commit-candidate native owner identity drifted");
+  }
+  const roots = result.candidate?.roots;
+  if (rootKeys.some((field) => !isHash(roots[field]))) {
     throw new Error("Commit-candidate roots are invalid");
   }
   return roots;
