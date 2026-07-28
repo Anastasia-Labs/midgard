@@ -42,6 +42,7 @@ import {
   encodeDaPayloadChunkManifestCbor,
   encodeDaPayloadSubmitRequestV1Cbor,
   normalizeDaDeploymentFingerprintHex,
+  parseDaLibp2pRuntimeManifest,
 } from "../src/da-transport.js";
 
 const h = (byte: string, count: number): string => byte.repeat(count);
@@ -103,6 +104,100 @@ describe("DA libp2p transport protocol freeze", () => {
       ),
     ).toBe(`/midgard/${h("01", 32)}/da/payload-submit/1`);
     expect(normalizeDaDeploymentFingerprintHex(h("AB", 32))).toBe(h("ab", 32));
+  });
+
+  it("parses the exact canonical producer and watcher runtime manifests", () => {
+    const producer = parseDaLibp2pRuntimeManifest(runtimeManifestFixture());
+    expect(producer).toMatchObject({
+      network: "Preview",
+      deployment: {
+        fingerprint: h("ab", 32),
+        contract_deployment_manifest_id: h("ab", 32),
+      },
+      runtime_topology: { target: "producer" },
+    });
+
+    const watcherFixture = runtimeManifestFixture();
+    watcherFixture.runtime_topology = {
+      target: "watcher",
+      profile: "public",
+      producer_peer_id: "peer-producer",
+      local_signer_index: 0,
+    };
+    (watcherFixture.da_transport as Record<string, unknown>).retention_days =
+      DA_TRANSPORT_LIMITS_V1.minimumRetentionDays + 1;
+    const watcher = parseDaLibp2pRuntimeManifest(watcherFixture);
+    expect(watcher.runtime_topology).toEqual({
+      target: "watcher",
+      profile: "public",
+      producer_peer_id: "peer-producer",
+      local_signer_index: 0,
+    });
+    expect(watcher.da_transport.retention_days).toBe(16);
+  });
+
+  it("rejects every unknown or missing root and nested runtime-manifest key", () => {
+    const cases: readonly {
+      readonly mutate: (manifest: Record<string, unknown>) => void;
+      readonly error: RegExp;
+    }[] = [
+      {
+        mutate: (manifest) => {
+          manifest.unknown_root = true;
+        },
+        error: /unknown_root is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          delete manifest.network;
+        },
+        error: /network is required/u,
+      },
+      {
+        mutate: (manifest) => {
+          const gossip = (
+            manifest.da_transport as Record<string, Record<string, unknown>>
+          ).gossip;
+          gossip.unknown_nested = true;
+        },
+        error: /gossip\.unknown_nested is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const limits = (
+            manifest.da_transport as Record<string, Record<string, unknown>>
+          ).limits;
+          delete limits.request_timeout_ms;
+        },
+        error: /limits\.request_timeout_ms is required/u,
+      },
+      {
+        mutate: (manifest) => {
+          const committee = manifest.da_committee as {
+            members: Record<string, unknown>[];
+          };
+          committee.members[0]!.unknown_member = true;
+        },
+        error: /members\[0\]\.unknown_member is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const committee = manifest.da_committee as {
+            members: Record<string, unknown>[];
+          };
+          delete committee.members[0]!.roles;
+        },
+        error: /members\[0\]\.roles is required/u,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const manifest = runtimeManifestFixture();
+      testCase.mutate(manifest);
+      expect(() => parseDaLibp2pRuntimeManifest(manifest)).toThrow(
+        testCase.error,
+      );
+    }
   });
 
   it("matches frozen CBOR vectors for the Phase 0/1 message schemas", () => {
@@ -391,3 +486,52 @@ const assertVector = <T>(
   expect(encoded.toString("hex"), label).toBe(hex);
   expect(decode(encoded)).toEqual(value);
 };
+
+const runtimeManifestFixture = (): Record<string, unknown> => ({
+  schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
+  deployment: {
+    fingerprint: h("AB", 32),
+    contract_deployment_manifest_id: h("ab", 32),
+    contract_deployment_info_sha256: h("cd", 32),
+    identity_source: "contract_deployment_manifest_id",
+  },
+  runtime_topology: {
+    target: "producer",
+    profile: "public",
+    producer_peer_id: "peer-producer",
+  },
+  da_transport: {
+    kind: "libp2p",
+    no_http_da_transport: true,
+    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/39002"],
+    announce_multiaddrs: ["/dns4/producer.example/tcp/39002/p2p/peer-producer"],
+    bootstrap_multiaddrs: [],
+    gossip: {
+      strict_sign: true,
+      emit_self: false,
+      allowed_topics_only: true,
+      max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+    },
+    limits: {
+      max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+      max_inline_response_bytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+      max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+      max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    },
+    retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+  },
+  da_committee: {
+    threshold: 1,
+    members: [
+      {
+        signer_index: 0,
+        da_vkey: h("01", 32),
+        peer_id: "peer-a",
+        multiaddrs: ["/dns4/da-a.example/tcp/39001/p2p/peer-a"],
+        roles: ["committee"],
+      },
+    ],
+  },
+});

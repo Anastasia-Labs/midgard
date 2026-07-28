@@ -1,0 +1,500 @@
+{
+  "schemaVersion": "midgard-canonical-v1-feature-inventory-v1",
+  "authority": {
+    "sourceRevision": "d5f36df25a9a1696e4df857e01aa81d2f0b6ef96",
+    "graphifyRevision": "320ed869262dba7f4aac5627f1bd9efa0b5618a6",
+    "graphifyUse": "navigation_only",
+    "goalSpec": "GOAL_SPEC.md"
+  },
+  "activation": {
+    "profileId": "midgard-consensus-v1",
+    "releaseEvidenceDigest": null,
+    "state": "fail_closed"
+  },
+  "unknownBehavior": "fail_closed",
+  "surfaceRegistry": {
+    "transactionTypescript": [
+      "demo/midgard-core/src/consensus-profile-v1.ts",
+      "demo/midgard-core/src/consensus-validation-v1.ts",
+      "demo/midgard-core/src/codec/native.ts",
+      "demo/midgard-core/src/codec/native-field-items.ts",
+      "demo/midgard-core/src/codec/native-script.ts",
+      "demo/midgard-core/src/codec/versioned-script.ts",
+      "demo/midgard-validation/src/ledger-tx/codec.ts",
+      "demo/midgard-validation/src/ledger-tx/types.ts",
+      "demo/midgard-validation/src/phase-a.ts",
+      "demo/midgard-validation/src/phase-b.ts",
+      "demo/midgard-validation/src/value-accounting.ts",
+      "demo/midgard-validation/src/validation-machine.ts"
+    ],
+    "transactionAiken": [
+      "onchain/aiken/lib/midgard/ledger-state.ak",
+      "onchain/aiken/lib/midgard/fraud-proofs/native-tx",
+      "onchain/aiken/lib/midgard/validation-trace-v1.ak",
+      "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+      "onchain/aiken/lib/midgard/native-script-v1.ak",
+      "onchain/aiken/lib/midgard/script-context-v1.ak",
+      "onchain/aiken/lib/midgard/script-proof-v1.ak"
+    ],
+    "eventsTypescript": [
+      "demo/midgard-sdk/src/ledger-state.ts",
+      "demo/midgard-node/src/workers/utils/mpf.ts",
+      "demo/midgard-node/src/workers/utils/mpf/withdrawal-classification.ts"
+    ],
+    "eventsAiken": [
+      "onchain/aiken/lib/midgard/ledger-state.ak",
+      "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak"
+    ],
+    "forcedTypescript": [
+      "demo/midgard-sdk/src/ledger-state.ts",
+      "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
+      "demo/midgard-node/src/database/forcedTransactions.ts",
+      "demo/midgard-node/src/workers/utils/mpf.ts"
+    ],
+    "forcedAiken": [
+      "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
+      "onchain/aiken/lib/midgard/user-events/tx-field-receipt-v1.ak",
+      "onchain/aiken/validators/user-events/tx-order-v1.ak",
+      "onchain/aiken/validators/user-events/tx-field-preimage-v1.ak",
+      "onchain/aiken/validators/user-events/tx-field-receipt-v1.ak",
+      "onchain/aiken/validators/user-events/cek-program-material-v1.ak"
+    ],
+    "retainedDa": [
+      "demo/midgard-sdk/src/da-payload.ts",
+      "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
+      "demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts",
+      "demo/midgard-fault-proofs/src/transition-trace/fetch.ts"
+    ],
+    "proofTooling": [
+      "demo/midgard-fault-proofs/src/transition-trace",
+      "demo/midgard-fault-proofs/src/submit-init.ts",
+      "demo/midgard-fault-proofs/src/bin.ts",
+      "demo/midgard-sdk/src/fraud-proof/catalogue.ts"
+    ],
+    "correction": [
+      "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts",
+      "onchain/aiken/validators/state-queue.ak",
+      "onchain/aiken/lib/midgard/operator-directory.ak"
+    ],
+    "watcher": []
+  },
+  "transactionFeatures": [
+    {
+      "id": "mint_burn",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa"
+      ],
+      "gaps": [
+        "p2_field_5_not_closed",
+        "value_and_mint_correction_families_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-5", "C22", "C49", "Q23", "Q24", "Q25", "Q26", "Q27"]
+    },
+    {
+      "id": "reference_inputs",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa"
+      ],
+      "gaps": [
+        "existing_proofs_unregistered_or_untooled",
+        "reference_input_index_and_set_disjoint_proofs_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-1", "C41", "Q18", "Q19", "Q30", "Q31"]
+    },
+    {
+      "id": "native_cardano_scripts",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "typescript_decoder_depth_4096_below_profile_16384",
+        "proof_reachability_and_tooling_incomplete",
+        "watcher_missing"
+      ],
+      "tasks": ["C27", "C44", "Q17", "Q33", "Q34"]
+    },
+    {
+      "id": "plutus_v3_scripts",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "maximum_program_material_not_closed",
+        "script_failure_family_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C27", "C28", "C45", "C46", "C47", "C48", "Q45"]
+    },
+    {
+      "id": "midgard_v1_scripts",
+      "enabled": true,
+      "state": "ambiguous",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "legacy_aiken_script_sum_has_no_distinct_midgard_v1_constructor",
+        "maximum_program_material_not_closed",
+        "script_failure_family_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["F02", "C27", "C45", "C46", "C47", "C48", "Q45"]
+    },
+    {
+      "id": "script_witnesses",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa"
+      ],
+      "gaps": [
+        "p2_field_6_not_closed",
+        "total_proof_family_mapping_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-6", "C27", "C45"]
+    },
+    {
+      "id": "redeemers",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa"
+      ],
+      "gaps": [
+        "data_breadth_depth_and_terminal_coverage_partial",
+        "protected_checkpoint_uncredited",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-8", "C23", "C24", "C25", "C26", "C45", "C46", "C47", "C48"]
+    },
+    {
+      "id": "reference_scripts",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "maximum_material_traversal_not_closed",
+        "independent_failure_proof_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-2", "C27", "C28", "C42", "Q33", "Q45"]
+    },
+    {
+      "id": "l1_program_material_publication",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["forcedTypescript", "forcedAiken"],
+      "gaps": [
+        "withheld_after_attestation_challenge_missing",
+        "maximum_material_path_not_closed",
+        "watcher_missing"
+      ],
+      "tasks": ["C28", "Q44", "Q54", "Q58", "Q59"]
+    },
+    {
+      "id": "script_payment_credentials",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "missing_script_and_script_failure_closure_incomplete",
+        "watcher_missing"
+      ],
+      "tasks": ["C42", "C45", "Q33", "Q45"]
+    },
+    {
+      "id": "protected_outputs",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": ["transactionTypescript", "transactionAiken"],
+      "gaps": [
+        "independent_catalogue_proof_mapping_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C42", "C50", "Q45"]
+    },
+    {
+      "id": "required_observers",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa"
+      ],
+      "gaps": [
+        "maximum_applied_lifecycle_partial",
+        "independent_proof_mapping_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C20-3", "C47", "C50"]
+    },
+    {
+      "id": "valid_forced_transactions",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "forcedTypescript",
+        "forcedAiken",
+        "retainedDa",
+        "proofTooling"
+      ],
+      "gaps": [
+        "classification_and_lifecycle_closure_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C61", "C64", "C65", "C66", "C67", "C68", "Q46"]
+    },
+    {
+      "id": "invalid_forced_transactions",
+      "enabled": true,
+      "state": "partial",
+      "surfaceRefs": [
+        "forcedTypescript",
+        "forcedAiken",
+        "retainedDa",
+        "proofTooling"
+      ],
+      "gaps": [
+        "verdict_mismatch_timeout_and_correction_lifecycle_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C62", "C63", "C64", "C65", "C66", "C67", "C68", "Q46"]
+    }
+  ],
+  "transactionRules": [
+    "canonical_cbor_and_txid",
+    "nine_dynamic_field_hashes",
+    "nonempty_inputs",
+    "input_existence_and_index",
+    "duplicate_and_double_spend_rejection",
+    "spend_reference_disjointness",
+    "validity_interval",
+    "exact_parameterized_fee",
+    "output_well_formedness",
+    "network_id",
+    "value_preservation",
+    "signed_multi_asset_quantities",
+    "no_negative_outputs",
+    "mint_authorization",
+    "min_ada",
+    "signature_validity",
+    "required_signer_set",
+    "duplicate_vkey_rejection_and_ordering",
+    "auxiliary_and_script_integrity_hash_consistency",
+    "transaction_and_field_size_limits"
+  ],
+  "eventFeatures": [
+    {
+      "id": "withdrawal",
+      "phase": 0,
+      "variants": [
+        "withdrawal_is_valid",
+        "nonexistent_utxo",
+        "spent_utxo",
+        "incorrect_owner",
+        "incorrect_value",
+        "incorrect_signature",
+        "too_many_tokens",
+        "unpayable_value"
+      ],
+      "state": "partial",
+      "surfaceRefs": ["eventsTypescript", "eventsAiken", "retainedDa"],
+      "gaps": [
+        "fabricated_withdrawal",
+        "withdrawal_mistag",
+        "cross_block_evidence_liveness",
+        "watcher_missing"
+      ],
+      "tasks": ["Q40", "Q41", "Q42", "Q47"]
+    },
+    {
+      "id": "forced_transaction",
+      "phase": 1,
+      "variants": [
+        "valid_effectful",
+        "invalid_no_op",
+        "specified_no_op",
+        "normal_as_forced",
+        "forced_as_normal",
+        "wrong_delta",
+        "program_material_available",
+        "program_material_withheld"
+      ],
+      "state": "partial",
+      "surfaceRefs": [
+        "forcedTypescript",
+        "forcedAiken",
+        "retainedDa",
+        "proofTooling"
+      ],
+      "gaps": [
+        "complete_classification_lifecycle_missing",
+        "bond_backed_availability_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["C61", "C62", "C63", "C64", "C65", "C66", "C68", "Q46", "Q58", "Q59"]
+    },
+    {
+      "id": "l2_transaction",
+      "phase": 2,
+      "variants": [
+        "accepted_effectful",
+        "rejected_no_op",
+        "mistagged_valid_as_no_op"
+      ],
+      "state": "partial",
+      "surfaceRefs": [
+        "transactionTypescript",
+        "transactionAiken",
+        "retainedDa",
+        "proofTooling"
+      ],
+      "gaps": ["mistag_family_missing", "watcher_missing"],
+      "tasks": ["C60", "C66", "Q21", "Q43"]
+    },
+    {
+      "id": "deposit",
+      "phase": 3,
+      "variants": [
+        "due_inclusion",
+        "valid_apply",
+        "omitted",
+        "out_of_window",
+        "fabricated",
+        "duplicate"
+      ],
+      "state": "partial",
+      "surfaceRefs": ["eventsTypescript", "eventsAiken", "retainedDa"],
+      "gaps": [
+        "fabricated_deposit",
+        "cross_block_duplicate_evidence_liveness",
+        "watcher_missing"
+      ],
+      "tasks": ["Q39", "Q42", "Q47"]
+    }
+  ],
+  "proofCatalogue": {
+    "registered": [
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "validationTraceDispute"
+    ],
+    "existingButNotClosed": [
+      "invalid-signature",
+      "min-fee",
+      "missing-native-script-tx",
+      "missing-signature",
+      "no-reference-input",
+      "withdrawn-reference-input",
+      "zero-input"
+    ],
+    "requiredButMissing": [
+      "value-not-preserved",
+      "ada-minted",
+      "negative-output-value",
+      "mint-authorization",
+      "min-ada",
+      "withdrawn-input",
+      "double-withdraw",
+      "input-set-uniqueness",
+      "reference-input-no-idx",
+      "req-signer-set",
+      "missing-native-script-utxo",
+      "native-script-invalid",
+      "network-id",
+      "output-well-formedness",
+      "hash-field-consistency",
+      "size-limits",
+      "fabricated-deposit",
+      "fabricated-withdrawal",
+      "withdrawal-mistag",
+      "cross-block-duplicate-event",
+      "l2-tx-mistag",
+      "da-hash-preimage",
+      "script-failure"
+    ]
+  },
+  "correctionLifecycle": [
+    {
+      "id": "tail_removal_and_slash",
+      "state": "partial",
+      "surfaceRefs": ["correction", "proofTooling"],
+      "gaps": ["target_testnet_replay_missing", "watcher_missing"]
+    },
+    {
+      "id": "descendant_cross_operator_removal",
+      "state": "partial",
+      "surfaceRefs": ["correction"],
+      "gaps": [
+        "cross_operator_rotation_deadlock_risk",
+        "due_event_reinclusion_unproven",
+        "watcher_missing"
+      ],
+      "tasks": ["Q52"]
+    },
+    {
+      "id": "slash_and_prover_reward",
+      "state": "missing",
+      "surfaceRefs": ["correction"],
+      "gaps": [
+        "placeholder_economics",
+        "prover_reward_routing_missing",
+        "duplicate_reward_prevention_unclosed",
+        "watcher_missing"
+      ],
+      "tasks": ["Q53"]
+    },
+    {
+      "id": "retention_window",
+      "state": "partial",
+      "surfaceRefs": ["retainedDa"],
+      "gaps": [
+        "not_release_bound_to_maturity_plus_proof_margin",
+        "deadline_enforcement_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["Q54"]
+    },
+    {
+      "id": "withheld_after_attestation",
+      "state": "missing",
+      "surfaceRefs": ["retainedDa", "correction"],
+      "gaps": [
+        "availability_challenge_missing",
+        "ordered_l1_receipts_missing",
+        "timeout_correction_missing",
+        "da_bond_slash_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["Q58", "Q59"]
+    },
+    {
+      "id": "unified_resumable_workflow",
+      "state": "missing",
+      "surfaceRefs": ["proofTooling", "correction"],
+      "gaps": [
+        "manual_family_chains_only",
+        "durable_reconciliation_missing",
+        "watcher_missing"
+      ],
+      "tasks": ["Q51"]
+    }
+  ]
+}

@@ -62,10 +62,58 @@ export const DaGossipTopic = {
 
 export type DaGossipTopic = (typeof DaGossipTopic)[keyof typeof DaGossipTopic];
 
-export type DaLibp2pRuntimeManifestDeploymentIdentity = {
-  readonly fingerprint: string;
-  readonly contractDeploymentManifestId: string;
-  readonly contractDeploymentInfoSha256: string;
+export type DaLibp2pRuntimeManifest = {
+  readonly schemaVersion: typeof DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION;
+  readonly network: string;
+  readonly deployment: {
+    readonly fingerprint: string;
+    readonly contract_deployment_manifest_id: string;
+    readonly contract_deployment_info_sha256: string;
+    readonly identity_source: typeof DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE;
+  };
+  readonly runtime_topology:
+    | {
+        readonly target: "producer";
+        readonly profile: string;
+        readonly producer_peer_id: string;
+      }
+    | {
+        readonly target: "watcher";
+        readonly profile: string;
+        readonly producer_peer_id: string;
+        readonly local_signer_index: number;
+      };
+  readonly da_transport: {
+    readonly kind: "libp2p";
+    readonly no_http_da_transport: true;
+    readonly listen_multiaddrs: readonly string[];
+    readonly announce_multiaddrs: readonly string[];
+    readonly bootstrap_multiaddrs: readonly string[];
+    readonly gossip: {
+      readonly strict_sign: true;
+      readonly emit_self: false;
+      readonly allowed_topics_only: true;
+      readonly max_gossip_message_bytes: number;
+    };
+    readonly limits: {
+      readonly max_payload_bytes: number;
+      readonly max_inline_response_bytes: number;
+      readonly max_chunk_bytes: number;
+      readonly max_streams_per_peer: number;
+      readonly request_timeout_ms: number;
+    };
+    readonly retention_days: number;
+  };
+  readonly da_committee: {
+    readonly threshold: number;
+    readonly members: readonly {
+      readonly signer_index: number;
+      readonly da_vkey: string;
+      readonly peer_id: string;
+      readonly multiaddrs: readonly string[];
+      readonly roles: readonly string[];
+    }[];
+  };
 };
 
 export const DaRequestResponseProtocol = {
@@ -565,6 +613,48 @@ const nonEmptyStringValue = (value: unknown, fieldName: string): string => {
   return value as string;
 };
 
+const stringArrayValue = (
+  value: unknown,
+  fieldName: string,
+  allowEmpty = false,
+): readonly string[] => {
+  if (!Array.isArray(value)) {
+    return fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be a string array`,
+    );
+  }
+  if (!allowEmpty && value.length === 0) {
+    return fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be a non-empty string array`,
+    );
+  }
+  return value.map((entry, index) =>
+    nonEmptyStringValue(entry, `${fieldName}[${index.toString()}]`),
+  );
+};
+
+const safeIntegerValue = (
+  value: unknown,
+  fieldName: string,
+  minimum: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number => {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be a safe integer from ${minimum.toString()} through ${maximum.toString()}`,
+    );
+  }
+  return value as number;
+};
+
 const exactRecordKeys = (
   value: Record<string, unknown>,
   keys: readonly string[],
@@ -589,21 +679,11 @@ const exactRecordKeys = (
   }
 };
 
-export const parseDaLibp2pRuntimeManifestDeploymentIdentity = (
-  manifest: Record<string, unknown>,
-  fieldName = "DA libp2p runtime manifest",
-): DaLibp2pRuntimeManifestDeploymentIdentity => {
-  if (manifest.schemaVersion !== DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION) {
-    fail(
-      MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.schemaVersion must be ${DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION}`,
-      String(manifest.schemaVersion),
-    );
-  }
-  const deployment = recordValue(
-    manifest.deployment,
-    `${fieldName}.deployment`,
-  );
+const parseDaLibp2pRuntimeManifestDeployment = (
+  value: unknown,
+  fieldName: string,
+): DaLibp2pRuntimeManifest["deployment"] => {
+  const deployment = recordValue(value, fieldName);
   exactRecordKeys(
     deployment,
     [
@@ -612,46 +692,326 @@ export const parseDaLibp2pRuntimeManifestDeploymentIdentity = (
       "contract_deployment_info_sha256",
       "identity_source",
     ],
-    `${fieldName}.deployment`,
+    fieldName,
   );
   if (
     deployment.identity_source !== DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE
   ) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.deployment.identity_source must be ${DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE}`,
+      `${fieldName}.identity_source must be ${DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE}`,
       String(deployment.identity_source),
     );
   }
   const fingerprint = normalizeDaDeploymentFingerprintHex(
-    nonEmptyStringValue(
-      deployment.fingerprint,
-      `${fieldName}.deployment.fingerprint`,
-    ),
+    nonEmptyStringValue(deployment.fingerprint, `${fieldName}.fingerprint`),
   );
   const contractDeploymentManifestId = normalizeDaDeploymentFingerprintHex(
     nonEmptyStringValue(
       deployment.contract_deployment_manifest_id,
-      `${fieldName}.deployment.contract_deployment_manifest_id`,
+      `${fieldName}.contract_deployment_manifest_id`,
     ),
   );
   if (fingerprint !== contractDeploymentManifestId) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      `${fieldName}.deployment.fingerprint must equal deployment.contract_deployment_manifest_id`,
+      `${fieldName}.fingerprint must equal deployment.contract_deployment_manifest_id`,
       `fingerprint=${fingerprint},contract_deployment_manifest_id=${contractDeploymentManifestId}`,
     );
   }
-  const contractDeploymentInfoSha256 = normalizeDaDeploymentFingerprintHex(
-    nonEmptyStringValue(
-      deployment.contract_deployment_info_sha256,
-      `${fieldName}.deployment.contract_deployment_info_sha256`,
-    ),
-  );
   return {
     fingerprint,
-    contractDeploymentManifestId,
-    contractDeploymentInfoSha256,
+    contract_deployment_manifest_id: contractDeploymentManifestId,
+    contract_deployment_info_sha256: normalizeDaDeploymentFingerprintHex(
+      nonEmptyStringValue(
+        deployment.contract_deployment_info_sha256,
+        `${fieldName}.contract_deployment_info_sha256`,
+      ),
+    ),
+    identity_source: DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
+  };
+};
+
+const parseDaLibp2pRuntimeTopology = (
+  value: unknown,
+  fieldName: string,
+): DaLibp2pRuntimeManifest["runtime_topology"] => {
+  const topology = recordValue(value, fieldName);
+  if (topology.target === "producer") {
+    exactRecordKeys(
+      topology,
+      ["target", "profile", "producer_peer_id"],
+      fieldName,
+    );
+    return {
+      target: "producer",
+      profile: nonEmptyStringValue(topology.profile, `${fieldName}.profile`),
+      producer_peer_id: nonEmptyStringValue(
+        topology.producer_peer_id,
+        `${fieldName}.producer_peer_id`,
+      ),
+    };
+  }
+  if (topology.target === "watcher") {
+    exactRecordKeys(
+      topology,
+      ["target", "profile", "producer_peer_id", "local_signer_index"],
+      fieldName,
+    );
+    return {
+      target: "watcher",
+      profile: nonEmptyStringValue(topology.profile, `${fieldName}.profile`),
+      producer_peer_id: nonEmptyStringValue(
+        topology.producer_peer_id,
+        `${fieldName}.producer_peer_id`,
+      ),
+      local_signer_index: safeIntegerValue(
+        topology.local_signer_index,
+        `${fieldName}.local_signer_index`,
+        0,
+        255,
+      ),
+    };
+  }
+  return fail(
+    MidgardTxCodecErrorCodes.InvalidFieldType,
+    `${fieldName}.target must be producer or watcher`,
+    String(topology.target),
+  );
+};
+
+const parseDaLibp2pRuntimeTransport = (
+  value: unknown,
+  fieldName: string,
+): DaLibp2pRuntimeManifest["da_transport"] => {
+  const transport = recordValue(value, fieldName);
+  exactRecordKeys(
+    transport,
+    [
+      "kind",
+      "no_http_da_transport",
+      "listen_multiaddrs",
+      "announce_multiaddrs",
+      "bootstrap_multiaddrs",
+      "gossip",
+      "limits",
+      "retention_days",
+    ],
+    fieldName,
+  );
+  if (transport.kind !== "libp2p") {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.kind must be libp2p`,
+      String(transport.kind),
+    );
+  }
+  if (transport.no_http_da_transport !== true) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.no_http_da_transport must be true`,
+      String(transport.no_http_da_transport),
+    );
+  }
+  const gossipFieldName = `${fieldName}.gossip`;
+  const gossip = recordValue(transport.gossip, gossipFieldName);
+  exactRecordKeys(
+    gossip,
+    [
+      "strict_sign",
+      "emit_self",
+      "allowed_topics_only",
+      "max_gossip_message_bytes",
+    ],
+    gossipFieldName,
+  );
+  if (
+    gossip.strict_sign !== true ||
+    gossip.emit_self !== false ||
+    gossip.allowed_topics_only !== true
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${gossipFieldName} must use strict_sign=true, emit_self=false, and allowed_topics_only=true`,
+    );
+  }
+  if (
+    gossip.max_gossip_message_bytes !==
+    DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${gossipFieldName}.max_gossip_message_bytes must be ${DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes.toString()}`,
+      String(gossip.max_gossip_message_bytes),
+    );
+  }
+  const limitsFieldName = `${fieldName}.limits`;
+  const limits = recordValue(transport.limits, limitsFieldName);
+  exactRecordKeys(
+    limits,
+    [
+      "max_payload_bytes",
+      "max_inline_response_bytes",
+      "max_chunk_bytes",
+      "max_streams_per_peer",
+      "request_timeout_ms",
+    ],
+    limitsFieldName,
+  );
+  const expectedLimits = {
+    max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+    max_inline_response_bytes: DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+    max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+    max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+    request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+  } as const;
+  for (const [key, expected] of Object.entries(expectedLimits)) {
+    if (limits[key] !== expected) {
+      fail(
+        MidgardTxCodecErrorCodes.InvalidFieldType,
+        `${limitsFieldName}.${key} must be ${expected.toString()}`,
+        String(limits[key]),
+      );
+    }
+  }
+  const retentionDays = safeIntegerValue(
+    transport.retention_days,
+    `${fieldName}.retention_days`,
+    DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+  );
+  return {
+    kind: "libp2p",
+    no_http_da_transport: true,
+    listen_multiaddrs: stringArrayValue(
+      transport.listen_multiaddrs,
+      `${fieldName}.listen_multiaddrs`,
+    ),
+    announce_multiaddrs: stringArrayValue(
+      transport.announce_multiaddrs,
+      `${fieldName}.announce_multiaddrs`,
+    ),
+    bootstrap_multiaddrs: stringArrayValue(
+      transport.bootstrap_multiaddrs,
+      `${fieldName}.bootstrap_multiaddrs`,
+      true,
+    ),
+    gossip: {
+      strict_sign: true,
+      emit_self: false,
+      allowed_topics_only: true,
+      max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+    },
+    limits: expectedLimits,
+    retention_days: retentionDays,
+  };
+};
+
+const parseDaLibp2pRuntimeCommittee = (
+  value: unknown,
+  fieldName: string,
+): DaLibp2pRuntimeManifest["da_committee"] => {
+  const committee = recordValue(value, fieldName);
+  exactRecordKeys(committee, ["threshold", "members"], fieldName);
+  const threshold = safeIntegerValue(
+    committee.threshold,
+    `${fieldName}.threshold`,
+    1,
+  );
+  const rawMembers = committee.members;
+  if (!Array.isArray(rawMembers)) {
+    return fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.members must be an array`,
+    );
+  }
+  if (rawMembers.length === 0) {
+    return fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.members must be a non-empty array`,
+    );
+  }
+  const members = rawMembers.map((value, index) => {
+    const memberFieldName = `${fieldName}.members[${index.toString()}]`;
+    const member = recordValue(value, memberFieldName);
+    exactRecordKeys(
+      member,
+      ["signer_index", "da_vkey", "peer_id", "multiaddrs", "roles"],
+      memberFieldName,
+    );
+    return {
+      signer_index: safeIntegerValue(
+        member.signer_index,
+        `${memberFieldName}.signer_index`,
+        0,
+        255,
+      ),
+      da_vkey: nonEmptyStringValue(
+        member.da_vkey,
+        `${memberFieldName}.da_vkey`,
+      ),
+      peer_id: nonEmptyStringValue(
+        member.peer_id,
+        `${memberFieldName}.peer_id`,
+      ),
+      multiaddrs: stringArrayValue(
+        member.multiaddrs,
+        `${memberFieldName}.multiaddrs`,
+      ),
+      roles: stringArrayValue(member.roles, `${memberFieldName}.roles`),
+    };
+  });
+  if (threshold > members.length) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.threshold must be no greater than member count`,
+    );
+  }
+  return { threshold, members };
+};
+
+export const parseDaLibp2pRuntimeManifest = (
+  value: unknown,
+): DaLibp2pRuntimeManifest => {
+  const fieldName = "DA libp2p runtime manifest";
+  const manifest = recordValue(value, fieldName);
+  exactRecordKeys(
+    manifest,
+    [
+      "schemaVersion",
+      "network",
+      "deployment",
+      "runtime_topology",
+      "da_transport",
+      "da_committee",
+    ],
+    fieldName,
+  );
+  if (manifest.schemaVersion !== DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.schemaVersion must be ${DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION}`,
+      String(manifest.schemaVersion),
+    );
+  }
+  return {
+    schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
+    network: nonEmptyStringValue(manifest.network, `${fieldName}.network`),
+    deployment: parseDaLibp2pRuntimeManifestDeployment(
+      manifest.deployment,
+      `${fieldName}.deployment`,
+    ),
+    runtime_topology: parseDaLibp2pRuntimeTopology(
+      manifest.runtime_topology,
+      `${fieldName}.runtime_topology`,
+    ),
+    da_transport: parseDaLibp2pRuntimeTransport(
+      manifest.da_transport,
+      `${fieldName}.da_transport`,
+    ),
+    da_committee: parseDaLibp2pRuntimeCommittee(
+      manifest.da_committee,
+      `${fieldName}.da_committee`,
+    ),
   };
 };
 

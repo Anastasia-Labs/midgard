@@ -211,8 +211,62 @@ describe("loadWatcherConfig", () => {
           string,
           unknown
         >[]
-      )[0]!.metadata = "https://da-0.example/metadata";
+      )[0]!.peer_id = "https://da-0.example/peer";
     }, /HTTP\(S\) URL/);
+  });
+
+  it("rejects missing or unknown runtime-manifest root and nested keys", async () => {
+    const cases: readonly {
+      readonly mutate: (manifest: Record<string, unknown>) => void;
+      readonly error: RegExp;
+    }[] = [
+      {
+        mutate: (manifest) => {
+          delete manifest.network;
+        },
+        error: /network is required/u,
+      },
+      {
+        mutate: (manifest) => {
+          manifest.unknown_root = true;
+        },
+        error: /unknown_root is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const gossip = (
+            manifest.da_transport as Record<string, Record<string, unknown>>
+          ).gossip;
+          gossip.unknown_nested = true;
+        },
+        error: /gossip\.unknown_nested is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const committee = manifest.da_committee as {
+            members: Record<string, unknown>[];
+          };
+          delete committee.members[0]!.roles;
+        },
+        error: /members\[0\]\.roles is required/u,
+      },
+    ];
+
+    for (const testCase of cases) {
+      await expectLibp2pManifestRejects(testCase.mutate, testCase.error);
+    }
+  });
+
+  it("binds runtime-manifest network to deployment identity and operator config", async () => {
+    await expectLibp2pManifestRejects((manifest) => {
+      manifest.network = "Preprod";
+    }, /must exactly match contract deployment manifest network/u);
+
+    await expectLibp2pManifestRejects(
+      () => undefined,
+      /MIDGARD_NETWORK must exactly match runtime manifest network Preview/u,
+      { MIDGARD_NETWORK: "Preprod" },
+    );
   });
 
   it("fails closed for invalid libp2p DA manifest security fields", async () => {
@@ -269,7 +323,7 @@ describe("loadWatcherConfig", () => {
           (manifest.da_transport as Record<string, unknown>).retention_days =
             14;
         },
-        error: /at least 15 days/,
+        error: /retention_days.*15/u,
       },
       {
         mutate: (manifest) => {

@@ -8,6 +8,10 @@ import {
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import {
+  computeDeploymentManifestV1JsonDigest as computeSharedDeploymentManifestV1JsonDigest,
+  normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
@@ -240,6 +244,15 @@ const canonicalManifest = (): DeploymentManifestV1Value =>
   withId(canonicalIdentity());
 
 describe("V1 deployment manifest", () => {
+  it("delegates canonical JSON normalization and digesting to core", () => {
+    expect(normalizeDeploymentManifestV1JsonValue).toBe(
+      normalizeSharedDeploymentManifestV1JsonValue,
+    );
+    expect(computeDeploymentManifestV1JsonDigest).toBe(
+      computeSharedDeploymentManifestV1JsonDigest,
+    );
+  });
+
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

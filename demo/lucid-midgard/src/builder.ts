@@ -117,7 +117,7 @@ import {
   decodeImportAddrWitnesses,
   encodePartialWitnessBundle,
   estimatedSignedTxByteLength,
-  type MidgardPartialWitnessBundle,
+  type MidgardPartialWitnessBundleV1,
   normalizeVKeyWitnessInput,
   parsePartialWitnessBundle,
   partialWitnessBundleFromWitnesses,
@@ -203,7 +203,7 @@ export type {
 export type { FromTxOptions } from "./builder/imported-tx.js";
 export type { CompleteTxMetadata } from "./builder/metadata.js";
 export type {
-  MidgardPartialWitnessBundle,
+  MidgardPartialWitnessBundleV1,
   PartialWitnessBundleInput,
   VKeyWitnessInput,
 } from "./builder/witness-bundle.js";
@@ -248,28 +248,28 @@ export type PartialSignApi = {
   readonly withWallet: (wallet?: MidgardWallet) => TxPartialSignBuilder;
   readonly withWalletSafe: (
     wallet?: MidgardWallet,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
   readonly withWalletProgram: (
     wallet?: MidgardWallet,
-  ) => MidgardEffect<MidgardPartialWitnessBundle>;
+  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
   readonly withPrivateKey: (
     privateKey: PrivateKey | string,
   ) => TxPartialSignBuilder;
   readonly withPrivateKeySafe: (
     privateKey: PrivateKey | string,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
   readonly withPrivateKeyProgram: (
     privateKey: PrivateKey | string,
-  ) => MidgardEffect<MidgardPartialWitnessBundle>;
+  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
   readonly withExternalSigner: (
     signer: ExternalBodyHashSigner,
   ) => TxPartialSignBuilder;
   readonly withExternalSignerSafe: (
     signer: ExternalBodyHashSigner,
-  ) => Promise<MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>>;
+  ) => Promise<MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>>;
   readonly withExternalSignerProgram: (
     signer: ExternalBodyHashSigner,
-  ) => MidgardEffect<MidgardPartialWitnessBundle>;
+  ) => MidgardEffect<MidgardPartialWitnessBundleV1>;
   readonly withWitness: (witness: VKeyWitnessInput) => TxPartialSignBuilder;
   readonly withWitnesses: (
     witnesses: readonly VKeyWitnessInput[],
@@ -435,7 +435,7 @@ export class TxPartialSignBuilder {
     this.#expectedNetworkId = expectedNetworkId;
   }
 
-  async partial(): Promise<MidgardPartialWitnessBundle> {
+  async partial(): Promise<MidgardPartialWitnessBundleV1> {
     return partialWitnessBundleFromWitnesses(
       this.#tx.tx,
       await this.collectWitnesses(),
@@ -458,12 +458,12 @@ export class TxPartialSignBuilder {
     return midgardSafe(() => this.complete());
   }
 
-  partialProgram(): MidgardEffect<MidgardPartialWitnessBundle> {
+  partialProgram(): MidgardEffect<MidgardPartialWitnessBundleV1> {
     return midgardProgram(() => this.partial());
   }
 
   partialSafe(): Promise<
-    MidgardResult<MidgardPartialWitnessBundle, LucidMidgardError>
+    MidgardResult<MidgardPartialWitnessBundleV1, LucidMidgardError>
   > {
     return midgardSafe(() => this.partial());
   }
@@ -607,7 +607,7 @@ export class CompleteTx {
     );
   }
 
-  toPartialWitnessBundle(): MidgardPartialWitnessBundle {
+  toPartialWitnessBundle(): MidgardPartialWitnessBundleV1 {
     assertTrustedCompleteTx(this, "export partial witnesses");
     return partialWitnessBundleFromWitnesses(
       this.tx,
@@ -1013,7 +1013,7 @@ export class PartiallySignedTx {
     );
   }
 
-  toPartialWitnessBundle(): MidgardPartialWitnessBundle {
+  toPartialWitnessBundle(): MidgardPartialWitnessBundleV1 {
     return partialWitnessBundleFromWitnesses(
       this.tx,
       decodeAddrWitnesses(this.tx.witnessSet.addrTxWitsPreimageCbor),

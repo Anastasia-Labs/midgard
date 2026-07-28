@@ -38,6 +38,23 @@ const requireObject = (
   return value;
 };
 
+const assertExactObjectKeys = (
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[],
+  fieldName: string,
+  endpoint: string,
+): void => {
+  const expected = new Set(expectedKeys);
+  const unknownKeys = Object.keys(value).filter((key) => !expected.has(key));
+  if (unknownKeys.length > 0) {
+    throw new ProviderPayloadError(
+      endpoint,
+      `${fieldName} contains unknown field${unknownKeys.length === 1 ? "" : "s"}`,
+      unknownKeys.sort().join(","),
+    );
+  }
+};
+
 const requireString = (
   value: unknown,
   fieldName: string,
@@ -116,6 +133,12 @@ const validateSupportedScriptLanguages = (
   const normalized = languages.map((raw, index) => {
     const language = requireObject(
       raw,
+      `${fieldName}[${index.toString()}]`,
+      endpoint,
+    );
+    assertExactObjectKeys(
+      language,
+      ["name", "tag"],
       `${fieldName}[${index.toString()}]`,
       endpoint,
     );
@@ -265,8 +288,31 @@ export const parseProtocolInfo = (
   endpoint: string,
 ): MidgardProtocolInfo => {
   const info = requireObject(payload, "protocol-info", endpoint);
+  assertExactObjectKeys(
+    info,
+    [
+      "apiVersion",
+      "network",
+      "midgardNativeTxVersion",
+      "currentSlot",
+      "consensusProfile",
+      "supportedScriptLanguages",
+      "codecSupportedScriptLanguages",
+      "protocolFeeParameters",
+      "submissionLimits",
+      "validation",
+    ],
+    "protocol-info",
+    endpoint,
+  );
   const protocolFeeParameters = requireObject(
     info.protocolFeeParameters,
+    "protocolFeeParameters",
+    endpoint,
+  );
+  assertExactObjectKeys(
+    protocolFeeParameters,
+    ["minFeeA", "minFeeB"],
     "protocolFeeParameters",
     endpoint,
   );
@@ -275,7 +321,19 @@ export const parseProtocolInfo = (
     "submissionLimits",
     endpoint,
   );
+  assertExactObjectKeys(
+    submissionLimits,
+    ["maxSubmitTxCborBytes"],
+    "submissionLimits",
+    endpoint,
+  );
   const validation = requireObject(info.validation, "validation", endpoint);
+  assertExactObjectKeys(
+    validation,
+    ["strictnessProfile", "localValidationIsAuthoritative"],
+    "validation",
+    endpoint,
+  );
   if (validation.localValidationIsAuthoritative !== false) {
     throw new ProviderPayloadError(
       endpoint,

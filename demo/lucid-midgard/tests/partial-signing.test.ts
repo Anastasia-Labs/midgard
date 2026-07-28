@@ -64,7 +64,10 @@ const makeProvider = (opts?: {
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -230,6 +233,18 @@ describe("partial signing", () => {
       .partial();
 
     const cbor = encodePartialWitnessBundle(combinedBundle);
+    const canonicalTuple = [
+      "MidgardPartialWitnessBundleV1",
+      1,
+      1,
+      Buffer.from(combinedBundle.txId, "hex"),
+      Buffer.from(combinedBundle.bodyHash, "hex"),
+      combinedBundle.witnesses.map((witness) => Buffer.from(witness, "hex")),
+      combinedBundle.signerKeyHashes.map((keyHash) =>
+        Buffer.from(keyHash, "hex"),
+      ),
+    ];
+    expect(cbor).toEqual(encodeCbor(canonicalTuple));
     expect(decodePartialWitnessBundle(cbor)).toEqual(combinedBundle);
     expect(decodePartialWitnessBundle(cbor.toString("hex"))).toEqual(
       combinedBundle,
@@ -239,7 +254,7 @@ describe("partial signing", () => {
     ).toThrow();
 
     const unsortedCbor = encodeCbor([
-      "MidgardPartialWitnessBundle",
+      "MidgardPartialWitnessBundleV1",
       1,
       combinedBundle.midgardNativeTxVersion,
       Buffer.from(combinedBundle.txId, "hex"),
@@ -254,6 +269,33 @@ describe("partial signing", () => {
     expect(() => decodePartialWitnessBundle(unsortedCbor)).toThrow(
       SigningError,
     );
+    expect(() =>
+      parsePartialWitnessBundle({
+        ...combinedBundle,
+        witnesses: [...combinedBundle.witnesses].reverse(),
+      }),
+    ).toThrow(SigningError);
+    expect(() =>
+      decodePartialWitnessBundle(
+        encodeCbor([canonicalTuple[0], 2, ...canonicalTuple.slice(2)]),
+      ),
+    ).toThrow(SigningError);
+    expect(() =>
+      decodePartialWitnessBundle(
+        encodeCbor([
+          canonicalTuple[0],
+          canonicalTuple[1],
+          2,
+          ...canonicalTuple.slice(3),
+        ]),
+      ),
+    ).toThrow(SigningError);
+    expect(() =>
+      decodePartialWitnessBundle(encodeCbor(canonicalTuple.slice(0, -1))),
+    ).toThrow(SigningError);
+    expect(() =>
+      decodePartialWitnessBundle(encodeCbor([...canonicalTuple, 0])),
+    ).toThrow(SigningError);
 
     const signed = expectComplete(completed.assemble({ cbor }));
     expect(witnessCount(signed)).toBe(2);
@@ -265,6 +307,10 @@ describe("partial signing", () => {
     const firstBundle = await completed.sign.withPrivateKey(firstKey).partial();
     const thirdKey = CML.PrivateKey.generate_ed25519();
     const thirdBundle = await completed.sign.withPrivateKey(thirdKey).partial();
+    const foreign = await makeFixture();
+    const foreignBundle = await foreign.completed.sign
+      .withPrivateKey(foreign.firstKey)
+      .partial();
 
     expect(() =>
       parsePartialWitnessBundle({ ...firstBundle, kind: "Bad" } as never),
@@ -272,6 +318,43 @@ describe("partial signing", () => {
     expect(() =>
       parsePartialWitnessBundle({ ...firstBundle, version: 23 } as never),
     ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        ...firstBundle,
+        midgardNativeTxVersion: 2,
+      } as never),
+    ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        ...firstBundle,
+        unknown: true,
+      } as never),
+    ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle(
+        Object.fromEntries(
+          Object.entries(firstBundle).filter(([key]) => key !== "bodyHash"),
+        ) as never,
+      ),
+    ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        cbor: encodePartialWitnessBundle(firstBundle),
+        unknown: true,
+      } as never),
+    ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        cbor: encodePartialWitnessBundle(firstBundle),
+        cborHex: encodePartialWitnessBundle(firstBundle).toString("hex"),
+      } as never),
+    ).toThrow(SigningError);
+    expect(() => parsePartialWitnessBundle({ cbor: 23 } as never)).toThrow(
+      SigningError,
+    );
+    expect(() => parsePartialWitnessBundle({ cborHex: 23 } as never)).toThrow(
+      SigningError,
+    );
     expect(() => parsePartialWitnessBundle(null as never)).toThrow(
       SigningError,
     );
@@ -308,10 +391,28 @@ describe("partial signing", () => {
       completed.assemble({
         ...firstBundle,
         midgardNativeTxVersion: firstBundle.midgardNativeTxVersion + 1,
-      }),
+      } as never),
     ).toThrow(SigningError);
     expect(() =>
       completed.assemble({ ...firstBundle, txId: "00".repeat(32) }),
+    ).toThrow(SigningError);
+    expect(() => completed.assemble(foreignBundle)).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        ...firstBundle,
+        txId: firstBundle.txId.toUpperCase(),
+        bodyHash: firstBundle.bodyHash.toUpperCase(),
+      }),
+    ).toThrow(SigningError);
+    expect(() =>
+      parsePartialWitnessBundle({
+        ...firstBundle,
+        witnesses: [firstBundle.witnesses[0], firstBundle.witnesses[0]],
+        signerKeyHashes: [
+          firstBundle.signerKeyHashes[0],
+          firstBundle.signerKeyHashes[0],
+        ],
+      }),
     ).toThrow(SigningError);
     expect(() =>
       parsePartialWitnessBundle({
@@ -336,7 +437,7 @@ describe("partial signing", () => {
     ).rejects.toBeInstanceOf(SigningError);
   });
 
-  it("collapses identical bundles and rejects conflicting external signer identity", async () => {
+  it("rejects duplicate bundles and conflicting external signer identity", async () => {
     const { completed, firstKey, secondKey, secondHash } = await makeFixture();
     const firstBundle = await completed.sign.withPrivateKey(firstKey).partial();
     const secondBundle = await completed.sign
@@ -346,10 +447,21 @@ describe("partial signing", () => {
       })
       .partial();
 
-    const signed = expectComplete(
+    expect(() =>
       completed.assemble([firstBundle, firstBundle, secondBundle]),
+    ).toThrow(SigningError);
+    const signed = expectComplete(
+      completed.assemble([firstBundle, secondBundle]),
     );
     expect(witnessCount(signed)).toBe(2);
+    await expect(
+      completed.sign
+        .withWitnesses([
+          makeVKeyWitness(computeMidgardNativeTxIdV1(completed.tx), firstKey),
+          makeVKeyWitness(computeMidgardNativeTxIdV1(completed.tx), firstKey),
+        ])
+        .partial(),
+    ).rejects.toBeInstanceOf(SigningError);
 
     await expect(
       completed.sign

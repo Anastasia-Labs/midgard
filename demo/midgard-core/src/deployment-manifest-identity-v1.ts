@@ -182,13 +182,13 @@ export const DEPLOYMENT_MANIFEST_V1_ROOT_KEYS = Object.freeze([
   "validationDispute",
 ] as const);
 
-type JsonValue =
+export type DeploymentManifestV1JsonValue =
   | null
   | boolean
   | number
   | string
-  | readonly JsonValue[]
-  | { readonly [key: string]: JsonValue };
+  | readonly DeploymentManifestV1JsonValue[]
+  | { readonly [key: string]: DeploymentManifestV1JsonValue };
 
 const requireRecord = (
   value: unknown,
@@ -207,7 +207,11 @@ const requireRecord = (
   return value as Record<string, unknown>;
 };
 
-const requireJsonValue = (value: unknown, field: string): JsonValue => {
+const normalizeDeploymentManifestV1JsonValueInternal = (
+  value: unknown,
+  field: string,
+  stringifyBigInt: boolean,
+): DeploymentManifestV1JsonValue => {
   if (
     value === null ||
     typeof value === "boolean" ||
@@ -215,29 +219,65 @@ const requireJsonValue = (value: unknown, field: string): JsonValue => {
   ) {
     return value;
   }
+  if (typeof value === "bigint") {
+    if (stringifyBigInt) {
+      return value.toString(10);
+    }
+    throw new Error(`${field} must contain only JSON-safe values`);
+  }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
-      throw new Error(`${field} contains a non-finite number`);
+      throw new Error(`${field} must contain only finite numbers`);
     }
     return value;
   }
   if (Array.isArray(value)) {
     return value.map((entry, index) =>
-      requireJsonValue(entry, `${field}[${index.toString()}]`),
+      normalizeDeploymentManifestV1JsonValueInternal(
+        entry,
+        `${field}[${index.toString()}]`,
+        stringifyBigInt,
+      ),
     );
   }
-  const record = requireRecord(value, field);
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`${field} must contain only JSON-safe values`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${field} must contain only plain records`);
+  }
+  if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
+    throw new Error(`${field} must contain only string keys`);
+  }
   return Object.fromEntries(
-    Object.entries(record).map(([key, entry]) => {
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
       if (entry === undefined) {
         throw new Error(`${field}.${key} must not be undefined`);
       }
-      return [key, requireJsonValue(entry, `${field}.${key}`)];
+      return [
+        key,
+        normalizeDeploymentManifestV1JsonValueInternal(
+          entry,
+          `${field}.${key}`,
+          stringifyBigInt,
+        ),
+      ];
     }),
   );
 };
 
-const stableJson = (value: JsonValue): string => {
+export const normalizeDeploymentManifestV1JsonValue = (
+  value: unknown,
+  field = "value",
+): DeploymentManifestV1JsonValue =>
+  normalizeDeploymentManifestV1JsonValueInternal(
+    value,
+    `Deployment manifest ${field}`,
+    true,
+  );
+
+const stableJson = (value: DeploymentManifestV1JsonValue): string => {
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value);
   }
@@ -253,9 +293,10 @@ const stableJson = (value: JsonValue): string => {
 export const computeDeploymentManifestV1JsonDigest = (
   value: unknown,
 ): string => {
-  const normalized = requireJsonValue(
+  const normalized = normalizeDeploymentManifestV1JsonValueInternal(
     value,
     "Deployment manifest JSON digest input",
+    false,
   );
   return bytesToHex(sha256(new TextEncoder().encode(stableJson(normalized))));
 };
@@ -280,9 +321,10 @@ export const computeDeploymentManifestV1Id = (
   if (Object.prototype.hasOwnProperty.call(identityInput, "manifestId")) {
     throw new Error("Deployment manifest identity input must omit manifestId");
   }
-  const normalized = requireJsonValue(
+  const normalized = normalizeDeploymentManifestV1JsonValueInternal(
     identityInput,
     "Deployment manifest identity input",
+    false,
   );
   return bytesToHex(sha256(new TextEncoder().encode(stableJson(normalized))));
 };
@@ -690,9 +732,10 @@ const validateFinalizedDa = (value: unknown): void => {
   requireInteger(transport.zstdLevel, "da.transportProfile.zstdLevel", 1);
   if (
     stableJson(
-      requireJsonValue(
+      normalizeDeploymentManifestV1JsonValueInternal(
         transport.limits,
         "Deployment manifest da.transportProfile.limits",
+        false,
       ),
     ) !== stableJson(DA_TRANSPORT_LIMITS_V1)
   ) {

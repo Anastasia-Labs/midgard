@@ -4,7 +4,9 @@ import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
+  type DaLibp2pRuntimeManifest,
   normalizeDaDeploymentFingerprintHex,
+  parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
 
@@ -46,8 +48,6 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly producerPublicHost?: string;
   readonly watcherPublicHost?: string;
 };
-
-export type DaLibp2pRuntimeManifest = Record<string, unknown>;
 
 const DEFAULT_PRODUCER_PORT = 39002;
 const DEFAULT_WATCHER_PORT = 39001;
@@ -120,7 +120,7 @@ export const generateDaLibp2pRuntimeManifest = async (
         )
       : [producerAddr];
 
-  return {
+  return parseDaLibp2pRuntimeManifest({
     schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
     network: options.network,
     deployment: {
@@ -170,7 +170,7 @@ export const generateDaLibp2pRuntimeManifest = async (
         roles: [...member.roles].sort(),
       })),
     },
-  };
+  });
 };
 
 const isProducerMember = (

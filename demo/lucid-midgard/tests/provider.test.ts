@@ -278,7 +278,7 @@ describe("MidgardNodeProvider", () => {
     await expect(provider.getUtxosByOutRefs([outRef])).resolves.toHaveLength(1);
   });
 
-  it("parses protocol info and current slot from the node", async () => {
+  it("accepts the exact current protocol-info shape from the node", async () => {
     const provider = await MidgardNodeProvider.create({
       endpoint: "http://127.0.0.1:3000",
       fetch: async () => jsonResponse(protocolInfoJson),
@@ -293,6 +293,81 @@ describe("MidgardNodeProvider", () => {
       maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
+  });
+
+  it("rejects unknown root protocol-info fields", async () => {
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () =>
+          jsonResponse({
+            ...protocolInfoJson,
+            unknownRootField: true,
+          }),
+      }),
+    ).rejects.toBeInstanceOf(ProviderPayloadError);
+  });
+
+  it("rejects unknown nested protocol-info fields", async () => {
+    const unknownKeyProtocolInfos = [
+      {
+        ...protocolInfoJson,
+        protocolFeeParameters: {
+          ...protocolInfoJson.protocolFeeParameters,
+          unknownFeeField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        submissionLimits: {
+          ...protocolInfoJson.submissionLimits,
+          unknownLimitField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        validation: {
+          ...protocolInfoJson.validation,
+          unknownValidationField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        consensusProfile: {
+          ...protocolInfoJson.consensusProfile,
+          unknownProfileField: true,
+        },
+      },
+      {
+        ...protocolInfoJson,
+        supportedScriptLanguages: [
+          {
+            ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES[0],
+            unknownLanguageField: true,
+          },
+          ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.slice(1),
+        ],
+      },
+      {
+        ...protocolInfoJson,
+        codecSupportedScriptLanguages: [
+          {
+            ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES[0],
+            unknownCodecLanguageField: true,
+          },
+          ...MIDGARD_SUPPORTED_SCRIPT_LANGUAGES.slice(1),
+        ],
+      },
+    ];
+
+    for (const payload of unknownKeyProtocolInfos) {
+      await expect(
+        MidgardNodeProvider.create({
+          endpoint: "http://127.0.0.1:3000",
+          fetch: async () => jsonResponse(payload),
+        }),
+      ).rejects.toBeInstanceOf(ProviderPayloadError);
+    }
   });
 
   it("redacts endpoint credentials and query strings in diagnostics", async () => {

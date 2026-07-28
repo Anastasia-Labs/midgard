@@ -63,6 +63,8 @@ export {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 export {
+  decodeValidityCode,
+  encodeValidityCode,
   type MidgardTxValidity,
   MidgardTxValidityCodes,
 } from "./native-validation.js";

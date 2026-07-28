@@ -89,7 +89,7 @@
 | --- | --- | --- |
 | AC-00 | IN_PROGRESS | Ledger initialized; all downstream evidence remains open. |
 | AC-01 | IN_PROGRESS | Protected baseline and hashes recorded; Goal commits and final relative-clean proof remain open. |
-| AC-02 | TODO | F01/F02 and final ABI gate required. |
+| AC-02 | IN_PROGRESS | F01 inventory is machine-readable and fail closed; F02 audit found unresolved one-way/non-exhaustive cross-language vectors and fail-open external parsers, so the final ABI gate remains open. |
 | AC-03 | TODO | Final release identity and digest required. |
 | AC-C10 | TODO | CG1 required. |
 | AC-C20 | TODO | CG2 full P2 matrix required. |
@@ -127,13 +127,23 @@
 
 | Task | Dependencies | Owner | Leased paths | Status | Commit | Focused verification |
 | --- | --- | --- | --- | --- | --- | --- |
-| F00 | none | parent | `GOAL_PROGRESS.md` only; all baseline dirty paths protected | PASS | pending Goal checkpoint | Revision/branch/status, SHA-256 inventory, tools, credential setness, graph staleness, and process absence recorded above. |
-| F01 | F00 | `/root/f01_feature_inventory` | read-only repository inventory; no writes | IN_PROGRESS | n/a | Source paths and machine-readable feature inventory gap report. |
-| F02 | F00 | `/root/f02_abi_registry` | read-only repository ABI audit; no writes | IN_PROGRESS | n/a | Exact format/tag/arity/legacy gap report. |
-| F03 | F00 | parent | `GOAL_PROGRESS.md`; read-only provider/runbook/source inspection | PASS | pending Goal checkpoint | Preprod/local-Kupmios submission route, independent-provider gap, effective/future parameter commands, chain-point query, finality gap, credentials, and safe preflight commands identified. |
-| F10 | F01–F02 | unassigned | none until first-wave integration | BLOCKED | n/a | Revalidate P0/P1/P2 current claims. |
-| F20 | F01–F02 | unassigned | none until first-wave integration | BLOCKED | n/a | Reconcile every proof row/catalogue/tool/test. |
-| F30 | F00–F02 | parent after F02 | none until first-wave integration | BLOCKED | n/a | Public-data-only watcher dependency/source map. |
+| F00 | none | parent | `GOAL_PROGRESS.md` only; all baseline dirty paths protected | PASS | `dde4b789` | Revision/branch/status, SHA-256 inventory, tools, credential setness, graph staleness, and process absence recorded above. |
+| F01 | F00 | `/root/f01_feature_inventory`; parent integration | agent read-only; parent owns `docs/exec-plans/evidence/canonical-v1-feature-inventory-v1.json` | PASS | pending | Machine-readable inventory validates 14 unique enabled features, 45 existing source surfaces, correction/proof gaps, an empty watcher surface, and fail-closed unknown behavior. |
+| F02 | F00 | parent integration; initial audit by `/root/f02_abi_registry` | parent-owned registry/ABI integration surfaces | IN_PROGRESS | n/a | Audit completed without edits and found the gate failing: non-exhaustive one-way TS→Aiken vectors, fail-open protocol-info/runtime-manifest parsers, an incomplete prose registry, duplicated deployment digest logic, and uninspected format families. |
+| F02-R | F02 audit | parent | `docs/exec-plans/evidence/canonical-v1-format-registry-v1.json`, `demo/scripts/verify-canonical-v1-format-registry.mjs` | IN_PROGRESS | pending | Bootstrap contains all 132 prose-registry IDs in canonical order and unknowns fail closed. Structural verification passes only with `--allow-incomplete`; the default release check currently rejects all 132 unverified rows and will remain failing until each row has exact source/symbol, wire field/tag/arity, parser/encoder, positive/rejection, cross-language/N/A, and obsolete-branch evidence. |
+| F02-P | F02 audit | `/root/f02_protocol_info_exact`; parent reviewed | exclusive lease released after edits to `demo/lucid-midgard/src/provider/payload.ts`, `demo/lucid-midgard/tests/provider.test.ts` only | PASS | pending | `/protocol-info` rejects unknown root and all nested keys while preserving exact current payload acceptance; 3 focused tests, typecheck, leased-file lint, and diff check pass. |
+| F02-D | F02 audit | `/root/f02_da_manifest_exact`; parent integration | exclusive lease released after edits to `demo/midgard-core/src/da-transport.ts`, its DA test; `demo/midgard-node/src/da/libp2p-runtime-manifest.ts`, `demo/midgard-node/src/da/libp2p-producer.ts`, producer test; `demo/da-committee-node/src/config.ts`, its config test | PASS | pending | One exact six-root-key parser serves generator/producer/watcher and binds watcher network to verified deployment/override; pinned Node 22 replay passed core 8/8, node 25/25, watcher 20/20, core/watcher/node compilation, and focused lint. |
+| F02-I | F02 audit | `/root/f02_manifest_digest_single`; parent integration | exclusive lease released after edits to `demo/midgard-core/src/deployment-manifest-identity-v1.ts`, its direct test, `demo/midgard-node/src/deployment-manifest-v1.ts`, and its direct test | PASS | pending | Core solely owns JSON normalization/stable serialization/digest; node directly re-exports it. Parent pinned replay passed core 4/4, node 9/9, package compilation/typechecks, and focused lint. |
+| F02-A | F02 audit | parent | `demo/midgard-core/src/codec/native.ts`, `demo/midgard-sdk/src/common.ts`, `demo/midgard-sdk/tests/proof-abi.test.ts`, `demo/midgard-node/src/workers/utils/mpf/phas.ts`, `demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts` | PASS | pending | Removed extra `Neighbor` constructor; exact proof CBOR passes 2/2; recursive current-blueprint parity and raw validity-code/Plutus binding pass 26/26; core/SDK builds/typechecks, node `tsc`, and focused lint pass. |
+| F02-N10 | F02 audit | `/root/f02_partial_witness_bundle`; parent integration | parent integration paths: `demo/lucid-midgard/src/builder/witness-bundle.ts`, `demo/lucid-midgard/src/builder.ts`, `demo/lucid-midgard/tests/partial-signing.test.ts`, `demo/lucid-midgard/tests/api-export-snapshot.test.ts` | PASS | pending | Sole public/wire `MidgardPartialWitnessBundleV1`; exact seven-field/two-wrapper schema, both versions `1`, lowercase hex, strict order, duplicate rejection, and tx/body binding pass 8/8 focused/API tests plus build/typecheck/lint. |
+| F02-DS | F02 audit | `/root/f02_da_store_exact` | exclusive lease: `demo/da-committee-node/src/domain.ts`, `demo/da-committee-node/src/store.ts`, `demo/da-committee-node/src/store/postgres.ts`, `demo/da-committee-node/src/peer/signatures.ts`, `demo/da-committee-node/tests/postgres-store.test.ts`, `demo/da-committee-node/tests/store-factory.test.ts`, `demo/da-committee-node/tests/watcher.test.ts`, `demo/da-committee-node/tests/peer-coordinator.test.ts`; no other paths | IN_PROGRESS | n/a | Close D19/D20: persisted payload records require explicit V1 and exact validated fields; persisted signatures require explicit local/peer source, reject legacy/missing/unknown/malformed records, and preserve fresh JSON/Postgres behavior. |
+| F02-DS-B | F02-DS | parent | `demo/da-committee-node/src/da/libp2p/attestations.ts`, `demo/da-committee-node/src/coordinator/submitter-reconciler.ts` | IN_PROGRESS | pending | Both peer and local attestation producers now include canonical `validationTracesRoot` and `validationTraceCount` in strict persisted V1 summaries. Package typecheck passes; final focused producer/store replay awaits the completed F02-DS lease. |
+| F02-ART | F02 audit | `/root/f02_artifact_registry` | read-only lease: `demo/midgard-node/scripts`, `demo/midgard-node/src/e2e`, artifact-producing `demo/midgard-node/src/commands`, `demo/midgard-node/devnet`, directly corresponding `demo/midgard-node/tests`, and `docs/exec-plans` artifact references; no edits | IN_PROGRESS | n/a | Source-classify A03–A23 with exact schema strings, fields/owners/parsers/writers, persistence, positive/rejection tests, and prove deleted/inactive historical readers remain non-runnable. |
+| F02-A22 | F02-ART discovery | parent | `demo/midgard-node/package.json`, `demo/midgard-node/tests/da-multi-peer-integration.test.ts` | IN_PROGRESS | pending | Removed the still-runnable retired Phase-5 package command, external 50k envelope/report reader, measurement collection, and both Phase-5 evidence emitters. Forbidden-name search, JSON parse, and focused lint pass; the integration replay is deferred from credit because concurrent F02-DS strict parsing rejected its old fixture as malformed. |
+| F03 | F00 | parent | `GOAL_PROGRESS.md`; read-only provider/runbook/source inspection | PASS | `dde4b789` | Preprod/local-Kupmios submission route, independent-provider gap, effective/future parameter commands, chain-point query, finality gap, credentials, and safe preflight commands identified. |
+| F10 | F01–F02 | unassigned | none until F02 acceptance | BLOCKED | n/a | F01 is complete; F02 acceptance remains unmet, so P0/P1/P2 claim reconciliation is not dependency-ready. |
+| F20 | F01–F02 | unassigned | none until F02 acceptance | BLOCKED | n/a | F01 is complete; F02 acceptance remains unmet, so proof-row reconciliation is not dependency-ready. |
+| F30 | F00–F02 | parent after F02 | none until F02 acceptance | BLOCKED | n/a | F00 is complete; F02 acceptance remains unmet, so the watcher dependency/source map is not dependency-ready. |
 
 ## Decisions
 
@@ -196,6 +206,28 @@
     `demo/pnpm-workspace.yaml`. `demo/da-committee-node/package.json`
     currently uses the package/bin identity `midgard-watcher`; therefore the
     independent production watcher required by W00 does not exist.
+- F01 is represented by
+  `docs/exec-plans/evidence/canonical-v1-feature-inventory-v1.json`, not by
+  optimistic matrix promotion. It records all 14 compiled enabled features,
+  current source surfaces, partial/ambiguous states, missing proof families,
+  correction gaps, and the absent watcher surface. Its unknown behavior is
+  explicitly fail closed.
+- F02 cannot be marked `PASS` merely because its discovery pass completed.
+  Current source does not yet satisfy the task acceptance:
+  - cross-language ABI evidence is TS-to-Aiken only and covers two generated
+    cases rather than every tag and arity;
+  - `/protocol-info` silently discards unknown root/nested JSON keys;
+  - producer and watcher accept different root languages for the same DA
+    runtime manifest, and the watcher does not bind its network field;
+  - the prose format registry omits exact fields/tags/arities/parsers/domains
+    and vectors while claiming completion;
+  - deployment JSON normalization/digest logic is duplicated; and
+  - multiple serialized format families remain uninspected and therefore
+    fail closed.
+  The narrow external-parser repairs are leased first; registry generation,
+  bidirectional vectors, persistence coverage, digest consolidation, and the
+  final obsolete-branch scan remain parent integration work before F02 can
+  pass.
 
 ## Validation ledger
 
@@ -213,11 +245,30 @@
 | `node .agents/skills/midgard-e2e-acceptance/scripts/validate-runbook.mjs` | baseline skill/finalizer sources | PASS | 17 referenced commands, 11 required steps, 9 transaction labels |
 | Cardano CLI query-help inspection | `cardano-cli 11.0.0.0` | PASS; effective, future, and tip primitives identified without network mutation | 3 commands |
 | source reconciliation of P2 matrix, fault catalogue/CLI/min-fee, workspace, and watcher paths | starting tree | PASS as before-state inventory; no acceptance criterion promoted | 4 material gap clusters |
+| `pnpm --dir demo/midgard-core exec vitest run tests/consensus-profile-v1.test.ts tests/capability-parity-v1.test.ts tests/deployment-manifest-identity-v1.test.ts --reporter=verbose` | `dde4b789` plus protected baseline | PASS; release gate remains correctly unset, manifest extra/tampered fields reject, and incomplete/unknown parity fails closed | 3 files, 14 tests, 3.34 s |
+| F01 source inventory plus `jq` schema/uniqueness/enabled/fail-closed checks and path-existence audit | `docs/exec-plans/evidence/canonical-v1-feature-inventory-v1.json` SHA-256 `44ebaedd...06e23` at `dde4b789` plus parent worktree | PASS; every registered source path exists and no downstream criterion was promoted | 14 unique enabled features, 45 paths |
+| F02 read-only source audit and protected-path hash replay | production source unchanged from starting revision; current HEAD `dde4b789` | FAIL for F02 acceptance; five blocking gap clusters and uninspected fail-closed families recorded in Decisions | 0 edits; 10 protected hashes unchanged |
+| `jq empty docs/exec-plans/evidence/canonical-v1-feature-inventory-v1.json`; `git diff --check` | parent integration worktree at `dde4b789` | PASS | 1 JSON artifact; 0 whitespace errors |
+| `pnpm --dir demo/lucid-midgard exec vitest run tests/provider.test.ts -t 'accepts the exact current protocol-info shape\|rejects unknown root protocol-info fields\|rejects unknown nested protocol-info fields' --reporter=verbose`; package typecheck; leased-file ESLint; diff check | F02-P parent-reviewed worktree at `dde4b789` | PASS; exact current shape accepted and unknown root/nested mutations fail closed | 1 file, 3 passed, 22 intentionally unselected; 9 ms tests |
+| `nix develop ./demo --command pnpm --dir demo/midgard-core run build`; corresponding `midgard-sdk` build | F02-D/F02-I/F02-A integration worktree at `dde4b789` | PASS; canonical declarations restored under Node `22.22.2` / pnpm `9.15.9` | 2 package builds |
+| Focused F02-I core/node deployment-manifest tests | F02-I integration worktree at `dde4b789` | PASS; one core normalizer/digest implementation, direct node delegation, exact/tamper vectors | core 4/4; node 9/9 |
+| `nix develop ./demo --command pnpm --dir demo/midgard-sdk exec vitest run tests/proof-abi.test.ts --reporter=verbose` | F02-A integration worktree at `dde4b789` | PASS; exact Branch/Fork/Leaf CBOR and obsolete double-wrapped neighbor rejection | 2/2 |
+| `nix develop ./demo --command pnpm --dir demo/midgard-node exec vitest run tests/sdk-aiken-schema-parity.test.ts --reporter=verbose` | F02-A integration worktree against current blueprint | PASS; recursive constructor/tag/arity/field parity plus raw-validity-code/Plutus-constructor binding | 26/26 |
+| Core and SDK package typechecks under `nix develop ./demo` | F02 integration worktree at `dde4b789` | PASS | 2 packages |
+| Node package typecheck under `nix develop ./demo` | concurrent F02-N10 worktree | FAIL before node compilation because active leased N10 edit caused a Lucid DTS union-narrowing error; routed to owning agent, no product verdict | 1 leased-file diagnostic |
+| Pinned-toolchain F02-D focused replay: core DA transport, node producer/runtime manifest, watcher config | integrated F02-D worktree at `dde4b789` | PASS; shared exact parser and deployment/network binding proved | core 8/8; node 25/25; watcher 20/20 |
+| `nix develop ./demo --command pnpm --dir demo/da-committee-node run typecheck`; focused F02 lint | integrated F02 worktree | PASS | watcher typecheck; 18 leased files linted |
+| Lucid build; partial-signing/API snapshot tests; typecheck; focused lint | integrated F02-N10 worktree | PASS; sole public/wire `MidgardPartialWitnessBundleV1` and strict canonical boundary | build PASS; 2 files, 8/8 tests |
+| `nix develop ./demo --command pnpm --dir demo/midgard-node exec tsc --noEmit`; parity test and lint | integrated F02-A/F02-D/F02-I/N10 worktree | PASS | node compilation; 26/26 parity tests |
+| `node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete`; default release invocation | F02-R bootstrap at `dde4b789` plus parent worktree | Structural PASS; release-mode expected FAIL, proving the bootstrap cannot be credited as F02 completion | 132 unique ordered rows; 132 deliberately unverified |
+| A22 forbidden-name search, package JSON parse, focused lint, DA package typecheck, multi-peer integration replay | concurrent F02-A22/F02-DS worktree | Search/JSON/lint/typecheck PASS; integration FAIL with all three peers rejecting the pre-strict-record fixture as `malformed_payload`, so no product credit and rerun required after F02-DS integration | 4 static checks; 1 test failed before A22-specific behavior |
 
 ## Current next action
 
-Integrate the read-only F01/F02 findings, expand the durable task queue, then
-launch only dependency-ready F10/F20 while the parent performs F30.
+Integrate F02-DS and the A03-A23 source audit when their bounded leases return.
+Meanwhile populate and source-verify the exact machine-readable F02 registry,
+starting with the already repaired C/N/D boundaries, then lease the remaining
+non-overlapping L/S/K/V/P family audits in successive waves.
 
 ## Blockers
 

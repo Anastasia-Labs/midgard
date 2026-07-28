@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   isMidgardConsensusProfileV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
@@ -15,6 +13,9 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestV1Id,
+  computeDeploymentManifestV1JsonDigest,
+  type DeploymentManifestV1JsonValue,
+  normalizeDeploymentManifestV1JsonValue,
   verifyDeploymentManifestV1Identity,
   verifyFinalizedDeploymentManifestV1,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
@@ -26,6 +27,12 @@ import {
 } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+export {
+  computeDeploymentManifestV1JsonDigest,
+  normalizeDeploymentManifestV1JsonValue,
+};
+export type { DeploymentManifestV1JsonValue };
 
 export const DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION =
   MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION;
@@ -176,14 +183,6 @@ const DEPLOYMENT_MANIFEST_NETWORKS = new Set([
   "Custom",
 ]);
 
-type DeploymentManifestV1JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | readonly DeploymentManifestV1JsonValue[]
-  | { readonly [key: string]: DeploymentManifestV1JsonValue };
-
 type DeploymentManifestV1OutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
@@ -298,88 +297,6 @@ export type DeploymentManifestV1Value = {
     readonly maturityMs: number;
   };
 };
-
-const stableJson = (value: unknown): string => {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(stableJson).join(",")}]`;
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  return `{${entries
-    .map(
-      ([key, entryValue]) => `${JSON.stringify(key)}:${stableJson(entryValue)}`,
-    )
-    .join(",")}}`;
-};
-
-export const normalizeDeploymentManifestV1JsonValue = (
-  value: unknown,
-  field = "value",
-): DeploymentManifestV1JsonValue => {
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return value.toString(10);
-  }
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
-      throw new Error(
-        `Deployment manifest ${field} must contain only finite numbers`,
-      );
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry, index) =>
-      normalizeDeploymentManifestV1JsonValue(
-        entry,
-        `${field}[${index.toString()}]`,
-      ),
-    );
-  }
-  if (typeof value !== "object" || value === null) {
-    throw new Error(
-      `Deployment manifest ${field} must contain only JSON-safe values`,
-    );
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new Error(
-      `Deployment manifest ${field} must contain only plain records`,
-    );
-  }
-  if (Reflect.ownKeys(value).length !== Object.keys(value).length) {
-    throw new Error(
-      `Deployment manifest ${field} must contain only string keys`,
-    );
-  }
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
-      if (entry === undefined) {
-        throw new Error(
-          `Deployment manifest ${field}.${key} must not be undefined`,
-        );
-      }
-      return [
-        key,
-        normalizeDeploymentManifestV1JsonValue(entry, `${field}.${key}`),
-      ];
-    }),
-  );
-};
-
-export const computeDeploymentManifestV1JsonDigest = (
-  value: DeploymentManifestV1JsonValue,
-): string => createHash("sha256").update(stableJson(value)).digest("hex");
 
 export const computeDeploymentManifestV1DaCommitteeSignersHash = (
   committeeVkeys: readonly string[],
@@ -982,10 +899,12 @@ const validateDaIdentity = (candidate: Record<string, unknown>): void => {
     [],
     "da.transportProfile.limits",
   );
-  if (stableJson(limits) !== stableJson(DA_TRANSPORT_LIMITS_V1)) {
-    throw new Error(
-      "Deployment manifest da.transportProfile.limits must exactly match canonical V1",
-    );
+  for (const [key, expected] of Object.entries(DA_TRANSPORT_LIMITS_V1)) {
+    if (limits[key] !== expected) {
+      throw new Error(
+        "Deployment manifest da.transportProfile.limits must exactly match canonical V1",
+      );
+    }
   }
   const retentionDays = requirePositiveSafeInteger(
     transportProfile.retentionDays,

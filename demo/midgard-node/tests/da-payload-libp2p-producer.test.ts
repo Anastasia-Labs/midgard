@@ -714,6 +714,52 @@ describe("DA payload libp2p producer publication", () => {
     );
   });
 
+  it("rejects missing or unknown runtime-manifest root and nested keys", () => {
+    const cases: readonly {
+      readonly mutate: (manifest: Record<string, unknown>) => void;
+      readonly error: RegExp;
+    }[] = [
+      {
+        mutate: (manifest) => {
+          delete manifest.network;
+        },
+        error: /network is required/u,
+      },
+      {
+        mutate: (manifest) => {
+          manifest.unknown_root = true;
+        },
+        error: /unknown_root is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const limits = (
+            manifest.da_transport as Record<string, Record<string, unknown>>
+          ).limits;
+          limits.unknown_limit = 1;
+        },
+        error: /limits\.unknown_limit is unexpected/u,
+      },
+      {
+        mutate: (manifest) => {
+          const committee = manifest.da_committee as {
+            members: Record<string, unknown>[];
+          };
+          delete committee.members[0]!.roles;
+        },
+        error: /members\[0\]\.roles is required/u,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const manifest = manifestFixture();
+      testCase.mutate(manifest);
+      expect(() => parseDaProducerPublicationManifest(manifest)).toThrow(
+        testCase.error,
+      );
+    }
+  });
+
   it("rejects runtime manifests with split deployment identity", () => {
     const manifest = manifestFixture();
     (manifest.deployment as Record<string, unknown>).fingerprint = "cd".repeat(
@@ -740,6 +786,7 @@ describe("DA payload libp2p producer publication", () => {
 
 const manifestFixture = (): Record<string, unknown> => ({
   schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
   deployment: {
     fingerprint: DEPLOYMENT.toUpperCase(),
     contract_deployment_manifest_id: DEPLOYMENT,

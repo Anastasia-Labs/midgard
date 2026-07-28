@@ -176,11 +176,8 @@ describe("DA libp2p runtime manifest profiles", () => {
         },
       ],
     });
-    const producerPeerId = (manifest.runtime_topology as Record<string, string>)
-      .producer_peer_id;
-    const daCommittee = manifest.da_committee as {
-      members: Array<{ peer_id: string; multiaddrs: string[] }>;
-    };
+    const producerPeerId = manifest.runtime_topology.producer_peer_id;
+    const daCommittee = manifest.da_committee;
     const producerMember = daCommittee.members.find(
       (member) => member.peer_id === producerPeerId,
     );
@@ -189,10 +186,9 @@ describe("DA libp2p runtime manifest profiles", () => {
       expect.stringContaining("/ip4/127.0.0.1/tcp/39002/"),
     ]);
     expect(
-      (
-        (manifest.da_transport as Record<string, string[]>)
-          .bootstrap_multiaddrs ?? []
-      ).some((addr) => addr.endsWith(`/p2p/${producerPeerId}`)),
+      manifest.da_transport.bootstrap_multiaddrs.some((addr) =>
+        addr.endsWith(`/p2p/${producerPeerId}`),
+      ),
     ).toBe(false);
   });
 

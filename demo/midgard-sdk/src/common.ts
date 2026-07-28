@@ -343,11 +343,9 @@ export type AddressData = Data.Static<typeof AddressSchema>;
 export const AddressData = AddressSchema as unknown as AddressData;
 
 export const NeighborSchema = Data.Object({
-  Neighbor: Data.Object({
-    nibble: Data.Integer(),
-    prefix: Data.Bytes(),
-    root: Data.Bytes(),
-  }),
+  nibble: Data.Integer(),
+  prefix: Data.Bytes(),
+  root: Data.Bytes(),
 });
 export type Neighbor = Data.Static<typeof NeighborSchema>;
 export const Neighbor = NeighborSchema as unknown as Neighbor;

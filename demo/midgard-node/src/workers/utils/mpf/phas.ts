@@ -313,7 +313,7 @@ const traversePhasProof = (
   }
   if ("Fork" in step) {
     const skip = parseProofInteger(step.Fork.skip, "fork skip");
-    const neighbor = step.Fork.neighbor.Neighbor;
+    const neighbor = step.Fork.neighbor;
     if (mode.kind === "excluding" && proof[index + 1] === undefined) {
       const prefixParts =
         skip === 0
