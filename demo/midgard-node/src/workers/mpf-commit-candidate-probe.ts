@@ -16,27 +16,10 @@ import {
   provideCommitBlockWorkerServices,
   runCommitBlockHeaderCandidateBuildProgram,
 } from "@/workers/commit-block-header.js";
-import type { WorkerInput } from "@/workers/utils/commit-block-header.js";
-
-type CandidateProbeInput = {
-  readonly schemaVersion: "midgard-architecture-g-commit-candidate-input-v1";
-  readonly levelPath: string;
-  readonly binaryPath: string;
-  readonly binarySha256: string;
-  readonly sidecarPath: string;
-  readonly expectedTransactionCount: number;
-  readonly corpusSha256: string;
-  readonly corpusSliceSha256: string;
-  readonly fundingMapSha256: string;
-  readonly fixtureCreationPath: string;
-  readonly fixtureCreationSha256: string;
-  readonly fixtureInitialUtxoCount: number;
-  readonly baseUtxoPayloadAggregate: {
-    readonly entryCount: number;
-    readonly encodedTupleBytes: number;
-  };
-  readonly workerInput: Omit<WorkerInput, "nativeMpf">;
-};
+import {
+  decodeArchitectureGCommitCandidateInputV1,
+  decodeArchitectureGFixtureCreationV1,
+} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_INPUT?.trim() ??
@@ -47,15 +30,8 @@ const probeSha256 = createHash("sha256")
   .update(readFileSync(probePath))
   .digest("hex");
 
-const requireHash = (value: unknown, field: string): string => {
-  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
-    throw new Error(`${field} must be a canonical SHA-256 hex digest`);
-  }
-  return value;
-};
-
 const loadInput = async (): Promise<{
-  readonly input: CandidateProbeInput;
+  readonly input: ReturnType<typeof decodeArchitectureGCommitCandidateInputV1>;
   readonly resolvedInputPath: string;
   readonly inputSha256: string;
 }> => {
@@ -66,27 +42,9 @@ const loadInput = async (): Promise<{
   }
   const resolvedInputPath = resolve(inputPath);
   const inputBytes = await readFile(resolvedInputPath);
-  const parsed = JSON.parse(inputBytes.toString("utf8")) as CandidateProbeInput;
-  if (
-    parsed.schemaVersion !==
-      "midgard-architecture-g-commit-candidate-input-v1" ||
-    !Number.isSafeInteger(parsed.expectedTransactionCount) ||
-    parsed.expectedTransactionCount <= 0 ||
-    !Number.isSafeInteger(parsed.baseUtxoPayloadAggregate?.entryCount) ||
-    parsed.baseUtxoPayloadAggregate.entryCount <= 0 ||
-    !Number.isSafeInteger(parsed.baseUtxoPayloadAggregate?.encodedTupleBytes) ||
-    parsed.baseUtxoPayloadAggregate.encodedTupleBytes <= 0 ||
-    !Number.isSafeInteger(parsed.fixtureInitialUtxoCount) ||
-    parsed.fixtureInitialUtxoCount <= 0 ||
-    parsed.workerInput?.data?.speculativeBuild === undefined
-  ) {
-    throw new Error("Invalid Architecture G commit-candidate probe input");
-  }
-  requireHash(parsed.binarySha256, "binarySha256");
-  requireHash(parsed.corpusSha256, "corpusSha256");
-  requireHash(parsed.corpusSliceSha256, "corpusSliceSha256");
-  requireHash(parsed.fundingMapSha256, "fundingMapSha256");
-  requireHash(parsed.fixtureCreationSha256, "fixtureCreationSha256");
+  const parsed = decodeArchitectureGCommitCandidateInputV1(
+    JSON.parse(inputBytes.toString("utf8")) as unknown,
+  );
   const fixtureCreationBytes = await readFile(parsed.fixtureCreationPath);
   const actualFixtureCreationSha256 = createHash("sha256")
     .update(fixtureCreationBytes)
@@ -94,34 +52,14 @@ const loadInput = async (): Promise<{
   if (actualFixtureCreationSha256 !== parsed.fixtureCreationSha256) {
     throw new Error("Fixture creation evidence SHA-256 mismatch");
   }
-  const fixtureCreation = JSON.parse(fixtureCreationBytes.toString("utf8")) as {
-    readonly fixtureCreated?: unknown;
-    readonly fixturePath?: unknown;
-    readonly marker?: unknown;
-    readonly initialUtxoCount?: unknown;
-    readonly utxoPayloadAggregate?: {
-      readonly entryCount?: unknown;
-      readonly encodedTupleBytes?: unknown;
-    };
-  };
-  if (
-    fixtureCreation.fixtureCreated !== true ||
-    resolve(String(fixtureCreation.fixturePath ?? "")) !==
-      resolve(parsed.levelPath) ||
-    fixtureCreation.marker !==
-      parsed.workerInput.data.speculativeBuild.base.utxosRoot ||
-    fixtureCreation.initialUtxoCount !== parsed.fixtureInitialUtxoCount ||
-    parsed.fixtureInitialUtxoCount !==
-      parsed.baseUtxoPayloadAggregate.entryCount ||
-    fixtureCreation.utxoPayloadAggregate?.entryCount !==
-      parsed.baseUtxoPayloadAggregate.entryCount ||
-    fixtureCreation.utxoPayloadAggregate?.encodedTupleBytes !==
-      parsed.baseUtxoPayloadAggregate.encodedTupleBytes
-  ) {
-    throw new Error(
-      "Fixture creation evidence does not bind the candidate path, root, cardinality, and payload aggregate",
-    );
-  }
+  decodeArchitectureGFixtureCreationV1({
+    value: JSON.parse(fixtureCreationBytes.toString("utf8")) as unknown,
+    expectedFixturePath: parsed.levelPath,
+    expectedMarker: parsed.workerInput.data.speculativeBuild.base.utxosRoot,
+    expectedUtxos: parsed.fixtureInitialUtxoCount,
+    expectedAggregate: parsed.baseUtxoPayloadAggregate,
+    expectedFundingMapSha256: parsed.fundingMapSha256,
+  });
   return {
     input: parsed,
     resolvedInputPath,
