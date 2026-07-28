@@ -55,6 +55,12 @@ test("candidate gate requires exact root-gate source identity", () => {
       current: identity,
     }),
   );
+  assert.throws(() =>
+    validateArchitectureGCrossGateSourceIdentity({
+      expected: identity,
+      current: { ...identity, unknown: true },
+    }),
+  );
 });
 
 test("candidate gate binds the full run-local fixture identity before execution", () => {
@@ -441,6 +447,24 @@ const rootGateExecutableIdentity = {
   binarySha256: hash(71),
 };
 
+const rootGateProvenance = {
+  generatedAt: "2026-07-27T00:00:00.000Z",
+  gitHead: "ab".repeat(20),
+  sourceSha256: hash(60),
+  diffSha256: hash(61),
+  gitStatusSha256: createHash("sha256").update("").digest("hex"),
+  gitStatusEntries: [],
+  sourceFiles: ["package.json", "scripts/mpf-architecture-g-gate.mjs"],
+  nodeOptions: "--max-old-space-size=4096",
+  cgroup: {
+    membership: "0::/midgard",
+    memoryMaxPath: "/sys/fs/cgroup/midgard/memory.max",
+    memoryMax: "4294967296",
+  },
+  percentileMethod:
+    "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
+};
+
 const rootGateCanonicalCorpus = {
   corpusPath: "/evidence/corpus.ndjson",
   manifestPath: "/evidence/corpus.ndjson.manifest.json",
@@ -463,6 +487,50 @@ const rootGateCanonicalCorpus = {
   verifiedCorpusChainCount: 10,
   completeChainCount: 1,
   finalChainPrefixLength: 1,
+  sliceChainsContiguous: true,
+  chainsCrossSliceBoundaries: false,
+  selectionAlgorithm: "named-slice-file-order-prefix-v1",
+  sourceCorpusRowRange: { start: 11, end: 12 },
+  sourceSliceOrdinalRange: { start: 1, end: 2 },
+  fundingRootOutrefs: [`${"aa".repeat(32)}#0`, `${"bb".repeat(32)}#1`],
+};
+
+const rootGateOwnerDiagnostics = (durableRoot) => ({
+  ownerEpoch: { type: "Buffer", data: Array(16).fill(7) },
+  durableRoot,
+  residentNodes: 10,
+  residentEdges: 9,
+  residentBytes: 1024,
+  activeGenerations: 0,
+  generatedNodes: 20,
+  generatedBytes: 2048,
+  rssBytes: 4096,
+  peakRssBytes: 8192,
+  childRestarts: 0,
+});
+
+const rootGatePathHydration = {
+  prefetchMs: 0,
+  uniquePaths: 2,
+  nodesRequested: 0,
+  hydrationHits: 0,
+  hydrationMisses: 0,
+  loadedNodes: 0,
+  maxInFlight: 0,
+  maxBatchKeys: 0,
+  maxFrontierPaths: 0,
+  retainedBytesEstimate: 0,
+  chunkCount: 1,
+  checkpointMs: 0,
+  authenticationMs: 0,
+  materializeMs: 0,
+  collapseMs: 0,
+  checkpointSerializedNodes: 0,
+  checkpointSerializedBytes: 0,
+  verifiedUpperNodes: 0,
+  retainedUpperNodes: 0,
+  collapsedNodes: 0,
+  peakDecodedNodes: 0,
 };
 
 const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
@@ -484,6 +552,7 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
   };
   const results = durations.map((durationMs) => ({
     ...structuredClone(roots),
+    engine: "architecture_g",
     probePath: rootGateExecutableIdentity.probePath,
     probeSha256: rootGateExecutableIdentity.probeSha256,
     binarySha256: rootGateExecutableIdentity.binarySha256,
@@ -500,14 +569,37 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
     cpuAffinity: "28-31",
     transactionCount: transactions,
     initialUtxoCount: initialUtxos,
+    levelBackedInitialView: true,
+    reusedLevelFixture: true,
+    ledgerOpCount: transactions * 2,
+    startupMs: 1,
     confirmedLedgerFullScans: 0,
     durationMs,
+    buildPlusCaptureMs: durationMs,
+    phaseMs: {
+      transactionSourceRoot: 1,
+      transitionTraceBuild: 2,
+      transactionMpfApply: 3,
+      auxiliaryRoots: 4,
+    },
+    nativePhaseMs: {
+      validation: 1,
+      eventLogEncode: 2,
+      ownerApply: 3,
+      ownerProofArena: 4,
+      ownerMutation: 5,
+      memberAssembly: 6,
+      retainedRoots: 7,
+    },
+    pathHydration: structuredClone(rootGatePathHydration),
     workloadSha256: hash(50),
-    ownerBefore: { durableRoot },
+    ownerBefore: rootGateOwnerDiagnostics(durableRoot),
+    ownerAfter: rootGateOwnerDiagnostics(durableRoot),
   }));
   return {
     initialUtxos,
     fixtureCreation: {
+      path: `/evidence/fixture-create-${initialUtxos.toString()}.json`,
       sha256: hash(30),
       initialUtxoCount: initialUtxos,
       marker: hash(31),
@@ -517,11 +609,15 @@ const rootGateGroup = ({ initialUtxos, durations, transactions = 2 }) => {
       },
     },
     fixtureBefore: {
+      path: `/fixtures/utxos-${initialUtxos.toString()}-level`,
+      directoryBytes: initialUtxos * 80,
       marker: hash(31),
       logicalSha256: hash(32),
       records: initialUtxos + 1,
     },
     fixtureAfter: {
+      path: `/fixtures/utxos-${initialUtxos.toString()}-level`,
+      directoryBytes: initialUtxos * 80,
       marker: hash(31),
       logicalSha256: hash(32),
       records: initialUtxos + 1,
@@ -570,6 +666,7 @@ const rootGateSummary = (mode = "50k") => {
     schemaVersion: "midgard-architecture-g-production-root-gate-v1",
     formal: true,
     profile: "formal",
+    ...structuredClone(rootGateProvenance),
     mode,
     requiredCardinality:
       mode === "50k"
@@ -654,6 +751,67 @@ test("formal root summary validator recomputes growth slope and workload identit
   }
 });
 
+test("formal root summary rejects incomplete, extended, or noncanonical V1 documents", () => {
+  const mutations = [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.generatedAt,
+    (value) => void (value.generatedAt = "2026-07-27T00:00:00Z"),
+    (value) => void (value.requiredCardinality.unknown = true),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.phase1FormalBinding.corpus.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.canonicalCorpus.unknown = true),
+    (value) => void (value.canonicalCorpus.sourceCorpusRowRange.unknown = true),
+    (value) => void (value.canonicalCorpus.sliceChainsContiguous = false),
+    (value) => void value.canonicalCorpus.fundingRootOutrefs.pop(),
+    (value) => void (value.cgroup.unknown = true),
+    (value) => void (value.gitStatusSha256 = hash(99)),
+    (value) => void value.sourceFiles.reverse(),
+    (value) => void (value.groups[0].unknown = true),
+    (value) => void (value.groups[0].fixtureCreation.unknown = true),
+    (value) =>
+      void (value.groups[0].fixtureCreation.utxoPayloadAggregate.unknown = true),
+    (value) => void (value.groups[0].fixtureBefore.unknown = true),
+    (value) => void (value.groups[0].roots.unknown = true),
+    (value) => void (value.groups[0].durationMs.unknown = true),
+    (value) => void (value.groups[0].results[0].unknown = true),
+    (value) =>
+      void (value.groups[0].results[0].canonicalCorpusSlice.unknown = true),
+    (value) => void (value.groups[0].results[0].phaseMs.unknown = true),
+    (value) => void (value.groups[0].results[0].nativePhaseMs.unknown = true),
+    (value) => void (value.groups[0].results[0].pathHydration.unknown = true),
+    (value) =>
+      void (value.groups[0].results[0].pathHydration.uniquePaths = 1.5),
+    (value) => void (value.groups[0].results[0].ownerBefore.unknown = true),
+    (value) =>
+      void value.groups[0].results[0].ownerBefore.ownerEpoch.data.pop(),
+    (value) => void (value.groups[0].results[0].ownerAfter.childRestarts = 1),
+    (value) =>
+      void (value.groups[0].results[0].transitionRoots[0].unknown = true),
+    (value) => void (value.verdict.unknown = true),
+  ];
+  for (const mutate of mutations) {
+    const invalid = rootGateSummary();
+    mutate(invalid);
+    assert.throws(() => validateRootGateSummary(invalid));
+  }
+});
+
+test("formal root summary binds canonical nonempty git-status bytes", () => {
+  const valid = rootGateSummary();
+  valid.gitStatusEntries = [
+    " M scripts/mpf-architecture-g-gate.mjs",
+    "?? logs/evidence.json",
+  ];
+  valid.gitStatusSha256 = createHash("sha256")
+    .update(`${valid.gitStatusEntries.join("\0")}\0`)
+    .digest("hex");
+  assert.equal(validateRootGateSummary(valid), valid);
+
+  valid.gitStatusEntries.reverse();
+  assert.throws(() => validateRootGateSummary(valid));
+});
+
 test("formal root summary validator rejects a contradictory profile", () => {
   const invalid = rootGateSummary();
   invalid.profile = "smoke";
@@ -733,7 +891,6 @@ test("formal root summary validator requires every canonical corpus hash and cou
     "parentSliceChainCount",
     "verifiedCorpusChainCount",
     "completeChainCount",
-    "finalChainPrefixLength",
     "fundingEntryCount",
     "sliceRowCount",
   ]) {
@@ -741,6 +898,8 @@ test("formal root summary validator requires every canonical corpus hash and cou
     invalid.canonicalCorpus[field] = 0;
     assert.throws(() => validateRootGateSummary(invalid));
   }
+  valid.canonicalCorpus.finalChainPrefixLength = 0;
+  assert.equal(validateRootGateSummary(valid), valid);
 });
 
 for (const field of [

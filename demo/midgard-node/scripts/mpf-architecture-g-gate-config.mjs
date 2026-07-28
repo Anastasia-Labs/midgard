@@ -40,6 +40,30 @@ const ARCHITECTURE_G_SOURCE_DIRECTORIES = Object.freeze([
   "../midgard-validation/src",
 ]);
 
+const requireExactObjectKeys = (value, keys, label) => {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    JSON.stringify(Object.keys(value).sort()) !==
+      JSON.stringify([...keys].sort())
+  ) {
+    throw new Error(`${label} must contain exactly: ${keys.join(", ")}`);
+  }
+  return value;
+};
+
+const isCanonicalTimestamp = (value) =>
+  typeof value === "string" &&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) &&
+  new Date(value).toISOString() === value;
+
+const isNonNegativeFiniteNumber = (value) =>
+  Number.isFinite(value) && value >= 0;
+
+const isNonNegativeSafeInteger = (value) =>
+  Number.isSafeInteger(value) && value >= 0;
+
 const regularFilesUnder = (cwd, path) => {
   const resolvedPath = resolve(cwd, path);
   let root;
@@ -118,17 +142,16 @@ export const validateArchitectureGCrossGateSourceIdentity = ({
   expected,
   current,
 }) => {
-  for (const field of [
-    "gitHead",
-    "sourceSha256",
-    "diffSha256",
-    "gitStatusSha256",
-  ]) {
-    if (
-      typeof expected?.[field] !== "string" ||
-      expected[field].length === 0 ||
-      current?.[field] !== expected[field]
-    ) {
+  const fields = ["gitHead", "sourceSha256", "diffSha256", "gitStatusSha256"];
+  requireExactObjectKeys(expected, fields, "Expected source identity");
+  requireExactObjectKeys(current, fields, "Current source identity");
+  for (const field of fields) {
+    const expectedValue = expected[field];
+    const validIdentity =
+      field === "gitHead"
+        ? /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(expectedValue)
+        : /^[0-9a-f]{64}$/u.test(expectedValue);
+    if (!validIdentity || current?.[field] !== expectedValue) {
       throw new Error(
         `Architecture G root/candidate source identity mismatch: ${field}`,
       );
@@ -198,6 +221,46 @@ const jsonFile = (path, label) => {
 };
 
 export const validateArchitectureGPhase1FormalBindingIdentity = (identity) => {
+  requireExactObjectKeys(
+    identity,
+    [
+      "schemaVersion",
+      "path",
+      "sha256",
+      "deploymentManifestId",
+      "nodeImageId",
+      "nodeContainerId",
+      "walletSetSha256",
+      "fundingSetSha256",
+      "corpus",
+      "generationResult",
+      "harness",
+    ],
+    "Architecture G Phase 1 formal binding identity",
+  );
+  requireExactObjectKeys(
+    identity.corpus,
+    [
+      "path",
+      "indexPath",
+      "manifestPath",
+      "sliceId",
+      "corpusSha256",
+      "indexSha256",
+      "manifestSha256",
+    ],
+    "Architecture G Phase 1 corpus identity",
+  );
+  requireExactObjectKeys(
+    identity.generationResult,
+    ["path", "sha256", "schemaVersion"],
+    "Architecture G Phase 1 generation-result identity",
+  );
+  requireExactObjectKeys(
+    identity.harness,
+    ["scenarioId", "engineId"],
+    "Architecture G Phase 1 harness identity",
+  );
   if (
     identity?.schemaVersion !==
       "midgard-architecture-g-phase1-formal-binding-identity-v1" ||
@@ -332,6 +395,11 @@ export const validateArchitectureGRuntimeIdentity = ({
   expectedVersion,
   expectedExecutableSha256,
 }) => {
+  requireExactObjectKeys(
+    identity,
+    ["schemaVersion", "version", "execPath", "executableSha256"],
+    "Architecture G runtime identity",
+  );
   if (
     identity?.schemaVersion !== "midgard-architecture-g-runtime-identity-v1" ||
     !isNonEmptyString(identity.version) ||
@@ -385,6 +453,177 @@ export const validateArchitectureGCrossGateEvidenceIdentity = ({
 const isPositiveSafeInteger = (value) =>
   Number.isSafeInteger(value) && value > 0;
 
+const validateArchitectureGRootGateResultShape = (result) => {
+  requireExactObjectKeys(
+    result,
+    [
+      "engine",
+      "transactionCount",
+      "initialUtxoCount",
+      "workloadSha256",
+      "canonicalCorpusSlice",
+      "canonicalFunding",
+      "levelBackedInitialView",
+      "reusedLevelFixture",
+      "ledgerOpCount",
+      "startupMs",
+      "durationMs",
+      "buildPlusCaptureMs",
+      "phaseMs",
+      "utxoRoot",
+      "rawTxRoot",
+      "txRoot",
+      "transitionTraceRoot",
+      "eventToStepRoot",
+      "depositsRoot",
+      "withdrawalsRoot",
+      "forcedTransactionsRoot",
+      "transitionRoots",
+      "nativePhaseMs",
+      "pathHydration",
+      "confirmedLedgerFullScans",
+      "binarySha256",
+      "cpuAffinity",
+      "ownerBefore",
+      "ownerAfter",
+      "probePath",
+      "probeSha256",
+    ],
+    "Architecture G root-gate result",
+  );
+  for (const [value, keys, label] of [
+    [
+      result.canonicalCorpusSlice,
+      ["path", "sha256", "rowCount"],
+      "Architecture G result corpus slice",
+    ],
+    [
+      result.canonicalFunding,
+      ["path", "sha256", "entryCount"],
+      "Architecture G result funding identity",
+    ],
+    [
+      result.phaseMs,
+      [
+        "transactionSourceRoot",
+        "transitionTraceBuild",
+        "transactionMpfApply",
+        "auxiliaryRoots",
+      ],
+      "Architecture G result phase timings",
+    ],
+    [
+      result.nativePhaseMs,
+      [
+        "validation",
+        "eventLogEncode",
+        "ownerApply",
+        "ownerProofArena",
+        "ownerMutation",
+        "memberAssembly",
+        "retainedRoots",
+      ],
+      "Architecture G result native phase timings",
+    ],
+    [
+      result.pathHydration,
+      [
+        "prefetchMs",
+        "uniquePaths",
+        "nodesRequested",
+        "hydrationHits",
+        "hydrationMisses",
+        "loadedNodes",
+        "maxInFlight",
+        "maxBatchKeys",
+        "maxFrontierPaths",
+        "retainedBytesEstimate",
+        "chunkCount",
+        "checkpointMs",
+        "authenticationMs",
+        "materializeMs",
+        "collapseMs",
+        "checkpointSerializedNodes",
+        "checkpointSerializedBytes",
+        "verifiedUpperNodes",
+        "retainedUpperNodes",
+        "collapsedNodes",
+        "peakDecodedNodes",
+      ],
+      "Architecture G result path-hydration diagnostics",
+    ],
+  ]) {
+    requireExactObjectKeys(value, keys, label);
+  }
+  const ownerKeys = [
+    "ownerEpoch",
+    "durableRoot",
+    "residentNodes",
+    "residentEdges",
+    "residentBytes",
+    "activeGenerations",
+    "generatedNodes",
+    "generatedBytes",
+    "rssBytes",
+    "peakRssBytes",
+    "childRestarts",
+  ];
+  for (const [owner, label] of [
+    [result.ownerBefore, "Architecture G owner-before diagnostics"],
+    [result.ownerAfter, "Architecture G owner-after diagnostics"],
+  ]) {
+    requireExactObjectKeys(owner, ownerKeys, label);
+    requireExactObjectKeys(
+      owner.ownerEpoch,
+      ["type", "data"],
+      `${label} epoch`,
+    );
+    if (
+      owner.ownerEpoch.type !== "Buffer" ||
+      !Array.isArray(owner.ownerEpoch.data) ||
+      owner.ownerEpoch.data.length !== 16 ||
+      !owner.ownerEpoch.data.every(
+        (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+      ) ||
+      !isHash(owner.durableRoot) ||
+      !ownerKeys
+        .slice(2)
+        .every((field) => isNonNegativeSafeInteger(owner[field]))
+    ) {
+      throw new Error(`${label} is invalid`);
+    }
+  }
+  const hydrationTimingFields = new Set([
+    "prefetchMs",
+    "checkpointMs",
+    "authenticationMs",
+    "materializeMs",
+    "collapseMs",
+  ]);
+  if (
+    Object.entries(result.pathHydration).some(([field, value]) =>
+      hydrationTimingFields.has(field)
+        ? !isNonNegativeFiniteNumber(value)
+        : !isNonNegativeSafeInteger(value),
+    )
+  ) {
+    throw new Error(
+      "Architecture G path-hydration diagnostics contain an invalid value",
+    );
+  }
+  if (!Array.isArray(result.transitionRoots)) {
+    throw new Error("Architecture G transition roots must be an array");
+  }
+  for (const transition of result.transitionRoots) {
+    requireExactObjectKeys(
+      transition,
+      ["pre", "post"],
+      "Architecture G transition-root pair",
+    );
+  }
+  return result;
+};
+
 const percentile = (values, quantile) => {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.max(0, Math.ceil(sorted.length * quantile) - 1)];
@@ -397,6 +636,44 @@ export const validateArchitectureGRootGateSummary = ({
   transactions,
   cpuSet,
 }) => {
+  requireExactObjectKeys(
+    summary,
+    [
+      "schemaVersion",
+      "formal",
+      "profile",
+      "requiredCardinality",
+      "generatedAt",
+      "mode",
+      "freshProcessRunsPerFixture",
+      "transactionCount",
+      "phase1FormalBinding",
+      "runtimeIdentity",
+      "canonicalCorpus",
+      "binaryPath",
+      "binarySha256",
+      "probePath",
+      "probeSha256",
+      "gitHead",
+      "sourceSha256",
+      "diffSha256",
+      "gitStatusSha256",
+      "gitStatusEntries",
+      "sourceFiles",
+      "cpuSet",
+      "nodeOptions",
+      "cgroup",
+      "percentileMethod",
+      "groups",
+      "verdict",
+    ],
+    "Architecture G production root-gate summary",
+  );
+  requireExactObjectKeys(
+    summary.requiredCardinality,
+    ["runs", "transactions"],
+    "Architecture G required cardinality",
+  );
   validateArchitectureGPhase1FormalBindingIdentity(
     summary?.phase1FormalBinding,
   );
@@ -417,7 +694,8 @@ export const validateArchitectureGRootGateSummary = ({
     ) ||
     summary.freshProcessRunsPerFixture !== runs ||
     summary.transactionCount !== transactions ||
-    summary.cpuSet !== cpuSet
+    summary.cpuSet !== cpuSet ||
+    !isCanonicalTimestamp(summary.generatedAt)
   ) {
     throw new Error("Architecture G root gate summary identity is invalid");
   }
@@ -429,7 +707,98 @@ export const validateArchitectureGRootGateSummary = ({
   ) {
     throw new Error("Architecture G root gate executable identity is invalid");
   }
+  requireExactObjectKeys(
+    summary.cgroup,
+    ["membership", "memoryMaxPath", "memoryMax"],
+    "Architecture G root gate cgroup identity",
+  );
+  const statusEntries = summary.gitStatusEntries;
+  const sourceFiles = summary.sourceFiles;
+  const canonicalStatusBytes = Buffer.from(
+    Array.isArray(statusEntries) && statusEntries.length > 0
+      ? `${statusEntries.join("\0")}\0`
+      : "",
+  );
+  if (
+    !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(summary.gitHead) ||
+    !isHash(summary.sourceSha256) ||
+    !isHash(summary.diffSha256) ||
+    !isHash(summary.gitStatusSha256) ||
+    !Array.isArray(statusEntries) ||
+    !statusEntries.every(
+      (entry) =>
+        typeof entry === "string" &&
+        entry.length > 0 &&
+        entry.length <= 4096 &&
+        !entry.includes("\0"),
+    ) ||
+    createHash("sha256").update(canonicalStatusBytes).digest("hex") !==
+      summary.gitStatusSha256 ||
+    !Array.isArray(sourceFiles) ||
+    sourceFiles.length === 0 ||
+    !sourceFiles.every(
+      (path) =>
+        typeof path === "string" &&
+        path.length > 0 &&
+        path.length <= 4096 &&
+        !path.includes("\0"),
+    ) ||
+    new Set(sourceFiles).size !== sourceFiles.length ||
+    !jsonEqual(sourceFiles, [...sourceFiles].sort()) ||
+    summary.nodeOptions !== "--max-old-space-size=4096" ||
+    !isNonEmptyString(summary.cgroup.membership) ||
+    !isNonEmptyString(summary.cgroup.memoryMaxPath) ||
+    !isNonEmptyString(summary.cgroup.memoryMax) ||
+    summary.percentileMethod !==
+      "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95"
+  ) {
+    throw new Error("Architecture G root gate provenance is invalid");
+  }
   const canonicalCorpus = summary.canonicalCorpus;
+  requireExactObjectKeys(
+    canonicalCorpus,
+    [
+      "corpusPath",
+      "manifestPath",
+      "manifestSha256",
+      "corpusSha256",
+      "indexPath",
+      "indexSha256",
+      "verificationPath",
+      "verificationSha256",
+      "corpusManifestRowCount",
+      "parentSliceId",
+      "parentSliceRowsSeen",
+      "parentSliceChainCount",
+      "verifiedCorpusChainCount",
+      "sliceChainsContiguous",
+      "chainsCrossSliceBoundaries",
+      "selectionAlgorithm",
+      "sourceCorpusRowRange",
+      "sourceSliceOrdinalRange",
+      "completeChainCount",
+      "finalChainPrefixLength",
+      "fundingRootOutrefs",
+      "fundingRootsSha256",
+      "fundingMapPath",
+      "fundingMapSha256",
+      "fundingEntryCount",
+      "slicePath",
+      "sliceSha256",
+      "sliceRowCount",
+    ],
+    "Architecture G canonical corpus identity",
+  );
+  requireExactObjectKeys(
+    canonicalCorpus.sourceCorpusRowRange,
+    ["start", "end"],
+    "Architecture G corpus source-row range",
+  );
+  requireExactObjectKeys(
+    canonicalCorpus.sourceSliceOrdinalRange,
+    ["start", "end"],
+    "Architecture G corpus slice-ordinal range",
+  );
   const phase1Corpus = summary.phase1FormalBinding.corpus;
   const phase1GenerationResult = summary.phase1FormalBinding.generationResult;
   if (
@@ -448,7 +817,6 @@ export const validateArchitectureGRootGateSummary = ({
       canonicalCorpus?.parentSliceChainCount,
       canonicalCorpus?.verifiedCorpusChainCount,
       canonicalCorpus?.completeChainCount,
-      canonicalCorpus?.finalChainPrefixLength,
       canonicalCorpus?.fundingEntryCount,
       canonicalCorpus?.sliceRowCount,
     ].every(isPositiveSafeInteger) ||
@@ -469,7 +837,26 @@ export const validateArchitectureGRootGateSummary = ({
     canonicalCorpus.manifestSha256 !== phase1Corpus.manifestSha256 ||
     canonicalCorpus.parentSliceId !== phase1Corpus.sliceId ||
     canonicalCorpus.verificationPath !== phase1GenerationResult.path ||
-    canonicalCorpus.verificationSha256 !== phase1GenerationResult.sha256
+    canonicalCorpus.verificationSha256 !== phase1GenerationResult.sha256 ||
+    canonicalCorpus.sliceChainsContiguous !== true ||
+    canonicalCorpus.chainsCrossSliceBoundaries !== false ||
+    canonicalCorpus.selectionAlgorithm !== "named-slice-file-order-prefix-v1" ||
+    !isPositiveSafeInteger(canonicalCorpus.sourceCorpusRowRange.start) ||
+    !isPositiveSafeInteger(canonicalCorpus.sourceCorpusRowRange.end) ||
+    canonicalCorpus.sourceCorpusRowRange.end -
+      canonicalCorpus.sourceCorpusRowRange.start +
+      1 <
+      transactions ||
+    canonicalCorpus.sourceSliceOrdinalRange.start !== 1 ||
+    canonicalCorpus.sourceSliceOrdinalRange.end !== transactions ||
+    !isNonNegativeSafeInteger(canonicalCorpus.finalChainPrefixLength) ||
+    canonicalCorpus.finalChainPrefixLength > transactions ||
+    !Array.isArray(canonicalCorpus.fundingRootOutrefs) ||
+    canonicalCorpus.fundingRootOutrefs.length !==
+      canonicalCorpus.fundingEntryCount ||
+    !canonicalCorpus.fundingRootOutrefs.every(isNonEmptyString) ||
+    new Set(canonicalCorpus.fundingRootOutrefs).size !==
+      canonicalCorpus.fundingRootOutrefs.length
   ) {
     throw new Error(
       "Architecture G root gate canonical corpus identity is invalid",
@@ -498,9 +885,42 @@ export const validateArchitectureGRootGateSummary = ({
     throw new Error("Architecture G root gate fixture groups are incomplete");
   }
   for (const group of summary.groups) {
+    requireExactObjectKeys(
+      group,
+      [
+        "initialUtxos",
+        "fixtureCreation",
+        "fixtureBefore",
+        "fixtureAfter",
+        "roots",
+        "durationMs",
+        "results",
+      ],
+      "Architecture G root-gate fixture group",
+    );
     const fixture = group.fixtureBefore;
     const after = group.fixtureAfter;
     const creation = group.fixtureCreation;
+    requireExactObjectKeys(
+      creation,
+      ["path", "sha256", "initialUtxoCount", "marker", "utxoPayloadAggregate"],
+      "Architecture G fixture-creation identity",
+    );
+    requireExactObjectKeys(
+      creation.utxoPayloadAggregate,
+      ["entryCount", "encodedTupleBytes"],
+      "Architecture G fixture payload aggregate",
+    );
+    for (const [value, label] of [
+      [fixture, "Architecture G fixture-before identity"],
+      [after, "Architecture G fixture-after identity"],
+    ]) {
+      requireExactObjectKeys(
+        value,
+        ["path", "directoryBytes", "logicalSha256", "records", "marker"],
+        label,
+      );
+    }
     if (
       creation?.initialUtxoCount !== group.initialUtxos ||
       creation?.marker !== fixture?.marker ||
@@ -509,10 +929,15 @@ export const validateArchitectureGRootGateSummary = ({
         creation?.utxoPayloadAggregate?.encodedTupleBytes,
       ) ||
       creation.utxoPayloadAggregate.encodedTupleBytes <= 0 ||
+      !isCanonicalAbsolutePath(creation?.path) ||
       !isHash(creation?.sha256) ||
+      !isCanonicalAbsolutePath(fixture?.path) ||
+      !isPositiveSafeInteger(fixture?.directoryBytes) ||
       !isHash(fixture?.marker) ||
       !isHash(fixture?.logicalSha256) ||
       fixture?.records !== group.initialUtxos + 1 ||
+      after?.path !== fixture.path ||
+      after?.directoryBytes !== fixture.directoryBytes ||
       fixture?.marker !== after?.marker ||
       fixture?.logicalSha256 !== after?.logicalSha256 ||
       fixture?.records !== after?.records
@@ -527,6 +952,26 @@ export const validateArchitectureGRootGateSummary = ({
       );
     }
     const expectedRoots = group.roots;
+    requireExactObjectKeys(
+      expectedRoots,
+      [
+        "utxoRoot",
+        "rawTxRoot",
+        "txRoot",
+        "transitionTraceRoot",
+        "eventToStepRoot",
+        "depositsRoot",
+        "withdrawalsRoot",
+        "forcedTransactionsRoot",
+        "transitionRoots",
+      ],
+      "Architecture G root-gate complete roots",
+    );
+    requireExactObjectKeys(
+      group.durationMs,
+      ["min", "median", "p95", "max"],
+      "Architecture G root-gate duration aggregate",
+    );
     if (
       ![
         expectedRoots?.utxoRoot,
@@ -546,7 +991,9 @@ export const validateArchitectureGRootGateSummary = ({
       );
     }
     for (const result of group.results) {
+      validateArchitectureGRootGateResultShape(result);
       if (
+        result?.engine !== "architecture_g" ||
         result?.probePath !== summary.probePath ||
         result?.probeSha256 !== summary.probeSha256 ||
         result?.binarySha256 !== summary.binarySha256 ||
@@ -555,9 +1002,18 @@ export const validateArchitectureGRootGateSummary = ({
         result?.cpuAffinity !== cpuSet ||
         result?.transactionCount !== transactions ||
         result?.initialUtxoCount !== group.initialUtxos ||
+        result?.levelBackedInitialView !== true ||
+        result?.reusedLevelFixture !== true ||
+        !isPositiveSafeInteger(result?.ledgerOpCount) ||
+        !isNonNegativeFiniteNumber(result?.startupMs) ||
         result?.confirmedLedgerFullScans !== 0 ||
         !Number.isFinite(result?.durationMs) ||
         result.durationMs <= 0 ||
+        result.buildPlusCaptureMs !== result.durationMs ||
+        !Object.values(result.phaseMs).every(isNonNegativeFiniteNumber) ||
+        !Object.values(result.nativePhaseMs).every(isNonNegativeFiniteNumber) ||
+        !Object.values(result.pathHydration).every(isNonNegativeFiniteNumber) ||
+        !isHash(result.workloadSha256) ||
         !Array.isArray(result.transitionRoots) ||
         result.transitionRoots.length !== transactions ||
         !result.transitionRoots.every(
@@ -565,6 +1021,13 @@ export const validateArchitectureGRootGateSummary = ({
         ) ||
         !isHash(result.ownerBefore?.durableRoot) ||
         result.ownerBefore.durableRoot !== fixture.marker ||
+        result.ownerAfter?.durableRoot !== fixture.marker ||
+        !jsonEqual(
+          result.ownerBefore?.ownerEpoch,
+          result.ownerAfter?.ownerEpoch,
+        ) ||
+        result.ownerBefore?.childRestarts !==
+          result.ownerAfter?.childRestarts ||
         result.transitionRoots[0]?.pre !== result.ownerBefore?.durableRoot ||
         result.transitionRoots.at(-1)?.post !== result.utxoRoot ||
         !jsonEqual(completeRootTuple(result), expectedRoots)
@@ -635,6 +1098,20 @@ export const validateArchitectureGRootGateSummary = ({
             limitAbsolutePercent: 10,
           };
         })();
+  requireExactObjectKeys(
+    summary.verdict,
+    mode === "50k"
+      ? ["pass", "gate", "p95Ms", "limitMs"]
+      : [
+          "pass",
+          "gate",
+          "maxMinSlopePercent",
+          "minimumMedianMs",
+          "maximumMedianMs",
+          "limitAbsolutePercent",
+        ],
+    "Architecture G root-gate verdict",
+  );
   if (!expectedVerdict.pass || !jsonEqual(summary.verdict, expectedVerdict)) {
     throw new Error("Architecture G root gate verdict is invalid or failed");
   }
