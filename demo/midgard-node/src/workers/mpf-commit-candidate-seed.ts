@@ -16,16 +16,11 @@ import {
 import * as Tx from "@/database/utils/tx.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { batchProgram, breakDownTx } from "@/utils.js";
-
-type SeedInput = {
-  readonly schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1";
-  readonly corpusSlicePath: string;
-  readonly corpusSliceSha256: string;
-  readonly fundingMapPath: string;
-  readonly fundingMapSha256: string;
-  readonly expectedTransactionCount: number;
-  readonly firstTimestampIso: string;
-};
+import {
+  decodeArchitectureGCommitCandidateSeedInputV1,
+  decodeArchitectureGCorpusFundingV1,
+  validateArchitectureGCommitCandidateSeedResultV1,
+} from "@/workers/mpf-commit-candidate-seed-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_SEED_INPUT?.trim() ??
@@ -48,19 +43,16 @@ const outrefCbor = (label: string): Buffer => {
 };
 
 const loadInput = async (): Promise<{
-  readonly input: SeedInput;
+  readonly input: ReturnType<
+    typeof decodeArchitectureGCommitCandidateSeedInputV1
+  >;
   readonly rows: readonly { readonly txHash: string; readonly cbor: Buffer }[];
   readonly funding: readonly MempoolLedgerDB.EntryNoTimeStamp[];
 }> => {
   if (inputPath.length === 0) throw new Error("Missing candidate seed input");
-  const input = JSON.parse(await readFile(inputPath, "utf8")) as SeedInput;
-  if (
-    input.schemaVersion !== "midgard-architecture-g-commit-candidate-seed-v1" ||
-    !Number.isSafeInteger(input.expectedTransactionCount) ||
-    input.expectedTransactionCount <= 0
-  ) {
-    throw new Error("Invalid candidate seed input");
-  }
+  const input = decodeArchitectureGCommitCandidateSeedInputV1(
+    JSON.parse(await readFile(inputPath, "utf8")),
+  );
   const corpusBytes = await readFile(input.corpusSlicePath);
   const fundingBytes = await readFile(input.fundingMapPath);
   if (sha256(corpusBytes) !== input.corpusSliceSha256) {
@@ -96,19 +88,11 @@ const loadInput = async (): Promise<{
       `Candidate seed expected ${input.expectedTransactionCount.toString()} rows, got ${rows.length.toString()}`,
     );
   }
-  const fundingMap = JSON.parse(fundingBytes.toString("utf8")) as {
-    readonly schemaVersion?: unknown;
-    readonly entries?: readonly {
-      readonly outref?: unknown;
-      readonly outputCbor?: unknown;
-    }[];
-  };
-  if (
-    fundingMap.schemaVersion !== "midgard-architecture-g-corpus-funding-v1" ||
-    !Array.isArray(fundingMap.entries)
-  ) {
-    throw new Error("Candidate seed funding map schema is invalid");
-  }
+  const fundingMap = decodeArchitectureGCorpusFundingV1({
+    value: JSON.parse(fundingBytes.toString("utf8")),
+    expectedCorpusSha256: input.phase1FormalBinding.corpus.corpusSha256,
+    expectedSliceSha256: input.corpusSliceSha256,
+  });
   const funding = fundingMap.entries.map((entry) => {
     const label = String(entry.outref ?? "").toLowerCase();
     const encodedOutref = outrefCbor(label);
@@ -229,14 +213,18 @@ void (async () => {
     Effect.provide(NodeConfig.layer),
   );
   const result = await Effect.runPromise(program);
-  process.stdout.write(
-    `${JSON.stringify({
+  const artifact = validateArchitectureGCommitCandidateSeedResultV1({
+    value: {
       schemaVersion: "midgard-architecture-g-commit-candidate-seed-result-v1",
       databaseName,
       corpusSliceSha256: input.corpusSliceSha256,
       ...result,
-    })}\n`,
-  );
+    },
+    expectedDatabaseName: databaseName,
+    expectedCorpusSliceSha256: input.corpusSliceSha256,
+    expectedTransactionCount: input.expectedTransactionCount,
+  });
+  process.stdout.write(`${JSON.stringify(artifact)}\n`);
 })().catch((error: unknown) => {
   process.stderr.write(
     `${error instanceof Error ? (error.stack ?? error.message) : inspect(error, { depth: 12 })}\n`,
