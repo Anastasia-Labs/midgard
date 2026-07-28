@@ -8,6 +8,202 @@ import { pathToFileURL } from "node:url";
 export const WATCHDOG_SCHEMA_VERSION = "midgard-throughput-watchdog-v1";
 export const DEFAULT_REQUIRED_LABEL = "midgard.benchmark.load=true";
 const DOCKER_COMMAND_TIMEOUT_MS = 15_000;
+const MAX_EVIDENCE_LINE_BYTES = 64 * 1024;
+const MAX_EVIDENCE_STRING_CHARS = 4_096;
+const WATCHDOG_EVENT_FIELDS = Object.freeze({
+  target_verified: [],
+  preflight_probe: [
+    "probeStatus",
+    "probeSignal",
+    "probeStdout",
+    "probeStderr",
+    "probeError",
+  ],
+  preflight_failed: [],
+  start_started: [],
+  start_finished: [],
+  sample_probe: [
+    "probeStatus",
+    "probeSignal",
+    "probeStdout",
+    "probeStderr",
+    "probeError",
+  ],
+  completed: ["exitCode"],
+  load_failed: ["exitCode"],
+  stop_started: ["reason", "stopTimeoutSeconds"],
+  stop_failed: ["reason", "error"],
+  stop_verification_failed: ["reason", "error"],
+  kill_started: ["reason"],
+  kill_failed: ["reason", "error"],
+  kill_finished: ["reason", "running", "exitCode"],
+  kill_verification_failed: ["reason", "error"],
+  stop_finished: ["reason", "stopMode", "running", "exitCode"],
+  watchdog_error: ["error"],
+});
+
+const boundedString = (value, fieldName, { nullable = false } = {}) => {
+  if (nullable && value === null) return null;
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_EVIDENCE_STRING_CHARS
+  ) {
+    throw new Error(
+      `${fieldName} must be a nonempty string of at most ${MAX_EVIDENCE_STRING_CHARS.toString()} characters`,
+    );
+  }
+  return value;
+};
+
+const canonicalTimestamp = (value) => {
+  if (value === null) return null;
+  boundedString(value, "watchdog evidence at");
+  const timestamp = new Date(value);
+  if (
+    !Number.isFinite(timestamp.getTime()) ||
+    timestamp.toISOString() !== value
+  ) {
+    throw new Error("watchdog evidence at must be canonical ISO-8601");
+  }
+  return value;
+};
+
+const exactInteger = (value, fieldName, minimum = Number.MIN_SAFE_INTEGER) => {
+  if (!Number.isSafeInteger(value) || value < minimum) {
+    throw new Error(`${fieldName} is outside its canonical integer bound`);
+  }
+  return value;
+};
+
+const canonicalProbeField = (fieldName, value) => {
+  if (fieldName === "probeStatus") {
+    return value === null
+      ? null
+      : exactInteger(value, "watchdog evidence probeStatus");
+  }
+  if (
+    value !== null &&
+    (typeof value !== "string" || value.length > MAX_EVIDENCE_STRING_CHARS)
+  ) {
+    throw new Error(
+      `watchdog evidence ${fieldName} must be null or at most ${MAX_EVIDENCE_STRING_CHARS.toString()} characters`,
+    );
+  }
+  return value;
+};
+
+const canonicalWatchdogEvidenceRecordV1 = (record, expectedSequence) => {
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    throw new Error("watchdog evidence record must be an object");
+  }
+  if (record.schemaVersion !== WATCHDOG_SCHEMA_VERSION) {
+    throw new Error("watchdog evidence schemaVersion must be exact V1");
+  }
+  const sequence = exactInteger(
+    record.sequence,
+    "watchdog evidence sequence",
+    1,
+  );
+  if (
+    expectedSequence !== undefined &&
+    sequence !== exactInteger(expectedSequence, "expected sequence", 1)
+  ) {
+    throw new Error("watchdog evidence sequence is not contiguous");
+  }
+  const event = boundedString(record.event, "watchdog evidence event");
+  const eventFields = WATCHDOG_EVENT_FIELDS[event];
+  if (eventFields === undefined) {
+    throw new Error(`unknown watchdog evidence event ${event}`);
+  }
+  const expectedFields = [
+    "schemaVersion",
+    "sequence",
+    "at",
+    "event",
+    "containerId",
+    "containerName",
+    ...eventFields,
+  ];
+  const actualFields = Object.keys(record);
+  if (
+    actualFields.length !== expectedFields.length ||
+    actualFields.some((field) => !expectedFields.includes(field))
+  ) {
+    throw new Error(
+      `watchdog evidence ${event} fields must be exact: ${expectedFields.join(",")}`,
+    );
+  }
+
+  const canonical = {
+    schemaVersion: WATCHDOG_SCHEMA_VERSION,
+    sequence,
+    at: canonicalTimestamp(record.at),
+    event,
+    containerId: boundedString(
+      record.containerId,
+      "watchdog evidence containerId",
+    ),
+    containerName: boundedString(
+      record.containerName,
+      "watchdog evidence containerName",
+    ),
+  };
+  for (const fieldName of eventFields) {
+    const value = record[fieldName];
+    if (fieldName.startsWith("probe")) {
+      canonical[fieldName] = canonicalProbeField(fieldName, value);
+    } else if (fieldName === "exitCode" || fieldName === "stopTimeoutSeconds") {
+      canonical[fieldName] = exactInteger(
+        value,
+        `watchdog evidence ${fieldName}`,
+        fieldName === "stopTimeoutSeconds" ? 0 : Number.MIN_SAFE_INTEGER,
+      );
+    } else if (fieldName === "running") {
+      if (typeof value !== "boolean") {
+        throw new Error("watchdog evidence running must be boolean");
+      }
+      canonical[fieldName] = value;
+    } else if (fieldName === "stopMode") {
+      if (value !== "graceful" && value !== "kill") {
+        throw new Error("watchdog evidence stopMode must be graceful or kill");
+      }
+      canonical[fieldName] = value;
+    } else {
+      canonical[fieldName] = boundedString(
+        value,
+        `watchdog evidence ${fieldName}`,
+      );
+    }
+  }
+  return Object.freeze(canonical);
+};
+
+export const parseThroughputWatchdogEvidenceLineV1 = (
+  line,
+  expectedSequence,
+) => {
+  if (
+    typeof line !== "string" ||
+    line.length === 0 ||
+    Buffer.byteLength(line, "utf8") > MAX_EVIDENCE_LINE_BYTES ||
+    line.includes("\n") ||
+    line.includes("\r")
+  ) {
+    throw new Error("watchdog evidence line is empty, oversized, or multiline");
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    throw new Error("watchdog evidence line must be valid JSON");
+  }
+  const canonical = canonicalWatchdogEvidenceRecordV1(parsed, expectedSequence);
+  if (JSON.stringify(canonical) !== line) {
+    throw new Error("watchdog evidence line is not canonical JSON");
+  }
+  return canonical;
+};
 
 const requireInteger = (value, name, minimum) => {
   const parsed = Number(value);
@@ -223,31 +419,47 @@ export const createEvidenceWriter = (path) => {
   return {
     path: absolutePath,
     record: (event) => {
+      if (
+        event === null ||
+        typeof event !== "object" ||
+        Array.isArray(event) ||
+        Object.hasOwn(event, "schemaVersion") ||
+        Object.hasOwn(event, "sequence")
+      ) {
+        throw new Error(
+          "watchdog evidence event must not override its V1 identity",
+        );
+      }
       sequence += 1;
-      writeSync(
-        descriptor,
-        `${JSON.stringify({
+      const canonical = canonicalWatchdogEvidenceRecordV1(
+        {
+          ...event,
           schemaVersion: WATCHDOG_SCHEMA_VERSION,
           sequence,
-          ...event,
-        })}\n`,
+        },
+        sequence,
       );
+      writeSync(descriptor, `${JSON.stringify(canonical)}\n`);
     },
     close: () => closeSync(descriptor),
   };
 };
 
+const PROBE_TRUNCATION_SUFFIX = "<truncated>";
 const boundedProbeOutput = (value) =>
-  typeof value === "string" && value.length > 4_096
-    ? `${value.slice(0, 4_096)}<truncated>`
+  typeof value === "string" && value.length > MAX_EVIDENCE_STRING_CHARS
+    ? `${value.slice(
+        0,
+        MAX_EVIDENCE_STRING_CHARS - PROBE_TRUNCATION_SUFFIX.length,
+      )}${PROBE_TRUNCATION_SUFFIX}`
     : value;
 
 const probeEvent = (probe) => ({
-  probeStatus: probe.status,
-  probeSignal: probe.signal,
-  probeStdout: boundedProbeOutput(probe.stdout),
-  probeStderr: boundedProbeOutput(probe.stderr),
-  probeError: probe.error,
+  probeStatus: probe.status ?? null,
+  probeSignal: probe.signal ?? null,
+  probeStdout: boundedProbeOutput(probe.stdout) ?? null,
+  probeStderr: boundedProbeOutput(probe.stderr) ?? null,
+  probeError: probe.error ?? null,
 });
 
 export const runThroughputLoadWatchdog = async ({
