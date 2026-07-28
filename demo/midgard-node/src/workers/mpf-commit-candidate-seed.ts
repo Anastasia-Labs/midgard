@@ -20,7 +20,7 @@ import {
   decodeArchitectureGCommitCandidateSeedInputV1,
   decodeArchitectureGCorpusFundingV1,
   validateArchitectureGCommitCandidateSeedResultV1,
-} from "@/workers/mpf-commit-candidate-seed-artifacts.js";
+} from "@/workers/utils/mpf-commit-candidate-seed-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_SEED_INPUT?.trim() ??
