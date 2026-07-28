@@ -935,14 +935,68 @@ test("formal root summary validator binds every run to canonical workload identi
 });
 
 test("fixture evidence binds actual path, marker, cardinality, and aggregate", () => {
+  const diagnostics = Object.fromEntries(
+    [
+      "entries",
+      "storePuts",
+      "storeDels",
+      "serialiseCalls",
+      "serialiseMs",
+      "deferredMaterializedEstimatedBytes",
+      "deferredMaterializedActualBytes",
+      "deferredLazyReads",
+      "deferredLazySerialiseMs",
+      "deferredLazySerialisedBytes",
+      "arenaCheckpointCalls",
+      "arenaCheckpointMs",
+      "arenaCheckpointNodes",
+      "arenaCheckpointBytes",
+      "pathCacheEntries",
+      "pathCacheBytes",
+      "pathCacheHits",
+      "liveArenaPrunedNodes",
+      "liveArenaPromotedNodes",
+      "liveArenaPromotedBytes",
+      "retainedSnapshotAuthentications",
+      "retainedSnapshotAuthenticationMs",
+      "transientLiveNodes",
+      "transientLiveBytes",
+      "transientDirtyNodes",
+      "transientSnapshotsCaptured",
+      "eventAtomicFinalizations",
+      "eventAtomicDirtyNodes",
+      "eventAtomicMaxDirtyNodes",
+      "levelGets",
+      "levelGetManyCalls",
+      "levelGetManyMaxKeys",
+      "levelGetMs",
+      "jsonCodecMs",
+      "overlayHits",
+      "readCacheHits",
+      "levelBatchWrites",
+      "bytesFlushed",
+      "overlayEntries",
+      "overlayBytes",
+      "overlaySpills",
+      "overlaySpillMs",
+      "flushMs",
+    ].map((field) => [field, 0]),
+  );
   const artifact = {
     fixtureCreated: true,
     fixturePath: "/fixtures/1m",
     marker: "ab".repeat(32),
     initialUtxoCount: 1_000_000,
+    durationMs: 100,
+    diagnostics,
     utxoPayloadAggregate: {
       entryCount: 1_000_000,
       encodedTupleBytes: 80_000_000,
+    },
+    canonicalFunding: {
+      path: "/evidence/canonical-corpus-funding.json",
+      sha256: hash(123),
+      entryCount: 50_000,
     },
   };
   assert.deepEqual(
@@ -965,6 +1019,16 @@ test("fixture evidence binds actual path, marker, cardinality, and aggregate", (
         entryCount: 100_000,
       },
     },
+    { ...artifact, unknown: true },
+    { ...artifact, diagnostics: { ...diagnostics, unknown: 0 } },
+    {
+      ...artifact,
+      canonicalFunding: { ...artifact.canonicalFunding, unknown: true },
+    },
+    {
+      ...artifact,
+      diagnostics: { ...diagnostics, serialiseMs: Number.NaN },
+    },
   ]) {
     assert.throws(() =>
       validateArchitectureGFixtureCreationEvidence({
@@ -975,6 +1039,16 @@ test("fixture evidence binds actual path, marker, cardinality, and aggregate", (
       }),
     );
   }
+  const withoutCanonicalFunding = { ...artifact, canonicalFunding: null };
+  assert.deepEqual(
+    validateArchitectureGFixtureCreationEvidence({
+      artifact: withoutCanonicalFunding,
+      expectedFixturePath: artifact.fixturePath,
+      expectedMarker: artifact.marker,
+      expectedUtxos: 1_000_000,
+    }),
+    artifact.utxoPayloadAggregate,
+  );
 });
 
 test("formal gate cardinalities are exact and cannot be reduced", () => {

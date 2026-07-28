@@ -122,20 +122,119 @@ export const validateArchitectureGFixtureCreationEvidence = ({
   expectedMarker,
   expectedUtxos,
 }) => {
+  requireExactObjectKeys(
+    artifact,
+    [
+      "fixtureCreated",
+      "fixturePath",
+      "initialUtxoCount",
+      "marker",
+      "durationMs",
+      "diagnostics",
+      "utxoPayloadAggregate",
+      "canonicalFunding",
+    ],
+    "Architecture G fixture-creation artifact",
+  );
+  const aggregate = requireExactObjectKeys(
+    artifact.utxoPayloadAggregate,
+    ["entryCount", "encodedTupleBytes"],
+    "Architecture G fixture payload aggregate",
+  );
+  const diagnosticKeys = [
+    "entries",
+    "storePuts",
+    "storeDels",
+    "serialiseCalls",
+    "serialiseMs",
+    "deferredMaterializedEstimatedBytes",
+    "deferredMaterializedActualBytes",
+    "deferredLazyReads",
+    "deferredLazySerialiseMs",
+    "deferredLazySerialisedBytes",
+    "arenaCheckpointCalls",
+    "arenaCheckpointMs",
+    "arenaCheckpointNodes",
+    "arenaCheckpointBytes",
+    "pathCacheEntries",
+    "pathCacheBytes",
+    "pathCacheHits",
+    "liveArenaPrunedNodes",
+    "liveArenaPromotedNodes",
+    "liveArenaPromotedBytes",
+    "retainedSnapshotAuthentications",
+    "retainedSnapshotAuthenticationMs",
+    "transientLiveNodes",
+    "transientLiveBytes",
+    "transientDirtyNodes",
+    "transientSnapshotsCaptured",
+    "eventAtomicFinalizations",
+    "eventAtomicDirtyNodes",
+    "eventAtomicMaxDirtyNodes",
+    "levelGets",
+    "levelGetManyCalls",
+    "levelGetManyMaxKeys",
+    "levelGetMs",
+    "jsonCodecMs",
+    "overlayHits",
+    "readCacheHits",
+    "levelBatchWrites",
+    "bytesFlushed",
+    "overlayEntries",
+    "overlayBytes",
+    "overlaySpills",
+    "overlaySpillMs",
+    "flushMs",
+  ];
+  requireExactObjectKeys(
+    artifact.diagnostics,
+    diagnosticKeys,
+    "Architecture G fixture diagnostics",
+  );
+  if (
+    Object.entries(artifact.diagnostics).some(([field, value]) =>
+      field.endsWith("Ms")
+        ? !isNonNegativeFiniteNumber(value)
+        : !isNonNegativeSafeInteger(value),
+    )
+  ) {
+    throw new Error("Architecture G fixture diagnostics are invalid");
+  }
+  if (artifact.canonicalFunding !== null) {
+    requireExactObjectKeys(
+      artifact.canonicalFunding,
+      ["path", "sha256", "entryCount"],
+      "Architecture G fixture canonical-funding identity",
+    );
+    if (
+      !isCanonicalAbsolutePath(artifact.canonicalFunding.path) ||
+      !isHash(artifact.canonicalFunding.sha256) ||
+      !isPositiveSafeInteger(artifact.canonicalFunding.entryCount)
+    ) {
+      throw new Error(
+        "Architecture G fixture canonical-funding identity is invalid",
+      );
+    }
+  }
   if (
     artifact?.fixtureCreated !== true ||
+    !isCanonicalAbsolutePath(expectedFixturePath) ||
     artifact.fixturePath !== expectedFixturePath ||
+    !isCanonicalAbsolutePath(artifact.fixturePath) ||
+    !isHash(expectedMarker) ||
     artifact.marker !== expectedMarker ||
+    !isPositiveSafeInteger(expectedUtxos) ||
     artifact.initialUtxoCount !== expectedUtxos ||
-    artifact.utxoPayloadAggregate?.entryCount !== expectedUtxos ||
-    !Number.isSafeInteger(artifact.utxoPayloadAggregate?.encodedTupleBytes) ||
-    artifact.utxoPayloadAggregate.encodedTupleBytes <= 0
+    aggregate.entryCount !== expectedUtxos ||
+    !isPositiveSafeInteger(aggregate.encodedTupleBytes) ||
+    !Number.isFinite(artifact.durationMs) ||
+    artifact.durationMs <= 0
   ) {
     throw new Error(
       `Fixture creation evidence does not bind path, marker, cardinality, and payload aggregate for ${expectedUtxos.toString()} UTxOs`,
     );
   }
-  return artifact.utxoPayloadAggregate;
+  return aggregate;
 };
 
 export const validateArchitectureGCrossGateSourceIdentity = ({

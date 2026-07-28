@@ -8,6 +8,7 @@ import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   validateArchitectureGCrossGateEvidenceIdentity,
+  validateArchitectureGFixtureCreationEvidence,
 } from "./mpf-architecture-g-gate-config.mjs";
 
 const option = (name, fallback) =>
@@ -92,14 +93,16 @@ try {
 if (typeof durableRoot !== "string" || !/^[0-9a-f]{64}$/u.test(durableRoot)) {
   throw new Error("Candidate Level fixture has no canonical root marker");
 }
-if (
-  fixtureCreation.fixtureCreated !== true ||
-  resolve(String(fixtureCreation.fixturePath ?? "")) !== levelPath ||
-  fixtureCreation.marker !== durableRoot ||
-  fixtureCreation.initialUtxoCount !== entryCount ||
-  fixtureCreation.utxoPayloadAggregate?.entryCount !== entryCount ||
-  fixtureCreation.utxoPayloadAggregate?.encodedTupleBytes !== encodedTupleBytes
-) {
+const fixtureAggregate = validateArchitectureGFixtureCreationEvidence({
+  artifact: {
+    ...fixtureCreation,
+    fixturePath: resolve(String(fixtureCreation.fixturePath ?? "")),
+  },
+  expectedFixturePath: levelPath,
+  expectedMarker: durableRoot,
+  expectedUtxos: entryCount,
+});
+if (fixtureAggregate.encodedTupleBytes !== encodedTupleBytes) {
   throw new Error(
     "Candidate fixture creation evidence does not bind the Level path, marker, cardinality, and payload aggregate",
   );
