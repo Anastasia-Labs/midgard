@@ -13,7 +13,7 @@ pub const max_native_script_depth: Int = 16
 
 pub const max_native_script_node_count: Int = 32
 
-pub type NativeScriptCheck {
+pub type NativeScriptProofV1 {
   canonical_cbor: ByteArray,
   valid: Bool,
   node_count: Int,
@@ -143,7 +143,7 @@ fn check_native_script_data(
   validity_interval_start: Int,
   validity_interval_end: Int,
   witness_signers: List<ByteArray>,
-) -> Option<NativeScriptCheck> {
+) -> Option<NativeScriptProofV1> {
   when list_data(data) is {
     None -> None
     Some(fields) ->
@@ -157,7 +157,7 @@ fn check_native_script_data(
                   Some(key_hash) ->
                     if bytearray.length(key_hash) == 28 {
                       Some(
-                        NativeScriptCheck {
+                        NativeScriptProofV1 {
                           canonical_cbor: encode_definite_array_header(2)
                             |> bytearray.concat(cbor.serialise(0))
                             |> bytearray.concat(encode_definite_bytes(key_hash)),
@@ -189,7 +189,7 @@ fn check_native_script_data(
                       None -> None
                       Some(checked) ->
                         Some(
-                          NativeScriptCheck {
+                          NativeScriptProofV1 {
                             canonical_cbor: encode_definite_array_header(2)
                               |> bytearray.concat(cbor.serialise(tag))
                               |> bytearray.concat(
@@ -217,7 +217,7 @@ fn check_native_script_data(
                   Some(slot) ->
                     if slot >= 0 {
                       Some(
-                        NativeScriptCheck {
+                        NativeScriptProofV1 {
                           canonical_cbor: encode_definite_array_header(2)
                             |> bytearray.concat(cbor.serialise(tag))
                             |> bytearray.concat(cbor.serialise(slot)),
@@ -264,7 +264,7 @@ fn check_native_script_data(
                           None -> None
                           Some(checked) ->
                             Some(
-                              NativeScriptCheck {
+                              NativeScriptProofV1 {
                                 canonical_cbor: encode_definite_array_header(3)
                                   |> bytearray.concat(cbor.serialise(3))
                                   |> bytearray.concat(cbor.serialise(required))
@@ -304,7 +304,7 @@ pub fn inspect_native_script(
   validity_interval_start: Int,
   validity_interval_end: Int,
   witness_signers: List<ByteArray>,
-) -> Option<NativeScriptCheck> {
+) -> Option<NativeScriptProofV1> {
   when cbor.deserialise(script_cbor) is {
     None -> None
     Some(data) ->
@@ -335,7 +335,7 @@ pub fn check_native_script(
   validity_interval_start: Int,
   validity_interval_end: Int,
   witness_signers: List<ByteArray>,
-) -> Option<NativeScriptCheck> {
+) -> Option<NativeScriptProofV1> {
   when
     inspect_native_script(
       script_cbor,

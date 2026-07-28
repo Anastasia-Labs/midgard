@@ -26,8 +26,13 @@ import {
   hashMidgardScriptExecutionLeafV1,
   hashMidgardScriptPurposeLeafV1,
   hashMidgardScriptSourceLeafV1,
+  hashMidgardSignerLeafV1,
   hashMidgardV1VersionedScript,
 } from "../src/script-proof.js";
+import {
+  buildMidgardValidationMerkleFrontierV1,
+  commitMidgardValidationMerkleFrontierV1,
+} from "../src/validation-merkle.js";
 
 describe("script proof primitives", () => {
   it("matches the Aiken source, redeemer, and purpose vectors", () => {
@@ -47,9 +52,9 @@ describe("script proof primitives", () => {
       "8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a",
     );
     const sourceLeaf = hashMidgardScriptSourceLeafV1({
-        originKind: "inline",
-        sourceKey: Buffer.from("00", "hex"),
-        script,
+      originKind: "inline",
+      sourceKey: Buffer.from("00", "hex"),
+      script,
     });
     expect(sourceLeaf.toString("hex")).toBe(
       "80339781c7437cf249ebf0d5ea03b26964f30bc857c53bd332f11d6cc7696775",
@@ -62,11 +67,11 @@ describe("script proof primitives", () => {
       "e42aed2342a26c9334ac80aea22c66b8f649cf6be5a5a4a70c6f33cbd8bda8ab",
     );
     const purposeLeaf = hashMidgardScriptPurposeLeafV1({
-        purposeKind: 0,
-        purposeIndex: 2n,
-        scriptHash,
-        subject: Buffer.from("0102", "hex"),
-      });
+      purposeKind: 0,
+      purposeIndex: 2n,
+      scriptHash,
+      subject: Buffer.from("0102", "hex"),
+    });
     expect(purposeLeaf.toString("hex")).toBe(
       "24c90c22834ab9ec656bee1db27d5421515010ec4c6b8928a63f65aecb5e367b",
     );
@@ -77,34 +82,26 @@ describe("script proof primitives", () => {
         sourceLeaf,
         redeemerLeaf,
       }).toString("hex"),
-    ).toBe(
-      "128c959c93e06cf97b245b8d281deb63278338460b81d522e8246ff30829b6ed",
-    );
+    ).toBe("128c959c93e06cf97b245b8d281deb63278338460b81d522e8246ff30829b6ed");
     expect(
       hashMidgardOutputLeafV1({
         outputIndex: 2,
         outputCbor: Buffer.from("0102", "hex"),
       }).toString("hex"),
-    ).toBe(
-      "f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
-    );
+    ).toBe("f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727");
     expect(
       hashMidgardOutputDescriptorLeafV1({
         outputIndex: 2,
         descriptorCbor: Buffer.from("820102", "hex"),
       }).toString("hex"),
-    ).toBe(
-      "7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4",
-    );
+    ).toBe("7d1979d9a1af11ab5b13ceeb3ae750046f31ea6ed7776f99cb2d41b253e87fd4");
     expect(
       hashMidgardMintAssetLeafV1({
         policyId: Buffer.alloc(28, 0x11),
         assetName: Buffer.from("abcd", "hex"),
         quantity: -7n,
       }).toString("hex"),
-    ).toBe(
-      "4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479",
-    );
+    ).toBe("4813bd9aad26eea82fa41280aefd50c848041a2a6cf27be416e1873c2876a479");
     expect(
       hashMidgardScriptContextItemLeafV1({
         collectionKind: 0,
@@ -116,9 +113,53 @@ describe("script proof primitives", () => {
         cborLength: 176n,
         memory: 218n,
       }).toString("hex"),
-    ).toBe(
-      "2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3",
+    ).toBe("2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3");
+  });
+
+  it("matches the Aiken signer leaf and seven-leaf frontier root vector", () => {
+    const signerLeaf = hashMidgardSignerLeafV1(Buffer.alloc(28, 0x11));
+    expect(signerLeaf.toString("hex")).toBe(
+      "9e4bab3a1b4ca49640fe5c54486aac6a1183fb7da45eec6b30d46382d8f3418b",
     );
+
+    const frontier = buildMidgardValidationMerkleFrontierV1([
+      Buffer.from(
+        "80339781c7437cf249ebf0d5ea03b26964f30bc857c53bd332f11d6cc7696775",
+        "hex",
+      ),
+      Buffer.from(
+        "e42aed2342a26c9334ac80aea22c66b8f649cf6be5a5a4a70c6f33cbd8bda8ab",
+        "hex",
+      ),
+      Buffer.from(
+        "24c90c22834ab9ec656bee1db27d5421515010ec4c6b8928a63f65aecb5e367b",
+        "hex",
+      ),
+      Buffer.from(
+        "128c959c93e06cf97b245b8d281deb63278338460b81d522e8246ff30829b6ed",
+        "hex",
+      ),
+      signerLeaf,
+      Buffer.from(
+        "f9a3fa502da0ee4fe7048a78088ca4b89a72fe3aa0d313e12fbae7305e171727",
+        "hex",
+      ),
+      Buffer.from(
+        "2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3",
+        "hex",
+      ),
+    ]);
+    expect(frontier.count).toBe(7);
+    expect(
+      frontier.peaks.map(({ height, hash }) => [height, hash.toString("hex")]),
+    ).toEqual([
+      [0, "2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3"],
+      [1, "9bb71e0b9929d3033fa1a74d906acb5e040f5ffc05ca359f27602878fb40d2d3"],
+      [2, "e0bbf2cea9550aa9bc27035fd409803fabe16d6a52385c8db2deb5c329fcdd4a"],
+    ]);
+    expect(
+      commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
+    ).toBe("aa064eed74ea954d127aaab072d1703e1ed5d9dee6ef4ff5ba506a7a0e9db1ba");
   });
 
   it("keeps raw Cardano-style hashing isolated from V1 envelope admission", () => {

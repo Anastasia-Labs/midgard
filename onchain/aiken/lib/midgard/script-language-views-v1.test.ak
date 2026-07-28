@@ -11,3 +11,18 @@ test script_integrity_language_view_vectors_match_typescript() {
     script_language_views_v1.expected_script_integrity_hash(redeemer_hash, 3) == #"6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8",
   }
 }
+
+test script_integrity_rejects_a_short_redeemer_hash() fail {
+  script_language_views_v1.expected_script_integrity_hash(
+    #"11111111111111111111111111111111111111111111111111111111111111",
+    1,
+  ) == #""
+}
+
+test script_integrity_rejects_a_negative_language_bitmap() fail {
+  script_language_views_v1.expected_script_integrity_hash(redeemer_hash, -1) == #""
+}
+
+test script_integrity_rejects_an_unknown_language_bitmap() fail {
+  script_language_views_v1.expected_script_integrity_hash(redeemer_hash, 4) == #""
+}
