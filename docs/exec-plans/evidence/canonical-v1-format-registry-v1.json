@@ -632,24 +632,134 @@
     {
       "id": "C09",
       "family": "C",
-      "sourceOwnerAndCurrentIdentity": "Cardano `PlutusV1/V2/V3`, Aiken `plutus = \"v3\"",
+      "sourceOwnerAndCurrentIdentity": "Cardano-owned Plutus language identities are preserved; the canonical Midgard script format and Aiken build target use PlutusV3/tag `3`",
       "classification": "external",
-      "canonicalResult": "Preserve",
-      "boundaryBindingAndPersistence": "Cardano script language and compilation target",
-      "requiredEvidence": "Existing language/hash tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "canonicalResult": "Preserve Cardano's PlutusV3 identity and numeric language/hash tag `3`; never reset the external semantic version to `1`",
+      "boundaryBindingAndPersistence": "Pinned Aiken PlutusV3 compiler target plus canonical versioned-script CBOR and BLAKE2b-224 language-prefixed hash",
+      "requiredEvidence": "Pinned compiler configuration and exact TypeScript/Aiken tag/hash golden vector",
+      "disposition": "external",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "onchain/aiken/aiken.toml",
+          "symbols": [
+            "plutus = \"v3\""
+          ]
+        },
+        {
+          "path": "demo/midgard-core/src/codec/versioned-script.ts",
+          "symbols": [
+            "MidgardVersionedScriptTags",
+            "MidgardScriptHashPrefixes",
+            "encodeMidgardVersionedScript",
+            "decodeMidgardVersionedScript",
+            "hashMidgardVersionedScript"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/script-proof-v1.ak",
+          "symbols": [
+            "PlutusV3Script",
+            "language_tag",
+            "versioned_script_hash"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "Cardano PlutusV3 script identity",
+          "kind": "external semantic version nested in canonical CBOR",
+          "wireRepresentation": "definite CBOR array [3, script_bytes], with script identity BLAKE2b-224(0x03 || script_bytes)",
+          "versionPolicy": "The Cardano-owned PlutusV3 tag and one-byte hash prefix remain exactly 3; the Aiken target remains exactly v3",
+          "exactFields": [
+            "0: PlutusV3 language tag 3",
+            "1: exact script byte string"
+          ],
+          "constructorTags": [
+            {
+              "name": "PlutusV3",
+              "tag": 3,
+              "arity": 2
+            }
+          ],
+          "arrayArity": 2,
+          "boundary": "Aiken compilation, Cardano script witnesses/reference scripts, canonical native transactions, script discovery, and script-proof leaves",
+          "binding": "BLAKE2b-224 over external language prefix 0x03 followed by exact script bytes",
+          "persistence": "Nested only in canonical V1 transaction/output/proof formats; the external Plutus version itself is not renamed",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/codec/versioned-script.ts",
+              "symbols": [
+                "encodeMidgardVersionedScript"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
+              "symbols": [
+                "encode_midgard_versioned_script"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/codec/versioned-script.ts",
+              "symbols": [
+                "decodeMidgardVersionedScript"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
+              "symbols": [
+                "decode_midgard_versioned_script_at"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/output-codec.test.ts",
+          "testNames": [
+            "uses the Cardano PlutusV3 script-ref tag for PlutusV3 payloads"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
+          "testNames": [
+            "script_proof_source_and_redeemer_vectors_are_stable"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/output-codec.test.ts",
+          "testNames": [
+            "pins the MidgardV1 script tag and hash prefix and rejects unknown tags"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
-        "tests": [],
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/midgard-core/tests/output-codec.test.ts",
+            "testNames": [
+              "uses the Cardano PlutusV3 script-ref tag for PlutusV3 payloads"
+            ]
+          },
+          {
+            "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
+            "testNames": [
+              "script_proof_source_and_redeemer_vectors_are_stable"
+            ]
+          }
+        ],
         "notApplicableReason": null
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "PlutusV1 and PlutusV2 retain their Cardano names where external deployment metadata can describe them, but canonical Midgard transaction script material intentionally supports NativeCardano, PlutusV3, and MidgardV1 only."
+      ]
     },
     {
       "id": "C10",

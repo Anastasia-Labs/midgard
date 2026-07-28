@@ -134,13 +134,20 @@ describe("Midgard output codec", () => {
   });
 
   it("uses the Cardano PlutusV3 script-ref tag for PlutusV3 payloads", () => {
+    const scriptBytes = Buffer.from("010203", "hex");
     const encoded = encodeMidgardVersionedScript({
       language: "PlutusV3",
-      scriptBytes: Buffer.from("010203", "hex"),
+      scriptBytes,
     });
 
     expect(encoded.subarray(0, 2).toString("hex")).toBe("8203");
     expect(decodeMidgardVersionedScript(encoded).language).toBe("PlutusV3");
+    expect(
+      hashMidgardVersionedScript({
+        language: "PlutusV3",
+        scriptBytes,
+      }),
+    ).toBe("8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a");
   });
 
   it("pins the MidgardV1 script tag and hash prefix and rejects unknown tags", () => {
