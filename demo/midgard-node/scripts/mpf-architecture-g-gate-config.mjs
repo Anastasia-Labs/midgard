@@ -1698,7 +1698,8 @@ export const validateCommitCandidateProbeResult = ({
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
       candidate.candidateId,
     ) ||
-    !isHash(candidate.baseHeaderHash) ||
+    typeof candidate.baseHeaderHash !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(candidate.baseHeaderHash) ||
     !isPositiveSafeInteger(candidate.endTimeMs) ||
     !isPositiveSafeInteger(candidate.builtAtMs) ||
     !watermarkValues.every(isNonNegativeSafeInteger) ||

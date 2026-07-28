@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 
 import { Level } from "level";
 
+import { validateArchitectureGCommitCandidateGateSummaryV1 } from "./mpf-architecture-g-candidate-summary.mjs";
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
@@ -520,40 +521,44 @@ if (config.mode === "50k") {
   };
 }
 
-const summary = {
-  schemaVersion: config.formal
-    ? "midgard-architecture-g-commit-candidate-gate-v1"
-    : "midgard-architecture-g-commit-candidate-smoke-v1",
-  formal: config.formal,
-  profile: config.profile,
-  mode: config.mode,
-  runs: config.runs,
-  transactions: config.transactions,
-  requiredCardinality: config.required,
-  phase1FormalBinding,
-  runtimeIdentity,
+const summary = validateArchitectureGCommitCandidateGateSummaryV1({
+  summary: {
+    schemaVersion: config.formal
+      ? "midgard-architecture-g-commit-candidate-gate-v1"
+      : "midgard-architecture-g-commit-candidate-smoke-v1",
+    formal: config.formal,
+    profile: config.profile,
+    mode: config.mode,
+    runs: config.runs,
+    transactions: config.transactions,
+    requiredCardinality: config.required,
+    phase1FormalBinding,
+    runtimeIdentity,
+    cpuSet,
+    probePath,
+    probeSha256,
+    rootGateSummary:
+      rootGateSummaryPath.length === 0
+        ? null
+        : {
+            path: resolvedRootGateSummaryPath,
+            sha256: rootGateSummarySha256,
+            sourceSha256: rootGateSummary.sourceSha256,
+            diffSha256: rootGateSummary.diffSha256,
+            gitStatusSha256: rootGateSummary.gitStatusSha256,
+            phase1FormalBinding: rootGateSummary.phase1FormalBinding,
+            runtimeIdentity: rootGateSummary.runtimeIdentity,
+            expectedSourceIdentity,
+            currentSourceIdentity,
+          },
+    percentileMethod:
+      "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
+    groups,
+    verdict,
+  },
+  config,
   cpuSet,
-  probePath,
-  probeSha256,
-  rootGateSummary:
-    rootGateSummaryPath.length === 0
-      ? null
-      : {
-          path: resolvedRootGateSummaryPath,
-          sha256: rootGateSummarySha256,
-          sourceSha256: rootGateSummary.sourceSha256,
-          diffSha256: rootGateSummary.diffSha256,
-          gitStatusSha256: rootGateSummary.gitStatusSha256,
-          phase1FormalBinding: rootGateSummary.phase1FormalBinding,
-          runtimeIdentity: rootGateSummary.runtimeIdentity,
-          expectedSourceIdentity,
-          currentSourceIdentity,
-        },
-  percentileMethod:
-    "nearest-rank: sorted[max(0, ceil(N*q)-1)]; q=0.5 median, q=0.95 p95",
-  groups,
-  verdict,
-};
+});
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, `${JSON.stringify(summary, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify({ outPath, verdict })}\n`);

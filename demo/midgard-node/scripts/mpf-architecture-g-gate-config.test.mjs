@@ -1293,12 +1293,12 @@ const candidateProbeResult = () => ({
   },
   candidate: {
     candidateId: "123e4567-e89b-42d3-a456-426614174000",
-    baseHeaderHash: hash(121),
+    baseHeaderHash: hash(121).slice(0, 56),
     endTimeMs: 1_700_000_000_000,
     builtAtMs: 1_700_000_000_100,
     expectedL2TransactionCount: 50_000,
     buildDurationMs: 8_900,
-    invalidationKey: `${hash(121)}:1700000000000:1699999999000`,
+    invalidationKey: `${hash(121).slice(0, 56)}:1700000000000:1699999999000`,
     watermarks: {
       depositMs: 1_699_999_999_000,
       withdrawalMs: 1_699_999_999_100,
