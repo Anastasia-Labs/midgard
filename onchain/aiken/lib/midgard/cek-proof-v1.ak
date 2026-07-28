@@ -34,6 +34,8 @@ pub const max_blob_chunk_bytes = 4095
 
 pub const max_builtin_tag = 86
 
+pub const program_envelope_version: Int = 1
+
 /// Exact maximum of `[1, [1, 1, 0], h32, uint32, uint32]`.
 pub const max_program_envelope_cbor_bytes = 50
 
@@ -602,19 +604,17 @@ pub fn inspect_program_envelope_v1(
                   data_is_integer(node_count_data),
                   data_is_integer(material_byte_length_data),
                 } {
-                  let envelope_version = builtin.un_i_data(
-                    envelope_version_data,
-                  )
+                  let envelope_version =
+                    builtin.un_i_data(envelope_version_data)
                   let major = builtin.un_i_data(major_data)
                   let minor = builtin.un_i_data(minor_data)
                   let patch = builtin.un_i_data(patch_data)
                   let term_root = builtin.un_b_data(term_root_data)
                   let node_count = builtin.un_i_data(node_count_data)
-                  let material_byte_length = builtin.un_i_data(
-                    material_byte_length_data,
-                  )
+                  let material_byte_length =
+                    builtin.un_i_data(material_byte_length_data)
                   if and {
-                    envelope_version == 1,
+                    envelope_version == program_envelope_version,
                     major == 1,
                     minor == 1,
                     patch == 0,

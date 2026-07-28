@@ -189,24 +189,157 @@
     {
       "id": "C03",
       "family": "C",
-      "sourceOwnerAndCurrentIdentity": "Proof protocol version `1`, native version `2`, transition schema `3`, validation machine `9`, descriptor `1`, dispute `2`, DA inner `4`, CEK `3`, submission `2`, API `8",
+      "sourceOwnerAndCurrentIdentity": "The sole compiled canonical V1 version tuple in `MIDGARD_CONSENSUS_PROFILE_V1`; every numeric version is exactly `1` and every named schema identity ends in `-v1`",
       "classification": "schema",
-      "canonicalResult": "Every Midgard-owned tuple field becomes `1",
-      "boundaryBindingAndPersistence": "Canonical tuple digest and every consuming parser",
-      "requiredEvidence": "Tuple golden vector and consumer equality tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "canonicalResult": "All 24 numeric protocol/schema/format members equal `1`; the profile, DA runtime manifest, and deployment manifest identities are exactly their `-v1` strings",
+      "boundaryBindingAndPersistence": "The tuple is frozen inside the stable-JSON consensus profile and its BLAKE2b-256 digest; corresponding Aiken formats use explicit version-1 constants",
+      "requiredEvidence": "Exact tuple golden vector, non-V1 rejection, and one pinned Aiken equality vector over every corresponding on-chain V1 constant",
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "symbols": [
+            "MIDGARD_PROTOCOL_V1_VERSION",
+            "MIDGARD_CONSENSUS_PROFILE_V1",
+            "MIDGARD_CONSENSUS_PROFILE_V1_DIGEST"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+          "symbols": [
+            "protocol_version_v1",
+            "transition_step_schema_version_v1"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak",
+          "symbols": [
+            "native_tx_version_v1"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-trace-v1.ak",
+          "symbols": [
+            "machine_version",
+            "descriptor_version"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
+          "symbols": [
+            "dispute_version"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/cek-proof-v1.ak",
+          "symbols": [
+            "program_envelope_version"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "Canonical V1 version tuple",
+          "kind": "exact stable-JSON projection",
+          "wireRepresentation": "The version/schema members of `MIDGARD_CONSENSUS_PROFILE_V1`, encoded by the sole stable-JSON profile encoder",
+          "versionPolicy": "Every numeric member is exactly the integer 1; every schema/profile identity is the exact V1 string",
+          "exactFields": [
+            "profileId",
+            "protocolVersion",
+            "nativeTransactionVersion",
+            "nativeTransactionProofSourceVersion",
+            "transitionStepSchemaVersion",
+            "headerSchemaVersion",
+            "stateQueueSchemaVersion",
+            "transactionOrderSchemaVersion",
+            "transactionFieldPublicationSchemaVersion",
+            "forcedTransactionJournalVersion",
+            "daPayloadVersion",
+            "daEnvelopeVersion",
+            "daTransportProtocolVersion",
+            "daRuntimeManifestSchemaVersion",
+            "validationMachineVersion",
+            "validationTraceDescriptorVersion",
+            "validationDisputeVersion",
+            "cekProgramEnvelopeVersion",
+            "cekValueSchemaVersion",
+            "cekProgramMaterialVersion",
+            "cekProgramMaterialSidecarVersion",
+            "proofSubmissionEnvelopeVersion",
+            "scriptProofSchemaVersion",
+            "ledgerOutputSchemaVersion",
+            "mpfProofSchemaVersion",
+            "deploymentManifestSchemaVersion",
+            "protocolInfoApiVersion"
+          ],
+          "constructorTagsNotApplicable": "The version tuple is an exact JSON-object projection, not a sum type.",
+          "arrayArityNotApplicable": "The version tuple is an exact JSON-object projection, not an array.",
+          "boundary": "Deployment identity, protocol-info, node and DA startup, persistence journals, proof tooling, and all corresponding on-chain decoders",
+          "binding": "BLAKE2b-256 digest of the sole complete stable-JSON consensus profile plus explicit Aiken constants at on-chain decode boundaries",
+          "persistence": "Embedded in authenticated deployment/protocol identity; pre-launch non-V1 variants have no reader",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "symbols": [
+                "encodeMidgardConsensusProfileV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "symbols": [
+                "isMidgardConsensusProfileV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "testNames": [
+            "pins the indivisible V1 version tuple"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/canonical-version-tuple-v1.test.ak",
+          "testNames": [
+            "canonical_v1_version_tuple_matches_typescript_profile"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "testNames": [
+            "accepts only the exact compiled V1 profile"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
-        "tests": [],
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+            "testNames": [
+              "pins the indivisible V1 version tuple"
+            ]
+          },
+          {
+            "path": "onchain/aiken/lib/midgard/canonical-version-tuple-v1.test.ak",
+            "testNames": [
+              "canonical_v1_version_tuple_matches_typescript_profile"
+            ]
+          }
+        ],
         "notApplicableReason": null
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The Aiken vector covers the 26 explicit protocol, native transaction, validation, CEK, bounded-witness, ledger-output, native-script, MPF, and hash-trace version constants that have on-chain counterparts; off-chain-only transport/API identities remain exact members of the compiled profile."
+      ]
     },
     {
       "id": "C04",
