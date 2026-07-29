@@ -42,12 +42,10 @@ test proves_a_canonical_negative_bignum_without_materializing_it() {
   )
   expect Some(summary) = cek_data_integer_v1.finalize_v1(terminal)
   and {
-    summary.root
-      == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+    summary.root == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
     summary.cbor_length == 11,
     summary.memory == 13,
-    cek_data_integer_v1.encode_control_v1(terminal)
-      == typescript_terminal_control_cbor,
+    cek_data_integer_v1.encode_control_v1(terminal) == typescript_terminal_control_cbor,
   }
 }
 
@@ -61,10 +59,8 @@ test decodes_the_typescript_terminal_control() {
     control.source_start == 17,
     control.source_length == 11,
     control.memory == 13,
-    summary.root
-      == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
-    cek_data_integer_v1.encode_control_v1(control)
-      == typescript_terminal_control_cbor,
+    summary.root == #"720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
+    cek_data_integer_v1.encode_control_v1(control) == typescript_terminal_control_cbor,
   }
 }
 
@@ -74,64 +70,39 @@ test canonical_signed_boundaries_have_exact_cek_memory() {
     cek_data_integer_v1.parse_syntax_v1(#"20", 1),
     cek_data_integer_v1.parse_syntax_v1(#"1bffffffffffffffff", 9),
     cek_data_integer_v1.parse_syntax_v1(#"3bffffffffffffffff", 9),
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c249010000000000000000",
-      11,
-    ),
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c349010000000000000000",
-      11,
-    ),
+    cek_data_integer_v1.parse_syntax_v1(#"c249010000000000000000", 11),
+    cek_data_integer_v1.parse_syntax_v1(#"c349010000000000000000", 11),
   ] == [Some(5), Some(5), Some(13), Some(13), Some(13), Some(13)]
 }
 
 test accepts_only_canonical_constructor_alternatives_above_127() {
   and {
-    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1880", 2)
-      != None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1880", 2) != None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(
       #"1bffffffffffffffff",
       9,
-    )
-      != None,
+    ) != None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(
       #"c249010000000000000000",
       11,
-    )
-      != None,
-    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1817", 2)
-      == None,
-    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"187f", 2)
-      == None,
-    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"3880", 2)
-      == None,
+    ) != None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"1817", 2) == None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"187f", 2) == None,
+    cek_data_integer_v1.parse_large_constructor_syntax_v1(#"3880", 2) == None,
     cek_data_integer_v1.parse_large_constructor_syntax_v1(
       #"c349010000000000000000",
       11,
-    )
-      == None,
+    ) == None,
   }
 }
 
 test rejects_malformed_and_noncanonical_integer_syntax() {
   and {
     cek_data_integer_v1.parse_syntax_v1(#"1817", 2) == None,
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c248ffffffffffffffff",
-      10,
-    ) == None,
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c249000100000000000000",
-      11,
-    ) == None,
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c25809010000000000000000",
-      12,
-    ) == None,
-    cek_data_integer_v1.parse_syntax_v1(
-      #"c25f490100000000000000ff",
-      12,
-    ) == None,
+    cek_data_integer_v1.parse_syntax_v1(#"c248ffffffffffffffff", 10) == None,
+    cek_data_integer_v1.parse_syntax_v1(#"c249000100000000000000", 11) == None,
+    cek_data_integer_v1.parse_syntax_v1(#"c25809010000000000000000", 12) == None,
+    cek_data_integer_v1.parse_syntax_v1(#"c25f490100000000000000ff", 12) == None,
     cek_data_integer_v1.parse_syntax_v1(#"40", 1) == None,
   }
 }
@@ -141,9 +112,6 @@ test rejects_missing_short_and_surplus_authenticated_syntax_windows() {
   and {
     cek_data_integer_v1.step_v1(initial, None) == None,
     cek_data_integer_v1.step_v1(initial, Some(#"0000000000")) == None,
-    cek_data_integer_v1.step_v1(
-      initial,
-      Some(#"000000000000"),
-    ) == None,
+    cek_data_integer_v1.step_v1(initial, Some(#"000000000000")) == None,
   }
 }

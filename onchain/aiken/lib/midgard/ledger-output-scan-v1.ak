@@ -99,9 +99,7 @@ fn decode_peak_items(
   }
 }
 
-pub fn control_is_well_formed(
-  control: LedgerOutputScanControlV1,
-) -> Bool {
+pub fn control_is_well_formed(control: LedgerOutputScanControlV1) -> Bool {
   and {
     control.version == version,
     control.stage >= stage_required_fields,
@@ -167,9 +165,7 @@ pub fn control_is_well_formed(
   }
 }
 
-pub fn encode_control_v1(
-  control: LedgerOutputScanControlV1,
-) -> ByteArray {
+pub fn encode_control_v1(control: LedgerOutputScanControlV1) -> ByteArray {
   expect control_is_well_formed(control)
   encode_definite_array_header(23)
     |> bytearray.concat(cbor.serialise(version))
@@ -199,20 +195,19 @@ pub fn encode_control_v1(
     |> bytearray.concat(cbor.serialise(control.reference_script_length))
 }
 
-pub fn control_from_data_v1(
-  data: Data,
-) -> LedgerOutputScanControlV1 {
+pub fn control_from_data_v1(data: Data) -> LedgerOutputScanControlV1 {
   expect
-    [
-      version_data, stage_data, cursor_data, map_entry_count_data,
-      optional_field_count_data, address_data, lovelace_data,
-      cardano_value_size_data, policy_remaining_data, asset_remaining_data,
-      policy_asset_cursor_data, previous_policy_data, current_policy_data,
-      previous_asset_name_data, asset_count_data, asset_peaks_data,
-      datum_offset_data, datum_length_data, payload_remaining_data,
-      reference_script_language_data, reference_script_item_offset_data,
-      reference_script_offset_data, reference_script_length_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, cursor_data, map_entry_count_data,
+        optional_field_count_data, address_data, lovelace_data,
+        cardano_value_size_data, policy_remaining_data, asset_remaining_data,
+        policy_asset_cursor_data, previous_policy_data, current_policy_data,
+        previous_asset_name_data, asset_count_data, asset_peaks_data,
+        datum_offset_data, datum_length_data, payload_remaining_data,
+        reference_script_language_data, reference_script_item_offset_data,
+        reference_script_offset_data, reference_script_length_data,
+      ]
+    = builtin.un_list_data(data)
   let control = LedgerOutputScanControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -235,26 +230,18 @@ pub fn control_from_data_v1(
     datum_offset: builtin.un_i_data(datum_offset_data),
     datum_length: builtin.un_i_data(datum_length_data),
     payload_remaining: builtin.un_i_data(payload_remaining_data),
-    reference_script_language: builtin.un_i_data(
-      reference_script_language_data,
-    ),
+    reference_script_language: builtin.un_i_data(reference_script_language_data),
     reference_script_item_offset: builtin.un_i_data(
       reference_script_item_offset_data,
     ),
-    reference_script_offset: builtin.un_i_data(
-      reference_script_offset_data,
-    ),
-    reference_script_length: builtin.un_i_data(
-      reference_script_length_data,
-    ),
+    reference_script_offset: builtin.un_i_data(reference_script_offset_data),
+    reference_script_length: builtin.un_i_data(reference_script_length_data),
   }
   expect control_is_well_formed(control)
   control
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
-) -> LedgerOutputScanControlV1 {
+pub fn decode_control_v1(control_cbor: ByteArray) -> LedgerOutputScanControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
@@ -314,15 +301,11 @@ fn step_required_fields(
         when canonical_key_at(window, output_map.next_offset, 0) is {
           None -> None
           Some(address_offset) ->
-            when
-              canonical_cbor_scan_v1.bytes_at_v1(window, address_offset)
-            is {
+            when canonical_cbor_scan_v1.bytes_at_v1(window, address_offset) is {
               None -> None
               Some(address) ->
                 when
-                  ledger_output_v1.decode_canonical_address_bytes(
-                    address.value,
-                  )
+                  ledger_output_v1.decode_canonical_address_bytes(address.value)
                 is {
                   None -> None
                   Some(_) ->
@@ -421,9 +404,7 @@ fn step_policy_header(
   when canonical_cbor_scan_v1.bytes_at_v1(window, window_offset) is {
     None -> None
     Some(policy) ->
-      when
-        canonical_cbor_scan_v1.head_at_v1(window, policy.next_offset, 5)
-      is {
+      when canonical_cbor_scan_v1.head_at_v1(window, policy.next_offset, 5) is {
         None -> None
         Some(assets) -> {
           let policy_ordered = if control.previous_policy == #"" {
@@ -473,30 +454,21 @@ fn step_asset(
     None -> None
     Some(asset_name) ->
       when
-        canonical_cbor_scan_v1.head_at_v1(
-          window,
-          asset_name.next_offset,
-          0,
-        )
+        canonical_cbor_scan_v1.head_at_v1(window, asset_name.next_offset, 0)
       is {
         None -> None
         Some(quantity) -> {
           let name_ordered = if control.policy_asset_cursor == 0 {
             True
           } else {
-            let previous_length = bytearray.length(
-              control.previous_asset_name,
-            )
+            let previous_length = bytearray.length(control.previous_asset_name)
             let current_length = bytearray.length(asset_name.value)
             if previous_length < current_length {
               True
             } else if previous_length > current_length {
               False
             } else {
-              bytearray.compare(
-                control.previous_asset_name,
-                asset_name.value,
-              ) == Less
+              bytearray.compare(control.previous_asset_name, asset_name.value) == Less
             }
           }
           if and {
@@ -576,9 +548,7 @@ fn step_asset(
   }
 }
 
-fn optional_fields_are_complete(
-  control: LedgerOutputScanControlV1,
-) -> Bool {
+fn optional_fields_are_complete(control: LedgerOutputScanControlV1) -> Bool {
   control.optional_field_count + 2 == control.map_entry_count
 }
 
@@ -674,8 +644,41 @@ fn step_optional_field(
     when canonical_key_at(window, window_offset, 2) is {
       None -> None
       Some(datum_offset) ->
-        when
-          canonical_cbor_scan_v1.head_at_v1(window, datum_offset, 2)
+        when canonical_cbor_scan_v1.head_at_v1(window, datum_offset, 2) is {
+          None -> None
+          Some(datum) ->
+            if datum.value == 0 {
+              None
+            } else {
+              Some(
+                LedgerOutputScanControlV1 {
+                  ..control,
+                  stage: stage_datum_payload,
+                  cursor: absolute_offset(
+                    control,
+                    window_offset,
+                    datum.next_offset,
+                  ),
+                  optional_field_count: 1,
+                  datum_offset: absolute_offset(
+                    control,
+                    window_offset,
+                    datum.next_offset,
+                  ),
+                  datum_length: datum.value,
+                  payload_remaining: datum.value,
+                },
+              )
+            }
+        }
+    }
+  } else {
+    when canonical_cbor_scan_v1.head_at_v1(window, window_offset, 0) is {
+      None -> None
+      Some(key) ->
+        if key.value == 2 {
+          when
+            canonical_cbor_scan_v1.head_at_v1(window, key.next_offset, 2)
           is {
             None -> None
             Some(datum) ->
@@ -691,7 +694,7 @@ fn step_optional_field(
                       window_offset,
                       datum.next_offset,
                     ),
-                    optional_field_count: 1,
+                    optional_field_count: control.optional_field_count + 1,
                     datum_offset: absolute_offset(
                       control,
                       window_offset,
@@ -702,41 +705,6 @@ fn step_optional_field(
                   },
                 )
               }
-        }
-    }
-  } else {
-    when canonical_cbor_scan_v1.head_at_v1(window, window_offset, 0) is {
-      None -> None
-      Some(key) ->
-        if key.value == 2 {
-          when
-            canonical_cbor_scan_v1.head_at_v1(window, key.next_offset, 2)
-            is {
-              None -> None
-              Some(datum) ->
-                if datum.value == 0 {
-                  None
-                } else {
-                  Some(
-                    LedgerOutputScanControlV1 {
-                      ..control,
-                      stage: stage_datum_payload,
-                      cursor: absolute_offset(
-                        control,
-                        window_offset,
-                        datum.next_offset,
-                      ),
-                      optional_field_count: control.optional_field_count + 1,
-                      datum_offset: absolute_offset(
-                        control,
-                        window_offset,
-                        datum.next_offset,
-                      ),
-                      datum_length: datum.value,
-                      payload_remaining: datum.value,
-                    },
-                  )
-                }
           }
         } else if key.value == 3 {
           reference_script_header(control, window, window_offset)
@@ -867,9 +835,7 @@ pub fn terminal_is_exact_v1(
     control.map_entry_count >= 2,
     control.map_entry_count <= 4,
     optional_fields_are_complete(control),
-    bytearray.length(control.address) == 29 || bytearray.length(
-      control.address,
-    ) == 57,
+    bytearray.length(control.address) == 29 || bytearray.length(control.address) == 57,
     control.lovelace >= 0,
     control.cardano_value_size > 0,
     control.policy_remaining == 0,
@@ -905,8 +871,7 @@ pub fn terminal_is_exact_v1(
           control.reference_script_language == 128,
         },
         control.reference_script_item_offset >= 0,
-        control.reference_script_item_offset
-          < control.reference_script_offset,
+        control.reference_script_item_offset < control.reference_script_offset,
         control.reference_script_offset >= 0,
         control.reference_script_length >= 0,
         control.reference_script_offset + control.reference_script_length == total_length,

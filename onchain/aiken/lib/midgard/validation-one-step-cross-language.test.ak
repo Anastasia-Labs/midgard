@@ -16,8 +16,7 @@ const boundary_evidence_cbor =
 const transition_cbor =
   #"d8799f5f58408959013b84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d925820971b52c16ad426099e34913c7b4adc0059f82f4b10584025d866f7abcf0df2f00b9f5820a2fa294898ac17425d8c93194f9317f1eac2957d0d018330fcb4b09365ee8cad0020205820e5ccfcd8e326be04d73634d1ef2c5840b659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf958409b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d58404f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ea2fb55a04dbb8fb165680980e8a862cae75e5966d665a27f0d3766f9c6374b60058584067835820bd5ee86f9f08c9bf6f80c31da3387e6201f659d13c3d99510254b520ddeb27095820a8c162c7cb77ea61f1195a083ecb8a64b97410652666d380b0e558402f90eb74bb9e5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef34d8918270118280101011868010158269f01546d69646761582372642d636f6e73656e7375732d76311b000001977420dc000000001864ff0100002000ffd8799f015820b121ec457f8ca78cbfca9d506b34ad3bee23f3cc92de6cef531e5279441fdbde5820dacbf3f751d1d71328bb9a53d70e665e484c99499a98a312d0e5b8bb33741e65582004b68c93ba7769084e0b14c152c42cc86193ca4dd7ccc140f2daf325655086265820efbf53e6fdf61931d07d45ffdfe6b848d44f992f3ee0296b4f1415cc1c890c9dd87a80582088e82613515496a1d6feac6d1c0c365611a17a510965f20e861e04600008f1e3d87980025820d8da0681f32f2c0f15c1dfbc1c960123f8863b6955ee7586e7fa03d347401a1a0000d87980582000000000000000000000000000000000000000000000000000000000000000005820f0b18652674c5fd8b41956f645eab13ba3ac04cb9569c751e449e7800907c631ffff"
 
-const auxiliary_cbor =
-  #"d87980"
+const auxiliary_cbor = #"d87980"
 
 const evidence_hash =
   #"316a9984c8d5327a3bc34f029bd21da19ed398c769568bbf1432db0cda922203"
@@ -25,14 +24,12 @@ const evidence_hash =
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
   expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
-  expect Some(boundary_evidence_data) =
-    cbor.deserialise(boundary_evidence_cbor)
-  expect boundary_evidence:
-    validation_resolution_v1.ValidationBoundaryEvidenceV1 =
-      boundary_evidence_data
+  expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
+  expect
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+    = boundary_evidence_data
   and {
-    bytearray.length(boundary_evidence_cbor) ==
-      851,
+    bytearray.length(boundary_evidence_cbor) == 851,
     bytearray.length(boundary_evidence_cbor) < 16_384,
     validation_resolution_v1.one_step_boundary_is_authenticated(
       dispute,
@@ -44,22 +41,17 @@ test typescript_generated_one_step_boundary_is_authenticated() {
 }
 
 test typescript_generated_canonical_decode_step_is_exact() {
-  expect Some(boundary_evidence_data) =
-    cbor.deserialise(boundary_evidence_cbor)
-  expect boundary_evidence:
-    validation_resolution_v1.ValidationBoundaryEvidenceV1 =
-      boundary_evidence_data
+  expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
+  expect
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+    = boundary_evidence_data
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
-  expect transition: validation_machine_v1.ValidationOneStepWitnessV1 =
-    transition_data
+  expect transition: validation_machine_v1.ValidationOneStepWitnessV1 = transition_data
   expect Some(auxiliary_data) = cbor.deserialise(auxiliary_cbor)
-  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 =
-    auxiliary_data
+  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 = auxiliary_data
   and {
-    bytearray.length(transition_cbor) ==
-      794,
-    bytearray.length(auxiliary_cbor) ==
-      3,
+    bytearray.length(transition_cbor) == 794,
+    bytearray.length(auxiliary_cbor) == 3,
     bytearray.length(transition_cbor) < 16_384,
     bytearray.length(auxiliary_cbor) < 16_384,
     validation_machine_v1.verify_canonical_decode_empty_semantics_v1(

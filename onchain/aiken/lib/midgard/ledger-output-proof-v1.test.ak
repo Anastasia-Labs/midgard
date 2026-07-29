@@ -77,8 +77,7 @@ fn datum(
 fn advanced(
   result: Option<ledger_output_proof_v1.LedgerOutputProofStepResultV1>,
 ) -> ledger_output_proof_v1.LedgerOutputProofControlV1 {
-  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) =
-    result
+  expect Some(ledger_output_proof_v1.LedgerOutputProofAdvanced { control }) = result
   control
 }
 
@@ -131,16 +130,23 @@ test authenticates_a_complete_output_without_a_reference_script() {
     ),
   )
   let terminal = finish_empty_value(scan_terminal)
-  expect Some(cardano_tx_out) =
-    script_context_v1.tx_out_data_v1(no_reference_output, False)
-  expect Some(midgard_tx_out) =
-    script_context_v1.tx_out_data_v1(no_reference_output, True)
-  expect Some(cardano_tx_out_summary) =
-    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal)
-  expect Some(midgard_tx_out_summary) =
-    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal)
-  expect Some(cardano_spend_datum_summary) =
-    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal)
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_data_v1(
+    no_reference_output,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_data_v1(
+    no_reference_output,
+    True,
+  )
+  expect Some(cardano_tx_out_summary) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(midgard_tx_out_summary) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
+    terminal,
+  )
+  expect Some(cardano_spend_datum_summary) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
+    terminal,
+  )
   let descriptor = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
     version: ledger_output_commitment_v1.version,
     output_index: terminal.output_index,
@@ -164,18 +170,18 @@ test authenticates_a_complete_output_without_a_reference_script() {
   }
   and {
     ledger_output_proof_v1.terminal_is_exact_v1(terminal),
-    terminal.output_scan.address
-      == #"7811111111111111111111111111111111111111111111111111111111",
+    terminal.output_scan.address == #"7811111111111111111111111111111111111111111111111111111111",
     terminal.output_scan.lovelace == 0,
     terminal.script_hash == None,
-    ledger_output_proof_v1.value_summary_v1(terminal)
-      == Some(
-          cek_data_v1.semantic_data_summary_v1(builtin.map_data([])),
-        ),
-    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal)
-      == Some(cek_data_v1.semantic_data_summary_v1(cardano_tx_out)),
-    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal)
-      == Some(cek_data_v1.semantic_data_summary_v1(midgard_tx_out)),
+    ledger_output_proof_v1.value_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(builtin.map_data([])),
+    ),
+    ledger_output_proof_v1.cardano_tx_out_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(cardano_tx_out),
+    ),
+    ledger_output_proof_v1.midgard_tx_out_summary_v1(terminal) == Some(
+      cek_data_v1.semantic_data_summary_v1(midgard_tx_out),
+    ),
     cardano_tx_out != midgard_tx_out,
     ledger_output_proof_v1.descriptor_is_exact_v1(terminal, descriptor),
     !ledger_output_proof_v1.descriptor_is_exact_v1(
@@ -196,10 +202,7 @@ test authenticates_a_complete_output_without_a_reference_script() {
 }
 
 test derives_the_first_script_hash_block_from_the_output_chunk() {
-  let Pair(commitment, proof) = one_chunk_material(
-    0,
-    small_reference_output,
-  )
+  let Pair(commitment, proof) = one_chunk_material(0, small_reference_output)
   let initial = ledger_output_proof_v1.initial_control_v1(
     0,
     bytearray.length(small_reference_output),
@@ -284,21 +287,11 @@ test authenticates_the_inline_datum_semantics_from_output_chunks() {
       ),
     ),
   )
-  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(
-    0,
-    #"",
-    0,
-  )
+  let frame = cek_data_frame_v1.initial_small_constr_frame_v1(0, #"", 0)
   let datum_authenticated = advanced(
     ledger_output_proof_v1.step_v1(
       datum_opened,
-      datum(
-        cek_data_traverse_v1.FinalizeFrame {
-          frame,
-          parent: None,
-        },
-        None,
-      ),
+      datum(cek_data_traverse_v1.FinalizeFrame { frame, parent: None }, None),
     ),
   )
   let terminal = advanced(
@@ -307,13 +300,16 @@ test authenticates_the_inline_datum_semantics_from_output_chunks() {
       ledger_output_proof_v1.LedgerOutputProofNoWitness,
     ),
   )
-  let expected_spend_datum =
-    builtin.constr_data(0, [builtin.constr_data(0, [])])
-      |> cek_data_v1.semantic_data_summary_v1
+  let expected_spend_datum = builtin.constr_data(
+    0,
+    [builtin.constr_data(0, [])],
+  )
+    |> cek_data_v1.semantic_data_summary_v1
   and {
     datum_ready.stage == ledger_output_proof_v1.stage_datum_traversal,
-    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal)
-      == Some(expected_spend_datum),
+    ledger_output_proof_v1.cardano_spend_datum_summary_v1(terminal) == Some(
+      expected_spend_datum,
+    ),
     ledger_output_proof_v1.terminal_is_exact_v1(terminal),
   }
 }
@@ -328,8 +324,9 @@ test reports_authenticated_invalid_output_bytes() {
     bytearray.length(malformed_nonminimal_output),
     commitment,
   )
-  ledger_output_proof_v1.step_v1(initial, chunks(proof))
-    == Some(ledger_output_proof_v1.LedgerOutputProofInvalidOutput)
+  ledger_output_proof_v1.step_v1(initial, chunks(proof)) == Some(
+    ledger_output_proof_v1.LedgerOutputProofInvalidOutput,
+  )
 }
 
 test fails_closed_for_a_substituted_chunk() {
@@ -347,10 +344,7 @@ test fails_closed_for_a_substituted_chunk() {
 }
 
 test fails_closed_for_a_substituted_reference_script_item_chunk() {
-  let Pair(commitment, proof) = one_chunk_material(
-    0,
-    small_reference_output,
-  )
+  let Pair(commitment, proof) = one_chunk_material(0, small_reference_output)
   let initial = ledger_output_proof_v1.initial_control_v1(
     0,
     bytearray.length(small_reference_output),
@@ -379,10 +373,7 @@ test fails_closed_for_a_substituted_reference_script_item_chunk() {
     ..proof,
     chunk: builtin.replicate_byte(bytearray.length(proof.chunk), 0),
   }
-  ledger_output_proof_v1.step_v1(
-    reference_ready,
-    chunks(substituted),
-  ) == None
+  ledger_output_proof_v1.step_v1(reference_ready, chunks(substituted)) == None
 }
 
 test fails_closed_for_a_substituted_inline_datum_item_chunk() {
@@ -428,14 +419,18 @@ test decodes_the_long_typescript_terminal_control_canonically() {
   let control = ledger_output_proof_v1.decode_control_v1(
     cross_language_long_terminal_control,
   )
-  expect Some(spend_datum_summary) =
-    ledger_output_proof_v1.cardano_spend_datum_summary_v1(control)
-  expect Some(reference_item_commitment) =
-    ledger_output_proof_v1.reference_script_item_commitment_v1(control)
-  expect Some(cardano_tx_out) =
-    ledger_output_proof_v1.cardano_tx_out_summary_v1(control)
-  expect Some(midgard_tx_out) =
-    ledger_output_proof_v1.midgard_tx_out_summary_v1(control)
+  expect Some(spend_datum_summary) = ledger_output_proof_v1.cardano_spend_datum_summary_v1(
+    control,
+  )
+  expect Some(reference_item_commitment) = ledger_output_proof_v1.reference_script_item_commitment_v1(
+    control,
+  )
+  expect Some(cardano_tx_out) = ledger_output_proof_v1.cardano_tx_out_summary_v1(
+    control,
+  )
+  expect Some(midgard_tx_out) = ledger_output_proof_v1.midgard_tx_out_summary_v1(
+    control,
+  )
   and {
     ledger_output_proof_v1.terminal_is_exact_v1(control),
     control.reference_script_count == 2,
@@ -444,11 +439,9 @@ test decodes_the_long_typescript_terminal_control_canonically() {
     bytearray.length(cardano_tx_out.root) == 32,
     bytearray.length(midgard_tx_out.root) == 32,
     cardano_tx_out.root != midgard_tx_out.root,
-    ledger_output_proof_v1.reference_script_digest_v1(control)
-      == Some(
-          #"634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098",
-        ),
-    ledger_output_proof_v1.encode_control_v1(control)
-      == cross_language_long_terminal_control,
+    ledger_output_proof_v1.reference_script_digest_v1(control) == Some(
+      #"634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098",
+    ),
+    ledger_output_proof_v1.encode_control_v1(control) == cross_language_long_terminal_control,
   }
 }

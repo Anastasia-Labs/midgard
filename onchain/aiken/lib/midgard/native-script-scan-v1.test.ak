@@ -4,15 +4,12 @@ use midgard/native_script_scan_v1
 const cross_language_script =
   #"830301828200581c444444444444444444444444444444444444444444444444444444448205182a"
 
-const cross_language_terminal_control =
-  #"8801030018281828400003"
+const cross_language_terminal_control = #"8801030018281828400003"
 
 fn advanced(
   result: Option<native_script_scan_v1.NativeScriptStructureStepResultV1>,
 ) -> native_script_scan_v1.NativeScriptStructureControlV1 {
-  expect
-    Some(native_script_scan_v1.NativeScriptStructureAdvanced { control })
-    = result
+  expect Some(native_script_scan_v1.NativeScriptStructureAdvanced { control }) = result
   control
 }
 
@@ -48,10 +45,7 @@ test scans_the_cross_language_tree_iteratively() {
     ),
   )
   let after_signature = advanced(
-    native_script_scan_v1.structure_frame_step_v1(
-      signature,
-      root_frame,
-    ),
+    native_script_scan_v1.structure_frame_step_v1(signature, root_frame),
   )
   let timelock = advanced(
     native_script_scan_v1.structure_token_step_v1(
@@ -61,10 +55,7 @@ test scans_the_cross_language_tree_iteratively() {
     ),
   )
   let after_timelock = advanced(
-    native_script_scan_v1.structure_frame_step_v1(
-      timelock,
-      last_frame,
-    ),
+    native_script_scan_v1.structure_frame_step_v1(timelock, last_frame),
   )
   let terminal = advanced(
     native_script_scan_v1.finalize_structure_v1(after_timelock),
@@ -72,8 +63,7 @@ test scans_the_cross_language_tree_iteratively() {
   and {
     terminal.node_count == 3,
     native_script_scan_v1.structure_terminal_is_exact_v1(terminal),
-    native_script_scan_v1.encode_structure_control_v1(terminal)
-      == cross_language_terminal_control,
+    native_script_scan_v1.encode_structure_control_v1(terminal) == cross_language_terminal_control,
   }
 }
 
@@ -83,8 +73,7 @@ test decodes_the_typescript_terminal_control_canonically() {
   )
   and {
     native_script_scan_v1.structure_terminal_is_exact_v1(control),
-    native_script_scan_v1.encode_structure_control_v1(control)
-      == cross_language_terminal_control,
+    native_script_scan_v1.encode_structure_control_v1(control) == cross_language_terminal_control,
   }
 }
 
@@ -115,8 +104,7 @@ test reports_authenticated_malformed_and_trailing_syntax() {
     0,
     bytearray.length(malformed),
   )
-  let valid_with_trailing =
-    #"8200581c4444444444444444444444444444444444444444444444444444444400"
+  let valid_with_trailing = #"8200581c4444444444444444444444444444444444444444444444444444444400"
   let trailing_initial = native_script_scan_v1.initial_structure_control_v1(
     0,
     bytearray.length(valid_with_trailing),
@@ -134,10 +122,10 @@ test reports_authenticated_malformed_and_trailing_syntax() {
       malformed,
       0,
     ) == Some(native_script_scan_v1.NativeScriptStructureInvalid),
-    trailing_finalize.stage
-      == native_script_scan_v1.structure_stage_finalize,
-    native_script_scan_v1.finalize_structure_v1(trailing_finalize)
-      == Some(native_script_scan_v1.NativeScriptStructureInvalid),
+    trailing_finalize.stage == native_script_scan_v1.structure_stage_finalize,
+    native_script_scan_v1.finalize_structure_v1(trailing_finalize) == Some(
+      native_script_scan_v1.NativeScriptStructureInvalid,
+    ),
   }
 }
 
@@ -168,8 +156,5 @@ test fails_closed_for_a_wrong_frame_preimage() {
     valid_count: 0,
     required: 1,
   }
-  native_script_scan_v1.structure_frame_step_v1(
-    signature,
-    wrong_frame,
-  ) == None
+  native_script_scan_v1.structure_frame_step_v1(signature, wrong_frame) == None
 }

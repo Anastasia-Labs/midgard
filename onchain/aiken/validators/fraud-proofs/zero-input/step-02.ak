@@ -50,24 +50,23 @@ validator main(
         // 1. Specified input must be authentic and properly reproduced at the
         //    fraud proof's spending address.
         let
-          _own_script_hash,
-          _computation_thread_token_asset_name,
-          _fraud_prover,
-          m_input_state_data,
-        <-
-          finalize(
-            computation_thread_token_policy_id,
-            fraud_proof_token_policy_id,
-            fraud_proof_token_address,
-            step_datum,
-            input_index,
-            output_index,
-            fraud_proof_mint_redeemer_index,
-            own_out_ref,
-            inputs,
-            outputs,
-            redeemers,
-          )
+            _own_script_hash,
+            _computation_thread_token_asset_name,
+            _fraud_prover,
+            m_input_state_data
+          <- finalize(
+          computation_thread_token_policy_id,
+          fraud_proof_token_policy_id,
+          fraud_proof_token_address,
+          step_datum,
+          input_index,
+          output_index,
+          fraud_proof_mint_redeemer_index,
+          own_out_ref,
+          inputs,
+          outputs,
+          redeemers,
+        )
 
         expect Some(State { bad_tx_spend_inputs_hash }) = m_input_state_data
 
@@ -159,13 +158,13 @@ fn test_continue_redeemer() -> SpendRedeemer {
 
 fn test_finalize_tx(spend_inputs_hash: MidgardInputsHash) -> Transaction {
   let input_datum_data: Data = test_step_datum(spend_inputs_hash)
-  let fraud_proof_datum_data: Data =
-    TestFraudProofDatum { fraud_prover: test_fraud_prover }
-  let fraud_proof_mint_redeemer_data: Data =
-    TestFraudProofMintRedeemer {
-      computation_thread_token_asset_name: test_computation_thread_asset_name,
-      computation_thread_mint_redeemer_index: 1,
-    }
+  let fraud_proof_datum_data: Data = TestFraudProofDatum {
+    fraud_prover: test_fraud_prover,
+  }
+  let fraud_proof_mint_redeemer_data: Data = TestFraudProofMintRedeemer {
+    computation_thread_token_asset_name: test_computation_thread_asset_name,
+    computation_thread_mint_redeemer_index: 1,
+  }
   Transaction {
     ..transaction.placeholder,
     inputs: [

@@ -41,11 +41,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Verify {
-        input_index,
-        output_index,
-        transition,
-      }) -> {
+      ct.Continue(Verify { input_index, output_index, transition }) -> {
         let auxiliary = NoAuxiliaryWitness
         let auxiliary_data: Data = auxiliary
         let evidence = ValidationOneStepEvidenceV1 { transition, auxiliary }

@@ -24,19 +24,17 @@ test large_constructor_frame_is_fixed_size_and_matches_typescript() {
     builtin.replicate_byte(32, 66),
     2,
   )
-  let expected_encoding =
-    #"8b01005820"
-      |> bytearray.concat(builtin.replicate_byte(32, 199))
-      |> bytearray.concat(#"1940001940045820")
-      |> bytearray.concat(builtin.replicate_byte(32, 66))
-      |> bytearray.concat(
-          #"020080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000",
-        )
+  let expected_encoding = #"8b01005820"
+    |> bytearray.concat(builtin.replicate_byte(32, 199))
+    |> bytearray.concat(#"1940001940045820")
+    |> bytearray.concat(builtin.replicate_byte(32, 66))
+    |> bytearray.concat(
+        #"020080008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa56000000",
+      )
   and {
     cek_data_frame_v1.encode_frame_v1(frame) == expected_encoding,
     bytearray.length(expected_encoding) < 256,
-    cek_data_frame_v1.hash_frame_v1(frame)
-      == #"f1f01b15e143b47b513a5be7c071a57709fa88b183a9220a9a81a1307b5334db",
+    cek_data_frame_v1.hash_frame_v1(frame) == #"f1f01b15e143b47b513a5be7c071a57709fa88b183a9220a9a81a1307b5334db",
   }
 }
 
@@ -136,19 +134,16 @@ test exact_empty_frames_finalize_without_forged_sequence_roots() {
   expect Some(map_summary) = cek_data_frame_v1.finalized_summary_v1(map)
   expect Some(constr_summary) = cek_data_frame_v1.finalized_summary_v1(constr)
   and {
-    list_summary
-      == cek_data_v1.list_data_summary_v1(
-          cek_data_v1.empty_data_list_summary_v1(),
-        ),
-    map_summary
-      == cek_data_v1.map_data_summary_v1(
-          cek_data_v1.empty_data_pair_summary_v1(),
-        ),
-    constr_summary
-      == cek_data_v1.small_constr_data_summary_v1(
-          127,
-          cek_data_v1.empty_data_list_summary_v1(),
-        ),
+    list_summary == cek_data_v1.list_data_summary_v1(
+      cek_data_v1.empty_data_list_summary_v1(),
+    ),
+    map_summary == cek_data_v1.map_data_summary_v1(
+      cek_data_v1.empty_data_pair_summary_v1(),
+    ),
+    constr_summary == cek_data_v1.small_constr_data_summary_v1(
+      127,
+      cek_data_v1.empty_data_list_summary_v1(),
+    ),
   }
 }
 
@@ -168,11 +163,7 @@ test forged_or_unbounded_frames_fail_closed() {
   and {
     !cek_data_frame_v1.frame_is_well_formed(forged_empty),
     !cek_data_frame_v1.frame_is_well_formed(unbounded),
-    cek_data_frame_v1.append_child_v1(
-      initial,
-      summary(68, 0, 4),
-    )
-      == None,
+    cek_data_frame_v1.append_child_v1(initial, summary(68, 0, 4)) == None,
     cek_data_frame_v1.finalized_summary_v1(initial) == None,
   }
 }

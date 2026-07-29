@@ -127,7 +127,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         )
         expect operator == schedulers_operator
 
-        // Done. 
+        // Done.
         True
       }
       DisproveResolutionClaim {

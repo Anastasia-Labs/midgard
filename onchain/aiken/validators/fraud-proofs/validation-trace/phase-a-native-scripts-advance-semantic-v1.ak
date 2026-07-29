@@ -41,11 +41,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifyAdvance {
-        input_index,
-        output_index,
-        transition,
-      }) -> {
+      ct.Continue(VerifyAdvance { input_index, output_index, transition }) -> {
         let auxiliary = NoAuxiliaryWitness
         let auxiliary_data: Data = auxiliary
         continue_winning(

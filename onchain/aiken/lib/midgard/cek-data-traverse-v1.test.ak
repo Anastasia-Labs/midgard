@@ -23,13 +23,7 @@ fn source_for_control(
   when cek_data_traverse_v1.next_source_span_v1(control) is {
     None -> None
     Some(span) ->
-      Some(
-        slice_len(
-          source,
-          span.absolute_start - source_start,
-          span.length,
-        ),
-      )
+      Some(slice_len(source, span.absolute_start - source_start, span.length))
   }
 }
 
@@ -144,21 +138,15 @@ test streams_large_constructor_before_fields_and_matches_typescript() {
   expect Some(terminal) = cek_data_traverse_v1.step_v1(
     folded,
     None,
-    cek_data_traverse_v1.FinalizeFrame {
-      frame: folded_frame,
-      parent: None,
-    },
+    cek_data_traverse_v1.FinalizeFrame { frame: folded_frame, parent: None },
   )
   expect Some(summary) = cek_data_traverse_v1.finalize_v1(terminal)
   and {
-    summary.root
-      == #"844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c44",
+    summary.root == #"844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c44",
     summary.cbor_length == 17,
     summary.memory == 9,
-    cek_data_traverse_v1.encode_control_v1(terminal)
-      == typescript_terminal_control_cbor,
-    cek_data_traverse_v1.hash_control_v1(terminal)
-      == #"173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16",
+    cek_data_traverse_v1.encode_control_v1(terminal) == typescript_terminal_control_cbor,
+    cek_data_traverse_v1.hash_control_v1(terminal) == #"173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16",
   }
 }
 
@@ -184,10 +172,7 @@ test pops_an_authenticated_empty_child_container_into_parent() {
   expect Some(child_attached) = cek_data_traverse_v1.step_v1(
     child_opened,
     None,
-    cek_data_traverse_v1.FinalizeFrame {
-      frame: child,
-      parent: Some(parent),
-    },
+    cek_data_traverse_v1.FinalizeFrame { frame: child, parent: Some(parent) },
   )
   expect Some(full_parent) = cek_data_frame_v1.append_child_v1(
     parent,
@@ -217,21 +202,17 @@ test pops_an_authenticated_empty_child_container_into_parent() {
   expect Some(terminal) = cek_data_traverse_v1.step_v1(
     folded,
     None,
-    cek_data_traverse_v1.FinalizeFrame {
-      frame: folded_parent,
-      parent: None,
-    },
+    cek_data_traverse_v1.FinalizeFrame { frame: folded_parent, parent: None },
   )
   terminal.stage == cek_data_traverse_v1.stage_terminal
 }
 
 test maximum_delegated_source_window_is_132_bytes() {
-  let source =
-    #"5f5840"
-      |> bytearray.concat(builtin.replicate_byte(64, 106))
-      |> bytearray.concat(#"5840")
-      |> bytearray.concat(builtin.replicate_byte(64, 106))
-      |> bytearray.concat(#"ff")
+  let source = #"5f5840"
+    |> bytearray.concat(builtin.replicate_byte(64, 106))
+    |> bytearray.concat(#"5840")
+    |> bytearray.concat(builtin.replicate_byte(64, 106))
+    |> bytearray.concat(#"ff")
   let initial = cek_data_traverse_v1.initial_control_v1(17, 134)
   expect Some(opened) = cek_data_traverse_v1.step_v1(
     initial,
@@ -243,9 +224,7 @@ test maximum_delegated_source_window_is_132_bytes() {
     source_for_control(opened, source, 17),
     cek_data_traverse_v1.NoAction,
   )
-  expect Some(span) = cek_data_traverse_v1.next_source_span_v1(
-    parsed,
-  )
+  expect Some(span) = cek_data_traverse_v1.next_source_span_v1(parsed)
   and {
     span.length == 109,
     span.length <= cek_data_traverse_v1.max_source_span,
@@ -262,12 +241,10 @@ test decodes_active_typescript_nested_controls_canonically() {
   and {
     integer.stage == cek_data_traverse_v1.stage_integer,
     integer.integer != None,
-    cek_data_traverse_v1.encode_control_v1(integer)
-      == typescript_active_integer_control_cbor,
+    cek_data_traverse_v1.encode_control_v1(integer) == typescript_active_integer_control_cbor,
     bytes.stage == cek_data_traverse_v1.stage_bytes,
     bytes.bytes != None,
-    cek_data_traverse_v1.encode_control_v1(bytes)
-      == typescript_active_bytes_control_cbor,
+    cek_data_traverse_v1.encode_control_v1(bytes) == typescript_active_bytes_control_cbor,
   }
 }
 
@@ -308,14 +285,12 @@ test malformed_counts_trailing_bytes_and_small_large_constructor_fail_closed() {
       one_attached,
       Some(#"ff"),
       cek_data_traverse_v1.HeadScalar { item_length: 1 },
-    )
-      == None,
+    ) == None,
     cek_data_traverse_v1.step_v1(
       small_opened,
       Some(#"187f"),
       cek_data_traverse_v1.NoAction,
-    )
-      == None,
+    ) == None,
     child_summary.cbor_length == 1,
   }
 }

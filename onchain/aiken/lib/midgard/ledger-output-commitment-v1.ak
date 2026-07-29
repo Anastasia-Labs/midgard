@@ -83,9 +83,7 @@ fn reference_script_language_is_valid(language: Int) -> Bool {
   }
 }
 
-fn reference_script_is_well_formed(
-  descriptor: LedgerOutputCommitmentV1,
-) -> Bool {
+fn reference_script_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool {
   if descriptor.reference_script_language == -1 {
     and {
       descriptor.reference_script_hash == #"",
@@ -106,9 +104,7 @@ fn reference_script_is_well_formed(
   }
 }
 
-fn descriptor_is_well_formed(
-  descriptor: LedgerOutputCommitmentV1,
-) -> Bool {
+fn descriptor_is_well_formed(descriptor: LedgerOutputCommitmentV1) -> Bool {
   and {
     descriptor.version == version,
     descriptor.output_index >= 0,
@@ -122,9 +118,7 @@ fn descriptor_is_well_formed(
     bytearray.length(descriptor.asset_frontier_commitment) == 32,
     descriptor.cardano_value_size >= 0,
     descriptor.cardano_value_size <= max_cardano_value_cbor_bytes,
-    reference_script_language_is_valid(
-      descriptor.reference_script_language,
-    ),
+    reference_script_language_is_valid(descriptor.reference_script_language),
     reference_script_is_well_formed(descriptor),
     summary_is_well_formed(descriptor.cardano_tx_out),
     summary_is_well_formed(descriptor.midgard_tx_out),
@@ -162,15 +156,16 @@ pub fn encode(descriptor: LedgerOutputCommitmentV1) -> ByteArray {
 pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
   expect Some(data) = cbor.deserialise(descriptor_cbor)
   expect
-    [
-      version_data, output_index_data, total_length_data, item_commitment_data,
-      address_data, lovelace_data, asset_count_data,
-      asset_frontier_commitment_data, cardano_value_size_data,
-      reference_script_language_data, reference_script_hash_data,
-      reference_script_total_length_data,
-      reference_script_item_commitment_data, cardano_tx_out_data,
-      midgard_tx_out_data, cardano_spend_datum_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, output_index_data, total_length_data, item_commitment_data,
+        address_data, lovelace_data, asset_count_data,
+        asset_frontier_commitment_data, cardano_value_size_data,
+        reference_script_language_data, reference_script_hash_data,
+        reference_script_total_length_data,
+        reference_script_item_commitment_data, cardano_tx_out_data,
+        midgard_tx_out_data, cardano_spend_datum_data,
+      ]
+    = builtin.un_list_data(data)
   let descriptor = LedgerOutputCommitmentV1 {
     version: builtin.un_i_data(version_data),
     output_index: builtin.un_i_data(output_index_data),
@@ -179,13 +174,9 @@ pub fn decode(descriptor_cbor: ByteArray) -> LedgerOutputCommitmentV1 {
     address: builtin.un_b_data(address_data),
     lovelace: builtin.un_i_data(lovelace_data),
     asset_count: builtin.un_i_data(asset_count_data),
-    asset_frontier_commitment: builtin.un_b_data(
-      asset_frontier_commitment_data,
-    ),
+    asset_frontier_commitment: builtin.un_b_data(asset_frontier_commitment_data),
     cardano_value_size: builtin.un_i_data(cardano_value_size_data),
-    reference_script_language: builtin.un_i_data(
-      reference_script_language_data,
-    ),
+    reference_script_language: builtin.un_i_data(reference_script_language_data),
     reference_script_hash: builtin.un_b_data(reference_script_hash_data),
     reference_script_total_length: builtin.un_i_data(
       reference_script_total_length_data,
@@ -238,14 +229,8 @@ pub fn verify_asset_membership(
 ) -> Bool {
   and {
     descriptor_is_well_formed(descriptor),
-    validation_merkle_v1.frontier_is_well_formed(
-      descriptor.asset_count,
-      peaks,
-    ),
-    validation_merkle_v1.frontier_commitment(
-      descriptor.asset_count,
-      peaks,
-    ) == descriptor.asset_frontier_commitment,
+    validation_merkle_v1.frontier_is_well_formed(descriptor.asset_count, peaks),
+    validation_merkle_v1.frontier_commitment(descriptor.asset_count, peaks) == descriptor.asset_frontier_commitment,
     validation_merkle_v1.verify_membership(
       descriptor.asset_count,
       peaks,

@@ -43,12 +43,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(VerifyFrame {
-        input_index,
-        output_index,
-        transition,
-        frame,
-      }) -> {
+      ct.Continue(VerifyFrame { input_index, output_index, transition, frame }) -> {
         let auxiliary = NativeScriptFrameWitness { frame }
         let auxiliary_data: Data = auxiliary
         continue_winning(

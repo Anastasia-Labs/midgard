@@ -56,29 +56,20 @@ fn peaks_are_well_formed(
         peak.byte_length >= minimum,
         peak.byte_length <= maximum,
         remaining % ( 2 * leaves ) >= leaves,
-        peaks_are_well_formed(
-          remaining - leaves,
-          peak.height,
-          rest,
-          False,
-        ),
+        peaks_are_well_formed(remaining - leaves, peak.height, rest, False),
       }
     }
   }
 }
 
-fn peak_lengths_sum(
-  peaks: List<CekBlobFrontierPeakV1>,
-) -> Int {
+fn peak_lengths_sum(peaks: List<CekBlobFrontierPeakV1>) -> Int {
   when peaks is {
     [] -> 0
     [peak, ..rest] -> peak.byte_length + peak_lengths_sum(rest)
   }
 }
 
-pub fn frontier_is_well_formed(
-  frontier: CekBlobFrontierV1,
-) -> Bool {
+pub fn frontier_is_well_formed(frontier: CekBlobFrontierV1) -> Bool {
   let minimum = if frontier.count == 0 {
     0
   } else {
@@ -91,12 +82,7 @@ pub fn frontier_is_well_formed(
     frontier.byte_length >= minimum,
     frontier.byte_length <= maximum,
     peak_lengths_sum(frontier.peaks) == frontier.byte_length,
-    peaks_are_well_formed(
-      frontier.count,
-      -1,
-      frontier.peaks,
-      True,
-    ),
+    peaks_are_well_formed(frontier.count, -1, frontier.peaks, True),
   }
 }
 
@@ -145,8 +131,7 @@ pub fn append_chunk_root_v1(
     if frontier.count == 0 {
       frontier.byte_length == 0
     } else {
-      frontier.byte_length
-        == frontier.count * cek_proof_v1.max_blob_chunk_bytes
+      frontier.byte_length == frontier.count * cek_proof_v1.max_blob_chunk_bytes
     },
   } {
     let next = CekBlobFrontierV1 {
@@ -206,9 +191,7 @@ fn aggregate_peaks(
   }
 }
 
-pub fn finalize_v1(
-  frontier: CekBlobFrontierV1,
-) -> Option<ByteArray> {
+pub fn finalize_v1(frontier: CekBlobFrontierV1) -> Option<ByteArray> {
   if !frontier_is_well_formed(frontier) {
     None
   } else {
@@ -233,9 +216,7 @@ fn peak_count(peaks: List<CekBlobFrontierPeakV1>) -> Int {
   }
 }
 
-fn encode_peak_items(
-  peaks: List<CekBlobFrontierPeakV1>,
-) -> ByteArray {
+fn encode_peak_items(peaks: List<CekBlobFrontierPeakV1>) -> ByteArray {
   when peaks is {
     [] -> #""
     [peak, ..rest] ->
@@ -249,9 +230,7 @@ fn encode_peaks(peaks: List<CekBlobFrontierPeakV1>) -> ByteArray {
     |> bytearray.concat(encode_peak_items(peaks))
 }
 
-pub fn encode_frontier_v1(
-  frontier: CekBlobFrontierV1,
-) -> ByteArray {
+pub fn encode_frontier_v1(frontier: CekBlobFrontierV1) -> ByteArray {
   expect frontier_is_well_formed(frontier)
   encode_definite_array_header(4)
     |> bytearray.concat(cbor.serialise(version))
@@ -274,9 +253,7 @@ fn append_all(
   }
 }
 
-pub fn root_from_chunks_v1(
-  chunks: List<ByteArray>,
-) -> Option<ByteArray> {
+pub fn root_from_chunks_v1(chunks: List<ByteArray>) -> Option<ByteArray> {
   when append_all(chunks, empty_frontier_v1()) is {
     None -> None
     Some(frontier) -> finalize_v1(frontier)

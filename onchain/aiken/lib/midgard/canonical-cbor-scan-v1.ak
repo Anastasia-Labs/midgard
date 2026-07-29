@@ -34,12 +34,7 @@ fn read_big_endian(
     when byte_at_if_present(bytes, offset) is {
       None -> None
       Some(next) ->
-        read_big_endian(
-          bytes,
-          offset + 1,
-          remaining - 1,
-          value * 256 + next,
-        )
+        read_big_endian(bytes, offset + 1, remaining - 1, value * 256 + next)
     }
   }
 }
@@ -108,10 +103,7 @@ pub fn head_at_v1(
   }
 }
 
-pub fn bytes_at_v1(
-  bytes: ByteArray,
-  offset: Int,
-) -> Option<CborBytesV1> {
+pub fn bytes_at_v1(bytes: ByteArray, offset: Int) -> Option<CborBytesV1> {
   when head_at_v1(bytes, offset, 2) is {
     None -> None
     Some(head) ->

@@ -46,23 +46,19 @@ test redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata() {
     0,
     0,
   )
-  expect Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
-    control: tail,
-  }) = redeemer_item_proof_v1.step_v1(
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: tail })
+    = redeemer_item_proof_v1.step_v1(
     initial,
-    source_witness(
-      redeemer_item_proof_v1.RedeemerItemOpenHeader,
-      proof,
-    ),
+    source_witness(redeemer_item_proof_v1.RedeemerItemOpenHeader, proof),
   )
-  expect Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
-    control: terminal,
-  }) = redeemer_item_proof_v1.step_v1(
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+        control: terminal,
+      })
+    = redeemer_item_proof_v1.step_v1(
     tail,
-    source_witness(
-      redeemer_item_proof_v1.RedeemerItemOpenTail,
-      proof,
-    ),
+    source_witness(redeemer_item_proof_v1.RedeemerItemOpenTail, proof),
   )
   expect Some(descriptor) = redeemer_item_proof_v1.descriptor_v1(terminal)
   and {
@@ -106,17 +102,16 @@ test redeemer_item_rejects_mutated_header_tail_and_chunk_evidence() {
     0,
     0,
   )
-  expect Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) =
-    redeemer_item_proof_v1.step_v1(
-      wrong_header_control,
-      source_witness(
-        redeemer_item_proof_v1.RedeemerItemOpenHeader,
-        wrong_header_proof,
-      ),
-    )
-  expect Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
-    control: tail,
-  }) = redeemer_item_proof_v1.step_v1(
+  expect Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) = redeemer_item_proof_v1.step_v1(
+    wrong_header_control,
+    source_witness(
+      redeemer_item_proof_v1.RedeemerItemOpenHeader,
+      wrong_header_proof,
+    ),
+  )
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: tail })
+    = redeemer_item_proof_v1.step_v1(
     initial,
     source_witness(
       redeemer_item_proof_v1.RedeemerItemOpenHeader,
@@ -129,14 +124,13 @@ test redeemer_item_rejects_mutated_header_tail_and_chunk_evidence() {
     total_length: bytearray.length(wrong_tail),
     item_commitment: bounded_item_v1.from_bytes(8, 0, wrong_tail),
   }
-  expect Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) =
-    redeemer_item_proof_v1.step_v1(
-      wrong_tail_control,
-      source_witness(
-        redeemer_item_proof_v1.RedeemerItemOpenTail,
-        singleton_chunk_proof(wrong_tail, 0),
-      ),
-    )
+  expect Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) = redeemer_item_proof_v1.step_v1(
+    wrong_tail_control,
+    source_witness(
+      redeemer_item_proof_v1.RedeemerItemOpenTail,
+      singleton_chunk_proof(wrong_tail, 0),
+    ),
+  )
   and {
     redeemer_item_proof_v1.step_v1(
       initial,
@@ -145,20 +139,18 @@ test redeemer_item_rejects_mutated_header_tail_and_chunk_evidence() {
         singleton_chunk_proof(#"8400004100820a15", 0),
       ),
     ) == None,
-    redeemer_item_proof_v1.hash_control_v1(initial)
-      != redeemer_item_proof_v1.hash_control_v1(
-          redeemer_item_proof_v1.RedeemerItemProofControlV1 {
-            ..initial,
-            item_count: 2,
-          },
-        ),
-    redeemer_item_proof_v1.hash_control_v1(tail)
-      != redeemer_item_proof_v1.hash_control_v1(
-          redeemer_item_proof_v1.RedeemerItemProofControlV1 {
-            ..tail,
-            item_count: 2,
-          },
-        ),
+    redeemer_item_proof_v1.hash_control_v1(initial) != redeemer_item_proof_v1.hash_control_v1(
+      redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+        ..initial,
+        item_count: 2,
+      },
+    ),
+    redeemer_item_proof_v1.hash_control_v1(tail) != redeemer_item_proof_v1.hash_control_v1(
+      redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+        ..tail,
+        item_count: 2,
+      },
+    ),
   }
 }
 
@@ -169,21 +161,19 @@ test redeemer_item_terminal_data_summary_agrees_with_typescript() {
   expect Some(summary) = redeemer_item_proof_v1.finalize_v1(terminal)
   expect Some(traversal) = terminal.traversal
   expect Some(result) = traversal.result
-  let wrong_summary =
-    cek_data_v1.DataSummaryV1 {
-      ..result,
-      root: #"5555555555555555555555555555555555555555555555555555555555555555",
-    }
-  let wrong_terminal =
-    redeemer_item_proof_v1.RedeemerItemProofControlV1 {
-      ..terminal,
-      traversal: Some(
-        cek_data_traverse_v1.DataTraverseControlV1 {
-          ..traversal,
-          result: Some(wrong_summary),
-        },
-      ),
-    }
+  let wrong_summary = cek_data_v1.DataSummaryV1 {
+    ..result,
+    root: #"5555555555555555555555555555555555555555555555555555555555555555",
+  }
+  let wrong_terminal = redeemer_item_proof_v1.RedeemerItemProofControlV1 {
+    ..terminal,
+    traversal: Some(
+      cek_data_traverse_v1.DataTraverseControlV1 {
+        ..traversal,
+        result: Some(wrong_summary),
+      },
+    ),
+  }
   and {
     terminal.mode == redeemer_item_proof_v1.mode_data,
     terminal.stage == redeemer_item_proof_v1.stage_terminal,
@@ -193,7 +183,8 @@ test redeemer_item_terminal_data_summary_agrees_with_typescript() {
     summary.cbor_length == 1,
     summary.memory == 5,
     redeemer_item_proof_v1.control_is_well_formed(wrong_terminal),
-    redeemer_item_proof_v1.hash_control_v1(wrong_terminal)
-      != redeemer_item_proof_v1.hash_control_v1(terminal),
+    redeemer_item_proof_v1.hash_control_v1(wrong_terminal) != redeemer_item_proof_v1.hash_control_v1(
+      terminal,
+    ),
   }
 }

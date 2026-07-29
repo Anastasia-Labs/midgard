@@ -2,8 +2,7 @@ use aiken/builtin
 use aiken/primitive/bytearray
 use midgard/ledger_output_scan_v1
 
-const address =
-  #"6011111111111111111111111111111111111111111111111111111111"
+const address = #"6011111111111111111111111111111111111111111111111111111111"
 
 const output_without_optional_fields =
   #"a200581d601111111111111111111111111111111111111111111111111111111101821a004c4b40a0"
@@ -184,8 +183,7 @@ test decodes_and_reencodes_the_typescript_terminal_control() {
     control.reference_script_item_offset == 5244,
     control.reference_script_offset == 5249,
     control.reference_script_length == 6000,
-    ledger_output_scan_v1.encode_control_v1(control)
-      == cross_language_terminal_control_cbor,
+    ledger_output_scan_v1.encode_control_v1(control) == cross_language_terminal_control_cbor,
   }
 }
 

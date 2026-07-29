@@ -5,9 +5,9 @@ use aiken/crypto.{blake2b_224, blake2b_256, verify_ed25519_signature}
 use aiken/merkle_patricia_forestry.{Proof}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
 use aiken/primitive/bytearray
+use midgard/blake2b_224_trace_v1
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
-use midgard/blake2b_224_trace_v1
 use midgard/cek_constant_v1
 use midgard/cek_data_v1
 use midgard/cek_machine_v1
@@ -32,9 +32,9 @@ use midgard/fraud_proofs/native_tx/preimages.{
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardCredential, MidgardScriptWitness, MidgardTxInput,
-  NativeTxBodyCompact,
-  NativeTxCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
-  PubKeyCredential, ScriptCredential, VerifiedMidgardNativeTxCompact,
+  NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
+  NativeTxWitnessSetCompact, PubKeyCredential, ScriptCredential,
+  VerifiedMidgardNativeTxCompact,
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -618,7 +618,9 @@ pub fn encode_phase_a_native_scripts_scan_witness(
   expect signer_count >= 0
   #"9f"
     |> bytearray.concat(cbor.serialise(builtin.b_data(compact_cbor)))
-    |> bytearray.concat(cbor.serialise(builtin.b_data(witness_set_compact_cbor)))
+    |> bytearray.concat(
+        cbor.serialise(builtin.b_data(witness_set_compact_cbor)),
+      )
     |> bytearray.concat(
         cbor.serialise(builtin.b_data(field_preimage_lengths_cbor)),
       )
@@ -2932,8 +2934,8 @@ fn phase_a_native_control_from_witness(
         signer_continuation_data,
       ]
     = builtin.un_list_data(data)
-  expect [signer_peaks_data, continuation_cbor_data] =
-    builtin.un_list_data(signer_continuation_data)
+  expect [signer_peaks_data,
+        continuation_cbor_data] = builtin.un_list_data(signer_continuation_data)
   PhaseANativeScriptsControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
     witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
@@ -5582,9 +5584,7 @@ fn resolve_inputs_control_from_witness(
           |> resolve_input_output_proof_from_cbor,
       )
     },
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
 
@@ -6701,7 +6701,8 @@ fn script_sources_control_from_data_items(
         receive_descriptor_peaks_data,
       ]
     = builtin.un_list_data(receive_scan_data)
-  expect bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
+  expect
+    bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32
   ScriptSourcesControlV1 {
     compact_cbor: builtin.un_b_data(compact_cbor_data),
     witness_set_compact_cbor: builtin.un_b_data(witness_set_compact_cbor_data),
@@ -6754,9 +6755,7 @@ fn script_sources_control_from_data_items(
     output_proof,
     pending_source_cbor: #"",
     mint_fold: mint_fold_control_from_data(mint_fold_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
 
@@ -6832,7 +6831,7 @@ pub fn encode_inline_source_hash_control_v1(
       control.language_tag == 0,
       control.language_tag == 3,
       control.language_tag == 128,
-  }
+    }
   expect control.payload_offset > 0
   expect control.payload_length >= 0
   expect control.item_length == control.payload_offset + control.payload_length
@@ -7091,8 +7090,9 @@ fn script_discovery_control_is_well_formed(
       control.execution_count,
       control.execution_peaks,
     ),
-    bytearray.length(control.redeemer_item_control_hash) == 0
-      || bytearray.length(control.redeemer_item_control_hash) == 32,
+    bytearray.length(control.redeemer_item_control_hash) == 0 || bytearray.length(
+      control.redeemer_item_control_hash,
+    ) == 32,
   }
 }
 
@@ -7236,8 +7236,9 @@ fn script_sources_stage_zero_work_witness_has_canonical_shape(
       True
     } else {
       let encoded_pending = encode_definite_bytes(pending_source_cbor)
-      let pending_offset = bytearray.length(work_witness_cbor) -
-        bytearray.length(encoded_pending)
+      let pending_offset = bytearray.length(work_witness_cbor) - bytearray.length(
+        encoded_pending,
+      )
       and {
         pending_offset >= offset,
         builtin.slice_bytearray(
@@ -7256,9 +7257,7 @@ fn script_sources_stage_zero_prefix_before_stage(
 ) -> ByteArray {
   encode_definite_array_header(item_count)
     |> bytearray.concat(encode_definite_bytes(control.compact_cbor))
-    |> bytearray.concat(
-        encode_definite_bytes(control.witness_set_compact_cbor),
-      )
+    |> bytearray.concat(encode_definite_bytes(control.witness_set_compact_cbor))
     |> bytearray.concat(
         encode_definite_bytes(control.field_preimage_lengths_cbor),
       )
@@ -7362,27 +7361,18 @@ fn script_sources_stage_zero_finish_successor_is_exact(
   let stage_offset = bytearray.length(prefix)
   let work_length = bytearray.length(witness.work_witness_cbor)
   expect
-    builtin.slice_bytearray(
-      0,
-      stage_offset,
-      witness.work_witness_cbor,
-    ) == prefix
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == prefix
   expect
-    builtin.slice_bytearray(
-      stage_offset,
-      1,
-      witness.work_witness_cbor,
-    ) == #"00"
-  let next_work_witness_cbor =
-    prefix
-      |> bytearray.concat(#"01")
-      |> bytearray.concat(
-          builtin.slice_bytearray(
-            stage_offset + 1,
-            work_length - stage_offset - 1,
-            witness.work_witness_cbor,
-          ),
-        )
+    builtin.slice_bytearray(stage_offset, 1, witness.work_witness_cbor) == #"00"
+  let next_work_witness_cbor = prefix
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          stage_offset + 1,
+          work_length - stage_offset - 1,
+          witness.work_witness_cbor,
+        ),
+      )
   script_sources_stage_zero_successor_work_is_exact(
     pre,
     witness,
@@ -7400,14 +7390,11 @@ fn script_sources_stage_zero_begin_successor_is_exact(
   let encoded_observer_scan = encode_observer_purpose_scan_control(
     control.observer_scan,
   )
-  let old_suffix =
-    cbor.serialise(control.source_total_count)
-      |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
-      |> bytearray.concat(encoded_observer_scan)
-      |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
-      |> bytearray.concat(
-          encode_definite_bytes(control.resolution_schedule_hash),
-        )
+  let old_suffix = cbor.serialise(control.source_total_count)
+    |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
+    |> bytearray.concat(encoded_observer_scan)
+    |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
+    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
   let work_length = bytearray.length(witness.work_witness_cbor)
   let suffix_offset = work_length - bytearray.length(old_suffix)
   expect suffix_offset >= 2
@@ -7417,23 +7404,16 @@ fn script_sources_stage_zero_begin_successor_is_exact(
       bytearray.length(old_suffix),
       witness.work_witness_cbor,
     ) == old_suffix
-  let next_work_witness_cbor =
-    encode_definite_array_header(31)
-      |> bytearray.concat(
-          builtin.slice_bytearray(
-            2,
-            suffix_offset - 2,
-            witness.work_witness_cbor,
-          ),
-        )
-      |> bytearray.concat(cbor.serialise(source_total_count))
-      |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
-      |> bytearray.concat(encoded_observer_scan)
-      |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
-      |> bytearray.concat(
-          encode_definite_bytes(control.resolution_schedule_hash),
-        )
-      |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
+  let next_work_witness_cbor = encode_definite_array_header(31)
+    |> bytearray.concat(
+        builtin.slice_bytearray(2, suffix_offset - 2, witness.work_witness_cbor),
+      )
+    |> bytearray.concat(cbor.serialise(source_total_count))
+    |> bytearray.concat(cbor.serialise(control.redeemer_total_count))
+    |> bytearray.concat(encoded_observer_scan)
+    |> bytearray.concat(encode_mint_fold_control(control.mint_fold))
+    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
+    |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
   script_sources_stage_zero_successor_work_is_exact(
     pre,
     witness,
@@ -7457,9 +7437,12 @@ fn script_sources_stage_zero_pending_successor_is_exact(
       bytearray.length(old_pending),
       witness.work_witness_cbor,
     ) == old_pending
-  let next_work_witness_cbor =
-    builtin.slice_bytearray(0, pending_offset, witness.work_witness_cbor)
-      |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
+  let next_work_witness_cbor = builtin.slice_bytearray(
+    0,
+    pending_offset,
+    witness.work_witness_cbor,
+  )
+    |> bytearray.concat(encode_definite_bytes(pending_source_cbor))
   script_sources_stage_zero_successor_work_is_exact(
     pre,
     witness,
@@ -7477,23 +7460,17 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
   let prefix = script_sources_stage_zero_prefix_before_stage(control, 31)
     |> bytearray.concat(#"00")
   let source_offset = bytearray.length(prefix)
-  let old_source_fields =
-    cbor.serialise(control.source_count)
-      |> bytearray.concat(
-          validation_merkle_v1.encode_frontier(control.source_peaks),
-        )
-  let after_source_offset = source_offset +
-    bytearray.length(old_source_fields)
+  let old_source_fields = cbor.serialise(control.source_count)
+    |> bytearray.concat(
+        validation_merkle_v1.encode_frontier(control.source_peaks),
+      )
+  let after_source_offset = source_offset + bytearray.length(old_source_fields)
   let old_pending = encode_definite_bytes(control.pending_source_cbor)
   let work_length = bytearray.length(witness.work_witness_cbor)
   let pending_offset = work_length - bytearray.length(old_pending)
   expect pending_offset >= after_source_offset
   expect
-    builtin.slice_bytearray(
-      0,
-      source_offset,
-      witness.work_witness_cbor,
-    ) == prefix
+    builtin.slice_bytearray(0, source_offset, witness.work_witness_cbor) == prefix
   expect
     builtin.slice_bytearray(
       source_offset,
@@ -7506,20 +7483,17 @@ fn script_sources_stage_zero_terminal_successor_is_exact(
       bytearray.length(old_pending),
       witness.work_witness_cbor,
     ) == old_pending
-  let next_work_witness_cbor =
-    encode_definite_array_header(30)
-      |> bytearray.concat(
-          builtin.slice_bytearray(2, source_offset - 2, prefix),
-        )
-      |> bytearray.concat(cbor.serialise(source_count))
-      |> bytearray.concat(validation_merkle_v1.encode_frontier(source_peaks))
-      |> bytearray.concat(
-          builtin.slice_bytearray(
-            after_source_offset,
-            pending_offset - after_source_offset,
-            witness.work_witness_cbor,
-          ),
-        )
+  let next_work_witness_cbor = encode_definite_array_header(30)
+    |> bytearray.concat(builtin.slice_bytearray(2, source_offset - 2, prefix))
+    |> bytearray.concat(cbor.serialise(source_count))
+    |> bytearray.concat(validation_merkle_v1.encode_frontier(source_peaks))
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          after_source_offset,
+          pending_offset - after_source_offset,
+          witness.work_witness_cbor,
+        ),
+      )
   script_sources_stage_zero_successor_work_is_exact(
     pre,
     witness,
@@ -7583,10 +7557,7 @@ pub fn inline_source_hash_block_v1(
       chunk_proof.item_index == pending.source_index,
       chunk_proof.total_length == pending.item_length,
       chunk_proof.chunk_index == expected_chunk_index,
-      bounded_item_v1.verify_chunk(
-        pending.item_commitment,
-        chunk_proof,
-      ),
+      bounded_item_v1.verify_chunk(pending.item_commitment, chunk_proof),
       offset >= 0,
       offset <= bytearray.length(chunk_proof.chunk),
     } {
@@ -7603,10 +7574,7 @@ pub fn inline_source_hash_block_v1(
               next.item_index == pending.source_index,
               next.total_length == pending.item_length,
               next.chunk_index == expected_chunk_index + 1,
-              bounded_item_v1.verify_chunk(
-                pending.item_commitment,
-                next,
-              ),
+              bounded_item_v1.verify_chunk(pending.item_commitment, next),
             } {
               Some(bytearray.concat(chunk_proof.chunk, next.chunk))
             } else {
@@ -7621,11 +7589,7 @@ pub fn inline_source_hash_block_v1(
       when authenticated_window is {
         None -> None
         Some(window) -> {
-          let content = builtin.slice_bytearray(
-            offset,
-            content_length,
-            window,
-          )
+          let content = builtin.slice_bytearray(offset, content_length, window)
           let block = if hash_control.cursor == 0 {
             #""
               |> bytearray.push(pending.language_tag)
@@ -7669,18 +7633,10 @@ pub fn verify_script_sources_stage_zero_finish_semantics_v1(
     }
   }
   and {
-    script_sources_stage_zero_control_is_bound(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_zero_control_is_bound(pre, witness, control),
     control.pending_source_cbor == #"",
     source_scan_is_complete,
-    script_sources_stage_zero_finish_successor_is_exact(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_zero_finish_successor_is_exact(pre, witness, control),
   }
 }
 
@@ -7706,11 +7662,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
     collection_proof.item_length,
   )
   and {
-    script_sources_stage_zero_control_is_bound(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_zero_control_is_bound(pre, witness, control),
     control.pending_source_cbor == #"",
     active_total_count > 0,
     active_total_count <= max_tx_size_derived_collection_item_count,
@@ -7727,10 +7679,7 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
       witness_set.script_tx_wits_hash,
       collection_proof,
     ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     when header is {
       None ->
         rejected_successor_is_exact(
@@ -7779,21 +7728,15 @@ pub fn verify_script_sources_stage_zero_hash_block_semantics_v1(
   let pending = inline_source_hash_control_from_cbor(
     control.pending_source_cbor,
   )
-  when inline_source_hash_block_v1(
-    pending,
-    chunk_proof,
-    next_chunk_proof,
-  ) is {
+  when inline_source_hash_block_v1(pending, chunk_proof, next_chunk_proof) is {
     None -> False
     Some(block) -> {
-      expect Some(next_hash_control) =
-        blake2b_224_trace_v1.step_v1(pending.hash_control, Some(block))
+      expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+        pending.hash_control,
+        Some(block),
+      )
       and {
-        script_sources_stage_zero_control_is_bound(
-          pre,
-          witness,
-          control,
-        ),
+        script_sources_stage_zero_control_is_bound(pre, witness, control),
         script_sources_stage_zero_pending_successor_is_exact(
           pre,
           witness,
@@ -7823,23 +7766,18 @@ pub fn verify_script_sources_stage_zero_hash_advance_semantics_v1(
   )
   expect pending.hash_control.stage != blake2b_224_trace_v1.stage_ready
   expect pending.hash_control.stage != blake2b_224_trace_v1.stage_terminal
-  expect Some(next_hash_control) =
-    blake2b_224_trace_v1.step_v1(pending.hash_control, None)
+  expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+    pending.hash_control,
+    None,
+  )
   and {
-    script_sources_stage_zero_control_is_bound(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_zero_control_is_bound(pre, witness, control),
     script_sources_stage_zero_pending_successor_is_exact(
       pre,
       witness,
       control,
       encode_inline_source_hash_control_v1(
-        InlineSourceHashControlV1 {
-          ..pending,
-          hash_control: next_hash_control,
-        },
+        InlineSourceHashControlV1 { ..pending, hash_control: next_hash_control },
       ),
     ),
   }
@@ -7856,8 +7794,9 @@ pub fn verify_script_sources_stage_zero_hash_terminal_semantics_v1(
   let pending = inline_source_hash_control_from_cbor(
     control.pending_source_cbor,
   )
-  expect Some(script_hash) =
-    blake2b_224_trace_v1.digest_v1(pending.hash_control)
+  expect Some(script_hash) = blake2b_224_trace_v1.digest_v1(
+    pending.hash_control,
+  )
   let next_source_count = control.source_count + 1
   let next_source_peaks = validation_merkle_v1.append_leaf(
     control.source_count,
@@ -7871,11 +7810,7 @@ pub fn verify_script_sources_stage_zero_hash_terminal_semantics_v1(
     ),
   )
   and {
-    script_sources_stage_zero_control_is_bound(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_zero_control_is_bound(pre, witness, control),
     script_sources_stage_zero_terminal_successor_is_exact(
       pre,
       witness,
@@ -7918,23 +7853,16 @@ fn script_sources_stage_zero(
     )
     let hash_control = pending.hash_control
     if hash_control.stage == blake2b_224_trace_v1.stage_ready {
-      expect
-          ScriptSourceHashBlockWitness {
-            chunk_proof,
-            next_chunk_proof,
-          }
-        = auxiliary
+      expect ScriptSourceHashBlockWitness { chunk_proof, next_chunk_proof } = auxiliary
       when
-        inline_source_hash_block_v1(
-          pending,
-          chunk_proof,
-          next_chunk_proof,
-        )
+        inline_source_hash_block_v1(pending, chunk_proof, next_chunk_proof)
       is {
         None -> False
         Some(block) -> {
-          expect Some(next_hash_control) =
-            blake2b_224_trace_v1.step_v1(hash_control, Some(block))
+          expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+            hash_control,
+            Some(block),
+          )
           and {
             common_control_is_initial,
             script_sources_control_successor_is_exact(
@@ -7980,8 +7908,10 @@ fn script_sources_stage_zero(
         ),
       }
     } else {
-      expect Some(next_hash_control) =
-        blake2b_224_trace_v1.step_v1(hash_control, None)
+      expect Some(next_hash_control) = blake2b_224_trace_v1.step_v1(
+        hash_control,
+        None,
+      )
       and {
         common_control_is_initial,
         auxiliary == NoAuxiliaryWitness,
@@ -8104,9 +8034,9 @@ fn script_sources_stage_one_raw_common_control_is_initial(
 ) -> Bool {
   expect
       [
-        receive_source_count_data, receive_source_peaks_data,
-        receive_count_data, receive_previous_hash_data,
-        receive_candidate_hash_data, receive_descriptor_peaks_data,
+        receive_source_count_data, receive_source_peaks_data, receive_count_data,
+        receive_previous_hash_data, receive_candidate_hash_data,
+        receive_descriptor_peaks_data,
       ]
     = builtin.un_list_data(receive_scan_data)
   and {
@@ -8177,34 +8107,26 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
       ),
     }
   }
-  let stage_prefix =
-    encode_definite_array_header(30)
-      |> bytearray.concat(cbor.serialise(compact_cbor_data))
-      |> bytearray.concat(cbor.serialise(witness_set_compact_cbor_data))
-      |> bytearray.concat(
-          cbor.serialise(field_preimage_lengths_cbor_data),
-        )
-      |> bytearray.concat(cbor.serialise(context_cbor_data))
-      |> bytearray.concat(cbor.serialise(resolved_input_count_data))
-      |> bytearray.concat(
-          cbor.serialise(resolved_inputs_accumulator_data),
-        )
-      |> bytearray.concat(cbor.serialise(signer_count_data))
-      |> bytearray.concat(
-          cbor.serialise(signer_frontier_commitment_data),
-        )
-      |> bytearray.concat(cbor.serialise(resolved_item_peaks_data))
+  let stage_prefix = encode_definite_array_header(30)
+    |> bytearray.concat(cbor.serialise(compact_cbor_data))
+    |> bytearray.concat(cbor.serialise(witness_set_compact_cbor_data))
+    |> bytearray.concat(cbor.serialise(field_preimage_lengths_cbor_data))
+    |> bytearray.concat(cbor.serialise(context_cbor_data))
+    |> bytearray.concat(cbor.serialise(resolved_input_count_data))
+    |> bytearray.concat(cbor.serialise(resolved_inputs_accumulator_data))
+    |> bytearray.concat(cbor.serialise(signer_count_data))
+    |> bytearray.concat(cbor.serialise(signer_frontier_commitment_data))
+    |> bytearray.concat(cbor.serialise(resolved_item_peaks_data))
   let stage_offset = bytearray.length(stage_prefix)
-  let next_work_witness_cbor =
-    stage_prefix
-      |> bytearray.concat(#"02")
-      |> bytearray.concat(
-          builtin.slice_bytearray(
-            stage_offset + 1,
-            bytearray.length(witness.work_witness_cbor) - stage_offset - 1,
-            witness.work_witness_cbor,
-          ),
-        )
+  let next_work_witness_cbor = stage_prefix
+    |> bytearray.concat(#"02")
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          stage_offset + 1,
+          bytearray.length(witness.work_witness_cbor) - stage_offset - 1,
+          witness.work_witness_cbor,
+        ),
+      )
   and {
     cbor.serialise(control_data) == witness.work_witness_cbor,
     builtin.un_i_data(stage_data) == 1,
@@ -8228,16 +8150,8 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
     bytearray.length(builtin.un_b_data(resolution_schedule_hash_data)) == 32,
     redeemer_total_count <= max_tx_size_derived_collection_item_count,
     scan_is_complete,
-    builtin.slice_bytearray(
-      0,
-      stage_offset,
-      witness.work_witness_cbor,
-    ) == stage_prefix,
-    builtin.slice_bytearray(
-      stage_offset,
-      1,
-      witness.work_witness_cbor,
-    ) == #"01",
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == stage_prefix,
+    builtin.slice_bytearray(stage_offset, 1, witness.work_witness_cbor) == #"01",
     script_sources_stage_zero_successor_work_is_exact(
       pre,
       witness,
@@ -8336,11 +8250,12 @@ fn script_sources_stage_one(
     }
   } else {
     expect
-      RedeemerItemStepWitness {
-        redeemer_control: None,
-        control: item_control,
-        witness: item_witness,
-      } = auxiliary
+        RedeemerItemStepWitness {
+          redeemer_control: None,
+          control: item_control,
+          witness: item_witness,
+        }
+      = auxiliary
     let current_matches = and {
       common_control_is_initial,
       redeemer_item_proof_v1.control_is_well_formed(item_control),
@@ -8351,8 +8266,7 @@ fn script_sources_stage_one(
     }
     when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
       None -> False
-      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) ->
-        and {
+      Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> and {
           current_matches,
           rejected_successor_is_exact(
             pre,
@@ -9034,8 +8948,7 @@ fn mint_fold_chunk_window(
           Some(
             MintChunkWindowV1 {
               bytes: bytearray.concat(chunk_proof.chunk, next.chunk),
-              offset: control.item_cursor -
-                expected_chunk_index * bounded_item_v1.chunk_bytes,
+              offset: control.item_cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
               chunk_index: expected_chunk_index,
             },
           )
@@ -9047,8 +8960,7 @@ fn mint_fold_chunk_window(
     Some(
       MintChunkWindowV1 {
         bytes: chunk_proof.chunk,
-        offset: control.item_cursor -
-          expected_chunk_index * bounded_item_v1.chunk_bytes,
+        offset: control.item_cursor - expected_chunk_index * bounded_item_v1.chunk_bytes,
         chunk_index: expected_chunk_index,
       },
     )
@@ -9097,14 +9009,8 @@ fn script_sources_begin_mint_policy(
     chunk_proof.item_index == fold.policy_cursor,
     chunk_proof.total_length == collection_proof.item_length,
     chunk_proof.chunk_index == 0,
-    bounded_collection_v1.verify_item(
-      expected_commitment,
-      collection_proof,
-    ),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_collection_v1.verify_item(expected_commitment, collection_proof),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
     bytearray.length(policy_id) == 28,
     asset_count > 0,
     or {
@@ -9165,8 +9071,11 @@ fn script_sources_fold_mint_asset(
   next_chunk_proof: Option<bounded_item_v1.ChunkProofV1>,
 ) -> Bool {
   let fold = control.mint_fold
-  expect Some(window) =
-    mint_fold_chunk_window(fold, chunk_proof, next_chunk_proof)
+  expect Some(window) = mint_fold_chunk_window(
+    fold,
+    chunk_proof,
+    next_chunk_proof,
+  )
   let Pair(quantity_offset, asset_name) = decode_canonical_bytes_at(
     window.bytes,
     window.offset,
@@ -9175,8 +9084,7 @@ fn script_sources_fold_mint_asset(
     window.bytes,
     quantity_offset,
   )
-  let next_item_cursor = window.chunk_index * bounded_item_v1.chunk_bytes +
-    next_window_offset
+  let next_item_cursor = window.chunk_index * bounded_item_v1.chunk_bytes + next_window_offset
   let next_asset_count = fold.asset_count + 1
   let common_is_valid = and {
     bytearray.length(fold.active_policy) == 28,
@@ -9280,17 +9188,11 @@ fn script_sources_stage_six(
       script_sources_control_successor_is_exact(
         pre,
         witness,
-        ScriptSourcesControlV1 {
-          ..control,
-          stage: 7,
-          output_cursor: 0,
-        },
+        ScriptSourcesControlV1 { ..control, stage: 7, output_cursor: 0 },
       ),
     }
   } else if fold.active_policy == #"" {
-    expect
-        TransactionFieldChunkWitness { collection_proof, chunk_proof }
-      = auxiliary
+    expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
     script_sources_begin_mint_policy(
       pre,
       witness,
@@ -9774,10 +9676,7 @@ fn replace_script_sources_data_item(
       if index == 0 {
         [replacement, ..rest]
       } else {
-        [
-          item,
-          ..replace_script_sources_data_item(rest, index - 1, replacement)
-        ]
+        [item, ..replace_script_sources_data_item(rest, index - 1, replacement)]
       }
   }
 }
@@ -9825,19 +9724,14 @@ fn script_sources_stage_seven_observer_successor_is_exact(
   )
   expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let items = builtin.un_list_data(control_data)
-  let next_items =
-    replace_script_sources_data_item(
-      items,
-      18,
-      builtin.i_data(control.purpose_count + 1),
-    )
-      |> replace_script_sources_data_item(19, next_purpose_peaks_data)
-      |> replace_script_sources_data_item(27, next_observer_scan_data)
-  script_sources_stage_seven_successor_items_are_exact(
-    pre,
-    witness,
-    next_items,
+  let next_items = replace_script_sources_data_item(
+    items,
+    18,
+    builtin.i_data(control.purpose_count + 1),
   )
+    |> replace_script_sources_data_item(19, next_purpose_peaks_data)
+    |> replace_script_sources_data_item(27, next_observer_scan_data)
+  script_sources_stage_seven_successor_items_are_exact(pre, witness, next_items)
 }
 
 fn script_sources_stage_seven_receive_successor_is_exact(
@@ -9854,19 +9748,14 @@ fn script_sources_stage_seven_receive_successor_is_exact(
     encode_receive_purpose_scan_control(next_receive_scan),
   )
   expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  let next_items =
-    control_data
-      |> builtin.un_list_data
-      |> replace_script_sources_data_item(
-          20,
-          builtin.i_data(control.output_cursor + 1),
-        )
-      |> replace_script_sources_data_item(24, next_receive_scan_data)
-  script_sources_stage_seven_successor_items_are_exact(
-    pre,
-    witness,
-    next_items,
-  )
+  let next_items = control_data
+    |> builtin.un_list_data
+    |> replace_script_sources_data_item(
+        20,
+        builtin.i_data(control.output_cursor + 1),
+      )
+    |> replace_script_sources_data_item(24, next_receive_scan_data)
+  script_sources_stage_seven_successor_items_are_exact(pre, witness, next_items)
 }
 
 fn script_sources_stage_seven_finish_successor_is_exact(
@@ -9890,15 +9779,14 @@ fn script_sources_stage_seven_finish_successor_is_exact(
         empty_observer_purpose_scan_control(),
       ),
     )
-    let next_base_items =
-      items
-        |> replace_script_sources_data_item(9, builtin.i_data(8))
-        |> replace_script_sources_data_item(
-            20,
-            builtin.i_data(control.output_count),
-          )
-        |> replace_script_sources_data_item(24, next_receive_scan_data)
-        |> replace_script_sources_data_item(27, next_observer_scan_data)
+    let next_base_items = items
+      |> replace_script_sources_data_item(9, builtin.i_data(8))
+      |> replace_script_sources_data_item(
+          20,
+          builtin.i_data(control.output_count),
+        )
+      |> replace_script_sources_data_item(24, next_receive_scan_data)
+      |> replace_script_sources_data_item(27, next_observer_scan_data)
     let next_items = list.concat(
       next_base_items,
       [
@@ -9938,15 +9826,14 @@ fn script_sources_stage_seven_finish_successor_is_exact(
     expect Some(next_receive_scan_data) = cbor.deserialise(
       encode_receive_purpose_scan_control(next_receive_scan),
     )
-    let next_items =
-      items
-        |> replace_script_sources_data_item(
-            18,
-            builtin.i_data(control.purpose_count + 1),
-          )
-        |> replace_script_sources_data_item(19, next_purpose_peaks_data)
-        |> replace_script_sources_data_item(20, builtin.i_data(0))
-        |> replace_script_sources_data_item(24, next_receive_scan_data)
+    let next_items = items
+      |> replace_script_sources_data_item(
+          18,
+          builtin.i_data(control.purpose_count + 1),
+        )
+      |> replace_script_sources_data_item(19, next_purpose_peaks_data)
+      |> replace_script_sources_data_item(20, builtin.i_data(0))
+      |> replace_script_sources_data_item(24, next_receive_scan_data)
     script_sources_stage_seven_successor_items_are_exact(
       pre,
       witness,
@@ -9964,9 +9851,7 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(
-    control.compact_cbor,
-  ).body.required_observers_hash
+  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
   let observer_scan = control.observer_scan
   let active_count = if observer_scan.total_count == 0 {
     collection_proof.item_count
@@ -9998,10 +9883,7 @@ pub fn verify_script_sources_stage_seven_observer_semantics_v1(
     bytearray.length(observer_hash) == 28,
     bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
     bounded_collection_v1.verify_item(observer_commitment, collection_proof),
-    bounded_item_v1.verify_chunk(
-      collection_proof.item_commitment,
-      chunk_proof,
-    ),
+    bounded_item_v1.verify_chunk(collection_proof.item_commitment, chunk_proof),
   }
   if and {
     common_is_valid,
@@ -10039,9 +9921,7 @@ pub fn verify_script_sources_stage_seven_receive_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(
-    control.compact_cbor,
-  ).body.required_observers_hash
+  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(
     purpose_kind,
     purpose_index,
@@ -10082,9 +9962,7 @@ pub fn verify_script_sources_stage_seven_finish_semantics_v1(
   let control = script_sources_stage_seven_control_from_witness(
     witness.work_witness_cbor,
   )
-  let observer_commitment = decode_native_tx_compact_v1(
-    control.compact_cbor,
-  ).body.required_observers_hash
+  let observer_commitment = decode_native_tx_compact_v1(control.compact_cbor).body.required_observers_hash
   and {
     script_sources_stage_seven_control_is_bound(pre, witness, control),
     script_sources_stage_seven_observer_scan_is_complete(
@@ -10092,11 +9970,7 @@ pub fn verify_script_sources_stage_seven_finish_semantics_v1(
       observer_commitment,
     ),
     control.output_cursor == control.receive_scan.source_count,
-    script_sources_stage_seven_finish_successor_is_exact(
-      pre,
-      witness,
-      control,
-    ),
+    script_sources_stage_seven_finish_successor_is_exact(pre, witness, control),
   }
 }
 
@@ -10117,11 +9991,7 @@ fn script_discovery_successor_is_exact(
   let discovery_offset = work_length - bytearray.length(old_discovery)
   expect discovery_offset >= stage_offset + bytearray.length(old_stage)
   expect
-    builtin.slice_bytearray(
-      0,
-      stage_offset,
-      witness.work_witness_cbor,
-    ) == prefix
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == prefix
   expect
     builtin.slice_bytearray(
       stage_offset,
@@ -10134,24 +10004,23 @@ fn script_discovery_successor_is_exact(
       bytearray.length(old_discovery),
       witness.work_witness_cbor,
     ) == old_discovery
-  let next_control =
-    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor)
-      |> bytearray.concat(cbor.serialise(stage))
-      |> bytearray.concat(
-          builtin.slice_bytearray(
-            stage_offset + bytearray.length(old_stage),
-            discovery_offset - stage_offset - bytearray.length(old_stage),
-            witness.work_witness_cbor,
-          ),
-        )
-      |> bytearray.concat(
-          encode_definite_bytes(encode_script_discovery_control(discovery)),
-        )
-  script_sources_stage_zero_successor_work_is_exact(
-    pre,
-    witness,
-    next_control,
+  let next_control = builtin.slice_bytearray(
+    0,
+    stage_offset,
+    witness.work_witness_cbor,
   )
+    |> bytearray.concat(cbor.serialise(stage))
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          stage_offset + bytearray.length(old_stage),
+          discovery_offset - stage_offset - bytearray.length(old_stage),
+          witness.work_witness_cbor,
+        ),
+      )
+    |> bytearray.concat(
+        encode_definite_bytes(encode_script_discovery_control(discovery)),
+      )
+  script_sources_stage_zero_successor_work_is_exact(pre, witness, next_control)
 }
 
 fn script_discovery_bit(index: Int) -> Int {
@@ -10327,9 +10196,7 @@ fn script_sources_stage_eight_control_is_bound(
     discovery.matched_language_tag == -1,
     discovery.matched_source_leaf == #"",
     discovery.used_inline_bitmap >= 0,
-    discovery.used_inline_bitmap < script_discovery_bit(
-      control.source_count,
-    ),
+    discovery.used_inline_bitmap < script_discovery_bit(control.source_count),
     discovery.used_redeemer_bitmap >= 0,
     discovery.used_redeemer_bitmap < script_discovery_bit(
       control.redeemer_count,
@@ -10570,8 +10437,9 @@ fn script_sources_stage_nine_control_is_bound(
   let encoded_discovery = encode_definite_bytes(
     encode_script_discovery_control(discovery),
   )
-  let discovery_offset = bytearray.length(witness.work_witness_cbor) -
-    bytearray.length(encoded_discovery)
+  let discovery_offset = bytearray.length(witness.work_witness_cbor) - bytearray.length(
+    encoded_discovery,
+  )
   and {
     control.stage == 9,
     native_tx_proof_commitment_v1(
@@ -10613,16 +10481,8 @@ fn script_sources_stage_nine_control_is_bound(
     control.pending_source_cbor == #"",
     control.output_proof == None,
     discovery_offset >= stage_offset + 1,
-    builtin.slice_bytearray(
-      0,
-      stage_offset,
-      witness.work_witness_cbor,
-    ) == prefix,
-    builtin.slice_bytearray(
-      stage_offset,
-      1,
-      witness.work_witness_cbor,
-    ) == #"09",
+    builtin.slice_bytearray(0, stage_offset, witness.work_witness_cbor) == prefix,
+    builtin.slice_bytearray(stage_offset, 1, witness.work_witness_cbor) == #"09",
     builtin.slice_bytearray(
       discovery_offset,
       bytearray.length(encoded_discovery),
@@ -10719,10 +10579,7 @@ pub fn verify_script_sources_stage_nine_mismatch_semantics_v1(
       witness,
       control,
       9,
-      ScriptDiscoveryControlV1 {
-        ..discovery,
-        source_cursor: source_index + 1,
-      },
+      ScriptDiscoveryControlV1 { ..discovery, source_cursor: source_index + 1 },
     ),
   }
 }
@@ -10751,10 +10608,7 @@ pub fn verify_script_sources_stage_nine_native_match_semantics_v1(
     script_item_commitment,
   )
   let next_used_inline = if origin_kind == 0 {
-    script_discovery_bitmap_insert(
-      discovery.used_inline_bitmap,
-      source_index,
-    )
+    script_discovery_bitmap_insert(discovery.used_inline_bitmap, source_index)
   } else {
     discovery.used_inline_bitmap
   }
@@ -10789,13 +10643,7 @@ pub fn verify_script_sources_stage_nine_native_match_semantics_v1(
       siblings,
     ),
     script_hash == discovery.current_script_hash,
-    script_discovery_successor_is_exact(
-      pre,
-      witness,
-      control,
-      8,
-      completed,
-    ),
+    script_discovery_successor_is_exact(pre, witness, control, 8, completed),
   }
 }
 
@@ -10928,13 +10776,14 @@ fn script_sources_stage_ten(
     }
   } else if discovery.redeemer_item_control_hash == #"" {
     expect
-      RedeemerScanBeginWitness {
-        item_index,
-        item_count,
-        total_length,
-        item_commitment,
-        siblings,
-      } = auxiliary
+        RedeemerScanBeginWitness {
+          item_index,
+          item_count,
+          total_length,
+          item_commitment,
+          siblings,
+        }
+      = auxiliary
     let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
       item_commitment,
@@ -10973,11 +10822,12 @@ fn script_sources_stage_ten(
     }
   } else {
     expect
-      RedeemerItemStepWitness {
-        redeemer_control: None,
-        control: item_control,
-        witness: item_witness,
-      } = auxiliary
+        RedeemerItemStepWitness {
+          redeemer_control: None,
+          control: item_control,
+          witness: item_witness,
+        }
+      = auxiliary
     let current_matches = and {
       item_control.mode == redeemer_item_proof_v1.mode_descriptor,
       item_control.item_index == discovery.redeemer_cursor,
@@ -10996,12 +10846,10 @@ fn script_sources_stage_ten(
                 descriptor.item_index,
                 descriptor.item_commitment,
               )
-              if
-                redeemer_descriptor_matches_current_purpose(
-                  descriptor,
-                  discovery,
-                )
-              {
+              if redeemer_descriptor_matches_current_purpose(
+                descriptor,
+                discovery,
+              ) {
                 let next_execution = append_script_execution(
                   discovery,
                   current_script_purpose_leaf(discovery),
@@ -11144,9 +10992,7 @@ fn script_sources_stage_ten_control_is_bound(
     },
     bytearray.length(discovery.matched_source_leaf) == 32,
     discovery.used_inline_bitmap >= 0,
-    discovery.used_inline_bitmap < script_discovery_bit(
-      control.source_count,
-    ),
+    discovery.used_inline_bitmap < script_discovery_bit(control.source_count),
     discovery.used_redeemer_bitmap >= 0,
     discovery.used_redeemer_bitmap < script_discovery_bit(
       control.redeemer_count,
@@ -11231,9 +11077,7 @@ pub fn encode_native_scripts_witness_v1(
       )
     |> bytearray.concat(cbor.serialise(execution_cursor))
     |> bytearray.concat(cbor.serialise(language_bitmap))
-    |> bytearray.concat(
-        encode_definite_bytes(control.resolution_schedule_hash),
-      )
+    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
 }
 
 fn script_sources_stage_eleven(
@@ -11381,9 +11225,7 @@ fn script_sources_stage_eleven_control_is_bound(
     discovery.matched_language_tag == -1,
     discovery.matched_source_leaf == #"",
     discovery.used_inline_bitmap >= 0,
-    discovery.used_inline_bitmap < script_discovery_bit(
-      control.source_count,
-    ),
+    discovery.used_inline_bitmap < script_discovery_bit(control.source_count),
     discovery.used_redeemer_bitmap >= 0,
     discovery.used_redeemer_bitmap < script_discovery_bit(
       control.redeemer_count,
@@ -11444,10 +11286,7 @@ pub fn verify_script_sources_stage_eleven_source_semantics_v1(
     ),
     if and {
       origin_kind == 0,
-      !script_discovery_bitmap_has(
-        discovery.used_inline_bitmap,
-        source_index,
-      ),
+      !script_discovery_bitmap_has(discovery.used_inline_bitmap, source_index),
     } {
       rejected_successor_is_exact(
         pre,
@@ -11490,13 +11329,14 @@ fn script_sources_stage_twelve(
     }
   } else if discovery.redeemer_item_control_hash == #"" {
     expect
-      RedeemerScanBeginWitness {
-        item_index,
-        item_count,
-        total_length,
-        item_commitment,
-        siblings,
-      } = auxiliary
+        RedeemerScanBeginWitness {
+          item_index,
+          item_count,
+          total_length,
+          item_commitment,
+          siblings,
+        }
+      = auxiliary
     let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
       item_commitment,
@@ -11535,11 +11375,12 @@ fn script_sources_stage_twelve(
     }
   } else {
     expect
-      RedeemerItemStepWitness {
-        redeemer_control: None,
-        control: item_control,
-        witness: item_witness,
-      } = auxiliary
+        RedeemerItemStepWitness {
+          redeemer_control: None,
+          control: item_control,
+          witness: item_witness,
+        }
+      = auxiliary
     let current_matches = and {
       item_control.mode == redeemer_item_proof_v1.mode_descriptor,
       item_control.item_index == discovery.redeemer_cursor,
@@ -11553,8 +11394,7 @@ fn script_sources_stage_twelve(
         if next.stage == redeemer_item_proof_v1.stage_terminal {
           when redeemer_item_proof_v1.descriptor_v1(next) is {
             None -> False
-            Some(descriptor) ->
-              and {
+            Some(descriptor) -> and {
                 current_matches,
                 if !script_discovery_bitmap_has(
                   discovery.used_redeemer_bitmap,
@@ -11669,9 +11509,7 @@ fn script_sources_stage_twelve_control_is_bound(
     discovery.matched_language_tag == -1,
     discovery.matched_source_leaf == #"",
     discovery.used_inline_bitmap >= 0,
-    discovery.used_inline_bitmap < script_discovery_bit(
-      control.source_count,
-    ),
+    discovery.used_inline_bitmap < script_discovery_bit(control.source_count),
     discovery.used_redeemer_bitmap >= 0,
     discovery.used_redeemer_bitmap < script_discovery_bit(
       control.redeemer_count,
@@ -11907,13 +11745,13 @@ fn script_sources_control_is_bound(
         )
         and {
           pending.source_index == control.source_count,
-          control.source_total_count == 0 ||
-            pending.source_total_count == control.source_total_count,
+          control.source_total_count == 0 || pending.source_total_count == control.source_total_count,
         }
       }
     } else if control.stage == 1 {
-      bytearray.length(control.pending_source_cbor) == 0
-        || bytearray.length(control.pending_source_cbor) == 32
+      bytearray.length(control.pending_source_cbor) == 0 || bytearray.length(
+        control.pending_source_cbor,
+      ) == 32
     } else {
       control.pending_source_cbor == #""
     },
@@ -12572,9 +12410,7 @@ fn native_scripts_control_from_witness(
     execution_peaks: decode_frontier_peaks(execution_peaks_data),
     execution_cursor: builtin.un_i_data(execution_cursor_data),
     language_bitmap: builtin.un_i_data(language_bitmap_data),
-    resolution_schedule_hash: builtin.un_b_data(
-      resolution_schedule_hash_data,
-    ),
+    resolution_schedule_hash: builtin.un_b_data(resolution_schedule_hash_data),
   }
 }
 
@@ -12629,9 +12465,7 @@ pub fn encode_native_scripts_control_v1(
       )
     |> bytearray.concat(cbor.serialise(control.execution_cursor))
     |> bytearray.concat(cbor.serialise(control.language_bitmap))
-    |> bytearray.concat(
-        encode_definite_bytes(control.resolution_schedule_hash),
-      )
+    |> bytearray.concat(encode_definite_bytes(control.resolution_schedule_hash))
 }
 
 fn native_resolved_context_is_well_formed(
@@ -12876,10 +12710,7 @@ fn verify_native_execution_descriptor_step(
         redeemer_leaf == #"",
         chunk_proof.chunk_index == 0,
         chunk_proof.total_length == script_total_length,
-        bounded_item_v1.verify_chunk(
-          script_item_commitment,
-          chunk_proof,
-        ),
+        bounded_item_v1.verify_chunk(script_item_commitment, chunk_proof),
         header.language_tag == 0,
         validation_merkle_v1.frontier_is_well_formed(
           control.signer_count,
@@ -12984,12 +12815,7 @@ fn verify_native_scripts(
         ),
       }
     } else {
-      verify_native_execution_descriptor_step(
-        pre,
-        witness,
-        auxiliary,
-        control,
-      )
+      verify_native_execution_descriptor_step(pre, witness, auxiliary, control)
     },
   }
 }
@@ -13321,8 +13147,9 @@ fn cek_redeemer_context_control_is_well_formed(
         control.cursor < redeemer_count,
         bytearray.length(control.active_scan_hash) == 32,
         bytearray.length(control.active_redeemer_leaf) == 32,
-        control.active_purpose == empty_data_summary_v1()
-          || bytearray.length(control.active_purpose.root) == 32,
+        control.active_purpose == empty_data_summary_v1() || bytearray.length(
+          control.active_purpose.root,
+        ) == 32,
       }
     },
   }
@@ -13445,9 +13272,7 @@ fn observer_context_is_partial(control: CekContextControlV1) -> Bool {
     if control.observer_items.length == 0 {
       and {
         control.observer_count == 0,
-        control.observer_items == empty_observer_items_v1(
-          control.language_tag,
-        ),
+        control.observer_items == empty_observer_items_v1(control.language_tag),
         control.previous_observer == #"",
       }
     } else {
@@ -13471,9 +13296,7 @@ fn observer_context_is_complete(control: CekContextControlV1) -> Bool {
     ),
     if control.observer_count == 0 {
       and {
-        control.observer_items == empty_observer_items_v1(
-          control.language_tag,
-        ),
+        control.observer_items == empty_observer_items_v1(control.language_tag),
         control.previous_observer == #"",
       }
     } else {
@@ -14265,8 +14088,9 @@ fn verify_script_integrity_compact(
   and {
     auxiliary == NoAuxiliaryWitness,
     stage == 1,
-    witness.work_witness_cbor ==
-      encode_script_integrity_compact_witness_v1(control),
+    witness.work_witness_cbor == encode_script_integrity_compact_witness_v1(
+      control,
+    ),
     witness.claimed_successor.phase == validation_trace_v1.ScriptIntegrity,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptIntegrity,
@@ -14307,12 +14131,11 @@ fn verify_script_integrity_witness_set(
     bytearray.length(script_integrity_hash) == 32,
     bytearray.length(witness_set_hash) == 32,
     blake2b_256(control.witness_set_compact_cbor) == witness_set_hash,
-    witness.work_witness_cbor ==
-      encode_script_integrity_witness_set_witness_v1(
-        control,
-        script_integrity_hash,
-        witness_set_hash,
-      ),
+    witness.work_witness_cbor == encode_script_integrity_witness_set_witness_v1(
+      control,
+      script_integrity_hash,
+      witness_set_hash,
+    ),
     witness.claimed_successor.phase == validation_trace_v1.ScriptIntegrity,
     witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptIntegrity,
@@ -14756,13 +14579,14 @@ fn verify_cek_redeemer_selection(
 ) -> Bool {
   if context_control.redeemer_context_control_hash == #"" {
     expect
-      RedeemerScanBeginWitness {
-        item_index,
-        item_count,
-        total_length,
-        item_commitment,
-        siblings,
-      } = auxiliary
+        RedeemerScanBeginWitness {
+          item_index,
+          item_count,
+          total_length,
+          item_commitment,
+          siblings,
+        }
+      = auxiliary
     let leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_index,
       item_commitment,
@@ -14804,11 +14628,12 @@ fn verify_cek_redeemer_selection(
     }
   } else {
     expect
-      RedeemerItemStepWitness {
-        redeemer_control: None,
-        control: item_control,
-        witness: item_witness,
-      } = auxiliary
+        RedeemerItemStepWitness {
+          redeemer_control: None,
+          control: item_control,
+          witness: item_witness,
+        }
+      = auxiliary
     let leaf = script_proof_v1.redeemer_item_leaf_hash(
       item_control.item_index,
       item_control.item_commitment,
@@ -15193,12 +15018,7 @@ pub fn verify_cek_observer_context_step(
         ),
       }
     } else {
-      expect
-          TransactionFieldChunkWitness {
-            collection_proof,
-            chunk_proof,
-          }
-        = auxiliary
+      expect TransactionFieldChunkWitness { collection_proof, chunk_proof } = auxiliary
       let active_count = if context_control.observer_count == 0 {
         collection_proof.item_count
       } else {
@@ -15224,10 +15044,7 @@ pub fn verify_cek_observer_context_step(
         chunk_proof.total_length == 28,
         chunk_proof.chunk_index == 0,
         bounded_item_v1.chunk_count(chunk_proof.total_length) == 1,
-        bounded_collection_v1.verify_item(
-          observer_commitment,
-          collection_proof,
-        ),
+        bounded_collection_v1.verify_item(observer_commitment, collection_proof),
         bounded_item_v1.verify_chunk(
           collection_proof.item_commitment,
           chunk_proof,
@@ -15289,10 +15106,7 @@ fn verify_cek_mint_context_init(
         pre,
         witness,
         native_control,
-        CekContextControlV1 {
-          ..context_control,
-          stage: 8,
-        },
+        CekContextControlV1 { ..context_control, stage: 8 },
         execution_cursor,
         completed_cpu,
         completed_memory,
@@ -15647,8 +15461,7 @@ fn verify_cek_redeemer_data_step(
         ),
         hash_cek_redeemer_context_control_v1(redeemer_control) == context_control.redeemer_context_control_hash,
         item_control.item_count == native_control.redeemer_count,
-        item_control.item_index
-          == native_control.redeemer_count - redeemer_control.cursor - 1,
+        item_control.item_index == native_control.redeemer_count - redeemer_control.cursor - 1,
         script_proof_v1.redeemer_item_leaf_hash(
           item_control.item_index,
           item_control.item_commitment,
@@ -15661,37 +15474,35 @@ fn verify_cek_redeemer_data_step(
         None -> False
         Some(redeemer_item_proof_v1.RedeemerItemProofInvalid) -> False
         Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced { control: next }) -> {
-          let next_redeemers =
-            if next.stage == redeemer_item_proof_v1.stage_terminal {
-              if next.mode == redeemer_item_proof_v1.mode_descriptor {
-                CekRedeemerContextControlV1 {
-                  ..redeemer_control,
-                  cursor: redeemer_control.cursor + 1,
-                  active_scan_hash: #"",
-                  active_redeemer_leaf: #"",
-                  active_purpose: empty_data_summary_v1(),
-                }
-              } else {
-                expect Some(summary) = redeemer_item_proof_v1.finalize_v1(next)
-                let next_current =
-                  if redeemer_control.active_redeemer_leaf == context_control.redeemer_leaf {
-                    summary
-                  } else {
-                    redeemer_control.current_redeemer
-                  }
-                CekRedeemerContextControlV1 {
-                  cursor: redeemer_control.cursor + 1,
-                  map_items: cek_data_v1.prepend_data_pair_summary_v1(
-                    redeemer_control.active_purpose,
-                    summary,
-                    redeemer_control.map_items,
-                  ),
-                  active_scan_hash: #"",
-                  active_redeemer_leaf: #"",
-                  active_purpose: empty_data_summary_v1(),
-                  current_redeemer: next_current,
-                }
+          let next_redeemers = if next.stage == redeemer_item_proof_v1.stage_terminal {
+            if next.mode == redeemer_item_proof_v1.mode_descriptor {
+              CekRedeemerContextControlV1 {
+                ..redeemer_control,
+                cursor: redeemer_control.cursor + 1,
+                active_scan_hash: #"",
+                active_redeemer_leaf: #"",
+                active_purpose: empty_data_summary_v1(),
               }
+            } else {
+              expect Some(summary) = redeemer_item_proof_v1.finalize_v1(next)
+              let next_current = if redeemer_control.active_redeemer_leaf == context_control.redeemer_leaf {
+                summary
+              } else {
+                redeemer_control.current_redeemer
+              }
+              CekRedeemerContextControlV1 {
+                cursor: redeemer_control.cursor + 1,
+                map_items: cek_data_v1.prepend_data_pair_summary_v1(
+                  redeemer_control.active_purpose,
+                  summary,
+                  redeemer_control.map_items,
+                ),
+                active_scan_hash: #"",
+                active_redeemer_leaf: #"",
+                active_purpose: empty_data_summary_v1(),
+                current_redeemer: next_current,
+              }
+            }
           } else {
             CekRedeemerContextControlV1 {
               ..redeemer_control,
@@ -16471,17 +16282,15 @@ fn value_and_mint_stage_two(
       asset_index == control.replay_asset_cursor - 1,
     } {
       let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      if
-        ledger_output_commitment_v1.verify_asset_membership(
-          descriptor,
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          asset_peaks,
-          asset_siblings,
-        )
-      {
+      if ledger_output_commitment_v1.verify_asset_membership(
+        descriptor,
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        asset_peaks,
+        asset_siblings,
+      ) {
         when
           apply_value_asset_mutation(
             control.value_accumulator,
@@ -16545,11 +16354,7 @@ fn value_and_mint_stage_three(
     }
   } else if control.output_asset_cursor == 0 {
     expect
-        ValueOutputDescriptorWitness {
-          output_index,
-          descriptor_cbor,
-          siblings,
-        }
+        ValueOutputDescriptorWitness { output_index, descriptor_cbor, siblings }
       = auxiliary
     if and {
       output_index == control.output_cursor,
@@ -16607,17 +16412,15 @@ fn value_and_mint_stage_three(
       blake2b_256(descriptor_cbor) == control.replay_value_hash,
     } {
       let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-      if
-        ledger_output_commitment_v1.verify_asset_membership(
-          descriptor,
-          asset_index,
-          policy_id,
-          asset_name,
-          quantity,
-          asset_peaks,
-          asset_siblings,
-        )
-      {
+      if ledger_output_commitment_v1.verify_asset_membership(
+        descriptor,
+        asset_index,
+        policy_id,
+        asset_name,
+        quantity,
+        asset_peaks,
+        asset_siblings,
+      ) {
         when
           apply_value_asset_mutation(
             control.value_accumulator,
@@ -17842,11 +17645,7 @@ pub fn verify_script_integrity_authentication_semantics_v1(
   and {
     pre.phase == validation_trace_v1.ScriptIntegrity,
     structural_transition_is_valid(pre, witness),
-    verify_script_integrity_authentication(
-      pre,
-      witness,
-      NoAuxiliaryWitness,
-    ),
+    verify_script_integrity_authentication(pre, witness, NoAuxiliaryWitness),
   }
 }
 

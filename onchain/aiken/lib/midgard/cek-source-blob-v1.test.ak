@@ -42,8 +42,9 @@ test streams_an_authenticated_source_span_into_the_canonical_blob_root() {
   and {
     first_span.absolute_start == 73,
     first_span.length == 64,
-    cek_source_blob_v1.finalize_v1(terminal)
-      == Some(cek_proof_v1.hash_blob_chunk_v1(source)),
+    cek_source_blob_v1.finalize_v1(terminal) == Some(
+      cek_proof_v1.hash_blob_chunk_v1(source),
+    ),
   }
 }
 
@@ -57,12 +58,10 @@ test decodes_the_typescript_multileaf_terminal_control() {
     control.source_length == 4096,
     control.frontier.count == 2,
     control.frontier.byte_length == 4096,
-    cek_source_blob_v1.finalize_v1(control)
-      == Some(
-          #"eeae7280d2825a069ee81fdde1b202e15766bb7bf1689a514224772d104bc59d",
-        ),
-    cek_source_blob_v1.encode_control_v1(control)
-      == typescript_terminal_control_cbor,
+    cek_source_blob_v1.finalize_v1(control) == Some(
+      #"eeae7280d2825a069ee81fdde1b202e15766bb7bf1689a514224772d104bc59d",
+    ),
+    cek_source_blob_v1.encode_control_v1(control) == typescript_terminal_control_cbor,
   }
 }
 
@@ -70,13 +69,7 @@ test rejects_missing_and_surplus_source_bytes() {
   let initial = cek_source_blob_v1.initial_control_v1(9, 129)
   and {
     cek_source_blob_v1.step_v1(initial, None) == None,
-    cek_source_blob_v1.step_v1(
-      initial,
-      Some(builtin.replicate_byte(104, 106)),
-    ) == None,
-    cek_source_blob_v1.step_v1(
-      initial,
-      Some(builtin.replicate_byte(106, 106)),
-    ) == None,
+    cek_source_blob_v1.step_v1(initial, Some(builtin.replicate_byte(104, 106))) == None,
+    cek_source_blob_v1.step_v1(initial, Some(builtin.replicate_byte(106, 106))) == None,
   }
 }
