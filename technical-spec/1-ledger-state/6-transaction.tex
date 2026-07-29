@@ -122,8 +122,11 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       Canonical V1 admits public-key and native-script credentials together
       with PlutusV3 and MidgardV1 programs and script payment credentials;
       unknown or pre-Conway language versions fail closed.
-    \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
-      This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
+    \item[No transaction metadata.] Midgard prohibits metadata in L2
+      transactions. Canonical V1 therefore requires
+      \code{auxiliary\_data\_hash} to equal the empty-null root; a non-empty
+      hash fails closed because no authenticated auxiliary-data preimage is
+      carried by the transaction.
     \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.
       Datum-hash outputs are invalid in Midgard L2 transactions and deposits, and transactions do not carry a datum-witness bucket.
       This avoids maintaining a datum-hash to datum witness map and makes each UTxO's script-visible datum fully determined by the UTxO itself.

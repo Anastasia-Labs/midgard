@@ -1,3 +1,6 @@
+use aiken/primitive/bytearray
+use midgard/bounded_item_v1
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_versioned_script}
 use midgard/fraud_proofs/native_tx/types.{
   CertRedeemer, MidgardExecutionUnits, MidgardRedeemerWitness, MidgardV1Script,
   MidgardVersionedScript, MintRedeemer, PlutusV3Script, ProposeRedeemer,
@@ -78,6 +81,34 @@ test signer_leaf_and_seven_leaf_frontier_root_match_typescript() {
     signer_leaf == #"9e4bab3a1b4ca49640fe5c54486aac6a1183fb7da45eec6b30d46382d8f3418b",
     frontier.count == 7,
     validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks) == #"3f81171ae98f8745f125cbe28461e23204fe4f39e609e9ac4be7537b9dac126f",
+  }
+}
+
+test inline_script_source_binds_raw_field_six_and_rejects_field_seven() {
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: #"010203",
+  }
+  let script_cbor = encode_midgard_versioned_script(script)
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let canonical = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_for_field_six = script_proof_v1.inline_source_leaf_hash(
+    0,
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    bounded_item_v1.from_bytes(6, 0, script_cbor),
+  )
+  let source_for_field_seven = script_proof_v1.inline_source_leaf_hash(
+    0,
+    3,
+    script_hash,
+    bytearray.length(script_cbor),
+    bounded_item_v1.from_bytes(7, 0, script_cbor),
+  )
+  and {
+    canonical == source_for_field_six,
+    canonical != source_for_field_seven,
   }
 }
 

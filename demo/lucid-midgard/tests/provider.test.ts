@@ -1,5 +1,9 @@
 import { decodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import {
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
@@ -81,10 +85,15 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
   }).toString("hex"),
 });
 
+const submitTxHex =
+  "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000";
 const submitTx = {
-  txHex:
-    "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
-  txId: "3a3ecbf11a2b49bc0fb6951dfc33be97b1e9f20442413890236034420cc6c2af",
+  txHex: submitTxHex,
+  txId: computeMidgardNativeTxIdV1(
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      Buffer.from(submitTxHex, "hex"),
+    ),
+  ).toString("hex"),
 };
 
 const submitAdmission = (

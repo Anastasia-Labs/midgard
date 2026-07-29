@@ -60,11 +60,12 @@ this with the transaction's `fee`, the candidate's `derived.mintDelta`, and its
 `derived.outputSum`. If the result is not zero, tested by
 **`isZeroValueDelta`**, the transaction is rejected `E_VALUE_NOT_PRESERVED`.
 
-The signed mint term is normative canonical V1 behavior. Every non-zero
-non-Ada policy must also pass its native, PlutusV3, or MidgardV1 policy
-execution, while the value equation authenticates the resulting ledger delta.
-Release activation remains closed until the deployment-bound L1 dispute path
-covers both policy authorization and value preservation.
+Canonical V1 enables mint and burn. Phase A authenticates the canonical mint
+field, and the signed mint delta participates in value preservation exactly as
+shown above. Every non-zero non-Ada policy must also pass its native, PlutusV3,
+or MidgardV1 execution; Ada minting remains forbidden. Release activation
+remains closed until the deployment-bound L1 dispute path covers both policy
+authorization and value preservation.
 
 <Callout type="info">
 The reject detail is produced by **`describeValueDelta`**, which renders the

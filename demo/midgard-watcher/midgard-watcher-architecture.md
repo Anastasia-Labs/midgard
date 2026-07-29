@@ -1,13 +1,34 @@
 # Midgard Watcher Node Architecture
 
-Status: Proposed target architecture; no independent production watcher is
-implemented in this directory.
+Status: Implemented fail-closed foundation; production verification,
+submission, and acceptance gates remain incomplete.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
-The working DA/watcher service is `demo/da-committee-node`. Proof coverage and
+The independent watcher foundation is implemented in this package. The
+DA-committee service remains in `demo/da-committee-node`. Proof coverage and
 binding gaps are tracked in `../../docs/fault-proofs/`; this design must not be
 used as evidence that independent challenges are production-ready.
+
+## Cardano L1 Source Modes
+
+The watcher has one explicit, mutually exclusive L1-source discriminator:
+`local_node` or `external_providers`.
+
+- In `local_node`, a watcher-operated Cardano full node is the sole
+  chain-consensus authority. Chain sync supplies roll-forward and rollback
+  events. Ogmios, Kupo/Kupmios, or db-sync may query the same node, but they are
+  aligned index surfaces—not independent providers. A stale, wrong-network, or
+  incompatible-chain-point query result fails closed.
+- In `external_providers`, the watcher has no local chain authority and
+  requires at least two operationally independent configured providers.
+  Same-network and compatible-chain-point agreement is mandatory; disagreement
+  quarantines protocol decisions.
+
+W14 consumes canonical node-derived transaction, output, datum, and rollback
+observations. Cardano consensus and the deployed validators establish L1
+transaction validity; the watcher indexes accepted state and does not
+reimplement the state-queue validator.
 
 This note summarizes what a Midgard watcher is, why it exists, and how a production watcher node should work.
 It is based on a review of the Midgard protocol specification, Aiken

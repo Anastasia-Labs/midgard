@@ -595,6 +595,12 @@ const sourceFixture = (
           network: "Preprod",
           authorityNodeId: localSource.authorityNodeId,
           genesisIdentitySha256: localSource.chainSync.genesisIdentitySha256,
+          queryServices: [
+            {
+              kind: "ogmios",
+              providerId: localProviders[1].providerId,
+            },
+          ],
         },
       }
     : {
@@ -603,6 +609,10 @@ const sourceFixture = (
         consistencyConfig: {
           sourceMode: "external_providers",
           network: "Preprod",
+          providers: providers.map((provider) => ({
+            providerId: provider.providerId,
+            operatorIdentitySha256: provider.source.operatorIdentitySha256,
+          })),
         },
       };
 
@@ -1191,6 +1201,15 @@ type InitStage = Readonly<{
   journal: WatcherProofThreadJournalV1;
 }>;
 
+type ProofThreadFinalityLineage = NonNullable<
+  WatcherProofThreadPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const proofThreadFinalityLineageByStateDigest = new Map<
+  string,
+  ProofThreadFinalityLineage
+>();
+
 const initStage = ({
   phase,
   previousState,
@@ -1214,11 +1233,34 @@ const initStage = ({
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(provider, fixture, depth),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const sourceStore = suppliedSource ?? baseStore(fixture);
   const store = appendPublicStore({
     source: sourceStore,
@@ -1277,11 +1319,9 @@ const initStage = ({
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },
@@ -1581,11 +1621,34 @@ const transitionStage = ({
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(provider, fixture, depth, ordinal),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const store = appendTransitionStore({
     source: sourceStore,
     block: normalized[0]!,
@@ -1642,11 +1705,9 @@ const transitionStage = ({
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth, ordinal),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },

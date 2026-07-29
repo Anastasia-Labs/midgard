@@ -1,19 +1,23 @@
+import { appendFile, writeFile } from "node:fs/promises";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  kupoIndexedSlotFromHealth,
+  type CanonicalChainPoint,
+  type ChainSyncEventBatch,
+  fetchKupoCheckpoint,
+  FileChainSyncConsumerCursorStore,
+  FileChainSyncCursorStore,
   kupmiosChainPointResolver,
+  LocalNodeChainAuthority,
   LocalNodeStateQueueProvider,
   lucidChainPointResolver,
   MultiStateQueueProvider,
-  OgmiosChainSyncAuthority,
-  ogmiosWebSocketEndpoint,
+  OgmiosChainSyncEventSource,
   providerFromUrl,
   stateQueueUtxosToObservedNodes,
-  type OgmiosPoint,
-  type TipAwareStateQueueProvider,
 } from "../src/l1/provider.js";
 import { hashBlockHeaderV1 } from "../src/l1/state-queue-scanner.js";
 import {
@@ -24,36 +28,6 @@ import {
 } from "./helpers.js";
 
 describe("L1 provider adapters", () => {
-  it("parses Kupo's JSON health contract and rejects stale authority states", () => {
-    expect(
-      kupoIndexedSlotFromHealth({
-        connection_status: "connected",
-        most_recent_checkpoint: 123,
-        most_recent_node_tip: 123,
-      }),
-    ).toBe(123);
-    expect(() =>
-      kupoIndexedSlotFromHealth({
-        connection_status: "disconnected",
-        most_recent_checkpoint: 123,
-        most_recent_node_tip: 123,
-      }),
-    ).toThrow(/not connected/u);
-    expect(() =>
-      kupoIndexedSlotFromHealth({
-        connection_status: "connected",
-        most_recent_checkpoint: null,
-        most_recent_node_tip: 123,
-      }),
-    ).toThrow(/valid indexed checkpoint/u);
-    expect(ogmiosWebSocketEndpoint("http://ogmios.local:1337")).toBe(
-      "ws://ogmios.local:1337/",
-    );
-    expect(ogmiosWebSocketEndpoint("https://ogmios.example/rpc")).toBe(
-      "wss://ogmios.example/rpc",
-    );
-  });
-
   it("keeps fixture providers for deterministic integration tests", async () => {
     const dir = await tempDir();
     const path = await writeJson(dir, "state-queue.json", []);
@@ -119,6 +93,7 @@ describe("L1 provider adapters", () => {
           },
         },
       ],
+      currentChainPoint: async () => externalPoint("provider-a"),
     };
     const secondNode = makeObservedNode({ header, headerHash, depth: 3 });
     const second = {
@@ -131,6 +106,7 @@ describe("L1 provider adapters", () => {
           },
         },
       ],
+      currentChainPoint: async () => externalPoint("provider-b"),
     };
     const provider = new MultiStateQueueProvider([first, second], {
       sourceMode: "external_providers",
@@ -187,272 +163,583 @@ describe("L1 provider adapters", () => {
     );
   });
 
-  it("fails closed when a local query tip is stale or a rollback crosses the read", async () => {
-    const point: OgmiosPoint = {
-      slot: 100,
-      id: "aa".repeat(32),
-      height: 50,
-    };
-    const stalePoint: OgmiosPoint = {
-      slot: 99,
-      id: "bb".repeat(32),
-      height: 49,
-    };
-    const query = (tip: OgmiosPoint): TipAwareStateQueueProvider => ({
-      fetchStateQueueNodes: async () => [],
-      fetchStateQueueObservation: async () => ({ nodes: [], tip }),
+  it("durably replays roll-forward and rollback chain-sync events", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const point = (slot: number, byte: string): CanonicalChainPoint => ({
+      network: "Preview",
+      slot,
+      blockHash: byte.repeat(64),
+      providerSource: "chain-sync:node-a",
+      observedAt: "2026-07-28T00:00:00.000Z",
     });
-    const stableAuthority = {
-      synchronize: async () => ({ tip: point, rollbackSequence: 0 }),
-    };
-    const stale = new LocalNodeStateQueueProvider({
-      authority: stableAuthority,
-      authorityIdentity: "node-a",
-      queryProviders: [query(stalePoint)],
-      identities: ["query:node-a:0"],
-    });
-    await expect(stale.fetchStateQueueNodes()).rejects.toThrow(
-      /stale or not aligned/u,
-    );
-
-    let calls = 0;
-    const rolling = new LocalNodeStateQueueProvider({
-      authority: {
-        synchronize: async () => ({
-          tip: point,
-          rollbackSequence: calls++,
-        }),
+    const point1 = point(1, "a");
+    const point2 = point(2, "b");
+    const initialBatches: readonly ChainSyncEventBatch[] = [
+      {
+        event: { direction: "roll_forward", point: point1 },
+        tip: point2,
       },
-      authorityIdentity: "node-a",
-      queryProviders: [query(point)],
-      identities: ["query:node-a:0"],
-    });
-    await expect(rolling.fetchStateQueueNodes()).rejects.toThrow(
-      /rollback occurred/u,
+      {
+        event: { direction: "roll_forward", point: point2 },
+        tip: point2,
+      },
+    ];
+    const initial = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async (cursor) => initialBatches[(cursor?.sequence ?? -1) + 1]!,
+      },
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
     );
+    await expect(initial.synchronizeToTip()).resolves.toEqual(point2);
+    await expect(initial.replay(-1)).resolves.toMatchObject([
+      { direction: "roll_forward", point: { slot: 1 } },
+      { direction: "roll_forward", point: { slot: 2 } },
+    ]);
+
+    const point3 = point(3, "c");
+    let resumedCalls = 0;
+    const resumed = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => {
+          const batch: ChainSyncEventBatch =
+            resumedCalls === 0
+              ? {
+                  event: { direction: "roll_backward", point: point1 },
+                  tip: point3,
+                }
+              : {
+                  event: { direction: "roll_forward", point: point3 },
+                  tip: point3,
+                };
+          resumedCalls += 1;
+          return batch;
+        },
+      },
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)),
+    );
+    await expect(resumed.synchronizeToTip()).resolves.toEqual(point3);
+    await expect(resumed.currentCursor()).resolves.toMatchObject({
+      sequence: 3,
+      rollbackGeneration: 1,
+      point: { slot: 3 },
+    });
+    await expect(resumed.replay(1)).resolves.toMatchObject([
+      { direction: "roll_backward", point: { slot: 1 } },
+      { direction: "roll_forward", point: { slot: 3 } },
+    ]);
   });
 
-  it("consumes Ogmios roll-backward events and advances onto the new tip", async () => {
-    const firstTip = {
-      slot: 100,
-      id: "aa".repeat(32),
-      height: 50,
+  it("recovers a valid journal append that reached disk before its cursor metadata", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const firstPoint = externalPoint("chain-sync:node-a", 1, "aa");
+    const secondPoint = externalPoint("chain-sync:node-a", 2, "bb");
+    const store = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await store.append(
+      { direction: "roll_forward", point: firstPoint },
+      { sequence: 0, point: firstPoint, rollbackGeneration: 0 },
+    );
+
+    const recoveredCursor = {
+      sequence: 1,
+      point: secondPoint,
+      rollbackGeneration: 0,
     };
-    const replacementTip = {
-      slot: 101,
-      id: "cc".repeat(32),
-      height: 50,
+    await appendFile(
+      `${cursorPath}.events.jsonl`,
+      `${JSON.stringify({
+        sequence: 1,
+        event: { direction: "roll_forward", point: secondPoint },
+        cursor: recoveredCursor,
+      })}\n`,
+    );
+
+    const restarted = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await expect(restarted.load()).resolves.toEqual(recoveredCursor);
+    await expect(restarted.replay(0)).resolves.toEqual([
+      { direction: "roll_forward", point: secondPoint },
+    ]);
+  });
+
+  it("fails closed when cursor metadata is ahead of a lost journal tail", async () => {
+    const dir = await tempDir();
+    const cursorPath = `${dir}/chain-sync-cursor.json`;
+    const point = externalPoint("chain-sync:node-a", 1, "aa");
+    const store = new FileChainSyncCursorStore(cursorPath, "11".repeat(32));
+    await store.append(
+      { direction: "roll_forward", point },
+      { sequence: 0, point, rollbackGeneration: 0 },
+    );
+    await writeFile(`${cursorPath}.events.jsonl`, "");
+
+    await expect(
+      new FileChainSyncCursorStore(cursorPath, "11".repeat(32)).load(),
+    ).rejects.toThrow(/cursor does not match its durable event journal/u);
+  });
+
+  it("persists an authority-bound monotonic rollback consumer cursor", async () => {
+    const dir = await tempDir();
+    const path = `${dir}/chain-sync-consumer.json`;
+    const fingerprint = "11".repeat(32);
+    const firstPoint = externalPoint("chain-sync:node-a", 10, "aa");
+    const secondPoint = externalPoint("chain-sync:node-a", 12, "bb");
+    const first = {
+      sequence: 4,
+      point: firstPoint,
+      rollbackGeneration: 0,
     };
-    const nextTip = {
-      slot: 102,
-      id: "dd".repeat(32),
-      height: 51,
+    const second = {
+      sequence: 6,
+      point: secondPoint,
+      rollbackGeneration: 1,
     };
-    const nextTipWire = {
-      slot: nextTip.slot,
-      id: nextTip.id,
-      blockNo: nextTip.height,
-    };
-    const originalWebSocket = (globalThis as unknown as { WebSocket?: unknown })
-      .WebSocket;
-    let session = 0;
-    const methods: string[] = [];
+    const store = new FileChainSyncConsumerCursorStore(path, fingerprint);
+
+    await store.save(first);
+    await expect(
+      new FileChainSyncConsumerCursorStore(path, fingerprint).load(),
+    ).resolves.toEqual(first);
+    await store.save(second);
+    await expect(store.save(first)).rejects.toThrow(/cannot move backwards/u);
+    await expect(
+      new FileChainSyncConsumerCursorStore(path, "22".repeat(32)).load(),
+    ).rejects.toThrow(/authority fingerprint/u);
+  });
+
+  it("bootstraps a mature Ogmios chain at a node-derived checkpoint without replaying from origin", async () => {
+    const dir = await tempDir();
+    const matureTip = { slot: 1_000_000, id: "bb".repeat(32) };
+    let socketCount = 0;
+    let nextBlockCount = 0;
     class FakeWebSocket {
-      private readonly listeners = new Map<
-        string,
-        Set<(event: { data: unknown }) => void>
-      >();
-      private readonly session: number;
-      private nextBlockCount = 0;
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
 
       constructor(_url: string) {
-        session += 1;
-        this.session = session;
-        queueMicrotask(() => this.emit("open", { data: undefined }));
-      }
-
-      addEventListener(
-        type: string,
-        listener: (event: { data: unknown }) => void,
-      ): void {
-        const listeners = this.listeners.get(type) ?? new Set();
-        listeners.add(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      removeEventListener(
-        type: string,
-        listener: (event: { data: unknown }) => void,
-      ): void {
-        this.listeners.get(type)?.delete(listener);
+        socketCount += 1;
+        queueMicrotask(() => this.onopen?.({}));
       }
 
       send(raw: string): void {
         const request = JSON.parse(raw) as {
+          readonly id: string;
           readonly method: string;
-          readonly id: { readonly requestId: string };
         };
-        methods.push(request.method);
-        const result =
-          request.method === "findIntersection"
-            ? this.session === 1
-              ? { intersection: "origin", tip: firstTip }
-              : this.session === 2
-                ? { intersection: firstTip, tip: replacementTip }
-                : { intersection: replacementTip, tip: nextTipWire }
-            : this.session === 2 && this.nextBlockCount++ === 0
-              ? {
-                  direction: "backward",
-                  point: "origin",
-                  tip: replacementTip,
-                }
-              : this.session === 3 && this.nextBlockCount++ === 0
-                ? {
-                    direction: "backward",
-                    point: replacementTip,
-                    tip: nextTipWire,
-                  }
-                : {
-                    direction: "forward",
-                    block: this.session === 2 ? replacementTip : nextTipWire,
-                    tip: this.session === 2 ? replacementTip : nextTipWire,
-                  };
+        let result: unknown;
+        if (request.method === "queryNetwork/genesisConfiguration") {
+          result = { networkMagic: 2 };
+        } else if (request.method === "queryNetwork/tip") {
+          result = matureTip;
+        } else if (request.method === "findIntersection") {
+          result = { intersection: matureTip, tip: matureTip };
+        } else {
+          nextBlockCount += 1;
+          result = {
+            direction: "backward",
+            point: matureTip,
+            tip: matureTip,
+          };
+        }
         queueMicrotask(() =>
-          this.emit("message", {
-            data: JSON.stringify({ id: request.id, result }),
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result,
+            }),
           }),
         );
       }
 
       close(): void {}
-
-      private emit(type: string, event: { data: unknown }): void {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener(event);
-        }
-      }
     }
-    (globalThis as unknown as { WebSocket?: unknown }).WebSocket =
-      FakeWebSocket;
+    vi.stubGlobal("WebSocket", FakeWebSocket);
     try {
-      const authority = new OgmiosChainSyncAuthority("ws://127.0.0.1:1337");
-      await expect(authority.synchronize()).resolves.toMatchObject({
-        tip: firstTip,
-        rollbackSequence: 0,
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        source,
+        new FileChainSyncCursorStore(
+          `${dir}/chain-sync-cursor.json`,
+          "11".repeat(32),
+        ),
+      );
+      await expect(authority.synchronizeToTip(1)).resolves.toMatchObject({
+        slot: 1_000_000,
+        blockHash: "bb".repeat(32),
       });
-      await expect(authority.synchronize()).resolves.toMatchObject({
-        tip: replacementTip,
-        rollbackSequence: 1,
+      await expect(authority.currentCursor()).resolves.toMatchObject({
+        sequence: 0,
+        point: { slot: 1_000_000 },
       });
-      await expect(authority.synchronize()).resolves.toMatchObject({
-        tip: nextTip,
-        rollbackSequence: 1,
+      await expect(authority.synchronizeToTip(1)).resolves.toMatchObject({
+        slot: 1_000_000,
+        blockHash: "bb".repeat(32),
       });
-      expect(methods).toEqual([
-        "findIntersection",
-        "findIntersection",
-        "nextBlock",
-        "nextBlock",
-        "findIntersection",
-        "nextBlock",
-        "nextBlock",
+      expect(socketCount).toBe(1);
+      expect(nextBlockCount).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retries a fresh mature tip that rolls back before intersection without replaying origin", async () => {
+    const dir = await tempDir();
+    const matureTip = { slot: 1_000_000, id: "bb".repeat(32) };
+    let socketCount = 0;
+    let nextBlockCount = 0;
+    class BootstrapRaceWebSocket {
+      readonly socketIndex = socketCount++;
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+
+      constructor(_url: string) {
+        queueMicrotask(() => this.onopen?.({}));
+      }
+
+      send(raw: string): void {
+        const request = JSON.parse(raw) as {
+          readonly id: string;
+          readonly method: string;
+        };
+        let result: unknown;
+        if (request.method === "queryNetwork/genesisConfiguration") {
+          result = { networkMagic: 2 };
+        } else if (request.method === "queryNetwork/tip") {
+          result = matureTip;
+        } else if (request.method === "findIntersection") {
+          result = {
+            intersection: this.socketIndex === 0 ? "origin" : matureTip,
+            tip: matureTip,
+          };
+        } else {
+          nextBlockCount += 1;
+          result = {
+            direction: "forward",
+            block: { slot: 1, id: "aa".repeat(32) },
+            tip: matureTip,
+          };
+        }
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result,
+            }),
+          }),
+        );
+      }
+
+      close(): void {}
+    }
+    vi.stubGlobal("WebSocket", BootstrapRaceWebSocket);
+    try {
+      const authority = new LocalNodeChainAuthority(
+        "node-a",
+        "Preview",
+        new OgmiosChainSyncEventSource(
+          "ws://ogmios.local",
+          "Preview",
+          "node-a",
+        ),
+        new FileChainSyncCursorStore(
+          `${dir}/chain-sync-cursor.json`,
+          "11".repeat(32),
+        ),
+      );
+
+      await expect(authority.synchronizeToTip(1)).resolves.toMatchObject({
+        slot: matureTip.slot,
+        blockHash: matureTip.id,
+      });
+      expect(socketCount).toBe(2);
+      expect(nextBlockCount).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reconnects Ogmios from the durable cursor without emitting its handshake rollback twice", async () => {
+    const block1 = { slot: 1, id: "aa".repeat(32) };
+    const block2 = { slot: 2, id: "bb".repeat(32) };
+    let socketCount = 0;
+    let recoveredNextCount = 0;
+    class ReconnectingWebSocket {
+      readonly socketIndex = socketCount++;
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+
+      constructor(_url: string) {
+        queueMicrotask(() => this.onopen?.({}));
+      }
+
+      send(raw: string): void {
+        const request = JSON.parse(raw) as {
+          readonly id: string;
+          readonly method: string;
+        };
+        if (this.socketIndex === 0 && request.method === "nextBlock") {
+          queueMicrotask(() => this.onerror?.({}));
+          return;
+        }
+        const result =
+          request.method === "queryNetwork/genesisConfiguration"
+            ? { networkMagic: 2 }
+            : request.method === "findIntersection"
+              ? { intersection: block1, tip: block2 }
+              : recoveredNextCount++ === 0
+                ? { direction: "backward", point: block1, tip: block2 }
+                : { direction: "forward", block: block2, tip: block2 };
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result,
+            }),
+          }),
+        );
+      }
+
+      close(): void {}
+    }
+    vi.stubGlobal("WebSocket", ReconnectingWebSocket);
+    try {
+      const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+      await expect(
+        source.next({
+          sequence: 0,
+          point: point1,
+          rollbackGeneration: 0,
+        }),
+      ).resolves.toMatchObject({
+        event: {
+          direction: "roll_forward",
+          point: { slot: 2, blockHash: "bb".repeat(32) },
+        },
+      });
+      expect(socketCount).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("negotiates a missing durable tip from bounded journal points newest to oldest", async () => {
+    const block1 = { slot: 1, id: "aa".repeat(32) };
+    const block4 = { slot: 4, id: "dd".repeat(32) };
+    let intersectionPoints: unknown;
+    class CommonAncestorWebSocket {
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+
+      constructor(_url: string) {
+        queueMicrotask(() => this.onopen?.({}));
+      }
+
+      send(raw: string): void {
+        const request = JSON.parse(raw) as {
+          readonly id: string;
+          readonly method: string;
+          readonly params: Record<string, unknown>;
+        };
+        if (request.method === "findIntersection") {
+          intersectionPoints = request.params.points;
+        }
+        const result =
+          request.method === "queryNetwork/genesisConfiguration"
+            ? { networkMagic: 2 }
+            : { intersection: block1, tip: block4 };
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result,
+            }),
+          }),
+        );
+      }
+
+      close(): void {}
+    }
+    vi.stubGlobal("WebSocket", CommonAncestorWebSocket);
+    try {
+      const point1 = externalPoint("chain-sync:node-a", 1, "aa");
+      const point2 = externalPoint("chain-sync:node-a", 2, "bb");
+      const point3 = externalPoint("chain-sync:node-a", 3, "cc");
+      const source = new OgmiosChainSyncEventSource(
+        "ws://ogmios.local",
+        "Preview",
+        "node-a",
+      );
+
+      await expect(
+        source.next({ sequence: 2, point: point3, rollbackGeneration: 0 }, [
+          point3,
+          point2,
+          point1,
+        ]),
+      ).resolves.toMatchObject({
+        event: {
+          direction: "roll_backward",
+          point: { slot: 1, blockHash: "aa".repeat(32) },
+        },
+        tip: { slot: 4, blockHash: "dd".repeat(32) },
+      });
+      expect(intersectionPoints).toEqual([
+        { slot: 3, id: "cc".repeat(32) },
+        { slot: 2, id: "bb".repeat(32) },
+        { slot: 1, id: "aa".repeat(32) },
+        "origin",
       ]);
     } finally {
-      (globalThis as unknown as { WebSocket?: unknown }).WebSocket =
-        originalWebSocket;
+      vi.unstubAllGlobals();
     }
   });
 
-  it("rejects an Ogmios intersection that was not submitted from bounded history", async () => {
-    const firstTip: OgmiosPoint = {
-      slot: 100,
-      id: "aa".repeat(32),
-      height: 50,
+  it("refuses to reuse a durable cursor for a different local authority", async () => {
+    const dir = await tempDir();
+    const path = `${dir}/cursor.json`;
+    const point = externalPoint("chain-sync:node-a", 1, "ab");
+    const original = new FileChainSyncCursorStore(path, "11".repeat(32));
+    await original.append(
+      { direction: "roll_forward", point },
+      { sequence: 0, point, rollbackGeneration: 0 },
+    );
+
+    await expect(
+      new FileChainSyncCursorStore(path, "22".repeat(32)).load(),
+    ).rejects.toThrow(/authority fingerprint/u);
+  });
+
+  it("rejects local query snapshots that are stale against chain-sync authority", async () => {
+    const dir = await tempDir();
+    const canonical: CanonicalChainPoint = {
+      network: "Preview",
+      slot: 20,
+      blockHash: "ab".repeat(32),
+      providerSource: "chain-sync:node-a",
+      observedAt: "2026-07-28T00:00:00.000Z",
     };
-    const inventedIntersection: OgmiosPoint = {
-      slot: 99,
-      id: "bb".repeat(32),
-      height: 49,
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => ({
+          event: { direction: "roll_forward", point: canonical },
+          tip: canonical,
+        }),
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const stalePoint: CanonicalChainPoint = {
+      ...canonical,
+      slot: 19,
+      blockHash: "cd".repeat(32),
+      providerSource: "query:node-a:0",
     };
-    const nextTip: OgmiosPoint = {
-      slot: 101,
-      id: "cc".repeat(32),
-      height: 51,
-    };
-    const originalWebSocket = (globalThis as unknown as { WebSocket?: unknown })
-      .WebSocket;
-    let session = 0;
-    const methods: string[] = [];
-    class FakeWebSocket {
-      private readonly listeners = new Map<
-        string,
-        Set<(event: { data: unknown }) => void>
-      >();
-      private readonly session: number;
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          currentChainPoint: async () => stalePoint,
+        },
+      ],
+      ["query:node-a:0"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
+    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
+      /stale or on a mismatched chain point/u,
+    );
+  });
 
-      constructor(_url: string) {
-        session += 1;
-        this.session = session;
-        queueMicrotask(() => this.emit("open", { data: undefined }));
-      }
+  it("merges aligned local query depth and finality conservatively", async () => {
+    const dir = await tempDir();
+    const canonical = externalPoint("chain-sync:node-a", 20, "ab");
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async () => ({
+          event: { direction: "roll_forward", point: canonical },
+          tip: canonical,
+        }),
+      },
+      new FileChainSyncCursorStore(`${dir}/cursor.json`, "11".repeat(32)),
+    );
+    const { header, headerHash } = await makePayloadFixture();
+    const first = makeObservedNode({ header, headerHash, depth: 10 });
+    const second = makeObservedNode({ header, headerHash, depth: 3 });
+    const queryPoint = (providerSource: string): CanonicalChainPoint => ({
+      ...canonical,
+      providerSource,
+    });
+    const provider = new LocalNodeStateQueueProvider(
+      authority,
+      [
+        {
+          fetchStateQueueNodes: async () => [
+            {
+              ...first,
+              chainPoint: { ...first.chainPoint, finalized: true },
+            },
+          ],
+          currentChainPoint: async () => queryPoint("query:kupo-a"),
+        },
+        {
+          fetchStateQueueNodes: async () => [
+            {
+              ...second,
+              chainPoint: { ...second.chainPoint, finalized: false },
+            },
+          ],
+          currentChainPoint: async () => queryPoint("query:db-sync-a"),
+        },
+      ],
+      ["query:kupo-a", "query:db-sync-a"],
+      new FileChainSyncConsumerCursorStore(
+        `${dir}/consumer.json`,
+        "11".repeat(32),
+      ),
+    );
 
-      addEventListener(
-        type: string,
-        listener: (event: { data: unknown }) => void,
-      ): void {
-        const listeners = this.listeners.get(type) ?? new Set();
-        listeners.add(listener);
-        this.listeners.set(type, listeners);
-      }
-
-      removeEventListener(
-        type: string,
-        listener: (event: { data: unknown }) => void,
-      ): void {
-        this.listeners.get(type)?.delete(listener);
-      }
-
-      send(raw: string): void {
-        const request = JSON.parse(raw) as {
-          readonly method: string;
-          readonly id: { readonly requestId: string };
-        };
-        methods.push(request.method);
-        const result =
-          this.session === 1
-            ? { intersection: "origin", tip: firstTip }
-            : { intersection: inventedIntersection, tip: nextTip };
-        queueMicrotask(() =>
-          this.emit("message", {
-            data: JSON.stringify({ id: request.id, result }),
-          }),
-        );
-      }
-
-      close(): void {}
-
-      private emit(type: string, event: { data: unknown }): void {
-        for (const listener of this.listeners.get(type) ?? []) {
-          listener(event);
-        }
-      }
-    }
-    (globalThis as unknown as { WebSocket?: unknown }).WebSocket =
-      FakeWebSocket;
-    try {
-      const authority = new OgmiosChainSyncAuthority("ws://127.0.0.1:1337");
-      await expect(authority.synchronize()).resolves.toMatchObject({
-        tip: firstTip,
-        rollbackSequence: 0,
-      });
-      await expect(authority.synchronize()).rejects.toThrow(
-        /not one of the submitted bounded-history candidates/u,
-      );
-      expect(methods).toEqual(["findIntersection", "findIntersection"]);
-    } finally {
-      (globalThis as unknown as { WebSocket?: unknown }).WebSocket =
-        originalWebSocket;
-    }
+    await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
+      {
+        chainPoint: {
+          depth: 3,
+          finalized: false,
+          providerSource: "chain-sync:node-a,query:kupo-a,query:db-sync-a",
+        },
+      },
+    ]);
   });
 
   it("rejects one external provider and incompatible provider chain points", async () => {
@@ -476,8 +763,14 @@ describe("L1 provider adapters", () => {
     };
     const provider = new MultiStateQueueProvider(
       [
-        { fetchStateQueueNodes: async () => [canonical] },
-        { fetchStateQueueNodes: async () => [forked] },
+        {
+          fetchStateQueueNodes: async () => [canonical],
+          currentChainPoint: async () => externalPoint("operator-a"),
+        },
+        {
+          fetchStateQueueNodes: async () => [forked],
+          currentChainPoint: async () => externalPoint("operator-b"),
+        },
       ],
       {
         sourceMode: "external_providers",
@@ -545,7 +838,7 @@ describe("L1 provider adapters", () => {
     expect(point).not.toHaveProperty("depth");
   });
 
-  it("uses descendant block heights when Kupmios omits confirmations", async () => {
+  it("does not convert Kupo slot distance into confirmation depth", async () => {
     const txHash = "aa".repeat(32);
     const statusQuery = vi.fn(async () => ({
       status: "confirmed" as const,
@@ -554,25 +847,144 @@ describe("L1 provider adapters", () => {
         txHash,
         slot: 126197476,
         blockHash: "bb".repeat(32),
-        blockHeight: 3_000_000,
       },
     }));
-    const resolve = kupmiosChainPointResolver({
-      transactionStatus: statusQuery,
-    } as unknown as LucidEvolution);
+    const fetchFn = vi.fn(
+      async () => new Response("kupo_most_recent_node_tip  126197688\n"),
+    );
+    const resolve = kupmiosChainPointResolver(
+      { transactionStatus: statusQuery } as unknown as LucidEvolution,
+      "http://127.0.0.1:1442/",
+      fetchFn as typeof fetch,
+    );
 
-    await expect(
-      resolve({ txHash, outputIndex: 1 } as never, {
-        slot: 126197688,
-        id: "cc".repeat(32),
-        height: 3_000_012,
-      }),
-    ).resolves.toMatchObject({
+    const point = await resolve({ txHash, outputIndex: 1 } as never);
+    expect(point).toMatchObject({
       slot: 126197476,
       blockHash: "bb".repeat(32),
-      blockHeight: 3_000_000,
-      depth: 12,
     });
+    expect(point).not.toHaveProperty("depth");
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("derives Kupmios confirmation depth from actual aligned node blocks", async () => {
+    const txHash = "aa".repeat(32);
+    const inclusion = { slot: 10, id: "11".repeat(32) };
+    const tip = { slot: 100, id: "44".repeat(32), height: 4 };
+    const descendants = [
+      { slot: 20, id: "22".repeat(32) },
+      { slot: 50, id: "33".repeat(32) },
+      tip,
+    ];
+    let nextBlockIndex = 0;
+    class ConfirmationDepthWebSocket {
+      onopen: ((event: unknown) => void) | null = null;
+      onmessage: ((event: { readonly data: unknown }) => void) | null = null;
+      onerror: ((event: unknown) => void) | null = null;
+      onclose: ((event: unknown) => void) | null = null;
+
+      constructor(_url: string) {
+        queueMicrotask(() => this.onopen?.({}));
+      }
+
+      send(raw: string): void {
+        const request = JSON.parse(raw) as {
+          readonly id: string;
+          readonly method: string;
+        };
+        let result: unknown;
+        if (request.method === "queryNetwork/tip") {
+          result = tip;
+        } else if (request.method === "queryNetwork/genesisConfiguration") {
+          result = { networkMagic: 2 };
+        } else if (request.method === "findIntersection") {
+          result = { intersection: inclusion, tip };
+        } else if (nextBlockIndex === 0) {
+          nextBlockIndex += 1;
+          result = { direction: "backward", point: inclusion, tip };
+        } else {
+          result = {
+            direction: "forward",
+            block: descendants[nextBlockIndex++ - 1],
+            tip,
+          };
+        }
+        queueMicrotask(() =>
+          this.onmessage?.({
+            data: JSON.stringify({
+              jsonrpc: "2.0",
+              id: request.id,
+              result,
+            }),
+          }),
+        );
+      }
+
+      close(): void {}
+    }
+    vi.stubGlobal("WebSocket", ConfirmationDepthWebSocket);
+    const fetchFn = vi.fn(
+      async () =>
+        new Response("kupo_most_recent_checkpoint 100\n", {
+          headers: { etag: `"${"44".repeat(32)}"` },
+        }),
+    );
+    try {
+      const resolve = kupmiosChainPointResolver(
+        {
+          transactionStatus: async () => ({
+            status: "confirmed",
+            txHash,
+            confirmation: {
+              txHash,
+              slot: inclusion.slot,
+              blockHash: inclusion.id,
+            },
+          }),
+        } as unknown as LucidEvolution,
+        "http://kupo.local",
+        fetchFn as typeof fetch,
+        "ws://ogmios.local",
+        "Preview",
+        3,
+      );
+
+      await expect(
+        resolve({ txHash, outputIndex: 1 } as never),
+      ).resolves.toMatchObject({
+        slot: 10,
+        blockHash: "11".repeat(32),
+        depth: 3,
+      });
+      expect(nextBlockIndex).toBe(4);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("binds a Kupo checkpoint slot to its ETag block hash", async () => {
+    const fetchFn = vi.fn(
+      async () =>
+        new Response("kupo_most_recent_checkpoint 42\n", {
+          headers: { etag: `"${"ab".repeat(32)}"` },
+        }),
+    );
+
+    await expect(
+      fetchKupoCheckpoint("http://kupo.local/", fetchFn as typeof fetch),
+    ).resolves.toEqual({ slot: 42, blockHash: "ab".repeat(32) });
+    expect(fetchFn).toHaveBeenCalledWith("http://kupo.local/health", {
+      headers: { accept: "text/plain" },
+    });
+
+    await expect(
+      fetchKupoCheckpoint(
+        "http://kupo.local/",
+        (async () =>
+          new Response("kupo_most_recent_checkpoint 42\n")) as typeof fetch,
+      ),
+    ).rejects.toThrow(/checkpoint ETag/u);
   });
 
   it("fails closed when transaction status is not confirmed", async () => {
@@ -595,6 +1007,7 @@ describe("L1 provider adapters", () => {
       fetchStateQueueNodes: async () => [
         makeObservedNode({ header, headerHash, depth: 10 }),
       ],
+      currentChainPoint: async () => externalPoint("provider-a"),
     };
     const second = {
       fetchStateQueueNodes: async () => [
@@ -605,6 +1018,7 @@ describe("L1 provider adapters", () => {
           depth: 10,
         }),
       ],
+      currentChainPoint: async () => externalPoint("provider-b"),
     };
     const provider = new MultiStateQueueProvider([first, second], {
       sourceMode: "external_providers",
@@ -624,4 +1038,39 @@ describe("L1 provider adapters", () => {
       }),
     ).rejects.toThrow(/unsupported CARDANO_PROVIDER_URLS/);
   });
+
+  it("rejects external provider disagreement even when both result sets are empty", async () => {
+    const provider = new MultiStateQueueProvider(
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          currentChainPoint: async () => externalPoint("provider-a", 100, "ab"),
+        },
+        {
+          fetchStateQueueNodes: async () => [],
+          currentChainPoint: async () => externalPoint("provider-b", 99, "cd"),
+        },
+      ],
+      {
+        sourceMode: "external_providers",
+        identities: ["provider-a", "provider-b"],
+      },
+    );
+
+    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
+      /current chain-point disagreement/u,
+    );
+  });
+});
+
+const externalPoint = (
+  providerSource: string,
+  slot = 100,
+  blockByte = "ab",
+): CanonicalChainPoint => ({
+  network: "Preview",
+  slot,
+  blockHash: blockByte.repeat(32),
+  providerSource,
+  observedAt: "2026-07-28T00:00:00.000Z",
 });

@@ -43,16 +43,16 @@ The complete no-script minimum fee is stabilized using the preserved preprod
 epoch-303 parameters, including `maxTxSize = 16,384`,
 `maxValueSize = 5,000`, `minFeeA = 44`, and `minFeeB = 155,381`.
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
-| Requested and actual inputs | 434 | 435 |
-| Real genesis indices | `0..433` | `0..434` |
-| Vkey witnesses | 1 | 1 |
-| Plain-Ada outputs | 1 | 1 |
-| Complete signed Cardano bytes | 16,379 | 16,417 |
-| Margin against `maxTxSize` | +5 | -33 |
-| Exact minimum fee | 876,057 lovelace | 877,729 lovelace |
-| Result | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
+| Measurement                   |                          Accepting shape |                      Adjacent shape |
+| ----------------------------- | ---------------------------------------: | ----------------------------------: |
+| Requested and actual inputs   |                                      434 |                                 435 |
+| Real genesis indices          |                                 `0..433` |                            `0..434` |
+| Vkey witnesses                |                                        1 |                                   1 |
+| Plain-Ada outputs             |                                        1 |                                   1 |
+| Complete signed Cardano bytes |                                   16,379 |                              16,417 |
+| Margin against `maxTxSize`    |                                       +5 |                                 -33 |
+| Exact minimum fee             |                         876,057 lovelace |                    877,729 lovelace |
+| Result                        | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
 
 The accepting transaction passed the emulator's existence, unspent-input,
 common spending-credential, signature, missing-witness, and
@@ -70,15 +70,15 @@ The accepting signed Cardano bytes feed directly into the production
 existing typed collection/item/chunk constructors, per-reveal verifier, and
 complete terminal reconstruction fold.
 
-| Measurement | Value |
-| --- | ---: |
-| Canonical Midgard transaction bytes | 17,336 |
-| Canonical spend-inputs field bytes | 17,083 |
-| Committed input item count | 434 |
-| Field-0 reveal steps | 434 |
-| Largest revealed chunk | 38 bytes |
+| Measurement                                 |     Value |
+| ------------------------------------------- | --------: |
+| Canonical Midgard transaction bytes         |    17,336 |
+| Canonical spend-inputs field bytes          |    17,083 |
+| Committed input item count                  |       434 |
+| Field-0 reveal steps                        |       434 |
+| Largest revealed chunk                      |  38 bytes |
 | Largest serialized auxiliary reveal witness | 614 bytes |
-| Complete transaction fold steps | 436 |
+| Complete transaction fold steps             |       436 |
 
 Every field-0 reveal verifies against the exact converted transaction
 commitment. The complete 436-step field-major receipt sequence reconstructs
@@ -134,7 +134,7 @@ Both pass.
 
 This checkpoint closes the TypeScript Cardano boundary and terminal-fold
 fixture for field 0. The next ordered field without equivalent evidence is
-field 1 (`reference_inputs`). Fields 3, 5, 7, and 8 also remain open, as do
+field 1 (`reference_inputs`). Fields 3, 5, 6, and 8 also remain open, as do
 maximum-shape normal/forced retained-DA reconstruction and applied Aiken
 lifecycle evidence.
 

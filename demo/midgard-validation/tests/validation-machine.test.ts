@@ -1430,6 +1430,17 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       null,
     ]);
     expect(
+      trace.witnesses.find(
+        (witness) =>
+          witness.phase === "phaseANativeScripts" &&
+          witness.auxiliary?.kind === "transactionFieldChunk",
+      )?.auxiliary,
+    ).toMatchObject({
+      kind: "transactionFieldChunk",
+      collectionProof: { fieldIndex: 6 },
+      chunkProof: { fieldIndex: 6 },
+    });
+    expect(
       trace.witnesses
         .filter((witness) => witness.phase === "phaseANativeScripts")
         .map(validationSemanticResolverIndexV1),
@@ -1669,6 +1680,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).toEqual(["transactionFieldChunk", "requiredSignerItem", null]);
+    expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
+      kind: "transactionFieldChunk",
+      collectionProof: { fieldIndex: 7 },
+      chunkProof: { fieldIndex: 7 },
+    });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
         ? signatureWitnesses[1].auxiliary.signerProof.kind
@@ -1711,6 +1727,11 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(
       signatureWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).toEqual(["transactionFieldChunk", "requiredSignerItem"]);
+    expect(signatureWitnesses[0]?.auxiliary).toMatchObject({
+      kind: "transactionFieldChunk",
+      collectionProof: { fieldIndex: 7 },
+      chunkProof: { fieldIndex: 7 },
+    });
     expect(
       signatureWitnesses[1]?.auxiliary?.kind === "requiredSignerItem"
         ? signatureWitnesses[1].auxiliary.signerProof.kind

@@ -2027,7 +2027,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
 }
 
-test canonical_decode_rejects_a_wrong_claimed_successor() fail {
+test canonical_decode_rejects_a_legacy_field_seven_script_proof() fail {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
@@ -2047,18 +2047,18 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let chunk_hash = bounded_item_v1.hash_chunk(6, 0, 0, item_cbor)
+  let chunk_hash = bounded_item_v1.hash_chunk(7, 0, 0, item_cbor)
   let chunk_frontier = [
     validation_merkle_v1.FrontierPeak { height: 0, hash: chunk_hash },
   ]
   let item_commitment = bounded_item_v1.commitment(
-    6,
+    7,
     0,
     bytearray.length(item_cbor),
     chunk_frontier,
   )
   let item_hash = bounded_collection_v1.hash_item(
-    6,
+    7,
     0,
     bytearray.length(item_cbor),
     item_commitment,
@@ -2071,7 +2071,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    6,
+    7,
     0,
     0,
     -1,
@@ -2100,33 +2100,37 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let rejection_code = #"455f4649454c445f505245494d4147455f53495a45"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+  let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.Terminal,
+    phase: validation_trace_v1.CanonicalDecode,
     program_counter: 8,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
+      validation_trace_v1.CanonicalDecode,
       8,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
+      validation_machine_v1.encode_transaction_field_scan_witness(
+        proof_source.compact_cbor,
+        proof_source.witness_set_compact_cbor,
+        proof_source.field_preimage_lengths_cbor,
+        validation_context_cbor,
+        8,
+        0,
+        0,
+        -1,
+        0,
       ),
     ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   validation_machine_v1.verify_canonical_decode_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: post,
       },
       auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
         collection_proof: bounded_collection_v1.ItemProofV1 {
           version: bounded_collection_v1.version,
-          field_index: 6,
+          field_index: 7,
           item_count: 1,
           item_index: 0,
           item_length: bytearray.length(item_cbor),
@@ -2136,7 +2140,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
         },
         chunk_proof: bounded_item_v1.ChunkProofV1 {
           version: bounded_item_v1.version,
-          field_index: 6,
+          field_index: 7,
           item_index: 0,
           total_length: bytearray.length(item_cbor),
           chunk_index: 0,

@@ -3,6 +3,7 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
   encodeMidgardVersionedScriptListPreimage,
@@ -34,11 +35,11 @@ const TX_ORDER_ID: SDK.OutputReference = {
 };
 
 const transactionCbor = ({
-  addressWitnesses = EMPTY_CBOR_LIST,
-  scriptWitnesses = EMPTY_CBOR_LIST,
+  addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+  scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST,
 }: {
-  readonly addressWitnesses?: Buffer;
-  readonly scriptWitnesses?: Buffer;
+  readonly addrTxWitsPreimageCbor?: Buffer;
+  readonly scriptTxWitsPreimageCbor?: Buffer;
 } = {}): Buffer =>
   encodeMidgardNativeTxCanonicalV1(
     materializeMidgardNativeTxFromCanonicalV1({
@@ -78,8 +79,8 @@ const transactionCbor = ({
         networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
       },
       witnessSet: {
-        addrTxWitsPreimageCbor: addressWitnesses,
-        scriptTxWitsPreimageCbor: scriptWitnesses,
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     }),
@@ -199,24 +200,28 @@ describe("V1 tx-order material receipt chain", () => {
     );
   });
 
-  it("reconstructs raw field-6 scripts before byte-wrapped field-7 address witnesses", async () => {
-    const scriptWitnesses = encodeMidgardVersionedScriptListPreimage([
+  it("reconstructs field 6 scripts raw and field 7 address witnesses as byte-list items", async () => {
+    const scriptTxWitsPreimageCbor = encodeMidgardVersionedScriptListPreimage([
       {
-        language: "NativeCardano",
-        scriptBytes: Buffer.alloc(0),
-        nativeScript: {
-          type: "sig",
-          keyHash: Buffer.alloc(28, 0x33),
-        },
+        language: "MidgardV1",
+        scriptBytes: encodeMidgardCekProgramEnvelopeV1({
+          uplcVersion: [1n, 1n, 0n],
+          termRoot: Buffer.alloc(32, 0x33),
+          nodeCount: 3n,
+          materialByteLength: 144n,
+        }),
       },
     ]);
-    const addressWitness = encodeCbor([
+    const addressWitnessCbor = encodeCbor([
       Buffer.alloc(32, 0x44),
       Buffer.alloc(64, 0x55),
     ]);
-    const addressWitnesses = encodeCbor([addressWitness]);
+    const addrTxWitsPreimageCbor = encodeCbor([addressWitnessCbor]);
     const fixture = materialFixture(
-      transactionCbor({ addressWitnesses, scriptWitnesses }),
+      transactionCbor({
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
+      }),
     );
     const scriptFragments = fixture.bundle.fragments.filter(
       ({ fieldIndex }) => fieldIndex === 6,
@@ -228,12 +233,12 @@ describe("V1 tx-order material receipt chain", () => {
     expect(scriptFragments).toHaveLength(1);
     expect(scriptFragments[0]).toMatchObject({
       fieldName: "script_witnesses",
-      fieldEncodedSize: scriptWitnesses.length,
+      fieldEncodedSize: scriptTxWitsPreimageCbor.length,
     });
     expect(addressFragments).toHaveLength(1);
     expect(addressFragments[0]).toMatchObject({
       fieldName: "address_witnesses",
-      fieldEncodedSize: addressWitnesses.length,
+      fieldEncodedSize: addrTxWitsPreimageCbor.length,
     });
     await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
       fixture.nativeTxCbor,

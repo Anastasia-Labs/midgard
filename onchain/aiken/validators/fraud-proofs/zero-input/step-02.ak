@@ -90,7 +90,7 @@ test empty_spend_inputs_hash_matches_the_canonical_native_v1_commitment() {
 
 /// Pins the exact cross-language vector used by the SDK.
 test empty_spend_inputs_hash_matches_the_offchain_constant() {
-  empty_spend_inputs_hash == #"eb25eb8de48c927c6006d365101cf58cac0b3bb8e8bf104dcaaf10c76c0fec76"
+  empty_spend_inputs_hash == #"eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec76"
 }
 
 test empty_spend_inputs_hash_rejects_a_non_empty_bounded_collection() {

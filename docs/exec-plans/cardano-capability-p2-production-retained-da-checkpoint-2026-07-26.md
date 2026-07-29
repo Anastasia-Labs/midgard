@@ -21,8 +21,8 @@ The validation boundary helper can emit a labeled, test-only corpus row after
 deriving the exact canonical Midgard transaction from each established
 fixture. The checked corpus contains `12` rows:
 
-- ordered fields `0` through `8`, including coupled fields `3/7`, `4/6`, and
-  `5/7`;
+- ordered fields `0` through `8`, including coupled fields `3/6`, `4/7`, and
+  `5/6`;
 - maximum inline-datum blob;
 - maximum nested output Value;
 - balanced nested datum;

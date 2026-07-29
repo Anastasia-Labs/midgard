@@ -305,7 +305,10 @@ const isPrivateIpv4 = (hostname: string): boolean => {
 };
 
 const isPublicHostname = (hostname: string): boolean => {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/gu, "");
+  const normalized = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/u, "");
   const isIpv6 = normalized.includes(":");
   const isPrivateIpv6 =
     isIpv6 &&
@@ -357,6 +360,7 @@ const parseExternalProviderEndpoint = (
   ) {
     fail("invalid_endpoint", path);
   }
+  url.hostname = url.hostname.toLowerCase().replace(/\.$/u, "");
   const aliasKey = `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/u, "")}`;
   return { endpoint, aliasKey };
 };

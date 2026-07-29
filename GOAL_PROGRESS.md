@@ -749,3 +749,258 @@ provider is additionally required only if final acceptance selects
 `external_providers`; `local_node` instead requires the watcher-operated node
 and aligned query/index surfaces. These are not blockers to dependency-ready
 local work.
+
+## Superseding isolated publication checkpoint
+
+- This section supersedes the earlier watcher checkpoint freeze wherever paths,
+  generated blueprint identities, test counts, dependency-map hashes, or
+  publication status differ. Historical evidence remains historical and is
+  not promoted as final-tree proof.
+- Isolated repository:
+  `/tmp/midgard-pr-final.9TgTpT/repo`.
+- Branch:
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`.
+- Current pre-publication HEAD:
+  `86fd1d4b32a91cd8ca0541cfddc910500ca752c5`.
+- Target `tx-validation` revision:
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- All 141 commits currently above the target are preserved in order. The
+  publication checkpoint will add one ordinary commit; it will not squash,
+  rebase, reset, or rewrite the inherited history.
+- The authoritative external `GOAL_SPEC.md` and protected pre-Goal Aiken
+  checkpoint bytes were not copied into this isolated repository. No protected
+  path is leased or modified here. No agent path lease remains active.
+- The authoritative watcher source decision is exact:
+  - `local_node` uses one watcher-operated Cardano full node as chain-consensus
+    authority. Chain-sync supplies roll-forward and rollback events; aligned
+    Ogmios, Kupo/Kupmios, or db-sync instances are query surfaces for that
+    authority and never count as independent providers.
+  - `external_providers` requires at least two operationally independent
+    providers with the same network and compatible chain points. Disagreement
+    quarantines protocol decisions.
+  - W12-W17 accept either valid mode. W13 propagates canonical rollback
+    evidence. W14 consumes actual node-accepted transaction/output/datum bytes
+    from W10-W13 and does not reimplement Cardano validator semantics.
+- Canonical Cardano witness-field correction is final-tree exact:
+  field 6 is raw native/non-native script witnesses and field 7 is the encoded
+  vkey/address witness byte-list. Core proof generation, validation-machine
+  commitments, node transaction-order reconstruction, Aiken compact
+  verification, script proofs, validation execution, generators, tests, and
+  affected evidence documents agree on this order.
+- Final generated Aiken blueprint evidence:
+  Aiken build PASS; `plutus.json` is 9,958,183 bytes with 355 validators and
+  SHA-256
+  `03172b13edd9180897494ba1b7633212c3e74460e510d449d851998342d7627e`.
+  Seventeen focused field-order/maximum-profile selectors pass, including both
+  legacy-field hostile controls and exact inline-script field-6 binding.
+- Fresh final-tree TypeScript evidence:
+  - Core full suite 270/270 PASS; typecheck and build PASS.
+  - Validation full suite 169/169 PASS; typecheck, build, and scoped lint PASS.
+  - Watcher full suite 201/201 PASS across 13 files; typecheck, build, lint,
+    and format PASS.
+  - DA full suite 210 PASS with one PostgreSQL-environment skip; the focused DA
+    correction set is 78/78 PASS; typecheck and build PASS.
+  - SDK full suite 78/78 PASS; Lucid full suite 149/149 PASS.
+  - Fault-proof full suite 139/139 PASS on the prior final integration tree;
+    the rebuilt current-blueprint end-to-end validation-dispute selector passes
+    1/1 inside its unchanged 300-second test bound.
+  - Node canonical ABI/deployment/manifest suite 33/33 PASS; node typecheck,
+    scoped ESLint, and scoped Prettier PASS.
+- The ABI fixture repair closes a real checkpoint regression:
+  route and final transition-proof redeemers bind their distinct generated
+  blueprint argument records, the retired generic redeemer and retired
+  valid-forced-unsupported fixture are removed, L2 and accepted-transaction
+  transition faults are covered, and the opt-in
+  `fixtures:transition-trace:generate` command regenerates the exact current
+  golden corpus. Fixture test source SHA-256 is
+  `04a5dc213248295566f5a4c60efaeda478cfdc334f76d50970c87220b52ff79f`;
+  golden SHA-256 is
+  `35316d0bf4bd8646ec331e3daa38af4002d68d99cac4016f42a42d87f6decf43`.
+- Hash-bound dependency evidence:
+  reviewed content-tree SHA-256
+  `8dc064e1c294121ada9a26a16e3794c29fdd1c930cf0a44a95ad7dd3cc0a619f`;
+  dependency-map SHA-256
+  `143b7e522d8702cc79ce85b838dc4b9bb692249c1dc5e74721d20ac49d67aac0`;
+  verifier SHA-256
+  `61756366622d000bf82b0ac68781f5ff897a2cf4d10391b51bb6b97745b39f5c`.
+  The executable verifier passes all 8 dependency classes.
+- Documentation gates pass on the same source tree: facts 9 groups, links 190
+  Markdown/MDX files, and voice 83 pages with zero wrong-audience lines.
+- Diff hygiene passes for both staged and unstaged portions before the final
+  additive stage. The fresh ABI failure (2/8) is fully superseded by the exact
+  8/8 fixture pass and the combined 33/33 node suite.
+- Publication and actual PR-head review are the only remaining actions for
+  this user-requested checkpoint. Formal target-testnet journeys, the open
+  §12 criteria, and §15 completion remain open. This checkpoint is not Goal
+  completion and must remain a draft PR.
+
+## Superseding current next action
+
+Stage the complete isolated checkpoint, create one additive commit while
+preserving all inherited commits, push the `colll78/` branch, update draft
+PR #471 against `tx-validation`, inspect the actual remote diff, comments,
+review threads, and CI, fix every actionable finding with additive commits,
+and repeat the review until the checkpoint is good to merge on its stated
+scope. Do not mark the overarching Goal complete.
+
+## Superseding merged publication checkpoint
+
+- This section supersedes the isolated pre-publication checkpoint wherever
+  merged-tree identities, counts, or publication state differ. It does not
+  promote any open §12 acceptance criterion or §15.
+- The local additive checkpoint is
+  `b58c5ea6c975f8d3d18acf4a7ea1fefd112353cd`. The already-published branch
+  commits `66d2d5d5` and `9013e827` are integrated through an ordinary merge;
+  neither history was rebased, squashed, reset, or force-replaced. The target
+  remains `tx-validation` at
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- The authoritative L1-source rule remains exact after merge:
+  `local_node` has one watcher-operated node authority with aligned query
+  surfaces and no provider quorum; `external_providers` requires at least two
+  operationally independent providers at the same network and compatible
+  chain points. W12–W17 accept either valid discriminator. W14 indexes
+  node-accepted transaction/output/datum bytes from W10–W13 without replaying
+  Cardano validator semantics.
+- Merge review removed the unreferenced duplicate watcher catalogue fixture,
+  retained the catalogue fixture that verifies exact deployment-manifest
+  category identities, required the L1 authority digest in every durable
+  decision effect, and restored the explicit durable local-node chain-sync
+  provider/cursor fixture shape.
+- Fresh merged Aiken evidence:
+  `aiken build --env testnet` PASS; `plutus.json` is 9,960,375 bytes with 355
+  validators and SHA-256
+  `bc0f2b7e502389619236facf4f1bb1bb7889ec1fe7ad271196d656de050a79e7`.
+  The new commit-validity, genesis-sentinel, and semantic-resolver selectors
+  pass 10/10.
+- Fresh merged Node 22 evidence:
+  - watcher full suite 201/201 PASS; typecheck, lint, and scoped format PASS;
+  - DA sandbox-safe aggregate 207 PASS with one PostgreSQL skip, plus the five
+    localhost/child-process tests PASS outside the restricted sandbox;
+    typecheck, lint, and scoped format PASS;
+  - core full suite 273/273 PASS;
+  - SDK full suite 82/82 PASS;
+  - node merged integration set 66/66 PASS; typecheck and package lint PASS;
+  - fault-proof aggregate passed 141/142 before the multiple-successor
+    emulator exceeded its stale 180-second budget under full-suite CPU
+    contention. Its current-blueprint budget is restored to 300 seconds and
+    the exact selector then passes 1/1; fault-proof typecheck, lint, and scoped
+    format PASS.
+- Documentation facts 10 groups, links 190 Markdown/MDX files, and voice 83
+  pages PASS. The Nix/LaTeX build produces the full 143-page technical
+  specification successfully.
+- The exact staged content tree, excluding only this ledger and its
+  self-referential map, is SHA-256
+  `965a18e9db7a3f5e9274d336715a092b07b120d982ee05f39144a6c7fbda6a23`.
+  Dependency-map SHA-256 is
+  `30bdb04b40ab5914f9f4989eaf48a6d8891d9727919309221f3f14a0a54f8dd6`;
+  verifier SHA-256 is
+  `e290ce9e297e44e7cc23ae2e06a66a385942c09d2d98db8f00bf0629d84b8249`;
+  all eight dependency classes verify.
+- Diff hygiene and conflict-marker scans pass. The known whole-package
+  Prettier baselines outside the merge diff remain unchanged; every merged
+  TypeScript path passes scoped Prettier. No path leases remain active.
+- No local checkpoint-scope product failure remains. Missing P6 live
+  credentials/services still block only dependent live criteria, and an
+  independent second provider is required only if acceptance chooses
+  `external_providers`.
+
+## Superseding current publication action
+
+Commit this ordinary merge, push
+`colll78/canonical-v1-watcher-l1-source-checkpoint`, update draft PR #471,
+inspect the actual PR diff, review threads, comments, and CI, then address
+every actionable finding with additive commits until the checkpoint is good
+to merge on its stated scope. The overarching Goal remains in progress.
+
+## Superseding final-tree pre-publication checkpoint
+
+- This section supersedes earlier local merge evidence wherever identities,
+  counts, or diagnostic outcomes differ. Historical results remain historical
+  and are not promoted as current-tree evidence.
+- Branch:
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`.
+  Target:
+  `tx-validation` at
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+  The ordinary merge binds reviewed parents
+  `2b755a776d6af4a57d877633485ca0701e4cc51d` and
+  `d8fcc0f74f659fe614dc215dcef0f3d2c9b16590`; no history was rebased,
+  squashed, reset, or force-replaced.
+- Merge-conflict and final differential review retained the canonical
+  field-6 script-witness/field-7 address-witness model, exact transition-trace
+  ABI records, CEK execution-unit enforcement, Architecture-G ownership,
+  deployment resume authorization, aggregate W10 collection bounds, and exact
+  configured-provider identities. It also fixed integration defects in SDK
+  distribution ordering, optional L1 transaction metadata preflight,
+  configured external-provider tests, sandbox-safe successful Git output, and
+  the dependency-map verifier.
+- The authoritative watcher source-mode decision remains exact:
+  `local_node` uses one watcher-operated Cardano node as consensus authority
+  with aligned query/index surfaces and no provider quorum;
+  `external_providers` requires at least two operationally independent
+  providers on the same network at compatible chain points. W12-W17 accept
+  either explicit mode. W14 consumes canonical W10-W13 node-derived
+  transaction/output/datum bytes and does not replay Cardano validator
+  semantics.
+- Fresh final-tree TypeScript evidence:
+  - watcher: 13 files and 206/206 tests PASS;
+  - validation: 37 files and 174/174 tests PASS;
+  - Lucid: 17 files and 150/150 tests PASS;
+  - core: 36 files and 275/275 tests PASS;
+  - SDK: 17 files and 82/82 tests PASS;
+  - node focused ABI/deployment/transaction-order/submission/withdrawal set:
+    7 files and 77/77 tests PASS;
+  - fault-proof focused routing/bin/challenger/emulator set: 4 files and 68/68
+    tests PASS, including all 14 end-to-end emulator cases;
+  - core, validation, Lucid, watcher, node, fault-proofs, and SDK typechecks
+    PASS; their package ESLint gates PASS; sequential core and validation
+    package builds and the Lucid direct build PASS.
+- Fresh final-tree Aiken evidence:
+  compiler `aiken v1.1.22+39d6b04`; four witness-field guards passed in the
+  first serialized run. The fifth correctly exposed that its hostile fixture
+  had accidentally constructed a canonical field-6 proof. The fixture alone
+  was corrected to authenticate legacy field 7, and the exact guarded selector
+  then collected 1 and passed 1. Both plain `aiken build` and the authoritative
+  `aiken build --env testnet` PASS. The testnet `plutus.json` is 10,710,816
+  bytes, contains 355 validators, and has SHA-256
+  `386ba0a628d625a707b40077b88e3cb70a0d963bdd94075617f233ac8a7c87da`.
+  Settlement mint remains 3,660 raw bytes at script hash
+  `7480e0d91c418bb3e3ab96d0e7eb174325d298396128646f3c735546`.
+- The dependency-map verifier now reads the map, package inventory, workspace
+  manifest, CI, and watcher policy documents from the staged Git index; it
+  rejects malformed, unsupported-mode, or non-stage-zero entries. It hashes
+  staged blobs/Git-links plus modes, uses bytewise ordering, and binds both
+  reviewed merge parents. The final staged content-tree SHA-256 is
+  `57743063e518832117c8794a1d5edc04de32862cc1e6bcf3a570b89fa8525f09`;
+  normal verification passes all 8 exact dependency classes and independent
+  digest printing reproduces that value.
+- The canonical V1 registry structurally verifies all 132 rows in explicit
+  incomplete mode. Strict release verification fails closed on exactly 122
+  non-PASS rows, leaving 10 `PASS` and 122 `UNVERIFIED`; F02/F02-R and every
+  dependent promotion criterion remain open.
+- Protected-path staging scan, unmerged-index scan, conflict-marker scan, and
+  `git diff --cached --check` PASS. No protected pre-Goal dirty byte, external
+  `GOAL_SPEC.md`, or uncredited W20 `public-da-client.ts` candidate is staged
+  or claimed. No active path lease remains.
+- Superseded diagnostics receive no PASS credit: the CPU-contended watcher
+  timeout was superseded by its isolated 206/206 pass; build-order failures
+  caused by temporarily absent dependency declarations were superseded by
+  sequential builds; the pre-fix Aiken negative fixture failure was
+  superseded by the corrected exact selector; the default-environment
+  blueprint is not the deployment artifact; and the old node aggregate used
+  stale distribution output and remains diagnostic only.
+- Draft PR #471 is the sole Goal PR and remains the publication surface for
+  this checkpoint. Formal §4.4 release journeys, the 122 registry promotions,
+  target-testnet acceptance, remaining §12 criteria, closure manifest, and
+  §15 are not complete. Missing live P6 credentials/topology block only their
+  dependent live criteria; no local checkpoint-scope blocker remains.
+
+## Superseding publication and review action
+
+Create the signed ordinary merge commit, push
+`colll78/canonical-v1-watcher-l1-source-checkpoint`, verify draft PR #471 still
+targets `tx-validation`, inspect its complete target-to-head diff, review
+threads, comments, and current-head CI, then fix and repush every actionable
+finding until the published checkpoint is good to merge on its stated scope.
+Record the remote head and review result additively. Do not mark the
+overarching Goal complete or ready the draft PR while §12 and §15 remain open.

@@ -3,7 +3,7 @@
 Status: Historical review input. Its findings were incorporated into
 `midgard-watcher-architecture.md`; it is not a current implementation plan.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
 Reviewer: historical adversarial production-readiness review
 
@@ -22,6 +22,22 @@ Additional context consulted by reviewer:
 - `demo/midgard-validation/src`
 - `demo/midgard-node/src/workers/utils/mpf.ts`
 - `onchain/aiken/lib/midgard`
+
+## Authoritative L1-Source Clarification
+
+The original finding below is superseded where it treated two providers as an
+unconditional acceptance requirement. The watcher now has two explicit,
+mutually exclusive modes:
+
+- `local_node`: one watcher-operated Cardano full node is the chain-consensus
+  authority. Ogmios, Kupo/Kupmios, and db-sync are only aligned query surfaces
+  for that node and do not count as independent providers.
+- `external_providers`: at least two operationally independent providers must
+  agree on network and a compatible chain point.
+
+Both modes fail closed on mismatched or stale evidence and propagate
+rollbacks. W14 consumes canonical node-derived bytes and indexes accepted
+state; it does not duplicate Cardano state-queue validator semantics.
 
 ## Verdict
 
@@ -87,7 +103,8 @@ Recommendation:
 
 Disposition:
 
-- Incorporated into Tasks 2.1 and 2.2.
+- Incorporated into W01 and W10–W14 with the authoritative source-mode
+  discriminator.
 
 ### 5. High: Spec, implementation, and proof roots required one conformance rule
 

@@ -1,20 +1,37 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const mapPath = resolve(
-  repositoryRoot,
-  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+const execGit = (args, encoding = "buffer") => {
+  let output;
+  try {
+    output = execFileSync("git", args, {
+      cwd: repositoryRoot,
+      encoding,
+      maxBuffer: 128 * 1024 * 1024,
+    });
+  } catch (error) {
+    if (error.status !== 0 || error.stdout === undefined) {
+      throw error;
+    }
+    output = error.stdout;
+  }
+  if (encoding === "buffer") {
+    return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+  return typeof output === "string"
+    ? output
+    : Buffer.from(output).toString(encoding);
+};
+const readIndexedFile = (path, encoding = "buffer") =>
+  execGit(["show", `:${path}`], encoding);
+const dependencyMap = JSON.parse(
+  readIndexedFile(
+    "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+    "utf8",
+  ),
 );
-const dependencyMap = JSON.parse(await readFile(mapPath, "utf8"));
-const readIndexedFile = (path, encoding) =>
-  execFileSync("git", ["show", `:${path}`], {
-    cwd: repositoryRoot,
-    encoding,
-    maxBuffer: 128 * 1024 * 1024,
-  });
 
 const fail = (message) => {
   throw new Error(`Watcher dependency map verification failed: ${message}`);
@@ -29,6 +46,7 @@ if (
 if (dependencyMap.trustPolicy?.unknownBehavior !== "fail_closed") {
   fail("unknown behavior must fail closed");
 }
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const requiredIds = [
   "public_da",
@@ -75,6 +93,15 @@ for (const id of requiredIds) {
   if (!Array.isArray(entry.sourcePaths) || entry.sourcePaths.length === 0) {
     fail(`${id} must name source paths`);
   }
+  if (
+    entry.sourceSha256 === null ||
+    typeof entry.sourceSha256 !== "object" ||
+    Array.isArray(entry.sourceSha256) ||
+    JSON.stringify(Object.keys(entry.sourceSha256).sort()) !==
+      JSON.stringify([...entry.sourcePaths].sort())
+  ) {
+    fail(`${id} must hash-bind every source path exactly`);
+  }
   if (!Array.isArray(entry.sourceSymbols) || entry.sourceSymbols.length === 0) {
     fail(`${id} must name source symbols`);
   }
@@ -92,6 +119,13 @@ for (const id of requiredIds) {
   }
   const sourceTexts = [];
   for (const sourcePath of entry.sourcePaths) {
+    if (
+      sourcePath.startsWith("/") ||
+      sourcePath.split("/").includes("..") ||
+      entry.sourceSha256[sourcePath] !== sha256(readIndexedFile(sourcePath))
+    ) {
+      fail(`${id} source hash is stale for ${sourcePath}`);
+    }
     sourceTexts.push(readIndexedFile(sourcePath, "utf8"));
   }
   const combinedSource = sourceTexts.join("\n");
@@ -172,16 +206,79 @@ if (
 const watcherManifest = JSON.parse(
   readIndexedFile("demo/midgard-watcher/package.json", "utf8"),
 );
+const workspaceManifest = JSON.parse(
+  readIndexedFile("demo/package.json", "utf8"),
+);
 const committeeManifest = JSON.parse(
   readIndexedFile("demo/da-committee-node/package.json", "utf8"),
 );
 if (
   watcherManifest.name !== "midgard-watcher" ||
   watcherManifest.bin?.["midgard-watcher"] !== "./dist/cli.js" ||
+  watcherManifest.packageManager !== undefined ||
+  workspaceManifest.packageManager !==
+    "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0" ||
   committeeManifest.name !== "da-committee-node" ||
   committeeManifest.bin?.["da-committee-node"] !== "./dist/index.js"
 ) {
-  fail("watcher and committee package identities must remain distinct");
+  fail(
+    "watcher/committee identities and the workspace package-manager authority must remain exact",
+  );
+}
+const listIndexedPackageFiles = (relativeDirectory) =>
+  execGit(["ls-files", "-z", "--", relativeDirectory], "utf8")
+    .split("\0")
+    .filter((path) => path !== "")
+    .sort((left, right) =>
+      Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+    );
+const declaredWatcherContents = [
+  ...(dependencyMap.requiredWatcherPackage?.currentContents ?? []),
+].sort((left, right) =>
+  Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+);
+const actualWatcherContents = listIndexedPackageFiles("demo/midgard-watcher");
+if (
+  JSON.stringify(declaredWatcherContents) !==
+  JSON.stringify(actualWatcherContents)
+) {
+  fail("requiredWatcherPackage.currentContents must exactly cover the package");
+}
+if (
+  workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
+  "node scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+) {
+  fail("workspace must expose the canonical watcher dependency-map verifier");
+}
+const nodeCi = readIndexedFile(".github/workflows/midgard-node-ci.yml", "utf8");
+for (const requiredCiText of [
+  "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+  "pnpm --dir demo run watcher:dependency-map:verify",
+]) {
+  if (!nodeCi.includes(requiredCiText)) {
+    fail(`Midgard node CI is missing ${requiredCiText}`);
+  }
+}
+const watcherArchitecture = readIndexedFile(
+  "demo/midgard-watcher/midgard-watcher-architecture.md",
+  "utf8",
+);
+const watcherAdversarialReview = readIndexedFile(
+  "demo/midgard-watcher/watcher-plan-adversarial-review.md",
+  "utf8",
+);
+for (const sourceModeDocument of [
+  watcherArchitecture,
+  watcherAdversarialReview,
+]) {
+  if (
+    !sourceModeDocument.includes("`local_node`") ||
+    !sourceModeDocument.includes("`external_providers`") ||
+    !sourceModeDocument.includes("watcher-operated")
+  ) {
+    fail("shipped watcher documents must define both L1-source modes");
+  }
 }
 const watcherSource = readIndexedFile(
   "demo/midgard-watcher/src/scaffold.ts",
@@ -269,46 +366,49 @@ const watcherIndexSource = readIndexedFile(
   "demo/midgard-watcher/src/index.ts",
   "utf8",
 );
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const readTrackedBytes = ({ mode, objectId }) => {
   if (mode === "160000") {
     return Buffer.from(`gitlink:${objectId}`);
   }
-  return execFileSync("git", ["cat-file", "blob", objectId], {
-    cwd: repositoryRoot,
-    encoding: "buffer",
-    maxBuffer: 128 * 1024 * 1024,
-  });
+  return execGit(["cat-file", "blob", objectId]);
 };
 const contentTreeExclusions = [
   "GOAL_PROGRESS.md",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 ];
 if (
-  dependencyMap.authority?.publishedParentRevision !==
-    "9013e82737b019c0b7efda2f50556e45271f3454" ||
+  JSON.stringify(dependencyMap.authority?.publishedParentRevisions) !==
+    JSON.stringify([
+      "2b755a776d6af4a57d877633485ca0701e4cc51d",
+      "d8fcc0f74f659fe614dc215dcef0f3d2c9b16590",
+    ]) ||
+  dependencyMap.authority?.sourceRevision !==
+    "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
+  dependencyMap.authority?.baseRevision !==
+    "8bae9403a13124f647f215999848ff5c82784e37" ||
   dependencyMap.authority?.treeState !==
-    "reviewed follow-up content tree bound by resultContentTreeSha256" ||
+    "reviewed merge content tree bound by resultContentTreeSha256" ||
   JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
     JSON.stringify(contentTreeExclusions)
 ) {
-  fail(
-    "authority must bind the published checkpoint parent and exact exclusions",
-  );
+  fail("authority must bind both reviewed merge parents and exact exclusions");
 }
-const trackedEntriesFromIndex = execFileSync(
-  "git",
-  ["ls-files", "--stage", "-z"],
-  {
-    cwd: repositoryRoot,
-  },
-)
-  .toString("utf8")
+const trackedEntriesFromIndex = execGit(["ls-files", "--stage", "-z"], "utf8")
   .split("\0")
   .filter((record) => record !== "")
   .map((record) => {
     const separatorIndex = record.indexOf("\t");
-    const [mode, objectId] = record.slice(0, separatorIndex).split(" ");
+    if (separatorIndex <= 0) {
+      fail("tracked index contains a malformed entry");
+    }
+    const metadata = record.slice(0, separatorIndex);
+    const match = metadata.match(
+      /^(100644|100755|120000|160000) ([0-9a-f]{40}|[0-9a-f]{64}) 0$/,
+    );
+    if (match === null) {
+      fail("tracked index must contain only supported stage-zero entries");
+    }
+    const [, mode, objectId] = match;
     return {
       mode,
       objectId,
@@ -516,7 +616,7 @@ if (
   l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 11
+  l1Adapter.node22FocusedTestsPassed !== 12
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -565,7 +665,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 18
+  multiProviderConsistency.node22FocusedTestsPassed !== 19
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -608,7 +708,7 @@ if (
     "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 21
+  finalityEngine.node22FocusedTestsPassed !== 22
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -708,7 +808,7 @@ if (
     "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.node22FocusedTestsPassed !== 11
+  stateQueueIndexer.node22FocusedTestsPassed !== 15
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }

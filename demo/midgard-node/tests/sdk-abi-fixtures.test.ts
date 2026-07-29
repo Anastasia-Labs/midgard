@@ -172,6 +172,16 @@ const forcedInclusionTxV1Fixture: SDK.ForcedInclusionTxV1 = {
   operator_validity: "FailedScript",
 };
 
+const l2TransactionSourceV1Fixture: SDK.L2TransactionSourceV1 = {
+  tx_id: h32,
+  transaction_commitment: "35".repeat(32),
+  source: {
+    compact_cbor: "80",
+    witness_set_compact_cbor: "81",
+    field_preimage_lengths_cbor: "82",
+  },
+};
+
 const transitionStepFixture: SDK.TransitionStep = {
   schema_version: 1n,
   step_index: 0n,
@@ -367,6 +377,15 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     value: forcedInclusionTxV1Fixture,
     proof,
   };
+  const l2SourceMembership: SDK.L2TransactionSourceMembershipProof = {
+    domain: SDK.ROOT_DOMAINS.transactionsV1,
+    root: headerFixture.transactionsRoot,
+    phas_root: "71".repeat(32),
+    count: 1n,
+    key: h32,
+    value: Data.to(l2TransactionSourceV1Fixture, SDK.L2TransactionSourceV1),
+    proof,
+  };
   const depositSourceMembership: SDK.DepositSourceMembershipProof = {
     domain: SDK.ROOT_DOMAINS.deposits,
     root: headerFixture.depositsRoot,
@@ -500,6 +519,18 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
           projected_utxo: ledgerInsertWitness,
         },
       }),
+    "transition-fault.l2-transaction-transition":
+      SDK.invalidOneStepTransitionFault({
+        L2TransactionTransition: {
+          trace_proof: traceProof,
+          event_to_step: eventToStepMembership,
+          source_membership: l2SourceMembership,
+          spend_inputs_preimage: "80",
+          outputs_preimage: "80",
+          spent_utxos: [ledgerDeleteWitness],
+          produced_utxos: [ledgerInsertWitness],
+        },
+      }),
     "transition-fault.omitted-deposit": SDK.omittedDueL1EventFault({
       OmittedDueDeposit: {
         event_ref_input_index: 0n,
@@ -601,6 +632,70 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     output_index: 1n,
     proof: proofFor(fault),
   });
+  const validationState: SDK.ValidationMachineStateV1 = {
+    machine_version: 1n,
+    event_key_hash: "81".repeat(32),
+    transaction_id: h32,
+    transaction_commitment: l2TransactionSourceV1Fixture.transaction_commitment,
+    validation_context_hash: "82".repeat(32),
+    source_kind: "Normal",
+    prior_ledger_root: headerFixture.prevUtxosRoot,
+    phase: "Terminal",
+    program_counter: 1n,
+    work_root: "83".repeat(32),
+    execution_cpu: 1n,
+    execution_memory: 1n,
+    verdict: "Accepted",
+    rejection_code_hash: "00".repeat(32),
+    ledger_delta_root: "84".repeat(32),
+  };
+  const validationDescriptor: SDK.ValidationTraceDescriptorV1 = {
+    schema_version: 1n,
+    machine_version: 1n,
+    trace_root: "85".repeat(32),
+    step_count: 1n,
+    initial_state_hash: "86".repeat(32),
+    terminal_state_hash: "87".repeat(32),
+    verdict: "Accepted",
+    rejection_code_hash: "00".repeat(32),
+  };
+  const validationProof: SDK.ValidationTraceProofV1 = {
+    state_index: 0n,
+    state_hash: validationDescriptor.terminal_state_hash,
+    siblings: [],
+  };
+  const acceptedTransactionClaim: SDK.ValidationClaimWitnessV1 = {
+    version: 1n,
+    descriptor_membership: {
+      domain: SDK.ROOT_DOMAINS.validationTraces,
+      root: headerFixture.validationTracesRoot,
+      phas_root: "72".repeat(32),
+      count: 1n,
+      key: eventKeys[2]!,
+      value: validationDescriptor,
+      proof,
+    },
+    transition_step_membership: traceProof,
+    event_to_step_membership: eventToStepMembership,
+    source_membership: {
+      NormalValidationSource: {
+        membership: {
+          ...l2SourceMembership,
+          value: l2TransactionSourceV1Fixture,
+        },
+      },
+    },
+    validation_context_cbor: "80",
+    initial_state: validationState,
+    terminal_state: validationState,
+    initial_state_proof: validationProof,
+    terminal_state_proof: validationProof,
+  };
+  transitionFaults["transition-fault.accepted-transaction-transition"] =
+    SDK.acceptedTransactionTransitionMismatchFault({
+      claim: acceptedTransactionClaim,
+      terminalAcceptanceWitnessCbor: "80",
+    });
   const fixtures: Record<string, AbiFixtureValue> = {
     HeaderV1: {
       schemaName: "HeaderV1",
@@ -912,13 +1007,22 @@ describe("SDK canonical ABI fixtures", () => {
         version: 1,
         encoding: "lucid-plutus-data-cbor-hex",
         fixtures: Object.fromEntries(
-          Object.entries(fixtures).map(([name, fixture]) => [
-            name,
-            {
-              schema: fixture.schemaName,
-              ...encodedFixture(fixture.value, fixture.schema),
-            },
-          ]),
+          Object.entries(fixtures).map(([name, fixture]) => {
+            try {
+              return [
+                name,
+                {
+                  schema: fixture.schemaName,
+                  ...encodedFixture(fixture.value, fixture.schema),
+                },
+              ];
+            } catch (error) {
+              throw new Error(
+                `failed to encode transition trace ABI fixture ${name}`,
+                { cause: error },
+              );
+            }
+          }),
         ),
       };
       writeFileSync(

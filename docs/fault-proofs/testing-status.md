@@ -13,7 +13,7 @@
 
 | Level                                       | Exists?                                       | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Aiken unit/property tests                   | 🟠 partial                                    | canonical V1 transition-trace coverage, native-tx codec, counted roots, invalid-range normalization, and zero-input step-02 full-handler accept/reject fixtures — **nothing** for computation-thread, fault-proof token, catalogue, or state-queue removal at the Aiken level ([`onchain-reference.md`](onchain-reference.md) §6)                                                                                                                                                                                  |
+| Aiken unit/property tests                   | 🟠 partial                                    | 26 canonical V1 transition-trace cases, native-tx codec, counted roots, invalid-range normalization, and zero-input step-02 full-handler accept/reject fixtures — **nothing** for computation-thread, fault-proof token, catalogue, or state-queue removal at the Aiken level ([`onchain-reference.md`](onchain-reference.md) §6)                                                                                                                                                                                  |
 | TypeScript unit tests                       | ✅ broad                                      | prepare-\* logic, MPF proofs, lease protocol, contract inspection, transition-trace detection/reconstruction, retained-DA binding, blueprint decoding, and validation-dispute submission (all 14 files in `demo/midgard-fault-proofs/tests/`)                                                                                                                                                                                                                                                                      |
 | Lucid Emulator end-to-end                   | ✅ for 5 legacy families + validation dispute | `submit-init-emulator.test.ts`: full chains for double-spend, invalid-range, non-existent-input, transition-trace, and zero-input through faulty-block removal, plus canonical V1 validation-dispute lifecycle coverage; `spend-input-witness.test.ts` covers the 180-input witness                                                                                                                                                                                                                                |
 | Cross-process / network integration         | 🟠 adjacent only                              | DA layer: `da-committee-node` in-process protocol tests and `multi-node-integration.test.ts`. The pre-consolidation exact-50k runner was invalidated because the complete newest V1 payload exceeds the retained DA bound. Nothing drives a fault proof across processes                                                                                                                                                                                                                                           |
@@ -40,7 +40,7 @@
 
 ```bash
 # On-chain (Aiken v1.1.22, pinned in onchain/aiken/aiken.toml:3)
-cd onchain/aiken && aiken check
+cd onchain/aiken && aiken fmt --check && aiken check
 aiken build --env testnet                      # blueprint used by TS tests/deploys
 
 # Plutarch (legacy MPF; not CI-wired)
@@ -68,9 +68,9 @@ cd offchain && cabal test mockchain-tests
 The current tree pins Aiken v1.1.22. CI hash-guards the two protected pre-Goal
 tracked libraries, applies the pinned formatter to every other tracked Aiken
 source, normalizes the formatter's trailing-space artifact, and rejects any
-resulting source diff before running the contract checks and testnet build.
-Historical results from reconstructed base `55afdc54` are not final-tree
-evidence.
+resulting source diff before running the contract checks and testnet build. This
+checkpoint includes the canonical formatter pass across the touched Aiken tree.
+Historical results from reconstructed base `55afdc54` are not final-tree evidence.
 
 Live-stack acceptance: `.agents/skills/midgard-e2e-acceptance/SKILL.md` (local Kupmios
 only; real DA attestation required — `attest-state-queue-once` forbidden as an acceptance
@@ -98,8 +98,8 @@ path, `:78-81,822-829`). Contract building: `.agents/skills/aiken-contract-build
    coupling, catalogue immutability, and both `RemoveFaultyBlockHeader` branches —
    including a regression for the cross-operator descendant case
    (`state-queue.ak:661`) and a duplicate-`Init` double-mint probe.
-3. **Transition-trace sub-variant gaps**: `SourcePhaseMismatch` (0 tests), `CountFault`
-   (1/5), `OmittedDueL1Event`/`OutOfWindowSourceEvent` (deposit-only).
+3. **Transition-trace sub-variant gaps**: `CountFault` (1/5) and
+   `OmittedDueL1Event`/`OutOfWindowSourceEvent` (deposit-only).
 4. **Phase A/B reject codes never exercised**: `UnsupportedFieldNonEmpty`,
    `PlutusEvaluationUnavailable`, `CertificatesForbidden`, `NonZeroWithdrawal`
    (21/25 covered by `phase-a.test.ts`/`phase-b.test.ts`).

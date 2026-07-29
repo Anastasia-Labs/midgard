@@ -30,6 +30,7 @@ import {
 import {
   evaluateWatcherFinalityV1,
   parseWatcherFinalityPolicyV1,
+  watcherFinalityConfiguredSourceV1,
   type WatcherFinalityResultV1,
 } from "./finality-engine.js";
 import {
@@ -66,6 +67,7 @@ export const WATCHER_PROOF_THREAD_V1_BOUNDS = Object.freeze({
   stepsPerFamily: 512,
   historyEntries: 256,
   auditEntries: 256,
+  finalityLineageSteps: 2_160,
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
@@ -229,6 +231,11 @@ export type WatcherProofThreadPublicContextV1 = Readonly<{
   }>;
   finalityAuthority: Readonly<{
     policy: unknown;
+    lineage: readonly Readonly<{
+      observations: readonly unknown[];
+      consistency: unknown;
+      result: unknown;
+    }>[];
     previousState: unknown;
     observations: readonly unknown[];
     consistency: unknown;
@@ -1774,6 +1781,7 @@ const parsePublicContext = (
       ? null
       : exactRecord(record.finalityAuthority, [
           "policy",
+          "lineage",
           "previousState",
           "observations",
           "consistency",
@@ -1783,6 +1791,9 @@ const parsePublicContext = (
     record.authenticatedProvider === null ||
     record.l1Observation === null ||
     finality === null ||
+    !Array.isArray(finality.lineage) ||
+    finality.lineage.length >
+      WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
     !Array.isArray(finality.observations) ||
     rollbackAuthority !== null
   ) {
@@ -1821,19 +1832,62 @@ const parsePublicContext = (
     ) {
       return null;
     }
+    const replayedLineage: {
+      observations: readonly unknown[];
+      consistency: unknown;
+      result: unknown;
+    }[] = [];
+    let replayedState: unknown = null;
+    for (const candidate of finality.lineage as readonly unknown[]) {
+      const step = exactRecord(candidate, [
+        "observations",
+        "consistency",
+        "result",
+      ]);
+      if (step === null || !Array.isArray(step.observations)) {
+        return null;
+      }
+      const stepObservations = step.observations.map((observation) => {
+        const authority = exactRecord(observation, [
+          "authenticatedProvider",
+          "l1Observation",
+        ]);
+        if (authority === null) {
+          throw new Error("malformed W10 lineage authority");
+        }
+        return normalizeWatcherL1BlockV1(
+          authority.authenticatedProvider,
+          authority.l1Observation,
+        );
+      });
+      const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        watcherFinalityConfiguredSourceV1(finalityPolicy),
+        stepObservations,
+      );
+      const stepResult = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        replayedState,
+        stepConsistency,
+      );
+      if (
+        !same(stepConsistency, step.consistency) ||
+        !same(stepResult, step.result) ||
+        stepResult.state === null
+      ) {
+        return null;
+      }
+      replayedState = stepResult.state;
+      replayedLineage.push({
+        observations: step.observations,
+        consistency: step.consistency,
+        result: step.result,
+      });
+    }
+    if (!same(replayedState, finality.previousState)) {
+      return null;
+    }
     const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      finalityPolicy.sourceMode === "local_node"
-        ? {
-            sourceMode: "local_node",
-            network: finalityPolicy.network,
-            authorityNodeId: finalityPolicy.authorityNodeId!,
-            genesisIdentitySha256:
-              finalityPolicy.authorityGenesisIdentitySha256!,
-          }
-        : {
-            sourceMode: "external_providers",
-            network: finalityPolicy.network,
-          },
+      watcherFinalityConfiguredSourceV1(finalityPolicy),
       observations,
     );
     finalityResult = evaluateWatcherFinalityV1(
@@ -1903,6 +1957,11 @@ const parsePublicContext = (
       deploymentAuthority,
       finalityAuthority: {
         policy: finality.policy,
+        lineage: finality.lineage as readonly Readonly<{
+          observations: readonly unknown[];
+          consistency: unknown;
+          result: unknown;
+        }>[],
         previousState: finality.previousState,
         observations: finality.observations as readonly unknown[],
         consistency: finality.consistency,
@@ -2800,6 +2859,7 @@ const contextStructural = (
       ? null
       : exactRecord(record?.finalityAuthority, [
           "policy",
+          "lineage",
           "previousState",
           "observations",
           "consistency",
@@ -2816,7 +2876,11 @@ const contextStructural = (
     record.schemaVersion !==
       WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION ||
     (record.finalityAuthority !== null &&
-      (finality === null || !Array.isArray(finality.observations))) ||
+      (finality === null ||
+        !Array.isArray(finality.lineage) ||
+        finality.lineage.length >
+          WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
+        !Array.isArray(finality.observations))) ||
     (record.rollbackAuthority !== null && rollback === null)
   ) {
     return null;

@@ -1,4 +1,12 @@
-import { readFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  rename,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -15,31 +23,579 @@ import type { ChainPoint, ObservedStateQueueNode } from "../domain.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
-export type OgmiosPoint = {
+
+export type CanonicalChainPoint = ChainPoint & {
+  readonly network: string;
   readonly slot: number;
-  readonly id: string;
-  readonly height: number;
+  readonly blockHash: string;
+  readonly providerSource: string;
+  readonly observedAt: string;
 };
-export type StateQueueObservation = {
-  readonly nodes: readonly ObservedStateQueueNode[];
-  readonly tip: OgmiosPoint;
+
+export type ChainSyncCursor = {
+  readonly sequence: number;
+  readonly point: CanonicalChainPoint;
+  readonly rollbackGeneration: number;
 };
-export type TipAwareStateQueueProvider = StateQueueProvider & {
-  fetchStateQueueObservation(): Promise<StateQueueObservation>;
+
+export type ChainSyncEvent =
+  | {
+      readonly direction: "roll_forward";
+      readonly point: CanonicalChainPoint;
+    }
+  | {
+      readonly direction: "roll_backward";
+      readonly point: CanonicalChainPoint;
+    };
+
+export type ChainSyncEventBatch = {
+  readonly event?: ChainSyncEvent;
+  readonly tip: CanonicalChainPoint;
 };
-export type LocalChainSyncSnapshot = {
-  readonly tip: OgmiosPoint;
-  readonly rollbackSequence: number;
+
+export interface ChainSyncEventSource {
+  next(
+    cursor: ChainSyncCursor | undefined,
+    intersectionCandidates?: readonly CanonicalChainPoint[],
+  ): Promise<ChainSyncEventBatch>;
+}
+
+export interface ChainSyncCursorStore {
+  load(): Promise<ChainSyncCursor | undefined>;
+  append(event: ChainSyncEvent, cursor: ChainSyncCursor): Promise<void>;
+  replay(afterSequence: number): Promise<readonly ChainSyncEvent[]>;
+  intersectionPoints?(limit: number): Promise<readonly CanonicalChainPoint[]>;
+}
+
+export interface ChainSyncReplayProvider {
+  currentChainSyncCursor(): Promise<ChainSyncCursor>;
+  replayChainSyncEvents(
+    afterSequence: number,
+  ): Promise<readonly ChainSyncEvent[]>;
+  loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined>;
+  acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void>;
+}
+
+type PersistedChainSyncState = {
+  readonly schemaVersion: 2;
+  readonly authorityFingerprint: string;
+  readonly cursor?: ChainSyncCursor;
 };
-export interface LocalChainSyncAuthority {
-  synchronize(): Promise<LocalChainSyncSnapshot>;
+
+type PersistedChainSyncConsumerState = {
+  readonly schemaVersion: 1;
+  readonly authorityFingerprint: string;
+  readonly cursor: ChainSyncCursor;
+};
+
+type PersistedChainSyncJournalEntry = {
+  readonly sequence: number;
+  readonly event: ChainSyncEvent;
+  readonly cursor: ChainSyncCursor;
+};
+
+export class FileChainSyncCursorStore implements ChainSyncCursorStore {
+  private readonly journalPath: string;
+  private cachedState: PersistedChainSyncState | undefined;
+  private cachedJournalLength = 0;
+  private initialized = false;
+
+  constructor(
+    private readonly path: string,
+    private readonly authorityFingerprint: string,
+  ) {
+    if (!/^[0-9a-f]{64}$/u.test(authorityFingerprint)) {
+      throw new Error(
+        "chain-sync authority fingerprint must be lowercase sha256 hex",
+      );
+    }
+    this.journalPath = `${path}.events.jsonl`;
+  }
+
+  async load(): Promise<ChainSyncCursor | undefined> {
+    const state = await this.initialize();
+    return state.cursor;
+  }
+
+  async append(event: ChainSyncEvent, cursor: ChainSyncCursor): Promise<void> {
+    const previous = await this.initialize();
+    if (
+      previous.cursor !== undefined &&
+      cursor.sequence !== previous.cursor.sequence + 1
+    ) {
+      throw new Error(
+        `chain-sync cursor sequence is not contiguous: persisted=${previous.cursor.sequence.toString()}, next=${cursor.sequence.toString()}`,
+      );
+    }
+    if (this.cachedJournalLength !== cursor.sequence) {
+      throw new Error(
+        "chain-sync event journal does not match its durable cursor; refusing unsafe recovery",
+      );
+    }
+    await mkdir(dirname(this.path), { recursive: true });
+    const next: PersistedChainSyncState = {
+      schemaVersion: 2,
+      authorityFingerprint: this.authorityFingerprint,
+      cursor,
+    };
+    try {
+      await appendFile(
+        this.journalPath,
+        `${JSON.stringify({ sequence: cursor.sequence, event, cursor })}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+      const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
+      await writeFile(temporaryPath, `${JSON.stringify(next)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      await rename(temporaryPath, this.path);
+    } catch (error) {
+      this.initialized = false;
+      this.cachedState = undefined;
+      this.cachedJournalLength = 0;
+      throw error;
+    }
+    this.cachedState = next;
+    this.cachedJournalLength += 1;
+  }
+
+  async replay(afterSequence: number): Promise<readonly ChainSyncEvent[]> {
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < -1) {
+      throw new Error("chain-sync replay sequence must be an integer >= -1");
+    }
+    const state = await this.initialize();
+    const journal = await this.readJournal();
+    await this.assertJournalMatchesCursor(state.cursor, journal);
+    return journal
+      .filter(({ sequence }) => sequence > afterSequence)
+      .map(({ event }) => event);
+  }
+
+  async intersectionPoints(
+    limit: number,
+  ): Promise<readonly CanonicalChainPoint[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new Error("chain-sync intersection limit must be positive");
+    }
+    await this.initialize();
+    const journal = await this.readJournal();
+    const seen = new Set<string>();
+    const points: CanonicalChainPoint[] = [];
+    for (let index = journal.length - 1; index >= 0; index -= 1) {
+      const point = journal[index]!.cursor.point;
+      const key = `${point.slot.toString()}:${point.blockHash}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        points.push(point);
+        if (points.length === limit) {
+          break;
+        }
+      }
+    }
+    return points;
+  }
+
+  private async initialize(): Promise<PersistedChainSyncState> {
+    if (this.initialized) {
+      return this.cachedState!;
+    }
+    let state = await this.readState();
+    const journal = await this.readJournal();
+    if (
+      state.cursor !== undefined &&
+      (journal[state.cursor.sequence] === undefined ||
+        !samePersistedCursor(
+          journal[state.cursor.sequence]!.cursor,
+          state.cursor,
+        ))
+    ) {
+      throw new Error(
+        "persisted chain-sync cursor does not match its durable event journal",
+      );
+    }
+    const journalCursor = journal.at(-1)?.cursor;
+    if (
+      journalCursor !== undefined &&
+      (state.cursor === undefined ||
+        journalCursor.sequence > state.cursor.sequence)
+    ) {
+      const expectedNext = (state.cursor?.sequence ?? -1) + 1;
+      if (journal[expectedNext]?.sequence !== expectedNext) {
+        throw new Error(
+          "persisted chain-sync journal tail is not contiguous with its cursor",
+        );
+      }
+      state = {
+        schemaVersion: 2,
+        authorityFingerprint: this.authorityFingerprint,
+        cursor: journalCursor,
+      };
+      await this.writeState(state);
+    }
+    await this.assertJournalMatchesCursor(state.cursor, journal);
+    this.cachedState = state;
+    this.cachedJournalLength = journal.length;
+    this.initialized = true;
+    return state;
+  }
+
+  private async readState(): Promise<PersistedChainSyncState> {
+    let raw: string;
+    try {
+      raw = await readFile(this.path, "utf8");
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return {
+          schemaVersion: 2,
+          authorityFingerprint: this.authorityFingerprint,
+        };
+      }
+      throw error;
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    return parsePersistedChainSyncState(parsed, this.authorityFingerprint);
+  }
+
+  private async readJournal(): Promise<
+    readonly PersistedChainSyncJournalEntry[]
+  > {
+    let raw: string;
+    try {
+      raw = await readFile(this.journalPath, "utf8");
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return [];
+      }
+      throw error;
+    }
+    return raw
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line, index) => {
+        const record = getRecord(
+          JSON.parse(line) as unknown,
+          `persisted chain-sync event ${index.toString()}`,
+        );
+        const sequence = safeSlot(
+          record.sequence,
+          `persisted chain-sync event ${index.toString()} sequence`,
+        );
+        if (sequence !== index) {
+          throw new Error(
+            "persisted chain-sync event sequences must be contiguous from zero",
+          );
+        }
+        const event = parsePersistedChainSyncEvent(record.event);
+        const cursor = parsePersistedChainSyncCursor(record.cursor);
+        if (
+          cursor.sequence !== sequence ||
+          !samePersistedEventPoint(event, cursor.point)
+        ) {
+          throw new Error(
+            "persisted chain-sync journal cursor does not match its event",
+          );
+        }
+        return {
+          sequence,
+          event,
+          cursor,
+        };
+      });
+  }
+
+  private async writeState(state: PersistedChainSyncState): Promise<void> {
+    await mkdir(dirname(this.path), { recursive: true });
+    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify(state)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporaryPath, this.path);
+  }
+
+  private async assertJournalMatchesCursor(
+    cursor: ChainSyncCursor | undefined,
+    suppliedJournal?: readonly PersistedChainSyncJournalEntry[],
+  ): Promise<void> {
+    const journal = suppliedJournal ?? (await this.readJournal());
+    if (
+      (cursor === undefined && journal.length !== 0) ||
+      (cursor !== undefined &&
+        (journal.at(-1)?.sequence !== cursor.sequence ||
+          !samePersistedCursor(journal.at(-1)!.cursor, cursor)))
+    ) {
+      throw new Error(
+        "persisted chain-sync cursor does not match its durable event journal",
+      );
+    }
+  }
+}
+
+export class FileChainSyncConsumerCursorStore {
+  constructor(
+    private readonly path: string,
+    private readonly authorityFingerprint: string,
+  ) {
+    if (!/^[0-9a-f]{64}$/u.test(authorityFingerprint)) {
+      throw new Error(
+        "chain-sync consumer authority fingerprint must be lowercase sha256 hex",
+      );
+    }
+  }
+
+  async load(): Promise<ChainSyncCursor | undefined> {
+    let raw: string;
+    try {
+      raw = await readFile(this.path, "utf8");
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
+    const state = parsePersistedChainSyncConsumerState(
+      JSON.parse(raw) as unknown,
+      this.authorityFingerprint,
+    );
+    return state.cursor;
+  }
+
+  async save(cursor: ChainSyncCursor): Promise<void> {
+    const previous = await this.load();
+    if (
+      previous !== undefined &&
+      (cursor.sequence < previous.sequence ||
+        cursor.rollbackGeneration < previous.rollbackGeneration)
+    ) {
+      throw new Error("chain-sync consumer cursor cannot move backwards");
+    }
+    if (
+      previous !== undefined &&
+      cursor.sequence === previous.sequence &&
+      !samePersistedCursor(previous, cursor)
+    ) {
+      throw new Error(
+        "chain-sync consumer cursor cannot change at the same sequence",
+      );
+    }
+    const state: PersistedChainSyncConsumerState = {
+      schemaVersion: 1,
+      authorityFingerprint: this.authorityFingerprint,
+      cursor,
+    };
+    await mkdir(dirname(this.path), { recursive: true });
+    const temporaryPath = `${this.path}.${randomUUID()}.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify(state)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await rename(temporaryPath, this.path);
+  }
+}
+
+export class LocalNodeChainAuthority {
+  private cursor: ChainSyncCursor | undefined;
+  private loaded = false;
+  private operation = Promise.resolve();
+
+  constructor(
+    readonly authorityNodeId: string,
+    readonly network: string,
+    private readonly source: ChainSyncEventSource,
+    private readonly store: ChainSyncCursorStore,
+  ) {}
+
+  async synchronizeToTip(maxEvents = 4096): Promise<CanonicalChainPoint> {
+    let result: CanonicalChainPoint | undefined;
+    const run = this.operation.then(async () => {
+      await this.loadCursor();
+      const intersectionCandidates =
+        this.cursor === undefined
+          ? undefined
+          : await this.store.intersectionPoints?.(2160);
+      for (let count = 0; count < maxEvents; count += 1) {
+        const batch = await this.source.next(
+          this.cursor,
+          intersectionCandidates,
+        );
+        this.assertSourcePoint(batch.tip, "chain-sync tip");
+        if (batch.event === undefined) {
+          if (
+            this.cursor === undefined ||
+            !sameCanonicalPoint(this.cursor.point, batch.tip)
+          ) {
+            throw new Error(
+              "chain-sync source reported no event before the canonical tip was reached",
+            );
+          }
+          result = this.cursor.point;
+          return;
+        }
+        this.assertSourcePoint(batch.event.point, "chain-sync event");
+        const sequence = (this.cursor?.sequence ?? -1) + 1;
+        const rollbackGeneration =
+          (this.cursor?.rollbackGeneration ?? 0) +
+          (batch.event.direction === "roll_backward" ? 1 : 0);
+        const cursor: ChainSyncCursor = {
+          sequence,
+          point: batch.event.point,
+          rollbackGeneration,
+        };
+        await this.store.append(batch.event, cursor);
+        this.cursor = cursor;
+        if (sameCanonicalPoint(batch.event.point, batch.tip)) {
+          result = cursor.point;
+          return;
+        }
+      }
+      throw new Error(
+        `local node chain-sync did not reach its advertised tip within ${maxEvents.toString()} events`,
+      );
+    });
+    this.operation = run.catch(() => undefined);
+    await run;
+    return result!;
+  }
+
+  async currentPoint(): Promise<CanonicalChainPoint> {
+    await this.loadCursor();
+    if (this.cursor === undefined) {
+      throw new Error(
+        "local node chain authority has no synchronized canonical point",
+      );
+    }
+    return this.cursor.point;
+  }
+
+  async currentCursor(): Promise<ChainSyncCursor> {
+    await this.loadCursor();
+    if (this.cursor === undefined) {
+      throw new Error("local node chain authority has no durable cursor");
+    }
+    return this.cursor;
+  }
+
+  async replay(afterSequence: number): Promise<readonly ChainSyncEvent[]> {
+    await this.loadCursor();
+    return this.store.replay(afterSequence);
+  }
+
+  assertAligned(point: CanonicalChainPoint, sourceLabel: string): void {
+    if (this.cursor === undefined) {
+      throw new Error("local node chain authority has not been synchronized");
+    }
+    const canonical = this.cursor.point;
+    if (!sameCanonicalPoint(point, canonical)) {
+      throw new Error(
+        `${sourceLabel} is stale or on a mismatched chain point: query=${point.network}:${point.slot.toString()}:${point.blockHash}, authority=${canonical.network}:${canonical.slot.toString()}:${canonical.blockHash}`,
+      );
+    }
+  }
+
+  private async loadCursor(): Promise<void> {
+    if (!this.loaded) {
+      this.cursor = await this.store.load();
+      if (this.cursor !== undefined) {
+        this.assertSourcePoint(
+          this.cursor.point,
+          "persisted chain-sync cursor",
+        );
+      }
+      this.loaded = true;
+    }
+  }
+
+  private assertSourcePoint(point: CanonicalChainPoint, label: string): void {
+    if (point.network !== this.network) {
+      throw new Error(
+        `${label} network ${point.network} does not match configured network ${this.network}`,
+      );
+    }
+    if (point.providerSource !== `chain-sync:${this.authorityNodeId}`) {
+      throw new Error(
+        `${label} provider source is not bound to local authority ${this.authorityNodeId}`,
+      );
+    }
+  }
+}
+
+export class OgmiosChainSyncEventSource implements ChainSyncEventSource {
+  private readonly request: OgmiosChainSyncRequest;
+
+  constructor(
+    private readonly ogmiosUrl: string,
+    private readonly network: string,
+    private readonly authorityNodeId: string,
+    request?: OgmiosChainSyncRequest,
+  ) {
+    this.request = request ?? createOgmiosChainSyncRequest();
+  }
+
+  async next(
+    cursor: ChainSyncCursor | undefined,
+    intersectionCandidates?: readonly CanonicalChainPoint[],
+  ): Promise<ChainSyncEventBatch> {
+    const response = await this.request(
+      this.ogmiosUrl,
+      cursor?.point,
+      intersectionCandidates,
+      this.network,
+      this.authorityNodeId,
+    );
+    return response;
+  }
+}
+
+export class FixtureChainSyncEventSource implements ChainSyncEventSource {
+  constructor(
+    private readonly path: string,
+    private readonly network: string,
+    private readonly authorityNodeId: string,
+  ) {}
+
+  async next(
+    cursor: ChainSyncCursor | undefined,
+  ): Promise<ChainSyncEventBatch> {
+    const parsed = JSON.parse(await readFile(this.path, "utf8")) as unknown;
+    const events = parseFixtureChainSyncEvents(
+      parsed,
+      this.network,
+      this.authorityNodeId,
+    );
+    const event = events[(cursor?.sequence ?? -1) + 1];
+    if (event === undefined) {
+      if (cursor === undefined) {
+        throw new Error("chain-sync fixture contains no events");
+      }
+      return { tip: cursor.point };
+    }
+    return { event, tip: events.at(-1)!.point };
+  }
 }
 
 export class FixtureStateQueueProvider implements StateQueueProvider {
   private readonly path: string;
+  private readonly network: string;
 
-  constructor(path: string) {
+  constructor(path: string, network: string) {
     this.path = path;
+    this.network = network;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
@@ -50,6 +606,28 @@ export class FixtureStateQueueProvider implements StateQueueProvider {
     }
     return parsed as readonly ObservedStateQueueNode[];
   }
+
+  async currentChainPoint(): Promise<CanonicalChainPoint> {
+    const nodes = await this.fetchStateQueueNodes();
+    const point = nodes[0]?.chainPoint;
+    if (
+      point?.slot === undefined ||
+      point.blockHash === undefined ||
+      point.providerSource === undefined
+    ) {
+      throw new Error(
+        "fixture query provider requires node-derived slot, blockHash, and providerSource provenance",
+      );
+    }
+    return {
+      ...point,
+      network: this.network,
+      slot: point.slot,
+      blockHash: point.blockHash,
+      providerSource: point.providerSource,
+      observedAt: point.observedAt ?? new Date().toISOString(),
+    };
+  }
 }
 
 export class LucidStateQueueProvider implements StateQueueProvider {
@@ -57,11 +635,8 @@ export class LucidStateQueueProvider implements StateQueueProvider {
   private readonly stateQueueAddress: string;
   private readonly stateQueuePolicyId: string;
   private readonly providerSource: string;
-  private readonly chainPointResolver?: (
-    utxo: UTxO,
-    tip?: OgmiosPoint,
-  ) => Promise<ChainPoint>;
-  private readonly tipResolver?: () => Promise<OgmiosPoint>;
+  private readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
+  private readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
 
   constructor({
     lucid,
@@ -69,30 +644,24 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     stateQueuePolicyId,
     providerSource,
     chainPointResolver,
-    tipResolver,
+    currentChainPointResolver,
   }: {
     readonly lucid: LucidEvolution;
     readonly stateQueueAddress: string;
     readonly stateQueuePolicyId: string;
     readonly providerSource: string;
-    readonly chainPointResolver?: (
-      utxo: UTxO,
-      tip?: OgmiosPoint,
-    ) => Promise<ChainPoint>;
-    readonly tipResolver?: () => Promise<OgmiosPoint>;
+    readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
+    readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
   }) {
     this.lucid = lucid;
     this.stateQueueAddress = stateQueueAddress;
     this.stateQueuePolicyId = stateQueuePolicyId;
     this.providerSource = providerSource;
     this.chainPointResolver = chainPointResolver;
-    this.tipResolver = tipResolver;
+    this.currentChainPointResolver = currentChainPointResolver;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
-    if (this.tipResolver !== undefined) {
-      return (await this.fetchStateQueueObservation()).nodes;
-    }
     const stateQueueUtxos = await SDK.fetchSortedStateQueueUTxOs(this.lucid, {
       stateQueueAddress: this.stateQueueAddress,
       stateQueuePolicyId: this.stateQueuePolicyId,
@@ -104,36 +673,27 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     );
   }
 
-  async fetchStateQueueObservation(): Promise<StateQueueObservation> {
-    if (this.tipResolver === undefined) {
-      throw new Error("state-queue provider does not expose an indexed tip");
-    }
-    const tip = await this.tipResolver();
-    const stateQueueUtxos = await SDK.fetchSortedStateQueueUTxOs(this.lucid, {
-      stateQueueAddress: this.stateQueueAddress,
-      stateQueuePolicyId: this.stateQueuePolicyId,
-    });
-    return {
-      nodes: await stateQueueUtxosToObservedNodes(
-        stateQueueUtxos,
-        this.providerSource,
-        this.chainPointResolver === undefined
-          ? undefined
-          : (utxo) => this.chainPointResolver!(utxo, tip),
-      ),
-      tip,
-    };
+  async currentChainPoint(): Promise<CanonicalChainPoint> {
+    return this.currentChainPointResolver();
   }
 }
 
+type ChainPointAwareStateQueueProvider = StateQueueProvider & {
+  currentChainPoint(): Promise<CanonicalChainPoint>;
+};
+
+type StateQueueProviderWithOptionalPoint = StateQueueProvider & {
+  currentChainPoint?: () => Promise<CanonicalChainPoint>;
+};
+
 export class MultiStateQueueProvider implements StateQueueProvider {
-  private readonly providers: readonly StateQueueProvider[];
+  private readonly providers: readonly StateQueueProviderWithOptionalPoint[];
   private readonly identities: readonly string[];
   private readonly mergedIdentities?: readonly string[];
   private readonly sourceMode: "local_node" | "external_providers";
 
   constructor(
-    providers: readonly StateQueueProvider[],
+    providers: readonly StateQueueProviderWithOptionalPoint[],
     options: {
       readonly sourceMode: "local_node" | "external_providers";
       readonly identities?: readonly string[];
@@ -174,9 +734,48 @@ export class MultiStateQueueProvider implements StateQueueProvider {
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
-    const results = await Promise.all(
-      this.providers.map((provider) => provider.fetchStateQueueNodes()),
+    const snapshots = await Promise.all(
+      this.providers.map(async (provider, index) => {
+        if (
+          this.sourceMode === "external_providers" &&
+          typeof provider.currentChainPoint !== "function"
+        ) {
+          throw new Error(
+            `external provider ${this.identities[index]!} cannot prove its current chain point`,
+          );
+        }
+        if (typeof provider.currentChainPoint === "function") {
+          const pointBefore = await (
+            provider as ChainPointAwareStateQueueProvider
+          ).currentChainPoint();
+          const nodes = await provider.fetchStateQueueNodes();
+          const pointAfter = await (
+            provider as ChainPointAwareStateQueueProvider
+          ).currentChainPoint();
+          if (!sameCanonicalPoint(pointBefore, pointAfter)) {
+            throw new Error(
+              `provider ${this.identities[index]!} chain point changed while its state-queue snapshot was read`,
+            );
+          }
+          return { nodes, point: pointAfter };
+        }
+        return {
+          nodes: await provider.fetchStateQueueNodes(),
+          point: undefined,
+        };
+      }),
     );
+    if (this.sourceMode === "external_providers") {
+      const baselinePoint = snapshots[0]!.point!;
+      for (const [index, { point }] of snapshots.entries()) {
+        if (point === undefined || !sameCanonicalPoint(point, baselinePoint)) {
+          throw new Error(
+            `external provider current chain-point disagreement between ${this.identities[0]!} and ${this.identities[index]!}`,
+          );
+        }
+      }
+    }
+    const results = snapshots.map(({ nodes }) => nodes);
     const sortedResults = results.map(sortObservedNodes);
     const baseline = canonicalObservedNodes(sortedResults[0]!);
     for (const [index, nodes] of sortedResults.entries()) {
@@ -191,227 +790,111 @@ export class MultiStateQueueProvider implements StateQueueProvider {
   }
 }
 
-export class LocalNodeStateQueueProvider implements StateQueueProvider {
-  private readonly authority: LocalChainSyncAuthority;
-  private readonly authorityIdentity: string;
-  private readonly queryProviders: readonly TipAwareStateQueueProvider[];
-  private readonly identities: readonly string[];
-
-  constructor({
-    authority,
-    authorityIdentity,
-    queryProviders,
-    identities,
-  }: {
-    readonly authority: LocalChainSyncAuthority;
-    readonly authorityIdentity: string;
-    readonly queryProviders: readonly TipAwareStateQueueProvider[];
-    readonly identities: readonly string[];
-  }) {
+export class LocalNodeStateQueueProvider
+  implements StateQueueProvider, ChainSyncReplayProvider
+{
+  constructor(
+    private readonly authority: LocalNodeChainAuthority,
+    private readonly queryProviders: readonly ChainPointAwareStateQueueProvider[],
+    private readonly queryIdentities: readonly string[],
+    private readonly consumerCursorStore: FileChainSyncConsumerCursorStore,
+  ) {
     if (queryProviders.length === 0) {
-      throw new Error("local_node mode requires a query surface");
+      throw new Error(
+        "local_node mode requires at least one same-node query surface",
+      );
     }
     if (
-      identities.length !== queryProviders.length ||
-      new Set(identities).size !== identities.length
+      queryIdentities.length !== queryProviders.length ||
+      new Set(queryIdentities).size !== queryIdentities.length
     ) {
       throw new Error(
         "local_node query identities must be complete and distinct",
       );
     }
-    this.authority = authority;
-    this.authorityIdentity = authorityIdentity;
-    this.queryProviders = queryProviders;
-    this.identities = identities;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
-    const before = await this.authority.synchronize();
-    const observations = await Promise.all(
-      this.queryProviders.map((provider) =>
-        provider.fetchStateQueueObservation(),
-      ),
+    const canonicalBefore = await this.authority.synchronizeToTip();
+    const results = await Promise.all(
+      this.queryProviders.map(async (provider, index) => {
+        const before = await provider.currentChainPoint();
+        this.authority.assertAligned(before, this.queryIdentities[index]!);
+        const nodes = await provider.fetchStateQueueNodes();
+        const after = await provider.currentChainPoint();
+        if (!sameCanonicalPoint(before, after)) {
+          throw new Error(
+            `local_node query surface ${this.queryIdentities[index]!} changed chain point while its snapshot was read`,
+          );
+        }
+        this.authority.assertAligned(after, this.queryIdentities[index]!);
+        return { nodes, queryPoint: after };
+      }),
     );
-    const after = await this.authority.synchronize();
-    if (after.rollbackSequence !== before.rollbackSequence) {
+    const canonicalAfter = await this.authority.currentPoint();
+    if (!sameCanonicalPoint(canonicalBefore, canonicalAfter)) {
       throw new Error(
-        "local_node chain-sync rollback occurred while query snapshots were being read",
+        "local node chain authority changed while query snapshots were being collected",
       );
     }
-    for (const [index, observation] of observations.entries()) {
-      if (
-        !sameOgmiosPoint(observation.tip, before.tip) &&
-        !sameOgmiosPoint(observation.tip, after.tip)
-      ) {
-        throw new Error(
-          `local_node query surface ${this.identities[index]!} is stale or not aligned with the chain-sync authority`,
-        );
-      }
-    }
-    const sortedResults = observations.map(({ nodes }) =>
-      sortObservedNodes(nodes),
-    );
+    const sortedResults = results.map(({ nodes }) => sortObservedNodes(nodes));
     const baseline = canonicalObservedNodes(sortedResults[0]!);
     for (const [index, nodes] of sortedResults.entries()) {
       if (!canonicalArraysEqual(canonicalObservedNodes(nodes), baseline)) {
         throw new Error(
-          `state queue provider disagreement in local_node mode between ${this.identities[0]!} and ${this.identities[index]!}`,
+          `local_node query surface disagreement between ${this.queryIdentities[0]!} and ${this.queryIdentities[index]!}`,
         );
       }
     }
-    return mergeAgreedObservedNodes(sortedResults, this.identities).map(
-      (node) => ({
-        ...node,
-        chainPoint: {
-          ...node.chainPoint,
-          providerSource: [
-            `chain-sync:${this.authorityIdentity}`,
-            node.chainPoint.providerSource,
-          ]
-            .filter((source): source is string => source !== undefined)
-            .join(","),
-        },
-      }),
+    const merged = mergeAgreedObservedNodes(
+      sortedResults,
+      this.queryIdentities,
     );
+    const cursor = await this.authority.currentCursor();
+    return merged.map((node) => ({
+      ...node,
+      chainPoint: {
+        ...node.chainPoint,
+        network: canonicalAfter.network,
+        providerSource: [
+          canonicalAfter.providerSource,
+          ...this.queryIdentities,
+        ].join(","),
+        observedAt: new Date().toISOString(),
+        canonicalSlot: canonicalAfter.slot,
+        canonicalBlockHash: canonicalAfter.blockHash,
+        chainSyncSequence: cursor.sequence,
+        rollbackGeneration: cursor.rollbackGeneration,
+      },
+    }));
   }
-}
 
-export class OgmiosChainSyncAuthority implements LocalChainSyncAuthority {
-  private readonly url: string;
-  private history: OgmiosPoint[] = [];
-  private rollbackSequence = 0;
-
-  constructor(url: string) {
-    this.url = url;
+  async currentChainPoint(): Promise<CanonicalChainPoint> {
+    return this.authority.currentPoint();
   }
 
-  async synchronize(): Promise<LocalChainSyncSnapshot> {
-    return withOgmiosRpc(this.url, async (request) => {
-      const candidateHistory = this.history.slice(-256);
-      const candidates =
-        candidateHistory.length === 0
-          ? ["origin"]
-          : [
-              ...candidateHistory
-                .reverse()
-                .map(({ id, slot }) => ({ id, slot })),
-              "origin",
-            ];
-      const intersectionResponse = await request("findIntersection", {
-        points: candidates,
-      });
-      const intersectionResult = asRecord(intersectionResponse.result);
-      const targetTip = parseOgmiosPoint(
-        intersectionResult.tip,
-        "chain-sync tip",
+  async currentChainSyncCursor(): Promise<ChainSyncCursor> {
+    return this.authority.currentCursor();
+  }
+
+  async replayChainSyncEvents(
+    afterSequence: number,
+  ): Promise<readonly ChainSyncEvent[]> {
+    return this.authority.replay(afterSequence);
+  }
+
+  async loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined> {
+    return this.consumerCursorStore.load();
+  }
+
+  async acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void> {
+    const current = await this.authority.currentCursor();
+    if (!samePersistedCursor(current, cursor)) {
+      throw new Error(
+        "refusing to acknowledge a stale local-node chain-sync cursor",
       );
-      if (targetTip === "origin") {
-        throw new Error("local_node chain-sync authority is still at origin");
-      }
-      const intersection = parseOgmiosPoint(
-        intersectionResult.intersection,
-        "chain-sync intersection",
-      );
-      const submittedIntersection =
-        intersection === "origin"
-          ? true
-          : candidateHistory.some((point) =>
-              sameOgmiosPoint(point, intersection),
-            );
-      if (!submittedIntersection) {
-        throw new Error(
-          "local_node chain-sync returned an intersection that was not one of the submitted bounded-history candidates",
-        );
-      }
-      if (this.history.length === 0) {
-        this.history = [targetTip];
-        return this.snapshot(targetTip);
-      }
-      const previous = this.history.at(-1)!;
-      if (
-        intersection === "origin" ||
-        !sameOgmiosPoint(intersection, previous)
-      ) {
-        this.rollbackSequence += 1;
-        this.history =
-          intersection === "origin"
-            ? []
-            : this.history.slice(
-                0,
-                this.history.findIndex((point) =>
-                  sameOgmiosPoint(point, intersection),
-                ) + 1,
-              );
-      }
-      let cursor = intersection;
-      let currentTarget = targetTip;
-      let eventCount = 0;
-      let awaitingIntersectionRollback = true;
-      while (cursor === "origin" || !sameOgmiosPoint(cursor, currentTarget)) {
-        if (eventCount >= 4_096) {
-          throw new Error(
-            "local_node chain-sync catch-up exceeded the bounded event window",
-          );
-        }
-        eventCount += 1;
-        const response = await request("nextBlock");
-        const result = asRecord(response.result);
-        const direction = result.direction;
-        if (direction === "backward") {
-          const point = parseOgmiosPoint(result.point, "rollback point");
-          const isIntersectionPositioning =
-            awaitingIntersectionRollback &&
-            (point === "origin"
-              ? intersection === "origin"
-              : intersection !== "origin" &&
-                sameOgmiosPoint(point, intersection));
-          if (!isIntersectionPositioning) {
-            this.rollbackSequence += 1;
-            if (point === "origin") {
-              this.history = [];
-            } else {
-              const rollbackIndex = this.history.findIndex((known) =>
-                sameOgmiosPoint(known, point),
-              );
-              if (rollbackIndex < 0) {
-                throw new Error(
-                  "local_node chain-sync rolled back beyond the bounded canonical history",
-                );
-              }
-              this.history = this.history.slice(0, rollbackIndex + 1);
-            }
-          }
-          awaitingIntersectionRollback = false;
-          cursor = point;
-        } else if (direction === "forward") {
-          awaitingIntersectionRollback = false;
-          const point = parseOgmiosPoint(result.block, "roll-forward block");
-          if (point === "origin") {
-            throw new Error("roll-forward block cannot be origin");
-          }
-          this.history.push(point);
-          this.history = this.history.slice(-512);
-          cursor = point;
-        } else {
-          throw new Error(
-            "local_node chain-sync returned an unknown direction",
-          );
-        }
-        const nextTarget = parseOgmiosPoint(result.tip, "next-block tip");
-        if (nextTarget === "origin") {
-          throw new Error("local_node chain-sync tip regressed to origin");
-        }
-        currentTarget = nextTarget;
-      }
-      return this.snapshot(cursor);
-    });
-  }
-
-  private snapshot(tip: OgmiosPoint): LocalChainSyncSnapshot {
-    return {
-      tip,
-      rollbackSequence: this.rollbackSequence,
-    };
+    }
+    await this.consumerCursorStore.save(cursor);
   }
 }
 
@@ -453,39 +936,36 @@ export const providerFromConfig = async (
 ): Promise<StateQueueProvider> => {
   if (config.l1Source.sourceMode === "local_node") {
     const localSource = config.l1Source;
-    if (localSource.chainSyncOgmiosUrl.startsWith("fixture-chain-sync:")) {
-      const providers = await Promise.all(
-        localSource.queryProviderUrls.map((url) =>
-          providerFromUrl(url, config),
-        ),
-      );
-      return new MultiStateQueueProvider(providers, {
-        sourceMode: "local_node",
-        identities: localSource.queryProviderUrls.map(
-          (_, index) =>
-            `query:${localSource.authorityNodeId}:${index.toString()}`,
-        ),
-      });
-    }
-    const providers = await Promise.all(
+    const authority = localNodeChainAuthorityFromConfig(config);
+    const cursorPath = localNodeChainCursorPath(localSource, config.localState);
+    const authorityFingerprint = localAuthorityFingerprint(
+      config.network,
+      localSource.authorityNodeId,
+      localSource.chainSyncProviderUrl,
+    );
+    const queryProviders = await Promise.all(
       localSource.queryProviderUrls.map((url) => providerFromUrl(url, config)),
     );
-    if (!providers.every(isTipAwareStateQueueProvider)) {
-      throw new Error(
-        "local_node query surfaces must expose an Ogmios-backed canonical tip",
-      );
-    }
-    return new LocalNodeStateQueueProvider({
-      authority: new OgmiosChainSyncAuthority(
-        localSource.chainSyncOgmiosUrl.slice("ogmios-chain-sync:".length),
-      ),
-      authorityIdentity: localSource.authorityNodeId,
-      queryProviders: providers,
-      identities: localSource.queryProviderUrls.map(
+    const pointAware = queryProviders.map((provider, index) => {
+      if (!("currentChainPoint" in provider)) {
+        throw new Error(
+          `local_node query surface ${index.toString()} cannot prove its current chain point`,
+        );
+      }
+      return provider as ChainPointAwareStateQueueProvider;
+    });
+    return new LocalNodeStateQueueProvider(
+      authority,
+      pointAware,
+      localSource.queryProviderUrls.map(
         (_, index) =>
           `query:${localSource.authorityNodeId}:${index.toString()}`,
       ),
-    });
+      new FileChainSyncConsumerCursorStore(
+        `${cursorPath}.watcher-consumer-v1`,
+        authorityFingerprint,
+      ),
+    );
   }
   const providers = await Promise.all(
     config.l1Source.providers.map(({ url }) => providerFromUrl(url, config)),
@@ -496,18 +976,143 @@ export const providerFromConfig = async (
   });
 };
 
+const localAuthorityRegistry = new Map<string, LocalNodeChainAuthority>();
+
+export const localNodeChainAuthorityFromConfig = (
+  config: WatcherConfig,
+): LocalNodeChainAuthority => {
+  if (config.l1Source.sourceMode !== "local_node") {
+    throw new Error(
+      "local chain authority is only available in local_node mode",
+    );
+  }
+  const source = config.l1Source;
+  const cursorPath = localNodeChainCursorPath(source, config.localState);
+  const registryKey = [
+    config.network,
+    source.authorityNodeId,
+    localAuthorityFingerprint(
+      config.network,
+      source.authorityNodeId,
+      source.chainSyncProviderUrl,
+    ),
+    cursorPath,
+  ].join("\u0000");
+  const existing = localAuthorityRegistry.get(registryKey);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const chainSyncUrl = source.chainSyncProviderUrl.slice("chain-sync:".length);
+  let eventSource: ChainSyncEventSource;
+  if (chainSyncUrl.startsWith("ogmios:")) {
+    eventSource = new OgmiosChainSyncEventSource(
+      chainSyncUrl.slice("ogmios:".length),
+      config.network,
+      source.authorityNodeId,
+    );
+  } else if (chainSyncUrl.startsWith("kupmios:")) {
+    const { ogmiosUrl } = parseKupmiosUrl(chainSyncUrl);
+    eventSource = new OgmiosChainSyncEventSource(
+      ogmiosUrl,
+      config.network,
+      source.authorityNodeId,
+    );
+  } else if (chainSyncUrl.startsWith("fixture:")) {
+    eventSource = new FixtureChainSyncEventSource(
+      chainSyncUrl.slice("fixture:".length),
+      config.network,
+      source.authorityNodeId,
+    );
+  } else if (chainSyncUrl.startsWith("file:")) {
+    eventSource = new FixtureChainSyncEventSource(
+      new URL(chainSyncUrl).pathname,
+      config.network,
+      source.authorityNodeId,
+    );
+  } else {
+    throw new Error(`unsupported local-node chain-sync source ${chainSyncUrl}`);
+  }
+  const authority = new LocalNodeChainAuthority(
+    source.authorityNodeId,
+    config.network,
+    eventSource,
+    new FileChainSyncCursorStore(
+      cursorPath,
+      localAuthorityFingerprint(
+        config.network,
+        source.authorityNodeId,
+        source.chainSyncProviderUrl,
+      ),
+    ),
+  );
+  localAuthorityRegistry.set(registryKey, authority);
+  return authority;
+};
+
+const localNodeChainCursorPath = (
+  source: Extract<
+    WatcherConfig["l1Source"],
+    { readonly sourceMode: "local_node" }
+  >,
+  localState: WatcherConfig["localState"],
+): string => {
+  const cursorPath =
+    source.chainSyncCursorPath ??
+    (localState.kind === "file"
+      ? `${localState.path}.chain-sync-cursor`
+      : undefined);
+  if (cursorPath === undefined) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH is required for durable local-node chain sync",
+    );
+  }
+  return cursorPath;
+};
+
+export const localAuthorityFingerprint = (
+  network: string,
+  authorityNodeId: string,
+  chainSyncProviderUrl: string,
+): string => {
+  const source = chainSyncProviderUrl.slice("chain-sync:".length);
+  let canonicalSource: string;
+  if (source.startsWith("ogmios:")) {
+    canonicalSource = `ogmios:${normalizeAuthorityEndpoint(source.slice("ogmios:".length))}`;
+  } else if (source.startsWith("kupmios:")) {
+    canonicalSource = `ogmios:${normalizeAuthorityEndpoint(parseKupmiosUrl(source).ogmiosUrl)}`;
+  } else if (source.startsWith("fixture:")) {
+    canonicalSource = `fixture:${resolve(source.slice("fixture:".length))}`;
+  } else if (source.startsWith("file:")) {
+    canonicalSource = `fixture:${resolve(new URL(source).pathname)}`;
+  } else {
+    throw new Error("unsupported local chain authority source");
+  }
+  return createHash("sha256")
+    .update(
+      canonicalJson({
+        network,
+        authorityNodeId,
+        canonicalSource,
+      }),
+    )
+    .digest("hex");
+};
+
 export const providerFromUrl = async (
   url: string,
   config: Pick<
     WatcherConfig,
     "network" | "stateQueueAddress" | "stateQueuePolicyId"
-  >,
+  > & { readonly finalityDepth?: number },
 ): Promise<StateQueueProvider> => {
   if (url.startsWith("fixture:")) {
-    return new FixtureStateQueueProvider(url.slice("fixture:".length));
+    return new FixtureStateQueueProvider(
+      url.slice("fixture:".length),
+      config.network,
+    );
   }
   if (url.startsWith("file:")) {
-    return new FixtureStateQueueProvider(new URL(url).pathname);
+    return new FixtureStateQueueProvider(new URL(url).pathname, config.network);
   }
   if (url.startsWith("blockfrost:")) {
     const { apiUrl, projectId } = parseBlockfrostUrl(url);
@@ -525,6 +1130,11 @@ export const providerFromUrl = async (
         apiUrl,
         projectId,
       ),
+      currentChainPointResolver: blockfrostCurrentChainPointResolver(
+        config.network,
+        apiUrl,
+        projectId,
+      ),
     });
   }
   if (url.startsWith("kupmios:")) {
@@ -538,8 +1148,19 @@ export const providerFromUrl = async (
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
-      chainPointResolver: kupmiosChainPointResolver(lucid),
-      tipResolver: () => fetchKupmiosIndexedTip(kupoUrl, ogmiosUrl),
+      chainPointResolver: kupmiosChainPointResolver(
+        lucid,
+        kupoUrl,
+        fetch,
+        ogmiosUrl,
+        config.network,
+        Math.max(1, config.finalityDepth ?? 2160),
+      ),
+      currentChainPointResolver: kupmiosCurrentChainPointResolver(
+        config.network,
+        kupoUrl,
+        ogmiosUrl,
+      ),
     });
   }
   throw new Error(
@@ -547,7 +1168,7 @@ export const providerFromUrl = async (
   );
 };
 
-const parseBlockfrostUrl = (
+export const parseBlockfrostUrl = (
   value: string,
 ): { readonly apiUrl: string; readonly projectId: string } => {
   const raw = value.slice("blockfrost:".length);
@@ -563,7 +1184,7 @@ const parseBlockfrostUrl = (
   };
 };
 
-const parseKupmiosUrl = (
+export const parseKupmiosUrl = (
   value: string,
 ): {
   readonly kupoUrl: string;
@@ -580,17 +1201,72 @@ const parseKupmiosUrl = (
   return { kupoUrl, ogmiosUrl };
 };
 
+const normalizeAuthorityEndpoint = (value: string): string => {
+  const endpoint = new URL(value);
+  if (endpoint.username !== "" || endpoint.password !== "") {
+    throw new Error("local authority endpoint must not embed credentials");
+  }
+  const protocol =
+    endpoint.protocol === "wss:"
+      ? "https:"
+      : endpoint.protocol === "ws:"
+        ? "http:"
+        : endpoint.protocol;
+  if (protocol !== "http:" && protocol !== "https:") {
+    throw new Error("local authority endpoint must use HTTP(S) or WS(S)");
+  }
+  const port =
+    (protocol === "http:" && endpoint.port === "80") ||
+    (protocol === "https:" && endpoint.port === "443")
+      ? ""
+      : endpoint.port;
+  const path = endpoint.pathname.replace(/\/+$/u, "");
+  const hostname = endpoint.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${protocol}//${hostname}${port === "" ? "" : `:${port}`}${path}`;
+};
+
 export const lucidChainPointResolver = (
   lucid: LucidEvolution,
 ): ((utxo: UTxO) => Promise<ChainPoint>) => {
   return async (utxo) => {
-    const status = await lucid.transactionStatus(utxo.txHash);
+    const status = getRecord(
+      (await lucid.transactionStatus(utxo.txHash)) as unknown,
+      "Cardano transaction status",
+    );
     if (status.status !== "confirmed") {
       throw new Error(
-        `state-queue transaction ${utxo.txHash} is not confirmed: ${status.status}`,
+        `state-queue transaction ${utxo.txHash} is not confirmed: ${String(status.status)}`,
       );
     }
-    const { slot, blockHash, blockHeight, confirmations } = status.confirmation;
+    const confirmation = getRecord(
+      status.confirmation,
+      "confirmed Cardano transaction provenance",
+    );
+    const slot =
+      confirmation.slot === undefined
+        ? undefined
+        : safeSlot(confirmation.slot, "transaction inclusion slot");
+    const blockHash =
+      confirmation.blockHash === undefined
+        ? undefined
+        : safeBlockHash(
+            confirmation.blockHash,
+            "transaction inclusion block hash",
+          );
+    const blockHeight =
+      confirmation.blockHeight === undefined
+        ? undefined
+        : safeSlot(
+            confirmation.blockHeight,
+            "transaction inclusion block height",
+          );
+    const confirmations =
+      confirmation.confirmations === undefined
+        ? undefined
+        : safeSlot(
+            confirmation.confirmations,
+            "transaction confirmation count",
+          );
     // Lucid counts the inclusion block; Midgard depth counts descendants.
     return {
       ...(slot === undefined ? {} : { slot }),
@@ -603,26 +1279,100 @@ export const lucidChainPointResolver = (
   };
 };
 
-/**
- * Kupmios transaction status may omit confirmation count. In that case depth
- * is derived only from inclusion/tip block heights. Slot distance is not a
- * confirmation metric because empty Cardano slots do not create descendants.
- */
 export const kupmiosChainPointResolver = (
   lucid: LucidEvolution,
-): ((utxo: UTxO, tip?: OgmiosPoint) => Promise<ChainPoint>) => {
+  _kupoUrl: string,
+  _fetchFn: typeof fetch = fetch,
+  ogmiosUrl?: string,
+  network?: string,
+  requiredDepth = 2160,
+): ((utxo: UTxO) => Promise<ChainPoint>) => {
   const resolveInclusion = lucidChainPointResolver(lucid);
-  return async (utxo, tip) => {
+  return async (utxo) => {
     const inclusion = await resolveInclusion(utxo);
     if (inclusion.depth !== undefined) {
       return inclusion;
     }
-    return {
-      ...inclusion,
-      ...(tip === undefined || inclusion.blockHeight === undefined
-        ? {}
-        : { depth: Math.max(0, tip.height - inclusion.blockHeight) }),
-    };
+    if (
+      ogmiosUrl === undefined ||
+      network === undefined ||
+      inclusion.slot === undefined ||
+      inclusion.blockHash === undefined
+    ) {
+      // Empty slots are not confirmations. Keep depth unknown unless the
+      // aligned node can count actual descendant blocks.
+      return inclusion;
+    }
+    const before = await alignedKupmiosTip(
+      network,
+      _kupoUrl,
+      ogmiosUrl,
+      _fetchFn,
+    );
+    const depth = await requestOgmiosDescendantDepth({
+      ogmiosUrl,
+      network,
+      inclusion: {
+        network,
+        slot: inclusion.slot,
+        blockHash: inclusion.blockHash,
+        providerSource: `kupmios:${_kupoUrl}|${ogmiosUrl}`,
+        observedAt: new Date().toISOString(),
+      },
+      expectedTip: before,
+      requiredDepth,
+    });
+    const after = await alignedKupmiosTip(
+      network,
+      _kupoUrl,
+      ogmiosUrl,
+      _fetchFn,
+    );
+    if (!sameCanonicalPoint(before, after)) {
+      throw new Error(
+        "Kupmios chain point changed while deriving block confirmations",
+      );
+    }
+    return { ...inclusion, depth };
+  };
+};
+
+type KupoCheckpoint = {
+  readonly slot: number;
+  readonly blockHash: string;
+};
+
+export const fetchKupoCheckpoint = async (
+  kupoUrl: string,
+  fetchFn: typeof fetch,
+): Promise<KupoCheckpoint> => {
+  const response = await fetchFn(`${kupoUrl.replace(/\/+$/, "")}/health`, {
+    headers: { accept: "text/plain" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Kupo health lookup failed: ${response.status.toString()} ${await response.text()}`,
+    );
+  }
+  const body = await response.text();
+  const match =
+    body.match(/^kupo_most_recent_checkpoint\s+([0-9]+(?:\.[0-9]+)?)/mu) ??
+    body.match(/^kupo_most_recent_node_tip\s+([0-9]+(?:\.[0-9]+)?)/mu);
+  if (match === null) {
+    throw new Error("Kupo health omitted its current checkpoint slot");
+  }
+  const slot = Number(match[1]);
+  if (!Number.isSafeInteger(slot) || slot < 0) {
+    throw new Error("Kupo health returned an invalid checkpoint slot");
+  }
+  const rawEtag = response.headers.get("etag");
+  const blockHash = rawEtag
+    ?.replace(/^W\//u, "")
+    .replace(/^"|"$/gu, "")
+    .toLowerCase();
+  return {
+    slot,
+    blockHash: safeBlockHash(blockHash, "Kupo checkpoint ETag"),
   };
 };
 
@@ -631,10 +1381,11 @@ const blockfrostChainPointResolver =
   async (utxo: UTxO): Promise<ChainPoint> => {
     const [inclusion, latest] = await Promise.all([
       lucidChainPointResolver(lucid)(utxo),
-      blockfrostJson<BlockfrostLatestBlock>(
+      blockfrostJson(
         apiUrl,
         projectId,
         "/blocks/latest",
+        parseBlockfrostLatestBlock,
       ),
     ]);
     const blockHeight = inclusion.blockHeight;
@@ -649,10 +1400,70 @@ const blockfrostChainPointResolver =
     };
   };
 
+export const blockfrostCurrentChainPointResolver =
+  (network: string, apiUrl: string, projectId: string) =>
+  async (): Promise<CanonicalChainPoint> => {
+    const [latest, liveNetwork] = await Promise.all([
+      blockfrostJson(
+        apiUrl,
+        projectId,
+        "/blocks/latest",
+        parseBlockfrostLatestBlock,
+      ),
+      blockfrostJson(apiUrl, projectId, "/genesis", parseBlockfrostNetwork),
+    ]);
+    assertNetworkMagic(network, liveNetwork.networkMagic, "Blockfrost");
+    return {
+      network,
+      slot: latest.slot,
+      blockHash: latest.hash,
+      blockHeight: latest.height,
+      providerSource: `blockfrost:${apiUrl}`,
+      observedAt: new Date().toISOString(),
+    };
+  };
+
+export const kupmiosCurrentChainPointResolver =
+  (network: string, kupoUrl: string, ogmiosUrl: string) =>
+  async (): Promise<CanonicalChainPoint> =>
+    alignedKupmiosTip(network, kupoUrl, ogmiosUrl, fetch);
+
+const alignedKupmiosTip = async (
+  network: string,
+  kupoUrl: string,
+  ogmiosUrl: string,
+  fetchFn: typeof fetch,
+): Promise<CanonicalChainPoint> => {
+  const [kupoPoint, ogmiosTip] = await Promise.all([
+    fetchKupoCheckpoint(kupoUrl, fetchFn),
+    requestOgmiosTip(ogmiosUrl),
+  ]);
+  assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios");
+  if (
+    kupoPoint.slot !== ogmiosTip.slot ||
+    kupoPoint.blockHash !== ogmiosTip.blockHash
+  ) {
+    throw new Error(
+      `Kupmios query surfaces are not aligned: Kupo=${kupoPoint.slot.toString()}:${kupoPoint.blockHash}, Ogmios=${ogmiosTip.slot.toString()}:${ogmiosTip.blockHash}`,
+    );
+  }
+  return {
+    network,
+    slot: ogmiosTip.slot,
+    blockHash: ogmiosTip.blockHash,
+    ...(ogmiosTip.blockHeight === undefined
+      ? {}
+      : { blockHeight: ogmiosTip.blockHeight }),
+    providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
+    observedAt: new Date().toISOString(),
+  };
+};
+
 const blockfrostJson = async <T>(
   apiUrl: string,
   projectId: string,
   path: string,
+  parse: (value: unknown) => T,
 ): Promise<T> => {
   const response = await fetch(`${apiUrl.replace(/\/$/, "")}${path}`, {
     headers: { project_id: projectId },
@@ -662,234 +1473,34 @@ const blockfrostJson = async <T>(
       `Blockfrost ${path} returned ${response.status.toString()} ${response.statusText}`,
     );
   }
-  return (await response.json()) as T;
+  return parse(await response.json());
 };
 
 type BlockfrostLatestBlock = {
-  readonly height?: number;
+  readonly slot: number;
+  readonly hash: string;
+  readonly height: number;
 };
 
-const isTipAwareStateQueueProvider = (
-  provider: StateQueueProvider,
-): provider is TipAwareStateQueueProvider =>
-  "fetchStateQueueObservation" in provider &&
-  typeof provider.fetchStateQueueObservation === "function";
-
-const sameOgmiosPoint = (left: OgmiosPoint, right: OgmiosPoint): boolean =>
-  left.slot === right.slot &&
-  left.id === right.id &&
-  left.height === right.height;
-
-type OgmiosRpcResponse = {
-  readonly id?: { readonly requestId?: string };
-  readonly result?: unknown;
-  readonly error?: unknown;
-};
-type OgmiosRequest = (
-  method: "findIntersection" | "nextBlock",
-  params?: Record<string, unknown>,
-) => Promise<OgmiosRpcResponse>;
-type OgmiosMessageEvent = { readonly data: unknown };
-type OgmiosSocket = {
-  send(data: string): void;
-  close(): void;
-  addEventListener(
-    type: "open" | "message" | "error" | "close",
-    listener: (event: OgmiosMessageEvent) => void,
-  ): void;
-  removeEventListener(
-    type: "message",
-    listener: (event: OgmiosMessageEvent) => void,
-  ): void;
-};
-type OgmiosSocketConstructor = new (url: string) => OgmiosSocket;
-
-const withOgmiosRpc = async <T>(
-  url: string,
-  operation: (request: OgmiosRequest) => Promise<T>,
-): Promise<T> => {
-  const Socket = (
-    globalThis as unknown as { WebSocket?: OgmiosSocketConstructor }
-  ).WebSocket;
-  if (Socket === undefined) {
-    throw new Error(
-      "Node.js WebSocket support is required for Ogmios chain-sync",
-    );
-  }
-  const socket = new Socket(url);
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("Ogmios chain-sync connection timed out")),
-      10_000,
-    );
-    const settle = (callback: () => void): void => {
-      clearTimeout(timeout);
-      callback();
-    };
-    socket.addEventListener("open", () => settle(resolve));
-    socket.addEventListener("error", () =>
-      settle(() => reject(new Error("Ogmios chain-sync connection failed"))),
-    );
-    socket.addEventListener("close", () =>
-      settle(() =>
-        reject(new Error("Ogmios chain-sync connection closed before open")),
-      ),
-    );
-  });
-  let requestSequence = 0;
-  const request: OgmiosRequest = async (method, params) => {
-    requestSequence += 1;
-    const requestId = `midgard-da-${requestSequence.toString()}`;
-    return new Promise<OgmiosRpcResponse>((resolve, reject) => {
-      const onMessage = (event: OgmiosMessageEvent): void => {
-        let response: OgmiosRpcResponse;
-        try {
-          response = JSON.parse(String(event.data)) as OgmiosRpcResponse;
-        } catch {
-          return;
-        }
-        if (response.id?.requestId !== requestId) {
-          return;
-        }
-        clearTimeout(timeout);
-        socket.removeEventListener("message", onMessage);
-        if (response.error !== undefined || response.result === undefined) {
-          reject(new Error(`Ogmios ${method} request failed`));
-          return;
-        }
-        resolve(response);
-      };
-      const timeout = setTimeout(() => {
-        socket.removeEventListener("message", onMessage);
-        reject(new Error(`Ogmios ${method} request timed out`));
-      }, 10_000);
-      socket.addEventListener("message", onMessage);
-      socket.send(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          method,
-          ...(params === undefined ? {} : { params }),
-          id: { requestId },
-        }),
-      );
-    });
-  };
-  try {
-    return await operation(request);
-  } finally {
-    socket.close();
-  }
-};
-
-const fetchOgmiosTipPoint = (url: string): Promise<OgmiosPoint> =>
-  withOgmiosRpc(ogmiosWebSocketEndpoint(url), async (request) => {
-    const response = await request("findIntersection", { points: ["origin"] });
-    const point = parseOgmiosPoint(
-      asRecord(response.result).tip,
-      "Ogmios query tip",
-    );
-    if (point === "origin") {
-      throw new Error("Ogmios query authority is still at origin");
-    }
-    return point;
-  });
-
-export const ogmiosWebSocketEndpoint = (value: string): string => {
-  let endpoint: URL;
-  try {
-    endpoint = new URL(value);
-  } catch {
-    throw new Error("Ogmios endpoint must be an absolute URL");
-  }
-  if (endpoint.protocol === "http:") {
-    endpoint.protocol = "ws:";
-  } else if (endpoint.protocol === "https:") {
-    endpoint.protocol = "wss:";
-  } else if (endpoint.protocol !== "ws:" && endpoint.protocol !== "wss:") {
-    throw new Error("Ogmios endpoint must use http(s) or ws(s)");
-  }
-  return endpoint.toString();
-};
-
-const fetchKupmiosIndexedTip = async (
-  kupoUrl: string,
-  ogmiosUrl: string,
-): Promise<OgmiosPoint> => {
-  const [kupoSlot, ogmiosTip] = await Promise.all([
-    fetchKupoTipSlot(kupoUrl),
-    fetchOgmiosTipPoint(ogmiosUrl),
-  ]);
-  if (kupoSlot !== ogmiosTip.slot) {
-    throw new Error(
-      `local query index is not aligned with its Ogmios authority: kupo_slot=${kupoSlot.toString()} ogmios_slot=${ogmiosTip.slot.toString()}`,
-    );
-  }
-  return ogmiosTip;
-};
-
-const fetchKupoTipSlot = async (kupoUrl: string): Promise<number> => {
-  const response = await fetch(`${kupoUrl.replace(/\/+$/, "")}/health`, {
-    headers: { accept: "application/json" },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Kupo health lookup failed: ${response.status.toString()} ${await response.text()}`,
-    );
-  }
-  return kupoIndexedSlotFromHealth(await response.json());
-};
-
-export const kupoIndexedSlotFromHealth = (value: unknown): number => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Kupo health response is malformed");
-  }
-  const health = value as Record<string, unknown>;
-  if (health.connection_status !== "connected") {
-    throw new Error("Kupo health response is not connected to its node");
-  }
-  const checkpoint = health.most_recent_checkpoint;
-  if (!Number.isSafeInteger(checkpoint) || Number(checkpoint) < 0) {
-    throw new Error(
-      "Kupo health response does not expose a valid indexed checkpoint",
-    );
-  }
-  return Number(checkpoint);
-};
-
-const parseOgmiosPoint = (
-  value: unknown,
-  label: string,
-): OgmiosPoint | "origin" => {
-  if (value === "origin") {
-    return value;
-  }
-  const point = asRecord(value);
-  const height = point.height ?? point.blockNo;
-  if (
-    typeof point.id !== "string" ||
-    !/^[0-9a-f]{64}$/u.test(point.id) ||
-    !Number.isSafeInteger(point.slot) ||
-    Number(point.slot) < 0 ||
-    !Number.isSafeInteger(height) ||
-    Number(height) < 0 ||
-    (point.height !== undefined &&
-      point.blockNo !== undefined &&
-      point.height !== point.blockNo)
-  ) {
-    throw new Error(`${label} is malformed`);
-  }
+const parseBlockfrostLatestBlock = (value: unknown): BlockfrostLatestBlock => {
+  const block = getRecord(value, "Blockfrost latest block");
   return {
-    id: point.id,
-    slot: Number(point.slot),
-    height: Number(height),
+    slot: safeSlot(block.slot, "Blockfrost latest block slot"),
+    hash: safeBlockHash(block.hash, "Blockfrost latest block hash"),
+    height: safeSlot(block.height, "Blockfrost latest block height"),
   };
 };
 
-const asRecord = (value: unknown): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("Ogmios chain-sync response is malformed");
-  }
-  return value as Record<string, unknown>;
+const parseBlockfrostNetwork = (
+  value: unknown,
+): { readonly networkMagic: number } => {
+  const result = getRecord(value, "Blockfrost genesis");
+  return {
+    networkMagic: safeSlot(
+      result.network_magic,
+      "Blockfrost genesis network magic",
+    ),
+  };
 };
 
 const sortObservedNodes = (
@@ -984,6 +1595,935 @@ const canonicalValue = (value: unknown): unknown => {
     );
   }
   return value;
+};
+
+type OgmiosChainSyncRequest = (
+  ogmiosUrl: string,
+  cursor: CanonicalChainPoint | undefined,
+  intersectionCandidates: readonly CanonicalChainPoint[] | undefined,
+  network: string,
+  authorityNodeId: string,
+) => Promise<ChainSyncEventBatch>;
+
+type RuntimeWebSocket = {
+  onopen: ((event: unknown) => void) | null;
+  onmessage: ((event: { readonly data: unknown }) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onclose: ((event: unknown) => void) | null;
+  send(data: string): void;
+  close(): void;
+};
+
+type RuntimeWebSocketConstructor = new (url: string) => RuntimeWebSocket;
+
+class OgmiosRpcSession {
+  private requestId = 0;
+  private pending:
+    | {
+        readonly id: string;
+        readonly resolve: (value: unknown) => void;
+        readonly reject: (error: Error) => void;
+        readonly timeout: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
+  private closed = false;
+
+  private constructor(private readonly socket: RuntimeWebSocket) {
+    socket.onmessage = ({ data }) => {
+      const pending = this.pending;
+      if (pending === undefined) {
+        this.fail(new Error("Ogmios sent an unsolicited JSON-RPC response"));
+        return;
+      }
+      try {
+        if (typeof data !== "string") {
+          throw new Error("Ogmios returned a non-text WebSocket message");
+        }
+        const envelope = getRecord(
+          JSON.parse(data) as unknown,
+          "Ogmios JSON-RPC response",
+        );
+        if (envelope.id !== pending.id) {
+          throw new Error(
+            `Ogmios JSON-RPC response id ${String(envelope.id)} does not match ${pending.id}`,
+          );
+        }
+        if (envelope.error !== undefined) {
+          throw new Error(
+            `Ogmios JSON-RPC error: ${JSON.stringify(envelope.error)}`,
+          );
+        }
+        clearTimeout(pending.timeout);
+        this.pending = undefined;
+        pending.resolve(envelope.result);
+      } catch (error) {
+        this.fail(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    socket.onerror = () => {
+      this.fail(new Error("Ogmios WebSocket failed"));
+    };
+    socket.onclose = () => {
+      if (!this.closed) {
+        this.fail(
+          new Error("Ogmios WebSocket closed while chain sync was active"),
+        );
+      }
+    };
+  }
+
+  static async open(ogmiosUrl: string): Promise<OgmiosRpcSession> {
+    const constructor = (
+      globalThis as unknown as {
+        readonly WebSocket?: RuntimeWebSocketConstructor;
+      }
+    ).WebSocket;
+    if (constructor === undefined) {
+      throw new Error("Node.js WebSocket support is required for Ogmios");
+    }
+    const socketUrl = ogmiosWebSocketUrl(ogmiosUrl);
+    const socket = new constructor(socketUrl.toString());
+    await new Promise<void>((resolveOpen, rejectOpen) => {
+      const timeout = setTimeout(() => {
+        socket.close();
+        rejectOpen(new Error("Ogmios WebSocket connection timed out"));
+      }, 15_000);
+      socket.onopen = () => {
+        clearTimeout(timeout);
+        resolveOpen();
+      };
+      socket.onerror = () => {
+        clearTimeout(timeout);
+        rejectOpen(
+          new Error(`Ogmios WebSocket failed for ${socketUrl.origin}`),
+        );
+      };
+      socket.onclose = () => {
+        clearTimeout(timeout);
+        rejectOpen(new Error("Ogmios WebSocket closed before opening"));
+      };
+    });
+    return new OgmiosRpcSession(socket);
+  }
+
+  async request(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (this.closed) {
+      throw new Error("Ogmios JSON-RPC session is closed");
+    }
+    if (this.pending !== undefined) {
+      throw new Error("Ogmios JSON-RPC session already has an active request");
+    }
+    const id = `midgard-${this.requestId.toString()}`;
+    this.requestId += 1;
+    return new Promise((resolveRequest, rejectRequest) => {
+      const timeout = setTimeout(() => {
+        this.fail(new Error(`Ogmios ${method} request timed out`));
+      }, 15_000);
+      this.pending = {
+        id,
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        timeout,
+      };
+      this.socket.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    });
+  }
+
+  close(): void {
+    if (!this.closed) {
+      this.closed = true;
+      const pending = this.pending;
+      this.pending = undefined;
+      if (pending !== undefined) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("Ogmios JSON-RPC session closed"));
+      }
+      this.socket.close();
+    }
+  }
+
+  private fail(error: Error): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending !== undefined) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    if (!this.closed) {
+      this.closed = true;
+      this.socket.close();
+    }
+  }
+}
+
+const ogmiosWebSocketUrl = (ogmiosUrl: string): URL => {
+  const socketUrl = new URL(ogmiosUrl);
+  if (socketUrl.protocol === "http:") {
+    socketUrl.protocol = "ws:";
+  } else if (socketUrl.protocol === "https:") {
+    socketUrl.protocol = "wss:";
+  } else if (socketUrl.protocol !== "ws:" && socketUrl.protocol !== "wss:") {
+    throw new Error("Ogmios chain-sync endpoint must use HTTP(S) or WS(S)");
+  }
+  return socketUrl;
+};
+
+const createOgmiosChainSyncRequest = (): OgmiosChainSyncRequest => {
+  let session: OgmiosRpcSession | undefined;
+  let sessionUrl: string | undefined;
+  let intersection: CanonicalChainPoint | undefined;
+  let pendingRollback: ChainSyncEventBatch | undefined;
+  let suppressHandshakeRollback = false;
+
+  const disconnect = (): void => {
+    session?.close();
+    session = undefined;
+    sessionUrl = undefined;
+    intersection = undefined;
+    pendingRollback = undefined;
+    suppressHandshakeRollback = false;
+  };
+
+  return async (
+    ogmiosUrl,
+    cursor,
+    intersectionCandidates,
+    network,
+    authorityNodeId,
+  ) => {
+    const source = `chain-sync:${authorityNodeId}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        if (session === undefined || sessionUrl !== ogmiosUrl) {
+          disconnect();
+          session = await OgmiosRpcSession.open(ogmiosUrl);
+          sessionUrl = ogmiosUrl;
+          const genesis = getRecord(
+            await session.request("queryNetwork/genesisConfiguration", {
+              era: "shelley",
+            }),
+            "Ogmios genesis configuration",
+          );
+          assertNetworkMagic(
+            network,
+            safeSlot(
+              genesis.networkMagic ?? genesis.network_magic,
+              "Ogmios network magic",
+            ),
+            "Ogmios",
+          );
+          const bootstrapTip =
+            cursor === undefined
+              ? parseOgmiosPoint(
+                  await session.request("queryNetwork/tip", {}),
+                  network,
+                  source,
+                  "Ogmios bootstrap tip",
+                )
+              : undefined;
+          const durableCandidates =
+            cursor === undefined
+              ? []
+              : [
+                  cursor,
+                  ...(intersectionCandidates ?? []).filter(
+                    (point) => !sameCanonicalPoint(point, cursor),
+                  ),
+                ].slice(0, 2160);
+          const found = getRecord(
+            await session.request("findIntersection", {
+              points:
+                cursor === undefined
+                  ? [
+                      {
+                        slot: bootstrapTip!.slot,
+                        id: bootstrapTip!.blockHash,
+                      },
+                      "origin",
+                    ]
+                  : [
+                      ...durableCandidates.map((point) => ({
+                        slot: point.slot,
+                        id: point.blockHash,
+                      })),
+                      "origin",
+                    ],
+            }),
+            "findIntersection result",
+          );
+          const tip = parseOgmiosPoint(
+            found.tip,
+            network,
+            source,
+            "findIntersection tip",
+          );
+          intersection = parseOgmiosPointOrOrigin(
+            found.intersection,
+            network,
+            source,
+            "findIntersection intersection",
+          );
+          suppressHandshakeRollback = true;
+          if (cursor === undefined) {
+            if (
+              bootstrapTip === undefined ||
+              intersection === undefined ||
+              !sameCanonicalPoint(intersection, bootstrapTip)
+            ) {
+              throw new Error(
+                "Ogmios bootstrap tip left the canonical chain before intersection; retrying from a fresh node-derived tip",
+              );
+            }
+            return {
+              event: { direction: "roll_forward", point: bootstrapTip },
+              tip,
+            };
+          }
+          if (cursor !== undefined && intersection === undefined) {
+            throw new Error(
+              "Ogmios rolled the durable chain-sync cursor back to origin; explicit state reset is required",
+            );
+          }
+          if (
+            cursor !== undefined &&
+            intersection !== undefined &&
+            !sameCanonicalPoint(intersection, cursor)
+          ) {
+            pendingRollback = {
+              event: { direction: "roll_backward", point: intersection },
+              tip,
+            };
+          }
+          if (pendingRollback !== undefined) {
+            const result = pendingRollback;
+            pendingRollback = undefined;
+            return result;
+          }
+          if (cursor !== undefined && sameCanonicalPoint(cursor, tip)) {
+            return { tip };
+          }
+        }
+
+        // Ogmios may echo the negotiated intersection as the first backward
+        // response. It is a handshake acknowledgement, not a second rollback.
+        for (
+          let handshakeResponses = 0;
+          handshakeResponses < 2;
+          handshakeResponses += 1
+        ) {
+          const nextResult = getRecord(
+            await session.request("nextBlock", {}),
+            "nextBlock result",
+          );
+          const direction = nextResult.direction;
+          const tip = parseOgmiosPoint(
+            nextResult.tip,
+            network,
+            source,
+            "nextBlock tip",
+          );
+          if (direction === "forward") {
+            suppressHandshakeRollback = false;
+            const block = getRecord(nextResult.block, "nextBlock block");
+            return {
+              event: {
+                direction: "roll_forward",
+                point: parseOgmiosPoint(
+                  block,
+                  network,
+                  source,
+                  "roll-forward block",
+                ),
+              },
+              tip,
+            };
+          }
+          if (direction === "backward") {
+            const point = parseOgmiosPointOrOrigin(
+              nextResult.point,
+              network,
+              source,
+              "roll-backward point",
+            );
+            if (
+              suppressHandshakeRollback &&
+              point === undefined &&
+              intersection === undefined &&
+              cursor === undefined
+            ) {
+              suppressHandshakeRollback = false;
+              continue;
+            }
+            if (point === undefined) {
+              throw new Error(
+                "Ogmios rolled chain sync back to origin; explicit state reset is required",
+              );
+            }
+            if (
+              suppressHandshakeRollback &&
+              intersection !== undefined &&
+              sameCanonicalPoint(point, intersection)
+            ) {
+              suppressHandshakeRollback = false;
+              if (cursor !== undefined && sameCanonicalPoint(cursor, tip)) {
+                return { tip };
+              }
+              continue;
+            }
+            suppressHandshakeRollback = false;
+            return {
+              event: { direction: "roll_backward", point },
+              tip,
+            };
+          }
+          throw new Error("Ogmios nextBlock returned an unsupported direction");
+        }
+        throw new Error(
+          "Ogmios repeated its chain-sync handshake rollback response",
+        );
+      } catch (error) {
+        disconnect();
+        if (attempt === 1) {
+          throw error;
+        }
+      }
+    }
+    throw new Error("Ogmios chain-sync reconnect exhausted");
+  };
+};
+
+const requestOgmiosDescendantDepth = async ({
+  ogmiosUrl,
+  network,
+  inclusion,
+  expectedTip,
+  requiredDepth,
+}: {
+  readonly ogmiosUrl: string;
+  readonly network: string;
+  readonly inclusion: CanonicalChainPoint;
+  readonly expectedTip: CanonicalChainPoint;
+  readonly requiredDepth: number;
+}): Promise<number> => {
+  const source = `confirmation-depth:${ogmiosUrl}`;
+  const session = await OgmiosRpcSession.open(ogmiosUrl);
+  try {
+    const genesis = getRecord(
+      await session.request("queryNetwork/genesisConfiguration", {
+        era: "shelley",
+      }),
+      "Ogmios genesis configuration",
+    );
+    assertNetworkMagic(
+      network,
+      safeSlot(
+        genesis.networkMagic ?? genesis.network_magic,
+        "Ogmios network magic",
+      ),
+      "Ogmios",
+    );
+    const found = getRecord(
+      await session.request("findIntersection", {
+        points: [{ slot: inclusion.slot, id: inclusion.blockHash }, "origin"],
+      }),
+      "confirmation-depth findIntersection result",
+    );
+    const intersection = parseOgmiosPointOrOrigin(
+      found.intersection,
+      network,
+      source,
+      "confirmation-depth intersection",
+    );
+    const tip = parseOgmiosPoint(
+      found.tip,
+      network,
+      source,
+      "confirmation-depth tip",
+    );
+    if (
+      intersection === undefined ||
+      !sameCanonicalPoint(intersection, inclusion)
+    ) {
+      throw new Error(
+        "state-queue inclusion point is not on the canonical local-node chain",
+      );
+    }
+    if (!sameCanonicalPoint(tip, expectedTip)) {
+      throw new Error(
+        "local-node tip changed before confirmation depth derivation",
+      );
+    }
+    if (sameCanonicalPoint(inclusion, expectedTip)) {
+      return 0;
+    }
+    let depth = 0;
+    let suppressIntersection = true;
+    while (depth < requiredDepth) {
+      const next = getRecord(
+        await session.request("nextBlock", {}),
+        "confirmation-depth nextBlock result",
+      );
+      const responseTip = parseOgmiosPoint(
+        next.tip,
+        network,
+        source,
+        "confirmation-depth response tip",
+      );
+      if (!sameCanonicalPoint(responseTip, expectedTip)) {
+        throw new Error(
+          "local-node tip changed while deriving confirmation depth",
+        );
+      }
+      if (next.direction === "backward") {
+        const point = parseOgmiosPointOrOrigin(
+          next.point,
+          network,
+          source,
+          "confirmation-depth rollback point",
+        );
+        if (
+          suppressIntersection &&
+          point !== undefined &&
+          sameCanonicalPoint(point, inclusion)
+        ) {
+          suppressIntersection = false;
+          continue;
+        }
+        throw new Error(
+          "local node rolled back while deriving confirmation depth",
+        );
+      }
+      if (next.direction !== "forward") {
+        throw new Error(
+          "Ogmios confirmation-depth chain sync returned an invalid direction",
+        );
+      }
+      suppressIntersection = false;
+      const block = parseOgmiosPoint(
+        next.block,
+        network,
+        source,
+        "confirmation-depth block",
+      );
+      depth += 1;
+      if (sameCanonicalPoint(block, expectedTip)) {
+        return depth;
+      }
+    }
+    // This is a conservative lower bound derived from real roll-forward
+    // blocks, and is sufficient to prove the configured finality threshold.
+    return requiredDepth;
+  } finally {
+    session.close();
+  }
+};
+
+const requestOgmiosTip = async (
+  ogmiosUrl: string,
+): Promise<{
+  readonly slot: number;
+  readonly blockHash: string;
+  readonly blockHeight?: number;
+  readonly networkMagic: number;
+}> => {
+  const response = await runOgmiosSession(ogmiosUrl, [
+    { id: "query-tip", method: "queryNetwork/tip", params: {} },
+    {
+      id: "query-genesis",
+      method: "queryNetwork/genesisConfiguration",
+      params: { era: "shelley" },
+    },
+  ]);
+  const point = getRecord(response.get("query-tip"), "Ogmios network tip");
+  const genesis = getRecord(
+    response.get("query-genesis"),
+    "Ogmios genesis configuration",
+  );
+  const height =
+    point.height === undefined
+      ? undefined
+      : safeSlot(point.height, "Ogmios network tip height");
+  return {
+    slot: safeSlot(point.slot, "Ogmios network tip slot"),
+    blockHash: safeBlockHash(point.id, "Ogmios network tip block hash"),
+    ...(height === undefined ? {} : { blockHeight: height }),
+    networkMagic: safeSlot(
+      genesis.networkMagic ?? genesis.network_magic,
+      "Ogmios network magic",
+    ),
+  };
+};
+
+const runOgmiosSession = async (
+  ogmiosUrl: string,
+  requests: readonly {
+    readonly id: string;
+    readonly method: string;
+    readonly params: Record<string, unknown>;
+  }[],
+): Promise<ReadonlyMap<string, unknown>> => {
+  const constructor = (
+    globalThis as unknown as {
+      readonly WebSocket?: RuntimeWebSocketConstructor;
+    }
+  ).WebSocket;
+  if (constructor === undefined) {
+    throw new Error("Node.js WebSocket support is required for Ogmios");
+  }
+  const socketUrl = new URL(ogmiosUrl);
+  if (socketUrl.protocol === "http:") {
+    socketUrl.protocol = "ws:";
+  } else if (socketUrl.protocol === "https:") {
+    socketUrl.protocol = "wss:";
+  } else if (socketUrl.protocol !== "ws:" && socketUrl.protocol !== "wss:") {
+    throw new Error("Ogmios chain-sync endpoint must use HTTP(S) or WS(S)");
+  }
+  return new Promise((resolve, reject) => {
+    const socket = new constructor(socketUrl.toString());
+    const results = new Map<string, unknown>();
+    let requestIndex = 0;
+    let settled = false;
+    const timeout = setTimeout(() => {
+      fail(new Error("Ogmios chain-sync request timed out"));
+    }, 15_000);
+    const finish = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      socket.close();
+      resolve(results);
+    };
+    const fail = (error: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      socket.close();
+      reject(error);
+    };
+    const sendNext = (): void => {
+      const request = requests[requestIndex];
+      if (request === undefined) {
+        finish();
+        return;
+      }
+      socket.send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: request.id,
+          method: request.method,
+          params: request.params,
+        }),
+      );
+    };
+    socket.onopen = sendNext;
+    socket.onmessage = ({ data }) => {
+      try {
+        if (typeof data !== "string") {
+          throw new Error("Ogmios returned a non-text WebSocket message");
+        }
+        const envelope = getRecord(
+          JSON.parse(data) as unknown,
+          "Ogmios JSON-RPC response",
+        );
+        if (envelope.error !== undefined) {
+          throw new Error(
+            `Ogmios JSON-RPC error: ${JSON.stringify(envelope.error)}`,
+          );
+        }
+        const id = envelope.id;
+        if (typeof id !== "string") {
+          throw new Error("Ogmios JSON-RPC response omitted request id");
+        }
+        const expected = requests[requestIndex];
+        if (expected === undefined || id !== expected.id) {
+          throw new Error(
+            `Ogmios JSON-RPC response id ${id} does not match the active request`,
+          );
+        }
+        results.set(id, envelope.result);
+        requestIndex += 1;
+        sendNext();
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)));
+      }
+    };
+    socket.onerror = () => {
+      fail(new Error(`Ogmios WebSocket failed for ${socketUrl.origin}`));
+    };
+    socket.onclose = () => {
+      if (!settled) {
+        fail(
+          new Error("Ogmios WebSocket closed before the response completed"),
+        );
+      }
+    };
+  });
+};
+
+const parseOgmiosPoint = (
+  value: unknown,
+  network: string,
+  providerSource: string,
+  label: string,
+): CanonicalChainPoint => {
+  const point = getRecord(value, label);
+  return {
+    network,
+    slot: safeSlot(point.slot, `${label} slot`),
+    blockHash: safeBlockHash(point.id, `${label} block hash`),
+    providerSource,
+    observedAt: new Date().toISOString(),
+  };
+};
+
+const parseOgmiosPointOrOrigin = (
+  value: unknown,
+  network: string,
+  providerSource: string,
+  label: string,
+): CanonicalChainPoint | undefined =>
+  value === "origin"
+    ? undefined
+    : parseOgmiosPoint(value, network, providerSource, label);
+
+const sameCanonicalPoint = (
+  left: Pick<CanonicalChainPoint, "network" | "slot" | "blockHash">,
+  right: Pick<CanonicalChainPoint, "network" | "slot" | "blockHash">,
+): boolean =>
+  left.network === right.network &&
+  left.slot === right.slot &&
+  left.blockHash === right.blockHash;
+
+const assertNetworkMagic = (
+  configuredNetwork: string,
+  liveNetworkMagic: number,
+  provider: string,
+): void => {
+  const expected =
+    configuredNetwork === "Mainnet"
+      ? 764_824_073
+      : configuredNetwork === "Preprod"
+        ? 1
+        : configuredNetwork === "Preview"
+          ? 2
+          : undefined;
+  if (expected === undefined) {
+    throw new Error(
+      `${provider} cannot prove custom-network identity without configured network magic`,
+    );
+  }
+  if (liveNetworkMagic !== expected) {
+    throw new Error(
+      `${provider} network magic ${liveNetworkMagic.toString()} does not match configured ${configuredNetwork} magic ${expected.toString()}`,
+    );
+  }
+};
+
+const safeSlot = (value: unknown, label: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return value as number;
+};
+
+const safeBlockHash = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`${label} must be a lowercase 32-byte hex value`);
+  }
+  return value;
+};
+
+const getRecord = (value: unknown, label: string): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const parsePersistedChainSyncState = (
+  value: unknown,
+  expectedAuthorityFingerprint: string,
+): PersistedChainSyncState => {
+  const record = getRecord(value, "persisted chain-sync state");
+  if (
+    record.schemaVersion !== 2 ||
+    typeof record.authorityFingerprint !== "string"
+  ) {
+    throw new Error("persisted chain-sync state has an unsupported schema");
+  }
+  if (record.authorityFingerprint !== expectedAuthorityFingerprint) {
+    throw new Error(
+      "persisted chain-sync cursor authority fingerprint does not match the configured local node endpoint",
+    );
+  }
+  const cursor =
+    record.cursor === undefined
+      ? undefined
+      : parsePersistedChainSyncCursor(record.cursor);
+  return {
+    schemaVersion: 2,
+    authorityFingerprint: record.authorityFingerprint,
+    ...(cursor === undefined ? {} : { cursor }),
+  };
+};
+
+const parsePersistedChainSyncConsumerState = (
+  value: unknown,
+  expectedAuthorityFingerprint: string,
+): PersistedChainSyncConsumerState => {
+  const record = getRecord(value, "persisted chain-sync consumer state");
+  if (
+    Object.keys(record).some(
+      (key) =>
+        key !== "schemaVersion" &&
+        key !== "authorityFingerprint" &&
+        key !== "cursor",
+    ) ||
+    record.schemaVersion !== 1 ||
+    typeof record.authorityFingerprint !== "string" ||
+    record.cursor === undefined
+  ) {
+    throw new Error(
+      "persisted chain-sync consumer state has an unsupported schema",
+    );
+  }
+  if (record.authorityFingerprint !== expectedAuthorityFingerprint) {
+    throw new Error(
+      "persisted chain-sync consumer authority fingerprint does not match the configured local node endpoint",
+    );
+  }
+  return {
+    schemaVersion: 1,
+    authorityFingerprint: record.authorityFingerprint,
+    cursor: parsePersistedChainSyncCursor(record.cursor),
+  };
+};
+
+const parsePersistedChainSyncCursor = (value: unknown): ChainSyncCursor => {
+  const cursor = getRecord(value, "persisted chain-sync cursor");
+  return {
+    sequence: safeSlot(cursor.sequence, "persisted chain-sync sequence"),
+    rollbackGeneration: safeSlot(
+      cursor.rollbackGeneration,
+      "persisted chain-sync rollback generation",
+    ),
+    point: parsePersistedCanonicalPoint(
+      cursor.point,
+      "persisted chain-sync point",
+    ),
+  };
+};
+
+const parsePersistedChainSyncEvent = (value: unknown): ChainSyncEvent => {
+  const event = getRecord(value, "persisted chain-sync event");
+  if (
+    event.direction !== "roll_forward" &&
+    event.direction !== "roll_backward"
+  ) {
+    throw new Error("persisted chain-sync event has an invalid direction");
+  }
+  return {
+    direction: event.direction,
+    point: parsePersistedCanonicalPoint(
+      event.point,
+      "persisted chain-sync event point",
+    ),
+  };
+};
+
+const parsePersistedCanonicalPoint = (
+  value: unknown,
+  label: string,
+): CanonicalChainPoint => {
+  const point = getRecord(value, label);
+  if (
+    typeof point.network !== "string" ||
+    point.network.length === 0 ||
+    typeof point.providerSource !== "string" ||
+    point.providerSource.length === 0 ||
+    typeof point.observedAt !== "string" ||
+    !Number.isFinite(Date.parse(point.observedAt))
+  ) {
+    throw new Error(`${label} has invalid provenance`);
+  }
+  return {
+    network: point.network,
+    slot: safeSlot(point.slot, `${label} slot`),
+    blockHash: safeBlockHash(point.blockHash, `${label} block hash`),
+    providerSource: point.providerSource,
+    observedAt: point.observedAt,
+  };
+};
+
+const samePersistedEventPoint = (
+  event: ChainSyncEvent,
+  point: CanonicalChainPoint,
+): boolean => samePersistedCanonicalPoint(event.point, point);
+
+const samePersistedCursor = (
+  left: ChainSyncCursor,
+  right: ChainSyncCursor,
+): boolean =>
+  left.sequence === right.sequence &&
+  left.rollbackGeneration === right.rollbackGeneration &&
+  samePersistedCanonicalPoint(left.point, right.point);
+
+const samePersistedCanonicalPoint = (
+  left: CanonicalChainPoint,
+  right: CanonicalChainPoint,
+): boolean =>
+  sameCanonicalPoint(left, right) &&
+  left.providerSource === right.providerSource &&
+  left.observedAt === right.observedAt;
+
+const parseFixtureChainSyncEvents = (
+  value: unknown,
+  network: string,
+  authorityNodeId: string,
+): readonly ChainSyncEvent[] => {
+  if (!Array.isArray(value)) {
+    throw new Error("chain-sync fixture must contain an event array");
+  }
+  return value.map((entry, index) => {
+    const event = getRecord(
+      entry,
+      `chain-sync fixture event ${index.toString()}`,
+    );
+    if (
+      event.direction !== "roll_forward" &&
+      event.direction !== "roll_backward"
+    ) {
+      throw new Error(
+        `chain-sync fixture event ${index.toString()} has an invalid direction`,
+      );
+    }
+    return {
+      direction: event.direction,
+      point: {
+        network,
+        slot: safeSlot(
+          event.slot,
+          `chain-sync fixture event ${index.toString()} slot`,
+        ),
+        blockHash: safeBlockHash(
+          event.blockHash,
+          `chain-sync fixture event ${index.toString()} block hash`,
+        ),
+        providerSource: `chain-sync:${authorityNodeId}`,
+        observedAt:
+          typeof event.observedAt === "string"
+            ? event.observedAt
+            : new Date().toISOString(),
+      },
+    };
+  });
 };
 
 const normalizeNetwork = (network: string): CardanoNetwork => {

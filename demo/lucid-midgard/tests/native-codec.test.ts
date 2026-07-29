@@ -77,6 +77,9 @@ describe("Midgard native v1 codec", () => {
         preimageCbor: EMPTY_CBOR_LIST,
       }).commitment,
     );
+    expect(decoded.compact.transactionBody.mintHash).not.toEqual(
+      computeHash32(EMPTY_CBOR_LIST),
+    );
   });
 
   it("decodes canonical transaction CBOR without deriving compact fields", () => {

@@ -1,4 +1,5 @@
 import {
+  computeHash32,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -10,6 +11,7 @@ import {
   MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -120,6 +122,22 @@ const makeUtxo = (
     outputCbor: encodeMidgardTxOutput(address, assets),
   });
 
+const makeReferenceUtxo = (ref: OutRef, script: Uint8Array): MidgardUtxo =>
+  decodeMidgardUtxo({
+    outRef: ref,
+    outRefCbor: outRefToCbor(ref),
+    outputCbor: encodeMidgardTxOutput(
+      address,
+      { lovelace: 3_000_000n },
+      {
+        scriptRef: {
+          type: "MidgardV1",
+          script: Buffer.from(script).toString("hex"),
+        },
+      },
+    ),
+  });
+
 describe("TxBuilder finalization", () => {
   it("completes a simple balanced unsigned native transaction", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
@@ -170,6 +188,65 @@ describe("TxBuilder finalization", () => {
     expect(completed.metadata.fee).toBe(10n);
   });
 
+  it("requires exact material for historical reference-script envelopes", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const canonical = buildMidgardCanonicalCekProgramV1(
+      Buffer.from("010100200101", "hex"),
+    );
+    const spend = makeUtxo(makeOutRef(0x31), { lovelace: 2_000_000n });
+    const reference = makeReferenceUtxo(
+      makeOutRef(0x32),
+      canonical.envelopeCbor,
+    );
+    const builder = midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference])
+      .pay.ToAddress(address, { lovelace: 2_000_000n });
+
+    await expect(builder.complete({ fee: 0n })).rejects.toThrow(
+      /Incomplete or mismatched CEK program material/u,
+    );
+
+    const material = [...canonical.material.values()];
+    const completed = await builder.complete({
+      fee: 0n,
+      programMaterial: material,
+    });
+    expect(completed.programMaterial).toEqual(
+      [...material].sort((left, right) =>
+        Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
+      ),
+    );
+
+    const corrupted = material.map((entry, index) =>
+      index === 0
+        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
+        : entry,
+    );
+    await expect(
+      builder.complete({ fee: 0n, programMaterial: corrupted }),
+    ).rejects.toThrow(/Invalid canonical CEK program material/u);
+
+    const rawReference = makeReferenceUtxo(
+      makeOutRef(0x33),
+      Buffer.from("010100200101", "hex"),
+    );
+    await expect(
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([rawReference])
+        .pay.ToAddress(address, { lovelace: 2_000_000n })
+        .complete({ fee: 0n, programMaterial: material }),
+    ).rejects.toThrow(
+      /V1 reference script must contain a canonical CEK program envelope/u,
+    );
+  });
+
   it("materializes canonical hashes, empty buckets, and default sentinels", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
@@ -184,34 +261,40 @@ describe("TxBuilder finalization", () => {
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompactV1(
       tx.witnessSet,
     );
-    const commitment = (fieldIndex: number, preimageCbor: Uint8Array) =>
+    const fieldCommitment = (fieldIndex: number, preimageCbor: Uint8Array) =>
       deriveMidgardNativeFieldCollectionV1({
         fieldIndex,
         preimageCbor,
       }).commitment;
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
-      commitment(0, tx.body.spendInputsPreimageCbor),
+      fieldCommitment(0, tx.body.spendInputsPreimageCbor),
     );
     expect(tx.compact.transactionBody.referenceInputsHash).toEqual(
-      commitment(1, EMPTY_CBOR_LIST),
+      fieldCommitment(1, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.requiredObserversHash).toEqual(
-      commitment(3, EMPTY_CBOR_LIST),
+      fieldCommitment(3, EMPTY_CBOR_LIST),
+    );
+    expect(tx.compact.transactionBody.requiredSignersHash).toEqual(
+      fieldCommitment(4, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.mintHash).toEqual(
-      commitment(5, EMPTY_CBOR_LIST),
+      fieldCommitment(5, EMPTY_CBOR_LIST),
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
     expect(witnessCompact.addrTxWitsHash).toEqual(
-      commitment(7, EMPTY_CBOR_LIST),
+      fieldCommitment(7, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.scriptTxWitsHash).toEqual(
-      commitment(6, EMPTY_CBOR_LIST),
+      fieldCommitment(6, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.redeemerTxWitsHash).toEqual(
-      commitment(8, EMPTY_CBOR_LIST),
+      fieldCommitment(8, EMPTY_CBOR_LIST),
+    );
+    expect(tx.compact.transactionBody.spendInputsHash).not.toEqual(
+      computeHash32(tx.body.spendInputsPreimageCbor),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);
     expect(tx.body.validityIntervalEnd).toBe(MIDGARD_POSIX_TIME_NONE);

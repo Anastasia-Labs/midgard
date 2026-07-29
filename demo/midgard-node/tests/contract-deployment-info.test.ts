@@ -11,7 +11,6 @@ import {
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
 import type {
-  FraudProofCatalogueDeploymentInfo,
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
 } from "@al-ft/midgard-sdk";
@@ -51,6 +50,10 @@ import {
   midgardContractsFromDeploymentManifest,
   parseRuntimeDeploymentManifest,
 } from "@/services/midgard-contracts.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  fraudProofsToIndexedValidators,
+} from "@/transactions/initialization.js";
 
 const testReferenceScriptAuthPolicy = (
   _policyId: string,
@@ -112,67 +115,29 @@ const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   },
 };
 
-const testFraudProofCatalogue = (
-  contracts: MidgardValidators,
-): FraudProofCatalogueDeploymentInfo => ({
-  root: "aa".repeat(32),
-  categories: {
-    doubleSpend: {
-      categoryId: "00000000",
-      scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    nonExistentInput: {
-      categoryId: "00000001",
-      scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    nonExistentInputNoIndex: {
-      categoryId: "00000002",
-      scriptHash:
-        contracts.fraudProofs.nonExistentInputNoIndex.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    invalidRange: {
-      categoryId: "00000003",
-      scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    transitionTrace: {
-      categoryId: "00000004",
-      scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    zeroInput: {
-      categoryId: "00000005",
-      scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-    validationTraceDispute: {
-      categoryId: "00000006",
-      scriptHash:
-        contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
-      membershipProofCbor: "80",
-    },
-  },
-});
+const testFraudProofCatalogue = (contracts: MidgardValidators) =>
+  buildFraudProofCatalogueDeploymentInfo(
+    fraudProofsToIndexedValidators(contracts.fraudProofs),
+  );
 
 const buildFinalizedContractDeploymentInfo = (
   contracts: MidgardValidators,
   authPolicy: ReferenceScriptAuthPolicyDeploymentInfo,
 ) =>
-  buildContractDeploymentInfoFromContracts(
-    contracts,
-    authPolicy,
-    new Map(
-      Object.values(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-      ).map((contractName, outputIndex) => [
-        contractName,
-        { txHash: "33".repeat(32), outputIndex },
-      ]),
+  Effect.map(testFraudProofCatalogue(contracts), (fraudProofCatalogue) =>
+    buildContractDeploymentInfoFromContracts(
+      contracts,
+      authPolicy,
+      new Map(
+        Object.values(
+          DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+        ).map((contractName, outputIndex) => [
+          contractName,
+          { txHash: "33".repeat(32), outputIndex },
+        ]),
+      ),
+      fraudProofCatalogue,
     ),
-    testFraudProofCatalogue(contracts),
   );
 
 const TEST_FINALIZED_MANIFEST_BUILD_CONTEXT = {
@@ -260,60 +225,17 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
+      const fraudProofCatalogue = yield* testFraudProofCatalogue(contracts);
       const manifest = buildContractDeploymentInfoFromContracts(
         contracts,
         authPolicy,
         new Map(),
-        {
-          root: "aa".repeat(32),
-          categories: {
-            doubleSpend: {
-              categoryId: "00000000",
-              scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            nonExistentInput: {
-              categoryId: "00000001",
-              scriptHash:
-                contracts.fraudProofs.nonExistentInput.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            nonExistentInputNoIndex: {
-              categoryId: "00000002",
-              scriptHash:
-                contracts.fraudProofs.nonExistentInputNoIndex
-                  .spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            invalidRange: {
-              categoryId: "00000003",
-              scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            transitionTrace: {
-              categoryId: "00000004",
-              scriptHash:
-                contracts.fraudProofs.transitionTrace.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            zeroInput: {
-              categoryId: "00000005",
-              scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-            validationTraceDispute: {
-              categoryId: "00000006",
-              scriptHash:
-                contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
-              membershipProofCbor: "80",
-            },
-          },
-        },
+        fraudProofCatalogue,
       );
 
       expect(
         manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue?.root,
-      ).toBe("aa".repeat(32));
+      ).toBe(fraudProofCatalogue.root);
       expect(
         manifest.contracts.fraudProofCatalogueSpend.fraudProofCatalogue,
       ).toBeUndefined();
@@ -379,7 +301,7 @@ describe("contract deployment info", () => {
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
         );
-        const deploymentInfo = buildFinalizedContractDeploymentInfo(
+        const deploymentInfo = yield* buildFinalizedContractDeploymentInfo(
           contracts,
           authPolicy,
         );
@@ -429,7 +351,7 @@ describe("contract deployment info", () => {
           contracts.referenceScriptAuth.policyId,
           contracts.referenceScriptAuth.mintingScriptCBOR,
         );
-        const deploymentInfo = buildFinalizedContractDeploymentInfo(
+        const deploymentInfo = yield* buildFinalizedContractDeploymentInfo(
           contracts,
           authPolicy,
         );
@@ -483,7 +405,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.policyId,
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
-      const deploymentInfo = buildFinalizedContractDeploymentInfo(
+      const deploymentInfo = yield* buildFinalizedContractDeploymentInfo(
         contracts,
         authPolicy,
       );
@@ -517,7 +439,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
       const manifest = buildDeploymentManifestV1(
-        buildFinalizedContractDeploymentInfo(contracts, authPolicy),
+        yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
         },
@@ -572,7 +494,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
       const manifest = buildDeploymentManifestV1(
-        buildFinalizedContractDeploymentInfo(contracts, authPolicy),
+        yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
         },
@@ -599,7 +521,7 @@ describe("contract deployment info", () => {
           contracts.referenceScriptAuth.mintingScriptCBOR,
         );
         const manifest = buildDeploymentManifestV1(
-          buildFinalizedContractDeploymentInfo(contracts, authPolicy),
+          yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
           {
             ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
           },
@@ -641,7 +563,7 @@ describe("contract deployment info", () => {
         contracts.referenceScriptAuth.mintingScriptCBOR,
       );
       const manifest = buildDeploymentManifestV1(
-        buildFinalizedContractDeploymentInfo(contracts, authPolicy),
+        yield* buildFinalizedContractDeploymentInfo(contracts, authPolicy),
         {
           ...TEST_FINALIZED_MANIFEST_BUILD_CONTEXT,
         },

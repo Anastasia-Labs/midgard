@@ -36,7 +36,10 @@ Key members:
 - `newTx()`: returns a fresh `TxBuilder` bound to the current provider snapshot.
 - `fromTx(input, options?)`: imports canonical Midgard native v1 full
   transactions (native objects, native CBOR/hex, `{ txCbor }`, `{ txHex }`, or an
-  existing `CompleteTx`). Cardano transaction/body/witness bytes are rejected.
+  existing `CompleteTx`). An existing `CompleteTx` retains its canonical
+  program-material sidecar; raw imports can supply exact material through
+  `FromTxOptions.programMaterial`. Cardano transaction/body/witness bytes are
+  rejected.
 - `switchProvider(provider, expectations?)`, `overrideUTxOs(utxos)`,
   `clearUTxOOverrides()`, provider and UTxO source control.
 - `config()`: immutable `LucidMidgardConfigSnapshot` (provider generation,
@@ -83,8 +86,12 @@ The builder methods, all returning a new `TxBuilder`:
 <Callout type="warn" title="Canonical V1 deployment binding">
   `mintAssets`, `mint`, script witnesses, redeemers, reference inputs/scripts,
   observers, script payment credentials, and protected outputs are all part of
-  the fixed canonical V1 surface. The SDK accepts them only against the exact
-  connected V1 deployment tuple and profile digest; unknown versions, languages,
+  the fixed canonical V1 surface. Like the other fluent methods, these calls
+  return a new immutable `TxBuilder`; they are not rejected solely for selecting
+  an enabled feature. The SDK accepts them only against the exact connected V1
+  deployment tuple and profile digest. Successful completion and admission
+  require the exact canonical encoding and bounds, valid scripts and policies,
+  and an exact provider consensus-profile match; unknown versions, languages,
   purposes, or encodings fail before builder state changes.
 </Callout>
 
@@ -97,8 +104,10 @@ Completion comes in three flavors, each also as a `Safe` and `Program` variant:
 <Callout type="info" title="Completion options">
   `complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" |
   "phase-b"`, default `"none"`), `feePolicy` (`"provider"` or explicit `minFeeA`
-  / `minFeeB`), and `maxFeeIterations`. See [Balancing and
-  Fees](/docs/sdk/lucid-midgard/balancing-fees).
+  / `minFeeB`), `maxFeeIterations`, and exact reference-script
+  `programMaterial`. Completion verifies that every referenced Midgard V1
+  envelope has matching canonical material and fails closed when it is missing.
+  See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
 </Callout>
 
 ## `CompleteTx`

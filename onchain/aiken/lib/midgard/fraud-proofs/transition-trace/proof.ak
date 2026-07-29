@@ -1118,9 +1118,13 @@ fn validate_l2_transaction_transition(
   spent_utxos: List<LedgerDeleteWitness>,
   produced_utxos: List<LedgerInsertWitness>,
 ) -> Bool {
-  let verified = native_compact.verify_native_tx_compact_cbor_v1(
+  expect Some(source_data) = cbor.deserialise(source_membership.value)
+  expect source: ledger_state.L2TransactionSourceV1 = source_data
+  let Pair(verified, _witness_set) = native_compact.verify_native_tx_proof_source_v1(
     source_membership.key,
-    source_membership.value,
+    source.source.compact_cbor,
+    source.source.witness_set_compact_cbor,
+    source.source.field_preimage_lengths_cbor,
   )
   let compact = verified.tx_compact
   expect compact.validity_code == 0
@@ -1159,6 +1163,14 @@ fn validate_l2_transaction_transition(
       event_to_step,
       source_membership,
     ),
+    cbor.serialise(source) == source_membership.value,
+    source.tx_id == source_membership.key,
+    source.transaction_commitment == native_compact.native_tx_proof_commitment_v1(
+      source.source.compact_cbor,
+      source.source.witness_set_compact_cbor,
+      source.source.field_preimage_lengths_cbor,
+    ),
+    verified.version == 1,
     expected_post_root != trace_proof.value.post_utxos_root,
   }
 }

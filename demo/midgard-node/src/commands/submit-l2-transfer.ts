@@ -6,7 +6,10 @@
  * `/submit` endpoint.
  */
 import { isZeroAssets, normalizeAssets } from "@al-ft/midgard-core/assets";
-import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import {
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardProofSubmissionV1,
+} from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardAddressBytes,
   encodeMidgardAddressText,
@@ -502,9 +505,10 @@ export const submitNativeTransferTx = (
 /**
  * Converts a built transfer into the queue-entry shape expected by validation.
  */
-const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
+export const toQueuedTx = (built: BuiltTransferTx): QueuedTx => ({
   txId: built.txId,
   txCbor: built.txCbor,
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
   arrivalSeq: 0n,
   createdAt: new Date(),
 });

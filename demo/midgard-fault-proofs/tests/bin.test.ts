@@ -13,6 +13,20 @@ import {
 } from "../src/bin.js";
 
 describe("fault-proof CLI argument parsing", () => {
+  it("rejects the retired incompatible-output bypass", () => {
+    expect(() =>
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "prepare-double-spend",
+        "--sample-double-spend",
+        "--header-hash",
+        "11".repeat(28),
+        "--allow-incompatible-output",
+      ]),
+    ).toThrow("Unknown argument: --allow-incompatible-output");
+  });
+
   it("maps remove-fraudulent-block live-node lease flags into submission config", () => {
     const parsed = parseArgs([
       "node",

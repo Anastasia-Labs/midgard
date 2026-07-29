@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 
+import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
@@ -19,7 +20,12 @@ import {
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
-import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
+import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  type FraudProofCatalogueDeploymentInfo,
+  ScriptHashSchema,
+} from "@al-ft/midgard-sdk";
 import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -34,32 +40,81 @@ const FIXTURE_URL = new URL(
   import.meta.url,
 );
 
-type LucidDataSchema = Parameters<typeof Data.to>[1];
+type FraudProofCatalogueCategoryName =
+  (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
 
-const FRAUD_PROOF_CATALOGUE_CATEGORY_CONTRACTS = [
-  ["doubleSpend", "fraudProofDoubleSpend"],
-  ["nonExistentInput", "fraudProofNonExistentInput"],
-  ["nonExistentInputNoIndex", "fraudProofNonExistentInputNoIndex"],
-  ["invalidRange", "fraudProofInvalidRange"],
-  ["transitionTrace", "fraudProofTransitionTrace"],
-  ["zeroInput", "fraudProofZeroInput"],
-  ["validationTraceDispute", "validationTraceDispute"],
-] as const;
+const catalogueCategoryId = (index: number): string => {
+  const bytes = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
+  bytes.writeUInt32BE(index);
+  return bytes.toString("hex");
+};
 
-const encodeFraudProofCatalogueBytes = (
-  value: string,
-  exactByteLength: number,
-): Buffer =>
-  Buffer.from(
-    Data.to(
-      value,
-      Data.Bytes({
-        minLength: exactByteLength,
-        maxLength: exactByteLength,
-      }) as unknown as LucidDataSchema,
-    ),
-    "hex",
-  );
+const catalogueKeySchema = Data.Bytes({
+  minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+  maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
+});
+
+export const buildCanonicalFraudProofCatalogueFixture = async (
+  scriptHashes: Readonly<Record<FraudProofCatalogueCategoryName, string>>,
+): Promise<FraudProofCatalogueDeploymentInfo> => {
+  const categories = Object.fromEntries(
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((categoryName, index) => [
+      categoryName,
+      {
+        categoryId: catalogueCategoryId(index),
+        scriptHash: scriptHashes[categoryName],
+        membershipProofCbor: "",
+      },
+    ]),
+  ) as FraudProofCatalogueDeploymentInfo["categories"];
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const category = categories[categoryName];
+    await trie.insert(
+      Buffer.from(
+        Data.to(category.categoryId as never, catalogueKeySchema),
+        "hex",
+      ),
+      Buffer.from(
+        Data.to(category.scriptHash as never, ScriptHashSchema),
+        "hex",
+      ),
+    );
+  }
+  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const category = categories[categoryName];
+    const proof = await trie.prove(
+      Buffer.from(
+        Data.to(category.categoryId as never, catalogueKeySchema),
+        "hex",
+      ),
+    );
+    (
+      categories as Record<
+        string,
+        {
+          categoryId: string;
+          scriptHash: string;
+          membershipProofCbor: string;
+        }
+      >
+    )[categoryName] = {
+      ...category,
+      membershipProofCbor: proof.toCBOR().toString("hex"),
+    };
+  }
+  if (trie.hash === null) {
+    throw new Error(
+      "Canonical fraud-proof catalogue fixture is unexpectedly empty",
+    );
+  }
+  return {
+    root: Buffer.from(trie.hash).toString("hex"),
+    categories,
+  };
+};
 
 export const readDaDeploymentFixture = async (): Promise<
   Record<string, unknown>
@@ -118,51 +173,21 @@ export const readDaDeploymentFixture = async (): Promise<
       ];
     }),
   ) as Record<string, Record<string, unknown>>;
-  const fraudProofCatalogueCategories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_CONTRACTS.map(
-      ([categoryName, contractName], index) => [
-        categoryName,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: contracts[contractName]!.scriptHash as string,
-          membershipProofCbor: "",
-        },
-      ],
-    ),
-  ) as Record<
-    (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_CONTRACTS)[number][0],
-    {
-      readonly categoryId: string;
-      readonly scriptHash: string;
-      membershipProofCbor: string;
-    }
-  >;
-  const fraudProofCatalogueStore = new Store(undefined);
-  await fraudProofCatalogueStore.ready();
-  const fraudProofCatalogueTrie = new Trie(fraudProofCatalogueStore);
-  for (const [categoryName] of FRAUD_PROOF_CATALOGUE_CATEGORY_CONTRACTS) {
-    const category = fraudProofCatalogueCategories[categoryName];
-    await fraudProofCatalogueTrie.insert(
-      encodeFraudProofCatalogueBytes(category.categoryId, 4),
-      encodeFraudProofCatalogueBytes(category.scriptHash, 28),
-    );
-  }
-  for (const [categoryName] of FRAUD_PROOF_CATALOGUE_CATEGORY_CONTRACTS) {
-    const category = fraudProofCatalogueCategories[categoryName];
-    const proof = await fraudProofCatalogueTrie.prove(
-      encodeFraudProofCatalogueBytes(category.categoryId, 4),
-    );
-    category.membershipProofCbor = proof.toCBOR().toString("hex");
-  }
-  if (fraudProofCatalogueTrie.hash == null) {
-    throw new Error("DA deployment fixture fraud-proof catalogue is empty");
-  }
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
-    fraudProofCatalogue: {
-      root: Buffer.from(fraudProofCatalogueTrie.hash).toString("hex"),
-      categories: fraudProofCatalogueCategories,
-    },
+    fraudProofCatalogue: await buildCanonicalFraudProofCatalogueFixture({
+      doubleSpend: contracts.fraudProofDoubleSpend!.scriptHash as string,
+      nonExistentInput: contracts.fraudProofNonExistentInput!
+        .scriptHash as string,
+      nonExistentInputNoIndex: contracts.fraudProofNonExistentInputNoIndex!
+        .scriptHash as string,
+      invalidRange: contracts.fraudProofInvalidRange!.scriptHash as string,
+      transitionTrace: contracts.fraudProofTransitionTrace!
+        .scriptHash as string,
+      zeroInput: contracts.fraudProofZeroInput!.scriptHash as string,
+      validationTraceDispute: contracts.validationTraceDispute!
+        .scriptHash as string,
+    }),
   };
   const referenceScripts = Object.fromEntries(
     Object.entries(

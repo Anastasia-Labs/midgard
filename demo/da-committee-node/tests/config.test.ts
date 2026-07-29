@@ -18,6 +18,7 @@ vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
+  l1SourceAuthorityDigest,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
@@ -292,7 +293,9 @@ describe("loadWatcherConfig", () => {
       CARDANO_L1_SOURCE_MODE: "local_node",
       CARDANO_L1_TEST_MODE: "true",
       CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-      CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "fixture-chain-sync:/tmp/state.json",
+      CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+      CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+        "/tmp/state.chain-sync-cursor.json",
     };
     const missingMode: Record<string, string> = { ...baseEnv };
     delete missingMode.CARDANO_L1_SOURCE_MODE;
@@ -305,7 +308,8 @@ describe("loadWatcherConfig", () => {
     ).toMatchObject({
       sourceMode: "local_node",
       authorityNodeId: "preview-node-a",
-      chainSyncOgmiosUrl: "fixture-chain-sync:/tmp/state.json",
+      chainSyncProviderUrl: "chain-sync:fixture:/tmp/state.json",
+      chainSyncCursorPath: "/tmp/state.chain-sync-cursor.json",
       queryProviderUrls: ["fixture:/tmp/state.json"],
     });
     expect(() =>
@@ -316,7 +320,7 @@ describe("loadWatcherConfig", () => {
         },
         ["fixture:/tmp/state.json"],
       ),
-    ).toThrow(/ogmios-chain-sync:<ws-url>/u);
+    ).toThrow(/chain-sync:<provider>/u);
     expect(() =>
       parseL1SourceConfig(
         {
@@ -326,15 +330,26 @@ describe("loadWatcherConfig", () => {
         ["fixture:/tmp/state.json"],
       ),
     ).toThrow(/CARDANO_L1_TEST_MODE=true/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_L1_TEST_MODE: "false",
+        },
+        ["kupmios:http://kupo.local|ws://ogmios.local"],
+      ),
+    ).toThrow(/local chain-sync sources.*CARDANO_L1_TEST_MODE=true/u);
     expect(
       parseL1SourceConfig(
         {
           CARDANO_L1_SOURCE_MODE: "local_node",
           CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
           CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
-            "ogmios-chain-sync:ws://ogmios.local",
+            "chain-sync:kupmios:http://kupo.local|ws://ogmios.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
         },
-        ["kupmios:http://kupo.local|http://ogmios.local"],
+        ["kupmios:http://kupo.local|ws://ogmios.local"],
       ),
     ).toMatchObject({
       sourceMode: "local_node",
@@ -346,11 +361,52 @@ describe("loadWatcherConfig", () => {
           CARDANO_L1_SOURCE_MODE: "local_node",
           CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
           CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
-            "ogmios-chain-sync:ws://node-a.local",
+            "chain-sync:ogmios:ws://ogmios.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
         },
-        ["kupmios:http://kupo.local|ws://node-b.local"],
+        ["blockfrost:https://cardano.example#project"],
       ),
-    ).toThrow(/must exactly match.*authority/u);
+    ).toThrow(/must be kupmios: backed by the local authority/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          CARDANO_L1_SOURCE_MODE: "local_node",
+          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
+            "chain-sync:ogmios:ws://ogmios-a.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
+        },
+        ["kupmios:http://kupo.local|ws://ogmios-b.local"],
+      ),
+    ).toThrow(/not backed by the configured chain-sync authority/u);
+  });
+
+  it("binds the authority digest to the source mode, network, and authority endpoints", () => {
+    const local = parseL1SourceConfig(
+      {
+        CARDANO_L1_SOURCE_MODE: "local_node",
+        CARDANO_L1_TEST_MODE: "true",
+        CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
+        CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+        CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+          "/tmp/state.chain-sync-cursor.json",
+      },
+      ["fixture:/tmp/state.json"],
+    );
+    if (local.sourceMode !== "local_node") {
+      throw new Error("expected local-node source fixture");
+    }
+    const baseline = l1SourceAuthorityDigest("Preview", local);
+    expect(baseline).toMatch(/^[0-9a-f]{64}$/u);
+    expect(l1SourceAuthorityDigest("Preprod", local)).not.toBe(baseline);
+    expect(
+      l1SourceAuthorityDigest("Preview", {
+        ...local,
+        authorityNodeId: "preview-node-b",
+      }),
+    ).not.toBe(baseline);
   });
 
   it("requires two distinct operational identities in external-provider mode", () => {
@@ -389,17 +445,77 @@ describe("loadWatcherConfig", () => {
       ),
     ).toThrow(/distinct operational provider identities/u);
     expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "blockfrost:https://shared.example/api/#project-a",
+          "blockfrost:https://SHARED.example:443/other#project-b",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "kupmios:https://kupo-a.example|wss://shared-ogmios.example",
+          "kupmios:https://kupo-b.example|wss://shared-ogmios.example/",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared-ogmios\.example/u);
+    const plaintextKupmios = [
+      "kupmios:http://kupo-a.example|ws://ogmios-a.example",
+      "kupmios:http://kupo-b.example|ws://ogmios-b.example",
+    ];
+    expect(() => parseL1SourceConfig(baseEnv, plaintextKupmios)).toThrow(
+      /require HTTPS Kupo and TLS-protected WSS\/HTTPS Ogmios/u,
+    );
+    expect(
+      parseL1SourceConfig(
+        { ...baseEnv, CARDANO_L1_TEST_MODE: "true" },
+        plaintextKupmios,
+      ),
+    ).toMatchObject({ sourceMode: "external_providers" });
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "blockfrost:https://shared.example.#project-a",
+          "blockfrost:https://shared.example#project-b",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
+    expect(
       parseL1SourceConfig(baseEnv, [
         "blockfrost:https://a.example#project-a",
-        "blockfrost:https://a.example#project-b",
+        "blockfrost:https://b.example#project-b",
       ]),
-    ).toThrow(/duplicate or aliased endpoints\/credentials/u);
-    expect(() =>
-      parseL1SourceConfig(baseEnv, [
-        "kupmios:http://kupo-a.example|ws://ogmios-a.example",
-        "kupmios:http://kupo-a.example/|http://ogmios-a.example/",
-      ]),
-    ).toThrow(/duplicate or aliased endpoints\/credentials/u);
+    ).toMatchObject({
+      providers: [
+        {
+          operationalIdentity: {
+            operatorId: "operator-a",
+            transport: "blockfrost_https",
+            normalizedEndpoints: ["https://a.example"],
+          },
+        },
+        {
+          operationalIdentity: {
+            operatorId: "operator-b",
+            transport: "blockfrost_https",
+            normalizedEndpoints: ["https://b.example"],
+          },
+        },
+      ],
+    });
   });
 
   it("fails closed for invalid libp2p DA manifest security fields", async () => {
@@ -1002,7 +1118,11 @@ const libp2pConfigEnv = (
   CARDANO_L1_SOURCE_MODE: "local_node",
   CARDANO_L1_TEST_MODE: "true",
   CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
-  CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "fixture-chain-sync:/tmp/state.json",
+  CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+  CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: join(
+    dir,
+    "chain-sync-cursor.json",
+  ),
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
   CARDANO_FINALITY_DEPTH: "2",
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,

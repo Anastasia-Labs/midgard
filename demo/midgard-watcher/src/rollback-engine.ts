@@ -19,6 +19,7 @@ import {
   WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
   WATCHER_FINALITY_REWIND_INSTRUCTION_V1_SCHEMA_VERSION,
   type WatcherFinalityBoundObservationV1,
+  watcherFinalityConfiguredSourceV1,
   type WatcherFinalityIncidentV1,
   type WatcherFinalityPolicyV1,
   type WatcherFinalityResultV1,
@@ -498,6 +499,7 @@ const parseFinalityTransition = (
     "protocolDecision",
     "sourceMode",
     "configuredNetwork",
+    "configuredSourceDigest",
     "authorityNodeId",
     "authorityGenesisIdentitySha256",
     "chainAuthorityObservationDigest",
@@ -505,6 +507,7 @@ const parseFinalityTransition = (
     "observationCount",
     "independentProviderCount",
     "externalProviderBindings",
+    "localQueryServiceBindings",
     "reasonCodes",
     "alertCodes",
     "observationEvidenceDigests",
@@ -998,6 +1001,7 @@ const parseTransitionRecord = (
     "protocolDecision",
     "sourceMode",
     "configuredNetwork",
+    "configuredSourceDigest",
     "authorityNodeId",
     "authorityGenesisIdentitySha256",
     "chainAuthorityObservationDigest",
@@ -1005,6 +1009,7 @@ const parseTransitionRecord = (
     "observationCount",
     "independentProviderCount",
     "externalProviderBindings",
+    "localQueryServiceBindings",
     "reasonCodes",
     "alertCodes",
     "observationEvidenceDigests",
@@ -1510,6 +1515,8 @@ const verifyPersistedConsistencyEvidence = (
     consistency.authorityNodeId !== policy.authorityNodeId ||
     consistency.authorityGenesisIdentitySha256 !==
       policy.authorityGenesisIdentitySha256 ||
+    consistency.configuredSourceDigest !==
+      sha256Canonical(watcherFinalityConfiguredSourceV1(policy)) ||
     consistency.rejectedObservationCount !== 0 ||
     evidenceDigests.length === 0 ||
     consistency.observationCount !== evidenceDigests.length
@@ -1558,17 +1565,7 @@ const verifyPersistedConsistencyEvidence = (
     return null;
   }
   const recomputed = evaluateWatcherMultiProviderConsistencyV1(
-    policy.sourceMode === "local_node"
-      ? {
-          sourceMode: "local_node",
-          network: policy.network,
-          authorityNodeId: policy.authorityNodeId,
-          genesisIdentitySha256: policy.authorityGenesisIdentitySha256,
-        }
-      : {
-          sourceMode: "external_providers",
-          network: policy.network,
-        },
+    watcherFinalityConfiguredSourceV1(policy),
     decoded,
   );
   return JSON.stringify(recomputed) === JSON.stringify(consistency)

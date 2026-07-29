@@ -234,8 +234,19 @@ const makeTransitionTraceFinalSpendRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-const transitionTraceFinalIndex = (
-  proof: TransitionFaultProof,
+const unreachableTransitionVariant = (value: never): never => {
+  const variant =
+    typeof value === "object" && value !== null
+      ? Object.keys(value).join(",")
+      : String(value);
+  throw transitionTraceError(
+    "submissionRejected",
+    `Unsupported transition-trace proof variant: ${variant}`,
+  );
+};
+
+export const transitionTraceFinalIndex = (
+  proof: Pick<TransitionFaultProof, "fault">,
 ): number => {
   const { fault } = proof;
   if (
@@ -257,12 +268,16 @@ const transitionTraceFinalIndex = (
     ) {
       return 2;
     }
-    if (
-      "InvalidForcedTransactionNoOpTransition" in witness
-    ) {
+    if ("InvalidForcedTransactionNoOpTransition" in witness) {
       return 3;
     }
-    return 5;
+    if ("L2TransactionTransition" in witness) {
+      return 4;
+    }
+    if ("ValidDepositTransition" in witness) {
+      return 5;
+    }
+    return unreachableTransitionVariant(witness);
   }
   if ("AcceptedTransactionTransitionMismatch" in fault) {
     return 4;
@@ -270,7 +285,10 @@ const transitionTraceFinalIndex = (
   if ("OmittedDueL1Event" in fault || "OutOfWindowSourceEvent" in fault) {
     return 6;
   }
-  return 7;
+  if ("DuplicateTraceEvent" in fault) {
+    return 7;
+  }
+  return unreachableTransitionVariant(fault);
 };
 
 const makeFraudProofMintRedeemer = ({
@@ -434,9 +452,7 @@ export const submitTransitionTraceProof = async ({
       routeAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      contracts.transitionTrace.route.spendingScript,
-    );
+    .attach.SpendingValidator(contracts.transitionTrace.route.spendingScript);
   const unsignedRoute = await routeTx.complete({ localUPLCEval: true });
   if (routeLayout === undefined) {
     throw transitionTraceError(
@@ -446,8 +462,7 @@ export const submitTransitionTraceProof = async ({
   }
   const signedRoute = await unsignedRoute.sign.withWallet().complete();
   const routeTxHash = await signedRoute.submit();
-  const routeOutRef =
-    `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
+  const routeOutRef = `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
   // The final transaction must consume the exact authenticated router output.
   // Awaiting this internal hop also prevents providers from selecting a stale
   // initial thread UTxO.
@@ -522,9 +537,7 @@ export const submitTransitionTraceProof = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      finalValidator.spendingScript,
-    )
+    .attach.SpendingValidator(finalValidator.spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 
@@ -564,8 +577,7 @@ export const submitTransitionTraceProof = async ({
     fraudProofAssetName: threadToken.assetName,
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-    transitionTraceProofAddress:
-      finalValidator.spendingScriptAddress,
+    transitionTraceProofAddress: finalValidator.spendingScriptAddress,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

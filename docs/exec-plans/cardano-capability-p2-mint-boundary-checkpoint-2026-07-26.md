@@ -53,13 +53,13 @@ later outputs. Every non-first output receives a safe 100,000,000-lovelace
 deposit. Packing is rebuilt during fee stabilization and must converge with
 the resulting output count and first-output coin.
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
+| Measurement                             | Accepting shape |  Adjacent shape |
+| --------------------------------------- | --------------: | --------------: |
 | Mint policies / assets / native scripts | 130 / 130 / 130 | 131 / 131 / 131 |
-| Output count | 2 | 2 |
-| Policies per output | 118 / 12 | 118 / 13 |
-| Exact output Value bytes | 4,968 / 511 | 4,968 / 553 |
-| Value margins against 5,000 | +32 / +4,489 | +32 / +4,447 |
+| Output count                            |               2 |               2 |
+| Policies per output                     |        118 / 12 |        118 / 13 |
+| Exact output Value bytes                |     4,968 / 511 |     4,968 / 553 |
+| Value margins against 5,000             |    +32 / +4,489 |    +32 / +4,447 |
 
 Both sides of the transaction-byte boundary remain fully packed within
 `maxValueSize`. The adjacent failure therefore is not caused by an oversized
@@ -73,20 +73,20 @@ The complete no-script minimum fee is stabilized using the preserved preprod
 epoch-303 parameters, including `maxTxSize = 16,384`,
 `maxValueSize = 5,000`, `minFeeA = 44`, and `minFeeB = 155,381`.
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
-| Mint policies | 130 | 131 |
-| Minted assets at quantity one | 130 | 131 |
-| Native-policy witnesses | 130 | 131 |
-| Spending inputs | 1 | 1 |
-| Vkey witnesses | 1 | 1 |
-| Balanced outputs | 2 | 2 |
-| Validity interval | lower unset, TTL 10,000 | lower unset, TTL 10,000 |
-| Distinct policy expiries | `20,000..20,129` | `20,000..20,130` |
-| Complete signed Cardano bytes | 16,376 | 16,500 |
-| Margin against `maxTxSize` | +8 | -116 |
-| Exact minimum fee | 875,925 lovelace | 881,381 lovelace |
-| Result | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
+| Measurement                   |                          Accepting shape |                      Adjacent shape |
+| ----------------------------- | ---------------------------------------: | ----------------------------------: |
+| Mint policies                 |                                      130 |                                 131 |
+| Minted assets at quantity one |                                      130 |                                 131 |
+| Native-policy witnesses       |                                      130 |                                 131 |
+| Spending inputs               |                                        1 |                                   1 |
+| Vkey witnesses                |                                        1 |                                   1 |
+| Balanced outputs              |                                        2 |                                   2 |
+| Validity interval             |                  lower unset, TTL 10,000 |             lower unset, TTL 10,000 |
+| Distinct policy expiries      |                         `20,000..20,129` |                    `20,000..20,130` |
+| Complete signed Cardano bytes |                                   16,376 |                              16,500 |
+| Margin against `maxTxSize`    |                                       +8 |                                -116 |
+| Exact minimum fee             |                         875,925 lovelace |                    881,381 lovelace |
+| Result                        | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
 
 The accepting transaction passed native-policy evaluation, exact
 mint/output/input balance, funding-signature validation, UTxO existence, and
@@ -103,19 +103,20 @@ The accepting signed Cardano bytes feed directly into the production
 existing typed collection/item/chunk constructors, every per-reveal verifier,
 and the exact complete terminal reconstruction fold.
 
-| Measurement | Value |
-| --- | ---: |
-| Canonical Midgard transaction bytes | 16,986 |
-| Canonical mint field bytes | 5,462 |
-| Committed mint policy items | 130 |
-| Field-5 reveal steps | 130 |
-| Largest revealed chunk | 43 bytes |
+| Measurement                                 |     Value |
+| ------------------------------------------- | --------: |
+| Canonical Midgard transaction bytes         |    16,986 |
+| Canonical mint field bytes                  |     5,462 |
+| Committed mint policy items                 |       130 |
+| Field-5 reveal steps                        |       130 |
+| Largest revealed chunk                      |  43 bytes |
 | Largest serialized auxiliary reveal witness | 468 bytes |
-| Complete transaction fold steps | 265 |
+| Complete transaction fold steps             |       265 |
 
 Every field-5 reveal verifies against the exact converted transaction
 commitment. The complete 265-step field-major receipt sequence reconstructs
-the original canonical Midgard transaction byte for byte. Field 6 also
+the original canonical Midgard transaction byte for byte. Field 7 also
+completes all 130 vkey-witness reveals and the same terminal fold. Field 6
 completes all 130 native-script reveals and the same terminal fold, but it is
 only an authorization-coupling control for this checkpoint.
 
@@ -177,8 +178,9 @@ Both pass.
 ## Remaining gate cells
 
 This checkpoint closes the TypeScript exact Cardano boundary and terminal-fold
-fixture for field 5. Fields 0 through 7 now have this evidence, with field 6
-covered by its real native-script observer and policy authorization controls.
+fixture for field 5. Fields 0 through 7 now have this evidence, with field 7
+covered by its real vkey-witness boundary and field 6 covered by native-script
+observer and policy authorization controls.
 The remaining transaction dynamic field without equivalent evidence is field
 8 (`redeemers`).
 

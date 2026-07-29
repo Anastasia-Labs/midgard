@@ -169,7 +169,9 @@ describe("provider-neutral authenticated L1 adapter", () => {
       },
     });
     expect(normalized.transactions.map(({ txHash }) => txHash)).toEqual(
-      [...normalized.transactions.map(({ txHash }) => txHash)].sort(),
+      observation().transactions.map(
+        ({ txHash }: { txHash: string }) => txHash,
+      ),
     );
     expect(
       normalized.transactions[0]?.redeemers.map(({ purpose }) => purpose),
@@ -183,7 +185,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(Object.isFrozen(normalized.transactions[0]?.utxos)).toBe(true);
   });
 
-  it("emits one byte-identical deterministic canonical fixture", () => {
+  it("preserves the authenticated node transaction sequence in the canonical bytes", () => {
     const first = normalizeWatcherL1BlockV1(provider(), observation());
     const reordered = observation();
     reordered.transactions.reverse();
@@ -194,16 +196,52 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const firstBytes = encodeWatcherNormalizedL1BlockV1(first);
     const secondBytes = encodeWatcherNormalizedL1BlockV1(second);
 
-    expect(second).toEqual(first);
-    expect(secondBytes.equals(firstBytes)).toBe(true);
+    expect(second.transactions.map(({ txHash }) => txHash)).toEqual(
+      reordered.transactions.map(({ txHash }: { txHash: string }) => txHash),
+    );
+    expect(secondBytes.equals(firstBytes)).toBe(false);
+    expect(second.blockContentDigest).not.toBe(first.blockContentDigest);
+    expect(second.observationDigest).not.toBe(first.observationDigest);
     expect(createHash("sha256").update(firstBytes).digest("hex")).toBe(
-      "f301c7aeac421c6df1550fb52501e7c98995dcaed10b42534ec858ecba464c1b",
+      "d238703b960717d2069badc4564194970690cd7c70a5e5faaa8ff1274e8b77a6",
     );
     expect(first.blockContentDigest).toBe(
-      "a5e34702f4bcb3c843303e694e92e3d6e773bdf780328f969090cb40fe20b3cc",
+      "332df0d22ee624eccaf9e857d076e96e8bb9a04cb99cb2ccc2370789b4ce5fe9",
     );
     expect(first.observationDigest).toBe(
-      "b0132b6974d588fe194a2fa34fac5a2f972687bae04fcf3ea3d67ad8f8d01135",
+      "39d0c9f4fcf6d27cec3c0ec969e4d4adba5cbb1516cda5bc802dab1594b6904c",
+    );
+  });
+
+  it("rejects transaction reordering once the node supplies ledger ordinals", () => {
+    const indexed = observation();
+    indexed.transactions = indexed.transactions.map(
+      (candidate: MutableRecord, index: number) => ({
+        ...candidate,
+        transactionIndex: index.toString(),
+        blockParentHash: "10".repeat(32),
+      }),
+    );
+    expect(
+      normalizeWatcherL1BlockV1(provider(), indexed).transactions.map(
+        ({ transactionIndex }) => transactionIndex,
+      ),
+    ).toEqual(["0", "1"]);
+
+    const reordered = structuredClone(indexed);
+    reordered.transactions.reverse();
+    rejected(
+      () => normalizeWatcherL1BlockV1(provider(), reordered),
+      "identity_mismatch",
+      "$.transactions[0].transactionIndex",
+    );
+
+    const mismatchedParent = structuredClone(indexed);
+    mismatchedParent.transactions[1].blockParentHash = "12".repeat(32);
+    rejected(
+      () => normalizeWatcherL1BlockV1(provider(), mismatchedParent),
+      "identity_mismatch",
+      "$.transactions[1].blockParentHash",
     );
   });
 

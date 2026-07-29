@@ -36,7 +36,8 @@ export type L1SourceConfig =
   | {
       readonly sourceMode: "local_node";
       readonly authorityNodeId: string;
-      readonly chainSyncOgmiosUrl: string;
+      readonly chainSyncProviderUrl: string;
+      readonly chainSyncCursorPath?: string;
       readonly queryProviderUrls: readonly string[];
     }
   | {
@@ -44,8 +45,38 @@ export type L1SourceConfig =
       readonly providers: readonly {
         readonly identity: string;
         readonly url: string;
+        readonly operationalIdentity: {
+          readonly operatorId: string;
+          readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+          readonly normalizedEndpoints: readonly string[];
+          readonly backendKey: string;
+        };
       }[];
     };
+
+export const l1SourceAuthorityDigest = (
+  network: string,
+  source: L1SourceConfig,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        source.sourceMode === "local_node"
+          ? {
+              network,
+              sourceMode: source.sourceMode,
+              authorityNodeId: source.authorityNodeId,
+              chainSyncProviderUrl: source.chainSyncProviderUrl,
+              queryProviderUrls: source.queryProviderUrls,
+            }
+          : {
+              network,
+              sourceMode: source.sourceMode,
+              providers: source.providers,
+            },
+      ),
+    )
+    .digest("hex");
 
 export type WatcherConfig = {
   readonly network: string;
@@ -477,36 +508,15 @@ export const parseL1SourceConfig = (
         "CARDANO_EXTERNAL_PROVIDER_IDENTITIES is forbidden in local_node mode",
       );
     }
-    const chainSyncOgmiosUrl = localChainSyncUrl(
+    const chainSyncProviderUrl = localChainSyncUrl(
       requireEnv(env, "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL"),
       testMode,
     );
-    if (cardanoProviderUrls.length === 0) {
-      throw new Error(
-        "local_node mode requires at least one local Kupmios query surface",
+    if (!testMode) {
+      assertLocalQuerySurfacesShareAuthority(
+        chainSyncProviderUrl,
+        cardanoProviderUrls,
       );
-    }
-    const authorityOgmiosUrl = chainSyncOgmiosUrl.slice(
-      chainSyncOgmiosUrl.indexOf(":") + 1,
-    );
-    for (const providerUrl of cardanoProviderUrls) {
-      if (testMode) {
-        continue;
-      }
-      if (!providerUrl.startsWith("kupmios:")) {
-        throw new Error(
-          "local_node query surfaces must be kupmios: providers backed by the chain-sync Ogmios authority",
-        );
-      }
-      const queryOgmiosUrl = kupmiosOgmiosUrl(providerUrl);
-      if (
-        canonicalEndpoint(queryOgmiosUrl) !==
-        canonicalEndpoint(authorityOgmiosUrl)
-      ) {
-        throw new Error(
-          "local_node query surface Ogmios endpoint must exactly match CARDANO_LOCAL_NODE_CHAIN_SYNC_URL authority",
-        );
-      }
     }
     return {
       sourceMode,
@@ -514,13 +524,19 @@ export const parseL1SourceConfig = (
         requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID"),
         "CARDANO_LOCAL_NODE_AUTHORITY_ID",
       ),
-      chainSyncOgmiosUrl,
+      chainSyncProviderUrl,
+      chainSyncCursorPath: requireEnv(
+        env,
+        "CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH",
+      ),
       queryProviderUrls: cardanoProviderUrls,
     };
   }
   if (
     optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined ||
-    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_URL) !== undefined
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_URL) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH) !==
+      undefined
   ) {
     throw new Error(
       "CARDANO_LOCAL_NODE_* configuration is forbidden in external_providers mode",
@@ -546,10 +562,27 @@ export const parseL1SourceConfig = (
       "external_providers mode requires distinct operational provider identities",
     );
   }
-  const authorityKeys = cardanoProviderUrls.map(providerAuthorityKey);
-  if (new Set(authorityKeys).size !== authorityKeys.length) {
+  const operationalIdentities = cardanoProviderUrls.map((url, index) =>
+    operationalProviderIdentity(url, identities[index]!, testMode),
+  );
+  const endpointOwners = new Map<string, string>();
+  for (const identity of operationalIdentities) {
+    for (const endpoint of identity.normalizedEndpoints) {
+      const existingOwner = endpointOwners.get(endpoint);
+      if (existingOwner !== undefined) {
+        throw new Error(
+          `external_providers mode requires operationally independent backends; ${existingOwner} and ${identity.operatorId} share normalized endpoint ${endpoint}`,
+        );
+      }
+      endpointOwners.set(endpoint, identity.operatorId);
+    }
+  }
+  if (
+    new Set(operationalIdentities.map(({ backendKey }) => backendKey)).size !==
+    operationalIdentities.length
+  ) {
     throw new Error(
-      "external_providers mode requires operationally independent provider authorities; duplicate or aliased endpoints/credentials are forbidden",
+      "external_providers mode requires distinct normalized provider backends",
     );
   }
   return {
@@ -557,148 +590,202 @@ export const parseL1SourceConfig = (
     providers: cardanoProviderUrls.map((url, index) => ({
       identity: identities[index]!,
       url,
+      operationalIdentity: operationalIdentities[index]!,
     })),
   };
 };
 
 const localChainSyncUrl = (value: string, testMode: boolean): string => {
-  const livePrefix = "ogmios-chain-sync:";
-  const fixturePrefix = "fixture-chain-sync:";
-  const allowedPrefix =
-    value.startsWith(livePrefix) && value !== livePrefix
-      ? livePrefix
-      : testMode && value.startsWith(fixturePrefix) && value !== fixturePrefix
-        ? fixturePrefix
-        : undefined;
-  if (allowedPrefix === undefined) {
+  if (!value.startsWith("chain-sync:") || value === "chain-sync:") {
     throw new Error(
-      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use ogmios-chain-sync:<ws-url> (fixture-chain-sync:<path> only in tests)",
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use the chain-sync:<provider> form",
     );
   }
-  const endpoint = value.slice(allowedPrefix.length);
-  if (allowedPrefix === fixturePrefix) {
-    if (!testMode) {
-      throw new Error(
-        "fixture local chain-sync sources require explicit CARDANO_L1_TEST_MODE=true",
-      );
-    }
-    return value;
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(endpoint);
-  } catch {
+  const provider = value.slice("chain-sync:".length);
+  if (!testMode && isFixtureProviderUrl(provider)) {
     throw new Error(
-      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must contain an absolute Ogmios WebSocket URL",
+      "fixture:/file: local chain-sync sources require explicit CARDANO_L1_TEST_MODE=true",
     );
   }
-  if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+  if (
+    !provider.startsWith("kupmios:") &&
+    !provider.startsWith("ogmios:") &&
+    !provider.startsWith("fixture:") &&
+    !provider.startsWith("file:")
+  ) {
     throw new Error(
-      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use ws: or wss: Ogmios chain-sync",
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL authority must be a local ogmios: or kupmios: surface (fixture:/file: only in tests)",
     );
   }
   return value;
 };
 
-const kupmiosOgmiosUrl = (value: string): string => {
-  const raw = value.slice("kupmios:".length);
-  const separator = raw.indexOf("|");
-  if (separator <= 0 || separator === raw.length - 1) {
+const assertLocalQuerySurfacesShareAuthority = (
+  chainSyncProviderUrl: string,
+  queryProviderUrls: readonly string[],
+): void => {
+  const authorityProvider = chainSyncProviderUrl.slice("chain-sync:".length);
+  const authorityOgmiosUrl = authorityProvider.startsWith("ogmios:")
+    ? authorityProvider.slice("ogmios:".length)
+    : authorityProvider.startsWith("kupmios:")
+      ? authorityProvider.slice("kupmios:".length).split("|")[1]
+      : undefined;
+  if (authorityOgmiosUrl === undefined) {
     throw new Error(
-      "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      "production local_node chain sync requires an Ogmios authority endpoint",
     );
   }
-  return raw.slice(separator + 1);
-};
-
-const canonicalEndpoint = (value: string): string => {
-  let parsed: URL;
-  try {
-    parsed = new URL(value);
-  } catch {
-    throw new Error(`provider endpoint must be an absolute URL: ${value}`);
-  }
-  parsed.hash = "";
-  parsed.username = "";
-  parsed.password = "";
-  parsed.hostname = parsed.hostname.toLowerCase();
-  // Ogmios serves HTTP JSON-RPC and WebSocket chain-sync on the same
-  // authority endpoint. Treat the corresponding transport schemes as one
-  // authority so configuration cannot manufacture independence (and local
-  // mode can align an HTTP query client with its WebSocket chain-sync client).
-  if (parsed.protocol === "ws:") {
-    parsed.protocol = "http:";
-  } else if (parsed.protocol === "wss:") {
-    parsed.protocol = "https:";
-  }
-  if (
-    (parsed.protocol === "https:" && parsed.port === "443") ||
-    (parsed.protocol === "http:" && parsed.port === "80") ||
-    (parsed.protocol === "wss:" && parsed.port === "443") ||
-    (parsed.protocol === "ws:" && parsed.port === "80")
-  ) {
-    parsed.port = "";
-  }
-  parsed.pathname = parsed.pathname.replace(/\/+$/u, "") || "/";
-  return parsed.toString();
-};
-
-const providerAuthorityKey = (value: string): string => {
-  if (value.startsWith("blockfrost:")) {
-    const raw = value.slice("blockfrost:".length);
-    const separator = raw.lastIndexOf("#");
-    if (separator <= 0 || separator === raw.length - 1) {
+  const normalizedAuthority = normalizeOperationalEndpoint(
+    authorityOgmiosUrl,
+    "local authority Ogmios",
+  );
+  for (const [index, providerUrl] of queryProviderUrls.entries()) {
+    if (!providerUrl.startsWith("kupmios:")) {
       throw new Error(
-        "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
+        `production local_node query surface ${index.toString()} must be kupmios: backed by the local authority`,
       );
     }
-    const api = new URL(raw.slice(0, separator));
-    return `blockfrost:${api.hostname.toLowerCase()}`;
-  }
-  if (value.startsWith("kupmios:")) {
-    const raw = value.slice("kupmios:".length);
-    const separator = raw.indexOf("|");
-    if (separator <= 0 || separator === raw.length - 1) {
+    const [, queryOgmiosUrl, extra] = providerUrl
+      .slice("kupmios:".length)
+      .split("|");
+    if (queryOgmiosUrl === undefined || extra !== undefined) {
       throw new Error(
         "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
       );
     }
-    return `kupmios:${canonicalEndpoint(raw.slice(0, separator))}|${canonicalEndpoint(
-      raw.slice(separator + 1),
-    )}`;
+    const normalizedQueryAuthority = normalizeOperationalEndpoint(
+      queryOgmiosUrl,
+      "query Ogmios",
+    );
+    if (normalizedQueryAuthority !== normalizedAuthority) {
+      throw new Error(
+        `production local_node query surface ${index.toString()} is not backed by the configured chain-sync authority`,
+      );
+    }
   }
-  if (isFixtureProviderUrl(value)) {
-    return value;
-  }
-  throw new Error(`unsupported CARDANO_PROVIDER_URLS entry ${value}`);
 };
-
-export const l1SourceAuthorityDigest = (
-  network: string,
-  source: L1SourceConfig,
-): string =>
-  createHash("sha256")
-    .update(
-      JSON.stringify(
-        source.sourceMode === "local_node"
-          ? {
-              network,
-              sourceMode: source.sourceMode,
-              authorityNodeId: source.authorityNodeId,
-              chainSyncOgmiosUrl: source.chainSyncOgmiosUrl,
-              queryProviderUrls: source.queryProviderUrls,
-            }
-          : {
-              network,
-              sourceMode: source.sourceMode,
-              providers: source.providers,
-            },
-      ),
-    )
-    .digest("hex");
 
 const isFixtureProviderUrl = (value: string): boolean =>
   value.startsWith("fixture:") || value.startsWith("file:");
+
+const operationalProviderIdentity = (
+  value: string,
+  operatorId: string,
+  testMode: boolean,
+): {
+  readonly operatorId: string;
+  readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+  readonly normalizedEndpoints: readonly string[];
+  readonly backendKey: string;
+} => {
+  if (value.startsWith("blockfrost:")) {
+    const raw = value.slice("blockfrost:".length);
+    const projectSeparator = raw.lastIndexOf("#");
+    if (projectSeparator <= 0 || projectSeparator === raw.length - 1) {
+      throw new Error(
+        "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
+      );
+    }
+    const endpoint = normalizeOperationalEndpoint(
+      raw.slice(0, projectSeparator),
+      "blockfrost",
+    );
+    if (!endpoint.startsWith("https://")) {
+      throw new Error(
+        "external Blockfrost providers require HTTPS transport evidence",
+      );
+    }
+    return {
+      operatorId,
+      transport: "blockfrost_https",
+      normalizedEndpoints: [endpoint],
+      backendKey: `blockfrost:${endpoint}`,
+    };
+  }
+  if (value.startsWith("kupmios:")) {
+    const [kupoUrl, ogmiosUrl, extra] = value
+      .slice("kupmios:".length)
+      .split("|");
+    if (
+      kupoUrl === undefined ||
+      ogmiosUrl === undefined ||
+      extra !== undefined
+    ) {
+      throw new Error(
+        "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      );
+    }
+    const normalizedKupo = normalizeOperationalEndpoint(kupoUrl, "Kupo");
+    const normalizedOgmios = normalizeOperationalEndpoint(ogmiosUrl, "Ogmios");
+    if (
+      !testMode &&
+      (!normalizedKupo.startsWith("https://") ||
+        !normalizedOgmios.startsWith("https://"))
+    ) {
+      throw new Error(
+        "external Kupmios providers require HTTPS Kupo and TLS-protected WSS/HTTPS Ogmios transport evidence",
+      );
+    }
+    const endpoints = [normalizedKupo, normalizedOgmios].sort();
+    return {
+      operatorId,
+      transport: "kupmios",
+      normalizedEndpoints: endpoints,
+      backendKey: `kupmios:${endpoints.join("|")}`,
+    };
+  }
+  if (testMode && isFixtureProviderUrl(value)) {
+    const endpoint = value.startsWith("file:")
+      ? new URL(value).pathname
+      : value.slice("fixture:".length);
+    const normalized = `fixture:${endpoint}`;
+    return {
+      operatorId,
+      transport: "fixture",
+      normalizedEndpoints: [normalized],
+      backendKey: normalized,
+    };
+  }
+  throw new Error(
+    `unsupported external Cardano provider ${value}; operational identity evidence requires blockfrost: or kupmios:`,
+  );
+};
+
+const normalizeOperationalEndpoint = (value: string, label: string): string => {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} operational endpoint must be an absolute URL`);
+  }
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:" &&
+    parsed.protocol !== "wss:" &&
+    parsed.protocol !== "ws:"
+  ) {
+    throw new Error(`${label} operational endpoint uses unsupported transport`);
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new Error(
+      `${label} operational endpoint must not embed credentials in its identity`,
+    );
+  }
+  const canonicalProtocol =
+    parsed.protocol === "wss:"
+      ? "https:"
+      : parsed.protocol === "ws:"
+        ? "http:"
+        : parsed.protocol;
+  const defaultPort =
+    canonicalProtocol === "https:" && parsed.port === "443"
+      ? ""
+      : canonicalProtocol === "http:" && parsed.port === "80"
+        ? ""
+        : parsed.port;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${canonicalProtocol}//${hostname}${defaultPort === "" ? "" : `:${defaultPort}`}`;
+};
 
 const boundedIdentity = (value: string, name: string): string => {
   if (!/^[a-z][a-z0-9-]{2,63}$/u.test(value)) {

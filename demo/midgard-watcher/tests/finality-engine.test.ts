@@ -31,6 +31,10 @@ const hex32 = (byte: string): string => byte.repeat(32);
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    { providerId: "provider-a", operatorIdentitySha256: hex32("a1") },
+    { providerId: "provider-b", operatorIdentitySha256: hex32("b2") },
+  ],
 } as const;
 
 const config = (depth = 3, rollbackDepth = depth) => ({
@@ -283,6 +287,9 @@ const localAgreement = (
       network: "Preprod",
       authorityNodeId: "cardano-node-a",
       genesisIdentitySha256: hex32("a1"),
+      queryServices: includeAlignedQuery
+        ? [{ kind: "ogmios" as const, providerId: "cardano-node-a-ogmios" }]
+        : [],
     },
     [
       normalized("chain_sync"),
@@ -415,7 +422,7 @@ describe("canonical release-bound watcher finality", () => {
     const finalized = evaluateWatcherFinalityV1(
       finalityPolicy,
       first.state,
-      localAgreement("3", {}, true),
+      localAgreement("3"),
     );
     const externalSubstitution = evaluateWatcherFinalityV1(
       finalityPolicy,
@@ -489,17 +496,14 @@ describe("canonical release-bound watcher finality", () => {
       ],
     );
 
-    expect(hostileAgreement.status).toBe("agreed");
+    expect(hostileAgreement.status).toBe("quarantined");
     expect(
       evaluateWatcherFinalityV1(finalityPolicy, null, hostileAgreement),
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
-      reasonCodes: ["source_provider_mismatch"],
-      alertCodes: [
-        "watcher_finality_input_rejected",
-        "watcher_finality_configuration_mismatch",
-      ],
+      reasonCodes: ["provider_result_quarantined"],
+      alertCodes: ["watcher_finality_input_rejected"],
       state: { phase: "unobserved" },
     });
   });
@@ -522,7 +526,30 @@ describe("canonical release-bound watcher finality", () => {
     ).toMatchObject({
       action: "reject",
       protocolDecision: "quarantined",
-      reasonCodes: ["source_provider_mismatch"],
+      reasonCodes: ["provider_result_quarantined"],
+    });
+  });
+
+  it("rejects an otherwise valid W11 agreement bound to another configured provider set", () => {
+    const foreign = evaluateWatcherMultiProviderConsistencyV1(
+      {
+        sourceMode: "external_providers",
+        network: "Preprod",
+        providers: [
+          { providerId: "provider-c", operatorIdentitySha256: hex32("c3") },
+          { providerId: "provider-d", operatorIdentitySha256: hex32("d4") },
+        ],
+      },
+      [
+        observation("provider-c", "c3", { depth: "3" }),
+        observation("provider-d", "d4", { depth: "3" }),
+      ],
+    );
+    expect(foreign.status).toBe("agreed");
+    expect(evaluateWatcherFinalityV1(policy(), null, foreign)).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["source_authority_mismatch"],
     });
   });
 

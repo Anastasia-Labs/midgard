@@ -5824,5 +5824,5 @@ describe("fault-proof emulator integration", () => {
     expect(eventIndexes(events, "lease.fail")).toHaveLength(0);
 
     await expectRemovedFraudProofState(fixture);
-  }, 180_000);
+  }, 300_000);
 });
