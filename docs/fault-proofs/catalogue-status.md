@@ -21,10 +21,21 @@
 > through faulty-block removal. It moves from 🔶 to ✅ (row 5, §1a, §5). It is the first
 > proof to bind **two** transactions (bad tx + producing tx) in one chain.
 
+> **Update 2026-07-29 (branch `fp/no-ref-input-idx`):** `reference-input-no-idx`
+> is implemented as the reference-input mirror of `input-no-idx` and registered as
+> `noReferenceInputNoIndex` (`00000007`, appended — all existing IDs preserved).
+> Only its step-01 differs from `input-no-idx` (it commits the bad tx's
+> `reference_inputs_hash` instead of its `spend_inputs_hash`); steps 02-04 compile
+> to byte-identical UPLC and are therefore shared, exactly as `no-reference-input`
+> shares steps 02-04 with `no-input`. CLI-complete
+> (`prepare-reference-input-no-idx` + `submit-reference-input-no-idx-step-01..04`)
+> and emulator-proven end-to-end through faulty-block removal. It becomes row 13
+> in §1 and is removed from the §6 missing list.
+
 ## 1. The twelve compiled proof types (`onchain/aiken/validators/fraud-proofs/`)
 
 "Registered" = present in the deployment catalogue
-(`demo/midgard-sdk/src/fraud-proof/catalogue.ts` — 7 categories). Unregistered
+(`demo/midgard-sdk/src/fraud-proof/catalogue.ts` — 8 categories). Unregistered
 types compile but **cannot `Init` a computation thread** against a deployed instance.
 "Tooling" = prepare/submit CLI chain in `demo/midgard-fault-proofs`.
 
@@ -43,9 +54,12 @@ types compile but **cannot `Init` a computation thread** against a deployed inst
 | 11  | `withdrawn-reference-input` (3 steps)               | Referenced input was spent by a valid L2 withdrawal (`step-03.ak:75-92`).                                                                                                                                                                                                                                                                             | REAL logic; **legacy binding** ⚠️ | ❌                           | ❌ none                                                                                                                                    | ❌                                                        | 🔶 Implemented, not fully verified — **binding blocker (§1a)**                              |
 | 12  | `min-fee` (2 steps)                                 | Fee below network minimum. **STUB**: `get_min_transaction_fee` returns `0` (`min-fee/step-02.ak:78-80`), so the decisive `bad_tx_body_fee < 0` check (`:64`) is unsatisfiable — the proof can never finalize. Also on the **legacy binding** path.                                                                                                    | STUBBED; **legacy binding** ⚠️    | ❌                           | ❌ none                                                                                                                                    | ❌                                                        | 🟠 Partial (inert) — **binding blocker (§1a)**                                              |
 
+| 13  | `reference-input-no-idx` (4 steps)                  | Referenced input's outref index ≥ its producing tx's output count — the reference-input mirror of row 5. Step-01 commits `reference_inputs_hash`; steps 02-04 are the same scripts as `input-no-idx`.                                                                                                                                  | REAL; native counted-root binding | ✅ `noReferenceInputNoIndex` | ✅ `prepare-reference-input-no-idx` + `submit-reference-input-no-idx-step-01..04` (`rinx-submit-step-01..04.ts`)                            | ✅ through removal (`tests/submit-init-emulator.test.ts`) | ✅ Complete & verified (emulator only; not preprod)                                         |
+
 ### 1a. Binding blocker — five compiled proofs cannot bind to current counted-root native-v1 blocks
 
-`double-spend`, `no-input`, `invalid-range`, `zero-input`, `no-reference-input`, and `input-no-idx` use the native binding path
+`double-spend`, `no-input`, `invalid-range`, `zero-input`, `no-reference-input`, `input-no-idx`, and
+`reference-input-no-idx` use the native binding path
 `verify_native_tx_in_state_queue_node` (`common.ak:575-634`), which authenticates a raw
 MPF root against the header's **counted** `transactions_root`
 (`commit_counted_root(TransactionsRootDomain, raw_root, l2_transaction_count) ==
@@ -110,7 +124,7 @@ becomes one the moment valid forced transactions are enabled.
 | MPF primitives (`validators/phas.ak`, `pexcludes.ak`; Plutarch legacy in `onchain/plutarch/`) | ✅     | Aiken-native scripts are the deployed ones (env hashes match `plutus.json`); Plutarch package is legacy/parallel (`onchain/plutarch/README.md:1-8`). `plutarch_pdelete` unusable — env hash empty (`env/default.ak:68`) |
 | Counted/domain-tagged roots (`lib/midgard/transition-trace.ak:64-80`)                         | ✅     | Landed via PR #458 (commit `5169b7f7`); consumed by settlement + no-input proof                                                                                                                                         |
 | Native-tx CBOR codec (`lib/midgard/fraud-proofs/native-tx/`)                                  | ✅     | Real byte-offset decoders, hash-checked; vkey+timelock witnesses only (no Plutus)                                                                                                                                       |
-| SDK catalogue deployment (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`)                    | 🟠     | 7 of 12 categories; `zeroInput` (`00000005`) then `noReferenceInput` (`00000006`) appended, preserving all existing IDs; single first-step hash per category; TODO for multi-step design (`common.ts`)                  |
+| SDK catalogue deployment (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`)                    | 🟠     | 8 of 13 categories; `zeroInput` (`00000005`), `noReferenceInput` (`00000006`), then `noReferenceInputNoIndex` (`00000007`) appended, preserving all existing IDs; single first-step hash per category; TODO for multi-step design (`common.ts`)                  |
 
 ## 4. Ledger-rule helpers (on-chain)
 
@@ -128,7 +142,8 @@ becomes one the moment valid forced transactions are enabled.
 ## 5. Delivery buckets (summary)
 
 - **Delivered & functional (emulator-proven)**: generic machinery; double-spend, no-input,
-  invalid-range, zero-input, no-reference-input, and input-no-idx full chains;
+  invalid-range, zero-input, no-reference-input, input-no-idx, and reference-input-no-idx
+  full chains;
   transition-trace engine + library tooling.
 - **Delivered, functional on-chain, but unreachable in deployment**: invalid-signature,
   missing-signature, missing-native-script-tx,
@@ -162,7 +177,6 @@ notions of "supported" that nothing reconciles). Register each in
 | `req-signer-set`              | MISSING-REQ-SIGNER-TX/UTXO, NON-REQ-SIGNER                                                                                                                                                                                                                                                                                            | W-C3      | D-C2 (vkey edge cases)      | **fund theft**                                        |
 | `missing-native-script-utxo`  | MISSING-NATIVE-SCRIPT-UTXO                                                                                                                                                                                                                                                                                                            | W-C3      | —                           | **fund theft**                                        |
 | `native-script-invalid`       | NATIVE-SCRIPT-INVALID (on-chain timelock re-run)                                                                                                                                                                                                                                                                                      | W-C3      | —                           | **fund theft**                                        |
-| `reference-input-no-idx`      | REFERENCE-INPUT-NO-IDX                                                                                                                                                                                                                                                                                                                | W-C4      | —                           | consistency                                           |
 | `input-set-uniqueness`        | intra-tx duplicate spend/reference input; spend/reference disjointness (matrix §2/§3)                                                                                                                                                                                                                                                 | W-C4      | —                           | **fund theft** once value proofs land                 |
 | `network-id`                  | TRANSACTION-NETWORK, OUTPUT-NETWORK-TX/UTXO                                                                                                                                                                                                                                                                                           | W-C12     | small design call           | consistency                                           |
 | `output-well-formedness`      | malformed/undecodable output committed into `utxos_root`                                                                                                                                                                                                                                                                              | —         | D-S10                       | griefing                                              |

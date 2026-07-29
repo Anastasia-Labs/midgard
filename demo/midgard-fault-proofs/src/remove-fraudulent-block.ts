@@ -9,6 +9,7 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
+  buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
@@ -30,6 +31,7 @@ import {
   type OutputReference,
   outputReferenceFromUTxO,
   parseFaultProofBlueprint,
+  type ReferenceInputNoIdxFaultProofContracts,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -280,6 +282,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "transitionTrace"
   | "zeroInput"
   | "noReferenceInput"
+  | "noReferenceInputNoIndex"
 >;
 
 export type StateQueueMutationLease = {
@@ -559,7 +562,8 @@ const buildRemovalContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | NoReferenceInputFaultProofContracts
-    | InputNoIdxFaultProofContracts;
+    | InputNoIdxFaultProofContracts
+    | ReferenceInputNoIdxFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
@@ -567,7 +571,8 @@ const buildRemovalContracts = async ({
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
     | "fraudProofZeroInput"
-    | "fraudProofNoReferenceInput";
+    | "fraudProofNoReferenceInput"
+    | "fraudProofNoReferenceInputNoIndex";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -647,7 +652,7 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofNoReferenceInput";
     derivedCategoryFirstStepHash =
       noReferenceInputContracts.noReferenceInput.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "nonExistentInputNoIndex") {
     const inputNoIdxContracts = await Effect.runPromise(
       buildInputNoIdxFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -660,6 +665,20 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofNonExistentInputNoIndex";
     derivedCategoryFirstStepHash =
       inputNoIdxContracts.inputNoIdx.firstStep.spendingScriptHash;
+  } else {
+    const referenceInputNoIdxContracts = await Effect.runPromise(
+      buildReferenceInputNoIdxFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = referenceInputNoIdxContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNoReferenceInputNoIndex";
+    derivedCategoryFirstStepHash =
+      referenceInputNoIdxContracts.referenceInputNoIdx.firstStep
+        .spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",

@@ -14,7 +14,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { inspectContracts } from "../src/index.js";
 
@@ -30,6 +30,7 @@ const placeholderInvalidRange = "01".repeat(28);
 const placeholderZeroInput = "03".repeat(28);
 const placeholderNoReferenceInput = "04".repeat(28);
 const placeholderNonExistentInputNoIndex = "05".repeat(28);
+const placeholderNoReferenceInputNoIndex = "06".repeat(28);
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -110,7 +111,24 @@ const buildCatalogueFixture = async (
   };
 };
 
-const buildInspectionFixture = async () => {
+// Building every fault-proof chain from the real blueprint costs seconds, and
+// each test only reads the result — so derive it once for the whole file.
+let inspectionFixture:
+  | Promise<{
+      readonly blueprintJson: unknown;
+      readonly contracts: Awaited<
+        ReturnType<typeof buildInspectionFixtureUncached>
+      >["contracts"];
+      readonly fraudProofCatalogue: FraudProofCatalogueDeploymentInfo;
+    }>
+  | undefined;
+
+const buildInspectionFixture = () => {
+  inspectionFixture ??= buildInspectionFixtureUncached();
+  return inspectionFixture;
+};
+
+const buildInspectionFixtureUncached = async () => {
   const blueprintJson = readBlueprintJson();
   const contracts = await Effect.runPromise(
     buildFaultProofContracts({
@@ -125,6 +143,8 @@ const buildInspectionFixture = async () => {
     nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
     nonExistentInputNoIndex: contracts.inputNoIdx.firstStep.spendingScriptHash,
     noReferenceInput: contracts.noReferenceInput.firstStep.spendingScriptHash,
+    noReferenceInputNoIndex:
+      contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
@@ -148,6 +168,8 @@ const deploymentInfoFor = (
     .spendingScriptHash,
   nonExistentInputNoIndexScriptHash = contracts.inputNoIdx.firstStep
     .spendingScriptHash,
+  noReferenceInputNoIndexScriptHash = contracts.referenceInputNoIdx.firstStep
+    .spendingScriptHash,
 ) => ({
   referenceScriptAuthPolicy: {},
   contracts: {
@@ -170,6 +192,9 @@ const deploymentInfoFor = (
     fraudProofNoReferenceInput: {
       scriptHash: noReferenceInputScriptHash,
     },
+    fraudProofNoReferenceInputNoIndex: {
+      scriptHash: noReferenceInputNoIndexScriptHash,
+    },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
     fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
@@ -177,6 +202,12 @@ const deploymentInfoFor = (
 });
 
 describe("inspect-contracts", () => {
+  // Warm the shared fixture outside any test's timeout budget: building all
+  // eight fault-proof chains from the real blueprint takes seconds.
+  beforeAll(async () => {
+    await buildInspectionFixture();
+  }, 120_000);
+
   it("emits stable implemented-category inspection JSON with catalogue readiness", async () => {
     const fixture = await buildInspectionFixture();
     const { blueprintJson, contracts, fraudProofCatalogue } = fixture;
@@ -235,6 +266,20 @@ describe("inspect-contracts", () => {
     expect(
       output.nonExistentInputNoIndex
         .deploymentNonExistentInputNoIndexMatchesFirstStep,
+    ).toBe(true);
+    expect(output.noReferenceInputNoIndex.categoryFirstStepHash).toBe(
+      contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
+    );
+    expect(
+      output.noReferenceInputNoIndex.steps.map((step) => step.name),
+    ).toEqual(["step01", "step02", "step03", "step04"]);
+    expect(
+      output.noReferenceInputNoIndex
+        .deploymentNoReferenceInputNoIndexScriptHash,
+    ).toBe(contracts.referenceInputNoIdx.firstStep.spendingScriptHash);
+    expect(
+      output.noReferenceInputNoIndex
+        .deploymentNoReferenceInputNoIndexMatchesFirstStep,
     ).toBe(true);
     expect(output.noReferenceInput.categoryFirstStepHash).toBe(
       contracts.noReferenceInput.firstStep.spendingScriptHash,
@@ -354,6 +399,25 @@ describe("inspect-contracts", () => {
       output.fraudProofCatalogue.noReferenceInput.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(true);
+    expect(output.fraudProofCatalogue.noReferenceInputNoIndex.categoryId).toBe(
+      "00000007",
+    );
+    expect(
+      output.fraudProofCatalogue.noReferenceInputNoIndex.expectedCategoryId,
+    ).toBe("00000007");
+    expect(
+      output.fraudProofCatalogue.noReferenceInputNoIndex
+        .categoryIdMatchesExpected,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.noReferenceInputNoIndex
+        .scriptHashMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.noReferenceInputNoIndex
+        .membershipProofMatchesDerived,
+    ).toBe(true);
+    expect(output.fraudProofCatalogue.noReferenceInputNoIndex.ready).toBe(true);
     expect(output.fraudProofCatalogue.invalidRange.categoryId).toBe("00000003");
     expect(output.fraudProofCatalogue.invalidRange.expectedCategoryId).toBe(
       "00000003",
@@ -541,6 +605,8 @@ describe("inspect-contracts", () => {
         fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
       nonExistentInputNoIndex:
         fixture.contracts.inputNoIdx.firstStep.spendingScriptHash,
+      noReferenceInputNoIndex:
+        fixture.contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
       noReferenceInput: placeholderNoReferenceInput,
       invalidRange: fixture.contracts.invalidRange.firstStep.spendingScriptHash,
       zeroInput: fixture.contracts.zeroInput.firstStep.spendingScriptHash,
@@ -567,6 +633,72 @@ describe("inspect-contracts", () => {
     ).toBe(false);
     expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(false);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("marks catalogue init as not ready when reference-input-no-idx deployment is stale", async () => {
+    const fixture = await buildInspectionFixture();
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: deploymentInfoFor(
+          fixture,
+          fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
+          fixture.contracts.invalidRange.firstStep.spendingScriptHash,
+          fixture.contracts.transitionTrace.firstStep.spendingScriptHash,
+          fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
+          fixture.contracts.zeroInput.firstStep.spendingScriptHash,
+          fixture.contracts.noReferenceInput.firstStep.spendingScriptHash,
+          fixture.contracts.inputNoIdx.firstStep.spendingScriptHash,
+          placeholderNoReferenceInputNoIndex,
+        ),
+      }),
+    );
+
+    expect(
+      output.noReferenceInputNoIndex
+        .deploymentNoReferenceInputNoIndexMatchesFirstStep,
+    ).toBe(false);
+    expect(output.fraudProofCatalogue.noReferenceInputNoIndex.ready).toBe(
+      false,
+    );
+    expect(output.fraudProofCatalogue.nonExistentInputNoIndex.ready).toBe(true);
+    expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("marks catalogue init as not ready when reference-input-no-idx deployment is missing", async () => {
+    const fixture = await buildInspectionFixture();
+    const deploymentInfo = deploymentInfoFor(fixture);
+    const {
+      fraudProofNoReferenceInputNoIndex: _omitted,
+      ...contractsWithoutReferenceInputNoIdx
+    } = deploymentInfo.contracts;
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: contractsWithoutReferenceInputNoIdx,
+        },
+      }),
+    );
+
+    expect(
+      output.noReferenceInputNoIndex
+        .deploymentNoReferenceInputNoIndexScriptHash,
+    ).toBeNull();
+    expect(
+      output.noReferenceInputNoIndex
+        .deploymentNoReferenceInputNoIndexMatchesFirstStep,
+    ).toBeNull();
+    expect(output.fraudProofCatalogue.noReferenceInputNoIndex.ready).toBe(
+      false,
+    );
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });
 
@@ -609,6 +741,8 @@ describe("inspect-contracts", () => {
       nonExistentInput:
         fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
       nonExistentInputNoIndex: placeholderNonExistentInputNoIndex,
+      noReferenceInputNoIndex:
+        fixture.contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
       noReferenceInput:
         fixture.contracts.noReferenceInput.firstStep.spendingScriptHash,
       invalidRange: fixture.contracts.invalidRange.firstStep.spendingScriptHash,

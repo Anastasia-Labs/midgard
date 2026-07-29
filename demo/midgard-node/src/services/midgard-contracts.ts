@@ -733,6 +733,12 @@ export const midgardContractsFromDeploymentManifest = (
         sourcePath,
         "fraudProofNoReferenceInput",
       ),
+      noReferenceInputNoIndex: spendingValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "fraudProofNoReferenceInputNoIndex",
+      ),
     },
   };
 };
@@ -1252,6 +1258,41 @@ const buildRealInputNoIdxFirstStepValidator = (
     return inputNoIdxContracts.inputNoIdx.firstStep;
   });
 
+const buildRealReferenceInputNoIdxFirstStepValidator = (
+  network: Network,
+  contracts: SDK.MidgardValidators,
+  computationThread: SDK.MintingValidator,
+  fraudProof: SDK.AuthenticatedValidator,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = SDK.parseFaultProofBlueprint(yield* loadRealBlueprint());
+    const referenceInputNoIdxContracts =
+      yield* SDK.buildReferenceInputNoIdxFaultProofContracts({
+        blueprint,
+        network,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+        fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      });
+
+    yield* expectDerivedScriptHash(
+      "computation-thread policy",
+      computationThread.policyId,
+      referenceInputNoIdxContracts.computationThread.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof policy",
+      fraudProof.policyId,
+      referenceInputNoIdxContracts.fraudProof.policyId,
+    );
+    yield* expectDerivedScriptHash(
+      "fraud-proof spend",
+      fraudProof.spendingScriptHash,
+      referenceInputNoIdxContracts.fraudProof.spendingScriptHash,
+    );
+
+    return referenceInputNoIdxContracts.referenceInputNoIdx.firstStep;
+  });
+
 const buildRealZeroInputFirstStepValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
@@ -1595,6 +1636,13 @@ export const withRealStateQueueAndOperatorContracts = (
       realComputationThread,
       realFraudProof,
     );
+    const realReferenceInputNoIdx =
+      yield* buildRealReferenceInputNoIdxFirstStepValidator(
+        network,
+        withRealFraudProofCatalogue,
+        realComputationThread,
+        realFraudProof,
+      );
     const realZeroInput = yield* buildRealZeroInputFirstStepValidator(
       network,
       withRealFraudProofCatalogue,
@@ -1619,6 +1667,7 @@ export const withRealStateQueueAndOperatorContracts = (
         nonExistentInputNoIndex: realInputNoIdx,
         zeroInput: realZeroInput,
         noReferenceInput: realNoReferenceInput,
+        noReferenceInputNoIndex: realReferenceInputNoIdx,
       },
     };
 
@@ -1822,7 +1871,7 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     },
   );
   yield* Effect.logInfo(
-    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.non_existent_input=real, fraud_proofs.non_existent_input_no_index=real, fraud_proofs.zero_input=real, fraud_proofs.no_reference_input=real, fraud_proofs.invalid_range=always_succeeds",
+    "🔐 Contract source selected: state_queue=real, da_attestation=real, da_params_governor=real, hub_oracle=real, deposit=real, tx_order=real, withdrawal=real, settlement=real, reserve=real, payout=real, registered_operators=real, active_operators=real, retired_operators=real, scheduler=real, fraud_proofs.double_spend=real, fraud_proofs.transition_trace=real, fraud_proofs.non_existent_input=real, fraud_proofs.non_existent_input_no_index=real, fraud_proofs.zero_input=real, fraud_proofs.no_reference_input=real, fraud_proofs.reference_input_no_idx=real, fraud_proofs.invalid_range=always_succeeds",
   );
   const runtime: MidgardContractRuntimeValue = {
     contracts: resolvedContracts,

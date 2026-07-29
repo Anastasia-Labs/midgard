@@ -3,7 +3,7 @@ title: "Preparing Fraud Proofs"
 description: "Turn a Midgard block's transactions into the proof artifacts the submit steps consume, using the prepare-* commands."
 ---
 
-The six `prepare-*` commands are the front of the fault-proof pipeline. They take
+The seven `prepare-*` commands are the front of the fault-proof pipeline. They take
 a Midgard block, find the transaction(s) that violate a ledger rule, build the
 membership proofs against the block's transactions Merkle-Patricia Trie, and emit
 the JSON artifacts that the `submit-*` commands later feed on-chain. They touch no
@@ -239,6 +239,41 @@ is a *non-existent-input* fault, and an index within range is no fault at all.
 | `input-no-idx-producing-tx-inclusion.json` | `submit-input-no-idx-step-03` `--tx-inclusion`                                                                                    |
 | `input-no-idx-outputs-preimage.json`       | `submit-input-no-idx-step-04` `--outputs-preimage`                                                                                |
 | `input-no-idx-plan.json`                   | Summary: header hash, bad tx id and input index, the bad input, the producing tx id and its output count, and the transactions roots. |
+
+## `prepare-reference-input-no-idx`
+
+The reference-input mirror of `prepare-input-no-idx`: it targets a transaction
+that *reads* a reference input whose producing transaction is present in the
+block, but whose output index is out of range of that transaction's outputs.
+Source: `demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts`.
+
+```sh
+midgard-fault-proofs prepare-reference-input-no-idx \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  [--bad-tx-id <hex>] \
+  [--bad-reference-input-index <n>] \
+  [--expected-transactions-root <hex>] \
+  [--output-dir <path>]
+```
+
+The flags carry the same meaning as the input-no-idx ones, with
+`--bad-reference-input-index` selecting which of the transaction's **reference**
+inputs is claimed out of range. Like input-no-idx it needs no ledger proofs: two
+membership proofs against the block's transactions trie plus the producing
+transaction's raw outputs preimage. A pinned reference input whose producing
+transaction is missing from the block is rejected as a *no-reference-input*
+fault, and one whose index is in range is rejected as no fault at all.
+
+### Files written with `--output-dir`
+
+| File                                                     | Consumed by                                                                                                                                 |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reference-input-no-idx-bad-tx-inclusion.json`           | `submit-reference-input-no-idx-step-01` `--tx-inclusion`                                                                                     |
+| `reference-input-no-idx-reference-inputs-preimage.json`  | `submit-reference-input-no-idx-step-02` `--reference-inputs-preimage`                                                                        |
+| `reference-input-no-idx-producing-tx-inclusion.json`     | `submit-reference-input-no-idx-step-03` `--tx-inclusion`                                                                                     |
+| `reference-input-no-idx-outputs-preimage.json`           | `submit-reference-input-no-idx-step-04` `--outputs-preimage`                                                                                 |
+| `reference-input-no-idx-plan.json`                       | Summary: header hash, bad tx id and reference-input index, the bad reference input, the producing tx id and its output count, and the roots. |
 
 ## `prepare-zero-input`
 

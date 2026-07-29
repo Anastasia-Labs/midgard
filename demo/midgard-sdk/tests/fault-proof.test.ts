@@ -20,6 +20,7 @@ import {
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
+  buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
@@ -65,6 +66,14 @@ import {
   normalizeNativeTxValidityRange,
   parseFaultProofBlueprint,
   type Proof,
+  REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES,
+  ReferenceInputNoIdxStep01SpendRedeemer,
+  ReferenceInputNoIdxStep02Datum,
+  ReferenceInputNoIdxStep02SpendRedeemer,
+  ReferenceInputNoIdxStep03Datum,
+  ReferenceInputNoIdxStep03SpendRedeemer,
+  ReferenceInputNoIdxStep04Datum,
+  ReferenceInputNoIdxStep04SpendRedeemer,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   ZERO_INPUT_FAULT_PROOF_TITLES,
   ZeroInputStep01Datum,
@@ -532,6 +541,97 @@ describe("fault-proof ABI", () => {
     });
   });
 
+  it("round-trips reference-input-no-idx step datums and redeemers", () => {
+    expect(
+      roundTrip(
+        { Continue: [txInclusionArgs] },
+        ReferenceInputNoIdxStep01SpendRedeemer,
+      ),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step02Datum = {
+      fraud_prover: h28,
+      data: {
+        verified_tx_reference_inputs_hash: h32,
+      },
+    };
+    expect(roundTrip(step02Datum, ReferenceInputNoIdxStep02Datum)).toEqual(
+      step02Datum,
+    );
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              input_index: 0n,
+              output_index: 0n,
+              reference_inputs_preimage: referenceInputs,
+              bad_reference_input_index: 1n,
+            },
+          ],
+        },
+        ReferenceInputNoIdxStep02SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [
+        {
+          reference_inputs_preimage: referenceInputs,
+          bad_reference_input_index: 1n,
+        },
+      ],
+    });
+
+    const step03Datum = {
+      fraud_prover: h28,
+      data: {
+        bad_reference_input_tx_id: missingReferenceInput.tx_id,
+        bad_reference_input_output_index: missingReferenceInput.output_index,
+      },
+    };
+    expect(roundTrip(step03Datum, ReferenceInputNoIdxStep03Datum)).toEqual(
+      step03Datum,
+    );
+    expect(
+      roundTrip(
+        { Continue: [txInclusionArgs] },
+        ReferenceInputNoIdxStep03SpendRedeemer,
+      ),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step04Datum = {
+      fraud_prover: h28,
+      data: {
+        producing_tx_outputs_hash: h32b,
+        bad_reference_input_output_index: missingReferenceInput.output_index,
+      },
+    };
+    expect(roundTrip(step04Datum, ReferenceInputNoIdxStep04Datum)).toEqual(
+      step04Datum,
+    );
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              input_index: 0n,
+              output_index: 0n,
+              fraud_proof_mint_redeemer_index: 2n,
+              outputs_preimage: ["ee".repeat(20), "ff".repeat(20)],
+            },
+          ],
+        },
+        ReferenceInputNoIdxStep04SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [
+        {
+          fraud_proof_mint_redeemer_index: 2n,
+          outputs_preimage: ["ee".repeat(20), "ff".repeat(20)],
+        },
+      ],
+    });
+  });
+
   it("detects a zero-input violation from the native spend-inputs hash", () => {
     // The empty spend-inputs list hashes the definite-length empty CBOR array,
     // which is what the step-02 validator's `empty_spend_inputs_hash` pins.
@@ -689,6 +789,10 @@ describe("fault-proof contract builder", () => {
     expect(contracts.noReferenceInput.steps).toHaveLength(4);
     expect(contracts.inputNoIdx.firstStep).toBe(contracts.inputNoIdx.steps[0]);
     expect(contracts.inputNoIdx.steps).toHaveLength(4);
+    expect(contracts.referenceInputNoIdx.firstStep).toBe(
+      contracts.referenceInputNoIdx.steps[0],
+    );
+    expect(contracts.referenceInputNoIdx.steps).toHaveLength(4);
     expect(contracts.invalidRange.firstStep).toBe(
       contracts.invalidRange.steps[0],
     );
@@ -717,6 +821,24 @@ describe("fault-proof contract builder", () => {
     expect(contracts.noReferenceInput.firstStep.spendingScriptHash).not.toBe(
       contracts.nonExistentInput.firstStep.spendingScriptHash,
     );
+    // `reference_input_no_idx` is the reference-input mirror of `input_no_idx`:
+    // its steps 02-04 only ever see an input-list preimage and a producing
+    // transaction, so they compile to the same UPLC and the two chains share
+    // those three scripts (and their addresses) — exactly like the
+    // `no_input`/`no_reference_input` pair. Step 01 differs, since it commits
+    // the bad tx's reference-inputs hash instead of its spend-inputs hash.
+    expect(
+      contracts.referenceInputNoIdx.steps
+        .slice(1)
+        .map((step) => step.spendingScriptHash),
+    ).toEqual(
+      contracts.inputNoIdx.steps
+        .slice(1)
+        .map((step) => step.spendingScriptHash),
+    );
+    expect(contracts.referenceInputNoIdx.firstStep.spendingScriptHash).not.toBe(
+      contracts.inputNoIdx.firstStep.spendingScriptHash,
+    );
     // `input_no_idx` shares no script with any other family: its steps 02-04
     // carry different state/args than the `no_input` chain they resemble.
     expect(
@@ -726,12 +848,13 @@ describe("fault-proof contract builder", () => {
           ...contracts.nonExistentInput.steps,
           ...contracts.noReferenceInput.steps,
           ...contracts.inputNoIdx.steps,
+          ...contracts.referenceInputNoIdx.steps,
           ...contracts.invalidRange.steps,
           ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(18);
+    ).toBe(19);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -1094,6 +1217,125 @@ describe("fault-proof contract builder", () => {
 
     expect(contracts.inputNoIdx.firstStep).toBe(contracts.inputNoIdx.steps[0]);
     expect(contracts.inputNoIdx.steps).toHaveLength(4);
+  });
+
+  it("builds reference-input-no-idx with the validator parameter order from the blueprint", async () => {
+    const blueprint = loadBlueprint();
+
+    const contracts = await Effect.runPromise(
+      buildReferenceInputNoIdxFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.referenceInputNoIdx.firstStep).toBe(
+      contracts.referenceInputNoIdx.steps[0],
+    );
+    expect(contracts.referenceInputNoIdx.steps).toHaveLength(4);
+    expect(
+      new Set(
+        contracts.referenceInputNoIdx.steps.map(
+          (step) => step.spendingScriptHash,
+        ),
+      ).size,
+    ).toBe(4);
+
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    // Same parameter order as input-no-idx — the two chains share their
+    // step-02..04 scripts, so a divergent order here would fork those hashes.
+    const expectedStep04Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
+      ),
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+    );
+    const expectedStep03Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
+      ),
+      [
+        spendingScriptHash(expectedStep04Cbor),
+        contracts.computationThread.policyId,
+        h28b,
+      ],
+    );
+    const expectedStep02Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
+      ),
+      [
+        spendingScriptHash(expectedStep03Cbor),
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedStep01Cbor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
+      ),
+      [
+        spendingScriptHash(expectedStep02Cbor),
+        contracts.computationThread.policyId,
+        h28b,
+      ],
+    );
+
+    expect(contracts.referenceInputNoIdx.steps[3].spendingScriptCBOR).toBe(
+      expectedStep04Cbor,
+    );
+    expect(contracts.referenceInputNoIdx.steps[2].spendingScriptCBOR).toBe(
+      expectedStep03Cbor,
+    );
+    expect(contracts.referenceInputNoIdx.steps[1].spendingScriptCBOR).toBe(
+      expectedStep02Cbor,
+    );
+    expect(contracts.referenceInputNoIdx.steps[0].spendingScriptCBOR).toBe(
+      expectedStep01Cbor,
+    );
+    expect(contracts.referenceInputNoIdx.steps[0].spendingScriptHash).toBe(
+      spendingScriptHash(expectedStep01Cbor),
+    );
+    expect(contracts.referenceInputNoIdx.steps[0].spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedStep01Cbor)),
+    );
+  });
+
+  it("builds reference-input-no-idx without requiring unrelated category validators", async () => {
+    const blueprint = filterBlueprint(loadBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES),
+    ]);
+
+    const contracts = await Effect.runPromise(
+      buildReferenceInputNoIdxFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.referenceInputNoIdx.firstStep).toBe(
+      contracts.referenceInputNoIdx.steps[0],
+    );
+    expect(contracts.referenceInputNoIdx.steps).toHaveLength(4);
   });
 
   it("builds transition-trace with the validator parameter order from the blueprint", async () => {
