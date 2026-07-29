@@ -15,7 +15,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "ae8d3269a368b1b3fa8f24ab7490ae322f1fc1a3bf55f3798875bbddfec7c272"
+    "resultContentTreeSha256": "77285edc4290b34978254cf36802f0feac3511e228593fc1a1dbd88d8dbd7ed1"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -222,7 +222,7 @@
       "stateSchemaVersion": "midgard-watcher-state-queue-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-state-queue-indexer-result-v1",
       "sourceSha256": "c105b4e61b00d46231f9f457c84f669e0080a997906a7d3348a8e4d258192d4b",
-      "testSha256": "fe3725f769fd34847012508d4f758d1f84cf6dbba722ca09dadc7e68a12d5802",
+      "testSha256": "685c3797fcae0f77bad741f9ceedcaaf2d3710b85f455a0e59ce7f5b9c536a31",
       "inputPolicy": "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_and_W12_finality_plus_W13_rollback",
       "queuePolicy": "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics",
       "rollbackPolicy": "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold",

@@ -1234,3 +1234,44 @@ new identities. Require every applicable workflow and discussion surface to
 be terminal and clean on that new head; fix any further actionable finding
 additively. Keep the PR draft and the overarching Goal in progress while the
 122 registry promotions and the remaining §12/§15 work are open.
+
+## Superseding W14 integration-budget remediation checkpoint
+
+- Signed measured-budget commit
+  `6cb031841afc3eee99efe4cb1c91da56f92ada4a` was pushed as the exact draft
+  PR #471 head. Both Evidence Integrity runs passed. Midgard Node CI run
+  `30494093888` then proved the remediated fault-proof build, typecheck, and
+  full 142-test step in 21 minutes 41 seconds before reaching the watcher
+  scaffold.
+- Watcher build, typecheck, lint, and format passed. The exact test command
+  collected all 13 files and 206 tests, passed 12 files and 205 tests, and
+  failed only the complete W14 append/DA/merge/rollback byte-indexing case.
+  That test finished in 5.364 seconds against Vitest's 5-second default and
+  reported no assertion failure. The run receives no aggregate PASS credit.
+- The W14 test deterministically exercises actual node-accepted output/datum
+  bytes through append, DA attachment, merge, two rollbacks, duplicate replay,
+  restart tampering, hostile output selection, local-node authority, and
+  external-provider agreement without replaying validator semantics. Only
+  this test receives a 10-second test-process ceiling. No L1-source rule,
+  protocol deadline, product timeout, assertion, or production source
+  changed.
+- The exact positive selector passes three sequential replays in 2.441, 2.374,
+  and 2.373 seconds, each collecting 1 and passing 1. The exact watcher package
+  command then passes all 13 files and 206/206 tests in 12.11 seconds; the W14
+  case completes in 2.422 seconds. Exact watcher build, typecheck, lint,
+  format-check, and `git diff --check` also pass.
+- The W14-budget staged content-tree SHA-256, excluding only this ledger and
+  the dependency map itself, is
+  `77285edc4290b34978254cf36802f0feac3511e228593fc1a1dbd88d8dbd7ed1`.
+  The map, formatting, whitespace, protected-path, unmerged-index, and exact
+  staged-scope gates must replay before the additive commit.
+
+## Superseding W14-budget publication action
+
+Bind the single test-process budget into the dependency map, replay every
+staged integrity and protected-path gate, create and push one signed additive
+commit on the same `colll78/` branch, and refresh draft PR #471 to the exact
+new identities. Require every applicable workflow and discussion surface to
+be terminal and clean on that new head; fix any further actionable finding
+additively. Keep the PR draft and the overarching Goal in progress while the
+122 registry promotions and the remaining §12/§15 work are open.
