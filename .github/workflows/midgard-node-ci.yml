@@ -10,6 +10,7 @@ on:
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
+      - "demo/midgard-watcher/**"
       - "demo/midgard-validation/**"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
@@ -27,6 +28,7 @@ on:
       - "demo/midgard-fault-proofs/**"
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
+      - "demo/midgard-watcher/**"
       - "demo/midgard-validation/**"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
@@ -104,6 +106,8 @@ jobs:
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
+      - name: Build, typecheck, lint, and test Midgard watcher scaffold
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher test
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard

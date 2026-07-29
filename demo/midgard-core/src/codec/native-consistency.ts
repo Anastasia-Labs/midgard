@@ -6,9 +6,7 @@ import {
   deriveNativeTxBodyCompact,
   encodeNativeTxBodyCompactValue,
 } from "./native-body.js";
-import {
-  MIDGARD_NATIVE_TX_V1_VERSION,
-} from "./native-constants.js";
+import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
 import {
   deriveNativeTxWitnessSetCompact,
   encodeNativeTxWitnessSetCompactValue,

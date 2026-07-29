@@ -1,4 +1,3 @@
-import { decodeMidgardCekProgramEnvelopeV1 } from "./cek-proof.js";
 import {
   buildMidgardBoundedCollectionItemProofV1,
   type MidgardBoundedCollectionItemProofV1,
@@ -10,12 +9,9 @@ import {
   type MidgardBoundedItemChunkProofV1,
   verifyMidgardBoundedItemChunkProofV1,
 } from "./bounded-item-v1.js";
+import { decodeMidgardCekProgramEnvelopeV1 } from "./cek-proof.js";
 import { asArray, asBytes, asMap, decodeSingleCbor } from "./codec/cbor.js";
 import { computeHash32 } from "./codec/hash.js";
-import {
-  deriveMidgardNativeFieldCollectionV1,
-  reconstructMidgardNativeFieldPreimageV1,
-} from "./codec/native-field-items.js";
 import {
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeByteListPreimage,
@@ -33,6 +29,10 @@ import {
   EMPTY_NULL_ROOT,
   MIDGARD_NATIVE_TX_V1_VERSION,
 } from "./codec/native-constants.js";
+import {
+  deriveMidgardNativeFieldCollectionV1,
+  reconstructMidgardNativeFieldPreimageV1,
+} from "./codec/native-field-items.js";
 import type { MidgardNativeScript } from "./codec/native-script.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import { midgardValueToCmlValue } from "./codec/value.js";
@@ -170,13 +170,12 @@ export const MIDGARD_V1_TX_FIELD_NAMES = [
   "required_observers",
   "required_signers",
   "mint",
-  "address_witnesses",
   "script_witnesses",
+  "address_witnesses",
   "redeemers",
 ] as const;
 
-export type MidgardV1TxFieldName =
-  (typeof MIDGARD_V1_TX_FIELD_NAMES)[number];
+export type MidgardV1TxFieldName = (typeof MIDGARD_V1_TX_FIELD_NAMES)[number];
 
 export type MidgardV1TxFieldPreimage = {
   readonly fieldIndex: number;
@@ -195,7 +194,9 @@ export type MidgardV1TxFieldChunk = {
 
 const canonicalCborHeaderSizeV1 = (length: number): number => {
   if (!Number.isSafeInteger(length) || length < 0) {
-    throw new Error("canonical CBOR length must be a non-negative safe integer");
+    throw new Error(
+      "canonical CBOR length must be a non-negative safe integer",
+    );
   }
   if (length < 24) return 1;
   if (length <= 0xff) return 2;
@@ -211,16 +212,18 @@ const nativeFieldItemEncodedSizeV1 = ({
   readonly fieldIndex: number;
   readonly itemLength: number;
 }): number => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalCborHeaderSizeV1(itemLength) + itemLength;
   }
   if (fieldIndex === 5) {
     if (itemLength <= 1) {
-      throw new Error("native-V1 mint policy item must include its pair header");
+      throw new Error(
+        "native-V1 mint policy item must include its pair header",
+      );
     }
     return itemLength - 1;
   }
-  if (fieldIndex === 7 || fieldIndex === 8) {
+  if (fieldIndex === 6 || fieldIndex === 8) {
     return itemLength;
   }
   throw new Error(`unknown V1 transaction field index ${fieldIndex}`);
@@ -246,8 +249,8 @@ export const deriveMidgardV1TxFieldPreimages = (
     tx.body.requiredObserversPreimageCbor,
     tx.body.requiredSignersPreimageCbor,
     tx.body.mintPreimageCbor,
-    tx.witnessSet.addrTxWitsPreimageCbor,
     tx.witnessSet.scriptTxWitsPreimageCbor,
+    tx.witnessSet.addrTxWitsPreimageCbor,
     tx.witnessSet.redeemerTxWitsPreimageCbor,
   ] as const;
   const hashes = [
@@ -257,8 +260,8 @@ export const deriveMidgardV1TxFieldPreimages = (
     compact.transactionBody.requiredObserversHash,
     compact.transactionBody.requiredSignersHash,
     compact.transactionBody.mintHash,
-    witnessSet.addrTxWitsHash,
     witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
     witnessSet.redeemerTxWitsHash,
   ] as const;
   return preimages.map((preimageCbor, fieldIndex) => ({
@@ -288,8 +291,10 @@ export const deriveMidgardV1TxFieldChunks = (
     }
     let fieldEncodedSize = canonicalCborHeaderSizeV1(collection.items.length);
     for (const [itemIndex, item] of collection.items.entries()) {
-      const collectionProof =
-        buildMidgardBoundedCollectionItemProofV1(collection, itemIndex);
+      const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+        collection,
+        itemIndex,
+      );
       for (const [chunkIndex] of item.chunkHashes.entries()) {
         if (chunkIndex + 1 === item.chunkHashes.length) {
           fieldEncodedSize += nativeFieldItemEncodedSizeV1({
@@ -352,8 +357,8 @@ export const verifyMidgardV1TxFieldPreimage = ({
     compact.transactionBody.requiredObserversHash,
     compact.transactionBody.requiredSignersHash,
     compact.transactionBody.mintHash,
-    witnessSet.addrTxWitsHash,
     witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
     witnessSet.redeemerTxWitsHash,
   ] as const;
   const committedLength = decodeMidgardNativeTxProofFieldLengthsV1(
@@ -423,8 +428,8 @@ export const verifyMidgardV1TxFieldChunk = ({
     compact.transactionBody.requiredObserversHash,
     compact.transactionBody.requiredSignersHash,
     compact.transactionBody.mintHash,
-    witnessSet.addrTxWitsHash,
     witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
     witnessSet.redeemerTxWitsHash,
   ] as const;
   if (
@@ -508,8 +513,8 @@ export const reconstructMidgardTransactionV1 = ({
       networkId: compact.transactionBody.networkId,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: verified[6]!.preimageCbor,
-      scriptTxWitsPreimageCbor: verified[7]!.preimageCbor,
+      addrTxWitsPreimageCbor: verified[7]!.preimageCbor,
+      scriptTxWitsPreimageCbor: verified[6]!.preimageCbor,
       redeemerTxWitsPreimageCbor: verified[8]!.preimageCbor,
     },
   });
@@ -688,8 +693,7 @@ const nativeScriptBoundViolation = (
     );
   }
   if (
-    complexity.nodeCount >
-    MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount
+    complexity.nodeCount > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount
   ) {
     return violation(
       "E_NATIVE_SCRIPT_NODE_COUNT",

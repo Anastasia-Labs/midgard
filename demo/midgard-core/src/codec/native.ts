@@ -144,10 +144,6 @@ export type MidgardNativeTxProofSourceV1 = {
   readonly fieldPreimageLengthsCbor: Buffer;
 };
 
-export type MidgardNativeCodecOptions = {
-  readonly enforceConsistency?: boolean;
-};
-
 const requireNativeTxV1Version = (
   value: unknown,
   fieldName: string,
@@ -328,14 +324,26 @@ const hasDerivedCompact = (
   tx: MidgardNativeTxCanonicalV1 | MidgardNativeTxFullV1,
 ): tx is MidgardNativeTxFullV1 => "compact" in tx;
 
+const validateMidgardNativeTxCanonicalV1 = (
+  tx: MidgardNativeTxCanonicalV1,
+): void => {
+  deriveMidgardNativeTxCompactV1(
+    tx.body,
+    tx.witnessSet,
+    tx.validity,
+    tx.version,
+  );
+};
+
 export const encodeMidgardNativeTxCanonicalV1 = (
   tx: MidgardNativeTxCanonicalV1 | MidgardNativeTxFullV1,
-  options: MidgardNativeCodecOptions = {},
 ): Buffer => {
-  if (options.enforceConsistency !== false && hasDerivedCompact(tx)) {
-    verifyMidgardNativeTxFullConsistencyV1(tx);
-  }
   const version = requireNativeTxV1Version(tx.version, "transaction.version");
+  if (hasDerivedCompact(tx)) {
+    verifyMidgardNativeTxFullConsistencyV1(tx);
+  } else {
+    validateMidgardNativeTxCanonicalV1(tx);
+  }
   return encodeCbor([
     version,
     encodeNativeTxBodyCanonicalValue(tx.body),
@@ -350,7 +358,7 @@ export const decodeMidgardNativeTxCanonicalV1 = (
   const decoded = decodeSingleCbor(bytes);
   const v = asFixedArray(decoded, 4, "transaction");
   const version = requireNativeTxV1Version(v[0], "transaction[0]");
-  return {
+  const tx: MidgardNativeTxCanonicalV1 = {
     version,
     body: decodeNativeTxBodyCanonicalValue(v[1], "transaction[1]"),
     witnessSet: decodeNativeTxWitnessSetCanonicalValue(
@@ -360,18 +368,17 @@ export const decodeMidgardNativeTxCanonicalV1 = (
     ),
     validity: decodeValidityCode(v[3], "transaction[3]"),
   };
+  validateMidgardNativeTxCanonicalV1(tx);
+  return tx;
 };
 
 export const decodeMidgardNativeTxFullV1FromCanonicalCbor = (
   bytes: Uint8Array,
-  options: MidgardNativeCodecOptions = {},
 ): MidgardNativeTxFullV1 => {
   const tx = materializeMidgardNativeTxFromCanonicalV1(
     decodeMidgardNativeTxCanonicalV1(bytes),
   );
-  if (options.enforceConsistency !== false) {
-    verifyMidgardNativeTxFullConsistencyV1(tx);
-  }
+  verifyMidgardNativeTxFullConsistencyV1(tx);
   return tx;
 };
 
@@ -393,6 +400,27 @@ export const computeMidgardNativeTxIdV1 = (
   );
 };
 
+const MIDGARD_NATIVE_TX_FULL_HASH_V1_DOMAIN = Buffer.from(
+  "MidgardNativeTxFullV1",
+  "ascii",
+);
+
+/**
+ * Commits already-validated canonical V1 transaction bytes without decoding
+ * or normalizing them. Admission persistence uses this form so an integrity
+ * check commits the exact bytes that crossed the strict ingress boundary.
+ */
+export const computeMidgardNativeTxFullHashFromCanonicalCborV1 = (
+  canonicalTransactionCbor: Uint8Array,
+): Buffer =>
+  computeHash32(
+    Buffer.concat([
+      MIDGARD_NATIVE_TX_FULL_HASH_V1_DOMAIN,
+      encodeCbor(MIDGARD_NATIVE_TX_V1_VERSION),
+      Buffer.from(canonicalTransactionCbor),
+    ]),
+  );
+
 /**
  * Commits the exact canonical V1 full transaction, including all witness
  * preimages. This is distinct from the transaction id, which intentionally
@@ -409,13 +437,7 @@ export const computeMidgardNativeTxFullHashV1 = (
     );
   }
   const canonicalCbor = encodeMidgardNativeTxCanonicalV1(tx);
-  return computeHash32(
-    Buffer.concat([
-      Buffer.from("MidgardNativeTxFullV1", "ascii"),
-      encodeCbor(tx.version),
-      canonicalCbor,
-    ]),
-  );
+  return computeMidgardNativeTxFullHashFromCanonicalCborV1(canonicalCbor);
 };
 
 const MIDGARD_NATIVE_TX_PROOF_SOURCE_V1_DOMAIN = Buffer.from(
@@ -465,8 +487,8 @@ const proofFieldPreimageLengths = (
   tx.body.requiredObserversPreimageCbor.length,
   tx.body.requiredSignersPreimageCbor.length,
   tx.body.mintPreimageCbor.length,
-  tx.witnessSet.addrTxWitsPreimageCbor.length,
   tx.witnessSet.scriptTxWitsPreimageCbor.length,
+  tx.witnessSet.addrTxWitsPreimageCbor.length,
   tx.witnessSet.redeemerTxWitsPreimageCbor.length,
 ];
 
@@ -475,9 +497,7 @@ export const encodeMidgardNativeTxProofFieldLengthsV1 = (
 ): Buffer => {
   if (
     lengths.length !== 9 ||
-    lengths.some(
-      (length) => !Number.isSafeInteger(length) || length < 0,
-    )
+    lengths.some((length) => !Number.isSafeInteger(length) || length < 0)
   ) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.InvalidFieldType,
@@ -511,8 +531,8 @@ export const computeMidgardNativeTxCanonicalSizeFromProofSourceV1 = (
       compact.transactionBody.networkId,
     ],
     [
-      Buffer.alloc(lengths[6]!),
       Buffer.alloc(lengths[7]!),
+      Buffer.alloc(lengths[6]!),
       Buffer.alloc(lengths[8]!),
     ],
     encodeValidityCode(compact.validity),
@@ -546,10 +566,9 @@ export const deriveMidgardNativeTxProofSourceV1 = (
     witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
       deriveMidgardNativeTxWitnessSetCompactV1(tx.witnessSet),
     ),
-    fieldPreimageLengthsCbor:
-      encodeMidgardNativeTxProofFieldLengthsV1(
-        proofFieldPreimageLengths(tx),
-      ),
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+      proofFieldPreimageLengths(tx),
+    ),
   };
 };
 
@@ -988,6 +1007,18 @@ export type MidgardToCardanoTxEncodingOptions = {
   readonly omitVkeyWitnesses?: boolean;
 };
 
+export const assertNativePosixTimeOrNone = (
+  value: bigint,
+  fieldName: string,
+): bigint => {
+  if (value < MIDGARD_POSIX_TIME_NONE) {
+    throw new Error(
+      `${fieldName} must be ${MIDGARD_POSIX_TIME_NONE.toString(10)} or a nonnegative POSIX time`,
+    );
+  }
+  return value;
+};
+
 export const midgardNativeTxFullToCardanoTxEncoding = (
   tx: MidgardNativeTxFullV1,
   options?: MidgardToCardanoTxEncodingOptions,
@@ -1013,11 +1044,19 @@ export const midgardNativeTxFullToCardanoTxEncoding = (
     body.set_reference_inputs(referenceInputs);
   }
 
-  if (tx.body.validityIntervalStart !== MIDGARD_POSIX_TIME_NONE) {
-    body.set_validity_interval_start(tx.body.validityIntervalStart);
+  const validityIntervalStart = assertNativePosixTimeOrNone(
+    tx.body.validityIntervalStart,
+    "native.validity_interval_start",
+  );
+  const validityIntervalEnd = assertNativePosixTimeOrNone(
+    tx.body.validityIntervalEnd,
+    "native.validity_interval_end",
+  );
+  if (validityIntervalStart !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_validity_interval_start(validityIntervalStart);
   }
-  if (tx.body.validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE) {
-    body.set_ttl(tx.body.validityIntervalEnd);
+  if (validityIntervalEnd !== MIDGARD_POSIX_TIME_NONE) {
+    body.set_ttl(validityIntervalEnd);
   }
 
   const withdrawals = decodeNativeObserversToWithdrawals(

@@ -507,6 +507,31 @@ importers:
         specifier: ^3.0.7
         version: 3.0.7(@types/node@22.19.17)
 
+  midgard-watcher:
+    dependencies:
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
+      '@lucid-evolution/lucid':
+        specifier: 0.6.0
+        version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.17.0
+        version: 22.19.17
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsup:
+        specifier: ^8.4.0
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: ^3.0.7
+        version: 3.0.7(@types/node@22.19.17)
+
 packages:
 
   '@aiken-lang/merkle-patricia-forestry@https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain':

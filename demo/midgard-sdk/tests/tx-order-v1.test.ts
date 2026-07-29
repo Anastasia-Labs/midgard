@@ -1,8 +1,8 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   encodeCbor,
   encodeMidgardCekBlobChunkV1,
   encodeMidgardNativeTxCanonicalV1,
@@ -67,6 +67,153 @@ const transactionCbor = (): Buffer =>
   );
 
 describe("V1 transaction-order fragments", () => {
+  it("pins the exact datum, spend, receipt-mint, and forced-key V1 vectors", () => {
+    const txOrderId: SDK.OutputReference = {
+      transactionId: "33".repeat(32),
+      outputIndex: 4n,
+    };
+    const source: SDK.NativeTxProofSourceV1 = {
+      compact_cbor: "01",
+      witness_set_compact_cbor: "0203",
+      field_preimage_lengths_cbor: "04",
+    };
+    const payload: SDK.TxOrderPayloadV1 = {
+      tx_id: "44".repeat(32),
+      transaction_commitment: "55".repeat(32),
+      source,
+      terminal_receipt_reference: null,
+    };
+    const event: SDK.TxOrderEventV1 = { id: txOrderId, tx: payload };
+    const datum: SDK.TxOrderDatumV1 = {
+      event,
+      inclusion_time: 123n,
+      witness: "66".repeat(28),
+      refund_address: {
+        paymentCredential: {
+          PublicKeyCredential: ["77".repeat(28)],
+        },
+        stakeCredential: null,
+      },
+      refund_datum: "NoDatum",
+    };
+    const forced: SDK.ForcedInclusionTxV1 = {
+      tx_id: payload.tx_id,
+      transaction_commitment: payload.transaction_commitment,
+      source,
+      operator_validity: "FailedScript",
+    };
+    const spend: SDK.TxOrderSpendRedeemerV1 = {
+      input_index: 0n,
+      output_index: 1n,
+      hub_ref_input_index: 2n,
+      settlement_ref_input_index: 3n,
+      burn_redeemer_index: 4n,
+      membership_proof: {
+        domain: "ForcedTransactionsV1RootDomain",
+        root: "00".repeat(32),
+        phas_root: "11".repeat(32),
+        count: 1n,
+        key: Data.to(txOrderId, SDK.OutputReference),
+        value: Data.to(forced, SDK.ForcedInclusionTxV1),
+        proof: [],
+      },
+      inclusion_proof_script_withdraw_redeemer_index: 5n,
+      validity_override: "FailedScript",
+    };
+    const publish: SDK.TxFieldReceiptMintRedeemerV1 = {
+      PublishField: {
+        field_reference_input_index: 0n,
+        predecessor_receipt_reference_input_index: -1n,
+        receipt_output_index: 1n,
+        transaction_id: payload.tx_id,
+        source,
+      },
+    };
+    const burn: SDK.TxFieldReceiptMintRedeemerV1 = {
+      BurnReceipts: { receipt_input_indices: [0n, 2n] },
+    };
+
+    const datumCbor = Data.to(datum, SDK.TxOrderDatumV1);
+    expect(Data.to(txOrderId, SDK.OutputReference)).toBe(
+      `d8799f5820${"33".repeat(32)}04ff`,
+    );
+    expect(Data.to(payload, SDK.TxOrderPayloadV1)).toBe(
+      `d8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ff`,
+    );
+    expect(Data.to(event, SDK.TxOrderEventV1)).toBe(
+      `d8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ffff`,
+    );
+    expect(datumCbor).toBe(
+      `d8799fd8799fd8799f5820${"33".repeat(32)}04ffd8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87a80ffff187b581c${"66".repeat(28)}d8799fd8799f581c${"77".repeat(28)}ffd87a80ffd87980ff`,
+    );
+    expect(Data.to(forced, SDK.ForcedInclusionTxV1)).toBe(
+      `d8799f5820${"44".repeat(32)}5820${"55".repeat(32)}d8799f41014202034104ffd87c80ff`,
+    );
+    expect(Data.to(spend, SDK.TxOrderSpendRedeemerV1)).toBe(
+      "d8799f0001020304d8799fd87a805820000000000000000000000000000000000000000000000000000000000000000058201111111111111111111111111111111111111111111111111111111111111111015827d8799f5820333333333333333333333333333333333333333333333333333333333333333304ff5f5840d8799f582044444444444444444444444444444444444444444444444444444444444444445820555555555555555555555555555555555555555555555555555655555555555555d8799f41014202034104ffd87c80ffff80ff05d87c80ff",
+    );
+    expect(Data.to(publish, SDK.TxFieldReceiptMintRedeemerV1)).toBe(
+      `d8799f0020015820${"44".repeat(32)}d8799f41014202034104ffff`,
+    );
+    expect(Data.to(burn, SDK.TxFieldReceiptMintRedeemerV1)).toBe(
+      "d87a9f9f0002ffff",
+    );
+    expect(
+      SDK.decodeTxOrderDatumV1Cbor(SDK.encodeTxOrderDatumV1Cbor(datum)),
+    ).toEqual(datum);
+
+    const overlongInclusionTime = datumCbor.replace(
+      "187b581c",
+      "1a0000007b581c",
+    );
+    expect(() =>
+      SDK.decodeTxOrderDatumV1Cbor(Buffer.from(overlongInclusionTime, "hex")),
+    ).toThrow(/exact canonical encoding/u);
+    expect(() =>
+      Data.from(`d87a${datumCbor.slice(4)}`, SDK.TxOrderDatumV1),
+    ).toThrow();
+    expect(() =>
+      Data.from(`${datumCbor.slice(0, -2)}00ff`, SDK.TxOrderDatumV1),
+    ).toThrow();
+
+    const pointerDatum: SDK.TxOrderDatumV1 = {
+      ...datum,
+      refund_address: {
+        paymentCredential: datum.refund_address.paymentCredential,
+        stakeCredential: {
+          Pointer: {
+            slotNumber: 6n,
+            transactionIndex: 7n,
+            certificateIndex: 8n,
+          },
+        },
+      },
+    };
+    expect(
+      Data.from(Data.to(pointerDatum, SDK.TxOrderDatumV1), SDK.TxOrderDatumV1),
+    ).toEqual(pointerDatum);
+    expect(() =>
+      Data.to(
+        {
+          ...pointerDatum,
+          refund_address: {
+            ...pointerDatum.refund_address,
+            stakeCredential: {
+              Pointer: [
+                {
+                  slotNumber: 6n,
+                  transactionIndex: 7n,
+                  certificateIndex: 8n,
+                },
+              ],
+            },
+          },
+        } as never,
+        SDK.TxOrderDatumV1,
+      ),
+    ).toThrow();
+  });
+
   it("derives every canonical independently bounded field chunk", () => {
     const cbor = transactionCbor();
     const txOrderId: SDK.OutputReference = {
@@ -103,9 +250,19 @@ describe("V1 transaction-order fragments", () => {
       );
       expect(fragment.datum.field_receipt_policy_id).toBe("55".repeat(28));
       expect(fragment.datum.tx_order_id).toEqual(txOrderId);
-      expect(Buffer.from(fragment.datum.proof.chunk, "hex").length).toBeLessThanOrEqual(
-        4_095,
+      expect(fragment.datum.collection_proof.field_index).toBe(
+        fragment.datum.proof.field_index,
       );
+      expect(fragment.datum.collection_proof.item_index).toBe(
+        fragment.datum.proof.item_index,
+      );
+      expect(fragment.datum.collection_proof.item_length).toBe(
+        fragment.datum.proof.total_length,
+      );
+      expect(fragment.datum.collection_proof.item_commitment).toHaveLength(64);
+      expect(
+        Buffer.from(fragment.datum.proof.chunk, "hex").length,
+      ).toBeLessThanOrEqual(4_095);
     }
     expect(bundle.fragments.at(-1)!.fieldEncodedSize).toBe(
       decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor).body
@@ -139,7 +296,8 @@ describe("V1 transaction-order fragments", () => {
     });
     const datum = bundle.fragments.find(
       (fragment) =>
-        fragment.fieldIndex === 2 && fragment.datum.proof.chunk.length === 8_190,
+        fragment.fieldIndex === 2 &&
+        fragment.datum.proof.chunk.length === 8_190,
     )!.datum;
     const datumCbor = Data.to(datum, SDK.TxFieldPreimageV1);
     const inputs = CML.TransactionInputList.new();
@@ -234,6 +392,25 @@ describe("V1 transaction-order fragments", () => {
         { kind: "blobChunk", root, preimage },
       ]),
     ).toThrow(/duplicate/u);
+    expect(() =>
+      SDK.deriveCekProgramMaterialPublicationsV1([
+        {
+          kind: "blobChunk",
+          root: Buffer.alloc(32) as never,
+          preimage,
+        },
+      ]),
+    ).toThrow(/root does not match/u);
+    expect(() =>
+      SDK.deriveCekProgramMaterialPublicationsV1([
+        { kind: "blobBranch", root, preimage },
+      ]),
+    ).toThrow(/root does not match/u);
+    expect(() =>
+      SDK.deriveCekProgramMaterialPublicationsV1([
+        { kind: "unknown", root, preimage } as never,
+      ]),
+    ).toThrow();
   });
 
   it("derives an exact receipt burn set", () => {

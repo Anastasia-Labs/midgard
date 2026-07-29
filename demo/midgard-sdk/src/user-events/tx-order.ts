@@ -28,9 +28,8 @@ import {
 import { Effect } from "effect";
 
 import {
-  AddressData,
-  AddressSchema,
   Bech32DeserializationError,
+  CredentialSchema,
   HashingError,
   LucidError,
   makeReturn,
@@ -46,12 +45,17 @@ import {
   CardanoDatum,
   CardanoDatumSchema,
   CekProgramMaterialDatumV1,
+  CekProgramMaterialDatumV1Schema,
+  MidgardTxValiditySchema,
   NativeTxProofSourceV1,
   NativeTxProofSourceV1Schema,
   TxFieldPreimageV1,
+  TxFieldPreimageV1Schema,
   TxFieldReceiptV1,
+  TxFieldReceiptV1Schema,
   TxOrderEventV1Schema,
 } from "@/ledger-state.js";
+import { RawRootMembershipProofSchema } from "@/transition-trace.js";
 import {
   requireInputIndex,
   requireOwnMintPurpose,
@@ -71,15 +75,107 @@ import {
   UserEventFetchConfig,
 } from "./internals.js";
 
+export const TxOrderRefundAddressV1Schema = Data.Object({
+  paymentCredential: CredentialSchema,
+  stakeCredential: Data.Nullable(
+    Data.Enum([
+      Data.Object({
+        Inline: Data.Tuple([CredentialSchema]),
+      }),
+      Data.Object({
+        Pointer: Data.Object({
+          slotNumber: Data.Integer(),
+          transactionIndex: Data.Integer(),
+          certificateIndex: Data.Integer(),
+        }),
+      }),
+    ]),
+  ),
+});
+export type TxOrderRefundAddressV1 = Data.Static<
+  typeof TxOrderRefundAddressV1Schema
+>;
+export const TxOrderRefundAddressV1 =
+  TxOrderRefundAddressV1Schema as unknown as TxOrderRefundAddressV1;
+
 export const TxOrderDatumV1Schema = Data.Object({
   event: TxOrderEventV1Schema,
   inclusion_time: POSIXTimeSchema,
   witness: Data.Bytes({ minLength: 28, maxLength: 28 }),
-  refund_address: AddressSchema,
+  refund_address: TxOrderRefundAddressV1Schema,
   refund_datum: CardanoDatumSchema,
 });
 export type TxOrderDatumV1 = Data.Static<typeof TxOrderDatumV1Schema>;
 export const TxOrderDatumV1 = TxOrderDatumV1Schema as unknown as TxOrderDatumV1;
+
+type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
+
+const encodeCanonicalPlutusDataV1 = <A>(
+  value: A,
+  schema: PlutusDataSchema,
+): Buffer => Buffer.from(Data.to(value as never, schema as never), "hex");
+
+const decodeCanonicalPlutusDataV1 = <A>(
+  bytes: Uint8Array,
+  schema: PlutusDataSchema,
+  label: string,
+): A => {
+  const input = Buffer.from(bytes);
+  const decoded = Data.from(input.toString("hex"), schema as never) as A;
+  if (!encodeCanonicalPlutusDataV1(decoded, schema).equals(input)) {
+    throw new Error(`${label} CBOR must use its exact canonical encoding`);
+  }
+  return decoded;
+};
+
+export const encodeTxOrderDatumV1Cbor = (datum: TxOrderDatumV1): Buffer =>
+  encodeCanonicalPlutusDataV1(datum, TxOrderDatumV1Schema);
+
+export const decodeTxOrderDatumV1Cbor = (bytes: Uint8Array): TxOrderDatumV1 =>
+  decodeCanonicalPlutusDataV1(bytes, TxOrderDatumV1Schema, "TxOrderDatumV1");
+
+export const decodeTxFieldPreimageV1Cbor = (
+  bytes: Uint8Array,
+): TxFieldPreimageV1 =>
+  decodeCanonicalPlutusDataV1(
+    bytes,
+    TxFieldPreimageV1Schema,
+    "TxFieldPreimageV1",
+  );
+
+export const decodeTxFieldReceiptV1Cbor = (
+  bytes: Uint8Array,
+): TxFieldReceiptV1 =>
+  decodeCanonicalPlutusDataV1(
+    bytes,
+    TxFieldReceiptV1Schema,
+    "TxFieldReceiptV1",
+  );
+
+export const decodeCekProgramMaterialDatumV1Cbor = (
+  bytes: Uint8Array,
+): CekProgramMaterialDatumV1 =>
+  decodeCanonicalPlutusDataV1(
+    bytes,
+    CekProgramMaterialDatumV1Schema,
+    "CekProgramMaterialDatumV1",
+  );
+
+export const TxOrderSpendRedeemerV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  hub_ref_input_index: Data.Integer(),
+  settlement_ref_input_index: Data.Integer(),
+  burn_redeemer_index: Data.Integer(),
+  membership_proof: RawRootMembershipProofSchema,
+  inclusion_proof_script_withdraw_redeemer_index: Data.Integer(),
+  validity_override: MidgardTxValiditySchema,
+});
+export type TxOrderSpendRedeemerV1 = Data.Static<
+  typeof TxOrderSpendRedeemerV1Schema
+>;
+export const TxOrderSpendRedeemerV1 =
+  TxOrderSpendRedeemerV1Schema as unknown as TxOrderSpendRedeemerV1;
 
 export type TxOrderUTxOV1 = AuthenticUTxO<TxOrderDatumV1, UserEventExtraFields>;
 
@@ -91,10 +187,13 @@ export const utxosToTxOrderUTxOsV1 = (
     utxos,
     nftPolicy,
     TxOrderDatumV1,
-    (datum, utxo) => ({
-      ...userEventCborFieldsFromInlineDatum(utxo),
-      inclusionTime: new Date(Number(datum.inclusion_time)),
-    }),
+    (datum, utxo) => {
+      decodeTxOrderDatumV1Cbor(Buffer.from(utxo.datum!, "hex"));
+      return {
+        ...userEventCborFieldsFromInlineDatum(utxo),
+        inclusionTime: new Date(Number(datum.inclusion_time)),
+      };
+    },
   );
 
 export const fetchTxOrderUTxOsV1Program = (
@@ -121,7 +220,7 @@ export type SubmitTxOrderV1Config = {
   readonly nonceInput: UTxO;
   /** Exact terminal receipt for non-empty material; absent only for nine empty fields. */
   readonly terminalFieldReceiptUtxo?: UTxO;
-  readonly refundAddress: AddressData;
+  readonly refundAddress: TxOrderRefundAddressV1;
   readonly refundDatum?: CardanoDatum;
   readonly lovelace?: bigint;
   readonly referenceScripts?: SubmitTxOrderReferenceScripts;
@@ -185,54 +284,52 @@ export const deriveTxOrderFragmentBundleV1 = ({
     field_preimage_lengths_cbor:
       proofSource.fieldPreimageLengthsCbor.toString("hex"),
   };
-  const fragments = deriveMidgardV1TxFieldChunks(nativeTxCbor).map(
-    (field) => {
-      const proof = field.proof;
-      const datum: TxFieldPreimageV1 = {
-        field_receipt_policy_id: fieldReceiptPolicyId,
-        tx_order_policy_id: txOrderPolicyId,
-        tx_order_id: txOrderId,
-        transaction_commitment: transactionCommitment,
-        collection_proof: {
-          version: BigInt(field.collectionProof.version),
-          field_index: BigInt(field.collectionProof.fieldIndex),
-          item_count: BigInt(field.collectionProof.itemCount),
-          item_index: BigInt(field.collectionProof.itemIndex),
-          item_length: BigInt(field.collectionProof.itemLength),
-          item_commitment: field.collectionProof.itemCommitment.toString("hex"),
-          frontier: field.collectionProof.frontier.peaks.map((peak) => ({
-            height: BigInt(peak.height),
-            hash: peak.hash.toString("hex"),
-          })),
-          siblings: field.collectionProof.siblings.map((sibling) =>
-            sibling.toString("hex"),
-          ),
-        },
-        proof: {
-          version: BigInt(proof.version),
-          field_index: BigInt(proof.fieldIndex),
-          item_index: BigInt(proof.itemIndex),
-          total_length: BigInt(proof.totalLength),
-          chunk_index: BigInt(proof.chunkIndex),
-          chunk: proof.chunk.toString("hex"),
-          frontier: proof.frontier.peaks.map((peak) => ({
-            height: BigInt(peak.height),
-            hash: peak.hash.toString("hex"),
-          })),
-          siblings: proof.siblings.map((sibling) => sibling.toString("hex")),
-        },
-      };
-      return {
-        fieldIndex: proof.fieldIndex,
-        itemIndex: proof.itemIndex,
-        chunkIndex: proof.chunkIndex,
-        fieldName: field.fieldName,
-        fieldEncodedSize: field.fieldEncodedSize,
-        datum,
-        datumCbor: Data.to(datum, TxFieldPreimageV1),
-      };
-    },
-  );
+  const fragments = deriveMidgardV1TxFieldChunks(nativeTxCbor).map((field) => {
+    const proof = field.proof;
+    const datum: TxFieldPreimageV1 = {
+      field_receipt_policy_id: fieldReceiptPolicyId,
+      tx_order_policy_id: txOrderPolicyId,
+      tx_order_id: txOrderId,
+      transaction_commitment: transactionCommitment,
+      collection_proof: {
+        version: BigInt(field.collectionProof.version),
+        field_index: BigInt(field.collectionProof.fieldIndex),
+        item_count: BigInt(field.collectionProof.itemCount),
+        item_index: BigInt(field.collectionProof.itemIndex),
+        item_length: BigInt(field.collectionProof.itemLength),
+        item_commitment: field.collectionProof.itemCommitment.toString("hex"),
+        frontier: field.collectionProof.frontier.peaks.map((peak) => ({
+          height: BigInt(peak.height),
+          hash: peak.hash.toString("hex"),
+        })),
+        siblings: field.collectionProof.siblings.map((sibling) =>
+          sibling.toString("hex"),
+        ),
+      },
+      proof: {
+        version: BigInt(proof.version),
+        field_index: BigInt(proof.fieldIndex),
+        item_index: BigInt(proof.itemIndex),
+        total_length: BigInt(proof.totalLength),
+        chunk_index: BigInt(proof.chunkIndex),
+        chunk: proof.chunk.toString("hex"),
+        frontier: proof.frontier.peaks.map((peak) => ({
+          height: BigInt(peak.height),
+          hash: peak.hash.toString("hex"),
+        })),
+        siblings: proof.siblings.map((sibling) => sibling.toString("hex")),
+      },
+    };
+    return {
+      fieldIndex: proof.fieldIndex,
+      itemIndex: proof.itemIndex,
+      chunkIndex: proof.chunkIndex,
+      fieldName: field.fieldName,
+      fieldEncodedSize: field.fieldEncodedSize,
+      datum,
+      datumCbor: Data.to(datum, TxFieldPreimageV1),
+    };
+  });
   return {
     transactionId,
     transactionCommitment,
@@ -303,10 +400,7 @@ export const deriveCekProgramMaterialPublicationsV1 = (
       };
       const datumCbor = Data.to(datum, CekProgramMaterialDatumV1);
       const datumBytes = Buffer.byteLength(datumCbor, "hex");
-      if (
-        datumBytes >
-        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes
-      ) {
+      if (datumBytes > MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes) {
         throw new Error(
           `CEK program-material datum ${root} exceeds the independently revealable L1 proof field bound`,
         );
@@ -386,10 +480,9 @@ export const deriveTxOrderFieldReceiptPublicationV1 = ({
   if (fieldPreimageUtxo.datum == null) {
     throw new Error(`field fragment ${outRef} has no inline datum`);
   }
-  const field = Data.from(
-    fieldPreimageUtxo.datum,
-    TxFieldPreimageV1,
-  ) as TxFieldPreimageV1;
+  const field = decodeTxFieldPreimageV1Cbor(
+    Buffer.from(fieldPreimageUtxo.datum, "hex"),
+  );
   if (
     field.field_receipt_policy_id !== contracts.txOrderFieldReceipt.policyId
   ) {
@@ -450,8 +543,7 @@ export const deriveTxOrderFieldReceiptPublicationV1 = ({
         `field receipt at ordinal ${ordinal.toString()} requires its immediate predecessor`,
       );
     }
-    const predecessorOutRef =
-      `${predecessorReceiptUtxo.txHash}#${predecessorReceiptUtxo.outputIndex.toString()}`;
+    const predecessorOutRef = `${predecessorReceiptUtxo.txHash}#${predecessorReceiptUtxo.outputIndex.toString()}`;
     if (
       predecessorReceiptUtxo.address !==
       contracts.txOrderFieldReceipt.spendingScriptAddress
@@ -463,10 +555,9 @@ export const deriveTxOrderFieldReceiptPublicationV1 = ({
     if (predecessorReceiptUtxo.datum == null) {
       throw new Error(`predecessor receipt ${predecessorOutRef} has no datum`);
     }
-    const predecessor = Data.from(
-      predecessorReceiptUtxo.datum,
-      TxFieldReceiptV1,
-    ) as TxFieldReceiptV1;
+    const predecessor = decodeTxFieldReceiptV1Cbor(
+      Buffer.from(predecessorReceiptUtxo.datum, "hex"),
+    );
     const predecessorFragment = bundle.fragments[ordinal - 1]!;
     const predecessorAssetName = receiptAssetNameV1({
       txOrderPolicyId: field.tx_order_policy_id,
@@ -487,16 +578,12 @@ export const deriveTxOrderFieldReceiptPublicationV1 = ({
       Data.to(predecessor.tx_order_id, OutputReference) !==
         Data.to(field.tx_order_id, OutputReference) ||
       predecessor.transaction_commitment !== field.transaction_commitment ||
-      Data.to(
-        predecessor.collection_proof,
-        BoundedCollectionItemProofV1,
-      ) !==
+      Data.to(predecessor.collection_proof, BoundedCollectionItemProofV1) !==
         Data.to(
           predecessorFragment.datum.collection_proof,
           BoundedCollectionItemProofV1,
         ) ||
-      predecessor.chunk_index !==
-        predecessorFragment.datum.proof.chunk_index ||
+      predecessor.chunk_index !== predecessorFragment.datum.proof.chunk_index ||
       predecessor.field_encoded_size !==
         BigInt(predecessorFragment.fieldEncodedSize) ||
       (predecessorReceiptUtxo.assets[predecessorUnit] ?? 0n) !== 1n
@@ -600,9 +687,7 @@ export const txOrderFieldReceiptBurnRedeemerV1 = (
     ordered.length === 0 ||
     new Set(ordered.map(({ unit }) => unit)).size !== ordered.length
   ) {
-    throw new Error(
-      "V1 receipt burn requires distinct receipt NFTs",
-    );
+    throw new Error("V1 receipt burn requires distinct receipt NFTs");
   }
   return (ctx) => {
     requireOwnMintPurpose(ctx, fieldReceiptPolicyId, "V1 field receipt burn");
@@ -716,10 +801,7 @@ export const buildUnsignedTxOrderFieldReceiptV1Program = (
       const referenceInputs =
         config.receiptMintingReferenceScript === undefined
           ? materialReferenceInputs
-          : [
-              ...materialReferenceInputs,
-              config.receiptMintingReferenceScript,
-            ];
+          : [...materialReferenceInputs, config.receiptMintingReferenceScript];
       type ReceiptLayout = {
         readonly fieldReferenceInputIndex: bigint;
         readonly predecessorReceiptReferenceInputIndex: bigint;
@@ -915,10 +997,9 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
         if (utxo.datum == null) {
           throw new Error(`terminal receipt ${outRef} has no inline datum`);
         }
-        const receipt = Data.from(
-          utxo.datum,
-          TxFieldReceiptV1,
-        ) as TxFieldReceiptV1;
+        const receipt = decodeTxFieldReceiptV1Cbor(
+          Buffer.from(utxo.datum, "hex"),
+        );
         const terminal = bundle.fragments.at(-1)!;
         const expectedAssetName = receiptAssetNameV1({
           txOrderPolicyId: contracts.txOrder.policyId,
@@ -939,10 +1020,7 @@ export const buildUnsignedTxOrderTxV1WithMetadataProgram = (
           Data.to(receipt.tx_order_id, OutputReference) !==
             Data.to(txOrderId, OutputReference) ||
           receipt.transaction_commitment !== bundle.transactionCommitment ||
-          Data.to(
-            receipt.collection_proof,
-            BoundedCollectionItemProofV1,
-          ) !==
+          Data.to(receipt.collection_proof, BoundedCollectionItemProofV1) !==
             Data.to(
               terminal.datum.collection_proof,
               BoundedCollectionItemProofV1,

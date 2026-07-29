@@ -5,4 +5,5 @@ packages:
   - midgard-validation
   - midgard-node
   - midgard-sdk
+  - midgard-watcher
   - da-committee-node

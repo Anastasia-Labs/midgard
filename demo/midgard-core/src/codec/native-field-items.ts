@@ -15,8 +15,8 @@ import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 
 export const MIDGARD_NATIVE_DYNAMIC_FIELD_COUNT_V1 = 9 as const;
 
-const BYTE_LIST_FIELDS = new Set([0, 1, 2, 3, 4, 6]);
-const RAW_ITEM_LIST_FIELDS = new Set([7, 8]);
+const BYTE_LIST_FIELDS = new Set([0, 1, 2, 3, 4, 7]);
+const RAW_ITEM_LIST_FIELDS = new Set([6, 8]);
 
 const fail = (message: string): never => {
   throw new MidgardTxCodecError(

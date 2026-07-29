@@ -190,6 +190,14 @@ export type DeploymentManifestV1JsonValue =
   | readonly DeploymentManifestV1JsonValue[]
   | { readonly [key: string]: DeploymentManifestV1JsonValue };
 
+export const MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION =
+  "midgard-deployment-marker-v1" as const;
+
+export type DeploymentMarkerV1 = {
+  readonly schemaVersion: typeof MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION;
+  readonly manifestId: string;
+};
+
 const requireRecord = (
   value: unknown,
   field: string,
@@ -205,6 +213,69 @@ const requireRecord = (
     throw new Error(`${field} must contain only string keys`);
   }
   return value as Record<string, unknown>;
+};
+
+const requireDeploymentManifestIdV1 = (
+  value: unknown,
+  field: string,
+): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`${field} must be lowercase SHA-256 hex`);
+  }
+  return value;
+};
+
+export const parseDeploymentMarkerV1 = (
+  value: unknown,
+): DeploymentMarkerV1 => {
+  const candidate = requireRecord(value, "Deployment marker V1");
+  const keys = Object.keys(candidate);
+  if (
+    keys.length !== 2 ||
+    !Object.prototype.hasOwnProperty.call(candidate, "schemaVersion") ||
+    !Object.prototype.hasOwnProperty.call(candidate, "manifestId")
+  ) {
+    throw new Error(
+      "Deployment marker V1 must contain exactly schemaVersion and manifestId",
+    );
+  }
+  if (
+    candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `Deployment marker V1 schemaVersion must be ${MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION}`,
+    );
+  }
+  return {
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+    manifestId: requireDeploymentManifestIdV1(
+      candidate.manifestId,
+      "Deployment marker V1 manifestId",
+    ),
+  };
+};
+
+export const makeDeploymentMarkerV1 = (
+  manifestId: string,
+): DeploymentMarkerV1 =>
+  parseDeploymentMarkerV1({
+    schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+    manifestId,
+  });
+
+export const assertDeploymentMarkerV1Matches = (
+  expected: DeploymentMarkerV1,
+  actual: unknown,
+  boundary = "deployment boundary",
+): DeploymentMarkerV1 => {
+  const canonicalExpected = parseDeploymentMarkerV1(expected);
+  const canonicalActual = parseDeploymentMarkerV1(actual);
+  if (canonicalActual.manifestId !== canonicalExpected.manifestId) {
+    throw new Error(
+      `${boundary} deployment marker mismatch: expected ${canonicalExpected.manifestId}, found ${canonicalActual.manifestId}`,
+    );
+  }
+  return canonicalActual;
 };
 
 const normalizeDeploymentManifestV1JsonValueInternal = (

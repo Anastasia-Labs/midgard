@@ -6,9 +6,13 @@ import {
   MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
 } from "../src/consensus-profile-v1.js";
 import {
+  assertDeploymentMarkerV1Matches,
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
+  makeDeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
   normalizeDeploymentManifestV1JsonValue,
+  parseDeploymentMarkerV1,
   verifyDeploymentManifestV1Identity,
 } from "../src/deployment-manifest-identity-v1.js";
 
@@ -79,7 +83,38 @@ describe("DeploymentManifestV1 shared identity", () => {
       ...identity,
       manifestId: computeDeploymentManifestV1Id(identity),
     };
+    expect(manifest.manifestId).toBe(
+      "55247a9e51dc3588485ec8d431fd67e725f55d79bbc2af055b4b444b2d2ed8a5",
+    );
     expect(verifyDeploymentManifestV1Identity(manifest)).toEqual(manifest);
+  });
+
+  it("owns the sole exact DeploymentMarkerV1 boundary", () => {
+    const manifestId = computeDeploymentManifestV1Id(identityInput());
+    const marker = makeDeploymentMarkerV1(manifestId);
+    expect(marker).toEqual({
+      schemaVersion: MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+      manifestId,
+    });
+    expect(parseDeploymentMarkerV1(marker)).toEqual(marker);
+    expect(
+      assertDeploymentMarkerV1Matches(marker, marker, "Postgres"),
+    ).toEqual(marker);
+    expect(() =>
+      parseDeploymentMarkerV1({ ...marker, historicalVersion: 9 }),
+    ).toThrow(/exactly schemaVersion and manifestId/u);
+    expect(() =>
+      parseDeploymentMarkerV1({ manifestId: marker.manifestId }),
+    ).toThrow(/exactly schemaVersion and manifestId/u);
+    expect(() =>
+      assertDeploymentMarkerV1Matches(
+        marker,
+        makeDeploymentMarkerV1("ff".repeat(32)),
+        "DA store",
+      ),
+    ).toThrow(
+      `DA store deployment marker mismatch: expected ${marker.manifestId}, found ${"ff".repeat(32)}`,
+    );
   });
 
   it("rejects tampering, missing fields, and extra fields", () => {

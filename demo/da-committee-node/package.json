@@ -1,10 +1,10 @@
 {
-  "name": "midgard-watcher",
+  "name": "da-committee-node",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "midgard-watcher": "./dist/index.js"
+    "da-committee-node": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",

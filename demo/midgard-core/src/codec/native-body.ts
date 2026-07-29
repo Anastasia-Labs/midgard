@@ -1,10 +1,11 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
-import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
 import type {
   MidgardNativeTxBodyCanonicalV1,
   MidgardNativeTxBodyCompactV1,
 } from "./native.js";
+import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
+import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
 import {
   asFixedArray,
   asSigned,
@@ -42,6 +43,20 @@ type NativeTxBodyCanonicalValue = readonly [
   Hash32,
   bigint,
 ];
+
+const asNativeNetworkId = (value: unknown, fieldName: string): bigint => {
+  const networkId = asUnsigned(value, fieldName);
+  if (
+    networkId !== 0n &&
+    networkId !== 1n &&
+    networkId !== MIDGARD_NATIVE_NETWORK_ID_NONE
+  ) {
+    throw new Error(
+      `${fieldName} must be 0, 1, or ${MIDGARD_NATIVE_NETWORK_ID_NONE.toString(10)}`,
+    );
+  }
+  return networkId;
+};
 
 export const encodeNativeTxBodyCompactValue = (
   body: MidgardNativeTxBodyCompactV1,
@@ -81,7 +96,7 @@ export const encodeNativeTxBodyCompactValue = (
     body.auxiliaryDataHash,
     "transaction_body_compact.auxiliary_data_hash",
   ),
-  asUnsigned(body.networkId, "transaction_body_compact.network_id"),
+  asNativeNetworkId(body.networkId, "transaction_body_compact.network_id"),
 ];
 
 export const decodeNativeTxBodyCompactValue = (
@@ -101,7 +116,7 @@ export const decodeNativeTxBodyCompactValue = (
     mintHash: hashItem(v, 8, fieldName),
     scriptIntegrityHash: hashItem(v, 9, fieldName),
     auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
+    networkId: asNativeNetworkId(v[11], `${fieldName}[11]`),
   };
 };
 
@@ -125,7 +140,7 @@ export const encodeNativeTxBodyCanonicalValue = (
     "transaction_body.script_integrity_hash",
   ),
   ensureHash32(body.auxiliaryDataHash, "transaction_body.auxiliary_data_hash"),
-  asUnsigned(body.networkId, "transaction_body.network_id"),
+  asNativeNetworkId(body.networkId, "transaction_body.network_id"),
 ];
 
 export const decodeNativeTxBodyCanonicalValue = (
@@ -145,7 +160,7 @@ export const decodeNativeTxBodyCanonicalValue = (
     mintPreimageCbor: bytesItem(v, 8, fieldName),
     scriptIntegrityHash: hashItem(v, 9, fieldName),
     auxiliaryDataHash: hashItem(v, 10, fieldName),
-    networkId: asUnsigned(v[11], `${fieldName}[11]`),
+    networkId: asNativeNetworkId(v[11], `${fieldName}[11]`),
   };
 };
 

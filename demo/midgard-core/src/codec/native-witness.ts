@@ -1,11 +1,11 @@
 import { decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { ensureHash32, type Hash32 } from "./hash.js";
-import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
 import type {
   MidgardNativeTxWitnessSetCanonicalV1,
   MidgardNativeTxWitnessSetCompactV1,
 } from "./native.js";
 import { MIDGARD_NATIVE_TX_V1_VERSION } from "./native-constants.js";
+import { deriveMidgardNativeFieldCollectionV1 } from "./native-field-items.js";
 import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];
@@ -67,11 +67,11 @@ export const deriveNativeTxWitnessSetCompact = (
   witnessSet: MidgardNativeTxWitnessSetCanonicalV1,
 ): MidgardNativeTxWitnessSetCompactV1 => ({
   addrTxWitsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 6,
+    fieldIndex: 7,
     preimageCbor: witnessSet.addrTxWitsPreimageCbor,
   }).commitment,
   scriptTxWitsHash: deriveMidgardNativeFieldCollectionV1({
-    fieldIndex: 7,
+    fieldIndex: 6,
     preimageCbor: witnessSet.scriptTxWitsPreimageCbor,
   }).commitment,
   redeemerTxWitsHash: deriveMidgardNativeFieldCollectionV1({
