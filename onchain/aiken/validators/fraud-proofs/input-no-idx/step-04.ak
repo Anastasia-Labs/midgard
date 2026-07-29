@@ -1,13 +1,14 @@
 use aiken/collection/list
+use aiken/crypto.{blake2b_256}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/input_no_idx/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
+use midgard/fraud_proofs/native_tx/codec
 
 validator main(
   computation_thread_token_policy_id: PolicyId,
@@ -65,12 +66,14 @@ validator main(
         expect Some(State { producing_tx_outputs_hash, bad_input_output_index }) =
           m_input_state_data
 
-        // 2. Provided outputs preimage must match the producing transaction
-        //    outputs hash.
-        expect outputs_preimage |> verify_hash_32(producing_tx_outputs_hash)
+        // 2. Provided outputs preimage (raw per-output CBOR byte list) must
+        //    reproduce the producing transaction's native outputs hash once
+        //    wrapped with `encode_native_byte_list`.
+        expect
+          blake2b_256(codec.encode_native_byte_list(outputs_preimage)) == producing_tx_outputs_hash
 
-        // 3. With preimage of outputs verified, it must be shown its length is
-        //    smaller than the output index passed down from previous step.
+        // 3. With the preimage of outputs verified, the bad input's output index
+        //    must be out of range of the producing transaction's outputs.
         expect bad_input_output_index >= list.length(outputs_preimage)
 
         // Done.

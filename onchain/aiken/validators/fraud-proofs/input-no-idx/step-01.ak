@@ -9,7 +9,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{TxBodyProvided, cancel, pass_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/input_no_idx/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/input_no_idx/step_02
 
@@ -36,7 +36,8 @@ validator main(
         )
       ct.Continue(tx_inclusion_args) -> {
         // 1. Generic validations for passing the provided bad tx to the next
-        //    step must pass.
+        //    step must pass. `pass_native_tx_to_next_step` authenticates the raw
+        //    native tx against the header's counted `transactions_root`.
         let
           _own_script_hash,
           _computation_thread_token_asset_name,
@@ -46,10 +47,9 @@ validator main(
           output_state_data,
           _header,
           _bad_tx_id,
-          _bad_tx,
-          tx_field_preimage,
+          bad_tx_view,
         <-
-          pass_tx_to_next_step(
+          pass_native_tx_to_next_step(
             computation_thread_token_policy_id,
             hub_oracle,
             datum,
@@ -58,14 +58,14 @@ validator main(
             tx,
           )
 
-        // 2. Redeemer must provide the body of the bad transaction.
-        expect TxBodyProvided(bad_tx_body) = tx_field_preimage
-
-        // 3. The UTxO must be produced at next step's script hash with the
-        //    verified bad transactions' inputs included in its datum.
+        // 2. The UTxO must be produced at next step's script hash with the
+        //    native spend-inputs hash of the bad transaction included in its
+        //    datum.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data =
-          step_02.State { verified_tx_inputs_hash: bad_tx_body.spend_inputs }
+          step_02.State {
+            verified_tx_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,
+          }
         expect output_state_data == expected_output_state
 
         // Done.

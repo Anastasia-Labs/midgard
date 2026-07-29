@@ -49,6 +49,13 @@ export const NO_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/no_reference_input/step_04.main.spend",
 } as const;
 
+export const INPUT_NO_IDX_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/input_no_idx/step_01.main.spend",
+  step02: "fraud_proofs/input_no_idx/step_02.main.spend",
+  step03: "fraud_proofs/input_no_idx/step_03.main.spend",
+  step04: "fraud_proofs/input_no_idx/step_04.main.spend",
+} as const;
+
 export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/invalid_range/step_01.main.spend",
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
@@ -113,6 +120,19 @@ export type NoReferenceInputFaultProofContracts = {
   };
 };
 
+export type InputNoIdxFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly inputNoIdx: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type InvalidRangeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -143,6 +163,7 @@ export type FaultProofContracts = {
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
+  readonly inputNoIdx: InputNoIdxFaultProofContracts["inputNoIdx"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
@@ -168,6 +189,9 @@ export type BuildNonExistentInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildNoReferenceInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildInputNoIdxFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
@@ -508,6 +532,92 @@ const buildNonExistentInputChain = ({
     };
   });
 
+const buildInputNoIdxChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<InputNoIdxFaultProofContracts["inputNoIdx"], Error> =>
+  Effect.gen(function* () {
+    // step-04 params: (ct_policy, fraud_proof_policy, fraud_proof_address) —
+    // note the order differs from no-input's step-04.
+    const step04 = yield* tryBuild(
+      "Failed to build input-no-idx step 04",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step04),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+            ],
+          ),
+        ),
+    );
+
+    // step-03 binds the producing native tx, so — unlike no-input's step-03 —
+    // it takes the hub-oracle policy id as a third parameter.
+    const step03 = yield* tryBuild(
+      "Failed to build input-no-idx step 03",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step03),
+            [
+              step04.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    const step02 = yield* tryBuild(
+      "Failed to build input-no-idx step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
+            [step03.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+
+    const step01 = yield* tryBuild(
+      "Failed to build input-no-idx step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step01),
+            [
+              step02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
 const buildNoReferenceInputChain = ({
   blueprint,
   network,
@@ -777,6 +887,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const inputNoIdx = yield* buildInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
     const invalidRange = yield* buildInvalidRangeChain({
       ...params,
       ...shared,
@@ -796,6 +910,7 @@ export const buildFaultProofContracts = (
       doubleSpend,
       nonExistentInput,
       noReferenceInput,
+      inputNoIdx,
       invalidRange,
       zeroInput,
       transitionTrace,
@@ -847,6 +962,22 @@ export const buildNoReferenceInputFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       noReferenceInput,
+    };
+  });
+
+export const buildInputNoIdxFaultProofContracts = (
+  params: BuildInputNoIdxFaultProofContractsParams,
+): Effect.Effect<InputNoIdxFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const inputNoIdx = yield* buildInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      inputNoIdx,
     };
   });
 

@@ -72,8 +72,8 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
-- Offchain tooling for 6 families (double-spend, invalid-range, non-existent-input,
-  transition-trace, zero-input, no-reference-input); all six are **emulator-proven
+- Offchain tooling for 7 families (double-spend, invalid-range, non-existent-input, input-no-idx,
+  transition-trace, zero-input, no-reference-input); all seven are **emulator-proven
   end-to-end** through faulty-block removal, although transition-trace remains
   library-only rather than CLI-wired.
 - ⚠️ Reachability caveat: only **7 of the 12** proof types are registered in the
@@ -96,7 +96,7 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 6 of the 12 already-implemented onchain types; CLI wiring for
+- Offchain tooling for 5 of the 12 already-implemented onchain types; CLI wiring for
   `transition-trace`.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR

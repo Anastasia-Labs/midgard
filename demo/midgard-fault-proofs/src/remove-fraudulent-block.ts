@@ -5,6 +5,7 @@ import {
   ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
   buildDoubleSpendFaultProofContracts,
+  buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
@@ -21,6 +22,7 @@ import {
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
   type NonExistentInputFaultProofContracts,
@@ -273,6 +275,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   FraudProofCatalogueCategoryName,
   | "doubleSpend"
   | "nonExistentInput"
+  | "nonExistentInputNoIndex"
   | "invalidRange"
   | "transitionTrace"
   | "zeroInput"
@@ -555,10 +558,12 @@ const buildRemovalContracts = async ({
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
-    | NoReferenceInputFaultProofContracts;
+    | NoReferenceInputFaultProofContracts
+    | InputNoIdxFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
+    | "fraudProofNonExistentInputNoIndex"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
     | "fraudProofZeroInput"
@@ -629,7 +634,7 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofZeroInput";
     derivedCategoryFirstStepHash =
       zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "noReferenceInput") {
     const noReferenceInputContracts = await Effect.runPromise(
       buildNoReferenceInputFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -642,6 +647,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofNoReferenceInput";
     derivedCategoryFirstStepHash =
       noReferenceInputContracts.noReferenceInput.firstStep.spendingScriptHash;
+  } else {
+    const inputNoIdxContracts = await Effect.runPromise(
+      buildInputNoIdxFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = inputNoIdxContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNonExistentInputNoIndex";
+    derivedCategoryFirstStepHash =
+      inputNoIdxContracts.inputNoIdx.firstStep.spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",
