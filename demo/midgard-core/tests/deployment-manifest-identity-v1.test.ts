@@ -9,6 +9,7 @@ import {
   assertDeploymentMarkerV1Matches,
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
   makeDeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
   normalizeDeploymentManifestV1JsonValue,
@@ -37,6 +38,12 @@ const identityInput = () => ({
 });
 
 describe("DeploymentManifestV1 shared identity", () => {
+  it("includes the zero-input fraud-proof validator in the canonical registry", () => {
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toContain(
+      "fraudProofZeroInput",
+    );
+  });
+
   it("owns canonical JSON normalization and digest vectors", () => {
     const normalized = normalizeDeploymentManifestV1JsonValue({
       z: [1, 2n],
@@ -97,9 +104,9 @@ describe("DeploymentManifestV1 shared identity", () => {
       manifestId,
     });
     expect(parseDeploymentMarkerV1(marker)).toEqual(marker);
-    expect(
-      assertDeploymentMarkerV1Matches(marker, marker, "Postgres"),
-    ).toEqual(marker);
+    expect(assertDeploymentMarkerV1Matches(marker, marker, "Postgres")).toEqual(
+      marker,
+    );
     expect(() =>
       parseDeploymentMarkerV1({ ...marker, historicalVersion: 9 }),
     ).toThrow(/exactly schemaVersion and manifestId/u);

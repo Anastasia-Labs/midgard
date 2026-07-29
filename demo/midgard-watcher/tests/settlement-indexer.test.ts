@@ -160,6 +160,7 @@ const makeDeploymentAuthority = () => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => {
         const contractName = {
@@ -168,6 +169,7 @@ const makeDeploymentAuthority = () => {
           nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
           invalidRange: "fraudProofInvalidRange",
           transitionTrace: "fraudProofTransitionTrace",
+          zeroInput: "fraudProofZeroInput",
           validationTraceDispute: "validationTraceDispute",
         }[category]!;
         return [

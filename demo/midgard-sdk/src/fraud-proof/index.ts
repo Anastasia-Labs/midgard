@@ -7,3 +7,4 @@ export * from "./native.js";
 export * from "./non-existent-input.js";
 export * from "./tokens.js";
 export * from "./validation-dispute.js";
+export * from "./zero-input.js";

@@ -18,13 +18,21 @@ import type {
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import { scanStateQueue, type StateQueueProvider } from "./l1/state-queue-scanner.js";
+import {
+  scanStateQueue,
+  type StateQueueProvider,
+} from "./l1/state-queue-scanner.js";
 import {
   type DaSigner,
   type DaSignerValidation,
   signDaAttestation,
 } from "./signer.js";
-import { hasPayloadBytes, type WatcherStore } from "./store.js";
+import {
+  hasPayloadBytes,
+  type L1ObservedDecision,
+  type L1SourceState,
+  type WatcherStore,
+} from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
 
 export type WatcherServiceDeps = {
@@ -77,6 +85,12 @@ export type WatcherReadinessPeerSnapshot = {
 
 export type WatcherReadinessSnapshot = {
   readonly ready: boolean;
+  readonly l1Source?: {
+    readonly sourceMode: "local_node" | "external_providers";
+    readonly status: "uninitialized" | "healthy" | "quarantined";
+    readonly observedAt?: string;
+    readonly quarantineReason?: string;
+  };
   readonly deployment: {
     readonly configuredFingerprint: string;
     readonly storeFingerprint?: string;
@@ -154,21 +168,49 @@ export class WatcherService {
         this.deps.config.contractDeploymentInfoSha256,
       manifestRaw: this.deps.config.deploymentManifestRaw,
     });
+    const l1State = await this.deps.store.getL1SourceState();
+    if (
+      l1State !== undefined &&
+      (l1State.network !== this.deps.config.network ||
+        l1State.sourceMode !== this.l1SourceMode())
+    ) {
+      await this.quarantineL1Source(
+        `l1_source_configuration_changed: stored=${l1State.sourceMode}/${l1State.network}, configured=${this.l1SourceMode()}/${this.deps.config.network}`,
+        l1State,
+      );
+      throw new Error(
+        "persisted L1 source state does not match configured source mode/network",
+      );
+    }
     if (this.deps.daChainReader !== undefined) {
-      const daParams = await this.deps.daChainReader.fetchDaParams();
-      if (daParams.committeeHex !== this.deps.config.daParams.committeeHex) {
-        throw new Error("on-chain DA committee does not match watcher config");
-      }
-      if (
-        daParams.committeeSignersHash !==
-        this.deps.config.daParams.committeeSignersHash
-      ) {
-        throw new Error(
-          "on-chain DA committee_signers_hash does not match watcher config",
+      try {
+        const daParams = await this.deps.daChainReader.fetchDaParams();
+        if (daParams.committeeHex !== this.deps.config.daParams.committeeHex) {
+          throw new Error(
+            "on-chain DA committee does not match watcher config",
+          );
+        }
+        if (
+          daParams.committeeSignersHash !==
+          this.deps.config.daParams.committeeSignersHash
+        ) {
+          throw new Error(
+            "on-chain DA committee_signers_hash does not match watcher config",
+          );
+        }
+        if (daParams.threshold !== this.deps.config.daParams.threshold) {
+          throw new Error(
+            "on-chain DA threshold does not match watcher config",
+          );
+        }
+      } catch (error) {
+        await this.quarantineL1Source(
+          `l1_da_params_observation_failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          l1State,
         );
-      }
-      if (daParams.threshold !== this.deps.config.daParams.threshold) {
-        throw new Error("on-chain DA threshold does not match watcher config");
+        throw error;
       }
     }
   }
@@ -193,6 +235,7 @@ export class WatcherService {
     } = {},
   ): Promise<WatcherReadinessSnapshot> {
     const deployment = await this.deps.store.getDeployment();
+    const l1SourceState = await this.deps.store.getL1SourceState();
     const headers = await this.deps.store.listStateQueueHeaders();
     const payloads = await Promise.all(
       headers.map((header) => this.deps.store.getDaPayload(header.headerHash)),
@@ -288,6 +331,14 @@ export class WatcherService {
       reasons.push("last watcher tick completed with errors");
     }
     if (
+      l1SourceState?.status === "quarantined" &&
+      scanner.status !== "failed"
+    ) {
+      reasons.push(
+        `L1 source is quarantined: ${l1SourceState.quarantineReason ?? "unknown reason"}`,
+      );
+    }
+    if (
       this.deps.config.l1SubmissionEnabled &&
       l1SubmitterPreflight.status === "not_run"
     ) {
@@ -302,6 +353,16 @@ export class WatcherService {
 
     return {
       ready: reasons.length === 0,
+      l1Source: {
+        sourceMode: this.l1SourceMode(),
+        status: l1SourceState?.status ?? "uninitialized",
+        ...(l1SourceState?.observedAt === undefined
+          ? {}
+          : { observedAt: l1SourceState.observedAt }),
+        ...(l1SourceState?.quarantineReason === undefined
+          ? {}
+          : { quarantineReason: l1SourceState.quarantineReason }),
+      },
       deployment: {
         configuredFingerprint: this.deps.config.deploymentFingerprint,
         ...(deployment?.fingerprint === undefined
@@ -388,12 +449,50 @@ export class WatcherService {
   }
 
   private async tickOnce(): Promise<WatcherTickResult> {
-    const records = await scanStateQueue(this.deps.stateQueueProvider, {
-      deploymentFingerprint: this.deps.config.deploymentFingerprint,
-      daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
-      finalityDepth: this.deps.config.finalityDepth,
-      consensusProfile: this.deps.config.consensusProfile,
-    });
+    const priorL1State = await this.deps.store.getL1SourceState();
+    if (priorL1State?.status === "quarantined") {
+      return quarantinedTickResult(priorL1State);
+    }
+    let records: Awaited<ReturnType<typeof scanStateQueue>>;
+    try {
+      records = await scanStateQueue(this.deps.stateQueueProvider, {
+        deploymentFingerprint: this.deps.config.deploymentFingerprint,
+        daAttestationPolicyId: this.deps.config.daAttestationPolicyId,
+        finalityDepth: this.deps.config.finalityDepth,
+        consensusProfile: this.deps.config.consensusProfile,
+      });
+    } catch (error) {
+      const reason = `l1_source_observation_failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      await this.quarantineL1Source(reason, priorL1State);
+      throw error;
+    }
+    const transitionFailure = l1ObservationTransitionFailure(
+      priorL1State,
+      records,
+    );
+    if (transitionFailure !== undefined) {
+      const quarantined = await this.quarantineL1Source(
+        transitionFailure,
+        priorL1State,
+      );
+      return quarantinedTickResult(quarantined);
+    }
+    if (
+      records.some(
+        (record) =>
+          record.finalized &&
+          (record.observedChainPoint.slot === undefined ||
+            record.observedChainPoint.blockHash === undefined),
+      )
+    ) {
+      const quarantined = await this.quarantineL1Source(
+        "l1_source_finalized_decision_missing_canonical_chain_point",
+        priorL1State,
+      );
+      return quarantinedTickResult(quarantined);
+    }
     const errors: string[] = [];
     const payloadFetches: WatcherPayloadFetchObservation[] = [];
     let signedHeaders = 0;
@@ -477,7 +576,7 @@ export class WatcherService {
         errors.push(error instanceof Error ? error.message : String(error));
       }
     }
-    return {
+    const result = {
       scannedHeaders: records.length,
       signedHeaders,
       reconciledHeaders,
@@ -485,6 +584,70 @@ export class WatcherService {
       payloadFetches,
       errors,
     };
+    await this.persistHealthyL1SourceState(records);
+    return result;
+  }
+
+  private l1SourceMode(): L1SourceState["sourceMode"] {
+    return this.deps.config.l1Source.sourceMode;
+  }
+
+  private async quarantineL1Source(
+    reason: string,
+    previous?: L1SourceState,
+  ): Promise<L1SourceState> {
+    const now = new Date().toISOString();
+    const state: L1SourceState = {
+      schemaVersion: 1,
+      sourceMode: this.l1SourceMode(),
+      network: this.deps.config.network,
+      status: "quarantined",
+      observations: previous?.observations ?? [],
+      observedAt: previous?.observedAt ?? now,
+      quarantineReason: reason,
+      quarantinedAt: now,
+    };
+    await this.deps.store.quarantineL1Decisions(state);
+    return state;
+  }
+
+  private async persistHealthyL1SourceState(
+    records: Awaited<ReturnType<typeof scanStateQueue>>,
+  ): Promise<void> {
+    const submissions = await this.deps.store.listL1Submissions();
+    const submittedHeaders = new Set(
+      submissions.map(({ headerHash }) => headerHash),
+    );
+    const observations = await Promise.all(
+      records.map(
+        async (record): Promise<L1ObservedDecision> => ({
+          headerHash: record.headerHash,
+          stateQueueOutRef: record.stateQueueOutRef,
+          stateQueueStatus: record.status,
+          ...(record.observedChainPoint.slot === undefined
+            ? {}
+            : { slot: record.observedChainPoint.slot }),
+          ...(record.observedChainPoint.blockHash === undefined
+            ? {}
+            : { blockHash: record.observedChainPoint.blockHash }),
+          finalized: record.finalized,
+          hasPersistedDecision:
+            submittedHeaders.has(record.headerHash) ||
+            (await this.deps.store.listDaSignatures(record.headerHash)).length >
+              0,
+        }),
+      ),
+    );
+    await this.deps.store.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: this.l1SourceMode(),
+      network: this.deps.config.network,
+      status: "healthy",
+      observations: observations.sort((left, right) =>
+        left.headerHash.localeCompare(right.headerHash),
+      ),
+      observedAt: new Date().toISOString(),
+    });
   }
 
   private async fetchVerifyAndSign(
@@ -868,6 +1031,60 @@ export class WatcherService {
     );
   }
 }
+
+const l1ObservationTransitionFailure = (
+  previous: L1SourceState | undefined,
+  current: Awaited<ReturnType<typeof scanStateQueue>>,
+): string | undefined => {
+  if (previous === undefined) {
+    return undefined;
+  }
+  const currentByHeader = new Map(
+    current.map((record) => [record.headerHash, record] as const),
+  );
+  for (const prior of previous.observations) {
+    if (!prior.hasPersistedDecision) {
+      continue;
+    }
+    const observed = currentByHeader.get(prior.headerHash);
+    if (observed === undefined) {
+      return `l1_source_decision_disappeared:${prior.headerHash}`;
+    }
+    const expectedAttestationAdvance =
+      (prior.stateQueueStatus === "unattested" ||
+        prior.stateQueueStatus === "attesting") &&
+      observed.status === "attested" &&
+      prior.slot !== undefined &&
+      observed.observedChainPoint.slot !== undefined &&
+      observed.observedChainPoint.slot > prior.slot &&
+      observed.stateQueueOutRef !== prior.stateQueueOutRef &&
+      observed.finalized;
+    if (
+      !expectedAttestationAdvance &&
+      (observed.stateQueueOutRef !== prior.stateQueueOutRef ||
+        observed.status !== prior.stateQueueStatus ||
+        observed.observedChainPoint.slot !== prior.slot ||
+        observed.observedChainPoint.blockHash !== prior.blockHash)
+    ) {
+      return `l1_source_decision_forked:${prior.headerHash}`;
+    }
+    if (!expectedAttestationAdvance && !observed.finalized) {
+      return `l1_source_decision_lost_finality:${prior.headerHash}`;
+    }
+  }
+  return undefined;
+};
+
+const quarantinedTickResult = (state: L1SourceState): WatcherTickResult => ({
+  scannedHeaders: 0,
+  signedHeaders: 0,
+  reconciledHeaders: 0,
+  skippedHeaders: 0,
+  payloadFetches: [],
+  errors: [
+    `L1 source quarantined: ${state.quarantineReason ?? "unknown reason"}`,
+  ],
+});
 
 const payloadFetchObservation = (
   headerHash: string,

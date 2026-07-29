@@ -25,7 +25,7 @@
 - Specification authoring revision: `d5f36df25a9a1696e4df857e01aa81d2f0b6ef96`.
 - The authoritative external specification was updated after the starting
   freeze and was reread completely at current SHA-256
-  `7815803f50e0c946c5106d586aac34a3cd0045fc56b0762bf2fe00e20e3602bf`.
+  `b6c487161fb1c42b7980b3ad4980ec26e9530b0861fc5d8b61ae2f3a6eb3fa15`.
   It remains protected and parent-owned; the update adds delivery/checkpoint
   requirements and does not transfer Goal edit ownership.
 - Execution-time current-truth reconciliation on 2026-07-27 observed HEAD
@@ -550,6 +550,63 @@
 | Reclaimed C20/C21 lane before watcher checkpoint                                                                                                                                                                                                                                        | HEAD `7a952e99` plus current worktree; Node `22.22.2`; Aiken `v1.1.22+39d6b04`                                                                                                                                                                                                                                  | PARTIAL overall. The source-complete TypeScript field-order decoder/verifier and transaction-order schema are included because clean-tree W15 verification proves they are required checkpoint dependencies; their focused clean-tree tests pass 15/15. Native-V1 Aiken 23/23 and transaction-order 21/21 pass; the native suite passed 7/8, its stale fixture was repaired, and that selector passes 1/1. Silent C21 groups remain uncredited. | No blueprint regeneration or C20/C21 promotion; every affected Aiken path remains unstaged.                                                                                                               |
 | F40/F41 verification-plan and closure-foundation self-checks                                                                                                                                                                                                                            | HEAD `7a952e99` plus worktree; 8 exact package scripts; 46-command serial plan; 2 one-selector guarded Aiken runs; 35 exact AC entries; 12 protected paths                                                                                                                                                      | IN_PROGRESS and fail closed; plan, seven hostile decoder mutations, and in-progress schema/hash verification pass. Unarmed testnet invocation exits nonzero before local or live work, and release verification exits nonzero because revision/bindings/commands/criteria/secrets/digest are incomplete. No open status is promoted.                                                                                       | plan verifier PASS; closure self-test 7/7; closure schema/hash verifier PASS; testnet guard exit 1; release guard exit 1                                                                                  |
 
+## Watcher L1-source checkpoint freeze
+
+- Checkpoint branch:
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`; no `codex/` publication
+  branch is used.
+- Target branch: `tx-validation`, refreshed without drift at
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- The merge/checkpoint review tree is isolated at
+  `/tmp/midgard-pr-integration.2AT9BP/repo`. The authoritative specification
+  and seven protected untracked checkpoint files are absent. The two protected
+  tracked libraries exactly match clean source HEAD `4acf6821`, not the
+  protected dirty worktree bytes; their clean committed versions are inherited
+  prerequisites added relative to `tx-validation`. No protected dirty byte or
+  Goal edit was imported.
+  `demo/midgard-watcher/src/public-da-client.ts` remains uncredited and absent.
+- Authoritative source-mode decision remains exact:
+  `local_node` uses one watcher-operated Cardano node as chain authority and
+  treats Ogmios/Kupo/db-sync surfaces only as same-node aligned query indexes;
+  `external_providers` requires at least two operationally independent
+  configured authorities. W14 consumes canonical node-accepted bytes and
+  rollback observations without reimplementing the Cardano validators.
+- Review fixes close configured-authority substitution, durable
+  rollback/quarantine invalidation, watcher catalogue drift, active-journal
+  validation-trace omission, forced-omission time binding, delayed
+  source-verification deadlines, zero-input commitment drift, and retained-DA
+  field-order drift. The persistent differential report is
+  `docs/exec-plans/canonical-v1-pr-differential-review-2026-07-28.md`.
+- Fresh checkpoint evidence:
+  - Aiken `v1.1.22+39d6b04` build PASS; generated blueprint SHA-256
+    `449e7aecc51820f77866e6fe15c79ce29b7e3ea3ad9425b55f90d14abcbc3b81`;
+    guarded zero-input selector completes with zero errors.
+  - Watcher 13/13 files and 194/194 tests PASS; typecheck, ESLint, Prettier,
+    and the 8-class hash-bound dependency verifier PASS.
+  - Fault-proof 14/14 files and 107/107 tests PASS in 462.80 seconds;
+    rebuilt-blueprint zero-input emulator 1/1 PASS; typecheck, ESLint, and
+    scoped Prettier PASS.
+  - Full retained-DA verifier PASS: 13 producer files/14 tests in 491.06
+    seconds, DA consumer 20/20 in 30.02 seconds, and fault-proof consumer 3/3
+    in 27.73 seconds, after regenerating and byte-comparing the private corpus.
+  - DA package PASS outside the listener-restricted sandbox: 26 executed
+    files/184 tests PASS, one PostgreSQL-environment test skipped; typecheck,
+    production build, and no-HTTP transport guard PASS. The skipped hostile
+    startup-journal case separately passes 1/1 against local PostgreSQL.
+  - Core deployment identity 6/6, SDK fault-proof integration 17/17, and node
+    deployment/contract registry 24/24 PASS.
+  - Documentation facts 9 groups, links 190 Markdown/MDX files, and voice 83
+    pages PASS under pinned Node 22.
+- No active path leases remain. No product failure remains in the checkpoint
+  scope. The initial mistyped DA package filter and mistyped documentation-link
+  script path were command errors immediately superseded by the exact passing
+  commands and carry no acceptance credit.
+- Publication, actual PR checks, and the post-publication differential review
+  remain pending until the checkpoint commit is created and pushed. Formal
+  §4.4 release-journey proof, target-testnet acceptance, and the remaining
+  §12/§15 criteria remain open; this checkpoint must not be represented as
+  Goal completion.
+
 ## Current next action
 
 Publish the coherent W00–W17/W23 watcher checkpoint from a new
@@ -557,13 +614,13 @@ Publish the coherent W00–W17/W23 watcher checkpoint from a new
 base is `tx-validation`. Stage the watcher package, its workspace/CI
 integration, hash-bound dependency map/verifier, this recovery ledger, and
 only the core/SDK identity and canonical-transaction prerequisites proven
-necessary by the clean staged tree; exclude every protected pre-Goal path, the uncredited W20
-`public-da-client.ts` candidate, and unresolved C20/C21 Aiken work. Review the
-actual PR diff and checks, fix all actionable findings, rerun the pinned
-checkpoint gates, and push the reviewed result. The draft must remain open
-because §12/§15 are not complete. After this user-requested checkpoint yield,
-resume the serialized C20/C21 lane and then Q00→Q03; W20 remains stopped until
-its prerequisites are proven.
+necessary by the clean staged tree; exclude every protected pre-Goal worktree
+edit, the uncredited W20 `public-da-client.ts` candidate, and unresolved
+C20/C21 Aiken work. Review the actual PR diff and checks, fix all actionable
+findings, rerun the pinned checkpoint gates, and push the reviewed result. The
+draft must remain open because §12/§15 are not complete. After this
+user-requested checkpoint yield, resume the serialized C20/C21 lane and then
+Q00→Q03; W20 remains stopped until its prerequisites are proven.
 
 ## Blockers
 

@@ -31,6 +31,7 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
   "duplicate_trust_identity",
   "duplicate_operator_identity",
   "duplicate_local_surface",
+  "provider_transport_mismatch",
   "source_mode_mismatch",
   "local_node_authority_mismatch",
   "local_node_genesis_mismatch",
@@ -49,6 +50,7 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
 export const WATCHER_MULTI_PROVIDER_ALERT_CODES_V1 = [
   "watcher_provider_quorum_unavailable",
   "watcher_provider_identity_collision",
+  "watcher_provider_transport_mismatch",
   "watcher_l1_source_mode_mismatch",
   "watcher_local_node_authority_mismatch",
   "watcher_local_node_chain_sync_missing",
@@ -91,6 +93,13 @@ export type WatcherMultiProviderAgreementV1 = Readonly<{
   blockContentDigest: string;
 }>;
 
+export type WatcherExternalProviderBindingV1 = Readonly<{
+  providerId: string;
+  operatorIdentitySha256: string;
+  authenticationKind: "https_tls_identity_v1";
+  publicIdentitySha256: string;
+}>;
+
 export type WatcherMultiProviderConsistencyV1 = Readonly<{
   schemaVersion: typeof WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION;
   status: WatcherMultiProviderConsistencyStatusV1;
@@ -103,6 +112,7 @@ export type WatcherMultiProviderConsistencyV1 = Readonly<{
   queryObservationCount: number;
   observationCount: number;
   independentProviderCount: number;
+  externalProviderBindings: readonly WatcherExternalProviderBindingV1[];
   reasonCodes: readonly WatcherMultiProviderReasonCodeV1[];
   alertCodes: readonly WatcherMultiProviderAlertCodeV1[];
   observationEvidenceDigests: readonly string[];
@@ -345,6 +355,7 @@ const rejectedBoundaryResult = (
     queryObservationCount: 0,
     observationCount: 0,
     independentProviderCount: 0,
+    externalProviderBindings: Object.freeze([]),
     reasonCodes: sortCodes(reasons, WATCHER_MULTI_PROVIDER_REASON_CODES_V1),
     alertCodes: sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES_V1),
     observationEvidenceDigests: Object.freeze([]),
@@ -477,6 +488,8 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   let independentProviderCount = 0;
   let chainAuthorityObservationDigest: string | null = null;
   let queryObservationCount = 0;
+  let externalProviderBindings: readonly WatcherExternalProviderBindingV1[] =
+    Object.freeze([]);
 
   if (configuredSource.sourceMode === "local_node") {
     const local = eligible.filter(
@@ -575,6 +588,37 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       });
     }
   } else {
+    const transportBound = eligible.filter(
+      (observation) =>
+        observation.provider.authentication.kind === "https_tls_identity_v1",
+    );
+    if (transportBound.length !== eligible.length) {
+      reasons.add("provider_transport_mismatch");
+      alerts.add("watcher_provider_transport_mismatch");
+    }
+    externalProviderBindings = Object.freeze(
+      transportBound
+        .map((observation) => {
+          const source = observation.provider.source;
+          if (source.sourceMode !== "external_providers") {
+            throw new Error("unreachable source-mode mismatch");
+          }
+          return Object.freeze({
+            providerId: observation.provider.providerId,
+            operatorIdentitySha256: source.operatorIdentitySha256,
+            authenticationKind: "https_tls_identity_v1" as const,
+            publicIdentitySha256:
+              observation.provider.authentication.publicIdentitySha256,
+          });
+        })
+        .sort((left, right) =>
+          left.providerId < right.providerId
+            ? -1
+            : left.providerId > right.providerId
+              ? 1
+              : 0,
+        ),
+    );
     if (duplicateValues(providerIds)) {
       reasons.add("duplicate_provider_id");
       alerts.add("watcher_provider_identity_collision");
@@ -691,6 +735,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       "duplicate_trust_identity",
       "duplicate_operator_identity",
       "duplicate_local_surface",
+      "provider_transport_mismatch",
       "source_mode_mismatch",
       "local_node_authority_mismatch",
       "local_node_genesis_mismatch",
@@ -751,6 +796,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     queryObservationCount,
     observationCount: inputs.length,
     independentProviderCount,
+    externalProviderBindings,
     reasonCodes,
     alertCodes,
     observationEvidenceDigests,

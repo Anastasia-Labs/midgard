@@ -19,7 +19,9 @@ import {
 import {
   jsonReplacer,
   jsonReviver,
+  parseL1SourceState,
   resolveDaPayloadSave,
+  type L1SourceState,
   type WatcherDeploymentRecord,
   type WatcherStore,
 } from "../store.js";
@@ -126,6 +128,119 @@ export class PostgresWatcherStore implements WatcherStore {
           }),
       manifestRaw: row.manifest_raw,
     };
+  }
+
+  async getL1SourceState(): Promise<L1SourceState | undefined> {
+    const result = await this.pool.query<JsonRecordRow>(
+      "SELECT record FROM watcher_l1_source_state WHERE id = 1",
+    );
+    const decoded = decodeRow<unknown>(result.rows[0]);
+    return decoded === undefined ? undefined : parseL1SourceState(decoded);
+  }
+
+  async saveL1SourceState(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    await this.pool.query(
+      `INSERT INTO watcher_l1_source_state (id, record, updated_at)
+       VALUES (1, $1::jsonb, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         record = EXCLUDED.record,
+         updated_at = NOW()`,
+      [encodeRecord(canonical)],
+    );
+  }
+
+  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    if (canonical.status !== "quarantined") {
+      throw new Error(
+        "L1 decision quarantine requires quarantined source state",
+      );
+    }
+    const headerHashes = canonical.observations
+      .filter(({ hasPersistedDecision }) => hasPersistedDecision)
+      .map(({ headerHash }) => headerHash);
+    const reason = `l1_source_quarantined:${canonical.quarantineReason!}`;
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        await client.query(
+          `INSERT INTO watcher_l1_source_state (id, record, updated_at)
+           VALUES (1, $1::jsonb, NOW())
+           ON CONFLICT (id) DO UPDATE SET
+             record = EXCLUDED.record,
+             updated_at = NOW()`,
+          [encodeRecord(canonical)],
+        );
+        if (headerHashes.length > 0) {
+          await client.query(
+            `UPDATE watcher_state_queue_headers
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'status', 'conflicted',
+                     'validationErrors',
+                       COALESCE(record->'validationErrors', '[]'::jsonb) ||
+                       to_jsonb($2::text),
+                     'updatedAt', $3::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason, canonical.quarantinedAt],
+          );
+          await client.query(
+            `UPDATE watcher_da_payloads
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'validationStatus', 'conflicted',
+                     'validationError', $2::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason],
+          );
+          await client.query(
+            `UPDATE watcher_da_signatures
+             SET record = record || jsonb_build_object(
+                   'broadcastStatus', 'post_failed'
+                 ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes],
+          );
+          await client.query(
+            `UPDATE watcher_l1_submissions
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'resultStatus', 'failed',
+                     'failureCause', $2::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason],
+          );
+          await client.query(
+            `UPDATE watcher_peer_broadcasts
+             SET record =
+                   (record - 'nextAttemptAt') ||
+                   jsonb_build_object(
+                     'status', 'failed',
+                     'lastError', $2::text,
+                     'updatedAt', $3::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [headerHashes, reason, canonical.quarantinedAt],
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
   }
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
@@ -404,6 +519,13 @@ export class PostgresWatcherStore implements WatcherStore {
 
       CREATE TABLE IF NOT EXISTS watcher_state_queue_headers (
         header_hash text PRIMARY KEY,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS watcher_l1_source_state (
+        id integer PRIMARY KEY CHECK (id = 1),
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()

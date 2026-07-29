@@ -32,6 +32,21 @@ export type LocalStateConfig =
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "database"; readonly url: string };
 
+export type L1SourceConfig =
+  | {
+      readonly sourceMode: "local_node";
+      readonly authorityNodeId: string;
+      readonly chainSyncProviderUrl: string;
+      readonly queryProviderUrls: readonly string[];
+    }
+  | {
+      readonly sourceMode: "external_providers";
+      readonly providers: readonly {
+        readonly identity: string;
+        readonly url: string;
+      }[];
+    };
+
 export type WatcherConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
@@ -44,6 +59,7 @@ export type WatcherConfig = {
   readonly contractDeploymentInfo: Record<string, unknown>;
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
+  readonly l1Source: L1SourceConfig;
   readonly cardanoProviderUrls: readonly string[];
   readonly finalityDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
@@ -248,6 +264,7 @@ export const loadWatcherConfig = async (
   const cardanoProviderUrls = splitList(
     requireEnv(env, "CARDANO_PROVIDER_URLS"),
   );
+  const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
     vkey: member.daVkey,
@@ -294,6 +311,7 @@ export const loadWatcherConfig = async (
     contractDeploymentInfo,
     consensusProfile,
     midgardNodeDeployment,
+    l1Source,
     cardanoProviderUrls,
     finalityDepth: nonNegativeInt(
       requireEnv(env, "CARDANO_FINALITY_DEPTH"),
@@ -430,6 +448,117 @@ const splitList = (value: string): readonly string[] => {
 const optionalSplitList = (value: string | undefined): readonly string[] => {
   const trimmed = optionalNonEmpty(value);
   return trimmed === undefined ? [] : splitList(trimmed);
+};
+
+export const parseL1SourceConfig = (
+  env: Env,
+  cardanoProviderUrls: readonly string[],
+): L1SourceConfig => {
+  const sourceMode = requireEnv(env, "CARDANO_L1_SOURCE_MODE");
+  const testMode = booleanEnv(env.CARDANO_L1_TEST_MODE, false);
+  if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
+    throw new Error(
+      "CARDANO_L1_SOURCE_MODE must be local_node or external_providers",
+    );
+  }
+  if (
+    !testMode &&
+    cardanoProviderUrls.some((url) => isFixtureProviderUrl(url))
+  ) {
+    throw new Error(
+      "fixture:/file: Cardano providers require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (sourceMode === "local_node") {
+    if (
+      optionalNonEmpty(env.CARDANO_EXTERNAL_PROVIDER_IDENTITIES) !== undefined
+    ) {
+      throw new Error(
+        "CARDANO_EXTERNAL_PROVIDER_IDENTITIES is forbidden in local_node mode",
+      );
+    }
+    return {
+      sourceMode,
+      authorityNodeId: boundedIdentity(
+        requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID"),
+        "CARDANO_LOCAL_NODE_AUTHORITY_ID",
+      ),
+      chainSyncProviderUrl: localChainSyncUrl(
+        requireEnv(env, "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL"),
+        testMode,
+      ),
+      queryProviderUrls: cardanoProviderUrls,
+    };
+  }
+  if (
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_URL) !== undefined
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_* configuration is forbidden in external_providers mode",
+    );
+  }
+  if (cardanoProviderUrls.length < 2) {
+    throw new Error(
+      "external_providers mode requires at least two operationally independent CARDANO_PROVIDER_URLS entries",
+    );
+  }
+  const identities = splitList(
+    requireEnv(env, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  ).map((identity) =>
+    boundedIdentity(identity, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  );
+  if (identities.length !== cardanoProviderUrls.length) {
+    throw new Error(
+      "CARDANO_EXTERNAL_PROVIDER_IDENTITIES must contain one identity per CARDANO_PROVIDER_URLS entry",
+    );
+  }
+  if (new Set(identities).size !== identities.length) {
+    throw new Error(
+      "external_providers mode requires distinct operational provider identities",
+    );
+  }
+  return {
+    sourceMode,
+    providers: cardanoProviderUrls.map((url, index) => ({
+      identity: identities[index]!,
+      url,
+    })),
+  };
+};
+
+const localChainSyncUrl = (value: string, testMode: boolean): string => {
+  if (!value.startsWith("chain-sync:") || value === "chain-sync:") {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use the chain-sync:<provider> form",
+    );
+  }
+  const provider = value.slice("chain-sync:".length);
+  if (!testMode && isFixtureProviderUrl(provider)) {
+    throw new Error(
+      "fixture:/file: local chain-sync sources require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (
+    !provider.startsWith("kupmios:") &&
+    !provider.startsWith("fixture:") &&
+    !provider.startsWith("file:")
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL authority must be a local kupmios: surface (fixture:/file: only in tests)",
+    );
+  }
+  return value;
+};
+
+const isFixtureProviderUrl = (value: string): boolean =>
+  value.startsWith("fixture:") || value.startsWith("file:");
+
+const boundedIdentity = (value: string, name: string): string => {
+  if (!/^[a-z][a-z0-9-]{2,63}$/u.test(value)) {
+    throw new Error(`${name} entries must be lowercase operational identities`);
+  }
+  return value;
 };
 
 const isLiveLucidProviderUrl = (value: string): boolean =>

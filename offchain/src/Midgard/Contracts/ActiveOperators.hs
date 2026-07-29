@@ -15,7 +15,6 @@ import Convex.BuildTx (
   assetValue,
   execBuildTx,
   findIndexReference,
-  findIndexSpending,
   mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
   setMinAdaDepositAll,
@@ -27,6 +26,7 @@ import Convex.Class (
   utxosByPaymentCredential,
  )
 import Convex.PlutusLedger.V1 (transPubKeyHash)
+import Convex.PlutusLedger.V3 (transTxOutRef)
 import Convex.Utxos (UtxoSet (_utxos), toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
@@ -279,8 +279,7 @@ activateOperator
         $ \txBody ->
           RegisteredOperators.ActivateOperator
             { activatingOperator = transPubKeyHash operatorPkh
-            , anchorElementInputIndex = toInteger $ findIndexSpending anchorRegistryTxIn txBody
-            , removedNodeInputIndex = toInteger $ findIndexSpending removalRegistryTxIn txBody
+            , anchorElementInputOutRef = transTxOutRef anchorRegistryTxIn
             , anchorElementOutputIndex =
                 toInteger $ findOutputIndexWithAsset (mintingPolicyId registeredOperatorsPolicy) registeredOperatorsAnchorAssetName txBody
             , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
@@ -300,8 +299,6 @@ activateOperator
         $ \txBody ->
           ActiveOperators.ActivateOperator
             { newActiveOperatorKey = transPubKeyHash operatorPkh
-            , activeOperatorAnchorElementInputIndex =
-                toInteger $ findIndexSpending activeOperatorsAnchorTxIn txBody
             , activeOperatorAnchorElementOutputIndex =
                 toInteger $ findOutputIndexWithAsset policyId activeOperatorsAnchorAssetName txBody
             , activeOperatorInsertedNodeOutputIndex =

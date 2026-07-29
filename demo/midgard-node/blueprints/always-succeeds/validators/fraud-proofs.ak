@@ -25,3 +25,17 @@ validator invalid_range {
     True
   }
 }
+
+validator transition_trace {
+  else(_) {
+    trace @"Midgard Demo – Transition Trace Fraud Proof"
+    True
+  }
+}
+
+validator zero_input {
+  else(_) {
+    trace @"Midgard Demo – Zero Input Fraud Proof"
+    True
+  }
+}

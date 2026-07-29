@@ -188,6 +188,64 @@ test dispute_open_maturity_boundary_is_exact_and_fails_closed() {
   }
 }
 
+test delayed_source_verification_starts_a_fresh_bounded_operator_turn() {
+  let challenged_block_end_time = 1_000_000
+  let maturity_duration = 604_800_000
+  let source_time_upper = 200
+  let dispute = validation_dispute_v1.open_after_source_verification(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    100,
+    source_time_upper,
+    challenged_block_end_time,
+    maturity_duration,
+  )
+  and {
+    dispute.response_deadline == source_time_upper + validation_dispute_v1.response_window_milliseconds,
+    dispute.response_deadline != 100 + validation_dispute_v1.response_window_milliseconds,
+  }
+}
+
+test final_maturity_source_verification_boundary_remains_resolvable() {
+  let challenged_block_end_time = 1_000_000
+  let maturity_duration = 604_800_000
+  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
+  let dispute = validation_dispute_v1.open_after_source_verification(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    100,
+    final_source_time,
+    challenged_block_end_time,
+    maturity_duration,
+  )
+  dispute.response_deadline == final_source_time + validation_dispute_v1.response_window_milliseconds
+}
+
+test stale_source_verification_after_maturity_boundary_fails_closed() fail {
+  let challenged_block_end_time = 1_000_000
+  let maturity_duration = 604_800_000
+  let final_source_time = challenged_block_end_time + maturity_duration - validation_dispute_v1.max_dispute_duration_milliseconds
+  expect _dispute = validation_dispute_v1.open_after_source_verification(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    100,
+    final_source_time + 1,
+    challenged_block_end_time,
+    maturity_duration,
+  )
+}
+
+test source_verification_cannot_predate_authenticated_open_time() fail {
+  expect _dispute = validation_dispute_v1.open_after_source_verification(
+    descriptor4(h_a, h_b, h_c, h_d),
+    descriptor4(h_a, h_b, h_e, h_f),
+    100,
+    99,
+    1_000_000,
+    604_800_000,
+  )
+}
+
 test one_step_boundary_is_authenticated_before_resolver_handoff() {
   let base = fixture_pre_state()
   let work_witness_cbor = #"80"

@@ -54,6 +54,58 @@ describe("openWatcherStore", () => {
     }
   });
 
+  it("persists canonical L1 quarantine state across JSON-store restart", async () => {
+    const dir = await tempDir();
+    const store = await JsonFileWatcherStore.open(dir);
+    await store.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: "external_providers",
+      network: "Preview",
+      status: "quarantined",
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+      quarantineReason: "provider fork",
+      quarantinedAt: "2026-07-28T00:00:01.000Z",
+    });
+    await expect(
+      (await JsonFileWatcherStore.open(dir)).getL1SourceState(),
+    ).resolves.toMatchObject({
+      sourceMode: "external_providers",
+      status: "quarantined",
+      quarantineReason: "provider fork",
+    });
+    await expect(
+      store.saveL1SourceState({
+        schemaVersion: 1,
+        sourceMode: "local_node",
+        network: "Preview",
+        status: "quarantined",
+        observations: [],
+        observedAt: "2026-07-28T00:00:00.000Z",
+        quarantineReason: "",
+        quarantinedAt: "not-a-time",
+      }),
+    ).rejects.toThrow(/lacks evidence/u);
+    await expect(
+      store.saveL1SourceState({
+        schemaVersion: 1,
+        sourceMode: "local_node",
+        network: "Preview",
+        status: "healthy",
+        observations: [
+          {
+            headerHash: "not-a-hash",
+            stateQueueOutRef: "not-an-out-ref",
+            stateQueueStatus: "unattested",
+            finalized: true,
+            hasPersistedDecision: true,
+          },
+        ],
+        observedAt: "2026-07-28T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(/observation is malformed/u);
+  });
+
   it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
     const store = await JsonFileWatcherStore.open(await tempDir());
     const signature = daSignatureRecord();

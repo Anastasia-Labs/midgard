@@ -193,14 +193,18 @@ export class MultiDaAttestationChainReader implements DaAttestationChainReader {
 export const daAttestationReaderFromConfig = async (
   config: WatcherConfig,
 ): Promise<DaAttestationChainReader | undefined> => {
+  const providerUrls =
+    config.l1Source.sourceMode === "local_node"
+      ? config.l1Source.queryProviderUrls
+      : config.l1Source.providers.map(({ url }) => url);
   if (
-    config.cardanoProviderUrls[0]?.startsWith("fixture:") === true ||
-    config.cardanoProviderUrls[0]?.startsWith("file:") === true
+    providerUrls[0]?.startsWith("fixture:") === true ||
+    providerUrls[0]?.startsWith("file:") === true
   ) {
     return undefined;
   }
   const readers = await Promise.all(
-    config.cardanoProviderUrls.map(async (url) => {
+    providerUrls.map(async (url) => {
       const { lucid, providerSource } = await lucidFromProviderUrl(
         url,
         config.network,
@@ -212,6 +216,16 @@ export const daAttestationReaderFromConfig = async (
       });
     }),
   );
+  if (
+    config.l1Source.sourceMode === "external_providers" &&
+    readers.length < 2
+  ) {
+    throw new Error(
+      "external_providers mode requires at least two DA attestation readers",
+    );
+  }
+  // Local query surfaces share one chain authority and are not a provider
+  // quorum, but conflicting views must still fail closed.
   return readers.length === 1
     ? readers[0]!
     : new MultiDaAttestationChainReader(readers);

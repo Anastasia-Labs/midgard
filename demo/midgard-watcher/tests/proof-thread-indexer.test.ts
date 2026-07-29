@@ -148,6 +148,7 @@ const familyNames = [
   ["non-existent-input-no-index", "nonExistentInputNoIndex"],
   ["transition-trace", "transitionTrace"],
   ["validation-trace-dispute", "validationTraceDispute"],
+  ["zero-input", "zeroInput"],
 ] as const;
 
 const makeDeploymentAuthority = () => {
@@ -186,6 +187,7 @@ const makeDeploymentAuthority = () => {
     "nonExistentInputNoIndex",
     "invalidRange",
     "transitionTrace",
+    "zeroInput",
     "validationTraceDispute",
   ] as const;
   const contractByCategory = {
@@ -194,6 +196,7 @@ const makeDeploymentAuthority = () => {
     nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
     invalidRange: "fraudProofInvalidRange",
     transitionTrace: "fraudProofTransitionTrace",
+    zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
   } as const;
   contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
@@ -1829,7 +1832,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       }),
     ).not.toBeNull();
     expect(policy).not.toBeNull();
-    expect(policy.families).toHaveLength(6);
+    expect(policy.families).toHaveLength(7);
     expect(policy.families[0]!.familyId).toBe("double-spend");
 
     const hostile = structuredClone(authority.deploymentAuthority);

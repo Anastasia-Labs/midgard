@@ -109,6 +109,77 @@ describe("L1 provider adapters", () => {
     ]);
   });
 
+  it("accepts one local chain authority plus aligned query surfaces without treating them as independent providers", async () => {
+    const { header, headerHash } = await makePayloadFixture();
+    const node = makeObservedNode({ header, headerHash, depth: 10 });
+    let authorityNodes = [node];
+    const provider = new MultiStateQueueProvider(
+      [
+        { fetchStateQueueNodes: async () => authorityNodes },
+        {
+          fetchStateQueueNodes: async () => [
+            {
+              ...node,
+              chainPoint: {
+                ...node.chainPoint,
+                depth: 8,
+                providerSource: "kupo",
+              },
+            },
+          ],
+        },
+      ],
+      {
+        sourceMode: "local_node",
+        identities: ["chain-sync:node-a", "query:kupo"],
+      },
+    );
+
+    await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
+      {
+        chainPoint: {
+          depth: 8,
+          providerSource: "chain-sync:node-a,query:kupo",
+        },
+      },
+    ]);
+    authorityNodes = [];
+    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
+      /local_node.*chain-sync:node-a.*query:kupo/u,
+    );
+  });
+
+  it("rejects one external provider and incompatible provider chain points", async () => {
+    const one = { fetchStateQueueNodes: async () => [] };
+    expect(
+      () =>
+        new MultiStateQueueProvider([one], {
+          sourceMode: "external_providers",
+          identities: ["operator-a"],
+        }),
+    ).toThrow(/at least two/u);
+
+    const { header, headerHash } = await makePayloadFixture();
+    const canonical = makeObservedNode({ header, headerHash, depth: 10 });
+    const forked = {
+      ...canonical,
+      chainPoint: { ...canonical.chainPoint, blockHash: "ef".repeat(32) },
+    };
+    const provider = new MultiStateQueueProvider(
+      [
+        { fetchStateQueueNodes: async () => [canonical] },
+        { fetchStateQueueNodes: async () => [forked] },
+      ],
+      {
+        sourceMode: "external_providers",
+        identities: ["operator-a", "operator-b"],
+      },
+    );
+    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
+      /operator-a.*operator-b/u,
+    );
+  });
+
   it("resolves chain points from provider-neutral transaction status", async () => {
     const txHash = "aa".repeat(32);
     const statusQuery = vi.fn(async () => ({

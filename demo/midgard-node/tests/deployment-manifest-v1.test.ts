@@ -43,27 +43,23 @@ const CONTRACT_SCRIPT_HASH = validatorToScriptHash({
   script: CONTRACT_SCRIPT_CBOR,
 });
 const DA_VKEY = "44".repeat(32);
-const CARDANO_PARAMETERS =
-  normalizeDeploymentManifestV1JsonValue({
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
-    maxTxExUnits: { memory: "16500000", steps: "10000000000" },
-  });
+const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
+  maxTxSize: 16_384,
+  maxValueSize: 5_000,
+  maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+});
 
-const canonicalIdentity = (): Omit<
-  DeploymentManifestV1Value,
-  "manifestId"
-> => {
+const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
   const referenceOutRefByContract = new Map<
     string,
     { readonly txHash: string; readonly outputIndex: number }
   >(
-    Object.values(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map((contractName, outputIndex) => [
-      contractName,
-      { txHash: "22".repeat(32), outputIndex },
-    ]),
+    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (contractName, outputIndex) => [
+        contractName,
+        { txHash: "22".repeat(32), outputIndex },
+      ],
+    ),
   );
   const contracts: Record<
     string,
@@ -120,8 +116,13 @@ const canonicalIdentity = (): Omit<
           scriptHash: CONTRACT_SCRIPT_HASH,
           membershipProofCbor: "80",
         },
-        validationTraceDispute: {
+        zeroInput: {
           categoryId: "00000005",
+          scriptHash: CONTRACT_SCRIPT_HASH,
+          membershipProofCbor: "80",
+        },
+        validationTraceDispute: {
+          categoryId: "00000006",
           scriptHash: CONTRACT_SCRIPT_HASH,
           membershipProofCbor: "80",
         },
@@ -204,8 +205,9 @@ const canonicalIdentity = (): Omit<
     referenceScripts,
     da: {
       committeeVkeys: [DA_VKEY],
-      committeeSignersHash:
-        computeDeploymentManifestV1DaCommitteeSignersHash([DA_VKEY]),
+      committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+        DA_VKEY,
+      ]),
       threshold: 1,
       transportProfile: {
         protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -223,8 +225,7 @@ const canonicalIdentity = (): Omit<
     validationDispute: {
       version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
       responseWindowMs:
-        MIDGARD_CONSENSUS_PROFILE_V1.limits
-          .validationDisputeResponseWindowMs,
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.validationDisputeResponseWindowMs,
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
@@ -260,8 +261,11 @@ describe("V1 deployment manifest", () => {
   });
 
   it("rejects missing and unexpected root fields", () => {
-    const { da: _da, manifestId: _manifestId, ...missingDa } =
-      canonicalManifest();
+    const {
+      da: _da,
+      manifestId: _manifestId,
+      ...missingDa
+    } = canonicalManifest();
     expect(() =>
       parseDeploymentManifestV1Value({
         ...missingDa,
@@ -281,17 +285,15 @@ describe("V1 deployment manifest", () => {
 
   it("rejects a manifest missing any compiled contract", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
-    const {
-      validationTraceDispute: _validationTraceDispute,
-      ...withoutDispute
-    } = identity.contracts;
+    const { fraudProofZeroInput: _zeroInput, ...withoutZeroInput } =
+      identity.contracts;
     const missingContract = {
       ...identity,
-      contracts: withoutDispute,
+      contracts: withoutZeroInput,
     } as Omit<DeploymentManifestV1Value, "manifestId">;
     expect(() =>
       parseDeploymentManifestV1Value(withId(missingContract)),
-    ).toThrow(/contracts\.validationTraceDispute is required/u);
+    ).toThrow(/contracts\.fraudProofZeroInput is required/u);
   });
 
   it("rejects a manifest missing a validation-dispute control contract", () => {
@@ -326,9 +328,7 @@ describe("V1 deployment manifest", () => {
     };
     expect(() =>
       parseDeploymentManifestV1Value(
-        withId(
-          tampered as Omit<DeploymentManifestV1Value, "manifestId">,
-        ),
+        withId(tampered as Omit<DeploymentManifestV1Value, "manifestId">),
       ),
     ).toThrow(/contracts\.txOrderSpend\.scriptHash mismatch/u);
   });

@@ -135,6 +135,114 @@ describe("WatcherService", () => {
     });
   });
 
+  it("accepts the canonical unattested-to-attested state queue replacement", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "31";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstOutRef = `${"ab".repeat(32)}#0`;
+    const attestedOutRef = `${"ac".repeat(32)}#1`;
+    let sourceView: "unattested" | "attested" | "missing" = "unattested";
+    const store = await JsonFileWatcherStore.open(dir);
+    const service = new WatcherService({
+      config: configured,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () =>
+          sourceView === "missing"
+            ? []
+            : [
+                sourceView === "attested"
+                  ? makeObservedNode({
+                      header,
+                      headerHash,
+                      daAttestation: configured.daAttestationPolicyId,
+                      outRef: attestedOutRef,
+                      slot: 2,
+                      blockHash: "de".repeat(32),
+                      depth: 10,
+                    })
+                  : makeObservedNode({
+                      header,
+                      headerHash,
+                      outRef: firstOutRef,
+                      slot: 1,
+                      depth: 10,
+                    }),
+              ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+    });
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 1,
+      errors: [],
+    });
+
+    sourceView = "attested";
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 0,
+      skippedHeaders: 1,
+      errors: [],
+    });
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [
+        {
+          headerHash,
+          stateQueueOutRef: attestedOutRef,
+          stateQueueStatus: "attested",
+          slot: 2,
+          blockHash: "de".repeat(32),
+          hasPersistedDecision: true,
+        },
+      ],
+    });
+
+    sourceView = "missing";
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      signedHeaders: 0,
+      errors: [expect.stringContaining("decision_disappeared")],
+    });
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining("decision_disappeared"),
+      observations: [
+        {
+          headerHash,
+          stateQueueStatus: "attested",
+          stateQueueOutRef: attestedOutRef,
+        },
+      ],
+    });
+  });
+
   it("fails readiness after a scanner tick failure", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
@@ -168,6 +276,217 @@ describe("WatcherService", () => {
       },
       reasons: ["last state queue scanner tick failed"],
     });
+  });
+
+  it("persists L1 disappearance quarantine across restart and prevents processing or rebroadcast", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "21";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configWithDaHash.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstStore = await JsonFileWatcherStore.open(dir);
+    const first = new WatcherService({
+      config: configWithDaHash,
+      store: firstStore,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ signedHeaders: 1 });
+    await expect(firstStore.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [{ headerHash, hasPersistedDecision: true }],
+    });
+    await firstStore.saveL1Submission({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      headerHash,
+      txKind: "init",
+      txHash: "71".repeat(32),
+      inputsUsed: [],
+      submittedAt: "2026-07-28T00:00:00.000Z",
+      resultStatus: "submitted",
+    });
+    await firstStore.savePeerBroadcast({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      peerId: "peer-a",
+      headerHash,
+      signerIndex: 0,
+      status: "pending",
+      attempts: 1,
+      nextAttemptAt: "2026-07-28T00:01:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    const restartedStore = await JsonFileWatcherStore.open(dir);
+    const disappeared = new WatcherService({
+      config: configWithDaHash,
+      store: restartedStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("quarantine must suppress DA fetch"),
+      signer,
+      signerValidation,
+    });
+    await disappeared.initialize();
+    await expect(disappeared.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      signedHeaders: 0,
+      errors: [expect.stringContaining("decision_disappeared")],
+    });
+    await expect(restartedStore.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining("decision_disappeared"),
+    });
+    await expect(
+      restartedStore.getStateQueueHeader(headerHash),
+    ).resolves.toMatchObject({
+      status: "conflicted",
+      validationErrors: [expect.stringContaining("l1_source_quarantined")],
+    });
+    await expect(
+      restartedStore.getDaPayload(headerHash),
+    ).resolves.toMatchObject({
+      validationStatus: "conflicted",
+      validationError: expect.stringContaining("l1_source_quarantined"),
+    });
+    await expect(
+      restartedStore.getDaSignature({ headerHash, signerIndex: 0 }),
+    ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+    await expect(restartedStore.listL1Submissions()).resolves.toMatchObject([
+      {
+        headerHash,
+        resultStatus: "failed",
+        failureCause: expect.stringContaining("l1_source_quarantined"),
+      },
+    ]);
+    const [quarantinedBroadcast] =
+      await restartedStore.listPeerBroadcasts(headerHash);
+    expect(quarantinedBroadcast).toMatchObject({
+      status: "failed",
+      lastError: expect.stringContaining("l1_source_quarantined"),
+    });
+    expect(quarantinedBroadcast).not.toHaveProperty("nextAttemptAt");
+
+    let publishCalls = 0;
+    const afterQuarantine = new WatcherService({
+      config: configWithDaHash,
+      store: await JsonFileWatcherStore.open(dir),
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: failPayloadSource("quarantine must survive restart"),
+      signer,
+      signerValidation,
+      coordinator: {
+        retryPublishedSignatures: true,
+        publishSignature: async () => {
+          publishCalls += 1;
+          return "posted";
+        },
+      },
+    });
+    await afterQuarantine.initialize();
+    await expect(afterQuarantine.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      errors: [expect.stringContaining("L1 source quarantined")],
+    });
+    expect(publishCalls).toBe(0);
+  });
+
+  it("quarantines a persisted decision when a stale query view loses finality", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "22";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const first = new WatcherService({
+      config: configured,
+      store: await JsonFileWatcherStore.open(dir),
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ signedHeaders: 1 });
+
+    let publishCalls = 0;
+    const stale = new WatcherService({
+      config: configured,
+      store: await JsonFileWatcherStore.open(dir),
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 0 }),
+        ],
+      },
+      payloadSource: failPayloadSource("stale L1 view must not fetch DA"),
+      signer,
+      signerValidation,
+      coordinator: {
+        retryPublishedSignatures: true,
+        publishSignature: async () => {
+          publishCalls += 1;
+          return "posted";
+        },
+      },
+    });
+    await stale.initialize();
+    await expect(stale.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      errors: [expect.stringContaining("lost_finality")],
+    });
+    expect(publishCalls).toBe(0);
   });
 
   it("fetches payload bytes from the configured DA payload source", async () => {

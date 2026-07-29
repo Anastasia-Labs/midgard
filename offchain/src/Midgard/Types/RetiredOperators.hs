@@ -7,7 +7,7 @@ import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash)
+import PlutusLedgerApi.V3 (POSIXTime, PubKeyHash, TxOutRef)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
@@ -41,20 +41,18 @@ type Datum = LinkedList.Element BuiltinByteString NodeData
 
 data MintRedeemer
   = Init {outputIndex :: Integer}
-  | Deinit {inputIndex :: Integer}
+  | Deinit
   | RetireOperator
       { newRetiredOperatorKey :: PubKeyHash
       , bondUnlockTime :: Maybe POSIXTime
       , hubOracleRefInputIndex :: Integer
-      , retiredOperatorAnchorElementInputIndex :: Integer
       , retiredOperatorAnchorElementOutputIndex :: Integer
       , retiredOperatorInsertedNodeOutputIndex :: Integer
       , activeOperatorsRedeemerIndex :: Integer
       }
   | RecoverOperatorBond
       { retiredOperatorKey :: PubKeyHash
-      , retiredOperatorAnchorElementInputIndex :: Integer
-      , retiredOperatorRemovedNodeInputIndex :: Integer
+      , retiredOperatorAnchorElementInputOutref :: TxOutRef
       , retiredOperatorAnchorElementOutputIndex :: Integer
       }
   | SlashOperator

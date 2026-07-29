@@ -75,12 +75,41 @@ export class LucidStateQueueProvider implements StateQueueProvider {
 
 export class MultiStateQueueProvider implements StateQueueProvider {
   private readonly providers: readonly StateQueueProvider[];
+  private readonly identities: readonly string[];
+  private readonly mergedIdentities?: readonly string[];
+  private readonly sourceMode: "local_node" | "external_providers";
 
-  constructor(providers: readonly StateQueueProvider[]) {
+  constructor(
+    providers: readonly StateQueueProvider[],
+    options: {
+      readonly sourceMode?: "local_node" | "external_providers";
+      readonly identities?: readonly string[];
+    } = {},
+  ) {
     if (providers.length === 0) {
       throw new Error("at least one state-queue provider is required");
     }
+    const sourceMode = options.sourceMode ?? "external_providers";
+    if (sourceMode === "external_providers" && providers.length < 2) {
+      throw new Error(
+        "external_providers mode requires at least two state-queue providers",
+      );
+    }
+    const identities =
+      options.identities ??
+      providers.map((_, index) => `provider-${index.toString()}`);
+    if (
+      identities.length !== providers.length ||
+      new Set(identities).size !== identities.length
+    ) {
+      throw new Error(
+        "state-queue provider identities must be complete and distinct",
+      );
+    }
     this.providers = providers;
+    this.identities = identities;
+    this.mergedIdentities = options.identities;
+    this.sourceMode = sourceMode;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
@@ -93,11 +122,11 @@ export class MultiStateQueueProvider implements StateQueueProvider {
       const candidate = canonicalObservedNodes(nodes);
       if (!canonicalArraysEqual(candidate, baseline)) {
         throw new Error(
-          `state queue provider disagreement between provider 0 and provider ${index.toString()}`,
+          `state queue provider disagreement in ${this.sourceMode} mode between ${this.identities[0]!} and ${this.identities[index]!}`,
         );
       }
     }
-    return mergeAgreedObservedNodes(sortedResults);
+    return mergeAgreedObservedNodes(sortedResults, this.mergedIdentities);
   }
 }
 
@@ -136,25 +165,34 @@ export const stateQueueUtxosToObservedNodes = async (
 
 export const providerFromConfig = async (
   config: WatcherConfig,
-): Promise<StateQueueProvider> =>
-  providerFromUrls(config.cardanoProviderUrls, config);
-
-export const providerFromUrls = async (
-  urls: readonly string[],
-  config: Pick<
-    WatcherConfig,
-    "network" | "stateQueueAddress" | "stateQueuePolicyId"
-  >,
 ): Promise<StateQueueProvider> => {
-  if (urls.length === 0) {
-    throw new Error("at least one CARDANO_PROVIDER_URLS entry is required");
+  if (config.l1Source.sourceMode === "local_node") {
+    const localSource = config.l1Source;
+    const urls = [
+      localSource.chainSyncProviderUrl.slice("chain-sync:".length),
+      ...localSource.queryProviderUrls,
+    ];
+    const providers = await Promise.all(
+      urls.map((url) => providerFromUrl(url, config)),
+    );
+    return new MultiStateQueueProvider(providers, {
+      sourceMode: "local_node",
+      identities: [
+        `chain-sync:${localSource.authorityNodeId}`,
+        ...localSource.queryProviderUrls.map(
+          (_, index) =>
+            `query:${localSource.authorityNodeId}:${index.toString()}`,
+        ),
+      ],
+    });
   }
   const providers = await Promise.all(
-    urls.map((url) => providerFromUrl(url, config)),
+    config.l1Source.providers.map(({ url }) => providerFromUrl(url, config)),
   );
-  return providers.length === 1
-    ? providers[0]!
-    : new MultiStateQueueProvider(providers);
+  return new MultiStateQueueProvider(providers, {
+    sourceMode: "external_providers",
+    identities: config.l1Source.providers.map(({ identity }) => identity),
+  });
 };
 
 export const providerFromUrl = async (
@@ -372,6 +410,11 @@ const canonicalObservedNode = (node: ObservedStateQueueNode): string =>
     rawDatumCbor: node.rawDatumCbor ?? null,
     header: node.header,
     daAttestation: node.daAttestation,
+    chainPoint: {
+      slot: node.chainPoint.slot ?? null,
+      blockHash: node.chainPoint.blockHash ?? null,
+      blockHeight: node.chainPoint.blockHeight ?? null,
+    },
   });
 
 const canonicalArraysEqual = (
@@ -383,11 +426,17 @@ const canonicalArraysEqual = (
 
 const mergeAgreedObservedNodes = (
   sortedResults: readonly (readonly ObservedStateQueueNode[])[],
+  identities?: readonly string[],
 ): readonly ObservedStateQueueNode[] =>
   sortedResults[0]!.map((node, index) => ({
     ...node,
     chainPoint: mergeChainPoints(
-      sortedResults.map((nodes) => nodes[index]!.chainPoint),
+      sortedResults.map((nodes, providerIndex) => ({
+        ...nodes[index]!.chainPoint,
+        providerSource:
+          identities?.[providerIndex] ??
+          nodes[index]!.chainPoint.providerSource,
+      })),
     ),
   }));
 

@@ -18,6 +18,9 @@ const provider = (
   providerId: string,
   identityByte: string,
   operatorIdentityByte = identityByte,
+  authenticationKind:
+    | "https_tls_identity_v1"
+    | "cardano_node_genesis_v1" = "https_tls_identity_v1",
 ) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod",
@@ -27,7 +30,7 @@ const provider = (
     operatorIdentitySha256: operatorIdentityByte.repeat(32),
   },
   authentication: {
-    kind: "https_tls_identity_v1",
+    kind: authenticationKind,
     publicIdentitySha256: identityByte.repeat(32),
   },
 });
@@ -90,6 +93,7 @@ const observation = (
     depth?: string;
     bodyHex?: string;
     operatorIdentityByte?: string;
+    authenticationKind?: "https_tls_identity_v1" | "cardano_node_genesis_v1";
   } = {},
 ): WatcherNormalizedL1BlockV1 =>
   normalizeWatcherL1BlockV1(
@@ -97,6 +101,7 @@ const observation = (
       providerId,
       identityByte,
       options.operatorIdentityByte ?? identityByte,
+      options.authenticationKind,
     ),
     {
       schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -163,6 +168,20 @@ describe("fail-closed multi-provider consistency", () => {
       queryObservationCount: 0,
       observationCount: 2,
       independentProviderCount: 2,
+      externalProviderBindings: [
+        {
+          providerId: "provider-a",
+          operatorIdentitySha256: "aa".repeat(32),
+          authenticationKind: "https_tls_identity_v1",
+          publicIdentitySha256: "aa".repeat(32),
+        },
+        {
+          providerId: "provider-b",
+          operatorIdentitySha256: "bb".repeat(32),
+          authenticationKind: "https_tls_identity_v1",
+          publicIdentitySha256: "bb".repeat(32),
+        },
+      ],
       reasonCodes: ["providers_consistent"],
       alertCodes: [],
       rejectedObservationCount: 0,
@@ -257,6 +276,26 @@ describe("fail-closed multi-provider consistency", () => {
       "insufficient_independent_providers",
       "duplicate_operator_identity",
     ]);
+  });
+
+  it("rejects an external-provider transport-auth downgrade", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      observation("provider-a", "aa", {
+        authenticationKind: "cardano_node_genesis_v1",
+      }),
+      observation("provider-b", "bb", {
+        authenticationKind: "cardano_node_genesis_v1",
+      }),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_transport_mismatch"],
+      alertCodes: ["watcher_provider_transport_mismatch"],
+      externalProviderBindings: [],
+      agreement: null,
+    });
   });
 
   it("quarantines observations from the wrong configured network", () => {

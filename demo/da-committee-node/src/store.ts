@@ -25,7 +25,7 @@ type StoreData = {
     readonly contractDeploymentInfoSha256?: string;
     readonly manifestRaw: string;
   };
-  readonly chainCursor?: Record<string, unknown>;
+  readonly chainCursor?: L1SourceState;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
   readonly daPayloads: Record<string, DaStoredPayloadRecordV1>;
   readonly daSignatures: Record<string, DaSignatureRecordV1>;
@@ -37,6 +37,27 @@ type StoreData = {
   readonly peerBroadcasts: Record<string, DaPeerBroadcastRecord>;
   readonly peerHealth: Record<string, DaPeerHealthRecord>;
   readonly peerNonces: Record<string, DaPeerNonceRecord>;
+};
+
+export type L1ObservedDecision = {
+  readonly headerHash: string;
+  readonly stateQueueOutRef: string;
+  readonly stateQueueStatus: StateQueueHeaderRecord["status"];
+  readonly slot?: number;
+  readonly blockHash?: string;
+  readonly finalized: boolean;
+  readonly hasPersistedDecision: boolean;
+};
+
+export type L1SourceState = {
+  readonly schemaVersion: 1;
+  readonly sourceMode: "local_node" | "external_providers";
+  readonly network: string;
+  readonly status: "healthy" | "quarantined";
+  readonly observations: readonly L1ObservedDecision[];
+  readonly observedAt: string;
+  readonly quarantineReason?: string;
+  readonly quarantinedAt?: string;
 };
 
 export type WatcherDeploymentRecord = {
@@ -55,6 +76,9 @@ export interface WatcherStore {
     readonly manifestRaw: string;
   }): Promise<void>;
   getDeployment(): Promise<WatcherDeploymentRecord | undefined>;
+  getL1SourceState(): Promise<L1SourceState | undefined>;
+  saveL1SourceState(state: L1SourceState): Promise<void>;
+  quarantineL1Decisions(state: L1SourceState): Promise<void>;
   upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void>;
   listStateQueueHeaders(): Promise<readonly StateQueueHeaderRecord[]>;
   getStateQueueHeader(
@@ -136,6 +160,97 @@ export class JsonFileWatcherStore implements WatcherStore {
   async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
     const data = await this.read();
     return data.deployment;
+  }
+
+  async getL1SourceState(): Promise<L1SourceState | undefined> {
+    const data = await this.read();
+    return data.chainCursor;
+  }
+
+  async saveL1SourceState(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    await this.mutate((data) => ({ ...data, chainCursor: canonical }));
+  }
+
+  async quarantineL1Decisions(state: L1SourceState): Promise<void> {
+    const canonical = parseL1SourceState(state);
+    if (canonical.status !== "quarantined") {
+      throw new Error(
+        "L1 decision quarantine requires quarantined source state",
+      );
+    }
+    const affectedHeaders = new Set(
+      canonical.observations
+        .filter(({ hasPersistedDecision }) => hasPersistedDecision)
+        .map(({ headerHash }) => headerHash),
+    );
+    const reason = canonical.quarantineReason!;
+    const errorCode = `l1_source_quarantined:${reason}`;
+    await this.mutate((data) => ({
+      ...data,
+      chainCursor: canonical,
+      stateQueueHeaders: Object.fromEntries(
+        Object.entries(data.stateQueueHeaders).map(([key, record]) => [
+          key,
+          affectedHeaders.has(record.headerHash)
+            ? {
+                ...record,
+                status: "conflicted",
+                validationErrors: [
+                  ...new Set([...record.validationErrors, errorCode]),
+                ],
+                updatedAt: canonical.quarantinedAt!,
+              }
+            : record,
+        ]),
+      ),
+      daPayloads: Object.fromEntries(
+        Object.entries(data.daPayloads).map(([key, record]) => [
+          key,
+          affectedHeaders.has(record.headerHash)
+            ? {
+                ...record,
+                validationStatus: "conflicted",
+                validationError: errorCode,
+              }
+            : record,
+        ]),
+      ),
+      daSignatures: Object.fromEntries(
+        Object.entries(data.daSignatures).map(([key, record]) => [
+          key,
+          affectedHeaders.has(record.headerHash)
+            ? { ...record, broadcastStatus: "post_failed" }
+            : record,
+        ]),
+      ),
+      l1Submissions: Object.fromEntries(
+        Object.entries(data.l1Submissions).map(([key, record]) => [
+          key,
+          affectedHeaders.has(record.headerHash)
+            ? {
+                ...record,
+                resultStatus: "failed",
+                failureCause: errorCode,
+              }
+            : record,
+        ]),
+      ),
+      peerBroadcasts: Object.fromEntries(
+        Object.entries(data.peerBroadcasts).map(([key, record]) => [
+          key,
+          affectedHeaders.has(record.headerHash)
+            ? {
+                ...record,
+                status: "failed",
+                nextAttemptAt: undefined,
+                lastError: errorCode,
+                updatedAt: canonical.quarantinedAt!,
+              }
+            : record,
+        ]),
+      ),
+    }));
   }
 
   async upsertStateQueueHeader(record: StateQueueHeaderRecord): Promise<void> {
@@ -494,7 +609,10 @@ const normalizeStoreData = (value: unknown): StoreData => {
   const record = value as Partial<StoreData>;
   return {
     deployment: record.deployment,
-    chainCursor: record.chainCursor,
+    chainCursor:
+      record.chainCursor === undefined
+        ? undefined
+        : parseL1SourceState(record.chainCursor),
     stateQueueHeaders: record.stateQueueHeaders ?? {},
     daPayloads: parseStoredRecordMap(
       record.daPayloads,
@@ -514,6 +632,131 @@ const normalizeStoreData = (value: unknown): StoreData => {
     peerHealth: record.peerHealth ?? {},
     peerNonces: record.peerNonces ?? {},
   };
+};
+
+export const parseL1SourceState = (value: unknown): L1SourceState => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("watcher L1 source state must be an object");
+  }
+  const state = value as Partial<L1SourceState>;
+  const stateKeys = new Set([
+    "schemaVersion",
+    "sourceMode",
+    "network",
+    "status",
+    "observations",
+    "observedAt",
+    "quarantineReason",
+    "quarantinedAt",
+  ]);
+  if (
+    Object.keys(state).some((key) => !stateKeys.has(key)) ||
+    state.schemaVersion !== 1 ||
+    (state.sourceMode !== "local_node" &&
+      state.sourceMode !== "external_providers") ||
+    typeof state.network !== "string" ||
+    state.network.trim() !== state.network ||
+    state.network.length === 0 ||
+    (state.status !== "healthy" && state.status !== "quarantined") ||
+    typeof state.observedAt !== "string" ||
+    !isCanonicalIsoTimestamp(state.observedAt) ||
+    !Array.isArray(state.observations)
+  ) {
+    throw new Error("watcher L1 source state is malformed");
+  }
+  if (
+    state.status === "quarantined" &&
+    (typeof state.quarantineReason !== "string" ||
+      state.quarantineReason.length === 0 ||
+      typeof state.quarantinedAt !== "string" ||
+      !isCanonicalIsoTimestamp(state.quarantinedAt))
+  ) {
+    throw new Error("quarantined watcher L1 source state lacks evidence");
+  }
+  if (
+    state.status === "healthy" &&
+    (state.quarantineReason !== undefined || state.quarantinedAt !== undefined)
+  ) {
+    throw new Error(
+      "healthy watcher L1 source state contains quarantine fields",
+    );
+  }
+  const observations = state.observations.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new Error("watcher L1 source observation is malformed");
+    }
+    const record = entry as Partial<L1ObservedDecision>;
+    const observationKeys = new Set([
+      "headerHash",
+      "stateQueueOutRef",
+      "stateQueueStatus",
+      "slot",
+      "blockHash",
+      "finalized",
+      "hasPersistedDecision",
+    ]);
+    if (
+      Object.keys(record).some((key) => !observationKeys.has(key)) ||
+      typeof record.headerHash !== "string" ||
+      !/^[0-9a-f]{56}$/u.test(record.headerHash) ||
+      typeof record.stateQueueOutRef !== "string" ||
+      !/^[0-9a-f]{64}#[0-9]+$/u.test(record.stateQueueOutRef) ||
+      (record.stateQueueStatus !== "unattested" &&
+        record.stateQueueStatus !== "attesting" &&
+        record.stateQueueStatus !== "attested" &&
+        record.stateQueueStatus !== "merged" &&
+        record.stateQueueStatus !== "removed" &&
+        record.stateQueueStatus !== "conflicted") ||
+      typeof record.finalized !== "boolean" ||
+      typeof record.hasPersistedDecision !== "boolean" ||
+      (record.slot !== undefined &&
+        (!Number.isSafeInteger(record.slot) || record.slot < 0)) ||
+      (record.blockHash !== undefined &&
+        (typeof record.blockHash !== "string" ||
+          !/^[0-9a-f]{64}$/u.test(record.blockHash)))
+    ) {
+      throw new Error("watcher L1 source observation is malformed");
+    }
+    return {
+      headerHash: record.headerHash,
+      stateQueueOutRef: record.stateQueueOutRef,
+      stateQueueStatus: record.stateQueueStatus,
+      ...(record.slot === undefined ? {} : { slot: record.slot }),
+      ...(record.blockHash === undefined
+        ? {}
+        : { blockHash: record.blockHash }),
+      finalized: record.finalized,
+      hasPersistedDecision: record.hasPersistedDecision,
+    };
+  });
+  observations.sort((left, right) =>
+    left.headerHash.localeCompare(right.headerHash),
+  );
+  if (
+    new Set(observations.map(({ headerHash }) => headerHash)).size !==
+    observations.length
+  ) {
+    throw new Error("watcher L1 source observations contain duplicate headers");
+  }
+  return {
+    schemaVersion: 1,
+    sourceMode: state.sourceMode,
+    network: state.network,
+    status: state.status,
+    observations,
+    observedAt: state.observedAt,
+    ...(state.quarantineReason === undefined
+      ? {}
+      : { quarantineReason: state.quarantineReason }),
+    ...(state.quarantinedAt === undefined
+      ? {}
+      : { quarantinedAt: state.quarantinedAt }),
+  };
+};
+
+const isCanonicalIsoTimestamp = (value: string): boolean => {
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
 };
 
 const parseStoredRecordMap = <T>(

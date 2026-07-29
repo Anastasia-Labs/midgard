@@ -61,6 +61,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNonExistentInputNoIndex",
   "fraudProofInvalidRange",
   "fraudProofTransitionTrace",
+  "fraudProofZeroInput",
   "validationTraceDispute",
   "validationTraceDisputeSource",
   "validationTraceDisputeGame",
@@ -225,9 +226,7 @@ const requireDeploymentManifestIdV1 = (
   return value;
 };
 
-export const parseDeploymentMarkerV1 = (
-  value: unknown,
-): DeploymentMarkerV1 => {
+export const parseDeploymentMarkerV1 = (value: unknown): DeploymentMarkerV1 => {
   const candidate = requireRecord(value, "Deployment marker V1");
   const keys = Object.keys(candidate);
   if (
@@ -239,9 +238,7 @@ export const parseDeploymentMarkerV1 = (
       "Deployment marker V1 must contain exactly schemaVersion and manifestId",
     );
   }
-  if (
-    candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION
-  ) {
+  if (candidate.schemaVersion !== MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION) {
     throw new Error(
       `Deployment marker V1 schemaVersion must be ${MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION}`,
     );
@@ -620,6 +617,7 @@ const validateFinalizedContracts = (
     nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
     invalidRange: "fraudProofInvalidRange",
     transitionTrace: "fraudProofTransitionTrace",
+    zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
   } as const;
   requireExactKeys(

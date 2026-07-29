@@ -106,6 +106,29 @@ pub fn open(
   }
 }
 
+/// Starts the response clock only after the source-verification transaction
+/// authenticates the committed claim. The source hop cannot travel backwards
+/// relative to the opener, and it must still leave the complete worst-case
+/// dispute schedule inside the challenged block's maturity horizon.
+pub fn open_after_source_verification(
+  operator: validation_trace_v1.ValidationTraceDescriptorV1,
+  challenger: validation_trace_v1.ValidationTraceDescriptorV1,
+  open_time_upper: Int,
+  source_time_upper: Int,
+  challenged_block_end_time: Int,
+  maturity_duration: Int,
+) -> ValidationDisputeV1 {
+  expect open_time_upper >= 0
+  expect source_time_upper >= open_time_upper
+  expect
+    can_open_before_maturity(
+      source_time_upper,
+      challenged_block_end_time,
+      maturity_duration,
+    )
+  open(operator, challenger, source_time_upper)
+}
+
 pub fn reveal_operator_midpoint(
   dispute: ValidationDisputeV1,
   proof: validation_trace_v1.ValidationTraceProof,

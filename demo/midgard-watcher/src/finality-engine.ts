@@ -32,6 +32,13 @@ const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const SOURCE_AUTHORITY_ID = /^[a-z][a-z0-9-]{2,31}$/u;
 
+export type WatcherFinalityExternalProviderV1 = Readonly<{
+  providerId: string;
+  operatorIdentitySha256: string;
+  endpoint: string;
+  authenticationKind: "https_tls_identity_v1";
+}>;
+
 export const WATCHER_FINALITY_REASON_CODES_V1 = [
   "first_visibility_pending",
   "confirmation_depth_pending",
@@ -48,6 +55,7 @@ export const WATCHER_FINALITY_REASON_CODES_V1 = [
   "malformed_provider_result",
   "source_mode_mismatch",
   "source_authority_mismatch",
+  "source_provider_mismatch",
   "malformed_policy",
   "malformed_state",
   "invalid_state_semantics",
@@ -97,6 +105,7 @@ export type WatcherFinalityPolicyV1 = Readonly<{
   sourceMode: "local_node" | "external_providers";
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
+  externalProviders: readonly WatcherFinalityExternalProviderV1[] | null;
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
   beforeFinalityRollback: "rewind";
@@ -190,6 +199,7 @@ type ParsedConsistency =
       sourceMode: "local_node" | "external_providers";
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
+      externalProviderBindings: readonly ExternalProviderBinding[];
       agreement: Agreement;
     }>
   | Readonly<{
@@ -197,8 +207,16 @@ type ParsedConsistency =
       sourceMode: "local_node" | "external_providers";
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
+      externalProviderBindings: readonly ExternalProviderBinding[];
       consistencyDigest: string;
     }>;
+
+type ExternalProviderBinding = Readonly<{
+  providerId: string;
+  operatorIdentitySha256: string;
+  authenticationKind: "https_tls_identity_v1";
+  publicIdentitySha256: string;
+}>;
 
 const exactPlainRecord = (
   value: unknown,
@@ -298,6 +316,78 @@ const sameMarker = (
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
 
+const cloneExternalProviders = (
+  value: unknown,
+): readonly WatcherFinalityExternalProviderV1[] | null => {
+  const providers = exactArray(value);
+  if (providers === null || providers.length < 2 || providers.length > 4) {
+    return null;
+  }
+  const normalized: WatcherFinalityExternalProviderV1[] = [];
+  const providerIds = new Set<string>();
+  const operatorIdentities = new Set<string>();
+  const endpoints = new Set<string>();
+  for (const candidate of providers) {
+    const provider = exactPlainRecord(candidate, [
+      "providerId",
+      "operatorIdentitySha256",
+      "endpoint",
+      "authenticationKind",
+    ]);
+    if (
+      provider === null ||
+      typeof provider.providerId !== "string" ||
+      !SOURCE_AUTHORITY_ID.test(provider.providerId) ||
+      !isHex32(provider.operatorIdentitySha256) ||
+      typeof provider.endpoint !== "string" ||
+      provider.endpoint.length === 0 ||
+      provider.endpoint.length > 2_048 ||
+      provider.endpoint !== provider.endpoint.trim() ||
+      provider.authenticationKind !== "https_tls_identity_v1"
+    ) {
+      return null;
+    }
+    let endpoint: URL;
+    try {
+      endpoint = new URL(provider.endpoint);
+    } catch {
+      return null;
+    }
+    if (
+      endpoint.protocol !== "https:" ||
+      endpoint.username.length > 0 ||
+      endpoint.password.length > 0 ||
+      endpoint.search.length > 0 ||
+      endpoint.hash.length > 0 ||
+      providerIds.has(provider.providerId) ||
+      operatorIdentities.has(provider.operatorIdentitySha256) ||
+      endpoints.has(provider.endpoint)
+    ) {
+      return null;
+    }
+    providerIds.add(provider.providerId);
+    operatorIdentities.add(provider.operatorIdentitySha256);
+    endpoints.add(provider.endpoint);
+    normalized.push(
+      Object.freeze({
+        providerId: provider.providerId,
+        operatorIdentitySha256: provider.operatorIdentitySha256,
+        endpoint: provider.endpoint,
+        authenticationKind: "https_tls_identity_v1",
+      }),
+    );
+  }
+  return Object.freeze(
+    normalized.sort((left, right) =>
+      left.providerId < right.providerId
+        ? -1
+        : left.providerId > right.providerId
+          ? 1
+          : 0,
+    ),
+  );
+};
+
 const makePolicy = (
   value: Omit<WatcherFinalityPolicyV1, "policyDigest">,
 ): WatcherFinalityPolicyV1 => {
@@ -305,12 +395,23 @@ const makePolicy = (
   if (deploymentMarker === null) {
     throw new Error("invalid deployment marker");
   }
+  const externalProviders =
+    value.externalProviders === null
+      ? null
+      : cloneExternalProviders(value.externalProviders);
+  if (
+    (value.sourceMode === "external_providers" && externalProviders === null) ||
+    (value.sourceMode === "local_node" && externalProviders !== null)
+  ) {
+    throw new Error("invalid external provider allowlist");
+  }
   const canonical = {
     schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
     network: value.network,
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
     authorityGenesisIdentitySha256: value.authorityGenesisIdentitySha256,
+    externalProviders,
     confirmationDepth: value.confirmationDepth,
     maximumPreFinalityRollbackDepth: value.maximumPreFinalityRollbackDepth,
     beforeFinalityRollback: "rewind" as const,
@@ -334,6 +435,7 @@ export const parseWatcherFinalityPolicyV1 = (
       "sourceMode",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
+      "externalProviders",
       "confirmationDepth",
       "maximumPreFinalityRollbackDepth",
       "beforeFinalityRollback",
@@ -344,6 +446,10 @@ export const parseWatcherFinalityPolicyV1 = (
     ]);
     const marker =
       policy === null ? null : cloneMarker(policy.deploymentMarker);
+    const externalProviders =
+      policy === null || policy.externalProviders === null
+        ? null
+        : cloneExternalProviders(policy.externalProviders);
     if (
       policy === null ||
       policy.schemaVersion !== WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION ||
@@ -355,10 +461,12 @@ export const parseWatcherFinalityPolicyV1 = (
         (policy.sourceMode === "local_node" &&
           typeof policy.authorityNodeId === "string" &&
           SOURCE_AUTHORITY_ID.test(policy.authorityNodeId) &&
-          isHex32(policy.authorityGenesisIdentitySha256)) ||
+          isHex32(policy.authorityGenesisIdentitySha256) &&
+          policy.externalProviders === null) ||
         (policy.sourceMode === "external_providers" &&
           policy.authorityNodeId === null &&
-          policy.authorityGenesisIdentitySha256 === null)
+          policy.authorityGenesisIdentitySha256 === null &&
+          externalProviders !== null)
       ) ||
       !isPositiveUint64(policy.confirmationDepth) ||
       BigInt(policy.confirmationDepth) >
@@ -382,6 +490,7 @@ export const parseWatcherFinalityPolicyV1 = (
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
         | string
         | null,
+      externalProviders,
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
       beforeFinalityRollback: "rewind",
@@ -467,6 +576,19 @@ export const makeWatcherFinalityPolicyV1 = (
       authorityGenesisIdentitySha256:
         config.l1.source.sourceMode === "local_node"
           ? config.l1.source.chainSync.genesisIdentitySha256
+          : null,
+      externalProviders:
+        config.l1.source.sourceMode === "external_providers"
+          ? Object.freeze(
+              config.l1.source.providers.map((provider) =>
+                Object.freeze({
+                  providerId: provider.identity,
+                  operatorIdentitySha256: provider.operatorIdentitySha256,
+                  endpoint: provider.endpoint,
+                  authenticationKind: "https_tls_identity_v1" as const,
+                }),
+              ),
+            )
           : null,
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
@@ -746,6 +868,57 @@ const sameStringArray = (
   left.length === right.length &&
   left.every((value, index) => value === right[index]);
 
+const parseExternalProviderBindings = (
+  value: unknown,
+): readonly ExternalProviderBinding[] | null => {
+  const candidates = exactArray(value);
+  if (
+    candidates === null ||
+    candidates.length >
+      WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+  ) {
+    return null;
+  }
+  const bindings: ExternalProviderBinding[] = [];
+  for (const candidate of candidates) {
+    const binding = exactPlainRecord(candidate, [
+      "providerId",
+      "operatorIdentitySha256",
+      "authenticationKind",
+      "publicIdentitySha256",
+    ]);
+    if (
+      binding === null ||
+      typeof binding.providerId !== "string" ||
+      !/^[a-z][a-z0-9-]{0,62}$/u.test(binding.providerId) ||
+      !isHex32(binding.operatorIdentitySha256) ||
+      binding.authenticationKind !== "https_tls_identity_v1" ||
+      !isHex32(binding.publicIdentitySha256)
+    ) {
+      return null;
+    }
+    bindings.push(
+      Object.freeze({
+        providerId: binding.providerId,
+        operatorIdentitySha256: binding.operatorIdentitySha256,
+        authenticationKind: "https_tls_identity_v1",
+        publicIdentitySha256: binding.publicIdentitySha256,
+      }),
+    );
+  }
+  if (
+    bindings.some(
+      (binding, index) =>
+        index > 0 &&
+        binding.providerId <=
+          (bindings[index - 1] as ExternalProviderBinding).providerId,
+    )
+  ) {
+    return null;
+  }
+  return Object.freeze(bindings);
+};
+
 const parseConsistency = (value: unknown): ParsedConsistency | null => {
   try {
     const result = exactPlainRecord(value, [
@@ -760,6 +933,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       "queryObservationCount",
       "observationCount",
       "independentProviderCount",
+      "externalProviderBindings",
       "reasonCodes",
       "alertCodes",
       "observationEvidenceDigests",
@@ -804,6 +978,9 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       result.alertCodes,
       WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
     );
+    const externalProviderBindings = parseExternalProviderBindings(
+      result.externalProviderBindings,
+    );
     const evidence = parseStringArray(result.observationEvidenceDigests, []);
     const evidenceArray =
       evidence === null
@@ -812,6 +989,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
     if (
       reasons === null ||
       alerts === null ||
+      externalProviderBindings === null ||
       evidenceArray === null ||
       evidenceArray.some((digest) => !isHex32(digest)) ||
       new Set(evidenceArray).size !== evidenceArray.length ||
@@ -847,11 +1025,14 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
                 result.chainAuthorityObservationDigest,
               ))) &&
           (result.queryObservationCount as number) <=
-            Math.max(0, (result.observationCount as number) - 1)
+            Math.max(0, (result.observationCount as number) - 1) &&
+          externalProviderBindings.length === 0
         : result.authorityNodeId === null &&
           result.authorityGenesisIdentitySha256 === null &&
           result.chainAuthorityObservationDigest === null &&
-          result.queryObservationCount === 0;
+          result.queryObservationCount === 0 &&
+          externalProviderBindings.length <=
+            (result.observationCount as number);
     if (!sourceShapeValid) {
       return null;
     }
@@ -905,6 +1086,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       queryObservationCount: result.queryObservationCount,
       observationCount: result.observationCount,
       independentProviderCount: result.independentProviderCount,
+      externalProviderBindings,
       reasonCodes: reasons,
       alertCodes: alerts,
       observationEvidenceDigests: evidenceArray,
@@ -922,6 +1104,8 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
             sameStringArray(reasons, ["local_node_consistent"])
           : (result.observationCount as number) >= 2 &&
             (result.independentProviderCount as number) >= 2 &&
+            externalProviderBindings.length ===
+              (result.observationCount as number) &&
             sameStringArray(reasons, ["providers_consistent"]);
       if (
         result.protocolDecision !== "allowed" ||
@@ -939,6 +1123,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
         authorityNodeId: result.authorityNodeId as string | null,
         authorityGenesisIdentitySha256:
           result.authorityGenesisIdentitySha256 as string | null,
+        externalProviderBindings,
         agreement,
       });
     }
@@ -955,6 +1140,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       authorityGenesisIdentitySha256: result.authorityGenesisIdentitySha256 as
         | string
         | null,
+      externalProviderBindings,
       consistencyDigest: result.consistencyDigest,
     });
   } catch {
@@ -1097,6 +1283,30 @@ const bindingFailure = (
   return state.policyDigest === policy.policyDigest ? null : "stale_state";
 };
 
+const externalProviderBindingsMatchPolicy = (
+  policy: WatcherFinalityPolicyV1,
+  bindings: readonly ExternalProviderBinding[],
+): boolean => {
+  if (policy.sourceMode !== "external_providers") {
+    return bindings.length === 0;
+  }
+  const configured = policy.externalProviders;
+  if (configured === null) {
+    return false;
+  }
+  const byProviderId = new Map(
+    configured.map((provider) => [provider.providerId, provider] as const),
+  );
+  return bindings.every((binding) => {
+    const provider = byProviderId.get(binding.providerId);
+    return (
+      provider !== undefined &&
+      binding.operatorIdentitySha256 === provider.operatorIdentitySha256 &&
+      binding.authenticationKind === provider.authenticationKind
+    );
+  });
+};
+
 /**
  * Advances canonical finality from one exact W11 decision. It never grants
  * finality on first visibility, never advances from W11 pending/quarantine,
@@ -1184,11 +1394,17 @@ export const evaluateWatcherFinalityV1 = (
   const sourceBindingFailure =
     consistency.sourceMode !== policy.sourceMode
       ? "source_mode_mismatch"
-      : consistency.authorityNodeId !== policy.authorityNodeId ||
-          consistency.authorityGenesisIdentitySha256 !==
-            policy.authorityGenesisIdentitySha256
-        ? "source_authority_mismatch"
-        : null;
+      : policy.sourceMode === "external_providers" &&
+          !externalProviderBindingsMatchPolicy(
+            policy,
+            consistency.externalProviderBindings,
+          )
+        ? "source_provider_mismatch"
+        : consistency.authorityNodeId !== policy.authorityNodeId ||
+            consistency.authorityGenesisIdentitySha256 !==
+              policy.authorityGenesisIdentitySha256
+          ? "source_authority_mismatch"
+          : null;
   if (sourceBindingFailure !== null) {
     return result(
       "reject",

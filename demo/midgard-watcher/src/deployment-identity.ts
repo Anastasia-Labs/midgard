@@ -40,6 +40,7 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
+  zeroInput: "fraudProofZeroInput",
   validationTraceDispute: "validationTraceDispute",
 } as const);
 
@@ -619,9 +620,20 @@ const assertCatalogue = (
       `$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${category}`,
     );
     const expectedEntry = expected.categories[category];
+    const contractName = CATALOGUE_CATEGORY_TO_CONTRACT[category];
+    const deployedContract = plainRecord(
+      contracts[contractName],
+      `$.manifest.contracts.${contractName}`,
+    );
+    const deployedScriptHash = exactString(
+      deployedContract.scriptHash,
+      `$.manifest.contracts.${contractName}.scriptHash`,
+      HEX_28,
+    );
     if (
       entry.categoryId !== expectedEntry.categoryId ||
-      entry.scriptHash !== expectedEntry.scriptHash
+      entry.scriptHash !== expectedEntry.scriptHash ||
+      entry.scriptHash !== deployedScriptHash
     ) {
       fail(
         "mismatched_identity",

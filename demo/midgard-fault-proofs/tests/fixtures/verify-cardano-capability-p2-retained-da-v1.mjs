@@ -99,7 +99,7 @@ try {
     "pnpm",
     [
       "--filter",
-      "midgard-watcher",
+      "da-committee-node",
       "exec",
       "vitest",
       "run",

@@ -79,10 +79,7 @@ export const readDaDeploymentFixture = async (): Promise<
           ...source,
           refScriptUTxO: referenceScriptContractNames.has(contractName)
             ? (existing?.refScriptUTxO ?? {
-                txHash: (index + 10)
-                  .toString(16)
-                  .padStart(2, "0")
-                  .repeat(32),
+                txHash: (index + 10).toString(16).padStart(2, "0").repeat(32),
                 outputIndex: 0,
               })
             : null,
@@ -104,6 +101,7 @@ export const readDaDeploymentFixture = async (): Promise<
           ["nonExistentInputNoIndex", "fraudProofNonExistentInputNoIndex"],
           ["invalidRange", "fraudProofInvalidRange"],
           ["transitionTrace", "fraudProofTransitionTrace"],
+          ["zeroInput", "fraudProofZeroInput"],
           ["validationTraceDispute", "validationTraceDispute"],
         ].map(([categoryName, contractName], index) => [
           categoryName,

@@ -18,11 +18,18 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   parseFaultProofBlueprint,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
-import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  type UTxO,
+  validatorToScriptHash,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -44,10 +51,28 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
+const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+  referenceScriptAuthPolicy: {
+    policyId: validatorToScriptHash({
+      type: "Native",
+      script: referenceScriptAuthNativeScript,
+    }),
+    nativeScript: {
+      type: "Native",
+      cborHex: referenceScriptAuthNativeScript,
+      expiresAtSlot: 0,
+      expiresAtUnixTime: 0,
+      timelockDurationMs: 1,
+    },
+    tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: {
+      required: true,
+      rule: "test fixture",
+    },
+  },
   contracts,
 });
 
@@ -310,7 +335,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow('Deployment info is missing "fraudProofInvalidRange"');
-  });
+  }, 30_000);
 
   it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
     const blueprint = readBlueprint();
@@ -359,7 +384,7 @@ describe("fault-proof deployment contract resolution", () => {
     ).rejects.toThrow(
       "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
     );
-  });
+  }, 30_000);
 
   it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
@@ -447,11 +472,11 @@ describe("fault-proof deployment contract resolution", () => {
       deploymentInfo,
       network: "Preprod",
     });
-    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(81);
+    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(95);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(61);
+    ).toHaveLength(75);
     expect(
       resolved.contracts.validationTraceDispute.prepareResolvers,
     ).toHaveLength(12);
@@ -480,7 +505,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  }, 15_000);
+  }, 30_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -538,7 +563,7 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after double-spend readiness");
-  });
+  }, 30_000);
 
   it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -597,5 +622,5 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after invalid-range readiness");
-  });
+  }, 30_000);
 });

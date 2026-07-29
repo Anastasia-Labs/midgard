@@ -9,11 +9,13 @@ use cardano/address.{
 use cardano/assets.{AssetName, Value}
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
 use env
+use midgard/bounded_collection_v1
 use midgard/common/types.{Proof}
 use midgard/common/utils
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
+use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/hub_oracle as hub
 use midgard/ledger_state
@@ -187,6 +189,21 @@ pub type InvalidOneStepTransitionWitness {
     event_ref_input_index: Int,
     event_asset_name: AssetName,
     projected_utxo: LedgerInsertWitness,
+  }
+  L2TransactionTransition {
+    trace_proof: transition_trace.IndexedTraceProof,
+    event_to_step: transition_trace.RootMembershipProof<
+      ledger_state.EventKey,
+      ledger_state.EventToStepValue,
+    >,
+    source_membership: transition_trace.RootMembershipProof<
+      ByteArray,
+      ByteArray,
+    >,
+    spend_inputs_preimage: ByteArray,
+    outputs_preimage: ByteArray,
+    spent_utxos: List<LedgerDeleteWitness>,
+    produced_utxos: List<LedgerInsertWitness>,
   }
 }
 
@@ -868,6 +885,92 @@ fn projected_deposit_output_cbor(
   )
 }
 
+fn verify_l2_source_membership(
+  header: ledger_state.HeaderV1,
+  membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+) -> Bool {
+  transition_trace.verify_root_membership_with_bytes(
+    membership,
+    transition_trace.TransactionsV1RootDomain,
+    header.transactions_root,
+    header.l2_transaction_count,
+    membership.key,
+    membership.value,
+  )
+}
+
+fn validate_l2_one_step_binding(
+  header: ledger_state.HeaderV1,
+  trace_proof: transition_trace.IndexedTraceProof,
+  event_to_step: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+) -> Bool {
+  expect ledger_state.L2TransactionEventKey { tx_id } = trace_proof.value.event_key
+  and {
+    verify_trace_binding_to_event_to_step(header, trace_proof, event_to_step),
+    verify_l2_source_membership(header, source_membership),
+    source_membership.key == tx_id,
+    trace_proof.value.phase == ledger_state.L2Transaction,
+  }
+}
+
+fn apply_l2_spends(
+  root: ByteArray,
+  spend_inputs: List<native_types.MidgardTxInput>,
+  witnesses: List<LedgerDeleteWitness>,
+) -> ByteArray {
+  when spend_inputs is {
+    [] -> {
+      expect witnesses == []
+      root
+    }
+    [spend_input, ..rest] -> {
+      expect [witness, ..remaining_witnesses] = witnesses
+      let expected_key = native_components.encode_midgard_tx_input(spend_input)
+      expect witness.key == expected_key
+      apply_l2_spends(
+        apply_delete_witness(root, witness),
+        rest,
+        remaining_witnesses,
+      )
+    }
+  }
+}
+
+fn apply_l2_outputs(
+  root: ByteArray,
+  tx_id: ByteArray,
+  output_index: Int,
+  outputs: List<native_types.MidgardTxOutput>,
+  witnesses: List<LedgerInsertWitness>,
+) -> ByteArray {
+  when outputs is {
+    [] -> {
+      expect witnesses == []
+      root
+    }
+    [output, ..rest] -> {
+      expect [witness, ..remaining_witnesses] = witnesses
+      let expected_key = native_components.encode_midgard_tx_input(
+        native_types.MidgardTxInput { tx_id, output_index },
+      )
+      let expected_value = native_components.encode_midgard_tx_output(output)
+      expect witness.key == expected_key
+      expect witness.value == expected_value
+      apply_l2_outputs(
+        apply_insert_witness(root, witness),
+        tx_id,
+        output_index + 1,
+        rest,
+        remaining_witnesses,
+      )
+    }
+  }
+}
+
 fn validate_valid_withdrawal_transition(
   header: ledger_state.HeaderV1,
   trace_proof: transition_trace.IndexedTraceProof,
@@ -1002,6 +1105,64 @@ fn validate_valid_deposit_transition(
   }
 }
 
+fn validate_l2_transaction_transition(
+  header: ledger_state.HeaderV1,
+  trace_proof: transition_trace.IndexedTraceProof,
+  event_to_step: transition_trace.RootMembershipProof<
+    ledger_state.EventKey,
+    ledger_state.EventToStepValue,
+  >,
+  source_membership: transition_trace.RootMembershipProof<ByteArray, ByteArray>,
+  spend_inputs_preimage: ByteArray,
+  outputs_preimage: ByteArray,
+  spent_utxos: List<LedgerDeleteWitness>,
+  produced_utxos: List<LedgerInsertWitness>,
+) -> Bool {
+  let verified = native_compact.verify_native_tx_compact_cbor_v1(
+    source_membership.key,
+    source_membership.value,
+  )
+  let compact = verified.tx_compact
+  expect compact.validity_code == 0
+  let spend_inputs = native_preimages.decode_midgard_tx_inputs_preimage_cbor(
+    spend_inputs_preimage,
+  )
+  let outputs = native_preimages.decode_midgard_tx_outputs_preimage_cbor(
+    outputs_preimage,
+  )
+  expect
+    bounded_collection_v1.from_items(
+      0,
+      spend_inputs |> list.map(native_components.encode_midgard_tx_input),
+    ) == compact.body.spend_inputs_hash
+  expect
+    bounded_collection_v1.from_items(
+      2,
+      outputs |> list.map(native_components.encode_midgard_tx_output),
+    ) == compact.body.outputs_hash
+  let after_spends = apply_l2_spends(
+    trace_proof.value.pre_utxos_root,
+    spend_inputs,
+    spent_utxos,
+  )
+  let expected_post_root = apply_l2_outputs(
+    after_spends,
+    source_membership.key,
+    0,
+    outputs,
+    produced_utxos,
+  )
+  and {
+    validate_l2_one_step_binding(
+      header,
+      trace_proof,
+      event_to_step,
+      source_membership,
+    ),
+    expected_post_root != trace_proof.value.post_utxos_root,
+  }
+}
+
 fn validate_invalid_one_step_transition(
   header: ledger_state.HeaderV1,
   hub_datum: hub.Datum,
@@ -1062,6 +1223,25 @@ fn validate_invalid_one_step_transition(
         event_ref_input_index,
         event_asset_name,
         projected_utxo,
+      )
+    L2TransactionTransition {
+      trace_proof,
+      event_to_step,
+      source_membership,
+      spend_inputs_preimage,
+      outputs_preimage,
+      spent_utxos,
+      produced_utxos,
+    } ->
+      validate_l2_transaction_transition(
+        header,
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage,
+        outputs_preimage,
+        spent_utxos,
+        produced_utxos,
       )
   }
 }
@@ -1127,6 +1307,21 @@ fn forced_tx_is_due(
   }
 }
 
+fn forced_event_is_due(
+  header: ledger_state.HeaderV1,
+  inclusion_time: Int,
+  compact_body: native_types.NativeTxBodyCompact,
+) -> Bool {
+  and {
+    timed_l1_event_is_due(header, inclusion_time),
+    forced_tx_is_due(
+      header,
+      compact_body.validity_interval_start,
+      compact_body.validity_interval_end,
+    ),
+  }
+}
+
 fn tx_order_compact_body(
   payload: ledger_state.TxOrderPayloadV1,
 ) -> native_types.NativeTxBodyCompact {
@@ -1151,12 +1346,13 @@ fn get_authenticated_deposit_reference(
   event_asset_name: AssetName,
   event_ref_input_index: Int,
 ) -> AuthenticatedDepositReference {
-  expect
-      Some(Input {
-        output: Output { datum: InlineDatum(datum_data), value, .. },
-        ..
-      })
-    = list.at(reference_inputs, event_ref_input_index)
+  expect Some(reference_input) = list.at(
+    reference_inputs,
+    event_ref_input_index,
+  )
+  let Input { output, .. } = reference_input
+  let Output { datum, value, .. } = output
+  expect InlineDatum(datum_data) = datum
   expect assets.quantity_of(value, deposit_policy_id, event_asset_name) == 1
   expect [event_data,
         inclusion_time_data, ..] = builtin.unconstr_fields(datum_data)
@@ -1286,14 +1482,10 @@ fn validate_omitted_due_l1_event(
         event_asset_name,
         event_ref_input_index,
       )
-      let user_events.OptimisticDatum { event, .. } = tx_order_datum
+      let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
       let compact_body = tx_order_compact_body(event.tx)
       and {
-        forced_tx_is_due(
-          header,
-          compact_body.validity_interval_start,
-          compact_body.validity_interval_end,
-        ),
+        forced_event_is_due(header, inclusion_time, compact_body),
         source_non_membership.key == event.id,
         transition_trace.verify_root_non_membership_with_key_bytes(
           source_non_membership,
@@ -1374,7 +1566,7 @@ fn validate_out_of_window_source_event(
         event_asset_name,
         event_ref_input_index,
       )
-      let user_events.OptimisticDatum { event, .. } = tx_order_datum
+      let user_events.OptimisticDatum { event, inclusion_time, .. } = tx_order_datum
       let expected_source_value = ledger_state.ForcedInclusionTxV1 {
         tx_id: event.tx.tx_id,
         transaction_commitment: event.tx.transaction_commitment,
@@ -1383,11 +1575,7 @@ fn validate_out_of_window_source_event(
       }
       let compact_body = tx_order_compact_body(event.tx)
       and {
-        !forced_tx_is_due(
-          header,
-          compact_body.validity_interval_start,
-          compact_body.validity_interval_end,
-        ),
+        !forced_event_is_due(header, inclusion_time, compact_body),
         source_membership.key == event.id,
         source_membership.value == expected_source_value,
         verify_source_membership(
@@ -1680,6 +1868,25 @@ pub fn validate_accepted_transaction_fault_proof(
     when proof.fault is {
       AcceptedTransactionTransitionMismatch { witness } ->
         validate_accepted_transaction_transition_mismatch(proof.header, witness)
+      InvalidOneStepTransition{witness: L2TransactionTransition {
+        trace_proof,
+        event_to_step,
+        source_membership,
+        spend_inputs_preimage,
+        outputs_preimage,
+        spent_utxos,
+        produced_utxos,
+      }} ->
+        validate_l2_transaction_transition(
+          proof.header,
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage,
+          outputs_preimage,
+          spent_utxos,
+          produced_utxos,
+        )
       _ -> False
     },
   }

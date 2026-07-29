@@ -97,6 +97,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNonExistentInputNoIndex",
   "fraudProofInvalidRange",
   "fraudProofTransitionTrace",
+  "fraudProofZeroInput",
   "validationTraceDispute",
   "validationTraceDisputeSource",
   "validationTraceDisputeGame",
@@ -604,6 +605,7 @@ const validateFraudProofCatalogue = (
     nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
     invalidRange: "fraudProofInvalidRange",
     transitionTrace: "fraudProofTransitionTrace",
+    zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
   } as const;
   for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {

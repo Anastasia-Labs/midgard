@@ -15,7 +15,7 @@ import {
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 observer/native-script Cardano boundary", () => {
-  it("couples every field-3 observer to one real field-7 native-script witness", async () => {
+  it("couples every field-3 observer to one real field-6 native-script witness", async () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
     const spendingKeyHash = spendingKey.to_public().hash();
     const address = CML.EnterpriseAddress.new(
@@ -46,29 +46,24 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
         fundingInput: fundingInput!,
         recipientAddress: address,
         requestedObserverCount,
-        minFeeA:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
         minFeeRefScriptCostPerByte:
           PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
       });
 
     const firstCandidate = await buildCandidate(1);
-    const firstMeasurement =
-      measureSignedCardanoObserverNativeScriptsV1(
-        firstCandidate.cborHex,
-      );
-    const firstObserverField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: firstCandidate.cborHex,
-        fieldIndex: 3,
-      });
-    const firstScriptField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: firstCandidate.cborHex,
-        fieldIndex: 7,
-      });
+    const firstMeasurement = measureSignedCardanoObserverNativeScriptsV1(
+      firstCandidate.cborHex,
+    );
+    const firstObserverField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: firstCandidate.cborHex,
+      fieldIndex: 3,
+    });
+    const firstScriptField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: firstCandidate.cborHex,
+      fieldIndex: 6,
+    });
     expect(firstCandidate.signedBytes).toBeLessThanOrEqual(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
@@ -81,24 +76,20 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: buildCandidate,
     });
-    const acceptedCardano =
-      measureSignedCardanoObserverNativeScriptsV1(
-        boundary.accepted.cborHex,
-      );
-    const adjacentCardano =
-      measureSignedCardanoObserverNativeScriptsV1(
-        boundary.adjacent.cborHex,
-      );
-    const observerField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: boundary.accepted.cborHex,
-        fieldIndex: 3,
-      });
-    const scriptField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: boundary.accepted.cborHex,
-        fieldIndex: 7,
-      });
+    const acceptedCardano = measureSignedCardanoObserverNativeScriptsV1(
+      boundary.accepted.cborHex,
+    );
+    const adjacentCardano = measureSignedCardanoObserverNativeScriptsV1(
+      boundary.adjacent.cborHex,
+    );
+    const observerField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+      fieldIndex: 3,
+    });
+    const scriptField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+      fieldIndex: 6,
+    });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-observers-and-native-scripts",
@@ -148,37 +139,28 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       expectedObserverCount: number,
     ): void => {
       expect(measurement.inputCount).toBe(1);
-      expect(measurement.withdrawalCount).toBe(
-        expectedObserverCount,
-      );
-      expect(measurement.nativeScriptWitnessCount).toBe(
-        expectedObserverCount,
-      );
+      expect(measurement.withdrawalCount).toBe(expectedObserverCount);
+      expect(measurement.nativeScriptWitnessCount).toBe(expectedObserverCount);
       expect(measurement.outputCount).toBe(1);
       expect(measurement.vkeyWitnessCount).toBe(1);
       expect(measurement.validityStart).toBeUndefined();
-      expect(measurement.ttl).toBe(
-        CARDANO_BOUNDARY_OBSERVER_TTL_V1,
-      );
+      expect(measurement.ttl).toBe(CARDANO_BOUNDARY_OBSERVER_TTL_V1);
       expect(measurement.withdrawalAmounts).toEqual(
         Array.from({ length: expectedObserverCount }, () => 0n),
       );
-      expect(
-        [...measurement.observerScriptHashHexes].sort(),
-      ).toEqual([...measurement.nativeScriptHashHexes].sort());
-      expect(
-        new Set(measurement.observerScriptHashHexes).size,
-      ).toBe(expectedObserverCount);
+      expect([...measurement.observerScriptHashHexes].sort()).toEqual(
+        [...measurement.nativeScriptHashHexes].sort(),
+      );
+      expect(new Set(measurement.observerScriptHashHexes).size).toBe(
+        expectedObserverCount,
+      );
       expect(measurement.hasPlutusScripts).toBe(false);
       expect(measurement.hasRedeemers).toBe(false);
       expect(measurement.hasDatums).toBe(false);
       expect(measurement.collateralInputCount).toBe(0);
 
-      const transaction = CML.Transaction.from_cbor_hex(
-        candidateCborHex,
-      );
-      const nativeScripts =
-        transaction.witness_set().native_scripts();
+      const transaction = CML.Transaction.from_cbor_hex(candidateCborHex);
+      const nativeScripts = transaction.witness_set().native_scripts();
       const signerHashes = CML.Ed25519KeyHashList.new();
       signerHashes.add(spendingKeyHash);
       expect(nativeScripts?.len()).toBe(expectedObserverCount);
@@ -188,11 +170,9 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
         scriptIndex += 1
       ) {
         expect(
-          nativeScripts!.get(scriptIndex).verify(
-            undefined,
-            CARDANO_BOUNDARY_OBSERVER_TTL_V1,
-            signerHashes,
-          ),
+          nativeScripts!
+            .get(scriptIndex)
+            .verify(undefined, CARDANO_BOUNDARY_OBSERVER_TTL_V1, signerHashes),
         ).toBe(true);
       }
     };
@@ -207,12 +187,8 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
       boundary.adjacent.requestedItemCount,
     );
 
-    expect(observerField.itemCount).toBe(
-      acceptedCardano.withdrawalCount,
-    );
-    expect(observerField.revealStepCount).toBe(
-      acceptedCardano.withdrawalCount,
-    );
+    expect(observerField.itemCount).toBe(acceptedCardano.withdrawalCount);
+    expect(observerField.revealStepCount).toBe(acceptedCardano.withdrawalCount);
     expect(scriptField.itemCount).toBe(
       acceptedCardano.nativeScriptWitnessCount,
     );
@@ -244,65 +220,48 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
           {
             observerNativeScriptBoundaryV1: {
               observerFieldIndex: 3,
-              scriptWitnessFieldIndex: 7,
-              maxTxSize:
-                emulator.protocolParameters.maxTxSize,
-              maxValueSize:
-                emulator.protocolParameters.maxValSize,
+              scriptWitnessFieldIndex: 6,
+              maxTxSize: emulator.protocolParameters.maxTxSize,
+              maxValueSize: emulator.protocolParameters.maxValSize,
               fixtureGenerationBasis:
                 "on-demand until exact signed bytes exceed maxTxSize",
               actualSpendInputCount: acceptedCardano.inputCount,
-              actualObserverWithdrawalCount:
-                acceptedCardano.withdrawalCount,
+              actualObserverWithdrawalCount: acceptedCardano.withdrawalCount,
               actualNativeScriptWitnessCount:
                 acceptedCardano.nativeScriptWitnessCount,
               actualOutputCount: acceptedCardano.outputCount,
-              actualVkeyWitnessCount:
-                acceptedCardano.vkeyWitnessCount,
+              actualVkeyWitnessCount: acceptedCardano.vkeyWitnessCount,
               validityStart: "unset",
-              validityEnd:
-                CARDANO_BOUNDARY_OBSERVER_TTL_V1.toString(),
+              validityEnd: CARDANO_BOUNDARY_OBSERVER_TTL_V1.toString(),
               distinctExpiryStart:
                 CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1.toString(),
-              distinctExpiryEnd:
-                (
-                  CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
-                  BigInt(
-                    boundary.accepted.requestedItemCount - 1,
-                  )
-                ).toString(),
+              distinctExpiryEnd: (
+                CARDANO_BOUNDARY_OBSERVER_EXPIRY_BASE_V1 +
+                BigInt(boundary.accepted.requestedItemCount - 1)
+              ).toString(),
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.accepted.signedBytes,
               fee: boundary.accepted.fee.toString(),
-              nativeCanonicalBytes:
-                observerField.nativeCanonicalBytes,
+              nativeCanonicalBytes: observerField.nativeCanonicalBytes,
               observerFieldBytes: observerField.fieldBytes,
               observerItems: observerField.itemCount,
               observerRevealSteps: observerField.revealStepCount,
-              observerMaxChunkBytes:
-                observerField.maxChunkBytes,
-              observerMaxRevealBytes:
-                observerField.maxRevealBytes,
+              observerMaxChunkBytes: observerField.maxChunkBytes,
+              observerMaxRevealBytes: observerField.maxRevealBytes,
               scriptWitnessFieldBytes: scriptField.fieldBytes,
               scriptWitnessItems: scriptField.itemCount,
-              scriptWitnessRevealSteps:
-                scriptField.revealStepCount,
-              scriptWitnessMaxChunkBytes:
-                scriptField.maxChunkBytes,
-              scriptWitnessMaxRevealBytes:
-                scriptField.maxRevealBytes,
-              completeFoldSteps:
-                observerField.completeFoldStepCount,
+              scriptWitnessRevealSteps: scriptField.revealStepCount,
+              scriptWitnessMaxChunkBytes: scriptField.maxChunkBytes,
+              scriptWitnessMaxRevealBytes: scriptField.maxRevealBytes,
+              completeFoldSteps: observerField.completeFoldStepCount,
               adjacentRequestedObserverCount:
                 boundary.adjacent.requestedItemCount,
-              adjacentObserverWithdrawalCount:
-                adjacentCardano.withdrawalCount,
+              adjacentObserverWithdrawalCount: adjacentCardano.withdrawalCount,
               adjacentNativeScriptWitnessCount:
                 adjacentCardano.nativeScriptWitnessCount,
-              adjacentSignedCardanoBytes:
-                boundary.adjacent.signedBytes,
+              adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
               adjacentByteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.adjacent.signedBytes,

@@ -47,6 +47,17 @@ describe("PostgresWatcherStore", () => {
         ).resolves.toEqual(header);
         await expect(store.listStateQueueHeaders()).resolves.toEqual([header]);
 
+        const l1SourceState = {
+          schemaVersion: 1 as const,
+          sourceMode: "external_providers" as const,
+          network: "Preview",
+          status: "healthy" as const,
+          observations: [],
+          observedAt: "2026-07-28T00:00:00.000Z",
+        };
+        await store.saveL1SourceState(l1SourceState);
+        await expect(store.getL1SourceState()).resolves.toEqual(l1SourceState);
+
         const payload = daPayloadRecord();
         await expect(store.saveDaPayload(payload)).resolves.toEqual({
           ...payload,
@@ -135,6 +146,40 @@ describe("PostgresWatcherStore", () => {
         const submission = l1SubmissionRecord();
         await store.saveL1Submission(submission);
         await expect(store.listL1Submissions()).resolves.toEqual([submission]);
+        await store.quarantineL1Decisions({
+          schemaVersion: 1,
+          sourceMode: "external_providers",
+          network: "Preview",
+          status: "quarantined",
+          observations: [
+            {
+              headerHash: header.headerHash,
+              stateQueueOutRef: header.stateQueueOutRef,
+              stateQueueStatus: "unattested",
+              finalized: true,
+              hasPersistedDecision: true,
+            },
+          ],
+          observedAt: "2026-07-28T00:00:00.000Z",
+          quarantineReason: "provider fork",
+          quarantinedAt: "2026-07-28T00:00:01.000Z",
+        });
+        await expect(store.getL1SourceState()).resolves.toMatchObject({
+          status: "quarantined",
+          quarantineReason: "provider fork",
+        });
+        await expect(
+          store.getStateQueueHeader(header.headerHash),
+        ).resolves.toMatchObject({ status: "conflicted" });
+        await expect(
+          store.getDaSignature({
+            headerHash: signature.headerHash,
+            signerIndex: signature.signerIndex,
+          }),
+        ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+        await expect(store.listL1Submissions()).resolves.toMatchObject([
+          { resultStatus: "failed" },
+        ]);
 
         await admin.query(
           `UPDATE ${schema}.watcher_da_payloads

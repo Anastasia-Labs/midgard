@@ -92,6 +92,7 @@ const canonicalIdentity = (): MutableRecord => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => [
         category,
@@ -384,6 +385,45 @@ describe("watcher deployment identity", () => {
         fixture.signedIdentity.releaseBindings.programCommitments,
       durableMarker: fixture.durableMarker,
     });
+  });
+
+  it("binds zero-input and validation-trace catalogue entries to their deployed contracts", () => {
+    const fixture = makeFixture();
+    const categories = fixture.policy.fraudProofCatalogue.categories;
+
+    expect(categories.zeroInput).toEqual({
+      categoryId: "00000005",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofZeroInput,
+    });
+    expect(categories.validationTraceDispute).toEqual({
+      categoryId: "00000006",
+      scriptHash: fixture.policy.appliedScriptHashes.validationTraceDispute,
+    });
+
+    fixture.policy = {
+      ...fixture.policy,
+      fraudProofCatalogue: {
+        ...fixture.policy.fraudProofCatalogue,
+        categories: {
+          ...categories,
+          zeroInput: {
+            ...categories.zeroInput,
+            scriptHash: NATIVE_SCRIPT_HASH,
+          },
+        },
+      },
+    };
+    rejection(
+      () =>
+        verifyWatcherDeploymentIdentityV1({
+          signedIdentity: fixture.signedIdentity,
+          policy: fixture.policy,
+          trustRoots: [fixture.trustRoot],
+          durableMarker: fixture.durableMarker,
+        }),
+      "mismatched_identity",
+      "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.zeroInput",
+    );
   });
 
   it("requires the exact durable deployment marker", () => {

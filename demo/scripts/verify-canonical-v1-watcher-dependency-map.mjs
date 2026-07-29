@@ -286,9 +286,21 @@ if (
   deploymentIdentity.signatureDomain !==
     "midgard-watcher-deployment-identity-signature-v1" ||
   deploymentIdentity.trustRootIdentity !== "sha256_spki_der" ||
+  JSON.stringify(deploymentIdentity.catalogueCategoryOrder) !==
+    JSON.stringify([
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "zeroInput",
+      "validationTraceDispute",
+    ]) ||
+  deploymentIdentity.catalogueContractBinding !==
+    "exact_category_id_order_and_deployed_script_hash" ||
   deploymentIdentity.unknownBehavior !== "fail_closed" ||
   deploymentIdentity.diagnostics !== "code_and_schema_path_only" ||
-  deploymentIdentity.node22FocusedTestsPassed !== 17
+  deploymentIdentity.node22FocusedTestsPassed !== 18
 ) {
   fail("W02 deployment-identity evidence is incomplete or stale");
 }
@@ -329,6 +341,9 @@ for (const requiredSymbol of [
   ) {
     fail(`W02 deployment-identity symbol ${requiredSymbol} is not public`);
   }
+}
+if (!deploymentIdentitySource.includes('zeroInput: "fraudProofZeroInput"')) {
+  fail("W02 deployment identity must bind the zeroInput catalogue family");
 }
 const durableStore = dependencyMap.requiredWatcherPackage?.durableStore;
 const requiredRecordClasses = [
@@ -439,13 +454,15 @@ if (
   multiProviderConsistency.compatibleBlockLag !== 64 ||
   multiProviderConsistency.agreementPolicy !==
     "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points" ||
+  multiProviderConsistency.externalProviderBindingPolicy !==
+    "exact_W01_provider_operator_endpoint_https_transport_allowlist" ||
   multiProviderConsistency.lagPolicy !==
     "bounded_lag_pending_protocol_quarantined" ||
   multiProviderConsistency.disagreementPolicy !==
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 13
+  multiProviderConsistency.node22FocusedTestsPassed !== 14
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -465,6 +482,9 @@ for (const requiredSymbol of [
     fail(`W11 multi-provider symbol ${requiredSymbol} is not public`);
   }
 }
+if (!multiProviderConsistencySource.includes("externalProviderBindings")) {
+  fail("W11 consistency evidence must bind configured external providers");
+}
 const finalityEngine = dependencyMap.requiredWatcherPackage?.finalityEngine;
 if (
   finalityEngine?.policySchemaVersion !==
@@ -481,9 +501,11 @@ if (
     "durable_quarantine_incident_preserving_finalized_binding" ||
   finalityEngine.consistencyPolicy !==
     "exact_source_mode_bound_W11_agreement_required" ||
+  finalityEngine.externalProviderPolicy !==
+    "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 19
+  finalityEngine.node22FocusedTestsPassed !== 21
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -504,6 +526,9 @@ for (const requiredSymbol of [
   ) {
     fail(`W12 finality-engine symbol ${requiredSymbol} is not public`);
   }
+}
+if (!finalityEngineSource.includes("externalProviderBindingsMatchPolicy")) {
+  fail("W12 finality must match W11 provider bindings to W01 policy");
 }
 const rollbackEngine = dependencyMap.requiredWatcherPackage?.rollbackEngine;
 if (
@@ -550,6 +575,9 @@ for (const requiredSymbol of [
   ) {
     fail(`W13 rollback-engine symbol ${requiredSymbol} is not public`);
   }
+}
+if (!rollbackEngineSource.includes("externalProviderBindings")) {
+  fail("W13 rollback provenance must retain W11 external provider bindings");
 }
 const stateQueueIndexer =
   dependencyMap.requiredWatcherPackage?.stateQueueIndexer;

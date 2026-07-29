@@ -77,20 +77,23 @@ logic lives under `validators/`. Exceptions with real logic in `lib/`:
 
 ## 4. Proof-type validators (decisive checks)
 
-| Type                        | Steps                | Decisive check                                                                                                                                                                                                              |
-| --------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zero-input`                | 2                    | `bad_tx_spend_inputs_hash == env.empty_list_hash` (`zero-input/step-02.ak:64`; `env/default.ak:57`)                                                                                                                         |
-| `no-input`                  | 4                    | preimage-hash check (`step-02.ak:71`); `pexcludes` vs `prev_utxos_root` (`step-03.ak:71-78`); `pexcludes` vs `transactions_root` (`step-04.ak:69-76`)                                                                       |
-| `double-spend`              | 4 (+`input-witness`) | `tx1_id != tx2_id` (`step-02.ak:57`); `double_spent_input == tx2_double_spent_input` (`step-04.ak:82`); witness recovery `lib/.../double-spend/input-witness.ak:7-22`                                                       |
-| `input-no-idx`              | 4                    | `producing_tx_id == bad_input_tx_id` (`step-03.ak:66`); `bad_input_output_index >= list.length(outputs_preimage)` (`step-04.ak:74`)                                                                                         |
-| `invalid-range`             | 2                    | `normalize_native_validity_range` (`step-01.ak:20-44`, inline tests `:140-155`); block-range comparison incl. inverted-interval branch (`step-02.ak:82-92`)                                                                 |
-| `invalid-signature`         | 2                    | `verify_ed25519_signature(vkey, bad_tx_id, sig) == False` (`step-02.ak:82-87`); duplicate-vkey TODO `:75-76`                                                                                                                |
-| `missing-native-script-tx`  | 6                    | script-hash equality via `ledger_state.hash_midgard_script(Timelock{..})` (`step-05.ak:66-69`); `pairs.has_key == False` (`step-06.ak:77-79`)                                                                               |
-| `missing-signature`         | 4                    | `get_verification_key_hash(vkey) == missing_required_signer_hash` (`step-03.ak:68`; helper `common/utils.ak:760-762`); absence check (`step-04.ak:76-78`)                                                                   |
-| `no-reference-input`        | 4                    | `pexcludes` vs `prev_utxos_root` (`step-03.ak:70-76`) and vs `transactions_root` (`step-04.ak:72-79`)                                                                                                                       |
-| `withdrawn-reference-input` | 3                    | `l2_outref == missing_reference_input_outref` + `phas` vs `withdrawals_root` (`step-03.ak:75-92`)                                                                                                                           |
-| `min-fee`                   | 2                    | ⚠️ `bad_tx_body_fee < get_min_transaction_fee(bad_tx)` (`step-02.ak:64`) with the stub `fn get_min_transaction_fee(_) { 0 }` (`:78-80`, TODO `:77`) — unsatisfiable                                                         |
-| `transition-trace`          | single proof         | dispatch in `lib/.../transition-trace/proof.ak`; header binding + category prefix `#"00000004"`; direct unilateral transition families plus canonical accepted-validation-claim binding for normal and valid-forced effects |
+| Type                        | Steps                | Decisive check                                                                                                                                                                                                                |
+| --------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zero-input`                | 2                    | native counted-root membership in step 01; `bad_tx_spend_inputs_hash == blake2b_256(encode_native_byte_list([]))` (`zero-input/step-02.ak:17-25,79-82`). This deliberately does not use the PlutusData `env.empty_list_hash`. |
+| `no-input`                  | 4                    | preimage-hash check (`step-02.ak:71`); `pexcludes` vs `prev_utxos_root` (`step-03.ak:71-78`); `pexcludes` vs `transactions_root` (`step-04.ak:69-76`)                                                                         |
+| `double-spend`              | 4 (+`input-witness`) | `tx1_id != tx2_id` (`step-02.ak:57`); `double_spent_input == tx2_double_spent_input` (`step-04.ak:82`); witness recovery `lib/.../double-spend/input-witness.ak:7-22`                                                         |
+| `input-no-idx`              | 4                    | `producing_tx_id == bad_input_tx_id` (`step-03.ak:66`); `bad_input_output_index >= list.length(outputs_preimage)` (`step-04.ak:74`)                                                                                           |
+| `invalid-range`             | 2                    | `normalize_native_validity_range` (`step-01.ak:20-44`, inline tests `:140-155`); block-range comparison incl. inverted-interval branch (`step-02.ak:82-92`)                                                                   |
+| `invalid-signature`         | 2                    | `verify_ed25519_signature(vkey, bad_tx_id, sig) == False` (`step-02.ak:82-87`); duplicate-vkey TODO `:75-76`                                                                                                                  |
+| `missing-native-script-tx`  | 6                    | script-hash equality via `ledger_state.hash_midgard_script(Timelock{..})` (`step-05.ak:66-69`); `pairs.has_key == False` (`step-06.ak:77-79`)                                                                                 |
+| `missing-signature`         | 4                    | `get_verification_key_hash(vkey) == missing_required_signer_hash` (`step-03.ak:68`; helper `common/utils.ak:760-762`); absence check (`step-04.ak:76-78`)                                                                     |
+| `no-reference-input`        | 4                    | `pexcludes` vs `prev_utxos_root` (`step-03.ak:70-76`) and vs `transactions_root` (`step-04.ak:72-79`)                                                                                                                         |
+| `withdrawn-reference-input` | 3                    | `l2_outref == missing_reference_input_outref` + `phas` vs `withdrawals_root` (`step-03.ak:75-92`)                                                                                                                             |
+| `min-fee`                   | 2                    | ⚠️ `bad_tx_body_fee < get_min_transaction_fee(bad_tx)` (`step-02.ak:64`) with the stub `fn get_min_transaction_fee(_) { 0 }` (`:78-80`, TODO `:77`) — unsatisfiable                                                           |
+| `transition-trace`          | single proof         | dispatch in `lib/.../transition-trace/proof.ak`; header binding + category prefix `#"00000004"`; direct unilateral transition families plus canonical accepted-validation-claim binding for normal and valid-forced effects   |
+
+The append-only off-chain catalogue assigns `zeroInput` ID `00000005` and
+`validationTraceDispute` ID `00000006`.
 
 ## 5. Environment parameters (`env/default.ak`, `env/testnet.ak`)
 
@@ -106,7 +109,7 @@ fixes the challenge, merge, and operator bond-hold window at seven days.
 | `fraud_prover_reward`               | 0                       | 0                       | Historical identifier retained in source                                                                |
 | `required_bond`                     | penalty+reward = 0      | 0                       |                                                                                                         |
 | `inactivity_slashing_penalty`       | 0                       | 0                       |                                                                                                         |
-| `empty_list_hash`                   | `default.ak:57`         | —                       | used by zero-input                                                                                      |
+| `empty_list_hash`                   | `default.ak:57`         | —                       | legacy PlutusData empty-list hash; not used by the native-v1 zero-input proof                           |
 | `plutarch_phas_validator_hash`      | `default.ak:62-63`      | present                 | matches Aiken-native `phas.ak` in `plutus.json` (the deployed one)                                      |
 | `plutarch_pexcludes_validator_hash` | `default.ak:65-66`      | `testnet.ak:50-51`      | matches `pexcludes.ak`                                                                                  |
 | `plutarch_pdelete_validator_hash`   | `#""` (`default.ak:68`) | `#""` (`testnet.ak:53`) | delete delegation unusable                                                                              |
@@ -122,18 +125,19 @@ Environment selected via `aiken build --env <name>`
 | `lib/midgard/transition-trace.test.ak`                                           | 4                  | counted-root primitives                                                                                                                                |
 | `lib/midgard/fraud-proofs/native-tx.test.ak` (+ high-cardinality, size-balanced) | 7+1+1              | CBOR round-trips + fixture regressions                                                                                                                 |
 | `validators/fraud-proofs/invalid-range/step-01.ak:140-155`                       | 3                  | range normalization (inline)                                                                                                                           |
+| `validators/fraud-proofs/zero-input/step-02.ak:95-239`                           | 5                  | native empty-list encoding/literal, non-empty inequality, and direct full-handler accept/reject fixtures                                               |
 | `validators/da_attestation_capacity.test.ak`                                     | 3                  | committee signature capacity                                                                                                                           |
 | `lib/midgard/common/utils.test.ak`                                               | 2                  | generic folds only                                                                                                                                     |
 
-**No tests exist for** `computation-thread.ak`, `state-queue.ak` removal paths,
-`fault-proof.ak`, `fault-proof-catalogue.ak`, or any step validator other than
-invalid-range step-01 — at the Aiken level these are exercised only indirectly via the
-TypeScript emulator suite (`demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`),
-which is CI-wired through the fault-proof package job
-([`testing-status.md`](testing-status.md)).
+**No direct Aiken tests exist for** `computation-thread.ak`, `state-queue.ak` removal
+paths, `fault-proof.ak`, or `fault-proof-catalogue.ak`. Among step validators, only
+invalid-range step-01 and zero-input step-02 have direct Aiken tests; the remaining
+machinery is exercised indirectly by the TypeScript emulator suite
+(`demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`), which is CI-wired
+through the fault-proof package job ([`testing-status.md`](testing-status.md)).
 
 Build/test: `aiken fmt --check && aiken check` in `onchain/aiken` (CI:
-`.github/workflows/aiken-ci.yml:31,33`), compiler pinned `v1.1.21` (`aiken.toml:3`);
+`.github/workflows/aiken-ci.yml:31,33`), compiler pinned `v1.1.22` (`aiken.toml:3`);
 blueprint via `aiken build --env testnet`.
 
 ## 7. Plutarch subproject (legacy)

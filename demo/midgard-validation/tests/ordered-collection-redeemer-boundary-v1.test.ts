@@ -51,10 +51,9 @@ const alwaysSucceedsBlueprint = JSON.parse(
   readonly validators: readonly BlueprintValidator[];
 };
 
-const alwaysSucceedsCompiledCode =
-  alwaysSucceedsBlueprint.validators.find(
-    (validator) => validator.title === "midgard.deposit_spend.else",
-  )?.compiledCode;
+const alwaysSucceedsCompiledCode = alwaysSucceedsBlueprint.validators.find(
+  (validator) => validator.title === "midgard.deposit_spend.else",
+)?.compiledCode;
 if (alwaysSucceedsCompiledCode === undefined) {
   throw new Error(
     "Missing always-succeeds blueprint entry midgard.deposit_spend.else",
@@ -74,11 +73,11 @@ const maximumRedeemerTerminalFoldVectorV1 = {
   transactionIdHex:
     "82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40",
   transactionCommitmentHex:
-    "1c732fdaae878c2c07957dd7e21f9eebf81988ed8de8602fd32aa438c0c89ed8",
+    "d44e343be6c481bf241cc393197ddbba3e8909f2d01ba9501486585bd412a04c",
   preWorkRootHex:
-    "759a815cdb2475e891089fa279d80fbe44ce6fe5e4552183e144a5ca85a602ed",
+    "e8d2c995785e73b5f3d4343d33adf421bd003019c9116f689a1478e5e886400a",
   postWorkRootHex:
-    "79855e6bc07c2c112afdee7d7a1255d3f451bf94c4b025b6ec289bf21a5df1f2",
+    "c95c88e209891c909d9a4d8ac18883caa51d432efd150613ed904c0cb74f7036",
   encodedLengthBeforeItem: 5_035,
   collectionProof: {
     fieldIndex: 8,
@@ -132,9 +131,7 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
     const walletAddress = CML.EnterpriseAddress.new(
       0,
-      CML.Credential.new_pub_key(
-        spendingKey.to_public().hash(),
-      ),
+      CML.Credential.new_pub_key(spendingKey.to_public().hash()),
     )
       .to_address()
       .to_bech32();
@@ -168,21 +165,17 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       ],
       PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
     );
-    const walletInputs = (
-      await emulator.getUtxos(walletAddress)
-    ).sort((left, right) => left.outputIndex - right.outputIndex);
-    const scriptInputs = (
-      await emulator.getUtxos(scriptAddress)
-    ).sort((left, right) => left.outputIndex - right.outputIndex);
+    const walletInputs = (await emulator.getUtxos(walletAddress)).sort(
+      (left, right) => left.outputIndex - right.outputIndex,
+    );
+    const scriptInputs = (await emulator.getUtxos(scriptAddress)).sort(
+      (left, right) => left.outputIndex - right.outputIndex,
+    );
     expect(walletInputs).toHaveLength(2);
     expect(scriptInputs).toHaveLength(scriptInputSupply);
-    expect(walletInputs.map((input) => input.outputIndex)).toEqual([
-      0, 1,
-    ]);
+    expect(walletInputs.map((input) => input.outputIndex)).toEqual([0, 1]);
     expect(scriptInputs[0]?.outputIndex).toBe(2);
-    expect(scriptInputs.at(-1)?.outputIndex).toBe(
-      scriptInputSupply + 1,
-    );
+    expect(scriptInputs.at(-1)?.outputIndex).toBe(scriptInputSupply + 1);
     for (const input of [...walletInputs, ...scriptInputs]) {
       expect(input.txHash).toBe("00".repeat(32));
     }
@@ -197,28 +190,21 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       .attach.SpendingValidator(spendingScript)
       .complete({ localUPLCEval: true });
     const signedSeed = await completedSeed.sign.withWallet().complete();
-    const seedMeasurement =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        signedSeed.toCBOR(),
-      );
+    const seedMeasurement = measureCollateralizedPlutusFeasibilityCandidateV1(
+      signedSeed.toCBOR(),
+    );
     expect(seedMeasurement.redeemerCount).toBe(1);
-    expect(seedMeasurement.redeemerTags).toEqual([
-      CML.RedeemerTag.Spend,
-    ]);
-    expect(seedMeasurement.redeemerDataCborHexes).toEqual([
-      Data.void(),
-    ]);
+    expect(seedMeasurement.redeemerTags).toEqual([CML.RedeemerTag.Spend]);
+    expect(seedMeasurement.redeemerDataCborHexes).toEqual([Data.void()]);
     expect(seedMeasurement.executionMemory).toBeGreaterThan(0n);
     expect(seedMeasurement.executionSteps).toBeGreaterThan(0n);
 
-    const seedTransaction = CML.Transaction.from_cbor_hex(
-      signedSeed.toCBOR(),
-    );
-    const seedPlutusV3Scripts =
-      seedTransaction.witness_set().plutus_v3_scripts();
+    const seedTransaction = CML.Transaction.from_cbor_hex(signedSeed.toCBOR());
+    const seedPlutusV3Scripts = seedTransaction
+      .witness_set()
+      .plutus_v3_scripts();
     expect(seedPlutusV3Scripts?.len()).toBe(1);
-    const plutusV3ScriptCborHex =
-      seedPlutusV3Scripts!.get(0).to_cbor_hex();
+    const plutusV3ScriptCborHex = seedPlutusV3Scripts!.get(0).to_cbor_hex();
     const [feeFundingInput, collateralInput] = walletInputs;
     const buildCandidate = (requestedRedeemerCount: number) =>
       buildSignedCardanoSpendRedeemersCandidateV1({
@@ -232,27 +218,21 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
         executionMemory: seedMeasurement.executionMemory,
         executionSteps: seedMeasurement.executionSteps,
         requestedRedeemerCount,
-        minFeeA:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
         minFeeRefScriptCostPerByte:
           PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
-        priceMem:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
-        priceStep:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
+        priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
+        priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
         collateralPercentage:
           PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.collateralPercentage,
-        costModels:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
+        costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
       });
 
     const firstCandidate = await buildCandidate(1);
-    const firstMeasurement =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        firstCandidate.cborHex,
-      );
+    const firstMeasurement = measureCollateralizedPlutusFeasibilityCandidateV1(
+      firstCandidate.cborHex,
+    );
     expect(firstMeasurement.redeemerCount).toBe(1);
     expect(firstMeasurement.redeemerDataCborHexes).toEqual(
       seedMeasurement.redeemerDataCborHexes,
@@ -268,23 +248,19 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: buildCandidate,
     });
-    const accepted =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        boundary.accepted.cborHex,
-      );
-    const adjacent =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        boundary.adjacent.cborHex,
-      );
+    const accepted = measureCollateralizedPlutusFeasibilityCandidateV1(
+      boundary.accepted.cborHex,
+    );
+    const adjacent = measureCollateralizedPlutusFeasibilityCandidateV1(
+      boundary.adjacent.cborHex,
+    );
     const acceptedCount = boundary.accepted.requestedItemCount;
     const adjacentCount = boundary.adjacent.requestedItemCount;
     const maxByMemory = Number(
-      emulator.protocolParameters.maxTxExMem /
-        seedMeasurement.executionMemory,
+      emulator.protocolParameters.maxTxExMem / seedMeasurement.executionMemory,
     );
     const maxBySteps = Number(
-      emulator.protocolParameters.maxTxExSteps /
-        seedMeasurement.executionSteps,
+      emulator.protocolParameters.maxTxExSteps / seedMeasurement.executionSteps,
     );
 
     expect(boundary.accepted.signedBytes).toBeLessThanOrEqual(
@@ -308,27 +284,17 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(adjacent.collateralInputOutRefs).toEqual(
       accepted.collateralInputOutRefs,
     );
-    expect(accepted.totalCollateral).toBe(
-      CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-    );
-    expect(adjacent.totalCollateral).toBe(
-      CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-    );
+    expect(accepted.totalCollateral).toBe(CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1);
+    expect(adjacent.totalCollateral).toBe(CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1);
     expect(accepted.vkeyWitnessCount).toBe(1);
     expect(adjacent.vkeyWitnessCount).toBe(1);
     expect(accepted.plutusV3ScriptCount).toBe(1);
     expect(adjacent.plutusV3ScriptCount).toBe(1);
     expect(accepted.redeemerTags).toEqual(
-      Array.from(
-        { length: acceptedCount },
-        () => CML.RedeemerTag.Spend,
-      ),
+      Array.from({ length: acceptedCount }, () => CML.RedeemerTag.Spend),
     );
     expect(adjacent.redeemerTags).toEqual(
-      Array.from(
-        { length: adjacentCount },
-        () => CML.RedeemerTag.Spend,
-      ),
+      Array.from({ length: adjacentCount }, () => CML.RedeemerTag.Spend),
     );
     expect(accepted.redeemerDataCborHexes).toEqual(
       Array.from(
@@ -366,23 +332,13 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(adjacent.executionSteps).toBeLessThanOrEqual(
       emulator.protocolParameters.maxTxExSteps,
     );
-    expect(new Set(accepted.redeemerIndexes).size).toBe(
-      acceptedCount,
-    );
-    expect(new Set(adjacent.redeemerIndexes).size).toBe(
-      adjacentCount,
-    );
+    expect(new Set(accepted.redeemerIndexes).size).toBe(acceptedCount);
+    expect(new Set(adjacent.redeemerIndexes).size).toBe(adjacentCount);
     expect(accepted.redeemerIndexes).toEqual(
-      Array.from(
-        { length: acceptedCount },
-        (_, index) => BigInt(index + 1),
-      ),
+      Array.from({ length: acceptedCount }, (_, index) => BigInt(index + 1)),
     );
     expect(adjacent.redeemerIndexes).toEqual(
-      Array.from(
-        { length: adjacentCount },
-        (_, index) => BigInt(index + 1),
-      ),
+      Array.from({ length: adjacentCount }, (_, index) => BigInt(index + 1)),
     );
     const acceptedTransaction = CML.Transaction.from_cbor_hex(
       boundary.accepted.cborHex,
@@ -414,14 +370,9 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       };
       collateralRejection = {
         message: error instanceof Error ? error.message : String(error),
-        code:
-          typeof structured.code === "string"
-            ? structured.code
-            : null,
+        code: typeof structured.code === "string" ? structured.code : null,
         detail:
-          typeof structured.detail === "string"
-            ? structured.detail
-            : null,
+          typeof structured.detail === "string" ? structured.detail : null,
       };
     }
     expect(collateralRejection).toEqual({
@@ -431,19 +382,17 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       detail: "collateral_inputs",
     });
 
-    const parallel =
-      buildCollateralFreeMidgardSchemaParallelCandidateV1({
-        collateralizedCardanoCborHex: boundary.accepted.cborHex,
-        privateKeyBech32: spendingKey.to_bech32(),
-      });
+    const parallel = buildCollateralFreeMidgardSchemaParallelCandidateV1({
+      collateralizedCardanoCborHex: boundary.accepted.cborHex,
+      privateKeyBech32: spendingKey.to_bech32(),
+    });
     expect(parallel.parallelRedeemersCborHex).toBe(
       parallel.collateralizedRedeemersCborHex,
     );
-    const redeemerField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: parallel.cborHex,
-        fieldIndex: 8,
-      });
+    const redeemerField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: parallel.cborHex,
+      fieldIndex: 8,
+    });
     expect(redeemerField.itemCount).toBe(acceptedCount);
     expect(redeemerField.revealStepCount).toBe(acceptedCount);
     expect(redeemerField.maxRevealBytes).toBeLessThan(
@@ -473,52 +422,38 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
       });
     const productionRetainedDa =
       await exerciseMidgardRetainedDaCanonicalBoundaryV1({
-        canonicalTransactionCbor:
-          retainedProjection.canonicalTransactionCbor,
+        canonicalTransactionCbor: retainedProjection.canonicalTransactionCbor,
         corpusLabel: "maximum-redeemers",
         canonicalMaterialSidecarCbor:
           retainedProjection.canonicalMaterialSidecarCbor,
-        sourceRawScriptAuditHash:
-          retainedProjection.sourceRawScriptAuditHash,
+        sourceRawScriptAuditHash: retainedProjection.sourceRawScriptAuditHash,
       });
-    expect(
-      productionRetainedDa.normal.reconstructedCanonicalBytes,
-    ).toBe(retainedProjection.canonicalTransactionCbor.length);
-    expect(
-      productionRetainedDa.forced.reconstructedCanonicalBytes,
-    ).toBe(retainedProjection.canonicalTransactionCbor.length);
+    expect(productionRetainedDa.normal.reconstructedCanonicalBytes).toBe(
+      retainedProjection.canonicalTransactionCbor.length,
+    );
+    expect(productionRetainedDa.forced.reconstructedCanonicalBytes).toBe(
+      retainedProjection.canonicalTransactionCbor.length,
+    );
     expect({
-      fieldCommitmentHex:
-        redeemerField.fieldCommitmentHex,
-      fieldPreimageHashHex:
-        redeemerField.fieldPreimageHashHex,
-      transactionIdHex:
-        redeemerField.terminalFoldVector.transactionIdHex,
+      fieldCommitmentHex: redeemerField.fieldCommitmentHex,
+      fieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
+      transactionIdHex: redeemerField.terminalFoldVector.transactionIdHex,
       transactionCommitmentHex:
-        redeemerField.terminalFoldVector
-          .transactionCommitmentHex,
-      preWorkRootHex:
-        redeemerField.terminalFoldVector.preWorkRootHex,
-      postWorkRootHex:
-        redeemerField.terminalFoldVector.postWorkRootHex,
+        redeemerField.terminalFoldVector.transactionCommitmentHex,
+      preWorkRootHex: redeemerField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: redeemerField.terminalFoldVector.postWorkRootHex,
       encodedLengthBeforeItem:
-        redeemerField.terminalFoldVector
-          .encodedLengthBeforeItem,
-      collectionProof:
-        redeemerField.terminalFoldVector.collectionProof,
-      chunkProof:
-        redeemerField.terminalFoldVector.chunkProof,
+        redeemerField.terminalFoldVector.encodedLengthBeforeItem,
+      collectionProof: redeemerField.terminalFoldVector.collectionProof,
+      chunkProof: redeemerField.terminalFoldVector.chunkProof,
     }).toEqual(maximumRedeemerTerminalFoldVectorV1);
-    const parallelNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-          Buffer.from(parallel.cborHex, "hex"),
-        ),
-      );
-    expect(
-      parallelNative.witnessSet.redeemerTxWitsPreimageCbor.toString(
-        "hex",
+    const parallelNative = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        Buffer.from(parallel.cborHex, "hex"),
       ),
+    );
+    expect(
+      parallelNative.witnessSet.redeemerTxWitsPreimageCbor.toString("hex"),
     ).toBe(redeemerField.fieldPreimageCborHex);
     const reconstructed = measureCollateralizedPlutusFeasibilityCandidateV1(
       Buffer.from(
@@ -552,70 +487,52 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
               fixtureGenerationBasis:
                 "real script UTxOs; genuine N=1 local evaluation; on-demand exact signed-byte search",
               maxTxSize: emulator.protocolParameters.maxTxSize,
-              maxTxExMem:
-                emulator.protocolParameters.maxTxExMem.toString(),
-              maxTxExSteps:
-                emulator.protocolParameters.maxTxExSteps.toString(),
-              perRedeemerMemory:
-                seedMeasurement.executionMemory.toString(),
-              perRedeemerSteps:
-                seedMeasurement.executionSteps.toString(),
+              maxTxExMem: emulator.protocolParameters.maxTxExMem.toString(),
+              maxTxExSteps: emulator.protocolParameters.maxTxExSteps.toString(),
+              perRedeemerMemory: seedMeasurement.executionMemory.toString(),
+              perRedeemerSteps: seedMeasurement.executionSteps.toString(),
               maxRedeemersByMemory: maxByMemory,
               maxRedeemersBySteps: maxBySteps,
               requestedRedeemerCount: acceptedCount,
               actualInputCount: accepted.inputCount,
               actualRedeemerCount: accepted.redeemerCount,
-              actualPlutusV3ScriptCount:
-                accepted.plutusV3ScriptCount,
-              actualVkeyWitnessCount:
-                accepted.vkeyWitnessCount,
+              actualPlutusV3ScriptCount: accepted.plutusV3ScriptCount,
+              actualVkeyWitnessCount: accepted.vkeyWitnessCount,
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.accepted.signedBytes,
               executionMemory: accepted.executionMemory.toString(),
-              executionMemoryMargin:
-                (
-                  emulator.protocolParameters.maxTxExMem -
-                  accepted.executionMemory
-                ).toString(),
+              executionMemoryMargin: (
+                emulator.protocolParameters.maxTxExMem -
+                accepted.executionMemory
+              ).toString(),
               executionSteps: accepted.executionSteps.toString(),
-              executionStepsMargin:
-                (
-                  emulator.protocolParameters.maxTxExSteps -
-                  accepted.executionSteps
-                ).toString(),
+              executionStepsMargin: (
+                emulator.protocolParameters.maxTxExSteps -
+                accepted.executionSteps
+              ).toString(),
               fee: boundary.accepted.fee.toString(),
-              totalCollateral:
-                accepted.totalCollateral?.toString() ?? null,
-              nativeCanonicalBytes:
-                redeemerField.nativeCanonicalBytes,
+              totalCollateral: accepted.totalCollateral?.toString() ?? null,
+              nativeCanonicalBytes: redeemerField.nativeCanonicalBytes,
               redeemerFieldBytes: redeemerField.fieldBytes,
-              redeemerFieldCommitmentHex:
-                redeemerField.fieldCommitmentHex,
-              redeemerFieldPreimageHashHex:
-                redeemerField.fieldPreimageHashHex,
+              redeemerFieldCommitmentHex: redeemerField.fieldCommitmentHex,
+              redeemerFieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
               redeemerItems: redeemerField.itemCount,
-              redeemerRevealSteps:
-                redeemerField.revealStepCount,
+              redeemerRevealSteps: redeemerField.revealStepCount,
               maxChunkBytes: redeemerField.maxChunkBytes,
               maxRevealBytes: redeemerField.maxRevealBytes,
-              completeFoldSteps:
-                redeemerField.completeFoldStepCount,
-              productionCollateralRejection:
-                collateralRejection,
+              completeFoldSteps: redeemerField.completeFoldStepCount,
+              productionCollateralRejection: collateralRejection,
               adjacentRequestedRedeemerCount: adjacentCount,
               adjacentActualInputCount: adjacent.inputCount,
               adjacentActualRedeemerCount: adjacent.redeemerCount,
-              adjacentSignedCardanoBytes:
-                boundary.adjacent.signedBytes,
+              adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
               adjacentByteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.adjacent.signedBytes,
-              adjacentExecutionMemory:
-                adjacent.executionMemory.toString(),
-              adjacentExecutionSteps:
-                adjacent.executionSteps.toString(),
+              adjacentExecutionMemory: adjacent.executionMemory.toString(),
+              adjacentExecutionSteps: adjacent.executionSteps.toString(),
               adjacentFee: boundary.adjacent.fee.toString(),
               adjacentFailure: boundary.adjacentFailure,
               emulatorResult: "PASS",
@@ -626,19 +543,13 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
         ),
       );
     }
-    if (
-      process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1"
-    ) {
+    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(
         JSON.stringify({
-          redeemerFieldPreimageCborHex:
-            redeemerField.fieldPreimageCborHex,
-          redeemerFieldCommitmentHex:
-            redeemerField.fieldCommitmentHex,
-          redeemerFieldPreimageHashHex:
-            redeemerField.fieldPreimageHashHex,
-          terminalFoldVector:
-            redeemerField.terminalFoldVector,
+          redeemerFieldPreimageCborHex: redeemerField.fieldPreimageCborHex,
+          redeemerFieldCommitmentHex: redeemerField.fieldCommitmentHex,
+          redeemerFieldPreimageHashHex: redeemerField.fieldPreimageHashHex,
+          terminalFoldVector: redeemerField.terminalFoldVector,
         }),
       );
     }

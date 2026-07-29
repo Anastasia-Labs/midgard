@@ -23,16 +23,16 @@ const maximumInlineDatumBlobTerminalVectorV1 = {
   transactionIdHex:
     "112edbb37e44d39825d1e33830c942032ecbaca605ddc11c3931cc948a8d02f2",
   transactionCommitmentHex:
-    "069b0ea6e5f229ff6b00bfff4e3d0f3721bfe8c5fed92bd58d4f8a90fab9b76c",
+    "db89b9cc814dab98a1e84bc5a765756d14771347cfa09dd58d598d073473e3c4",
   compactCborHex:
-    "84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820d40dc24540734968ab6b8212814ab280ab51e0102c18294b1abf2c9e21db5a871a000d5ec920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820caef005c62b508089d6c4ed5430413aca18325d8e40e3f09793405839996563400",
+    "84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820d40dc24540734968ab6b8212814ab280ab51e0102c18294b1abf2c9e21db5a871a000d5ec920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58206295d6e5a837fa5a95389ebbd7ad38ffa316e09cd29d28a9e71639cae906aa2c00",
   witnessSetCompactCborHex:
-    "835820c65964c7b64d4373073f3f2ad02f3afed30daeef3cd8431c5df3b4afa743c2f95820a8c162c7cb77ea61f1195a083ecb8a64b97410652666d380b0e52f90eb74bb9e5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
-  fieldPreimageLengthsCborHex: "89182701193f6101010118680101",
+    "835820650b4c39edb0d2b447c9d9f25b892ef1b1e272201ddae9519989ed3ee927f4815820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+  fieldPreimageLengthsCborHex: "89182701193f6101010101186801",
   preWorkRootHex:
-    "a96736a5968e53a6ec74efbb1bc69232781a1ac93807b047492a358179002f4c",
+    "30a0cfd405d4de73e8df567ed13877bf8ec5f71a6a96955c32e998102e5075c7",
   postWorkRootHex:
-    "8d817ef16f467039cd6505e25bc41ca110e025ebcf9bd9fec2da6949669f29df",
+    "b95fcde8d062d0a4f60b0f9db1e1b3d5b690ce0e00608b31c158912c4c4456ce",
   outputsFieldBytes: 16_225,
   itemLength: 16_221,
   itemCommitmentHex:
@@ -76,10 +76,8 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
           inputLovelace: funder.assets.lovelace,
           recipientAddress: funder.address,
           requestedDatumPayloadBytes,
-          minFeeA:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
           minFeeRefScriptCostPerByte:
             PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
         }),
@@ -112,15 +110,9 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(adjacent.vkeyWitnessCount).toBe(1);
     expect(accepted.outputAddress).toBe(funder.address);
     expect(adjacent.outputAddress).toBe(funder.address);
-    expect(accepted.datumCborBytes).toBeGreaterThan(
-      accepted.datumPayloadBytes,
-    );
-    expect(adjacent.datumCborBytes).toBeGreaterThan(
-      adjacent.datumPayloadBytes,
-    );
-    expect(adjacent.datumCborBytes).toBeGreaterThan(
-      accepted.datumCborBytes,
-    );
+    expect(accepted.datumCborBytes).toBeGreaterThan(accepted.datumPayloadBytes);
+    expect(adjacent.datumCborBytes).toBeGreaterThan(adjacent.datumPayloadBytes);
+    expect(adjacent.datumCborBytes).toBeGreaterThan(accepted.datumCborBytes);
 
     const midgard = exerciseMidgardOrderedCollectionBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
@@ -133,9 +125,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(
       midgard.terminalFoldVector.collectionProof.itemLength,
     ).toBeGreaterThan(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
-    expect(midgard.maxChunkBytes).toBe(
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-    );
+    expect(midgard.maxChunkBytes).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
     expect(midgard.revealStepCount).toBe(
       Math.ceil(
         midgard.terminalFoldVector.collectionProof.itemLength /
@@ -148,25 +138,18 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     const terminal = midgard.terminalFoldVector;
     expect({
       transactionIdHex: terminal.transactionIdHex,
-      transactionCommitmentHex:
-        terminal.transactionCommitmentHex,
+      transactionCommitmentHex: terminal.transactionCommitmentHex,
       compactCborHex: terminal.compactCborHex,
-      witnessSetCompactCborHex:
-        terminal.witnessSetCompactCborHex,
-      fieldPreimageLengthsCborHex:
-        terminal.fieldPreimageLengthsCborHex,
+      witnessSetCompactCborHex: terminal.witnessSetCompactCborHex,
+      fieldPreimageLengthsCborHex: terminal.fieldPreimageLengthsCborHex,
       preWorkRootHex: terminal.preWorkRootHex,
       postWorkRootHex: terminal.postWorkRootHex,
       outputsFieldBytes: midgard.fieldBytes,
       itemLength: terminal.collectionProof.itemLength,
-      itemCommitmentHex:
-        terminal.collectionProof.itemCommitmentHex,
-      collectionFrontierHashHex:
-        terminal.collectionProof.frontier[0]?.hashHex,
-      chunkFrontierHashHex:
-        terminal.chunkProof.frontier[0]?.hashHex,
-      chunkSiblingHexes:
-        terminal.chunkProof.siblingHexes,
+      itemCommitmentHex: terminal.collectionProof.itemCommitmentHex,
+      collectionFrontierHashHex: terminal.collectionProof.frontier[0]?.hashHex,
+      chunkFrontierHashHex: terminal.chunkProof.frontier[0]?.hashHex,
+      chunkSiblingHexes: terminal.chunkProof.siblingHexes,
     }).toEqual(maximumInlineDatumBlobTerminalVectorV1);
     expect(terminal.collectionProof).toMatchObject({
       fieldIndex: 2,
@@ -183,18 +166,12 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
       chunkIndex: 3,
       frontier: [{ height: 2 }],
     });
-    const terminalChunk = Buffer.from(
-      terminal.chunkProof.chunkHex,
-      "hex",
-    );
+    const terminalChunk = Buffer.from(terminal.chunkProof.chunkHex, "hex");
     expect(terminalChunk).toEqual(
       Buffer.concat([
         Buffer.alloc(41, 0x5a),
         ...Array.from({ length: 59 }, () =>
-          Buffer.concat([
-            Buffer.from([0x58, 0x40]),
-            Buffer.alloc(64, 0x5a),
-          ]),
+          Buffer.concat([Buffer.from([0x58, 0x40]), Buffer.alloc(64, 0x5a)]),
         ),
         Buffer.from([0xff]),
       ]),
@@ -210,23 +187,18 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(retained.forced.reconstructedCanonicalBytes).toBe(
       midgard.nativeCanonicalBytes,
     );
-    expect(retained.normal.revealStepCount).toBe(
-      midgard.completeFoldStepCount,
-    );
-    expect(retained.forced.revealStepCount).toBe(
-      midgard.completeFoldStepCount,
-    );
+    expect(retained.normal.revealStepCount).toBe(midgard.completeFoldStepCount);
+    expect(retained.forced.revealStepCount).toBe(midgard.completeFoldStepCount);
 
-    const native =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-          Buffer.from(boundary.accepted.cborHex, "hex"),
-        ),
-      );
+    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        Buffer.from(boundary.accepted.cborHex, "hex"),
+      ),
+    );
     const roundtrip = measureSignedCardanoInlineDatumV1(
-      Buffer.from(
-        midgardNativeTxFullToCardanoTxEncoding(native),
-      ).toString("hex"),
+      Buffer.from(midgardNativeTxFullToCardanoTxEncoding(native)).toString(
+        "hex",
+      ),
     );
     expect({
       outputCount: roundtrip.outputCount,
@@ -243,9 +215,7 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     const acceptedTransaction = CML.Transaction.from_cbor_hex(
       boundary.accepted.cborHex,
     );
-    expect(
-      acceptedTransaction.body().withdrawals(),
-    ).toBeUndefined();
+    expect(acceptedTransaction.body().withdrawals()).toBeUndefined();
     expect(acceptedTransaction.body().mint()).toBeUndefined();
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
@@ -256,17 +226,14 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
         JSON.stringify({
           blobChunkBoundaryV1: {
             maxTxSize: emulator.protocolParameters.maxTxSize,
-            requestedDatumPayloadBytes:
-              boundary.accepted.requestedItemCount,
+            requestedDatumPayloadBytes: boundary.accepted.requestedItemCount,
             datumCborBytes: accepted.datumCborBytes,
             signedCardanoBytes: boundary.accepted.signedBytes,
             signedCardanoByteMargin:
               emulator.protocolParameters.maxTxSize -
               boundary.accepted.signedBytes,
-            adjacentDatumPayloadBytes:
-              boundary.adjacent.requestedItemCount,
-            adjacentSignedCardanoBytes:
-              boundary.adjacent.signedBytes,
+            adjacentDatumPayloadBytes: boundary.adjacent.requestedItemCount,
+            adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
             nativeCanonicalBytes: midgard.nativeCanonicalBytes,
             outputsFieldBytes: midgard.fieldBytes,
             revealSteps: midgard.revealStepCount,

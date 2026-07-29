@@ -1,13 +1,13 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   readCborArrayHeader,
   readCborBytes,
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import {
-  transitionTraceError,
   TransitionTraceChallengerError,
+  transitionTraceError,
 } from "./errors.js";
 import {
   eventKeyFingerprint,
@@ -16,8 +16,9 @@ import {
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
 import {
-  buildCountFault,
+  type AcceptedTransactionTransitionMismatchEvidence,
   buildAcceptedTransactionTransitionMismatchFault,
+  buildCountFault,
   buildDuplicateTraceEventFault,
   buildEventToStepMismatchFault,
   buildInvalidForcedTransactionNoOpWitness,
@@ -30,7 +31,6 @@ import {
   buildTraceBoundaryFault,
   buildTraceLinkFault,
   buildTransitionFaultProof,
-  type AcceptedTransactionTransitionMismatchEvidence,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
   rootCountProof,

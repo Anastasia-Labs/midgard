@@ -27,6 +27,10 @@ import {
   prepareNonExistentInputFromFile,
   prepareNonExistentInputFromNode,
 } from "./prepare-non-existent-input.js";
+import {
+  prepareZeroInputFromFile,
+  prepareZeroInputFromNode,
+} from "./prepare-zero-input.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { type ProviderKind } from "./runtime.js";
 import {
@@ -39,6 +43,8 @@ import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
 import { submitStep04FromFiles } from "./submit-step-04.js";
+import { submitZeroInputStep01FromFiles } from "./submit-zero-input-step-01.js";
+import { submitZeroInputStep02FromFiles } from "./submit-zero-input-step-02.js";
 import {
   submitValidationDisputeAwardFromFiles,
   submitValidationDisputeDirectResolutionFromFiles,
@@ -110,11 +116,12 @@ export type ParsedArgs = {
 };
 
 const usage = `Usage:
-  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV1.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
+  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>] [--allow-incompatible-output]
+  midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|validationTraceDispute|nonExistentInput>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput|validationTraceDispute>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -136,7 +143,9 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-direct-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <11..12> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|validationTraceDispute|nonExistentInput>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput|validationTraceDispute>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -149,13 +158,14 @@ export const parseFraudCategory = (
     value === "doubleSpend" ||
     value === "invalidRange" ||
     value === "transitionTrace" ||
-    value === "validationTraceDispute" ||
-    value === "nonExistentInput"
+    value === "nonExistentInput" ||
+    value === "zeroInput" ||
+    value === "validationTraceDispute"
   ) {
     return value;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "validationTraceDispute", or "nonExistentInput".',
+    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "zeroInput", or "validationTraceDispute".',
   );
 };
 
@@ -525,8 +535,7 @@ const requireValidationOneStepCliArguments = (
   const semanticText = args.validationSemanticResolverIndex;
   if (
     staged &&
-    (semanticText === undefined ||
-      !/^(?:0|[1-9][0-9]*)$/u.test(semanticText))
+    (semanticText === undefined || !/^(?:0|[1-9][0-9]*)$/u.test(semanticText))
   ) {
     throw new Error(
       `Missing or invalid --validation-semantic-resolver-index <n>.\n${usage}`,
@@ -538,10 +547,8 @@ const requireValidationOneStepCliArguments = (
     );
   }
   return {
-    validationTransitionCborPath:
-      args.validationTransitionCborPath,
-    validationAuxiliaryCborPath:
-      args.validationAuxiliaryCborPath,
+    validationTransitionCborPath: args.validationTransitionCborPath,
+    validationAuxiliaryCborPath: args.validationAuxiliaryCborPath,
     validationResolverIndex: resolverIndex,
     validationSemanticResolverIndex:
       semanticText === undefined ? null : Number(semanticText),
@@ -571,6 +578,7 @@ export const main = async (): Promise<void> => {
     args.command !== "prepare-double-spend" &&
     args.command !== "prepare-invalid-range" &&
     args.command !== "prepare-non-existent-input" &&
+    args.command !== "prepare-zero-input" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
     args.command !== "submit-step-01" &&
@@ -583,14 +591,15 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-non-existent-input-step-02" &&
     args.command !== "submit-non-existent-input-step-03" &&
     args.command !== "submit-non-existent-input-step-04" &&
+    args.command !== "submit-zero-input-step-01" &&
+    args.command !== "submit-zero-input-step-02" &&
     args.command !== "submit-validation-dispute-open" &&
     args.command !== "submit-validation-dispute-verify-source" &&
     args.command !== "submit-validation-dispute-reveal" &&
     args.command !== "submit-validation-dispute-enter-resolution" &&
     args.command !== "submit-validation-dispute-prepare-resolution" &&
     args.command !== "submit-validation-dispute-prepare-selected" &&
-    args.command !==
-      "submit-validation-dispute-semantic-resolution" &&
+    args.command !== "submit-validation-dispute-semantic-resolution" &&
     args.command !== "submit-validation-dispute-award" &&
     args.command !== "submit-validation-dispute-direct-resolution" &&
     args.command !== "submit-validation-dispute-enter-timeout" &&
@@ -722,6 +731,45 @@ export const main = async (): Promise<void> => {
             prevUtxosRoot: args.prevUtxosRoot,
             prevBlockPayloadPath: args.prevBlockPayloadPath,
             expectedTransactionsRoot: args.expectedTransactionsRoot,
+            outputDir: args.outputDir,
+          });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "prepare-zero-input") {
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
+    }
+    const inputModes = [
+      args.midgardNodeUrl !== undefined,
+      args.transactionsPath !== undefined,
+    ].filter(Boolean).length;
+    if (inputModes !== 1) {
+      throw new Error(
+        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
+      );
+    }
+    if (args.expectedTransactionsRoot === undefined) {
+      throw new Error(
+        `Missing required --expected-transactions-root <hex>.\n${usage}`,
+      );
+    }
+    const expectedTransactionsRoot = args.expectedTransactionsRoot;
+    const output =
+      args.midgardNodeUrl !== undefined
+        ? await prepareZeroInputFromNode({
+            midgardNodeUrl: args.midgardNodeUrl,
+            headerHash: args.headerHash,
+            expectedTransactionsRoot,
+            txId: args.txId,
+            outputDir: args.outputDir,
+          })
+        : await prepareZeroInputFromFile({
+            transactionsPath: args.transactionsPath!,
+            headerHash: args.headerHash,
+            expectedTransactionsRoot,
+            txId: args.txId,
             outputDir: args.outputDir,
           });
     writeJson(output);
@@ -932,8 +980,7 @@ export const main = async (): Promise<void> => {
 
   if (
     args.command === "submit-validation-dispute-prepare-selected" ||
-    args.command ===
-      "submit-validation-dispute-semantic-resolution" ||
+    args.command === "submit-validation-dispute-semantic-resolution" ||
     args.command === "submit-validation-dispute-direct-resolution"
   ) {
     if (args.threadOutRef === undefined) {
@@ -942,12 +989,8 @@ export const main = async (): Promise<void> => {
       );
     }
     const staged =
-      args.command !==
-      "submit-validation-dispute-direct-resolution";
-    const oneStep = requireValidationOneStepCliArguments(
-      args,
-      staged,
-    );
+      args.command !== "submit-validation-dispute-direct-resolution";
+    const oneStep = requireValidationOneStepCliArguments(args, staged);
     const config = {
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
@@ -966,19 +1009,11 @@ export const main = async (): Promise<void> => {
       ...oneStep,
     };
     const output =
-      args.command ===
-      "submit-validation-dispute-prepare-selected"
-        ? await submitValidationDisputePrepareSelectedFromFiles(
-            config,
-          )
-        : args.command ===
-            "submit-validation-dispute-semantic-resolution"
-          ? await submitValidationDisputeSemanticResolutionFromFiles(
-              config,
-            )
-          : await submitValidationDisputeDirectResolutionFromFiles(
-              config,
-            );
+      args.command === "submit-validation-dispute-prepare-selected"
+        ? await submitValidationDisputePrepareSelectedFromFiles(config)
+        : args.command === "submit-validation-dispute-semantic-resolution"
+          ? await submitValidationDisputeSemanticResolutionFromFiles(config)
+          : await submitValidationDisputeDirectResolutionFromFiles(config);
     writeJson(output);
     return;
   }
@@ -1105,6 +1140,70 @@ export const main = async (): Promise<void> => {
       );
     }
     const output = await submitInvalidRangeStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-zero-input-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitZeroInputStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-zero-input-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitZeroInputStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
       network: parseNetwork(args.network),

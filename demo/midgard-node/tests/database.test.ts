@@ -218,8 +218,7 @@ const submitThroughRouter = <R>(
             method: "POST",
             headers: {
               "content-type":
-                options.contentType ??
-                "application/vnd.midgard.v1+cbor",
+                options.contentType ?? "application/vnd.midgard.v1+cbor",
             },
             body: new Uint8Array(requestBody),
           }),
@@ -310,8 +309,9 @@ const retrieveAllMempool = MempoolDB.retrievePage({ limit: 100_000 }).pipe(
 const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
 
-const emptyProgramMaterialSidecarV1 =
-  encodeMidgardCekProgramMaterialSidecarV1([]);
+const emptyProgramMaterialSidecarV1 = encodeMidgardCekProgramMaterialSidecarV1(
+  [],
+);
 const emptyProgramMaterialSidecarSha256V1 = createHash("sha256")
   .update(emptyProgramMaterialSidecarV1)
   .digest();
@@ -427,8 +427,7 @@ const daPayloadInsertFixture = (label: string): DaPayloadsDB.InsertInput => {
     [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
-    [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
+    [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
     [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
     [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
@@ -629,16 +628,13 @@ describe("TxAdmissionsDB", () => {
           });
           const stored = yield* TxAdmissionsDB.getByTxId(proofTx.txId);
           expect(
-            stored?.[
-              TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-            ],
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
           ).toEqual(encodeMidgardCekProgramMaterialSidecarV1([]));
           expect(
             stored?.[
               TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
             ],
           ).toHaveLength(32);
-
         }).pipe(Effect.provide(Globals.Default)),
       ),
   );
@@ -920,7 +916,10 @@ describe("TxAdmissionsDB", () => {
             txCanonicalCbor: Buffer,
             wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
           ) =>
-            submitThroughRouter(wrapNativeSubmitTxV1(txCanonicalCbor), wake).pipe(
+            submitThroughRouter(
+              wrapNativeSubmitTxV1(txCanonicalCbor),
+              wake,
+            ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(ValidationPool, validationPool),
               Effect.provideService(MempoolLedgerCache, cache),
@@ -1127,8 +1126,7 @@ describe("TxAdmissionsDB", () => {
               tx_canonical_cbor_sha256: createHash("sha256")
                 .update(txCanonicalCbor)
                 .digest(),
-              cek_program_material_sidecar_cbor:
-                emptyProgramMaterialSidecarV1,
+              cek_program_material_sidecar_cbor: emptyProgramMaterialSidecarV1,
               cek_program_material_sidecar_sha256:
                 emptyProgramMaterialSidecarSha256V1,
             })),
@@ -3537,6 +3535,50 @@ describe("PendingBlockFinalizationsDB", () => {
               ],
             ).toBeNull();
           }
+        }),
+      ),
+  );
+
+  it.effect(
+    "rejects startup recovery when an active journal omits committed validation traces",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const headerHash = databaseFixtureBytes(
+            "missing-validation-trace-header",
+            28,
+          );
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            pendingSubmissionFixture(headerHash),
+          );
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ${sql(PendingBlockFinalizationsDB.tableName)}
+            SET ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_TRANSITION_STEP_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACES_ROOT,
+            )} = ${"11".repeat(32)},
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACE_COUNT,
+            )} = 1
+            WHERE ${sql(
+              PendingBlockFinalizationsDB.Columns.HEADER_HASH,
+            )} = ${headerHash}`;
+
+          const exit = yield* Effect.exit(
+            PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete,
+          );
+          expect(exit._tag).toBe("Failure");
         }),
       ),
   );
