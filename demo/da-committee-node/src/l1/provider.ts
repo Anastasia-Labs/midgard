@@ -135,14 +135,22 @@ export class MultiStateQueueProvider implements StateQueueProvider {
   constructor(
     providers: readonly StateQueueProvider[],
     options: {
-      readonly sourceMode?: "local_node" | "external_providers";
+      readonly sourceMode: "local_node" | "external_providers";
       readonly identities?: readonly string[];
-    } = {},
+    },
   ) {
     if (providers.length === 0) {
       throw new Error("at least one state-queue provider is required");
     }
-    const sourceMode = options.sourceMode ?? "external_providers";
+    if (
+      options.sourceMode !== "local_node" &&
+      options.sourceMode !== "external_providers"
+    ) {
+      throw new Error(
+        "state-queue provider sourceMode must be local_node or external_providers",
+      );
+    }
+    const sourceMode = options.sourceMode;
     if (sourceMode === "external_providers" && providers.length < 2) {
       throw new Error(
         "external_providers mode requires at least two state-queue providers",

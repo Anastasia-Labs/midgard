@@ -1,13 +1,13 @@
 {
   "schemaVersion": "midgard-canonical-v1-watcher-dependency-map-v1",
   "authority": {
-    "publishedParentRevision": "86fd1d4b32a91cd8ca0541cfddc910500ca752c5",
+    "publishedParentRevision": "66d2d5d540a99925533e1ee0b2434e0082613071",
     "treeState": "reviewed follow-up content tree bound by resultContentTreeSha256",
     "contentTreeExclusions": [
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "42bb1a9e470c24acec73755a267ddd4140df036d8bb48c7a37c932b45d2f1daf",
+    "resultContentTreeSha256": "14e626e4af57da19629dd4a825334d41027a2f9632f0408e04754cb37bd75c03",
     "goalSpec": "GOAL_SPEC.md",
     "graphifySnapshotSha256": "c5cabaf0bc10d217717a6555c07df20958616c7b8f4fa2e7939cd42845db60e5",
     "graphifyUse": "navigation_only_current_source_verified"

@@ -258,7 +258,7 @@ const contentTreeExclusions = [
 ];
 if (
   dependencyMap.authority?.publishedParentRevision !==
-    "86fd1d4b32a91cd8ca0541cfddc910500ca752c5" ||
+    "66d2d5d540a99925533e1ee0b2434e0082613071" ||
   dependencyMap.authority?.treeState !==
     "reviewed follow-up content tree bound by resultContentTreeSha256" ||
   JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==

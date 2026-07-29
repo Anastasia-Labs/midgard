@@ -35,7 +35,9 @@ identities. W01/W11 now bind each observation to the configured
 provider/operator/HTTPS endpoint policy and reject substitutions, duplicate
 authority, authentication downgrade, network mismatch, or incompatible chain
 points. Local-node mode retains one node authority and aligned query surfaces;
-it does not manufacture a provider quorum.
+it does not manufacture a provider quorum. The provider state-machine
+constructor requires the discriminator, rejects omitted or unknown runtime
+values, and has no compatibility default.
 
 ### Fixed: L1 rollback/disagreement did not invalidate durable DA decisions
 

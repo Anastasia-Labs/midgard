@@ -607,11 +607,20 @@
   three already-published PR files. All four were mechanically corrected;
   node, SDK, and core package lint now pass, and affected fault/core/node
   focused tests replayed 26/26, 12/12, and 74/74 respectively.
+- Post-publication source-mode review found that the DA provider state-machine
+  constructor still defaulted an omitted discriminator to
+  `external_providers`. Production configuration was already explicit, but
+  the public constructor compatibility seam violated the authoritative
+  no-inference rule. The follow-up requires `sourceMode` at the type/runtime
+  boundary, rejects unknown/omitted runtime values, and updates every caller.
+  The exact provider suite passes 15/15; the full DA suite remains 189/190
+  with only the declared PostgreSQL case skipped; typecheck, build, and the
+  no-HTTP guard pass.
 - Content-tree binding found and fixed a Git-link reproducibility defect: the
   verifier now hashes the tracked mode/object identity for
   `technical-spec/Lean4Midgard` instead of following a checked-out directory.
   The exact staged tree is bound at
-  `42bb1a9e470c24acec73755a267ddd4140df036d8bb48c7a37c932b45d2f1daf`,
+  `14e626e4af57da19629dd4a825334d41027a2f9632f0408e04754cb37bd75c03`,
   and all eight dependency classes verify together.
 - No active path leases remain. No product failure remains in the checkpoint
   scope. The initial mistyped DA package filter and mistyped documentation-link
