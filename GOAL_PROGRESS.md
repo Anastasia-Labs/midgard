@@ -1092,3 +1092,46 @@ description, then inspect all current-head checks and every discussion surface
 again. Address any new actionable failure additively. Yield only after the
 published checkpoint is clean and good to merge on scope; do not promote the
 still-incomplete overarching Goal.
+
+## Superseding full-node CI fixture-remediation checkpoint
+
+- Signed resource-remediation commit
+  `5b9982a87ae944bec57e7a5fe256d2fd514773b8` was pushed as the exact draft
+  PR #471 head. Evidence Integrity CI, Docs Site CI, and LaTeX CI passed.
+  Aiken CI remained active when the current-head Midgard Node CI completed.
+- Midgard Node CI run `30476789951` failed its full package test step after
+  collecting 141 files and 755 tests: 31 files and 736 tests passed, one file
+  and one test were skipped, and 12 tests in two files failed. This run
+  receives no PASS credit.
+- Eleven failures were stale test fixtures in
+  `tests/midgard-native-tx-codec.test.ts`. They encoded byte-list fields as raw
+  integers, used the retired map-shaped empty mint preimage, compared
+  domain-separated collection commitments to plain hashes, used malformed
+  Plutus-data bytes for redeemers, and expected Cardano redeemer-map bytes to
+  equal the canonical native list representation. The fixtures now use exact
+  production field languages and verify the canonical field-6 script /
+  field-7 address projection plus hostile cross-substitution rejection.
+- The twelfth failure was a stress-corpus fixture that still supplied
+  `32,768` as `maxSubmitTxCborBytes`. Every affected textual and numeric test
+  input now derives from
+  `MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes` (`295,041`), so the
+  provider boundary and later hostile assertions share the exact production
+  limit rather than failing early on stale configuration.
+- Exact local remediation replay passes 2/2 files and 29/29 tests. Midgard
+  node typecheck, scoped ESLint, scoped Prettier, and `git diff --check` pass;
+  no `32768` or `32_768` literal remains in the stress-corpus test.
+- The remediated staged content-tree SHA-256, excluding only this ledger and
+  the dependency map itself, is
+  `7b4fdbae24572f4f1264445be3908c6e667cf479c41f4c25cc84677d3e423006`.
+  The map, protected-path, unmerged-index, formatting, and staged-diff gates
+  must replay before the additive commit.
+
+## Superseding reviewed publication action
+
+Create and push one signed additive fixture-remediation commit on the same
+`colll78/` branch, update draft PR #471 to its exact identities, and require
+all applicable workflows plus every discussion surface to be terminal and
+clean on that new head. Fix any further actionable finding additively. Keep
+the PR draft and the overarching Goal in progress because the 122 registry
+promotions, formal release journeys, target-testnet acceptance, remaining
+§12 criteria, closure manifest, and §15 are still open.

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   assetsToValue,
   CML,
@@ -29,6 +30,9 @@ const TEST_SEEDS = [
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart",
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
 ] as const;
+const MAX_SUBMIT_TX_CBOR_BYTES =
+  MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes;
+const MAX_SUBMIT_TX_CBOR_BYTES_TEXT = MAX_SUBMIT_TX_CBOR_BYTES.toString();
 
 const walletLabel = (index: number): string =>
   index.toString().padStart(4, "0");
@@ -181,7 +185,7 @@ describe("stress corpus planner", () => {
         amountLovelace: "1",
         minFeeA: "10",
         minFeeB: "10",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         assumedAcceptanceLatencyMs: "819",
         slices: "1",
         corpusSliceIdPrefix: "phase1",
@@ -207,7 +211,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         walletsDir,
         outDir,
         workers: "1",
@@ -274,7 +278,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
       },
       {},
     );
@@ -311,7 +315,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         walletsDir,
         outDir,
         workers: "1",
@@ -339,7 +343,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         walletsDir,
         outDir,
         workers: "1",
@@ -372,7 +376,7 @@ describe("stress corpus generation", () => {
           feeParams: { minFeeA: 0n, minFeeB: 0n },
           network: "Preprod",
           networkId: 0n,
-          maxSubmitTxCborBytes: 32_768,
+          maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
           sampleRate: 0.5,
         },
       }),
@@ -391,7 +395,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         walletsDir,
         outDir,
         workers: "1",
@@ -417,7 +421,7 @@ describe("stress corpus generation", () => {
           feeParams: { minFeeA: 0n, minFeeB: 0n },
           network: "Preprod",
           networkId: 0n,
-          maxSubmitTxCborBytes: 32_768,
+          maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         },
       }),
     ).rejects.toThrow(
@@ -488,7 +492,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES_TEXT,
         walletsDir,
         outDir,
         workers: "1",
