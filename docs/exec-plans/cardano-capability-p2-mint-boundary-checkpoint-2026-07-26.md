@@ -4,7 +4,7 @@ Branch: `codex/tx-validation-capability-checkpoint`
 Clean base: `194bcffe`
 
 This checkpoint adds the exact Cardano boundary fixture for field 5 (`mint`),
-with field 7 (`script_witnesses`) exercised only as its native-policy
+with field 6 (`script_witnesses`) exercised only as its native-policy
 authorization control. Every minted policy has exactly one matching, consumed
 native-script witness, and every minted asset is placed in an exact real output
 Value. This is one focused P2 field slice, not a whole-P2 claim.
@@ -115,12 +115,12 @@ and the exact complete terminal reconstruction fold.
 
 Every field-5 reveal verifies against the exact converted transaction
 commitment. The complete 265-step field-major receipt sequence reconstructs
-the original canonical Midgard transaction byte for byte. Field 7 also
+the original canonical Midgard transaction byte for byte. Field 6 also
 completes all 130 native-script reveals and the same terminal fold, but it is
 only an authorization-coupling control for this checkpoint.
 
 The test first constructs `N = 1` and proves the CML, production bridge, and
-both field-5 and field-7 paths before starting generic exact-byte boundary
+both field-5 and field-6 paths before starting generic exact-byte boundary
 search.
 
 ## Verification
@@ -177,7 +177,7 @@ Both pass.
 ## Remaining gate cells
 
 This checkpoint closes the TypeScript exact Cardano boundary and terminal-fold
-fixture for field 5. Fields 0 through 7 now have this evidence, with field 7
+fixture for field 5. Fields 0 through 7 now have this evidence, with field 6
 covered by its real native-script observer and policy authorization controls.
 The remaining transaction dynamic field without equivalent evidence is field
 8 (`redeemers`).

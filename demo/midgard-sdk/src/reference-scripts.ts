@@ -55,8 +55,7 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 transaction-field preimage publication": "V1TxFieldPreimageSpend",
   "V1 transaction-field receipt": "V1TxFieldReceiptSpend",
   "V1 transaction-field receipt minting": "V1TxFieldReceiptMint",
-  "V1 immutable CEK program-material publication":
-    "V1CekProgramMaterialSpend",
+  "V1 immutable CEK program-material publication": "V1CekProgramMaterialSpend",
   "V1 validation-trace dispute": "V1ValidationTraceDispute",
   "V1 validation-trace source": "V1ValidationTraceSource",
   "V1 validation-trace game": "V1ValidationTraceGame",

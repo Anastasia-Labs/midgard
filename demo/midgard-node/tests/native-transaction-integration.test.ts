@@ -13,6 +13,7 @@ import {
   decodeMidgardNativeScript,
   deriveMidgardNativeTxBodyCompactV1,
   deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardVersionedScriptListPreimage,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -125,10 +126,7 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 
 type ScriptWitnessItem = MidgardVersionedScript | Uint8Array;
 
-const testProgramMaterial = new Map<
-  string,
-  MidgardCekProgramMaterialEntryV1
->();
+const testProgramMaterial = new Map<string, MidgardCekProgramMaterialEntryV1>();
 
 const registerTestProgramMaterial = (
   entries: Iterable<MidgardCekProgramMaterialEntryV1>,
@@ -635,12 +633,15 @@ const buildNativeTx = (opts?: {
         );
   const redeemerTxWitsPreimageCbor =
     opts?.redeemerTxWitsPreimageCbor ?? EMPTY_CBOR_LIST;
-  const redeemerTxWitsHash = computeHash32(redeemerTxWitsPreimageCbor);
   const scriptIntegrityHash =
     opts?.scriptIntegrityHash ??
     (opts?.scriptLanguages !== undefined
       ? computeScriptIntegrityHashForLanguages(
-          redeemerTxWitsHash,
+          deriveMidgardNativeTxWitnessSetCompactV1({
+            addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+            scriptTxWitsPreimageCbor,
+            redeemerTxWitsPreimageCbor,
+          }).redeemerTxWitsHash,
           opts.scriptLanguages,
         )
       : computeHash32(EMPTY_CBOR_NULL));
@@ -732,7 +733,8 @@ const attachComputedScriptIntegrityHash = (
   });
 
   const scriptIntegrityHash = computeScriptIntegrityHashForLanguages(
-    computeHash32(fixture.tx.witnessSet.redeemerTxWitsPreimageCbor),
+    deriveMidgardNativeTxWitnessSetCompactV1(fixture.tx.witnessSet)
+      .redeemerTxWitsHash,
     languages,
   );
 
@@ -770,10 +772,9 @@ const phaseAConfig = {
 const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1(
-      [...testProgramMaterial.values()],
-    ),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+    ...testProgramMaterial.values(),
+  ]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -813,7 +814,10 @@ const expectPhaseAAcceptsOne = (phaseA: PhaseAResult) => {
 };
 
 const expectPhaseBAcceptsOne = (phaseB: PhaseBResult) => {
-  expect(phaseB.rejected).toHaveLength(0);
+  expect(
+    phaseB.rejected,
+    JSON.stringify(phaseB.rejected, null, 2),
+  ).toHaveLength(0);
   expect(phaseB.accepted).toHaveLength(1);
 };
 
@@ -1278,7 +1282,10 @@ describe("native transaction integration", () => {
     expect(phaseA.accepted[0].derived.requiredObserverHashHexes).toStrictEqual([
       observerScriptHash.toString("hex"),
     ]);
-    expect(phaseB.rejected).toHaveLength(0);
+    expect(
+      phaseB.rejected,
+      JSON.stringify(phaseB.rejected, null, 2),
+    ).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
 
@@ -1617,7 +1624,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.rejected).toHaveLength(0);
+    expect(
+      phaseB.rejected,
+      JSON.stringify(phaseB.rejected, null, 2),
+    ).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
 
@@ -1816,24 +1826,15 @@ describe("native transaction integration", () => {
     expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
   });
 
-  it("rejects empty top-level mint maps instead of treating them as no mint", async () => {
+  it("rejects empty top-level mint maps instead of treating them as no mint", () => {
     const signerKey = CML.PrivateKey.generate_ed25519();
-    const { txId, txCbor } = buildNativeTx({
-      mintPreimageCbor: makeEmptyMintMapPreimage(),
-      witnessMode: "valid",
-      witnessSignerPrivateKey: signerKey,
-    });
-
-    const phaseA = await Effect.runPromise(
-      runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
-    );
-
-    expect(phaseA.accepted).toHaveLength(0);
-    expect(phaseA.rejected).toHaveLength(1);
-    expect(phaseA.rejected[0].code).toBe(RejectCodes.InvalidFieldType);
-    expect(phaseA.rejected[0].detail).toContain(
-      "Midgard mint map cannot be empty",
-    );
+    expect(() =>
+      buildNativeTx({
+        mintPreimageCbor: makeEmptyMintMapPreimage(),
+        witnessMode: "valid",
+        witnessSignerPrivateKey: signerKey,
+      }),
+    ).toThrow(/native-V1 mint must be an empty array or non-empty map/u);
   });
 
   it("rejects empty per-policy mint asset maps instead of treating them as no mint", async () => {
@@ -2053,7 +2054,10 @@ describe("native transaction integration", () => {
 
     expect(phaseA.rejected).toHaveLength(0);
     expect(phaseA.accepted).toHaveLength(1);
-    expect(phaseB.rejected).toHaveLength(0);
+    expect(
+      phaseB.rejected,
+      JSON.stringify(phaseB.rejected, null, 2),
+    ).toHaveLength(0);
     expect(phaseB.accepted).toHaveLength(1);
   });
 
@@ -2093,9 +2097,7 @@ describe("native transaction integration", () => {
   });
 
   it("rejects Plutus witness bundles when the evaluator reports script failure", async () => {
-    const plutusScriptRef = makeAlwaysSucceedsScript(
-      ALWAYS_FAILS_SCRIPT_HEX,
-    );
+    const plutusScriptRef = makeAlwaysSucceedsScript(ALWAYS_FAILS_SCRIPT_HEX);
     const { phaseA, phaseB } = await runPlutusV3SpendScenario({
       spendScript: plutusScriptRef,
       txOptions: {

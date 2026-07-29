@@ -28,6 +28,7 @@ import {
   reduceSpeculativeCommitState,
   type SpeculativeCommitState,
 } from "@/fibers/speculative-commit-state.js";
+import { canonicalSlotConfigForLucid } from "@/lucid-time.js";
 import { publishMempoolLedgerDelta } from "@/services/globals.js";
 import {
   type CommitPipelinePhase,
@@ -961,6 +962,9 @@ export const buildAndSubmitCommitmentBlockAction = (
               availableLocalFinalizationBlock:
                 AVAILABLE_LOCAL_FINALIZATION_BLOCK,
               currentBlockStartTimeMs: CURRENT_BLOCK_START_TIME_MS,
+              forcedValidationSlotConfig: canonicalSlotConfigForLucid(
+                lucid.api,
+              ),
               localFinalizationPending: LOCAL_FINALIZATION_PENDING,
               ledgerStoreLeaseOwner,
               mempoolTxsCountSoFar: PROCESSED_UNSUBMITTED_TXS_COUNT,

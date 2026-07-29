@@ -1,8 +1,8 @@
 import {
-  computeHash32,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -40,7 +40,10 @@ const fakeProvider: MidgardProvider = {
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
-    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -76,7 +79,10 @@ const zeroFeeProvider: MidgardProvider = {
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -178,29 +184,34 @@ describe("TxBuilder finalization", () => {
     const witnessCompact = deriveMidgardNativeTxWitnessSetCompactV1(
       tx.witnessSet,
     );
+    const commitment = (fieldIndex: number, preimageCbor: Uint8Array) =>
+      deriveMidgardNativeFieldCollectionV1({
+        fieldIndex,
+        preimageCbor,
+      }).commitment;
 
     expect(tx.compact.transactionBody.spendInputsHash).toEqual(
-      computeHash32(tx.body.spendInputsPreimageCbor),
+      commitment(0, tx.body.spendInputsPreimageCbor),
     );
     expect(tx.compact.transactionBody.referenceInputsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(1, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.requiredObserversHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(3, EMPTY_CBOR_LIST),
     );
     expect(tx.compact.transactionBody.mintHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(5, EMPTY_CBOR_LIST),
     );
     expect(tx.body.scriptIntegrityHash).toEqual(EMPTY_NULL_ROOT);
     expect(tx.body.auxiliaryDataHash).toEqual(EMPTY_NULL_ROOT);
     expect(witnessCompact.addrTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(7, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.scriptTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(6, EMPTY_CBOR_LIST),
     );
     expect(witnessCompact.redeemerTxWitsHash).toEqual(
-      computeHash32(EMPTY_CBOR_LIST),
+      commitment(8, EMPTY_CBOR_LIST),
     );
     expect(tx.body.validityIntervalStart).toBe(MIDGARD_POSIX_TIME_NONE);
     expect(tx.body.validityIntervalEnd).toBe(MIDGARD_POSIX_TIME_NONE);

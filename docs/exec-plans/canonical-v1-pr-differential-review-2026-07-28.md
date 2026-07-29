@@ -182,27 +182,244 @@ families, and the explicit `local_node | external_providers` trust model.
 The dependency-map verifier previously read every tracked path as a regular
 file. A checked-out `technical-spec/Lean4Midgard` Git link therefore became a
 directory and made otherwise identical content trees unverifiable. The binder
-now reads tracked mode and object identity from the Git index, hashes Git-link
-identities directly, and continues to hash ordinary working-tree bytes and
-symbolic-link targets deterministically.
+now reads every path, mode, and blob identity from the Git index, hashes
+Git-link identities directly, reads ordinary and symbolic-link bytes from
+their staged blobs, sorts paths by explicit UTF-8 byte order, and includes mode
+in the digest. A dirty worktree, executable-bit change, or symlink conversion
+can no longer masquerade as the reviewed commit tree.
+
+### Fixed: local-node query services were rejected by surface kind
+
+The local-node consistency evaluator incorrectly treated two distinct,
+configured query services of the same kind as one duplicated surface. Surface
+kind is not an authority identity: separate Ogmios or indexer services may
+legitimately query the same watcher-operated node. The evaluator now rejects
+duplicate provider IDs while allowing distinct same-kind services, continues
+to count the local node as exactly one independent chain authority, and still
+requires every query result to match its network and canonical chain point.
+
+### Fixed: W11 evidence was order-sensitive at hostile boundaries
+
+External-provider bindings now use a total tuple order, so conflicting
+identities that reuse one provider ID cannot change the consistency digest by
+changing input order. Canonical chain points are deduplicated before bounded
+lag checks while same-point content mismatches still quarantine decisions.
+Malformed or adversarial configured-source objects are caught at the public
+boundary and produce deterministic, secret-safe quarantine output.
+
+### Fixed: native transaction field order and compact fixture ownership drifted
+
+The canonical native V1 wire order now agrees across Aiken, the core proof
+layer, validation, node ingestion, and the Lucid SDK. The cross-language
+fixture generator owns the compact JSON and Aiken goldens, checks their
+transaction IDs and body hashes, and is byte-idempotent. Exact Aiken vectors
+cover high-cardinality, size-balanced, ordinary full/compact, TypeScript
+one-step, canonical decode, and all fifteen script-discovery slots.
+
+### Fixed: generated terminal proof chunk had no executable regression
+
+The proof-fragment generator emitted the maximum-profile terminal
+`chunk_proof_8_15_1` case without selecting it in any test scenario. The
+generated fixture now executes that terminal chunk alongside the other
+representative scenarios, so regeneration cannot silently leave the final
+field/chunk boundary dead.
+
+### Fixed: Lucid tests preserved pre-domain-separated identities
+
+Several Lucid fixtures and tests still asserted pre-canonical field
+commitments, a stale provider transaction ID, and idempotent repeated signing.
+They now derive the exact domain-separated field commitments, pin the corrected
+static transaction identity, and require repeated signing to fail with the
+documented duplicate-witness `SigningError`.
+
+### Fixed: Phase-4 verifier pinned a stale PHAS blueprint identity
+
+The full node suite exposed a Phase-4 process-summary fixture whose PHAS reward
+address, script hash, registration CBOR, transaction hash, and artifact digest
+still described the prior blueprint. The fixture has been regenerated from
+the current testnet blueprint and its focused five-case verifier passes.
+
+### Fixed: validation-trace lookup confused step keys with event keys
+
+The complete node replay exposed a production lookup that built its
+validation-trace source index from transition-trace member keys. Those keys
+encode step indexes, while forced and normal validation inputs query by
+canonical event-key CBOR. The index now derives keys from each authenticated
+transition step's `event_key`, rejects duplicates, and requires exact set
+equality with the forced/L2 validation inputs. A custom builder cannot replace
+a required transaction descriptor with an otherwise valid deposit or
+withdrawal event key. The hostile substitution regression passes.
+
+### Fixed: realistic commit fixtures bypassed strict DA and CEK inputs
+
+The emulator commit fixture previously relied on an absent DA runtime manifest
+and queued normal transactions without their now-mandatory CEK
+program-material sidecars. Its setup now supplies a syntactically and
+semantically valid producer manifest, persists canonical empty sidecars for
+script-free transfers, and decodes the retained DA envelope before asserting
+its payload. Synthetic backlog times are monotonic after the initialized
+state-queue tip and use the production `(timestamp, tx_id)` tie-break.
+Production continues to fail closed when any of those inputs is missing or
+malformed.
+
+The fixture's operational DA identity is no longer merely syntactic. Its
+producer peer ID and announced multiaddress are derived and checked through
+the production libp2p identity loader from the same deterministic private-key
+source used at runtime. The manifest network now matches the Preprod emulator
+configuration.
+
+### Fixed: maximum validation CI guards used stale contention budgets
+
+The published PR check showed five timeouts rather than assertion failures:
+three validation-machine cases, the maximum retained redeemer traversal, and
+the maximum inline-data breadth case. The deterministic workloads and
+assertions are unchanged; their explicit budgets now cover the observed
+bounded runner-contended duration. The validation-machine cases use 60 seconds,
+the redeemer traversal 120 seconds, and both maximum data-breadth cases 600
+seconds.
+
+### Fixed: speculative proof validation crossed the provider boundary before readiness
+
+The complete Node replay caught canonical V1 proof setup acquiring the Lucid
+service before a speculative candidate emitted `CandidateReady`. That broke
+the provider-free build invariant and made invalidation paths depend on L1
+access. The parent now copies Lucid's already-validated, immutable per-instance
+slot mapping into plain worker data and performs the exact enclosing-slot
+conversion locally. `Custom` mappings remain sourced from aligned local-node
+Shelley genesis at Lucid initialization; standard networks retain Lucid's
+selected mapping. Missing, malformed, unsafe, or pre-genesis mappings fail
+closed.
+
+The Architecture-G candidate artifact language now binds the same three-field
+slot mapping to a SHA-256-identified source artifact. Standard networks must
+match Lucid `0.6.0`'s immutable table; `Custom` derives the mapping from the
+canonical Shelley-genesis response returned by the exact configured Ogmios
+endpoint. The production probe rejects a document network different from
+`NodeConfig.NETWORK`; for `Custom`, it re-queries that endpoint and rejects any
+endpoint or canonical genesis digest mismatch before the provider-free build.
+The capture command bounds both response time and streamed response bytes, so
+a stalled or oversized configured Ogmios cannot hang or exhaust the evidence
+workflow. Focused pure-conversion, source-boundary, artifact-decoder, and
+candidate-gate tests pass, as do both emulator regressions that assert zero
+Lucid acquisitions before readiness.
+
+### Fixed: native integration derived a pre-canonical script-integrity hash
+
+The complete Node replay exposed two test-only transaction builders that
+derived the script-integrity hash from a raw redeemer preimage. Production
+uses the canonical, domain-separated redeemer collection. Both builders now
+consume `redeemerTxWitsHash` from the production compact-witness derivation,
+and the empty top-level mint-map regression fails closed at the same canonical
+construction boundary. The full native integration file passes 79/79.
+
+### Fixed: transition-trace ABI golden described the retired combined proof
+
+The transition-trace ABI fixture still described the old combined validator
+after the production blueprint split route selection from finalization. The
+golden now binds the current route and final argument records, and an explicit
+package command regenerates it deterministically from the SDK schemas. The
+complete SDK ABI fixture file passes 8/8.
+
+### Fixed: settlement redeemer boundary depended on compiler field reordering
+
+Aiken `v1.1.22` reordered the typed settlement mint-redeemer record at the
+validator boundary. The mint handler now decodes the constructor tag, exact
+arity, primitive field types, and canonical field order into the existing
+typed `Spawn | Remove` model before executing unchanged validator semantics.
+Dedicated Spawn, Remove, unknown-tag, wrong-arity, and wrong-type tests close
+the boundary; the broader settlement selector passes 13/13. The rebuilt
+settlement minting validator is 3,660 raw bytes with script hash
+`7480e0d91c418bb3e3ab96d0e7eb174325d298396128646f3c735546`, and the real
+settlement-merge emulator journey passes against that blueprint.
+
+### Fixed: authenticated L1 collections had only per-array bounds
+
+W10 previously limited each transaction sub-array independently, allowing an
+attacker to multiply many maximum-sized arrays before rejection. The adapter
+now preflights the outer transaction array and every nested UTxO, script,
+datum, and redeemer count against one 65,536-member aggregate budget before
+parsing or sorting members. The hostile multiplicative case fails at the
+public `$.transactions` boundary.
+
+### Fixed: direct providers could self-attest a false language subset
+
+The Lucid builder compared two language lists supplied by the same provider,
+so mutually consistent empty or false subsets could pass. Both provider lists
+must now independently equal the compiled canonical
+`PlutusV3:2, MidgardV1:128` set. Empty, one-sided, false-subset, and malformed
+tag cases fail before builder creation.
+
+### Fixed: native-script capability exceeded executable codec depth
+
+The consensus profile advertised depth 16,384 while the recursive decoder
+stopped near 4,096 and other recursive traversals remained host-stack-bound.
+Encoding, decoding, verification, and consensus complexity measurement are now
+iterative and share exact 16,384 depth and node-count constants. Canonical
+depth/node maxima round-trip and verify; their deep and wide adjacent cases
+reject or return false without shrinking the Cardano capability floor.
+
+### Fixed: CEK execution ignored declared redeemer ex-units
+
+The structural executor could run until the global trace-step ceiling even
+after a redeemer exhausted its declared CPU or memory. It now retains the
+first authenticated over-budget transition and stops deterministically.
+Phase B passes each redeemer budget to both the default and injected proof
+evaluator, and validation-machine initial evaluation and exact trace
+regeneration use the same limits. The existing explicit
+`enforceScriptBudget: false` diagnostic seam remains the only unlimited mode.
+
+### Fixed: missing run state could silently replace deployment authority
+
+When the run-state file was absent, deployment could generate a new
+reference-script authorization policy even though a finalized manifest already
+bound the deployment. Resume now strictly parses that manifest, binds its
+network, one-shot out-ref, and path to the current identity, restores its exact
+policy, and persists it before publication. Malformed manifests and
+manifest/run-state policy conflicts fail closed without overwriting state.
+
+### Fixed: Architecture G merge finalization reopened its LevelDB
+
+Confirmed-state merge finalization used the legacy persistent synchronizer
+after SQL and on-chain success, reopening the path owned by the live
+Architecture G native service. Engine-aware routing now observes and validates
+the live owner's durable tail without evaluating the persistent synchronizer.
+Missing owners and malformed roots fail closed; a defensive lower-level guard
+also refuses any Architecture G persistent-store synchronization. Legacy,
+overlay, and event-flat engines retain their existing behavior.
+
+### Fixed: evidence claims and CI exceeded their proof
+
+The checkpoint ledger claimed strict 132/132 format-registry success although
+the integrated registry contained 10 `PASS` and 122 `UNVERIFIED` rows. The
+claim is downgraded to structural incomplete-mode evidence, and strict
+verification continues to fail closed. A repository-wide evidence workflow
+now runs that structural gate and the staged-tree dependency verifier on every
+push and pull request. The dependency verifier additionally enforces the exact
+dependency set/order, trust classifications, allowed/prohibited input sets,
+and rejected operator-private surfaces. W23's completed rule-bundle state is
+consistent across the map, and the final tree digest is regenerated only
+after staging.
 
 ## Final-tree evidence
 
 - Aiken `v1.1.22+39d6b04` build and blueprint generation: PASS.
 - Generated `onchain/aiken/plutus.json` SHA-256:
-  `32dd6f052b5fb9e2da1f81efb5c2bdc816c6136f09a20f0e1ea5c526b20b3466`;
-  355 validators; phase-A router 5,302 bytes, script-sources router 5,305
-  bytes, and state-queue mint policy 10,762 bytes.
-- New on-chain resolver, header-time, and genesis hostile selectors: 13/13
-  PASS. Previously reviewed transition replay, forced timing, and source
-  lifecycle selectors remain green on the same source.
+  `d49f3ced61d967e0043aabcd37cb3fe8c4ceea03553a6cfbca90013ba79f7e4d`;
+  355 validators.
+- Canonical native V1 cross-language selectors: 7/7 PASS. The newly covered
+  maximum-profile terminal proof chunk selector passes 1/1.
 - Watcher build, typecheck, lint, and format check: PASS.
-- Watcher suite: 194/194 PASS.
+- Watcher suite: 199/199 PASS.
 - Canonical watcher dependency-map verifier: 8/8 dependency classes PASS.
-- Core package: 36 files and 271/271 tests PASS; production build PASS.
-- Node runtime/source-completeness focused suite: 74/74 PASS; typecheck PASS.
-- SDK production build/typecheck and full suite: 16 files and 80/80 tests
-  PASS under Node `22.22.2`.
+- Core package: 36 files and 273/273 tests PASS; production build PASS.
+- Validation package: 37 files and 174/174 tests PASS; build/typecheck PASS.
+- Lucid SDK: 148/148 tests PASS; typecheck PASS under Node `22.22.2`.
+- Node material-chain focused suite: 3/3 PASS; Phase-4 isolation/verifier:
+  27/27 PASS; native transaction integration: 79/79 PASS; SDK ABI fixtures:
+  8/8 PASS; deployment/merge review regressions: 29/29 PASS; typecheck and lint
+  PASS. The earlier complete package replay is diagnostic only because final
+  review fixes changed source after it started; `GOAL_PROGRESS.md` does not
+  award it final-tree PASS credit.
 - Fault-proof package: 14/14 files and 110/110 tests PASS; rebuilt-blueprint
   zero-input emulator: 1/1 PASS.
 - Retained-DA verifier: 13 producer files/14 tests, 20 DA consumer tests, and

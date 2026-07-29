@@ -20,24 +20,15 @@ import {
   MidgardVersionedScriptTags,
 } from "./codec/versioned-script.js";
 
-const SOURCE_LEAF_DOMAIN = Buffer.from(
-  "MidgardScriptSourceLeafV1",
-  "ascii",
-);
+const SOURCE_LEAF_DOMAIN = Buffer.from("MidgardScriptSourceLeafV1", "ascii");
 const INLINE_SOURCE_LEAF_DOMAIN = Buffer.from(
   "MidgardInlineScriptSourceLeafV1",
   "ascii",
 );
 const REDEEMER_LEAF_DOMAIN = Buffer.from("MidgardRedeemerLeafV1", "ascii");
-const PURPOSE_LEAF_DOMAIN = Buffer.from(
-  "MidgardScriptPurposeLeafV1",
-  "ascii",
-);
+const PURPOSE_LEAF_DOMAIN = Buffer.from("MidgardScriptPurposeLeafV1", "ascii");
 const SIGNER_LEAF_DOMAIN = Buffer.from("MidgardSignerLeafV1", "ascii");
-const OUTPUT_ITEM_LEAF_DOMAIN = Buffer.from(
-  "MidgardOutputItemLeafV1",
-  "ascii",
-);
+const OUTPUT_ITEM_LEAF_DOMAIN = Buffer.from("MidgardOutputItemLeafV1", "ascii");
 const OUTPUT_DESCRIPTOR_LEAF_DOMAIN = Buffer.from(
   "MidgardOutputDescriptorLeafV1",
   "ascii",
@@ -46,10 +37,7 @@ const EXECUTION_LEAF_DOMAIN = Buffer.from(
   "MidgardScriptExecutionLeafV1",
   "ascii",
 );
-const MINT_ASSET_LEAF_DOMAIN = Buffer.from(
-  "MidgardMintAssetLeafV1",
-  "ascii",
-);
+const MINT_ASSET_LEAF_DOMAIN = Buffer.from("MidgardMintAssetLeafV1", "ascii");
 const SCRIPT_CONTEXT_ITEM_LEAF_DOMAIN = Buffer.from(
   "MidgardScriptContextItemLeafV1",
   "ascii",
@@ -167,7 +155,7 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
       throw new Error("inline script source key is not a canonical index");
     }
     const item = buildMidgardBoundedItemV1({
-      fieldIndex: 7,
+      fieldIndex: 6,
       itemIndex: Number(sourceIndex),
       bytes: encodeMidgardVersionedScript(input.script),
     });
@@ -176,10 +164,7 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
       scriptLanguageTag: Number(
         MidgardVersionedScriptTags[input.script.language],
       ) as 0 | 3 | 128,
-      scriptHash: Buffer.from(
-        hashMidgardVersionedScript(input.script),
-        "hex",
-      ),
+      scriptHash: Buffer.from(hashMidgardVersionedScript(input.script), "hex"),
       scriptTotalLength: item.bytes.length,
       itemCommitment: item.commitment,
     });
@@ -198,18 +183,16 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     throw new Error("reference script source key is not an output reference");
   }
   const decodedOutputIndex =
-    typeof sourceKey[1] === "number" &&
-    Number.isSafeInteger(sourceKey[1])
+    typeof sourceKey[1] === "number" && Number.isSafeInteger(sourceKey[1])
       ? BigInt(sourceKey[1])
       : sourceKey[1];
   if (
     typeof decodedOutputIndex !== "bigint" ||
     decodedOutputIndex < 0n ||
     decodedOutputIndex > 65_535n ||
-    !encodeCbor([
-      Buffer.from(sourceKey[0]),
-      decodedOutputIndex,
-    ]).equals(Buffer.from(input.sourceKey))
+    !encodeCbor([Buffer.from(sourceKey[0]), decodedOutputIndex]).equals(
+      Buffer.from(input.sourceKey),
+    )
   ) {
     throw new Error("reference script source key is not canonical");
   }
@@ -373,9 +356,7 @@ export const hashMidgardScriptPurposeLeafV1 = (input: {
   );
 };
 
-export const hashMidgardSignerLeafV1 = (
-  signerHash: Uint8Array,
-): Hash32 => {
+export const hashMidgardSignerLeafV1 = (signerHash: Uint8Array): Hash32 => {
   const exactSignerHash = Buffer.from(signerHash);
   if (exactSignerHash.length !== 28) {
     throw new Error("signer hash must contain exactly 28 bytes");
@@ -522,9 +503,7 @@ export const hashMidgardScriptContextItemLeafV1 = (input: {
     );
   }
   if (input.cborLength < 0n || input.memory < 0n) {
-    throw new Error(
-      "script-context item length and memory must be unsigned",
-    );
+    throw new Error("script-context item length and memory must be unsigned");
   }
   return hash32(
     Buffer.concat([

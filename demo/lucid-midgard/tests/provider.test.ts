@@ -37,7 +37,8 @@ const protocolInfo: MidgardProtocolInfo = {
     minFeeB: 155381n,
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -58,7 +59,8 @@ const protocolInfoJson = {
     minFeeB: "155381",
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -82,7 +84,7 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
 const submitTx = {
   txHex:
     "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
-  txId: "75c4ea27a41fe204572bdf9c2bcc0b21b76ca74eeca5337a5f726065e27d334a",
+  txId: "3a3ecbf11a2b49bc0fb6951dfc33be97b1e9f20442413890236034420cc6c2af",
 };
 
 const submitAdmission = (
@@ -290,7 +292,8 @@ describe("MidgardNodeProvider", () => {
       minFeeA: 44n,
       minFeeB: 155381n,
       networkId: 0n,
-      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
   });

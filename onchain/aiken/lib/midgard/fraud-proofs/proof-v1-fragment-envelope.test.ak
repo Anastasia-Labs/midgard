@@ -42,19 +42,19 @@ const predecessor_field_transaction_id =
   #"7171717171717171717171717171717171717171717171717171717171717171"
 
 const transaction_id =
-  #"11a3ba8b9f6f6bbb9691889742475d28db244fd91ea6842e3a38c92e10db2e89"
+  #"c22a9059061c63f02fe95fb964282b2e8d6fc0a6bd2559f450d4a6b9081b854f"
 
 const transaction_commitment =
-  #"afd11b76a61f02a74766f28484531ad9b142942bbe1726dbe0572a6d8feebc29"
+  #"8e7d5a8e80dd2cd528fefea6a0c9f309318519478bf9c09722dfd62a2039e1c4"
 
 const compact_cbor =
-  #"84018c582076446453017f6aa63d942f7e979b0bc8d15d84b75442500ecc20cfc5945b23d3582027cce6ee0f86fbd9cc112bf1160328252c9150c9904c265624b74fb67c6db15a5820b8c084c8d426f07a6e0ba6a832f8a3ba6e397da92d5aeae43a1a1a8204a1b3dd1bffffffffffffffff3b7fffffffffffffff1b7fffffffffffffff582045b7e6e8574da7d32085ffed4c9d144c6b64f22d0ea60b715497aae0b65371c458202bf2fdabf2114e447445ae452d21ca8f04775bcf46cae834935741d5b3919d3c58208806bafd4d7e1a1cfd2ea275d8a0e542183209ee86a1a2a8d74c93171852278a582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820545cf00e4cccc893cbef927c54424562b382747fc1870e28b2c58a4df2da422f00"
+  #"84018c582076446453017f6aa63d942f7e979b0bc8d15d84b75442500ecc20cfc5945b23d3582027cce6ee0f86fbd9cc112bf1160328252c9150c9904c265624b74fb67c6db15a582026d1223547340328335673dea0eec835d95269c22b3fc3d848a3631d455342c61bffffffffffffffff3b7fffffffffffffff1b7fffffffffffffff582045b7e6e8574da7d32085ffed4c9d144c6b64f22d0ea60b715497aae0b65371c458202bf2fdabf2114e447445ae452d21ca8f04775bcf46cae834935741d5b3919d3c58208806bafd4d7e1a1cfd2ea275d8a0e542183209ee86a1a2a8d74c93171852278a582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ee750776138ee2acc20fb1c22850e4f169ba3113dd52e31b0f496235088032f400"
 
 const witness_set_compact_cbor =
-  #"835820fe9b15cbfc2d3903114e52ac9f9fdf087a3e75d52381ed5fc6f8cd9488f6091c5820a61897b1f98281b021f65a55bba8fbaf0e0bbb0bdb386d8add306a0e50bde79b5820f0597fc8fcd89aad1b903caca25cc9353216c0c61f7ed56213c864f4cd280508"
+  #"83582040bd9ae93d1bc9c680d515555f5fd619a332872b90b02ce75f4f538fd0bc88aa58202631622253b6c01221199491bea9c05a892671c019e5a8f697939d0d404f1fad5820f0597fc8fcd89aad1b903caca25cc9353216c0c61f7ed56213c864f4cd280508"
 
 const field_preimage_lengths_cbor =
-  #"89190a02190a021923ff1901e11907821925021919c21923e61923ff"
+  #"89190a02190a021923ff1901e11907821925021923e61919c21923ff"
 
 const collection_proof_0_0_0 =
   bounded_collection_v1.ItemProofV1 {
@@ -149,11 +149,11 @@ const collection_proof_2_1_0 =
     frontier: [
       FrontierPeak {
         height: 6,
-        hash: #"1d156c9a18249c0a9e58475c20bdba4e96b3e60ac091309e518a4c94eb771745",
+        hash: #"1e70c49f3830e495f133df519d594d4f15227d41453a9f450549d8f5e13f512a",
       },
     ],
     siblings: [
-      #"e2b3d0b71e62fd086d749e1e59cd7cac227247624a90108530da9d873a6ac6de",
+      #"212945468fc1ac2b38e58814985d7251968f0450e589a05b6b1c839e8ca8b01a",
       #"6620fe33e7716876bbf8d03f92eaffd96fb28dcd1143f1351dd08a993c34ee0d",
       #"eb44c298015ad91f65676c0df376b05f407286a46eb8cf0d202f534e660e0050",
       #"2ed7be071e1a825e6426c57062e063fa5efdaa973652173fbcfa4cd1cfd709c6",
@@ -305,23 +305,24 @@ const collection_proof_6_0_0 =
   bounded_collection_v1.ItemProofV1 {
     version: 1,
     field_index: 6,
-    item_count: 64,
+    item_count: 12,
     item_index: 0,
-    item_length: 101,
-    item_commitment: #"364ef324bfe7acc2487f079fecb02b67905e6ab6226b10eb253de2fea2ff7e3f",
+    item_length: 1001,
+    item_commitment: #"c096ae0c06f8d8fc74f79169548530cda3c9951dce915535fec020757b423895",
     frontier: [
       FrontierPeak {
-        height: 6,
-        hash: #"274382d9ac966c6663855410d54c2f93873142c9d2ae1cba4fc31e2d7fb08b3f",
+        height: 2,
+        hash: #"9337c5c60f1010dd80cd2525bf20e07e637adcb203459784b013adeebf0b7709",
+      },
+      FrontierPeak {
+        height: 3,
+        hash: #"4de79e60a74a77e46c00091a4fa67a1cddd1420bd8bf73ba73eb98f6eae6ca7c",
       },
     ],
     siblings: [
-      #"7a18cf2ba2addfeb3a65d56fe3353bbd6180e96fca2f90b46d72ff8b7d16acf0",
-      #"32f267fbb24cfb51085e8a5dc831a4e05f165d0e56712d69b7ff66b6932c8da9",
-      #"0f4dfcfb07e00c51cc394a4f08d7247e058505d50c28f9b24c2a07bdc5d04a37",
-      #"d6929a7c775c74473490535f052402520f569ba650a58615b449f442cd46d4cc",
-      #"60092670699393e8882845707b7f648a580ef8eaf361f63ba7769bbf554494d0",
-      #"054d5f929fa2d707c1c4434cb7ca484ae918558d09dbd0c91cd604a2ae0742e6",
+      #"639eca165a2995dbc88c7db4d106df32f97ced9e8bef23b05ff7410e072e541e",
+      #"4c6895397db5568ffd1a97952a2fb6009482622452996dd14999d8a47f7dc9e8",
+      #"c38a48e02efb94c30969b1eb381698ec3776625616e5a44e60585e5795d62b13",
     ],
   }
 
@@ -330,13 +331,13 @@ const chunk_proof_6_0_0 =
     version: 1,
     field_index: 6,
     item_index: 0,
-    total_length: 101,
+    total_length: 1001,
     chunk_index: 0,
-    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000005840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    chunk: #"82005903e48201981f8200581c000000000000000000000000000000000000000000000000000000008200581c010101010101010101010101010101010101010101010101010101018200581c020202020202020202020202020202020202020202020202020202028200581c030303030303030303030303030303030303030303030303030303038200581c040404040404040404040404040404040404040404040404040404048200581c050505050505050505050505050505050505050505050505050505058200581c060606060606060606060606060606060606060606060606060606068200581c070707070707070707070707070707070707070707070707070707078200581c080808080808080808080808080808080808080808080808080808088200581c090909090909090909090909090909090909090909090909090909098200581c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a8200581c0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b8200581c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c8200581c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d8200581c0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e8200581c0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f8200581c101010101010101010101010101010101010101010101010101010108200581c111111111111111111111111111111111111111111111111111111118200581c121212121212121212121212121212121212121212121212121212128200581c131313131313131313131313131313131313131313131313131313138200581c141414141414141414141414141414141414141414141414141414148200581c151515151515151515151515151515151515151515151515151515158200581c161616161616161616161616161616161616161616161616161616168200581c171717171717171717171717171717171717171717171717171717178200581c181818181818181818181818181818181818181818181818181818188200581c191919191919191919191919191919191919191919191919191919198200581c1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a8200581c1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b8200581c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c8200581c1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d8200581c1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
     frontier: [
       FrontierPeak {
         height: 0,
-        hash: #"503ba38507857f028e99f68c7f592c4f24496d989990c6a3b43477213518321c",
+        hash: #"2090ee3679d84254927d17f745322e5bf18b238845bec265cd09df9bca462cdc",
       },
     ],
     siblings: [],
@@ -346,24 +347,23 @@ const collection_proof_7_0_0 =
   bounded_collection_v1.ItemProofV1 {
     version: 1,
     field_index: 7,
-    item_count: 12,
+    item_count: 64,
     item_index: 0,
-    item_length: 1001,
-    item_commitment: #"60448bc7df103c8640b0fec66e8798917e2aa7a01447b276b0808203267de792",
+    item_length: 101,
+    item_commitment: #"ff281d9c7c09fcf376665f397343aed7f81cb36a9784461e5267a38baf7f684f",
     frontier: [
       FrontierPeak {
-        height: 2,
-        hash: #"988c93bcd6c571a276b65d125b8da74d5ba71c8d5c31e987d9c6a6eca35a26a3",
-      },
-      FrontierPeak {
-        height: 3,
-        hash: #"5dda6eca70e527126f2240756b0b0273e030d519dc4b8b55a68c170901dedd26",
+        height: 6,
+        hash: #"4ceaccbb0e3edc83a38d9ef7fe351aec930643932ed366673297f34ee0b5c4fd",
       },
     ],
     siblings: [
-      #"962d05314330c92d21d5ce8db9c8fa077ffcb632ed33c883f09fc908807613c1",
-      #"2813d19fbd29d520b83048114b0a5bf959be596c7dc19acc3eda85b408362fd5",
-      #"43b887814bdfa034d68701aad9821170374ca283b477dbd87bb0119c7e6280f9",
+      #"8416edfb1934fbd2fc881fdbba2e32146dcedc2331c8933db76c93cc94477980",
+      #"c65f9c4f18f4b49a9a3e95c51604931b4cecfde9de404d20b20a7715978c4f19",
+      #"e6b388d40ede3a8561467294c6a49fc53b6b0e4d14c00f3f7bccd69a591077eb",
+      #"d2501d35c3925d614bae86583681b60385d5bdff4568a5678f0cbdf1e1958b49",
+      #"63f872e96ce8b37e9e6e5dfe59d79a52e0d0441d2890e023e74425e883ce27f3",
+      #"613ac0dbfd88aca7649067d224e8acf4c22001490049c41c7730ec9d451005e1",
     ],
   }
 
@@ -372,13 +372,13 @@ const chunk_proof_7_0_0 =
     version: 1,
     field_index: 7,
     item_index: 0,
-    total_length: 1001,
+    total_length: 101,
     chunk_index: 0,
-    chunk: #"82005903e48201981f8200581c000000000000000000000000000000000000000000000000000000008200581c010101010101010101010101010101010101010101010101010101018200581c020202020202020202020202020202020202020202020202020202028200581c030303030303030303030303030303030303030303030303030303038200581c040404040404040404040404040404040404040404040404040404048200581c050505050505050505050505050505050505050505050505050505058200581c060606060606060606060606060606060606060606060606060606068200581c070707070707070707070707070707070707070707070707070707078200581c080808080808080808080808080808080808080808080808080808088200581c090909090909090909090909090909090909090909090909090909098200581c0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a8200581c0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b8200581c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c8200581c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d8200581c0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e8200581c0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f8200581c101010101010101010101010101010101010101010101010101010108200581c111111111111111111111111111111111111111111111111111111118200581c121212121212121212121212121212121212121212121212121212128200581c131313131313131313131313131313131313131313131313131313138200581c141414141414141414141414141414141414141414141414141414148200581c151515151515151515151515151515151515151515151515151515158200581c161616161616161616161616161616161616161616161616161616168200581c171717171717171717171717171717171717171717171717171717178200581c181818181818181818181818181818181818181818181818181818188200581c191919191919191919191919191919191919191919191919191919198200581c1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a8200581c1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b8200581c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c8200581c1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d8200581c1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000005840ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
     frontier: [
       FrontierPeak {
         height: 0,
-        hash: #"a0b7755b235a27c3539efd025475a42af2f59c79e5cd6eb68eb7e9f660ef218c",
+        hash: #"c7d738eccb1724b2a0a5d7ef6adfbc49d1a6f7816e21b2258fedcb61b8164cf2",
       },
     ],
     siblings: [],
@@ -654,9 +654,10 @@ test generated_profile_fixture_is_near_the_derived_transaction_maximum() {
     28 <= 4095,
     28 <= 4095,
     75 <= 4095,
-    101 <= 4095,
     1001 <= 4095,
+    101 <= 4095,
     4095 <= 4095,
+    1099 <= 4095,
     51344 <= 295041,
     51344 > 50_000,
   }
@@ -858,11 +859,11 @@ test maximum_profile_field_2_item_1_chunk_0_verifies_independently_on_l1() {
             item_count: 64,
             item_index: 0,
             item_length: 96,
-            item_commitment: #"51d70cab61fade35bc7fdcf2d468afb42e55ba711db03f0d98a35f9b1dc7c67c",
+            item_commitment: #"7cd3bee2a3cf064620c78209e5319a7e381e7dbd08007dd173d212b9a44d12fb",
             frontier: [
               FrontierPeak {
                 height: 6,
-                hash: #"1d156c9a18249c0a9e58475c20bdba4e96b3e60ac091309e518a4c94eb771745",
+                hash: #"1e70c49f3830e495f133df519d594d4f15227d41453a9f450549d8f5e13f512a",
               },
             ],
             siblings: [
@@ -917,11 +918,11 @@ bench maximum_profile_field_2_item_1_chunk_0_verify_bench(
             item_count: 64,
             item_index: 0,
             item_length: 96,
-            item_commitment: #"51d70cab61fade35bc7fdcf2d468afb42e55ba711db03f0d98a35f9b1dc7c67c",
+            item_commitment: #"7cd3bee2a3cf064620c78209e5319a7e381e7dbd08007dd173d212b9a44d12fb",
             frontier: [
               FrontierPeak {
                 height: 6,
-                hash: #"1d156c9a18249c0a9e58475c20bdba4e96b3e60ac091309e518a4c94eb771745",
+                hash: #"1e70c49f3830e495f133df519d594d4f15227d41453a9f450549d8f5e13f512a",
               },
             ],
             siblings: [
@@ -984,7 +985,7 @@ test maximum_profile_field_3_item_0_chunk_0_verifies_independently_on_l1() {
             frontier: [
               FrontierPeak {
                 height: 6,
-                hash: #"1d156c9a18249c0a9e58475c20bdba4e96b3e60ac091309e518a4c94eb771745",
+                hash: #"1e70c49f3830e495f133df519d594d4f15227d41453a9f450549d8f5e13f512a",
               },
             ],
             siblings: [
@@ -993,7 +994,7 @@ test maximum_profile_field_3_item_0_chunk_0_verifies_independently_on_l1() {
               #"9a5adb9fc487f1a32815a4acf9490e663f38d5e867f097f005b2273b706dd401",
               #"462e3657ba8513b2f98c8bcd0f510ce5ae56b12b383a596c537cd9f78b6fc635",
               #"4bc07f69b3d992fe0eb3b7d1629496d960f5e7e73f02eb9cb9ffa667d0346534",
-              #"71a00866986eb0708886e1ba5fa5235f588a28a131973590a12e070e89029c0f",
+              #"c2f86c8252289feb26b5173691f888c4db3b366d58993039b30437ef112fe0fd",
             ],
           },
           chunk_index: 0,
@@ -1043,7 +1044,7 @@ bench maximum_profile_field_3_item_0_chunk_0_verify_bench(
             frontier: [
               FrontierPeak {
                 height: 6,
-                hash: #"1d156c9a18249c0a9e58475c20bdba4e96b3e60ac091309e518a4c94eb771745",
+                hash: #"1e70c49f3830e495f133df519d594d4f15227d41453a9f450549d8f5e13f512a",
               },
             ],
             siblings: [
@@ -1052,7 +1053,7 @@ bench maximum_profile_field_3_item_0_chunk_0_verify_bench(
               #"9a5adb9fc487f1a32815a4acf9490e663f38d5e867f097f005b2273b706dd401",
               #"462e3657ba8513b2f98c8bcd0f510ce5ae56b12b383a596c537cd9f78b6fc635",
               #"4bc07f69b3d992fe0eb3b7d1629496d960f5e7e73f02eb9cb9ffa667d0346534",
-              #"71a00866986eb0708886e1ba5fa5235f588a28a131973590a12e070e89029c0f",
+              #"c2f86c8252289feb26b5173691f888c4db3b366d58993039b30437ef112fe0fd",
             ],
           },
           chunk_index: 0,
@@ -1329,7 +1330,7 @@ test maximum_profile_field_6_item_0_chunk_0_verifies_independently_on_l1() {
     publication_tx(
       collection_proof_6_0_0,
       chunk_proof_6_0_0,
-      105,
+      1002,
       Some(
         TxFieldReceiptV1 {
           field_receipt_policy_id,
@@ -1389,7 +1390,7 @@ bench maximum_profile_field_6_item_0_chunk_0_verify_bench(
     publication_tx(
       collection_proof_6_0_0,
       proof,
-      105,
+      1002,
       Some(
         TxFieldReceiptV1 {
           field_receipt_policy_id,
@@ -1453,7 +1454,7 @@ test maximum_profile_field_7_item_0_chunk_0_verifies_independently_on_l1() {
     publication_tx(
       collection_proof_7_0_0,
       chunk_proof_7_0_0,
-      1002,
+      105,
       Some(
         TxFieldReceiptV1 {
           field_receipt_policy_id,
@@ -1463,23 +1464,23 @@ test maximum_profile_field_7_item_0_chunk_0_verifies_independently_on_l1() {
           collection_proof: bounded_collection_v1.ItemProofV1 {
             version: 1,
             field_index: 6,
-            item_count: 64,
-            item_index: 63,
-            item_length: 101,
-            item_commitment: #"3e3c170e15001b340af1ee5a7823ba6a7dcc2935121017136b43100e0f979c45",
+            item_count: 12,
+            item_index: 11,
+            item_length: 55,
+            item_commitment: #"fdc0f1e3fe96642d39b2374c8abec8c1e4a9648383f5cda7daed33def11406f4",
             frontier: [
               FrontierPeak {
-                height: 6,
-                hash: #"274382d9ac966c6663855410d54c2f93873142c9d2ae1cba4fc31e2d7fb08b3f",
+                height: 2,
+                hash: #"9337c5c60f1010dd80cd2525bf20e07e637adcb203459784b013adeebf0b7709",
+              },
+              FrontierPeak {
+                height: 3,
+                hash: #"4de79e60a74a77e46c00091a4fa67a1cddd1420bd8bf73ba73eb98f6eae6ca7c",
               },
             ],
             siblings: [
-              #"3d066e02121de0eb81dc47ca9686527c4d8aada8b086808a08206964e6e09931",
-              #"69eab309b60f5df408d49c73af527c6d5bcf23ae76cbcbb42c58d8bddae038e3",
-              #"609996f0efe62b9906c075db26004b3fa69afccad42390dd28637e67fb0be0d5",
-              #"9cdb8fd30538e432b6ed2733845473c3009c5b25cabf7e4c8c9737d9bf685939",
-              #"5a9b3b23826cc5bcdac8ced143f898d04995ddae0dafdecea15fc781527f217b",
-              #"fdfd8013d81e0afb4c7270dac53d13e468855060723f919b13520cca0b021118",
+              #"12d6c5faeb3ce379ea557478997fe6b87acbad6fb527651d6836343e782aeee1",
+              #"fb1f0be96a09669c1222579b0fa68f6d9273386d1d7a100fb9ecf8fd264d5e08",
             ],
           },
           chunk_index: 0,
@@ -1488,7 +1489,7 @@ test maximum_profile_field_7_item_0_chunk_0_verifies_independently_on_l1() {
             output_index: 0,
           },
           predecessor_receipt_reference: None,
-          field_encoded_size: 6594,
+          field_encoded_size: 9190,
         },
       ),
     ),
@@ -1512,7 +1513,7 @@ bench maximum_profile_field_7_item_0_chunk_0_verify_bench(
     publication_tx(
       collection_proof_7_0_0,
       proof,
-      1002,
+      105,
       Some(
         TxFieldReceiptV1 {
           field_receipt_policy_id,
@@ -1522,23 +1523,23 @@ bench maximum_profile_field_7_item_0_chunk_0_verify_bench(
           collection_proof: bounded_collection_v1.ItemProofV1 {
             version: 1,
             field_index: 6,
-            item_count: 64,
-            item_index: 63,
-            item_length: 101,
-            item_commitment: #"3e3c170e15001b340af1ee5a7823ba6a7dcc2935121017136b43100e0f979c45",
+            item_count: 12,
+            item_index: 11,
+            item_length: 55,
+            item_commitment: #"fdc0f1e3fe96642d39b2374c8abec8c1e4a9648383f5cda7daed33def11406f4",
             frontier: [
               FrontierPeak {
-                height: 6,
-                hash: #"274382d9ac966c6663855410d54c2f93873142c9d2ae1cba4fc31e2d7fb08b3f",
+                height: 2,
+                hash: #"9337c5c60f1010dd80cd2525bf20e07e637adcb203459784b013adeebf0b7709",
+              },
+              FrontierPeak {
+                height: 3,
+                hash: #"4de79e60a74a77e46c00091a4fa67a1cddd1420bd8bf73ba73eb98f6eae6ca7c",
               },
             ],
             siblings: [
-              #"3d066e02121de0eb81dc47ca9686527c4d8aada8b086808a08206964e6e09931",
-              #"69eab309b60f5df408d49c73af527c6d5bcf23ae76cbcbb42c58d8bddae038e3",
-              #"609996f0efe62b9906c075db26004b3fa69afccad42390dd28637e67fb0be0d5",
-              #"9cdb8fd30538e432b6ed2733845473c3009c5b25cabf7e4c8c9737d9bf685939",
-              #"5a9b3b23826cc5bcdac8ced143f898d04995ddae0dafdecea15fc781527f217b",
-              #"fdfd8013d81e0afb4c7270dac53d13e468855060723f919b13520cca0b021118",
+              #"12d6c5faeb3ce379ea557478997fe6b87acbad6fb527651d6836343e782aeee1",
+              #"fb1f0be96a09669c1222579b0fa68f6d9273386d1d7a100fb9ecf8fd264d5e08",
             ],
           },
           chunk_index: 0,
@@ -1547,7 +1548,7 @@ bench maximum_profile_field_7_item_0_chunk_0_verify_bench(
             output_index: 0,
           },
           predecessor_receipt_reference: None,
-          field_encoded_size: 6594,
+          field_encoded_size: 9190,
         },
       ),
     ),
@@ -1654,6 +1655,124 @@ bench maximum_profile_field_8_item_15_chunk_0_verify_bench(
             ],
             siblings: [
               #"ad1074ae7b499d62e6f26f272c15374e2e25a1bb2947ee7bc7b3d18c2a48869b",
+              #"6f5fc4fef93313f258750a1aa8ef85f35b303be9f7d08a860dafc56c56a99372",
+              #"c20ddab4c1e819b25e9bb198098f49afaf1e407f19359e7166ad9edc35c150f5",
+              #"72a0fea7eeee08d29e360a4fedcce7d3a9ae3fe6dc2dc280455707693dbd62d5",
+            ],
+          },
+          chunk_index: 0,
+          field_reference: OutputReference {
+            transaction_id: predecessor_field_transaction_id,
+            output_index: 0,
+          },
+          predecessor_receipt_reference: None,
+          field_encoded_size: 4021,
+        },
+      ),
+    ),
+  )
+}
+
+fn sample_field_8_item_15_chunk_1(
+  _size: Int,
+) -> Fuzzer<bounded_item_v1.ChunkProofV1> {
+  fuzz.constant(chunk_proof_8_15_1)
+}
+
+test maximum_profile_field_8_item_15_chunk_1_verifies_independently_on_l1() {
+  tx_field_receipt.validate(
+    field_preimage_script_hash,
+    receipt_script_hash,
+    tx_field_receipt.PublishField {
+      field_reference_input_index: 0,
+      predecessor_receipt_reference_input_index: 1,
+      receipt_output_index: 0,
+      transaction_id,
+      source: proof_source(),
+    },
+    field_receipt_policy_id,
+    publication_tx(
+      collection_proof_8_15_1,
+      chunk_proof_8_15_1,
+      9215,
+      Some(
+        TxFieldReceiptV1 {
+          field_receipt_policy_id,
+          tx_order_policy_id,
+          tx_order_id: order_id(),
+          transaction_commitment,
+          collection_proof: bounded_collection_v1.ItemProofV1 {
+            version: 1,
+            field_index: 8,
+            item_count: 16,
+            item_index: 15,
+            item_length: 5194,
+            item_commitment: #"fc96c0d33c1f7fcc491275a94480c81f226cd5d749d3fb08eb4bb3b6793af5f4",
+            frontier: [
+              FrontierPeak {
+                height: 4,
+                hash: #"6d107cc7a803d01a4e38f12ef2f56b48f73fbdd51cbc0fdcdc19de6da6d83262",
+              },
+            ],
+            siblings: [
+              #"b95340beee3277b787e733e6e2b52ec5304731f7ec8f4f78be57a2e4a7414901",
+              #"6f5fc4fef93313f258750a1aa8ef85f35b303be9f7d08a860dafc56c56a99372",
+              #"c20ddab4c1e819b25e9bb198098f49afaf1e407f19359e7166ad9edc35c150f5",
+              #"72a0fea7eeee08d29e360a4fedcce7d3a9ae3fe6dc2dc280455707693dbd62d5",
+            ],
+          },
+          chunk_index: 0,
+          field_reference: OutputReference {
+            transaction_id: predecessor_field_transaction_id,
+            output_index: 0,
+          },
+          predecessor_receipt_reference: None,
+          field_encoded_size: 4021,
+        },
+      ),
+    ),
+  )
+}
+
+bench maximum_profile_field_8_item_15_chunk_1_verify_bench(
+  proof: bounded_item_v1.ChunkProofV1 via sample_field_8_item_15_chunk_1,
+) {
+  tx_field_receipt.validate(
+    field_preimage_script_hash,
+    receipt_script_hash,
+    tx_field_receipt.PublishField {
+      field_reference_input_index: 0,
+      predecessor_receipt_reference_input_index: 1,
+      receipt_output_index: 0,
+      transaction_id,
+      source: proof_source(),
+    },
+    field_receipt_policy_id,
+    publication_tx(
+      collection_proof_8_15_1,
+      proof,
+      9215,
+      Some(
+        TxFieldReceiptV1 {
+          field_receipt_policy_id,
+          tx_order_policy_id,
+          tx_order_id: order_id(),
+          transaction_commitment,
+          collection_proof: bounded_collection_v1.ItemProofV1 {
+            version: 1,
+            field_index: 8,
+            item_count: 16,
+            item_index: 15,
+            item_length: 5194,
+            item_commitment: #"fc96c0d33c1f7fcc491275a94480c81f226cd5d749d3fb08eb4bb3b6793af5f4",
+            frontier: [
+              FrontierPeak {
+                height: 4,
+                hash: #"6d107cc7a803d01a4e38f12ef2f56b48f73fbdd51cbc0fdcdc19de6da6d83262",
+              },
+            ],
+            siblings: [
+              #"b95340beee3277b787e733e6e2b52ec5304731f7ec8f4f78be57a2e4a7414901",
               #"6f5fc4fef93313f258750a1aa8ef85f35b303be9f7d08a860dafc56c56a99372",
               #"c20ddab4c1e819b25e9bb198098f49afaf1e407f19359e7166ad9edc35c150f5",
               #"72a0fea7eeee08d29e360a4fedcce7d3a9ae3fe6dc2dc280455707693dbd62d5",

@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
+  Application,
   Lambda,
   UPLCEncoder,
   UPLCProgram,
@@ -542,6 +543,54 @@ describe("phase B validation", () => {
     );
     expect(result.rejected).toHaveLength(0);
     expect(result.accepted).toHaveLength(1);
+  });
+
+  it("bounds a nonterminating V1 envelope by its declared execution units", async () => {
+    const spent = outRefFromByte(0x6e);
+    const selfApplication = new Lambda(
+      new Application(new UPLCVar(0), new UPLCVar(0)),
+    );
+    const program = buildMidgardCanonicalCekProgramV1(
+      Buffer.from(
+        UPLCEncoder.compile(
+          new UPLCProgram(
+            [1, 1, 0],
+            new Application(selfApplication, selfApplication),
+          ),
+        ).toBuffer().buffer,
+      ),
+    );
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const scriptHash = hashScriptWitness(script);
+    const candidate = makePhaseBCandidate({
+      spent: [spent],
+      outputLovelace: 10n,
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Spend,
+          index: 0n,
+          exUnits: [0n, 0n],
+        },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+      programMaterialSidecarCbor:
+        encodeMidgardCekProgramMaterialSidecarV1(
+          [...program.material.values()],
+        ),
+    });
+
+    const result = await runPhaseB(
+      [candidate],
+      preState([[spent, makeProtectedScriptOutput(scriptHash, 10n)]]),
+    );
+
+    const rejection = expectSinglePhaseBRejection(
+      result,
+      RejectCodes.PlutusScriptInvalid,
+    );
+    expect(rejection.detail).toContain("budget exceeded");
+    expect(rejection.detail).toContain("declared mem=0 cpu=0");
   });
 
   it("propagates worker infrastructure failures instead of rejecting the tx", async () => {

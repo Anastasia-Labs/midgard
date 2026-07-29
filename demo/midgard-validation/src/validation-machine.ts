@@ -150,9 +150,8 @@ import {
 } from "./script-context-proof.js";
 import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
 
-const redeemerTagForPurposeKind = (
-  purposeKind: 0 | 1 | 2 | 3,
-): number => [0, 1, 3, 6][purposeKind]!;
+const redeemerTagForPurposeKind = (purposeKind: 0 | 1 | 2 | 3): number =>
+  [0, 1, 3, 6][purposeKind]!;
 import { RejectCodes } from "./types.js";
 
 type ValidationControlDataV1 =
@@ -174,11 +173,7 @@ const encodeValidationControlDataV1 = (
     for (let offset = 0; offset < value.length; offset += 64) {
       chunks.push(encodeCborBytes(value.subarray(offset, offset + 64)));
     }
-    return Buffer.concat([
-      Buffer.from([0x5f]),
-      ...chunks,
-      Buffer.from([0xff]),
-    ]);
+    return Buffer.concat([Buffer.from([0x5f]), ...chunks, Buffer.from([0xff])]);
   }
   return encodeCborArrayRaw(value.map(encodeValidationControlDataV1));
 };
@@ -190,6 +185,49 @@ const encodeValidationControlListV1 = (
     Buffer.from([0x9f]),
     ...values.map(encodeValidationControlDataV1),
     Buffer.from([0xff]),
+  ]);
+
+const encodeValidationFrontierPeaksV1 = (
+  frontier: MidgardValidationMerkleFrontierV1,
+): readonly (readonly [bigint, Buffer])[] =>
+  frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
+
+export type ScriptDiscoveryTraceControlV1 = {
+  readonly purposeCursor: number;
+  readonly sourceCursor: number;
+  readonly redeemerCursor: number;
+  readonly currentPurposeKind: -1 | 0 | 1 | 2 | 3;
+  readonly currentPurposeIndex: bigint;
+  readonly currentScriptHash: Buffer;
+  readonly currentSubject: Buffer;
+  readonly matchedSourceIndex: number;
+  readonly matchedLanguageTag: -1 | 0 | 3 | 128;
+  readonly matchedSourceLeaf: Buffer;
+  readonly usedInlineBitmap: bigint;
+  readonly usedRedeemerBitmap: bigint;
+  readonly redeemerItemControlHash: Buffer;
+  readonly executionFrontier: MidgardValidationMerkleFrontierV1;
+};
+
+export const encodeScriptDiscoveryControlCborV1 = (
+  discovery: ScriptDiscoveryTraceControlV1,
+): Buffer =>
+  encodeCbor([
+    BigInt(discovery.purposeCursor),
+    BigInt(discovery.sourceCursor),
+    BigInt(discovery.redeemerCursor),
+    BigInt(discovery.currentPurposeKind),
+    discovery.currentPurposeIndex,
+    discovery.currentScriptHash,
+    discovery.currentSubject,
+    BigInt(discovery.matchedSourceIndex),
+    BigInt(discovery.matchedLanguageTag),
+    discovery.matchedSourceLeaf,
+    discovery.usedInlineBitmap,
+    discovery.usedRedeemerBitmap,
+    discovery.redeemerItemControlHash,
+    BigInt(discovery.executionFrontier.count),
+    encodeValidationFrontierPeaksV1(discovery.executionFrontier),
   ]);
 
 export type ValidationMachineLedgerEntry = {
@@ -302,10 +340,7 @@ export const applyValidationMachineLedgerMutationStepV1 = async (
       "cannot construct a ledger deletion proof for an absent key",
     );
   }
-  const proof = await trie.prove(
-    operation.key,
-    operation.type === "insert",
-  );
+  const proof = await trie.prove(operation.key, operation.type === "insert");
   const proofFoldTrace = buildMidgardMpfProofFoldTraceV1({
     key: operation.key,
     value: mutationValue,
@@ -910,14 +945,26 @@ const canonicalCborArgumentHeaderSize = (value: number): number => {
   return 9;
 };
 
+const MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX = 6;
+const MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX = 7;
+
 const canonicalFieldItemEncodedLength = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if (
+    [0, 1, 2, 3, 4, MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX].includes(
+      fieldIndex,
+    )
+  ) {
     return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
   }
-  if (fieldIndex === 7 || fieldIndex === 8) return itemLength;
+  if (
+    fieldIndex === MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX ||
+    fieldIndex === 8
+  ) {
+    return itemLength;
+  }
   if (fieldIndex !== 5 || itemLength === 0) {
     throw new Error(
       `invalid canonical field item length at field ${fieldIndex.toString()}`,
@@ -1206,10 +1253,7 @@ export const buildDeterministicValidationMachineTrace = (
             `persisted ledger output ${outRefHex} cannot produce an exact V1 descriptor`,
           ),
       });
-      ledgerDescriptorState.set(
-        outRefHex,
-        outputMaterial.descriptorCbor,
-      );
+      ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
     const phaseALedgerTx = "ledgerTx" in phaseA ? phaseA.ledgerTx : null;
     const scriptEvaluations: {
@@ -1236,7 +1280,14 @@ export const buildDeterministicValidationMachineTrace = (
           nowCardanoSlotNo: input.blockSlot,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
-          evaluateProofScript: (scriptBytes, scriptContextCbor) =>
+          evaluateProofScript: (
+            scriptBytes,
+            scriptContextCbor,
+            executionBudget?: {
+              readonly cpu: bigint;
+              readonly memory: bigint;
+            },
+          ) =>
             Effect.sync(() => {
               let graph: MidgardCekExecutionGraphV1 | null = null;
               let execution: MidgardCekStructuralExecutionV1 | null = null;
@@ -1254,8 +1305,10 @@ export const buildDeterministicValidationMachineTrace = (
                   constantWitnesses: graph.constantWitnesses,
                   maxSteps:
                     input.consensusProfile.limits.maxValidationMachineStepCount,
+                  executionBudget,
                 });
                 result =
+                  execution.stopReason === "budgetExceeded" ||
                   execution.terminalState.mode === "haltSuccess"
                     ? {
                         kind: "accepted",
@@ -1366,8 +1419,9 @@ export const buildDeterministicValidationMachineTrace = (
         proofDescriptor: proofFoldTrace.descriptor,
       }),
     );
-    const ledgerDeltaFrontier =
-      buildMidgardValidationLedgerDeltaFrontierV1(authenticatedLedgerOps);
+    const ledgerDeltaFrontier = buildMidgardValidationLedgerDeltaFrontierV1(
+      authenticatedLedgerOps,
+    );
     const ledgerDeltaRoot = hashMidgardValidationLedgerDeltaV1(
       authenticatedLedgerOps,
     );
@@ -1387,10 +1441,9 @@ export const buildDeterministicValidationMachineTrace = (
     const compactProofTransaction = decodeMidgardNativeTxCompactV1(
       proofSource.compactCbor,
     );
-    const compactProofWitnessSet =
-      decodeMidgardNativeTxWitnessSetCompactV1(
-        proofSource.witnessSetCompactCbor,
-      );
+    const compactProofWitnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+      proofSource.witnessSetCompactCbor,
+    );
     const transactionCommitment =
       computeMidgardNativeTxProofCommitmentV1(proofSource);
     const fieldPreimages = deriveMidgardV1TxFieldPreimages(
@@ -1420,12 +1473,12 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 5,
       preimageCbor: fieldPreimages[5]!.preimageCbor,
     });
-    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 6,
+    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[6]!.preimageCbor,
     });
-    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 7,
+    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[7]!.preimageCbor,
     });
     const redeemerWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
@@ -1657,9 +1710,7 @@ export const buildDeterministicValidationMachineTrace = (
         }),
       };
     });
-    const boundedItemForScriptSource = (
-      source: ScriptSourceProofEntry,
-    ) => {
+    const boundedItemForScriptSource = (source: ScriptSourceProofEntry) => {
       const decodedSourceKey = decodeSingleCbor(source.sourceKey);
       const itemIndexValue =
         source.originKind === "inline"
@@ -1678,7 +1729,10 @@ export const buildDeterministicValidationMachineTrace = (
         throw new Error("V1 script source has a noncanonical item index");
       }
       const item = buildMidgardBoundedItemV1({
-        fieldIndex: source.originKind === "inline" ? 7 : 2,
+        fieldIndex:
+          source.originKind === "inline"
+            ? MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX
+            : 2,
         itemIndex,
         bytes: encodeMidgardVersionedScript(source.script),
       });
@@ -1734,10 +1788,7 @@ export const buildDeterministicValidationMachineTrace = (
     );
     const redeemerFrontier =
       buildMidgardValidationMerkleFrontierV1(redeemerLeafHashes);
-    const encodeFrontierPeaks = (
-      frontier: MidgardValidationMerkleFrontierV1,
-    ): readonly (readonly [bigint, Buffer])[] =>
-      frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
+    const encodeFrontierPeaks = encodeValidationFrontierPeaksV1;
     const emptyValidationFrontier = buildMidgardValidationMerkleFrontierV1([]);
     type SignatureScanControl = {
       readonly stage: 0 | 1 | 2;
@@ -1838,7 +1889,7 @@ export const buildDeterministicValidationMachineTrace = (
         scriptCount: scriptWitnessesCollection.items.length === 0 ? 0 : -1,
         scriptSeen: 0,
         containsNonNativeScript: 0,
-    });
+      });
     let resolvedItemFrontier = emptyValidationFrontier;
     type MintFoldTraceControl = {
       readonly policyCount: number;
@@ -1883,23 +1934,7 @@ export const buildDeterministicValidationMachineTrace = (
       BigInt(control.assetFrontier.count),
       encodeFrontierPeaks(control.assetFrontier),
     ];
-    type ScriptDiscoveryTraceControl = {
-      readonly purposeCursor: number;
-      readonly sourceCursor: number;
-      readonly redeemerCursor: number;
-      readonly currentPurposeKind: -1 | 0 | 1 | 2 | 3;
-      readonly currentPurposeIndex: bigint;
-      readonly currentScriptHash: Buffer;
-      readonly currentSubject: Buffer;
-      readonly matchedSourceIndex: number;
-      readonly matchedLanguageTag: -1 | 0 | 3 | 128;
-      readonly matchedSourceLeaf: Buffer;
-      readonly usedInlineBitmap: bigint;
-      readonly usedRedeemerBitmap: bigint;
-      readonly executionFrontier: MidgardValidationMerkleFrontierV1;
-      readonly redeemerItemControlHash: Buffer;
-    };
-    const emptyScriptDiscoveryControl: ScriptDiscoveryTraceControl = {
+    const emptyScriptDiscoveryControl: ScriptDiscoveryTraceControlV1 = {
       purposeCursor: 0,
       sourceCursor: 0,
       redeemerCursor: 0,
@@ -1915,26 +1950,7 @@ export const buildDeterministicValidationMachineTrace = (
       executionFrontier: emptyValidationFrontier,
       redeemerItemControlHash: Buffer.alloc(0),
     };
-    const scriptDiscoveryControlCbor = (
-      discovery: ScriptDiscoveryTraceControl,
-    ): Buffer =>
-      encodeCbor([
-        BigInt(discovery.purposeCursor),
-        BigInt(discovery.sourceCursor),
-        BigInt(discovery.redeemerCursor),
-        BigInt(discovery.currentPurposeKind),
-        discovery.currentPurposeIndex,
-        discovery.currentScriptHash,
-        discovery.currentSubject,
-        BigInt(discovery.matchedSourceIndex),
-        BigInt(discovery.matchedLanguageTag),
-        discovery.matchedSourceLeaf,
-        discovery.usedInlineBitmap,
-        discovery.usedRedeemerBitmap,
-        BigInt(discovery.executionFrontier.count),
-        encodeFrontierPeaks(discovery.executionFrontier),
-        discovery.redeemerItemControlHash,
-      ]);
+    const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCborV1;
     const scriptSourcesWitnessCbor = (input: {
       readonly resolvedInputCount: number;
       readonly resolvedInputsAccumulator: Buffer;
@@ -1964,7 +1980,7 @@ export const buildDeterministicValidationMachineTrace = (
         readonly previousHash: Buffer;
       };
       readonly outputProof?: MidgardLedgerOutputProofControlV1 | null;
-      readonly discovery?: ScriptDiscoveryTraceControl;
+      readonly discovery?: ScriptDiscoveryTraceControlV1;
       readonly pendingSource?: {
         readonly sourceIndex: number;
         readonly sourceTotalCount: number;
@@ -2014,9 +2030,7 @@ export const buildDeterministicValidationMachineTrace = (
         BigInt(input.outputCursor ?? 0),
         BigInt(input.outputFrontier?.count ?? 0),
         encodeFrontierPeaks(input.outputFrontier ?? emptyValidationFrontier),
-        BigInt(
-          input.outputTotalCount ?? input.outputFrontier?.count ?? 0,
-        ),
+        BigInt(input.outputTotalCount ?? input.outputFrontier?.count ?? 0),
         [
           BigInt(receiveScan.sourceFrontier.count),
           encodeFrontierPeaks(receiveScan.sourceFrontier),
@@ -2035,8 +2049,11 @@ export const buildDeterministicValidationMachineTrace = (
         encodeMintFoldControl(mintFoldControl),
         resolutionScheduleHash,
       ];
-      if (input.stage === 0 && input.pendingSource !== undefined &&
-        input.pendingSource !== null) {
+      if (
+        input.stage === 0 &&
+        input.pendingSource !== undefined &&
+        input.pendingSource !== null
+      ) {
         fields.push(
           encodeCbor([
             1n,
@@ -2058,11 +2075,12 @@ export const buildDeterministicValidationMachineTrace = (
         input.redeemerItemControlHash.length > 0
       ) {
         fields.push(input.redeemerItemControlHash);
-      } else if (input.stage === 5 && input.outputProof !== undefined &&
-        input.outputProof !== null) {
-        fields.push(
-          encodeMidgardLedgerOutputProofControlV1(input.outputProof),
-        );
+      } else if (
+        input.stage === 5 &&
+        input.outputProof !== undefined &&
+        input.outputProof !== null
+      ) {
+        fields.push(encodeMidgardLedgerOutputProofControlV1(input.outputProof));
       } else if (input.stage >= 8) {
         fields.push(
           scriptDiscoveryControlCbor(
@@ -3078,9 +3096,7 @@ export const buildDeterministicValidationMachineTrace = (
                 pending.node.key,
                 pending.node.nextScheduleHash,
                 pending.descriptorCbor,
-                encodeMidgardLedgerOutputProofControlV1(
-                  pending.outputProof,
-                ),
+                encodeMidgardLedgerOutputProofControlV1(pending.outputProof),
               ]),
           resolutionScheduleHash,
         ]);
@@ -3111,19 +3127,15 @@ export const buildDeterministicValidationMachineTrace = (
           const outputCbor = ledgerState.get(outRefHex);
           const descriptorCbor = ledgerDescriptorState.get(outRefHex);
           if (outputCbor === undefined || descriptorCbor === undefined) {
-            pushWitness(
-              "resolveInputs",
-              resolutionWitnessCbor(undefined),
-              {
-                kind: "scheduledLedgerLookup",
-                sourceKind: item.sourceKind,
-                key: item.key,
-                nextScheduleHash: item.nextScheduleHash,
-                value: null,
-                proofCbor: item.proofCbor,
-                signerProof: { kind: "none" },
-              },
-            );
+            pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
+              kind: "scheduledLedgerLookup",
+              sourceKind: item.sourceKind,
+              key: item.key,
+              nextScheduleHash: item.nextScheduleHash,
+              value: null,
+              proofCbor: item.proofCbor,
+              signerProof: { kind: "none" },
+            });
             if (
               terminalPhase !== "resolveInputs" ||
               rejectionCode !== RejectCodes.InputNotFound
@@ -3139,26 +3151,21 @@ export const buildDeterministicValidationMachineTrace = (
           }
 
           const outputProof = buildMidgardLedgerOutputProofTraceV1({
-            outputIndex:
-              buildCanonicalMidgardLedgerEntryOutputMaterialV1({
-                outRef: item.key,
-                outputCbor,
-              }).descriptor.outputIndex,
+            outputIndex: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+              outRef: item.key,
+              outputCbor,
+            }).descriptor.outputIndex,
             outputCbor,
           });
-          pushWitness(
-            "resolveInputs",
-            resolutionWitnessCbor(undefined),
-            {
-              kind: "scheduledLedgerLookup",
-              sourceKind: item.sourceKind,
-              key: item.key,
-              nextScheduleHash: item.nextScheduleHash,
-              value: descriptorCbor,
-              proofCbor: item.proofCbor,
-              signerProof: { kind: "none" },
-            },
-          );
+          pushWitness("resolveInputs", resolutionWitnessCbor(undefined), {
+            kind: "scheduledLedgerLookup",
+            sourceKind: item.sourceKind,
+            key: item.key,
+            nextScheduleHash: item.nextScheduleHash,
+            value: descriptorCbor,
+            proofCbor: item.proofCbor,
+            signerProof: { kind: "none" },
+          });
           for (const proofStep of outputProof.steps) {
             pushWitness(
               "resolveInputs",
@@ -3215,10 +3222,7 @@ export const buildDeterministicValidationMachineTrace = (
               ),
             );
           }
-          pushWitness(
-            "resolveInputs",
-            resolutionWitnessCbor(undefined),
-          );
+          pushWitness("resolveInputs", resolutionWitnessCbor(undefined));
           const scriptSourceControl = {
             resolvedInputCount: resolutionItems.length,
             resolvedInputsAccumulator: resolutionAccumulator,
@@ -3259,10 +3263,7 @@ export const buildDeterministicValidationMachineTrace = (
               inlineSourceTotalCount = scriptWitnessesCollection.items.length;
             }
             const source = scriptSourceEntries[item.itemIndex];
-            if (
-              source === undefined ||
-              source.originKind !== "inline"
-            ) {
+            if (source === undefined || source.originKind !== "inline") {
               return yield* Effect.fail(
                 new Error(
                   "bounded inline script item lost its canonical source entry",
@@ -3331,39 +3332,39 @@ export const buildDeterministicValidationMachineTrace = (
                 | {
                     readonly kind: "scriptSourceHashBlock";
                     readonly chunkProof: MidgardBoundedItemChunkProofV1;
-                    readonly nextChunkProof:
-                      | MidgardBoundedItemChunkProofV1
-                      | null;
+                    readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
                   }
                 | undefined;
               if (hashStep.block !== null) {
                 const contentLength =
                   hashStep.block.length -
                   (hashStep.control.cursor === 0 ? 1 : 0);
-                const itemCursor = hashStep.control.cursor === 0
-                  ? payloadOffset
-                  : payloadOffset + hashStep.control.cursor - 1;
-                const chunkIndex = contentLength === 0
-                  ? 0
-                  : Math.floor(
-                      itemCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-                    );
-                const chunkProof =
-                  buildMidgardBoundedItemChunkProofV1(item, chunkIndex);
-                const offset = contentLength === 0
-                  ? payloadOffset
-                  : itemCursor -
-                    chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+                const itemCursor =
+                  hashStep.control.cursor === 0
+                    ? payloadOffset
+                    : payloadOffset + hashStep.control.cursor - 1;
+                const chunkIndex =
+                  contentLength === 0
+                    ? 0
+                    : Math.floor(
+                        itemCursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+                      );
+                const chunkProof = buildMidgardBoundedItemChunkProofV1(
+                  item,
+                  chunkIndex,
+                );
+                const offset =
+                  contentLength === 0
+                    ? payloadOffset
+                    : itemCursor -
+                      chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
                 const crossesChunk =
                   contentLength > chunkProof.chunk.length - offset;
                 auxiliary = {
                   kind: "scriptSourceHashBlock",
                   chunkProof,
                   nextChunkProof: crossesChunk
-                    ? buildMidgardBoundedItemChunkProofV1(
-                        item,
-                        chunkIndex + 1,
-                      )
+                    ? buildMidgardBoundedItemChunkProofV1(item, chunkIndex + 1)
                     : null,
                 };
               }
@@ -3383,10 +3384,7 @@ export const buildDeterministicValidationMachineTrace = (
               !pendingSource.hashControl.chainingValue
                 .subarray(0, 28)
                 .equals(
-                  Buffer.from(
-                    hashMidgardVersionedScript(source.script),
-                    "hex",
-                  ),
+                  Buffer.from(hashMidgardVersionedScript(source.script), "hex"),
                 )
             ) {
               return yield* Effect.fail(
@@ -3466,8 +3464,9 @@ export const buildDeterministicValidationMachineTrace = (
               itemBytes: item.bytes,
               mode: MidgardRedeemerItemProofModesV1.Data,
             });
-            let activeItemControlHash =
-              hashMidgardRedeemerItemProofControlV1(itemTrace.initial);
+            let activeItemControlHash = hashMidgardRedeemerItemProofControlV1(
+              itemTrace.initial,
+            );
             for (const itemStep of itemTrace.steps) {
               pushWitness(
                 "scriptSources",
@@ -3493,8 +3492,9 @@ export const buildDeterministicValidationMachineTrace = (
                   );
                 activeItemControlHash = Buffer.alloc(0);
               } else {
-                activeItemControlHash =
-                  hashMidgardRedeemerItemProofControlV1(itemStep.next);
+                activeItemControlHash = hashMidgardRedeemerItemProofControlV1(
+                  itemStep.next,
+                );
               }
             }
             if (activeItemControlHash.length !== 0) {
@@ -3537,10 +3537,7 @@ export const buildDeterministicValidationMachineTrace = (
               const outRefHex = node.key.toString("hex");
               const outputCbor = ledgerState.get(outRefHex);
               const descriptorCbor = ledgerDescriptorState.get(outRefHex);
-              if (
-                outputCbor === undefined ||
-                descriptorCbor === undefined
-              ) {
+              if (outputCbor === undefined || descriptorCbor === undefined) {
                 return yield* Effect.fail(
                   new Error(
                     "resolved-input replay lost previously authenticated output material",
@@ -3602,13 +3599,10 @@ export const buildDeterministicValidationMachineTrace = (
                 }
                 const leaf = hashMidgardReferenceScriptSourceLeafV1({
                   sourceKey: node.key,
-                  scriptLanguageTag:
-                    descriptor.referenceScriptLanguage,
+                  scriptLanguageTag: descriptor.referenceScriptLanguage,
                   scriptHash: descriptor.referenceScriptHash,
-                  scriptTotalLength:
-                    descriptor.referenceScriptTotalLength,
-                  itemCommitment:
-                    descriptor.referenceScriptItemCommitment,
+                  scriptTotalLength: descriptor.referenceScriptTotalLength,
+                  itemCommitment: descriptor.referenceScriptItemCommitment,
                 });
                 if (
                   !leaf.equals(
@@ -3629,11 +3623,9 @@ export const buildDeterministicValidationMachineTrace = (
                   originKind: "reference",
                   sourceKey: node.key,
                   script: output.script_ref,
-                  scriptLanguageTag:
-                    descriptor.referenceScriptLanguage,
+                  scriptLanguageTag: descriptor.referenceScriptLanguage,
                   scriptHash: descriptor.referenceScriptHash,
-                  scriptTotalLength:
-                    descriptor.referenceScriptTotalLength,
+                  scriptTotalLength: descriptor.referenceScriptTotalLength,
                   scriptItemCommitment:
                     descriptor.referenceScriptItemCommitment,
                   leaf,
@@ -3719,10 +3711,7 @@ export const buildDeterministicValidationMachineTrace = (
               });
             for (const item of outputsCollection.items) {
               const outputCbor = outputCbors[item.itemIndex];
-              if (
-                outputCbor === undefined ||
-                !item.bytes.equals(outputCbor)
-              ) {
+              if (outputCbor === undefined || !item.bytes.equals(outputCbor)) {
                 return yield* Effect.fail(
                   new Error(
                     "bounded output item diverged from its canonical decoded output",
@@ -3739,25 +3728,19 @@ export const buildDeterministicValidationMachineTrace = (
               if (outputTotalCount === 0) {
                 outputTotalCount = outputsCollection.items.length;
               }
-              authenticatedOutputFrontier =
-                appendMidgardValidationMerkleLeafV1(
-                  authenticatedOutputFrontier,
-                  hashMidgardOutputItemLeafV1({
-                    outputIndex: item.itemIndex,
-                    itemCommitment: item.commitment,
-                  }),
-                );
+              authenticatedOutputFrontier = appendMidgardValidationMerkleLeafV1(
+                authenticatedOutputFrontier,
+                hashMidgardOutputItemLeafV1({
+                  outputIndex: item.itemIndex,
+                  itemCommitment: item.commitment,
+                }),
+              );
             }
-            pushWitness(
-              "scriptSources",
-              currentOutputCommitmentWitness(),
-            );
+            pushWitness("scriptSources", currentOutputCommitmentWitness());
             if (
               !commitMidgardValidationMerkleFrontierV1(
                 authenticatedOutputFrontier,
-              ).equals(
-                commitMidgardValidationMerkleFrontierV1(outputFrontier),
-              )
+              ).equals(commitMidgardValidationMerkleFrontierV1(outputFrontier))
             ) {
               return yield* Effect.fail(
                 new Error(
@@ -3802,11 +3785,10 @@ export const buildDeterministicValidationMachineTrace = (
                   ),
                 );
               }
-              const outputProof =
-                buildMidgardLedgerOutputProofTraceV1({
-                  outputIndex: outputCursor,
-                  outputCbor,
-                });
+              const outputProof = buildMidgardLedgerOutputProofTraceV1({
+                outputIndex: outputCursor,
+                outputCbor,
+              });
               const outputMaterial =
                 buildCanonicalMidgardLedgerOutputMaterialV1({
                   outputIndex: outputCursor,
@@ -3895,14 +3877,13 @@ export const buildDeterministicValidationMachineTrace = (
                 stoppedAtRejection = true;
                 break;
               }
-              outputDescriptorFrontier =
-                appendMidgardValidationMerkleLeafV1(
-                  outputDescriptorFrontier,
-                  hashMidgardOutputDescriptorLeafV1({
-                    outputIndex: outputCursor,
-                    descriptorCbor: outputMaterial.descriptorCbor,
-                  }),
-                );
+              outputDescriptorFrontier = appendMidgardValidationMerkleLeafV1(
+                outputDescriptorFrontier,
+                hashMidgardOutputDescriptorLeafV1({
+                  outputIndex: outputCursor,
+                  descriptorCbor: outputMaterial.descriptorCbor,
+                }),
+              );
               admittedOutputDescriptorCbors.push(outputMaterial.descriptorCbor);
               admittedOutputDescriptorLeafHashes.push(
                 hashMidgardOutputDescriptorLeafV1({
@@ -3914,9 +3895,7 @@ export const buildDeterministicValidationMachineTrace = (
                 address.protected &&
                 address.paymentCredential.kind === "Script"
               ) {
-                const scriptHash = Buffer.from(
-                  address.paymentCredential.hash,
-                );
+                const scriptHash = Buffer.from(address.paymentCredential.hash);
                 const purposeEntry: ScriptPurposeProofEntry = {
                   purposeKind: 3,
                   purposeIndex: BigInt(receiveSourceFrontier.count),
@@ -3930,11 +3909,10 @@ export const buildDeterministicValidationMachineTrace = (
                   }),
                 };
                 receiveSourceEntries.push(purposeEntry);
-                receiveSourceFrontier =
-                  appendMidgardValidationMerkleLeafV1(
-                    receiveSourceFrontier,
-                    purposeEntry.leaf,
-                  );
+                receiveSourceFrontier = appendMidgardValidationMerkleLeafV1(
+                  receiveSourceFrontier,
+                  purposeEntry.leaf,
+                );
               }
               outputCursor += 1;
             }
@@ -3976,11 +3954,10 @@ export const buildDeterministicValidationMachineTrace = (
                   }),
                   {
                     kind: "transactionFieldChunk",
-                    collectionProof:
-                      buildMidgardBoundedCollectionItemProofV1(
-                        mintCollection,
-                        policyItem.itemIndex,
-                      ),
+                    collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                      mintCollection,
+                      policyItem.itemIndex,
+                    ),
                     chunkProof: buildMidgardBoundedItemChunkProofV1(
                       policyItem,
                       0,
@@ -3993,7 +3970,9 @@ export const buildDeterministicValidationMachineTrace = (
                   `v1.mint.policy[${policyItem.itemIndex}]`,
                 );
                 if (itemHeader.length !== 2) {
-                  throw new Error("V1 mint policy item must contain two fields");
+                  throw new Error(
+                    "V1 mint policy item must contain two fields",
+                  );
                 }
                 const policy = readCborBytes(
                   policyItem.bytes,
@@ -4090,15 +4069,14 @@ export const buildDeterministicValidationMachineTrace = (
                     `v1.mint.policy[${policyItem.itemIndex}].asset[${assetIndex}].quantity`,
                   );
                   assetCursor = quantity.nextOffset;
-                  const nextAssetFrontier =
-                    appendMidgardValidationMerkleLeafV1(
-                      mintFoldControl.assetFrontier,
-                      hashMidgardMintAssetLeafV1({
-                        policyId,
-                        assetName: asset.value,
-                        quantity: quantity.value,
-                      }),
-                    );
+                  const nextAssetFrontier = appendMidgardValidationMerkleLeafV1(
+                    mintFoldControl.assetFrontier,
+                    hashMidgardMintAssetLeafV1({
+                      policyId,
+                      assetName: asset.value,
+                      quantity: quantity.value,
+                    }),
+                  );
                   const finishedPolicy = assetIndex + 1 === assets.length;
                   mintFoldControl = finishedPolicy
                     ? {
@@ -4117,8 +4095,7 @@ export const buildDeterministicValidationMachineTrace = (
                     : {
                         ...mintFoldControl,
                         itemCursor: assetCursor,
-                        assetsRemaining:
-                          mintFoldControl.assetsRemaining - 1,
+                        assetsRemaining: mintFoldControl.assetsRemaining - 1,
                         policyAssetCursor:
                           mintFoldControl.policyAssetCursor + 1,
                         previousAsset: Buffer.from(asset.value),
@@ -4249,13 +4226,8 @@ export const buildDeterministicValidationMachineTrace = (
                   },
                 });
               while (true) {
-                if (
-                  receiveSourceCursor === receiveSourceEntries.length
-                ) {
-                  pushWitness(
-                    "scriptSources",
-                    currentReceivePurposeWitness(),
-                  );
+                if (receiveSourceCursor === receiveSourceEntries.length) {
+                  pushWitness("scriptSources", currentReceivePurposeWitness());
                   if (receiveCandidateHash.length === 0) {
                     break;
                   }
@@ -4273,11 +4245,10 @@ export const buildDeterministicValidationMachineTrace = (
                     }),
                   };
                   scriptPurposeEntries.push(purposeEntry);
-                  allPurposeFrontier =
-                    appendMidgardValidationMerkleLeafV1(
-                      allPurposeFrontier,
-                      purposeEntry.leaf,
-                    );
+                  allPurposeFrontier = appendMidgardValidationMerkleLeafV1(
+                    allPurposeFrontier,
+                    purposeEntry.leaf,
+                  );
                   receiveCount += 1;
                   receivePreviousHash = scriptHash;
                   receiveCandidateHash = Buffer.alloc(0);
@@ -4286,19 +4257,15 @@ export const buildDeterministicValidationMachineTrace = (
                 }
                 const receiveSource =
                   receiveSourceEntries[receiveSourceCursor]!;
-                pushWitness(
-                  "scriptSources",
-                  currentReceivePurposeWitness(),
-                  {
-                    kind: "scriptPurposeScan",
-                    purposeKind: 3,
-                    purposeIndex: BigInt(receiveSourceCursor),
-                    scriptHash: receiveSource.scriptHash,
-                    subject: receiveSource.subject,
-                    siblings:
-                      receiveSourceMembership(receiveSourceCursor).siblings,
-                  },
-                );
+                pushWitness("scriptSources", currentReceivePurposeWitness(), {
+                  kind: "scriptPurposeScan",
+                  purposeKind: 3,
+                  purposeIndex: BigInt(receiveSourceCursor),
+                  scriptHash: receiveSource.scriptHash,
+                  subject: receiveSource.subject,
+                  siblings:
+                    receiveSourceMembership(receiveSourceCursor).siblings,
+                });
                 const scriptHash = receiveSource.scriptHash;
                 if (
                   (receivePreviousHash.length === 0 ||
@@ -4320,7 +4287,7 @@ export const buildDeterministicValidationMachineTrace = (
                 const redeemerLeaves = redeemerLeafHashes;
                 const discoveryWitnessCbor = (
                   stage: number,
-                  discovery: ScriptDiscoveryTraceControl,
+                  discovery: ScriptDiscoveryTraceControlV1,
                 ): Buffer =>
                   scriptSourcesWitnessCbor({
                     ...scriptSourceControl,
@@ -4369,8 +4336,8 @@ export const buildDeterministicValidationMachineTrace = (
                   index: number,
                 ): bigint => bitmap | (1n << BigInt(index));
                 const resetCurrent = (
-                  discovery: ScriptDiscoveryTraceControl,
-                ): ScriptDiscoveryTraceControl => ({
+                  discovery: ScriptDiscoveryTraceControlV1,
+                ): ScriptDiscoveryTraceControlV1 => ({
                   ...discovery,
                   sourceCursor: 0,
                   redeemerCursor: 0,
@@ -4440,8 +4407,7 @@ export const buildDeterministicValidationMachineTrace = (
                         scriptLanguageTag: source.scriptLanguageTag,
                         scriptHash: source.scriptHash,
                         scriptTotalLength: source.scriptTotalLength,
-                        scriptItemCommitment:
-                          source.scriptItemCommitment,
+                        scriptItemCommitment: source.scriptItemCommitment,
                         siblings: sourceMembership(sourceIndex).siblings,
                       },
                     );
@@ -4528,7 +4494,8 @@ export const buildDeterministicValidationMachineTrace = (
                     redeemerIndex += 1
                   ) {
                     const redeemer = decodedProofRedeemers[redeemerIndex]!;
-                    const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+                    const item =
+                      redeemerWitnessesCollection.items[redeemerIndex]!;
                     const itemTrace = buildMidgardRedeemerItemProofTraceV1({
                       itemIndex: redeemerIndex,
                       itemCount: decodedProofRedeemers.length,
@@ -4584,13 +4551,12 @@ export const buildDeterministicValidationMachineTrace = (
                         redeemer.index === purpose.purposeIndex
                       ) {
                         matchedRedeemerIndex = redeemerIndex;
-                        const executionLeaf =
-                          hashMidgardScriptExecutionLeafV1({
-                            languageTag: matchedSource.languageTag,
-                            purposeLeaf: purpose.leaf,
-                            sourceLeaf: matchedSource.entry.leaf,
-                            redeemerLeaf: redeemerLeaves[redeemerIndex]!,
-                          });
+                        const executionLeaf = hashMidgardScriptExecutionLeafV1({
+                          languageTag: matchedSource.languageTag,
+                          purposeLeaf: purpose.leaf,
+                          sourceLeaf: matchedSource.entry.leaf,
+                          redeemerLeaf: redeemerLeaves[redeemerIndex]!,
+                        });
                         scriptExecutionEntries.push({
                           purpose,
                           source: matchedSource.entry,
@@ -4671,8 +4637,7 @@ export const buildDeterministicValidationMachineTrace = (
                         scriptLanguageTag: source.scriptLanguageTag,
                         scriptHash: source.scriptHash,
                         scriptTotalLength: source.scriptTotalLength,
-                        scriptItemCommitment:
-                          source.scriptItemCommitment,
+                        scriptItemCommitment: source.scriptItemCommitment,
                         siblings: sourceMembership(sourceIndex).siblings,
                       },
                     );
@@ -4717,7 +4682,8 @@ export const buildDeterministicValidationMachineTrace = (
                     redeemerIndex < decodedProofRedeemers.length;
                     redeemerIndex += 1
                   ) {
-                    const item = redeemerWitnessesCollection.items[redeemerIndex]!;
+                    const item =
+                      redeemerWitnessesCollection.items[redeemerIndex]!;
                     const itemTrace = buildMidgardRedeemerItemProofTraceV1({
                       itemIndex: redeemerIndex,
                       itemCount: decodedProofRedeemers.length,
@@ -4885,50 +4851,45 @@ export const buildDeterministicValidationMachineTrace = (
           executionIndex,
           languageBitmap,
         );
-        pushWitness(
-          "nativeScripts",
-          continuationCbor,
-          {
-            kind: "nativeExecutionDescriptor",
-            executionIndex,
-            languageTag: execution.languageTag,
-            purpose: {
-              purposeKind: execution.purpose.purposeKind,
-              purposeIndex: execution.purpose.purposeIndex,
-              scriptHash: execution.purpose.scriptHash,
-              subject: execution.purpose.subject,
-              siblings: buildMidgardValidationMerkleMembershipV1(
-                purposeLeaves,
-                executionIndex,
-              ).siblings,
-            },
-            source: {
-              sourceIndex: execution.sourceIndex,
-              originKind: execution.source.originKind,
-              sourceKey: execution.source.sourceKey,
-              scriptTotalLength: execution.source.scriptTotalLength,
-              scriptItemCommitment:
-                execution.source.scriptItemCommitment,
-              siblings: buildMidgardValidationMerkleMembershipV1(
-                sourceLeaves,
-                execution.sourceIndex,
-              ).siblings,
-            },
-            redeemerLeaf: execution.redeemerLeaf,
-            executionSiblings: buildMidgardValidationMerkleMembershipV1(
-              executionLeaves,
+        pushWitness("nativeScripts", continuationCbor, {
+          kind: "nativeExecutionDescriptor",
+          executionIndex,
+          languageTag: execution.languageTag,
+          purpose: {
+            purposeKind: execution.purpose.purposeKind,
+            purposeIndex: execution.purpose.purposeIndex,
+            scriptHash: execution.purpose.scriptHash,
+            subject: execution.purpose.subject,
+            siblings: buildMidgardValidationMerkleMembershipV1(
+              purposeLeaves,
               executionIndex,
             ).siblings,
-            firstChunkProof:
-              execution.languageTag === 0
-                ? buildMidgardBoundedItemChunkProofV1(item, 0)
-                : null,
-            signerFrontier:
-              execution.languageTag === 0
-                ? signerFrontier
-                : emptyValidationFrontier,
           },
-        );
+          source: {
+            sourceIndex: execution.sourceIndex,
+            originKind: execution.source.originKind,
+            sourceKey: execution.source.sourceKey,
+            scriptTotalLength: execution.source.scriptTotalLength,
+            scriptItemCommitment: execution.source.scriptItemCommitment,
+            siblings: buildMidgardValidationMerkleMembershipV1(
+              sourceLeaves,
+              execution.sourceIndex,
+            ).siblings,
+          },
+          redeemerLeaf: execution.redeemerLeaf,
+          executionSiblings: buildMidgardValidationMerkleMembershipV1(
+            executionLeaves,
+            executionIndex,
+          ).siblings,
+          firstChunkProof:
+            execution.languageTag === 0
+              ? buildMidgardBoundedItemChunkProofV1(item, 0)
+              : null,
+          signerFrontier:
+            execution.languageTag === 0
+              ? signerFrontier
+              : emptyValidationFrontier,
+        });
         if (execution.languageTag === 0) {
           if (execution.source.script.language !== "NativeCardano") {
             return yield* Effect.fail(
@@ -4969,8 +4930,7 @@ export const buildDeterministicValidationMachineTrace = (
             nodeCount: 0,
             result: -1,
           };
-          const nativeScriptFrames: ValidationMachineNativeScriptFrameV1[] =
-            [];
+          const nativeScriptFrames: ValidationMachineNativeScriptFrameV1[] = [];
           const expectedLateRejection = (code: RejectCode): boolean =>
             rejection !== null &&
             terminalPhase === "nativeScripts" &&
@@ -4988,10 +4948,7 @@ export const buildDeterministicValidationMachineTrace = (
           ): void => {
             pushWitness(
               "phaseANativeScripts",
-              phaseANativeScriptsScanWitnessCbor(
-                lateControl,
-                continuationCbor,
-              ),
+              phaseANativeScriptsScanWitnessCbor(lateControl, continuationCbor),
               auxiliary,
             );
           };
@@ -5036,9 +4993,7 @@ export const buildDeterministicValidationMachineTrace = (
               }
               const nextNodeCount = lateControl.nodeCount + 1;
               if (nextNodeCount > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
-                if (
-                  !expectedLateRejection(RejectCodes.NativeScriptNodeCount)
-                ) {
+                if (!expectedLateRejection(RejectCodes.NativeScriptNodeCount)) {
                   return yield* failUnexpectedLateRejection(
                     RejectCodes.NativeScriptNodeCount,
                   );
@@ -5056,13 +5011,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
 
             if (lateControl.stage >= 3) {
-              const kind = (lateControl.stage - 3) as
-                | 0
-                | 1
-                | 2
-                | 3
-                | 4
-                | 5;
+              const kind = (lateControl.stage - 3) as 0 | 1 | 2 | 3 | 4 | 5;
               const chunkIndex = Math.floor(
                 lateControl.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
               );
@@ -5475,6 +5424,7 @@ export const buildDeterministicValidationMachineTrace = (
                 "CEK execution is missing its authenticated program graph",
               );
             }
+            const selected = selectedRedeemer(executionEntry);
             const exactExecution = executeMidgardCekStructuralProgramV1({
               root: evaluation.graph.root,
               material: evaluation.graph.material.values(),
@@ -5482,8 +5432,11 @@ export const buildDeterministicValidationMachineTrace = (
               executionIndex: BigInt(executionIndex),
               maxSteps:
                 input.consensusProfile.limits.maxValidationMachineStepCount,
+              executionBudget: {
+                cpu: selected.value.exUnits.steps,
+                memory: selected.value.exUnits.memory,
+              },
             });
-            const selected = selectedRedeemer(executionEntry);
             let contextControl = initialMidgardCekContextControlV1({
               languageTag: executionEntry.languageTag,
               programTermRoot: decodeMidgardCekProgramEnvelopeV1(
@@ -5506,19 +5459,16 @@ export const buildDeterministicValidationMachineTrace = (
             let redeemerControl = initialMidgardCekRedeemerContextControlV1();
             const selectedItem =
               redeemerWitnessesCollection.items[selected.index]!;
-            const selectionTrace =
-              buildMidgardRedeemerItemProofTraceV1({
-                itemIndex: selected.index,
-                itemCount: decodedProofRedeemers.length,
-                itemBytes: selectedItem.bytes,
-                mode: MidgardRedeemerItemProofModesV1.Descriptor,
-                expectedPurposeTag: redeemerTagForPurposeKind(
-                  executionEntry.purpose.purposeKind,
-                ),
-                expectedPointerIndex: Number(
-                  executionEntry.purpose.purposeIndex,
-                ),
-              });
+            const selectionTrace = buildMidgardRedeemerItemProofTraceV1({
+              itemIndex: selected.index,
+              itemCount: decodedProofRedeemers.length,
+              itemBytes: selectedItem.bytes,
+              mode: MidgardRedeemerItemProofModesV1.Descriptor,
+              expectedPurposeTag: redeemerTagForPurposeKind(
+                executionEntry.purpose.purposeKind,
+              ),
+              expectedPointerIndex: Number(executionEntry.purpose.purposeIndex),
+            });
             pushWitness(
               "cek",
               cekWitness({
@@ -5541,10 +5491,9 @@ export const buildDeterministicValidationMachineTrace = (
             );
             contextControl = {
               ...contextControl,
-              redeemerContextControlHash:
-                hashMidgardRedeemerItemProofControlV1(
-                  selectionTrace.initial,
-                ),
+              redeemerContextControlHash: hashMidgardRedeemerItemProofControlV1(
+                selectionTrace.initial,
+              ),
             };
             for (const itemStep of selectionTrace.steps) {
               pushWitness(
@@ -5568,21 +5517,15 @@ export const buildDeterministicValidationMachineTrace = (
                   ? {
                       ...contextControl,
                       stage: 1,
-                      executionMemoryLimit:
-                        itemStep.next.executionMemory,
-                      executionCpuLimit:
-                        itemStep.next.executionSteps,
+                      executionMemoryLimit: itemStep.next.executionMemory,
+                      executionCpuLimit: itemStep.next.executionSteps,
                       redeemerContextControlHash:
-                        hashMidgardCekRedeemerContextControlV1(
-                          redeemerControl,
-                        ),
+                        hashMidgardCekRedeemerContextControlV1(redeemerControl),
                     }
                   : {
                       ...contextControl,
                       redeemerContextControlHash:
-                        hashMidgardRedeemerItemProofControlV1(
-                          itemStep.next,
-                        ),
+                        hashMidgardRedeemerItemProofControlV1(itemStep.next),
                     };
             }
 
@@ -5833,8 +5776,7 @@ export const buildDeterministicValidationMachineTrace = (
                 (observer) => observer.bytes,
               ),
             );
-            const midgardObserverEncoding =
-              executionEntry.languageTag === 128;
+            const midgardObserverEncoding = executionEntry.languageTag === 128;
             for (
               let observerIndex = observerCount - 1;
               observerIndex >= 0;
@@ -5863,15 +5805,11 @@ export const buildDeterministicValidationMachineTrace = (
                 }),
                 {
                   kind: "transactionFieldChunk",
-                  collectionProof:
-                    buildMidgardBoundedCollectionItemProofV1(
-                      requiredObserversCollection,
-                      observer.itemIndex,
-                    ),
-                  chunkProof: buildMidgardBoundedItemChunkProofV1(
-                    observer,
-                    0,
+                  collectionProof: buildMidgardBoundedCollectionItemProofV1(
+                    requiredObserversCollection,
+                    observer.itemIndex,
                   ),
+                  chunkProof: buildMidgardBoundedItemChunkProofV1(observer, 0),
                 },
               );
               contextControl = {
@@ -6083,8 +6021,7 @@ export const buildDeterministicValidationMachineTrace = (
               const purpose = scriptPurposeEntries[purposeFrontierIndex]!;
               const item = redeemerWitnessesCollection.items[redeemerIndex]!;
               const descriptorOnly =
-                executionEntry.languageTag === 3 &&
-                purpose.purposeKind === 3;
+                executionEntry.languageTag === 3 && purpose.purposeKind === 3;
               const itemTrace = buildMidgardRedeemerItemProofTraceV1({
                 itemIndex: redeemerIndex,
                 itemCount: decodedProofRedeemers.length,
@@ -6134,10 +6071,9 @@ export const buildDeterministicValidationMachineTrace = (
                 : purposeSummary(purpose, executionEntry.languageTag);
               redeemerControl = {
                 ...redeemerControl,
-                activeScanHash:
-                  hashMidgardRedeemerItemProofControlV1(
-                    itemTrace.initial,
-                  ),
+                activeScanHash: hashMidgardRedeemerItemProofControlV1(
+                  itemTrace.initial,
+                ),
                 activeRedeemerLeaf: redeemerLeaves[redeemerIndex]!,
                 activePurpose: semanticPurpose,
               };
@@ -6177,42 +6113,41 @@ export const buildDeterministicValidationMachineTrace = (
                           .activePurpose,
                     };
                   } else {
-                    const nextSummary =
-                      finalizeMidgardRedeemerItemProofV1(
-                        itemStep.next,
-                      );
+                    const nextSummary = finalizeMidgardRedeemerItemProofV1(
+                      itemStep.next,
+                    );
                     if (nextSummary === null) {
                       throw new Error(
                         "terminal redeemer item proof lacks a Data summary",
                       );
                     }
-                  const nextCurrent = redeemerLeaves[redeemerIndex]!.equals(
-                    executionEntry.redeemerLeaf,
-                  )
+                    const nextCurrent = redeemerLeaves[redeemerIndex]!.equals(
+                      executionEntry.redeemerLeaf,
+                    )
                       ? nextSummary
-                    : redeemerControl.currentRedeemer;
-                  redeemerControl = {
-                    ...redeemerControl,
-                    cursor: redeemerControl.cursor + 1,
-                    mapItems: prependMidgardCekDataPairSummaryV1(
-                      redeemerControl.activePurpose,
+                      : redeemerControl.currentRedeemer;
+                    redeemerControl = {
+                      ...redeemerControl,
+                      cursor: redeemerControl.cursor + 1,
+                      mapItems: prependMidgardCekDataPairSummaryV1(
+                        redeemerControl.activePurpose,
                         nextSummary,
-                      redeemerControl.mapItems,
-                    ),
-                    activeScanHash: Buffer.alloc(0),
-                    activeRedeemerLeaf: Buffer.alloc(0),
-                    activePurpose:
-                      initialMidgardCekRedeemerContextControlV1().activePurpose,
-                    currentRedeemer: nextCurrent,
-                  };
+                        redeemerControl.mapItems,
+                      ),
+                      activeScanHash: Buffer.alloc(0),
+                      activeRedeemerLeaf: Buffer.alloc(0),
+                      activePurpose:
+                        initialMidgardCekRedeemerContextControlV1()
+                          .activePurpose,
+                      currentRedeemer: nextCurrent,
+                    };
                   }
                 } else {
                   redeemerControl = {
                     ...redeemerControl,
-                    activeScanHash:
-                      hashMidgardRedeemerItemProofControlV1(
-                        itemStep.next,
-                      ),
+                    activeScanHash: hashMidgardRedeemerItemProofControlV1(
+                      itemStep.next,
+                    ),
                   };
                 }
                 contextControl = {
@@ -6612,11 +6547,10 @@ export const buildDeterministicValidationMachineTrace = (
                       assetName: asset.assetName,
                       quantity: asset.quantity,
                       assetFrontier: assetMaterial.frontier,
-                      assetSiblings:
-                        buildMidgardValidationMerkleMembershipV1(
-                          assetMaterial.leaves,
-                          assetIndex,
-                        ).siblings,
+                      assetSiblings: buildMidgardValidationMerkleMembershipV1(
+                        assetMaterial.leaves,
+                        assetIndex,
+                      ).siblings,
                       mutationStep,
                     },
                   );
@@ -6675,8 +6609,7 @@ export const buildDeterministicValidationMachineTrace = (
               outputIndex += 1
             ) {
               const outputCbor = outputCbors[outputIndex]!;
-              const descriptorCbor =
-                admittedOutputDescriptorCbors[outputIndex];
+              const descriptorCbor = admittedOutputDescriptorCbors[outputIndex];
               if (descriptorCbor === undefined) {
                 return yield* Effect.fail(
                   new Error(
@@ -6737,11 +6670,10 @@ export const buildDeterministicValidationMachineTrace = (
                       assetName: asset.assetName,
                       quantity: asset.quantity,
                       assetFrontier: assetMaterial.frontier,
-                      assetSiblings:
-                        buildMidgardValidationMerkleMembershipV1(
-                          assetMaterial.leaves,
-                          assetIndex,
-                        ).siblings,
+                      assetSiblings: buildMidgardValidationMerkleMembershipV1(
+                        assetMaterial.leaves,
+                        assetIndex,
+                      ).siblings,
                       mutationStep,
                     },
                   );
@@ -6904,8 +6836,7 @@ export const buildDeterministicValidationMachineTrace = (
                     readonly key: Buffer;
                     readonly value: Buffer;
                     readonly proofFoldTrace: MidgardMpfProofFoldTraceV1;
-                    readonly foldControl:
-                      MidgardMpfProofFoldTraceV1["initial"];
+                    readonly foldControl: MidgardMpfProofFoldTraceV1["initial"];
                   }
                 | null = null;
               let ledgerResolvedInputsAccumulator =
@@ -6945,9 +6876,7 @@ export const buildDeterministicValidationMachineTrace = (
                       encodeMidgardMpfProofDescriptorV1(
                         pendingMutation.proofFoldTrace.descriptor,
                       ),
-                      BigInt(
-                        pendingMutation.foldControl?.nextFrameIndex ?? -1,
-                      ),
+                      BigInt(pendingMutation.foldControl?.nextFrameIndex ?? -1),
                       pendingMutation.foldControl?.includingRoot ??
                         Buffer.alloc(0),
                       pendingMutation.foldControl?.excludingRoot ??
@@ -7072,9 +7001,8 @@ export const buildDeterministicValidationMachineTrace = (
                   for (const foldStep of mutationStep.proofFoldTrace.steps) {
                     if (
                       pendingMutation.foldControl !== foldStep.pre &&
-                      (
-                        pendingMutation.foldControl.nextFrameIndex !==
-                          foldStep.pre.nextFrameIndex ||
+                      (pendingMutation.foldControl.nextFrameIndex !==
+                        foldStep.pre.nextFrameIndex ||
                         pendingMutation.foldControl.expectedNextCursor !==
                           foldStep.pre.expectedNextCursor ||
                         !pendingMutation.foldControl.includingRoot.equals(
@@ -7082,8 +7010,7 @@ export const buildDeterministicValidationMachineTrace = (
                         ) ||
                         !pendingMutation.foldControl.excludingRoot.equals(
                           foldStep.pre.excludingRoot,
-                        )
-                      )
+                        ))
                     ) {
                       return yield* Effect.fail(
                         new Error(
@@ -7092,8 +7019,8 @@ export const buildDeterministicValidationMachineTrace = (
                       );
                     }
                     pushWitness(
-                        "ledgerDelta",
-                        ledgerDeltaControlCbor({
+                      "ledgerDelta",
+                      ledgerDeltaControlCbor({
                         stage: 0,
                         replayScheduleHash: resolutionScheduleHash,
                       }),
@@ -7214,9 +7141,8 @@ export const buildDeterministicValidationMachineTrace = (
                 for (const foldStep of mutationStep.proofFoldTrace.steps) {
                   if (
                     pendingMutation.foldControl !== foldStep.pre &&
-                    (
-                      pendingMutation.foldControl.nextFrameIndex !==
-                        foldStep.pre.nextFrameIndex ||
+                    (pendingMutation.foldControl.nextFrameIndex !==
+                      foldStep.pre.nextFrameIndex ||
                       pendingMutation.foldControl.expectedNextCursor !==
                         foldStep.pre.expectedNextCursor ||
                       !pendingMutation.foldControl.includingRoot.equals(
@@ -7224,8 +7150,7 @@ export const buildDeterministicValidationMachineTrace = (
                       ) ||
                       !pendingMutation.foldControl.excludingRoot.equals(
                         foldStep.pre.excludingRoot,
-                      )
-                    )
+                      ))
                   ) {
                     return yield* Effect.fail(
                       new Error(

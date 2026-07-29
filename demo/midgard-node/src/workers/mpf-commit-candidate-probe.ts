@@ -10,6 +10,7 @@ import { Effect, Metric } from "effect";
 
 import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
 import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
+import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "@/local-ledger-slot.js";
 import { NodeConfig } from "@/services/config.js";
 import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
 import {
@@ -17,6 +18,7 @@ import {
   runCommitBlockHeaderCandidateBuildProgram,
 } from "@/workers/commit-block-header.js";
 import {
+  assertArchitectureGCandidateSlotRuntimeIdentityV1,
   decodeArchitectureGCommitCandidateInputV1,
   decodeArchitectureGFixtureCreationV1,
 } from "@/workers/utils/mpf-commit-candidate-artifacts.js";
@@ -101,6 +103,29 @@ void (async () => {
     const program = Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       const nodeConfig = yield* NodeConfig;
+      const customGenesis =
+        nodeConfig.NETWORK === "Custom"
+          ? yield* fetchLocalOgmiosShelleyGenesisSlotConfig({
+              ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+              timeoutMs: nodeConfig.L1_PROVIDER_PREFLIGHT_TIMEOUT_MS,
+            })
+          : undefined;
+      yield* Effect.try({
+        try: () =>
+          assertArchitectureGCandidateSlotRuntimeIdentityV1({
+            input,
+            runtimeNetwork: nodeConfig.NETWORK,
+            ogmiosUrl: nodeConfig.L1_OGMIOS_KEY,
+            customGenesis,
+          }),
+        catch: (cause) =>
+          cause instanceof Error
+            ? cause
+            : new Error(
+                "Failed to validate Architecture G slot runtime identity",
+                { cause },
+              ),
+      });
       if (
         nodeConfig.MPF_ENGINE !== "architecture_g" ||
         nodeConfig.MPF_NATIVE_OWNER_BINARY_SHA256 !== input.binarySha256 ||

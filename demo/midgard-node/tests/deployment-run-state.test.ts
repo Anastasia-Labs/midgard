@@ -7,8 +7,9 @@ import {
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import {
   type DeploymentRunCliOptions,
   loadPendingHubOracleNonceAttempt,
@@ -37,6 +38,10 @@ const lucid = {
 } as unknown as LucidEvolution;
 
 const makeTempDir = createTrackedTempDirFactory("midgard-run-state-");
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("deployment run state", () => {
   it("creates and parses a versioned deployment run state", () => {
@@ -280,6 +285,26 @@ describe("deployment run state", () => {
 });
 
 describe("deployment run-state command identity guards", () => {
+  const manifestWithIdentity = ({
+    network = "Preprod",
+    oneShotTxHash,
+    policyInfo,
+  }: {
+    readonly network?: string;
+    readonly oneShotTxHash: string;
+    readonly policyInfo: ReturnType<
+      typeof referenceScriptAuthPolicyDeploymentInfo
+    >;
+  }): ContractDeploymentInfo.DeploymentManifestV1 =>
+    ({
+      network,
+      hubOracleOneShot: {
+        txHash: oneShotTxHash,
+        outputIndex: 0,
+      },
+      referenceScriptAuthPolicy: policyInfo,
+    }) as ContractDeploymentInfo.DeploymentManifestV1;
+
   const resolveAuthPolicy = ({
     runStatePath,
     manifestPath,
@@ -345,6 +370,160 @@ describe("deployment run-state command identity guards", () => {
       }),
     ).rejects.toThrow(
       "deployment run state deployment identity does not match",
+    );
+  });
+
+  it("restores the exact manifest auth policy when the run state is missing", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const oneShotTxHash = "33".repeat(32);
+    const policy = createReferenceScriptAuthPolicy(lucid, 1_000, 10_000);
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(policy);
+    await writeFile(manifestPath, "{}\n", "utf8");
+    const readManifest = vi
+      .spyOn(ContractDeploymentInfo, "readDeploymentManifestV1File")
+      .mockReturnValue(manifestWithIdentity({ oneShotTxHash, policyInfo }));
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: oneShotTxHash,
+      }),
+    ).resolves.toEqual(policy);
+    expect(readManifest).toHaveBeenCalledWith(manifestPath);
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toMatchObject({
+      identity: {
+        network: "Preprod",
+        hubOracleOneShot: {
+          txHash: oneShotTxHash,
+          outputIndex: 0,
+        },
+        manifestPath,
+        referenceScriptAuthPolicyId: policyInfo.policyId,
+        referenceScriptAuthPolicy: {
+          policyId: policyInfo.policyId,
+          nativeScript: policyInfo.nativeScript,
+        },
+      },
+      steps: {
+        referenceScriptAuthPolicy: {
+          status: "complete",
+          message: "imported from deployment manifest",
+        },
+      },
+    });
+  });
+
+  it("refuses a manifest auth policy bound to a different deployment identity", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const policyInfo = referenceScriptAuthPolicyDeploymentInfo(
+      createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
+    );
+    await writeFile(manifestPath, "{}\n", "utf8");
+    vi.spyOn(
+      ContractDeploymentInfo,
+      "readDeploymentManifestV1File",
+    ).mockReturnValue(
+      manifestWithIdentity({
+        network: "Preview",
+        oneShotTxHash: "44".repeat(32),
+        policyInfo,
+      }),
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: "55".repeat(32),
+      }),
+    ).rejects.toThrow("deployment manifest deployment identity does not match");
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toBeNull();
+  });
+
+  it("fails closed on a malformed deployment manifest without creating run state", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: "midgard-deployment-manifest-v1",
+        referenceScriptAuthPolicy: {
+          policyId: "00".repeat(28),
+          nativeScript: {
+            type: "Native",
+            cborHex: "not-cbor",
+            expiresAtSlot: 1,
+            expiresAtUnixTime: 1,
+            timelockDurationMs: 1,
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: "66".repeat(32),
+      }),
+    ).rejects.toThrow(
+      `Deployment manifest at "${manifestPath}" cannot be reused because it is invalid`,
+    );
+    await expect(loadDeploymentRunState(runStatePath)).resolves.toBeNull();
+  });
+
+  it("refuses conflicting manifest and run-state auth policies", async () => {
+    const dir = await makeTempDir();
+    const runStatePath = join(dir, "run-state.json");
+    const manifestPath = join(dir, "contract-deployment-info.json");
+    const oneShotTxHash = "77".repeat(32);
+    const runStatePolicyInfo = referenceScriptAuthPolicyDeploymentInfo(
+      createReferenceScriptAuthPolicy(lucid, 1_000, 10_000),
+    );
+    const manifestPolicyInfo = referenceScriptAuthPolicyDeploymentInfo(
+      createReferenceScriptAuthPolicy(lucid, 2_000, 10_000),
+    );
+    await writeDeploymentRunStateAtomic(
+      runStatePath,
+      createDeploymentRunState({
+        mode: "resume",
+        runId: "run-policy-mismatch",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+        identity: {
+          network: "Preprod",
+          hubOracleOneShot: { txHash: oneShotTxHash, outputIndex: 0 },
+          manifestPath,
+          referenceScriptAuthPolicyId: runStatePolicyInfo.policyId,
+          referenceScriptAuthPolicy: runStatePolicyInfo,
+        },
+      }),
+    );
+    await writeFile(manifestPath, "{}\n", "utf8");
+    vi.spyOn(
+      ContractDeploymentInfo,
+      "readDeploymentManifestV1File",
+    ).mockReturnValue(
+      manifestWithIdentity({
+        oneShotTxHash,
+        policyInfo: manifestPolicyInfo,
+      }),
+    );
+
+    await expect(
+      resolveAuthPolicy({
+        runStatePath,
+        manifestPath,
+        hubOracleOneShotTxHash: oneShotTxHash,
+      }),
+    ).rejects.toThrow(
+      "deployment manifest and run state reference-script auth policy mismatch",
     );
   });
 

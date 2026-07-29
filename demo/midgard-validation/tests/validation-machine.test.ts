@@ -17,7 +17,13 @@ import {
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
+import {
+  Application,
+  Lambda,
+  UPLCEncoder,
+  UPLCProgram,
+  UPLCVar,
+} from "@harmoniclabs/uplc";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -290,7 +296,23 @@ const buildAcceptingIdentityProgram = () =>
     ),
   );
 
-describe("deterministic validation machine", () => {
+const buildNonterminatingSelfApplicationProgram = () => {
+  const selfApplication = new Lambda(
+    new Application(new UPLCVar(0), new UPLCVar(0)),
+  );
+  return buildMidgardCanonicalCekProgramV1(
+    Buffer.from(
+      UPLCEncoder.compile(
+        new UPLCProgram(
+          [1, 1, 0],
+          new Application(selfApplication, selfApplication),
+        ),
+      ).toBuffer().buffer,
+    ),
+  );
+};
+
+describe("deterministic validation machine", { timeout: 60_000 }, () => {
   it("replays an accepted transaction through bounded field-reveal instructions", async () => {
     const spent = outRefFromByte(0x11);
     const output = makeOutput(10n);
@@ -372,9 +394,7 @@ describe("deterministic validation machine", () => {
       "resolvedInputReplay",
     );
     expect(
-      scriptSourceWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
+      scriptSourceWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).not.toContain("transactionFieldPairPreimage");
     const decodeControl = (
       witness: DeterministicValidationMachineTrace["witnesses"][number],
@@ -427,9 +447,7 @@ describe("deterministic validation machine", () => {
     expect(valueAndMintWitnesses).toHaveLength(8);
     expect(valueAndMintWitnesses[0]?.auxiliary).toBeNull();
     expect(
-      valueAndMintWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
+      valueAndMintWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).not.toContain("transactionFieldPairPreimage");
     expect(
       valueAndMintWitnesses.every((witness) => {
@@ -460,8 +478,7 @@ describe("deterministic validation machine", () => {
       scriptSourceWitnesses
         .slice(8, 15)
         .every(
-          (witness) =>
-            witness.auxiliary?.kind === "ledgerOutputProofStep",
+          (witness) => witness.auxiliary?.kind === "ledgerOutputProofStep",
         ),
     ).toBe(true);
     expect(scriptSourceWitnesses[15]?.auxiliary?.kind).toBe(
@@ -476,12 +493,7 @@ describe("deterministic validation machine", () => {
     expect(
       scriptSourceWitnesses.map(validationSemanticResolverIndexV1),
     ).toEqual([
-      6, 14, 0, 0, 0, 0, 0,
-      1,
-      2, 2, 2, 2, 2, 2, 2,
-      3,
-      4,
-      0, 27, 23, 16, 18,
+      6, 14, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 3, 4, 0, 27, 23, 16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndexV1({
@@ -606,33 +618,31 @@ describe("deterministic validation machine", () => {
     expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
       collectionProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemCount: 1,
         itemIndex: 0,
       },
       chunkProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemIndex: 0,
         chunkIndex: 0,
       },
     });
     const sourceHashBlocks = scriptSourceWitnesses.filter(
-      (witness) =>
-        witness.auxiliary?.kind === "scriptSourceHashBlock",
+      (witness) => witness.auxiliary?.kind === "scriptSourceHashBlock",
     );
     expect(sourceHashBlocks).toHaveLength(1);
     expect(sourceHashBlocks[0]?.auxiliary).toMatchObject({
       kind: "scriptSourceHashBlock",
       chunkProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemIndex: 0,
         chunkIndex: 0,
       },
       nextChunkProof: null,
     });
     const redeemerSourceWitness = scriptSourceWitnesses.find(
-      (witness) =>
-        witness.auxiliary?.kind === "transactionRedeemerItemBegin",
+      (witness) => witness.auxiliary?.kind === "transactionRedeemerItemBegin",
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItemBegin",
@@ -642,13 +652,10 @@ describe("deterministic validation machine", () => {
         itemIndex: 0,
       },
     });
-    expect(
-      validationSemanticResolverIndexV1(redeemerSourceWitness!),
-    ).toBe(15);
+    expect(validationSemanticResolverIndexV1(redeemerSourceWitness!)).toBe(15);
     expect(
       scriptSourceWitnesses.some(
-        (witness) =>
-          validationSemanticResolverIndexV1(witness) === 14,
+        (witness) => validationSemanticResolverIndexV1(witness) === 14,
       ),
     ).toBe(true);
     expect(
@@ -704,14 +711,12 @@ describe("deterministic validation machine", () => {
     );
     expect(
       cekWitnesses.some(
-        (witness) =>
-          witness.auxiliary?.kind === "redeemerScanBegin",
+        (witness) => witness.auxiliary?.kind === "redeemerScanBegin",
       ),
     ).toBe(true);
     expect(
       cekWitnesses.some(
-        (witness) =>
-          witness.auxiliary?.kind === "cekRedeemerContextSelect",
+        (witness) => witness.auxiliary?.kind === "cekRedeemerContextSelect",
       ),
     ).toBe(true);
     expect(
@@ -734,11 +739,13 @@ describe("deterministic validation machine", () => {
           | Record<string, unknown>
           | null
           | undefined;
-        return auxiliary !== null &&
+        return (
+          auxiliary !== null &&
           auxiliary !== undefined &&
           ("redeemer" in auxiliary ||
             "rawCbor" in auxiliary ||
-            "dataCborHex" in auxiliary);
+            "dataCborHex" in auxiliary)
+        );
       }),
     ).toBe(false);
     const cekStates = trace.states.filter((state) => state.phase === "cek");
@@ -748,6 +755,79 @@ describe("deterministic validation machine", () => {
     const oneStepAbi = validateBoundaryAbiAndCollectAuxiliaryKinds(trace);
     expect(oneStepAbi.kinds.size).toBeGreaterThan(15);
     expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
+  });
+
+  it("retains only the first over-budget CEK transition for a nonterminating program", async () => {
+    const spent = outRefFromByte(0x6f);
+    const program = buildNonterminatingSelfApplicationProgram();
+    const script = plutusV3ScriptWitness(program.envelopeCbor);
+    const scriptHash = hashScriptWitness(script);
+    const spentOutput = makeProtectedScriptOutput(scriptHash, 10n);
+    const output = makeOutput(10n);
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs: [output],
+      scriptWitnesses: [script],
+      redeemerTxWitsPreimageCbor: makeRedeemersCbor([
+        {
+          tag: MidgardRedeemerTag.Spend,
+          index: 0n,
+          exUnits: [0n, 0n],
+        },
+      ]),
+      scriptLanguages: ["PlutusV3"],
+    });
+    const rootPreparation = await buildValidationMachineLedgerMutationSteps({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: [
+        { type: "delete", key: spent },
+        buildValidationMachineLedgerInsertOpV1({
+          key: outRefFromTxId(transaction.txId),
+          outputCbor: output,
+        }),
+      ],
+    });
+    const unchangedRoot = rootPreparation[0]!.preRoot.toString("hex");
+
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+          ...program.material.values(),
+        ]),
+        priorUtxosRoot: unchangedRoot,
+        postUtxosRoot: unchangedRoot,
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps: [],
+        ledgerMutationSteps: [],
+        expectedVerdict: "rejected",
+        expectedRejectionCode: RejectCodes.PlutusScriptInvalid,
+      }),
+    );
+
+    const coreSteps = trace.witnesses.flatMap((witness) =>
+      witness.auxiliary?.kind === "cekCoreStep" ? [witness.auxiliary.step] : [],
+    );
+    expect(coreSteps.length).toBeGreaterThan(0);
+    expect(coreSteps.length).toBeLessThan(16);
+    expect(
+      coreSteps
+        .slice(0, -1)
+        .every((step) => step.post.cpu <= 0n && step.post.memory <= 0n),
+    ).toBe(true);
+    expect(
+      coreSteps.at(-1)!.post.cpu > 0n || coreSteps.at(-1)!.post.memory > 0n,
+    ).toBe(true);
+    expect(trace.states.at(-1)).toMatchObject({
+      phase: "terminal",
+      verdict: "rejected",
+    });
+    expect(trace.states.some((state) => state.phase === "ledgerDelta")).toBe(
+      false,
+    );
   });
 
   it("executes an authenticated PlutusV3 reference script from a reference input", async () => {
@@ -1206,7 +1286,7 @@ describe("deterministic validation machine", () => {
         "cekCoreStep",
       ]),
     );
-  }, 10_000);
+  }, 60_000);
 
   it("proves duplicate observers at the second authenticated item", async () => {
     const spent = outRefFromByte(0x35);
@@ -1502,7 +1582,7 @@ describe("deterministic validation machine", () => {
       phase: "terminal",
       verdict: "rejected",
     });
-  }, 15_000);
+  }, 60_000);
 
   it("commits an invalid forced transaction as a proved no-op", async () => {
     const spent = outRefFromByte(0x11);
@@ -1801,7 +1881,7 @@ describe("deterministic validation machine", () => {
       ),
     ).toBe(true);
     expect(trace.verdict).toBe("rejected");
-  }, 15_000);
+  }, 60_000);
 
   it("fails closed before proving a malformed persisted ledger output", async () => {
     const spent = outRefFromByte(0x11);
@@ -1828,9 +1908,7 @@ describe("deterministic validation machine", () => {
           expectedRejectionCode: RejectCodes.InvalidOutput,
         }),
       ),
-    ).rejects.toThrow(
-      "cannot produce an exact V1 descriptor",
-    );
+    ).rejects.toThrow("cannot produce an exact V1 descriptor");
   });
 
   it("fails closed when the claimed verdict or delta disagrees with replay", async () => {

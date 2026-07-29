@@ -10,6 +10,10 @@ import {
 } from "./cek-proof.js";
 import { computeHash32 } from "./codec/hash.js";
 import { MIDGARD_NATIVE_TX_V1_VERSION } from "./codec/native-constants.js";
+import {
+  MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1,
+  MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1,
+} from "./codec/native-script.js";
 
 /**
  * Exact protocol tuple for the canonical V1 validator deployment.
@@ -199,8 +203,8 @@ export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   maxScriptWitnessesPreimageBytes: MAX_SCRIPT_WITNESSES_PREIMAGE_BYTES,
   maxRedeemersPreimageBytes: MAX_REDEEMERS_PREIMAGE_BYTES,
   maxTxCanonicalCborBytes: MAX_EFFECTIVE_TRANSACTION_CBOR_BYTES,
-  maxNativeScriptDepth: MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT,
-  maxNativeScriptNodeCount: MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT,
+  maxNativeScriptDepth: MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1,
+  maxNativeScriptNodeCount: MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1,
   maxSpendInputCount: MAX_SPEND_INPUT_COUNT,
   maxReferenceInputCount: MAX_REFERENCE_INPUT_COUNT,
   maxOutputCount: MAX_OUTPUT_COUNT,

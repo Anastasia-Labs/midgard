@@ -30,7 +30,6 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
   "duplicate_provider_id",
   "duplicate_trust_identity",
   "duplicate_operator_identity",
-  "duplicate_local_surface",
   "provider_transport_mismatch",
   "source_mode_mismatch",
   "local_node_authority_mismatch",
@@ -312,6 +311,26 @@ const minimumNatural = (values: readonly string[]): string =>
 const duplicateValues = (values: readonly string[]): boolean =>
   new Set(values).size !== values.length;
 
+const compareExternalProviderBindings = (
+  left: WatcherExternalProviderBindingV1,
+  right: WatcherExternalProviderBindingV1,
+): number => {
+  for (const key of [
+    "providerId",
+    "operatorIdentitySha256",
+    "authenticationKind",
+    "publicIdentitySha256",
+  ] as const) {
+    if (left[key] < right[key]) {
+      return -1;
+    }
+    if (left[key] > right[key]) {
+      return 1;
+    }
+  }
+  return 0;
+};
+
 const makeResult = (
   value: ConsistencyResultWithoutDigest,
 ): WatcherMultiProviderConsistencyV1 => {
@@ -410,7 +429,12 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   configuredSourceInput: unknown,
   observationsInput: unknown,
 ): WatcherMultiProviderConsistencyV1 => {
-  const configuredSource = parseConfiguredSource(configuredSourceInput);
+  let configuredSource: WatcherL1SourceConsistencyConfigV1 | null;
+  try {
+    configuredSource = parseConfiguredSource(configuredSourceInput);
+  } catch {
+    return rejectedBoundaryResult(null, "invalid_configured_network");
+  }
   if (configuredSource === null) {
     return rejectedBoundaryResult(null, "invalid_configured_network");
   }
@@ -537,15 +561,8 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       reasons.add("missing_chain_sync_authority");
       alerts.add("watcher_local_node_chain_sync_missing");
     }
-    const surfaces = boundToAuthority.map(
-      (observation) => observation.provider.source.surface,
-    );
     if (duplicateValues(providerIds)) {
       reasons.add("duplicate_provider_id");
-      alerts.add("watcher_provider_identity_collision");
-    }
-    if (duplicateValues(surfaces)) {
-      reasons.add("duplicate_local_surface");
       alerts.add("watcher_provider_identity_collision");
     }
     const authority = chainAuthorities[0] ?? null;
@@ -611,13 +628,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
               observation.provider.authentication.publicIdentitySha256,
           });
         })
-        .sort((left, right) =>
-          left.providerId < right.providerId
-            ? -1
-            : left.providerId > right.providerId
-              ? 1
-              : 0,
-        ),
+        .sort(compareExternalProviderBindings),
     );
     if (duplicateValues(providerIds)) {
       reasons.add("duplicate_provider_id");
@@ -658,17 +669,37 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       const pointDigests = new Set(
         eligible.map((observation) => observation.chainPoint.pointDigest),
       );
+      const observationsByPoint = new Map<
+        string,
+        {
+          readonly observation: WatcherNormalizedL1BlockV1;
+          readonly contentDigests: Set<string>;
+        }
+      >();
+      for (const observation of eligible) {
+        const pointDigest = observation.chainPoint.pointDigest;
+        const existing = observationsByPoint.get(pointDigest);
+        if (existing === undefined) {
+          observationsByPoint.set(pointDigest, {
+            observation,
+            contentDigests: new Set([observation.blockContentDigest]),
+          });
+        } else {
+          existing.contentDigests.add(observation.blockContentDigest);
+        }
+      }
+      const hasPointContentMismatch = [...observationsByPoint.values()].some(
+        ({ contentDigests }) => contentDigests.size > 1,
+      );
+      if (hasPointContentMismatch) {
+        reasons.add("block_content_mismatch");
+        alerts.add("watcher_provider_content_disagreement");
+      }
       if ([...byHeight.values()].some((points) => points.size > 1)) {
         reasons.add("fork_disagreement");
         alerts.add("watcher_provider_fork");
       } else if (pointDigests.size === 1) {
-        const contentDigests = new Set(
-          eligible.map((observation) => observation.blockContentDigest),
-        );
-        if (contentDigests.size > 1) {
-          reasons.add("block_content_mismatch");
-          alerts.add("watcher_provider_content_disagreement");
-        } else {
+        if (!hasPointContentMismatch) {
           const first = eligible[0] as WatcherNormalizedL1BlockV1;
           agreement = Object.freeze({
             pointDigest: first.chainPoint.pointDigest,
@@ -682,11 +713,14 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
           });
         }
       } else {
-        const ordered = [...eligible].sort((left, right) => {
-          const heightDifference =
-            BigInt(left.chainPoint.blockNo) - BigInt(right.chainPoint.blockNo);
-          return heightDifference < 0n ? -1 : heightDifference > 0n ? 1 : 0;
-        });
+        const ordered = [...observationsByPoint.values()]
+          .map(({ observation }) => observation)
+          .sort((left, right) => {
+            const heightDifference =
+              BigInt(left.chainPoint.blockNo) -
+              BigInt(right.chainPoint.blockNo);
+            return heightDifference < 0n ? -1 : heightDifference > 0n ? 1 : 0;
+          });
         const nonMonotonic = ordered.some(
           (observation, index) =>
             index > 0 &&
@@ -734,7 +768,6 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       "duplicate_provider_id",
       "duplicate_trust_identity",
       "duplicate_operator_identity",
-      "duplicate_local_surface",
       "provider_transport_mismatch",
       "source_mode_mismatch",
       "local_node_authority_mismatch",

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { lstat, readFile, readlink } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -9,6 +9,12 @@ const mapPath = resolve(
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 );
 const dependencyMap = JSON.parse(await readFile(mapPath, "utf8"));
+const readIndexedFile = (path, encoding) =>
+  execFileSync("git", ["show", `:${path}`], {
+    cwd: repositoryRoot,
+    encoding,
+    maxBuffer: 128 * 1024 * 1024,
+  });
 
 const fail = (message) => {
   throw new Error(`Watcher dependency map verification failed: ${message}`);
@@ -34,6 +40,16 @@ const requiredIds = [
   "state_queue",
   "correction_removal",
 ];
+const requiredTrustById = new Map([
+  ["public_da", "public_protocol"],
+  ["proof_bundle", "public_protocol"],
+  ["validation", "deterministic_local"],
+  ["proof_tooling", "mixed_public_and_file_inputs"],
+  ["deployment_manifest", "signed_deployment_identity_required"],
+  ["l1_provider", "authenticated_cardano_l1"],
+  ["state_queue", "authenticated_cardano_l1"],
+  ["correction_removal", "public_l1_with_prohibited_optional_dependency"],
+]);
 const dependencies = dependencyMap.dependencies;
 if (!Array.isArray(dependencies)) {
   fail("dependencies must be an array");
@@ -42,10 +58,19 @@ const byId = new Map(dependencies.map((entry) => [entry.id, entry]));
 if (byId.size !== dependencies.length) {
   fail("dependency ids must be unique");
 }
+if (
+  dependencies.length !== requiredIds.length ||
+  requiredIds.some((id, index) => dependencies[index]?.id !== id)
+) {
+  fail("dependency ids and order must match the exact required set");
+}
 for (const id of requiredIds) {
   const entry = byId.get(id);
   if (entry === undefined) {
     fail(`missing dependency ${id}`);
+  }
+  if (entry.trust !== requiredTrustById.get(id)) {
+    fail(`${id} has an invalid trust classification`);
   }
   if (!Array.isArray(entry.sourcePaths) || entry.sourcePaths.length === 0) {
     fail(`${id} must name source paths`);
@@ -67,9 +92,7 @@ for (const id of requiredIds) {
   }
   const sourceTexts = [];
   for (const sourcePath of entry.sourcePaths) {
-    sourceTexts.push(
-      await readFile(resolve(repositoryRoot, sourcePath), "utf8"),
-    );
+    sourceTexts.push(readIndexedFile(sourcePath, "utf8"));
   }
   const combinedSource = sourceTexts.join("\n");
   for (const sourceSymbol of entry.sourceSymbols) {
@@ -96,12 +119,46 @@ if (
 const rejected = dependencyMap.explicitlyRejectedDependencies;
 if (
   !Array.isArray(rejected) ||
-  !rejected.some((entry) => entry.path === "demo/midgard-node/src/database") ||
-  !rejected.some(
-    (entry) => entry.symbol === "createHttpStateQueueMutationLeaseCoordinator",
-  )
+  JSON.stringify(rejected) !==
+    JSON.stringify([
+      {
+        path: "demo/midgard-node/src/database",
+        reason: "operator-private database",
+      },
+      {
+        path: "demo/midgard-node/src/commands/e2e-service.ts",
+        reason: "operator administration and test orchestration",
+      },
+      {
+        symbol: "createHttpStateQueueMutationLeaseCoordinator",
+        reason: "operator-admin mutation lease",
+      },
+      {
+        mode: "--midgard-node-url evidence preparation",
+        reason:
+          "operator endpoint is diagnostic only; watcher evidence must originate from authenticated public L1 and DA",
+      },
+    ])
 ) {
-  fail("operator-private database and mutation lease must be rejected");
+  fail("operator-private and diagnostic dependencies must be exactly rejected");
+}
+if (
+  JSON.stringify(dependencyMap.trustPolicy?.allowedSecurityInputs) !==
+    JSON.stringify([
+      "authenticated_cardano_l1",
+      "public_or_permissionless_da",
+      "signed_deployment_identity",
+      "deterministic_local_computation",
+    ]) ||
+  JSON.stringify(dependencyMap.trustPolicy?.prohibitedSecurityInputs) !==
+    JSON.stringify([
+      "operator_private_database",
+      "operator_admin_api",
+      "operator_private_file",
+      "operator_only_diagnostic_endpoint",
+    ])
+) {
+  fail("allowed and prohibited security inputs must match the exact policy");
 }
 
 if (
@@ -113,16 +170,10 @@ if (
   fail("W00-W02 watcher production sources must exist");
 }
 const watcherManifest = JSON.parse(
-  await readFile(
-    resolve(repositoryRoot, "demo/midgard-watcher/package.json"),
-    "utf8",
-  ),
+  readIndexedFile("demo/midgard-watcher/package.json", "utf8"),
 );
 const committeeManifest = JSON.parse(
-  await readFile(
-    resolve(repositoryRoot, "demo/da-committee-node/package.json"),
-    "utf8",
-  ),
+  readIndexedFile("demo/da-committee-node/package.json", "utf8"),
 );
 if (
   watcherManifest.name !== "midgard-watcher" ||
@@ -132,8 +183,8 @@ if (
 ) {
   fail("watcher and committee package identities must remain distinct");
 }
-const watcherSource = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/scaffold.ts"),
+const watcherSource = readIndexedFile(
+  "demo/midgard-watcher/src/scaffold.ts",
   "utf8",
 );
 if (
@@ -144,113 +195,90 @@ if (
 }
 const strictConfiguration =
   dependencyMap.requiredWatcherPackage?.strictConfiguration;
-const configBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/config.ts"),
+const configBytes = readIndexedFile("demo/midgard-watcher/src/config.ts");
+const configTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/config.test.ts",
 );
-const configTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/config.test.ts"),
+const deploymentIdentityBytes = readIndexedFile(
+  "demo/midgard-watcher/src/deployment-identity.ts",
 );
-const deploymentIdentityBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/deployment-identity.ts"),
+const deploymentIdentityTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/deployment-identity.test.ts",
 );
-const deploymentIdentityTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/deployment-identity.test.ts",
-  ),
+const durableStoreBytes = readIndexedFile(
+  "demo/midgard-watcher/src/durable-store.ts",
 );
-const durableStoreBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/durable-store.ts"),
+const durableStoreTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/durable-store.test.ts",
 );
-const durableStoreTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/durable-store.test.ts"),
+const l1AdapterBytes = readIndexedFile(
+  "demo/midgard-watcher/src/l1-adapter.ts",
 );
-const l1AdapterBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/l1-adapter.ts"),
+const l1AdapterTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/l1-adapter.test.ts",
 );
-const l1AdapterTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/l1-adapter.test.ts"),
+const multiProviderConsistencyBytes = readIndexedFile(
+  "demo/midgard-watcher/src/multi-provider-consistency.ts",
 );
-const multiProviderConsistencyBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/src/multi-provider-consistency.ts",
-  ),
+const multiProviderConsistencyTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
 );
-const multiProviderConsistencyTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
-  ),
+const finalityEngineBytes = readIndexedFile(
+  "demo/midgard-watcher/src/finality-engine.ts",
 );
-const finalityEngineBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/finality-engine.ts"),
+const finalityEngineTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/finality-engine.test.ts",
 );
-const finalityEngineTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/finality-engine.test.ts"),
+const rollbackEngineBytes = readIndexedFile(
+  "demo/midgard-watcher/src/rollback-engine.ts",
 );
-const rollbackEngineBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/rollback-engine.ts"),
+const rollbackEngineTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/rollback-engine.test.ts",
 );
-const rollbackEngineTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/rollback-engine.test.ts"),
+const ruleBundleBytes = readIndexedFile(
+  "demo/midgard-watcher/src/rule-bundle-v1.ts",
 );
-const ruleBundleBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/rule-bundle-v1.ts"),
+const ruleBundleTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/rule-bundle-v1.test.ts",
 );
-const ruleBundleTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/rule-bundle-v1.test.ts"),
+const stateQueueIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/state-queue-indexer.ts",
 );
-const stateQueueIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/state-queue-indexer.ts"),
+const stateQueueIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
 );
-const stateQueueIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
-  ),
+const userEventIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/user-event-indexer.ts",
 );
-const userEventIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/user-event-indexer.ts"),
+const userEventIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/user-event-indexer.test.ts",
 );
-const userEventIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/user-event-indexer.test.ts",
-  ),
+const settlementIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/settlement-indexer.ts",
 );
-const settlementIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/settlement-indexer.ts"),
+const settlementIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/settlement-indexer.test.ts",
 );
-const settlementIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/settlement-indexer.test.ts",
-  ),
+const proofThreadIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/proof-thread-indexer.ts",
 );
-const proofThreadIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/proof-thread-indexer.ts"),
+const proofThreadIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
 );
-const proofThreadIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
-  ),
-);
-const watcherIndexSource = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/index.ts"),
+const watcherIndexSource = readIndexedFile(
+  "demo/midgard-watcher/src/index.ts",
   "utf8",
 );
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const readTrackedBytes = async ({ mode, objectId, path }) => {
+const readTrackedBytes = ({ mode, objectId }) => {
   if (mode === "160000") {
     return Buffer.from(`gitlink:${objectId}`);
   }
-  const absolutePath = resolve(repositoryRoot, path);
-  const stats = await lstat(absolutePath);
-  return stats.isSymbolicLink()
-    ? Buffer.from(await readlink(absolutePath))
-    : readFile(absolutePath);
+  return execFileSync("git", ["cat-file", "blob", objectId], {
+    cwd: repositoryRoot,
+    encoding: "buffer",
+    maxBuffer: 128 * 1024 * 1024,
+  });
 };
 const contentTreeExclusions = [
   "GOAL_PROGRESS.md",
@@ -258,7 +286,7 @@ const contentTreeExclusions = [
 ];
 if (
   dependencyMap.authority?.publishedParentRevision !==
-    "66d2d5d540a99925533e1ee0b2434e0082613071" ||
+    "9013e82737b019c0b7efda2f50556e45271f3454" ||
   dependencyMap.authority?.treeState !==
     "reviewed follow-up content tree bound by resultContentTreeSha256" ||
   JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
@@ -288,19 +316,27 @@ const trackedEntriesFromIndex = execFileSync(
     };
   })
   .filter(({ path }) => !contentTreeExclusions.includes(path))
-  .sort((left, right) => left.path.localeCompare(right.path));
-const trackedEntries = await Promise.all(
-  trackedEntriesFromIndex.map(async (entry) => ({
-    path: entry.path,
-    sha256: sha256(await readTrackedBytes(entry)),
-  })),
-);
+  .sort((left, right) =>
+    Buffer.compare(
+      Buffer.from(left.path, "utf8"),
+      Buffer.from(right.path, "utf8"),
+    ),
+  );
+const trackedEntries = trackedEntriesFromIndex.map((entry) => ({
+  path: entry.path,
+  mode: entry.mode,
+  sha256: sha256(readTrackedBytes(entry)),
+}));
 const resultContentTreeSha256 = sha256(
   JSON.stringify({
     domain: "midgard-reviewed-integration-content-tree-v1",
     entries: trackedEntries,
   }),
 );
+if (process.argv.includes("--print-result-content-tree-sha256")) {
+  process.stdout.write(`${resultContentTreeSha256}\n`);
+  process.exit(0);
+}
 if (
   dependencyMap.authority?.resultContentTreeSha256 !== resultContentTreeSha256
 ) {
@@ -477,9 +513,10 @@ if (
   l1Adapter.identityPolicy !==
     "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content" ||
   l1Adapter.inputPolicy !== "authenticated_node_derived_l1_only" ||
+  l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 10
+  l1Adapter.node22FocusedTestsPassed !== 11
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -528,7 +565,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 14
+  multiProviderConsistency.node22FocusedTestsPassed !== 18
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }

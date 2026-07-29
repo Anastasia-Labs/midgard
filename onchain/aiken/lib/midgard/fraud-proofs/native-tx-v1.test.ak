@@ -4,16 +4,17 @@ use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/compact.{
-  decode_native_tx_compact_v1, encode_native_tx_body_compact,
-  encode_native_tx_compact_v1, encode_native_tx_proof_source_v1,
+  decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
+  encode_native_tx_body_compact, encode_native_tx_compact_v1,
+  encode_native_tx_field_preimage_lengths_v1, encode_native_tx_proof_source_v1,
   encode_native_tx_witness_set_compact, native_tx_full_hash_v1,
   native_tx_id_for_version, native_tx_proof_commitment_v1,
   verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
 }
 use midgard/fraud_proofs/native_tx/transaction
 use midgard/fraud_proofs/native_tx/types.{
-  NativeTxBodyCompact, NativeTxCompact, NativeTxWitnessSetCompact,
-  native_tx_version_v1,
+  NativeTxBodyCompact, NativeTxCompact, NativeTxFieldPreimageLengthsV1,
+  NativeTxWitnessSetCompact, native_tx_version_v1,
 }
 use midgard/validation_merkle_v1
 
@@ -56,6 +57,25 @@ fn sample_proof_compact() -> NativeTxCompact {
   NativeTxCompact {
     ..sample_compact(),
     witness_set_hash: blake2b_256(witness_set_cbor),
+  }
+}
+
+test v1_field_preimage_lengths_encode_scripts_before_address_witnesses() {
+  let lengths = NativeTxFieldPreimageLengthsV1 {
+    spend_inputs: 0,
+    reference_inputs: 1,
+    outputs: 2,
+    required_observers: 3,
+    required_signers: 4,
+    mint: 5,
+    address_witnesses: 7,
+    script_witnesses: 6,
+    redeemers: 8,
+  }
+  let encoded = encode_native_tx_field_preimage_lengths_v1(lengths)
+  and {
+    encoded == #"89000102030405060708",
+    decode_native_tx_field_preimage_lengths_v1(encoded) == lengths,
   }
 }
 

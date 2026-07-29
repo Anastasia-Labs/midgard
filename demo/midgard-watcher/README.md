@@ -4,10 +4,13 @@
 It is distinct from the DA committee service in `../da-committee-node`.
 
 W00 provides the workspace, executable, and verification scaffold. W01 adds a
-strict configuration language, but does not make the service production-ready.
+strict configuration language. This checkpoint also implements the strict
+W10-W17 and W23 observation, source-consistency, finality, rollback, protocol
+indexing, and authority-digest state machines as library surfaces. It does not
+make the service production-ready or enable operational `start`/`replay`.
 Production readiness remains false until deployment identity, durable state,
 public indexing, deterministic verification, proof actuation, and local/live
-acceptance work in W02–W46, WG1, and WG2 is complete.
+acceptance work in W02-W46, WG1, and WG2 is complete.
 
 ## Configuration
 
@@ -100,9 +103,9 @@ finality/rollback depth, and DA/proof deadlines use the exported
 `WATCHER_CONFIG_BOUNDS`; deadline values must also cover their corresponding
 request timeout.
 
-No operational command consumes the configuration at W01. `start` and `replay`
-therefore continue to return the W00 `foundation_incomplete` result with exit
-code 78.
+No operational command consumes the new library surfaces in this checkpoint.
+`start` and `replay` therefore continue to return the W00
+`foundation_incomplete` result with exit code 78.
 
 ## Commands
 
@@ -113,7 +116,8 @@ code 78.
 - `pnpm run start` invokes the service entry point.
 - `pnpm run replay` invokes the offline replay entry point.
 
-At W01, `start` and `replay` intentionally exit nonzero with a structured
-`foundation_incomplete` result. They must not become ready through a default,
-demo, or compatibility path. Later work packages replace these refusal paths
-only after their required trust boundaries and acceptance evidence exist.
+At this checkpoint, `start` and `replay` intentionally exit nonzero with a
+structured `foundation_incomplete` result. They must not become ready through
+a default, demo, or compatibility path. Later work packages replace these
+refusal paths only after their required trust boundaries and acceptance
+evidence exist.

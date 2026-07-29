@@ -45,6 +45,7 @@ import {
   minimumBarrierWatermarkMs,
   sameSpeculativeSourceIdSet,
 } from "@/fibers/speculative-commit-state.js";
+import { unixTimeToSlotForConfig } from "@/lucid-time.js";
 import {
   ConfigError,
   ContractDeploymentIdentity,
@@ -2074,11 +2075,21 @@ const databaseOperationsProgram = (
     }
     const mpfProcessingStartedAtMs = Date.now();
     mpfProcessingPasses += 1;
-    const proofValidationLucid = isMidgardConsensusProfileV1(
+    const proofValidationSlotConfig = isMidgardConsensusProfileV1(
       deploymentIdentity.consensusProfile,
     )
-      ? (yield* acquireCommitLucidOnce).api
+      ? workerInput.data.forcedValidationSlotConfig
       : undefined;
+    if (
+      isMidgardConsensusProfileV1(deploymentIdentity.consensusProfile) &&
+      proofValidationSlotConfig === undefined
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          "Canonical V1 commitment input is missing its node-selected slot configuration",
+        ),
+      );
+    }
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -2106,7 +2117,7 @@ const databaseOperationsProgram = (
         initialLedgerEntries,
         consensusProfile: deploymentIdentity.consensusProfile,
         forcedValidation:
-          proofValidationLucid === undefined
+          proofValidationSlotConfig === undefined
             ? undefined
             : {
                 expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
@@ -2114,7 +2125,12 @@ const databaseOperationsProgram = (
                 minFeeB: nodeConfig.MIN_FEE_B,
                 bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
                 slotForUnixTime: (unixTimeMs) =>
-                  BigInt(proofValidationLucid.unixTimeToSlot(unixTimeMs)),
+                  BigInt(
+                    unixTimeToSlotForConfig(
+                      unixTimeMs,
+                      proofValidationSlotConfig,
+                    ),
+                  ),
               },
         selectedBaseUtxoRoot: commitBase.root,
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,

@@ -1,3 +1,4 @@
+use aiken/builtin
 use aiken/collection/dict
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
@@ -16,6 +17,42 @@ use midgard/settlement.{
   ResolutionClaim, Resolve, Spawn, SpendRedeemer,
 }
 use midgard/state_queue
+
+fn decode_mint_redeemer(redeemer_data: Data) -> MintRedeemer {
+  let Pair(redeemer_tag, redeemer_fields) = builtin.un_constr_data(
+    redeemer_data,
+  )
+
+  when redeemer_tag is {
+    0 -> {
+      expect
+          [
+            settlement_id_data, output_index_data,
+            state_queue_merge_redeemer_index_data, hub_ref_input_index_data,
+          ]
+        = redeemer_fields
+      expect settlement_id: ByteArray = settlement_id_data
+      expect output_index: Int = output_index_data
+      expect state_queue_merge_redeemer_index: Int = state_queue_merge_redeemer_index_data
+      expect hub_ref_input_index: Int = hub_ref_input_index_data
+      Spawn {
+        settlement_id,
+        output_index,
+        state_queue_merge_redeemer_index,
+        hub_ref_input_index,
+      }
+    }
+    1 -> {
+      expect [settlement_id_data,
+            input_index_data, spend_redeemer_index_data] = redeemer_fields
+      expect settlement_id: ByteArray = settlement_id_data
+      expect input_index: Int = input_index_data
+      expect spend_redeemer_index: Int = spend_redeemer_index_data
+      Remove { settlement_id, input_index, spend_redeemer_index }
+    }
+    _ -> fail
+  }
+}
 
 validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   spend(
@@ -283,7 +320,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
 }
 
 validator mint(hub_oracle: ScriptHash) {
-  mint(redeemer: MintRedeemer, own_policy: PolicyId, tx: Transaction) {
+  mint(redeemer_data: Data<MintRedeemer>, own_policy: PolicyId, tx: Transaction) {
     let
         Transaction {
           inputs,
@@ -297,7 +334,7 @@ validator mint(hub_oracle: ScriptHash) {
         }
       = tx
 
-    when redeemer is {
+    when decode_mint_redeemer(redeemer_data) is {
       Spawn {
         settlement_id,
         output_index,
@@ -446,6 +483,63 @@ const test_settlement_policy: PolicyId =
   #"11111111111111111111111111111111111111111111111111111111"
 
 const test_settlement_id: AssetName = #"aa"
+
+test settlement_mint_redeemer_parser_preserves_spawn_field_order() {
+  expect
+      Spawn {
+        settlement_id,
+        output_index,
+        state_queue_merge_redeemer_index,
+        hub_ref_input_index,
+      }
+    = decode_mint_redeemer(
+    builtin.constr_data(
+      0,
+      [
+        builtin.b_data(#"aa"),
+        builtin.i_data(1),
+        builtin.i_data(2),
+        builtin.i_data(3),
+      ],
+    ),
+  )
+  settlement_id == #"aa" && output_index == 1 && state_queue_merge_redeemer_index == 2 && hub_ref_input_index == 3
+}
+
+test settlement_mint_redeemer_parser_preserves_remove_field_order() {
+  expect Remove { settlement_id, input_index, spend_redeemer_index } = decode_mint_redeemer(
+    builtin.constr_data(
+      1,
+      [builtin.b_data(#"bb"), builtin.i_data(4), builtin.i_data(5)],
+    ),
+  )
+  settlement_id == #"bb" && input_index == 4 && spend_redeemer_index == 5
+}
+
+test settlement_mint_redeemer_parser_rejects_unknown_tag() fail {
+  expect _ = decode_mint_redeemer(builtin.constr_data(2, []))
+  True
+}
+
+test settlement_mint_redeemer_parser_rejects_spawn_wrong_arity() fail {
+  expect _ = decode_mint_redeemer(
+    builtin.constr_data(
+      0,
+      [builtin.b_data(#"aa"), builtin.i_data(1), builtin.i_data(2)],
+    ),
+  )
+  True
+}
+
+test settlement_mint_redeemer_parser_rejects_remove_wrong_type() fail {
+  expect _ = decode_mint_redeemer(
+    builtin.constr_data(
+      1,
+      [builtin.b_data(#"bb"), builtin.b_data(#"04"), builtin.i_data(5)],
+    ),
+  )
+  True
+}
 
 test exact_settlement_policy_mint_accepts_only_settlement_nft() {
   let mint = assets.from_asset(test_settlement_policy, test_settlement_id, 1)

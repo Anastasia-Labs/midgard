@@ -1,0 +1,21 @@
+name: Evidence Integrity CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+      - name: Verify incomplete canonical V1 format registry structure
+        run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
+      - name: Verify canonical watcher dependency map and staged-tree identity
+        run: node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs

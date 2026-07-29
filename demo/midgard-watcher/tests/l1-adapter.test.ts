@@ -8,6 +8,7 @@ import {
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+  WATCHER_L1_ADAPTER_V1_BOUNDS,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
   watcherL1AdapterDiagnostic,
@@ -382,6 +383,34 @@ describe("provider-neutral authenticated L1 adapter", () => {
       () => normalizeWatcherL1BlockV1(provider(), duplicate),
       "duplicate_identity",
       "$.transactions[2]",
+    );
+  });
+
+  it("rejects multiplicative nested collections before parsing their members", () => {
+    const hostile = observation();
+    const transactionCount =
+      Math.floor(
+        WATCHER_L1_ADAPTER_V1_BOUNDS.totalCollectionMembers /
+          WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers,
+      ) + 1;
+    hostile.transactions = Array.from(
+      { length: transactionCount },
+      (_, index) => ({
+        ...transaction(index.toString(16).padStart(4, "0"), "0"),
+        utxos: Array.from(
+          { length: WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers },
+          () => null,
+        ),
+        scripts: [],
+        datums: [],
+        redeemers: [],
+      }),
+    );
+
+    rejected(
+      () => normalizeWatcherL1BlockV1(provider(), hostile),
+      "out_of_bounds",
+      "$.transactions",
     );
   });
 

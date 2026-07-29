@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,6 +40,10 @@ type GoldenAbiFixtureFile = {
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
+const transitionTraceAbiGoldenPath = path.join(
+  testDir,
+  "fixtures/transition-trace-abi.json",
+);
 const blueprint = JSON.parse(
   readFileSync(path.join(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
 ) as Blueprint;
@@ -52,10 +56,7 @@ const ledgerStateSource = readFileSync(
   "utf8",
 );
 const transitionTraceAbiGolden = JSON.parse(
-  readFileSync(
-    path.join(testDir, "fixtures/transition-trace-abi.json"),
-    "utf8",
-  ),
+  readFileSync(transitionTraceAbiGoldenPath, "utf8"),
 ) as GoldenAbiFixtureFile;
 
 const definition = (name: string): BlueprintDefinition => {
@@ -816,13 +817,22 @@ describe("SDK canonical ABI fixtures", () => {
       "source_non_membership",
     ]);
     expect(
-      fields(constructor("fraud_proofs/transition_trace/proof/Args", "Args")),
+      fields(
+        constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
+      ),
+    ).toEqual(["input_index", "output_index", "proof"]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/final_v1/Args",
+          "Args",
+        ),
+      ),
     ).toEqual([
       "input_index",
       "output_index",
       "hub_ref_input_index",
       "fraud_proof_mint_redeemer_index",
-      "proof",
     ]);
     expect(
       fields(
@@ -897,6 +907,26 @@ describe("SDK canonical ABI fixtures", () => {
     );
 
     const fixtures = buildTransitionTraceAbiFixtures();
+    if (process.env.UPDATE_TRANSITION_TRACE_ABI_FIXTURE === "1") {
+      const regenerated: GoldenAbiFixtureFile = {
+        version: 1,
+        encoding: "lucid-plutus-data-cbor-hex",
+        fixtures: Object.fromEntries(
+          Object.entries(fixtures).map(([name, fixture]) => [
+            name,
+            {
+              schema: fixture.schemaName,
+              ...encodedFixture(fixture.value, fixture.schema),
+            },
+          ]),
+        ),
+      };
+      writeFileSync(
+        transitionTraceAbiGoldenPath,
+        `${JSON.stringify(regenerated, null, 2)}\n`,
+      );
+      Object.assign(transitionTraceAbiGolden, regenerated);
+    }
     expect(Object.keys(transitionTraceAbiGolden.fixtures).sort()).toEqual(
       Object.keys(fixtures).sort(),
     );

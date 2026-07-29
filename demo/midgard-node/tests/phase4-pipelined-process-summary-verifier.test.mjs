@@ -27,14 +27,14 @@ const h64 = (digit) => digit.repeat(64);
 const txOne = h64("1");
 const txTwo = h64("2");
 const phasRegistrationTxHash =
-  "f7f901aee5bef259fbc62f97cf5b89aae7a11515b490882e03009a5ea952e0ce";
+  "a4b14d0df98800bfc22ffd23ce7b14184f9239bfbe2f54f36cedb36f3f3c8012";
 const phasRegistrationCborSha256 =
-  "6151d248776808489a06558ae4ccebab1c648f2ab41606f2a3e05e279ee49234";
+  "177014a13891dc12073567a35ff72e6ab2682341b394db5ab7d63fd8021646c8";
 const phasRegistrationTransactionBody = {
   type: "Unwitnessed Tx ConwayEra",
   description: "PHAS registration transaction body",
   cborHex:
-    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4da0f5f6",
+    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721a0f5f6",
 };
 
 const requiredNodeEnvKeys = [
@@ -306,10 +306,10 @@ const validSummary = () => {
         manifestId: h64("9"),
         registrationTxHash: phasRegistrationTxHash,
         rewardAddress:
-          "stake_test17prd7qp8ls90quvhjfxuqlcuy7kxk90t90twl3a88vxmknguu7vsa",
+          "stake_test17q0ut8l4fksz7ff46e95pdj84zpxezeaj9xhhff90adjwggps4day",
         rewardAddressBase16:
-          "f046df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
-        scriptHash: "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+          "f01fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
+        scriptHash: "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
         transactionBody: {
           schemaVersion: "midgard-phas-registration-transaction-body-v1",
           artifactSha256:
@@ -323,7 +323,7 @@ const validSummary = () => {
             count: 1,
             credentialType: "script",
             scriptHash:
-              "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+              "1fc59ff54da02f2535d64b40b647a8826c8b3d914d7ba5257f5b2721",
           },
         },
         registrationDepositLovelace: 400_000,

@@ -4,7 +4,7 @@ Branch: `codex/tx-validation-capability-checkpoint`
 Clean base: `23aff475`
 
 This checkpoint extends the reusable ordered-collection boundary harness with
-one real Cardano coupling: field 4 (`required_signers`) and field 6
+one real Cardano coupling: field 4 (`required_signers`) and field 7
 (`address_witnesses`) are derived from the same exact fully signed
 transaction. It is one coupled P2 boundary slice, not a complete
 ordered-collection or whole-P2 claim.
@@ -64,7 +64,7 @@ The accepting signed Cardano bytes feed directly into
 `cardanoTxBytesToMidgardNativeTxCanonicalCborV1`. The same resulting
 16,685-byte canonical Midgard transaction feeds both field measurements.
 
-| Measurement | Required signers, field 4 | Address witnesses, field 6 |
+| Measurement | Required signers, field 4 | Address witnesses, field 7 |
 | --- | ---: | ---: |
 | Canonical field bytes | 3,722 | 12,774 |
 | Committed item count | 124 | 124 |

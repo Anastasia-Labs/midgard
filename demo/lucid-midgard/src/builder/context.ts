@@ -1,4 +1,7 @@
-import { MIDGARD_NATIVE_TX_V1_VERSION } from "@al-ft/midgard-core/codec";
+import {
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
 import {
   isMidgardConsensusProfileV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
@@ -317,39 +320,52 @@ export const validateProtocolInfo = (
       "Provider consensus profile does not match the compiled V1 profile",
     );
   }
-  const expectedLanguages = info.codecSupportedScriptLanguages
-    .map(
-      (language) => `${language.name}:${language.tag.toString(10)}`,
-    )
-    .sort();
-  const actualLanguages = Array.isArray(info.supportedScriptLanguages)
-    ? info.supportedScriptLanguages
-        .map((language) => {
-          if (
-            typeof language !== "object" ||
-            language === null ||
-            typeof language.name !== "string" ||
-            typeof language.tag !== "number" ||
-            !Number.isSafeInteger(language.tag)
-          ) {
-            throw new ProviderPayloadError(
-              "/protocol-info",
-              "supportedScriptLanguages entries must contain name and tag",
-            );
-          }
-          return `${language.name}:${language.tag.toString(10)}`;
-        })
-        .sort()
-    : undefined;
-  if (
-    actualLanguages === undefined ||
-    expectedLanguages.length !== actualLanguages.length ||
-    expectedLanguages.some((label, index) => actualLanguages[index] !== label)
-  ) {
-    throw new ProviderPayloadError(
-      "/protocol-info",
-      "supportedScriptLanguages must exactly match the consensus profile",
-    );
+  const languageLabels = (
+    value: unknown,
+    field: "supportedScriptLanguages" | "codecSupportedScriptLanguages",
+  ): string[] => {
+    if (!Array.isArray(value)) {
+      throw new ProviderPayloadError(
+        "/protocol-info",
+        `${field} must be an array`,
+      );
+    }
+    return value
+      .map((language) => {
+        if (
+          typeof language !== "object" ||
+          language === null ||
+          typeof language.name !== "string" ||
+          typeof language.tag !== "number" ||
+          !Number.isSafeInteger(language.tag)
+        ) {
+          throw new ProviderPayloadError(
+            "/protocol-info",
+            `${field} entries must contain canonical name and tag values`,
+          );
+        }
+        return `${language.name}:${language.tag.toString(10)}`;
+      })
+      .sort();
+  };
+  const compiledLanguages = languageLabels(
+    MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+    "codecSupportedScriptLanguages",
+  );
+  for (const [field, value] of [
+    ["supportedScriptLanguages", info.supportedScriptLanguages],
+    ["codecSupportedScriptLanguages", info.codecSupportedScriptLanguages],
+  ] as const) {
+    const labels = languageLabels(value, field);
+    if (
+      labels.length !== compiledLanguages.length ||
+      compiledLanguages.some((label, index) => labels[index] !== label)
+    ) {
+      throw new ProviderPayloadError(
+        "/protocol-info",
+        `${field} must exactly match the compiled canonical script-language set`,
+      );
+    }
   }
   if (
     typeof info.protocolFeeParameters !== "object" ||
@@ -388,10 +404,7 @@ export const validateProtocolInfo = (
       "validation profile must be explicit and non-authoritative locally",
     );
   }
-  if (
-    info.midgardNativeTxVersion !==
-    Number(MIDGARD_NATIVE_TX_V1_VERSION)
-  ) {
+  if (info.midgardNativeTxVersion !== Number(MIDGARD_NATIVE_TX_V1_VERSION)) {
     throw new ProviderCapabilityError(
       "/protocol-info",
       "Provider Midgard native transaction version mismatch",

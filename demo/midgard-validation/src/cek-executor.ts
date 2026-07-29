@@ -173,6 +173,7 @@ export type MidgardCekStructuralExecutionV1 = {
   readonly initialState: MidgardCekMachineStateV1;
   readonly steps: readonly MidgardCekExecutionStepV1[];
   readonly terminalState: MidgardCekMachineStateV1;
+  readonly stopReason: "halted" | "budgetExceeded";
 };
 
 /**
@@ -502,9 +503,21 @@ class StructuralExecutorV1 {
     });
   }
 
-  public run(maxSteps: number): MidgardCekStructuralExecutionV1 {
+  public run(
+    maxSteps: number,
+    executionBudget?: {
+      readonly cpu: bigint;
+      readonly memory: bigint;
+    },
+  ): MidgardCekStructuralExecutionV1 {
     if (!Number.isSafeInteger(maxSteps) || maxSteps <= 0) {
       throw new Error("CEK maxSteps must be a positive safe integer");
+    }
+    if (
+      executionBudget !== undefined &&
+      (executionBudget.cpu < 0n || executionBudget.memory < 0n)
+    ) {
+      throw new Error("CEK execution budget must be non-negative");
     }
     const initialState = this.state;
     while (
@@ -517,11 +530,24 @@ class StructuralExecutorV1 {
         );
       }
       this.step();
+      if (
+        executionBudget !== undefined &&
+        (this.state.cpu > executionBudget.cpu ||
+          this.state.memory > executionBudget.memory)
+      ) {
+        return Object.freeze({
+          initialState,
+          steps: Object.freeze([...this.steps]),
+          terminalState: this.state,
+          stopReason: "budgetExceeded",
+        });
+      }
     }
     return Object.freeze({
       initialState,
       steps: Object.freeze([...this.steps]),
       terminalState: this.state,
+      stopReason: "halted",
     });
   }
 
@@ -3028,10 +3054,14 @@ export const executeMidgardCekStructuralProgramV1 = (input: {
   >;
   readonly executionIndex?: bigint;
   readonly maxSteps: number;
+  readonly executionBudget?: {
+    readonly cpu: bigint;
+    readonly memory: bigint;
+  };
 }): MidgardCekStructuralExecutionV1 =>
   new StructuralExecutorV1(
     input.root,
     input.material,
     input.executionIndex ?? 0n,
     input.constantWitnesses,
-  ).run(input.maxSteps);
+  ).run(input.maxSteps, input.executionBudget);

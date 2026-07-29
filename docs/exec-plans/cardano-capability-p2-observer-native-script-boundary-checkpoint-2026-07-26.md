@@ -4,7 +4,7 @@ Branch: `codex/tx-validation-capability-checkpoint`
 Clean base: `ff829619`
 
 This checkpoint adds the exact coupled Cardano boundary fixture for field 3
-(`required_observers`) and native-script entries in field 7
+(`required_observers`) and native-script entries in field 6
 (`script_witnesses`). Every observer is represented by the production
 converter's supported zero-lovelace script reward withdrawal and has exactly
 one matching, consumed native-script witness. This is a focused P2 slice, not
@@ -86,7 +86,7 @@ The accepting signed Cardano bytes feed directly into the production
 through the existing typed collection/item/chunk constructors, every
 per-reveal verifier, and the same exact complete terminal reconstruction fold.
 
-| Measurement | Field 3 observers | Field 7 native scripts |
+| Measurement | Field 3 observers | Field 6 native scripts |
 | --- | ---: | ---: |
 | Canonical field bytes | 6,722 | 9,858 |
 | Committed items | 224 | 224 |
@@ -154,7 +154,7 @@ Both pass.
 ## Remaining gate cells
 
 This checkpoint closes the TypeScript exact Cardano boundary and terminal-fold
-fixture for field 3 and the coupled NativeCardano form of field 7. Fields 0, 1,
+fixture for field 3 and the coupled NativeCardano form of field 6. Fields 0, 1,
 2, 3, 4, 6, and 7 now have this evidence. The next dynamic field without
 equivalent evidence is field 5 (`mint`); field 8 (`redeemers`) also remains
 open.

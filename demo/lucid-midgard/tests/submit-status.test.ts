@@ -71,7 +71,9 @@ const makeProvider = (opts?: {
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
     submissionLimits: {
-      maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      maxSubmitTxCborBytes:
+        opts?.maxSubmitTxCborBytes ??
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     },
     validation: {
       strictnessProfile: "phase1_midgard",
@@ -86,7 +88,11 @@ const makeProvider = (opts?: {
     strictnessProfile: "phase1_midgard",
     ...(opts?.omitProtocolParameterSubmitLimit === true
       ? {}
-      : { maxSubmitTxCborBytes: opts?.maxSubmitTxCborBytes ?? MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes }),
+      : {
+          maxSubmitTxCborBytes:
+            opts?.maxSubmitTxCborBytes ??
+            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+        }),
   }),
   getCurrentSlot: async () => 0n,
   submitTx:
@@ -139,11 +145,15 @@ describe("submit/status chaining", () => {
   it("signs native body hashes and rebuilds witness hashes without changing tx id", async () => {
     const { completed, wallet, keyHash } = await makeSignedFixture();
     const signed = await completed.sign(wallet);
-    const signedAgain = await signed.sign(wallet);
 
     expect(signed.txIdHex).toBe(completed.txIdHex);
     expect(signed.txHex).not.toBe(completed.txHex);
-    expect(signedAgain.txHex).toBe(signed.txHex);
+    await expect(signed.sign(wallet)).rejects.toMatchObject({
+      name: "SigningError",
+      code: "SIGNING_ERROR",
+      message: "Duplicate vkey witness",
+      detail: keyHash.to_hex(),
+    });
     expect(signed.metadata.addrWitnessCount).toBe(1);
     expect(signed.metadata.signedBy).toEqual([keyHash.to_hex()]);
 

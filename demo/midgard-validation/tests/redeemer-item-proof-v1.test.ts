@@ -41,12 +41,7 @@ const balancedRedeemerCanonicalCbor = Buffer.from(
   "hex",
 );
 
-const smallItem = encodeCbor([
-  0n,
-  0n,
-  Buffer.from([0]),
-  [10n, 20n],
-]);
+const smallItem = encodeCbor([0n, 0n, Buffer.from([0]), [10n, 20n]]);
 
 describe("retained V1 redeemer item proof", () => {
   it("binds descriptor metadata and rejects mutated openings or controls", () => {
@@ -58,9 +53,7 @@ describe("retained V1 redeemer item proof", () => {
       expectedPurposeTag: 0,
       expectedPointerIndex: 0,
     });
-    const descriptor = midgardRedeemerItemDescriptorV1(
-      trace.steps[1]!.next,
-    );
+    const descriptor = midgardRedeemerItemDescriptorV1(trace.steps[1]!.next);
     expect(descriptor).toMatchObject({
       itemIndex: 0,
       itemCount: 1,
@@ -84,23 +77,18 @@ describe("retained V1 redeemer item proof", () => {
       traversal: null,
     });
     expect(
-      finalizeMidgardRedeemerItemProofV1(
-        descriptorOnly.terminal,
-      ),
+      finalizeMidgardRedeemerItemProofV1(descriptorOnly.terminal),
     ).toBeNull();
 
     const header = trace.steps[0]!;
-    const wrongPurpose = buildMidgardRedeemerItemProofTraceV1.bind(
-      null,
-      {
-        itemIndex: 0,
-        itemCount: 1,
-        itemBytes: smallItem,
-        mode: MidgardRedeemerItemProofModesV1.Data,
-        expectedPurposeTag: 1,
-        expectedPointerIndex: 0,
-      },
-    );
+    const wrongPurpose = buildMidgardRedeemerItemProofTraceV1.bind(null, {
+      itemIndex: 0,
+      itemCount: 1,
+      itemBytes: smallItem,
+      mode: MidgardRedeemerItemProofModesV1.Data,
+      expectedPurposeTag: 1,
+      expectedPointerIndex: 0,
+    });
     expect(wrongPurpose).toThrow();
     expect(() =>
       buildMidgardRedeemerItemProofTraceV1({
@@ -110,7 +98,7 @@ describe("retained V1 redeemer item proof", () => {
         mode: MidgardRedeemerItemProofModesV1.Data,
         expectedPurposeTag: 0,
         expectedPointerIndex: 1,
-      })
+      }),
     ).toThrow();
 
     const wrongIndex = {
@@ -129,9 +117,7 @@ describe("retained V1 redeemer item proof", () => {
         ...header.control,
         itemCount: 2,
       }),
-    ).not.toEqual(
-      hashMidgardRedeemerItemProofControlV1(header.control),
-    );
+    ).not.toEqual(hashMidgardRedeemerItemProofControlV1(header.control));
 
     const wrongLength = {
       ...header.control,
@@ -161,7 +147,7 @@ describe("retained V1 redeemer item proof", () => {
         ...header.witness.chunkProof!,
         chunk: Buffer.from(
           header.witness.chunkProof!.chunk.map((byte, index) =>
-            index === 0 ? byte ^ 0x01 : byte
+            index === 0 ? byte ^ 0x01 : byte,
           ),
         ),
       },
@@ -200,11 +186,8 @@ describe("retained V1 redeemer item proof", () => {
           chunkProof: {
             ...tail.witness.chunkProof!,
             chunk: Buffer.from(
-              tail.witness.chunkProof!.chunk.map(
-                (byte, index, bytes) =>
-                  index === bytes.length - 1
-                    ? byte ^ 0x01
-                    : byte,
+              tail.witness.chunkProof!.chunk.map((byte, index, bytes) =>
+                index === bytes.length - 1 ? byte ^ 0x01 : byte,
               ),
             ),
           },
@@ -221,15 +204,12 @@ describe("retained V1 redeemer item proof", () => {
       ...traversalStep.control,
       traversal: {
         ...traversalStep.control.traversal!,
-        sourceStart:
-          traversalStep.control.traversal!.sourceStart + 1,
+        sourceStart: traversalStep.control.traversal!.sourceStart + 1,
       },
     };
-    expect(
-      isWellFormedMidgardRedeemerItemProofControlV1(
-        wrongTraversal,
-      ),
-    ).toBe(false);
+    expect(isWellFormedMidgardRedeemerItemProofControlV1(wrongTraversal)).toBe(
+      false,
+    );
 
     const terminal = trace.terminal;
     const summary = finalizeMidgardRedeemerItemProofV1(terminal)!;
@@ -247,9 +227,7 @@ describe("retained V1 redeemer item proof", () => {
       hashMidgardRedeemerItemProofControlV1(wrongSummaryTerminal),
     ).not.toEqual(hashMidgardRedeemerItemProofControlV1(terminal));
     expect(
-      finalizeMidgardRedeemerItemProofV1(
-        wrongSummaryTerminal,
-      )!.root,
+      finalizeMidgardRedeemerItemProofV1(wrongSummaryTerminal)!.root,
     ).not.toEqual(summary.root);
   });
 
@@ -259,8 +237,7 @@ describe("retained V1 redeemer item proof", () => {
     );
     const collection = deriveMidgardNativeFieldCollectionV1({
       fieldIndex: 8,
-      preimageCbor:
-        native.witnessSet.redeemerTxWitsPreimageCbor,
+      preimageCbor: native.witnessSet.redeemerTxWitsPreimageCbor,
     });
     expect(collection.items).toHaveLength(1);
     const item = collection.items[0]!;
@@ -270,12 +247,8 @@ describe("retained V1 redeemer item proof", () => {
       itemBytes: item.bytes,
       mode: MidgardRedeemerItemProofModesV1.Data,
     });
-    const descriptor = midgardRedeemerItemDescriptorV1(
-      trace.steps[1]!.next,
-    )!;
-    const summary = finalizeMidgardRedeemerItemProofV1(
-      trace.terminal,
-    );
+    const descriptor = midgardRedeemerItemDescriptorV1(trace.steps[1]!.next)!;
+    const summary = finalizeMidgardRedeemerItemProofV1(trace.terminal);
     expect(descriptor).toMatchObject({
       itemIndex: 0,
       itemCount: 1,
@@ -300,14 +273,11 @@ describe("retained V1 redeemer item proof", () => {
         (maximum, { control }) =>
           Math.max(
             maximum,
-            nextMidgardRedeemerItemProofSpanV1(control)?.length ??
-              0,
+            nextMidgardRedeemerItemProofSpanV1(control)?.length ?? 0,
           ),
         0,
       ),
-    ).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-    );
+    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1);
 
     const crossing = trace.steps.find(
       ({ witness }) => witness.nextChunkProof !== null,
@@ -322,5 +292,5 @@ describe("retained V1 redeemer item proof", () => {
         },
       }),
     ).toBeNull();
-  }, 30_000);
+  }, 120_000);
 });

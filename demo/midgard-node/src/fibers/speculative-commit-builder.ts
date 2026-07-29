@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  type MidgardConsensusProfileV1,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
@@ -34,6 +32,7 @@ import {
   type SpeculativeInvalidationReason,
 } from "@/fibers/speculative-commit-state.js";
 import { makeAwaitedWorkerTerminator } from "@/fibers/worker-lifecycle.js";
+import { canonicalSlotConfigForLucid } from "@/lucid-time.js";
 import {
   type CommitSubmitWake,
   Database,
@@ -662,11 +661,12 @@ export const runSpeculativeCommitBuilderOnce = (
 ): Effect.Effect<
   void,
   WorkerError | DatabaseError,
-  Globals | Database | NodeConfig
+  Globals | Database | Lucid | NodeConfig
 > =>
   Effect.gen(function* () {
     const globals = yield* Globals;
     const config = yield* NodeConfig;
+    const lucid = yield* Lucid;
     if (
       !config.SPECULATIVE_COMMIT_BUILD ||
       hasActiveSpeculativeCommitSession()
@@ -775,6 +775,7 @@ export const runSpeculativeCommitBuilderOnce = (
             record[
               PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME
             ].getTime(),
+          forcedValidationSlotConfig: canonicalSlotConfigForLucid(lucid.api),
           ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
           localFinalizationPending: false,
           mempoolTxsCountSoFar: 0,
@@ -1167,7 +1168,7 @@ export const submitSpeculativeCandidateOnConfirmation = (
 export const speculativeCommitBuilderFiber: Effect.Effect<
   void,
   never,
-  Globals | Database | NodeConfig
+  Globals | Database | Lucid | NodeConfig
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   const config = yield* NodeConfig;

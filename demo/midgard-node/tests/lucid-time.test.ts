@@ -7,12 +7,44 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalSlotConfigForLucid,
   customSlotConfigFromShelleyGenesis,
   slotToUnixTimeForLucid,
   slotToUnixTimeForLucidOrEmulatorFallback,
+  unixTimeToSlotForConfig,
 } from "@/lucid-time.js";
 
 describe("lucid-time", () => {
+  it("reproduces Lucid's enclosing-slot conversion from plain worker data", async () => {
+    const account = generateEmulatorAccount({ lovelace: 50_000_000n });
+    const emulator = new Emulator([account]);
+    const lucid = await Lucid(emulator, "Custom");
+    const slotConfig = canonicalSlotConfigForLucid(lucid);
+    const unixTimeMs = emulator.now() + 12_345;
+
+    expect(unixTimeToSlotForConfig(unixTimeMs, slotConfig)).toBe(
+      lucid.unixTimeToSlot(unixTimeMs),
+    );
+    expect(slotConfig).toEqual(lucid.config().slotConfig);
+  });
+
+  it("fails closed on invalid or pre-genesis worker slot inputs", () => {
+    expect(() =>
+      unixTimeToSlotForConfig(999, {
+        zeroTime: 1_000,
+        zeroSlot: 0,
+        slotLength: 1_000,
+      }),
+    ).toThrow(/invalid slot/u);
+    expect(() =>
+      unixTimeToSlotForConfig(1_000, {
+        zeroTime: 1_000,
+        zeroSlot: 0,
+        slotLength: 0,
+      }),
+    ).toThrow(/slotLength/u);
+  });
+
   it("derives an exact per-instance Custom mapping from Shelley genesis", () => {
     expect(
       customSlotConfigFromShelleyGenesis(

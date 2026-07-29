@@ -4,14 +4,16 @@ use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/fuzz
 use aiken/primitive/bytearray
+use midgard/bounded_collection_v1
 use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, encode_native_tx_body_compact,
-  encode_native_tx_compact_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_compact_v1,
+  encode_native_tx_compact_v1, native_tx_id_for_version,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
-  decode_midgard_tx_output_cbor, encode_midgard_tx_output,
+  decode_midgard_tx_output_cbor, encode_midgard_address_witness,
+  encode_midgard_tx_output, encode_midgard_versioned_script,
 }
 use midgard/fraud_proofs/native_tx/preimages.{
   decode_midgard_tx_address_witnesses_preimage_cbor,
@@ -45,10 +47,10 @@ const golden_core_native_full_tx_cbor =
   #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
 
 const golden_core_native_compact_tx_cbor =
-  #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
+  #"84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d9258206a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a20425820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
 
 const golden_core_native_tx_id =
-  #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+  #"2037f7a4728ac05582798cf49151c13a6350dbd88215da18db9d829974fa4eac"
 
 const golden_core_spend_inputs_preimage_cbor =
   #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
@@ -231,7 +233,7 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
     encode_native_tx_body_compact(body) == body_cbor,
     encode_native_tx_compact_v1(compact) == compact_cbor,
     view.tx_id == blake2b_256(body_cbor),
-    view.tx_compact.body.spend_inputs_hash == #"0101010101010101010101010101010101010101010101010101010101010101",
+    view.tx_compact.body.spend_inputs_hash == #"5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92",
     encode_native_tx_compact_v1(view.tx_compact) == compact_cbor,
   }
 }
@@ -377,6 +379,14 @@ test midgard_transaction_full_decode_round_trip() {
     verified_tx.transaction == tx,
     verified_tx.compact == compact,
     verified_tx.compact_cbor == encode_native_tx_compact_v1(compact),
+    witness_set_compact.addr_tx_wits_hash == bounded_collection_v1.from_items(
+      7,
+      list.map(tx.witness_set.addr_tx_wits, encode_midgard_address_witness),
+    ),
+    witness_set_compact.script_tx_wits_hash == bounded_collection_v1.from_items(
+      6,
+      list.map(tx.witness_set.script_tx_wits, encode_midgard_versioned_script),
+    ),
     partial.version == Some(native_tx_version_v1),
     partial.validity == Some(TxIsValid),
     partial_body.inputs == Some(tx.body.inputs),
@@ -412,8 +422,8 @@ test decode_midgard_value_preserves_unsorted_asset_order() {
 
 test golden_midgard_core_native_full_tx_decodes() {
   let tx_cbor = #"84018c58278158248258201111111111111111111111111111111111111111111111111111111111111111005827815824825820222222222222222222222222222222222222222222222222222222222222222201585081584da200581d60aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01821a001e8480a1581c7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7aa1434d494405182a2018644180418041805820333333333333333333333333333333333333333333333333333333333333333358204444444444444444444444444444444444444444444444444444444444444444008341804180418000"
-  let compact_cbor = #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
-  let tx_id = #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+  let compact_cbor = #"84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d9258206a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a20425820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
+  let tx_id = #"2037f7a4728ac05582798cf49151c13a6350dbd88215da18db9d829974fa4eac"
   let decoded = decode_midgard_transaction_v1(tx_cbor)
   expect [input] = decoded.body.inputs
   expect [reference_input] = decoded.body.reference_inputs
@@ -434,12 +444,15 @@ test golden_midgard_core_native_full_tx_decodes() {
     output.value.lovelace == 2_000_000,
     asset_unit == #"7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a4d4944",
     quantity == 5,
-    compact.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
-    compact.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
-    compact.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
-    compact.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
+    compact.body.spend_inputs_hash == #"5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92",
+    compact.body.reference_inputs_hash == #"6a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a2042",
+    compact.body.outputs_hash == #"fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3",
+    compact.witness_set_hash == #"6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643",
     encode_native_tx_compact_v1(compact) == compact_cbor,
-    blake2b_256(encode_native_tx_body_compact(compact.body)) == tx_id,
+    native_tx_id_for_version(
+      decoded.version,
+      encode_native_tx_body_compact(compact.body),
+    ) == tx_id,
   }
 }
 
@@ -482,7 +495,7 @@ test golden_midgard_core_native_preimage_cbor_decoders() {
 }
 
 test golden_midgard_core_native_compact_tx_decodes() {
-  let compact_cbor = #"84018c582044bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb65820e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513582090c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb182a201864582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444400582052408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c00"
+  let compact_cbor = #"84018c58205e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d9258206a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a20425820fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3182a2018645820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d58203333333333333333333333333333333333333333333333333333333333333333582044444444444444444444444444444444444444444444444444444444444444440058206ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d964300"
   let tx_id = golden_core_native_tx_id
   let compact = decode_native_tx_compact_v1(compact_cbor)
   let verified = verify_native_tx_compact_v1(tx_id, compact, compact_cbor)
@@ -491,10 +504,10 @@ test golden_midgard_core_native_compact_tx_decodes() {
   and {
     verified_from_cbor == verified,
     verified.tx_compact.validity_code == 0,
-    verified.tx_compact.body.spend_inputs_hash == #"44bc7621c0c1b05789bfd7fae817a582b32ce0d7d357d1cb717e0512cf32eeb6",
-    verified.tx_compact.body.reference_inputs_hash == #"e190369d719bcefc386ac4f56886a69d3f66ff8bb7f6ce1bc01defafc7164513",
-    verified.tx_compact.body.outputs_hash == #"90c0662cc2568cf510b3d965486a0a7a4494e811045b237c945158b3e14d16fb",
-    verified.tx_compact.witness_set_hash == #"52408b440567f475c3eee21c9a8be91ed05a31e81e175c69fcaec5ccd187258c",
+    verified.tx_compact.body.spend_inputs_hash == #"5e0d1a550b9170eb36be56c637a28ff42b7832b0f749310490995b230e329d92",
+    verified.tx_compact.body.reference_inputs_hash == #"6a72ecdde03ad548776a3431f6c925d0e85e875b698615ad189f179fbb9a2042",
+    verified.tx_compact.body.outputs_hash == #"fb82d41490cf0acecf93c2c7cc331ed5da544f4178c73d85b221f397b732ced3",
+    verified.tx_compact.witness_set_hash == #"6ab07ab512fb3a2860ddc7f57ca940073e9300c01e62c9b51cf2de2a0d7d9643",
   }
 }
 

@@ -7,6 +7,7 @@ import {
   PHASE1_FORMAL_GENERATION_RESULT_SCHEMA,
   sha256FileSync,
 } from "./phase1-formal-identity.mjs";
+import { readNodeSlotConfigEvidenceV1 } from "./node-slot-config-evidence.mjs";
 
 export const ARCHITECTURE_G_FORMAL_GATE_CONFIG = Object.freeze({
   "50k": Object.freeze({ runs: 20, transactions: 50_000 }),
@@ -1400,6 +1401,7 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       "fixtureCreationSha256",
       "fixtureInitialUtxoCount",
       "baseUtxoPayloadAggregate",
+      "forcedValidationSlotConfigArtifact",
       "workerInput",
     ],
     "Architecture G commit-candidate input",
@@ -1415,6 +1417,15 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
     ["entryCount", "encodedTupleBytes"],
     "Architecture G candidate base UTxO aggregate",
   );
+  const slotConfigArtifact = requireExactObjectKeys(
+    input.forcedValidationSlotConfigArtifact,
+    ["path", "sha256", "document"],
+    "Architecture G candidate slot-config artifact binding",
+  );
+  const verifiedSlotConfigDocument = readNodeSlotConfigEvidenceV1({
+    path: slotConfigArtifact.path,
+    expectedSha256: slotConfigArtifact.sha256,
+  });
   requireExactObjectKeys(
     input.workerInput,
     ["data"],
@@ -1426,6 +1437,7 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       "availableConfirmedBlock",
       "availableLocalFinalizationBlock",
       "currentBlockStartTimeMs",
+      "forcedValidationSlotConfig",
       "localFinalizationPending",
       "ledgerStoreLeaseOwner",
       "mempoolTxsCountSoFar",
@@ -1458,6 +1470,16 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
     ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
     "Architecture G candidate barrier watermarks",
   );
+  const forcedValidationSlotConfig = requireExactObjectKeys(
+    data.forcedValidationSlotConfig,
+    ["zeroTime", "zeroSlot", "slotLength"],
+    "Architecture G candidate forced-validation slot configuration",
+  );
+  const currentBlockSlot =
+    Math.floor(
+      (data.currentBlockStartTimeMs - forcedValidationSlotConfig.zeroTime) /
+        forcedValidationSlotConfig.slotLength,
+    ) + forcedValidationSlotConfig.zeroSlot;
   const excludedFields = [
     "excludedMempoolTxIds",
     "excludedDepositEventIds",
@@ -1486,9 +1508,17 @@ export const validateArchitectureGCommitCandidateInputV1 = (input) => {
       input.fixtureInitialUtxoCount ||
     !isPositiveSafeInteger(input.baseUtxoPayloadAggregate.encodedTupleBytes) ||
     input.corpusSha256 !== input.phase1FormalBinding.corpus.corpusSha256 ||
+    JSON.stringify(slotConfigArtifact.document) !==
+      JSON.stringify(verifiedSlotConfigDocument) ||
+    JSON.stringify(forcedValidationSlotConfig) !==
+      JSON.stringify(verifiedSlotConfigDocument.slotConfig) ||
     data.availableConfirmedBlock !== "" ||
     data.availableLocalFinalizationBlock !== "" ||
     !isPositiveSafeInteger(data.currentBlockStartTimeMs) ||
+    !isNonNegativeSafeInteger(forcedValidationSlotConfig.zeroTime) ||
+    !isNonNegativeSafeInteger(forcedValidationSlotConfig.zeroSlot) ||
+    !isPositiveSafeInteger(forcedValidationSlotConfig.slotLength) ||
+    !isNonNegativeSafeInteger(currentBlockSlot) ||
     data.localFinalizationPending !== false ||
     !/^commit:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
       data.ledgerStoreLeaseOwner,

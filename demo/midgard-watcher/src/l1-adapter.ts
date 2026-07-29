@@ -11,6 +11,7 @@ export const WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION =
 
 export const WATCHER_L1_ADAPTER_V1_BOUNDS = Object.freeze({
   arrayMembers: 4_096,
+  totalCollectionMembers: 65_536,
   publicBytes: 1_048_576,
   totalPublicBytes: 67_108_864,
 });
@@ -215,6 +216,7 @@ type CanonicalJson =
   | { readonly [key: string]: CanonicalJson };
 
 type ParseBudget = {
+  collectionMembers: number;
   publicBytes: number;
 };
 
@@ -324,6 +326,44 @@ const exactArray = (value: unknown, path: string): readonly unknown[] => {
     fail("out_of_bounds", path);
   }
   return values;
+};
+
+const reserveCollectionMembers = (
+  budget: ParseBudget,
+  count: number,
+  path: string,
+): void => {
+  budget.collectionMembers += count;
+  if (
+    budget.collectionMembers >
+    WATCHER_L1_ADAPTER_V1_BOUNDS.totalCollectionMembers
+  ) {
+    fail("out_of_bounds", path);
+  }
+};
+
+const preflightTransactionCollections = (
+  value: unknown,
+  budget: ParseBudget,
+): readonly unknown[] => {
+  const transactions = exactArray(value, "$.transactions");
+  reserveCollectionMembers(budget, transactions.length, "$.transactions");
+  for (let index = 0; index < transactions.length; index += 1) {
+    const path = `$.transactions[${index.toString()}]`;
+    const transaction = exactRecord(transactions[index], path, [
+      "txHash",
+      "body",
+      "utxos",
+      "scripts",
+      "datums",
+      "redeemers",
+    ]);
+    for (const field of ["utxos", "scripts", "datums", "redeemers"] as const) {
+      const members = exactArray(transaction[field], `${path}.${field}`);
+      reserveCollectionMembers(budget, members.length, "$.transactions");
+    }
+  }
+  return transactions;
 };
 
 const sha256Bytes = (value: Uint8Array): string =>
@@ -798,15 +838,18 @@ export const normalizeWatcherL1BlockV1 = (
   const slot = exactNatural(point.slot, "$.chainPoint.slot");
   const blockNo = exactNatural(point.blockNo, "$.chainPoint.blockNo");
   const depth = exactNatural(point.depth, "$.chainPoint.depth");
-  const budget: ParseBudget = { publicBytes: 0 };
+  const budget: ParseBudget = { collectionMembers: 0, publicBytes: 0 };
+  const transactionInputs = preflightTransactionCollections(
+    observation.transactions,
+    budget,
+  );
   const transactions = freezeSortedUnique(
-    exactArray(observation.transactions, "$.transactions").map(
-      (transaction, index) =>
-        parseTransaction(
-          transaction,
-          `$.transactions[${index.toString()}]`,
-          budget,
-        ),
+    transactionInputs.map((transaction, index) =>
+      parseTransaction(
+        transaction,
+        `$.transactions[${index.toString()}]`,
+        budget,
+      ),
     ),
     "$.transactions",
     (transaction) => transaction.txHash,

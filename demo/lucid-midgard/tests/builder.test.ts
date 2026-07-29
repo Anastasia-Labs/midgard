@@ -18,6 +18,7 @@ import {
   type MidgardUtxo,
   type OutRef,
   outRefToCbor,
+  ProviderPayloadError,
 } from "../src/index.js";
 
 const address =
@@ -35,7 +36,10 @@ const fakeProvider: MidgardProvider = {
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 44n, minFeeB: 155381n },
-    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -80,6 +84,45 @@ const makeUtxoAtAddress = (ref: OutRef, outputAddress: string): MidgardUtxo =>
   });
 
 describe("LucidMidgard builder fluent API", () => {
+  it("rejects direct-provider script-language self-attestation", async () => {
+    const canonicalInfo = await fakeProvider.getProtocolInfo();
+    const falseLanguageSet = [{ name: "PlutusV3", tag: 2 }] as const;
+    const cases = [
+      {
+        supportedScriptLanguages: [],
+        codecSupportedScriptLanguages: [],
+      },
+      {
+        supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+        codecSupportedScriptLanguages: [],
+      },
+      {
+        supportedScriptLanguages: falseLanguageSet,
+        codecSupportedScriptLanguages: falseLanguageSet,
+      },
+      {
+        supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+        codecSupportedScriptLanguages: [{ name: "MidgardV1", tag: Number.NaN }],
+      },
+    ];
+
+    for (const languageClaims of cases) {
+      const directProvider: MidgardProvider = {
+        ...fakeProvider,
+        getProtocolInfo: async () =>
+          ({
+            ...canonicalInfo,
+            ...languageClaims,
+          }) as unknown as Awaited<
+            ReturnType<MidgardProvider["getProtocolInfo"]>
+          >,
+      };
+      await expect(LucidMidgard.new(directProvider)).rejects.toBeInstanceOf(
+        ProviderPayloadError,
+      );
+    }
+  });
+
   it("records fluent builder state deterministically", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",
@@ -220,12 +263,10 @@ describe("LucidMidgard builder fluent API", () => {
 
   it("retains spend redeemers in canonical V1 builder state", async () => {
     const midgard = await LucidMidgard.new(fakeProvider);
-    const tx = midgard
-      .newTx()
-      .collectFrom([makeUtxo(makeOutRef(0x11))], {
-        data: CML.PlutusData.new_integer(CML.BigInteger.from_str("1")),
-        exUnits: { mem: 1n, steps: 2n },
-      });
+    const tx = midgard.newTx().collectFrom([makeUtxo(makeOutRef(0x11))], {
+      data: CML.PlutusData.new_integer(CML.BigInteger.from_str("1")),
+      exUnits: { mem: 1n, steps: 2n },
+    });
     expect(tx.debugSnapshot().scripts.spendRedeemers).toHaveLength(1);
   });
 
@@ -250,12 +291,10 @@ describe("LucidMidgard builder fluent API", () => {
   it("clones byte redeemers before retaining caller data", async () => {
     const midgard = await LucidMidgard.new(fakeProvider);
     const originalData = Buffer.from([0x01, 0x02, 0x03]);
-    const tx = midgard
-      .newTx()
-      .collectFrom([makeUtxo(makeOutRef(0x11))], {
-        data: originalData,
-        exUnits: { mem: 1n, steps: 2n },
-      });
+    const tx = midgard.newTx().collectFrom([makeUtxo(makeOutRef(0x11))], {
+      data: originalData,
+      exUnits: { mem: 1n, steps: 2n },
+    });
     originalData[0] = 0xff;
     const retained = tx.debugSnapshot().scripts.spendRedeemers[0]?.redeemer
       ?.data as Uint8Array;
@@ -302,8 +341,9 @@ describe("LucidMidgard builder fluent API", () => {
         { lovelace: 1_000_000n },
         { scriptRef: { type: "PlutusV3", script: "0102" } },
       );
-    expect(
-      withReferenceScript.debugSnapshot().outputs[0]?.scriptRef,
-    ).toEqual({ type: "PlutusV3", script: "0102" });
+    expect(withReferenceScript.debugSnapshot().outputs[0]?.scriptRef).toEqual({
+      type: "PlutusV3",
+      script: "0102",
+    });
   });
 });

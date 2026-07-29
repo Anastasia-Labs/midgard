@@ -256,6 +256,7 @@ describe("canonical V1 observer/native-script Cardano boundary", () => {
               scriptWitnessMaxChunkBytes: scriptField.maxChunkBytes,
               scriptWitnessMaxRevealBytes: scriptField.maxRevealBytes,
               completeFoldSteps: observerField.completeFoldStepCount,
+              scriptWitnessTerminalFoldVector: scriptField.terminalFoldVector,
               adjacentRequestedObserverCount:
                 boundary.adjacent.requestedItemCount,
               adjacentObserverWithdrawalCount: adjacentCardano.withdrawalCount,

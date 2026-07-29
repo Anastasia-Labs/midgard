@@ -80,7 +80,10 @@ The operator bond deters fraud only if a watcher can reliably convert an invalid
 
 A production watcher needs these inputs:
 
-- Cardano L1 provider access, preferably multiple providers with explicit finality and rollback policy.
+- Exactly one Cardano L1 source mode: either a watcher-operated `local_node`
+  chain authority with aligned query/index surfaces, or at least two
+  operationally independent `external_providers`, with explicit finality and
+  rollback policy in either mode.
 - The Midgard deployment manifest or enough data to derive and verify it: network id, hub oracle, script hashes, reference-script UTxOs, protocol parameters, fraud-proof catalogue root, compiler/artifact hashes, and genesis/one-shot identity.
 - The hub oracle UTxO and all protocol addresses/policy IDs it authenticates.
 - State queue, scheduler, operator-directory, settlement, deposit, withdrawal, transaction-order, reserve, payout, fraud-proof catalogue, computation-thread, and fraud-proof UTxOs.

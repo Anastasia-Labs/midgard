@@ -660,24 +660,42 @@ type NativeScriptComplexity = {
 const nativeScriptComplexity = (
   script: MidgardNativeScript,
 ): NativeScriptComplexity => {
-  switch (script.type) {
-    case "sig":
-    case "after":
-    case "before":
-      return { depth: 1, nodeCount: 1 };
-    case "all":
-    case "any":
-    case "atLeast": {
-      let depth = 1;
-      let nodeCount = 1;
-      for (const child of script.scripts) {
-        const childComplexity = nativeScriptComplexity(child);
-        depth = Math.max(depth, childComplexity.depth + 1);
-        nodeCount += childComplexity.nodeCount;
-      }
+  let depth = 0;
+  let nodeCount = 0;
+  const pending: {
+    readonly script: MidgardNativeScript;
+    readonly depth: number;
+  }[] = [{ script, depth: 1 }];
+
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    depth = Math.max(depth, current.depth);
+    nodeCount += 1;
+    if (
+      depth > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth ||
+      nodeCount > MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount
+    ) {
       return { depth, nodeCount };
     }
+    switch (current.script.type) {
+      case "all":
+      case "any":
+      case "atLeast":
+        for (
+          let index = current.script.scripts.length - 1;
+          index >= 0;
+          index -= 1
+        ) {
+          pending.push({
+            script: current.script.scripts[index]!,
+            depth: current.depth + 1,
+          });
+        }
+        break;
+    }
   }
+
+  return { depth, nodeCount };
 };
 
 const nativeScriptBoundViolation = (

@@ -8,11 +8,18 @@ use midgard/bounded_item_v1.{ChunkProofV1, from_bytes, hash_chunk}
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
 }
-use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
+use midgard/fraud_proofs/native_tx/components.{
+  encode_midgard_address_witness, encode_midgard_tx_input,
+  encode_midgard_versioned_script,
+}
+use midgard/fraud_proofs/native_tx/preimages.{
+  encode_address_witness_preimage, encode_script_witness_preimage,
+}
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types.{
-  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
-  MidgardTxInput, TxIsValid, native_tx_version_v1,
+  MidgardAddressWitness, MidgardTransaction, MidgardTransactionBody,
+  MidgardTransactionWitnessSet, MidgardTxInput, MidgardVersionedScript,
+  NativeCardanoScript, TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{
   NativeTxProofSourceV1, TxFieldPreimageV1, TxFieldReceiptV1, TxOrderPayloadV1,
@@ -312,6 +319,76 @@ test later_non_empty_field_links_to_the_authenticated_predecessor() {
       tx_order_policy_id,
       order_id(),
       payload(tx, Some(receipt_reference(1))),
+    ),
+  }
+}
+
+test script_field_six_links_to_byte_wrapped_address_field_seven() {
+  let base = empty_v1_transaction()
+  let script = MidgardVersionedScript {
+    language: NativeCardanoScript,
+    script_bytes: #"820400",
+  }
+  let address_witness = MidgardAddressWitness {
+    verification_key: #"1111111111111111111111111111111111111111111111111111111111111111",
+    signature: #"22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222",
+  }
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      addr_tx_wits: [address_witness],
+      script_tx_wits: [script],
+    },
+  }
+  let script_item = encode_midgard_versioned_script(script)
+  let address_item = encode_midgard_address_witness(address_witness)
+  let script_receipt = TxFieldReceiptV1 {
+    field_receipt_policy_id,
+    tx_order_policy_id,
+    tx_order_id: order_id(),
+    transaction_commitment: commitment(tx),
+    collection_proof: collection_proof(6, script_item),
+    chunk_index: 0,
+    field_reference: field_reference(6),
+    predecessor_receipt_reference: None,
+    field_encoded_size: bytearray.length(
+      encode_script_witness_preimage([script]),
+    ),
+  }
+  let address_receipt = TxFieldReceiptV1 {
+    field_receipt_policy_id,
+    tx_order_policy_id,
+    tx_order_id: order_id(),
+    transaction_commitment: commitment(tx),
+    collection_proof: collection_proof(7, address_item),
+    chunk_index: 0,
+    field_reference: field_reference(7),
+    predecessor_receipt_reference: Some(receipt_reference(0)),
+    field_encoded_size: bytearray.length(
+      encode_address_witness_preimage([address_witness]),
+    ),
+  }
+  and {
+    verify_receipt_chain_link(
+      tx_id(tx),
+      commitment(tx),
+      source(tx),
+      field_receipt_policy_id,
+      tx_order_policy_id,
+      order_id(),
+      None,
+      script_receipt,
+    ),
+    verify_receipt_chain_link(
+      tx_id(tx),
+      commitment(tx),
+      source(tx),
+      field_receipt_policy_id,
+      tx_order_policy_id,
+      order_id(),
+      Some(script_receipt),
+      address_receipt,
     ),
   }
 }

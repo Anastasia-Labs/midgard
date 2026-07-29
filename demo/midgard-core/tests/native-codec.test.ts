@@ -35,6 +35,7 @@ import {
   encodeMidgardNativeTxWitnessPreimagesV1,
   encodeMidgardNativeTxWitnessSetCompactV1,
   materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
@@ -487,6 +488,82 @@ describe("Midgard native v1 codec", () => {
     expect(() =>
       decodeMidgardNativeScript(Buffer.from("820600", "hex")),
     ).toThrow(/Unsupported native script tag/);
+  });
+
+  it("accepts the V1 native-script depth boundary and rejects its canonical adjacent", () => {
+    const keyHash = Buffer.alloc(28, 0xaa);
+    const leaf = Buffer.from(`8200581c${keyHash.toString("hex")}`, "hex");
+    const canonicalAtDepth = (depth: number): Buffer =>
+      Buffer.concat([Buffer.from("820181".repeat(depth - 1), "hex"), leaf]);
+    const maximum = MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth;
+    const acceptedBytes = canonicalAtDepth(maximum);
+    const accepted = decodeMidgardNativeScript(acceptedBytes);
+
+    expect(accepted.cbor).toEqual(acceptedBytes);
+    expect(encodeMidgardNativeScript(accepted.script)).toEqual(acceptedBytes);
+    expect(
+      verifyMidgardNativeScript(accepted.script, {
+        witnessSigners: new Set([keyHash.toString("hex")]),
+      }),
+    ).toBe(true);
+    const adjacentScript: MidgardNativeScript = {
+      type: "all",
+      scripts: [accepted.script],
+    };
+    expect(() => encodeMidgardNativeScript(adjacentScript)).toThrow(
+      /Native script nesting exceeds the V1 maximum/u,
+    );
+    expect(
+      verifyMidgardNativeScript(adjacentScript, {
+        witnessSigners: new Set([keyHash.toString("hex")]),
+      }),
+    ).toBe(false);
+    expect(() =>
+      decodeMidgardNativeScript(canonicalAtDepth(maximum + 1)),
+    ).toThrow(/Native script nesting exceeds the V1 maximum/u);
+  });
+
+  it("accepts the V1 native-script node boundary and rejects its wide adjacent", () => {
+    const maximum = MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount;
+    const leaf = (): MidgardNativeScript => ({
+      type: "sig",
+      keyHash: Buffer.alloc(28, 0xbb),
+    });
+    const accepted: MidgardNativeScript = {
+      type: "all",
+      scripts: Array.from({ length: maximum - 1 }, leaf),
+    };
+    const acceptedBytes = encodeMidgardNativeScript(accepted);
+    const decoded = decodeMidgardNativeScript(acceptedBytes);
+
+    expect(encodeMidgardNativeScript(decoded.script)).toEqual(acceptedBytes);
+    expect(
+      verifyMidgardNativeScript(decoded.script, {
+        witnessSigners: new Set([Buffer.alloc(28, 0xbb).toString("hex")]),
+      }),
+    ).toBe(true);
+
+    const adjacent: MidgardNativeScript = {
+      type: "all",
+      scripts: [...accepted.scripts, leaf()],
+    };
+    const leafBytes = encodeMidgardNativeScript(leaf());
+    const adjacentBytes = Buffer.concat([
+      Buffer.from([0x82, 0x01, 0x99, 0x40, 0x00]),
+      acceptedBytes.subarray(5),
+      leafBytes,
+    ]);
+    expect(() => encodeMidgardNativeScript(adjacent)).toThrow(
+      /Native script node count exceeds the V1 maximum/u,
+    );
+    expect(() => decodeMidgardNativeScript(adjacentBytes)).toThrow(
+      /Native script node count exceeds the V1 maximum/u,
+    );
+    expect(
+      verifyMidgardNativeScript(adjacent, {
+        witnessSigners: new Set([Buffer.alloc(28, 0xbb).toString("hex")]),
+      }),
+    ).toBe(false);
   });
 
   it("matches Cardano before timelock boundary semantics", () => {

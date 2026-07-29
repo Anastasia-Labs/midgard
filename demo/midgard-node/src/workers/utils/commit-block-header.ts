@@ -1,7 +1,13 @@
 import type { MessagePort } from "node:worker_threads";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { CML, coreToUtxo, UTxO, utxoToCore } from "@lucid-evolution/lucid";
+import {
+  CML,
+  coreToUtxo,
+  type SlotConfig,
+  UTxO,
+  utxoToCore,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
@@ -35,6 +41,11 @@ export type WorkerInput = {
      * worker thread has stopped, including timeout and interruption paths.
      */
     ledgerStoreLeaseOwner: string;
+    /**
+     * Immutable, node-selected time mapping used by canonical V1 forced
+     * validation. Plain data keeps candidate construction provider-free.
+     */
+    forcedValidationSlotConfig?: SlotConfig;
     mempoolTxsCountSoFar: number;
     sizeOfProcessedTxsSoFar: number;
     stateQueueLeaseToken?: string;

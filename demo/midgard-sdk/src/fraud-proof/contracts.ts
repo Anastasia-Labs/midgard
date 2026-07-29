@@ -84,16 +84,12 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
-    resolveInputs:
-      "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
-    scriptSources:
-      "fraud_proofs/validation_trace/script_sources_v1.main.spend",
-    nativeScripts:
-      "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
+    resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
+    scriptSources: "fraud_proofs/validation_trace/script_sources_v1.main.spend",
+    nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
     scriptIntegrity:
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
-    ledgerDelta:
-      "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
+    ledgerDelta: "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
   },
   semantics: {
     canonicalDecodeEmpty:
@@ -438,10 +434,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
     ];
-    readonly directResolvers: readonly [
-      SpendingValidator,
-      SpendingValidator,
-    ];
+    readonly directResolvers: readonly [SpendingValidator, SpendingValidator];
     readonly resolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -1254,11 +1247,7 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[58],
         semanticResolvers[59],
       ],
-      [
-        semanticResolvers[60],
-        semanticResolvers[61],
-        semanticResolvers[62],
-      ],
+      [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
       [
         semanticResolvers[63],
         semanticResolvers[64],

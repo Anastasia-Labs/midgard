@@ -39,10 +39,11 @@ const localProvider = (
   surface: "chain_sync" | "ogmios" | "kupo" | "kupmios" | "db_sync",
   identityByte: string,
   authorityNodeId = "watcher-node-a",
+  providerId = surface.replace("_", "-"),
 ) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod",
-  providerId: surface.replace("_", "-"),
+  providerId,
   source: {
     sourceMode: "local_node",
     authorityNodeId,
@@ -128,14 +129,20 @@ const localObservation = (
     blockNo?: string;
     depth?: string;
     bodyHex?: string;
+    providerId?: string;
   } = {},
 ): WatcherNormalizedL1BlockV1 =>
   normalizeWatcherL1BlockV1(
-    localProvider(surface, identityByte, options.authorityNodeId),
+    localProvider(
+      surface,
+      identityByte,
+      options.authorityNodeId,
+      options.providerId,
+    ),
     {
       schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
       network: "Preprod",
-      providerId: surface.replace("_", "-"),
+      providerId: options.providerId ?? surface.replace("_", "-"),
       chainPoint: {
         blockHash: options.blockHash ?? "11".repeat(32),
         slot: options.slot ?? "1000",
@@ -213,6 +220,32 @@ describe("fail-closed multi-provider consistency", () => {
       [second, first],
     );
 
+    expect(reverse).toEqual(forward);
+    expect(reverse.consistencyDigest).toBe(forward.consistencyDigest);
+  });
+
+  it("is byte-stable when duplicate provider ids bind different identities", () => {
+    const first = observation("provider-a", "aa");
+    const second = observation("provider-a", "bb");
+
+    const forward = evaluateWatcherMultiProviderConsistencyV1(
+      externalConfig(),
+      [first, second],
+    );
+    const reverse = evaluateWatcherMultiProviderConsistencyV1(
+      externalConfig(),
+      [second, first],
+    );
+
+    expect(forward).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      independentProviderCount: 1,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "duplicate_provider_id",
+      ],
+    });
     expect(reverse).toEqual(forward);
     expect(reverse.consistencyDigest).toBe(forward.consistencyDigest);
   });
@@ -337,6 +370,52 @@ describe("fail-closed multi-provider consistency", () => {
     });
   });
 
+  it("deduplicates canonical points before checking three-provider bounded lag", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      observation("provider-a", "aa"),
+      observation("provider-b", "bb"),
+      observation("provider-c", "cc", {
+        blockHash: "22".repeat(32),
+        slot: "1001",
+        blockNo: "101",
+        depth: "0",
+      }),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "pending",
+      protocolDecision: "quarantined",
+      independentProviderCount: 3,
+      reasonCodes: ["bounded_provider_lag"],
+      alertCodes: ["watcher_provider_lag"],
+      agreement: null,
+    });
+
+    const mismatchedContent = evaluateWatcherMultiProviderConsistencyV1(
+      externalConfig(),
+      [
+        observation("provider-a", "aa", { bodyHex: "a100" }),
+        observation("provider-b", "bb", { bodyHex: "a101" }),
+        observation("provider-c", "cc", {
+          blockHash: "22".repeat(32),
+          slot: "1001",
+          blockNo: "101",
+          depth: "0",
+        }),
+      ],
+    );
+    expect(mismatchedContent).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      reasonCodes: ["bounded_provider_lag", "block_content_mismatch"],
+      alertCodes: [
+        "watcher_provider_lag",
+        "watcher_provider_content_disagreement",
+      ],
+      agreement: null,
+    });
+  });
+
   it("quarantines stale and forked provider points", () => {
     const stale = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
       observation("provider-a", "aa"),
@@ -433,6 +512,31 @@ describe("fail-closed multi-provider consistency", () => {
       alertCodes: [],
     });
     expect(reverse).toEqual(forward);
+  });
+
+  it("accepts distinct aligned query services of the same local surface kind", () => {
+    const chainSync = localObservation("chain_sync", "cc");
+    const ogmiosA = localObservation("ogmios", "dd", {
+      providerId: "ogmios-a",
+    });
+    const ogmiosB = localObservation("ogmios", "ee", {
+      providerId: "ogmios-b",
+    });
+
+    const result = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
+      chainSync,
+      ogmiosA,
+      ogmiosB,
+    ]);
+
+    expect(result).toMatchObject({
+      status: "agreed",
+      protocolDecision: "allowed",
+      independentProviderCount: 1,
+      queryObservationCount: 2,
+      reasonCodes: ["local_node_consistent"],
+      alertCodes: [],
+    });
   });
 
   it("fails closed when local query data is stale, forked, content-mismatched, or has not propagated a rollback", () => {
@@ -599,5 +703,34 @@ describe("fail-closed multi-provider consistency", () => {
         missingDiscriminator,
       ]),
     ).not.toContain(secret);
+  });
+
+  it("quarantines a hostile configured-source proxy without exposing its error", () => {
+    const secret = "https://operator:secret@example.invalid";
+    const hostileConfig = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw new Error(secret);
+        },
+      },
+    );
+
+    const result = evaluateWatcherMultiProviderConsistencyV1(hostileConfig, [
+      observation("provider-a", "aa"),
+      observation("provider-b", "bb"),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      sourceMode: null,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "invalid_configured_network",
+      ],
+      agreement: null,
+    });
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 });
