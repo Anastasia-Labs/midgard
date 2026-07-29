@@ -1055,3 +1055,40 @@ push the same `colll78/` branch, update PR #471 identities, and inspect every
 applicable current-head check plus any new comments/reviews. Fix and repeat
 until the published checkpoint is good to merge on its stated scope. Keep the
 PR draft and the overarching Goal in progress.
+
+## Superseding CI review-remediation checkpoint
+
+- Signed review-remediation commit
+  `ad7124b386c65f24b087d3cab757d6892fdd7819` was pushed to the same
+  `colll78/` branch and verified as the exact draft PR #471 head. Its
+  description was updated to the current identities. GitHub still reported no
+  issue comment, review, inline comment, or review thread.
+- A source-identical superseded node run exposed a second actionable CI
+  finding before the remediation-head run reached that step. The unrestricted
+  fault-proof Vitest worker pool caused CPU contention: nine contract/catalogue
+  cases exceeded their unchanged 30-second limits, and one validation-dispute
+  emulator case exceeded its unchanged 300-second limit. The run passed
+  132/142 but failed 10 tests, so it receives no PASS credit.
+- No timeout or emulator limit was raised. The fault-proof package's exact
+  `test` command now uses one Vitest fork, matching the repository's existing
+  bounded-resource retained-DA discipline. Exact full package replay passes:
+  build PASS, typecheck PASS, 15/15 files and 142/142 tests PASS in 610.51
+  seconds. All 14 emulator cases pass; validation dispute takes 143.484
+  seconds, multiple-successor removal 140.302 seconds, and every formerly
+  timing-out contract/catalogue case completes in 8-16 seconds.
+- The resource-bounded staged content-tree SHA-256 is
+  `5cdf9176aa7c2c54a3ab80c6e2427d3eb86b30dd00474cd3ce9014e6f51eae2f`.
+  The map, formatting, whitespace, protected-path, unmerged-index, and exact
+  package command gates must pass before the additive commit.
+- CI on `ad7124b3` is superseded for final publication status because this
+  resource fix changes its node test command. At the time of the fix, both
+  evidence-integrity runs, LaTeX, and docs site passed; Aiken and node were
+  active. The next additive head must receive terminal applicable checks.
+
+## Superseding final publication action
+
+Create and push the signed resource-remediation commit, refresh the draft PR
+description, then inspect all current-head checks and every discussion surface
+again. Address any new actionable failure additively. Yield only after the
+published checkpoint is clean and good to merge on scope; do not promote the
+still-incomplete overarching Goal.
