@@ -30,6 +30,7 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
   "duplicate_provider_id",
   "duplicate_trust_identity",
   "duplicate_operator_identity",
+  "unconfigured_provider",
   "duplicate_local_surface",
   "source_mode_mismatch",
   "local_node_authority_mismatch",
@@ -49,6 +50,7 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
 export const WATCHER_MULTI_PROVIDER_ALERT_CODES_V1 = [
   "watcher_provider_quorum_unavailable",
   "watcher_provider_identity_collision",
+  "watcher_provider_not_configured",
   "watcher_l1_source_mode_mismatch",
   "watcher_local_node_authority_mismatch",
   "watcher_local_node_chain_sync_missing",
@@ -80,6 +82,10 @@ export type WatcherL1SourceConsistencyConfigV1 =
   | Readonly<{
       sourceMode: "external_providers";
       network: WatcherL1NetworkV1;
+      providers: readonly Readonly<{
+        providerId: string;
+        operatorIdentitySha256: string;
+      }>[];
     }>;
 
 export type WatcherMultiProviderAgreementV1 = Readonly<{
@@ -255,6 +261,36 @@ const parseNormalizedObservation = (
   ) {
     return null;
   }
+  const transactionInputs = exactObservationArray(block.transactions);
+  if (transactionInputs === null) {
+    return null;
+  }
+  const transactions: PlainRecord[] = [];
+  for (let index = 0; index < transactionInputs.length; index += 1) {
+    const transaction = exactPlainRecord(transactionInputs[index], [
+      "transactionIndex",
+      "txHash",
+      "body",
+      "utxos",
+      "scripts",
+      "datums",
+      "redeemers",
+    ]);
+    if (
+      transaction === null ||
+      transaction.transactionIndex !== index.toString()
+    ) {
+      return null;
+    }
+    transactions.push({
+      txHash: transaction.txHash,
+      body: transaction.body,
+      utxos: transaction.utxos,
+      scripts: transaction.scripts,
+      datums: transaction.datums,
+      redeemers: transaction.redeemers,
+    });
+  }
 
   const normalized = normalizeWatcherL1BlockV1(block.provider, {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -266,7 +302,7 @@ const parseNormalizedObservation = (
       blockNo: point.blockNo,
       depth: point.depth,
     },
-    transactions: block.transactions,
+    transactions,
   });
   if (
     normalized.chainPoint.chainPointId !== point.chainPointId ||
@@ -356,14 +392,60 @@ const rejectedBoundaryResult = (
 const parseConfiguredSource = (
   input: unknown,
 ): WatcherL1SourceConsistencyConfigV1 | null => {
-  const candidate = exactPlainRecord(input, ["sourceMode", "network"]);
+  const candidate = exactPlainRecord(input, [
+    "sourceMode",
+    "network",
+    "providers",
+  ]);
   if (candidate !== null && candidate.sourceMode === "external_providers") {
-    if (!isNetwork(candidate.network)) {
+    const providerInputs = exactObservationArray(candidate.providers);
+    if (
+      !isNetwork(candidate.network) ||
+      providerInputs === null ||
+      providerInputs.length < 2 ||
+      providerInputs.length >
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+    ) {
+      return null;
+    }
+    const providers: {
+      providerId: string;
+      operatorIdentitySha256: string;
+    }[] = [];
+    for (const value of providerInputs) {
+      const provider = exactPlainRecord(value, [
+        "providerId",
+        "operatorIdentitySha256",
+      ]);
+      if (
+        provider === null ||
+        typeof provider.providerId !== "string" ||
+        !/^[a-z][a-z0-9-]{0,62}$/u.test(provider.providerId) ||
+        !isHex32(provider.operatorIdentitySha256)
+      ) {
+        return null;
+      }
+      providers.push({
+        providerId: provider.providerId,
+        operatorIdentitySha256: provider.operatorIdentitySha256,
+      });
+    }
+    if (
+      duplicateValues(providers.map(({ providerId }) => providerId)) ||
+      duplicateValues(
+        providers.map(({ operatorIdentitySha256 }) => operatorIdentitySha256),
+      )
+    ) {
       return null;
     }
     return Object.freeze({
       sourceMode: "external_providers",
       network: candidate.network,
+      providers: Object.freeze(
+        providers.sort((left, right) =>
+          left.providerId.localeCompare(right.providerId),
+        ),
+      ),
     });
   }
   const local = exactPlainRecord(input, [
@@ -446,7 +528,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     alerts.add("watcher_provider_observation_rejected");
   }
 
-  const eligible = valid.filter(
+  let eligible = valid.filter(
     (observation) =>
       observation.network === configuredNetwork &&
       observation.provider.source.sourceMode === configuredSource.sourceMode,
@@ -465,13 +547,6 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     alerts.add("watcher_l1_source_mode_mismatch");
   }
 
-  const providerIds = eligible.map(
-    (observation) => observation.provider.providerId,
-  );
-  const trustIdentities = eligible.map(
-    (observation) =>
-      `${observation.provider.authentication.kind}:${observation.provider.authentication.publicIdentitySha256}`,
-  );
   let agreement: WatcherMultiProviderAgreementV1 | null = null;
   let hasPendingLag = false;
   let independentProviderCount = 0;
@@ -479,6 +554,9 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   let queryObservationCount = 0;
 
   if (configuredSource.sourceMode === "local_node") {
+    const providerIds = eligible.map(
+      (observation) => observation.provider.providerId,
+    );
     const local = eligible.filter(
       (
         observation,
@@ -575,6 +653,32 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       });
     }
   } else {
+    const configuredProviders = new Map(
+      configuredSource.providers.map((provider) => [
+        provider.providerId,
+        provider.operatorIdentitySha256,
+      ]),
+    );
+    const configuredEligible = eligible.filter((observation) => {
+      const source = observation.provider.source;
+      return (
+        source.sourceMode === "external_providers" &&
+        configuredProviders.get(observation.provider.providerId) ===
+          source.operatorIdentitySha256
+      );
+    });
+    if (configuredEligible.length !== eligible.length) {
+      reasons.add("unconfigured_provider");
+      alerts.add("watcher_provider_not_configured");
+    }
+    eligible = configuredEligible;
+    const providerIds = eligible.map(
+      (observation) => observation.provider.providerId,
+    );
+    const trustIdentities = eligible.map(
+      (observation) =>
+        `${observation.provider.authentication.kind}:${observation.provider.authentication.publicIdentitySha256}`,
+    );
     if (duplicateValues(providerIds)) {
       reasons.add("duplicate_provider_id");
       alerts.add("watcher_provider_identity_collision");
@@ -690,6 +794,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       "duplicate_provider_id",
       "duplicate_trust_identity",
       "duplicate_operator_identity",
+      "unconfigured_provider",
       "duplicate_local_surface",
       "source_mode_mismatch",
       "local_node_authority_mismatch",

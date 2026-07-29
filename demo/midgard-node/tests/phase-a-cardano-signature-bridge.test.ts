@@ -114,7 +114,9 @@ describe("phase-a converted fixture signature bridge", () => {
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
-        CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxIdV1(nativeTx)),
+        CML.TransactionHash.from_raw_bytes(
+          computeMidgardNativeTxIdV1(nativeTx),
+        ),
         signerKey,
       ),
     );

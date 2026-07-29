@@ -359,8 +359,7 @@ const insertFromFixture = (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: fixture.payloadCbor,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(

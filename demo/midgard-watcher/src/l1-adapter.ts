@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
+
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 
 export const WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION =
@@ -128,6 +130,7 @@ export type WatcherL1UtxoV1 = Readonly<{
 }>;
 
 export type WatcherL1TransactionV1 = Readonly<{
+  transactionIndex: string;
   txHash: string;
   body: WatcherL1PublicBytesV1;
   utxos: readonly WatcherL1UtxoV1[];
@@ -405,14 +408,34 @@ const parseScript = (
   budget: ParseBudget,
 ): WatcherL1ScriptV1 => {
   const record = exactRecord(value, path, ["scriptHash", "language", "bytes"]);
+  const scriptHash = exactString(
+    record.scriptHash,
+    `${path}.scriptHash`,
+    HEX_28,
+  );
+  const language = exactLiteral(
+    record.language,
+    `${path}.language`,
+    WATCHER_L1_SCRIPT_LANGUAGES_V1,
+  );
+  const bytes = parsePublicBytes(record.bytes, `${path}.bytes`, budget);
+  const computedScriptHash = (() => {
+    try {
+      return validatorToScriptHash({
+        type: language,
+        script: bytes.bytesHex,
+      });
+    } catch {
+      return fail("invalid_field", `${path}.bytes.bytesHex`);
+    }
+  })();
+  if (computedScriptHash !== scriptHash) {
+    fail("identity_mismatch", `${path}.scriptHash`);
+  }
   return Object.freeze({
-    scriptHash: exactString(record.scriptHash, `${path}.scriptHash`, HEX_28),
-    language: exactLiteral(
-      record.language,
-      `${path}.language`,
-      WATCHER_L1_SCRIPT_LANGUAGES_V1,
-    ),
-    bytes: parsePublicBytes(record.bytes, `${path}.bytes`, budget),
+    scriptHash,
+    language,
+    bytes,
   });
 };
 
@@ -531,6 +554,7 @@ const freezeSortedUnique = <T>(
 const parseTransaction = (
   value: unknown,
   path: string,
+  transactionIndex: number,
   budget: ParseBudget,
 ): WatcherL1TransactionV1 => {
   const record = exactRecord(value, path, [
@@ -589,6 +613,7 @@ const parseTransaction = (
     },
   );
   return Object.freeze({
+    transactionIndex: transactionIndex.toString(),
     txHash,
     body,
     utxos,
@@ -705,6 +730,7 @@ const parseAuthenticatedProvider = (
 const transactionJson = (
   transaction: WatcherL1TransactionV1,
 ): CanonicalJson => ({
+  transactionIndex: transaction.transactionIndex,
   txHash: transaction.txHash,
   body: transaction.body,
   utxos: transaction.utxos,
@@ -799,18 +825,27 @@ export const normalizeWatcherL1BlockV1 = (
   const blockNo = exactNatural(point.blockNo, "$.chainPoint.blockNo");
   const depth = exactNatural(point.depth, "$.chainPoint.depth");
   const budget: ParseBudget = { publicBytes: 0 };
-  const transactions = freezeSortedUnique(
+  const transactions = Object.freeze(
     exactArray(observation.transactions, "$.transactions").map(
       (transaction, index) =>
         parseTransaction(
           transaction,
           `$.transactions[${index.toString()}]`,
+          index,
           budget,
         ),
     ),
-    "$.transactions",
-    (transaction) => transaction.txHash,
   );
+  const transactionHashes = new Set<string>();
+  for (const transaction of transactions) {
+    if (transactionHashes.has(transaction.txHash)) {
+      fail(
+        "duplicate_identity",
+        `$.transactions[${transaction.transactionIndex}]`,
+      );
+    }
+    transactionHashes.add(transaction.txHash);
+  }
   const pointDigest = digestCanonicalJson({
     network,
     blockHash,

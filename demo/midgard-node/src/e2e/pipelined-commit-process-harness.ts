@@ -259,17 +259,17 @@ export const capturePipelinedCommitDatabaseState: Effect.Effect<
           produced: record.ledgerDelta.produced
             .map((member) => ({
               outref:
-                member[
-                  PendingBlockFinalizationsDB.UtxoColumns.OUTREF
-                ].toString("hex"),
+                member[PendingBlockFinalizationsDB.UtxoColumns.OUTREF].toString(
+                  "hex",
+                ),
               output:
-                member[
-                  PendingBlockFinalizationsDB.UtxoColumns.OUTPUT
-                ].toString("hex"),
+                member[PendingBlockFinalizationsDB.UtxoColumns.OUTPUT].toString(
+                  "hex",
+                ),
             }))
-          .sort((left, right) =>
-            JSON.stringify(left).localeCompare(JSON.stringify(right)),
-          ),
+            .sort((left, right) =>
+              JSON.stringify(left).localeCompare(JSON.stringify(right)),
+            ),
         },
       },
       submittedTxHash:

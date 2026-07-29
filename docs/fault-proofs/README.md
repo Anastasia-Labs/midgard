@@ -11,10 +11,21 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 rechecked when implementing an item.
 
 Documentation and top-level conclusions revalidated **2026-07-22** against
-`tx-validation` HEAD `0aeaa700`. No intervening change closes the catalogue,
-native-v1 binding, fee, economics, DA-remedy, or preprod-acceptance gaps. This was
-not a replacement for the full line-by-line audit, so historical line anchors
-remain advisory.
+the PR #461 production-readiness tree. The zero-input family is now
+catalogue-registered, bound to native-v1 counted roots, CLI-complete, and
+emulator-proven through faulty-block removal. Its preparer requires the authoritative
+header `transactions_root` and fails closed on a mismatch. The remaining catalogue,
+binding, fee, economics, DA-remedy, and system-wide preprod-acceptance gaps remain.
+This was not a replacement for the full line-by-line audit, so historical line
+anchors remain advisory.
+
+Merge-boundary facts were reconciled **2026-07-28**: the tree contains 13
+top-level compiled proof families and 7 catalogue categories. The append-only
+category order preserves `zeroInput` as `00000005` and appends
+`validationTraceDispute` as `00000006`. The watcher now has executable
+source-mode, consistency, finality, rollback, and protocol-indexing code, but
+the repository does not yet prove a continuous detect→prove→remove acceptance
+loop.
 
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
@@ -30,7 +41,7 @@ appear in code/spec (for example the `fault_proof` token and
 | Document                                         | Purpose                                                                                                                                                                               |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`architecture.md`](architecture.md)             | How the system works: catalogue, computation threads, tokens, the state-queue removal + slashing payoff path, trust assumptions.                                                      |
-| [`catalogue-status.md`](catalogue-status.md)     | Per-proof-type delivery/functionality tracker (the 12 implemented types + generic machinery). The "what is delivered / what is functional" ledger.                                    |
+| [`catalogue-status.md`](catalogue-status.md)     | Per-proof-type delivery/functionality tracker (the 13 compiled top-level families + generic machinery). The "what is delivered / what is functional" ledger.                          |
 | [`coverage-matrix.md`](coverage-matrix.md)       | First-principles enumeration of every way a state commitment can be faulty, mapped to a proof (or a gap). The "what is missing" analysis, including adversarial fund-theft scenarios. |
 | [`onchain-reference.md`](onchain-reference.md)   | Code map of the Aiken implementation (`onchain/aiken`), with `file:line` anchors.                                                                                                     |
 | [`offchain-reference.md`](offchain-reference.md) | Code map of the TypeScript SDK / CLI / watcher (`demo/*`), with `file:line` anchors.                                                                                                  |
@@ -59,15 +70,29 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 **1. Delivered _and_ functional** (real logic, compiles, emulator-proven where noted):
 
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
-- 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
+- 10 conventional step-chain proof families with real verification logic:
+  `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`,
+  `invalid-signature`, `missing-native-script-tx`, `missing-signature`,
+  `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
+- The interactive `validation-trace` dispute/control/resolver family. It is
+  catalogue-reachable and has explicit submission tooling and unit coverage,
+  but full emulator/preprod acceptance is not claimed.
 - Canonical V1 valid forced transactions use the same accepted ledger-delta
   validation claim as normal transactions; invalid forced transactions use an
   exact rejected no-op. Wrong verdicts, wrong roots, and either source-phase
   misclassification direction are represented. Concrete validator-hash-bound
   release evidence remains pending.
-- Offchain tooling for 4 families (double-spend, invalid-range, non-existent-input, transition-trace), **emulator-proven end-to-end** through faulty-block removal.
-- ⚠️ Reachability caveat: only **5 of the 12** proof types are registered in the deployment catalogue (`demo/midgard-sdk/src/fraud-proof/catalogue.ts:23-29`) — the other 7 compile but cannot `Init` a computation thread against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
+- Offchain tooling for 6 catalogue families (double-spend, invalid-range,
+  non-existent-input, transition-trace, zero-input, and validation-trace).
+  The first five are **emulator-proven end-to-end** through faulty-block
+  removal, although transition-trace remains library-only rather than
+  CLI-wired. Validation-trace has a manual CLI suite and unit tests; its full
+  proof-to-removal acceptance is not yet established.
+- ⚠️ Reachability caveat: only **7 of the 13** top-level proof families are
+  registered in the deployment catalogue — the other 6 compile but cannot
+  `Init` a computation thread
+  against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
@@ -85,12 +110,16 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 8 of the 12 already-implemented onchain types; CLI wiring for `transition-trace`.
+- Offchain tooling for 7 of the 13 compiled top-level families; CLI wiring for
+  `transition-trace`.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a
   new, publishable preprod run; see [`testing-status.md`](testing-status.md)).
-- Autonomous watcher/challenger (design docs exist; zero code).
+- Autonomous watcher/challenger closure: executable L1-source, consistency,
+  finality, rollback, and protocol-indexing components exist, but continuous
+  committed-block classification, proof orchestration, and correction have not
+  been proven end-to-end.
 
 **4. Missing and undocumented** (no working proof _and_ no clear spec construction):
 
@@ -130,5 +159,7 @@ This directory is meant to track reality, not to become another stale plan. Main
 - `technical-spec/5-ledger-rules/1-cardano-ledger-rules.tex` — the formal violation taxonomy and per-violation proof constructions.
 - `technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex` — the spec's own admission that generic phase-2 proofs are unbuilt.
 - `demo/midgard-node/docs/TRANSITION_TRACE_COMMITMENTS.md` — the transition-trace architecture.
-- `demo/midgard-watcher/midgard-watcher-architecture.md` — the (unbuilt) autonomous challenger design.
+- `demo/midgard-watcher/midgard-watcher-architecture.md` — watcher architecture;
+  implementation exists for source observation and protocol indexing, while
+  autonomous proof-to-correction acceptance remains open.
 - `../../public_testnet_readiness.md` — the launch-gate readiness tracker.

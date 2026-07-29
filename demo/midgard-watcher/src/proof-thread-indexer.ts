@@ -30,6 +30,7 @@ import {
 import {
   evaluateWatcherFinalityV1,
   parseWatcherFinalityPolicyV1,
+  type WatcherFinalityPolicyV1,
   type WatcherFinalityResultV1,
 } from "./finality-engine.js";
 import {
@@ -455,6 +456,24 @@ const sameMarker = (
 ): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
+
+const boundRollbackPolicy = (
+  policy: WatcherProofThreadPolicyV1,
+  rollbackContext: WatcherRollbackVerificationContextV1,
+  expectedInput: unknown,
+): WatcherFinalityPolicyV1 | null => {
+  const actual = parseWatcherFinalityPolicyV1(rollbackContext.policy);
+  const expected = parseWatcherFinalityPolicyV1(expectedInput);
+  return actual !== null &&
+    expected !== null &&
+    same(actual, expected) &&
+    actual.network === policy.network &&
+    actual.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    sameMarker(actual.deploymentMarker, policy.deploymentMarker) &&
+    actual.confirmationDepth === policy.requiredFinalityDepth
+    ? actual
+    : null;
+};
 
 const expectedNetworkId = (network: WatcherProofThreadNetworkV1): number =>
   network === "Mainnet" ? 1 : 0;
@@ -895,7 +914,7 @@ export const parseWatcherProofThreadObservationV1 = (
     rollback !== (record.submissionId === null) ||
     rollback !== (record.confirmationId === null) ||
     rollback !== (record.layout === null) ||
-    rollback !== (record.rollbackTargetStateDigest !== null) ||
+    (!rollback && record.rollbackTargetStateDigest !== null) ||
     rollback !== (record.journal === null) ||
     (!rollback && (layout === null || journal === null))
   ) {
@@ -1623,6 +1642,53 @@ const rollbackReplacementBlock = (
   return block;
 };
 
+const rollbackIncidentBlock = (
+  policy: WatcherProofThreadPolicyV1,
+  observation: WatcherProofThreadObservationV1,
+  sourceStore: WatcherDurableStoreV1,
+  rollback: WatcherRollbackResultV1,
+): WatcherNormalizedL1BlockV1 | null => {
+  const transition = rollback.rollbackState?.transitions.at(-1);
+  const finality = transition?.finalityResult;
+  const consistency = transition?.consistency;
+  const block = decodePersistedRollbackObservation(
+    sourceStore,
+    observation.sourceObservationDigest,
+  );
+  if (
+    rollback.action !== "quarantine_incident" ||
+    rollback.protocolDecision !== "quarantined" ||
+    transition === undefined ||
+    finality?.action !== "quarantine_incident" ||
+    finality.protocolDecision !== "quarantined" ||
+    finality.state?.phase !== "quarantined" ||
+    finality.state.incident === null ||
+    consistency === undefined ||
+    !consistency.observationEvidenceDigests.includes(
+      observation.sourceObservationDigest,
+    ) ||
+    block === null ||
+    block.network !== policy.network ||
+    block.provider.source.sourceMode !== consistency.sourceMode ||
+    (consistency.sourceMode === "local_node" &&
+      (block.provider.source.sourceMode !== "local_node" ||
+        block.provider.source.surface !== "chain_sync" ||
+        consistency.chainAuthorityObservationDigest !==
+          observation.sourceObservationDigest)) ||
+    block.chainPoint.chainPointId !== observation.chainPointId ||
+    block.chainPoint.pointDigest !== observation.pointDigest ||
+    block.chainPoint.blockHash !== observation.blockHash ||
+    block.chainPoint.slot !== observation.slot ||
+    block.chainPoint.blockNo !== observation.blockNo ||
+    block.observationDigest !== observation.sourceObservationDigest ||
+    sha256Bytes(encodeWatcherNormalizedL1BlockV1(block)) !==
+      observation.publicInputDigest
+  ) {
+    return null;
+  }
+  return block;
+};
+
 const parsePublicContext = (
   policy: WatcherProofThreadPolicyV1,
   observation: WatcherProofThreadObservationV1,
@@ -1737,13 +1803,21 @@ const parsePublicContext = (
     ) {
       return null;
     }
-    const replacementBlock = rollbackReplacementBlock(
-      policy,
-      observation,
-      sourceStore,
-      rollbackResult,
-    );
-    if (replacementBlock === null) {
+    const rollbackBlock =
+      rollbackResult.action === "quarantine_incident"
+        ? rollbackIncidentBlock(
+            policy,
+            observation,
+            sourceStore,
+            rollbackResult,
+          )
+        : rollbackReplacementBlock(
+            policy,
+            observation,
+            sourceStore,
+            rollbackResult,
+          );
+    if (rollbackBlock === null) {
       return null;
     }
     return Object.freeze({
@@ -1759,7 +1833,7 @@ const parsePublicContext = (
         sourceJournal,
         durableJournal: journal,
       },
-      block: replacementBlock,
+      block: rollbackBlock,
       transaction: null,
       sourceStore,
       store,
@@ -1833,6 +1907,7 @@ const parsePublicContext = (
         : {
             sourceMode: "external_providers",
             network: finalityPolicy.network,
+            providers: finalityPolicy.externalProviderCommitments,
           },
       observations,
     );
@@ -2897,7 +2972,8 @@ const parseEntryStructural = (
     record.confirmationId !== observation.confirmationId ||
     !isNullableHex32(record.sourceJournalDigest) ||
     !isHex32(record.entryDigest) ||
-    !same(record.journal, observation.journal)
+    (observation.transitionKind !== "rollback" &&
+      !same(record.journal, observation.journal))
   ) {
     return null;
   }
@@ -3182,7 +3258,11 @@ export const parseWatcherProofThreadStateV1 = (
     !isHex32(record.pointDigest) ||
     !isHex32(record.durableStoreDigest) ||
     !isHex32(record.stateDigest) ||
-    history.length === 0 ||
+    (history.length === 0 &&
+      !(
+        audit.at(-1)?.status === "rollback" &&
+        audit.some((entry) => entry?.status === "orphaned")
+      )) ||
     history.length > Number(policy.maximumHistoryEntries) ||
     new Set(history.map((entry) => entry!.entryDigest)).size !==
       history.length ||
@@ -3221,8 +3301,23 @@ export const parseWatcherProofThreadStateV1 = (
       }
     } else {
       const authority = auditEntry.entry.publicContext.rollbackAuthority;
+      const expectedFinalityPolicy = [
+        ...canonicalHistory,
+        ...canonicalAudit
+          .filter(({ status }) => status === "orphaned")
+          .map(({ entry }) => entry),
+      ]
+        .reverse()
+        .find(({ publicContext }) => publicContext.finalityAuthority !== null)
+        ?.publicContext.finalityAuthority?.policy;
       if (
         authority === null ||
+        expectedFinalityPolicy === undefined ||
+        boundRollbackPolicy(
+          policy,
+          authority.context,
+          expectedFinalityPolicy,
+        ) === null ||
         parseWatcherRollbackResultV1(
           auditEntry.entry.rollbackResult,
           authority.context,
@@ -3379,7 +3474,10 @@ export const evaluateWatcherProofThreadIndexerV1 = (
     return rejected("stale_state");
   }
   if (
-    previous?.history.some(
+    [
+      ...(previous?.history ?? []),
+      ...(previous?.auditHistory.map(({ entry }) => entry) ?? []),
+    ].some(
       ({ observation: prior }) =>
         prior.observationDigest === observation.observationDigest,
     )
@@ -3389,6 +3487,20 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       protocolDecision: "hold",
       reasonCodes: Object.freeze(["duplicate_observation"]),
       alertCodes: Object.freeze([]),
+      state: previous,
+    });
+  }
+  if (
+    previous?.auditHistory.at(-1)?.entry.rollbackResult?.action ===
+    "quarantine_incident"
+  ) {
+    return makeResult({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: Object.freeze(["post_finality_quarantine"]),
+      alertCodes: Object.freeze([
+        "watcher_proof_thread_post_finality_incident",
+      ]),
       state: previous,
     });
   }
@@ -3407,21 +3519,69 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       authority === null || authority === undefined
         ? null
         : parseWatcherRollbackResultV1(authority.result, authority.context);
+    const expectedFinalityPolicy = [
+      ...previous.history,
+      ...previous.auditHistory
+        .filter(({ status }) => status === "orphaned")
+        .map(({ entry }) => entry),
+    ]
+      .reverse()
+      .find(({ publicContext }) => publicContext.finalityAuthority !== null)
+      ?.publicContext.finalityAuthority?.policy;
     if (
       verified === null ||
       rollback === null ||
       rollback.nextStore === null ||
-      rollback.action === "quarantine_incident"
+      authority === null ||
+      authority === undefined ||
+      expectedFinalityPolicy === undefined ||
+      boundRollbackPolicy(policy, authority.context, expectedFinalityPolicy) ===
+        null
     ) {
       return rejected(
-        rollback?.action === "quarantine_incident"
-          ? "post_finality_quarantine"
-          : "rollback_authority_mismatch",
-        rollback?.action === "quarantine_incident"
-          ? "watcher_proof_thread_post_finality_incident"
-          : "watcher_proof_thread_binding_rejected",
-        rollback?.action === "quarantine_incident",
+        "rollback_authority_mismatch",
+        "watcher_proof_thread_binding_rejected",
       );
+    }
+    if (rollback.action === "quarantine_incident") {
+      if (
+        rollback.protocolDecision !== "quarantined" ||
+        !same(verified.sourceJournal, previous.journal) ||
+        !same(verified.journal, previous.journal)
+      ) {
+        return rejected("rollback_authority_mismatch");
+      }
+      const incidentEntry = makeEntry(
+        observation,
+        verified.context,
+        previous.journal,
+        previous.journal,
+        rollback,
+      );
+      const audit = [
+        ...previous.auditHistory,
+        makeAudit("rollback", incidentEntry),
+      ];
+      if (audit.length > WATCHER_PROOF_THREAD_V1_BOUNDS.auditEntries) {
+        return rejected("history_limit_exceeded");
+      }
+      const state = makeState(
+        policy,
+        observation,
+        previous.journal,
+        previous.pending,
+        previous.history,
+        audit,
+      );
+      return makeResult({
+        action: "accept",
+        protocolDecision: "quarantined",
+        reasonCodes: Object.freeze(["post_finality_quarantine"]),
+        alertCodes: Object.freeze([
+          "watcher_proof_thread_post_finality_incident",
+        ]),
+        state,
+      });
     }
     if (rollback.action === "duplicate_rewind") {
       if (

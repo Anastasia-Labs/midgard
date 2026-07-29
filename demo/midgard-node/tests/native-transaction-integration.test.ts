@@ -125,10 +125,7 @@ const PLUTUS_V3_CONTEXT_PROBE_SCRIPT_HEX = loadAlwaysSucceedsCompiledCode(
 
 type ScriptWitnessItem = MidgardVersionedScript | Uint8Array;
 
-const testProgramMaterial = new Map<
-  string,
-  MidgardCekProgramMaterialEntryV1
->();
+const testProgramMaterial = new Map<string, MidgardCekProgramMaterialEntryV1>();
 
 const registerTestProgramMaterial = (
   entries: Iterable<MidgardCekProgramMaterialEntryV1>,
@@ -770,10 +767,9 @@ const phaseAConfig = {
 const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
   txId,
   txCbor,
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1(
-      [...testProgramMaterial.values()],
-    ),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+    ...testProgramMaterial.values(),
+  ]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -2093,9 +2089,7 @@ describe("native transaction integration", () => {
   });
 
   it("rejects Plutus witness bundles when the evaluator reports script failure", async () => {
-    const plutusScriptRef = makeAlwaysSucceedsScript(
-      ALWAYS_FAILS_SCRIPT_HEX,
-    );
+    const plutusScriptRef = makeAlwaysSucceedsScript(ALWAYS_FAILS_SCRIPT_HEX);
     const { phaseA, phaseB } = await runPlutusV3SpendScenario({
       spendScript: plutusScriptRef,
       txOptions: {

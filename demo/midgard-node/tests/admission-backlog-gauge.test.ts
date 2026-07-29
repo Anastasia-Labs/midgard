@@ -1,13 +1,5 @@
 import { SqlClient } from "@effect/sql";
-import {
-  Deferred,
-  Duration,
-  Effect,
-  Exit,
-  Fiber,
-  Ref,
-  Schedule,
-} from "effect";
+import { Deferred, Duration, Effect, Exit, Fiber, Ref, Schedule } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -131,10 +123,7 @@ describe("admission backlog gauge", () => {
         yield* Effect.yieldNow();
         return yield* Fiber.interrupt(fiber);
       }).pipe(
-        Effect.provideService(
-          SqlClient.SqlClient,
-          {} as SqlClient.SqlClient,
-        ),
+        Effect.provideService(SqlClient.SqlClient, {} as SqlClient.SqlClient),
         Effect.provide(Globals.Default),
       ),
     );

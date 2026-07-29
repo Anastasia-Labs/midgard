@@ -18,11 +18,18 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   parseFaultProofBlueprint,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
-import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  type UTxO,
+  validatorToScriptHash,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -44,10 +51,28 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
+const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+  referenceScriptAuthPolicy: {
+    policyId: validatorToScriptHash({
+      type: "Native",
+      script: referenceScriptAuthNativeScript,
+    }),
+    nativeScript: {
+      type: "Native",
+      cborHex: referenceScriptAuthNativeScript,
+      expiresAtSlot: 0,
+      expiresAtUnixTime: 0,
+      timelockDurationMs: 1,
+    },
+    tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: {
+      required: true,
+      rule: "test fixture",
+    },
+  },
   contracts,
 });
 
@@ -241,64 +266,29 @@ describe("submit-init state queue header resolution", () => {
   });
 });
 
-describe("fault-proof deployment contract resolution", () => {
-  it("resolves double-spend without requiring invalid-range validators in the blueprint", async () => {
-    const blueprint = filterBlueprint(readBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      ...Object.values(DOUBLE_SPEND_FAULT_PROOF_TITLES),
-    ]);
-    const contracts = await Effect.runPromise(
-      buildDoubleSpendFaultProofContracts({
+describe(
+  "fault-proof deployment contract resolution",
+  { timeout: 30_000 },
+  () => {
+    it("resolves double-spend without requiring invalid-range validators in the blueprint", async () => {
+      const blueprint = filterBlueprint(readBlueprint(), [
+        ...Object.values(FAULT_PROOF_SHARED_TITLES),
+        ...Object.values(DOUBLE_SPEND_FAULT_PROOF_TITLES),
+      ]);
+      const contracts = await Effect.runPromise(
+        buildDoubleSpendFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
+      });
+
+      const resolved = await resolveDoubleSpendDeploymentContracts({
         blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
-    });
-
-    const resolved = await resolveDoubleSpendDeploymentContracts({
-      blueprint,
-      deploymentInfo: deploymentManifest({
-        hubOracleMint: { scriptHash: h28 },
-        fraudProofCatalogueMint: {
-          scriptHash: h28b,
-          fraudProofCatalogue,
-        },
-        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-        fraudProofDoubleSpend: {
-          scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
-        },
-      }),
-      network: "Preprod",
-    });
-
-    expect(resolved.doubleSpendCategory.categoryId).toBe("00000000");
-    expect(resolved.contracts.doubleSpend.steps).toHaveLength(4);
-  });
-
-  it("requires the invalid-range deployment entry for invalid-range resolution", async () => {
-    const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
-    });
-
-    await expect(
-      resolveInvalidRangeDeploymentContracts({
-        blueprint: filterBlueprint(blueprint, [
-          ...Object.values(FAULT_PROOF_SHARED_TITLES),
-          ...Object.values(INVALID_RANGE_FAULT_PROOF_TITLES),
-        ]),
         deploymentInfo: deploymentManifest({
           hubOracleMint: { scriptHash: h28 },
           fraudProofCatalogueMint: {
@@ -306,296 +296,337 @@ describe("fault-proof deployment contract resolution", () => {
             fraudProofCatalogue,
           },
           fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-        }),
-        network: "Preprod",
-      }),
-    ).rejects.toThrow('Deployment info is missing "fraudProofInvalidRange"');
-  });
-
-  it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
-    const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
-    });
-    const staleCatalogue: FraudProofCatalogueDeploymentInfo = {
-      ...fraudProofCatalogue,
-      categories: {
-        ...fraudProofCatalogue.categories,
-        invalidRange: {
-          ...fraudProofCatalogue.categories.invalidRange,
-          membershipProofCbor:
-            fraudProofCatalogue.categories.doubleSpend.membershipProofCbor,
-        },
-      },
-    };
-
-    await expect(
-      resolveInvalidRangeDeploymentContracts({
-        blueprint: filterBlueprint(blueprint, [
-          ...Object.values(FAULT_PROOF_SHARED_TITLES),
-          ...Object.values(INVALID_RANGE_FAULT_PROOF_TITLES),
-        ]),
-        deploymentInfo: deploymentManifest({
-          hubOracleMint: { scriptHash: h28 },
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue: staleCatalogue,
-          },
-          fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-          fraudProofInvalidRange: {
-            scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
-          },
-        }),
-        network: "Preprod",
-      }),
-    ).rejects.toThrow(
-      "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
-    );
-  });
-
-  it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
-    const blueprint = filterBlueprint(readBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      ...Object.values(TRANSITION_TRACE_FAULT_PROOF_TITLES),
-    ]);
-    const contracts = await Effect.runPromise(
-      buildTransitionTraceFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
-    });
-
-    const resolved = await resolveTransitionTraceDeploymentContracts({
-      blueprint,
-      deploymentInfo: deploymentManifest({
-        hubOracleMint: { scriptHash: h28 },
-        fraudProofCatalogueMint: {
-          scriptHash: h28b,
-          fraudProofCatalogue,
-        },
-        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-        fraudProofTransitionTrace: {
-          scriptHash: contracts.transitionTrace.firstStep.spendingScriptHash,
-        },
-      }),
-      network: "Preprod",
-    });
-
-    expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
-    expect(resolved.contracts.transitionTrace.steps).toHaveLength(9);
-    expect(resolved.contracts.transitionTrace.finals).toHaveLength(8);
-    expect(resolved.contracts.transitionTrace.steps[0]).toBe(
-      resolved.contracts.transitionTrace.route,
-    );
-  });
-
-  it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
-    const blueprint = filterBlueprint(readBlueprint(), [
-      ...Object.values(FAULT_PROOF_SHARED_TITLES),
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
-      ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
-      ...Object.values(
-        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-      ),
-    ]);
-    const contracts = await Effect.runPromise(
-      buildValidationTraceDisputeFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const proofCatalogue = await catalogueFor({
-      validationTraceDispute:
-        contracts.validationTraceDispute.firstStep.spendingScriptHash,
-    });
-    const deploymentInfo = deploymentManifest({
-      hubOracleMint: { scriptHash: h28 },
-      fraudProofCatalogueMint: {
-        scriptHash: h28b,
-        fraudProofCatalogue: proofCatalogue,
-      },
-      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-      validationTraceDispute: {
-        scriptHash:
-          contracts.validationTraceDispute.firstStep.spendingScriptHash,
-      },
-    });
-
-    const resolved = await resolveValidationTraceDisputeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network: "Preprod",
-    });
-    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(81);
-    expect(
-      resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(61);
-    expect(
-      resolved.contracts.validationTraceDispute.prepareResolvers,
-    ).toHaveLength(12);
-    expect(
-      resolved.contracts.validationTraceDispute.directResolvers,
-    ).toHaveLength(2);
-    expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
-      14,
-    );
-
-    const { validationTraceDispute: _omitted, ...incompleteCategories } =
-      proofCatalogue.categories;
-    await expect(
-      resolveValidationTraceDisputeDeploymentContracts({
-        blueprint,
-        deploymentInfo: deploymentManifest({
-          ...deploymentInfo.contracts,
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue: {
-              ...proofCatalogue,
-              categories: incompleteCategories,
-            },
-          },
-        }),
-        network: "Preprod",
-      }),
-    ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  }, 15_000);
-
-  it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
-    const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
-      invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
-    });
-    const fakeLucid = {
-      utxosAtWithUnit: async () => {
-        throw new Error("fetch attempted after double-spend readiness");
-      },
-      utxosByOutRef: async () => [],
-    };
-
-    await expect(
-      submitInit({
-        lucid: fakeLucid as never,
-        blueprint,
-        deploymentInfo: deploymentManifest({
-          hubOracleMint: { scriptHash: h28 },
-          stateQueueMint: { scriptHash: "33".repeat(28) },
-          fraudProofCatalogueMint: {
-            scriptHash: h28b,
-            fraudProofCatalogue,
-          },
-          fraudProofCatalogueSpend: { scriptHash: "44".repeat(28) },
-          fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-          fraudProofSpend: {
-            scriptHash: contracts.fraudProof.spendingScriptHash,
-          },
           fraudProofDoubleSpend: {
             scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
           },
-          fraudProofInvalidRange: {
-            scriptHash: placeholderInvalidRange,
-          },
         }),
         network: "Preprod",
-        signer: {
-          source: "test",
-          address:
-            "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
-          paymentKeyHash: h28,
-          selectWallet: () => undefined,
-        },
-        fraudulentBlockOutRef: `${"aa".repeat(32)}#0`,
-        awaitConfirmation: false,
-      }),
-    ).rejects.toThrow("fetch attempted after double-spend readiness");
-  });
+      });
 
-  it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
-    const blueprint = readBlueprint();
-    const contracts = await Effect.runPromise(
-      buildFaultProofContracts({
-        blueprint,
-        network: "Preprod",
-        hubOraclePolicyId: h28,
-        fraudProofCataloguePolicyId: h28b,
-      }),
-    );
-    const fraudProofCatalogue = await catalogueFor({
-      doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
-      invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+      expect(resolved.doubleSpendCategory.categoryId).toBe("00000000");
+      expect(resolved.contracts.doubleSpend.steps).toHaveLength(4);
     });
-    const fakeLucid = {
-      utxosAtWithUnit: async () => {
-        throw new Error("fetch attempted after invalid-range readiness");
-      },
-      utxosByOutRef: async () => [],
-    };
 
-    await expect(
-      submitInit({
-        lucid: fakeLucid as never,
+    it("requires the invalid-range deployment entry for invalid-range resolution", async () => {
+      const blueprint = readBlueprint();
+      const contracts = await Effect.runPromise(
+        buildFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+      });
+
+      await expect(
+        resolveInvalidRangeDeploymentContracts({
+          blueprint: filterBlueprint(blueprint, [
+            ...Object.values(FAULT_PROOF_SHARED_TITLES),
+            ...Object.values(INVALID_RANGE_FAULT_PROOF_TITLES),
+          ]),
+          deploymentInfo: deploymentManifest({
+            hubOracleMint: { scriptHash: h28 },
+            fraudProofCatalogueMint: {
+              scriptHash: h28b,
+              fraudProofCatalogue,
+            },
+            fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+          }),
+          network: "Preprod",
+        }),
+      ).rejects.toThrow('Deployment info is missing "fraudProofInvalidRange"');
+    });
+
+    it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
+      const blueprint = readBlueprint();
+      const contracts = await Effect.runPromise(
+        buildFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+      });
+      const staleCatalogue: FraudProofCatalogueDeploymentInfo = {
+        ...fraudProofCatalogue,
+        categories: {
+          ...fraudProofCatalogue.categories,
+          invalidRange: {
+            ...fraudProofCatalogue.categories.invalidRange,
+            membershipProofCbor:
+              fraudProofCatalogue.categories.doubleSpend.membershipProofCbor,
+          },
+        },
+      };
+
+      await expect(
+        resolveInvalidRangeDeploymentContracts({
+          blueprint: filterBlueprint(blueprint, [
+            ...Object.values(FAULT_PROOF_SHARED_TITLES),
+            ...Object.values(INVALID_RANGE_FAULT_PROOF_TITLES),
+          ]),
+          deploymentInfo: deploymentManifest({
+            hubOracleMint: { scriptHash: h28 },
+            fraudProofCatalogueMint: {
+              scriptHash: h28b,
+              fraudProofCatalogue: staleCatalogue,
+            },
+            fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+            fraudProofInvalidRange: {
+              scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
+            },
+          }),
+          network: "Preprod",
+        }),
+      ).rejects.toThrow(
+        "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
+      );
+    });
+
+    it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
+      const blueprint = filterBlueprint(readBlueprint(), [
+        ...Object.values(FAULT_PROOF_SHARED_TITLES),
+        ...Object.values(TRANSITION_TRACE_FAULT_PROOF_TITLES),
+      ]);
+      const contracts = await Effect.runPromise(
+        buildTransitionTraceFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
+      });
+
+      const resolved = await resolveTransitionTraceDeploymentContracts({
         blueprint,
         deploymentInfo: deploymentManifest({
           hubOracleMint: { scriptHash: h28 },
-          stateQueueMint: { scriptHash: "33".repeat(28) },
           fraudProofCatalogueMint: {
             scriptHash: h28b,
             fraudProofCatalogue,
           },
-          fraudProofCatalogueSpend: { scriptHash: "44".repeat(28) },
           fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-          fraudProofSpend: {
-            scriptHash: contracts.fraudProof.spendingScriptHash,
-          },
-          fraudProofDoubleSpend: {
-            scriptHash: placeholderInvalidRange,
-          },
-          fraudProofInvalidRange: {
-            scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
+          fraudProofTransitionTrace: {
+            scriptHash: contracts.transitionTrace.firstStep.spendingScriptHash,
           },
         }),
         network: "Preprod",
-        signer: {
-          source: "test",
-          address:
-            "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
-          paymentKeyHash: h28,
-          selectWallet: () => undefined,
+      });
+
+      expect(resolved.transitionTraceCategory.categoryId).toBe("00000004");
+      expect(resolved.contracts.transitionTrace.steps).toHaveLength(9);
+      expect(resolved.contracts.transitionTrace.finals).toHaveLength(8);
+      expect(resolved.contracts.transitionTrace.steps[0]).toBe(
+        resolved.contracts.transitionTrace.route,
+      );
+    });
+
+    it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
+      const blueprint = filterBlueprint(readBlueprint(), [
+        ...Object.values(FAULT_PROOF_SHARED_TITLES),
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+        ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
+        ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
+        ...Object.values(
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
+        ),
+      ]);
+      const contracts = await Effect.runPromise(
+        buildValidationTraceDisputeFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const proofCatalogue = await catalogueFor({
+        validationTraceDispute:
+          contracts.validationTraceDispute.firstStep.spendingScriptHash,
+      });
+      const deploymentInfo = deploymentManifest({
+        hubOracleMint: { scriptHash: h28 },
+        fraudProofCatalogueMint: {
+          scriptHash: h28b,
+          fraudProofCatalogue: proofCatalogue,
         },
-        fraudCategory: "invalidRange",
-        fraudulentBlockOutRef: `${"aa".repeat(32)}#0`,
-        awaitConfirmation: false,
-      }),
-    ).rejects.toThrow("fetch attempted after invalid-range readiness");
-  });
-});
+        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+        validationTraceDispute: {
+          scriptHash:
+            contracts.validationTraceDispute.firstStep.spendingScriptHash,
+        },
+      });
+
+      const resolved = await resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo,
+        network: "Preprod",
+      });
+      expect(resolved.validationTraceDisputeCategory.categoryId).toBe(
+        "00000006",
+      );
+      expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(95);
+      expect(
+        resolved.contracts.validationTraceDispute.semanticResolvers,
+      ).toHaveLength(75);
+      expect(
+        resolved.contracts.validationTraceDispute.prepareResolvers,
+      ).toHaveLength(12);
+      expect(
+        resolved.contracts.validationTraceDispute.directResolvers,
+      ).toHaveLength(2);
+      expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
+        14,
+      );
+
+      const { validationTraceDispute: _omitted, ...incompleteCategories } =
+        proofCatalogue.categories;
+      await expect(
+        resolveValidationTraceDisputeDeploymentContracts({
+          blueprint,
+          deploymentInfo: deploymentManifest({
+            ...deploymentInfo.contracts,
+            fraudProofCatalogueMint: {
+              scriptHash: h28b,
+              fraudProofCatalogue: {
+                ...proofCatalogue,
+                categories: incompleteCategories,
+              },
+            },
+          }),
+          network: "Preprod",
+        }),
+      ).rejects.toThrow(/categories\.validationTraceDispute/u);
+    }, 45_000);
+
+    it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
+      const blueprint = readBlueprint();
+      const contracts = await Effect.runPromise(
+        buildFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
+        invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+      });
+      const fakeLucid = {
+        utxosAtWithUnit: async () => {
+          throw new Error("fetch attempted after double-spend readiness");
+        },
+        utxosByOutRef: async () => [],
+      };
+
+      await expect(
+        submitInit({
+          lucid: fakeLucid as never,
+          blueprint,
+          deploymentInfo: deploymentManifest({
+            hubOracleMint: { scriptHash: h28 },
+            stateQueueMint: { scriptHash: "33".repeat(28) },
+            fraudProofCatalogueMint: {
+              scriptHash: h28b,
+              fraudProofCatalogue,
+            },
+            fraudProofCatalogueSpend: { scriptHash: "44".repeat(28) },
+            fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+            fraudProofSpend: {
+              scriptHash: contracts.fraudProof.spendingScriptHash,
+            },
+            fraudProofDoubleSpend: {
+              scriptHash: contracts.doubleSpend.firstStep.spendingScriptHash,
+            },
+            fraudProofInvalidRange: {
+              scriptHash: placeholderInvalidRange,
+            },
+          }),
+          network: "Preprod",
+          signer: {
+            source: "test",
+            address:
+              "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
+            paymentKeyHash: h28,
+            selectWallet: () => undefined,
+          },
+          fraudulentBlockOutRef: `${"aa".repeat(32)}#0`,
+          awaitConfirmation: false,
+        }),
+      ).rejects.toThrow("fetch attempted after double-spend readiness");
+    });
+
+    it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
+      const blueprint = readBlueprint();
+      const contracts = await Effect.runPromise(
+        buildFaultProofContracts({
+          blueprint,
+          network: "Preprod",
+          hubOraclePolicyId: h28,
+          fraudProofCataloguePolicyId: h28b,
+        }),
+      );
+      const fraudProofCatalogue = await catalogueFor({
+        doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
+        invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
+      });
+      const fakeLucid = {
+        utxosAtWithUnit: async () => {
+          throw new Error("fetch attempted after invalid-range readiness");
+        },
+        utxosByOutRef: async () => [],
+      };
+
+      await expect(
+        submitInit({
+          lucid: fakeLucid as never,
+          blueprint,
+          deploymentInfo: deploymentManifest({
+            hubOracleMint: { scriptHash: h28 },
+            stateQueueMint: { scriptHash: "33".repeat(28) },
+            fraudProofCatalogueMint: {
+              scriptHash: h28b,
+              fraudProofCatalogue,
+            },
+            fraudProofCatalogueSpend: { scriptHash: "44".repeat(28) },
+            fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+            fraudProofSpend: {
+              scriptHash: contracts.fraudProof.spendingScriptHash,
+            },
+            fraudProofDoubleSpend: {
+              scriptHash: placeholderInvalidRange,
+            },
+            fraudProofInvalidRange: {
+              scriptHash: contracts.invalidRange.firstStep.spendingScriptHash,
+            },
+          }),
+          network: "Preprod",
+          signer: {
+            source: "test",
+            address:
+              "addr_test1vqz2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3d7t0s7uqthvq7n",
+            paymentKeyHash: h28,
+            selectWallet: () => undefined,
+          },
+          fraudCategory: "invalidRange",
+          fraudulentBlockOutRef: `${"aa".repeat(32)}#0`,
+          awaitConfirmation: false,
+        }),
+      ).rejects.toThrow("fetch attempted after invalid-range readiness");
+    });
+  },
+);

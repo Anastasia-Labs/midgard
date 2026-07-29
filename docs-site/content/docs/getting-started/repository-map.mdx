@@ -23,7 +23,7 @@ specification.
 
 ## The `demo/` workspace
 
-The demo packages form a `pnpm` workspace. The seven workspace members declared
+The demo packages form a `pnpm` workspace. The eight workspace members declared
 in `demo/pnpm-workspace.yaml` are:
 
 | Package | Purpose | Docs |
@@ -34,6 +34,7 @@ in `demo/pnpm-workspace.yaml` are:
 | `midgard-validation` | Shared Phase A / Phase B transaction validation used by node admission. | [Validation Engine](/docs/validation/overview) |
 | `midgard-node` | Demo node runtime, HTTP server, worker loops, stress scripts, and integration tests. | [Operators](/docs/operators) |
 | `midgard-fault-proofs` | Fault-proof tooling for challenging invalid blocks. | [Fault Proofs](/docs/fault-proofs/overview) |
+| `midgard-watcher` | Independent watcher foundation with explicit local-node and external-provider L1 source modes. | [Watchers & DA](/docs/watchers/concept) |
 | `da-committee-node` | Data-availability committee node that validates and exchanges block payloads over libp2p. | [Watchers & DA](/docs/watchers/concept) |
 
 Additional directories exist under `demo/` that are not workspace members in
@@ -42,7 +43,6 @@ Additional directories exist under `demo/` that are not workspace members in
 | Directory | Purpose |
 | --- | --- |
 | `midgard-manager` | CLI and transaction-generator tooling for operator workflows and demos. |
-| `midgard-watcher` | Design notes for the planned independent watcher; the working service is `da-committee-node`. |
 | `midgard-utxo-cache` | UTxO caching support. |
 | `schemes` | Shared scheme definitions. |
 

@@ -40,6 +40,7 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
+  zeroInput: "fraudProofZeroInput",
   validationTraceDispute: "validationTraceDispute",
 } as const);
 

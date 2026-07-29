@@ -9,6 +9,7 @@ import {
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildZeroInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -53,6 +54,7 @@ import {
   type TransitionTraceFaultProofContracts,
   utxoToStateQueueUTxO,
   type ValidationTraceDisputeFaultProofContracts,
+  type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -274,6 +276,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "invalidRange"
   | "transitionTrace"
   | "validationTraceDispute"
+  | "zeroInput"
 >;
 
 export type StateQueueMutationLease = {
@@ -551,13 +554,15 @@ const buildRemovalContracts = async ({
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | ZeroInputFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
-    | "validationTraceDispute";
+    | "validationTraceDispute"
+    | "fraudProofZeroInput";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -611,6 +616,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
     derivedCategoryFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "zeroInput") {
+    const zeroInputContracts = await Effect.runPromise(
+      buildZeroInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = zeroInputContracts;
+    expectedCategoryDeploymentEntry = "fraudProofZeroInput";
+    derivedCategoryFirstStepHash =
+      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
   } else {
     const validationTraceDisputeContracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({

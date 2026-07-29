@@ -48,20 +48,23 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
 ```
  detect fault          build evidence            L1 dispute                    state correction
 ┌─────────────┐   ┌─────────────────────┐   ┌─────────────────────────┐   ┌──────────────────────────┐
-│ (manual /   │   │ prepare-* CLI or    │   │ submit-init: mint thread │   │ remove-fraudulent-block:     │
+│ manual /    │   │ prepare-* CLI or    │   │ submit-init: mint thread │   │ remove-fraudulent-block:     │
 │ library     │──▶│ transition-trace    │──▶│ NFT (catalogue member-   │──▶│ per descendant link, one │
-│ detect.ts;  │   │ reconstruct+witness │   │ ship proof) → step-01..N │   │ RemoveFaultyBlocksLink tx│
-│ no watcher) │   │ from node API / DA  │   │ → final step finalize()  │   │ … then RemoveLastFaulty- │
-└─────────────┘   │ payload / fixtures  │   │ burns thread, mints      │   │ Block + SlashOperator in │
-                  └─────────────────────┘   │ permanent fault_proof    │   │ the same tx              │
+│ detection;  │   │ reconstruct+witness │   │ ship proof) → step-01..N │   │ RemoveFaultyBlocksLink tx│
+│ watcher L1  │   │ from node API / DA  │   │ → final step finalize()  │   │ … then RemoveLastFaulty- │
+│ indexing    │   │ payload / fixtures  │   │ burns thread, mints      │   │ Block + SlashOperator in │
+└─────────────┘   └─────────────────────┘   │ permanent fault_proof    │   │ the same tx              │
                                             └─────────────────────────┘   └──────────────────────────┘
 ```
 
-1. **Detection** — today entirely manual or library-level. `demo/midgard-watcher/` contains
-   two design docs and zero code; `demo/midgard-node` never imports
-   `@al-ft/midgard-fault-proofs`. The closest challenger logic is
-   `demo/midgard-fault-proofs/src/transition-trace/detect.ts`, a pure function library with
-   no polling loop. Mempool rejections (`RejectCodes`) are deliberately **not** mapped to
+1. **Detection** — proof-family classification and actuation remain manual or
+   library-level. `demo/midgard-watcher/` now contains executable
+   `local_node | external_providers` source handling, consistency/finality,
+   rollback, and protocol indexers, but no repository acceptance evidence
+   closes a continuous classify→prove→remove loop. `demo/midgard-node` still
+   never imports `@al-ft/midgard-fault-proofs`. The proof-specific detection
+   surface remains `demo/midgard-fault-proofs/src/transition-trace/detect.ts`.
+   Mempool rejections (`RejectCodes`) are deliberately **not** mapped to
    fault categories: admission handles rejected transactions, while fault proofs target
    committed blocks. The resulting committed-block classifier gap is tracked in
    [`coverage-matrix.md`](coverage-matrix.md) §11.
@@ -111,9 +114,9 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
   (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
   the prover.
-- **Catalogue registration ≠ compiled validators.** The deployment layer registers only 5
-  categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts:23-29`,
-  `common.ts:162-168`) of the 12 compiled proof-type families — the other 7 cannot `Init`
+- **Catalogue registration ≠ compiled validators.** The deployment layer registers 7
+  categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`) of the 13 compiled
+  proof-type families — the other 6 cannot `Init`
   a thread against a deployed instance. The `FaultProofs` type also carries a TODO that
   multi-step registration needs "a more elaborate design" (`common.ts:160-161`).
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only
@@ -183,9 +186,11 @@ ties any retention deadline to the actual on-chain maturity deadline.
    is withheld (see [`coverage-matrix.md`](coverage-matrix.md) §DA). The committee
    pre-signing checklist (`technical-spec/5-ledger-rules/3-da-rules.tex:13-28`) is part of
    the soundness argument but is off-chain and unslashable.
-2. **An active challenger exists** — no autonomous watcher exists; detection and the
-   multi-step submission chains are manual.
-3. **Economics parameters will be set** — with zeroed bond/penalty/reward and a 30 ms
-   maturity window, a successful proof currently neither deters nor compensates.
+2. **An active challenger exists** — watcher observation/indexing code exists,
+   but continuous fault classification and multi-step proof/correction
+   orchestration have not been acceptance-proven.
+3. **Economics parameters will be set** — with zeroed bond/penalty/reward, a
+   successful proof currently neither deters nor compensates, regardless of
+   the canonical seven-day maturity window.
 4. **Operator monotonicity for cascades** — descendant removal currently assumes the
    descendant shares the faulty block's operator (see §3 seams).

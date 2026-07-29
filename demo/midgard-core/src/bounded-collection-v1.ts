@@ -1,11 +1,11 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { encodeCbor } from "./codec/cbor.js";
-import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
   buildMidgardBoundedItemV1,
   type MidgardBoundedItemV1,
 } from "./bounded-item-v1.js";
+import { encodeCbor } from "./codec/cbor.js";
+import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
   buildMidgardValidationMerkleFrontierV1,
   buildMidgardValidationMerkleMembershipV1,

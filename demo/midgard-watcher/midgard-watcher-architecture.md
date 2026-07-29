@@ -317,7 +317,7 @@ A production watcher must therefore be built with a proof-family coverage matrix
 
 ```mermaid
 flowchart LR
-  L1["Cardano L1 providers"] --> CF["Chain follower"]
+  L1["Cardano L1 source: local node or external providers"] --> CF["Chain follower"]
   DA["Data availability layer"] --> DC["DA client"]
   CF --> IDX["Protocol indexers"]
   IDX --> SQ["State queue tracker"]
@@ -395,7 +395,12 @@ Only `verified` should be considered healthy.
 A production watcher should:
 
 - Run continuously and start before blocks are close to maturity.
-- Use at least two independent L1 data sources for public deployments.
+- Select exactly one L1-source mode. In `local_node`, the watcher-operated
+  Cardano node is the chain-consensus authority and every Ogmios, Kupo, or
+  db-sync query surface must match its network and canonical chain point. In
+  `external_providers`, use at least two operationally independent providers
+  and quarantine any identity, network, or compatible-chain-point
+  disagreement.
 - Persist every proof-critical input before submitting proof transactions.
 - Alert on DA fetch failure, root mismatch, proof submission failure, maturity deadline risk, provider disagreement, chain rollback, deployment fingerprint mismatch, and proof-family coverage gaps.
 - Keep enough ADA and collateral inputs available for proof steps.

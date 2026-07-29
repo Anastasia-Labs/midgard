@@ -160,6 +160,7 @@ const makeDeploymentAuthority = () => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => {
         const contractName = {
@@ -169,6 +170,7 @@ const makeDeploymentAuthority = () => {
           invalidRange: "fraudProofInvalidRange",
           transitionTrace: "fraudProofTransitionTrace",
           validationTraceDispute: "validationTraceDispute",
+          zeroInput: "fraudProofZeroInput",
         }[category]!;
         return [
           category,
@@ -840,6 +842,16 @@ const provider = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: h32("97"),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: h32("98"),
+    },
+  ],
 } as const;
 
 const localSource = {
@@ -1705,6 +1717,159 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       action: "reject",
       reasonCodes: ["malformed_public_context"],
     });
+  });
+
+  it("persists a finalized W13 contradiction as restart-replayable quarantine", () => {
+    const pending = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+    });
+    const finalRaw = structuredClone(pending.context.l1Observation) as Mutable;
+    finalRaw.chainPoint.depth = policy.requiredFinalityDepth;
+    const finalized = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+      l1Observation: finalRaw,
+      previousFinalityState: pending.finalityState,
+    });
+    expect(finalized.finalityResult.action).toBe("finalize");
+    const finalizedState = accepted(null, finalized);
+
+    const replacementRawA = structuredClone(finalRaw) as Mutable;
+    replacementRawA.chainPoint.blockHash = h32("f3");
+    replacementRawA.chainPoint.slot = (
+      BigInt(replacementRawA.chainPoint.slot) + 1n
+    ).toString();
+    replacementRawA.chainPoint.blockNo = (
+      BigInt(replacementRawA.chainPoint.blockNo) + 1n
+    ).toString();
+    const replacementRawB = structuredClone(replacementRawA) as Mutable;
+    replacementRawB.providerId = "provider-b";
+    const oldRawB = structuredClone(finalRaw) as Mutable;
+    oldRawB.providerId = "provider-b";
+    const providerB = rollbackProvider("provider-b", "78");
+    const oldA = normalizeWatcherL1BlockV1(provider, finalRaw);
+    const oldB = normalizeWatcherL1BlockV1(providerB, oldRawB);
+    const replacementA = normalizeWatcherL1BlockV1(provider, replacementRawA);
+    const replacementB = normalizeWatcherL1BlockV1(providerB, replacementRawB);
+    const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [replacementA, replacementB],
+    );
+    const finalityResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      finalized.finalityState,
+      replacementConsistency,
+    );
+    expect(finalityResult.action).toBe("quarantine_incident");
+    const persisted = [oldA, oldB, replacementA, replacementB];
+    const sourceStore = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: (BigInt(finalized.store.revision) + 1n).toString(),
+      records: {
+        l1Observations: [
+          ...finalized.store.l1Observations,
+          ...persisted
+            .filter(
+              (candidate) =>
+                !finalized.store.l1Observations.some(
+                  ({ observationId }) =>
+                    observationId === candidate.observationDigest,
+                ),
+            )
+            .map(persistedObservation),
+        ],
+        chainPoints: [
+          ...finalized.store.chainPoints,
+          ...persistedChainPoints(persisted).filter(
+            (candidate) =>
+              !finalized.store.chainPoints.some(
+                ({ chainPointId }) => chainPointId === candidate.chainPointId,
+              ),
+          ),
+        ],
+        protocolUtxos: finalized.store.protocolUtxos,
+        spentProtocolUtxos: finalized.store.spentProtocolUtxos,
+        daProofInputs: finalized.store.daProofInputs,
+        reconstructedStates: finalized.store.reconstructedStates,
+        decisions: finalized.store.decisions,
+        faults: finalized.store.faults,
+        submissions: finalized.store.submissions,
+        confirmations: finalized.store.confirmations,
+        retries: finalized.store.retries,
+        deadlines: finalized.store.deadlines,
+        correctionResults: finalized.store.correctionResults,
+      },
+    });
+    const bootstrap = makeWatcherRollbackBootstrapStateV1(
+      finalityPolicy,
+      sourceStore,
+      finalized.finalityState,
+    )!;
+    const verificationContext = {
+      policy: finalityPolicy,
+      sourceStore,
+      previousFinalityState: finalized.finalityState,
+      consistency: replacementConsistency,
+      finalityResult,
+      previousRollbackState: bootstrap,
+      rollbackBootstrapState: bootstrap,
+    };
+    const authoritative = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      finalized.finalityState,
+      replacementConsistency,
+      finalityResult,
+      bootstrap,
+      bootstrap,
+    );
+    expect(authoritative).toMatchObject({
+      action: "quarantine_incident",
+      protocolDecision: "quarantined",
+    });
+    const rollback = bundle({
+      kind: "rollback",
+      previousState: finalizedState,
+      snapshot: finalizedState.snapshot,
+      restartBindings: [finalized.restartBinding],
+      authenticatedProvider: provider,
+      l1Observation: replacementRawA,
+      sourceDurableStore: sourceStore,
+      durableStore: authoritative.nextStore!,
+      rollbackAuthority: {
+        result: authoritative,
+        context: verificationContext,
+      },
+    });
+    const result = evaluateWatcherSettlementIndexerV1(
+      policy,
+      finalizedState,
+      rollback.observation,
+      rollback.context,
+    );
+    expect(result).toMatchObject({
+      action: "accept",
+      protocolDecision: "quarantined",
+      reasonCodes: ["post_finality_quarantine"],
+      state: {
+        snapshot: finalizedState.snapshot,
+      },
+    });
+    const rollbackBinding = {
+      resultDigest: authoritative.resultDigest,
+      context: verificationContext,
+    };
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        JSON.parse(JSON.stringify(result.state)),
+        policy,
+        [finalized.restartBinding, rollback.restartBinding],
+        [rollbackBinding],
+      ),
+    ).toEqual(result.state);
   });
 
   it("authenticates canonical Cardano output CBOR and SDK Settlement datum/redeemer CBOR", () => {
@@ -4609,7 +4774,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       blockHash: h32("d3"),
       slot: "5001",
       blockNo: "501",
-      depth: "2",
+      depth: "1",
     } as const;
     const providerA = rollbackProvider("provider-a", "77");
     const providerB = rollbackProvider("provider-b", "78");
@@ -4746,11 +4911,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
           requestTimeoutMs: 10_000,
           maxConcurrency: 4,
           finality: {
-            depth: 5,
+            depth: 2,
             rollback: {
               beforeFinality: "rewind",
               afterFinality: "quarantine",
-              maxDepth: 5,
+              maxDepth: 2,
             },
           },
         },

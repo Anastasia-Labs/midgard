@@ -1,15 +1,15 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  type ValidationClaimWitnessV1,
-  ValidationClaimWitnessV1Schema,
-} from "@/fraud-proof/validation-dispute.js";
-import {
   type OutputReference,
   OutputReferenceSchema,
   type Proof,
   ProofSchema,
 } from "@/common.js";
+import {
+  type ValidationClaimWitnessV1,
+  ValidationClaimWitnessV1Schema,
+} from "@/fraud-proof/validation-dispute.js";
 import {
   type HeaderHash,
   HeaderHashSchema,

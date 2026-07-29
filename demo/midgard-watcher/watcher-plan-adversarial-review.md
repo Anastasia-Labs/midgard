@@ -72,11 +72,19 @@ Disposition:
 
 ### 4. Critical: L1 finality and provider consistency were not strong enough
 
-The first plan accepted "at least one provider, with a path to multiple", conflicting with the architecture's production requirement for at least two independent L1 sources and Midgard readiness requirements around first-visibility finalization.
+The first plan did not distinguish a watcher-operated Cardano node from
+external providers, and therefore could not state the correct production
+trust boundary or first-visibility finalization rule.
 
 Recommendation:
 
-- Make multi-provider same-chain-point validation, explicit finality depth, rollback quarantine, and provider disagreement tests mandatory for production.
+- Make the L1-source discriminator explicit. `local_node` uses one
+  watcher-operated chain-sync authority and requires same-network,
+  same-chain-point alignment from its query surfaces without treating them as
+  independent providers. `external_providers` requires at least two
+  operationally independent providers with compatible-chain-point agreement.
+  Both modes require explicit finality depth, rollback propagation, and
+  post-finality quarantine tests.
 
 Disposition:
 

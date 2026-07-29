@@ -43,6 +43,16 @@ const hex32 = (byte: string): string => byte.repeat(32);
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: hex32("a1"),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: hex32("b2"),
+    },
+  ],
 } as const;
 const payload = (cborHex = "80") => makeWatcherDurablePayloadV1(cborHex);
 const sha256Canonical = (value: unknown): string =>
@@ -671,6 +681,248 @@ describe("canonical watcher rollback engine", () => {
     });
   });
 
+  it("journals ordinary W12 progress so successive rollback cycles replay from the original bootstrap", () => {
+    const finalityPolicy = policy();
+    const initialFinalityState = pending(finalityPolicy, oldPoint);
+    const advancedPoint = { ...oldPoint, depth: "2" };
+    const advanceObservations = agreementObservations(advancedPoint);
+    const advanceConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      advanceObservations,
+    );
+    const advanceFinalityResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      initialFinalityState,
+      advanceConsistency,
+    );
+    expect(advanceFinalityResult.action).toBe("advance_pending");
+
+    const olderReplacementPoint = {
+      blockHash: hex32("99"),
+      slot: "999",
+      blockNo: "99",
+      depth: "1",
+    } as const;
+    const firstRewind = transition(
+      finalityPolicy,
+      advanceFinalityResult.state as WatcherFinalityStateV1,
+      replacementPoint,
+    );
+    const secondRewind = transition(
+      finalityPolicy,
+      firstRewind.result.state as WatcherFinalityStateV1,
+      olderReplacementPoint,
+    );
+    const sourceStore = combine(
+      finalityPolicy.deploymentMarker,
+      "0",
+      [
+        graph("10", oldPoint),
+        graph("20", replacementPoint),
+        graph("90", olderReplacementPoint),
+      ],
+      undefined,
+      [
+        ...advanceObservations,
+        ...firstRewind.observations,
+        ...secondRewind.observations,
+      ],
+    );
+    const bootstrapState = bootstrap(
+      finalityPolicy,
+      sourceStore,
+      initialFinalityState,
+    );
+
+    const advanced = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      initialFinalityState,
+      advanceConsistency,
+      advanceFinalityResult,
+      bootstrapState,
+      bootstrapState,
+    );
+    expect(advanced).toMatchObject({
+      action: "advance_finality",
+      protocolDecision: "hold",
+      reasonCodes: ["finality_lineage_advanced"],
+      sourceRevision: "0",
+      nextRevision: "0",
+      rollbackState: { transitionCount: "1" },
+    });
+    expect(
+      parseWatcherRollbackResultV1(advanced, {
+        policy: finalityPolicy,
+        sourceStore,
+        previousFinalityState: initialFinalityState,
+        consistency: advanceConsistency,
+        finalityResult: advanceFinalityResult,
+        previousRollbackState: bootstrapState,
+        rollbackBootstrapState: bootstrapState,
+      }),
+    ).toEqual(advanced);
+    expect(
+      evaluateWatcherRollbackV1(
+        finalityPolicy,
+        sourceStore,
+        initialFinalityState,
+        advanceConsistency,
+        advanceFinalityResult,
+        advanced.rollbackState,
+        bootstrapState,
+      ),
+    ).toMatchObject({
+      action: "duplicate_finality",
+      reasonCodes: ["duplicate_finality_transition"],
+      rollbackState: advanced.rollbackState,
+    });
+
+    const firstApplied = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      advanceFinalityResult.state,
+      firstRewind.consistency,
+      firstRewind.result,
+      advanced.rollbackState,
+      bootstrapState,
+    );
+    expect(firstApplied).toMatchObject({
+      action: "apply_rewind",
+      rollbackState: { transitionCount: "2" },
+    });
+    const secondApplied = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      firstApplied.nextStore,
+      firstRewind.result.state,
+      secondRewind.consistency,
+      secondRewind.result,
+      firstApplied.rollbackState,
+      bootstrapState,
+    );
+    expect(secondApplied).toMatchObject({
+      action: "apply_rewind",
+      rollbackState: { transitionCount: "3" },
+    });
+    expect(
+      parseWatcherRollbackStateV1(secondApplied.rollbackState, {
+        policy: finalityPolicy,
+        rollbackBootstrapState: bootstrapState,
+        currentStore: secondApplied.nextStore,
+      }),
+    ).toEqual(secondApplied.rollbackState);
+  });
+
+  it("journals pending progress and finalization before a replayable post-finality incident", () => {
+    const finalityPolicy = policy();
+    const initialFinalityState = pending(finalityPolicy, oldPoint);
+    const pendingObservations = agreementObservations({
+      ...oldPoint,
+      depth: "2",
+    });
+    const pendingConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      pendingObservations,
+    );
+    const pendingResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      initialFinalityState,
+      pendingConsistency,
+    );
+    expect(pendingResult.action).toBe("advance_pending");
+
+    const finalObservations = agreementObservations({
+      ...oldPoint,
+      depth: "5",
+    });
+    const finalConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      finalObservations,
+    );
+    const finalResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      pendingResult.state,
+      finalConsistency,
+    );
+    expect(finalResult.action).toBe("finalize");
+
+    const incidentObservations = [
+      observation("provider-a", "a1", { ...oldPoint, depth: "0" }),
+    ];
+    const incidentConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      incidentObservations,
+    );
+    const incidentResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      finalResult.state,
+      incidentConsistency,
+    );
+    expect(incidentResult.action).toBe("quarantine_incident");
+
+    const sourceStore = combine(
+      finalityPolicy.deploymentMarker,
+      "0",
+      [graph("10", oldPoint)],
+      undefined,
+      [...pendingObservations, ...finalObservations, ...incidentObservations],
+    );
+    const bootstrapState = bootstrap(
+      finalityPolicy,
+      sourceStore,
+      initialFinalityState,
+    );
+    const pendingJournal = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      initialFinalityState,
+      pendingConsistency,
+      pendingResult,
+      bootstrapState,
+      bootstrapState,
+    );
+    expect(pendingJournal).toMatchObject({
+      action: "advance_finality",
+      rollbackState: { transitionCount: "1" },
+    });
+    const finalJournal = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      pendingResult.state,
+      finalConsistency,
+      finalResult,
+      pendingJournal.rollbackState,
+      bootstrapState,
+    );
+    expect(finalJournal).toMatchObject({
+      action: "advance_finality",
+      rollbackState: { transitionCount: "2" },
+    });
+    const incidentJournal = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      finalResult.state,
+      incidentConsistency,
+      incidentResult,
+      finalJournal.rollbackState,
+      bootstrapState,
+    );
+    expect(incidentJournal).toMatchObject({
+      action: "quarantine_incident",
+      rollbackState: {
+        transitionCount: "3",
+        incident: { reasonCode: "provider_result_quarantined" },
+      },
+    });
+    expect(
+      parseWatcherRollbackStateV1(incidentJournal.rollbackState, {
+        policy: finalityPolicy,
+        rollbackBootstrapState: bootstrapState,
+        currentStore: incidentJournal.nextStore,
+      }),
+    ).toEqual(incidentJournal.rollbackState);
+  });
+
   it("deterministically rewinds every dependent W03 record class and preserves finalized/unrelated records", () => {
     const finalityPolicy = policy();
     const prior = pending(finalityPolicy, oldPoint);
@@ -1160,6 +1412,15 @@ describe("canonical watcher rollback engine", () => {
           }),
         ],
       },
+      {
+        status: "quarantined",
+        observations: [
+          observation("provider-c", "c3", {
+            ...oldPoint,
+            depth: "5",
+          }),
+        ],
+      },
     ] as const;
 
     for (const value of cases) {
@@ -1278,11 +1539,33 @@ describe("canonical watcher rollback engine", () => {
       bootstrapState,
       bootstrapState,
     );
+    const substitutedConfig = structuredClone(config());
+    substitutedConfig.l1.source.providers[1]!.operatorIdentitySha256 =
+      hex32("c3");
+    const substitutedPolicy = makeWatcherFinalityPolicyV1(
+      substitutedConfig,
+      deploymentIdentity(),
+    ) as WatcherFinalityPolicyV1;
+    const foreignProviderSet = evaluateWatcherRollbackV1(
+      substitutedPolicy,
+      store,
+      prior,
+      rewound.consistency,
+      rewound.result,
+      bootstrapState,
+      bootstrapState,
+    );
 
     expect(foreignDeployment.reasonCodes).toEqual(["deployment_mismatch"]);
     expect(foreignRelease.reasonCodes).toEqual(["release_evidence_mismatch"]);
     expect(malformed.reasonCodes).toEqual(["malformed_policy"]);
-    for (const diagnostic of [foreignDeployment, foreignRelease, malformed]) {
+    expect(foreignProviderSet.reasonCodes).toEqual(["policy_mismatch"]);
+    for (const diagnostic of [
+      foreignDeployment,
+      foreignRelease,
+      malformed,
+      foreignProviderSet,
+    ]) {
       expect(JSON.stringify(diagnostic)).not.toContain("operator-secret");
       expect(diagnostic.nextStore).toBeNull();
       expect(diagnostic.rollbackState).toBeNull();

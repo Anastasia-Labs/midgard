@@ -834,11 +834,7 @@ export const reconcileLocalFinalizationProgram = ({
 }): Effect.Effect<
   ReconciliationResult,
   unknown,
-  | Database
-  | Lucid
-  | MidgardContracts
-  | ContractDeploymentIdentity
-  | NodeConfig
+  Database | Lucid | MidgardContracts | ContractDeploymentIdentity | NodeConfig
 > =>
   Effect.gen(function* () {
     const headerHashHex = headerHash.toString("hex");

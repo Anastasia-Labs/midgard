@@ -338,8 +338,7 @@ const insertFromFixture = (
   envelope: Buffer,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: envelope,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(envelope),
@@ -352,8 +351,7 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
-  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
-    SDK.EMPTY_MERKLE_TREE_ROOT,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,

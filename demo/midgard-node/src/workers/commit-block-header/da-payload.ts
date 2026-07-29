@@ -343,9 +343,8 @@ const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
 
-const payloadDeclaredCounts = (
-  payload: SDK.DaPayloadV1,
-): PayloadCountSet => payload.block_body.counts;
+const payloadDeclaredCounts = (payload: SDK.DaPayloadV1): PayloadCountSet =>
+  payload.block_body.counts;
 
 const decodeHeader = (
   record: PendingBlockFinalizationsDB.Record,
@@ -380,7 +379,7 @@ const verifyPayloadCommitments = ({
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
     if (
       record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] !==
-      MIDGARD_CONSENSUS_PROFILE_V1.profileId ||
+        MIDGARD_CONSENSUS_PROFILE_V1.profileId ||
       payload.version !== SDK.DA_PAYLOAD_V1_VERSION
     ) {
       return yield* Effect.fail(

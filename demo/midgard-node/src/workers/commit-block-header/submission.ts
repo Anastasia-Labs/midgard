@@ -171,13 +171,13 @@ export const assertPreSubmitDaPayloadSize = ({
           cause,
         }),
     });
-    const forcedTransactionPreimages =
-      includedForcedTransactionEntries.map((entry) =>
+    const forcedTransactionPreimages = includedForcedTransactionEntries.map(
+      (entry) =>
         daEntry(
           entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
           entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR],
         ),
-      );
+    );
     const withdrawals = yield* Effect.forEach(
       includedWithdrawalEntries,
       (entry) => {

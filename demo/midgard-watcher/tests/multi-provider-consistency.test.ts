@@ -57,6 +57,16 @@ const localProvider = (
 const externalConfig = (network = "Preprod") => ({
   sourceMode: "external_providers",
   network,
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: "aa".repeat(32),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: "bb".repeat(32),
+    },
+  ],
 });
 
 const localConfig = () => ({
@@ -255,8 +265,34 @@ describe("fail-closed multi-provider consistency", () => {
     );
     expect(sharedOperator.reasonCodes).toEqual([
       "insufficient_independent_providers",
-      "duplicate_operator_identity",
+      "unconfigured_provider",
     ]);
+    expect(sharedOperator.alertCodes).toEqual([
+      "watcher_provider_quorum_unavailable",
+      "watcher_provider_not_configured",
+    ]);
+  });
+
+  it("quarantines independently authenticated providers outside the configured allowlist", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      observation("provider-c", "cc"),
+      observation("provider-d", "dd"),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      independentProviderCount: 0,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "unconfigured_provider",
+      ],
+      alertCodes: [
+        "watcher_provider_quorum_unavailable",
+        "watcher_provider_not_configured",
+      ],
+      agreement: null,
+    });
   });
 
   it("quarantines observations from the wrong configured network", () => {

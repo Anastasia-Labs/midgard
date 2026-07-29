@@ -12,6 +12,7 @@ import {
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildZeroInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
@@ -23,6 +24,7 @@ import {
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   type TransitionTraceFaultProofContracts,
   type ValidationTraceDisputeFaultProofContracts,
+  type ZeroInputFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
   Blockfrost,
@@ -349,6 +351,15 @@ export type ResolvedValidationTraceDisputeDeploymentContracts = {
   readonly contracts: ValidationTraceDisputeFaultProofContracts;
 };
 
+export type ResolvedZeroInputDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly zeroInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: ZeroInputFaultProofContracts;
+};
+
 type SupportedFaultProofCategoryName = Extract<
   FraudProofCatalogueCategoryName,
   | "doubleSpend"
@@ -356,6 +367,7 @@ type SupportedFaultProofCategoryName = Extract<
   | "invalidRange"
   | "transitionTrace"
   | "validationTraceDispute"
+  | "zeroInput"
 >;
 
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
@@ -364,6 +376,7 @@ const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
   validationTraceDispute: "validationTraceDispute",
+  zeroInput: "fraudProofZeroInput",
 } as const satisfies Record<SupportedFaultProofCategoryName, string>;
 
 const categoryLabel = (
@@ -380,6 +393,8 @@ const categoryLabel = (
       return "transition-trace";
     case "validationTraceDispute":
       return "validation-trace-dispute";
+    case "zeroInput":
+      return "zero-input";
   }
 };
 
@@ -408,7 +423,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | ZeroInputFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -463,7 +479,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | ZeroInputFaultProofContracts;
   let derivedFirstStepHash: string;
   if (categoryName === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -513,6 +530,18 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = transitionTraceContracts;
     derivedFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
+  } else if (categoryName === "zeroInput") {
+    const zeroInputContracts = await Effect.runPromise(
+      buildZeroInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = zeroInputContracts;
+    derivedFirstStepHash =
+      zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
   } else {
     const validationTraceDisputeContracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
@@ -669,6 +698,27 @@ export const resolveValidationTraceDisputeDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as ValidationTraceDisputeFaultProofContracts,
+  };
+};
+
+export const resolveZeroInputDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedZeroInputDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "zeroInput",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    zeroInputCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as ZeroInputFaultProofContracts,
   };
 };
 

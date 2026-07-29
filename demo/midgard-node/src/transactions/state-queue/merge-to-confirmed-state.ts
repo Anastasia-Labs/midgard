@@ -1111,9 +1111,7 @@ export const buildAndSubmitMergeTx = (
           );
         }
         const confirmedLedgerSnapshot =
-          yield* materializeConfirmedLedgerSnapshot(
-          finalizedJournal.value,
-        );
+          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
         const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
         const expectedSnapshotRoot =
           finalizedJournal.value[

@@ -31,6 +31,16 @@ const hex32 = (byte: string): string => byte.repeat(32);
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: hex32("a1"),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: hex32("b2"),
+    },
+  ],
 } as const;
 
 const config = (depth = 3, rollbackDepth = depth) => ({
@@ -317,6 +327,16 @@ describe("canonical release-bound watcher finality", () => {
       sourceMode: "external_providers",
       authorityNodeId: null,
       authorityGenesisIdentitySha256: null,
+      externalProviderCommitments: [
+        {
+          providerId: "provider-a",
+          operatorIdentitySha256: hex32("a1"),
+        },
+        {
+          providerId: "provider-b",
+          operatorIdentitySha256: hex32("b2"),
+        },
+      ],
       confirmationDepth: "3",
       maximumPreFinalityRollbackDepth: "3",
       beforeFinalityRollback: "rewind",
@@ -330,11 +350,20 @@ describe("canonical release-bound watcher finality", () => {
     expect(value.policyDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
     expect(Object.isFrozen(value)).toBe(true);
+    expect(Object.isFrozen(value.externalProviderCommitments)).toBe(true);
+    expect(Object.isFrozen(value.externalProviderCommitments[0])).toBe(true);
+
+    const reverseConfig = structuredClone(config());
+    reverseConfig.l1.source.providers.reverse();
+    expect(
+      makeWatcherFinalityPolicyV1(reverseConfig, deploymentIdentity()),
+    ).toEqual(value);
 
     expect(localPolicy()).toMatchObject({
       sourceMode: "local_node",
       authorityNodeId: "cardano-node-a",
       authorityGenesisIdentitySha256: hex32("a1"),
+      externalProviderCommitments: [],
     });
   });
 
@@ -350,6 +379,38 @@ describe("canonical release-bound watcher finality", () => {
 
     expect(wrongNetwork).toBeNull();
     expect(makeWatcherFinalityPolicyV1(config(), malformedMarker)).toBeNull();
+
+    const valid = policy();
+    const unsorted = structuredClone(valid) as any;
+    unsorted.externalProviderCommitments.reverse();
+    const { policyDigest: _oldDigest, ...unsortedCanonical } = unsorted;
+    unsorted.policyDigest = createHash("sha256")
+      .update(JSON.stringify(unsortedCanonical), "utf8")
+      .digest("hex");
+    expect(parseWatcherFinalityPolicyV1(unsorted)).toBeNull();
+
+    const duplicateIdentity = structuredClone(valid) as any;
+    duplicateIdentity.externalProviderCommitments[1]!.operatorIdentitySha256 =
+      duplicateIdentity.externalProviderCommitments[0]!.operatorIdentitySha256;
+    const { policyDigest: _duplicateDigest, ...duplicateCanonical } =
+      duplicateIdentity;
+    duplicateIdentity.policyDigest = createHash("sha256")
+      .update(JSON.stringify(duplicateCanonical), "utf8")
+      .digest("hex");
+    expect(parseWatcherFinalityPolicyV1(duplicateIdentity)).toBeNull();
+
+    const localWithExternalCommitment = structuredClone(localPolicy()) as any;
+    localWithExternalCommitment.externalProviderCommitments = [
+      valid.externalProviderCommitments[0]!,
+    ];
+    const { policyDigest: _localDigest, ...localCanonical } =
+      localWithExternalCommitment;
+    localWithExternalCommitment.policyDigest = createHash("sha256")
+      .update(JSON.stringify(localCanonical), "utf8")
+      .digest("hex");
+    expect(
+      parseWatcherFinalityPolicyV1(localWithExternalCommitment),
+    ).toBeNull();
   });
 
   it("accepts one authoritative local-node observation and rejects source substitution", () => {
@@ -639,11 +700,30 @@ describe("canonical release-bound watcher finality", () => {
   });
 
   it("fails closed on same-depth stale evidence", () => {
-    const finalityPolicy = policy();
+    const threeProviderConfig = config();
+    threeProviderConfig.l1.source.providers.push({
+      identity: "provider-c",
+      operatorIdentitySha256: hex32("c3"),
+      endpoint: "https://cardano-c.example",
+    });
+    const finalityPolicy = makeWatcherFinalityPolicyV1(
+      threeProviderConfig,
+      deploymentIdentity(),
+    ) as WatcherFinalityPolicyV1;
+    const threeProviderSource = {
+      ...externalSource,
+      providers: [
+        ...externalSource.providers,
+        {
+          providerId: "provider-c",
+          operatorIdentitySha256: hex32("c3"),
+        },
+      ],
+    } as const;
     const pending = pendingAt(finalityPolicy, "1");
     const third = observation("provider-c", "c3", { depth: "1" });
     const threeProviderAgreement = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      threeProviderSource,
       [
         observation("provider-a", "a1", { depth: "1" }),
         observation("provider-b", "b2", { depth: "1" }),

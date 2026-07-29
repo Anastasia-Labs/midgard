@@ -41,8 +41,9 @@ const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
-const CARDANO_PARAMETERS =
-  normalizeDeploymentManifestV1JsonValue({ maxTxSize: 16_384 });
+const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
+  maxTxSize: 16_384,
+});
 const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   cardanoProtocolParameters: {
     snapshot: CARDANO_PARAMETERS,
@@ -56,8 +57,9 @@ const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   },
   da: {
     committeeVkeys: [DA_VKEY],
-    committeeSignersHash:
-      computeDeploymentManifestV1DaCommitteeSignersHash([DA_VKEY]),
+    committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+      DA_VKEY,
+    ]),
     threshold: 1,
     transportProfile: {
       protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -329,18 +331,15 @@ const writeFinalizedDeploymentInfo = async (
     postTimelockAudit: { required: true, rule: "test fixture" },
   };
   const referenceScriptOutRefs = new Map(
-    Object.values(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map((contractName, index) => [
-      contractName,
-      {
-        txHash: (index + 1)
-          .toString(16)
-          .padStart(2, "0")
-          .repeat(32),
-        outputIndex: 0,
-      },
-    ]),
+    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (contractName, index) => [
+        contractName,
+        {
+          txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
+          outputIndex: 0,
+        },
+      ],
+    ),
   );
   const fraudProofCatalogue = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(

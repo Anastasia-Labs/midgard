@@ -107,7 +107,9 @@ describe("midgard native tx codec - strict roundtrip", () => {
       ),
     ).toEqual(witnessCompact);
     expect(
-      decodeMidgardNativeTxCompactV1(encodeMidgardNativeTxCompactV1(full.compact)),
+      decodeMidgardNativeTxCompactV1(
+        encodeMidgardNativeTxCompactV1(full.compact),
+      ),
     ).toEqual(full.compact);
 
     const encodedCanonical = encodeMidgardNativeTxCanonicalV1(full);
@@ -124,9 +126,7 @@ describe("midgard native tx codec - strict roundtrip", () => {
         Buffer.concat([
           Buffer.from("MidgardNativeTxBodyV1", "ascii"),
           Buffer.from([1]),
-          encodeMidgardNativeTxBodyCompactV1(
-            full.compact.transactionBody,
-          ),
+          encodeMidgardNativeTxBodyCompactV1(full.compact.transactionBody),
         ]),
       ),
     );
@@ -146,9 +146,7 @@ describe("midgard native tx codec - strict roundtrip", () => {
 
     expect(() =>
       decodeMidgardNativeTxWitnessSetCompactV1(unsupportedShape),
-    ).toThrow(
-      /exactly 3 elements/i,
-    );
+    ).toThrow(/exactly 3 elements/i);
   });
 });
 
@@ -456,7 +454,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     const tx: MidgardNativeTxFullV1 = {
       ...full,
       witnessSet,
-      compact: deriveMidgardNativeTxCompactV1(full.body, witnessSet, "TxIsValid"),
+      compact: deriveMidgardNativeTxCompactV1(
+        full.body,
+        witnessSet,
+        "TxIsValid",
+      ),
     };
 
     const defaultExport = CML.Transaction.from_cbor_bytes(

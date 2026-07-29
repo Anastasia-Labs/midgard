@@ -76,11 +76,10 @@ const testReferenceScriptAuthPolicy = (
 
 const ONE_SHOT_TX_HASH = "ab".repeat(32);
 const TEST_DA_VKEY = "11".repeat(32);
-const TEST_CARDANO_PARAMETERS =
-  normalizeDeploymentManifestV1JsonValue({
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
-  });
+const TEST_CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
+  maxTxSize: 16_384,
+  maxValueSize: 5_000,
+});
 const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   cardanoProtocolParameters: {
     snapshot: TEST_CARDANO_PARAMETERS,
@@ -94,8 +93,9 @@ const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   },
   da: {
     committeeVkeys: [TEST_DA_VKEY],
-    committeeSignersHash:
-      computeDeploymentManifestV1DaCommitteeSignersHash([TEST_DA_VKEY]),
+    committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+      TEST_DA_VKEY,
+    ]),
     threshold: 1,
     transportProfile: {
       protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -144,9 +144,14 @@ const testFraudProofCatalogue = (
       membershipProofCbor: "80",
     },
     validationTraceDispute: {
-      categoryId: "00000005",
+      categoryId: "00000006",
       scriptHash:
         contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+      membershipProofCbor: "80",
+    },
+    zeroInput: {
+      categoryId: "00000005",
+      scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
       membershipProofCbor: "80",
     },
   },
@@ -243,8 +248,10 @@ describe("contract deployment info", () => {
         expect(
           manifest.contracts.validationTraceDisputeAward.scriptHash,
         ).toEqual(
-          contracts.fraudProofs.validationTraceDispute.award
-            .spendingScriptHash,
+          contracts.fraudProofs.validationTraceDispute.award.spendingScriptHash,
+        );
+        expect(manifest.contracts.fraudProofZeroInput.scriptHash).toEqual(
+          contracts.fraudProofs.zeroInput.spendingScriptHash,
         );
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
@@ -293,10 +300,14 @@ describe("contract deployment info", () => {
               membershipProofCbor: "80",
             },
             validationTraceDispute: {
-              categoryId: "00000005",
+              categoryId: "00000006",
               scriptHash:
-                contracts.fraudProofs.validationTraceDispute
-                  .spendingScriptHash,
+                contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
+            zeroInput: {
+              categoryId: "00000005",
+              scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
               membershipProofCbor: "80",
             },
           },
@@ -386,10 +397,10 @@ describe("contract deployment info", () => {
           existingManifest: first,
         });
 
-        expect(first.schemaVersion).toEqual(DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION);
-        expect(first.consensusProfile).toEqual(
-          MIDGARD_CONSENSUS_PROFILE_V1,
+        expect(first.schemaVersion).toEqual(
+          DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
         );
+        expect(first.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE_V1);
         expect(first.manifestId).toEqual(second.manifestId);
         expect(second.createdAt).toEqual(first.createdAt);
         expect(second.updatedAt).toEqual(first.updatedAt);
@@ -433,9 +444,7 @@ describe("contract deployment info", () => {
         expect(manifest.schemaVersion).toEqual(
           MIDGARD_DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
         );
-        expect(manifest.consensusProfile).toEqual(
-          MIDGARD_CONSENSUS_PROFILE_V1,
-        );
+        expect(manifest.consensusProfile).toEqual(MIDGARD_CONSENSUS_PROFILE_V1);
         expect(manifest.validationDispute).toEqual({
           version: MIDGARD_CONSENSUS_PROFILE_V1.validationDisputeVersion,
           responseWindowMs:
@@ -624,6 +633,9 @@ describe("contract deployment info", () => {
         expect(
           reconstructed.fraudProofs.transitionTrace.spendingScriptHash,
         ).toEqual(manifest.contracts.fraudProofTransitionTrace.scriptHash);
+        expect(reconstructed.fraudProofs.zeroInput.spendingScriptHash).toEqual(
+          manifest.contracts.fraudProofZeroInput.scriptHash,
+        );
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

@@ -141,10 +141,7 @@ export const buildUnsignedCommitTx = (
           )
         : Effect.void;
     let commitValidityWindow = resolveCommitValidityWindow();
-    yield* enforceCommitValidityCap(
-      commitValidityWindow,
-      "initial_resolution",
-    );
+    yield* enforceCommitValidityCap(commitValidityWindow, "initial_resolution");
     let witnessContext: RealStateQueueWitnessContext | undefined;
     let lastFailedBudget: CommitTimingBudget | undefined;
     for (

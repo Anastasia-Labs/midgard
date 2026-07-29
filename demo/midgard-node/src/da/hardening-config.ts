@@ -31,9 +31,7 @@ export const readDaHardeningConfig = (
 ): DaHardeningConfig => {
   const rawMode = env.MIDGARD_DA_PAYLOAD_ENVELOPE?.trim() || "identity";
   if (rawMode !== "identity" && rawMode !== "zstd") {
-    throw new Error(
-      "MIDGARD_DA_PAYLOAD_ENVELOPE must be identity or zstd",
-    );
+    throw new Error("MIDGARD_DA_PAYLOAD_ENVELOPE must be identity or zstd");
   }
   const zstdLevel = positiveInteger(
     env.MIDGARD_DA_ZSTD_LEVEL,

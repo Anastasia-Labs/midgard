@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -21,6 +21,14 @@ if (
 }
 if (dependencyMap.trustPolicy?.unknownBehavior !== "fail_closed") {
   fail("unknown behavior must fail closed");
+}
+if (
+  dependencyMap.authority?.sourceRevision !==
+    "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
+  dependencyMap.authority?.baseRevision !==
+    "8bae9403a13124f647f215999848ff5c82784e37"
+) {
+  fail("authority must bind the checkpoint and tx-validation base revisions");
 }
 
 const requiredIds = [
@@ -117,6 +125,9 @@ const watcherManifest = JSON.parse(
     "utf8",
   ),
 );
+const workspaceManifest = JSON.parse(
+  await readFile(resolve(repositoryRoot, "demo/package.json"), "utf8"),
+);
 const committeeManifest = JSON.parse(
   await readFile(
     resolve(repositoryRoot, "demo/da-committee-node/package.json"),
@@ -126,10 +137,93 @@ const committeeManifest = JSON.parse(
 if (
   watcherManifest.name !== "midgard-watcher" ||
   watcherManifest.bin?.["midgard-watcher"] !== "./dist/cli.js" ||
+  watcherManifest.packageManager !== undefined ||
+  workspaceManifest.packageManager !==
+    "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0" ||
   committeeManifest.name !== "da-committee-node" ||
   committeeManifest.bin?.["da-committee-node"] !== "./dist/index.js"
 ) {
-  fail("watcher and committee package identities must remain distinct");
+  fail(
+    "watcher/committee identities and the workspace package-manager authority must remain exact",
+  );
+}
+const listPackageFiles = async (relativeDirectory) => {
+  const discovered = [];
+  const walk = async (absoluteDirectory, relativePrefix) => {
+    const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (
+        entry.isDirectory() &&
+        (entry.name === "dist" || entry.name === "node_modules")
+      ) {
+        continue;
+      }
+      const relativePath =
+        relativePrefix === "" ? entry.name : `${relativePrefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        await walk(resolve(absoluteDirectory, entry.name), relativePath);
+      } else if (entry.isFile()) {
+        discovered.push(`${relativeDirectory}/${relativePath}`);
+      }
+    }
+  };
+  await walk(resolve(repositoryRoot, relativeDirectory), "");
+  return discovered.sort();
+};
+const declaredWatcherContents = [
+  ...(dependencyMap.requiredWatcherPackage?.currentContents ?? []),
+].sort();
+const actualWatcherContents = await listPackageFiles("demo/midgard-watcher");
+if (
+  JSON.stringify(declaredWatcherContents) !==
+  JSON.stringify(actualWatcherContents)
+) {
+  fail("requiredWatcherPackage.currentContents must exactly cover the package");
+}
+if (
+  workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
+  "node scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+) {
+  fail("workspace must expose the canonical watcher dependency-map verifier");
+}
+const nodeCi = await readFile(
+  resolve(repositoryRoot, ".github/workflows/midgard-node-ci.yml"),
+  "utf8",
+);
+for (const requiredCiText of [
+  "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+  "pnpm --dir demo run watcher:dependency-map:verify",
+]) {
+  if (!nodeCi.includes(requiredCiText)) {
+    fail(`Midgard node CI is missing ${requiredCiText}`);
+  }
+}
+const watcherArchitecture = await readFile(
+  resolve(
+    repositoryRoot,
+    "demo/midgard-watcher/midgard-watcher-architecture.md",
+  ),
+  "utf8",
+);
+const watcherAdversarialReview = await readFile(
+  resolve(
+    repositoryRoot,
+    "demo/midgard-watcher/watcher-plan-adversarial-review.md",
+  ),
+  "utf8",
+);
+for (const sourceModeDocument of [
+  watcherArchitecture,
+  watcherAdversarialReview,
+]) {
+  if (
+    !sourceModeDocument.includes("`local_node`") ||
+    !sourceModeDocument.includes("`external_providers`") ||
+    !sourceModeDocument.includes("watcher-operated")
+  ) {
+    fail("shipped watcher documents must define both L1-source modes");
+  }
 }
 const watcherSource = await readFile(
   resolve(repositoryRoot, "demo/midgard-watcher/src/scaffold.ts"),
@@ -391,7 +485,7 @@ if (
   l1Adapter.sourceSha256 !== sha256(l1AdapterBytes) ||
   l1Adapter.testSha256 !== sha256(l1AdapterTestBytes) ||
   l1Adapter.canonicalFixtureSha256 !==
-    "aeecff9e4492846016727cf2d62193f3c9acf9b09246d01d6255e436059d3d94" ||
+    "2d969b276d3150cd8354e69dd95c9d1a2a1aa9ad32fdc4325af6967eefee5214" ||
   JSON.stringify(l1Adapter.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
   l1Adapter.identityPolicy !==
@@ -433,7 +527,7 @@ if (
   JSON.stringify(multiProviderConsistency.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
   multiProviderConsistency.minimumIndependentProvidersByMode?.local_node !==
-    1 ||
+    0 ||
   multiProviderConsistency.minimumIndependentProvidersByMode
     ?.external_providers !== 2 ||
   multiProviderConsistency.compatibleBlockLag !== 64 ||
@@ -445,7 +539,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 13
+  multiProviderConsistency.node22FocusedTestsPassed !== 14
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -480,7 +574,7 @@ if (
   finalityEngine.postFinalityRollbackPolicy !==
     "durable_quarantine_incident_preserving_finalized_binding" ||
   finalityEngine.consistencyPolicy !==
-    "exact_source_mode_bound_W11_agreement_required" ||
+    "exact_source_mode_and_configured_external_provider_commitments_bound_W11_agreement_required" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
   finalityEngine.node22FocusedTestsPassed !== 19
@@ -523,10 +617,10 @@ if (
   rollbackEngine.postFinalityPolicy !==
     "durable_quarantine_incident_preserving_finalized_binding_and_store" ||
   rollbackEngine.inputPolicy !==
-    "exact_source_mode_bound_W10_evidence_W11_result_W12_transition_W03_store_and_external_bootstrap" ||
+    "exact_source_mode_and_configured_external_provider_commitments_bound_W10_evidence_W11_result_W12_transition_W03_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.node22FocusedTestsPassed !== 19
+  rollbackEngine.node22FocusedTestsPassed !== 21
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -574,7 +668,7 @@ if (
   stateQueueIndexer.queuePolicy !==
     "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics" ||
   stateQueueIndexer.rollbackPolicy !==
-    "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
+    "exact_W13_active_and_spent_journal_rewind_restart_replay_duplicate_hold_and_restart_durable_post_finality_quarantine" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
   stateQueueIndexer.node22FocusedTestsPassed !== 11
@@ -627,10 +721,10 @@ if (
   userEventIndexer.finalityPolicy !==
     "independent_active_and_terminal_pending_to_final_transitions" ||
   userEventIndexer.rollbackPolicy !==
-    "exact_W13_journal_restoration_suffix_rewind_restart_and_reinclusion" ||
+    "exact_W13_authenticated_empty_lineage_and_journal_restoration_suffix_rewind_restart_reinclusion_and_restart_durable_post_finality_quarantine" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.node22FocusedTestsPassed !== 12
+  userEventIndexer.node22FocusedTestsPassed !== 14
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -681,10 +775,10 @@ if (
   settlementIndexer.retryPolicy !==
     "bounded_retry_stuck_invalid_identity_and_restart_replay" ||
   settlementIndexer.rollbackPolicy !==
-    "exact_W13_journal_restoration_unrelated_archive_preservation_restart_and_reinclusion" ||
+    "exact_W13_journal_restoration_unrelated_archive_preservation_restart_reinclusion_and_restart_durable_post_finality_quarantine" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.node22FocusedTestsPassed !== 17
+  settlementIndexer.node22FocusedTestsPassed !== 18
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -735,7 +829,7 @@ if (
   proofThreadIndexer.threadPolicy !==
     "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles" ||
   proofThreadIndexer.rollbackPolicy !==
-    "exact_W13_journal_rewind_restart_replay_and_reinclusion" ||
+    "exact_W13_authenticated_empty_lineage_and_journal_rewind_restart_replay_reinclusion_and_restart_durable_post_finality_quarantine" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
   proofThreadIndexer.node22FocusedTestsPassed !== 7

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
@@ -63,6 +64,9 @@ const publicBytes = (bytesHex: string): MutableRecord => ({
   ...makeWatcherL1PublicBytesV1(bytesHex),
 });
 
+const NATIVE_SCRIPT_BYTES = `8200581c${"44".repeat(28)}`;
+const PLUTUS_V3_SCRIPT_BYTES = "4e4d01000033222220051200120011";
+
 const transaction = (bodyBytes: string, outputIndex: string): MutableRecord => {
   const txHash = blake2b256(bodyBytes);
   const datumBytes = `d8${outputIndex.padStart(2, "0")}`;
@@ -79,17 +83,23 @@ const transaction = (bodyBytes: string, outputIndex: string): MutableRecord => {
           bytes: publicBytes(datumBytes),
         },
         referenceScript: {
-          scriptHash: "33".repeat(28),
+          scriptHash: validatorToScriptHash({
+            type: "PlutusV3",
+            script: PLUTUS_V3_SCRIPT_BYTES,
+          }),
           language: "PlutusV3",
-          bytes: publicBytes("4e4d01000033222220051200120011"),
+          bytes: publicBytes(PLUTUS_V3_SCRIPT_BYTES),
         },
       },
     ],
     scripts: [
       {
-        scriptHash: "22".repeat(28),
+        scriptHash: validatorToScriptHash({
+          type: "Native",
+          script: NATIVE_SCRIPT_BYTES,
+        }),
         language: "Native",
-        bytes: publicBytes("8200581c"),
+        bytes: publicBytes(NATIVE_SCRIPT_BYTES),
       },
     ],
     datums: [
@@ -167,9 +177,9 @@ describe("provider-neutral authenticated L1 adapter", () => {
         depth: "15",
       },
     });
-    expect(normalized.transactions.map(({ txHash }) => txHash)).toEqual(
-      [...normalized.transactions.map(({ txHash }) => txHash)].sort(),
-    );
+    expect(
+      normalized.transactions.map(({ transactionIndex }) => transactionIndex),
+    ).toEqual(["0", "1"]);
     expect(
       normalized.transactions[0]?.redeemers.map(({ purpose }) => purpose),
     ).toEqual(["spend", "mint"]);
@@ -182,7 +192,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(Object.isFrozen(normalized.transactions[0]?.utxos)).toBe(true);
   });
 
-  it("emits one byte-identical deterministic canonical fixture", () => {
+  it("binds the node-derived transaction order into the canonical fixture", () => {
     const first = normalizeWatcherL1BlockV1(provider(), observation());
     const reordered = observation();
     reordered.transactions.reverse();
@@ -193,16 +203,25 @@ describe("provider-neutral authenticated L1 adapter", () => {
     const firstBytes = encodeWatcherNormalizedL1BlockV1(first);
     const secondBytes = encodeWatcherNormalizedL1BlockV1(second);
 
-    expect(second).toEqual(first);
-    expect(secondBytes.equals(firstBytes)).toBe(true);
+    expect(second).not.toEqual(first);
+    expect(secondBytes.equals(firstBytes)).toBe(false);
+    expect(
+      first.transactions.map(({ transactionIndex }) => transactionIndex),
+    ).toEqual(["0", "1"]);
+    expect(
+      second.transactions.map(({ transactionIndex }) => transactionIndex),
+    ).toEqual(["0", "1"]);
+    expect(first.transactions.map(({ txHash }) => txHash)).toEqual(
+      [...second.transactions.map(({ txHash }) => txHash)].reverse(),
+    );
     expect(createHash("sha256").update(firstBytes).digest("hex")).toBe(
-      "f301c7aeac421c6df1550fb52501e7c98995dcaed10b42534ec858ecba464c1b",
+      "2d969b276d3150cd8354e69dd95c9d1a2a1aa9ad32fdc4325af6967eefee5214",
     );
     expect(first.blockContentDigest).toBe(
-      "a5e34702f4bcb3c843303e694e92e3d6e773bdf780328f969090cb40fe20b3cc",
+      "b4344c7488d99dcddcbdda851aaa365158c608172fcdde319e9da5983deb70a5",
     );
     expect(first.observationDigest).toBe(
-      "b0132b6974d588fe194a2fa34fac5a2f972687bae04fcf3ea3d67ad8f8d01135",
+      "5762fb0d2c664752cdeedee00716d8261252a9fc924bb6784415e87a4428b504",
     );
   });
 
@@ -341,7 +360,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     );
   });
 
-  it("rejects forged content digests and Cardano transaction or datum identities", () => {
+  it("rejects forged content digests and Cardano transaction, datum, or script identities", () => {
     const badDigest = observation();
     badDigest.transactions[0].body.sha256 = "00".repeat(32);
     rejected(
@@ -364,6 +383,23 @@ describe("provider-neutral authenticated L1 adapter", () => {
       () => normalizeWatcherL1BlockV1(provider(), badDatum),
       "identity_mismatch",
       "$.transactions[0].datums[0].datumHash",
+    );
+
+    const badScript = observation();
+    badScript.transactions[0].scripts[0].scriptHash = "00".repeat(28);
+    rejected(
+      () => normalizeWatcherL1BlockV1(provider(), badScript),
+      "identity_mismatch",
+      "$.transactions[0].scripts[0].scriptHash",
+    );
+
+    const badReferenceScript = observation();
+    badReferenceScript.transactions[0].utxos[0].referenceScript.scriptHash =
+      "00".repeat(28);
+    rejected(
+      () => normalizeWatcherL1BlockV1(provider(), badReferenceScript),
+      "identity_mismatch",
+      "$.transactions[0].utxos[0].referenceScript.scriptHash",
     );
   });
 

@@ -178,8 +178,7 @@ export const makeTransferMidgard = async ({
   networkId,
   minFeeA,
   minFeeB,
-  maxSubmitTxCborBytes =
-    MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+  maxSubmitTxCborBytes = MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
   consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
 }: {
   readonly senderAddress: string;

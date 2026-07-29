@@ -42,14 +42,17 @@ const FACTS = [
     countPhrase: "The {n} long-running fibers",
   },
   {
-    // bin.ts rejects an unknown command by listing every valid one. That error
-    // string is the command allow-list.
+    // Every supported command has one canonical line in the usage template.
     label: "command",
     source: "demo/midgard-fault-proofs/src/bin.ts",
     doc: "docs-site/content/docs/fault-proofs/overview.mdx",
     extract: (src) => {
-      const usage = src.match(/Expected command ([^\n]+?)\.\\n\$\{usage\}/);
-      return usage ? quoted(usage[1]) : [];
+      const usage = src.match(/const usage = `([\s\S]*?)`;/);
+      return usage
+        ? [...usage[1].matchAll(/^\s*midgard-fault-proofs ([a-z0-9-]+)/gm)].map(
+            (match) => match[1],
+          )
+        : [];
     },
     countPhrase: "The {n} commands",
   },
@@ -124,11 +127,14 @@ if (!localDev.includes(`\`${demoPackage.engines.node}\``)) {
   );
 }
 
-const blueprint = read("onchain/aiken/plutus.json");
 const daDocs = read("docs-site/content/docs/onchain/da-validators.mdx");
-for (const entrypoint of ["da_attestation", "da_params_governor"]) {
-  if (!blueprint.includes(`\"title\": \"${entrypoint}.`)) {
-    fail(`onchain/aiken/plutus.json: missing documented ${entrypoint} entrypoint.`);
+for (const [entrypoint, source] of [
+  ["da_attestation", "onchain/aiken/validators/da-attestation.ak"],
+  ["da_params_governor", "onchain/aiken/validators/da-params-governor.ak"],
+]) {
+  const validator = read(source);
+  if (!validator.includes(`validator ${entrypoint}(`)) {
+    fail(`${source}: missing documented ${entrypoint} entrypoint.`);
   }
   if (!daDocs.includes(`\`${entrypoint}\``)) {
     fail(`docs-site/content/docs/onchain/da-validators.mdx: missing \`${entrypoint}\`.`);

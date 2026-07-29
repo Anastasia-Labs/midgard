@@ -148,6 +148,7 @@ const familyNames = [
   ["non-existent-input-no-index", "nonExistentInputNoIndex"],
   ["transition-trace", "transitionTrace"],
   ["validation-trace-dispute", "validationTraceDispute"],
+  ["zero-input", "zeroInput"],
 ] as const;
 
 const makeDeploymentAuthority = () => {
@@ -186,6 +187,7 @@ const makeDeploymentAuthority = () => {
     "nonExistentInputNoIndex",
     "invalidRange",
     "transitionTrace",
+    "zeroInput",
     "validationTraceDispute",
   ] as const;
   const contractByCategory = {
@@ -195,6 +197,7 @@ const makeDeploymentAuthority = () => {
     invalidRange: "fraudProofInvalidRange",
     transitionTrace: "fraudProofTransitionTrace",
     validationTraceDispute: "validationTraceDispute",
+    zeroInput: "fraudProofZeroInput",
   } as const;
   contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
     root: h32("13"),
@@ -628,6 +631,7 @@ const sourceFixture = (
         consistencyConfig: {
           sourceMode: "external_providers",
           network: "Preprod",
+          providers: finalityPolicy.externalProviderCommitments,
         },
       };
 
@@ -1829,7 +1833,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       }),
     ).not.toBeNull();
     expect(policy).not.toBeNull();
-    expect(policy.families).toHaveLength(6);
+    expect(policy.families).toHaveLength(7);
     expect(policy.families[0]!.familyId).toBe("double-spend");
 
     const hostile = structuredClone(authority.deploymentAuthority);
@@ -2184,6 +2188,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         phase: "pending",
         previousState: null,
         previousFinalityState: null,
+        sourceMode,
       });
       const initPendingResult = evaluateWatcherProofThreadIndexerV1(
         policy,
@@ -2191,11 +2196,130 @@ describe("W17 public proof/computation-thread indexer", () => {
         initPending.observation,
         initPending.context,
       );
+      expect(initPendingResult.action).toBe("accept");
+
+      const genesisReplacementL1 = sourceFixture(sourceMode);
+      const genesisReplacement = genesisReplacementL1.providers.map(
+        (provider) => normalize(provider, initPending.fixture, "1", 6),
+      );
+      const genesisConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        genesisReplacementL1.consistencyConfig,
+        genesisReplacement,
+      );
+      const genesisFinality = evaluateWatcherFinalityV1(
+        genesisReplacementL1.policy,
+        initPending.finalityState,
+        genesisConsistency,
+      );
+      expect(genesisFinality.action).toBe("rewind_pending");
+      const genesisRollbackSource = persistNormalizedObservations(
+        initPending.store,
+        genesisReplacement,
+      );
+      const genesisBootstrap = makeWatcherRollbackBootstrapStateV1(
+        genesisReplacementL1.policy,
+        genesisRollbackSource,
+        initPending.finalityState,
+      )!;
+      const genesisRollbackContext = {
+        policy: genesisReplacementL1.policy,
+        sourceStore: genesisRollbackSource,
+        previousFinalityState: initPending.finalityState,
+        consistency: genesisConsistency,
+        finalityResult: genesisFinality,
+        previousRollbackState: genesisBootstrap,
+        rollbackBootstrapState: genesisBootstrap,
+      };
+      const genesisRollback = evaluateWatcherRollbackV1(
+        genesisReplacementL1.policy,
+        genesisRollbackSource,
+        initPending.finalityState,
+        genesisConsistency,
+        genesisFinality,
+        genesisBootstrap,
+        genesisBootstrap,
+      );
+      expect(genesisRollback).toMatchObject({
+        action: "apply_rewind",
+        protocolDecision: "resume_pending",
+      });
+      const genesisBlock = genesisReplacement[0]!;
+      const genesisObservation = makeWatcherProofThreadObservationV1({
+        policyDigest: policy.policyDigest,
+        network: policy.network,
+        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        deploymentMarker: policy.deploymentMarker,
+        transitionKind: "rollback",
+        confirmationPhase: null,
+        pointDigest: genesisBlock.chainPoint.pointDigest,
+        blockHash: genesisBlock.chainPoint.blockHash,
+        slot: genesisBlock.chainPoint.slot,
+        blockNo: genesisBlock.chainPoint.blockNo,
+        transactionHash: null,
+        publicInputDigest: createHash("sha256")
+          .update(encodeWatcherNormalizedL1BlockV1(genesisBlock))
+          .digest("hex"),
+        sourceObservationDigest: genesisBlock.observationDigest,
+        chainPointId: genesisBlock.chainPoint.chainPointId,
+        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(genesisRollbackSource),
+        ),
+        sourceDurableStoreRevision: genesisRollbackSource.revision,
+        durableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(genesisRollback.nextStore!),
+        ),
+        durableStoreRevision: genesisRollback.nextStore!.revision,
+        predecessorStateDigest: initPendingResult.state!.stateDigest,
+        submissionId: null,
+        confirmationId: null,
+        rollbackTargetStateDigest: null,
+        layout: null,
+        journal: null,
+      })!;
+      const genesisPublicContext: WatcherProofThreadPublicContextV1 = {
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        authenticatedProvider: null,
+        l1Observation: null,
+        sourceDurableStore: genesisRollbackSource,
+        durableStore: genesisRollback.nextStore!,
+        deploymentAuthority: authority.deploymentAuthority,
+        finalityAuthority: null,
+        rollbackAuthority: {
+          result: genesisRollback,
+          context: genesisRollbackContext,
+        },
+        sourceJournal: null,
+        durableJournal: null,
+      };
+      const genesisRewind = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        initPendingResult.state,
+        genesisObservation,
+        genesisPublicContext,
+      );
+      expect(genesisRewind).toMatchObject({
+        action: "accept",
+        protocolDecision: "indexed",
+        reasonCodes: ["rollback_confirmed"],
+        state: {
+          journal: null,
+          pending: null,
+          history: [],
+        },
+      });
+      expect(
+        parseWatcherProofThreadStateV1(
+          JSON.parse(JSON.stringify(genesisRewind.state)),
+          policy,
+        ),
+      ).toEqual(genesisRewind.state);
+
       const initFinal = initStage({
         phase: "final",
         previousState: initPendingResult.state!,
         previousFinalityState: initPending.finalityState,
         sourceStore: initPending.store,
+        sourceMode,
       });
       const initFinalResult = evaluateWatcherProofThreadIndexerV1(
         policy,
@@ -2203,6 +2327,145 @@ describe("W17 public proof/computation-thread indexer", () => {
         initFinal.observation,
         initFinal.context,
       );
+      expect(initFinalResult.action).toBe("accept");
+
+      const incidentL1 = sourceFixture(sourceMode);
+      const incidentReplacement = incidentL1.providers.map((provider) =>
+        normalize(provider, initPending.fixture, "1", 7),
+      );
+      const incidentConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        incidentL1.consistencyConfig,
+        incidentReplacement,
+      );
+      const incidentFinality = evaluateWatcherFinalityV1(
+        incidentL1.policy,
+        initFinal.finalityState,
+        incidentConsistency,
+      );
+      expect(incidentFinality.action).toBe("quarantine_incident");
+      const incidentSource = persistNormalizedObservations(
+        initFinal.store,
+        incidentReplacement,
+      );
+      const incidentBootstrap = makeWatcherRollbackBootstrapStateV1(
+        incidentL1.policy,
+        incidentSource,
+        initFinal.finalityState,
+      )!;
+      const incidentRollbackContext = {
+        policy: incidentL1.policy,
+        sourceStore: incidentSource,
+        previousFinalityState: initFinal.finalityState,
+        consistency: incidentConsistency,
+        finalityResult: incidentFinality,
+        previousRollbackState: incidentBootstrap,
+        rollbackBootstrapState: incidentBootstrap,
+      };
+      const incidentRollback = evaluateWatcherRollbackV1(
+        incidentL1.policy,
+        incidentSource,
+        initFinal.finalityState,
+        incidentConsistency,
+        incidentFinality,
+        incidentBootstrap,
+        incidentBootstrap,
+      );
+      expect(incidentRollback).toMatchObject({
+        action: "quarantine_incident",
+        protocolDecision: "quarantined",
+      });
+      const incidentBlock = incidentReplacement[0]!;
+      const incidentObservation = makeWatcherProofThreadObservationV1({
+        policyDigest: policy.policyDigest,
+        network: policy.network,
+        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        deploymentMarker: policy.deploymentMarker,
+        transitionKind: "rollback",
+        confirmationPhase: null,
+        pointDigest: incidentBlock.chainPoint.pointDigest,
+        blockHash: incidentBlock.chainPoint.blockHash,
+        slot: incidentBlock.chainPoint.slot,
+        blockNo: incidentBlock.chainPoint.blockNo,
+        transactionHash: null,
+        publicInputDigest: createHash("sha256")
+          .update(encodeWatcherNormalizedL1BlockV1(incidentBlock))
+          .digest("hex"),
+        sourceObservationDigest: incidentBlock.observationDigest,
+        chainPointId: incidentBlock.chainPoint.chainPointId,
+        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(incidentSource),
+        ),
+        sourceDurableStoreRevision: incidentSource.revision,
+        durableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(incidentRollback.nextStore!),
+        ),
+        durableStoreRevision: incidentRollback.nextStore!.revision,
+        predecessorStateDigest: initFinalResult.state!.stateDigest,
+        submissionId: null,
+        confirmationId: null,
+        rollbackTargetStateDigest: null,
+        layout: null,
+        journal: null,
+      })!;
+      const incidentPublicContext: WatcherProofThreadPublicContextV1 = {
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        authenticatedProvider: null,
+        l1Observation: null,
+        sourceDurableStore: incidentSource,
+        durableStore: incidentRollback.nextStore!,
+        deploymentAuthority: authority.deploymentAuthority,
+        finalityAuthority: null,
+        rollbackAuthority: {
+          result: incidentRollback,
+          context: incidentRollbackContext,
+        },
+        sourceJournal: initFinal.journal,
+        durableJournal: initFinal.journal,
+      };
+      const quarantined = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        initFinalResult.state,
+        incidentObservation,
+        incidentPublicContext,
+      );
+      expect(quarantined).toMatchObject({
+        action: "accept",
+        protocolDecision: "quarantined",
+        reasonCodes: ["post_finality_quarantine"],
+        state: {
+          journal: initFinal.journal,
+          history: initFinalResult.state!.history,
+        },
+      });
+      const quarantinedRestart = parseWatcherProofThreadStateV1(
+        JSON.parse(JSON.stringify(quarantined.state)),
+        policy,
+      );
+      expect(quarantinedRestart).toEqual(quarantined.state);
+      const {
+        schemaVersion: _incidentSchema,
+        observationDigest: _incidentDigest,
+        ...incidentProbeInput
+      } = incidentObservation;
+      const incidentProbe = makeWatcherProofThreadObservationV1({
+        ...incidentProbeInput,
+        blockNo: (BigInt(incidentObservation.blockNo) + 1n).toString(),
+        predecessorStateDigest: quarantinedRestart!.stateDigest,
+      })!;
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          quarantinedRestart,
+          incidentProbe,
+          incidentPublicContext,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        protocolDecision: "quarantined",
+        reasonCodes: ["post_finality_quarantine"],
+        state: quarantinedRestart,
+      });
+
       const stepFixture = stepTransaction(initFinal.journal);
       const stepSource = addSubmittedTransaction(
         initFinal.store,

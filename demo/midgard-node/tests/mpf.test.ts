@@ -517,14 +517,8 @@ describe("Midgard MPF wrapper", () => {
         { type: "insert", key: key3, value: value3 },
       ]);
 
-      const firstOutRef = Buffer.from(
-        `825820${"11".repeat(32)}00`,
-        "hex",
-      );
-      const secondOutRef = Buffer.from(
-        `825820${"22".repeat(32)}00`,
-        "hex",
-      );
+      const firstOutRef = Buffer.from(`825820${"11".repeat(32)}00`, "hex");
+      const secondOutRef = Buffer.from(`825820${"22".repeat(32)}00`, "hex");
       const outputCbor = Buffer.from(
         "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
         "hex",
@@ -1986,32 +1980,34 @@ describe("Midgard MPF wrapper", () => {
     }),
   );
 
-  it.effect("resumes a no-op parked scratch overlay at the canonical empty root", () =>
-    Effect.gen(function* () {
-      const scratch = yield* MidgardMpf.createScratch(
-        "test-mpf-parked-empty-scratch",
-        { engine: "overlay" },
-      );
-      yield* scratch.beginBlockOverlay();
-      const artifact = yield* scratch.parkBlockOverlay();
-      expect(artifact.nodeCount).toBe(0);
-      expect(Buffer.from(artifact.baseRoot).toString("hex")).toBe(
-        SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
-      expect(Buffer.from(artifact.candidateRoot).toString("hex")).toBe(
-        SDK.EMPTY_MERKLE_TREE_ROOT,
-      );
+  it.effect(
+    "resumes a no-op parked scratch overlay at the canonical empty root",
+    () =>
+      Effect.gen(function* () {
+        const scratch = yield* MidgardMpf.createScratch(
+          "test-mpf-parked-empty-scratch",
+          { engine: "overlay" },
+        );
+        yield* scratch.beginBlockOverlay();
+        const artifact = yield* scratch.parkBlockOverlay();
+        expect(artifact.nodeCount).toBe(0);
+        expect(Buffer.from(artifact.baseRoot).toString("hex")).toBe(
+          SDK.EMPTY_MERKLE_TREE_ROOT,
+        );
+        expect(Buffer.from(artifact.candidateRoot).toString("hex")).toBe(
+          SDK.EMPTY_MERKLE_TREE_ROOT,
+        );
 
-      const resumed = yield* MidgardMpf.resumeParkedOverlay(
-        "test-mpf-parked-empty-scratch",
-        undefined,
-        artifact,
-      );
-      expect(resumed.blockOverlayIsActive()).toBe(true);
-      expect(yield* resumed.rootIsEmpty()).toBe(true);
-      yield* resumed.discardBlockOverlay();
-      yield* resumed.close();
-    }),
+        const resumed = yield* MidgardMpf.resumeParkedOverlay(
+          "test-mpf-parked-empty-scratch",
+          undefined,
+          artifact,
+        );
+        expect(resumed.blockOverlayIsActive()).toBe(true);
+        expect(yield* resumed.rootIsEmpty()).toBe(true);
+        yield* resumed.discardBlockOverlay();
+        yield* resumed.close();
+      }),
   );
 
   it.effect("resumes an empty-base parked scratch overlay without a path", () =>

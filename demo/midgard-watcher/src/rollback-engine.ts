@@ -53,6 +53,8 @@ const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 export const WATCHER_ROLLBACK_REASON_CODES_V1 = [
   "rewind_applied",
   "duplicate_instruction",
+  "finality_lineage_advanced",
+  "duplicate_finality_transition",
   "post_finality_incident",
   "malformed_policy",
   "malformed_store",
@@ -172,6 +174,8 @@ export type WatcherRollbackResultV1 = Readonly<{
   action:
     | "apply_rewind"
     | "duplicate_rewind"
+    | "advance_finality"
+    | "duplicate_finality"
     | "quarantine_incident"
     | "reject";
   protocolDecision: "resume_pending" | "hold" | "quarantined";
@@ -191,6 +195,13 @@ export type WatcherRollbackResultV1 = Readonly<{
 type PlainRecord = Record<string, unknown>;
 
 type ParsedFinalityTransition =
+  | Readonly<{
+      kind: "advance";
+      previous: WatcherFinalityStateV1;
+      next: WatcherFinalityStateV1;
+      consistency: WatcherMultiProviderConsistencyV1;
+      finalityResult: WatcherFinalityResultV1;
+    }>
   | Readonly<{
       kind: "rewind";
       previous: WatcherFinalityStateV1;
@@ -549,6 +560,10 @@ const parseFinalityTransition = (
     return "malformed_finality_result";
   }
   const reasons = exactStringArray(result.reasonCodes, [
+    "first_visibility_pending",
+    "confirmation_depth_pending",
+    "confirmation_depth_reached",
+    "pending_depth_progress",
     "pending_depth_regression",
     "pending_point_changed",
     "pending_content_changed",
@@ -593,6 +608,34 @@ const parseFinalityTransition = (
   };
   if (sha256Canonical(canonical) !== result.resultDigest) {
     return "malformed_finality_result";
+  }
+
+  const isOrdinaryAdvance =
+    instruction === null &&
+    previous.stateDigest !== next.stateDigest &&
+    ((result.action === "observe_pending" &&
+      result.protocolDecision === "hold" &&
+      sameStrings(reasons, ["first_visibility_pending"]) &&
+      sameStrings(alerts, ["watcher_finality_pending"])) ||
+      (result.action === "advance_pending" &&
+        result.protocolDecision === "hold" &&
+        sameStrings(reasons, [
+          "pending_depth_progress",
+          "confirmation_depth_pending",
+        ]) &&
+        sameStrings(alerts, ["watcher_finality_pending"])) ||
+      (result.action === "finalize" &&
+        result.protocolDecision === "finality_granted" &&
+        sameStrings(reasons, ["confirmation_depth_reached"]) &&
+        alerts.length === 0));
+  if (isOrdinaryAdvance) {
+    return Object.freeze({
+      kind: "advance",
+      previous,
+      next,
+      consistency,
+      finalityResult: recomputed,
+    });
   }
 
   if (
@@ -1179,7 +1222,12 @@ const decodeWatcherRollbackStateV1Structural = (
       canonical.lastConsistencyDigest !== null &&
       canonical.lastFinalityResultDigest !== null &&
       ((canonical.incident === null &&
-        canonical.lastInstructionDigest !== null) ||
+        ((canonical.transitions.at(-1)?.finalityResult.action ===
+          "rewind_pending" &&
+          canonical.lastInstructionDigest !== null) ||
+          (canonical.transitions.at(-1)?.finalityResult.action !==
+            "rewind_pending" &&
+            canonical.lastInstructionDigest === null))) ||
         (canonical.incident !== null &&
           canonical.lastInstructionDigest === null));
     if (!initialShape && !transitionedShape) {
@@ -1300,6 +1348,8 @@ const decodeWatcherRollbackResultV1Structural = (
       ![
         "apply_rewind",
         "duplicate_rewind",
+        "advance_finality",
+        "duplicate_finality",
         "quarantine_incident",
         "reject",
       ].includes(record.action as string) ||
@@ -1390,6 +1440,29 @@ const decodeWatcherRollbackResultV1Structural = (
         rollbackState !== null &&
         rollbackState.incident === null &&
         rollbackState.lastInstructionDigest === record.instructionDigest) ||
+      (action === "advance_finality" &&
+        protocolDecision === "hold" &&
+        sameStrings(reasonCodes, ["finality_lineage_advanced"]) &&
+        alertCodes.length === 0 &&
+        record.sourceRevision === record.nextRevision &&
+        record.sourceStoreDigest === record.nextStoreDigest &&
+        record.instructionDigest === null &&
+        !hasRemovedRecords &&
+        nextStore !== null &&
+        rollbackState !== null &&
+        rollbackState.incident === null &&
+        rollbackState.lastInstructionDigest === null) ||
+      (action === "duplicate_finality" &&
+        protocolDecision === "hold" &&
+        sameStrings(reasonCodes, ["duplicate_finality_transition"]) &&
+        alertCodes.length === 0 &&
+        record.sourceRevision === record.nextRevision &&
+        record.sourceStoreDigest === record.nextStoreDigest &&
+        record.instructionDigest === null &&
+        !hasRemovedRecords &&
+        nextStore !== null &&
+        rollbackState !== null &&
+        rollbackState.incident === null) ||
       (action === "quarantine_incident" &&
         protocolDecision === "quarantined" &&
         sameStrings(reasonCodes, ["post_finality_incident"]) &&
@@ -1566,6 +1639,7 @@ const verifyPersistedConsistencyEvidence = (
       : {
           sourceMode: "external_providers",
           network: policy.network,
+          providers: policy.externalProviderCommitments,
         },
     decoded,
   );
@@ -1918,6 +1992,62 @@ const evaluateWatcherRollbackStep = (
     );
   }
 
+  if (transition.kind === "advance") {
+    const consistencyEvidence = verifyPersistedConsistencyEvidence(
+      policy,
+      store,
+      transition.consistency,
+    );
+    if (
+      consistencyEvidence === null ||
+      transition.consistency.status !== "agreed" ||
+      transition.consistency.protocolDecision !== "allowed"
+    ) {
+      return reject("consistency_evidence_missing");
+    }
+    if (adjacentDuplicate) {
+      return makeResult({
+        action: "duplicate_finality",
+        protocolDecision: "hold",
+        reasonCodes: ["duplicate_finality_transition"],
+        alertCodes: [],
+        sourceRevision: store.revision,
+        nextRevision: store.revision,
+        instructionDigest: null,
+        sourceStoreDigest,
+        nextStoreDigest: sourceStoreDigest,
+        removedRecords: emptyRemovedRecords(),
+        nextStore: store,
+        rollbackState,
+      });
+    }
+    const canonicalTransition = Object.freeze({
+      ...transition,
+      consistency: consistencyEvidence.consistency,
+    });
+    const nextRollbackState = advanceRollbackState(
+      policy,
+      rollbackState,
+      canonicalTransition,
+      sourceStoreDigest,
+      null,
+    );
+    return makeResult({
+      action: "advance_finality",
+      protocolDecision: "hold",
+      reasonCodes: ["finality_lineage_advanced"],
+      alertCodes: [],
+      sourceRevision: store.revision,
+      nextRevision: store.revision,
+      instructionDigest: null,
+      sourceStoreDigest,
+      nextStoreDigest: sourceStoreDigest,
+      removedRecords: emptyRemovedRecords(),
+      nextStore: store,
+      rollbackState: nextRollbackState,
+    });
+  }
+
   if (transition.kind === "incident") {
     const consistencyEvidence = verifyPersistedConsistencyEvidence(
       policy,
@@ -2070,7 +2200,9 @@ const replayWatcherRollbackState = (
       transition.finalityResult,
     );
     if (
-      !["apply_rewind", "quarantine_incident"].includes(result.action) ||
+      !["apply_rewind", "advance_finality", "quarantine_incident"].includes(
+        result.action,
+      ) ||
       result.nextStore === null ||
       result.rollbackState === null
     ) {

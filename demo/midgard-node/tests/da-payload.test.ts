@@ -115,10 +115,7 @@ const headerFor = (roots: TestRoots, counts: TestCounts): SDK.HeaderV1 => ({
 });
 
 const headerCbor = (header: SDK.HeaderV1): Buffer =>
-  Buffer.from(
-    LucidData.to(header as never, SDK.HeaderV1 as never),
-    "hex",
-  );
+  Buffer.from(LucidData.to(header as never, SDK.HeaderV1 as never), "hex");
 
 const retainedPairs = (
   label: string,
@@ -554,8 +551,9 @@ describe("DaPayloadV1 builder", () => {
     const backfilled = await unwrapDaPayloadV1(inserts[0]!.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
     });
-    expect(SDK.decodeDaPayloadV1(backfilled.innerBytes).block_body.header_hash)
-      .toBe(headerHash.toString("hex"));
+    expect(
+      SDK.decodeDaPayloadV1(backfilled.innerBytes).block_body.header_hash,
+    ).toBe(headerHash.toString("hex"));
   });
 
   it("skips backfill when the V1 delta chain cannot be materialized", async () => {

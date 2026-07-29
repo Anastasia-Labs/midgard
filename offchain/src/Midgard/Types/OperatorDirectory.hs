@@ -7,7 +7,7 @@ module Midgard.Types.OperatorDirectory (
 
 import GHC.Generics (Generic)
 
-import PlutusLedgerApi.V3 (PubKeyHash)
+import PlutusLedgerApi.V3 (PubKeyHash, TxOutRef)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
@@ -32,8 +32,7 @@ $( makeIsDataSchemaIndexed
 data SlashingArguments = SlashingArguments
   { slashedOperator :: PubKeyHash
   , hubOracleRefInputIndex :: Integer
-  , slashedOperatorAnchorElementInputIndex :: Integer
-  , slashedOperatorNodeInputIndex :: Integer
+  , slashedOperatorAnchorElementInputOutRef :: TxOutRef
   , slashedOperatorAnchorElementOutputIndex :: Integer
   , slashingReason :: SlashingReason
   }

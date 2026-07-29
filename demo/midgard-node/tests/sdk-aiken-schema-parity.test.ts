@@ -67,7 +67,10 @@ const normalizeSchema = (
   resolving: ReadonlySet<string> = new Set(),
 ): NormalizedSchema => {
   if (schema.$ref !== undefined) {
-    expect(definitions, "a schema reference requires definitions").toBeDefined();
+    expect(
+      definitions,
+      "a schema reference requires definitions",
+    ).toBeDefined();
     const name = jsonPointerName(schema.$ref);
     expect(resolving.has(name), `recursive ABI schema ${name}`).toBe(false);
     const definition = definitions![name];
@@ -84,9 +87,7 @@ const normalizeSchema = (
     return {
       constructors: schema.anyOf.map((constructor) => ({
         index: constructor.index!,
-        ...(includeNames
-          ? { name: constructor.title }
-          : {}),
+        ...(includeNames ? { name: constructor.title } : {}),
         fields: (constructor.fields ?? []).map((field) => ({
           ...(field.title === undefined
             ? {}
@@ -108,7 +109,10 @@ const normalizeSchema = (
     schema.values !== undefined
   ) {
     expect(schema.keys, "map schema must name its key schema").toBeDefined();
-    expect(schema.values, "map schema must name its value schema").toBeDefined();
+    expect(
+      schema.values,
+      "map schema must name its value schema",
+    ).toBeDefined();
     return {
       map: [
         normalizeSchema(schema.keys!, definitions, resolving),
@@ -171,11 +175,7 @@ const VALIDITY_VECTORS = [
   ["FailedScript", 3n, "d87c80"],
   ["FeeTooLow", 4n, "d87d80"],
   ["UnbalancedTx", 5n, "d87e80"],
-] as const satisfies readonly [
-  NativeMidgardTxValidity,
-  bigint,
-  string,
-][];
+] as const satisfies readonly [NativeMidgardTxValidity, bigint, string][];
 
 describe("SDK/Aiken canonical V1 schema parity", () => {
   it.each(ABI_MAPPINGS)(
@@ -210,12 +210,10 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
       expect(MidgardTxValidityCodes[name]).toBe(code);
       expect(encodeValidityCode(name)).toBe(code);
       expect(decodeValidityCode(code, "validity")).toBe(name);
-      expect(
-        Data.to(name as never, SDK.MidgardTxValiditySchema as never),
-      ).toBe(plutusDataCbor);
-      expect(
-        Data.from(plutusDataCbor, SDK.MidgardTxValiditySchema),
-      ).toBe(name);
+      expect(Data.to(name as never, SDK.MidgardTxValiditySchema as never)).toBe(
+        plutusDataCbor,
+      );
+      expect(Data.from(plutusDataCbor, SDK.MidgardTxValiditySchema)).toBe(name);
     },
   );
 
@@ -223,8 +221,6 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
     expect(() => decodeValidityCode(6n, "validity")).toThrow(
       /Unsupported Midgard tx validity code/u,
     );
-    expect(() =>
-      Data.from("d87f80", SDK.MidgardTxValiditySchema),
-    ).toThrow();
+    expect(() => Data.from("d87f80", SDK.MidgardTxValiditySchema)).toThrow();
   });
 });

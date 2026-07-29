@@ -16,6 +16,8 @@ on:
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
@@ -34,6 +36,8 @@ on:
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
@@ -108,6 +112,8 @@ jobs:
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
       - name: Build, typecheck, lint, and test Midgard watcher scaffold
         run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher test
+      - name: Verify canonical watcher dependency map
+        run: pnpm --dir demo run watcher:dependency-map:verify
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard

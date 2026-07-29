@@ -38,9 +38,7 @@ if (
   PROOF_MAX_CANONICAL_TRANSACTION_BYTES !==
   MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
 ) {
-  throw new Error(
-    "forced-transaction SQL bound does not match canonical V1",
-  );
+  throw new Error("forced-transaction SQL bound does not match canonical V1");
 }
 
 export enum Columns {

@@ -44,6 +44,7 @@ import {
 import {
   evaluateWatcherFinalityV1,
   parseWatcherFinalityPolicyV1,
+  type WatcherFinalityPolicyV1,
   type WatcherFinalityResultV1,
 } from "./finality-engine.js";
 import {
@@ -111,6 +112,7 @@ export const WATCHER_STATE_QUEUE_INDEXER_REASON_CODES_V1 = [
   "removal_mismatch",
   "rollback_mismatch",
   "rollback_authority_mismatch",
+  "post_finality_quarantine",
   "history_limit_exceeded",
 ] as const;
 
@@ -119,6 +121,7 @@ export const WATCHER_STATE_QUEUE_INDEXER_ALERT_CODES_V1 = [
   "watcher_state_queue_binding_rejected",
   "watcher_state_queue_state_rejected",
   "watcher_state_queue_transition_rejected",
+  "watcher_state_queue_post_finality_incident",
 ] as const;
 
 export type WatcherStateQueueIndexerReasonCodeV1 =
@@ -487,6 +490,24 @@ const sameMarker = (
 ): boolean =>
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
+
+const boundRollbackPolicy = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  rollbackContext: WatcherRollbackVerificationContextV1,
+  expectedInput: unknown,
+): WatcherFinalityPolicyV1 | null => {
+  const actual = parseWatcherFinalityPolicyV1(rollbackContext.policy);
+  const expected = parseWatcherFinalityPolicyV1(expectedInput);
+  return actual !== null &&
+    expected !== null &&
+    same(actual, expected) &&
+    actual.network === policy.network &&
+    actual.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    sameMarker(actual.deploymentMarker, policy.deploymentMarker) &&
+    actual.confirmationDepth === policy.requiredFinalityDepth
+    ? actual
+    : null;
+};
 
 const expectedNetworkId = (network: WatcherStateQueueNetworkV1): number =>
   network === "Mainnet" ? 1 : 0;
@@ -1660,6 +1681,7 @@ const parsePublicContext = (
           : {
               sourceMode: "external_providers",
               network: finalityPolicy.network,
+              providers: finalityPolicy.externalProviderCommitments,
             },
         authorityObservations,
       );
@@ -2535,7 +2557,8 @@ const auditGroups = (
       (entry.status === "orphaned" &&
         current.some(({ status }) => status === "rollback")) ||
       (entry.status === "rollback" &&
-        (current.length === 0 ||
+        ((current.length === 0 &&
+          entry.entry.rollbackResult?.action !== "quarantine_incident") ||
           current.some(({ status }) => status === "rollback")))
     ) {
       return null;
@@ -2752,8 +2775,17 @@ const verifyEntries = (
     }
     if (entry.transitionKind === "rollback") {
       const authority = context.context.rollbackAuthority;
+      const expectedFinalityPolicy = verified.find(
+        ({ context: prior }) => prior.finalityAuthority !== null,
+      )?.context.finalityAuthority?.policy;
       if (
         authority === null ||
+        expectedFinalityPolicy === undefined ||
+        boundRollbackPolicy(
+          policy,
+          authority.context,
+          expectedFinalityPolicy,
+        ) === null ||
         entry.rollbackResult === null ||
         parseWatcherRollbackResultV1(
           entry.rollbackResult,
@@ -3241,7 +3273,10 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       state,
     });
   }
-  const duplicate = previousState.history.find(
+  const duplicate = [
+    ...previousState.history,
+    ...previousState.auditHistory.map(({ entry }) => entry),
+  ].find(
     ({ observation: prior }) =>
       prior.observationDigest === observation.observationDigest,
   );
@@ -3251,6 +3286,18 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       protocolDecision: "hold",
       reasonCodes: Object.freeze(["duplicate_observation"]),
       alertCodes: Object.freeze([]),
+      state: previousState,
+    });
+  }
+  if (
+    previousState.auditHistory.at(-1)?.entry.rollbackResult?.action ===
+    "quarantine_incident"
+  ) {
+    return makeResult({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: Object.freeze(["post_finality_quarantine"]),
+      alertCodes: Object.freeze(["watcher_state_queue_post_finality_incident"]),
       state: previousState,
     });
   }
@@ -3296,10 +3343,14 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       authority === null
         ? null
         : parseWatcherRollbackResultV1(authority.result, authority.context);
+    const expectedFinalityPolicy =
+      lastVerified.context.finalityAuthority?.policy;
     if (
       rollbackResult === null ||
-      (rollbackResult.action !== "apply_rewind" &&
-        rollbackResult.action !== "duplicate_rewind") ||
+      authority === null ||
+      expectedFinalityPolicy === undefined ||
+      boundRollbackPolicy(policy, authority.context, expectedFinalityPolicy) ===
+        null ||
       rollbackResult.nextStore === null ||
       !same(rollbackResult.nextStore, verified.store) ||
       rollbackResult.nextStoreDigest !== observation.durableStoreDigest ||
@@ -3307,6 +3358,55 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         lastVerified.store,
         authority?.context.sourceStore,
       ) === null
+    ) {
+      return rejected(
+        "rollback_authority_mismatch",
+        "watcher_state_queue_binding_rejected",
+      );
+    }
+    if (rollbackResult.action === "quarantine_incident") {
+      if (
+        rollbackResult.protocolDecision !== "quarantined" ||
+        observation.transactionHash !== null ||
+        !same(nextTopology.snapshot, previousState.snapshot)
+      ) {
+        return rejected(
+          "rollback_authority_mismatch",
+          "watcher_state_queue_binding_rejected",
+        );
+      }
+      const incidentEntry = makeEntry(
+        observation,
+        verified,
+        previousState.snapshot,
+        rollbackResult,
+      );
+      const boundedAudit = pruneAuditGroups([
+        ...previousState.auditHistory,
+        makeAudit("rollback", incidentEntry),
+      ]);
+      if (boundedAudit === null || boundedAudit.length === 0) {
+        return rejected("history_limit_exceeded");
+      }
+      const state = makeState(
+        policy,
+        observation,
+        previousState.history,
+        boundedAudit,
+      );
+      return makeResult({
+        action: "accept",
+        protocolDecision: "quarantined",
+        reasonCodes: Object.freeze(["post_finality_quarantine"]),
+        alertCodes: Object.freeze([
+          "watcher_state_queue_post_finality_incident",
+        ]),
+        state,
+      });
+    }
+    if (
+      rollbackResult.action !== "apply_rewind" &&
+      rollbackResult.action !== "duplicate_rewind"
     ) {
       return rejected(
         "rollback_authority_mismatch",

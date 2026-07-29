@@ -70,8 +70,7 @@ describe("confirmed ledger snapshot materialization", () => {
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.BLOCK_START_TIME]: now,
       [PendingBlockFinalizationsDB.Columns.BLOCK_END_TIME]: now,
-      [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
-        expectedRoot,
+      [PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]: expectedRoot,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
         SDK.EMPTY_MERKLE_TREE_ROOT,
       [PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSACTIONS_ROOT]:
@@ -121,9 +120,9 @@ describe("confirmed ledger snapshot materialization", () => {
         spent: [],
         produced: [
           {
-          [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: outref,
-          [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
-            output.to_cbor_bytes(),
+            [PendingBlockFinalizationsDB.UtxoColumns.OUTREF]: outref,
+            [PendingBlockFinalizationsDB.UtxoColumns.OUTPUT]:
+              output.to_cbor_bytes(),
           },
         ],
       },
@@ -131,10 +130,8 @@ describe("confirmed ledger snapshot materialization", () => {
 
     const snapshot = await Effect.runPromise(
       materializeConfirmedLedgerSnapshot(record).pipe(
-        Effect.provideService(
-          SqlClient.SqlClient,
-          (() => Effect.succeed([])) as unknown as SqlClient.SqlClient,
-        ),
+        Effect.provideService(SqlClient.SqlClient, (() =>
+          Effect.succeed([])) as unknown as SqlClient.SqlClient),
       ),
     );
 

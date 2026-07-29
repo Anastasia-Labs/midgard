@@ -30,8 +30,7 @@ const request = (
 ): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId,
   txCanonicalCbor: Buffer.from(`canonical:${label}`),
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
   submitSource: "native",
 });
 

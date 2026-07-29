@@ -16,7 +16,7 @@ import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime, PubKeyHash)
+import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime, PubKeyHash, TxOutRef)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
@@ -114,10 +114,9 @@ $( makeIsDataSchemaIndexed
 
 data MintRedeemer
   = Init {outputIndex :: Integer}
-  | Deinit {inputIndex :: Integer}
+  | Deinit
   | ActivateOperator
       { newActiveOperatorKey :: PubKeyHash
-      , activeOperatorAnchorElementInputIndex :: Integer
       , activeOperatorAnchorElementOutputIndex :: Integer
       , activeOperatorInsertedNodeOutputIndex :: Integer
       , registeredOperatorsRedeemerIndex :: Integer
@@ -126,8 +125,7 @@ data MintRedeemer
   | RetireOperator
       { activeOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
-      , activeOperatorAnchorElementInputIndex :: Integer
-      , activeOperatorRemovedNodeInputIndex :: Integer
+      , activeOperatorAnchorElementInputOutRef :: TxOutRef
       , activeOperatorAnchorElementOutputIndex :: Integer
       , retiredOperatorsRedeemerIndex :: Integer
       , penalizeForInactivity :: Bool

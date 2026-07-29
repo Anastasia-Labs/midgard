@@ -1,13 +1,13 @@
-import * as SDK from "@al-ft/midgard-sdk";
 import {
   readCborArrayHeader,
   readCborBytes,
   readCborInteger,
 } from "@al-ft/midgard-core/codec/cbor";
+import * as SDK from "@al-ft/midgard-sdk";
 
 import {
-  transitionTraceError,
   TransitionTraceChallengerError,
+  transitionTraceError,
 } from "./errors.js";
 import {
   eventKeyFingerprint,
@@ -16,8 +16,9 @@ import {
   type TransitionTraceReconstruction,
 } from "./reconstruct.js";
 import {
-  buildCountFault,
+  type AcceptedTransactionTransitionMismatchEvidence,
   buildAcceptedTransactionTransitionMismatchFault,
+  buildCountFault,
   buildDuplicateTraceEventFault,
   buildEventToStepMismatchFault,
   buildInvalidForcedTransactionNoOpWitness,
@@ -30,7 +31,6 @@ import {
   buildTraceBoundaryFault,
   buildTraceLinkFault,
   buildTransitionFaultProof,
-  type AcceptedTransactionTransitionMismatchEvidence,
   type OmittedDueL1EventEvidence,
   type OutOfWindowSourceEventEvidence,
   rootCountProof,
@@ -544,11 +544,7 @@ const acceptedTerminalPostRoot = (
   terminalAcceptanceWitnessCbor: string,
 ): string => {
   const bytes = Buffer.from(terminalAcceptanceWitnessCbor, "hex");
-  const array = readCborArrayHeader(
-    bytes,
-    0,
-    "terminal acceptance witness",
-  );
+  const array = readCborArrayHeader(bytes, 0, "terminal acceptance witness");
   if (array.length !== 4) {
     throw transitionTraceError(
       "malformedPayload",

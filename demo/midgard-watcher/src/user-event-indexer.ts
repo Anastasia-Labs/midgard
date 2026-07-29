@@ -378,6 +378,24 @@ const cloneMarker = (value: unknown): DeploymentMarkerV1 | null => {
   });
 };
 
+const boundRollbackPolicy = (
+  policy: WatcherUserEventIndexerPolicyV1,
+  rollbackContext: WatcherRollbackVerificationContextV1,
+  expectedInput: unknown,
+): WatcherFinalityPolicyV1 | null => {
+  const actual = parseWatcherFinalityPolicyV1(rollbackContext.policy);
+  const expected = parseWatcherFinalityPolicyV1(expectedInput);
+  return actual !== null &&
+    expected !== null &&
+    same(actual, expected) &&
+    actual.network === policy.network &&
+    actual.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    same(actual.deploymentMarker, policy.deploymentMarker) &&
+    actual.confirmationDepth === policy.requiredFinalityDepth
+    ? actual
+    : null;
+};
+
 const policyFields = (value: unknown): EventPolicyFields | null => {
   const record = exactRecord(value, [
     "policyId",
@@ -2427,6 +2445,7 @@ const verifyBlockContext = (
         : {
             sourceMode: "external_providers",
             network: finalityPolicy.network,
+            providers: finalityPolicy.externalProviderCommitments,
           },
       normalized,
     );
@@ -2761,6 +2780,20 @@ const deriveRollbackObservation = (
   if (verified === null) {
     return null;
   }
+  const expectedFinalityPolicy = [...previous.history]
+    .reverse()
+    .find(({ publicContext }) => publicContext.finalityAuthority !== null)
+    ?.publicContext.finalityAuthority?.policy;
+  if (
+    expectedFinalityPolicy === undefined ||
+    boundRollbackPolicy(
+      policy,
+      verified.context.rollbackAuthority!.context,
+      expectedFinalityPolicy,
+    ) === null
+  ) {
+    return null;
+  }
   let previousStore: WatcherDurableStoreV1;
   try {
     previousStore = parseWatcherDurableStoreV1(
@@ -2807,12 +2840,15 @@ const deriveRollbackObservation = (
         });
   }
   if (
-    rollbackTargetEntryDigest === null ||
+    rollbackTargetEntryDigest !== null &&
     !previous.activeEntryDigests.includes(rollbackTargetEntryDigest)
   ) {
     return null;
   }
-  const target = historyEntryForDigest(previous, rollbackTargetEntryDigest);
+  const target =
+    rollbackTargetEntryDigest === null
+      ? null
+      : historyEntryForDigest(previous, rollbackTargetEntryDigest);
   const activeEntries = previous.activeEntryDigests
     .map((digest) => historyEntryForDigest(previous, digest))
     .filter(
@@ -2832,16 +2868,27 @@ const deriveRollbackObservation = (
           removedObservations.has(entry.observation.sourceObservationDigest))
       ),
   );
+  const rewindsToGenesis = retained.length === 0;
   if (
-    target === null ||
-    target.observation.transitionKind !== "apply_block" ||
-    retained.at(-1)?.entryDigest !== rollbackTargetEntryDigest
+    rewindsToGenesis
+      ? rollbackTargetEntryDigest !== null
+      : target === null ||
+        target.observation.transitionKind !== "apply_block" ||
+        retained.at(-1)?.entryDigest !== rollbackTargetEntryDigest
   ) {
+    return null;
+  }
+  const targetSnapshot = rewindsToGenesis
+    ? makeSnapshot([], [])
+    : target!.observation.snapshot;
+  if (targetSnapshot === null) {
     return null;
   }
   let targetStore: WatcherDurableStoreV1;
   try {
-    targetStore = parseWatcherDurableStoreV1(target.publicContext.durableStore);
+    targetStore = rewindsToGenesis
+      ? verified.store
+      : parseWatcherDurableStoreV1(target!.publicContext.durableStore);
   } catch {
     return null;
   }
@@ -2855,13 +2902,11 @@ const deriveRollbackObservation = (
       verified.store.protocolUtxos.some(
         (candidate) => candidate.outRef === outRef,
       ) &&
-      target.observation.snapshot.activeEvents.some(
-        (event) => event.outRef === outRef,
-      ),
+      targetSnapshot.activeEvents.some((event) => event.outRef === outRef),
   );
   if (
     !same(restored, verified.context.rollbackRestoredEventUtxos) ||
-    !topologyMatches(verified.store, target.observation.snapshot)
+    !topologyMatches(verified.store, targetSnapshot)
   ) {
     return null;
   }
@@ -2869,7 +2914,7 @@ const deriveRollbackObservation = (
     verified.result.removedRecords.protocolUtxoOutRefs,
   );
   const targetActive = new Set(
-    target.observation.snapshot.activeEvents.map(({ outRef }) => outRef),
+    targetSnapshot.activeEvents.map(({ outRef }) => outRef),
   );
   for (const event of previous.snapshot.activeEvents) {
     if (!targetActive.has(event.outRef) && !removedOutRefs.has(event.outRef)) {
@@ -2896,7 +2941,7 @@ const deriveRollbackObservation = (
     ),
     durableStoreRevision: verified.store.revision,
     rollbackTargetEntryDigest,
-    snapshot: target.observation.snapshot,
+    snapshot: targetSnapshot,
   });
 };
 
@@ -2976,13 +3021,15 @@ const applyObservation = (
   const history = Object.freeze([...(previous?.history ?? []), entry]);
   let activeEntryDigests =
     observation.transitionKind === "rollback" &&
-    observation.rollbackTargetEntryDigest !== null
-      ? (previous?.activeEntryDigests.slice(
-          0,
-          previous.activeEntryDigests.indexOf(
-            observation.rollbackTargetEntryDigest,
-          ) + 1,
-        ) ?? [])
+    !observation.snapshot.quarantined
+      ? observation.rollbackTargetEntryDigest === null
+        ? []
+        : (previous?.activeEntryDigests.slice(
+            0,
+            previous.activeEntryDigests.indexOf(
+              observation.rollbackTargetEntryDigest,
+            ) + 1,
+          ) ?? [])
       : [...(previous?.activeEntryDigests ?? [])];
   activeEntryDigests = [...activeEntryDigests, entry.entryDigest];
   if (

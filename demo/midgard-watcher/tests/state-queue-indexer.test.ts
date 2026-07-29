@@ -182,6 +182,7 @@ const makeDeploymentAuthority = () => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => {
         const contractName = {
@@ -191,6 +192,7 @@ const makeDeploymentAuthority = () => {
           invalidRange: "fraudProofInvalidRange",
           transitionTrace: "fraudProofTransitionTrace",
           validationTraceDispute: "validationTraceDispute",
+          zeroInput: "fraudProofZeroInput",
         }[category]!;
         return [
           category,
@@ -491,6 +493,16 @@ const providerB = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: provider.providerId,
+      operatorIdentitySha256: provider.source.operatorIdentitySha256,
+    },
+    {
+      providerId: providerB.providerId,
+      operatorIdentitySha256: providerB.source.operatorIdentitySha256,
+    },
+  ],
 } as const;
 
 const LOCAL_NODE_ID = "watcher-node-a";
@@ -2440,142 +2452,129 @@ describe("authenticated state-queue indexer", () => {
       rollbackObservation,
       rollbackContext,
     );
-    expect(rolledBack.action, JSON.stringify(rolledBack)).toBe("accept");
-    expect(rolledBack.reasonCodes).toEqual(["rollback_authenticated"]);
-    const restarted = parseWatcherStateQueueIndexerStateV1(
-      JSON.parse(JSON.stringify(rolledBack.state)),
-      policy,
-    );
-    expect(restarted).toEqual(rolledBack.state);
+    expect(rolledBack).toMatchObject({
+      action: "reject",
+      protocolDecision: "hold",
+      reasonCodes: ["rollback_authority_mismatch"],
+      state: null,
+    });
 
-    const secondReplacementConsistency =
-      evaluateWatcherMultiProviderConsistencyV1(
-        externalSource,
-        secondReplacementNormalized,
-      );
-    const secondPreviousFinalityState = rollbackFinalityResult.state!;
-    const secondFinalityResult = evaluateWatcherFinalityV1(
-      rollbackFinalityPolicy,
-      secondPreviousFinalityState,
-      secondReplacementConsistency,
+    const incidentPolicy = finalityPolicyAtDepth(2);
+    const firstMergeObservations = oldObservations.map(
+      ({ authenticatedProvider, l1Observation }) => {
+        const first = structuredClone(l1Observation);
+        first.chainPoint.depth = "1";
+        return normalizeWatcherL1BlockV1(authenticatedProvider, first);
+      },
     );
-    expect(secondFinalityResult.action).toBe("rewind_pending");
-    const secondAppliedRollback = evaluateWatcherRollbackV1(
-      rollbackFinalityPolicy,
-      appliedStore,
-      secondPreviousFinalityState,
-      secondReplacementConsistency,
-      secondFinalityResult,
-      appliedRollback.rollbackState,
-      rollbackBootstrapState,
+    const firstMergeConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      firstMergeObservations,
     );
-    expect(
-      secondAppliedRollback.action,
-      JSON.stringify(secondAppliedRollback),
-    ).toBe("apply_rewind");
-    expect(secondAppliedRollback.nextStore?.protocolUtxos).toEqual(
-      store.protocolUtxos,
+    const firstMergeVisibility = evaluateWatcherFinalityV1(
+      incidentPolicy,
+      null,
+      firstMergeConsistency,
     );
-    expect(secondAppliedRollback.nextStore?.spentProtocolUtxos).toEqual(
-      store.spentProtocolUtxos,
+    expect(firstMergeVisibility.action).toBe("observe_pending");
+    const finalizedMerge = evaluateWatcherFinalityV1(
+      incidentPolicy,
+      firstMergeVisibility.state,
+      oldConsistency,
     );
-    const secondAppliedStore = secondAppliedRollback.nextStore!;
-    storeSources.set(secondAppliedStore, appliedStore);
-    const repeatedRollbackObservation = observationFor(
-      block,
-      secondAppliedStore,
-      snapshot,
+    expect(finalizedMerge.action).toBe("finalize");
+    const incidentFinality = evaluateWatcherFinalityV1(
+      incidentPolicy,
+      finalizedMerge.state,
+      replacementConsistency,
+    );
+    expect(incidentFinality.action).toBe("quarantine_incident");
+    const incidentBootstrap = makeWatcherRollbackBootstrapStateV1(
+      incidentPolicy,
+      rollbackSourceStore,
+      finalizedMerge.state,
+    )!;
+    const incidentContext = {
+      policy: incidentPolicy,
+      sourceStore: rollbackSourceStore,
+      previousFinalityState: finalizedMerge.state,
+      consistency: replacementConsistency,
+      finalityResult: incidentFinality,
+      previousRollbackState: incidentBootstrap,
+      rollbackBootstrapState: incidentBootstrap,
+    };
+    const incident = evaluateWatcherRollbackV1(
+      incidentPolicy,
+      rollbackSourceStore,
+      finalizedMerge.state,
+      replacementConsistency,
+      incidentFinality,
+      incidentBootstrap,
+      incidentBootstrap,
+    );
+    expect(incident).toMatchObject({
+      action: "quarantine_incident",
+      protocolDecision: "quarantined",
+    });
+    expect(incident.nextStore).not.toBeNull();
+    storeSources.set(incident.nextStore!, rollbackSourceStore);
+    const incidentObservation = observationFor(
+      attach.block,
+      incident.nextStore!,
+      merged.state!.snapshot,
       "rollback",
-      restarted!.stateDigest,
+      merged.state!.stateDigest,
       null,
       null,
       { transactionHash: null },
     );
-    const secondRollbackVerificationContext = {
-      policy: rollbackFinalityPolicy,
-      sourceStore: appliedStore,
-      previousFinalityState: secondPreviousFinalityState,
-      consistency: secondReplacementConsistency,
-      finalityResult: secondFinalityResult,
-      previousRollbackState: appliedRollback.rollbackState,
-      rollbackBootstrapState,
+    const incidentPublicContext = {
+      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      authenticatedProvider: provider,
+      l1Observation: attach.block.raw,
+      sourceDurableStore: rollbackSourceStore,
+      durableStore: incident.nextStore!,
+      deploymentAuthority,
+      finalityAuthority: null,
+      rollbackAuthority: {
+        result: incident,
+        context: incidentContext,
+      },
     };
-    const repeatedRollback = evaluateWatcherStateQueueIndexerV1(
+    const quarantined = evaluateWatcherStateQueueIndexerV1(
       policy,
-      restarted,
-      repeatedRollbackObservation,
-      {
-        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-        authenticatedProvider: provider,
-        l1Observation: block.raw,
-        sourceDurableStore: appliedStore,
-        durableStore: secondAppliedStore,
-        deploymentAuthority,
-        finalityAuthority: null,
-        rollbackAuthority: {
-          result: secondAppliedRollback,
-          context: secondRollbackVerificationContext,
-        },
+      merged.state,
+      incidentObservation,
+      incidentPublicContext,
+    );
+    expect(quarantined).toMatchObject({
+      action: "accept",
+      protocolDecision: "quarantined",
+      reasonCodes: ["post_finality_quarantine"],
+      state: {
+        snapshot: merged.state!.snapshot,
       },
+    });
+    const quarantinedRestart = parseWatcherStateQueueIndexerStateV1(
+      JSON.parse(JSON.stringify(quarantined.state)),
+      policy,
     );
-    expect(repeatedRollback.action, JSON.stringify(repeatedRollback)).toBe(
-      "accept",
-    );
+    expect(quarantinedRestart).toEqual(quarantined.state);
+    const quarantineProbe = remakeObservation(incidentObservation, {
+      predecessorStateDigest: quarantinedRestart!.stateDigest,
+    });
     expect(
-      parseWatcherStateQueueIndexerStateV1(
-        JSON.parse(JSON.stringify(repeatedRollback.state)),
+      evaluateWatcherStateQueueIndexerV1(
         policy,
+        quarantinedRestart,
+        quarantineProbe,
+        incidentPublicContext,
       ),
-    ).toEqual(repeatedRollback.state);
-
-    const duplicateRollback = evaluateWatcherRollbackV1(
-      rollbackFinalityPolicy,
-      secondAppliedStore,
-      secondPreviousFinalityState,
-      secondReplacementConsistency,
-      secondFinalityResult,
-      secondAppliedRollback.rollbackState,
-      rollbackBootstrapState,
-    );
-    expect(duplicateRollback.action).toBe("duplicate_rewind");
-    storeSources.set(secondAppliedStore, secondAppliedStore);
-    const duplicateObservation = remakeObservation(
-      repeatedRollbackObservation,
-      {
-        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
-          encodeWatcherDurableStoreV1(secondAppliedStore),
-        ),
-        sourceDurableStoreRevision: secondAppliedStore.revision,
-        predecessorStateDigest: repeatedRollback.state!.stateDigest,
-      },
-    );
-    const duplicate = evaluateWatcherStateQueueIndexerV1(
-      policy,
-      repeatedRollback.state,
-      duplicateObservation,
-      {
-        schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-        authenticatedProvider: provider,
-        l1Observation: block.raw,
-        sourceDurableStore: secondAppliedStore,
-        durableStore: secondAppliedStore,
-        deploymentAuthority,
-        finalityAuthority: null,
-        rollbackAuthority: {
-          result: duplicateRollback,
-          context: {
-            ...secondRollbackVerificationContext,
-            sourceStore: secondAppliedStore,
-            previousRollbackState: secondAppliedRollback.rollbackState,
-          },
-        },
-      },
-    );
-    expect(duplicate).toMatchObject({
-      action: "duplicate",
-      protocolDecision: "hold",
-      reasonCodes: ["duplicate_observation"],
-      state: repeatedRollback.state,
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["post_finality_quarantine"],
+      state: quarantinedRestart,
     });
 
     const hostileAttach = attachDaBundle({

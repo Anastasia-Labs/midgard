@@ -903,8 +903,7 @@ const serverPort = (server: Server): number => {
 
 const insertFixture = (): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: HEADER_HASH,
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: PAYLOAD_CBOR,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: PAYLOAD_HASH,

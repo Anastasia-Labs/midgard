@@ -12,7 +12,9 @@ const policyId = "aa".repeat(28);
 const stateQueueAddress =
   "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58";
 
-const headerFixture = (overrides: Partial<SDK.HeaderV1> = {}): SDK.HeaderV1 => ({
+const headerFixture = (
+  overrides: Partial<SDK.HeaderV1> = {},
+): SDK.HeaderV1 => ({
   prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
   utxosRoot: "11".repeat(32),
   withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,

@@ -271,8 +271,7 @@ describe("transition trace builder", () => {
         forcedTransactionCount: 1,
         l2TransactionCount: 0,
         depositCount: 0,
-        transitionStepSchemaVersion:
-          MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+        transitionStepSchemaVersion: MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
       });
 
       expect(result.transitionTraceMembers).toHaveLength(1);
@@ -763,8 +762,7 @@ describe("transition trace builder", () => {
         const excessiveSourceCount = yield* buildTransitionTraceResult({
           initialUtxos: [],
           sourceEvents: [],
-          withdrawalCount:
-            MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
+          withdrawalCount: MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
           forcedTransactionCount: 0,
           l2TransactionCount: 0,
           depositCount: 0,

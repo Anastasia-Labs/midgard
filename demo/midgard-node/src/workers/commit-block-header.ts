@@ -2403,9 +2403,7 @@ const databaseOperationsProgram = (
         );
       if (submitSchedulerWindow !== undefined) {
         const confirmedEndTimeMs = Number(
-          (yield* getLatestBlockDatumEndTime(
-            confirmedBlock.datum,
-          )).getTime(),
+          (yield* getLatestBlockDatumEndTime(confirmedBlock.datum)).getTime(),
         );
         const submitFit = resolveCommitEndTimeFit({
           lucid: speculativeLucid.api,

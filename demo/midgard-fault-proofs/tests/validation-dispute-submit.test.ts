@@ -54,9 +54,7 @@ describe("validation-dispute transaction validity", () => {
         transitionCbor: emptyConstructor,
         auxiliaryCbor: emptyConstructor,
       }),
-    ).toBe(
-      "a9ee2618651193d3a6c6c658f3f3d19f6a296103ac660e0071b45d903bc1e192",
-    );
+    ).toBe("a9ee2618651193d3a6c6c658f3f3d19f6a296103ac660e0071b45d903bc1e192");
     expect(() =>
       validationOneStepEvidenceHashV1({
         transitionCbor: Buffer.from("d8799fff", "hex"),
@@ -237,8 +235,7 @@ describe("validation-dispute transaction validity", () => {
       {
         index: 12,
         auxiliary: new Constr(13, [...sourceFields]),
-        module:
-          "script_sources_stage_nine_effectful_match_semantic_v1",
+        module: "script_sources_stage_nine_effectful_match_semantic_v1",
       },
       {
         index: 13,
@@ -272,13 +269,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 19,
-        auxiliary: new Constr(14, [
-          0n,
-          1n,
-          8n,
-          "22".repeat(32),
-          [],
-        ]),
+        auxiliary: new Constr(14, [0n, 1n, 8n, "22".repeat(32), []]),
         module: "script_sources_stage_twelve_redeemer_semantic_v1",
       },
       {
@@ -288,13 +279,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 21,
-        auxiliary: new Constr(14, [
-          0n,
-          1n,
-          8n,
-          "22".repeat(32),
-          [],
-        ]),
+        auxiliary: new Constr(14, [0n, 1n, 8n, "22".repeat(32), []]),
         module: "script_sources_stage_ten_mismatch_semantic_v1",
       },
       {
@@ -313,13 +298,7 @@ describe("validation-dispute transaction validity", () => {
       },
       {
         index: 24,
-        auxiliary: new Constr(12, [
-          0n,
-          0n,
-          "11".repeat(28),
-          "00",
-          [],
-        ]),
+        auxiliary: new Constr(12, [0n, 0n, "11".repeat(28), "00", []]),
         module: "script_sources_stage_eight_purpose_semantic_v1",
       },
       {
@@ -364,8 +343,7 @@ describe("validation-dispute transaction validity", () => {
       expect(
         parseExactAikenDataCbor({
           blueprint,
-          definitionName:
-            `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
+          definitionName: `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
           cbor: cbor.toString("hex"),
           maxBytes: 16 * 1024 - 1,
         }),
@@ -385,9 +363,7 @@ describe("validation-dispute transaction validity", () => {
         inputIndex: 0n,
         outputIndex: 0n,
       }),
-    ).toThrow(
-      "does not match the selected ScriptSources proof family",
-    );
+    ).toThrow("does not match the selected ScriptSources proof family");
 
     const nativeChunkProof = new Constr(0, [
       1n,
@@ -457,8 +433,7 @@ describe("validation-dispute transaction validity", () => {
       expect(
         parseExactAikenDataCbor({
           blueprint,
-          definitionName:
-            `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
+          definitionName: `fraud_proofs/validation_trace/${selected.module}/SpendRedeemer`,
           cbor: cbor.toString("hex"),
           maxBytes: 16 * 1024 - 1,
         }),
@@ -471,9 +446,7 @@ describe("validation-dispute transaction validity", () => {
           semanticResolverIndex: 2,
           transitionCbor,
           auxiliaryCbor: Buffer.from(
-            Data.to(
-              new Constr(41, [...nativeDescriptorFields]) as never,
-            ),
+            Data.to(new Constr(41, [...nativeDescriptorFields]) as never),
             "hex",
           ),
         },

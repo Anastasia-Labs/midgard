@@ -149,8 +149,7 @@ export const resolvePendingJournalLedgerState = ({
       return yield* Effect.fail(
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
-          message:
-            "First-block V1 ledger delta has the wrong final UTxO count",
+          message: "First-block V1 ledger delta has the wrong final UTxO count",
           cause: `actual=${produced.length.toString()},expected=${expectedFinalEntryCount.toString()}`,
         }),
       );
@@ -160,8 +159,7 @@ export const resolvePendingJournalLedgerState = ({
         (cause) =>
           new DatabaseError({
             table: PendingBlockFinalizationsDB.tableName,
-            message:
-              "Failed to verify the first-block V1 ledger delta",
+            message: "Failed to verify the first-block V1 ledger delta",
             cause,
           }),
       ),

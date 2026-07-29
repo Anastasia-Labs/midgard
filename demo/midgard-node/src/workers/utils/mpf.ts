@@ -3502,19 +3502,18 @@ export const processMpfs = (
           );
         }
 
-        const rawLedgerOutput =
-          yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
-            Effect.map((entries) => {
-              const entry = entries.find((candidate) =>
-                candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
-              );
-              return entry === undefined
-                ? Option.none<Buffer>()
-                : Option.some(
-                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-                  );
-            }),
-          );
+        const rawLedgerOutput = yield* MempoolLedgerDB.retrieveByTxOutRefs([
+          ledgerOutRef,
+        ]).pipe(
+          Effect.map((entries) => {
+            const entry = entries.find((candidate) =>
+              candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
+            );
+            return entry === undefined
+              ? Option.none<Buffer>()
+              : Option.some(Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]));
+          }),
+        );
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -4118,9 +4117,7 @@ export const processMpfs = (
           return {
             eventKey: yield* depositTraceEventKey(entry),
             phase: "Deposit" as const,
-            ledgerOps: [
-              ledgerEntryToInsertBatchOp(ledgerEntry),
-            ],
+            ledgerOps: [ledgerEntryToInsertBatchOp(ledgerEntry)],
           } satisfies TransitionTraceSourceEvent;
         }),
     );

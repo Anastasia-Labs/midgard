@@ -555,11 +555,9 @@ const forcedTransactionMemberEntry = (
       entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256];
     if (
       canonicalTransactionCbor.length === 0 ||
-        programMaterialSidecarCbor.length === 0 ||
-        programMaterialSidecarSha256.length !== 32 ||
-        !sha256(programMaterialSidecarCbor).equals(
-          programMaterialSidecarSha256,
-        )
+      programMaterialSidecarCbor.length === 0 ||
+      programMaterialSidecarSha256.length !== 32 ||
+      !sha256(programMaterialSidecarCbor).equals(programMaterialSidecarSha256)
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -978,12 +976,12 @@ export const preparePendingSubmission = (
     }
     if (
       programMaterialByTxId.size !== input.mempoolTxs.length ||
-        input.mempoolTxs.some(
-          (entry) =>
-            !programMaterialByTxId.has(
-              entry[TxTable.Columns.TX_ID].toString("hex"),
-            ),
-        )
+      input.mempoolTxs.some(
+        (entry) =>
+          !programMaterialByTxId.has(
+            entry[TxTable.Columns.TX_ID].toString("hex"),
+          ),
+      )
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -1116,9 +1114,7 @@ export const preparePendingSubmission = (
           [Columns.EXPECTED_VALIDATION_TRACE_COUNT]:
             input.metadata.expectedCounts.validationTraceCount,
           [Columns.LEDGER_DELTA_SPENT]: JSON.stringify(
-            input.ledgerDelta.spent.map((outref) =>
-              outref.toString("hex"),
-            ),
+            input.ledgerDelta.spent.map((outref) => outref.toString("hex")),
           ),
           [Columns.LEDGER_DELTA_PRODUCED]: JSON.stringify(
             input.ledgerDelta.produced.map((entry) => ({

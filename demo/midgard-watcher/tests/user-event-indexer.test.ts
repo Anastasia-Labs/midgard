@@ -199,6 +199,7 @@ const makeDeploymentAuthority = () => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => {
         const contractName = {
@@ -208,6 +209,7 @@ const makeDeploymentAuthority = () => {
           invalidRange: "fraudProofInvalidRange",
           transitionTrace: "fraudProofTransitionTrace",
           validationTraceDispute: "validationTraceDispute",
+          zeroInput: "fraudProofZeroInput",
         }[category]!;
         return [
           category,
@@ -839,6 +841,16 @@ const providerB = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: provider.providerId,
+      operatorIdentitySha256: provider.source.operatorIdentitySha256,
+    },
+    {
+      providerId: providerB.providerId,
+      operatorIdentitySha256: providerB.source.operatorIdentitySha256,
+    },
+  ],
 } as const;
 const localSource = {
   sourceMode: "local_node",
@@ -1791,13 +1803,14 @@ const nonDepositSpendBundle = (
 const rollbackBundle = (
   created: BlockBundle,
   restoredEventUtxos: readonly WatcherProtocolUtxoV1[] = [],
+  expectedAction: "apply_rewind" | "quarantine_incident" = "apply_rewind",
 ): Readonly<{
   context: WatcherUserEventPublicContextV1;
   applied: ReturnType<typeof evaluateWatcherRollbackV1>;
 }> => {
   const oldRaw = created.context.l1Observation as Record<string, any>;
   const oldA = normalizeWatcherL1BlockV1(provider, oldRaw);
-  const oldRawB = {
+  const oldRawB: Record<string, any> = {
     ...structuredClone(oldRaw),
     providerId: "provider-b",
   };
@@ -1806,11 +1819,31 @@ const rollbackBundle = (
     externalSource,
     [oldA, oldB],
   );
-  const previousFinality = evaluateWatcherFinalityV1(
-    finalityPolicy,
-    null,
-    oldConsistency,
-  ).state!;
+  const firstFinality =
+    expectedAction === "quarantine_incident"
+      ? (() => {
+          const firstRawA = structuredClone(oldRaw);
+          firstRawA.chainPoint.depth = "1";
+          const firstRawB = structuredClone(oldRawB);
+          firstRawB.chainPoint.depth = "1";
+          return evaluateWatcherFinalityV1(
+            finalityPolicy,
+            null,
+            evaluateWatcherMultiProviderConsistencyV1(externalSource, [
+              normalizeWatcherL1BlockV1(provider, firstRawA),
+              normalizeWatcherL1BlockV1(providerB, firstRawB),
+            ]),
+          );
+        })()
+      : evaluateWatcherFinalityV1(finalityPolicy, null, oldConsistency);
+  const previousFinality =
+    expectedAction === "quarantine_incident"
+      ? evaluateWatcherFinalityV1(
+          finalityPolicy,
+          firstFinality.state,
+          oldConsistency,
+        ).state!
+      : firstFinality.state!;
   const replacementPoint = {
     blockHash: h32("ee"),
     slot: (BigInt(oldA.chainPoint.slot) + 1n).toString(),
@@ -1839,7 +1872,11 @@ const rollbackBundle = (
     previousFinality,
     replacementConsistency,
   );
-  expect(finalityResult.action).toBe("rewind_pending");
+  expect(finalityResult.action).toBe(
+    expectedAction === "apply_rewind"
+      ? "rewind_pending"
+      : "quarantine_incident",
+  );
 
   const priorStore = created.store;
   const extraObservations = [oldB, replacementA, replacementB];
@@ -1902,7 +1939,7 @@ const rollbackBundle = (
     rollbackBootstrap,
     rollbackBootstrap,
   );
-  expect(applied.action).toBe("apply_rewind");
+  expect(applied.action).toBe(expectedAction);
   expect(applied.nextStore).not.toBeNull();
   const verificationContext = {
     policy: finalityPolicy,
@@ -2518,6 +2555,99 @@ describe("canonical authenticated user-event indexer", () => {
     const reincluded = accepted(restarted, reinclusion);
     expect(reincluded.snapshot.activeEvents).toHaveLength(1);
     expect(reincluded.history.length).toBe(restarted!.history.length + 1);
+  });
+
+  it("authenticates rollback of the first indexed transition to the empty lineage and survives restart", () => {
+    const fixture = makeEventFixture("deposit", "ba", 0, 1_000n);
+    const created = blockBundle([fixture], null, 100, 1);
+    const active = accepted(null, created);
+    expect(active.snapshot.activeEvents).toHaveLength(1);
+
+    const rollback = rollbackBundle(created);
+    const observation = deriveWatcherUserEventObservationV1(
+      policy,
+      active,
+      rollback.context,
+      null,
+    );
+    expect(observation).not.toBeNull();
+    expect(observation?.rollbackTargetEntryDigest).toBeNull();
+
+    const rewound = evaluateWatcherUserEventIndexerV1(
+      policy,
+      active,
+      observation,
+      rollback.context,
+    );
+    expect(rewound).toMatchObject({
+      action: "accept",
+      protocolDecision: "indexed",
+      reasonCodes: ["rollback_authenticated"],
+      state: {
+        snapshot: {
+          activeEvents: [],
+          terminalEvents: [],
+          quarantined: false,
+        },
+      },
+    });
+    expect(rewound.state?.activeEntryDigests).toHaveLength(1);
+    expect(rewound.state?.activeEntryDigests[0]).toBe(
+      rewound.state?.history.at(-1)?.entryDigest,
+    );
+    expect(
+      parseWatcherUserEventIndexerStateV1(
+        JSON.parse(JSON.stringify(rewound.state)),
+        policy,
+      ),
+    ).toEqual(rewound.state);
+  });
+
+  it("persists a post-finality W13 incident as restart-replayable quarantine", () => {
+    const fixture = makeEventFixture("deposit", "bb", 0, 1_000n);
+    const created = blockBundle([fixture], null, 100, 2);
+    const finalized = accepted(null, created);
+    const incident = rollbackBundle(created, [], "quarantine_incident");
+    const observation = deriveWatcherUserEventObservationV1(
+      policy,
+      finalized,
+      incident.context,
+      null,
+    );
+    expect(observation).toMatchObject({
+      transitionKind: "rollback",
+      rollbackTargetEntryDigest: null,
+      snapshot: { quarantined: true },
+    });
+
+    const quarantined = evaluateWatcherUserEventIndexerV1(
+      policy,
+      finalized,
+      observation,
+      incident.context,
+    );
+    expect(quarantined).toMatchObject({
+      action: "quarantine",
+      protocolDecision: "quarantined",
+      reasonCodes: ["post_finality_quarantine"],
+      state: {
+        snapshot: {
+          quarantined: true,
+        },
+      },
+    });
+    const restarted = parseWatcherUserEventIndexerStateV1(
+      JSON.parse(JSON.stringify(quarantined.state)),
+      policy,
+    );
+    expect(restarted).toEqual(quarantined.state);
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        restarted,
+        blockBundle([], incident.applied.nextStore!, 102, 2).context,
+      ),
+    ).toBeNull();
   });
 
   it("rejects adjacent inclusion time, malformed canonical datum, wrong network/address, policy, witness, and duplicate evidence", () => {

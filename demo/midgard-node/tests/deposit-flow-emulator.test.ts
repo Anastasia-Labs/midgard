@@ -1095,10 +1095,13 @@ const runCommitWorker = async (
           nodeConfig,
         ),
     ).pipe(
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "derived",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      ),
       Effect.provide(Database.layer),
     ),
   );
@@ -1255,10 +1258,13 @@ const runBarrierRefresherForTest = (
     runUserEventBarrierRefresherPass.pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "derived",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      ),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
@@ -1374,10 +1380,13 @@ const runSpeculativeWorkerWithInstruction = async ({
               ),
         ),
       ),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "derived",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      ),
       Effect.provide(Database.layer),
     ),
   );
@@ -1944,10 +1953,13 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.succeed(lucidService as any),
     ).pipe(
       Effect.provideService(MidgardContracts, contracts as any),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        ContractDeploymentIdentity.make({
+          kind: "derived",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      ),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),

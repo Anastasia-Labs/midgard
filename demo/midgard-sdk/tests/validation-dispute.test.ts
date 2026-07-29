@@ -149,10 +149,7 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(
-          prepareSelected,
-          ValidationPrepareSelectedSpendRedeemerV1,
-        ),
+        Data.to(prepareSelected, ValidationPrepareSelectedSpendRedeemerV1),
         ValidationPrepareSelectedSpendRedeemerV1,
       ),
     ).toEqual(prepareSelected);

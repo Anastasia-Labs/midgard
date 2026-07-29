@@ -97,6 +97,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNonExistentInputNoIndex",
   "fraudProofInvalidRange",
   "fraudProofTransitionTrace",
+  "fraudProofZeroInput",
   "validationTraceDispute",
   "validationTraceDisputeSource",
   "validationTraceDisputeGame",
@@ -605,6 +606,7 @@ const validateFraudProofCatalogue = (
     invalidRange: "fraudProofInvalidRange",
     transitionTrace: "fraudProofTransitionTrace",
     validationTraceDispute: "validationTraceDispute",
+    zeroInput: "fraudProofZeroInput",
   } as const;
   for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;

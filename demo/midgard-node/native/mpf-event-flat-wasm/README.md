@@ -130,20 +130,20 @@ without an ambiguous packed-tail representation.
 
 Input header (72 bytes):
 
-| Offset | Field |
-| ---: | --- |
-| 0 | `MEF6` magic |
-| 4 | `u16 version = 1` |
-| 6 | `u16 flags = 0` |
-| 8 | `u32 max_records` |
-| 12 | `u32 max_events` |
-| 16 | `u32 max_ops` |
-| 20 | `u32 max_input_bytes` |
-| 24 | `u32 max_output_bytes` |
-| 28 | `u32 record_count` |
-| 32 | `u32 event_count` |
-| 36 | `u32 op_count` |
-| 40 | `base_root[32]` |
+| Offset | Field                  |
+| -----: | ---------------------- |
+|      0 | `MEF6` magic           |
+|      4 | `u16 version = 1`      |
+|      6 | `u16 flags = 0`        |
+|      8 | `u32 max_records`      |
+|     12 | `u32 max_events`       |
+|     16 | `u32 max_ops`          |
+|     20 | `u32 max_input_bytes`  |
+|     24 | `u32 max_output_bytes` |
+|     28 | `u32 record_count`     |
+|     32 | `u32 event_count`      |
+|     36 | `u32 op_count`         |
+|     40 | `base_root[32]`        |
 
 Each authenticated raw record is `kind:u8, hash[32], prefix_len:u8,
 prefix[prefix_len]`. A leaf continues with `key_len:u16, value_len:u32, key,

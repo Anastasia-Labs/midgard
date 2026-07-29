@@ -115,7 +115,9 @@ const makeNativeTx = ({
     networkId: 0n,
   };
   const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompactV1(deriveMidgardNativeTxBodyCompactV1(body)),
+    encodeMidgardNativeTxBodyCompactV1(
+      deriveMidgardNativeTxBodyCompactV1(body),
+    ),
   );
   const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
     addrTxWitsPreimageCbor: encodeByteList([

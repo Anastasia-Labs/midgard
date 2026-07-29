@@ -265,6 +265,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       timeout: transitionTrace,
       award: transitionTrace,
     };
+    const zeroInput = yield* mkFP("zero_input");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
@@ -273,6 +274,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       invalidRange,
       transitionTrace,
       validationTraceDispute,
+      zeroInput,
     };
 
     return {

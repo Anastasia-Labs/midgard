@@ -29,8 +29,9 @@ const insertAdmissions = (inputs: readonly AdmissionInput[]) =>
     for (const input of inputs) {
       const inserted = yield* TxAdmissionsDB.tryInsert({
         ...input,
-        programMaterialSidecarCbor:
-          encodeMidgardCekProgramMaterialSidecarV1([]),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+          [],
+        ),
         submitSource: "native",
       });
       expect(inserted).not.toBeNull();

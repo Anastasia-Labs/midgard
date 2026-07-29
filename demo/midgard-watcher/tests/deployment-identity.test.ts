@@ -92,6 +92,7 @@ const canonicalIdentity = (): MutableRecord => {
         "nonExistentInputNoIndex",
         "invalidRange",
         "transitionTrace",
+        "zeroInput",
         "validationTraceDispute",
       ].map((category, index) => [
         category,

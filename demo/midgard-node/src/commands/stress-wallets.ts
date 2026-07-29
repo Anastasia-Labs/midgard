@@ -2354,10 +2354,7 @@ const readConsolidationState = async (
         `Consolidation state entry ${parsed.walletId} has selected input accounting without signedTxCbor.`,
       );
     }
-    if (
-      parsed.txHash !== undefined &&
-      parsed.signedTxCbor === undefined
-    ) {
+    if (parsed.txHash !== undefined && parsed.signedTxCbor === undefined) {
       throw new Error(
         `Consolidation state entry ${parsed.walletId} lacks its exact signedTxCbor.`,
       );

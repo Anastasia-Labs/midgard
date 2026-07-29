@@ -449,7 +449,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
           );
         }
         const payloadEnvelopeCbor = Buffer.from(response.payloadBytes);
-        assertHash(payloadEnvelopeCbor, response.payloadHash, "payload hash mismatch");
+        assertHash(
+          payloadEnvelopeCbor,
+          response.payloadHash,
+          "payload hash mismatch",
+        );
         return {
           payloadEnvelopeCbor,
           metadata: await this.fetchMetadata(peer, headerHash),
@@ -467,7 +471,11 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
           response.payloadHash,
           response.chunkManifest,
         );
-        assertHash(payloadEnvelopeCbor, response.payloadHash, "payload hash mismatch");
+        assertHash(
+          payloadEnvelopeCbor,
+          response.payloadHash,
+          "payload hash mismatch",
+        );
         return {
           payloadEnvelopeCbor,
           metadata: await this.fetchMetadata(peer, headerHash),

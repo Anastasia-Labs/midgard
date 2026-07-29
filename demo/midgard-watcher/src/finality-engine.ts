@@ -97,6 +97,10 @@ export type WatcherFinalityPolicyV1 = Readonly<{
   sourceMode: "local_node" | "external_providers";
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
+  externalProviderCommitments: readonly Readonly<{
+    providerId: string;
+    operatorIdentitySha256: string;
+  }>[];
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
   beforeFinalityRollback: "rewind";
@@ -298,6 +302,55 @@ const sameMarker = (
   left.schemaVersion === right.schemaVersion &&
   left.manifestId === right.manifestId;
 
+const parseExternalProviderCommitments = (
+  value: unknown,
+): WatcherFinalityPolicyV1["externalProviderCommitments"] | null => {
+  const inputs = exactArray(value);
+  if (inputs === null || inputs.length > 4) {
+    return null;
+  }
+  const commitments: {
+    providerId: string;
+    operatorIdentitySha256: string;
+  }[] = [];
+  for (const input of inputs) {
+    const commitment = exactPlainRecord(input, [
+      "providerId",
+      "operatorIdentitySha256",
+    ]);
+    if (
+      commitment === null ||
+      typeof commitment.providerId !== "string" ||
+      !SOURCE_AUTHORITY_ID.test(commitment.providerId) ||
+      !isHex32(commitment.operatorIdentitySha256)
+    ) {
+      return null;
+    }
+    commitments.push({
+      providerId: commitment.providerId,
+      operatorIdentitySha256: commitment.operatorIdentitySha256,
+    });
+  }
+  if (
+    new Set(commitments.map(({ providerId }) => providerId)).size !==
+      commitments.length ||
+    new Set(
+      commitments.map(({ operatorIdentitySha256 }) => operatorIdentitySha256),
+    ).size !== commitments.length ||
+    commitments.some(
+      (commitment, index) =>
+        index > 0 &&
+        commitment.providerId <=
+          (commitments[index - 1] as { providerId: string }).providerId,
+    )
+  ) {
+    return null;
+  }
+  return Object.freeze(
+    commitments.map((commitment) => Object.freeze(commitment)),
+  );
+};
+
 const makePolicy = (
   value: Omit<WatcherFinalityPolicyV1, "policyDigest">,
 ): WatcherFinalityPolicyV1 => {
@@ -305,12 +358,29 @@ const makePolicy = (
   if (deploymentMarker === null) {
     throw new Error("invalid deployment marker");
   }
+  const externalProviderCommitments = Object.freeze(
+    [...value.externalProviderCommitments]
+      .sort((left, right) =>
+        left.providerId < right.providerId
+          ? -1
+          : left.providerId > right.providerId
+            ? 1
+            : 0,
+      )
+      .map((commitment) =>
+        Object.freeze({
+          providerId: commitment.providerId,
+          operatorIdentitySha256: commitment.operatorIdentitySha256,
+        }),
+      ),
+  );
   const canonical = {
     schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
     network: value.network,
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
     authorityGenesisIdentitySha256: value.authorityGenesisIdentitySha256,
+    externalProviderCommitments,
     confirmationDepth: value.confirmationDepth,
     maximumPreFinalityRollbackDepth: value.maximumPreFinalityRollbackDepth,
     beforeFinalityRollback: "rewind" as const,
@@ -334,6 +404,7 @@ export const parseWatcherFinalityPolicyV1 = (
       "sourceMode",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
+      "externalProviderCommitments",
       "confirmationDepth",
       "maximumPreFinalityRollbackDepth",
       "beforeFinalityRollback",
@@ -344,6 +415,10 @@ export const parseWatcherFinalityPolicyV1 = (
     ]);
     const marker =
       policy === null ? null : cloneMarker(policy.deploymentMarker);
+    const externalProviderCommitments =
+      policy === null
+        ? null
+        : parseExternalProviderCommitments(policy.externalProviderCommitments);
     if (
       policy === null ||
       policy.schemaVersion !== WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION ||
@@ -355,10 +430,13 @@ export const parseWatcherFinalityPolicyV1 = (
         (policy.sourceMode === "local_node" &&
           typeof policy.authorityNodeId === "string" &&
           SOURCE_AUTHORITY_ID.test(policy.authorityNodeId) &&
-          isHex32(policy.authorityGenesisIdentitySha256)) ||
+          isHex32(policy.authorityGenesisIdentitySha256) &&
+          externalProviderCommitments?.length === 0) ||
         (policy.sourceMode === "external_providers" &&
           policy.authorityNodeId === null &&
-          policy.authorityGenesisIdentitySha256 === null)
+          policy.authorityGenesisIdentitySha256 === null &&
+          externalProviderCommitments !== null &&
+          externalProviderCommitments.length >= 2)
       ) ||
       !isPositiveUint64(policy.confirmationDepth) ||
       BigInt(policy.confirmationDepth) >
@@ -382,6 +460,8 @@ export const parseWatcherFinalityPolicyV1 = (
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
         | string
         | null,
+      externalProviderCommitments:
+        externalProviderCommitments as WatcherFinalityPolicyV1["externalProviderCommitments"],
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
       beforeFinalityRollback: "rewind",
@@ -468,6 +548,13 @@ export const makeWatcherFinalityPolicyV1 = (
         config.l1.source.sourceMode === "local_node"
           ? config.l1.source.chainSync.genesisIdentitySha256
           : null,
+      externalProviderCommitments:
+        config.l1.source.sourceMode === "external_providers"
+          ? config.l1.source.providers.map((provider) => ({
+              providerId: provider.identity,
+              operatorIdentitySha256: provider.operatorIdentitySha256,
+            }))
+          : [],
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
         config.l1.finality.rollback.maxDepth.toString(),

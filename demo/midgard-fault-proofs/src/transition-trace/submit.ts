@@ -234,9 +234,7 @@ const makeTransitionTraceFinalSpendRedeemer = ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-const transitionTraceFinalIndex = (
-  proof: TransitionFaultProof,
-): number => {
+const transitionTraceFinalIndex = (proof: TransitionFaultProof): number => {
   const { fault } = proof;
   if (
     "TraceBoundaryFault" in fault ||
@@ -257,9 +255,7 @@ const transitionTraceFinalIndex = (
     ) {
       return 2;
     }
-    if (
-      "InvalidForcedTransactionNoOpTransition" in witness
-    ) {
+    if ("InvalidForcedTransactionNoOpTransition" in witness) {
       return 3;
     }
     return 5;
@@ -434,9 +430,7 @@ export const submitTransitionTraceProof = async ({
       routeAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      contracts.transitionTrace.route.spendingScript,
-    );
+    .attach.SpendingValidator(contracts.transitionTrace.route.spendingScript);
   const unsignedRoute = await routeTx.complete({ localUPLCEval: true });
   if (routeLayout === undefined) {
     throw transitionTraceError(
@@ -446,8 +440,7 @@ export const submitTransitionTraceProof = async ({
   }
   const signedRoute = await unsignedRoute.sign.withWallet().complete();
   const routeTxHash = await signedRoute.submit();
-  const routeOutRef =
-    `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
+  const routeOutRef = `${routeTxHash}#${routeLayout.outputIndex.toString()}`;
   // The final transaction must consume the exact authenticated router output.
   // Awaiting this internal hop also prevents providers from selecting a stale
   // initial thread UTxO.
@@ -522,9 +515,7 @@ export const submitTransitionTraceProof = async ({
       fraudProofAssets,
     )
     .addSignerKey(signer.paymentKeyHash)
-    .attach.SpendingValidator(
-      finalValidator.spendingScript,
-    )
+    .attach.SpendingValidator(finalValidator.spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
 
@@ -564,8 +555,7 @@ export const submitTransitionTraceProof = async ({
     fraudProofAssetName: threadToken.assetName,
     fraudProofUnit,
     fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
-    transitionTraceProofAddress:
-      finalValidator.spendingScriptAddress,
+    transitionTraceProofAddress: finalValidator.spendingScriptAddress,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

@@ -541,6 +541,7 @@ const collectScriptDescriptors = (
     contracts.fraudProofs.validationTraceDispute.award,
     "V1 validation-trace award",
   ),
+  spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
 ];
 
 const defaultSteps = (): DeploymentManifestV1["steps"] => ({
@@ -870,9 +871,7 @@ export const verifyDeploymentManifestAgainstConfig = (
     path: context.path,
     mismatches,
     recommendation:
-      mismatches.length === 0
-        ? "attach"
-        : "correct_attach_config",
+      mismatches.length === 0 ? "attach" : "correct_attach_config",
   };
 };
 
@@ -1102,10 +1101,7 @@ const buildLiveDeploymentManifestProgram = (
     const finalizationRequested =
       options.hubOracleOneShotStatus === "consumed_by_init" &&
       options.steps?.initProtocol?.status === "complete";
-    if (
-      existingManifest === undefined &&
-      !finalizationRequested
-    ) {
+    if (existingManifest === undefined && !finalizationRequested) {
       return yield* Effect.fail(
         new Error(
           "A first DeploymentManifestV1 may be created only after initialization and reference-script publication are complete",
