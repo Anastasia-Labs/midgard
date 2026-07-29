@@ -1180,3 +1180,57 @@ workflow and discussion surface to terminal completion, fixing any further
 actionable finding additively. Keep the PR draft and the overarching Goal in
 progress while the 122 registry promotions and the remaining §12/§15 work are
 open.
+
+## Superseding measured integration-budget remediation checkpoint
+
+- Signed worker-isolation commit
+  `7c7162cb966eee7c98467807e811cc2021b9e68b` was pushed as the exact draft
+  PR #471 head. Both Evidence Integrity runs, Docs Site CI, and LaTeX CI
+  passed. Aiken CI remained active when Midgard Node CI run `30489884271`
+  completed.
+- The node run proved that fresh sequential forks removed neither coverage nor
+  the runner's hardware-speed variance: build and typecheck passed, all 15
+  files and 142 tests collected, but 3 files and 5 tests exceeded their
+  existing wall-clock bounds. The run passed 12 files and 137 tests and
+  receives no PASS credit. No assertion or protocol-semantic check failed.
+- The exact GitHub timings were 40.975, 41.946, and 43.567 seconds for three
+  zero-input inspect cases against a 30-second bound; 40.610 seconds for the
+  validation-dispute catalogue case against a 30-second bound; and 369.032
+  seconds for the complete validation-dispute lifecycle against a 300-second
+  bound. The full package took 1,383.04 seconds on that runner.
+- The three inspect cases unnecessarily rebuilt the immutable 355-validator
+  inspection fixture even though the file's bounded `beforeAll` fixture
+  already supplies the exact same contracts and catalogue. They now reuse that
+  fixture while retaining every stale/missing-deployment assertion. No
+  inspect timeout changed.
+- Only the two irreducibly measured cryptographic integration cases receive
+  targeted test-process budgets: 60 seconds for the 40.610-second
+  validation-dispute catalogue derivation, and 480 seconds for the
+  369.032-second complete 95-step open/bisect/resolve/award lifecycle. These
+  are test-runner wall-clock ceilings only; no protocol deadline, emulator
+  limit, assertion, product timeout, or production source changed.
+- Focused contract/catalogue replay passes 2/2 files and 26/26 tests in 125.52
+  seconds. The three remediated inspect cases complete in 7.0-7.3 seconds and
+  the catalogue case in 13.782 seconds. The exact validation-dispute lifecycle
+  passes 1/1 in 130.449 seconds, with 13 other tests skipped by the positive
+  exact selector.
+- The exact package command then independently passes all 15 files and 142/142
+  tests in 573.67 seconds. Its validation-dispute lifecycle completes in
+  141.037 seconds, every emulator case passes, all 12 inspect cases pass, and
+  the catalogue case completes in 13.927 seconds. Exact package build,
+  typecheck, lint, scoped Prettier, and `git diff --check` also pass.
+- The measured-budget staged content-tree SHA-256, excluding only this ledger
+  and the dependency map itself, is
+  `ae8d3269a368b1b3fa8f24ab7490ae322f1fc1a3bf55f3798875bbddfec7c272`.
+  The map, formatting, whitespace, protected-path, unmerged-index, and exact
+  staged-scope gates must replay before the additive commit.
+
+## Superseding measured-budget publication action
+
+Bind the three test-only corrections into the dependency map, replay every
+staged integrity and protected-path gate, create and push one signed additive
+commit on the same `colll78/` branch, and refresh draft PR #471 to the exact
+new identities. Require every applicable workflow and discussion surface to
+be terminal and clean on that new head; fix any further actionable finding
+additively. Keep the PR draft and the overarching Goal in progress while the
+122 registry promotions and the remaining §12/§15 work are open.

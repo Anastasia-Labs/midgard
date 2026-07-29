@@ -501,7 +501,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
   });
 
   it("marks catalogue init as not ready when zero-input deployment is stale", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
 
     const output = await Effect.runPromise(
       inspectContracts({
@@ -525,7 +525,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
   });
 
   it("marks catalogue init as not ready when zero-input catalogue authorization is stale", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     const staleCatalogue = await buildCatalogueFixture({
       doubleSpend: fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
       nonExistentInput:
@@ -558,7 +558,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
   });
 
   it("marks catalogue init as not ready when zero-input deployment is missing", async () => {
-    const fixture = await buildInspectionFixture();
+    const fixture = inspectionFixture;
     const deploymentInfo = deploymentInfoFor(fixture);
     const { fraudProofZeroInput: _omitted, ...contractsWithoutZeroInput } =
       deploymentInfo.contracts;

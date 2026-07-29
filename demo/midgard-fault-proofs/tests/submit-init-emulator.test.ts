@@ -5588,7 +5588,7 @@ describe("fault-proof emulator integration", () => {
         awardResult.fraudProofUnit,
       ),
     ).resolves.toHaveLength(1);
-  }, 300_000);
+  }, 480_000);
 
   it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });

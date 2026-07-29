@@ -625,7 +625,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  }, 30_000);
+  }, 60_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
