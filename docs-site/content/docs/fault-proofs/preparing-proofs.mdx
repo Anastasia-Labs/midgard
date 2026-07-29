@@ -3,7 +3,7 @@ title: "Preparing Fraud Proofs"
 description: "Turn a Midgard block's transactions into the proof artifacts the submit steps consume, using the prepare-* commands."
 ---
 
-The five `prepare-*` commands are the front of the fault-proof pipeline. They take
+The six `prepare-*` commands are the front of the fault-proof pipeline. They take
 a Midgard block, find the transaction(s) that violate a ledger rule, build the
 membership proofs against the block's transactions Merkle-Patricia Trie, and emit
 the JSON artifacts that the `submit-*` commands later feed on-chain. They touch no
@@ -201,6 +201,44 @@ producing tx id in the block's transactions trie.
 
 As with non-existent-input, there is no compatibility override: a root mismatch
 fails the command.
+
+## `prepare-input-no-idx`
+
+Targets a transaction that spends an input whose producing transaction *is*
+present in the block, but whose output index is out of range of that
+transaction's outputs. Source:
+`demo/midgard-fault-proofs/src/prepare-input-no-idx.ts`.
+
+```sh
+midgard-fault-proofs prepare-input-no-idx \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  [--bad-tx-id <hex>] \
+  [--bad-input-index <n>] \
+  [--expected-transactions-root <hex>] \
+  [--output-dir <path>]
+```
+
+Unlike non-existent-input, this fault needs no ledger proofs at all: both the bad
+transaction and its producing transaction are committed by the same block, so the
+proof is two membership proofs against the block's transactions trie plus the
+producing transaction's raw outputs preimage. Because the on-chain encoding of
+that preimage is length-prefixed, matching the committed `outputs_hash` also fixes
+the output count, which is what makes the out-of-range check sound.
+
+Pinning `--bad-input-index` at an input that is not actually faulty is rejected
+with the reason: an input whose producing transaction is missing from the block
+is a *non-existent-input* fault, and an index within range is no fault at all.
+
+### Files written with `--output-dir`
+
+| File                                       | Consumed by                                                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `input-no-idx-bad-tx-inclusion.json`       | `submit-input-no-idx-step-01` `--tx-inclusion`                                                                                    |
+| `input-no-idx-inputs-preimage.json`        | `submit-input-no-idx-step-02` `--inputs-preimage`                                                                                 |
+| `input-no-idx-producing-tx-inclusion.json` | `submit-input-no-idx-step-03` `--tx-inclusion`                                                                                    |
+| `input-no-idx-outputs-preimage.json`       | `submit-input-no-idx-step-04` `--outputs-preimage`                                                                                |
+| `input-no-idx-plan.json`                   | Summary: header hash, bad tx id and input index, the bad input, the producing tx id and its output count, and the transactions roots. |
 
 ## `prepare-zero-input`
 

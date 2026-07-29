@@ -1,4 +1,8 @@
 export * from "./inspect-contracts.js";
+export * from "./inx-submit-step-01.js";
+export * from "./inx-submit-step-02.js";
+export * from "./inx-submit-step-03.js";
+export * from "./inx-submit-step-04.js";
 export * from "./ne-submit-step-01.js";
 export * from "./ne-submit-step-02.js";
 export * from "./ne-submit-step-03.js";
@@ -8,6 +12,7 @@ export * from "./nri-submit-step-02.js";
 export * from "./nri-submit-step-03.js";
 export * from "./nri-submit-step-04.js";
 export * from "./prepare-double-spend.js";
+export * from "./prepare-input-no-idx.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-no-reference-input.js";
 export * from "./prepare-non-existent-input.js";

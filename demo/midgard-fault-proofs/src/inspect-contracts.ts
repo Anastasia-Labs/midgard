@@ -68,6 +68,7 @@ export type InspectContractsOutput = {
     readonly initReady: boolean;
     readonly doubleSpend: InspectContractsCatalogueCategoryOutput;
     readonly nonExistentInput: InspectContractsCatalogueCategoryOutput;
+    readonly nonExistentInputNoIndex: InspectContractsCatalogueCategoryOutput;
     readonly noReferenceInput: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
     readonly zeroInput: InspectContractsCatalogueCategoryOutput;
@@ -88,6 +89,17 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentNonExistentInputScriptHash: string | null;
     readonly deploymentNonExistentInputMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly nonExistentInputNoIndex: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentNonExistentInputNoIndexScriptHash: string | null;
+    readonly deploymentNonExistentInputNoIndexMatchesFirstStep: boolean | null;
     readonly steps: readonly [
       InspectContractsStepOutput,
       InspectContractsStepOutput,
@@ -152,6 +164,7 @@ export type InspectContractsCatalogueCategoryOutput = {
 export type ImplementedFraudProofCategoryName =
   | "doubleSpend"
   | "nonExistentInput"
+  | "nonExistentInputNoIndex"
   | "noReferenceInput"
   | "invalidRange"
   | "zeroInput"
@@ -574,6 +587,7 @@ const inspectFraudProofCatalogue = (
       initReady: false,
       doubleSpend: emptyCatalogueCategoryInspection(),
       nonExistentInput: emptyCatalogueCategoryInspection(),
+      nonExistentInputNoIndex: emptyCatalogueCategoryInspection(),
       noReferenceInput: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
       zeroInput: emptyCatalogueCategoryInspection(),
@@ -628,6 +642,9 @@ const inspectFraudProofCatalogue = (
 
       const doubleSpend = await inspectCategory("doubleSpend");
       const nonExistentInput = await inspectCategory("nonExistentInput");
+      const nonExistentInputNoIndex = await inspectCategory(
+        "nonExistentInputNoIndex",
+      );
       const noReferenceInput = await inspectCategory("noReferenceInput");
       const invalidRange = await inspectCategory("invalidRange");
       const zeroInput = await inspectCategory("zeroInput");
@@ -636,6 +653,7 @@ const inspectFraudProofCatalogue = (
         [
           "doubleSpend",
           "nonExistentInput",
+          "nonExistentInputNoIndex",
           "noReferenceInput",
           "invalidRange",
           "zeroInput",
@@ -645,6 +663,7 @@ const inspectFraudProofCatalogue = (
         return {
           doubleSpend,
           nonExistentInput,
+          nonExistentInputNoIndex,
           noReferenceInput,
           invalidRange,
           zeroInput,
@@ -659,6 +678,7 @@ const inspectFraudProofCatalogue = (
         initReady: rootMatchesDerived && implementedCategoriesReady,
         doubleSpend,
         nonExistentInput,
+        nonExistentInputNoIndex,
         noReferenceInput,
         invalidRange,
         zeroInput,
@@ -705,6 +725,11 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofNonExistentInput",
     );
+    const deploymentNonExistentInputNoIndexScriptHash =
+      optionalDeploymentScriptHash(
+        parsedDeploymentInfo,
+        "fraudProofNonExistentInputNoIndex",
+      );
     const deploymentNoReferenceInputScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofNoReferenceInput",
@@ -750,6 +775,12 @@ export const inspectContracts = ({
       nonExistentInputStep04,
     ] = contracts.nonExistentInput.steps;
     const [
+      inputNoIdxStep01,
+      inputNoIdxStep02,
+      inputNoIdxStep03,
+      inputNoIdxStep04,
+    ] = contracts.inputNoIdx.steps;
+    const [
       noReferenceInputStep01,
       noReferenceInputStep02,
       noReferenceInputStep03,
@@ -773,6 +804,8 @@ export const inspectContracts = ({
       contracts.doubleSpend.firstStep.spendingScriptHash;
     const nonExistentInputCategoryFirstStepHash =
       contracts.nonExistentInput.firstStep.spendingScriptHash;
+    const nonExistentInputNoIndexCategoryFirstStepHash =
+      contracts.inputNoIdx.firstStep.spendingScriptHash;
     const noReferenceInputCategoryFirstStepHash =
       contracts.noReferenceInput.firstStep.spendingScriptHash;
     const invalidRangeCategoryFirstStepHash =
@@ -790,6 +823,11 @@ export const inspectContracts = ({
         ? null
         : deploymentNonExistentInputScriptHash ===
           nonExistentInputCategoryFirstStepHash;
+    const deploymentNonExistentInputNoIndexMatchesFirstStep =
+      deploymentNonExistentInputNoIndexScriptHash === null
+        ? null
+        : deploymentNonExistentInputNoIndexScriptHash ===
+          nonExistentInputNoIndexCategoryFirstStepHash;
     const deploymentNoReferenceInputMatchesFirstStep =
       deploymentNoReferenceInputScriptHash === null
         ? null
@@ -814,6 +852,7 @@ export const inspectContracts = ({
       {
         doubleSpend: categoryFirstStepHash,
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
+        nonExistentInputNoIndex: nonExistentInputNoIndexCategoryFirstStepHash,
         noReferenceInput: noReferenceInputCategoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
         zeroInput: zeroInputCategoryFirstStepHash,
@@ -822,6 +861,8 @@ export const inspectContracts = ({
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
+        nonExistentInputNoIndex:
+          deploymentNonExistentInputNoIndexMatchesFirstStep,
         noReferenceInput: deploymentNoReferenceInputMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
         zeroInput: deploymentZeroInputMatchesFirstStep,
@@ -855,6 +896,17 @@ export const inspectContracts = ({
           stepOutput("step02", nonExistentInputStep02),
           stepOutput("step03", nonExistentInputStep03),
           stepOutput("step04", nonExistentInputStep04),
+        ],
+      },
+      nonExistentInputNoIndex: {
+        categoryFirstStepHash: nonExistentInputNoIndexCategoryFirstStepHash,
+        deploymentNonExistentInputNoIndexScriptHash,
+        deploymentNonExistentInputNoIndexMatchesFirstStep,
+        steps: [
+          stepOutput("step01", inputNoIdxStep01),
+          stepOutput("step02", inputNoIdxStep02),
+          stepOutput("step03", inputNoIdxStep03),
+          stepOutput("step04", inputNoIdxStep04),
         ],
       },
       noReferenceInput: {

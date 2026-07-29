@@ -133,7 +133,7 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "zeroInput", or "noReferenceInput"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "noReferenceInput"',
     );
   });
 
