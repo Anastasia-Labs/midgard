@@ -108,7 +108,9 @@ describe("L1 provider adapters", () => {
       ],
       currentChainPoint: async () => externalPoint("provider-b"),
     };
-    const provider = new MultiStateQueueProvider([first, second]);
+    const provider = new MultiStateQueueProvider([first, second], {
+      sourceMode: "external_providers",
+    });
 
     await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
       {
@@ -742,6 +744,9 @@ describe("L1 provider adapters", () => {
 
   it("rejects one external provider and incompatible provider chain points", async () => {
     const one = { fetchStateQueueNodes: async () => [] };
+    expect(() => new MultiStateQueueProvider([one, one], {} as never)).toThrow(
+      /sourceMode must be local_node or external_providers/u,
+    );
     expect(
       () =>
         new MultiStateQueueProvider([one], {
@@ -1015,7 +1020,9 @@ describe("L1 provider adapters", () => {
       ],
       currentChainPoint: async () => externalPoint("provider-b"),
     };
-    const provider = new MultiStateQueueProvider([first, second]);
+    const provider = new MultiStateQueueProvider([first, second], {
+      sourceMode: "external_providers",
+    });
 
     await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
       /provider disagreement/,
@@ -1044,7 +1051,10 @@ describe("L1 provider adapters", () => {
           currentChainPoint: async () => externalPoint("provider-b", 99, "cd"),
         },
       ],
-      { identities: ["provider-a", "provider-b"] },
+      {
+        sourceMode: "external_providers",
+        identities: ["provider-a", "provider-b"],
+      },
     );
 
     await expect(provider.fetchStateQueueNodes()).rejects.toThrow(

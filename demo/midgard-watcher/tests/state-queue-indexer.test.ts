@@ -100,6 +100,7 @@ import {
   type WatcherStateQueuePublicContextV1,
   type WatcherStateQueueSnapshotV1,
 } from "../src/state-queue-indexer.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -177,53 +178,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: "e8b2f26d5087a065c0798b6cc3e39e00b1ef33edcd6316e4572903c6d7acf167",
-    categories: {
-      doubleSpend: {
-        categoryId: "00000000",
-        scriptHash: contracts.fraudProofDoubleSpend.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584053a920c4e7d9c50a6ff9d2b832d22300d625e205d28e07ff6c15cde2c96667fda4a393aca51215174bcf95d0bf7e78a4f4ab680d548549eecf73ae9f7af5b44458400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffff",
-      },
-      nonExistentInput: {
-        categoryId: "00000001",
-        scriptHash: contracts.fraudProofNonExistentInput.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3b0bb0cd2674d5e4445866a3cef9e90af43b77c3eceed009032d0a54f9c2f9b3e58400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffd87b9f005820ee008edbcebc51812e09a76640db05559631cf9730f2fddd093fc72d072d323b582087e9235c8d7b3fcb40a3d503037c56a247069ab507548f4b2985965f9b2d2486ffff",
-      },
-      nonExistentInputNoIndex: {
-        categoryId: "00000002",
-        scriptHash: contracts.fraudProofNonExistentInputNoIndex.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c54085840d37f8fc1042e46e60fbd44c1389af648c2c8d080176d1c08b7d96da99c1b4c840000000000000000000000000000000000000000000000000000000000000000ffffd87b9f0058208df5e96b9134dbf02ce0619afa67c94a9d09abbe241505f82935aef5d3dc39cc582072b7c31107c46a8542b2630c53d8b072282ddc69a8789a00219aa4ce47b51337ffff",
-      },
-      invalidRange: {
-        categoryId: "00000003",
-        scriptHash: contracts.fraudProofInvalidRange.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3b0bb0cd2674d5e4445866a3cef9e90af43b77c3eceed009032d0a54f9c2f9b3e58400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffd87b9f005820ef9660efe206d50189739680bd866387c07a061a7b5de18f85b6af241f168638582081fb30bfa77c4706ccf546db90b9dfa7fa88d65a2d62e4d021408d4bd2a99326ffff",
-      },
-      transitionTrace: {
-        categoryId: "00000004",
-        scriptHash: contracts.fraudProofTransitionTrace.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c54085840d37f8fc1042e46e60fbd44c1389af648c2c8d080176d1c08b7d96da99c1b4c840000000000000000000000000000000000000000000000000000000000000000ffffd87b9f0058208bb58512fc6c43f79b51020d086948648b960d5ee65bb6a9a737e2af545177265820b2b437710c1902cd213fb2dbfa15b8d8c9a23832a0fe07c17085ea14c4e850fcffff",
-      },
-      zeroInput: {
-        categoryId: "00000005",
-        scriptHash: contracts.fraudProofZeroInput.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584053a920c4e7d9c50a6ff9d2b832d22300d625e205d28e07ff6c15cde2c96667fde58c229416d0338fc1db79685df06273179c8a54bcecca2c5800e566bf0f79b458400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffff",
-      },
-      validationTraceDispute: {
-        categoryId: "00000006",
-        scriptHash: contracts.validationTraceDispute.scriptHash,
-        membershipProofCbor:
-          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c540858400b7ebe397f2ffb4714c082ac3d1048f1b9c4f760d578b0fbef6a2a824d1a2cd30000000000000000000000000000000000000000000000000000000000000000ffffff",
-      },
-    },
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,

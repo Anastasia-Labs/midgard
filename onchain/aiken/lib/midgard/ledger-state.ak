@@ -120,6 +120,64 @@ pub const genesis_protocol_version: Int = 0
 
 pub const protocol_version_v1: Int = 1
 
+/// Construct the sole authenticated state-queue genesis sentinel. Protocol
+/// version zero identifies only this exact all-genesis state; it is not an
+/// ordinary block-header version.
+pub fn genesis_confirmed_state_v1(genesis_time: Int) -> Option<ConfirmedState> {
+  if genesis_time < 0 {
+    None
+  } else {
+    Some(
+      ConfirmedState {
+        header_hash: genesis_header_hash,
+        prev_header_hash: genesis_header_hash,
+        utxo_root: genesis_utxo_root,
+        start_time: genesis_time,
+        end_time: genesis_time,
+        protocol_version: genesis_protocol_version,
+      },
+    )
+  }
+}
+
+/// Authenticate either the exact genesis sentinel or an ordinary confirmed V1
+/// state and return the protocol version required for its next ordinary
+/// header. The sentinel's zero cannot leak into any committed header.
+pub fn confirmed_state_next_header_protocol_version_v1(
+  confirmed_state: ConfirmedState,
+) -> Option<Int> {
+  let
+      ConfirmedState {
+        header_hash,
+        prev_header_hash,
+        utxo_root,
+        start_time,
+        end_time,
+        protocol_version,
+      }
+    = confirmed_state
+  let is_genesis = and {
+    protocol_version == genesis_protocol_version,
+    header_hash == genesis_header_hash,
+    prev_header_hash == genesis_header_hash,
+    utxo_root == genesis_utxo_root,
+    start_time >= 0,
+    start_time == end_time,
+  }
+  if is_genesis {
+    Some(protocol_version_v1)
+  } else if and {
+    protocol_version == protocol_version_v1,
+    header_hash != genesis_header_hash,
+    start_time >= 0,
+    start_time <= end_time,
+  } {
+    Some(protocol_version_v1)
+  } else {
+    None
+  }
+}
+
 /// Seven-day maturity for the canonical V1 deployment.
 pub const block_maturity_duration_v1: Int = 7 * 24 * 60 * 60 * 1000
 

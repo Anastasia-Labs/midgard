@@ -88,14 +88,18 @@ Disposition:
 
 ### 4. Critical: L1 finality and provider consistency were not strong enough
 
-The first plan accepted "at least one provider, with a path to multiple", conflicting with the architecture's production requirement for at least two independent L1 sources and Midgard readiness requirements around first-visibility finalization.
+The first plan accepted an ambiguous "at least one provider, with a path to
+multiple" policy and did not distinguish a watcher-operated full node from
+externally operated providers.
 
 Recommendation:
 
-- Require exact source-mode binding, explicit finality depth, rollback
-  propagation/quarantine, local-node query alignment, and external-provider
-  disagreement tests. Multi-provider quorum applies only to
-  `external_providers`.
+- Require an explicit `local_node | external_providers` source discriminator.
+  `local_node` uses the watcher's own full-node chain-sync stream as the sole
+  consensus authority and requires aligned same-node query/index surfaces plus
+  rollback propagation. `external_providers` requires at least two
+  operationally independent providers to agree on network and compatible chain
+  point. Both modes require explicit finality and rollback quarantine.
 
 Disposition:
 

@@ -35,7 +35,9 @@ identities. W01/W11 now bind each observation to the configured
 provider/operator/HTTPS endpoint policy and reject substitutions, duplicate
 authority, authentication downgrade, network mismatch, or incompatible chain
 points. Local-node mode retains one node authority and aligned query surfaces;
-it does not manufacture a provider quorum.
+it does not manufacture a provider quorum. The provider state-machine
+constructor requires the discriminator, rejects omitted or unknown runtime
+values, and has no compatibility default.
 
 ### Fixed: L1 rollback/disagreement did not invalidate durable DA decisions
 
@@ -98,31 +100,121 @@ commitments were regenerated from those exact production boundaries. The
 normal verifier regenerates the private corpus before running both consumers,
 so stale committed bytes fail closed.
 
+### Fixed: semantic resolver cardinalities were not the deployed V1 counts
+
+The validation resolver routed two script-source variants and twenty-eight
+phase-A script preconditions through stale cardinalities. The on-chain
+resolver now requires exactly `2` and `28`, rejects adjacent and cross-family
+routes, and has exact hostile selectors.
+
+### Fixed: committed header time was not bound to Cardano validity
+
+The state-queue mint policy now requires every committed header end to equal
+the normalized inclusive upper bound of the committing transaction. SDK and
+node production builders require a closed interval no longer than eight
+minutes and encode `header.endTime = validTo - 1`. Scheduler selection compares
+that inclusive end to its cap.
+
+The final block end is also the user-event completeness boundary. Before
+journal preparation, both commit paths run the canonical deposit, withdrawal,
+and transaction-order ingestion barriers through that exact end. Inside the
+journal transaction they lock all three source tables and require exact event
+ID sets. Speculative commits perform the same final-end exact-set check while
+holding their state-queue and MPF leases, so a late due event invalidates the
+candidate rather than being omitted.
+
+### Fixed: genesis and ordinary header protocol identities were conflated
+
+The state-queue genesis root is now the sole authenticated protocol-`0`
+sentinel: all-zero header identities, empty UTxO root, and equal non-negative
+times. The first and every later committed header use protocol `1`.
+Initialization, merge, SDK production builders, fault tooling, and emulator
+fixtures share the same constructor and hostile identity checks.
+
+### Fixed: speculative withdrawals could classify against mutable state
+
+Withdrawal classification now uses the selected immutable commit-base entries,
+not the mutable mempool ledger. Base entries are hydrated whenever a
+withdrawal is due, even when the normal payload/corpus options are disabled.
+Hostile tests cover roots that exist only in the selected base and reject
+mutable-state substitution.
+
+### Fixed: catalogue fixtures used placeholder roots and membership proofs
+
+All watcher deployment fixtures now use one seven-entry helper containing the
+deployed script hashes, canonical catalogue root, and exact membership-proof
+CBOR. The helper verifies itself through the production manifest verifier, so
+script or proof drift fails before a fixture can authorize indexing.
+
+### Fixed: local-node observation was not a real rollback-capable source
+
+Local-node mode now consumes an Ogmios WebSocket chain-sync stream and Kupo or
+Kupmios query surfaces aligned to that node's network and canonical point.
+Handshake rollback is not misreported as a chain rollback, an intersection
+outside the submitted bounded history is rejected, real roll-forwards and
+rollbacks propagate through W10-W13, deep rollbacks fail closed, and stale
+Kupo JSON tips quarantine decisions. HTTP Ogmios endpoints are normalized to
+WebSocket transport without changing authority identity.
+
+External-provider mode independently rejects aliased endpoint/operator
+identities and retains the two-authority agreement rule. Same-node Ogmios,
+Kupo, and db-sync surfaces are not added to `independentProviderCount`; the
+watcher-operated full node is the sole local chain authority.
+
+### Fixed: authority persistence and signature serving were fail-open
+
+The DA watcher persists the selected chain-authority observation digest and
+revalidates it on restart. A mismatch quarantines the source. Signatures for a
+quarantined or invalidated header are no longer returned to peers.
+
+### Fixed: CI and normative documentation did not guard the checkpoint
+
+Midgard Node CI now builds the SDK before validation, checks watcher formatting
+and the hash-bound dependency map, and triggers on both evidence surfaces.
+The LaTeX workflow runs on pull requests with read-only contents permission.
+The technical specification and public documentation now agree on protocol
+version `1` for ordinary headers, the 16 MiB native transaction bound, enabled
+mint/script/reference-input semantics, Aiken `v1.1.22`, the seven catalogue
+families, and the explicit `local_node | external_providers` trust model.
+
+### Fixed: dependency-tree binding followed a checked-out Git link
+
+The dependency-map verifier previously read every tracked path as a regular
+file. A checked-out `technical-spec/Lean4Midgard` Git link therefore became a
+directory and made otherwise identical content trees unverifiable. The binder
+now reads tracked mode and object identity from the Git index, hashes Git-link
+identities directly, and continues to hash ordinary working-tree bytes and
+symbolic-link targets deterministically.
+
 ## Final-tree evidence
 
 - Aiken `v1.1.22+39d6b04` build and blueprint generation: PASS.
 - Generated `onchain/aiken/plutus.json` SHA-256:
-  `449e7aecc51820f77866e6fe15c79ce29b7e3ea3ad9425b55f90d14abcbc3b81`.
-- On-chain hostile selectors for transition replay, forced timing, and source
-  lifecycle: 12/12 PASS; critical final-tree replays: 2/2 PASS.
-- Watcher typecheck and lint: PASS.
+  `32dd6f052b5fb9e2da1f81efb5c2bdc816c6136f09a20f0e1ea5c526b20b3466`;
+  355 validators; phase-A router 5,302 bytes, script-sources router 5,305
+  bytes, and state-queue mint policy 10,762 bytes.
+- New on-chain resolver, header-time, and genesis hostile selectors: 13/13
+  PASS. Previously reviewed transition replay, forced timing, and source
+  lifecycle selectors remain green on the same source.
+- Watcher build, typecheck, lint, and format check: PASS.
 - Watcher suite: 194/194 PASS.
 - Canonical watcher dependency-map verifier: 8/8 dependency classes PASS.
-- Core deployment identity: 6/6 PASS.
-- Node deployment/contract registry: 24/24 PASS.
-- SDK fault-proof catalogue/blueprint integration: 17/17 PASS.
-- Fault-proof package: 14/14 files and 107/107 tests PASS; rebuilt-blueprint
+- Core package: 36 files and 271/271 tests PASS; production build PASS.
+- Node runtime/source-completeness focused suite: 74/74 PASS; typecheck PASS.
+- SDK production build/typecheck and full suite: 16 files and 80/80 tests
+  PASS under Node `22.22.2`.
+- Fault-proof package: 14/14 files and 110/110 tests PASS; rebuilt-blueprint
   zero-input emulator: 1/1 PASS.
 - Retained-DA verifier: 13 producer files/14 tests, 20 DA consumer tests, and
   3 fault-proof consumer tests PASS after private-corpus regeneration.
-- DA package: 26/26 executed files and 184/184 executed tests PASS; the one
+- DA package: 189 executed tests PASS; the one
   PostgreSQL-environment test is explicitly skipped here and its hostile
   startup-journal regression passed separately against the configured local
   PostgreSQL instance.
 - DA source-mode typecheck, production build, and no-HTTP transport guard:
   PASS.
 - Fault-proof typecheck, ESLint, and scoped Prettier: PASS.
-- Documentation facts (9 groups), links (190 Markdown/MDX files), and voice
+- Documentation facts (10 groups), links (190 Markdown/MDX files), and voice
   (83 pages): PASS under pinned Node 22.
 
 The checkpoint commit and publication/PR review result are recorded in

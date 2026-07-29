@@ -82,7 +82,7 @@ import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
 import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
-  resolveWithdrawalLedgerOutputAtSelectedBaseV1,
+  indexSelectedLedgerOutputs,
 } from "./mpf/withdrawal-classification.js";
 import {
   type AuthenticatedPackedMpfRecord,
@@ -3462,6 +3462,13 @@ export const processMpfs = (
       includedForcedTransactionEntries.map((entry) =>
         Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
       );
+    const shouldCheckPayloadRoot =
+      (config?.payloadRootCheck ?? "every_block") === "every_block";
+    const initialLedgerEntries =
+      config?.initialLedgerEntries ??
+      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
+    const selectedLedgerOutputs =
+      yield* indexSelectedLedgerOutputs(initialLedgerEntries);
 
     let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
     let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
@@ -3503,27 +3510,11 @@ export const processMpfs = (
           );
         }
 
+        const selectedLedgerOutput = selectedLedgerOutputs.get(ledgerOutRefHex);
         const rawLedgerOutput =
-          yield* resolveWithdrawalLedgerOutputAtSelectedBaseV1({
-            ledgerOutRef,
-            deferDatabaseWrites: config.deferDatabaseWrites === true,
-            initialLedgerEntries: config.initialLedgerEntries,
-            retrievePersisted: () =>
-              MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
-                Effect.map((entries) => {
-                  const entry = entries.find((candidate) =>
-                    candidate[MempoolLedgerDB.Columns.OUTREF].equals(
-                      ledgerOutRef,
-                    ),
-                  );
-                  return entry === undefined
-                    ? Option.none<Buffer>()
-                    : Option.some(
-                        Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-                      );
-                }),
-              ),
-          });
+          selectedLedgerOutput === undefined
+            ? Option.none<Buffer>()
+            : Option.some(Buffer.from(selectedLedgerOutput));
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -3575,11 +3566,6 @@ export const processMpfs = (
         classified.ledgerOutRef.toString("hex"),
       ),
     );
-    const shouldCheckPayloadRoot =
-      (config?.payloadRootCheck ?? "every_block") === "every_block";
-    const initialLedgerEntries =
-      config?.initialLedgerEntries ??
-      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const orderedDecodedMempoolTxs =
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
 
@@ -4127,9 +4113,7 @@ export const processMpfs = (
           return {
             eventKey: yield* depositTraceEventKey(entry),
             phase: "Deposit" as const,
-            ledgerOps: [
-              ledgerEntryToInsertBatchOp(ledgerEntry),
-            ],
+            ledgerOps: [ledgerEntryToInsertBatchOp(ledgerEntry)],
           } satisfies TransitionTraceSourceEvent;
         }),
     );

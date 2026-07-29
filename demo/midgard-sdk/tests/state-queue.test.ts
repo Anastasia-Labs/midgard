@@ -53,6 +53,7 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
@@ -80,7 +81,9 @@ import {
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
-const realBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
+const realBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(repoRoot, "onchain/aiken/plutus.json");
 const alwaysSucceedsBlueprintPath = resolve(
   repoRoot,
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
@@ -493,7 +496,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: stateQueueGenesisTime,
     endTime: stateQueueGenesisTime,
-    protocolVersion: 1n,
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
   const rootNodeDatum = (data: unknown): string =>
     encodeLinkedListNodeView({
@@ -683,6 +686,7 @@ const makeCommitActiveOperatorRedeemer = ({
     )) satisfies BuildTxWithRedeemer;
 
 const submitCommitHeaderTx = async ({
+  emulator,
   lucid,
   contracts,
   anchor,
@@ -692,6 +696,7 @@ const submitCommitHeaderTx = async ({
   hubOracle,
   activeOperatorInput,
 }: {
+  readonly emulator: Emulator;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: StateQueueTestContracts;
   readonly anchor: StateQueueUTxO;
@@ -705,6 +710,7 @@ const submitCommitHeaderTx = async ({
   readonly activeOperatorInput: UTxO;
 }> => {
   const continuedActiveOperatorDatum = Data.void();
+  const validityStartSlot = lucid.currentSlot() + 1;
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -718,6 +724,8 @@ const submitCommitHeaderTx = async ({
         schedulerRefInput: scheduler,
         additionalRefInputs: [hubOracle],
         activeOperatorInput,
+        validFrom: BigInt(lucid.slotToUnixTime(validityStartSlot)),
+        validTo: header.endTime + 1n,
         activeOperatorSpendRedeemer: makeCommitActiveOperatorRedeemer({
           contracts,
           operator,
@@ -737,6 +745,7 @@ const submitCommitHeaderTx = async ({
     ),
   );
   const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  await emulator.awaitSlot(1);
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
   await lucid.awaitTx(await commitSigned.submit());
 
@@ -894,8 +903,11 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    await emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const transactionsRoot = await buildTransactionsRoot();
     const header: HeaderType = {
@@ -937,6 +949,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const commit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -1039,8 +1052,11 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    await emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const firstHeader: HeaderType = {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -1082,6 +1098,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const firstCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -1102,6 +1119,7 @@ describe("state-queue emulator builders", () => {
       hashBlockHeaderV1(secondHeader),
     );
     const secondCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: firstCommit.block,

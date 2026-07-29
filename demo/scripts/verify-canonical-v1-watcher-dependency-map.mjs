@@ -625,10 +625,11 @@ if (
     sha256(multiProviderConsistencyTestBytes) ||
   JSON.stringify(multiProviderConsistency.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
-  multiProviderConsistency.minimumIndependentProvidersByMode?.local_node !==
-    1 ||
-  multiProviderConsistency.minimumIndependentProvidersByMode
-    ?.external_providers !== 2 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.local_node !== 1 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.external_providers !==
+    2 ||
+  multiProviderConsistency.localQuerySurfacesCountAsIndependentProviders !==
+    false ||
   multiProviderConsistency.compatibleBlockLag !== 64 ||
   multiProviderConsistency.agreementPolicy !==
     "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points" ||

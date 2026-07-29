@@ -11,7 +11,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "8dc064e1c294121ada9a26a16e3794c29fdd1c930cf0a44a95ad7dd3cc0a619f"
+    "resultContentTreeSha256": "965a18e9db7a3f5e9274d336715a092b07b120d982ee05f39144a6c7fbda6a23"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -37,8 +37,8 @@
       "demo/midgard-watcher/src/settlement-indexer.ts",
       "demo/midgard-watcher/src/state-queue-indexer.ts",
       "demo/midgard-watcher/src/user-event-indexer.ts",
-      "demo/midgard-watcher/tests/canonical-catalogue-fixture.ts",
       "demo/midgard-watcher/tests/config.test.ts",
+      "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts",
       "demo/midgard-watcher/tests/deployment-identity.test.ts",
       "demo/midgard-watcher/tests/durable-store.test.ts",
       "demo/midgard-watcher/tests/finality-engine.test.ts",
@@ -101,7 +101,7 @@
     "deploymentIdentity": {
       "schemaVersion": "midgard-watcher-signed-deployment-identity-v1",
       "sourceSha256": "8c3bc10bdd99d5e8c5e1770e7ae4bb2cf13c388fa1949694a965ed8ac92283a2",
-      "testSha256": "3d54588536eb7f2537ad48d5eeb63cfa1e36abe056d9bd9a79071b0fb21e81f9",
+      "testSha256": "75f649022e9a76f1d9e4f2cba8bee53fef29cd268a224f1994608eb0a7e09e5e",
       "signatureAlgorithm": "ed25519",
       "signatureDomain": "midgard-watcher-deployment-identity-signature-v1",
       "trustRootIdentity": "sha256_spki_der",
@@ -184,10 +184,11 @@
         "local_node",
         "external_providers"
       ],
-      "minimumIndependentProvidersByMode": {
+      "minimumChainAuthoritiesByMode": {
         "local_node": 1,
         "external_providers": 2
       },
+      "localQuerySurfacesCountAsIndependentProviders": false,
       "compatibleBlockLag": 64,
       "agreementPolicy": "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points",
       "externalProviderBindingPolicy": "exact_W01_provider_operator_endpoint_https_transport_allowlist",
@@ -238,7 +239,7 @@
       "stateSchemaVersion": "midgard-watcher-state-queue-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-state-queue-indexer-result-v1",
       "sourceSha256": "c105b4e61b00d46231f9f457c84f669e0080a997906a7d3348a8e4d258192d4b",
-      "testSha256": "7b1d4a6b6e7a011e0f693a4faa6746b2f4826140b841d5c75c8eb66557854356",
+      "testSha256": "fe3725f769fd34847012508d4f758d1f84cf6dbba722ca09dadc7e68a12d5802",
       "inputPolicy": "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_and_W12_finality_plus_W13_rollback",
       "queuePolicy": "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics",
       "rollbackPolicy": "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold",
@@ -255,7 +256,7 @@
       "stateSchemaVersion": "midgard-watcher-user-event-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-user-event-indexer-result-v1",
       "sourceSha256": "5c6d5de4d475fae331c9974b693f83c000964f3bb9f865a0aed0208c809ac599",
-      "testSha256": "56aaf482dbf03f14c671321445e66ead2d4f4f81807cce15bfa94985b4504bcc",
+      "testSha256": "02757fe93a8af89959198b7c36574c39ca12f66717ba058e32e8346bed22dcbd",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_and_W12_finality_plus_W02_W03_W13",
       "eventPolicy": "exact_deposit_withdrawal_forced_order_NFT_datum_witness_time_content_and_terminal_semantics",
       "finalityPolicy": "independent_active_and_terminal_pending_to_final_transitions",
@@ -273,7 +274,7 @@
       "stateSchemaVersion": "midgard-watcher-settlement-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-settlement-indexer-result-v1",
       "sourceSha256": "51464d4e86baa415a20f588838bbe3336749ea94cc7c156e842fed97845c0ca1",
-      "testSha256": "33fed95eb9bec22d75d607199c09fd89756229e7270aab574609a27485459f8b",
+      "testSha256": "3f19c80cf0a9da748e0d587e2c94ce9cda88529fa9519f2cac79c17dce1d4073",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_W13_replacement_anchor_plus_W02_W03",
       "settlementPolicy": "exact_claim_disproof_resolution_reserve_payout_refund_value_and_terminal_semantics",
       "retryPolicy": "bounded_retry_stuck_invalid_identity_and_restart_replay",
@@ -292,7 +293,7 @@
       "stateSchemaVersion": "midgard-watcher-proof-thread-state-v1",
       "resultSchemaVersion": "midgard-watcher-proof-thread-result-v1",
       "sourceSha256": "c14e70d560e7f619ca4f0835a3fa3c2131104aef14337daa93f922beee2a3618",
-      "testSha256": "c3e800f08835c9143ec6854087e8176979cac638b35b9cb881e2a596df60eb35",
+      "testSha256": "174f46fdb4ae65bc93d937f8abd029de9dae14ca773114902c2195e7c9810276",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_canonical_W13_replacement_anchor_plus_W02_W03",
       "threadPolicy": "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles",
       "rollbackPolicy": "exact_W13_journal_rewind_restart_replay_and_reinclusion",
@@ -306,7 +307,7 @@
       "schemaVersion": "midgard-watcher-rule-bundle-v1",
       "bundleVersion": 1,
       "sourceSha256": "acb65653d1efb51adcac6137aeec986288ab7f141c3fa8eaa68ef1dea4864f2e",
-      "testSha256": "4bfe7c303e5d901c321c0397a16ae90d5a0546ba9f6208307ee3f650dedd5895",
+      "testSha256": "d2aab85f3edfe82246445922e170cdf700e4c0d542b42db268116479c48770a1",
       "authorityPolicy": "raw_signed_W02_authority_reverified_on_every_security_load",
       "featurePolicy": "exact_enabled_canonical_V1_feature_order_no_unknown_or_disabled_features",
       "parameterPolicy": "exact_commitment_bound_target_snapshot_and_consensus_limits",
@@ -479,7 +480,7 @@
       ],
       "sourceSha256": {
         "demo/midgard-fault-proofs/src/index.ts": "7f95f68cb70d39eb7ceb383e0a5e1b8014c87fe484a3fbd0f6a73c07a8499fde",
-        "demo/midgard-fault-proofs/src/bin.ts": "95411b0b13bb49f2137cf500a39ee0026e2848c258c8bc8ba667eec7d007659f",
+        "demo/midgard-fault-proofs/src/bin.ts": "be0d5719d928526cee3081c720af213c453babb0f333925ff1f31f3917eeae95",
         "demo/midgard-fault-proofs/src/transition-trace/fetch.ts": "34ea9266296bb2ad75b260f83a0b972fec3b5249b515933223831c244f99d248",
         "demo/midgard-fault-proofs/src/transition-trace/submit.ts": "0fe746b0708b4ef40bf79395ea7627ae90bfece0e57ebefa6dc8e74c7fe3e5c7",
         "demo/midgard-fault-proofs/src/validation-dispute/index.ts": "78b4e38c5d5140970175da9375e8907aa89834f5bacd3c53455ad3dfbc46f1c1"
@@ -509,8 +510,8 @@
         "F41"
       ],
       "sourceSha256": {
-        "demo/midgard-core/src/deployment-manifest-identity-v1.ts": "361e07703df4b2e9fae1ee0f4fe2f275d1f007a0de1f34d351c7905f67edc434",
-        "demo/midgard-node/src/deployment-manifest-v1.ts": "742c17d39825dd223f514cf761f5ad3e12f9fb63306c9ee2b13d981a4578d01f",
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts": "c0d92f8e03381cf2d897a92e8172038856f99d89e34523d27d016105ee47fb12",
+        "demo/midgard-node/src/deployment-manifest-v1.ts": "7cde10a0d5ff4c23ef9750f64c18083e5d63ed2597edcbf0e0c8c5a3d3a1dea2",
         "demo/midgard-node/src/commands/contract-deployment-info.ts": "d94181e5deb7f0b94d2f8460cb75966cd84dbb7cf04aa64854a4855dc961adfb",
         "demo/midgard-watcher/src/deployment-identity.ts": "8c3bc10bdd99d5e8c5e1770e7ae4bb2cf13c388fa1949694a965ed8ac92283a2"
       }
@@ -546,9 +547,9 @@
         "C70"
       ],
       "sourceSha256": {
-        "demo/da-committee-node/src/l1/provider.ts": "7b69361d2aec2c2c4dbccc3d45ecbcb55978ae04624e205569ba628c54c06573",
+        "demo/da-committee-node/src/l1/provider.ts": "3f91ceaeeb2dd31c0d3fb7d93a22ecee15b50b332793020f3376d5fa6d7a4181",
         "demo/da-committee-node/src/l1/state-queue-scanner.ts": "710858ddb7a7fb143cabace73368a0373802957e6a3d79fdb393cbe0a7f3b772",
-        "demo/midgard-sdk/src/state-queue.ts": "0b914bb38a10d5a65e4f4679be997b240b835dea7c6c21b94b85312170968f80",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
         "demo/midgard-watcher/src/l1-adapter.ts": "494c88fc61c98d8ce8234582e15c4b6fe41772721bee083bfe3b64c103b20616",
         "demo/midgard-watcher/src/multi-provider-consistency.ts": "b4087ad08d2005e59d7f7fa54a4a5d7c624ed636a296d11486ca3d31aa8b0e70",
         "demo/midgard-watcher/src/finality-engine.ts": "945c52dc5fbb3952ec0dc2c88d002e82aee7b716ff23a75e4a2c2f53454a0921",
@@ -582,8 +583,8 @@
         "W20"
       ],
       "sourceSha256": {
-        "demo/midgard-sdk/src/ledger-state.ts": "31479d647ed90b9d7d1a92e65bb88af0068ce579e1ee68daa9ba8b736ad32f2b",
-        "demo/midgard-sdk/src/state-queue.ts": "0b914bb38a10d5a65e4f4679be997b240b835dea7c6c21b94b85312170968f80",
+        "demo/midgard-sdk/src/ledger-state.ts": "b138aae7d1ee98f14c83d75000c6a7154d68df5f27e75b70213e6025f66c60b5",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
         "demo/da-committee-node/src/l1/state-queue-scanner.ts": "710858ddb7a7fb143cabace73368a0373802957e6a3d79fdb393cbe0a7f3b772",
         "demo/midgard-node/src/services/state-queue-topology.ts": "e508968cff0a23b18f1670a3d7c5eecc860341d29a1ca30fb860de1ea383f8b3",
         "demo/midgard-watcher/src/durable-store.ts": "b6185b9cd841eb6b7a6b6d8692e31ff337846b124eee668daa552394a04dfaa9",
@@ -621,8 +622,8 @@
       ],
       "sourceSha256": {
         "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts": "1f4641fc534ea12e1fb3036e44e7ad4276f00f539f1f8b27786832fcebf56b14",
-        "demo/midgard-sdk/src/state-queue.ts": "0b914bb38a10d5a65e4f4679be997b240b835dea7c6c21b94b85312170968f80",
-        "onchain/aiken/validators/state-queue.ak": "865e7bbc744ec5a66db7fa4587fc4460fdbc59c9dcde0802fd29c587139c5d35",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
+        "onchain/aiken/validators/state-queue.ak": "e30d0924c9b97ef69531139e7a3274f3f2be9d7715b88f46500795c2afe164a8",
         "onchain/aiken/lib/midgard/operator-directory.ak": "746312732f309355b2cca6407420eaa9a3da0dc0a41d4ec603a98b8cd52af74e"
       }
     }

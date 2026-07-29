@@ -55,6 +55,7 @@ describe("PostgresWatcherStore", () => {
           schemaVersion: 1 as const,
           sourceMode: "external_providers" as const,
           network: "Preview",
+          authoritySha256: "91".repeat(32),
           status: "healthy" as const,
           observations: [],
           observedAt: "2026-07-28T00:00:00.000Z",
@@ -268,6 +269,7 @@ describe("PostgresWatcherStore", () => {
           schemaVersion: 1,
           sourceMode: "external_providers",
           network: "Preview",
+          authoritySha256: "91".repeat(32),
           status: "quarantined",
           observations: [
             {

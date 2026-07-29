@@ -3,7 +3,8 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{Input, Output, OutputReference}
+use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
+use midgard/common/utils
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
   HeaderHash, HeaderV1, MidgardTxsRoot, TransitionTraceRoot,
@@ -37,6 +38,23 @@ pub type HeaderView =
 pub fn decode_header_view(header: HeaderV1) -> HeaderView {
   expect header.protocol_version == protocol_version_v1
   header
+}
+
+/// Bind the canonical event interval's end to the L1 transaction that commits
+/// it. The start remains the preceding header's end, while the end is the
+/// normalized inclusive upper bound of a short Cardano validity interval.
+pub fn commit_bound_header_time_is_valid(
+  header_start_time: Int,
+  header_end_time: Int,
+  commit_validity_range: ValidityRange,
+) -> Bool {
+  let (_, inclusive_commit_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    commit_validity_range,
+  )
+  and {
+    header_start_time < header_end_time,
+    header_end_time == inclusive_commit_upper_bound,
+  }
 }
 
 pub type Datum =

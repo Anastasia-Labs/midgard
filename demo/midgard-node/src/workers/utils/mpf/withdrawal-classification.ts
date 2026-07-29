@@ -64,7 +64,31 @@ export const resolveWithdrawalLedgerOutputAtSelectedBaseV1 = <E, R>({
       : Option.some(Buffer.from(entry[Ledger.Columns.OUTPUT])),
   );
 };
-
+export const indexSelectedLedgerOutputs = (
+  entries: readonly Ledger.MinimalEntry[],
+): Effect.Effect<ReadonlyMap<string, Buffer>, DatabaseError, never> =>
+  Effect.try({
+    try: () => {
+      const outputs = new Map<string, Buffer>();
+      for (const entry of entries) {
+        const outRef = entry[Ledger.Columns.OUTREF].toString("hex");
+        if (outputs.has(outRef)) {
+          throw new Error(
+            `selected ledger snapshot contains duplicate outref ${outRef}`,
+          );
+        }
+        outputs.set(outRef, Buffer.from(entry[Ledger.Columns.OUTPUT]));
+      }
+      return outputs;
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: WithdrawalsDB.tableName,
+        message:
+          "Failed to index selected ledger snapshot for withdrawal classification",
+        cause,
+      }),
+  });
 export const assetsToValue = (assets: Assets): SDK.Value => {
   const outer = new Map<string, Map<string, bigint>>();
   for (const [unit, quantity] of Object.entries(normalizeAssets(assets))) {

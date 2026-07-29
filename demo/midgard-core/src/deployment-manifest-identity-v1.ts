@@ -3,6 +3,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
+import { encodeCbor } from "./codec/cbor.js";
 import {
   isMidgardConsensusProfileV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
@@ -15,51 +16,10 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "./da-transport.js";
-
-const FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT_V1 = 4;
-const FRAUD_PROOF_CATALOGUE_SCRIPT_HASH_BYTE_COUNT_V1 = 28;
-const FRAUD_PROOF_CATALOGUE_NULL_ROOT_V1 = Buffer.alloc(32);
-
-const FraudProofCatalogueNeighborV1Schema = Data.Object({
-  nibble: Data.Integer(),
-  prefix: Data.Bytes(),
-  root: Data.Bytes(),
-});
-const FraudProofCatalogueProofStepV1Schema = Data.Enum([
-  Data.Object({
-    Branch: Data.Object({
-      skip: Data.Integer(),
-      neighbors: Data.Bytes(),
-    }),
-  }),
-  Data.Object({
-    Fork: Data.Object({
-      skip: Data.Integer(),
-      neighbor: FraudProofCatalogueNeighborV1Schema,
-    }),
-  }),
-  Data.Object({
-    Leaf: Data.Object({
-      skip: Data.Integer(),
-      key: Data.Bytes(),
-      value: Data.Bytes(),
-    }),
-  }),
-]);
-const FraudProofCatalogueProofV1Schema = Data.Array(
-  FraudProofCatalogueProofStepV1Schema,
-);
-type FraudProofCatalogueProofStepV1 = Data.Static<
-  typeof FraudProofCatalogueProofStepV1Schema
->;
-type FraudProofCatalogueProofV1 = Data.Static<
-  typeof FraudProofCatalogueProofV1Schema
->;
-
-type FraudProofCatalogueEntryV1 = {
-  readonly path: string;
-  readonly valueDigest: Buffer;
-};
+import {
+  buildMidgardMpfProofFoldTraceV1,
+  type MidgardMpfProofStepV1,
+} from "./mpf-proof-fold-v1.js";
 
 export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
@@ -114,6 +74,36 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeTimeout",
   "validationTraceDisputeAward",
 ] as const);
+
+export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
+  Object.freeze([
+    "doubleSpend",
+    "nonExistentInput",
+    "nonExistentInputNoIndex",
+    "invalidRange",
+    "transitionTrace",
+    "zeroInput",
+    "validationTraceDispute",
+  ] as const);
+
+export type DeploymentManifestV1FraudProofCatalogueCategory =
+  (typeof DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+export type DeploymentManifestV1FraudProofCatalogueCategoryIdentity = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
+export type DeploymentManifestV1FraudProofCatalogueIdentity = {
+  readonly root: string;
+  readonly categories: Readonly<
+    Record<
+      DeploymentManifestV1FraudProofCatalogueCategory,
+      DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+    >
+  >;
+};
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
   Object.freeze({
@@ -567,384 +557,337 @@ const requireIsoTimestamp = (value: unknown, field: string): string => {
   return text;
 };
 
-const fraudProofCatalogueDigestV1 = (bytes: Uint8Array): Buffer =>
+type LucidDataSchema = Parameters<typeof Data.to>[1];
+
+const FraudProofCatalogueProofNeighborSchema = Data.Object({
+  nibble: Data.Integer(),
+  prefix: Data.Bytes(),
+  root: Data.Bytes(),
+});
+
+const FraudProofCatalogueProofStepSchema = Data.Enum([
+  Data.Object({
+    Branch: Data.Object({
+      skip: Data.Integer(),
+      neighbors: Data.Bytes(),
+    }),
+  }),
+  Data.Object({
+    Fork: Data.Object({
+      skip: Data.Integer(),
+      neighbor: FraudProofCatalogueProofNeighborSchema,
+    }),
+  }),
+  Data.Object({
+    Leaf: Data.Object({
+      skip: Data.Integer(),
+      key: Data.Bytes(),
+      value: Data.Bytes(),
+    }),
+  }),
+]);
+
+const FraudProofCatalogueProofSchema = Data.Array(
+  FraudProofCatalogueProofStepSchema,
+);
+
+type FraudProofCatalogueProofData = Data.Static<
+  typeof FraudProofCatalogueProofSchema
+>;
+
+const MPF_NULL_HASH = Buffer.alloc(32);
+const MPF_PATH_NIBBLE_COUNT = 64;
+
+const mpfHash = (bytes: Uint8Array): Buffer =>
   Buffer.from(blake2b(bytes, { dkLen: 32 }));
 
-const fraudProofCatalogueNibblesV1 = (
-  hexDigits: string,
-  field: string,
-): Buffer =>
-  Buffer.from(
-    [...hexDigits].map((digit) => {
-      const nibble = Number.parseInt(digit, 16);
-      if (!Number.isInteger(nibble) || nibble < 0 || nibble > 15) {
-        throw new Error(`Deployment manifest ${field} has invalid nibble`);
-      }
-      return nibble;
-    }),
-  );
+const mpfCombine = (left: Uint8Array, right: Uint8Array): Buffer =>
+  mpfHash(Buffer.concat([Buffer.from(left), Buffer.from(right)]));
 
-const fraudProofCatalogueLeafHashV1 = (
-  prefix: string,
-  valueDigest: Buffer,
-): Buffer => {
-  const head =
-    prefix.length % 2 > 0
-      ? Buffer.concat([
-          Buffer.from([0]),
-          fraudProofCatalogueNibblesV1(
-            prefix.slice(0, 1),
-            "fraud-proof catalogue leaf prefix",
-          ),
-        ])
-      : Buffer.from([255]);
-  const tail = Buffer.from(
-    prefix.length % 2 > 0 ? prefix.slice(1) : prefix,
-    "hex",
-  );
-  return fraudProofCatalogueDigestV1(Buffer.concat([head, tail, valueDigest]));
+const mpfNibbleAt = (path: Uint8Array, index: number): number => {
+  if (
+    !Number.isSafeInteger(index) ||
+    index < 0 ||
+    index >= MPF_PATH_NIBBLE_COUNT
+  ) {
+    throw new Error("Fraud-proof catalogue MPF path cursor is invalid");
+  }
+  const byte = path[Math.floor(index / 2)]!;
+  return index % 2 === 0 ? Math.floor(byte / 16) : byte % 16;
 };
 
-const fraudProofCatalogueBranchHashV1 = (
-  prefix: string,
-  root: Buffer,
-): Buffer =>
-  fraudProofCatalogueDigestV1(
-    Buffer.concat([
-      fraudProofCatalogueNibblesV1(
-        prefix,
-        "fraud-proof catalogue branch prefix",
-      ),
-      root,
-    ]),
-  );
-
-const fraudProofCataloguePairHashV1 = (left: Buffer, right: Buffer): Buffer =>
-  fraudProofCatalogueDigestV1(Buffer.concat([left, right]));
-
-const fraudProofCatalogueMerkleRoot16V1 = (
-  nodesByNibble: Readonly<Record<number, Buffer>>,
+const mpfPathNibbles = (
+  path: Uint8Array,
+  start: number,
+  end: number,
 ): Buffer => {
-  let nodes = Array.from(
-    { length: 16 },
-    (_, index) => nodesByNibble[index] ?? FRAUD_PROOF_CATALOGUE_NULL_ROOT_V1,
-  );
-  while (nodes.length > 1) {
-    const next: Buffer[] = [];
-    for (let index = 0; index < nodes.length; index += 2) {
-      next.push(
-        fraudProofCataloguePairHashV1(nodes[index]!, nodes[index + 1]!),
-      );
+  const result: number[] = [];
+  for (let cursor = start; cursor < end; cursor += 1) {
+    result.push(mpfNibbleAt(path, cursor));
+  }
+  return Buffer.from(result);
+};
+
+const mpfSuffix = (path: Uint8Array, cursor: number): Buffer => {
+  if (
+    !Number.isSafeInteger(cursor) ||
+    cursor < 0 ||
+    cursor > MPF_PATH_NIBBLE_COUNT
+  ) {
+    throw new Error("Fraud-proof catalogue MPF suffix cursor is invalid");
+  }
+  if (cursor % 2 === 0) {
+    return Buffer.concat([
+      Buffer.from([0xff]),
+      Buffer.from(path).subarray(cursor / 2),
+    ]);
+  }
+  return Buffer.concat([
+    Buffer.from([0, mpfNibbleAt(path, cursor)]),
+    Buffer.from(path).subarray((cursor + 1) / 2),
+  ]);
+};
+
+const mpfSparseChildrenRoot = (
+  children: ReadonlyMap<number, Uint8Array>,
+): Buffer => {
+  let level = Array.from<Uint8Array>({ length: 16 }).fill(MPF_NULL_HASH);
+  for (const [nibble, root] of children) {
+    if (!Number.isSafeInteger(nibble) || nibble < 0 || nibble > 15) {
+      throw new Error("Fraud-proof catalogue MPF child nibble is invalid");
     }
-    nodes = next;
+    level[nibble] = root;
   }
-  return nodes[0]!;
+  while (level.length > 1) {
+    const next: Buffer[] = [];
+    for (let index = 0; index < level.length; index += 2) {
+      next.push(mpfCombine(level[index]!, level[index + 1]!));
+    }
+    level = next;
+  }
+  return Buffer.from(level[0]!);
 };
 
-const fraudProofCatalogueBranchRootFromNeighborsV1 = (
-  nibble: number,
-  root: Buffer,
-  neighbors: Buffer,
-): Buffer => {
-  if (neighbors.length !== 128) {
-    throw new Error(
-      `Deployment manifest fraud-proof catalogue branch proof must contain 128 neighbor bytes, got ${neighbors.length.toString()}`,
-    );
-  }
-  const siblings = [
-    neighbors.subarray(96, 128),
-    neighbors.subarray(64, 96),
-    neighbors.subarray(32, 64),
-    neighbors.subarray(0, 32),
-  ];
-  return siblings.reduce(
-    (current, sibling, level) =>
-      ((nibble >> level) & 1) === 0
-        ? fraudProofCataloguePairHashV1(current, sibling)
-        : fraudProofCataloguePairHashV1(sibling, current),
-    root,
-  );
+type FraudProofCatalogueMpfEntry = {
+  readonly path: Buffer;
+  readonly valueHash: Buffer;
 };
 
-const fraudProofCatalogueProofIntegerV1 = (
-  value: bigint,
-  field: string,
-  maximum?: number,
-): number => {
-  const parsed = Number(value);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < 0 ||
-    (maximum !== undefined && parsed > maximum)
-  ) {
-    throw new Error(
-      `Deployment manifest ${field} must be a non-negative safe integer${maximum === undefined ? "" : ` <= ${maximum.toString()}`}`,
-    );
-  }
-  return parsed;
-};
-
-const fraudProofCatalogueProofBytesV1 = (
-  value: string,
-  field: string,
-  byteLength?: number,
-): Buffer => {
-  if (
-    !/^(?:[0-9a-f]{2})*$/u.test(value) ||
-    (byteLength !== undefined && value.length !== byteLength * 2)
-  ) {
-    throw new Error(
-      `Deployment manifest ${field} must be lowercase canonical hex${byteLength === undefined ? "" : ` of ${byteLength.toString()} bytes`}`,
-    );
-  }
-  return Buffer.from(value, "hex");
-};
-
-const fraudProofCataloguePathNibbleV1 = (
-  path: string,
-  index: number,
-  field: string,
-): number => {
-  if (index < 0 || index >= path.length) {
-    throw new Error(`Deployment manifest ${field} exceeds its 32-byte path`);
-  }
-  const nibble = Number.parseInt(path[index]!, 16);
-  if (!Number.isInteger(nibble) || nibble < 0 || nibble > 15) {
-    throw new Error(`Deployment manifest ${field} has invalid path nibble`);
-  }
-  return nibble;
-};
-
-const fraudProofCatalogueRootFromEntriesV1 = (
-  entries: readonly FraudProofCatalogueEntryV1[],
-  cursor = 0,
+const reconstructFraudProofCatalogueMpfNode = (
+  entries: readonly FraudProofCatalogueMpfEntry[],
+  cursor: number,
 ): Buffer => {
   if (entries.length === 0) {
-    return FRAUD_PROOF_CATALOGUE_NULL_ROOT_V1;
+    throw new Error("Fraud-proof catalogue MPF node must not be empty");
   }
   if (entries.length === 1) {
-    return fraudProofCatalogueLeafHashV1(
-      entries[0]!.path.slice(cursor),
-      entries[0]!.valueDigest,
+    return mpfCombine(
+      mpfSuffix(entries[0]!.path, cursor),
+      entries[0]!.valueHash,
     );
   }
+
   let branchCursor = cursor;
   while (
-    branchCursor < entries[0]!.path.length &&
+    branchCursor < MPF_PATH_NIBBLE_COUNT &&
     entries.every(
-      (entry) => entry.path[branchCursor] === entries[0]!.path[branchCursor],
+      ({ path }) =>
+        mpfNibbleAt(path, branchCursor) ===
+        mpfNibbleAt(entries[0]!.path, branchCursor),
     )
   ) {
     branchCursor += 1;
   }
-  if (branchCursor >= entries[0]!.path.length) {
-    throw new Error(
-      "Deployment manifest fraud-proof catalogue contains colliding keys",
-    );
+  if (branchCursor >= MPF_PATH_NIBBLE_COUNT) {
+    throw new Error("Fraud-proof catalogue MPF contains duplicate key paths");
   }
-  const groups = new Map<number, FraudProofCatalogueEntryV1[]>();
+
+  const grouped = new Map<number, FraudProofCatalogueMpfEntry[]>();
   for (const entry of entries) {
-    const nibble = fraudProofCataloguePathNibbleV1(
-      entry.path,
-      branchCursor,
-      "fraud-proof catalogue entry",
-    );
-    const group = groups.get(nibble);
-    if (group === undefined) {
-      groups.set(nibble, [entry]);
-    } else {
-      group.push(entry);
-    }
+    const nibble = mpfNibbleAt(entry.path, branchCursor);
+    const group = grouped.get(nibble) ?? [];
+    group.push(entry);
+    grouped.set(nibble, group);
   }
-  const children: Record<number, Buffer> = {};
-  for (const [nibble, group] of groups) {
-    children[nibble] = fraudProofCatalogueRootFromEntriesV1(
-      group,
-      branchCursor + 1,
+  const childRoots = new Map<number, Buffer>();
+  for (const [nibble, group] of grouped) {
+    childRoots.set(
+      nibble,
+      reconstructFraudProofCatalogueMpfNode(group, branchCursor + 1),
     );
   }
-  return fraudProofCatalogueBranchHashV1(
-    entries[0]!.path.slice(cursor, branchCursor),
-    fraudProofCatalogueMerkleRoot16V1(children),
+  return mpfCombine(
+    mpfPathNibbles(entries[0]!.path, cursor, branchCursor),
+    mpfSparseChildrenRoot(childRoots),
   );
 };
 
-const fraudProofCatalogueRootFromProofV1 = (
-  path: string,
-  valueDigest: Buffer,
-  proof: readonly FraudProofCatalogueProofStepV1[],
-  cursor = 0,
-  index = 0,
-): Buffer => {
-  const step = proof[index];
-  if (step === undefined) {
-    return fraudProofCatalogueLeafHashV1(path.slice(cursor), valueDigest);
-  }
-  if ("Branch" in step) {
-    const skip = fraudProofCatalogueProofIntegerV1(
-      step.Branch.skip,
-      "fraud-proof catalogue branch skip",
-      path.length,
-    );
-    const nextCursor = cursor + 1 + skip;
-    const thisNibble = fraudProofCataloguePathNibbleV1(
-      path,
-      nextCursor - 1,
-      "fraud-proof catalogue branch proof",
-    );
-    const root = fraudProofCatalogueRootFromProofV1(
-      path,
-      valueDigest,
-      proof,
-      nextCursor,
-      index + 1,
-    );
-    return fraudProofCatalogueBranchHashV1(
-      path.slice(cursor, nextCursor - 1),
-      fraudProofCatalogueBranchRootFromNeighborsV1(
-        thisNibble,
-        root,
-        fraudProofCatalogueProofBytesV1(
-          step.Branch.neighbors,
-          "fraud-proof catalogue branch neighbors",
-          128,
+const encodeFraudProofCatalogueKey = (categoryId: string): Buffer =>
+  encodeCbor(Buffer.from(categoryId, "hex"));
+
+const encodeFraudProofCatalogueValue = (scriptHash: string): Buffer =>
+  encodeCbor(Buffer.from(scriptHash, "hex"));
+
+const expectedFraudProofCatalogueCategoryId = (index: number): string => {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32BE(index);
+  return bytes.toString("hex");
+};
+
+const proofDataToMpfSteps = (
+  proof: FraudProofCatalogueProofData,
+): readonly MidgardMpfProofStepV1[] =>
+  proof.map((step) => {
+    if ("Branch" in step) {
+      return {
+        kind: "branch",
+        skip: Number(step.Branch.skip),
+        neighbors: Buffer.from(step.Branch.neighbors, "hex"),
+      };
+    }
+    if ("Fork" in step) {
+      return {
+        kind: "fork",
+        skip: Number(step.Fork.skip),
+        neighbor: {
+          nibble: Number(step.Fork.neighbor.nibble),
+          prefix: Buffer.from(step.Fork.neighbor.prefix, "hex"),
+          root: Buffer.from(step.Fork.neighbor.root, "hex"),
+        },
+      };
+    }
+    return {
+      kind: "leaf",
+      skip: Number(step.Leaf.skip),
+      key: Buffer.from(step.Leaf.key, "hex"),
+      value: Buffer.from(step.Leaf.value, "hex"),
+    };
+  });
+
+export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
+  catalogue: DeploymentManifestV1FraudProofCatalogueIdentity,
+): DeploymentManifestV1FraudProofCatalogueIdentity => {
+  requireExactKeys(
+    catalogue as unknown as Record<string, unknown>,
+    ["root", "categories"],
+    [],
+    "contracts.fraudProofCatalogueMint.fraudProofCatalogue",
+  );
+  requireExactKeys(
+    catalogue.categories as unknown as Record<string, unknown>,
+    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    [],
+    "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
+  );
+  const declaredRoot = requireHex(
+    catalogue.root,
+    32,
+    "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
+  );
+  const entries: FraudProofCatalogueMpfEntry[] = [];
+  const encodedEntries = new Map<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    { readonly key: Buffer; readonly value: Buffer }
+  >();
+  const parsedCategories = {} as Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+  >;
+
+  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.forEach(
+    (categoryName, index) => {
+      const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
+      const candidate = requireRecord(
+        (catalogue.categories as unknown as Record<string, unknown>)[
+          categoryName
+        ],
+        `Deployment manifest ${field}`,
+      );
+      requireExactKeys(
+        candidate,
+        ["categoryId", "scriptHash", "membershipProofCbor"],
+        [],
+        field,
+      );
+      const category = {
+        categoryId: requireHex(candidate.categoryId, 4, `${field}.categoryId`),
+        scriptHash: requireHex(candidate.scriptHash, 28, `${field}.scriptHash`),
+        membershipProofCbor: requireHex(
+          candidate.membershipProofCbor,
+          undefined,
+          `${field}.membershipProofCbor`,
         ),
-      ),
+      } satisfies DeploymentManifestV1FraudProofCatalogueCategoryIdentity;
+      parsedCategories[categoryName] = category;
+      const expectedCategoryId = expectedFraudProofCatalogueCategoryId(index);
+      if (category.categoryId !== expectedCategoryId) {
+        throw new Error(
+          `Deployment manifest ${field}.categoryId must be ${expectedCategoryId}`,
+        );
+      }
+      const key = encodeFraudProofCatalogueKey(category.categoryId);
+      const value = encodeFraudProofCatalogueValue(category.scriptHash);
+      encodedEntries.set(categoryName, { key, value });
+      entries.push({
+        path: mpfHash(key),
+        valueHash: mpfHash(value),
+      });
+    },
+  );
+
+  const reconstructedRoot = reconstructFraudProofCatalogueMpfNode(
+    entries,
+    0,
+  ).toString("hex");
+  if (reconstructedRoot !== declaredRoot) {
+    throw new Error(
+      `Deployment manifest fraud-proof catalogue root mismatch: declared=${declaredRoot}, reconstructed=${reconstructedRoot}`,
     );
   }
-  if ("Fork" in step) {
-    const skip = fraudProofCatalogueProofIntegerV1(
-      step.Fork.skip,
-      "fraud-proof catalogue fork skip",
-      path.length,
-    );
-    const nextCursor = cursor + 1 + skip;
-    const thisNibble = fraudProofCataloguePathNibbleV1(
-      path,
-      nextCursor - 1,
-      "fraud-proof catalogue fork proof",
-    );
-    const neighborNibble = fraudProofCatalogueProofIntegerV1(
-      step.Fork.neighbor.nibble,
-      "fraud-proof catalogue fork neighbor nibble",
-      15,
-    );
-    if (neighborNibble === thisNibble) {
+
+  for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
+    const category = parsedCategories[categoryName];
+    const encoded = encodedEntries.get(categoryName)!;
+    let proof: FraudProofCatalogueProofData;
+    try {
+      proof = Data.from(
+        category.membershipProofCbor,
+        FraudProofCatalogueProofSchema,
+      ) as unknown as FraudProofCatalogueProofData;
+    } catch (cause) {
       throw new Error(
-        "Deployment manifest fraud-proof catalogue fork neighbor uses the proven path nibble",
+        `Deployment manifest ${field}.membershipProofCbor is not exact Proof CBOR: ${String(cause)}`,
       );
     }
-    const root = fraudProofCatalogueRootFromProofV1(
-      path,
-      valueDigest,
+    const canonicalProofCbor = Data.to(
       proof,
-      nextCursor,
-      index + 1,
+      FraudProofCatalogueProofSchema as unknown as LucidDataSchema,
     );
-    const children: Record<number, Buffer> = {
-      [thisNibble]: root,
-      [neighborNibble]: fraudProofCatalogueDigestV1(
-        Buffer.concat([
-          fraudProofCatalogueProofBytesV1(
-            step.Fork.neighbor.prefix,
-            "fraud-proof catalogue fork neighbor prefix",
-          ),
-          fraudProofCatalogueProofBytesV1(
-            step.Fork.neighbor.root,
-            "fraud-proof catalogue fork neighbor root",
-            32,
-          ),
-        ]),
-      ),
-    };
-    return fraudProofCatalogueBranchHashV1(
-      path.slice(cursor, nextCursor - 1),
-      fraudProofCatalogueMerkleRoot16V1(children),
-    );
+    if (canonicalProofCbor !== category.membershipProofCbor) {
+      throw new Error(
+        `Deployment manifest ${field}.membershipProofCbor is not canonical`,
+      );
+    }
+    let proofRoot: string;
+    try {
+      proofRoot = buildMidgardMpfProofFoldTraceV1({
+        key: encoded.key,
+        value: encoded.value,
+        steps: proofDataToMpfSteps(proof),
+      }).terminal.includingRoot.toString("hex");
+    } catch (cause) {
+      throw new Error(
+        `Deployment manifest ${field}.membershipProofCbor is invalid: ${String(cause)}`,
+      );
+    }
+    if (proofRoot !== declaredRoot) {
+      throw new Error(
+        `Deployment manifest ${field}.membershipProofCbor does not prove membership in catalogue root`,
+      );
+    }
   }
-  const neighborPath = fraudProofCatalogueProofBytesV1(
-    step.Leaf.key,
-    "fraud-proof catalogue leaf neighbor key",
-    32,
-  ).toString("hex");
-  const skip = fraudProofCatalogueProofIntegerV1(
-    step.Leaf.skip,
-    "fraud-proof catalogue leaf skip",
-    path.length,
-  );
-  const nextCursor = cursor + 1 + skip;
-  const thisNibble = fraudProofCataloguePathNibbleV1(
-    path,
-    nextCursor - 1,
-    "fraud-proof catalogue leaf proof",
-  );
-  if (neighborPath.slice(0, cursor) !== path.slice(0, cursor)) {
-    throw new Error(
-      "Deployment manifest fraud-proof catalogue leaf neighbor is outside the expected prefix",
-    );
-  }
-  const neighborNibble = fraudProofCataloguePathNibbleV1(
-    neighborPath,
-    nextCursor - 1,
-    "fraud-proof catalogue leaf neighbor",
-  );
-  if (neighborNibble === thisNibble) {
-    throw new Error(
-      "Deployment manifest fraud-proof catalogue leaf neighbor uses the proven path nibble",
-    );
-  }
-  const root = fraudProofCatalogueRootFromProofV1(
-    path,
-    valueDigest,
-    proof,
-    nextCursor,
-    index + 1,
-  );
-  const children: Record<number, Buffer> = {
-    [thisNibble]: root,
-    [neighborNibble]: fraudProofCatalogueLeafHashV1(
-      neighborPath.slice(nextCursor),
-      fraudProofCatalogueProofBytesV1(
-        step.Leaf.value,
-        "fraud-proof catalogue leaf neighbor value",
-        32,
-      ),
-    ),
-  };
-  return fraudProofCatalogueBranchHashV1(
-    path.slice(cursor, nextCursor - 1),
-    fraudProofCatalogueMerkleRoot16V1(children),
-  );
-};
-
-const fraudProofCatalogueDataBytesV1 = (hex: string): Buffer =>
-  Buffer.from(Data.to(hex as never, Data.Bytes()), "hex");
-
-const parseFraudProofCatalogueProofV1 = (
-  cborHex: string,
-  field: string,
-): FraudProofCatalogueProofV1 => {
-  let proof: FraudProofCatalogueProofV1;
-  try {
-    proof = Data.from(
-      cborHex,
-      FraudProofCatalogueProofV1Schema as never,
-    ) as FraudProofCatalogueProofV1;
-  } catch (cause) {
-    throw new Error(
-      `Deployment manifest ${field} is not valid fraud-proof catalogue membership proof CBOR: ${String(cause)}`,
-    );
-  }
-  const canonicalCbor = Data.to(
-    proof as never,
-    FraudProofCatalogueProofV1Schema,
-  );
-  if (canonicalCbor !== cborHex) {
-    throw new Error(
-      `Deployment manifest ${field} must use canonical fraud-proof catalogue proof CBOR`,
-    );
-  }
-  return proof;
+  return catalogue;
 };
 
 const validateFinalizedContracts = (
@@ -1027,7 +970,7 @@ const validateFinalizedContracts = (
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue",
   );
-  const declaredCatalogueRoot = requireHex(
+  requireHex(
     catalogue.root,
     32,
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
@@ -1044,23 +987,22 @@ const validateFinalizedContracts = (
     transitionTrace: "fraudProofTransitionTrace",
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
-  } as const;
+  } as const satisfies Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    string
+  >;
   requireExactKeys(
     categories,
-    Object.keys(contractByCategory),
+    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
-  const catalogueEntries: Array<
-    FraudProofCatalogueEntryV1 & {
-      readonly categoryName: string;
-      readonly membershipProofCbor: string;
-    }
-  > = [];
-  const seenCategoryIds = new Set<string>();
-  for (const [categoryIndex, [categoryName, contractName]] of Object.entries(
-    contractByCategory,
-  ).entries()) {
+  const parsedCategories = {} as Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+  >;
+  for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+    const contractName = contractByCategory[categoryName];
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireRecord(categories[categoryName], field);
     requireExactKeys(
@@ -1071,27 +1013,12 @@ const validateFinalizedContracts = (
     );
     const categoryId = requireHex(
       category.categoryId,
-      FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT_V1,
+      4,
       `${field}.categoryId`,
     );
-    const expectedCategoryId = Buffer.alloc(
-      FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT_V1,
-    );
-    expectedCategoryId.writeUInt32BE(categoryIndex);
-    if (categoryId !== expectedCategoryId.toString("hex")) {
-      throw new Error(
-        `Deployment manifest ${field}.categoryId must be ${expectedCategoryId.toString("hex")} for canonical V1 chronology`,
-      );
-    }
-    if (seenCategoryIds.has(categoryId)) {
-      throw new Error(
-        `Deployment manifest ${field}.categoryId duplicates another fraud-proof catalogue category`,
-      );
-    }
-    seenCategoryIds.add(categoryId);
     const scriptHash = requireHex(
       category.scriptHash,
-      FRAUD_PROOF_CATALOGUE_SCRIPT_HASH_BYTE_COUNT_V1,
+      28,
       `${field}.scriptHash`,
     );
     const membershipProofCbor = requireHex(
@@ -1104,47 +1031,20 @@ const validateFinalizedContracts = (
         `Deployment manifest ${field}.scriptHash must match contracts.${contractName}.scriptHash`,
       );
     }
-    const encodedCategoryId = fraudProofCatalogueDataBytesV1(categoryId);
-    const encodedScriptHash = fraudProofCatalogueDataBytesV1(scriptHash);
-    catalogueEntries.push({
-      categoryName,
+    parsedCategories[categoryName] = {
+      categoryId,
+      scriptHash,
       membershipProofCbor,
-      path: fraudProofCatalogueDigestV1(encodedCategoryId).toString("hex"),
-      valueDigest: fraudProofCatalogueDigestV1(encodedScriptHash),
-    });
+    };
   }
-
-  const expectedCatalogueRoot =
-    fraudProofCatalogueRootFromEntriesV1(catalogueEntries).toString("hex");
-  if (declaredCatalogueRoot !== expectedCatalogueRoot) {
-    throw new Error(
-      `Deployment manifest contracts.fraudProofCatalogueMint.fraudProofCatalogue.root mismatch: expected ${expectedCatalogueRoot}`,
-    );
-  }
-  for (const entry of catalogueEntries) {
-    const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${entry.categoryName}.membershipProofCbor`;
-    const proof = parseFraudProofCatalogueProofV1(
-      entry.membershipProofCbor,
-      field,
-    );
-    let proofRoot: string;
-    try {
-      proofRoot = fraudProofCatalogueRootFromProofV1(
-        entry.path,
-        entry.valueDigest,
-        proof,
-      ).toString("hex");
-    } catch (cause) {
-      throw new Error(
-        `Deployment manifest ${field} is invalid: ${String(cause)}`,
-      );
-    }
-    if (proofRoot !== expectedCatalogueRoot) {
-      throw new Error(
-        `Deployment manifest ${field} does not open the canonical fraud-proof catalogue root`,
-      );
-    }
-  }
+  verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+    root: requireHex(
+      catalogue.root,
+      32,
+      "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
+    ),
+    categories: parsedCategories,
+  });
 };
 
 const validateFinalizedReferenceScripts = (

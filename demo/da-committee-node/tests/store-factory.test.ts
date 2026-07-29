@@ -128,6 +128,7 @@ describe("openWatcherStore", () => {
       schemaVersion: 1,
       sourceMode: "external_providers",
       network: "Preview",
+      authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],
       observedAt: "2026-07-28T00:00:00.000Z",
@@ -146,6 +147,7 @@ describe("openWatcherStore", () => {
         schemaVersion: 1,
         sourceMode: "local_node",
         network: "Preview",
+        authoritySha256: "91".repeat(32),
         status: "quarantined",
         observations: [],
         observedAt: "2026-07-28T00:00:00.000Z",
@@ -158,6 +160,7 @@ describe("openWatcherStore", () => {
         schemaVersion: 1,
         sourceMode: "local_node",
         network: "Preview",
+        authoritySha256: "91".repeat(32),
         status: "healthy",
         observations: [
           {
@@ -171,6 +174,17 @@ describe("openWatcherStore", () => {
         observedAt: "2026-07-28T00:00:00.000Z",
       }),
     ).rejects.toThrow(/observation is malformed/u);
+    await expect(
+      store.saveL1SourceState({
+        schemaVersion: 1,
+        sourceMode: "local_node",
+        network: "Preview",
+        authoritySha256: "not-a-digest",
+        status: "healthy",
+        observations: [],
+        observedAt: "2026-07-28T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(/state is malformed/u);
   });
 
   it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
@@ -242,6 +256,7 @@ describe("openWatcherStore", () => {
         schemaVersion: 1,
         sourceMode: "local_node",
         network: "Preview",
+        authoritySha256: "91".repeat(32),
         status: "healthy",
         observations: [
           {
@@ -377,6 +392,7 @@ describe("openWatcherStore", () => {
           schemaVersion: 1 as const,
           sourceMode: "local_node" as const,
           network: "Preview",
+          authoritySha256: "91".repeat(32),
           status: "healthy" as const,
           observations: [
             {
@@ -412,6 +428,7 @@ describe("openWatcherStore", () => {
       schemaVersion: 1,
       sourceMode: "local_node",
       network: "Preview",
+      authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],
       observedAt: "2026-07-28T00:00:02.000Z",

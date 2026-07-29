@@ -85,15 +85,15 @@ const assertRootTransactionHandling = (
   });
 
 describe("commit block worker output handling", () => {
-  it("keeps commit-block submit due-work unregistered while SDK commit txs have no lower validity bound", () => {
-    type CommitBlockHasNoLowerValidityBound =
+  it("requires production commit transactions to carry a lower validity bound", () => {
+    type CommitBlockHasLowerValidityBound =
       "validFrom" extends keyof ProductionCommitBlockHeaderParams
-        ? false
-        : true;
-    const commitBlockHasNoLowerValidityBound: CommitBlockHasNoLowerValidityBound =
+        ? true
+        : false;
+    const commitBlockHasLowerValidityBound: CommitBlockHasLowerValidityBound =
       true;
 
-    expect(commitBlockHasNoLowerValidityBound).toBe(true);
+    expect(commitBlockHasLowerValidityBound).toBe(true);
   });
 
   it("treats registered due work as normal non-submission control flow", () => {

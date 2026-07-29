@@ -20,6 +20,7 @@ import {
   mintingPolicyToId,
   Network,
   type Script,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
@@ -88,6 +89,7 @@ export type InspectContractsOutput = {
     readonly initReady: boolean;
     readonly doubleSpend: InspectContractsCatalogueCategoryOutput;
     readonly nonExistentInput: InspectContractsCatalogueCategoryOutput;
+    readonly nonExistentInputNoIndex: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
     readonly zeroInput: InspectContractsCatalogueCategoryOutput;
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
@@ -222,6 +224,7 @@ export type InspectContractsCatalogueCategoryOutput = {
 export type ImplementedFraudProofCategoryName =
   | "doubleSpend"
   | "nonExistentInput"
+  | "nonExistentInputNoIndex"
   | "invalidRange"
   | "zeroInput"
   | "transitionTrace"
@@ -558,6 +561,36 @@ const optionalDeploymentScriptHash = (
   name: string,
 ): string | null => deploymentInfo[name]?.scriptHash ?? null;
 
+const inspectEmbeddedDeploymentScriptIdentity = (
+  deploymentInfo: ContractDeploymentInfo,
+  name: string,
+): {
+  readonly expectedScriptHash: string;
+  readonly deploymentMatchesScriptBytes: boolean | null;
+} => {
+  const entry = deploymentInfo[name];
+  if (entry === undefined) {
+    return {
+      expectedScriptHash: "",
+      deploymentMatchesScriptBytes: null,
+    };
+  }
+  if (entry.contract === undefined) {
+    return {
+      expectedScriptHash: entry.scriptHash,
+      deploymentMatchesScriptBytes: false,
+    };
+  }
+  const derivedScriptHash = validatorToScriptHash({
+    type: entry.contract.type,
+    script: entry.contract.cborHex,
+  });
+  return {
+    expectedScriptHash: derivedScriptHash,
+    deploymentMatchesScriptBytes: derivedScriptHash === entry.scriptHash,
+  };
+};
+
 const expectScriptHash = (
   label: string,
   actual: string,
@@ -722,6 +755,7 @@ const inspectFraudProofCatalogue = (
       initReady: false,
       doubleSpend: emptyCatalogueCategoryInspection(),
       nonExistentInput: emptyCatalogueCategoryInspection(),
+      nonExistentInputNoIndex: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
       zeroInput: emptyCatalogueCategoryInspection(),
       transitionTrace: emptyCatalogueCategoryInspection(),
@@ -785,6 +819,9 @@ const inspectFraudProofCatalogue = (
 
       const doubleSpend = await inspectCategory("doubleSpend");
       const nonExistentInput = await inspectCategory("nonExistentInput");
+      const nonExistentInputNoIndex = await inspectCategory(
+        "nonExistentInputNoIndex",
+      );
       const invalidRange = await inspectCategory("invalidRange");
       const zeroInput = await inspectCategory("zeroInput");
       const transitionTrace = await inspectCategory("transitionTrace");
@@ -795,6 +832,7 @@ const inspectFraudProofCatalogue = (
         [
           "doubleSpend",
           "nonExistentInput",
+          "nonExistentInputNoIndex",
           "invalidRange",
           "zeroInput",
           "transitionTrace",
@@ -804,6 +842,7 @@ const inspectFraudProofCatalogue = (
         return {
           doubleSpend,
           nonExistentInput,
+          nonExistentInputNoIndex,
           invalidRange,
           zeroInput,
           transitionTrace,
@@ -818,6 +857,7 @@ const inspectFraudProofCatalogue = (
         initReady: rootMatchesDerived && implementedCategoriesReady,
         doubleSpend,
         nonExistentInput,
+        nonExistentInputNoIndex,
         invalidRange,
         zeroInput,
         transitionTrace,
@@ -864,6 +904,11 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofNonExistentInput",
     );
+    const nonExistentInputNoIndexIdentity =
+      inspectEmbeddedDeploymentScriptIdentity(
+        parsedDeploymentInfo,
+        "fraudProofNonExistentInputNoIndex",
+      );
     const deploymentInvalidRangeScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofInvalidRange",
@@ -1065,6 +1110,8 @@ export const inspectContracts = ({
       {
         doubleSpend: categoryFirstStepHash,
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
+        nonExistentInputNoIndex:
+          nonExistentInputNoIndexIdentity.expectedScriptHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
         zeroInput: zeroInputCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
@@ -1073,6 +1120,8 @@ export const inspectContracts = ({
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
+        nonExistentInputNoIndex:
+          nonExistentInputNoIndexIdentity.deploymentMatchesScriptBytes,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
         zeroInput: deploymentZeroInputMatchesFirstStep,
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,

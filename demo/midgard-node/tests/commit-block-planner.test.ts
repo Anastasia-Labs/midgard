@@ -350,6 +350,38 @@ describe("commit block planner", () => {
     ]);
   });
 
+  it("accepts a validTo one millisecond beyond the inclusive scheduler cap", () => {
+    const cap = Date.parse("2026-01-01T00:05:00.000Z");
+    const atCap = mkTxEntry(1, new Date(cap));
+    const selection = selectCommitTxCandidates({
+      mempoolTxs: [atCap],
+      processedMempoolTxs: [],
+    });
+
+    const plan = planSchedulerAwareCommitSelection({
+      candidateSelection: selection,
+      userEventOnlyEndTime: new Date(cap),
+      currentSchedulerWindow: {
+        schedulerOutRef: "aa#0",
+        operatorKeyHash: "operator",
+        startTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        endTimeMs: cap,
+      },
+      currentBlockStartTimeMs: Date.parse("2025-12-31T23:59:00.000Z"),
+      nowMs: Date.parse("2026-01-01T00:00:00.000Z"),
+      minimumCurrentWindowBudgetMs: 60_000,
+      currentWindowCommitEndTimeFit: fitInsideSchedulerWindow({
+        resolvedEndTimeMs: cap + 1,
+        maximumEndTimeMs: cap,
+      }),
+    });
+
+    expect(plan.status).toBe("using_current_scheduler_window");
+    expect(plan.reason).toContain(
+      `resolved_inclusive_end_time_ms=${cap.toString()}`,
+    );
+  });
+
   it("does not cap to the current scheduler window when the remaining budget is too low", () => {
     const cap = Date.parse("2026-01-01T00:05:00.000Z");
     const afterCap = mkTxEntry(2, new Date("2026-01-01T00:05:01.000Z"));
@@ -413,7 +445,7 @@ describe("commit block planner", () => {
     expect(plan.candidateSelection).toBe(selection);
     expect(plan.userEventOnlyEndTime).toBe(userEventOnlyEndTime);
     expect(plan.reason).toContain(
-      `resolved_end_time_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
+      `resolved_valid_to_ms=${(nowMs + 8 * 60_000 + 1_000).toString()}`,
     );
     expect(plan.reason).toContain(`current_scheduler_end_ms=${cap.toString()}`);
     expect(plan.reason).toContain("minimum_future_buffer_ms=480000");

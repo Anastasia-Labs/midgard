@@ -14,8 +14,11 @@ import {
 import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
+  type DeploymentManifestV1FraudProofCatalogueCategory,
+  type DeploymentManifestV1FraudProofCatalogueCategoryIdentity,
   type DeploymentManifestV1JsonValue,
   normalizeDeploymentManifestV1JsonValue,
+  verifyDeploymentManifestV1FraudProofCatalogueIdentity,
   verifyDeploymentManifestV1Identity,
   verifyFinalizedDeploymentManifestV1,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
@@ -584,7 +587,7 @@ const validateFraudProofCatalogue = (
     [],
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue",
   );
-  requireLowercaseHex(
+  const root = requireLowercaseHex(
     candidate.root,
     32,
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.root",
@@ -608,10 +611,11 @@ const validateFraudProofCatalogue = (
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
   } as const;
-  for (const [
-    categoryIndex,
-    categoryName,
-  ] of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.entries()) {
+  const parsedCategories = {} as Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    DeploymentManifestV1FraudProofCatalogueCategoryIdentity
+  >;
+  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireObject(categories[categoryName], field);
     requireExactKeys(
@@ -625,21 +629,20 @@ const validateFraudProofCatalogue = (
       4,
       `${field}.categoryId`,
     );
-    const expectedCategoryId = categoryIndex.toString(16).padStart(8, "0");
-    if (categoryId !== expectedCategoryId) {
-      throw new Error(
-        `Deployment manifest ${field}.categoryId must be ${expectedCategoryId} under FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`,
-      );
-    }
     const scriptHash = requireLowercaseHex(
       category.scriptHash,
       28,
       `${field}.scriptHash`,
     );
-    requireLowercaseVariableHex(
+    const membershipProofCbor = requireLowercaseVariableHex(
       category.membershipProofCbor,
       `${field}.membershipProofCbor`,
     );
+    parsedCategories[categoryName] = {
+      categoryId,
+      scriptHash,
+      membershipProofCbor,
+    };
     const expectedContract = requireObject(
       contracts[contractNameByCategory[categoryName]],
       `contracts.${contractNameByCategory[categoryName]}`,
@@ -650,6 +653,10 @@ const validateFraudProofCatalogue = (
       );
     }
   }
+  verifyDeploymentManifestV1FraudProofCatalogueIdentity({
+    root,
+    categories: parsedCategories,
+  });
 };
 
 const validateContracts = (contracts: Record<string, unknown>): void => {

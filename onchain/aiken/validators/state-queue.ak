@@ -11,8 +11,9 @@ use midgard/da_attestation_types as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
-  ConfirmedState, block_maturity_duration_v1, genesis_header_hash,
-  genesis_utxo_root, max_deposit_count_v1, max_forced_transaction_count_v1,
+  ConfirmedState, block_maturity_duration_v1,
+  confirmed_state_next_header_protocol_version_v1, genesis_confirmed_state_v1,
+  max_deposit_count_v1, max_forced_transaction_count_v1,
   max_l2_transaction_count_v1, max_total_event_count_v1,
   max_transition_step_count_v1, max_validation_trace_count_v1,
   max_withdrawal_count_v1, protocol_version_v1,
@@ -28,8 +29,8 @@ use midgard/state_queue.{
   OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
   RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
   SlashRetiredOperator, SpendRedeemer, StateQueueNode,
-  confirmed_state_asset_name, decode_header_view, finalize_linked_list,
-  no_da_attestation,
+  commit_bound_header_time_is_valid, confirmed_state_asset_name,
+  decode_header_view, finalize_linked_list, no_da_attestation,
 }
 
 fn root_matches_count(root: ByteArray, count: Int) -> Bool {
@@ -168,11 +169,23 @@ fn merge_to_confirmed_state(
         ConfirmedState {
           start_time: input_confirmed_state_start_time,
           header_hash: input_confirmed_state_header_hash,
+          prev_header_hash: input_confirmed_state_prev_header_hash,
+          utxo_root: input_confirmed_state_utxo_root,
+          end_time: input_confirmed_state_end_time,
           protocol_version: input_confirmed_state_protocol_version,
-          ..
         }
       = input_confirmed_state_data
-    expect input_confirmed_state_protocol_version == expected_protocol_version
+    expect
+      Some(expected_protocol_version) == confirmed_state_next_header_protocol_version_v1(
+        ConfirmedState {
+          header_hash: input_confirmed_state_header_hash,
+          prev_header_hash: input_confirmed_state_prev_header_hash,
+          utxo_root: input_confirmed_state_utxo_root,
+          start_time: input_confirmed_state_start_time,
+          end_time: input_confirmed_state_end_time,
+          protocol_version: input_confirmed_state_protocol_version,
+        },
+      )
     let expected_output_confirmed_state_data: Data = ConfirmedState {
       header_hash: header_node_key,
       prev_header_hash: input_confirmed_state_header_hash,
@@ -272,14 +285,10 @@ validator mint(
           validity_range,
         )
 
-        let expected_root_data: Data = ConfirmedState {
-          header_hash: genesis_header_hash,
-          prev_header_hash: genesis_header_hash,
-          utxo_root: genesis_utxo_root,
-          start_time: current_time_upper,
-          end_time: current_time_upper,
-          protocol_version: protocol_version_v1,
-        }
+        expect Some(expected_genesis_state) = genesis_confirmed_state_v1(
+          current_time_upper,
+        )
+        let expected_root_data: Data = expected_genesis_state
 
         expect
           linked_list.init(
@@ -339,6 +348,7 @@ validator mint(
               mint,
               extra_signatories,
               redeemers,
+              validity_range,
               ..
             }
           = self
@@ -390,7 +400,12 @@ validator mint(
           let output_prev_header_hash = output_header.prev_header_hash
           let output_operator_vkey = output_header.operator_vkey
           let output_protocol_version = output_header.protocol_version
-          expect output_start_time < output_end_time
+          expect
+            commit_bound_header_time_is_valid(
+              output_start_time,
+              output_end_time,
+              validity_range,
+            )
           expect header_view_is_valid(output_header)
 
           // 6. The operator pub key hash from the redeemer must match the one
@@ -448,16 +463,27 @@ validator mint(
               expect
                   ConfirmedState {
                     header_hash,
+                    prev_header_hash,
                     utxo_root,
+                    start_time,
                     end_time,
                     protocol_version,
-                    ..
                   }
                 = anchor_data
               expect output_prev_header_hash == header_hash
               expect output_prev_utxos_root == utxo_root
               expect output_start_time == end_time
-              expect output_protocol_version == protocol_version
+              expect
+                Some(output_protocol_version) == confirmed_state_next_header_protocol_version_v1(
+                  ConfirmedState {
+                    header_hash,
+                    prev_header_hash,
+                    utxo_root,
+                    start_time,
+                    end_time,
+                    protocol_version,
+                  },
+                )
 
               // Done.
               True

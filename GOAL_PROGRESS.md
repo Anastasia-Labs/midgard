@@ -139,7 +139,7 @@
 | AC-03     | TODO        | Final release identity and digest required.                                                                                                                                                                                                                                                                                                                                                                                                             |
 | AC-C10    | TODO        | CG1 required.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | AC-C20    | TODO        | CG2 full P2 matrix required.                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| AC-C21    | IN_PROGRESS | The retired transaction-field whole-preimage constructor is removed, but a fresh deployed-path audit found whole ledger-output and native-script carriers in CEK auxiliary witnesses plus a resolved-descriptor/root mismatch. Four exact carriers and required hostile evidence are ledgered below; three disjoint remediation leases are active. No PASS credit until final-tree source/ABI/blueprint absence and maximum bounded-witness tests pass. |
+| AC-C21    | IN_PROGRESS | The retired transaction-field whole-preimage constructor is removed, but the deployed-path audit found whole ledger-output and native-script carriers in CEK auxiliary witnesses plus a resolved-descriptor/root mismatch. The exact carriers and hostile evidence remain ledgered below. No remediation lease is active at this checkpoint, and no PASS credit is claimed until final-tree source/ABI/blueprint absence and maximum bounded-witness tests pass. |
 | AC-C30    | TODO        | CG3 resolver sweep required.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | AC-C31    | TODO        | Enabled semantic surface proof required.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | AC-C40    | TODO        | CG4 classification/forced sweep required.                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -579,24 +579,49 @@
   `docs/exec-plans/canonical-v1-pr-differential-review-2026-07-28.md`.
 - Fresh checkpoint evidence:
   - Aiken `v1.1.22+39d6b04` build PASS; generated blueprint SHA-256
-    `449e7aecc51820f77866e6fe15c79ce29b7e3ea3ad9425b55f90d14abcbc3b81`;
-    guarded zero-input selector completes with zero errors.
+    `32dd6f052b5fb9e2da1f81efb5c2bdc816c6136f09a20f0e1ea5c526b20b3466`;
+    355 unique validator titles; phase-A router 5,302 raw bytes,
+    script-sources router 5,305 raw bytes, and state-queue mint policy 10,762
+    raw bytes. The new resolver, header-time, and genesis selectors pass
+    13/13.
   - Watcher 13/13 files and 194/194 tests PASS; typecheck, ESLint, Prettier,
     and the 8-class hash-bound dependency verifier PASS.
-  - Fault-proof 14/14 files and 107/107 tests PASS in 462.80 seconds;
-    rebuilt-blueprint zero-input emulator 1/1 PASS; typecheck, ESLint, and
-    scoped Prettier PASS.
+  - Fault-proof 14/14 files and 110/110 tests PASS in 434.74 seconds,
+    including all 14 rebuilt-blueprint emulator journeys; typecheck, build,
+    ESLint, and scoped Prettier PASS. Post-format focused replay passes 26/26.
   - Full retained-DA verifier PASS: 13 producer files/14 tests in 491.06
     seconds, DA consumer 20/20 in 30.02 seconds, and fault-proof consumer 3/3
     in 27.73 seconds, after regenerating and byte-comparing the private corpus.
-  - DA package PASS outside the listener-restricted sandbox: 26 executed
-    files/184 tests PASS, one PostgreSQL-environment test skipped; typecheck,
-    production build, and no-HTTP transport guard PASS. The skipped hostile
+  - DA package: 26/27 files and 189/190 tests PASS, with the one
+    PostgreSQL-environment test explicitly skipped; typecheck, production
+    build, and no-HTTP transport guard PASS. The skipped hostile
     startup-journal case separately passes 1/1 against local PostgreSQL.
-  - Core deployment identity 6/6, SDK fault-proof integration 17/17, and node
-    deployment/contract registry 24/24 PASS.
-  - Documentation facts 9 groups, links 190 Markdown/MDX files, and voice 83
-    pages PASS under pinned Node 22.
+  - Core production build and full 36-file, 271/271 suite PASS. SDK production
+    build/typecheck and full 16-file, 80/80 suite PASS. Node final focused
+    replay passes 8 files and 74/74 tests; its dependency-building typecheck
+    and package lint PASS.
+  - Documentation facts 10 groups, links 190 Markdown/MDX files, and voice 83
+    pages PASS under pinned Node 22; the full 142-page technical specification
+    build passes.
+- Full PR-tree lint review found import-order defects in node submission and
+  three already-published PR files. All four were mechanically corrected;
+  node, SDK, and core package lint now pass, and affected fault/core/node
+  focused tests replayed 26/26, 12/12, and 74/74 respectively.
+- Post-publication source-mode review found that the DA provider state-machine
+  constructor still defaulted an omitted discriminator to
+  `external_providers`. Production configuration was already explicit, but
+  the public constructor compatibility seam violated the authoritative
+  no-inference rule. The follow-up requires `sourceMode` at the type/runtime
+  boundary, rejects unknown/omitted runtime values, and updates every caller.
+  The exact provider suite passes 15/15; the full DA suite remains 189/190
+  with only the declared PostgreSQL case skipped; typecheck, build, and the
+  no-HTTP guard pass.
+- Content-tree binding found and fixed a Git-link reproducibility defect: the
+  verifier now hashes the tracked mode/object identity for
+  `technical-spec/Lean4Midgard` instead of following a checked-out directory.
+  The exact staged tree is bound at
+  `14e626e4af57da19629dd4a825334d41027a2f9632f0408e04754cb37bd75c03`,
+  and all eight dependency classes verify together.
 - No active path leases remain. No product failure remains in the checkpoint
   scope. The initial mistyped DA package filter and mistyped documentation-link
   script path were command errors immediately superseded by the exact passing
@@ -627,9 +652,12 @@ Q00→Q03; W20 remains stopped until its prerequisites are proven.
 No current local-work blocker. The sandbox mounts `.git` read-only, so narrow
 staging/push operations require approved Git access. Docker and the exact
 Aiken `v1.1.22+39d6b04` compiler are available. Missing
-`DA_L1_SUBMITTER_KEY_SOURCE`, proof of provider operation, funded
-wallet/collateral, and a second independent watcher provider remain F03/P6
-preflight gaps, not blockers to dependency-ready local work.
+`DA_L1_SUBMITTER_KEY_SOURCE`, proof of configured source operation, and funded
+wallet/collateral remain F03/P6 preflight gaps. A second independent watcher
+provider is additionally required only if final acceptance selects
+`external_providers`; `local_node` instead requires the watcher-operated node
+and aligned query/index surfaces. These are not blockers to dependency-ready
+local work.
 
 ## Superseding isolated publication checkpoint
 
@@ -723,3 +751,72 @@ PR #471 against `tx-validation`, inspect the actual remote diff, comments,
 review threads, and CI, fix every actionable finding with additive commits,
 and repeat the review until the checkpoint is good to merge on its stated
 scope. Do not mark the overarching Goal complete.
+
+## Superseding merged publication checkpoint
+
+- This section supersedes the isolated pre-publication checkpoint wherever
+  merged-tree identities, counts, or publication state differ. It does not
+  promote any open §12 acceptance criterion or §15.
+- The local additive checkpoint is
+  `b58c5ea6c975f8d3d18acf4a7ea1fefd112353cd`. The already-published branch
+  commits `66d2d5d5` and `9013e827` are integrated through an ordinary merge;
+  neither history was rebased, squashed, reset, or force-replaced. The target
+  remains `tx-validation` at
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- The authoritative L1-source rule remains exact after merge:
+  `local_node` has one watcher-operated node authority with aligned query
+  surfaces and no provider quorum; `external_providers` requires at least two
+  operationally independent providers at the same network and compatible
+  chain points. W12–W17 accept either valid discriminator. W14 indexes
+  node-accepted transaction/output/datum bytes from W10–W13 without replaying
+  Cardano validator semantics.
+- Merge review removed the unreferenced duplicate watcher catalogue fixture,
+  retained the catalogue fixture that verifies exact deployment-manifest
+  category identities, required the L1 authority digest in every durable
+  decision effect, and restored the explicit durable local-node chain-sync
+  provider/cursor fixture shape.
+- Fresh merged Aiken evidence:
+  `aiken build --env testnet` PASS; `plutus.json` is 9,960,375 bytes with 355
+  validators and SHA-256
+  `bc0f2b7e502389619236facf4f1bb1bb7889ec1fe7ad271196d656de050a79e7`.
+  The new commit-validity, genesis-sentinel, and semantic-resolver selectors
+  pass 10/10.
+- Fresh merged Node 22 evidence:
+  - watcher full suite 201/201 PASS; typecheck, lint, and scoped format PASS;
+  - DA sandbox-safe aggregate 207 PASS with one PostgreSQL skip, plus the five
+    localhost/child-process tests PASS outside the restricted sandbox;
+    typecheck, lint, and scoped format PASS;
+  - core full suite 273/273 PASS;
+  - SDK full suite 82/82 PASS;
+  - node merged integration set 66/66 PASS; typecheck and package lint PASS;
+  - fault-proof aggregate passed 141/142 before the multiple-successor
+    emulator exceeded its stale 180-second budget under full-suite CPU
+    contention. Its current-blueprint budget is restored to 300 seconds and
+    the exact selector then passes 1/1; fault-proof typecheck, lint, and scoped
+    format PASS.
+- Documentation facts 10 groups, links 190 Markdown/MDX files, and voice 83
+  pages PASS. The Nix/LaTeX build produces the full 143-page technical
+  specification successfully.
+- The exact staged content tree, excluding only this ledger and its
+  self-referential map, is SHA-256
+  `965a18e9db7a3f5e9274d336715a092b07b120d982ee05f39144a6c7fbda6a23`.
+  Dependency-map SHA-256 is
+  `30bdb04b40ab5914f9f4989eaf48a6d8891d9727919309221f3f14a0a54f8dd6`;
+  verifier SHA-256 is
+  `e290ce9e297e44e7cc23ae2e06a66a385942c09d2d98db8f00bf0629d84b8249`;
+  all eight dependency classes verify.
+- Diff hygiene and conflict-marker scans pass. The known whole-package
+  Prettier baselines outside the merge diff remain unchanged; every merged
+  TypeScript path passes scoped Prettier. No path leases remain active.
+- No local checkpoint-scope product failure remains. Missing P6 live
+  credentials/services still block only dependent live criteria, and an
+  independent second provider is required only if acceptance chooses
+  `external_providers`.
+
+## Superseding current publication action
+
+Commit this ordinary merge, push
+`colll78/canonical-v1-watcher-l1-source-checkpoint`, update draft PR #471,
+inspect the actual PR diff, review threads, comments, and CI, then address
+every actionable finding with additive commits until the checkpoint is good
+to merge on its stated scope. The overarching Goal remains in progress.

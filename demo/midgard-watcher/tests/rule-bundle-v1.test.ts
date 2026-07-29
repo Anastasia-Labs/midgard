@@ -45,7 +45,7 @@ import {
   WatcherRuleBundleV1Error,
   type WatcherRuleBundleV1ErrorCode,
 } from "../src/rule-bundle-v1.js";
-import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
 

@@ -54,6 +54,30 @@ export type L1SourceConfig =
       }[];
     };
 
+export const l1SourceAuthorityDigest = (
+  network: string,
+  source: L1SourceConfig,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        source.sourceMode === "local_node"
+          ? {
+              network,
+              sourceMode: source.sourceMode,
+              authorityNodeId: source.authorityNodeId,
+              chainSyncProviderUrl: source.chainSyncProviderUrl,
+              queryProviderUrls: source.queryProviderUrls,
+            }
+          : {
+              network,
+              sourceMode: source.sourceMode,
+              providers: source.providers,
+            },
+      ),
+    )
+    .digest("hex");
+
 export type WatcherConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;

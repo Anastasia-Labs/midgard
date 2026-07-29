@@ -14,6 +14,7 @@ import {
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
 
@@ -28,20 +29,30 @@ import {
   TxUtils as TxTable,
   WithdrawalsDB,
 } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import {
+  DatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 import type * as Ledger from "@/database/utils/ledger.js";
 import { Columns as TxColumns } from "@/database/utils/tx.js";
 import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
+import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
+import { sameSpeculativeSourceIdSet } from "@/fibers/speculative-commit-state.js";
 import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
   type OperatorWalletView,
 } from "@/operator-wallet-view.js";
-import type {
-  ContractDeploymentIdentityValue,
+import {
+  ContractDeploymentIdentity,
+  type ContractDeploymentIdentityValue,
   Database,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
 } from "@/services/index.js";
-import { Lucid } from "@/services/index.js";
 import {
   isUnknownOutputReferenceSubmitError,
   TxSignError,
@@ -171,13 +182,13 @@ export const assertPreSubmitDaPayloadSize = ({
           cause,
         }),
     });
-    const forcedTransactionPreimages =
-      includedForcedTransactionEntries.map((entry) =>
+    const forcedTransactionPreimages = includedForcedTransactionEntries.map(
+      (entry) =>
         daEntry(
           entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
           entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR],
         ),
-      );
+    );
     const withdrawals = yield* Effect.forEach(
       includedWithdrawalEntries,
       (entry) => {
@@ -368,6 +379,129 @@ const assertCommitInputsWithinBlockEndTime = ({
       );
     }
   });
+
+export const commitUserEventSourceIdSetsAreExact = ({
+  pendingDepositIds,
+  includedDepositIds,
+  pendingForcedTransactionIds,
+  includedForcedTransactionIds,
+  pendingWithdrawalIds,
+  includedWithdrawalIds,
+}: {
+  readonly pendingDepositIds: readonly string[];
+  readonly includedDepositIds: readonly string[];
+  readonly pendingForcedTransactionIds: readonly string[];
+  readonly includedForcedTransactionIds: readonly string[];
+  readonly pendingWithdrawalIds: readonly string[];
+  readonly includedWithdrawalIds: readonly string[];
+}): boolean =>
+  sameSpeculativeSourceIdSet(pendingDepositIds, includedDepositIds) &&
+  sameSpeculativeSourceIdSet(
+    pendingForcedTransactionIds,
+    includedForcedTransactionIds,
+  ) &&
+  sameSpeculativeSourceIdSet(pendingWithdrawalIds, includedWithdrawalIds);
+
+type CommitUserEventSourceRefreshers<E, R> = {
+  readonly deposit: (upperBound: Date) => Effect.Effect<Date, E, R>;
+  readonly withdrawal: (upperBound: Date) => Effect.Effect<Date, E, R>;
+  readonly txOrder: (upperBound: Date) => Effect.Effect<Date, E, R>;
+};
+
+export const refreshCommitUserEventSourcesThroughBlockEnd = <
+  E = SDK.LucidError | DatabaseError,
+  R =
+    | ContractDeploymentIdentity
+    | Database
+    | Lucid
+    | MidgardContracts
+    | NodeConfig,
+>(
+  blockEndTimeMs: number,
+  refreshers: CommitUserEventSourceRefreshers<E, R> = {
+    deposit: fetchAndInsertDepositUTxOsForCommitBarrier,
+    withdrawal: fetchAndInsertWithdrawalUTxOsForCommitBarrier,
+    txOrder: fetchAndInsertTxOrderUTxOsForCommitBarrier,
+  } as unknown as CommitUserEventSourceRefreshers<E, R>,
+) =>
+  Effect.gen(function* () {
+    const finalBlockEndTime = new Date(blockEndTimeMs);
+    yield* refreshers.deposit(finalBlockEndTime);
+    yield* refreshers.withdrawal(finalBlockEndTime);
+    yield* refreshers.txOrder(finalBlockEndTime);
+  });
+
+const assertCommitUserEventSourceCompleteness = ({
+  blockEndTimeMs,
+  includedDepositEntries,
+  includedForcedTransactionEntries,
+  includedWithdrawalEntries,
+}: {
+  readonly blockEndTimeMs: number;
+  readonly includedDepositEntries: readonly DepositsDB.Entry[];
+  readonly includedForcedTransactionEntries: readonly ForcedTransactionsDB.Entry[];
+  readonly includedWithdrawalEntries: readonly WithdrawalsDB.Entry[];
+}): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const effectiveEndTime = new Date(blockEndTimeMs);
+
+    // This effect runs inside the pending-journal transaction. Lock all three
+    // source tables so the exact due set cannot change between this check and
+    // assigning the journal projection.
+    yield* sql`LOCK TABLE ${sql(DepositsDB.tableName)} IN SHARE MODE`;
+    yield* sql`LOCK TABLE ${sql(ForcedTransactionsDB.tableName)} IN SHARE MODE`;
+    yield* sql`LOCK TABLE ${sql(WithdrawalsDB.tableName)} IN SHARE MODE`;
+    const [pendingDeposits, pendingForcedTransactions, pendingWithdrawals] =
+      yield* Effect.all(
+        [
+          DepositsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+          ForcedTransactionsDB.retrievePendingHeaderEntriesUpTo(
+            effectiveEndTime,
+          ),
+          WithdrawalsDB.retrievePendingHeaderEntriesUpTo(effectiveEndTime),
+        ],
+        { concurrency: 1 },
+      );
+
+    if (
+      !commitUserEventSourceIdSetsAreExact({
+        pendingDepositIds: pendingDeposits.map((entry) =>
+          entry[DepositsDB.Columns.ID].toString("hex"),
+        ),
+        includedDepositIds: includedDepositEntries.map((entry) =>
+          entry[DepositsDB.Columns.ID].toString("hex"),
+        ),
+        pendingForcedTransactionIds: pendingForcedTransactions.map((entry) =>
+          entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+        ),
+        includedForcedTransactionIds: includedForcedTransactionEntries.map(
+          (entry) =>
+            entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
+        ),
+        pendingWithdrawalIds: pendingWithdrawals.map((entry) =>
+          entry[WithdrawalsDB.Columns.ID].toString("hex"),
+        ),
+        includedWithdrawalIds: includedWithdrawalEntries.map((entry) =>
+          entry[WithdrawalsDB.Columns.ID].toString("hex"),
+        ),
+      })
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Commit user-event source set changed before journal preparation",
+          cause: `block_end_time_ms=${blockEndTimeMs.toString()}`,
+        }),
+      );
+    }
+  }).pipe(
+    sqlErrorToDatabaseError(
+      PendingBlockFinalizationsDB.tableName,
+      "Failed to revalidate commit user-event source completeness",
+    ),
+  );
 
 const signalStaleOperatorWalletRetry = ({
   pendingHeaderHash,
@@ -575,11 +709,9 @@ export const submitDepositOnlyCommit = ({
   readonly selectedBaseUtxosRoot: string;
   readonly implicitGenesisEntries: readonly Ledger.MinimalEntry[];
   readonly nativeMpfReplay?: NativeMpfReplayBuild;
-  readonly beforePendingJournalInsert?: Effect.Effect<
-    void,
-    DatabaseError,
-    Database
-  >;
+  readonly beforePendingJournalInsert?: (
+    blockEndTimeMs: number,
+  ) => Effect.Effect<void, DatabaseError, Database>;
 }) =>
   Effect.gen(function* () {
     const [optDepositsRoot, optForcedTransactionsRoot, optWithdrawalsRoot] =
@@ -726,6 +858,9 @@ export const submitDepositOnlyCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
+                yield* refreshCommitUserEventSourcesThroughBlockEnd(
+                  blockEndTimeMs,
+                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const cekProgramMaterial = isMidgardConsensusProfileV1(
                   consensusProfile,
@@ -811,6 +946,14 @@ export const submitDepositOnlyCommit = ({
                     implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
+                const beforeJournalInsert =
+                  beforePendingJournalInsert?.(blockEndTimeMs) ??
+                  assertCommitUserEventSourceCompleteness({
+                    blockEndTimeMs,
+                    includedDepositEntries,
+                    includedForcedTransactionEntries,
+                    includedWithdrawalEntries,
+                  });
                 return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                   {
                     headerHash: headerHashBuffer,
@@ -840,9 +983,7 @@ export const submitDepositOnlyCommit = ({
                     utxoPayloadAggregate,
                     nativeMpfReplay,
                   },
-                  beforePendingJournalInsert === undefined
-                    ? undefined
-                    : { beforeJournalInsert: beforePendingJournalInsert },
+                  { beforeJournalInsert },
                 ).pipe(
                   Effect.andThen(
                     reachPipelinedCommitCrashCheckpoint(
@@ -1023,11 +1164,9 @@ export const submitTxBackedCommit = ({
   readonly workerInput: WorkerInput;
   readonly sizeOfProcessedTxs: number;
   readonly blockEndTimeCapMs?: number;
-  readonly beforePendingJournalInsert?: Effect.Effect<
-    void,
-    DatabaseError,
-    Database
-  >;
+  readonly beforePendingJournalInsert?: (
+    blockEndTimeMs: number,
+  ) => Effect.Effect<void, DatabaseError, Database>;
 }) =>
   Effect.gen(function* () {
     const emptyRoot = yield* emptyRootHexProgram;
@@ -1220,6 +1359,9 @@ export const submitTxBackedCommit = ({
                 txSize,
               } = buildResult;
               return Effect.gen(function* () {
+                yield* refreshCommitUserEventSourcesThroughBlockEnd(
+                  blockEndTimeMs,
+                );
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const mempoolTxProgramMaterialSidecars =
                   isMidgardConsensusProfileV1(consensusProfile)
@@ -1327,6 +1469,14 @@ export const submitTxBackedCommit = ({
                     implicitGenesisEntries,
                     transitionDelta: ledgerDelta,
                   });
+                const beforeJournalInsert =
+                  beforePendingJournalInsert?.(blockEndTimeMs) ??
+                  assertCommitUserEventSourceCompleteness({
+                    blockEndTimeMs,
+                    includedDepositEntries,
+                    includedForcedTransactionEntries,
+                    includedWithdrawalEntries,
+                  });
                 return yield* PendingBlockFinalizationsDB.preparePendingSubmission(
                   {
                     headerHash: headerHashBuffer,
@@ -1358,9 +1508,7 @@ export const submitTxBackedCommit = ({
                     utxoPayloadAggregate,
                     nativeMpfReplay,
                   },
-                  beforePendingJournalInsert === undefined
-                    ? undefined
-                    : { beforeJournalInsert: beforePendingJournalInsert },
+                  { beforeJournalInsert },
                 ).pipe(
                   Effect.andThen(
                     reachPipelinedCommitCrashCheckpoint(

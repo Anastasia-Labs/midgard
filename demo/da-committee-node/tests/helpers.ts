@@ -401,6 +401,7 @@ export const minimalConfig = ({
     sourceMode: "local_node",
     authorityNodeId: "fixture-node",
     chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
+    chainSyncCursorPath: "/tmp/state-queue.chain-sync-cursor.json",
     queryProviderUrls: ["fixture:/tmp/state-queue.json"],
   },
   cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],

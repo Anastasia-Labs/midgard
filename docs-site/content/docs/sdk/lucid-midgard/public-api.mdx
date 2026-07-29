@@ -83,14 +83,16 @@ The builder methods, all returning a new `TxBuilder`:
 - `compose(other, ...others)`: merges compatible fragments left-to-right.
 - `snapshot()` / `debugSnapshot()`, inspectable builder state.
 
-<Callout type="info" title="Canonical V1 feature surface">
-Protocol version `1` enables `mintAssets`, `mint`, script witnesses, redeemers,
-reference inputs/scripts, observers, script payment credentials, and protected
-outputs. Like the other fluent methods, these calls return a new immutable
-`TxBuilder`; they are not rejected solely for selecting an enabled feature.
-Successful completion and admission still require the exact canonical encoding
-and bounds, valid scripts and policies, and an exact provider consensus-profile
-match.
+<Callout type="warn" title="Canonical V1 deployment binding">
+  `mintAssets`, `mint`, script witnesses, redeemers, reference inputs/scripts,
+  observers, script payment credentials, and protected outputs are all part of
+  the fixed canonical V1 surface. Like the other fluent methods, these calls
+  return a new immutable `TxBuilder`; they are not rejected solely for selecting
+  an enabled feature. The SDK accepts them only against the exact connected V1
+  deployment tuple and profile digest. Successful completion and admission
+  require the exact canonical encoding and bounds, valid scripts and policies,
+  and an exact provider consensus-profile match; unknown versions, languages,
+  purposes, or encodings fail before builder state changes.
 </Callout>
 
 Completion comes in three flavors, each also as a `Safe` and `Program` variant:
@@ -100,12 +102,12 @@ Completion comes in three flavors, each also as a `Safe` and `Program` variant:
   `[newWalletUtxos, derivedOutputs, completeTx]` for [local chaining](/docs/sdk/lucid-midgard/builder-state-machine).
 
 <Callout type="info" title="Completion options">
-`complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" | "phase-b"`,
-default `"none"`), `feePolicy` (`"provider"` or explicit `minFeeA` / `minFeeB`),
-`maxFeeIterations`, and exact reference-script
-`programMaterial`. Completion verifies that every referenced Midgard V1
-envelope has matching canonical material and fails closed when it is missing.
-See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
+  `complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" |
+  "phase-b"`, default `"none"`), `feePolicy` (`"provider"` or explicit `minFeeA`
+  / `minFeeB`), `maxFeeIterations`, and exact reference-script
+  `programMaterial`. Completion verifies that every referenced Midgard V1
+  envelope has matching canonical material and fails closed when it is missing.
+  See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
 </Callout>
 
 ## `CompleteTx`
@@ -189,20 +191,21 @@ Every operation with side effects comes in three forms:
 
 Every thrown error is a subclass of `LucidMidgardError` (`src/core/errors.ts`):
 
-| Error | Raised when |
-| --- | --- |
-| `BuilderInvariantError` | The builder is asked to do something structurally impossible, for example a duplicate spend input or a malformed option. |
-| `InsufficientFundsError` | Coin selection cannot cover the required value. Carries `unit`, `required`, `available`, and `feeIncluded`. |
-| `SigningError` | Signing failed, or a returned witness does not match the wallet identity. |
-| `ProviderError` | Base class for provider failures. |
-| `ProviderCapabilityError` | The provider does not support a required operation. |
-| `ProviderPayloadError` | The provider returned a malformed or inconsistent response. |
-| `ProviderHttpError` | The node answered with an HTTP error status. |
-| `ProviderTransportError` | The provider could not be reached. |
+| Error                     | Raised when                                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `BuilderInvariantError`   | The builder is asked to do something structurally impossible, for example a duplicate spend input or a malformed option. |
+| `InsufficientFundsError`  | Coin selection cannot cover the required value. Carries `unit`, `required`, `available`, and `feeIncluded`.              |
+| `SigningError`            | Signing failed, or a returned witness does not match the wallet identity.                                                |
+| `ProviderError`           | Base class for provider failures.                                                                                        |
+| `ProviderCapabilityError` | The provider does not support a required operation.                                                                      |
+| `ProviderPayloadError`    | The provider returned a malformed or inconsistent response.                                                              |
+| `ProviderHttpError`       | The node answered with an HTTP error status.                                                                             |
+| `ProviderTransportError`  | The provider could not be reached.                                                                                       |
 
 <Callout type="warn" title="Node rejections are not exceptions">
-A transaction rejected by node validation is not thrown. It arrives as a `rejected`
-[`TxStatus`](/docs/sdk/lucid-midgard/submission-observability) carrying the node's
-stable reject `code` and a nullable `detail`. `lucid-midgard` preserves those codes
-verbatim rather than translating them away.
+  A transaction rejected by node validation is not thrown. It arrives as a
+  `rejected` [`TxStatus`](/docs/sdk/lucid-midgard/submission-observability)
+  carrying the node's stable reject `code` and a nullable `detail`.
+  `lucid-midgard` preserves those codes verbatim rather than translating them
+  away.
 </Callout>

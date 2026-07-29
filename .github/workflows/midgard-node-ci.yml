@@ -18,8 +18,10 @@ on:
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/.nvmrc"
       - "demo/patches/**"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "scripts/ci/**"
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
@@ -38,8 +40,10 @@ on:
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/.nvmrc"
       - "demo/patches/**"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "scripts/ci/**"
       - ".github/workflows/midgard-node-ci.yml"
 

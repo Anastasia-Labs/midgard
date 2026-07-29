@@ -827,6 +827,70 @@ describe("WatcherService", () => {
     });
   });
 
+  it("quarantines restart state when the exact L1 authority changes", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "25";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const baseConfig = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const config = {
+      ...baseConfig,
+      l1Source: {
+        sourceMode: "local_node" as const,
+        authorityNodeId: "fixture-node",
+        chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
+        chainSyncCursorPath: `${dir}/chain-sync.json`,
+        queryProviderUrls: ["fixture:/tmp/state-queue.json"],
+      },
+    };
+    const firstStore = await openJsonWatcherStore(dir);
+    const first = new WatcherService({
+      config,
+      store: firstStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("no payload should be fetched"),
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ scannedHeaders: 0 });
+    const persisted = await firstStore.getL1SourceState();
+    expect(persisted).toMatchObject({
+      status: "healthy",
+      authoritySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+
+    await firstStore.close();
+    const restartedStore = await openJsonWatcherStore(dir);
+    const restarted = new WatcherService({
+      config: {
+        ...config,
+        l1Source: {
+          ...config.l1Source,
+          authorityNodeId: "replacement-node",
+        },
+      },
+      store: restartedStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("authority drift must fail at startup"),
+    });
+    await expect(restarted.initialize()).rejects.toThrow(
+      /does not match configured source mode\/network/u,
+    );
+    const quarantined = await restartedStore.getL1SourceState();
+    expect(quarantined).toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining(
+        "l1_source_configuration_changed",
+      ),
+      authoritySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(quarantined?.authoritySha256).not.toBe(persisted?.authoritySha256);
+  });
+
   it("quarantines a persisted decision when a stale query view loses finality", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

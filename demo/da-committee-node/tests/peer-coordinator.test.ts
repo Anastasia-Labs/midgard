@@ -39,6 +39,7 @@ describe("PeerSignatureCoordinator", () => {
       schemaVersion: 1,
       sourceMode: "local_node",
       network: "Preview",
+      authoritySha256: "91".repeat(32),
       status: "quarantined",
       observations: [],
       observedAt: "2026-07-28T00:00:00.000Z",
@@ -469,20 +470,19 @@ describe("PeerSignatureCoordinator", () => {
       payloadCbor,
       header,
     });
-    await receiverStore.saveDaSignature(
-      signatureRecord({
-        deploymentFingerprint,
-        headerHash,
+    const receiverRecord = signatureRecord({
+      deploymentFingerprint,
+      headerHash,
+      signerIndex: 0,
+      committeeSignersHash,
+      payloadHash,
+      signatureWitness: signDaAttestation({
+        signer: receiverSigner,
         signerIndex: 0,
-        committeeSignersHash,
-        payloadHash,
-        signatureWitness: signDaAttestation({
-          signer: receiverSigner,
-          signerIndex: 0,
-          headerHash,
-        }),
+        headerHash,
       }),
-    );
+    });
+    await receiverStore.saveDaSignature(receiverRecord);
     const receiverProtocol = new StoreBackedDaAttestationProtocol({
       deploymentFingerprint,
       localPeerId: "receiver-peer",
@@ -539,6 +539,38 @@ describe("PeerSignatureCoordinator", () => {
         stateQueueOutRef: "state-queue#0",
       },
     });
+
+    await receiverStore.saveDaSignature({
+      ...receiverRecord,
+      broadcastStatus: "post_failed",
+    });
+    await expect(
+      exchange.attestationsByHeader({
+        peer: { peerId: "receiver-peer", signerIndex: 0 },
+        deploymentFingerprint,
+        headerHash,
+      }),
+    ).resolves.toEqual([]);
+
+    await receiverStore.saveDaSignature(receiverRecord);
+    await receiverStore.saveL1SourceState({
+      schemaVersion: 1,
+      sourceMode: "local_node",
+      network: "Preview",
+      authoritySha256: "92".repeat(32),
+      status: "quarantined",
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+      quarantineReason: "rollback_not_propagated",
+      quarantinedAt: "2026-07-28T00:00:01.000Z",
+    });
+    await expect(
+      exchange.attestationsByHeader({
+        peer: { peerId: "receiver-peer", signerIndex: 0 },
+        deploymentFingerprint,
+        headerHash,
+      }),
+    ).resolves.toEqual([]);
   });
 
   it("builds canonical attestation gossip messages without changing the on-chain witness", async () => {

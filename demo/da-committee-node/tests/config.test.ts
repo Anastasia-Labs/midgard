@@ -18,6 +18,7 @@ vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
 
 import {
   DEFAULT_L1_SUBMITTER_PREFLIGHT,
+  l1SourceAuthorityDigest,
   LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES,
   LIBP2P_DA_MIN_RETENTION_DAYS,
   LIBP2P_DA_TRANSPORT_LIMITS,
@@ -380,6 +381,32 @@ describe("loadWatcherConfig", () => {
         ["kupmios:http://kupo.local|ws://ogmios-b.local"],
       ),
     ).toThrow(/not backed by the configured chain-sync authority/u);
+  });
+
+  it("binds the authority digest to the source mode, network, and authority endpoints", () => {
+    const local = parseL1SourceConfig(
+      {
+        CARDANO_L1_SOURCE_MODE: "local_node",
+        CARDANO_L1_TEST_MODE: "true",
+        CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
+        CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+        CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+          "/tmp/state.chain-sync-cursor.json",
+      },
+      ["fixture:/tmp/state.json"],
+    );
+    if (local.sourceMode !== "local_node") {
+      throw new Error("expected local-node source fixture");
+    }
+    const baseline = l1SourceAuthorityDigest("Preview", local);
+    expect(baseline).toMatch(/^[0-9a-f]{64}$/u);
+    expect(l1SourceAuthorityDigest("Preprod", local)).not.toBe(baseline);
+    expect(
+      l1SourceAuthorityDigest("Preview", {
+        ...local,
+        authorityNodeId: "preview-node-b",
+      }),
+    ).not.toBe(baseline);
   });
 
   it("requires two distinct operational identities in external-provider mode", () => {

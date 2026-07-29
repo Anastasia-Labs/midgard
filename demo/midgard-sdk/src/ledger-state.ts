@@ -19,7 +19,11 @@ import {
   PubKeyHashSchema,
   ValueSchema,
 } from "@/common.js";
-import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
+import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -374,6 +378,50 @@ export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
 export const castConfirmedStateToData = (
   confirmedState: ConfirmedState,
 ): unknown => Data.castTo(confirmedState, ConfirmedState);
+
+export const makeGenesisConfirmedStateV1 = (
+  genesisTime: bigint,
+): ConfirmedState => {
+  if (genesisTime < 0n) {
+    throw new Error("Genesis confirmed-state time must be non-negative");
+  }
+  return {
+    headerHash: GENESIS_HEADER_HASH,
+    prevHeaderHash: GENESIS_HEADER_HASH,
+    utxoRoot: EMPTY_MERKLE_TREE_ROOT,
+    startTime: genesisTime,
+    endTime: genesisTime,
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
+  };
+};
+
+/**
+ * Authenticates the only two protocol identities a V1 confirmed-state root may
+ * carry. Genesis is a distinct sentinel state; every committed state is V1
+ * and must have left the all-zero genesis header identity.
+ */
+export const confirmedStateNextHeaderProtocolVersionV1 = (
+  confirmedState: ConfirmedState,
+): bigint | null => {
+  const protocolV1 = BigInt(MIDGARD_PROTOCOL_V1_VERSION);
+  const isGenesis =
+    confirmedState.protocolVersion === GENESIS_PROTOCOL_VERSION &&
+    confirmedState.headerHash === GENESIS_HEADER_HASH &&
+    confirmedState.prevHeaderHash === GENESIS_HEADER_HASH &&
+    confirmedState.utxoRoot === EMPTY_MERKLE_TREE_ROOT &&
+    confirmedState.startTime >= 0n &&
+    confirmedState.startTime === confirmedState.endTime;
+  if (isGenesis) {
+    return protocolV1;
+  }
+
+  const isOrdinaryV1 =
+    confirmedState.protocolVersion === protocolV1 &&
+    confirmedState.headerHash !== GENESIS_HEADER_HASH &&
+    confirmedState.startTime >= 0n &&
+    confirmedState.startTime <= confirmedState.endTime;
+  return isOrdinaryV1 ? protocolV1 : null;
+};
 
 export const CardanoDatumSchema = Data.Enum([
   Data.Literal("NoDatum"),

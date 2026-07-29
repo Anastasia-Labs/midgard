@@ -100,7 +100,7 @@ import {
   type WatcherSettlementTransitionKindV1,
   type WatcherSettlementTransitionV1,
 } from "../src/settlement-indexer.js";
-import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 type Mutable = Record<string, any>;
 

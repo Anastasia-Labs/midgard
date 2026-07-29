@@ -84,7 +84,7 @@ import {
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
 } from "../src/rollback-engine.js";
-import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);

@@ -418,10 +418,13 @@ Only `verified` should be considered healthy.
 A production watcher should:
 
 - Run continuously and start before blocks are close to maturity.
-- Bind every public deployment to exactly one L1 source mode: one
-  watcher-operated chain-sync authority with aligned query surfaces in
-  `local_node`, or at least two operationally independent providers in
-  `external_providers`.
+- Select exactly one L1 source mode. In `local_node`, use one watcher-operated
+  Cardano full node and its chain-sync stream as the consensus authority, and
+  require every same-node query/index surface to match its network and
+  canonical chain point. In `external_providers`, require at least two
+  operationally independent providers to agree on network and compatible
+  chain point. Never count Ogmios, Kupo, or db-sync surfaces backed by one
+  local node as independent authorities.
 - Persist every proof-critical input before submitting proof transactions.
 - Alert on DA fetch failure, root mismatch, proof submission failure, maturity deadline risk, provider disagreement, chain rollback, deployment fingerprint mismatch, and proof-family coverage gaps.
 - Keep enough ADA and collateral inputs available for proof steps.

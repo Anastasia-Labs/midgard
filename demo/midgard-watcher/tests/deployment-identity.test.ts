@@ -34,7 +34,7 @@ import {
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityPolicyV1,
 } from "../src/deployment-identity.js";
-import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
