@@ -43,12 +43,16 @@ L1 connection:
     `submit-invalid-range-step-01` and `-02` for the `invalid-range` category,
     `submit-non-existent-input-step-01` through `-04` for the
     `non-existent-input` category, and `submit-no-reference-input-step-01`
-    through `-04` for the `no-reference-input` category. The non-existent-input
-    steps consume the `ne-*.json` artifacts in order: tx inclusion, inputs
-    preimage, ledger non-membership, then txs non-membership on the concluding
-    step. The no-reference-input steps mirror that order with the `nri-*.json`
-    artifacts, taking `--reference-inputs-preimage` and
-    `--bad-reference-input-index` on step 02.
+    through `-04` for the `no-reference-input` category, and
+    `submit-input-no-idx-step-01` through `-04` for the `input-no-idx` category.
+    The non-existent-input steps consume the `ne-*.json` artifacts in order: tx
+    inclusion, inputs preimage, ledger non-membership, then txs non-membership on
+    the concluding step. The no-reference-input steps mirror that order with the
+    `nri-*.json` artifacts, taking `--reference-inputs-preimage` and
+    `--bad-reference-input-index` on step 02. The input-no-idx steps take the
+    `input-no-idx-*.json` artifacts and need no ledger proofs: bad-tx inclusion,
+    inputs preimage, then the producing transaction's inclusion on step 03 and its
+    `--outputs-preimage` on the concluding step.
   </Step>
 </Steps>
 
