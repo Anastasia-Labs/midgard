@@ -44,6 +44,7 @@ import {
 import {
   evaluateWatcherFinalityV1,
   parseWatcherFinalityPolicyV1,
+  watcherFinalityConfiguredSourceV1,
   type WatcherFinalityPolicyV1,
   type WatcherFinalityResultV1,
 } from "./finality-engine.js";
@@ -82,6 +83,7 @@ export const WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS = Object.freeze({
   orphanAuditDigests: 256,
   retryAttempts: 32,
   requiredFinalityDepthMaximum: 2_160,
+  finalityLineageSteps: 2_160,
 });
 
 export const WATCHER_SETTLEMENT_TRANSITION_KINDS_V1 = [
@@ -384,6 +386,14 @@ export type WatcherSettlementDeploymentAuthorityV1 = Readonly<{
 
 export type WatcherSettlementFinalityAuthorityV1 = Readonly<{
   policy: unknown;
+  lineage: readonly Readonly<{
+    observations: readonly Readonly<{
+      authenticatedProvider: unknown;
+      l1Observation: unknown;
+    }>[];
+    consistency: unknown;
+    result: unknown;
+  }>[];
   previousState: unknown;
   observations: readonly Readonly<{
     authenticatedProvider: unknown;
@@ -1769,13 +1779,60 @@ const parseFinalityAuthority = (
 ): WatcherSettlementFinalityAuthorityV1 | null => {
   const record = exactRecord(value, [
     "policy",
+    "lineage",
     "previousState",
     "observations",
     "consistency",
     "result",
   ]);
-  if (record === null || !Array.isArray(record.observations)) {
+  if (
+    record === null ||
+    !Array.isArray(record.lineage) ||
+    record.lineage.length >
+      WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.finalityLineageSteps ||
+    !Array.isArray(record.observations)
+  ) {
     return null;
+  }
+  const lineage: {
+    observations: readonly {
+      authenticatedProvider: unknown;
+      l1Observation: unknown;
+    }[];
+    consistency: unknown;
+    result: unknown;
+  }[] = [];
+  for (const candidate of record.lineage) {
+    const step = exactRecord(candidate, [
+      "observations",
+      "consistency",
+      "result",
+    ]);
+    if (step === null || !Array.isArray(step.observations)) {
+      return null;
+    }
+    const stepObservations: {
+      authenticatedProvider: unknown;
+      l1Observation: unknown;
+    }[] = [];
+    for (const stepCandidate of step.observations) {
+      const observation = exactRecord(stepCandidate, [
+        "authenticatedProvider",
+        "l1Observation",
+      ]);
+      if (observation === null) {
+        return null;
+      }
+      stepObservations.push({
+        authenticatedProvider: observation.authenticatedProvider,
+        l1Observation: observation.l1Observation,
+      });
+    }
+    lineage.push({
+      observations: Object.freeze(stepObservations),
+      consistency: step.consistency,
+      result: step.result,
+    });
   }
   const observations: {
     authenticatedProvider: unknown;
@@ -1796,6 +1853,7 @@ const parseFinalityAuthority = (
   }
   return Object.freeze({
     policy: record.policy,
+    lineage: Object.freeze(lineage),
     previousState: record.previousState,
     observations: Object.freeze(observations),
     consistency: record.consistency,
@@ -1888,25 +1946,39 @@ const verifyFinalityAuthority = (
     ) {
       return null;
     }
+    let replayedState: unknown = null;
+    for (const step of authority.lineage) {
+      const normalizedStep = step.observations.map(
+        ({ authenticatedProvider, l1Observation }) =>
+          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      );
+      const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        watcherFinalityConfiguredSourceV1(finalityPolicy),
+        normalizedStep,
+      );
+      const stepResult = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        replayedState,
+        stepConsistency,
+      );
+      if (
+        !same(stepConsistency, step.consistency) ||
+        !same(stepResult, step.result) ||
+        stepResult.state === null
+      ) {
+        return null;
+      }
+      replayedState = stepResult.state;
+    }
+    if (!same(replayedState, authority.previousState)) {
+      return null;
+    }
     const normalized = authority.observations.map(
       ({ authenticatedProvider, l1Observation }) =>
         normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
     );
-    const configuredSource =
-      finalityPolicy.sourceMode === "local_node"
-        ? {
-            sourceMode: "local_node" as const,
-            network: finalityPolicy.network,
-            authorityNodeId: finalityPolicy.authorityNodeId as string,
-            genesisIdentitySha256:
-              finalityPolicy.authorityGenesisIdentitySha256 as string,
-          }
-        : {
-            sourceMode: "external_providers" as const,
-            network: finalityPolicy.network,
-          };
     const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      configuredSource,
+      watcherFinalityConfiguredSourceV1(finalityPolicy),
       normalized,
     );
     const result = evaluateWatcherFinalityV1(

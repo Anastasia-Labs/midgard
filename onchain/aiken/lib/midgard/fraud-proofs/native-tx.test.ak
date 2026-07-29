@@ -7,8 +7,8 @@ use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{encode_native_byte_list}
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_compact_v1, encode_native_tx_body_compact,
-  encode_native_tx_compact_v1, verify_native_tx_compact_cbor_v1,
-  verify_native_tx_compact_v1,
+  encode_native_tx_compact_v1, native_tx_id_for_version,
+  verify_native_tx_compact_cbor_v1, verify_native_tx_compact_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   decode_midgard_tx_output_cbor, encode_midgard_tx_output,
@@ -28,8 +28,10 @@ use midgard/fraud_proofs/native_tx/preimages.{
 use midgard/fraud_proofs/native_tx/transaction.{
   decode_midgard_transaction_v1, encode_midgard_transaction_body_full,
   encode_midgard_transaction_v1, encode_midgard_transaction_witness_set_full,
+  midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
   midgard_transaction_to_compact, midgard_transaction_witness_set_to_compact,
-  partial_view_from_compact_and_preimages, verify_midgard_transaction_v1,
+  partial_view_from_compact_and_preimages,
+  verify_midgard_transaction_field_preimage_v1, verify_midgard_transaction_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardAddressWitness, MidgardExecutionUnits,
@@ -37,8 +39,8 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionBodyPartialPreimages, MidgardTransactionWitnessSet,
   MidgardTransactionWitnessSetPartialPreimages, MidgardTxInput, MidgardTxOutput,
   MidgardValue, MidgardVersionedScript, NativeTxBodyCompact, NativeTxCompact,
-  PlutusV3Script, PubKeyCredential, RewardRedeemer, SpendRedeemer, TxIsValid,
-  native_tx_version_v1,
+  NativeTxProofSourceCborV1, PlutusV3Script, PubKeyCredential, RewardRedeemer,
+  SpendRedeemer, TxIsValid, native_tx_version_v1,
 }
 
 const golden_core_native_full_tx_cbor =
@@ -49,6 +51,9 @@ const golden_core_native_compact_tx_cbor =
 
 const golden_core_native_tx_id =
   #"ea7685b2e05809b8aa190df6cc9699f327a2e61db73ea6cd7c54309d0a8a7cd8"
+
+const zero_hash =
+  #"0000000000000000000000000000000000000000000000000000000000000000"
 
 const golden_core_spend_inputs_preimage_cbor =
   #"815824825820111111111111111111111111111111111111111111111111111111111111111100"
@@ -98,6 +103,56 @@ fn sample_golden_core_outputs_preimage_cbor(_size: Int) -> Fuzzer<ByteArray> {
 
 fn sample_golden_core_empty_preimage_cbor(_size: Int) -> Fuzzer<ByteArray> {
   fuzz.constant(golden_core_empty_preimage_cbor)
+}
+
+fn witness_field_order_transaction() -> MidgardTransaction {
+  let empty_mint: Data = []
+  MidgardTransaction {
+    version: native_tx_version_v1,
+    validity: TxIsValid,
+    body: MidgardTransactionBody {
+      inputs: [],
+      reference_inputs: [],
+      outputs: [],
+      fee: 0,
+      validity_interval_start: -1,
+      validity_interval_end: -1,
+      required_observers: [],
+      required_signers: [],
+      mint: empty_mint,
+      script_integrity_hash: zero_hash,
+      auxiliary_data_hash: zero_hash,
+      network_id: 255,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      addr_tx_wits: [
+        MidgardAddressWitness {
+          verification_key: zero_hash,
+          signature: zero_hash |> bytearray.concat(zero_hash),
+        },
+      ],
+      script_tx_wits: [
+        MidgardVersionedScript {
+          language: PlutusV3Script,
+          script_bytes: #"010203",
+        },
+      ],
+      redeemer_tx_wits: [],
+    },
+  }
+}
+
+fn witness_field_order_source(
+  tx: MidgardTransaction,
+) -> Pair<ByteArray, NativeTxProofSourceCborV1> {
+  let compact = midgard_transaction_to_compact(tx)
+  Pair(
+    native_tx_id_for_version(
+      native_tx_version_v1,
+      encode_native_tx_body_compact(compact.body),
+    ),
+    midgard_transaction_proof_source_v1(tx),
+  )
 }
 
 bench golden_core_decode_midgard_transaction_bench(
@@ -391,6 +446,60 @@ test midgard_transaction_full_decode_round_trip() {
       tx.witness_set.redeemer_tx_wits,
     ),
   }
+}
+
+test witness_fields_bind_scripts_to_six_and_addresses_to_seven() {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  let transaction_commitment = midgard_transaction_proof_commitment_v1(tx)
+  and {
+    verify_midgard_transaction_field_preimage_v1(
+      tx_id,
+      transaction_commitment,
+      source.compact_cbor,
+      source.witness_set_compact_cbor,
+      source.field_preimage_lengths_cbor,
+      6,
+      encode_script_witness_preimage(tx.witness_set.script_tx_wits),
+    ),
+    verify_midgard_transaction_field_preimage_v1(
+      tx_id,
+      transaction_commitment,
+      source.compact_cbor,
+      source.witness_set_compact_cbor,
+      source.field_preimage_lengths_cbor,
+      7,
+      encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
+    ),
+  }
+}
+
+test script_witnesses_cannot_authenticate_as_legacy_field_seven() fail {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    midgard_transaction_proof_commitment_v1(tx),
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+    7,
+    encode_script_witness_preimage(tx.witness_set.script_tx_wits),
+  )
+}
+
+test address_witnesses_cannot_authenticate_as_legacy_field_six() fail {
+  let tx = witness_field_order_transaction()
+  let Pair(tx_id, source) = witness_field_order_source(tx)
+  verify_midgard_transaction_field_preimage_v1(
+    tx_id,
+    midgard_transaction_proof_commitment_v1(tx),
+    source.compact_cbor,
+    source.witness_set_compact_cbor,
+    source.field_preimage_lengths_cbor,
+    6,
+    encode_address_witness_preimage(tx.witness_set.addr_tx_wits),
+  )
 }
 
 test decode_midgard_value_preserves_unsorted_asset_order() {

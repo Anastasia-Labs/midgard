@@ -30,13 +30,18 @@ export const WATCHER_FINALITY_V1_BOUNDS = Object.freeze({
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
-const SOURCE_AUTHORITY_ID = /^[a-z][a-z0-9-]{2,31}$/u;
+const SOURCE_AUTHORITY_ID = /^[a-z][a-z0-9-]{0,62}$/u;
 
 export type WatcherFinalityExternalProviderV1 = Readonly<{
   providerId: string;
   operatorIdentitySha256: string;
   endpoint: string;
   authenticationKind: "https_tls_identity_v1";
+}>;
+
+export type WatcherFinalityLocalQueryServiceV1 = Readonly<{
+  kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
+  providerId: string;
 }>;
 
 export const WATCHER_FINALITY_REASON_CODES_V1 = [
@@ -105,6 +110,7 @@ export type WatcherFinalityPolicyV1 = Readonly<{
   sourceMode: "local_node" | "external_providers";
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
+  localQueryServices: readonly WatcherFinalityLocalQueryServiceV1[];
   externalProviders: readonly WatcherFinalityExternalProviderV1[] | null;
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
@@ -197,17 +203,21 @@ type ParsedConsistency =
   | Readonly<{
       kind: "agreed";
       sourceMode: "local_node" | "external_providers";
+      configuredSourceDigest: string;
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
       externalProviderBindings: readonly ExternalProviderBinding[];
+      localQueryServiceBindings: readonly LocalQueryServiceBinding[];
       agreement: Agreement;
     }>
   | Readonly<{
       kind: "pending" | "quarantined";
       sourceMode: "local_node" | "external_providers";
+      configuredSourceDigest: string;
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
       externalProviderBindings: readonly ExternalProviderBinding[];
+      localQueryServiceBindings: readonly LocalQueryServiceBinding[];
       consistencyDigest: string;
     }>;
 
@@ -216,6 +226,19 @@ type ExternalProviderBinding = Readonly<{
   operatorIdentitySha256: string;
   authenticationKind: "https_tls_identity_v1";
   publicIdentitySha256: string;
+}>;
+
+type LocalQueryServiceBinding = Readonly<{
+  kind: WatcherFinalityLocalQueryServiceV1["kind"];
+  providerId: string;
+  observationStatus:
+    | "aligned"
+    | "unavailable"
+    | "stale"
+    | "forked"
+    | "rollback_not_propagated"
+    | "content_mismatch";
+  observationDigest: string | null;
 }>;
 
 const exactPlainRecord = (
@@ -388,6 +411,43 @@ const cloneExternalProviders = (
   );
 };
 
+const cloneLocalQueryServices = (
+  value: unknown,
+): readonly WatcherFinalityLocalQueryServiceV1[] | null => {
+  const inputs = exactArray(value);
+  if (inputs === null || inputs.length > 8) {
+    return null;
+  }
+  const services: WatcherFinalityLocalQueryServiceV1[] = [];
+  const providerIds = new Set<string>();
+  for (const input of inputs) {
+    const service = exactPlainRecord(input, ["kind", "providerId"]);
+    if (
+      service === null ||
+      !["ogmios", "kupo", "kupmios", "db_sync"].includes(
+        service.kind as string,
+      ) ||
+      typeof service.providerId !== "string" ||
+      !SOURCE_AUTHORITY_ID.test(service.providerId) ||
+      providerIds.has(service.providerId)
+    ) {
+      return null;
+    }
+    providerIds.add(service.providerId);
+    services.push(
+      Object.freeze({
+        kind: service.kind as WatcherFinalityLocalQueryServiceV1["kind"],
+        providerId: service.providerId,
+      }),
+    );
+  }
+  return Object.freeze(
+    services.sort((left, right) =>
+      left.providerId.localeCompare(right.providerId),
+    ),
+  );
+};
+
 const makePolicy = (
   value: Omit<WatcherFinalityPolicyV1, "policyDigest">,
 ): WatcherFinalityPolicyV1 => {
@@ -399,9 +459,13 @@ const makePolicy = (
     value.externalProviders === null
       ? null
       : cloneExternalProviders(value.externalProviders);
+  const localQueryServices = cloneLocalQueryServices(value.localQueryServices);
   if (
+    localQueryServices === null ||
     (value.sourceMode === "external_providers" && externalProviders === null) ||
-    (value.sourceMode === "local_node" && externalProviders !== null)
+    (value.sourceMode === "local_node" && externalProviders !== null) ||
+    (value.sourceMode === "external_providers" &&
+      localQueryServices.length !== 0)
   ) {
     throw new Error("invalid external provider allowlist");
   }
@@ -411,6 +475,7 @@ const makePolicy = (
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
     authorityGenesisIdentitySha256: value.authorityGenesisIdentitySha256,
+    localQueryServices,
     externalProviders,
     confirmationDepth: value.confirmationDepth,
     maximumPreFinalityRollbackDepth: value.maximumPreFinalityRollbackDepth,
@@ -435,6 +500,7 @@ export const parseWatcherFinalityPolicyV1 = (
       "sourceMode",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
+      "localQueryServices",
       "externalProviders",
       "confirmationDepth",
       "maximumPreFinalityRollbackDepth",
@@ -450,6 +516,10 @@ export const parseWatcherFinalityPolicyV1 = (
       policy === null || policy.externalProviders === null
         ? null
         : cloneExternalProviders(policy.externalProviders);
+    const localQueryServices =
+      policy === null
+        ? null
+        : cloneLocalQueryServices(policy.localQueryServices);
     if (
       policy === null ||
       policy.schemaVersion !== WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION ||
@@ -462,10 +532,12 @@ export const parseWatcherFinalityPolicyV1 = (
           typeof policy.authorityNodeId === "string" &&
           SOURCE_AUTHORITY_ID.test(policy.authorityNodeId) &&
           isHex32(policy.authorityGenesisIdentitySha256) &&
+          localQueryServices !== null &&
           policy.externalProviders === null) ||
         (policy.sourceMode === "external_providers" &&
           policy.authorityNodeId === null &&
           policy.authorityGenesisIdentitySha256 === null &&
+          localQueryServices?.length === 0 &&
           externalProviders !== null)
       ) ||
       !isPositiveUint64(policy.confirmationDepth) ||
@@ -490,6 +562,8 @@ export const parseWatcherFinalityPolicyV1 = (
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
         | string
         | null,
+      localQueryServices:
+        localQueryServices as WatcherFinalityPolicyV1["localQueryServices"],
       externalProviders,
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
@@ -577,6 +651,15 @@ export const makeWatcherFinalityPolicyV1 = (
         config.l1.source.sourceMode === "local_node"
           ? config.l1.source.chainSync.genesisIdentitySha256
           : null,
+      localQueryServices:
+        config.l1.source.sourceMode === "local_node"
+          ? config.l1.source.queryServices.map((service) =>
+              Object.freeze({
+                kind: service.kind,
+                providerId: service.identity,
+              }),
+            )
+          : [],
       externalProviders:
         config.l1.source.sourceMode === "external_providers"
           ? Object.freeze(
@@ -919,6 +1002,67 @@ const parseExternalProviderBindings = (
   return Object.freeze(bindings);
 };
 
+const parseLocalQueryServiceBindings = (
+  value: unknown,
+): readonly LocalQueryServiceBinding[] | null => {
+  const inputs = exactArray(value);
+  if (inputs === null || inputs.length > 8) {
+    return null;
+  }
+  const bindings: LocalQueryServiceBinding[] = [];
+  for (const input of inputs) {
+    const binding = exactPlainRecord(input, [
+      "kind",
+      "providerId",
+      "observationStatus",
+      "observationDigest",
+    ]);
+    if (
+      binding === null ||
+      !["ogmios", "kupo", "kupmios", "db_sync"].includes(
+        binding.kind as string,
+      ) ||
+      typeof binding.providerId !== "string" ||
+      !SOURCE_AUTHORITY_ID.test(binding.providerId) ||
+      ![
+        "aligned",
+        "unavailable",
+        "stale",
+        "forked",
+        "rollback_not_propagated",
+        "content_mismatch",
+      ].includes(binding.observationStatus as string) ||
+      !(
+        binding.observationDigest === null || isHex32(binding.observationDigest)
+      ) ||
+      (binding.observationStatus === "unavailable") !==
+        (binding.observationDigest === null)
+    ) {
+      return null;
+    }
+    bindings.push(
+      Object.freeze({
+        kind: binding.kind as LocalQueryServiceBinding["kind"],
+        providerId: binding.providerId,
+        observationStatus:
+          binding.observationStatus as LocalQueryServiceBinding["observationStatus"],
+        observationDigest: binding.observationDigest as string | null,
+      }),
+    );
+  }
+  if (
+    bindings.some(
+      (binding, index) =>
+        index > 0 &&
+        binding.providerId <=
+          (bindings[index - 1] as LocalQueryServiceBinding).providerId,
+    )
+  ) {
+    return null;
+  }
+  return Object.freeze(bindings);
+};
+
 const parseConsistency = (value: unknown): ParsedConsistency | null => {
   try {
     const result = exactPlainRecord(value, [
@@ -927,6 +1071,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       "protocolDecision",
       "sourceMode",
       "configuredNetwork",
+      "configuredSourceDigest",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
       "chainAuthorityObservationDigest",
@@ -934,6 +1079,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       "observationCount",
       "independentProviderCount",
       "externalProviderBindings",
+      "localQueryServiceBindings",
       "reasonCodes",
       "alertCodes",
       "observationEvidenceDigests",
@@ -952,6 +1098,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       !(
         result.configuredNetwork === null || isNetwork(result.configuredNetwork)
       ) ||
+      !isHex32(result.configuredSourceDigest) ||
       !Number.isSafeInteger(result.queryObservationCount) ||
       (result.queryObservationCount as number) < 0 ||
       !Number.isSafeInteger(result.observationCount) ||
@@ -981,6 +1128,9 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
     const externalProviderBindings = parseExternalProviderBindings(
       result.externalProviderBindings,
     );
+    const localQueryServiceBindings = parseLocalQueryServiceBindings(
+      result.localQueryServiceBindings,
+    );
     const evidence = parseStringArray(result.observationEvidenceDigests, []);
     const evidenceArray =
       evidence === null
@@ -990,6 +1140,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       reasons === null ||
       alerts === null ||
       externalProviderBindings === null ||
+      localQueryServiceBindings === null ||
       evidenceArray === null ||
       evidenceArray.some((digest) => !isHex32(digest)) ||
       new Set(evidenceArray).size !== evidenceArray.length ||
@@ -1024,13 +1175,17 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
               evidenceArray.includes(
                 result.chainAuthorityObservationDigest,
               ))) &&
-          (result.queryObservationCount as number) <=
-            Math.max(0, (result.observationCount as number) - 1) &&
-          externalProviderBindings.length === 0
+          result.queryObservationCount ===
+            localQueryServiceBindings.filter(
+              ({ observationDigest }) => observationDigest !== null,
+            ).length &&
+          externalProviderBindings.length === 0 &&
+          localQueryServiceBindings.length <= 8
         : result.authorityNodeId === null &&
           result.authorityGenesisIdentitySha256 === null &&
           result.chainAuthorityObservationDigest === null &&
           result.queryObservationCount === 0 &&
+          localQueryServiceBindings.length === 0 &&
           externalProviderBindings.length <=
             (result.observationCount as number);
     if (!sourceShapeValid) {
@@ -1080,6 +1235,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       protocolDecision: result.protocolDecision,
       sourceMode,
       configuredNetwork: result.configuredNetwork,
+      configuredSourceDigest: result.configuredSourceDigest,
       authorityNodeId: result.authorityNodeId,
       authorityGenesisIdentitySha256: result.authorityGenesisIdentitySha256,
       chainAuthorityObservationDigest: result.chainAuthorityObservationDigest,
@@ -1087,6 +1243,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       observationCount: result.observationCount,
       independentProviderCount: result.independentProviderCount,
       externalProviderBindings,
+      localQueryServiceBindings,
       reasonCodes: reasons,
       alertCodes: alerts,
       observationEvidenceDigests: evidenceArray,
@@ -1101,6 +1258,9 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
         sourceMode === "local_node"
           ? (result.observationCount as number) >= 1 &&
             result.independentProviderCount === 1 &&
+            localQueryServiceBindings.every(
+              ({ observationStatus }) => observationStatus === "aligned",
+            ) &&
             sameStringArray(reasons, ["local_node_consistent"])
           : (result.observationCount as number) >= 2 &&
             (result.independentProviderCount as number) >= 2 &&
@@ -1120,10 +1280,12 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       return Object.freeze({
         kind: "agreed",
         sourceMode,
+        configuredSourceDigest: result.configuredSourceDigest,
         authorityNodeId: result.authorityNodeId as string | null,
         authorityGenesisIdentitySha256:
           result.authorityGenesisIdentitySha256 as string | null,
         externalProviderBindings,
+        localQueryServiceBindings,
         agreement,
       });
     }
@@ -1136,11 +1298,13 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
     return Object.freeze({
       kind: result.status as "pending" | "quarantined",
       sourceMode,
+      configuredSourceDigest: result.configuredSourceDigest,
       authorityNodeId: result.authorityNodeId as string | null,
       authorityGenesisIdentitySha256: result.authorityGenesisIdentitySha256 as
         | string
         | null,
       externalProviderBindings,
+      localQueryServiceBindings,
       consistencyDigest: result.consistencyDigest,
     });
   } catch {
@@ -1307,6 +1471,61 @@ const externalProviderBindingsMatchPolicy = (
   });
 };
 
+const localQueryServiceBindingsMatchPolicy = (
+  policy: WatcherFinalityPolicyV1,
+  bindings: readonly LocalQueryServiceBinding[],
+): boolean =>
+  policy.sourceMode === "local_node"
+    ? bindings.length === policy.localQueryServices.length &&
+      bindings.every((binding, index) => {
+        const configured = policy.localQueryServices[index];
+        return (
+          configured !== undefined &&
+          binding.providerId === configured.providerId &&
+          binding.kind === configured.kind
+        );
+      })
+    : bindings.length === 0;
+
+const configuredSourceForPolicy = (
+  policy: WatcherFinalityPolicyV1,
+):
+  | Readonly<{
+      sourceMode: "local_node";
+      network: WatcherFinalityPolicyV1["network"];
+      authorityNodeId: string;
+      genesisIdentitySha256: string;
+      queryServices: readonly WatcherFinalityLocalQueryServiceV1[];
+    }>
+  | Readonly<{
+      sourceMode: "external_providers";
+      network: WatcherFinalityPolicyV1["network"];
+      providers: readonly Readonly<{
+        providerId: string;
+        operatorIdentitySha256: string;
+      }>[];
+    }> =>
+  policy.sourceMode === "local_node"
+    ? Object.freeze({
+        sourceMode: "local_node",
+        network: policy.network,
+        authorityNodeId: policy.authorityNodeId!,
+        genesisIdentitySha256: policy.authorityGenesisIdentitySha256!,
+        queryServices: policy.localQueryServices,
+      })
+    : Object.freeze({
+        sourceMode: "external_providers",
+        network: policy.network,
+        providers: Object.freeze(
+          policy.externalProviders!.map(
+            ({ providerId, operatorIdentitySha256 }) =>
+              Object.freeze({ providerId, operatorIdentitySha256 }),
+          ),
+        ),
+      });
+
+export const watcherFinalityConfiguredSourceV1 = configuredSourceForPolicy;
+
 /**
  * Advances canonical finality from one exact W11 decision. It never grants
  * finality on first visibility, never advances from W11 pending/quarantine,
@@ -1394,17 +1613,25 @@ export const evaluateWatcherFinalityV1 = (
   const sourceBindingFailure =
     consistency.sourceMode !== policy.sourceMode
       ? "source_mode_mismatch"
-      : policy.sourceMode === "external_providers" &&
-          !externalProviderBindingsMatchPolicy(
-            policy,
-            consistency.externalProviderBindings,
-          )
-        ? "source_provider_mismatch"
-        : consistency.authorityNodeId !== policy.authorityNodeId ||
-            consistency.authorityGenesisIdentitySha256 !==
-              policy.authorityGenesisIdentitySha256
+      : consistency.configuredSourceDigest !==
+          sha256Canonical(configuredSourceForPolicy(policy))
+        ? "source_authority_mismatch"
+        : !localQueryServiceBindingsMatchPolicy(
+              policy,
+              consistency.localQueryServiceBindings,
+            )
           ? "source_authority_mismatch"
-          : null;
+          : policy.sourceMode === "external_providers" &&
+              !externalProviderBindingsMatchPolicy(
+                policy,
+                consistency.externalProviderBindings,
+              )
+            ? "source_provider_mismatch"
+            : consistency.authorityNodeId !== policy.authorityNodeId ||
+                consistency.authorityGenesisIdentitySha256 !==
+                  policy.authorityGenesisIdentitySha256
+              ? "source_authority_mismatch"
+              : null;
   if (sourceBindingFailure !== null) {
     return result(
       "reject",

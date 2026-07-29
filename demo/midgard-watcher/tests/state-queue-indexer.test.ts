@@ -77,7 +77,10 @@ import {
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   type WatcherL1RedeemerV1,
 } from "../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
+import {
+  evaluateWatcherMultiProviderConsistencyV1,
+  WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
+} from "../src/multi-provider-consistency.js";
 import {
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
@@ -90,6 +93,7 @@ import {
   makeWatcherStateQueueSnapshotV1,
   parseWatcherStateQueueIndexerResultV1,
   parseWatcherStateQueueIndexerStateV1,
+  WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS,
   WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   type WatcherStateQueueIndexerPolicyV1,
   type WatcherStateQueueObservationV1,
@@ -174,36 +178,51 @@ const makeDeploymentAuthority = () => {
     }),
   ) as Mutable;
   contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-      ].map((category, index) => {
-        const contractName = {
-          doubleSpend: "fraudProofDoubleSpend",
-          nonExistentInput: "fraudProofNonExistentInput",
-          nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-          invalidRange: "fraudProofInvalidRange",
-          transitionTrace: "fraudProofTransitionTrace",
-          zeroInput: "fraudProofZeroInput",
-          validationTraceDispute: "validationTraceDispute",
-        }[category]!;
-        return [
-          category,
-          {
-            categoryId: index.toString(16).padStart(8, "0"),
-            scriptHash: contracts[contractName].scriptHash,
-            membershipProofCbor: "80",
-          },
-        ];
-      }),
-    ),
+    root: "e8b2f26d5087a065c0798b6cc3e39e00b1ef33edcd6316e4572903c6d7acf167",
+    categories: {
+      doubleSpend: {
+        categoryId: "00000000",
+        scriptHash: contracts.fraudProofDoubleSpend.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584053a920c4e7d9c50a6ff9d2b832d22300d625e205d28e07ff6c15cde2c96667fda4a393aca51215174bcf95d0bf7e78a4f4ab680d548549eecf73ae9f7af5b44458400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffff",
+      },
+      nonExistentInput: {
+        categoryId: "00000001",
+        scriptHash: contracts.fraudProofNonExistentInput.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3b0bb0cd2674d5e4445866a3cef9e90af43b77c3eceed009032d0a54f9c2f9b3e58400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffd87b9f005820ee008edbcebc51812e09a76640db05559631cf9730f2fddd093fc72d072d323b582087e9235c8d7b3fcb40a3d503037c56a247069ab507548f4b2985965f9b2d2486ffff",
+      },
+      nonExistentInputNoIndex: {
+        categoryId: "00000002",
+        scriptHash: contracts.fraudProofNonExistentInputNoIndex.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c54085840d37f8fc1042e46e60fbd44c1389af648c2c8d080176d1c08b7d96da99c1b4c840000000000000000000000000000000000000000000000000000000000000000ffffd87b9f0058208df5e96b9134dbf02ce0619afa67c94a9d09abbe241505f82935aef5d3dc39cc582072b7c31107c46a8542b2630c53d8b072282ddc69a8789a00219aa4ce47b51337ffff",
+      },
+      invalidRange: {
+        categoryId: "00000003",
+        scriptHash: contracts.fraudProofInvalidRange.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3b0bb0cd2674d5e4445866a3cef9e90af43b77c3eceed009032d0a54f9c2f9b3e58400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffd87b9f005820ef9660efe206d50189739680bd866387c07a061a7b5de18f85b6af241f168638582081fb30bfa77c4706ccf546db90b9dfa7fa88d65a2d62e4d021408d4bd2a99326ffff",
+      },
+      transitionTrace: {
+        categoryId: "00000004",
+        scriptHash: contracts.fraudProofTransitionTrace.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c54085840d37f8fc1042e46e60fbd44c1389af648c2c8d080176d1c08b7d96da99c1b4c840000000000000000000000000000000000000000000000000000000000000000ffffd87b9f0058208bb58512fc6c43f79b51020d086948648b960d5ee65bb6a9a737e2af545177265820b2b437710c1902cd213fb2dbfa15b8d8c9a23832a0fe07c17085ea14c4e850fcffff",
+      },
+      zeroInput: {
+        categoryId: "00000005",
+        scriptHash: contracts.fraudProofZeroInput.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584053a920c4e7d9c50a6ff9d2b832d22300d625e205d28e07ff6c15cde2c96667fde58c229416d0338fc1db79685df06273179c8a54bcecca2c5800e566bf0f79b458400eb923b0cbd24df54401d998531feead35a47a99f4deed205de4af81120f97610000000000000000000000000000000000000000000000000000000000000000ffffff",
+      },
+      validationTraceDispute: {
+        categoryId: "00000006",
+        scriptHash: contracts.validationTraceDispute.scriptHash,
+        membershipProofCbor:
+          "9fd8799f005f584096ec1ec09f76df9417465c5e2feca7b4e92c0e940077fad47e342c83c20bd3b3787e609adeb3b9c60ddff678ef9d98b745fb8c4246bb09b88b817f9f882c540858400b7ebe397f2ffb4714c082ac3d1048f1b9c4f760d578b0fbef6a2a824d1a2cd30000000000000000000000000000000000000000000000000000000000000000ffffff",
+      },
+    },
   };
   const referenceScripts = Object.fromEntries(
     Object.entries(
@@ -493,6 +512,16 @@ const providerB = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: provider.providerId,
+      operatorIdentitySha256: provider.source.operatorIdentitySha256,
+    },
+    {
+      providerId: providerB.providerId,
+      operatorIdentitySha256: providerB.source.operatorIdentitySha256,
+    },
+  ],
 } as const;
 
 const LOCAL_NODE_ID = "watcher-node-a";
@@ -516,6 +545,7 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  queryServices: [],
 } as const;
 
 const finalityPolicyAtDepth = (
@@ -747,6 +777,11 @@ const bodyFrom = (
 };
 
 let blockSerial = 0;
+let latestBlockHash: string | null = null;
+const chainPointByBlockHash = new Map<
+  string,
+  Readonly<{ slot: bigint; blockNo: bigint }>
+>();
 const l1Block = (
   bodyHex: string,
   outputs: readonly OutputFixture[],
@@ -755,8 +790,19 @@ const l1Block = (
     index: string;
     bytesHex: string;
   }>[],
+  parentBlockHash = latestBlockHash,
 ) => {
   blockSerial += 1;
+  const blockHash = blockSerial.toString(16).padStart(2, "0").repeat(32);
+  const blockParentHash = parentBlockHash;
+  const parentPoint =
+    blockParentHash === null
+      ? undefined
+      : chainPointByBlockHash.get(blockParentHash);
+  const slot = (parentPoint?.slot ?? BigInt(1_000 + blockSerial)) + 1n;
+  const blockNo = (parentPoint?.blockNo ?? BigInt(100 + blockSerial)) + 1n;
+  chainPointByBlockHash.set(blockHash, { slot, blockNo });
+  latestBlockHash = blockHash;
   const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
   const utxos = outputs.map((fixture, index) => {
     const datum = CML.PlutusData.from_cbor_hex(fixture.datumHex);
@@ -776,14 +822,16 @@ const l1Block = (
     network: "Preprod",
     providerId: "provider-a",
     chainPoint: {
-      blockHash: blockSerial.toString(16).padStart(2, "0").repeat(32),
-      slot: (1_000 + blockSerial).toString(),
-      blockNo: (100 + blockSerial).toString(),
+      blockHash,
+      slot: slot.toString(),
+      blockNo: blockNo.toString(),
       depth: "2",
     },
     transactions: [
       {
         txHash,
+        transactionIndex: "0",
+        blockParentHash,
         body: makeWatcherL1PublicBytesV1(bodyHex),
         utxos,
         scripts: [],
@@ -796,12 +844,15 @@ const l1Block = (
       },
     ],
   };
-  return {
+  const block = {
     txHash,
     raw: observation,
     normalized: normalizeWatcherL1BlockV1(provider, observation),
   };
+  blocksByObservationDigest.set(block.normalized.observationDigest, block);
+  return block;
 };
+const blocksByObservationDigest = new Map<string, ReturnType<typeof l1Block>>();
 
 const protocolRecords = (
   block: ReturnType<typeof l1Block>,
@@ -925,67 +976,126 @@ const remakeStore = (
     },
   });
 
+const externalFinalityAuthorityFor = (
+  block: ReturnType<typeof l1Block>,
+): NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]> => {
+  const otherObservation = structuredClone(block.raw);
+  otherObservation.providerId = providerB.providerId;
+  const observations = [
+    { authenticatedProvider: provider, l1Observation: block.raw },
+    {
+      authenticatedProvider: providerB,
+      l1Observation: otherObservation,
+    },
+  ];
+  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+    externalSource,
+    observations.map(({ authenticatedProvider, l1Observation }) =>
+      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+    ),
+  );
+  const priorObservations = observations.map(
+    ({ authenticatedProvider, l1Observation }) => {
+      const prior = structuredClone(l1Observation);
+      prior.chainPoint.depth = "1";
+      return { authenticatedProvider, l1Observation: prior };
+    },
+  );
+  const priorConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    externalSource,
+    priorObservations.map(({ authenticatedProvider, l1Observation }) =>
+      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+    ),
+  );
+  const previousResult = evaluateWatcherFinalityV1(
+    finalityPolicy,
+    null,
+    priorConsistency,
+  );
+  const previousState = previousResult.state;
+  const result = evaluateWatcherFinalityV1(
+    finalityPolicy,
+    previousState,
+    consistency,
+  );
+  return {
+    policy: finalityPolicy,
+    lineage: [
+      {
+        observations: priorObservations,
+        consistency: priorConsistency,
+        result: previousResult,
+      },
+    ],
+    previousState,
+    observations,
+    consistency,
+    result,
+  };
+};
+
+const withForgedExternalFinalityPredecessor = (
+  authority: NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]>,
+): NonNullable<WatcherStateQueuePublicContextV1["finalityAuthority"]> => {
+  const forgedPriorObservations = structuredClone(
+    authority.lineage[0]!.observations,
+  ) as Mutable[];
+  for (const candidate of forgedPriorObservations) {
+    candidate.l1Observation.chainPoint.depth = "0";
+  }
+  const forgedConsistency = evaluateWatcherMultiProviderConsistencyV1(
+    externalSource,
+    forgedPriorObservations.map(({ authenticatedProvider, l1Observation }) =>
+      normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+    ),
+  );
+  const forgedPreviousResult = evaluateWatcherFinalityV1(
+    authority.policy,
+    null,
+    forgedConsistency,
+  );
+  const forgedResult = evaluateWatcherFinalityV1(
+    authority.policy,
+    forgedPreviousResult.state,
+    authority.consistency,
+  );
+  expect(forgedResult.protocolDecision).toBe("finality_granted");
+  return {
+    ...authority,
+    previousState: forgedPreviousResult.state,
+    result: forgedResult,
+  };
+};
+
 const contextFor = (
   block: ReturnType<typeof l1Block>,
   store: WatcherDurableStoreV1,
   sourceStore: WatcherDurableStoreV1 = storeSources.get(store) ?? emptyStore(),
 ): WatcherStateQueuePublicContextV1 => ({
-  ...(() => {
-    const otherObservation = structuredClone(block.raw);
-    otherObservation.providerId = providerB.providerId;
-    const observations = [
-      { authenticatedProvider: provider, l1Observation: block.raw },
-      {
-        authenticatedProvider: providerB,
-        l1Observation: otherObservation,
-      },
-    ];
-    const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
-      observations.map(({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
-      ),
-    );
-    const priorObservations = observations.map(
-      ({ authenticatedProvider, l1Observation }) => {
-        const prior = structuredClone(l1Observation);
-        prior.chainPoint.depth = "1";
-        return { authenticatedProvider, l1Observation: prior };
-      },
-    );
-    const priorConsistency = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
-      priorObservations.map(({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
-      ),
-    );
-    const previousState = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      null,
-      priorConsistency,
-    ).state;
-    const result = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      previousState,
-      consistency,
-    );
-    return {
-      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-      authenticatedProvider: provider,
-      l1Observation: block.raw,
-      sourceDurableStore: sourceStore,
-      durableStore: store,
-      deploymentAuthority,
-      finalityAuthority: {
-        policy: finalityPolicy,
-        previousState,
-        observations,
-        consistency,
-        result,
-      },
-      rollbackAuthority: null,
-    };
-  })(),
+  schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  authenticatedProvider: provider,
+  l1Observation: block.raw,
+  sourceDurableStore: sourceStore,
+  durableStore: store,
+  deploymentAuthority,
+  finalityAuthority: externalFinalityAuthorityFor(block),
+  originAuthorities: store.l1Observations
+    .filter(
+      ({ observationId }) =>
+        observationId !== block.normalized.observationDigest,
+    )
+    .map(({ observationId }) => {
+      const origin = blocksByObservationDigest.get(observationId);
+      if (origin === undefined) {
+        throw new Error(`missing origin fixture ${observationId}`);
+      }
+      return {
+        authenticatedProvider: provider,
+        l1Observation: origin.raw,
+        finalityAuthority: externalFinalityAuthorityFor(origin),
+      };
+    }),
+  rollbackAuthority: null,
 });
 
 const asLocalNodeBlock = (
@@ -1015,11 +1125,12 @@ const localNodeContextFor = (
     [normalizeWatcherL1BlockV1(localNodeProvider, priorRaw)],
   );
   const policyAtDepth = finalityPolicyAtDepth(2, "local_node");
-  const previousState = evaluateWatcherFinalityV1(
+  const previousResult = evaluateWatcherFinalityV1(
     policyAtDepth,
     null,
     priorConsistency,
-  ).state;
+  );
+  const previousState = previousResult.state;
   const result = evaluateWatcherFinalityV1(
     policyAtDepth,
     previousState,
@@ -1034,6 +1145,18 @@ const localNodeContextFor = (
     deploymentAuthority,
     finalityAuthority: {
       policy: policyAtDepth,
+      lineage: [
+        {
+          observations: [
+            {
+              authenticatedProvider: localNodeProvider,
+              l1Observation: priorRaw,
+            },
+          ],
+          consistency: priorConsistency,
+          result: previousResult,
+        },
+      ],
       previousState,
       observations: [
         {
@@ -1044,6 +1167,7 @@ const localNodeContextFor = (
       consistency,
       result,
     },
+    originAuthorities: [],
     rollbackAuthority: null,
   };
 };
@@ -1078,6 +1202,12 @@ const observationFor = (
     slot: block.normalized.chainPoint.slot,
     blockNo: block.normalized.chainPoint.blockNo,
     transactionHash: block.txHash,
+    transactionIndex:
+      kind === "rollback"
+        ? null
+        : block.normalized.transactions
+            .findIndex(({ txHash }) => txHash === block.txHash)
+            .toString(),
     publicInputDigest: createHash("sha256").update(encoded).digest("hex"),
     sourceObservationDigest: block.normalized.observationDigest,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
@@ -1378,8 +1508,21 @@ const attachDaBundle = (input: {
     null,
     null,
   );
-  const producer = l1Block(producerBody, attestationOutputs, []);
+  const producer = l1Block(
+    producerBody,
+    attestationOutputs,
+    [],
+    input.appendBlock.normalized.chainPoint.blockHash,
+  );
   const attestationOutRef = `${producer.txHash}#0`;
+  const producerStore = storeFor(
+    producer,
+    [
+      ...input.appendStore.protocolUtxos,
+      ...protocolRecords(producer, attestationOutputs),
+    ],
+    input.appendStore,
+  );
   const oldNode = `${input.appendBlock.txHash}#1`;
   const attachedNodeDatum = linkedNode(
     {
@@ -1466,22 +1609,16 @@ const attachDaBundle = (input: {
       ),
     },
   ]);
-  const raw = structuredClone(selected.raw);
-  raw.transactions.unshift(producer.raw.transactions[0]!);
-  const block = {
-    ...selected,
-    raw,
-    normalized: normalizeWatcherL1BlockV1(provider, raw),
-  };
+  const block = selected;
   const store = storeFor(
     block,
     [
-      ...input.appendStore.protocolUtxos.filter(
-        ({ outRef }) => outRef !== oldNode,
+      ...producerStore.protocolUtxos.filter(
+        ({ outRef }) => outRef !== oldNode && outRef !== attestationOutRef,
       ),
       ...protocolRecords(block, outputs),
     ],
-    input.appendStore,
+    producerStore,
   );
   const priorHeader = input.appendSnapshot.queue[0]!;
   const attachedHeader = makeWatcherStateQueueHeaderV1({
@@ -1611,6 +1748,439 @@ describe("authenticated state-queue indexer", () => {
       }),
     ).toEqual(result);
   });
+
+  it("indexes by the authenticated Cardano transaction sequence even when hash order is reversed", () => {
+    const canonical = bootstrapBundle();
+    const decoy = l1Block(bodyFrom([], [], [], [], null, 9_999_999n), [], []);
+    const transactions = [
+      canonical.block.raw.transactions[0]!,
+      decoy.raw.transactions[0]!,
+    ]
+      .sort((left, right) => right.txHash.localeCompare(left.txHash))
+      .map((transaction, index) => ({
+        ...transaction,
+        transactionIndex: index.toString(),
+        blockParentHash: canonical.block.raw.transactions[0]!.blockParentHash,
+      }));
+    const raw = {
+      ...canonical.block.raw,
+      transactions,
+    };
+    const block = {
+      txHash: canonical.block.txHash,
+      raw,
+      normalized: normalizeWatcherL1BlockV1(provider, raw),
+    };
+    blocksByObservationDigest.set(block.normalized.observationDigest, block);
+    const store = storeFor(
+      block,
+      protocolRecords(block, canonical.fixture.outputs),
+      null,
+    );
+    const transactionIndex = block.normalized.transactions.findIndex(
+      ({ txHash }) => txHash === block.txHash,
+    );
+    expect(transactionIndex).toBeGreaterThanOrEqual(0);
+    expect(block.normalized.transactions.map(({ txHash }) => txHash)).toEqual(
+      transactions.map(({ txHash }) => txHash),
+    );
+    expect(
+      block.normalized.transactions.map(({ txHash }) => txHash),
+    ).not.toEqual([...transactions.map(({ txHash }) => txHash)].sort());
+    const observation = observationFor(
+      block,
+      store,
+      canonical.snapshot,
+      "bootstrap",
+      null,
+      null,
+      null,
+    );
+    expect(observation.transactionIndex).toBe(transactionIndex.toString());
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        null,
+        observation,
+        contextFor(block, store),
+      ),
+    ).toMatchObject({
+      action: "accept",
+      reasonCodes: ["bootstrap_authenticated"],
+    });
+  });
+
+  it("rejects later transactions and future blocks as auxiliary origin authority", () => {
+    const canonical = bootstrapBundle();
+    const decoyDatum = canonicalDatum(Data.to(0n as never, Data.Integer()));
+    const decoyOutputs: readonly OutputFixture[] = [
+      {
+        role: "settlement",
+        datumHex: decoyDatum,
+        outputHex: output(
+          policy.stateQueueAddressHex,
+          h28("ef"),
+          "01",
+          decoyDatum,
+        ),
+      },
+    ];
+    const decoy = l1Block(
+      bodyFrom([], [], decoyOutputs, [], null, 9_999_999n),
+      decoyOutputs,
+      [],
+    );
+    const raw = {
+      ...canonical.block.raw,
+      transactions: [
+        {
+          ...canonical.block.raw.transactions[0]!,
+          transactionIndex: "0",
+        },
+        {
+          ...decoy.raw.transactions[0]!,
+          transactionIndex: "1",
+          blockParentHash: canonical.block.raw.transactions[0]!.blockParentHash,
+        },
+      ],
+    };
+    const block = {
+      txHash: canonical.block.txHash,
+      raw,
+      normalized: normalizeWatcherL1BlockV1(provider, raw),
+    };
+    blocksByObservationDigest.set(block.normalized.observationDigest, block);
+    const decoyRecord: WatcherProtocolUtxoV1 = {
+      outRef: `${decoy.txHash}#0`,
+      role: "settlement",
+      chainPointId: block.normalized.chainPoint.chainPointId,
+      output: makeWatcherDurablePayloadV1(decoyOutputs[0]!.outputHex),
+    };
+    const sourceStore = remakeStore(
+      emptyStore(),
+      {
+        l1Observations: [currentObservationRecord(block)],
+        chainPoints: [currentPointRecord(block)],
+        protocolUtxos: [decoyRecord],
+      },
+      "0",
+    );
+    const nextProtocolUtxos = [
+      decoyRecord,
+      ...protocolRecords(block, canonical.fixture.outputs),
+    ];
+    const journal = journalWatcherProtocolUtxoTransitionV1({
+      sourceStore,
+      nextChainPoints: sourceStore.chainPoints,
+      nextProtocolUtxos,
+      spentAtChainPointId: block.normalized.chainPoint.chainPointId,
+    });
+    const store = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: "1",
+      records: {
+        l1Observations: sourceStore.l1Observations,
+        chainPoints: sourceStore.chainPoints,
+        ...journal,
+        daProofInputs: [],
+        reconstructedStates: [],
+        decisions: [],
+        faults: [],
+        submissions: [],
+        confirmations: [],
+        retries: [],
+        deadlines: [],
+        correctionResults: [],
+      },
+    });
+    storeSources.set(store, sourceStore);
+    const observation = observationFor(
+      block,
+      store,
+      canonical.snapshot,
+      "bootstrap",
+      null,
+      null,
+      null,
+    );
+    expect(observation.transactionIndex).toBe("0");
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        null,
+        observation,
+        contextFor(block, store),
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["public_evidence_mismatch"],
+    });
+
+    const futureRaw = structuredClone(decoy.raw);
+    futureRaw.chainPoint.blockNo = (
+      BigInt(canonical.block.raw.chainPoint.blockNo) + 100n
+    ).toString();
+    futureRaw.chainPoint.slot = (
+      BigInt(canonical.block.raw.chainPoint.slot) + 100n
+    ).toString();
+    const futureBlock = {
+      ...decoy,
+      raw: futureRaw,
+      normalized: normalizeWatcherL1BlockV1(provider, futureRaw),
+    };
+    blocksByObservationDigest.set(
+      futureBlock.normalized.observationDigest,
+      futureBlock,
+    );
+    const futureStore = storeFor(futureBlock, [], null);
+    const currentStore = storeFor(
+      canonical.block,
+      protocolRecords(canonical.block, canonical.fixture.outputs),
+      futureStore,
+    );
+    const currentObservation = observationFor(
+      canonical.block,
+      currentStore,
+      canonical.snapshot,
+      "bootstrap",
+      null,
+      null,
+      null,
+    );
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        null,
+        currentObservation,
+        contextFor(canonical.block, currentStore),
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["public_evidence_mismatch"],
+    });
+  });
+
+  it("rejects self-asserted finality predecessors and oversized authority arrays before replay", () => {
+    const bundle = bootstrapBundle();
+    const finalityAuthority = bundle.context.finalityAuthority!;
+    expect(
+      evaluateWatcherStateQueueIndexerV1(policy, null, bundle.observation, {
+        ...bundle.context,
+        finalityAuthority:
+          withForgedExternalFinalityPredecessor(finalityAuthority),
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    for (const context of [
+      {
+        ...bundle.context,
+        originAuthorities: Array.from(
+          {
+            length: WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.originAuthorities + 1,
+          },
+          () => ({}),
+        ),
+      },
+      {
+        ...bundle.context,
+        deploymentAuthority: {
+          ...bundle.context.deploymentAuthority,
+          trustRoots: Array.from(
+            {
+              length:
+                WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.deploymentTrustRoots + 1,
+            },
+            () => bundle.context.deploymentAuthority.trustRoots[0]!,
+          ),
+        },
+      },
+      {
+        ...bundle.context,
+        finalityAuthority: {
+          ...finalityAuthority,
+          observations: Array.from(
+            {
+              length:
+                WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations + 1,
+            },
+            () => finalityAuthority.observations[0]!,
+          ),
+        },
+      },
+      {
+        ...bundle.context,
+        finalityAuthority: {
+          ...finalityAuthority,
+          lineage: Array.from(
+            {
+              length:
+                WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.finalityLineageSteps + 1,
+            },
+            () => finalityAuthority.lineage[0]!,
+          ),
+        },
+      },
+    ]) {
+      expect(
+        evaluateWatcherStateQueueIndexerV1(
+          policy,
+          null,
+          bundle.observation,
+          context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+    }
+  });
+
+  it("accepts the cumulative finality budget boundary and rejects the next valid authority", () => {
+    const origin = l1Block(bodyFrom([], [], [], [], null, null), [], []);
+    const bundle = bootstrapBundle();
+    const maximumLineage =
+      WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.finalityLineageSteps;
+    const currentRaw = {
+      ...bundle.block.raw,
+      chainPoint: {
+        ...bundle.block.raw.chainPoint,
+        depth: (maximumLineage + 1).toString(),
+      },
+    };
+    const currentBlock = {
+      ...bundle.block,
+      raw: currentRaw,
+      normalized: normalizeWatcherL1BlockV1(provider, currentRaw),
+    };
+    blocksByObservationDigest.set(
+      currentBlock.normalized.observationDigest,
+      currentBlock,
+    );
+    const sourceStore = remakeStore(
+      emptyStore(),
+      {
+        l1Observations: [currentObservationRecord(origin)],
+        chainPoints: [currentPointRecord(origin)],
+      },
+      "0",
+    );
+    const store = storeFor(
+      currentBlock,
+      protocolRecords(currentBlock, bundle.fixture.outputs),
+      sourceStore,
+    );
+    const lineage: Array<{
+      observations: readonly unknown[];
+      consistency: unknown;
+      result: unknown;
+    }> = [];
+    let previousState: unknown = null;
+    for (let step = 0; step < maximumLineage; step += 1) {
+      const observations = [provider, providerB].map(
+        (authenticatedProvider) => ({
+          authenticatedProvider,
+          l1Observation: {
+            ...currentRaw,
+            providerId: authenticatedProvider.providerId,
+            chainPoint: {
+              ...currentRaw.chainPoint,
+              depth: "1",
+            },
+          },
+        }),
+      );
+      const consistency = evaluateWatcherMultiProviderConsistencyV1(
+        externalSource,
+        observations.map(({ authenticatedProvider, l1Observation }) =>
+          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+        ),
+      );
+      const result = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        previousState,
+        consistency,
+      );
+      expect(result.state).not.toBeNull();
+      lineage.push({ observations, consistency, result });
+      previousState = result.state;
+    }
+    const currentObservations = [provider, providerB].map(
+      (authenticatedProvider) => ({
+        authenticatedProvider,
+        l1Observation: {
+          ...currentRaw,
+          providerId: authenticatedProvider.providerId,
+        },
+      }),
+    );
+    const currentConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      currentObservations.map(({ authenticatedProvider, l1Observation }) =>
+        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      ),
+    );
+    const currentResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      previousState,
+      currentConsistency,
+    );
+    expect(currentResult.protocolDecision).toBe("finality_granted");
+    const observation = observationFor(
+      currentBlock,
+      store,
+      bundle.snapshot,
+      "bootstrap",
+      null,
+      null,
+      null,
+    );
+    const boundaryContext: WatcherStateQueuePublicContextV1 = {
+      schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+      authenticatedProvider: provider,
+      l1Observation: currentRaw,
+      sourceDurableStore: sourceStore,
+      durableStore: store,
+      deploymentAuthority,
+      finalityAuthority: {
+        policy: finalityPolicy,
+        lineage,
+        previousState,
+        observations: currentObservations,
+        consistency: currentConsistency,
+        result: currentResult,
+      },
+      originAuthorities: [],
+      rollbackAuthority: null,
+    };
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        null,
+        observation,
+        boundaryContext,
+      ),
+    ).toMatchObject({
+      action: "accept",
+      reasonCodes: ["bootstrap_authenticated"],
+    });
+    expect(
+      evaluateWatcherStateQueueIndexerV1(policy, null, observation, {
+        ...boundaryContext,
+        originAuthorities: [
+          {
+            authenticatedProvider: provider,
+            l1Observation: origin.raw,
+            finalityAuthority: externalFinalityAuthorityFor(origin),
+          },
+        ],
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+  }, 30_000);
 
   it("accepts one authoritative local-node chain-sync source without a provider quorum", () => {
     const external = bootstrapBundle();
@@ -2059,6 +2629,34 @@ describe("authenticated state-queue indexer", () => {
     expect(parseWatcherStateQueueIndexerStateV1(result.state, policy)).toEqual(
       result.state,
     );
+    const regressedSourceStore = remakeStore(bootBundle.store, {}, "0");
+    const regressedStore = remakeStore(store, {}, "1");
+    const regressedObservation = remakeObservation(observation, {
+      sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(regressedSourceStore),
+      ),
+      sourceDurableStoreRevision: regressedSourceStore.revision,
+      durableStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(regressedStore),
+      ),
+      durableStoreRevision: regressedStore.revision,
+    });
+    const forgedRestart = structuredClone(result.state) as Mutable;
+    const forgedEntry = forgedRestart.history[1];
+    forgedEntry.observation = regressedObservation;
+    forgedEntry.publicContext = {
+      ...context,
+      sourceDurableStore: regressedSourceStore,
+      durableStore: regressedStore,
+    };
+    const { entryDigest: _entryDigest, ...forgedEntryFields } = forgedEntry;
+    forgedEntry.entryDigest = canonicalDigest(forgedEntryFields);
+    forgedRestart.durableStoreDigest = regressedObservation.durableStoreDigest;
+    const { stateDigest: _stateDigest, ...forgedStateFields } = forgedRestart;
+    forgedRestart.stateDigest = canonicalDigest(forgedStateFields);
+    expect(
+      parseWatcherStateQueueIndexerStateV1(forgedRestart, policy),
+    ).toBeNull();
     expect(store.spentProtocolUtxos.length).toBeGreaterThan(0);
     for (const spentProtocolUtxos of [
       [],
@@ -2091,6 +2689,37 @@ describe("authenticated state-queue indexer", () => {
       appendStore: store,
       appendSnapshot: snapshot,
       predecessorStateDigest: result.state!.stateDigest,
+    });
+    expect(attach.context.originAuthorities.length).toBeGreaterThan(0);
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        result.state,
+        attach.observation,
+        {
+          ...attach.context,
+          originAuthorities: [],
+        },
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["public_evidence_mismatch"],
+    });
+    const forgedOriginContext = structuredClone(attach.context) as Mutable;
+    forgedOriginContext.originAuthorities[0]!.finalityAuthority =
+      withForgedExternalFinalityPredecessor(
+        forgedOriginContext.originAuthorities[0]!.finalityAuthority,
+      );
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        result.state,
+        attach.observation,
+        forgedOriginContext,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
     });
     const attached = evaluateWatcherStateQueueIndexerV1(
       policy,
@@ -2431,6 +3060,7 @@ describe("authenticated state-queue indexer", () => {
       durableStore: appliedStore,
       deploymentAuthority,
       finalityAuthority: null,
+      originAuthorities: [],
       rollbackAuthority: {
         result: appliedRollback,
         context: rollbackVerificationContext,
@@ -2449,6 +3079,64 @@ describe("authenticated state-queue indexer", () => {
       policy,
     );
     expect(restarted).toEqual(rolledBack.state);
+    const rehashRollbackRestart = (
+      state: Mutable,
+      mutate: (entry: Mutable) => void,
+    ): Mutable => {
+      const rollbackAudit = state.auditHistory.find(
+        ({ status }: { status: string }) => status === "rollback",
+      );
+      expect(rollbackAudit).toBeDefined();
+      mutate(rollbackAudit.entry);
+      const { entryDigest: _entryDigest, ...entryWithoutDigest } =
+        rollbackAudit.entry;
+      rollbackAudit.entry.entryDigest = canonicalDigest(entryWithoutDigest);
+      const { auditDigest: _auditDigest, ...auditWithoutDigest } =
+        rollbackAudit;
+      rollbackAudit.auditDigest = canonicalDigest(auditWithoutDigest);
+      const { stateDigest: _stateDigest, ...stateWithoutDigest } = state;
+      state.stateDigest = canonicalDigest(stateWithoutDigest);
+      return state;
+    };
+    const substitutedAuthority = rehashRollbackRestart(
+      structuredClone(rolledBack.state) as Mutable,
+      (entry) => {
+        entry.publicContext.rollbackAuthority.result = null;
+      },
+    );
+    expect(
+      parseWatcherStateQueueIndexerStateV1(substitutedAuthority, policy),
+    ).toBeNull();
+    const substitutedStore = remakeStore(
+      appliedStore,
+      {},
+      (BigInt(appliedStore.revision) + 1n).toString(),
+    );
+    const substitutedStoreDigest = watcherDurableStoreBytesSha256(
+      encodeWatcherDurableStoreV1(substitutedStore),
+    );
+    const substitutedDurableStore = rehashRollbackRestart(
+      structuredClone(rolledBack.state) as Mutable,
+      (entry) => {
+        const substitutedObservation = remakeObservation(entry.observation, {
+          durableStoreDigest: substitutedStoreDigest,
+          durableStoreRevision: substitutedStore.revision,
+        });
+        entry.observation = substitutedObservation;
+        entry.publicContext.durableStore = substitutedStore;
+      },
+    );
+    substitutedDurableStore.durableStoreDigest = substitutedStoreDigest;
+    const {
+      stateDigest: _substitutedStateDigest,
+      ...substitutedStateWithoutDigest
+    } = substitutedDurableStore;
+    substitutedDurableStore.stateDigest = canonicalDigest(
+      substitutedStateWithoutDigest,
+    );
+    expect(
+      parseWatcherStateQueueIndexerStateV1(substitutedDurableStore, policy),
+    ).toBeNull();
 
     const secondReplacementConsistency =
       evaluateWatcherMultiProviderConsistencyV1(
@@ -2514,6 +3202,7 @@ describe("authenticated state-queue indexer", () => {
         durableStore: secondAppliedStore,
         deploymentAuthority,
         finalityAuthority: null,
+        originAuthorities: [],
         rollbackAuthority: {
           result: secondAppliedRollback,
           context: secondRollbackVerificationContext,
@@ -2563,6 +3252,7 @@ describe("authenticated state-queue indexer", () => {
         durableStore: secondAppliedStore,
         deploymentAuthority,
         finalityAuthority: null,
+        originAuthorities: [],
         rollbackAuthority: {
           result: duplicateRollback,
           context: {
@@ -2926,53 +3616,58 @@ describe("authenticated state-queue indexer", () => {
         `${input.transaction_id().to_hex()}#${input.index().toString()}`,
       );
     }
-    const removalBlock = l1Block(removalBody, removalOutputs, [
-      {
-        purpose: "spend",
-        index: "0",
-        bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
-      },
-      {
-        purpose: "spend",
-        index: "1",
-        bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
-      },
-      {
-        purpose: "mint",
-        index: "0",
-        bytesHex: Data.to(
-          {
-            RemoveFraudulentBlockHeader: {
-              fraudulent_operator: second.operatorVkey,
-              fraudulent_blocks_header_hash: first.headerHash,
-              slashing_approach: {
-                OperatorAlreadySlashed: {
-                  active_operators_element_ref_input_index: BigInt(
-                    referenceOutRefs.indexOf(activeOutRef),
-                  ),
-                  retired_operators_element_ref_input_index: BigInt(
-                    referenceOutRefs.indexOf(retiredRootOutRef),
-                  ),
-                },
-              },
-              fraud_proof_ref_input_index: BigInt(
-                referenceOutRefs.indexOf(proofOutRef),
-              ),
-              block_removal_approach: {
-                RemoveFraudulentBlocksLink: {
-                  fraudulent_node_input_outref: {
-                    transactionId: bootstrapBlock.txHash,
-                    outputIndex: 1n,
+    const removalBlock = l1Block(
+      removalBody,
+      removalOutputs,
+      [
+        {
+          purpose: "spend",
+          index: "0",
+          bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+        },
+        {
+          purpose: "spend",
+          index: "1",
+          bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+        },
+        {
+          purpose: "mint",
+          index: "0",
+          bytesHex: Data.to(
+            {
+              RemoveFraudulentBlockHeader: {
+                fraudulent_operator: second.operatorVkey,
+                fraudulent_blocks_header_hash: first.headerHash,
+                slashing_approach: {
+                  OperatorAlreadySlashed: {
+                    active_operators_element_ref_input_index: BigInt(
+                      referenceOutRefs.indexOf(activeOutRef),
+                    ),
+                    retired_operators_element_ref_input_index: BigInt(
+                      referenceOutRefs.indexOf(retiredRootOutRef),
+                    ),
                   },
-                  fraudulent_node_output_index: 0n,
+                },
+                fraud_proof_ref_input_index: BigInt(
+                  referenceOutRefs.indexOf(proofOutRef),
+                ),
+                block_removal_approach: {
+                  RemoveFraudulentBlocksLink: {
+                    fraudulent_node_input_outref: {
+                      transactionId: bootstrapBlock.txHash,
+                      outputIndex: 1n,
+                    },
+                    fraudulent_node_output_index: 0n,
+                  },
                 },
               },
             },
-          },
-          StateQueueRedeemer,
-        ),
-      },
-    ]);
+            StateQueueRedeemer,
+          ),
+        },
+      ],
+      bootstrapBlock.normalized.chainPoint.blockHash,
+    );
     const removalStore = storeFor(
       removalBlock,
       [
@@ -3017,6 +3712,84 @@ describe("authenticated state-queue indexer", () => {
     expect(parseWatcherStateQueueIndexerStateV1(removed.state, policy)).toEqual(
       removed.state,
     );
+
+    const crossForkBlock = l1Block(
+      removalBody,
+      removalOutputs,
+      removalBlock.raw.transactions[0]!.redeemers.map(
+        ({ purpose, index, bytes }: Mutable) => ({
+          purpose,
+          index,
+          bytesHex: bytes.bytesHex,
+        }),
+      ),
+      h32("fe"),
+    );
+    const crossForkStore = storeFor(
+      crossForkBlock,
+      [
+        ...bootstrapStore.protocolUtxos.filter(
+          ({ outRef }) => outRef !== firstOutRef && outRef !== secondOutRef,
+        ),
+        ...protocolRecords(crossForkBlock, removalOutputs),
+      ],
+      bootstrapStore,
+    );
+    const crossForkObservation = observationFor(
+      crossForkBlock,
+      crossForkStore,
+      removalSnapshot,
+      "remove_fraudulent",
+      boot.stateDigest,
+      null,
+      null,
+    );
+    const crossForkContext = contextFor(crossForkBlock, crossForkStore);
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        boot,
+        crossForkObservation,
+        crossForkContext,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["stale_chain_point"],
+    });
+
+    const forgedCrossForkRestart = structuredClone(removed.state) as Mutable;
+    const forgedEntry = forgedCrossForkRestart.history[1];
+    Object.assign(forgedEntry, {
+      chainPointId: crossForkObservation.chainPointId,
+      pointDigest: crossForkObservation.pointDigest,
+      transactionHash: crossForkObservation.transactionHash,
+      transactionIndex: crossForkObservation.transactionIndex,
+      publicInputDigest: crossForkObservation.publicInputDigest,
+      observation: crossForkObservation,
+      publicContext: crossForkContext,
+    });
+    const {
+      entryDigest: _crossForkEntryDigest,
+      ...crossForkEntryWithoutDigest
+    } = forgedEntry;
+    forgedEntry.entryDigest = canonicalDigest(crossForkEntryWithoutDigest);
+    Object.assign(forgedCrossForkRestart, {
+      pointDigest: crossForkObservation.pointDigest,
+      transactionHash: crossForkObservation.transactionHash,
+      transactionIndex: crossForkObservation.transactionIndex,
+      publicInputDigest: crossForkObservation.publicInputDigest,
+      durableStoreDigest: crossForkObservation.durableStoreDigest,
+    });
+    const {
+      stateDigest: _crossForkStateDigest,
+      ...crossForkStateWithoutDigest
+    } = forgedCrossForkRestart;
+    forgedCrossForkRestart.stateDigest = canonicalDigest(
+      crossForkStateWithoutDigest,
+    );
+    expect(
+      parseWatcherStateQueueIndexerStateV1(forgedCrossForkRestart, policy),
+    ).toBeNull();
   });
 
   it("rejects a fully self-rehashed history mutation because W03/W10 context is replayed", () => {

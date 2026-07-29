@@ -11,7 +11,9 @@ on:
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/midgard-validation/**"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -29,7 +31,9 @@ on:
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/midgard-validation/**"
+      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -98,16 +102,18 @@ jobs:
         run: pnpm --dir demo/midgard-core run build && pnpm --dir demo/midgard-core test
       - name: Check canonical V1 profile documentation
         run: pnpm --dir demo/midgard-core run docs:consensus-profile-v1:check
-      - name: Build, typecheck, and test Midgard validation
-        run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
       - name: Build, typecheck, and test Midgard SDK
         run: pnpm --dir demo/midgard-sdk run build && pnpm --dir demo/midgard-sdk run typecheck && pnpm --dir demo/midgard-sdk test
+      - name: Build, typecheck, and test Midgard validation
+        run: pnpm --dir demo/midgard-validation run build && pnpm --dir demo/midgard-validation run typecheck && pnpm --dir demo/midgard-validation test
       - name: Build, typecheck, and test fault-proof tooling
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
-      - name: Build, typecheck, lint, and test Midgard watcher scaffold
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher test
+      - name: Build, typecheck, lint, format-check, and test Midgard watcher scaffold
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test
+      - name: Verify canonical watcher dependency map
+        run: pnpm --dir demo run watcher:dependency-map:verify
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard

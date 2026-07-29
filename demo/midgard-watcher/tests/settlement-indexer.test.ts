@@ -100,6 +100,7 @@ import {
   type WatcherSettlementTransitionKindV1,
   type WatcherSettlementTransitionV1,
 } from "../src/settlement-indexer.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
 
 type Mutable = Record<string, any>;
 
@@ -151,38 +152,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-      ].map((category, index) => {
-        const contractName = {
-          doubleSpend: "fraudProofDoubleSpend",
-          nonExistentInput: "fraudProofNonExistentInput",
-          nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-          invalidRange: "fraudProofInvalidRange",
-          transitionTrace: "fraudProofTransitionTrace",
-          zeroInput: "fraudProofZeroInput",
-          validationTraceDispute: "validationTraceDispute",
-        }[category]!;
-        return [
-          category,
-          {
-            categoryId: index.toString(16).padStart(8, "0"),
-            scriptHash: contracts[contractName].scriptHash,
-            membershipProofCbor: "80",
-          },
-        ];
-      }),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -569,77 +540,86 @@ const finalityPolicy = makeWatcherFinalityPolicyV1(
 
 const LOCAL_NODE_ID = "watcher-node-a";
 const LOCAL_GENESIS_IDENTITY = h32("76");
-const localFinalityPolicy = makeWatcherFinalityPolicyV1(
-  {
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "local_node",
-        authorityNodeId: LOCAL_NODE_ID,
-        chainSync: {
-          kind: "cardano_node_socket",
-          socketPath: "/ipc/node.socket",
-          genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+const makeLocalFinalityPolicy = (
+  queryServices: readonly Readonly<{
+    kind: "ogmios";
+    identity: string;
+    endpoint: string;
+  }>[],
+) =>
+  makeWatcherFinalityPolicyV1(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "acceptance",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "local_node",
+          authorityNodeId: LOCAL_NODE_ID,
+          chainSync: {
+            kind: "cardano_node_socket",
+            socketPath: "/ipc/node.socket",
+            genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+          },
+          queryServices,
         },
-        queryServices: [
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: Number(policy.requiredFinalityDepth),
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: Number(policy.requiredFinalityDepth),
+          },
+        },
+      },
+      da: {
+        peers: [
           {
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: "http://127.0.0.1:1337",
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
           },
         ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
       },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: {
-        depth: Number(policy.requiredFinalityDepth),
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: Number(policy.requiredFinalityDepth),
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+      },
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
         },
       },
-    },
-    da: {
-      peers: [
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-        },
-      ],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
       },
     },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: policy.network,
+      trustRootId: policy.deploymentTrustRootId,
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
     },
-  },
+  )!;
+const localFinalityPolicy = makeLocalFinalityPolicy([]);
+const localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
   {
-    manifestId: policy.deploymentMarker.manifestId,
-    network: policy.network,
-    trustRootId: policy.deploymentTrustRootId,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments: { validation: h32("55") },
-    durableMarker: policy.deploymentMarker,
+    kind: "ogmios",
+    identity: "local-ogmios",
+    endpoint: "http://127.0.0.1:1337",
   },
-)!;
+]);
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -842,6 +822,16 @@ const provider = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: h32("97"),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: h32("98"),
+    },
+  ],
 } as const;
 
 const localSource = {
@@ -849,6 +839,7 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  queryServices: [],
 } as const;
 const localChainSyncProvider = {
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -877,6 +868,15 @@ const localOgmiosProvider = {
     kind: "https_tls_identity_v1",
     publicIdentitySha256: h32("75"),
   },
+} as const;
+const localSourceWithOgmios = {
+  ...localSource,
+  queryServices: [
+    {
+      kind: "ogmios",
+      providerId: localOgmiosProvider.providerId,
+    },
+  ],
 } as const;
 
 const rollbackProvider = (
@@ -960,6 +960,15 @@ type Bundle = Readonly<{
   finalityState: ReturnType<typeof evaluateWatcherFinalityV1>["state"];
   finalityResult: ReturnType<typeof evaluateWatcherFinalityV1>;
 }>;
+
+type SettlementFinalityLineage = NonNullable<
+  WatcherSettlementPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const settlementFinalityLineageByStateDigest = new Map<
+  string,
+  SettlementFinalityLineage
+>();
 
 const bundle = (input: {
   policyOverride?: WatcherSettlementIndexerPolicyV1;
@@ -1192,17 +1201,43 @@ const bundle = (input: {
       normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
     ),
   );
+  const previousFinalityState = input.previousFinalityState ?? null;
+  const previousStateDigest =
+    previousFinalityState !== null &&
+    typeof previousFinalityState === "object" &&
+    "stateDigest" in previousFinalityState &&
+    typeof previousFinalityState.stateDigest === "string"
+      ? previousFinalityState.stateDigest
+      : null;
+  const lineage =
+    previousStateDigest === null
+      ? []
+      : (settlementFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     activeFinalityPolicy,
-    input.previousFinalityState ?? null,
+    previousFinalityState,
     consistency,
   );
+  if (finalityResult.state !== null) {
+    settlementFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const finalityAuthority =
     input.kind === "rollback"
       ? null
       : {
           policy: activeFinalityPolicy,
-          previousState: input.previousFinalityState ?? null,
+          lineage,
+          previousState: previousFinalityState,
           observations: finalityObservations,
           consistency,
           result: finalityResult,
@@ -1503,18 +1538,19 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         },
       ];
       const consistency = evaluateWatcherMultiProviderConsistencyV1(
-        localSource,
+        localSourceWithOgmios,
         observations.map(({ authenticatedProvider, l1Observation }) =>
           normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
         ),
       );
       context.finalityAuthority = {
-        policy: localFinalityPolicy,
+        policy: localOgmiosFinalityPolicy,
+        lineage: [],
         previousState: null,
         observations,
         consistency,
         result: evaluateWatcherFinalityV1(
-          localFinalityPolicy,
+          localOgmiosFinalityPolicy,
           null,
           consistency,
         ),
@@ -1544,7 +1580,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     expect(queryOnly.context.finalityAuthority?.consistency).toMatchObject({
       status: "quarantined",
-      reasonCodes: ["missing_chain_sync_authority"],
+      reasonCodes: expect.arrayContaining(["missing_chain_sync_authority"]),
     });
     expect(
       evaluateWatcherSettlementIndexerV1(

@@ -26,56 +26,7 @@ import {
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
 import { tempDir } from "./helpers.js";
-import { readDaDeploymentFixture as readLegacyDaDeploymentFixture } from "./helpers/deployment-fixture.js";
-
-const readDaDeploymentFixture = async (): Promise<Record<string, unknown>> => {
-  const legacy = await readLegacyDaDeploymentFixture();
-  const contracts = legacy.contracts as Record<string, Record<string, unknown>>;
-  const catalogueMint = contracts.fraudProofCatalogueMint!;
-  const catalogue = catalogueMint.fraudProofCatalogue as Record<
-    string,
-    unknown
-  >;
-  const categories = catalogue.categories as Record<
-    string,
-    Record<string, unknown>
-  >;
-  const {
-    validationTraceDispute: legacyValidationTraceDispute,
-    ...categoriesBeforeValidationTrace
-  } = categories;
-  const identityInput: Record<string, unknown> = {
-    ...legacy,
-    contracts: {
-      ...contracts,
-      fraudProofCatalogueMint: {
-        ...catalogueMint,
-        fraudProofCatalogue: {
-          ...catalogue,
-          categories: {
-            ...categoriesBeforeValidationTrace,
-            zeroInput: {
-              categoryId: "00000005",
-              scriptHash: contracts.fraudProofZeroInput!.scriptHash,
-              membershipProofCbor: "00",
-            },
-            validationTraceDispute: {
-              ...legacyValidationTraceDispute,
-              categoryId: "00000006",
-              scriptHash: contracts.validationTraceDispute!.scriptHash,
-            },
-          },
-        },
-      },
-    },
-  };
-  const { manifestId: _legacyManifestId, ...canonicalIdentityInput } =
-    identityInput;
-  return {
-    ...canonicalIdentityInput,
-    manifestId: computeDeploymentManifestV1Id(canonicalIdentityInput),
-  };
-};
+import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
 describe("loadWatcherConfig", () => {
   it("parses only the exact V1 manifest and consensus-profile pairing", async () => {
@@ -342,6 +293,8 @@ describe("loadWatcherConfig", () => {
       CARDANO_L1_TEST_MODE: "true",
       CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
       CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+      CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+        "/tmp/state.chain-sync-cursor.json",
     };
     const missingMode: Record<string, string> = { ...baseEnv };
     delete missingMode.CARDANO_L1_SOURCE_MODE;
@@ -355,6 +308,7 @@ describe("loadWatcherConfig", () => {
       sourceMode: "local_node",
       authorityNodeId: "preview-node-a",
       chainSyncProviderUrl: "chain-sync:fixture:/tmp/state.json",
+      chainSyncCursorPath: "/tmp/state.chain-sync-cursor.json",
       queryProviderUrls: ["fixture:/tmp/state.json"],
     });
     expect(() =>
@@ -391,6 +345,8 @@ describe("loadWatcherConfig", () => {
           CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
           CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
             "chain-sync:kupmios:http://kupo.local|ws://ogmios.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
         },
         ["kupmios:http://kupo.local|ws://ogmios.local"],
       ),
@@ -398,6 +354,32 @@ describe("loadWatcherConfig", () => {
       sourceMode: "local_node",
       authorityNodeId: "preview-node-a",
     });
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          CARDANO_L1_SOURCE_MODE: "local_node",
+          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
+            "chain-sync:ogmios:ws://ogmios.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
+        },
+        ["blockfrost:https://cardano.example#project"],
+      ),
+    ).toThrow(/must be kupmios: backed by the local authority/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          CARDANO_L1_SOURCE_MODE: "local_node",
+          CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_URL:
+            "chain-sync:ogmios:ws://ogmios-a.local",
+          CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH:
+            "/var/lib/midgard/chain-sync-cursor.json",
+        },
+        ["kupmios:http://kupo.local|ws://ogmios-b.local"],
+      ),
+    ).toThrow(/not backed by the configured chain-sync authority/u);
   });
 
   it("requires two distinct operational identities in external-provider mode", () => {
@@ -435,6 +417,78 @@ describe("loadWatcherConfig", () => {
         ],
       ),
     ).toThrow(/distinct operational provider identities/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "blockfrost:https://shared.example/api/#project-a",
+          "blockfrost:https://SHARED.example:443/other#project-b",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "kupmios:https://kupo-a.example|wss://shared-ogmios.example",
+          "kupmios:https://kupo-b.example|wss://shared-ogmios.example/",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared-ogmios\.example/u);
+    const plaintextKupmios = [
+      "kupmios:http://kupo-a.example|ws://ogmios-a.example",
+      "kupmios:http://kupo-b.example|ws://ogmios-b.example",
+    ];
+    expect(() => parseL1SourceConfig(baseEnv, plaintextKupmios)).toThrow(
+      /require HTTPS Kupo and TLS-protected WSS\/HTTPS Ogmios/u,
+    );
+    expect(
+      parseL1SourceConfig(
+        { ...baseEnv, CARDANO_L1_TEST_MODE: "true" },
+        plaintextKupmios,
+      ),
+    ).toMatchObject({ sourceMode: "external_providers" });
+    expect(() =>
+      parseL1SourceConfig(
+        {
+          ...baseEnv,
+          CARDANO_EXTERNAL_PROVIDER_IDENTITIES: "operator-a,operator-b",
+        },
+        [
+          "blockfrost:https://shared.example.#project-a",
+          "blockfrost:https://shared.example#project-b",
+        ],
+      ),
+    ).toThrow(/share normalized endpoint https:\/\/shared\.example/u);
+    expect(
+      parseL1SourceConfig(baseEnv, [
+        "blockfrost:https://a.example#project-a",
+        "blockfrost:https://b.example#project-b",
+      ]),
+    ).toMatchObject({
+      providers: [
+        {
+          operationalIdentity: {
+            operatorId: "operator-a",
+            transport: "blockfrost_https",
+            normalizedEndpoints: ["https://a.example"],
+          },
+        },
+        {
+          operationalIdentity: {
+            operatorId: "operator-b",
+            transport: "blockfrost_https",
+            normalizedEndpoints: ["https://b.example"],
+          },
+        },
+      ],
+    });
   });
 
   it("fails closed for invalid libp2p DA manifest security fields", async () => {
@@ -1038,6 +1092,10 @@ const libp2pConfigEnv = (
   CARDANO_L1_TEST_MODE: "true",
   CARDANO_LOCAL_NODE_AUTHORITY_ID: "preview-node-a",
   CARDANO_LOCAL_NODE_CHAIN_SYNC_URL: "chain-sync:fixture:/tmp/state.json",
+  CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH: join(
+    dir,
+    "chain-sync-cursor.json",
+  ),
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
   CARDANO_FINALITY_DEPTH: "2",
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,

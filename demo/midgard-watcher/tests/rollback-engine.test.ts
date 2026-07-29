@@ -43,6 +43,10 @@ const hex32 = (byte: string): string => byte.repeat(32);
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    { providerId: "provider-a", operatorIdentitySha256: hex32("a1") },
+    { providerId: "provider-b", operatorIdentitySha256: hex32("b2") },
+  ],
 } as const;
 const payload = (cborHex = "80") => makeWatcherDurablePayloadV1(cborHex);
 const sha256Canonical = (value: unknown): string =>
@@ -287,6 +291,7 @@ const localAgreement = (point: Point) =>
       network: "Preprod",
       authorityNodeId: "cardano-node-a",
       genesisIdentitySha256: hex32("a1"),
+      queryServices: [],
     },
     [localObservation(point)],
   );

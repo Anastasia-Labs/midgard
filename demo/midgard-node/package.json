@@ -28,6 +28,7 @@
     "db:checksum": "pnpm run build && node dist/index.js db:checksum",
     "init": "pnpm run build && node dist/index.js init",
     "bench:fixtures:generate": "node tests/benchmarks/scripts/generate-validation-fixtures.mjs",
+    "fixtures:transition-trace:generate": "MIDGARD_UPDATE_TRANSITION_TRACE_ABI=1 vitest run tests/sdk-abi-fixtures.test.ts --reporter=basic",
     "bench:codec": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:full": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",

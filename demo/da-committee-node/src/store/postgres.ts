@@ -17,11 +17,17 @@ import {
   parseDaStoredPayloadRecordV1,
 } from "../domain.js";
 import {
+  DECISION_EFFECT_PENDING_LEASE_MS,
+  type DecisionOutboxRecord,
+  type DecisionOutboxStatus,
   jsonReplacer,
   jsonReviver,
+  type L1SourceState,
+  mergeL1SourceState,
+  mergeQuarantinedL1SourceState,
+  parseDecisionOutboxRecord,
   parseL1SourceState,
   resolveDaPayloadSave,
-  type L1SourceState,
   type WatcherDeploymentRecord,
   type WatcherStore,
 } from "../store.js";
@@ -30,6 +36,7 @@ type JsonRecordRow = {
   readonly record: unknown;
   readonly header_hash?: unknown;
   readonly signer_index?: unknown;
+  readonly effect_id?: unknown;
 };
 
 export class PostgresWatcherStore implements WatcherStore {
@@ -140,14 +147,170 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async saveL1SourceState(state: L1SourceState): Promise<void> {
     const canonical = parseL1SourceState(state);
-    await this.pool.query(
-      `INSERT INTO watcher_l1_source_state (id, record, updated_at)
-       VALUES (1, $1::jsonb, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         record = EXCLUDED.record,
-         updated_at = NOW()`,
-      [encodeRecord(canonical)],
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        await mergeLockedL1SourceState(client, canonical);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async getDecisionOutbox(
+    effectId: string,
+  ): Promise<DecisionOutboxRecord | undefined> {
+    return this.getParsedRecord(
+      "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1",
+      [effectId],
+      parseDecisionOutboxRecord,
+      assertDecisionOutboxRowIdentity,
     );
+  }
+
+  async listDecisionOutbox(
+    headerHash?: string,
+  ): Promise<readonly DecisionOutboxRecord[]> {
+    return this.listParsedRecords(
+      headerHash === undefined
+        ? `SELECT effect_id, header_hash, record FROM watcher_decision_outbox
+           ORDER BY effect_id`
+        : `SELECT effect_id, header_hash, record FROM watcher_decision_outbox
+           WHERE header_hash = $1 ORDER BY effect_id`,
+      headerHash === undefined ? [] : [headerHash],
+      parseDecisionOutboxRecord,
+      assertDecisionOutboxRowIdentity,
+    );
+  }
+
+  async beginDecisionEffect(args: {
+    readonly effect: DecisionOutboxRecord;
+    readonly sourceState: L1SourceState;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    const effect = parseDecisionOutboxRecord(args.effect);
+    const proposedSourceState = parseL1SourceState(args.sourceState);
+    if (effect.status !== "pending") {
+      throw new Error("decision outbox begin requires pending status");
+    }
+    const signature =
+      args.signature === undefined
+        ? undefined
+        : parseDaSignatureRecordV1(args.signature);
+    assertPostgresDecisionSignature(effect, signature);
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await mergeLockedL1SourceState(
+          client,
+          proposedSourceState,
+        );
+        assertPostgresDecisionSourceState(effect, sourceState);
+        const current = await queryOne(
+          client,
+          "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          [effect.effectId],
+          parseDecisionOutboxRecord,
+          assertDecisionOutboxRowIdentity,
+        );
+        assertPostgresDecisionRetry(current, effect);
+        if (current?.status === "pending") {
+          const lease = await client.query<{ lease_expired: boolean }>(
+            `SELECT updated_at +
+                    ($2::bigint * INTERVAL '1 millisecond') <= NOW()
+                    AS lease_expired
+             FROM watcher_decision_outbox
+             WHERE effect_id = $1`,
+            [effect.effectId, DECISION_EFFECT_PENDING_LEASE_MS],
+          );
+          if (lease.rows[0]?.lease_expired !== true) {
+            throw new Error(
+              "decision outbox pending attempt lease has not expired",
+            );
+          }
+        }
+        await client.query(
+          `INSERT INTO watcher_decision_outbox
+             (effect_id, header_hash, record, updated_at)
+           VALUES ($1, $2, $3::jsonb, NOW())
+           ON CONFLICT (effect_id) DO UPDATE SET
+             record = EXCLUDED.record, updated_at = NOW()`,
+          [effect.effectId, effect.headerHash, encodeRecord(effect)],
+        );
+        if (signature !== undefined) {
+          await upsertSignatureWithClient(client, signature);
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  async completeDecisionEffect(args: {
+    readonly effectId: string;
+    readonly expectedAttemptCount: number;
+    readonly status: Exclude<DecisionOutboxStatus, "pending">;
+    readonly updatedAt: string;
+    readonly lastError?: string;
+    readonly signature?: DaSignatureRecord;
+  }): Promise<void> {
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await lockL1SourceState(client);
+        const existing = await queryOne(
+          client,
+          "SELECT effect_id, header_hash, record FROM watcher_decision_outbox WHERE effect_id = $1 FOR UPDATE",
+          [args.effectId],
+          parseDecisionOutboxRecord,
+          assertDecisionOutboxRowIdentity,
+        );
+        if (existing === undefined) {
+          throw new Error(`decision outbox effect ${args.effectId} is missing`);
+        }
+        if (
+          existing.status !== "pending" ||
+          existing.attemptCount !== args.expectedAttemptCount ||
+          existing.quarantineReason !== undefined ||
+          existing.quarantinedAt !== undefined
+        ) {
+          throw new Error(
+            "decision outbox completion does not match the pending attempt",
+          );
+        }
+        assertPostgresDecisionSourceState(existing, sourceState);
+        const signature =
+          args.signature === undefined
+            ? undefined
+            : parseDaSignatureRecordV1(args.signature);
+        assertPostgresDecisionSignature(existing, signature);
+        const completed = parseDecisionOutboxRecord({
+          ...existing,
+          status: args.status,
+          updatedAt: args.updatedAt,
+          ...(args.lastError === undefined
+            ? { lastError: undefined }
+            : { lastError: args.lastError }),
+        });
+        await client.query(
+          `UPDATE watcher_decision_outbox
+           SET record = $2::jsonb, updated_at = NOW()
+           WHERE effect_id = $1`,
+          [args.effectId, encodeRecord(completed)],
+        );
+        if (signature !== undefined) {
+          await upsertSignatureWithClient(client, signature);
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
   }
 
   async quarantineL1Decisions(state: L1SourceState): Promise<void> {
@@ -157,20 +320,21 @@ export class PostgresWatcherStore implements WatcherStore {
         "L1 decision quarantine requires quarantined source state",
       );
     }
-    const headerHashes = canonical.observations
-      .filter(({ hasPersistedDecision }) => hasPersistedDecision)
-      .map(({ headerHash }) => headerHash);
-    const reason = `l1_source_quarantined:${canonical.quarantineReason!}`;
     await this.withClient(async (client) => {
       await client.query("BEGIN");
       try {
+        await ensureL1SourceStateRow(client, canonical);
+        const current = await lockL1SourceState(client);
+        const quarantined = mergeQuarantinedL1SourceState(current, canonical);
+        const headerHashes = quarantined.observations
+          .filter(({ hasPersistedDecision }) => hasPersistedDecision)
+          .map(({ headerHash }) => headerHash);
+        const reason = `l1_source_quarantined:${quarantined.quarantineReason!}`;
         await client.query(
-          `INSERT INTO watcher_l1_source_state (id, record, updated_at)
-           VALUES (1, $1::jsonb, NOW())
-           ON CONFLICT (id) DO UPDATE SET
-             record = EXCLUDED.record,
-             updated_at = NOW()`,
-          [encodeRecord(canonical)],
+          `UPDATE watcher_l1_source_state
+           SET record = $1::jsonb, updated_at = NOW()
+           WHERE id = 1`,
+          [encodeRecord(quarantined)],
         );
         if (headerHashes.length > 0) {
           await client.query(
@@ -186,7 +350,7 @@ export class PostgresWatcherStore implements WatcherStore {
                    ),
                  updated_at = NOW()
              WHERE header_hash = ANY($1::text[])`,
-            [headerHashes, reason, canonical.quarantinedAt],
+            [headerHashes, reason, quarantined.quarantinedAt],
           );
           await client.query(
             `UPDATE watcher_da_payloads
@@ -232,7 +396,27 @@ export class PostgresWatcherStore implements WatcherStore {
                    ),
                  updated_at = NOW()
              WHERE header_hash = ANY($1::text[])`,
-            [headerHashes, reason, canonical.quarantinedAt],
+            [headerHashes, reason, quarantined.quarantinedAt],
+          );
+          await client.query(
+            `UPDATE watcher_decision_outbox
+             SET record =
+                   record ||
+                   jsonb_build_object(
+                     'status', 'failed',
+                     'lastError', $2::text,
+                     'quarantineReason', $3::text,
+                     'quarantinedAt', $4::text,
+                     'updatedAt', $4::text
+                   ),
+                 updated_at = NOW()
+             WHERE header_hash = ANY($1::text[])`,
+            [
+              headerHashes,
+              reason,
+              quarantined.quarantineReason,
+              quarantined.quarantinedAt,
+            ],
           );
         }
         await client.query("COMMIT");
@@ -309,23 +493,22 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
     const canonicalRecord = parseDaSignatureRecordV1(record);
-    await this.pool.query(
-      `INSERT INTO watcher_da_signatures (
-         header_hash,
-         signer_index,
-         record,
-         updated_at
-       )
-       VALUES ($1, $2, $3::jsonb, NOW())
-       ON CONFLICT (header_hash, signer_index) DO UPDATE SET
-         record = EXCLUDED.record,
-         updated_at = NOW()`,
-      [
-        canonicalRecord.headerHash,
-        canonicalRecord.signerIndex,
-        encodeRecord(canonicalRecord),
-      ],
-    );
+    await this.withClient(async (client) => {
+      await client.query("BEGIN");
+      try {
+        const sourceState = await lockL1SourceState(client);
+        if (sourceState?.status === "quarantined") {
+          throw new Error(
+            "cannot persist a DA signature while the L1 source is quarantined",
+          );
+        }
+        await upsertSignatureWithClient(client, canonicalRecord);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      }
+    });
   }
 
   async getDaSignature(args: {
@@ -531,6 +714,14 @@ export class PostgresWatcherStore implements WatcherStore {
         updated_at timestamptz NOT NULL DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS watcher_decision_outbox (
+        effect_id text PRIMARY KEY,
+        header_hash text NOT NULL,
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        updated_at timestamptz NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS watcher_da_payloads (
         header_hash text PRIMARY KEY,
         record jsonb NOT NULL,
@@ -654,6 +845,47 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 }
 
+const ensureL1SourceStateRow = async (
+  client: PoolClient,
+  proposed: L1SourceState,
+): Promise<void> => {
+  await client.query(
+    `INSERT INTO watcher_l1_source_state (id, record, updated_at)
+     VALUES (1, $1::jsonb, NOW())
+     ON CONFLICT (id) DO NOTHING`,
+    [encodeRecord(proposed)],
+  );
+};
+
+const lockL1SourceState = async (
+  client: PoolClient,
+): Promise<L1SourceState> => {
+  const result = await client.query<JsonRecordRow>(
+    "SELECT record FROM watcher_l1_source_state WHERE id = 1 FOR UPDATE",
+  );
+  const decoded = decodeRow<unknown>(result.rows[0]);
+  if (decoded === undefined) {
+    throw new Error("decision outbox lacks durable L1 source state");
+  }
+  return parseL1SourceState(decoded);
+};
+
+const mergeLockedL1SourceState = async (
+  client: PoolClient,
+  proposed: L1SourceState,
+): Promise<L1SourceState> => {
+  await ensureL1SourceStateRow(client, proposed);
+  const current = await lockL1SourceState(client);
+  const merged = mergeL1SourceState(current, proposed);
+  await client.query(
+    `UPDATE watcher_l1_source_state
+     SET record = $1::jsonb, updated_at = NOW()
+     WHERE id = 1`,
+    [encodeRecord(merged)],
+  );
+  return merged;
+};
+
 const upsertRecordWithPool = async <T>(
   pool: Pool,
   tableName: string,
@@ -683,6 +915,20 @@ const upsertRecordWithClient = async <T>(
        record = EXCLUDED.record,
        updated_at = NOW()`,
     [headerHash, encodeRecord(record)],
+  );
+};
+
+const upsertSignatureWithClient = async (
+  client: PoolClient,
+  record: DaSignatureRecordV1,
+): Promise<void> => {
+  await client.query(
+    `INSERT INTO watcher_da_signatures
+       (header_hash, signer_index, record, updated_at)
+     VALUES ($1, $2, $3::jsonb, NOW())
+     ON CONFLICT (header_hash, signer_index) DO UPDATE SET
+       record = EXCLUDED.record, updated_at = NOW()`,
+    [record.headerHash, record.signerIndex, encodeRecord(record)],
   );
 };
 
@@ -744,6 +990,86 @@ const assertSignatureRowIdentity = (
     throw new Error(
       "Postgres DA signature row key does not match record identity",
     );
+  }
+};
+
+const assertDecisionOutboxRowIdentity = (
+  row: JsonRecordRow,
+  record: DecisionOutboxRecord,
+): void => {
+  if (
+    row.effect_id !== record.effectId ||
+    row.header_hash !== record.headerHash
+  ) {
+    throw new Error(
+      "Postgres decision outbox row key does not match record identity",
+    );
+  }
+};
+
+const assertPostgresDecisionRetry = (
+  existing: DecisionOutboxRecord | undefined,
+  next: DecisionOutboxRecord,
+): void => {
+  if (existing === undefined) {
+    return;
+  }
+  if (
+    existing.effectId !== next.effectId ||
+    existing.deploymentFingerprint !== next.deploymentFingerprint ||
+    existing.sourceMode !== next.sourceMode ||
+    existing.network !== next.network ||
+    existing.effectKind !== next.effectKind ||
+    existing.headerHash !== next.headerHash ||
+    existing.stateQueueOutRef !== next.stateQueueOutRef ||
+    existing.signerIndex !== next.signerIndex ||
+    existing.slot !== next.slot ||
+    existing.blockHash !== next.blockHash ||
+    existing.finalized !== next.finalized ||
+    existing.createdAt !== next.createdAt ||
+    next.attemptCount !== existing.attemptCount + 1
+  ) {
+    throw new Error("decision outbox retry does not match durable identity");
+  }
+};
+
+const assertPostgresDecisionSourceState = (
+  effect: DecisionOutboxRecord,
+  sourceState: L1SourceState,
+): void => {
+  const observation = sourceState.observations.find(
+    ({ headerHash }) => headerHash === effect.headerHash,
+  );
+  if (
+    sourceState.status !== "healthy" ||
+    sourceState.sourceMode !== effect.sourceMode ||
+    sourceState.network !== effect.network ||
+    observation?.stateQueueOutRef !== effect.stateQueueOutRef ||
+    observation.finalized !== true ||
+    observation.hasPersistedDecision !== true ||
+    observation.slot !== effect.slot ||
+    observation.blockHash !== effect.blockHash
+  ) {
+    throw new Error("decision outbox lacks matching durable L1 observation");
+  }
+};
+
+const assertPostgresDecisionSignature = (
+  effect: DecisionOutboxRecord,
+  signature: DaSignatureRecordV1 | undefined,
+): void => {
+  if (
+    (effect.effectKind === "signature_publish" &&
+      (signature === undefined ||
+        signature.deploymentFingerprint !== effect.deploymentFingerprint ||
+        signature.headerHash !== effect.headerHash ||
+        signature.signerIndex !== effect.signerIndex ||
+        signature.validation.stateQueueOutRef !== effect.stateQueueOutRef ||
+        signature.l1ChainPoint.slot !== effect.slot ||
+        signature.l1ChainPoint.blockHash !== effect.blockHash)) ||
+    (effect.effectKind === "l1_reconcile" && signature !== undefined)
+  ) {
+    throw new Error("decision outbox signature does not match effect identity");
   }
 };
 

@@ -156,7 +156,7 @@
 | AC-Q18    | TODO        | QG1, QG2, and QG3 required.                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | AC-W10    | TODO        | Production watcher package and gates required.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | AC-W11    | TODO        | Public authenticated trust-boundary proof required.                                                                                                                                                                                                                                                                                                                                                                                                     |
-| AC-W12    | PASS        | W10-W13 final-tree evidence proves two-provider consistency, release-bound finality, pre-finality deterministic rewinds, post-finality quarantine incidents, exact durable chain-point/W10 evidence, external bootstrap authority, bounded restart replay, and independent rejection of every discovered forgery.                                                                                                                                       |
+| AC-W12    | PASS        | W10-W13 final-tree evidence proves the exact source-mode discriminator: `local_node` binds one chain-sync authority to aligned query evidence and rollback propagation without a provider quorum, while `external_providers` requires two operationally independent providers at compatible chain points. Both modes bind release-aware finality, deterministic pre-finality rewinds, post-finality quarantine, durable chain-point/W10 evidence, bounded restart replay, and independent rejection of every discovered forgery. |
 | AC-W13    | TODO        | Deterministic reconstruction/replay evidence required.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | AC-W14    | TODO        | Canonical decision totality evidence required.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | AC-W15    | TODO        | Total deterministic family adapters required.                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -630,3 +630,96 @@ Aiken `v1.1.22+39d6b04` compiler are available. Missing
 `DA_L1_SUBMITTER_KEY_SOURCE`, proof of provider operation, funded
 wallet/collateral, and a second independent watcher provider remain F03/P6
 preflight gaps, not blockers to dependency-ready local work.
+
+## Superseding isolated publication checkpoint
+
+- This section supersedes the earlier watcher checkpoint freeze wherever paths,
+  generated blueprint identities, test counts, dependency-map hashes, or
+  publication status differ. Historical evidence remains historical and is
+  not promoted as final-tree proof.
+- Isolated repository:
+  `/tmp/midgard-pr-final.9TgTpT/repo`.
+- Branch:
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`.
+- Current pre-publication HEAD:
+  `86fd1d4b32a91cd8ca0541cfddc910500ca752c5`.
+- Target `tx-validation` revision:
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- All 141 commits currently above the target are preserved in order. The
+  publication checkpoint will add one ordinary commit; it will not squash,
+  rebase, reset, or rewrite the inherited history.
+- The authoritative external `GOAL_SPEC.md` and protected pre-Goal Aiken
+  checkpoint bytes were not copied into this isolated repository. No protected
+  path is leased or modified here. No agent path lease remains active.
+- The authoritative watcher source decision is exact:
+  - `local_node` uses one watcher-operated Cardano full node as chain-consensus
+    authority. Chain-sync supplies roll-forward and rollback events; aligned
+    Ogmios, Kupo/Kupmios, or db-sync instances are query surfaces for that
+    authority and never count as independent providers.
+  - `external_providers` requires at least two operationally independent
+    providers with the same network and compatible chain points. Disagreement
+    quarantines protocol decisions.
+  - W12-W17 accept either valid mode. W13 propagates canonical rollback
+    evidence. W14 consumes actual node-accepted transaction/output/datum bytes
+    from W10-W13 and does not reimplement Cardano validator semantics.
+- Canonical Cardano witness-field correction is final-tree exact:
+  field 6 is raw native/non-native script witnesses and field 7 is the encoded
+  vkey/address witness byte-list. Core proof generation, validation-machine
+  commitments, node transaction-order reconstruction, Aiken compact
+  verification, script proofs, validation execution, generators, tests, and
+  affected evidence documents agree on this order.
+- Final generated Aiken blueprint evidence:
+  Aiken build PASS; `plutus.json` is 9,958,183 bytes with 355 validators and
+  SHA-256
+  `03172b13edd9180897494ba1b7633212c3e74460e510d449d851998342d7627e`.
+  Seventeen focused field-order/maximum-profile selectors pass, including both
+  legacy-field hostile controls and exact inline-script field-6 binding.
+- Fresh final-tree TypeScript evidence:
+  - Core full suite 270/270 PASS; typecheck and build PASS.
+  - Validation full suite 169/169 PASS; typecheck, build, and scoped lint PASS.
+  - Watcher full suite 201/201 PASS across 13 files; typecheck, build, lint,
+    and format PASS.
+  - DA full suite 210 PASS with one PostgreSQL-environment skip; the focused DA
+    correction set is 78/78 PASS; typecheck and build PASS.
+  - SDK full suite 78/78 PASS; Lucid full suite 149/149 PASS.
+  - Fault-proof full suite 139/139 PASS on the prior final integration tree;
+    the rebuilt current-blueprint end-to-end validation-dispute selector passes
+    1/1 inside its unchanged 300-second test bound.
+  - Node canonical ABI/deployment/manifest suite 33/33 PASS; node typecheck,
+    scoped ESLint, and scoped Prettier PASS.
+- The ABI fixture repair closes a real checkpoint regression:
+  route and final transition-proof redeemers bind their distinct generated
+  blueprint argument records, the retired generic redeemer and retired
+  valid-forced-unsupported fixture are removed, L2 and accepted-transaction
+  transition faults are covered, and the opt-in
+  `fixtures:transition-trace:generate` command regenerates the exact current
+  golden corpus. Fixture test source SHA-256 is
+  `04a5dc213248295566f5a4c60efaeda478cfdc334f76d50970c87220b52ff79f`;
+  golden SHA-256 is
+  `35316d0bf4bd8646ec331e3daa38af4002d68d99cac4016f42a42d87f6decf43`.
+- Hash-bound dependency evidence:
+  reviewed content-tree SHA-256
+  `8dc064e1c294121ada9a26a16e3794c29fdd1c930cf0a44a95ad7dd3cc0a619f`;
+  dependency-map SHA-256
+  `143b7e522d8702cc79ce85b838dc4b9bb692249c1dc5e74721d20ac49d67aac0`;
+  verifier SHA-256
+  `61756366622d000bf82b0ac68781f5ff897a2cf4d10391b51bb6b97745b39f5c`.
+  The executable verifier passes all 8 dependency classes.
+- Documentation gates pass on the same source tree: facts 9 groups, links 190
+  Markdown/MDX files, and voice 83 pages with zero wrong-audience lines.
+- Diff hygiene passes for both staged and unstaged portions before the final
+  additive stage. The fresh ABI failure (2/8) is fully superseded by the exact
+  8/8 fixture pass and the combined 33/33 node suite.
+- Publication and actual PR-head review are the only remaining actions for
+  this user-requested checkpoint. Formal target-testnet journeys, the open
+  §12 criteria, and §15 completion remain open. This checkpoint is not Goal
+  completion and must remain a draft PR.
+
+## Superseding current next action
+
+Stage the complete isolated checkpoint, create one additive commit while
+preserving all inherited commits, push the `colll78/` branch, update draft
+PR #471 against `tx-validation`, inspect the actual remote diff, comments,
+review threads, and CI, fix every actionable finding with additive commits,
+and repeat the review until the checkpoint is good to merge on its stated
+scope. Do not mark the overarching Goal complete.

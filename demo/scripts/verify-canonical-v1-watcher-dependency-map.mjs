@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readdir, readFile, readlink } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const mapPath = resolve(
@@ -21,6 +22,83 @@ if (
 }
 if (dependencyMap.trustPolicy?.unknownBehavior !== "fail_closed") {
   fail("unknown behavior must fail closed");
+}
+if (
+  dependencyMap.authority?.sourceRevision !==
+    "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
+  dependencyMap.authority?.baseRevision !==
+    "8bae9403a13124f647f215999848ff5c82784e37"
+) {
+  fail("authority must bind the checkpoint and tx-validation base revisions");
+}
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const trackedContentTreeSha256 = async () => {
+  const excludedPaths = [
+    "GOAL_PROGRESS.md",
+    "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+  ];
+  if (
+    JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
+    JSON.stringify(excludedPaths)
+  ) {
+    fail("authority content-tree exclusions must remain exact");
+  }
+  let trackedIndexBytes;
+  try {
+    trackedIndexBytes = execFileSync("git", ["ls-files", "-s", "-z"], {
+      cwd: repositoryRoot,
+    });
+  } catch (error) {
+    // Some read-only sandboxes report EPERM after returning a complete,
+    // successful child-process result. Preserve the exact successful bytes.
+    if (error.status !== 0 || error.stdout === undefined) {
+      throw error;
+    }
+    trackedIndexBytes = error.stdout;
+  }
+  const trackedPaths = trackedIndexBytes
+    .toString("utf8")
+    .split("\0")
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      const match = /^(100644|100755|120000|160000) ([0-9a-f]{40}) 0\t(.+)$/u.exec(
+        entry,
+      );
+      if (match === null) {
+        fail("tracked index contains a non-stage-zero or unsupported entry");
+      }
+      return {
+        mode: match[1],
+        objectId: match[2],
+        path: match[3],
+      };
+    })
+    .filter(({ path }) => !excludedPaths.includes(path))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const entries = await Promise.all(
+    trackedPaths.map(async ({ mode, objectId, path }) => ({
+      path,
+      mode,
+      sha256:
+        mode === "160000"
+          ? sha256(Buffer.from(`gitlink:${objectId}`, "utf8"))
+          : mode === "120000"
+            ? sha256(Buffer.from(await readlink(resolve(repositoryRoot, path))))
+            : sha256(await readFile(resolve(repositoryRoot, path))),
+    })),
+  );
+  return sha256(
+    JSON.stringify({
+      domain: "midgard-reviewed-integration-content-tree-v1",
+      entries,
+    }),
+  );
+};
+if (
+  dependencyMap.authority?.resultContentTreeSha256 !==
+  (await trackedContentTreeSha256())
+) {
+  fail("authority result content tree is stale");
 }
 
 const requiredIds = [
@@ -49,6 +127,15 @@ for (const id of requiredIds) {
   if (!Array.isArray(entry.sourcePaths) || entry.sourcePaths.length === 0) {
     fail(`${id} must name source paths`);
   }
+  if (
+    entry.sourceSha256 === null ||
+    typeof entry.sourceSha256 !== "object" ||
+    Array.isArray(entry.sourceSha256) ||
+    JSON.stringify(Object.keys(entry.sourceSha256).sort()) !==
+      JSON.stringify([...entry.sourcePaths].sort())
+  ) {
+    fail(`${id} must hash-bind every source path exactly`);
+  }
   if (!Array.isArray(entry.sourceSymbols) || entry.sourceSymbols.length === 0) {
     fail(`${id} must name source symbols`);
   }
@@ -66,9 +153,15 @@ for (const id of requiredIds) {
   }
   const sourceTexts = [];
   for (const sourcePath of entry.sourcePaths) {
-    sourceTexts.push(
-      await readFile(resolve(repositoryRoot, sourcePath), "utf8"),
-    );
+    const absoluteSourcePath = resolve(repositoryRoot, sourcePath);
+    if (
+      relative(repositoryRoot, absoluteSourcePath).startsWith("..") ||
+      entry.sourceSha256[sourcePath] !==
+        sha256(await readFile(absoluteSourcePath))
+    ) {
+      fail(`${id} source hash is stale for ${sourcePath}`);
+    }
+    sourceTexts.push(await readFile(absoluteSourcePath, "utf8"));
   }
   const combinedSource = sourceTexts.join("\n");
   for (const sourceSymbol of entry.sourceSymbols) {
@@ -117,6 +210,9 @@ const watcherManifest = JSON.parse(
     "utf8",
   ),
 );
+const workspaceManifest = JSON.parse(
+  await readFile(resolve(repositoryRoot, "demo/package.json"), "utf8"),
+);
 const committeeManifest = JSON.parse(
   await readFile(
     resolve(repositoryRoot, "demo/da-committee-node/package.json"),
@@ -126,10 +222,93 @@ const committeeManifest = JSON.parse(
 if (
   watcherManifest.name !== "midgard-watcher" ||
   watcherManifest.bin?.["midgard-watcher"] !== "./dist/cli.js" ||
+  watcherManifest.packageManager !== undefined ||
+  workspaceManifest.packageManager !==
+    "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0" ||
   committeeManifest.name !== "da-committee-node" ||
   committeeManifest.bin?.["da-committee-node"] !== "./dist/index.js"
 ) {
-  fail("watcher and committee package identities must remain distinct");
+  fail(
+    "watcher/committee identities and the workspace package-manager authority must remain exact",
+  );
+}
+const listPackageFiles = async (relativeDirectory) => {
+  const discovered = [];
+  const walk = async (absoluteDirectory, relativePrefix) => {
+    const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (
+        entry.isDirectory() &&
+        (entry.name === "dist" || entry.name === "node_modules")
+      ) {
+        continue;
+      }
+      const relativePath =
+        relativePrefix === "" ? entry.name : `${relativePrefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        await walk(resolve(absoluteDirectory, entry.name), relativePath);
+      } else if (entry.isFile()) {
+        discovered.push(`${relativeDirectory}/${relativePath}`);
+      }
+    }
+  };
+  await walk(resolve(repositoryRoot, relativeDirectory), "");
+  return discovered.sort();
+};
+const declaredWatcherContents = [
+  ...(dependencyMap.requiredWatcherPackage?.currentContents ?? []),
+].sort();
+const actualWatcherContents = await listPackageFiles("demo/midgard-watcher");
+if (
+  JSON.stringify(declaredWatcherContents) !==
+  JSON.stringify(actualWatcherContents)
+) {
+  fail("requiredWatcherPackage.currentContents must exactly cover the package");
+}
+if (
+  workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
+  "node scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+) {
+  fail("workspace must expose the canonical watcher dependency-map verifier");
+}
+const nodeCi = await readFile(
+  resolve(repositoryRoot, ".github/workflows/midgard-node-ci.yml"),
+  "utf8",
+);
+for (const requiredCiText of [
+  "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+  "pnpm --dir demo run watcher:dependency-map:verify",
+]) {
+  if (!nodeCi.includes(requiredCiText)) {
+    fail(`Midgard node CI is missing ${requiredCiText}`);
+  }
+}
+const watcherArchitecture = await readFile(
+  resolve(
+    repositoryRoot,
+    "demo/midgard-watcher/midgard-watcher-architecture.md",
+  ),
+  "utf8",
+);
+const watcherAdversarialReview = await readFile(
+  resolve(
+    repositoryRoot,
+    "demo/midgard-watcher/watcher-plan-adversarial-review.md",
+  ),
+  "utf8",
+);
+for (const sourceModeDocument of [
+  watcherArchitecture,
+  watcherAdversarialReview,
+]) {
+  if (
+    !sourceModeDocument.includes("`local_node`") ||
+    !sourceModeDocument.includes("`external_providers`") ||
+    !sourceModeDocument.includes("watcher-operated")
+  ) {
+    fail("shipped watcher documents must define both L1-source modes");
+  }
 }
 const watcherSource = await readFile(
   resolve(repositoryRoot, "demo/midgard-watcher/src/scaffold.ts"),
@@ -240,7 +419,6 @@ const watcherIndexSource = await readFile(
   resolve(repositoryRoot, "demo/midgard-watcher/src/index.ts"),
   "utf8",
 );
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 if (
   strictConfiguration?.schemaVersion !== "midgard-watcher-config-v1" ||
   strictConfiguration.sourceSha256 !== sha256(configBytes) ||
@@ -414,7 +592,7 @@ if (
   l1Adapter.inputPolicy !== "authenticated_node_derived_l1_only" ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 10
+  l1Adapter.node22FocusedTestsPassed !== 11
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -462,7 +640,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 14
+  multiProviderConsistency.node22FocusedTestsPassed !== 15
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -505,7 +683,7 @@ if (
     "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 21
+  finalityEngine.node22FocusedTestsPassed !== 22
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -605,7 +783,7 @@ if (
     "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.node22FocusedTestsPassed !== 11
+  stateQueueIndexer.node22FocusedTestsPassed !== 15
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }

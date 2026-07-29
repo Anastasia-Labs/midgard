@@ -45,6 +45,7 @@ import {
   selectTransferInputs,
   submitL2TransferProgram,
   submitNativeTransferTx,
+  toQueuedTx,
 } from "@/commands/submit-l2-transfer.js";
 import { NodeConfig } from "@/services/config.js";
 import { Lucid as LucidService } from "@/services/lucid.js";
@@ -211,6 +212,29 @@ describe("submit-l2-transfer config helpers", () => {
 });
 
 describe("submit-l2-transfer tx building", () => {
+  it("attaches the canonical empty program-material sidecar for local validation", () => {
+    const txId = Buffer.from("ab".repeat(32), "hex");
+    const txCbor = Buffer.from("80", "hex");
+    const queued = toQueuedTx({
+      txId,
+      txIdHex: txId.toString("hex"),
+      txCbor,
+      txHex: txCbor.toString("hex"),
+      fee: 0n,
+      senderAddress: "sender",
+      destinationAddress: "destination",
+      selectedInputs: [],
+      requestedAssets: {},
+      changeAssets: {},
+    });
+
+    expect(queued.txId).toBe(txId);
+    expect(queued.txCbor).toBe(txCbor);
+    expect(queued.programMaterialSidecarCbor).toEqual(
+      encodeMidgardCekProgramMaterialSidecarV1([]),
+    );
+  });
+
   it("selects sufficient inputs and builds a valid native transfer with change", async () => {
     const sender = walletFromSeed(TEST_SEED, { network: "Preprod" });
     const destination = walletFromSeed(OTHER_TEST_SEED, { network: "Preprod" });

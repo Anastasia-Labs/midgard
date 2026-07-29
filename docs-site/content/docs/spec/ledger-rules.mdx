@@ -11,38 +11,40 @@ the on-chain fraud proofs check against.
 
 Section 5.1 (`1-cardano-ledger-rules.tex`) is written. It restates the Cardano ledger
 rules Midgard inherits, each with its violation code. For example, **No Ada minted**
-requires `lovelaces(mint(t)) = 0` and is violated by `ADA-MINTED`.
+requires `lovelaces(mint(t)) = 0` and is violated by `ADA-MINTED`. This does not
+prohibit minting or burning non-Ada assets.
 
 ## Custom Midgard ledger rules
 
 <Callout type="info" title="The launch profile is normative">
 `technical-spec/5-ledger-rules/2-custom-midgard-ledger-rules.tex` now records the
-launch rules, while `demo/midgard-core/src/consensus-profile.ts` is their
-machine-readable identity. A future profile may enable additional features only
-with corresponding L1-disputable proof coverage.
+canonical V1 rules, while `demo/midgard-core/src/consensus-profile-v1.ts` is
+their machine-readable identity. Protocol version `1` enables the complete
+canonical feature surface, including mint/burn, reference inputs/scripts,
+script witnesses and credentials, redeemers, observers, and protected outputs.
+Unknown profile identities or unsupported encodings fail closed.
 </Callout>
 
 What the implementation enforces today is documented under the
-[validation engine](/docs/validation/phase-a). The closest counterparts to the section
-5.2 headings are Phase A's stateless checks:
+[validation engine](/docs/validation/phase-a). Section 5.2 rules are enforced
+across canonical construction, admission, DA verification, and the
+L1-disputable validation machine:
 
-| Section 5.2 heading | Status in the implementation | Reject code |
+| Section 5.2 heading | Enforcement | Reject code or verdict |
 | --- | --- | --- |
-| Is valid | Enforced by Phase A. `ledgerTx.validity` must be `TxIsValid`. | `E_IS_VALID_FALSE_FORBIDDEN` |
-| No auxiliary data | Enforced by Phase A. `auxiliaryDataHash` must equal `EMPTY_NULL_ROOT`. | `E_AUX_DATA_FORBIDDEN` |
+| Is valid | Enforced at canonical V1 admission. `ledgerTx.validity` must be `TxIsValid`. | `E_IS_VALID_FALSE_FORBIDDEN` |
+| No auxiliary data | Enforced at canonical V1 admission. `auxiliaryDataHash` must equal `EMPTY_NULL_ROOT`. | `E_AUX_DATA_FORBIDDEN` |
 | Certificates empty | Holds by construction. The native transaction format has no certificate field. | Not applicable |
 | Only zero withdrawals | Holds by construction. Native transactions carry required observers, not withdrawals. When a native transaction is converted to a Cardano transaction, each observer becomes a reward-account withdrawal of exactly `0` lovelace (`codec/native.ts`). | Not applicable |
-| No mints | Enforced by Phase A and independently by DA payload verification. The canonical mint preimage must be empty. | `E_MINT_FORBIDDEN` |
+| Mint and burn authorization | Non-Ada mint/burn is enabled. Every non-zero policy must pass its native, PlutusV3, or MidgardV1 policy execution, and the mint value participates in multi-asset conservation. | Policy-script verdict; `E_VALUE_NOT_PRESERVED` for a conservation failure |
 
-<Callout type="warn" title="Mint/burn is retained, not enabled">
-`lucid-midgard` retains the `mintAssets` and `mint` methods, and Phase B retains
-the profile-independent `inputs − fee + mint − outputs = 0` accounting equation.
-Under `midgard-launch-consensus-v1`, the builder methods fail immediately and
-Phase A/DA reject any non-empty mint preimage. This preserves the product surface
-without claiming the missing mint-authorization and value-preservation fraud
-proofs. Enabling mint/burn requires a new consensus profile and those proof
-families, as required by
-[issue #459](https://github.com/Anastasia-Labs/midgard/issues/459).
+<Callout type="info" title="Mint/burn is enabled in canonical V1">
+`lucid-midgard` exposes `mintAssets` and `mint` because mint/burn is part of the
+normative protocol-version `1` surface. These calls construct immutable builder
+state; they are not rejected merely because the mint preimage is non-empty.
+Canonical completion and validation enforce exact profile bounds, policy
+authorization, the zero-Ada rule, and
+`inputs + mint − fee − outputs = 0`.
 </Callout>
 
 Section 5.1 also states rules a fraud proof can demonstrate a block violated,

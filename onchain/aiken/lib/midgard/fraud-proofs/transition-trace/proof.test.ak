@@ -338,7 +338,23 @@ fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
 ) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
-  let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, compact_cbor, []))
+  let witness_set_compact_cbor = native_l2_witness_set_compact_cbor()
+  let field_preimage_lengths_cbor = native_l2_field_preimage_lengths_cbor()
+  let source = ledger_state.L2TransactionSourceV1 {
+    tx_id,
+    transaction_commitment: native_compact.native_tx_proof_commitment_v1(
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    ),
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    },
+  }
+  let source_cbor = cbor.serialise(source)
+  let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, source_cbor, []))
   transition_trace.RootMembershipProof {
     domain: transition_trace.TransactionsV1RootDomain,
     root: transition_trace.commit_counted_root(
@@ -349,7 +365,7 @@ fn raw_l2_source_membership(
     phas_root,
     count: 1,
     key: tx_id,
-    value: compact_cbor,
+    value: source_cbor,
     proof: [],
   }
 }
@@ -783,8 +799,34 @@ fn native_l2_compact_cbor(
         auxiliary_data_hash: h32_b,
         network_id: 0,
       },
-      witness_set_hash: h32_c,
+      witness_set_hash: blake2b_256(native_l2_witness_set_compact_cbor()),
       validity_code: 0,
+    },
+  )
+}
+
+fn native_l2_witness_set_compact_cbor() -> ByteArray {
+  native_compact.encode_native_tx_witness_set_compact(
+    native_types.NativeTxWitnessSetCompact {
+      addr_tx_wits_hash: h32_a,
+      script_tx_wits_hash: h32_b,
+      redeemer_tx_wits_hash: h32_c,
+    },
+  )
+}
+
+fn native_l2_field_preimage_lengths_cbor() -> ByteArray {
+  native_compact.encode_native_tx_field_preimage_lengths_v1(
+    native_types.NativeTxFieldPreimageLengthsV1 {
+      spend_inputs: 0,
+      reference_inputs: 0,
+      outputs: 0,
+      required_observers: 0,
+      required_signers: 0,
+      mint: 0,
+      address_witnesses: 0,
+      script_witnesses: 0,
+      redeemers: 0,
     },
   )
 }

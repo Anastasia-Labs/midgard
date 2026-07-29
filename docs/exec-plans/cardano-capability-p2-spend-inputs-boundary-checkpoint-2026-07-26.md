@@ -134,7 +134,7 @@ Both pass.
 
 This checkpoint closes the TypeScript Cardano boundary and terminal-fold
 fixture for field 0. The next ordered field without equivalent evidence is
-field 1 (`reference_inputs`). Fields 3, 5, 7, and 8 also remain open, as do
+field 1 (`reference_inputs`). Fields 3, 5, 6, and 8 also remain open, as do
 maximum-shape normal/forced retained-DA reconstruction and applied Aiken
 lifecycle evidence.
 

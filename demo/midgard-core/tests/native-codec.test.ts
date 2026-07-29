@@ -19,6 +19,7 @@ import {
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeSingleCbor,
   deriveMidgardNativeFieldCollectionV1,
+  deriveMidgardNativeFieldItemBytesV1,
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
@@ -124,6 +125,51 @@ describe("Midgard native v1 codec", () => {
           bodyCbor,
         ]),
       ),
+    );
+  });
+
+  it("binds field 6 to raw script items and field 7 to address bytes", () => {
+    const scriptItem = encodeCbor([3n, Buffer.from("010203", "hex")]);
+    const scriptPreimage = encodeCbor([[3n, Buffer.from("010203", "hex")]]);
+    const address = Buffer.from("aabbcc", "hex");
+    const addressPreimage = encodeCbor([address]);
+
+    expect(
+      deriveMidgardNativeFieldItemBytesV1({
+        fieldIndex: 6,
+        preimageCbor: scriptPreimage,
+      }),
+    ).toEqual([scriptItem]);
+    expect(
+      deriveMidgardNativeFieldItemBytesV1({
+        fieldIndex: 7,
+        preimageCbor: addressPreimage,
+      }),
+    ).toEqual([address]);
+    expect(() =>
+      deriveMidgardNativeFieldItemBytesV1({
+        fieldIndex: 7,
+        preimageCbor: scriptPreimage,
+      }),
+    ).toThrow(/must be a CBOR byte string/u);
+
+    const witnessSet = {
+      addrTxWitsPreimageCbor: addressPreimage,
+      scriptTxWitsPreimageCbor: scriptPreimage,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    };
+    const compact = deriveMidgardNativeTxWitnessSetCompactV1(witnessSet);
+    expect(compact.scriptTxWitsHash).toEqual(
+      deriveMidgardNativeFieldCollectionV1({
+        fieldIndex: 6,
+        preimageCbor: scriptPreimage,
+      }).commitment,
+    );
+    expect(compact.addrTxWitsHash).toEqual(
+      deriveMidgardNativeFieldCollectionV1({
+        fieldIndex: 7,
+        preimageCbor: addressPreimage,
+      }).commitment,
     );
   });
 

@@ -1156,8 +1156,8 @@ fn transaction_field_preimage_length(
     3 -> lengths.required_observers
     4 -> lengths.required_signers
     5 -> lengths.mint
-    6 -> lengths.address_witnesses
-    7 -> lengths.script_witnesses
+    6 -> lengths.script_witnesses
+    7 -> lengths.address_witnesses
     8 -> lengths.redeemers
     _ -> fail @"unknown transaction field"
   }
@@ -1176,8 +1176,8 @@ fn transaction_field_commitment(
     3 -> body.required_observers_hash
     4 -> body.required_signers_hash
     5 -> body.mint_hash
-    6 -> witness_set.addr_tx_wits_hash
-    7 -> witness_set.script_tx_wits_hash
+    6 -> witness_set.script_tx_wits_hash
+    7 -> witness_set.addr_tx_wits_hash
     8 -> witness_set.redeemer_tx_wits_hash
     _ -> fail @"unknown transaction field"
   }
@@ -1194,11 +1194,11 @@ fn transaction_field_item_encoded_length(
     field_index == 2,
     field_index == 3,
     field_index == 4,
-    field_index == 6,
+    field_index == 7,
   } {
     Some(canonical_argument_header_size(item_length) + item_length)
   } else if or {
-    field_index == 7,
+    field_index == 6,
     field_index == 8,
   } {
     Some(item_length)
@@ -1908,7 +1908,7 @@ fn input_sets_item_successor_is_exact(
       )
     } else {
       let address_count = if witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
-        6,
+        7,
         [],
       ) {
         0
@@ -2319,7 +2319,7 @@ fn signatures_control_is_bound(
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
   let address_is_empty = witness_set.addr_tx_wits_hash == bounded_collection_v1.from_items(
-    6,
+    7,
     [],
   )
   let required_is_empty = verified.tx_compact.body.required_signers_hash == bounded_collection_v1.from_items(
@@ -2560,8 +2560,8 @@ fn verify_signature_address_item(
     signatures_control_is_bound(pre, witness, control, verified, witness_set),
     control.stage == 0,
     control.address_count != 0,
-    collection_proof.field_index == 6,
-    chunk_proof.field_index == 6,
+    collection_proof.field_index == 7,
+    chunk_proof.field_index == 7,
     control.address_count == -1 || control.address_count == collection_proof.item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
@@ -2757,7 +2757,7 @@ fn verify_signatures_handoff(
     control.field_preimage_lengths_cbor,
   )
   let script_count = if witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
-    7,
+    6,
     [],
   ) {
     0
@@ -2971,7 +2971,7 @@ fn phase_a_native_control_is_bound(
   witness_set: NativeTxWitnessSetCompact,
 ) -> Bool {
   let scripts_are_empty = witness_set.script_tx_wits_hash == bounded_collection_v1.from_items(
-    7,
+    6,
     [],
   )
   let is_late_continuation = control.continuation_cbor != #""
@@ -3289,12 +3289,12 @@ fn verify_phase_a_native_item_scan(
     control.script_count == -1 || control.script_count == collection_proof.item_count,
     active_count > 0,
     active_count <= max_tx_size_derived_collection_item_count,
-    collection_proof.field_index == 7,
+    collection_proof.field_index == 6,
     collection_proof.item_count == active_count,
     collection_proof.item_index == control.script_seen,
     collection_proof.item_length > 0,
     collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-    chunk_proof.field_index == 7,
+    chunk_proof.field_index == 6,
     chunk_proof.item_index == collection_proof.item_index,
     chunk_proof.total_length == collection_proof.item_length,
     chunk_proof.chunk_index == 0,
@@ -3346,7 +3346,7 @@ fn phase_a_native_chunk_window(
   let expected_chunk_index = control.cursor / bounded_item_v1.chunk_bytes
   let count = bounded_item_v1.chunk_count(control.item_length)
   let current_matches = and {
-    chunk_proof.field_index == 7,
+    chunk_proof.field_index == 6,
     chunk_proof.item_index == control.script_seen,
     chunk_proof.total_length == control.item_length,
     chunk_proof.chunk_index == expected_chunk_index,
@@ -3359,7 +3359,7 @@ fn phase_a_native_chunk_window(
       None -> None
       Some(next) ->
         if and {
-          next.field_index == 7,
+          next.field_index == 6,
           next.item_index == control.script_seen,
           next.total_length == control.item_length,
           next.chunk_index == expected_chunk_index + 1,
@@ -7553,7 +7553,7 @@ pub fn inline_source_hash_block_v1(
     }
     if !and {
       hash_control.total_length == pending.payload_length + 1,
-      chunk_proof.field_index == 7,
+      chunk_proof.field_index == 6,
       chunk_proof.item_index == pending.source_index,
       chunk_proof.total_length == pending.item_length,
       chunk_proof.chunk_index == expected_chunk_index,
@@ -7570,7 +7570,7 @@ pub fn inline_source_hash_block_v1(
           None -> None
           Some(next) ->
             if and {
-              next.field_index == 7,
+              next.field_index == 6,
               next.item_index == pending.source_index,
               next.total_length == pending.item_length,
               next.chunk_index == expected_chunk_index + 1,
@@ -7619,7 +7619,7 @@ pub fn verify_script_sources_stage_zero_finish_semantics_v1(
     control.witness_set_compact_cbor,
   )
   let script_commitment = witness_set.script_tx_wits_hash
-  let empty_script_commitment = bounded_collection_v1.from_items(7, [])
+  let empty_script_commitment = bounded_collection_v1.from_items(6, [])
   let source_scan_is_complete = if script_commitment == empty_script_commitment {
     and {
       control.source_count == 0,
@@ -7668,10 +7668,10 @@ pub fn verify_script_sources_stage_zero_begin_semantics_v1(
     active_total_count <= max_tx_size_derived_collection_item_count,
     collection_proof.item_length > 0,
     collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-    collection_proof.field_index == 7,
+    collection_proof.field_index == 6,
     collection_proof.item_count == active_total_count,
     collection_proof.item_index == control.source_count,
-    chunk_proof.field_index == 7,
+    chunk_proof.field_index == 6,
     chunk_proof.item_index == collection_proof.item_index,
     chunk_proof.total_length == collection_proof.item_length,
     chunk_proof.chunk_index == 0,
@@ -7834,7 +7834,7 @@ fn script_sources_stage_zero(
     control.field_preimage_lengths_cbor,
   )
   let script_commitment = witness_set.script_tx_wits_hash
-  let empty_script_commitment = bounded_collection_v1.from_items(7, [])
+  let empty_script_commitment = bounded_collection_v1.from_items(6, [])
   let common_control_is_initial = and {
     control.redeemer_count == 0,
     control.redeemer_total_count == 0,
@@ -7973,10 +7973,10 @@ fn script_sources_stage_zero(
       active_total_count <= max_tx_size_derived_collection_item_count,
       collection_proof.item_length > 0,
       collection_proof.item_length <= max_aggregate_field_preimage_bytes,
-      collection_proof.field_index == 7,
+      collection_proof.field_index == 6,
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.source_count,
-      chunk_proof.field_index == 7,
+      chunk_proof.field_index == 6,
       chunk_proof.item_index == collection_proof.item_index,
       chunk_proof.total_length == collection_proof.item_length,
       chunk_proof.chunk_index == 0,

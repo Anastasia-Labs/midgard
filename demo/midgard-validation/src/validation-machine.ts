@@ -910,14 +910,26 @@ const canonicalCborArgumentHeaderSize = (value: number): number => {
   return 9;
 };
 
+const MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX = 6;
+const MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX = 7;
+
 const canonicalFieldItemEncodedLength = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if (
+    [0, 1, 2, 3, 4, MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX].includes(
+      fieldIndex,
+    )
+  ) {
     return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
   }
-  if (fieldIndex === 7 || fieldIndex === 8) return itemLength;
+  if (
+    fieldIndex === MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX ||
+    fieldIndex === 8
+  ) {
+    return itemLength;
+  }
   if (fieldIndex !== 5 || itemLength === 0) {
     throw new Error(
       `invalid canonical field item length at field ${fieldIndex.toString()}`,
@@ -1420,12 +1432,12 @@ export const buildDeterministicValidationMachineTrace = (
       fieldIndex: 5,
       preimageCbor: fieldPreimages[5]!.preimageCbor,
     });
-    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 6,
+    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[6]!.preimageCbor,
     });
-    const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 7,
+    const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[7]!.preimageCbor,
     });
     const redeemerWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
@@ -1678,7 +1690,10 @@ export const buildDeterministicValidationMachineTrace = (
         throw new Error("V1 script source has a noncanonical item index");
       }
       const item = buildMidgardBoundedItemV1({
-        fieldIndex: source.originKind === "inline" ? 7 : 2,
+        fieldIndex:
+          source.originKind === "inline"
+            ? MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX
+            : 2,
         itemIndex,
         bytes: encodeMidgardVersionedScript(source.script),
       });

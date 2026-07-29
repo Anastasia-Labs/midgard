@@ -84,6 +84,7 @@ import {
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
 } from "../src/rollback-engine.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -181,37 +182,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  const catalogueNames = [
-    "doubleSpend",
-    "nonExistentInput",
-    "nonExistentInputNoIndex",
-    "invalidRange",
-    "transitionTrace",
-    "zeroInput",
-    "validationTraceDispute",
-  ] as const;
-  const contractByCategory = {
-    doubleSpend: "fraudProofDoubleSpend",
-    nonExistentInput: "fraudProofNonExistentInput",
-    nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-    invalidRange: "fraudProofInvalidRange",
-    transitionTrace: "fraudProofTransitionTrace",
-    zeroInput: "fraudProofZeroInput",
-    validationTraceDispute: "validationTraceDispute",
-  } as const;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      catalogueNames.map((name, index) => [
-        name,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: contracts[contractByCategory[name]].scriptHash,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -623,6 +595,12 @@ const sourceFixture = (
           network: "Preprod",
           authorityNodeId: localSource.authorityNodeId,
           genesisIdentitySha256: localSource.chainSync.genesisIdentitySha256,
+          queryServices: [
+            {
+              kind: "ogmios",
+              providerId: localProviders[1].providerId,
+            },
+          ],
         },
       }
     : {
@@ -631,6 +609,10 @@ const sourceFixture = (
         consistencyConfig: {
           sourceMode: "external_providers",
           network: "Preprod",
+          providers: providers.map((provider) => ({
+            providerId: provider.providerId,
+            operatorIdentitySha256: provider.source.operatorIdentitySha256,
+          })),
         },
       };
 
@@ -1219,6 +1201,15 @@ type InitStage = Readonly<{
   journal: WatcherProofThreadJournalV1;
 }>;
 
+type ProofThreadFinalityLineage = NonNullable<
+  WatcherProofThreadPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const proofThreadFinalityLineageByStateDigest = new Map<
+  string,
+  ProofThreadFinalityLineage
+>();
+
 const initStage = ({
   phase,
   previousState,
@@ -1242,11 +1233,34 @@ const initStage = ({
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(provider, fixture, depth),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const sourceStore = suppliedSource ?? baseStore(fixture);
   const store = appendPublicStore({
     source: sourceStore,
@@ -1305,11 +1319,9 @@ const initStage = ({
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },
@@ -1609,11 +1621,34 @@ const transitionStage = ({
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(provider, fixture, depth, ordinal),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const store = appendTransitionStore({
     source: sourceStore,
     block: normalized[0]!,
@@ -1670,11 +1705,9 @@ const transitionStage = ({
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth, ordinal),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },

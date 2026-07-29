@@ -129,6 +129,8 @@ export type WatcherL1UtxoV1 = Readonly<{
 
 export type WatcherL1TransactionV1 = Readonly<{
   txHash: string;
+  transactionIndex?: string;
+  blockParentHash?: string | null;
   body: WatcherL1PublicBytesV1;
   utxos: readonly WatcherL1UtxoV1[];
   scripts: readonly WatcherL1ScriptV1[];
@@ -533,14 +535,33 @@ const parseTransaction = (
   path: string,
   budget: ParseBudget,
 ): WatcherL1TransactionV1 => {
+  const unparsed = plainRecord(value, path);
+  const hasTransactionIndex = Object.prototype.hasOwnProperty.call(
+    unparsed,
+    "transactionIndex",
+  );
+  const hasBlockParentHash = Object.prototype.hasOwnProperty.call(
+    unparsed,
+    "blockParentHash",
+  );
   const record = exactRecord(value, path, [
     "txHash",
+    ...(hasTransactionIndex ? ["transactionIndex"] : []),
+    ...(hasBlockParentHash ? ["blockParentHash"] : []),
     "body",
     "utxos",
     "scripts",
     "datums",
     "redeemers",
   ]);
+  const transactionIndex = hasTransactionIndex
+    ? exactNatural(record.transactionIndex, `${path}.transactionIndex`)
+    : undefined;
+  const blockParentHash = hasBlockParentHash
+    ? record.blockParentHash === null
+      ? null
+      : exactString(record.blockParentHash, `${path}.blockParentHash`, HEX_32)
+    : undefined;
   const body = parsePublicBytes(record.body, `${path}.body`, budget);
   const txHash = exactString(record.txHash, `${path}.txHash`, HEX_32);
   if (
@@ -590,6 +611,8 @@ const parseTransaction = (
   );
   return Object.freeze({
     txHash,
+    ...(transactionIndex === undefined ? {} : { transactionIndex }),
+    ...(blockParentHash === undefined ? {} : { blockParentHash }),
     body,
     utxos,
     scripts,
@@ -706,6 +729,12 @@ const transactionJson = (
   transaction: WatcherL1TransactionV1,
 ): CanonicalJson => ({
   txHash: transaction.txHash,
+  ...(transaction.transactionIndex === undefined
+    ? {}
+    : { transactionIndex: transaction.transactionIndex }),
+  ...(transaction.blockParentHash === undefined
+    ? {}
+    : { blockParentHash: transaction.blockParentHash }),
   body: transaction.body,
   utxos: transaction.utxos,
   scripts: transaction.scripts,
@@ -799,18 +828,48 @@ export const normalizeWatcherL1BlockV1 = (
   const blockNo = exactNatural(point.blockNo, "$.chainPoint.blockNo");
   const depth = exactNatural(point.depth, "$.chainPoint.depth");
   const budget: ParseBudget = { publicBytes: 0 };
-  const transactions = freezeSortedUnique(
-    exactArray(observation.transactions, "$.transactions").map(
-      (transaction, index) =>
-        parseTransaction(
-          transaction,
-          `$.transactions[${index.toString()}]`,
-          budget,
-        ),
-    ),
+  const transactions = exactArray(
+    observation.transactions,
     "$.transactions",
-    (transaction) => transaction.txHash,
+  ).map((transaction, index) =>
+    parseTransaction(
+      transaction,
+      `$.transactions[${index.toString()}]`,
+      budget,
+    ),
   );
+  const transactionHashes = new Set<string>();
+  let blockParentHash: string | null | undefined;
+  for (let index = 0; index < transactions.length; index += 1) {
+    const transaction = transactions[index]!;
+    if (transactionHashes.has(transaction.txHash)) {
+      fail("duplicate_identity", `$.transactions[${index.toString()}]`);
+    }
+    if (
+      transaction.transactionIndex !== undefined &&
+      transaction.transactionIndex !== index.toString()
+    ) {
+      fail(
+        "identity_mismatch",
+        `$.transactions[${index.toString()}].transactionIndex`,
+      );
+    }
+    if (
+      transaction.blockParentHash !== undefined &&
+      blockParentHash !== undefined &&
+      transaction.blockParentHash !== blockParentHash
+    ) {
+      fail(
+        "identity_mismatch",
+        `$.transactions[${index.toString()}].blockParentHash`,
+      );
+    }
+    if (transaction.blockParentHash !== undefined) {
+      blockParentHash = transaction.blockParentHash;
+    }
+    transactionHashes.add(transaction.txHash);
+  }
+  Object.freeze(transactions);
   const pointDigest = digestCanonicalJson({
     network,
     blockHash,

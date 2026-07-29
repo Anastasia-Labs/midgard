@@ -68,9 +68,9 @@ shared-schema parallel enters Midgard DA.
 | Spend inputs, field 0 | 17,336 | 436 | 37,470 | 37,513 |
 | Reference inputs, field 1 | 17,333 | 436 | 37,466 | 37,509 |
 | Outputs, field 2 | 19,085 | 440 | 41,078 | 41,121 |
-| Observers/native scripts, fields 3/7 | 16,871 | 451 | 36,526 | 36,569 |
-| Required signers/address witnesses, fields 4/6 | 16,685 | 250 | 36,133 | 36,176 |
-| Mint/native policies, fields 5/7 | 16,986 | 265 | 36,766 | 36,809 |
+| Observers/native scripts, fields 3/6 | 16,871 | 451 | 36,526 | 36,569 |
+| Required signers/address witnesses, fields 4/7 | 16,685 | 250 | 36,133 | 36,176 |
+| Mint/native policies, fields 5/6 | 16,986 | 265 | 36,766 | 36,809 |
 | Spend redeemers, field 8 | 16,933 | 596 | 36,645 | 36,688 |
 
 Each DA size includes two full retained preimages: one normal and one forced.

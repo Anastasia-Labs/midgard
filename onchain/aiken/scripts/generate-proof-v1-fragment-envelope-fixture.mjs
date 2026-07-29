@@ -348,7 +348,7 @@ const canonicalHeaderSize = (count) => {
 };
 const canonicalBytesSize = (length) => canonicalHeaderSize(length) + length;
 const itemEncodedSize = (fieldIndex, itemLength) => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalBytesSize(itemLength);
   }
   if (fieldIndex === 5) {

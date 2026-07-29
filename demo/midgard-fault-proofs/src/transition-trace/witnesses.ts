@@ -457,6 +457,16 @@ export type ValidDepositTransitionEvidence = {
   readonly projectedUtxo: SDK.LedgerInsertWitness;
 };
 
+/**
+ * Mutation proofs for replaying an authenticated L2 transaction against its
+ * committed pre-state root. The transaction input/output preimages themselves
+ * are taken from the authenticated retained-DA transaction, not caller input.
+ */
+export type L2TransactionTransitionEvidence = {
+  readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
+  readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+};
+
 export type AcceptedTransactionTransitionMismatchEvidence = {
   readonly claim: SDK.ValidationClaimWitnessV1;
   readonly terminalAcceptanceWitnessCbor: string;
@@ -605,6 +615,48 @@ export const buildValidDepositTransitionWitness = async ({
       event_ref_input_index: evidence.eventRefInputIndex,
       event_asset_name: evidence.eventAssetName,
       projected_utxo: evidence.projectedUtxo,
+    },
+  };
+};
+
+export const buildL2TransactionTransitionWitness = async ({
+  reconstruction,
+  stepIndex,
+  evidence,
+}: {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly stepIndex: bigint;
+  readonly evidence: L2TransactionTransitionEvidence;
+}): Promise<SDK.InvalidOneStepTransitionWitness> => {
+  const trace = requireTraceEntry(reconstruction, stepIndex);
+  const source = sourceEventOrThrow(reconstruction, trace.value.event_key);
+  if (source.phase !== "L2Transaction") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      `Trace step ${stepIndex.toString()} is not an L2-transaction step.`,
+    );
+  }
+  if (source.entry.validity !== "TxIsValid") {
+    throw transitionTraceError(
+      "missingWitnessData",
+      "L2TransactionTransition requires a transaction source classified as TxIsValid.",
+    );
+  }
+  return {
+    L2TransactionTransition: {
+      trace_proof: await buildIndexedTraceProof({ reconstruction, stepIndex }),
+      event_to_step: await buildEventToStepMembershipProof({
+        reconstruction,
+        eventKey: trace.value.event_key,
+      }),
+      source_membership: await buildRawL2TransactionSourceMembershipProof({
+        reconstruction,
+        txId: source.entry.txId,
+      }),
+      spend_inputs_preimage: source.entry.spendInputsPreimage.toString("hex"),
+      outputs_preimage: source.entry.outputsPreimage.toString("hex"),
+      spent_utxos: evidence.spentUtxos,
+      produced_utxos: evidence.producedUtxos,
     },
   };
 };

@@ -82,6 +82,7 @@ import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
 import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
+  resolveWithdrawalLedgerOutputAtSelectedBaseV1,
 } from "./mpf/withdrawal-classification.js";
 import {
   type AuthenticatedPackedMpfRecord,
@@ -3503,18 +3504,26 @@ export const processMpfs = (
         }
 
         const rawLedgerOutput =
-          yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
-            Effect.map((entries) => {
-              const entry = entries.find((candidate) =>
-                candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
-              );
-              return entry === undefined
-                ? Option.none<Buffer>()
-                : Option.some(
-                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
+          yield* resolveWithdrawalLedgerOutputAtSelectedBaseV1({
+            ledgerOutRef,
+            deferDatabaseWrites: config.deferDatabaseWrites === true,
+            initialLedgerEntries: config.initialLedgerEntries,
+            retrievePersisted: () =>
+              MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
+                Effect.map((entries) => {
+                  const entry = entries.find((candidate) =>
+                    candidate[MempoolLedgerDB.Columns.OUTREF].equals(
+                      ledgerOutRef,
+                    ),
                   );
-            }),
-          );
+                  return entry === undefined
+                    ? Option.none<Buffer>()
+                    : Option.some(
+                        Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
+                      );
+                }),
+              ),
+          });
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,

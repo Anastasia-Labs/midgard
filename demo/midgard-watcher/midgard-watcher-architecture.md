@@ -1,13 +1,34 @@
 # Midgard Watcher Node Architecture
 
-Status: Proposed target architecture; no independent production watcher is
-implemented in this directory.
+Status: Implemented fail-closed foundation; production verification,
+submission, and acceptance gates remain incomplete.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
-The working DA/watcher service is `demo/da-committee-node`. Proof coverage and
+The independent watcher foundation is implemented in this package. The
+DA-committee service remains in `demo/da-committee-node`. Proof coverage and
 binding gaps are tracked in `../../docs/fault-proofs/`; this design must not be
 used as evidence that independent challenges are production-ready.
+
+## Cardano L1 Source Modes
+
+The watcher has one explicit, mutually exclusive L1-source discriminator:
+`local_node` or `external_providers`.
+
+- In `local_node`, a watcher-operated Cardano full node is the sole
+  chain-consensus authority. Chain sync supplies roll-forward and rollback
+  events. Ogmios, Kupo/Kupmios, or db-sync may query the same node, but they are
+  aligned index surfaces—not independent providers. A stale, wrong-network, or
+  incompatible-chain-point query result fails closed.
+- In `external_providers`, the watcher has no local chain authority and
+  requires at least two operationally independent configured providers.
+  Same-network and compatible-chain-point agreement is mandatory; disagreement
+  quarantines protocol decisions.
+
+W14 consumes canonical node-derived transaction, output, datum, and rollback
+observations. Cardano consensus and the deployed validators establish L1
+transaction validity; the watcher indexes accepted state and does not
+reimplement the state-queue validator.
 
 This note summarizes what a Midgard watcher is, why it exists, and how a production watcher node should work.
 It is based on a review of the Midgard protocol specification, Aiken
@@ -80,7 +101,9 @@ The operator bond deters fraud only if a watcher can reliably convert an invalid
 
 A production watcher needs these inputs:
 
-- Cardano L1 provider access, preferably multiple providers with explicit finality and rollback policy.
+- Cardano L1 access in exactly one configured source mode: one
+  watcher-operated chain-sync authority plus aligned local query surfaces, or
+  at least two operationally independent external providers.
 - The Midgard deployment manifest or enough data to derive and verify it: network id, hub oracle, script hashes, reference-script UTxOs, protocol parameters, fraud-proof catalogue root, compiler/artifact hashes, and genesis/one-shot identity.
 - The hub oracle UTxO and all protocol addresses/policy IDs it authenticates.
 - State queue, scheduler, operator-directory, settlement, deposit, withdrawal, transaction-order, reserve, payout, fraud-proof catalogue, computation-thread, and fraud-proof UTxOs.
@@ -395,7 +418,10 @@ Only `verified` should be considered healthy.
 A production watcher should:
 
 - Run continuously and start before blocks are close to maturity.
-- Use at least two independent L1 data sources for public deployments.
+- Bind every public deployment to exactly one L1 source mode: one
+  watcher-operated chain-sync authority with aligned query surfaces in
+  `local_node`, or at least two operationally independent providers in
+  `external_providers`.
 - Persist every proof-critical input before submitting proof transactions.
 - Alert on DA fetch failure, root mismatch, proof submission failure, maturity deadline risk, provider disagreement, chain rollback, deployment fingerprint mismatch, and proof-family coverage gaps.
 - Keep enough ADA and collateral inputs available for proof steps.

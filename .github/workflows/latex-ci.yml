@@ -4,6 +4,8 @@ on:
   push:
     branches: [ "main", "staging" ]
     paths: [ 'technical-spec/**' ]
+  pull_request:
+    paths: [ 'technical-spec/**' ]
   workflow_dispatch:  # For manual testing
   # TODO: Change to release trigger later
   # release:
@@ -13,11 +15,8 @@ jobs:
   generate_pdf:
     runs-on: ubuntu-latest
     
-    # Add permissions for GitHub Pages
     permissions:
       contents: read
-      pages: write
-      id-token: write
     
     steps:
     - name: Checkout repository

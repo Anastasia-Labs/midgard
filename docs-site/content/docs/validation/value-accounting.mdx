@@ -60,11 +60,10 @@ this with the transaction's `fee`, the candidate's `derived.mintDelta`, and its
 `derived.outputSum`. If the result is not zero, tested by
 **`isZeroValueDelta`**, the transaction is rejected `E_VALUE_NOT_PRESERVED`.
 
-The equation is intentionally retained even though the launch consensus profile
-rejects non-empty mint preimages in Phase A. Keeping the signed mint term avoids
-deleting the feature's accounting semantics; a future mint-enabled profile still
-requires L1-disputable mint authorization and value-preservation proofs before it
-can be activated.
+Canonical V1 enables mint and burn. Phase A authenticates the canonical mint
+field, Phase B requires the relevant policy authorization, and the signed mint
+delta participates in value preservation exactly as shown above. Ada minting
+remains forbidden.
 
 <Callout type="info">
 The reject detail is produced by **`describeValueDelta`**, which renders the

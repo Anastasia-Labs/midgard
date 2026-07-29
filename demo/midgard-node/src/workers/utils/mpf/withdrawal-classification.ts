@@ -16,6 +16,7 @@ import { CML, Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
 import { DatabaseError } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 import * as WithdrawalsDB from "@/database/withdrawals.js";
 import { verifyWithdrawalSignature } from "@/withdrawal-signature.js";
 
@@ -29,6 +30,40 @@ export type ClassifiedWithdrawal = {
 };
 
 export { LOVELACE_UNIT, normalizeAssets };
+
+export const resolveWithdrawalLedgerOutputAtSelectedBaseV1 = <E, R>({
+  ledgerOutRef,
+  deferDatabaseWrites,
+  initialLedgerEntries,
+  retrievePersisted,
+}: {
+  readonly ledgerOutRef: Buffer;
+  readonly deferDatabaseWrites: boolean;
+  readonly initialLedgerEntries: readonly Ledger.MinimalEntry[] | undefined;
+  readonly retrievePersisted: () => Effect.Effect<Option.Option<Buffer>, E, R>;
+}): Effect.Effect<Option.Option<Buffer>, E | DatabaseError, R> => {
+  if (!deferDatabaseWrites) {
+    return retrievePersisted();
+  }
+  if (initialLedgerEntries === undefined) {
+    return Effect.fail(
+      new DatabaseError({
+        table: WithdrawalsDB.tableName,
+        message:
+          "Speculative withdrawal classification requires the selected base ledger snapshot",
+        cause: `l2_outref=${ledgerOutRef.toString("hex")}`,
+      }),
+    );
+  }
+  const entry = initialLedgerEntries.find((candidate) =>
+    candidate[Ledger.Columns.OUTREF].equals(ledgerOutRef),
+  );
+  return Effect.succeed(
+    entry === undefined
+      ? Option.none()
+      : Option.some(Buffer.from(entry[Ledger.Columns.OUTPUT])),
+  );
+};
 
 export const assetsToValue = (assets: Assets): SDK.Value => {
   const outer = new Map<string, Map<string, bigint>>();

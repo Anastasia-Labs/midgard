@@ -8,6 +8,7 @@ import {
   WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
   type WatcherL1NetworkV1,
   type WatcherL1SourceModeV1,
+  type WatcherLocalNodeSurfaceV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
 
@@ -30,7 +31,10 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
   "duplicate_provider_id",
   "duplicate_trust_identity",
   "duplicate_operator_identity",
+  "unconfigured_provider",
   "duplicate_local_surface",
+  "unconfigured_local_query_service",
+  "missing_local_query_evidence",
   "provider_transport_mismatch",
   "source_mode_mismatch",
   "local_node_authority_mismatch",
@@ -50,10 +54,12 @@ export const WATCHER_MULTI_PROVIDER_REASON_CODES_V1 = [
 export const WATCHER_MULTI_PROVIDER_ALERT_CODES_V1 = [
   "watcher_provider_quorum_unavailable",
   "watcher_provider_identity_collision",
+  "watcher_provider_not_configured",
   "watcher_provider_transport_mismatch",
   "watcher_l1_source_mode_mismatch",
   "watcher_local_node_authority_mismatch",
   "watcher_local_node_chain_sync_missing",
+  "watcher_local_node_query_evidence_missing",
   "watcher_provider_network_mismatch",
   "watcher_provider_lag",
   "watcher_provider_stale",
@@ -78,11 +84,23 @@ export type WatcherL1SourceConsistencyConfigV1 =
       network: WatcherL1NetworkV1;
       authorityNodeId: string;
       genesisIdentitySha256: string;
+      queryServices: readonly WatcherConfiguredLocalQueryServiceV1[];
     }>
   | Readonly<{
       sourceMode: "external_providers";
       network: WatcherL1NetworkV1;
+      providers: readonly WatcherConfiguredExternalProviderV1[];
     }>;
+
+export type WatcherConfiguredLocalQueryServiceV1 = Readonly<{
+  kind: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+  providerId: string;
+}>;
+
+export type WatcherConfiguredExternalProviderV1 = Readonly<{
+  providerId: string;
+  operatorIdentitySha256: string;
+}>;
 
 export type WatcherMultiProviderAgreementV1 = Readonly<{
   pointDigest: string;
@@ -100,12 +118,26 @@ export type WatcherExternalProviderBindingV1 = Readonly<{
   publicIdentitySha256: string;
 }>;
 
+export type WatcherLocalQueryServiceBindingV1 = Readonly<{
+  kind: WatcherConfiguredLocalQueryServiceV1["kind"];
+  providerId: string;
+  observationStatus:
+    | "aligned"
+    | "unavailable"
+    | "stale"
+    | "forked"
+    | "rollback_not_propagated"
+    | "content_mismatch";
+  observationDigest: string | null;
+}>;
+
 export type WatcherMultiProviderConsistencyV1 = Readonly<{
   schemaVersion: typeof WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION;
   status: WatcherMultiProviderConsistencyStatusV1;
   protocolDecision: "allowed" | "quarantined";
   sourceMode: WatcherL1SourceModeV1 | null;
   configuredNetwork: WatcherL1NetworkV1 | null;
+  configuredSourceDigest: string | null;
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
   chainAuthorityObservationDigest: string | null;
@@ -113,6 +145,7 @@ export type WatcherMultiProviderConsistencyV1 = Readonly<{
   observationCount: number;
   independentProviderCount: number;
   externalProviderBindings: readonly WatcherExternalProviderBindingV1[];
+  localQueryServiceBindings: readonly WatcherLocalQueryServiceBindingV1[];
   reasonCodes: readonly WatcherMultiProviderReasonCodeV1[];
   alertCodes: readonly WatcherMultiProviderAlertCodeV1[];
   observationEvidenceDigests: readonly string[];
@@ -343,6 +376,8 @@ const rejectedBoundaryResult = (
     protocolDecision: "quarantined",
     sourceMode: configuredSource?.sourceMode ?? null,
     configuredNetwork: configuredSource?.network ?? null,
+    configuredSourceDigest:
+      configuredSource === null ? null : sha256Canonical(configuredSource),
     authorityNodeId:
       configuredSource?.sourceMode === "local_node"
         ? configuredSource.authorityNodeId
@@ -356,6 +391,7 @@ const rejectedBoundaryResult = (
     observationCount: 0,
     independentProviderCount: 0,
     externalProviderBindings: Object.freeze([]),
+    localQueryServiceBindings: Object.freeze([]),
     reasonCodes: sortCodes(reasons, WATCHER_MULTI_PROVIDER_REASON_CODES_V1),
     alertCodes: sortCodes(alerts, WATCHER_MULTI_PROVIDER_ALERT_CODES_V1),
     observationEvidenceDigests: Object.freeze([]),
@@ -367,14 +403,59 @@ const rejectedBoundaryResult = (
 const parseConfiguredSource = (
   input: unknown,
 ): WatcherL1SourceConsistencyConfigV1 | null => {
-  const candidate = exactPlainRecord(input, ["sourceMode", "network"]);
+  const candidate = exactPlainRecord(input, [
+    "sourceMode",
+    "network",
+    "providers",
+  ]);
   if (candidate !== null && candidate.sourceMode === "external_providers") {
-    if (!isNetwork(candidate.network)) {
+    const providerInputs = exactObservationArray(candidate.providers);
+    if (
+      !isNetwork(candidate.network) ||
+      providerInputs === null ||
+      providerInputs.length < 2 ||
+      providerInputs.length >
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations
+    ) {
+      return null;
+    }
+    const providers: WatcherConfiguredExternalProviderV1[] = [];
+    for (const input of providerInputs) {
+      const provider = exactPlainRecord(input, [
+        "providerId",
+        "operatorIdentitySha256",
+      ]);
+      if (
+        provider === null ||
+        typeof provider.providerId !== "string" ||
+        !/^[a-z][a-z0-9-]{0,62}$/u.test(provider.providerId) ||
+        !isHex32(provider.operatorIdentitySha256)
+      ) {
+        return null;
+      }
+      providers.push(
+        Object.freeze({
+          providerId: provider.providerId,
+          operatorIdentitySha256: provider.operatorIdentitySha256,
+        }),
+      );
+    }
+    if (
+      duplicateValues(providers.map(({ providerId }) => providerId)) ||
+      duplicateValues(
+        providers.map(({ operatorIdentitySha256 }) => operatorIdentitySha256),
+      )
+    ) {
       return null;
     }
     return Object.freeze({
       sourceMode: "external_providers",
       network: candidate.network,
+      providers: Object.freeze(
+        providers.sort((left, right) =>
+          left.providerId.localeCompare(right.providerId),
+        ),
+      ),
     });
   }
   const local = exactPlainRecord(input, [
@@ -382,14 +463,47 @@ const parseConfiguredSource = (
     "network",
     "authorityNodeId",
     "genesisIdentitySha256",
+    "queryServices",
   ]);
+  const queryInputs =
+    local === null ? null : exactObservationArray(local.queryServices);
   if (
     local === null ||
     local.sourceMode !== "local_node" ||
     !isNetwork(local.network) ||
     typeof local.authorityNodeId !== "string" ||
     !/^[a-z][a-z0-9-]{0,62}$/u.test(local.authorityNodeId) ||
-    !isHex32(local.genesisIdentitySha256)
+    !isHex32(local.genesisIdentitySha256) ||
+    queryInputs === null ||
+    queryInputs.length > 8
+  ) {
+    return null;
+  }
+  const queryServices: WatcherConfiguredLocalQueryServiceV1[] = [];
+  for (const input of queryInputs) {
+    const query = exactPlainRecord(input, ["kind", "providerId"]);
+    if (
+      query === null ||
+      !["ogmios", "kupo", "kupmios", "db_sync"].includes(
+        query.kind as string,
+      ) ||
+      typeof query.providerId !== "string" ||
+      !/^[a-z][a-z0-9-]{0,62}$/u.test(query.providerId)
+    ) {
+      return null;
+    }
+    queryServices.push(
+      Object.freeze({
+        kind: query.kind as WatcherConfiguredLocalQueryServiceV1["kind"],
+        providerId: query.providerId,
+      }),
+    );
+  }
+  if (
+    duplicateValues(queryServices.map(({ providerId }) => providerId)) ||
+    duplicateValues(
+      queryServices.map(({ kind, providerId }) => `${kind}:${providerId}`),
+    )
   ) {
     return null;
   }
@@ -398,6 +512,11 @@ const parseConfiguredSource = (
     network: local.network,
     authorityNodeId: local.authorityNodeId,
     genesisIdentitySha256: local.genesisIdentitySha256,
+    queryServices: Object.freeze(
+      queryServices.sort((left, right) =>
+        left.providerId.localeCompare(right.providerId),
+      ),
+    ),
   });
 };
 
@@ -457,7 +576,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     alerts.add("watcher_provider_observation_rejected");
   }
 
-  const eligible = valid.filter(
+  let eligible = valid.filter(
     (observation) =>
       observation.network === configuredNetwork &&
       observation.provider.source.sourceMode === configuredSource.sourceMode,
@@ -479,16 +598,14 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   const providerIds = eligible.map(
     (observation) => observation.provider.providerId,
   );
-  const trustIdentities = eligible.map(
-    (observation) =>
-      `${observation.provider.authentication.kind}:${observation.provider.authentication.publicIdentitySha256}`,
-  );
   let agreement: WatcherMultiProviderAgreementV1 | null = null;
   let hasPendingLag = false;
   let independentProviderCount = 0;
   let chainAuthorityObservationDigest: string | null = null;
   let queryObservationCount = 0;
   let externalProviderBindings: readonly WatcherExternalProviderBindingV1[] =
+    Object.freeze([]);
+  let localQueryServiceBindings: readonly WatcherLocalQueryServiceBindingV1[] =
     Object.freeze([]);
 
   if (configuredSource.sourceMode === "local_node") {
@@ -552,32 +669,75 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     const queries = boundToAuthority.filter(
       (observation) => observation.provider.source.surface !== "chain_sync",
     );
-    queryObservationCount = queries.length;
+    const configuredQueries = new Map(
+      configuredSource.queryServices.map((query) => [query.providerId, query]),
+    );
+    const unconfiguredQueries = queries.filter((query) => {
+      const configured = configuredQueries.get(query.provider.providerId);
+      return (
+        configured === undefined ||
+        configured.kind !== query.provider.source.surface
+      );
+    });
+    if (unconfiguredQueries.length > 0) {
+      reasons.add("unconfigured_local_query_service");
+      alerts.add("watcher_local_node_query_evidence_missing");
+    }
+    const configuredQueryObservations = queries.filter((query) => {
+      const configured = configuredQueries.get(query.provider.providerId);
+      return configured?.kind === query.provider.source.surface;
+    });
+    queryObservationCount = configuredQueryObservations.length;
     if (authority !== null) {
       independentProviderCount = 1;
       chainAuthorityObservationDigest = authority.observationDigest;
-      for (const query of queries) {
-        if (query.chainPoint.pointDigest === authority.chainPoint.pointDigest) {
-          if (query.blockContentDigest !== authority.blockContentDigest) {
-            reasons.add("block_content_mismatch");
-            alerts.add("watcher_provider_content_disagreement");
+      localQueryServiceBindings = Object.freeze(
+        configuredSource.queryServices.map((configured) => {
+          const matching = configuredQueryObservations.filter(
+            (query) => query.provider.providerId === configured.providerId,
+          );
+          const query = matching.length === 1 ? matching[0]! : null;
+          let observationStatus: WatcherLocalQueryServiceBindingV1["observationStatus"];
+          if (query === null) {
+            observationStatus = "unavailable";
+            reasons.add("missing_local_query_evidence");
+            alerts.add("watcher_local_node_query_evidence_missing");
+          } else if (
+            query.chainPoint.pointDigest === authority.chainPoint.pointDigest
+          ) {
+            if (query.blockContentDigest === authority.blockContentDigest) {
+              observationStatus = "aligned";
+            } else {
+              observationStatus = "content_mismatch";
+              reasons.add("block_content_mismatch");
+              alerts.add("watcher_provider_content_disagreement");
+            }
+          } else if (
+            BigInt(query.chainPoint.blockNo) >
+            BigInt(authority.chainPoint.blockNo)
+          ) {
+            observationStatus = "rollback_not_propagated";
+            reasons.add("rollback_not_propagated");
+            alerts.add("watcher_local_node_rollback_not_propagated");
+          } else if (
+            query.chainPoint.blockNo === authority.chainPoint.blockNo
+          ) {
+            observationStatus = "forked";
+            reasons.add("fork_disagreement");
+            alerts.add("watcher_provider_fork");
+          } else {
+            observationStatus = "stale";
+            reasons.add("stale_provider_observation");
+            alerts.add("watcher_provider_stale");
           }
-          continue;
-        }
-        if (
-          BigInt(query.chainPoint.blockNo) >
-          BigInt(authority.chainPoint.blockNo)
-        ) {
-          reasons.add("rollback_not_propagated");
-          alerts.add("watcher_local_node_rollback_not_propagated");
-        } else if (query.chainPoint.blockNo === authority.chainPoint.blockNo) {
-          reasons.add("fork_disagreement");
-          alerts.add("watcher_provider_fork");
-        } else {
-          reasons.add("stale_provider_observation");
-          alerts.add("watcher_provider_stale");
-        }
-      }
+          return Object.freeze({
+            kind: configured.kind,
+            providerId: configured.providerId,
+            observationStatus,
+            observationDigest: query?.observationDigest ?? null,
+          });
+        }),
+      );
       agreement = Object.freeze({
         pointDigest: authority.chainPoint.pointDigest,
         blockHash: authority.chainPoint.blockHash,
@@ -588,6 +748,32 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       });
     }
   } else {
+    const configuredProviders = new Map(
+      configuredSource.providers.map((provider) => [
+        provider.providerId,
+        provider.operatorIdentitySha256,
+      ]),
+    );
+    const configuredEligible = eligible.filter((observation) => {
+      const source = observation.provider.source;
+      return (
+        source.sourceMode === "external_providers" &&
+        configuredProviders.get(observation.provider.providerId) ===
+          source.operatorIdentitySha256
+      );
+    });
+    if (configuredEligible.length !== eligible.length) {
+      reasons.add("unconfigured_provider");
+      alerts.add("watcher_provider_not_configured");
+    }
+    eligible = configuredEligible;
+    const externalProviderIds = eligible.map(
+      (observation) => observation.provider.providerId,
+    );
+    const externalTrustIdentities = eligible.map(
+      (observation) =>
+        `${observation.provider.authentication.kind}:${observation.provider.authentication.publicIdentitySha256}`,
+    );
     const transportBound = eligible.filter(
       (observation) =>
         observation.provider.authentication.kind === "https_tls_identity_v1",
@@ -619,11 +805,11 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
               : 0,
         ),
     );
-    if (duplicateValues(providerIds)) {
+    if (duplicateValues(externalProviderIds)) {
       reasons.add("duplicate_provider_id");
       alerts.add("watcher_provider_identity_collision");
     }
-    if (duplicateValues(trustIdentities)) {
+    if (duplicateValues(externalTrustIdentities)) {
       reasons.add("duplicate_trust_identity");
       alerts.add("watcher_provider_identity_collision");
     }
@@ -638,8 +824,8 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       alerts.add("watcher_provider_identity_collision");
     }
     independentProviderCount = Math.min(
-      new Set(providerIds).size,
-      new Set(trustIdentities).size,
+      new Set(externalProviderIds).size,
+      new Set(externalTrustIdentities).size,
       new Set(operatorIdentities).size,
     );
     if (independentProviderCount < 2) {
@@ -734,7 +920,10 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       "duplicate_provider_id",
       "duplicate_trust_identity",
       "duplicate_operator_identity",
+      "unconfigured_provider",
       "duplicate_local_surface",
+      "unconfigured_local_query_service",
+      "missing_local_query_evidence",
       "provider_transport_mismatch",
       "source_mode_mismatch",
       "local_node_authority_mismatch",
@@ -784,6 +973,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     protocolDecision: status === "agreed" ? "allowed" : "quarantined",
     sourceMode: configuredSource.sourceMode,
     configuredNetwork,
+    configuredSourceDigest: sha256Canonical(configuredSource),
     authorityNodeId:
       configuredSource.sourceMode === "local_node"
         ? configuredSource.authorityNodeId
@@ -797,6 +987,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     observationCount: inputs.length,
     independentProviderCount,
     externalProviderBindings,
+    localQueryServiceBindings,
     reasonCodes,
     alertCodes,
     observationEvidenceDigests,

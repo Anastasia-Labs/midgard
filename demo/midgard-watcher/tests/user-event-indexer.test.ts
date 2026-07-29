@@ -109,6 +109,7 @@ import {
   type WatcherUserEventKindV1,
   type WatcherUserEventPublicContextV1,
 } from "../src/user-event-indexer.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-catalogue-fixture.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -190,38 +191,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as MutableRecord;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-      ].map((category, index) => {
-        const contractName = {
-          doubleSpend: "fraudProofDoubleSpend",
-          nonExistentInput: "fraudProofNonExistentInput",
-          nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-          invalidRange: "fraudProofInvalidRange",
-          transitionTrace: "fraudProofTransitionTrace",
-          zeroInput: "fraudProofZeroInput",
-          validationTraceDispute: "validationTraceDispute",
-        }[category]!;
-        return [
-          category,
-          {
-            categoryId: index.toString(16).padStart(8, "0"),
-            scriptHash: contracts[contractName].scriptHash,
-            membershipProofCbor: "80",
-          },
-        ];
-      }),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -746,71 +717,86 @@ const finalityPolicy = makeWatcherFinalityPolicyV1(
 )!;
 const LOCAL_NODE_ID = "watcher-node-a";
 const LOCAL_GENESIS_IDENTITY = h32("76");
-const localFinalityPolicy = makeWatcherFinalityPolicyV1(
+const makeLocalFinalityPolicy = (
+  queryServices: readonly Readonly<{
+    kind: "kupo";
+    identity: string;
+    endpoint: string;
+  }>[],
+) =>
+  makeWatcherFinalityPolicyV1(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "acceptance",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "local_node",
+          authorityNodeId: LOCAL_NODE_ID,
+          chainSync: {
+            kind: "cardano_node_socket",
+            socketPath: "/ipc/node.socket",
+            genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+          },
+          queryServices,
+        },
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: 2,
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: 2,
+          },
+        },
+      },
+      da: {
+        peers: [
+          {
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+          },
+        ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+      },
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+      },
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
+        },
+      },
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
+      },
+    },
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: "Preprod",
+      trustRootId: h32("33"),
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: h32("44"),
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
+    },
+  )!;
+const localFinalityPolicy = makeLocalFinalityPolicy([]);
+const localKupoFinalityPolicy = makeLocalFinalityPolicy([
   {
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "local_node",
-        authorityNodeId: LOCAL_NODE_ID,
-        chainSync: {
-          kind: "cardano_node_socket",
-          socketPath: "/ipc/node.socket",
-          genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-        },
-        queryServices: [],
-      },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: {
-        depth: 2,
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: 2,
-        },
-      },
-    },
-    da: {
-      peers: [
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-        },
-      ],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
-      },
-    },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
-    },
+    kind: "kupo",
+    identity: "local-kupo",
+    endpoint: "http://127.0.0.1:1442",
   },
-  {
-    manifestId: policy.deploymentMarker.manifestId,
-    network: "Preprod",
-    trustRootId: h32("33"),
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    ruleBundleCommitment: h32("44"),
-    programCommitments: { validation: h32("55") },
-    durableMarker: policy.deploymentMarker,
-  },
-)!;
+]);
 
 const provider = {
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -841,12 +827,23 @@ const providerB = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: provider.providerId,
+      operatorIdentitySha256: provider.source.operatorIdentitySha256,
+    },
+    {
+      providerId: providerB.providerId,
+      operatorIdentitySha256: providerB.source.operatorIdentitySha256,
+    },
+  ],
 } as const;
 const localSource = {
   sourceMode: "local_node",
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  queryServices: [],
 } as const;
 const localNodeProvider = {
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -875,6 +872,15 @@ const localKupoProvider = {
     kind: "https_tls_identity_v1",
     publicIdentitySha256: h32("75"),
   },
+} as const;
+const localSourceWithKupo = {
+  ...localSource,
+  queryServices: [
+    {
+      kind: "kupo",
+      providerId: localKupoProvider.providerId,
+    },
+  ],
 } as const;
 
 const addressData = {
@@ -1053,6 +1059,15 @@ type BlockBundle = Readonly<{
   finalityState: unknown;
 }>;
 
+type UserEventFinalityLineage = NonNullable<
+  WatcherUserEventPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const userEventFinalityLineageByStateDigest = new Map<
+  string,
+  UserEventFinalityLineage
+>();
+
 const contextFromTransaction = (
   transaction: {
     readonly txHash: string;
@@ -1122,6 +1137,17 @@ const contextFromTransaction = (
     sourceMode === "local_node" ? localSource : externalSource,
     normalizedEvidence,
   );
+  const previousStateDigest =
+    previousFinalityState !== null &&
+    typeof previousFinalityState === "object" &&
+    "stateDigest" in previousFinalityState &&
+    typeof previousFinalityState.stateDigest === "string"
+      ? previousFinalityState.stateDigest
+      : null;
+  const lineage =
+    previousStateDigest === null
+      ? []
+      : (userEventFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     selectedFinalityPolicy,
     previousFinalityState,
@@ -1133,6 +1159,19 @@ const contextFromTransaction = (
     "finalize",
     "duplicate",
   ]).toContain(finalityResult.action);
+  if (finalityResult.state !== null) {
+    userEventFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const chainPoints = [
     ...sourceStore.chainPoints.filter(
       ({ chainPointId }) => chainPointId !== normalized.chainPoint.chainPointId,
@@ -1210,6 +1249,7 @@ const contextFromTransaction = (
       rollbackRestoredEventUtxos: [],
       finalityAuthority: {
         policy: selectedFinalityPolicy,
+        lineage,
         previousState: previousFinalityState,
         observations: finalityObservations,
         consistency,
@@ -2042,10 +2082,11 @@ describe("canonical authenticated user-event indexer", () => {
       normalizeWatcherL1BlockV1(localKupoProvider, alignedKupoRaw),
     ];
     const alignedConsistency = evaluateWatcherMultiProviderConsistencyV1(
-      localSource,
+      localSourceWithKupo,
       localBlocks,
     );
     const alignedContext = structuredClone(local.context) as MutableRecord;
+    alignedContext.finalityAuthority.policy = localKupoFinalityPolicy;
     alignedContext.finalityAuthority.observations = [
       {
         authenticatedProvider: localNodeProvider,
@@ -2058,7 +2099,7 @@ describe("canonical authenticated user-event indexer", () => {
     ];
     alignedContext.finalityAuthority.consistency = alignedConsistency;
     alignedContext.finalityAuthority.result = evaluateWatcherFinalityV1(
-      localFinalityPolicy,
+      localKupoFinalityPolicy,
       null,
       alignedConsistency,
     );
@@ -2075,13 +2116,14 @@ describe("canonical authenticated user-event indexer", () => {
     const forkedKupoRaw: MutableRecord = structuredClone(alignedKupoRaw);
     forkedKupoRaw.chainPoint.blockHash = h32("ef");
     const forkedConsistency = evaluateWatcherMultiProviderConsistencyV1(
-      localSource,
+      localSourceWithKupo,
       [
         localBlocks[0]!,
         normalizeWatcherL1BlockV1(localKupoProvider, forkedKupoRaw),
       ],
     );
     const forkedContext = structuredClone(local.context) as MutableRecord;
+    forkedContext.finalityAuthority.policy = localKupoFinalityPolicy;
     forkedContext.finalityAuthority.observations = [
       {
         authenticatedProvider: localNodeProvider,
@@ -2094,7 +2136,7 @@ describe("canonical authenticated user-event indexer", () => {
     ];
     forkedContext.finalityAuthority.consistency = forkedConsistency;
     forkedContext.finalityAuthority.result = evaluateWatcherFinalityV1(
-      localFinalityPolicy,
+      localKupoFinalityPolicy,
       null,
       forkedConsistency,
     );

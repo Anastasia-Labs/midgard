@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialEntryV1,
   encodeMidgardCekProgramMaterialEntryV1,
@@ -20,7 +21,6 @@ import {
   reconstructMidgardTransactionV1,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core/consensus-validation-v1";
-import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -144,7 +144,7 @@ const fieldItemEncodedSizeV1 = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalHeaderV1(2, itemLength).length + itemLength;
   }
   if (fieldIndex === 5) {
@@ -153,7 +153,7 @@ const fieldItemEncodedSizeV1 = (
     }
     return itemLength - 1;
   }
-  if (fieldIndex === 7 || fieldIndex === 8) return itemLength;
+  if (fieldIndex === 6 || fieldIndex === 8) return itemLength;
   throw new Error(`unknown V1 field index ${fieldIndex.toString()}`);
 };
 
@@ -490,7 +490,7 @@ export const reconstructTxOrderMaterialV1 = ({
           fieldHeader.copy(target, 0);
           const itemStart = sizeBeforeItem;
           const chunkOffset = chunkIndex * 4_095;
-          if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+          if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
             const bytesHeader = canonicalHeaderV1(2, itemLength);
             bytesHeader.copy(target, itemStart);
             proof.chunk.copy(

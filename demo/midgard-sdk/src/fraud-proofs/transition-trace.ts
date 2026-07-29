@@ -1,15 +1,15 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import {
-  type ValidationClaimWitnessV1,
-  ValidationClaimWitnessV1Schema,
-} from "@/fraud-proof/validation-dispute.js";
-import {
   type OutputReference,
   OutputReferenceSchema,
   type Proof,
   ProofSchema,
 } from "@/common.js";
+import {
+  type ValidationClaimWitnessV1,
+  ValidationClaimWitnessV1Schema,
+} from "@/fraud-proof/validation-dispute.js";
 import {
   type HeaderHash,
   HeaderHashSchema,
@@ -293,6 +293,17 @@ export const InvalidOneStepTransitionWitnessSchema = Data.Enum([
       projected_utxo: LedgerInsertWitnessSchema,
     }),
   }),
+  Data.Object({
+    L2TransactionTransition: Data.Object({
+      trace_proof: TransitionTraceMembershipProofSchema,
+      event_to_step: EventToStepMembershipProofSchema,
+      source_membership: L2TransactionSourceMembershipProofSchema,
+      spend_inputs_preimage: Data.Bytes(),
+      outputs_preimage: Data.Bytes(),
+      spent_utxos: Data.Array(LedgerDeleteWitnessSchema),
+      produced_utxos: Data.Array(LedgerInsertWitnessSchema),
+    }),
+  }),
 ]);
 export type InvalidOneStepTransitionWitness =
   | {
@@ -325,6 +336,17 @@ export type InvalidOneStepTransitionWitness =
         readonly event_ref_input_index: bigint;
         readonly event_asset_name: string;
         readonly projected_utxo: LedgerInsertWitness;
+      };
+    }
+  | {
+      readonly L2TransactionTransition: {
+        readonly trace_proof: IndexedTraceProof;
+        readonly event_to_step: EventToStepMembershipProof;
+        readonly source_membership: L2TransactionSourceMembershipProof;
+        readonly spend_inputs_preimage: string;
+        readonly outputs_preimage: string;
+        readonly spent_utxos: readonly LedgerDeleteWitness[];
+        readonly produced_utxos: readonly LedgerInsertWitness[];
       };
     };
 export const InvalidOneStepTransitionWitness =

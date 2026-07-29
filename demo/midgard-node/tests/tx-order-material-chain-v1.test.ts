@@ -3,8 +3,10 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScriptListPreimage,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -14,8 +16,8 @@ import { deriveMidgardTxFieldReceiptAssetNameV1 } from "@al-ft/midgard-core/cons
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
-  toUnit,
   type LucidEvolution,
+  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -32,7 +34,13 @@ const TX_ORDER_ID: SDK.OutputReference = {
   outputIndex: 4n,
 };
 
-const transactionCbor = (): Buffer =>
+const transactionCbor = ({
+  addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+  scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+}: {
+  readonly addrTxWitsPreimageCbor?: Buffer;
+  readonly scriptTxWitsPreimageCbor?: Buffer;
+} = {}): Buffer =>
   encodeMidgardNativeTxCanonicalV1(
     materializeMidgardNativeTxFromCanonicalV1({
       version: MIDGARD_NATIVE_TX_V1_VERSION,
@@ -71,8 +79,8 @@ const transactionCbor = (): Buffer =>
         networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
       },
       witnessSet: {
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     }),
@@ -83,8 +91,7 @@ const outRefKey = ({
   outputIndex,
 }: SDK.OutputReference): string => `${transactionId}#${outputIndex.toString()}`;
 
-const materialFixture = () => {
-  const nativeTxCbor = transactionCbor();
+const materialFixture = (nativeTxCbor = transactionCbor()) => {
   const bundle = SDK.deriveTxOrderFragmentBundleV1({
     nativeTxCbor,
     fieldReceiptPolicyId: FIELD_RECEIPT_POLICY_ID,
@@ -188,6 +195,51 @@ describe("V1 tx-order material receipt chain", () => {
 
     expect(fixture.bundle.fragments.length).toBe(4);
     expect(fixture.nativeTxCbor.length).toBeGreaterThan(8 * 1_024);
+    await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
+      fixture.nativeTxCbor,
+    );
+  });
+
+  it("reconstructs field 6 scripts raw and field 7 address witnesses as byte-list items", async () => {
+    const scriptTxWitsPreimageCbor = encodeMidgardVersionedScriptListPreimage([
+      {
+        language: "MidgardV1",
+        scriptBytes: encodeMidgardCekProgramEnvelopeV1({
+          uplcVersion: [1n, 1n, 0n],
+          termRoot: Buffer.alloc(32, 0x33),
+          nodeCount: 3n,
+          materialByteLength: 144n,
+        }),
+      },
+    ]);
+    const addressWitnessCbor = encodeCbor([
+      Buffer.alloc(32, 0x44),
+      Buffer.alloc(64, 0x55),
+    ]);
+    const addrTxWitsPreimageCbor = encodeCbor([addressWitnessCbor]);
+    const fixture = materialFixture(
+      transactionCbor({
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
+      }),
+    );
+    const scriptFragments = fixture.bundle.fragments.filter(
+      ({ fieldIndex }) => fieldIndex === 6,
+    );
+    const addressFragments = fixture.bundle.fragments.filter(
+      ({ fieldIndex }) => fieldIndex === 7,
+    );
+
+    expect(scriptFragments).toHaveLength(1);
+    expect(scriptFragments[0]).toMatchObject({
+      fieldName: "script_witnesses",
+      fieldEncodedSize: scriptTxWitsPreimageCbor.length,
+    });
+    expect(addressFragments).toHaveLength(1);
+    expect(addressFragments[0]).toMatchObject({
+      fieldName: "address_witnesses",
+      fieldEncodedSize: addrTxWitsPreimageCbor.length,
+    });
     await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
       fixture.nativeTxCbor,
     );

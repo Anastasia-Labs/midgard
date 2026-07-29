@@ -452,6 +452,15 @@ describe("strict watcher configuration", () => {
       "$.l1.source.providers[1]",
     );
 
+    const trailingDotAlias = validConfig();
+    trailingDotAlias.l1.source.providers[1]!.endpoint =
+      "https://cardano-a.example./";
+    rejected(
+      () => parseWatcherConfig(trailingDotAlias),
+      "provider_alias",
+      "$.l1.source.providers[1]",
+    );
+
     const malformedOperatorIdentity = validConfig();
     malformedOperatorIdentity.l1.source.providers[0]!.operatorIdentitySha256 =
       "11".repeat(31);

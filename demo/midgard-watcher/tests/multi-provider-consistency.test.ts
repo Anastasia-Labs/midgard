@@ -60,13 +60,29 @@ const localProvider = (
 const externalConfig = (network = "Preprod") => ({
   sourceMode: "external_providers",
   network,
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: "aa".repeat(32),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: "bb".repeat(32),
+    },
+  ],
 });
 
-const localConfig = () => ({
+const localConfig = (
+  queryServices: readonly Readonly<{
+    kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
+    providerId: string;
+  }>[] = [],
+) => ({
   sourceMode: "local_node",
   network: "Preprod",
   authorityNodeId: "watcher-node-a",
   genesisIdentitySha256: "cc".repeat(32),
+  queryServices,
 });
 
 const transaction = (bodyHex: string) => ({
@@ -274,7 +290,7 @@ describe("fail-closed multi-provider consistency", () => {
     );
     expect(sharedOperator.reasonCodes).toEqual([
       "insufficient_independent_providers",
-      "duplicate_operator_identity",
+      "unconfigured_provider",
     ]);
   });
 
@@ -413,12 +429,16 @@ describe("fail-closed multi-provider consistency", () => {
     const chainSync = localObservation("chain_sync", "cc");
     const ogmios = localObservation("ogmios", "dd");
     const kupo = localObservation("kupo", "dd");
-    const forward = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
+    const configured = localConfig([
+      { kind: "ogmios", providerId: "ogmios" },
+      { kind: "kupo", providerId: "kupo" },
+    ]);
+    const forward = evaluateWatcherMultiProviderConsistencyV1(configured, [
       chainSync,
       ogmios,
       kupo,
     ]);
-    const reverse = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
+    const reverse = evaluateWatcherMultiProviderConsistencyV1(configured, [
       kupo,
       ogmios,
       chainSync,
@@ -435,31 +455,68 @@ describe("fail-closed multi-provider consistency", () => {
     expect(reverse).toEqual(forward);
   });
 
+  it("enumerates every configured local query and quarantines omitted evidence", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([
+        { kind: "ogmios", providerId: "ogmios" },
+        { kind: "kupo", providerId: "kupo" },
+      ]),
+      [localObservation("chain_sync", "cc"), localObservation("ogmios", "dd")],
+    );
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      queryObservationCount: 1,
+      reasonCodes: ["missing_local_query_evidence"],
+      alertCodes: ["watcher_local_node_query_evidence_missing"],
+      localQueryServiceBindings: [
+        {
+          kind: "kupo",
+          providerId: "kupo",
+          observationStatus: "unavailable",
+          observationDigest: null,
+        },
+        {
+          kind: "ogmios",
+          providerId: "ogmios",
+          observationStatus: "aligned",
+        },
+      ],
+    });
+  });
+
   it("fails closed when local query data is stale, forked, content-mismatched, or has not propagated a rollback", () => {
     const chainSync = localObservation("chain_sync", "cc");
-    const stale = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
-      chainSync,
-      localObservation("ogmios", "dd", {
-        blockHash: "22".repeat(32),
-        slot: "999",
-        blockNo: "99",
-      }),
-    ]);
-    const fork = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
-      chainSync,
-      localObservation("kupo", "ee", {
-        blockHash: "22".repeat(32),
-      }),
-    ]);
+    const stale = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([{ kind: "ogmios", providerId: "ogmios" }]),
+      [
+        chainSync,
+        localObservation("ogmios", "dd", {
+          blockHash: "22".repeat(32),
+          slot: "999",
+          blockNo: "99",
+        }),
+      ],
+    );
+    const fork = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([{ kind: "kupo", providerId: "kupo" }]),
+      [
+        chainSync,
+        localObservation("kupo", "ee", {
+          blockHash: "22".repeat(32),
+        }),
+      ],
+    );
     const mismatchedBytes = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
+      localConfig([{ kind: "db_sync", providerId: "db-sync" }]),
       [
         localObservation("chain_sync", "cc", { bodyHex: "a100" }),
         localObservation("db_sync", "ff", { bodyHex: "a101" }),
       ],
     );
     const rollbackNotPropagated = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
+      localConfig([{ kind: "kupmios", providerId: "kupmios" }]),
       [
         chainSync,
         localObservation("kupmios", "11", {
@@ -523,6 +580,7 @@ describe("fail-closed multi-provider consistency", () => {
       "missing_chain_sync_authority",
     ]);
     expect(missingChainSync.reasonCodes).toEqual([
+      "unconfigured_local_query_service",
       "missing_chain_sync_authority",
     ]);
     expect(externalSubstitution.reasonCodes).toEqual([

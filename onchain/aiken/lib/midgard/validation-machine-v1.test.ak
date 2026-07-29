@@ -1917,18 +1917,18 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let chunk_hash = bounded_item_v1.hash_chunk(7, 0, 0, item_cbor)
+  let chunk_hash = bounded_item_v1.hash_chunk(6, 0, 0, item_cbor)
   let chunk_frontier = [
     validation_merkle_v1.FrontierPeak { height: 0, hash: chunk_hash },
   ]
   let item_commitment = bounded_item_v1.commitment(
-    7,
+    6,
     0,
     bytearray.length(item_cbor),
     chunk_frontier,
   )
   let item_hash = bounded_collection_v1.hash_item(
-    7,
+    6,
     0,
     bytearray.length(item_cbor),
     item_commitment,
@@ -1941,7 +1941,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    7,
+    6,
     0,
     0,
     -1,
@@ -1982,7 +1982,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
-        8,
+        7,
         0,
         0,
         -1,
@@ -2000,7 +2000,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
       auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
         collection_proof: bounded_collection_v1.ItemProofV1 {
           version: bounded_collection_v1.version,
-          field_index: 7,
+          field_index: 6,
           item_count: 1,
           item_index: 0,
           item_length: bytearray.length(item_cbor),
@@ -2010,7 +2010,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
         },
         chunk_proof: bounded_item_v1.ChunkProofV1 {
           version: bounded_item_v1.version,
-          field_index: 7,
+          field_index: 6,
           item_index: 0,
           total_length: bytearray.length(item_cbor),
           chunk_index: 0,
@@ -2023,7 +2023,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
 }
 
-test canonical_decode_rejects_a_wrong_claimed_successor() fail {
+test canonical_decode_rejects_a_legacy_field_seven_script_proof() fail {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
@@ -2067,7 +2067,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    7,
+    6,
     0,
     0,
     -1,
@@ -2096,28 +2096,32 @@ test canonical_decode_rejects_a_wrong_claimed_successor() fail {
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let rejection_code = #"455f4649454c445f505245494d4147455f53495a45"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
+  let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
-    phase: validation_trace_v1.Terminal,
+    phase: validation_trace_v1.CanonicalDecode,
     program_counter: 8,
     work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
+      validation_trace_v1.CanonicalDecode,
       8,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
+      validation_machine_v1.encode_transaction_field_scan_witness(
+        proof_source.compact_cbor,
+        proof_source.witness_set_compact_cbor,
+        proof_source.field_preimage_lengths_cbor,
+        validation_context_cbor,
+        7,
+        0,
+        0,
+        -1,
+        0,
       ),
     ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   validation_machine_v1.verify_canonical_decode_one_step_v1(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
       transition: validation_machine_v1.ValidationOneStepWitnessV1 {
         work_witness_cbor,
-        claimed_successor: terminal,
+        claimed_successor: post,
       },
       auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
         collection_proof: bounded_collection_v1.ItemProofV1 {
@@ -2836,7 +2840,7 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
     ),
   }
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    6,
+    7,
     address_witness_cbor,
   )
   let rejection_code = #"455f494e56414c49445f5349474e4154555245"
@@ -2887,7 +2891,7 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     },
   )
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let token_work_witness_cbor = phase_a_native_scan_witness(
@@ -3041,7 +3045,7 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
   )
   let item_cbor = encode_midgard_versioned_script(script)
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let payload_offset = bytearray.length(item_cbor) - bytearray.length(
@@ -3250,7 +3254,7 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     },
   )
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let token_work_witness_cbor = phase_a_native_scan_witness(
@@ -4030,7 +4034,7 @@ test script_sources_commits_inline_reference_script_candidates() {
   )
   let item_cbor = encode_midgard_versioned_script(script)
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let accumulator = validation_machine_v1.initial_resolution_accumulator()
@@ -6012,7 +6016,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
     },
   }
   let script_cbor = encode_midgard_versioned_script(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
@@ -6225,7 +6229,7 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier(
@@ -6302,7 +6306,7 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier(
@@ -6390,7 +6394,7 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(
@@ -6484,7 +6488,7 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier(
@@ -6582,7 +6586,7 @@ test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let script_hash = script_proof_v1.versioned_script_hash(script)
-  let script_item_commitment = bounded_item_v1.from_bytes(7, 0, script_cbor)
+  let script_item_commitment = bounded_item_v1.from_bytes(6, 0, script_cbor)
   let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let empty_frontier = validation_merkle_v1.build_frontier([])
@@ -6792,7 +6796,7 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
   }
   let script_cbor = encode_midgard_versioned_script(script)
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     script_cbor,
   )
   let script_hash = script_proof_v1.versioned_script_hash(script)
@@ -10764,7 +10768,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
   }
   let item_cbor = encode_midgard_versioned_script(script)
   let Pair(collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let pending = validation_machine_v1.InlineSourceHashControlV1 {
@@ -10821,7 +10825,7 @@ test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
     },
   }
   let item_cbor = encode_midgard_versioned_script(script)
-  let item_commitment = bounded_item_v1.from_bytes(7, 0, item_cbor)
+  let item_commitment = bounded_item_v1.from_bytes(6, 0, item_cbor)
   let source_frontier = validation_merkle_v1.build_frontier(
     [
       script_proof_v1.inline_source_leaf_hash(
@@ -10865,7 +10869,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
   }
   let item_cbor = encode_midgard_versioned_script(script)
   let Pair(_collection_proof, chunk_proof) = singleton_field_item_proofs(
-    7,
+    6,
     item_cbor,
   )
   let hash_control = blake2b_224_trace_v1.initial_control_v1(
@@ -10879,7 +10883,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
     item_length: bytearray.length(item_cbor),
-    item_commitment: bounded_item_v1.from_bytes(7, 0, item_cbor),
+    item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control,
   }
   let pending_cbor = validation_machine_v1.encode_inline_source_hash_control_v1(
@@ -10973,7 +10977,7 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
     payload_offset: bytearray.length(item_cbor) - bytearray.length(payload),
     payload_length: bytearray.length(payload),
     item_length: bytearray.length(item_cbor),
-    item_commitment: bounded_item_v1.from_bytes(7, 0, item_cbor),
+    item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control: round_control,
   }
   let control = stage_zero_script_sources_control(
@@ -11017,7 +11021,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
     },
   }
   let item_cbor = encode_midgard_versioned_script(script)
-  let item_commitment = bounded_item_v1.from_bytes(7, 0, item_cbor)
+  let item_commitment = bounded_item_v1.from_bytes(6, 0, item_cbor)
   let script_hash = #"03" |> bytearray.concat(payload) |> blake2b_224
   let terminal_hash_control = blake2b_224_trace_v1.Blake2b224TraceControlV1 {
     version: 1,
@@ -11102,11 +11106,11 @@ fn crossing_inline_source_hash_fixture() -> Pair<
     bytearray.length(item_cbor) - bounded_item_v1.chunk_bytes,
     item_cbor,
   )
-  let first_hash = bounded_item_v1.hash_chunk(7, 0, 0, first_chunk)
-  let second_hash = bounded_item_v1.hash_chunk(7, 0, 1, second_chunk)
+  let first_hash = bounded_item_v1.hash_chunk(6, 0, 0, first_chunk)
+  let second_hash = bounded_item_v1.hash_chunk(6, 0, 1, second_chunk)
   let frontier = validation_merkle_v1.build_frontier([first_hash, second_hash])
   let item_commitment = bounded_item_v1.commitment(
-    7,
+    6,
     0,
     bytearray.length(item_cbor),
     frontier.peaks,
@@ -11137,7 +11141,7 @@ fn crossing_inline_source_hash_fixture() -> Pair<
     Pair(
       bounded_item_v1.ChunkProofV1 {
         version: 1,
-        field_index: 7,
+        field_index: 6,
         item_index: 0,
         total_length: bytearray.length(item_cbor),
         chunk_index: 0,
@@ -11147,7 +11151,7 @@ fn crossing_inline_source_hash_fixture() -> Pair<
       },
       bounded_item_v1.ChunkProofV1 {
         version: 1,
-        field_index: 7,
+        field_index: 6,
         item_index: 0,
         total_length: bytearray.length(item_cbor),
         chunk_index: 1,

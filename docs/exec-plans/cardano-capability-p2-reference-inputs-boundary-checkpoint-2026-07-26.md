@@ -137,7 +137,7 @@ Both pass.
 This checkpoint closes the TypeScript Cardano boundary and terminal-fold
 fixture for field 1. Fields 0, 1, 2, 4, and 6 now have this evidence. The next
 ordered field without equivalent evidence is field 3 (`required_observers`);
-fields 5, 7, and 8 also remain open, as do maximum-shape normal/forced
+fields 5, 6, and 8 also remain open, as do maximum-shape normal/forced
 retained-DA reconstruction and applied Aiken lifecycle evidence.
 
 P2 remains incomplete and unsupported activation remains fail closed.

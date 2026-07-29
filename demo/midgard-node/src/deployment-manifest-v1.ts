@@ -608,7 +608,10 @@ const validateFraudProofCatalogue = (
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
   } as const;
-  for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+  for (const [
+    categoryIndex,
+    categoryName,
+  ] of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.entries()) {
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireObject(categories[categoryName], field);
     requireExactKeys(
@@ -617,7 +620,17 @@ const validateFraudProofCatalogue = (
       [],
       field,
     );
-    requireLowercaseHex(category.categoryId, 4, `${field}.categoryId`);
+    const categoryId = requireLowercaseHex(
+      category.categoryId,
+      4,
+      `${field}.categoryId`,
+    );
+    const expectedCategoryId = categoryIndex.toString(16).padStart(8, "0");
+    if (categoryId !== expectedCategoryId) {
+      throw new Error(
+        `Deployment manifest ${field}.categoryId must be ${expectedCategoryId} under FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`,
+      );
+    }
     const scriptHash = requireLowercaseHex(
       category.scriptHash,
       28,

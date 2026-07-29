@@ -76,8 +76,8 @@ fn field_length(
     3 -> lengths.required_observers
     4 -> lengths.required_signers
     5 -> lengths.mint
-    6 -> lengths.address_witnesses
-    7 -> lengths.script_witnesses
+    6 -> lengths.script_witnesses
+    7 -> lengths.address_witnesses
     8 -> lengths.redeemers
     _ -> 0
   }
@@ -131,8 +131,8 @@ fn item_encoded_size(field_index: Int, item_length: Int) -> Int {
       expect item_length > 1
       item_length - 1
     }
-    6 -> canonical_bytes_size(item_length)
-    7 -> item_length
+    6 -> item_length
+    7 -> canonical_bytes_size(item_length)
     8 -> item_length
     _ -> fail
   }
@@ -167,8 +167,8 @@ fn material_directory(
       body.required_observers_hash,
       body.required_signers_hash,
       body.mint_hash,
-      witness_set.addr_tx_wits_hash,
       witness_set.script_tx_wits_hash,
+      witness_set.addr_tx_wits_hash,
       witness_set.redeemer_tx_wits_hash,
     ],
     lengths,

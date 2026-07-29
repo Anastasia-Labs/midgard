@@ -1,3 +1,4 @@
+import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
@@ -12,11 +13,12 @@ import {
   normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   computeDeploymentManifestId,
@@ -47,6 +49,80 @@ const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
   maxTxSize: 16_384,
   maxValueSize: 5_000,
   maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+});
+
+type FraudProofCatalogueFixture = NonNullable<
+  DeploymentManifestV1Value["contracts"][string]["fraudProofCatalogue"]
+>;
+
+const buildFraudProofCatalogueFixture =
+  async (): Promise<FraudProofCatalogueFixture> => {
+    const categoryIdSchema = Data.Bytes({
+      minLength: 4,
+      maxLength: 4,
+    });
+    const scriptHashSchema = Data.Bytes({
+      minLength: 28,
+      maxLength: 28,
+    });
+    const categories = Object.fromEntries(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((categoryName, index) => [
+        categoryName,
+        {
+          categoryId: index.toString(16).padStart(8, "0"),
+          scriptHash: CONTRACT_SCRIPT_HASH,
+          membershipProofCbor: "",
+        },
+      ]),
+    ) as unknown as FraudProofCatalogueFixture["categories"];
+    const store = new Store(undefined);
+    await store.ready();
+    const trie = new Trie(store);
+    for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      const category = categories[categoryName];
+      await trie.insert(
+        Buffer.from(
+          Data.to(category.categoryId as never, categoryIdSchema),
+          "hex",
+        ),
+        Buffer.from(
+          Data.to(category.scriptHash as never, scriptHashSchema),
+          "hex",
+        ),
+      );
+    }
+    for (const categoryName of FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
+      const category = categories[categoryName];
+      const proof = await trie.prove(
+        Buffer.from(
+          Data.to(category.categoryId as never, categoryIdSchema),
+          "hex",
+        ),
+      );
+      (
+        categories as Record<
+          string,
+          {
+            categoryId: string;
+            scriptHash: string;
+            membershipProofCbor: string;
+          }
+        >
+      )[categoryName] = {
+        ...category,
+        membershipProofCbor: proof.toCBOR().toString("hex"),
+      };
+    }
+    return {
+      root: Buffer.from(trie.hash).toString("hex"),
+      categories,
+    };
+  };
+
+let fraudProofCatalogueFixture: FraudProofCatalogueFixture;
+
+beforeAll(async () => {
+  fraudProofCatalogueFixture = await buildFraudProofCatalogueFixture();
 });
 
 const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
@@ -88,46 +164,7 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
   );
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
-    fraudProofCatalogue: {
-      root: "33".repeat(32),
-      categories: {
-        doubleSpend: {
-          categoryId: "00000000",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        nonExistentInput: {
-          categoryId: "00000001",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        nonExistentInputNoIndex: {
-          categoryId: "00000002",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        invalidRange: {
-          categoryId: "00000003",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        transitionTrace: {
-          categoryId: "00000004",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        zeroInput: {
-          categoryId: "00000005",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        validationTraceDispute: {
-          categoryId: "00000006",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-      },
-    },
+    fraudProofCatalogue: fraudProofCatalogueFixture,
   };
   const referenceScripts = Object.fromEntries(
     DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES.map((role) => {
@@ -244,6 +281,26 @@ const withId = (
 const canonicalManifest = (): DeploymentManifestV1Value =>
   withId(canonicalIdentity());
 
+const withFraudProofCatalogue = (
+  identity: Omit<DeploymentManifestV1Value, "manifestId">,
+  fraudProofCatalogue: FraudProofCatalogueFixture,
+): Omit<DeploymentManifestV1Value, "manifestId"> => ({
+  ...identity,
+  contracts: {
+    ...identity.contracts,
+    fraudProofCatalogueMint: {
+      ...identity.contracts.fraudProofCatalogueMint,
+      fraudProofCatalogue,
+    },
+  },
+});
+
+const mutateHexByte = (hex: string, byteIndex: number): string => {
+  const offset = byteIndex * 2;
+  const current = Number.parseInt(hex.slice(offset, offset + 2), 16);
+  return `${hex.slice(0, offset)}${(current ^ 1).toString(16).padStart(2, "0")}${hex.slice(offset + 2)}`;
+};
+
 describe("V1 deployment manifest", () => {
   it("delegates canonical JSON normalization and digesting to core", () => {
     expect(normalizeDeploymentManifestV1JsonValue).toBe(
@@ -331,6 +388,85 @@ describe("V1 deployment manifest", () => {
         withId(tampered as Omit<DeploymentManifestV1Value, "manifestId">),
       ),
     ).toThrow(/contracts\.txOrderSpend\.scriptHash mismatch/u);
+  });
+
+  it("rejects swapped fraud-proof catalogue IDs with a recomputed manifest ID", () => {
+    const identity = canonicalIdentity();
+    const catalogue =
+      identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
+    const doubleSpend = catalogue.categories.doubleSpend;
+    const nonExistentInput = catalogue.categories.nonExistentInput;
+    const tampered = withFraudProofCatalogue(identity, {
+      ...catalogue,
+      categories: {
+        ...catalogue.categories,
+        doubleSpend: {
+          ...doubleSpend,
+          categoryId: nonExistentInput.categoryId,
+        },
+        nonExistentInput: {
+          ...nonExistentInput,
+          categoryId: doubleSpend.categoryId,
+        },
+      },
+    });
+    expect(() => parseDeploymentManifestV1Value(withId(tampered))).toThrow(
+      /categories\.doubleSpend\.categoryId must be 00000000/u,
+    );
+  });
+
+  it("rejects duplicate fraud-proof catalogue IDs with a recomputed manifest ID", () => {
+    const identity = canonicalIdentity();
+    const catalogue =
+      identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
+    const tampered = withFraudProofCatalogue(identity, {
+      ...catalogue,
+      categories: {
+        ...catalogue.categories,
+        nonExistentInput: {
+          ...catalogue.categories.nonExistentInput,
+          categoryId: catalogue.categories.doubleSpend.categoryId,
+        },
+      },
+    });
+    expect(() => parseDeploymentManifestV1Value(withId(tampered))).toThrow(
+      /categories\.nonExistentInput\.categoryId must be 00000001/u,
+    );
+  });
+
+  it("rejects an altered fraud-proof catalogue root with a recomputed manifest ID", () => {
+    const identity = canonicalIdentity();
+    const catalogue =
+      identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
+    const tampered = withFraudProofCatalogue(identity, {
+      ...catalogue,
+      root: "44".repeat(32),
+    });
+    expect(() => parseDeploymentManifestV1Value(withId(tampered))).toThrow(
+      /fraudProofCatalogue\.root mismatch/u,
+    );
+  });
+
+  it("rejects an altered fraud-proof membership proof with a recomputed manifest ID", () => {
+    const identity = canonicalIdentity();
+    const catalogue =
+      identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
+    const tampered = withFraudProofCatalogue(identity, {
+      ...catalogue,
+      categories: {
+        ...catalogue.categories,
+        doubleSpend: {
+          ...catalogue.categories.doubleSpend,
+          membershipProofCbor: mutateHexByte(
+            catalogue.categories.doubleSpend.membershipProofCbor,
+            20,
+          ),
+        },
+      },
+    });
+    expect(() => parseDeploymentManifestV1Value(withId(tampered))).toThrow(
+      /categories\.doubleSpend\.membershipProofCbor/u,
+    );
   });
 
   it("rejects tampered Cardano and DA identity fields", () => {

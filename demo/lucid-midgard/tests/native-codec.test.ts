@@ -4,6 +4,7 @@ import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardNativeTxCanonicalV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeFieldCollectionV1,
   EMPTY_CBOR_LIST,
   EMPTY_CBOR_NULL,
   EMPTY_NULL_ROOT,
@@ -71,6 +72,12 @@ describe("Midgard native v1 codec", () => {
       tx.compact.transactionWitnessSetHash,
     );
     expect(decoded.compact.transactionBody.mintHash).toEqual(
+      deriveMidgardNativeFieldCollectionV1({
+        fieldIndex: 5,
+        preimageCbor: EMPTY_CBOR_LIST,
+      }).commitment,
+    );
+    expect(decoded.compact.transactionBody.mintHash).not.toEqual(
       computeHash32(EMPTY_CBOR_LIST),
     );
   });
@@ -93,9 +100,7 @@ describe("Midgard native v1 codec", () => {
         Buffer.concat([
           Buffer.from("MidgardNativeTxBodyV1", "ascii"),
           Buffer.from([1]),
-          encodeMidgardNativeTxBodyCompactV1(
-            tx.compact.transactionBody,
-          ),
+          encodeMidgardNativeTxBodyCompactV1(tx.compact.transactionBody),
         ]),
       ),
     );

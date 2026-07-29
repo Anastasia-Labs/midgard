@@ -104,7 +104,7 @@ pub fn source_leaf_hash(
       language_tag(script.language),
       versioned_script_hash(script),
       bytearray.length(script_cbor),
-      bounded_item_v1.from_bytes(7, source_index, script_cbor),
+      bounded_item_v1.from_bytes(6, source_index, script_cbor),
     )
   } else {
     expect Some(source_key_data) = cbor.deserialise(source_key)

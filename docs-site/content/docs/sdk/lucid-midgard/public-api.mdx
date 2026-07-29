@@ -36,7 +36,10 @@ Key members:
 - `newTx()`: returns a fresh `TxBuilder` bound to the current provider snapshot.
 - `fromTx(input, options?)`: imports canonical Midgard native v1 full
   transactions (native objects, native CBOR/hex, `{ txCbor }`, `{ txHex }`, or an
-  existing `CompleteTx`). Cardano transaction/body/witness bytes are rejected.
+  existing `CompleteTx`). An existing `CompleteTx` retains its canonical
+  program-material sidecar; raw imports can supply exact material through
+  `FromTxOptions.programMaterial`. Cardano transaction/body/witness bytes are
+  rejected.
 - `switchProvider(provider, expectations?)`, `overrideUTxOs(utxos)`,
   `clearUTxOOverrides()`, provider and UTxO source control.
 - `config()`: immutable `LucidMidgardConfigSnapshot` (provider generation,
@@ -80,12 +83,14 @@ The builder methods, all returning a new `TxBuilder`:
 - `compose(other, ...others)`: merges compatible fragments left-to-right.
 - `snapshot()` / `debugSnapshot()`, inspectable builder state.
 
-<Callout type="warn" title="Launch feature gates">
-The public methods remain stable across profiles, but the launch profile rejects
-`mintAssets`, `mint`, script witnesses, redeemers, reference inputs/scripts,
-observers, script payment credentials, and protected outputs. Retaining a method
-does not advertise consensus support; unsupported calls fail before builder state
-changes.
+<Callout type="info" title="Canonical V1 feature surface">
+Protocol version `1` enables `mintAssets`, `mint`, script witnesses, redeemers,
+reference inputs/scripts, observers, script payment credentials, and protected
+outputs. Like the other fluent methods, these calls return a new immutable
+`TxBuilder`; they are not rejected solely for selecting an enabled feature.
+Successful completion and admission still require the exact canonical encoding
+and bounds, valid scripts and policies, and an exact provider consensus-profile
+match.
 </Callout>
 
 Completion comes in three flavors, each also as a `Safe` and `Program` variant:
@@ -97,7 +102,10 @@ Completion comes in three flavors, each also as a `Safe` and `Program` variant:
 <Callout type="info" title="Completion options">
 `complete` accepts `changeAddress`, `localValidation` (`"none" | "phase-a" | "phase-b"`,
 default `"none"`), `feePolicy` (`"provider"` or explicit `minFeeA` / `minFeeB`),
-and `maxFeeIterations`. See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
+`maxFeeIterations`, and exact reference-script
+`programMaterial`. Completion verifies that every referenced Midgard V1
+envelope has matching canonical material and fails closed when it is missing.
+See [Balancing and Fees](/docs/sdk/lucid-midgard/balancing-fees).
 </Callout>
 
 ## `CompleteTx`
