@@ -1135,3 +1135,48 @@ clean on that new head. Fix any further actionable finding additively. Keep
 the PR draft and the overarching Goal in progress because the 122 registry
 promotions, formal release journeys, target-testnet acceptance, remaining
 §12 criteria, closure manifest, and §15 are still open.
+
+## Superseding fault-proof worker-isolation remediation checkpoint
+
+- Signed fixture-remediation commit
+  `4a957755b0fc7484f4148dcb70c8043359fd61b7` was pushed as the exact draft
+  PR #471 head. Evidence Integrity CI, Docs Site CI, and LaTeX CI passed.
+  Aiken CI remained active when Midgard Node CI run `30485279686` completed.
+- That node run collected all 15 fault-proof files and 142 tests, but passed
+  only 12 files and 137 tests. Five unchanged tests timed out: the validation
+  dispute emulator at 300 seconds, three inspect-contract cases at 30 seconds,
+  and one submit-init catalogue case at 30 seconds. This run receives no PASS
+  credit.
+- The prior single-fork correction bounded process count but kept all files in
+  one long-lived worker. On the GitHub runner, accumulated process state and
+  memory pressure made later tests progressively slower. The package command
+  now uses `--pool=forks --no-file-parallelism`: files run sequentially, while
+  Vitest's default isolation supplies a fresh fork for every file. No
+  assertion, timeout, emulator limit, or product source changed.
+- Direct full replay with the corrected topology passes 15/15 files and
+  142/142 tests in 596.87 seconds. The exact package test command independently
+  passes 15/15 and 142/142 in 584.32 seconds. The validation dispute completes
+  in 133.806 and 136.992 seconds respectively; the three formerly failing
+  inspect cases complete in 14.9-15.9 seconds, and the submit-init case
+  completes in about 14.4 seconds.
+- Exact package build and typecheck, scoped Prettier, manifest JSON parsing,
+  and `git diff --check` pass. Initial sandboxed pnpm attempts failed before
+  script execution because the wrapper could not open pnpm's user-level state
+  database; host-permitted exact commands supersede them and only those
+  completed commands receive evidence credit.
+- The worker-isolated staged content-tree SHA-256, excluding only this ledger
+  and the dependency map itself, is
+  `f7a723cf83c0225c921dd38654f7e6b41153fde99efa1ab2be6f76006dad3858`.
+  The map, formatting, whitespace, protected-path, unmerged-index, and exact
+  staged-scope gates must replay before the additive commit.
+
+## Superseding worker-isolation publication action
+
+Bind this package-only test-topology correction into the dependency map,
+replay every staged integrity and protected-path gate, create and push one
+signed additive commit on the same `colll78/` branch, and refresh draft PR
+#471 to the exact new identities. Review every applicable current-head
+workflow and discussion surface to terminal completion, fixing any further
+actionable finding additively. Keep the PR draft and the overarching Goal in
+progress while the 122 registry promotions and the remaining §12/§15 work are
+open.
