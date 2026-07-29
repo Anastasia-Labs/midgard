@@ -128,7 +128,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 vitest run tests/data-breadth-boundary-v1.test.ts --pool=forks --poolOptions.forks.singleFork=true --testTimeout=360000 --hookTimeout=60000"
   },
   "keywords": [

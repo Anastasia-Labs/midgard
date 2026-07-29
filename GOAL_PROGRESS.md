@@ -1004,3 +1004,54 @@ threads, comments, and current-head CI, then fix and repush every actionable
 finding until the published checkpoint is good to merge on its stated scope.
 Record the remote head and review result additively. Do not mark the
 overarching Goal complete or ready the draft PR while §12 and §15 remain open.
+
+## Superseding published review-remediation checkpoint
+
+- Signed merge commit
+  `f74be64cd5065cd05831265326820d461c60813f` was pushed to
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`. Its good EDDSA
+  signature and exact two-parent topology were verified. Draft PR #471 is
+  open, mergeable, targets `tx-validation`, and resolved to that exact head
+  before review began.
+- The published PR description was stale against the merge head. Its old
+  blueprint, test counts, dependency-map identities, and pre-merge revision
+  were replaced with the exact current checkpoint while retaining the
+  explicit draft/non-completion boundary.
+- The complete target-to-head PR diff contains 962 paths and has merge base
+  `8bae9403a13124f647f215999848ff5c82784e37`. Full diff whitespace and
+  conflict-marker checks PASS. Added-line scans found no private-key block,
+  cloud/GitHub/live API token, mnemonic assignment, or password assignment.
+  GitHub reported no issue comment, review submission, inline comment, or
+  unresolved review thread.
+- Three protected path names appear in the long-lived PR only through
+  historical commits `8ba2687d`, `df46a686`, and `320ed869`. They are
+  byte-identical to both reviewed merge parents and were not changed by the
+  Goal merge. The committed CEK traversal and redeemer-proof hashes differ
+  from the protected main-checkout dirty hashes; the semantic validator is
+  identical. No protected dirty byte was copied, staged, or claimed.
+- The complete added-line review found one actionable acceptance-hygiene
+  issue: SDK and validation package test commands still permitted zero
+  collection through inherited `--passWithNoTests` flags, which §13 forbids.
+  Both scripts now use exact `vitest run`. A repository-wide manifest/workflow/
+  script scan finds no remaining `passWithNoTests`. Exact package commands
+  collect and pass SDK 17 files/82 tests and validation 37 files/174 tests.
+  Initial sandboxed `pnpm` attempts failed before collection on the unwritable
+  pnpm metadata database and receive no evidence credit; host-permitted exact
+  package commands supersede them.
+- After this remediation, the reviewed staged content-tree SHA-256 is
+  `724b83d8cc45bba4e026fce51b053aaefeb393dd87ea35093e08a1a41ca74b19`.
+  The map, verifier, formatting, diff, protected-path, and unmerged-index gates
+  must be replayed before the additive remediation commit.
+- Pre-remediation current-head CI is superseded for final publication status:
+  evidence integrity (both push/PR runs), LaTeX, and docs site passed;
+  Aiken and node were still active when the manifest finding was fixed. The
+  additive remediation head must receive its own applicable current-head CI
+  before this checkpoint is considered good to merge on scope.
+
+## Superseding remediation publication action
+
+Finish local map/hygiene replay, create a signed additive remediation commit,
+push the same `colll78/` branch, update PR #471 identities, and inspect every
+applicable current-head check plus any new comments/reviews. Fix and repeat
+until the published checkpoint is good to merge on its stated scope. Keep the
+PR draft and the overarching Goal in progress.

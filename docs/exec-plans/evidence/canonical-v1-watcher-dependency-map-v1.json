@@ -15,7 +15,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "57743063e518832117c8794a1d5edc04de32862cc1e6bcf3a570b89fa8525f09"
+    "resultContentTreeSha256": "724b83d8cc45bba4e026fce51b053aaefeb393dd87ea35093e08a1a41ca74b19"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
