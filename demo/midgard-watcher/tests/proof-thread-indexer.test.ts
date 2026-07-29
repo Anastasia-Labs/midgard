@@ -84,6 +84,7 @@ import {
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
 } from "../src/rollback-engine.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -181,37 +182,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  const catalogueNames = [
-    "doubleSpend",
-    "nonExistentInput",
-    "nonExistentInputNoIndex",
-    "invalidRange",
-    "transitionTrace",
-    "zeroInput",
-    "validationTraceDispute",
-  ] as const;
-  const contractByCategory = {
-    doubleSpend: "fraudProofDoubleSpend",
-    nonExistentInput: "fraudProofNonExistentInput",
-    nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-    invalidRange: "fraudProofInvalidRange",
-    transitionTrace: "fraudProofTransitionTrace",
-    zeroInput: "fraudProofZeroInput",
-    validationTraceDispute: "validationTraceDispute",
-  } as const;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      catalogueNames.map((name, index) => [
-        name,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: contracts[contractByCategory[name]].scriptHash,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,

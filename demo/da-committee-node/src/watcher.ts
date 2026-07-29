@@ -1,4 +1,4 @@
-import type { WatcherConfig } from "./config.js";
+import { l1SourceAuthorityDigest, type WatcherConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
 import {
@@ -172,10 +172,11 @@ export class WatcherService {
     if (
       l1State !== undefined &&
       (l1State.network !== this.deps.config.network ||
-        l1State.sourceMode !== this.l1SourceMode())
+        l1State.sourceMode !== this.l1SourceMode() ||
+        l1State.authoritySha256 !== this.l1SourceAuthoritySha256())
     ) {
       await this.quarantineL1Source(
-        `l1_source_configuration_changed: stored=${l1State.sourceMode}/${l1State.network}, configured=${this.l1SourceMode()}/${this.deps.config.network}`,
+        `l1_source_configuration_changed: stored=${l1State.sourceMode}/${l1State.network}/${l1State.authoritySha256}, configured=${this.l1SourceMode()}/${this.deps.config.network}/${this.l1SourceAuthoritySha256()}`,
         l1State,
       );
       throw new Error(
@@ -592,6 +593,13 @@ export class WatcherService {
     return this.deps.config.l1Source.sourceMode;
   }
 
+  private l1SourceAuthoritySha256(): string {
+    return l1SourceAuthorityDigest(
+      this.deps.config.network,
+      this.deps.config.l1Source,
+    );
+  }
+
   private async quarantineL1Source(
     reason: string,
     previous?: L1SourceState,
@@ -601,6 +609,7 @@ export class WatcherService {
       schemaVersion: 1,
       sourceMode: this.l1SourceMode(),
       network: this.deps.config.network,
+      authoritySha256: this.l1SourceAuthoritySha256(),
       status: "quarantined",
       observations: previous?.observations ?? [],
       observedAt: previous?.observedAt ?? now,
@@ -642,6 +651,7 @@ export class WatcherService {
       schemaVersion: 1,
       sourceMode: this.l1SourceMode(),
       network: this.deps.config.network,
+      authoritySha256: this.l1SourceAuthoritySha256(),
       status: "healthy",
       observations: observations.sort((left, right) =>
         left.headerHash.localeCompare(right.headerHash),

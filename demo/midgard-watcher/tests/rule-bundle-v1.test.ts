@@ -45,6 +45,7 @@ import {
   WatcherRuleBundleV1Error,
   type WatcherRuleBundleV1ErrorCode,
 } from "../src/rule-bundle-v1.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
 
@@ -111,27 +112,8 @@ const canonicalManifestIdentity = (): MutableRecord => {
       },
     ]),
   ) as MutableRecord;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("3"),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-      ].map((category, index) => [
-        category,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,

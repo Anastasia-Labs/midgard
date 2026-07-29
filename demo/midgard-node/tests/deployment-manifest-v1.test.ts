@@ -12,11 +12,14 @@ import {
   normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type FraudProofCatalogueDeploymentInfo,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   referenceScriptAuthUnit,
 } from "@al-ft/midgard-sdk";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { Effect } from "effect";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   computeDeploymentManifestId,
@@ -31,6 +34,10 @@ import {
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
 } from "@/deployment-manifest-v1.js";
+import {
+  buildFraudProofCatalogueDeploymentInfo,
+  uint32ToFraudProofID,
+} from "@/transactions/initialization.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH = validatorToScriptHash({
@@ -41,6 +48,21 @@ const CONTRACT_SCRIPT_CBOR = "01";
 const CONTRACT_SCRIPT_HASH = validatorToScriptHash({
   type: "PlutusV3",
   script: CONTRACT_SCRIPT_CBOR,
+});
+let CANONICAL_FRAUD_PROOF_CATALOGUE: FraudProofCatalogueDeploymentInfo;
+beforeAll(async () => {
+  CANONICAL_FRAUD_PROOF_CATALOGUE = await Effect.runPromise(
+    buildFraudProofCatalogueDeploymentInfo(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+        (categoryName, index) =>
+          [
+            uint32ToFraudProofID(index),
+            { spendingScriptHash: CONTRACT_SCRIPT_HASH } as never,
+            categoryName,
+          ] as const,
+      ),
+    ),
+  );
 });
 const DA_VKEY = "44".repeat(32);
 const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
@@ -88,46 +110,7 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
   );
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
-    fraudProofCatalogue: {
-      root: "33".repeat(32),
-      categories: {
-        doubleSpend: {
-          categoryId: "00000000",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        nonExistentInput: {
-          categoryId: "00000001",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        nonExistentInputNoIndex: {
-          categoryId: "00000002",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        invalidRange: {
-          categoryId: "00000003",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        transitionTrace: {
-          categoryId: "00000004",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        zeroInput: {
-          categoryId: "00000005",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-        validationTraceDispute: {
-          categoryId: "00000006",
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-      },
-    },
+    fraudProofCatalogue: CANONICAL_FRAUD_PROOF_CATALOGUE,
   };
   const referenceScripts = Object.fromEntries(
     DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES.map((role) => {
@@ -258,6 +241,69 @@ describe("V1 deployment manifest", () => {
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
     );
+  });
+
+  it("rejects catalogue root, positional ID, and membership-proof tampering", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    const catalogue =
+      identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;
+    const withCatalogue = (
+      fraudProofCatalogue: typeof catalogue,
+    ): Omit<DeploymentManifestV1Value, "manifestId"> => ({
+      ...identity,
+      contracts: {
+        ...identity.contracts,
+        fraudProofCatalogueMint: {
+          ...identity.contracts.fraudProofCatalogueMint,
+          fraudProofCatalogue,
+        },
+      },
+    });
+
+    expect(() =>
+      parseDeploymentManifestV1Value(
+        withId(
+          withCatalogue({
+            ...catalogue,
+            root: "33".repeat(32),
+          }),
+        ),
+      ),
+    ).toThrow(/catalogue root mismatch/u);
+
+    expect(() =>
+      parseDeploymentManifestV1Value(
+        withId(
+          withCatalogue({
+            ...catalogue,
+            categories: {
+              ...catalogue.categories,
+              nonExistentInputNoIndex: {
+                ...catalogue.categories.nonExistentInputNoIndex,
+                categoryId: "00000003",
+              },
+            },
+          }),
+        ),
+      ),
+    ).toThrow(/nonExistentInputNoIndex\.categoryId must be 00000002/u);
+
+    expect(() =>
+      parseDeploymentManifestV1Value(
+        withId(
+          withCatalogue({
+            ...catalogue,
+            categories: {
+              ...catalogue.categories,
+              zeroInput: {
+                ...catalogue.categories.zeroInput,
+                membershipProofCbor: "80",
+              },
+            },
+          }),
+        ),
+      ),
+    ).toThrow(/zeroInput\.membershipProofCbor does not prove membership/u);
   });
 
   it("rejects missing and unexpected root fields", () => {

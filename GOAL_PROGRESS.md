@@ -139,7 +139,7 @@
 | AC-03     | TODO        | Final release identity and digest required.                                                                                                                                                                                                                                                                                                                                                                                                             |
 | AC-C10    | TODO        | CG1 required.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | AC-C20    | TODO        | CG2 full P2 matrix required.                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| AC-C21    | IN_PROGRESS | The retired transaction-field whole-preimage constructor is removed, but a fresh deployed-path audit found whole ledger-output and native-script carriers in CEK auxiliary witnesses plus a resolved-descriptor/root mismatch. Four exact carriers and required hostile evidence are ledgered below; three disjoint remediation leases are active. No PASS credit until final-tree source/ABI/blueprint absence and maximum bounded-witness tests pass. |
+| AC-C21    | IN_PROGRESS | The retired transaction-field whole-preimage constructor is removed, but the deployed-path audit found whole ledger-output and native-script carriers in CEK auxiliary witnesses plus a resolved-descriptor/root mismatch. The exact carriers and hostile evidence remain ledgered below. No remediation lease is active at this checkpoint, and no PASS credit is claimed until final-tree source/ABI/blueprint absence and maximum bounded-witness tests pass. |
 | AC-C30    | TODO        | CG3 resolver sweep required.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | AC-C31    | TODO        | Enabled semantic surface proof required.                                                                                                                                                                                                                                                                                                                                                                                                                |
 | AC-C40    | TODO        | CG4 classification/forced sweep required.                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -156,7 +156,7 @@
 | AC-Q18    | TODO        | QG1, QG2, and QG3 required.                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | AC-W10    | TODO        | Production watcher package and gates required.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | AC-W11    | TODO        | Public authenticated trust-boundary proof required.                                                                                                                                                                                                                                                                                                                                                                                                     |
-| AC-W12    | PASS        | W10-W13 final-tree evidence proves two-provider consistency, release-bound finality, pre-finality deterministic rewinds, post-finality quarantine incidents, exact durable chain-point/W10 evidence, external bootstrap authority, bounded restart replay, and independent rejection of every discovered forgery.                                                                                                                                       |
+| AC-W12    | PASS        | W10-W13 final-tree evidence proves the configured source-mode policy: `local_node` binds one watcher-operated chain-sync authority to aligned same-node query surfaces and rollback propagation without a provider quorum; `external_providers` requires two independent authorities. Both modes prove release-bound finality, deterministic pre-finality rewind, post-finality quarantine incidents, durable chain points, bounded restart replay, and hostile rejection. |
 | AC-W13    | TODO        | Deterministic reconstruction/replay evidence required.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | AC-W14    | TODO        | Canonical decision totality evidence required.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | AC-W15    | TODO        | Total deterministic family adapters required.                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -579,24 +579,40 @@
   `docs/exec-plans/canonical-v1-pr-differential-review-2026-07-28.md`.
 - Fresh checkpoint evidence:
   - Aiken `v1.1.22+39d6b04` build PASS; generated blueprint SHA-256
-    `449e7aecc51820f77866e6fe15c79ce29b7e3ea3ad9425b55f90d14abcbc3b81`;
-    guarded zero-input selector completes with zero errors.
+    `32dd6f052b5fb9e2da1f81efb5c2bdc816c6136f09a20f0e1ea5c526b20b3466`;
+    355 unique validator titles; phase-A router 5,302 raw bytes,
+    script-sources router 5,305 raw bytes, and state-queue mint policy 10,762
+    raw bytes. The new resolver, header-time, and genesis selectors pass
+    13/13.
   - Watcher 13/13 files and 194/194 tests PASS; typecheck, ESLint, Prettier,
     and the 8-class hash-bound dependency verifier PASS.
-  - Fault-proof 14/14 files and 107/107 tests PASS in 462.80 seconds;
-    rebuilt-blueprint zero-input emulator 1/1 PASS; typecheck, ESLint, and
-    scoped Prettier PASS.
+  - Fault-proof 14/14 files and 110/110 tests PASS in 434.74 seconds,
+    including all 14 rebuilt-blueprint emulator journeys; typecheck, build,
+    ESLint, and scoped Prettier PASS. Post-format focused replay passes 26/26.
   - Full retained-DA verifier PASS: 13 producer files/14 tests in 491.06
     seconds, DA consumer 20/20 in 30.02 seconds, and fault-proof consumer 3/3
     in 27.73 seconds, after regenerating and byte-comparing the private corpus.
-  - DA package PASS outside the listener-restricted sandbox: 26 executed
-    files/184 tests PASS, one PostgreSQL-environment test skipped; typecheck,
-    production build, and no-HTTP transport guard PASS. The skipped hostile
+  - DA package: 26/27 files and 189/190 tests PASS, with the one
+    PostgreSQL-environment test explicitly skipped; typecheck, production
+    build, and no-HTTP transport guard PASS. The skipped hostile
     startup-journal case separately passes 1/1 against local PostgreSQL.
-  - Core deployment identity 6/6, SDK fault-proof integration 17/17, and node
-    deployment/contract registry 24/24 PASS.
-  - Documentation facts 9 groups, links 190 Markdown/MDX files, and voice 83
-    pages PASS under pinned Node 22.
+  - Core production build and full 36-file, 271/271 suite PASS. SDK production
+    build/typecheck and full 16-file, 80/80 suite PASS. Node final focused
+    replay passes 8 files and 74/74 tests; its dependency-building typecheck
+    and package lint PASS.
+  - Documentation facts 10 groups, links 190 Markdown/MDX files, and voice 83
+    pages PASS under pinned Node 22; the full 142-page technical specification
+    build passes.
+- Full PR-tree lint review found import-order defects in node submission and
+  three already-published PR files. All four were mechanically corrected;
+  node, SDK, and core package lint now pass, and affected fault/core/node
+  focused tests replayed 26/26, 12/12, and 74/74 respectively.
+- Content-tree binding found and fixed a Git-link reproducibility defect: the
+  verifier now hashes the tracked mode/object identity for
+  `technical-spec/Lean4Midgard` instead of following a checked-out directory.
+  The exact staged tree is bound at
+  `42bb1a9e470c24acec73755a267ddd4140df036d8bb48c7a37c932b45d2f1daf`,
+  and all eight dependency classes verify together.
 - No active path leases remain. No product failure remains in the checkpoint
   scope. The initial mistyped DA package filter and mistyped documentation-link
   script path were command errors immediately superseded by the exact passing
@@ -627,6 +643,9 @@ Q00→Q03; W20 remains stopped until its prerequisites are proven.
 No current local-work blocker. The sandbox mounts `.git` read-only, so narrow
 staging/push operations require approved Git access. Docker and the exact
 Aiken `v1.1.22+39d6b04` compiler are available. Missing
-`DA_L1_SUBMITTER_KEY_SOURCE`, proof of provider operation, funded
-wallet/collateral, and a second independent watcher provider remain F03/P6
-preflight gaps, not blockers to dependency-ready local work.
+`DA_L1_SUBMITTER_KEY_SOURCE`, proof of configured source operation, and funded
+wallet/collateral remain F03/P6 preflight gaps. A second independent watcher
+provider is additionally required only if final acceptance selects
+`external_providers`; `local_node` instead requires the watcher-operated node
+and aligned query/index surfaces. These are not blockers to dependency-ready
+local work.

@@ -13,7 +13,7 @@ import {
   parseFaultProofBlueprint,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -29,6 +29,14 @@ const placeholderDoubleSpend = "00".repeat(28);
 const placeholderNonExistentInput = "02".repeat(28);
 const placeholderInvalidRange = "01".repeat(28);
 const placeholderZeroInput = "03".repeat(28);
+const nonExistentInputNoIndexContract = {
+  type: "PlutusV3" as const,
+  cborHex: "01",
+};
+const nonExistentInputNoIndexScriptHash = validatorToScriptHash({
+  type: nonExistentInputNoIndexContract.type,
+  script: nonExistentInputNoIndexContract.cborHex,
+});
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -122,6 +130,7 @@ const buildInspectionFixture = async () => {
   const fraudProofCatalogue = await buildCatalogueFixture({
     doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
     nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
+    nonExistentInputNoIndex: nonExistentInputNoIndexScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
@@ -164,6 +173,10 @@ const deploymentInfoFor = (
     fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
     fraudProofNonExistentInput: {
       scriptHash: nonExistentInputScriptHash,
+    },
+    fraudProofNonExistentInputNoIndex: {
+      scriptHash: nonExistentInputNoIndexScriptHash,
+      contract: nonExistentInputNoIndexContract,
     },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
@@ -331,9 +344,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         "hex",
       ).byteLength;
       expect(step.standaloneScriptBytes).toBe(standaloneScriptBytes);
-      expect(
-        step.withinL1TransactionByteEnvelopeNecessaryCondition,
-      ).toBe(
+      expect(step.withinL1TransactionByteEnvelopeNecessaryCondition).toBe(
         standaloneScriptBytes <
           MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
       );
@@ -352,8 +363,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
             ],
     );
     expect(output.l1SpendingScriptEnvelopeNecessaryCondition).toEqual({
-      maxTransactionBytes:
-        MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
+      maxTransactionBytes: MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes,
       appliedSpendingScriptCount: appliedSpendingScripts.length,
       allAppliedSpendingScriptsWithinEnvelope: expectedOversized.length === 0,
       oversizedAppliedSpendingScripts: expectedOversized,
@@ -390,6 +400,25 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       output.fraudProofCatalogue.nonExistentInput.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.nonExistentInput.ready).toBe(true);
+    expect(output.fraudProofCatalogue.nonExistentInputNoIndex.categoryId).toBe(
+      "00000002",
+    );
+    expect(
+      output.fraudProofCatalogue.nonExistentInputNoIndex.expectedCategoryId,
+    ).toBe("00000002");
+    expect(
+      output.fraudProofCatalogue.nonExistentInputNoIndex
+        .categoryIdMatchesExpected,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.nonExistentInputNoIndex
+        .scriptHashMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.nonExistentInputNoIndex
+        .membershipProofMatchesDerived,
+    ).toBe(true);
+    expect(output.fraudProofCatalogue.nonExistentInputNoIndex.ready).toBe(true);
     expect(output.fraudProofCatalogue.invalidRange.categoryId).toBe("00000003");
     expect(output.fraudProofCatalogue.invalidRange.expectedCategoryId).toBe(
       "00000003",
@@ -638,6 +667,54 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
     expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
     expect(output.fraudProofCatalogue.zeroInput.ready).toBe(true);
     expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
+    expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("fails closed when no-index catalogue identity is not backed by its deployed script bytes", async () => {
+    const fixture = inspectionFixture;
+    const staleNoIndexHash = "77".repeat(28);
+    const staleCatalogue = await buildCatalogueFixture({
+      doubleSpend: fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
+      nonExistentInput:
+        fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
+      nonExistentInputNoIndex: staleNoIndexHash,
+      invalidRange: fixture.contracts.invalidRange.firstStep.spendingScriptHash,
+      transitionTrace:
+        fixture.contracts.transitionTrace.firstStep.spendingScriptHash,
+      zeroInput: fixture.contracts.zeroInput.firstStep.spendingScriptHash,
+      validationTraceDispute:
+        fixture.contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    });
+    const deploymentInfo = deploymentInfoFor({
+      ...fixture,
+      fraudProofCatalogue: staleCatalogue,
+    });
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              ...deploymentInfo.contracts.fraudProofNonExistentInputNoIndex,
+              scriptHash: staleNoIndexHash,
+            },
+          },
+        },
+      }),
+    );
+
+    expect(
+      output.fraudProofCatalogue.nonExistentInputNoIndex
+        .scriptHashMatchesFirstStep,
+    ).toBe(false);
+    expect(output.fraudProofCatalogue.nonExistentInputNoIndex.ready).toBe(
+      false,
+    );
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });

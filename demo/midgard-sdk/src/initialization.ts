@@ -1,6 +1,5 @@
 import {
   isMidgardConsensusProfileV1,
-  MIDGARD_PROTOCOL_V1_VERSION,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
@@ -40,10 +39,9 @@ import {
   makeHubOracleDatum,
 } from "@/hub-oracle.js";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
-  GENESIS_HEADER_HASH,
-} from "@/ledger-constants.js";
-import { castConfirmedStateToData, ConfirmedState } from "@/ledger-state.js";
+  castConfirmedStateToData,
+  makeGenesisConfirmedStateV1,
+} from "@/ledger-state.js";
 import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
 import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
@@ -136,14 +134,9 @@ export const incompleteInitializationTxProgram = (
     const hubOracleDatum = yield* makeHubOracleDatum(midgardValidators);
     const encodedHubOracleDatum = Data.to(hubOracleDatum, HubOracleDatum);
     const stateQueueGenesisTime = params.validityRange.validTo - 1n;
-    const genesisConfirmedState: ConfirmedState = {
-      headerHash: GENESIS_HEADER_HASH,
-      prevHeaderHash: GENESIS_HEADER_HASH,
-      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
-      startTime: stateQueueGenesisTime,
-      endTime: stateQueueGenesisTime,
-      protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
-    };
+    const genesisConfirmedState = makeGenesisConfirmedStateV1(
+      stateQueueGenesisTime,
+    );
 
     const hubOracleUnit = toUnit(
       midgardValidators.hubOracle.policyId,

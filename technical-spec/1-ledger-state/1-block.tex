@@ -183,15 +183,15 @@ These header fields are interpreted as follows:
     \item The \code{protocol\_version} is the Midgard protocol version that applies to this block.
 \end{itemize}
 
-For the launch profile, \code{protocol\_version} must equal (0), and every
+For canonical V1, \code{protocol\_version} must equal (1), and every
 \code{TransitionStep.schema\_version} must equal (1). Version comparison is
 exact: an unknown higher or lower version is invalid rather than being treated
 as backward compatible.
 
-The launch count bounds are (10{,}000) members for each of withdrawals,
+The canonical V1 count bounds are (10{,}000) members for each of withdrawals,
 forced transactions, normal L2 transactions, and deposits, with at most
 (40{,}000) total events and transition steps. The corresponding DA payload
-is additionally bounded to (32\,MiB) of canonical normal-transaction
+is additionally bounded to (16\,MiB) of canonical normal-transaction
 bytes, (40{,}000) ledger operations, and (64\,MiB) total canonical
 payload bytes. Header count bounds are checked by the L1 state-queue validator;
 payload and transaction bounds are checked before the DA committee may attest,

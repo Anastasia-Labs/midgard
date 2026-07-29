@@ -35,11 +35,11 @@ Redeemers:
         \begin{enumerate}
             \item The transaction must mint the Midgard hub oracle token.
             \item The transaction must Init the \code{state\_queue}.
-            \item The validity range of the transaction must be bounded on both ends, and must not be longer than five minutes (TODO).
+            \item The validity range of the transaction must be bounded on both ends, and must not be longer than eight minutes.
             \item The inclusive upper bound of the validity range must be used as both the \code{start\_time} and \code{end\_time} of the produced confirmed state data.
             \item \code{header\_hash} and \code{prev\_header\_hash} must have genesis values (28 zero bytes).
             \item \code{utxo\_root} must be set to the root of an empty Merkle tree.
-            \item \code{protocol\_version} must be set to 0 (TODO).
+            \item \code{protocol\_version} must be set to the genesis sentinel value \(0\).
         \end{enumerate}
 
     \item[Commit Block Header.] An operator commits a block header to the state queue if it is the operator's turn according to the rotating schedule.
@@ -66,6 +66,8 @@ Redeemers:
             \item Verify block timestamps:
             \begin{enumerate}[resume]
                 \item The \code{start\_time} of \code{header\_node} must be equal to the \code{end\_time} of the \code{previous\_element}.
+                \item The commit transaction validity range must be bounded on both ends and no longer than eight minutes.
+                \item The \code{end\_time} of \code{header\_node} must equal the normalized inclusive upper bound of that validity range and must be strictly greater than its \code{start\_time}.
             \end{enumerate}
             
             \item Update the operator's timestamp in the active operators set:
@@ -76,7 +78,8 @@ Redeemers:
                 \begin{enumerate}[resume]
                   \item Its \code{header\_hash} must be preserved under new node's \code{prev\_header\_hash}.
                   \item Its ledger must be preserved under new node's \code{prev\_utxos\_root}.
-                  \item Protocol version must also be preserved from \code{previous\_element} (TODO).
+                  \item An ordinary predecessor must carry protocol version \(1\) forward unchanged.
+                    If \code{previous\_element} is the exact authenticated genesis confirmed state at protocol \(0\), the first ordinary header must instead use protocol version \(1\).
                 \end{enumerate}
         \end{itemize}
 
@@ -90,7 +93,7 @@ Redeemers:
         \item \code{confirmed\_state\_node\_output} must match:
           \begin{enumerate}
             \item \code{start\_time} and \code{header\_hash} from \code{confirmed\_state\_node\_input} under \code{start\_time} and \code{prev\_header\_hash} respectively.
-            \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version (TODO?) under \code{utxo\_root} and \code{protocol\_version} respectively.
+            \item Key of \code{header\_node} under \code{header\_hash}, along with its ledger and protocol version under \code{utxo\_root} and \code{protocol\_version} respectively.
           \end{enumerate}
         \item If either the \code{deposits\_root}, \code{withdrawals\_root} or \code{transactions\_root} of \code{header\_node} is \emph{not} the MPT root hash of the empty set, a \code{settlement} utxo must be produced via the Spawn redeemer.
           The redeemer must mention \code{settlement\_id} equal to \code{header\_node} as a coupling medium.

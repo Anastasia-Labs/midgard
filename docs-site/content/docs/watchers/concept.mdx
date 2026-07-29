@@ -4,9 +4,9 @@ description: "What a Midgard watcher is, its security role, and how a production
 ---
 
 <Callout type="warn" title="Target architecture">
-The independent challenge watcher described here is a design target, not shipped
-code. For the running data-availability and watcher service, see the
-[DA committee node](/docs/watchers/da-committee-node).
+  The independent challenge watcher described here is a design target, not
+  shipped code. For the running data-availability and watcher service, see the
+  [DA committee node](/docs/watchers/da-committee-node).
 </Callout>
 
 ## What Midgard is
@@ -80,27 +80,32 @@ watcher can reliably convert an invalid block into a successful proof and claim 
 
 ## Watcher inputs and local state
 
-A production watcher needs multi-provider Cardano L1 access with explicit finality and rollback
-policy, a verified Midgard deployment manifest, the authenticated hub-oracle view and all protocol
-UTxOs, DA material for every committed block under challenge, a local rule bundle keyed by protocol
-version, and a funded prover wallet for proof-init, proof-step, token-mint, and header-removal
+A production watcher needs one explicit Cardano L1 source mode with finality
+and rollback policy: either `local_node`, where its own full node and chain-sync
+stream are the sole consensus authority and every Ogmios/Kupo/db-sync query
+surface must match that node, or `external_providers`, where at least two
+operationally independent providers must agree on network and compatible chain
+point. It also needs a verified Midgard deployment manifest, the authenticated
+hub-oracle view and all protocol UTxOs, DA material for every committed block
+under challenge, a local rule bundle keyed by protocol version, and a funded
+prover wallet for proof-init, proof-step, token-mint, and header-removal
 transactions.
 
 <Callout type="warn" title="Distrust operator-local data">
-The watcher should not depend on an operator's local Postgres tables, MPF stores, or admin
-endpoints for security-critical data. Those are useful diagnostics, not trusted inputs. Every local
-table should be reproducible from L1 plus DA; if it cannot be reproduced, treat it as a cache, not
-authority.
+  The watcher should not depend on an operator's local Postgres tables, MPF
+  stores, or admin endpoints for security-critical data. Those are useful
+  diagnostics, not trusted inputs. Every local table should be reproducible from
+  L1 plus DA; if it cannot be reproduced, treat it as a cache, not authority.
 </Callout>
 
 ## Block verification pipeline
 
 <Callout type="info" title="Canonical block application order">
-The current specification and node apply withdrawals, forced transaction orders,
-normal L2 transactions, then deposits. Same-block spending of a deposit is
-therefore invalid. A watcher must still load this rule from the deployed protocol
-version and reject any unversioned order change. See
-[offchain data architecture](/docs/spec/offchain-data-architecture).
+  The current specification and node apply withdrawals, forced transaction
+  orders, normal L2 transactions, then deposits. Same-block spending of a
+  deposit is therefore invalid. A watcher must still load this rule from the
+  deployed protocol version and reject any unversioned order change. See
+  [offchain data architecture](/docs/spec/offchain-data-architecture).
 </Callout>
 
 The watcher runs each committed queue block through an ordered pipeline:
@@ -117,7 +122,7 @@ The watcher runs each committed queue block through an ordered pipeline:
    or root-inconsistent data is a DA or commitment fault.
 4. **L1 user-event indexing**, index deposits, withdrawal orders, and transaction orders directly
    from L1, authenticate each event, and enforce the inclusion window `(previous_end_time,
-   block_end_time]`. This is the core censorship-resistance rule.
+block_end_time]`. This is the core censorship-resistance rule.
 5. **L2 transaction validation**, reuse the `midgard-validation` split of Phase A (stateless
    per-transaction checks) and Phase B (stateful validation against the reconstructed UTxO state).
 6. **Deposits, withdrawals, and forced transactions**, independently classify each withdrawal
@@ -143,7 +148,8 @@ complete; see [Project Status](/docs/getting-started/status).
 
 ## High-level architecture
 
-<Mermaid chart={`
+<Mermaid
+  chart={`
 flowchart LR
   L1["Cardano L1 providers"] --> CF["Chain follower"]
   DA["Data availability layer"] --> DC["DA client"]
@@ -163,7 +169,8 @@ flowchart LR
   PS --> L1
   PS --> REC["Proof recovery journal"]
   OK --> API["Watcher API / metrics"]
-`} />
+`}
+/>
 
 The suggested service boundaries split the watcher around trust and determinism: `chain`,
 `contracts`, `da`, `ledger`, `proof-data`, `detectors`, `proofs`, `submitter`, `db`, and `api`. The
@@ -173,14 +180,14 @@ The suggested service boundaries split the watcher around trust and determinism:
 
 For each queued block, the watcher should produce exactly one decision:
 
-| Decision | Meaning |
-| --- | --- |
-| `verified` | All roots and rules match; safe to let the block mature. The only healthy state. |
-| `pending_da` | Block cannot yet be evaluated because DA is temporarily unavailable, with a deadline before maturity. Close to maturity this is an emergency. |
-| `unprovable_gap` | A violation may exist but the deployed proof set cannot prove it. A production launch blocker for security claims. |
-| `fault_detected` | A concrete proof-covered violation exists and proof submission is in progress. |
-| `fault_proven` | A fraud-proof token exists for the target block or settlement claim. |
-| `removed_or_resolved` | The bad block or claim has been removed and slashing completed or observed. |
+| Decision              | Meaning                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verified`            | All roots and rules match; safe to let the block mature. The only healthy state.                                                              |
+| `pending_da`          | Block cannot yet be evaluated because DA is temporarily unavailable, with a deadline before maturity. Close to maturity this is an emergency. |
+| `unprovable_gap`      | A violation may exist but the deployed proof set cannot prove it. A production launch blocker for security claims.                            |
+| `fault_detected`      | A concrete proof-covered violation exists and proof submission is in progress.                                                                |
+| `fault_proven`        | A fraud-proof token exists for the target block or settlement claim.                                                                          |
+| `removed_or_resolved` | The bad block or claim has been removed and slashing completed or observed.                                                                   |
 
 ## Related
 

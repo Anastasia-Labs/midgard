@@ -14,7 +14,7 @@
 | Level                                       | Exists?                                       | Where                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Aiken unit/property tests                   | 🟠 partial                                    | canonical V1 transition-trace coverage, native-tx codec, counted roots, invalid-range normalization, and zero-input step-02 full-handler accept/reject fixtures — **nothing** for computation-thread, fault-proof token, catalogue, or state-queue removal at the Aiken level ([`onchain-reference.md`](onchain-reference.md) §6)                                                                                                                                                                                  |
-| TypeScript unit tests                       | ✅ broad                                      | prepare-\* logic, MPF proofs, lease protocol, contract inspection, transition-trace detection/reconstruction, and validation-dispute submission (all 12 files in `demo/midgard-fault-proofs/tests/`)                                                                                                                                                                                                                                                                                                               |
+| TypeScript unit tests                       | ✅ broad                                      | prepare-\* logic, MPF proofs, lease protocol, contract inspection, transition-trace detection/reconstruction, retained-DA binding, blueprint decoding, and validation-dispute submission (all 14 files in `demo/midgard-fault-proofs/tests/`)                                                                                                                                                                                                                                                                      |
 | Lucid Emulator end-to-end                   | ✅ for 5 legacy families + validation dispute | `submit-init-emulator.test.ts`: full chains for double-spend, invalid-range, non-existent-input, transition-trace, and zero-input through faulty-block removal, plus canonical V1 validation-dispute lifecycle coverage; `spend-input-witness.test.ts` covers the 180-input witness                                                                                                                                                                                                                                |
 | Cross-process / network integration         | 🟠 adjacent only                              | DA layer: `da-committee-node` in-process protocol tests and `multi-node-integration.test.ts`. The pre-consolidation exact-50k runner was invalidated because the complete newest V1 payload exceeds the retained DA bound. Nothing drives a fault proof across processes                                                                                                                                                                                                                                           |
 | Preprod / real testnet                      | 🟠 reported, not independently reproduced     | PR #461's author supplied a preprod zero-input transaction sequence through removal after the counted-root/native-MPF changes. This hardening review did not rerun it, and the repository still lacks a reproducible automated preprod acceptance artifact. The older operator-local 2026-05-08 canonical-root report predates counted roots and the MPF rewrite. System-wide readiness therefore remains unconfirmed; `public_testnet_readiness.md` still lists fault proofs "Partial, not public-testnet ready". |
@@ -32,13 +32,15 @@
 | `submit-init.test.ts`                                                                                                                  | unit (fake lucid)                        | signer precedence, per-category deployment-readiness gating                                                                   |
 | `inspect-contracts.test.ts`                                                                                                            | unit + real blueprint                    | blueprint↔deployment consistency, catalogue root/membership                                                                  |
 | `bin.test.ts`                                                                                                                          | unit                                     | CLI parsing, including zero-input category and mandatory preparation root                                                     |
+| `aiken-blueprint-data.test.ts`                                                                                                         | unit                                     | blueprint-data decoding and validation                                                                                        |
+| `cardano-capability-retained-da-v1.test.ts`                                                                                            | unit + retained-DA fixtures              | Cardano capability boundary corpus and retained-DA binding                                                                    |
 | `validation-dispute-submit.test.ts`                                                                                                    | unit                                     | canonical validation-dispute file decoding and transaction-validity submission                                                |
 
 ## 3. Exact local verification commands
 
 ```bash
-# On-chain (Aiken v1.1.21, pinned in onchain/aiken/aiken.toml:3)
-cd onchain/aiken && aiken fmt --check && aiken check
+# On-chain (Aiken v1.1.22, pinned in onchain/aiken/aiken.toml:3)
+cd onchain/aiken && aiken check
 aiken build --env testnet                      # blueprint used by TS tests/deploys
 
 # Plutarch (legacy MPF; not CI-wired)
@@ -63,13 +65,12 @@ pnpm --dir demo/midgard-node run test:da-phase5-e2e
 cd offchain && cabal test mockchain-tests
 ```
 
-On reconstructed base `55afdc54`, pinned Aiken v1.1.21 passes all 96 tests and
-the `testnet` build, but `aiken fmt --check` reports three pre-existing files:
-`validators/da-attestation.ak`,
-`lib/midgard/fraud-proofs/transition-trace/proof.ak`, and
-`lib/midgard/fraud-proofs/transition-trace/proof.test.ak`. This documentation
-change does not touch `onchain/aiken/**`, so the path-filtered Aiken workflow is
-not a check on this PR; the formatter debt remains a repository hygiene item.
+The current tree pins Aiken v1.1.22. CI hash-guards the two protected pre-Goal
+tracked libraries, applies the pinned formatter to every other tracked Aiken
+source, normalizes the formatter's trailing-space artifact, and rejects any
+resulting source diff before running the contract checks and testnet build.
+Historical results from reconstructed base `55afdc54` are not final-tree
+evidence.
 
 Live-stack acceptance: `.agents/skills/midgard-e2e-acceptance/SKILL.md` (local Kupmios
 only; real DA attestation required — `attest-state-queue-once` forbidden as an acceptance
@@ -80,7 +81,7 @@ path, `:78-81,822-829`). Contract building: `.agents/skills/aiken-contract-build
 
 | Suite                                                                            | CI                                                                             |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `aiken fmt --check` + `aiken check`                                              | ✅ `.github/workflows/aiken-ci.yml`                                            |
+| normalized Aiken formatting check + `aiken check`                                | ✅ `.github/workflows/aiken-ci.yml`                                            |
 | `aiken build --env testnet`                                                      | ✅ `.github/workflows/midgard-node-ci.yml`                                     |
 | midgard-core / da-committee-node / lucid-midgard / midgard-node / DA phase-5 e2e | ✅ `.github/workflows/midgard-node-ci.yml` (+ nightly benchmark workflow)      |
 | `demo/midgard-fault-proofs` build/typecheck/tests                                | ✅ `.github/workflows/midgard-node-ci.yml`; package paths trigger the workflow |

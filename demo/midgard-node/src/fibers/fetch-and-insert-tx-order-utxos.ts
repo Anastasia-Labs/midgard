@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialEntryV1,
   encodeMidgardCekProgramMaterialEntryV1,
@@ -20,7 +21,6 @@ import {
   reconstructMidgardTransactionV1,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core/consensus-validation-v1";
-import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

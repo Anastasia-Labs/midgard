@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { lstat, readFile, readlink } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
@@ -241,6 +242,70 @@ const watcherIndexSource = await readFile(
   "utf8",
 );
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const readTrackedBytes = async ({ mode, objectId, path }) => {
+  if (mode === "160000") {
+    return Buffer.from(`gitlink:${objectId}`);
+  }
+  const absolutePath = resolve(repositoryRoot, path);
+  const stats = await lstat(absolutePath);
+  return stats.isSymbolicLink()
+    ? Buffer.from(await readlink(absolutePath))
+    : readFile(absolutePath);
+};
+const contentTreeExclusions = [
+  "GOAL_PROGRESS.md",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+];
+if (
+  dependencyMap.authority?.publishedParentRevision !==
+    "86fd1d4b32a91cd8ca0541cfddc910500ca752c5" ||
+  dependencyMap.authority?.treeState !==
+    "reviewed follow-up content tree bound by resultContentTreeSha256" ||
+  JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
+    JSON.stringify(contentTreeExclusions)
+) {
+  fail(
+    "authority must bind the published checkpoint parent and exact exclusions",
+  );
+}
+const trackedEntriesFromIndex = execFileSync(
+  "git",
+  ["ls-files", "--stage", "-z"],
+  {
+    cwd: repositoryRoot,
+  },
+)
+  .toString("utf8")
+  .split("\0")
+  .filter((record) => record !== "")
+  .map((record) => {
+    const separatorIndex = record.indexOf("\t");
+    const [mode, objectId] = record.slice(0, separatorIndex).split(" ");
+    return {
+      mode,
+      objectId,
+      path: record.slice(separatorIndex + 1),
+    };
+  })
+  .filter(({ path }) => !contentTreeExclusions.includes(path))
+  .sort((left, right) => left.path.localeCompare(right.path));
+const trackedEntries = await Promise.all(
+  trackedEntriesFromIndex.map(async (entry) => ({
+    path: entry.path,
+    sha256: sha256(await readTrackedBytes(entry)),
+  })),
+);
+const resultContentTreeSha256 = sha256(
+  JSON.stringify({
+    domain: "midgard-reviewed-integration-content-tree-v1",
+    entries: trackedEntries,
+  }),
+);
+if (
+  dependencyMap.authority?.resultContentTreeSha256 !== resultContentTreeSha256
+) {
+  fail("authority result content tree is stale");
+}
 if (
   strictConfiguration?.schemaVersion !== "midgard-watcher-config-v1" ||
   strictConfiguration.sourceSha256 !== sha256(configBytes) ||
@@ -447,10 +512,11 @@ if (
     sha256(multiProviderConsistencyTestBytes) ||
   JSON.stringify(multiProviderConsistency.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
-  multiProviderConsistency.minimumIndependentProvidersByMode?.local_node !==
-    1 ||
-  multiProviderConsistency.minimumIndependentProvidersByMode
-    ?.external_providers !== 2 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.local_node !== 1 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.external_providers !==
+    2 ||
+  multiProviderConsistency.localQuerySurfacesCountAsIndependentProviders !==
+    false ||
   multiProviderConsistency.compatibleBlockLag !== 64 ||
   multiProviderConsistency.agreementPolicy !==
     "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points" ||

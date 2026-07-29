@@ -10,11 +10,14 @@ import {
   alignUnixTimeToSlotBoundary,
   COMMIT_MIN_PRE_SUBMIT_BUDGET_MS,
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+  COMMIT_VALIDITY_BACKDATE_MS,
+  COMMIT_VALIDITY_MAX_RANGE_MS,
   commitTimingBudget,
   EXPLICIT_COMMIT_DEFAULT_CANDIDATE_FUTURE_BUFFER_MS,
   makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
   resolveCommitEndTimeFit,
+  resolveCommitValidityInterval,
   resolveExplicitCommitCandidateEndTimeMs,
 } from "@/workers/utils/commit-end-time.js";
 
@@ -215,6 +218,61 @@ describe("commit end-time resolver", () => {
     );
   });
 
+  it("builds a backdated bounded validity interval and exposes its inclusive upper bound", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const validToMs = alignedUnixTimeStrictlyAfter(
+      lucid,
+      slotStartMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
+    );
+
+    const interval = resolveCommitValidityInterval({
+      lucid,
+      submitSlotSnapshot: {
+        source: "test",
+        currentSlot,
+        observedAtMs: slotStartMs,
+        slotLengthMs: 1_000,
+      },
+      validToMs,
+    });
+
+    expect(interval.validFromMs).toBe(
+      slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+    );
+    expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
+      COMMIT_VALIDITY_MAX_RANGE_MS,
+    );
+    expect(interval.inclusiveUpperBoundMs).toBe(validToMs - 1);
+  });
+
+  it("moves an old lower bound forward when a later validTo would exceed the range limit", async () => {
+    const lucid = await makeLucid();
+    const currentSlot = lucid.currentSlot();
+    const slotStartMs = lucid.slotToUnixTime(currentSlot);
+    const validToMs =
+      slotStartMs + COMMIT_VALIDITY_MAX_RANGE_MS + COMMIT_VALIDITY_BACKDATE_MS;
+
+    const interval = resolveCommitValidityInterval({
+      lucid,
+      submitSlotSnapshot: {
+        source: "test",
+        currentSlot,
+        observedAtMs: slotStartMs,
+        slotLengthMs: 1_000,
+      },
+      validToMs,
+    });
+
+    expect(interval.validFromMs).toBeGreaterThan(
+      slotStartMs - COMMIT_VALIDITY_BACKDATE_MS,
+    );
+    expect(interval.validToMs - interval.validFromMs).toBeLessThanOrEqual(
+      COMMIT_VALIDITY_MAX_RANGE_MS,
+    );
+  });
+
   it("reports a cap-aware fit when the production resolved end-time stays inside the scheduler window", async () => {
     const lucid = await makeLucid();
     const latestEndTime = currentSlotStartMs(lucid);
@@ -260,7 +318,7 @@ describe("commit end-time resolver", () => {
       throw new Error("expected production current-time floor to exceed cap");
     }
     expect(fit.resolvedEndTime).toBeGreaterThan(maximumEndTimeMs);
-    expect(fit.reason).toContain("minimum_current_time_end_time_ms=");
+    expect(fit.reason).toContain("minimum_current_time_valid_to_ms=");
   });
 
   it("keeps the monotonic latest-block lower bound when it is later than the production current-time floor", async () => {
@@ -338,7 +396,7 @@ describe("commit end-time resolver", () => {
       candidateEndTime,
     });
 
-    expect(alignedCandidateEndTime).toBe(latestEndTime + 2_000);
+    expect(alignedCandidateEndTime).toBe(latestEndTime + 3_000);
     expect(minimumMonotonicEndTime).toBeGreaterThan(latestEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(alignedCandidateEndTime);
     expect(resolvedEndTime).toBeGreaterThanOrEqual(minimumMonotonicEndTime);

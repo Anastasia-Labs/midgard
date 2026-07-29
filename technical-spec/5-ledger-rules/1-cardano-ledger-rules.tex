@@ -556,6 +556,7 @@ Formal specification:
 \begin{split}
   &\forall t \in Ledger : \\
     &\quad
+      mint(t) \;+\;
       \sum value \bigl(  spend\_inputs(t) \bigr) \;=\;
       fee(t) \;+\;
       \sum value \bigl(  outputs(t) \bigr)
@@ -575,6 +576,7 @@ Formal specification:
 \begin{split}
   &\exists t \in txs : \\
     &\quad
+      mint(t) \;+\;
       \sum value \bigl(  spend\_inputs(t) \bigr) \;\neq\;
       fee(t) \;+\;
       \sum value \bigl(  outputs(t) \bigr)
@@ -590,15 +592,16 @@ Fraud proof construction:
   \item The sums in the calculation must show a discrepancy.
 \end{enumerate}
 
-\subsection{Rule: No mint or burn}
+\subsection{Rule: No Ada minted}
 \label{rule:no-ada-minted}
-The canonical mint preimage must be empty; no asset, including Ada, may be
-minted or burned by a launch-profile L2 transaction.
+The Ada component of the mint value must be zero. Canonical V1 supports
+minting and burning non-Ada assets subject to value preservation and the
+corresponding policy execution.
 Formal specification:
 \begin{empheq}[box=\ledgerRuleBox]{equation*}
 \begin{split}
   &\forall t \in Ledger:\\
-    &\quad mint(t) = \varnothing
+    &\quad lovelaces\bigl(mint(t)\bigr) = 0
 \end{split}
 \end{empheq}
 
@@ -607,14 +610,14 @@ This ledger rule is violated if any of the following violations occur:
   \item \hyperref[violation:ADA-MINTED]{ADA-MINTED}
 \end{itemize-multi}
 
-\subsubsection{MINT-OR-BURN violation}
+\subsubsection{ADA-MINTED violation}
 \label{violation:ADA-MINTED}
-The mint preimage of transaction $t$ is non-empty.
+The Ada component of the mint value in transaction $t$ is non-zero.
 Formal specification:
 \begin{equation*}
 \begin{split}
   &\exists t \in txs:\\
-    &\quad mint(t) \neq \varnothing
+    &\quad lovelaces\bigl(mint(t)\bigr) \neq 0
 \end{split}
 \end{equation*}
 
@@ -622,7 +625,7 @@ Fraud proof construction:
 \begin{enumerate}
   \item Let $t$ be the transaction alleged to violate the ledger rule.
   \item A membership proof must be provided that shows that the transaction $t$ is included in the ledger.
-  \item The canonical mint preimage is not the empty list.
+  \item The Ada component of the canonical mint value is not zero.
 \end{enumerate}
 
 \subsection{Rule: Maximum transaction size}
@@ -630,11 +633,14 @@ Fraud proof construction:
 
 Canonical V1 has no independent (8{,}192)-byte aggregate transaction
 ceiling. Each dynamic canonical field preimage is independently committed by
-the compact transaction and has a compiled maximum derived from the supported
-(16{,}384)-byte L1 fault-proof transaction floor and the concrete overhead of
-the one-step instruction that reveals it. For every instruction,
+the compact transaction and has a (32{,}768)-byte aggregate maximum. Proof
+instructions consume each field through authenticated fragments or chunks of
+at most (4{,}095) bytes, derived from the supported (16{,}384)-byte L1
+fault-proof transaction floor and the concrete overhead of the one-step
+instruction that reveals it. For every instruction,
 \[
-    |\T{field\_preimage}| + |\T{reserved\_proof\_overhead}| <
+    |\T{revealed\_fragment\_or\_chunk}| +
+    |\T{reserved\_proof\_overhead}| <
     16{,}384.
 \]
 The effective maximum canonical transaction size is the sum of every bounded
@@ -655,11 +661,12 @@ script itself is not disabled or replaced by an empty placeholder.
 \subsection{Rule: Maximum value size}
 \label{rule:maximum-value-size}
 
-Canonical V1 assigns no arbitrary independent cap to a canonical value. The value
-shares the compiled preimage envelope of the output or transaction field that
-contains it. A narrower value-only limit is permitted only in a distinct
-instruction whose concrete L1 proof reveals that value as one independent
-preimage and whose measured proof overhead requires it.
+Canonical V1 caps the canonical CBOR encoding of an output value at
+(5{,}000) bytes. This exact value-only bound leaves room for the containing
+ledger-output disclosure, membership proof, and transaction overhead inside
+the supported L1 fault-proof transaction envelope. The containing output and
+transaction fields remain subject to their independently compiled preimage
+and chunk bounds.
 
 \subsection{Rule: No negative value}
 \label{rule:no-negative-value}

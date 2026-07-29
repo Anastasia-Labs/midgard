@@ -34,6 +34,7 @@ import {
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityPolicyV1,
 } from "../src/deployment-identity.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
@@ -83,27 +84,8 @@ const canonicalIdentity = (): MutableRecord => {
       },
     ]),
   ) as MutableRecord;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: "33".repeat(32),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "zeroInput",
-        "validationTraceDispute",
-      ].map((category, index) => [
-        category,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,

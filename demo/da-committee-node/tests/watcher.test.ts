@@ -420,6 +420,59 @@ describe("WatcherService", () => {
     expect(publishCalls).toBe(0);
   });
 
+  it("quarantines restart state when the exact L1 authority changes", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "25";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const store = await JsonFileWatcherStore.open(dir);
+    const first = new WatcherService({
+      config,
+      store,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("no payload should be fetched"),
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ scannedHeaders: 0 });
+    const persisted = await store.getL1SourceState();
+    expect(persisted).toMatchObject({
+      status: "healthy",
+      authoritySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+
+    const changedAuthority = {
+      ...config,
+      l1Source: {
+        ...config.l1Source,
+        authorityNodeId: "replacement-node",
+      },
+    };
+    const restarted = new WatcherService({
+      config: changedAuthority,
+      store: await JsonFileWatcherStore.open(dir),
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("authority drift must fail at startup"),
+    });
+    await expect(restarted.initialize()).rejects.toThrow(
+      /does not match configured source mode\/network/u,
+    );
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining(
+        "l1_source_configuration_changed",
+      ),
+      authoritySha256: expect.not.stringMatching(
+        persisted?.authoritySha256 ?? "",
+      ),
+    });
+  });
+
   it("quarantines a persisted decision when a stale query view loses finality", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

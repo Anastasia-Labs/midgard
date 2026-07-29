@@ -9,6 +9,10 @@ use midgard/validation_machine_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
+pub const phase_a_script_preconditions_semantic_resolver_count: Int = 2
+
+pub const script_sources_semantic_resolver_count: Int = 28
+
 pub type Datum =
   ct.StepDatum<validation_resolution_v1.ValidationResolutionStateV1>
 
@@ -48,6 +52,26 @@ pub type PrepareSelectedActionV1 {
 
 pub type PrepareSelectedSpendRedeemer =
   ct.StepRedeemer<PrepareSelectedActionV1>
+
+/// Authenticates one semantic resolver selection against the complete deployed
+/// phase group. Keeping the exact group cardinality in this selector makes a
+/// stale or truncated parameter list fail closed before resolver handoff.
+pub fn select_semantic_resolver(
+  semantic_resolver_script_hashes: List<ScriptHash>,
+  expected_semantic_resolver_count: Int,
+  semantic_resolver_index: Int,
+) -> Option<ScriptHash> {
+  if and {
+    expected_semantic_resolver_count > 0,
+    list.length(semantic_resolver_script_hashes) == expected_semantic_resolver_count,
+    semantic_resolver_index >= 0,
+    semantic_resolver_index < expected_semantic_resolver_count,
+  } {
+    list.at(semantic_resolver_script_hashes, semantic_resolver_index)
+  } else {
+    None
+  }
+}
 
 pub fn prepare(
   expected_phase: validation_trace_v1.ValidationPhase,
@@ -138,8 +162,9 @@ pub fn prepare_selected(
     }) -> {
       let Transaction { inputs, outputs, .. } = tx
       expect Some(step_datum) = datum
-      expect Some(semantic_resolver_script_hash) = list.at(
+      expect Some(semantic_resolver_script_hash) = select_semantic_resolver(
         semantic_resolver_script_hashes,
+        expected_semantic_resolver_count,
         semantic_resolver_index,
       )
       continue(
@@ -165,10 +190,6 @@ pub fn prepare_selected(
             auxiliary,
           )
           and {
-            expected_semantic_resolver_count > 0,
-            list.length(semantic_resolver_script_hashes) == expected_semantic_resolver_count,
-            semantic_resolver_index >= 0,
-            semantic_resolver_index < expected_semantic_resolver_count,
             state.pre_state.phase == expected_phase,
             output_script_hash == semantic_resolver_script_hash,
             output_state == expected_output_state,

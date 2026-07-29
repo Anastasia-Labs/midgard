@@ -53,6 +53,7 @@ export type L1SourceState = {
   readonly schemaVersion: 1;
   readonly sourceMode: "local_node" | "external_providers";
   readonly network: string;
+  readonly authoritySha256: string;
   readonly status: "healthy" | "quarantined";
   readonly observations: readonly L1ObservedDecision[];
   readonly observedAt: string;
@@ -643,6 +644,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     "schemaVersion",
     "sourceMode",
     "network",
+    "authoritySha256",
     "status",
     "observations",
     "observedAt",
@@ -657,6 +659,8 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     typeof state.network !== "string" ||
     state.network.trim() !== state.network ||
     state.network.length === 0 ||
+    typeof state.authoritySha256 !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(state.authoritySha256) ||
     (state.status !== "healthy" && state.status !== "quarantined") ||
     typeof state.observedAt !== "string" ||
     !isCanonicalIsoTimestamp(state.observedAt) ||
@@ -742,6 +746,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     schemaVersion: 1,
     sourceMode: state.sourceMode,
     network: state.network,
+    authoritySha256: state.authoritySha256,
     status: state.status,
     observations,
     observedAt: state.observedAt,

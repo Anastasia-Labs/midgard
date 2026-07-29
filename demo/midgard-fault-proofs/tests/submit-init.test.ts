@@ -37,6 +37,7 @@ import {
   resolveDoubleSpendDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
+  resolveNonExistentInputNoIndexInit,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
   resolveValidationTraceDisputeDeploymentContracts,
@@ -267,6 +268,125 @@ describe("submit-init state queue header resolution", () => {
 });
 
 describe("fault-proof deployment contract resolution", () => {
+  it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
+    const blueprint = readBlueprint();
+    const contracts = await Effect.runPromise(
+      buildFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+      }),
+    );
+    const noIndexContract = {
+      type: "PlutusV3" as const,
+      cborHex: "01",
+    };
+    const noIndexScriptHash = validatorToScriptHash({
+      type: noIndexContract.type,
+      script: noIndexContract.cborHex,
+    });
+    const fraudProofCatalogue = await catalogueFor({
+      nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      nonExistentInputNoIndex: noIndexScriptHash,
+    });
+    const fraudProofCatalogueMintEntry = {
+      scriptHash: h28b,
+      fraudProofCatalogue,
+    };
+    const noIndexDeploymentEntry = {
+      scriptHash: noIndexScriptHash,
+      contract: noIndexContract,
+    };
+    const deploymentInfo = deploymentManifest({
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: fraudProofCatalogueMintEntry,
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      },
+      fraudProofNonExistentInputNoIndex: noIndexDeploymentEntry,
+      stateQueueMint: { scriptHash: "66".repeat(28) },
+    });
+
+    const resolved = await resolveNonExistentInputNoIndexInit({
+      blueprint,
+      deploymentInfo,
+      network: "Preprod",
+    });
+    expect(resolved.firstStepHash).toBe(noIndexScriptHash);
+    expect(resolved.category).toEqual(
+      fraudProofCatalogue.categories.nonExistentInputNoIndex,
+    );
+    expect(resolved.category.categoryId).toBe("00000002");
+    expect(resolved.stateQueuePolicyId).toBe("66".repeat(28));
+
+    const { contract: _contract, ...withoutContract } = noIndexDeploymentEntry;
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: withoutContract,
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/missing embedded contract bytes/u);
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              ...noIndexDeploymentEntry,
+              contract: {
+                ...noIndexContract,
+                cborHex: "02",
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/script hash mismatch/u);
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofCatalogueMint: {
+              ...fraudProofCatalogueMintEntry,
+              fraudProofCatalogue: {
+                ...fraudProofCatalogue,
+                categories: {
+                  ...fraudProofCatalogue.categories,
+                  nonExistentInputNoIndex: {
+                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex,
+                    membershipProofCbor:
+                      fraudProofCatalogue.categories.doubleSpend
+                        .membershipProofCbor,
+                  },
+                },
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      /nonExistentInputNoIndex\.membershipProofCbor does not match/u,
+    );
+  }, 30_000);
+
   it("resolves double-spend without requiring invalid-range validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),

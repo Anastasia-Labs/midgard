@@ -1,5 +1,6 @@
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
+  type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
@@ -18,9 +19,11 @@ import {
   type Script,
   scriptHashToCredential,
   toUnit,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
 import {
+  assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
@@ -66,6 +69,7 @@ export type SubmitInitCliConfig = SubmitProviderConfig &
 export type SubmitInitFraudCategory =
   | "doubleSpend"
   | "nonExistentInput"
+  | "nonExistentInputNoIndex"
   | "invalidRange"
   | "transitionTrace"
   | "zeroInput"
@@ -106,6 +110,8 @@ const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
       return "double-spend";
     case "nonExistentInput":
       return "non-existent-input";
+    case "nonExistentInputNoIndex":
+      return "non-existent-input-no-index";
     case "invalidRange":
       return "invalid-range";
     case "transitionTrace":
@@ -143,6 +149,75 @@ const encodePhasMembershipRedeemer = ({
     ),
     membershipProofCbor,
   });
+
+export type ResolvedNonExistentInputNoIndexInit = {
+  readonly category: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string;
+  readonly computationThreadPolicyId: string;
+  readonly computationThreadMintingScript: Script;
+  readonly firstStepAddress: string;
+  readonly firstStepHash: string;
+};
+
+export const resolveNonExistentInputNoIndexInit = async ({
+  blueprint,
+  deploymentInfo,
+  network,
+}: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+}): Promise<ResolvedNonExistentInputNoIndexInit> => {
+  const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
+  const catalogue = requireFraudProofCatalogue(parsedDeploymentInfo);
+  const deployedFirstStep =
+    parsedDeploymentInfo.fraudProofNonExistentInputNoIndex;
+  if (deployedFirstStep === undefined) {
+    throw new Error(
+      'Deployment info is missing "fraudProofNonExistentInputNoIndex"',
+    );
+  }
+  if (deployedFirstStep.contract === undefined) {
+    throw new Error(
+      'Deployment info "fraudProofNonExistentInputNoIndex" is missing embedded contract bytes.',
+    );
+  }
+  const firstStepScript: Script = {
+    type: deployedFirstStep.contract.type,
+    script: deployedFirstStep.contract.cborHex,
+  };
+  const firstStepHash = validatorToScriptHash(firstStepScript);
+  if (firstStepHash !== deployedFirstStep.scriptHash) {
+    throw new Error(
+      `fraudProofNonExistentInputNoIndex script hash mismatch: deployment=${deployedFirstStep.scriptHash}, derived=${firstStepHash}.`,
+    );
+  }
+  const category = await assertFraudProofCatalogueCategoryReady({
+    catalogue,
+    categoryName: "nonExistentInputNoIndex",
+    expectedFirstStepHash: firstStepHash,
+    deploymentMatchesFirstStep: true,
+  });
+  const resolvedDeployment = await resolveNonExistentInputDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireStateQueueMint: true,
+  });
+  return {
+    category,
+    stateQueuePolicyId: resolvedDeployment.stateQueuePolicyId!,
+    computationThreadPolicyId:
+      resolvedDeployment.contracts.computationThread.policyId,
+    computationThreadMintingScript:
+      resolvedDeployment.contracts.computationThread.mintingScript,
+    firstStepAddress: credentialToAddress(
+      network,
+      scriptHashToCredential(firstStepHash),
+    ),
+    firstStepHash,
+  };
+};
 
 export const submitInit = async ({
   lucid,
@@ -215,6 +290,19 @@ export const submitInit = async ({
     firstStepHash =
       resolvedDeployment.contracts.nonExistentInput.firstStep
         .spendingScriptHash;
+  } else if (fraudCategory === "nonExistentInputNoIndex") {
+    const resolvedNoIndex = await resolveNonExistentInputNoIndexInit({
+      blueprint,
+      deploymentInfo,
+      network,
+    });
+    category = resolvedNoIndex.category;
+    stateQueuePolicyId = resolvedNoIndex.stateQueuePolicyId;
+    computationThreadPolicyId = resolvedNoIndex.computationThreadPolicyId;
+    computationThreadMintingScript =
+      resolvedNoIndex.computationThreadMintingScript;
+    firstStepAddress = resolvedNoIndex.firstStepAddress;
+    firstStepHash = resolvedNoIndex.firstStepHash;
   } else if (fraudCategory === "invalidRange") {
     const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
       blueprint,

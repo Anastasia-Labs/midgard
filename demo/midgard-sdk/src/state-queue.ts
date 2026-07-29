@@ -1,4 +1,3 @@
-import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   Address,
   Assets,
@@ -35,18 +34,16 @@ import {
 import { LucidError, makeReturn } from "@/common.js";
 import { getStateToken } from "@/internals.js";
 import {
-  EMPTY_MERKLE_TREE_ROOT,
-  GENESIS_HEADER_HASH,
-} from "@/ledger-constants.js";
-import {
   castStateQueueNodeV1ToData,
   ConfirmedState,
+  confirmedStateNextHeaderProtocolVersionV1,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   HeaderHashSchema,
   HeaderTransitionCommitmentsError,
   HeaderTransitionCommitmentsV1,
   HeaderV1,
+  makeGenesisConfirmedStateV1,
   NO_DA_ATTESTATION,
   validateHeaderTransitionCommitmentsV1Program,
 } from "@/ledger-state.js";
@@ -1132,12 +1129,14 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =
         yield* getConfirmedStateFromStateQueueDatum(latestBlocksDatum);
-      if (confirmedState.protocolVersion !== 1n) {
+      const nextProtocolVersion =
+        confirmedStateNextHeaderProtocolVersionV1(confirmedState);
+      if (nextProtocolVersion === null) {
         return yield* Effect.fail(
           new DataCoercionError({
             message:
-              "Proof-profile state queue root has the wrong protocol version",
-            cause: `protocol_version=${confirmedState.protocolVersion.toString()}`,
+              "Proof-profile state queue root has an invalid protocol identity",
+            cause: `protocol_version=${confirmedState.protocolVersion.toString()},header_hash=${confirmedState.headerHash}`,
           }),
         );
       }
@@ -1163,7 +1162,7 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
         ...validationContext,
         prevHeaderHash: confirmedState.headerHash,
         operatorVkey,
-        protocolVersion: confirmedState.protocolVersion,
+        protocolVersion: nextProtocolVersion,
       };
       const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
       return {
@@ -1379,14 +1378,7 @@ export const incompleteInitStateQueueTxProgram = (
   params: StateQueueInitParams,
 ): Effect.Effect<TxBuilder, never> =>
   Effect.gen(function* () {
-    const stateQueueData: ConfirmedState = {
-      headerHash: GENESIS_HEADER_HASH,
-      prevHeaderHash: GENESIS_HEADER_HASH,
-      utxoRoot: EMPTY_MERKLE_TREE_ROOT,
-      startTime: params.genesisTime,
-      endTime: params.genesisTime,
-      protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
-    };
+    const stateQueueData = makeGenesisConfirmedStateV1(params.genesisTime);
 
     return yield* incompleteInitLinkedListTxProgram(lucid, {
       validator: params.validator,

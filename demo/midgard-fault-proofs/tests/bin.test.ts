@@ -138,6 +138,17 @@ describe("fault-proof CLI argument parsing", () => {
     expect(validationTraceDisputeInit.fraudCategory).toBe(
       "validationTraceDispute",
     );
+
+    const nonExistentInputNoIndexInit = parseArgs([
+      "node",
+      "bin",
+      "submit-init",
+      "--fraud-category",
+      "nonExistentInputNoIndex",
+    ]);
+    expect(nonExistentInputNoIndexInit.fraudCategory).toBe(
+      "nonExistentInputNoIndex",
+    );
   });
 
   it("rejects unknown fault-proof categories", () => {
@@ -150,7 +161,27 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "zeroInput", or "validationTraceDispute"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "validationTraceDispute"',
+    );
+  });
+
+  it("rejects no-index removal until its removal machine is implemented", () => {
+    const parsed = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "remove-fraudulent-block",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-header-hash",
+      "11".repeat(28),
+      "--fraud-category",
+      "nonExistentInputNoIndex",
+    ]);
+
+    expect(() => buildRemoveFraudulentBlockCliConfig(parsed)).toThrow(
+      /does not yet support the nonExistentInputNoIndex proof machine/u,
     );
   });
 

@@ -71,6 +71,7 @@ import {
   type FraudProofs,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
@@ -2172,7 +2173,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: header.startTime,
     endTime: header.startTime,
-    protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
   const unsigned = await lucid
     .newTx()
@@ -2542,9 +2543,8 @@ const submitSetupTx = async ({
   });
 
   const commitFeeInput = await firstWalletUtxo(lucid, "commit fee input");
-  const commitValidTo = BigInt(
-    alignUnixTimeToEmulatorSlotBoundary(lucid, Number(header.endTime)),
-  );
+  const commitValidFrom = header.startTime - 60_000n;
+  const commitValidTo = header.endTime + 1n;
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },
     next: "Empty",
@@ -2602,6 +2602,7 @@ const submitSetupTx = async ({
         anchorUTxO: stateQueueRoot,
         newHeader: header,
         additionalInputs: [commitFeeInput],
+        validFrom: commitValidFrom,
         validTo: commitValidTo,
         schedulerRefInput: appointedSchedulerUtxo,
         additionalRefInputs: [hubOracleUtxo],
@@ -2723,9 +2724,8 @@ const submitSuccessorBlockTx = async ({
     lucid,
     "successor commit fee input",
   );
-  const commitValidTo = BigInt(
-    alignUnixTimeToEmulatorSlotBoundary(lucid, Number(header.endTime)),
-  );
+  const commitValidFrom = header.startTime - 60_000n;
+  const commitValidTo = header.endTime + 1n;
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },
     next: "Empty",
@@ -2783,6 +2783,7 @@ const submitSuccessorBlockTx = async ({
         anchorUTxO: anchorBlock,
         newHeader: header,
         additionalInputs: [commitFeeInput],
+        validFrom: commitValidFrom,
         validTo: commitValidTo,
         schedulerRefInput: scheduler,
         additionalRefInputs: [hubOracle],

@@ -302,7 +302,7 @@ Supported CARDANO_PROVIDER_URLS forms:
 L1 source modes:
   CARDANO_L1_SOURCE_MODE=local_node
     requires CARDANO_LOCAL_NODE_AUTHORITY_ID and
-    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider>;
+    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=ogmios-chain-sync:<ws-url>;
     CARDANO_PROVIDER_URLS are aligned query surfaces for that node and are not
     counted as independent providers.
   CARDANO_L1_SOURCE_MODE=external_providers

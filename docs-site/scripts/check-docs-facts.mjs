@@ -115,6 +115,18 @@ const FACTS = [
     },
     countPhrase: "`TxStatus` has {n} kinds",
   },
+  {
+    label: "deployed catalogue category",
+    source: "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+    doc: "docs-site/content/docs/onchain/fraud-proof-machines.mdx",
+    extract: (src) => {
+      const order = src.match(
+        /FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = \[([\s\S]*?)\] as const/,
+      );
+      return order ? quoted(order[1]) : [];
+    },
+    countPhrase: "The {n} deployed catalogue categories",
+  },
 ];
 
 const failures = [];

@@ -59,7 +59,7 @@ export type StoreBackedDaAttestationProtocolDeps = {
   readonly committeeValidation: DaCommitteeValidation;
   readonly store: Pick<
     WatcherStore,
-    "getDaPayload" | "saveDaSignature" | "listDaSignatures"
+    "getDaPayload" | "getL1SourceState" | "saveDaSignature" | "listDaSignatures"
   >;
 };
 
@@ -74,6 +74,9 @@ export class StoreBackedDaAttestationProtocol {
     readonly record: DaSignatureRecord;
     readonly sourcePeerId: string;
   }): Promise<DaAttestationPublishResult> {
+    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
+      return { status: "rejected", reason: "L1 source is quarantined" };
+    }
     const payload = await this.deps.store.getDaPayload(args.record.headerHash);
     if (!isVerifiedPayload(payload)) {
       return {
@@ -110,7 +113,7 @@ export class StoreBackedDaAttestationProtocol {
     if (args.deploymentFingerprint !== this.deps.deploymentFingerprint) {
       return [];
     }
-    return this.deps.store.listDaSignatures(args.headerHash);
+    return this.serveableAttestations(args.headerHash);
   }
 
   async handleAttestationsByHeaderRequest(
@@ -129,7 +132,7 @@ export class StoreBackedDaAttestationProtocol {
         reasonCode: "deployment_fingerprint_mismatch",
       });
     }
-    const records = await this.deps.store.listDaSignatures(headerHash);
+    const records = await this.serveableAttestations(headerHash);
     const acceptedSignerIndexes =
       request.acceptedSignerIndexes === null
         ? undefined
@@ -173,6 +176,17 @@ export class StoreBackedDaAttestationProtocol {
       daVkey,
       announcedByPeerId: this.deps.localPeerId,
     });
+  }
+
+  private async serveableAttestations(
+    headerHash: string,
+  ): Promise<readonly DaSignatureRecord[]> {
+    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
+      return [];
+    }
+    return (await this.deps.store.listDaSignatures(headerHash)).filter(
+      ({ broadcastStatus }) => broadcastStatus !== "post_failed",
+    );
   }
 }
 
