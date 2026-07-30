@@ -347,6 +347,53 @@
 
 ## Decisions
 
+- 2026-07-30, TWO CANONICAL-V1 PRODUCTION DEFECTS FOUND IN THE DEPLOYED
+  VALIDATION MACHINE (blocking; protocol decision required from the owner /
+  normative specification). Both are *unsatisfiable constraint pairs* — no
+  valid trace can satisfy them — and both were invisible until the aiken#1389
+  sharding workaround permitted the module's first complete test run:
+  - **VM-DEFECT-1, signatures handoff emits an unusable successor.**
+    `validation-machine-v1.ak:3128` commits the Signatures→PhaseANativeScripts
+    successor with `result = 0` at `stage = 0`, while
+    `phase_a_native_control_is_bound` (`:3381-3391`) requires `result == -1`
+    at stage 0 — and both the canonical reset helper (`:3520`) and the stage-1
+    emitter (`:13098`) produce `-1`. Line 3128 is the sole outlier. Every
+    trace must cross this handoff, so **no phase-A step is provable after
+    it**. Isolation evidence: flipping only the expectation to `0` turns the
+    test green, proving `result` is the single divergence.
+  - **VM-DEFECT-2, no rejection is provable for a non-empty claimed delta.**
+    `immutable_context_matches` (`:386`, reached unconditionally through
+    `structural_transition_is_valid`) requires
+    `pre.ledger_delta_root == post.ledger_delta_root`, while
+    `rejected_successor_is_exact` (`:2052`) requires
+    `post.ledger_delta_root == frontier_commitment(0, [])`. These are jointly
+    unsatisfiable whenever the pre-state delta root is non-empty.
+    `ledger_delta_root` is never written by any transition (a pre-committed
+    input, read back only in `LedgerDelta` at `:17126`/`:17560`), so
+    non-empty is the normal case. Consequence: **`verify_one_step` /
+    `verify_one_step_evidence` cannot prove a rejection for any transaction
+    claiming a non-empty ledger delta** — precisely the adversarially
+    interesting case fault proofs exist to adjudicate. Isolation evidence:
+    setting the test pre-state's delta root to the empty commitment turns it
+    green; that same workaround already appears at six places in the test
+    file (~4110, 7006, 7260, 7506, 10117, 10738), which is why the defect
+    survived undetected.
+  Blocked tests (expectations already corrected to canonical, left red on
+  purpose): `static_rules_prove_a_network_mismatch_is_an_exact_no_op`,
+  `phase_a_script_preconditions_require_integrity_for_plutus_bytes`,
+  `plutus_v3_receive_selection_rejects_with_an_exact_noop`, and
+  `resolve_inputs_proves_non_membership_as_an_exact_no_op`. One production
+  fix per defect turns each group green.
+  Decision required (VM-DEFECT-2): exempt `ledger_delta_root` from
+  `immutable_context_matches` on Terminal/Rejected successors, versus drop
+  the clearing requirement in `rejected_successor_is_exact` and instead treat
+  a non-empty claimed delta on a rejected transaction as the provable fault.
+  These differ in what a rejection proof *means* on L1, so the normative
+  technical specification governs (§1 authority order); research assigned.
+  Closure impact: AC-C30/AC-C31/CG3 and the interactive-family closure cannot
+  be promoted while either defect stands, and no live fault-proof drill for a
+  rejection path can succeed.
+
 - 2026-07-30 ~01:30, protected-path violation record (honest disclosure, no
   silent repair): while clearing suspected-stale vitest transform caches
   during the midgard-node checksum triage, the parent deleted the untracked
