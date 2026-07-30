@@ -1,11 +1,21 @@
 {
   "schemaVersion": "midgard-canonical-v1-watcher-dependency-map-v1",
   "authority": {
-    "sourceRevision": "7a952e992ca997d36fdccadd05275edb2aad0a07",
-    "treeState": "source revision plus Goal-owned worktree",
+    "publishedParentRevisions": [
+      "2b755a776d6af4a57d877633485ca0701e4cc51d",
+      "d8fcc0f74f659fe614dc215dcef0f3d2c9b16590"
+    ],
+    "sourceRevision": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+    "treeState": "reviewed merge content tree bound by resultContentTreeSha256",
     "goalSpec": "GOAL_SPEC.md",
     "graphifySnapshotSha256": "c5cabaf0bc10d217717a6555c07df20958616c7b8f4fa2e7939cd42845db60e5",
-    "graphifyUse": "navigation_only_current_source_verified"
+    "graphifyUse": "navigation_only_current_source_verified",
+    "baseRevision": "8bae9403a13124f647f215999848ff5c82784e37",
+    "contentTreeExclusions": [
+      "GOAL_PROGRESS.md",
+      "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
+    ],
+    "resultContentTreeSha256": "b4644cf5b1e4800709ec1cc4b08b81cee4efbff03653d2be2fc815c878200a14"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -13,6 +23,8 @@
     "packageManifestPresent": true,
     "productionSourcePresent": true,
     "currentContents": [
+      "demo/midgard-watcher/README.md",
+      "demo/midgard-watcher/midgard-watcher-architecture.md",
       "demo/midgard-watcher/package.json",
       "demo/midgard-watcher/src/cli.ts",
       "demo/midgard-watcher/src/config.ts",
@@ -30,6 +42,7 @@
       "demo/midgard-watcher/src/state-queue-indexer.ts",
       "demo/midgard-watcher/src/user-event-indexer.ts",
       "demo/midgard-watcher/tests/config.test.ts",
+      "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts",
       "demo/midgard-watcher/tests/deployment-identity.test.ts",
       "demo/midgard-watcher/tests/durable-store.test.ts",
       "demo/midgard-watcher/tests/finality-engine.test.ts",
@@ -42,8 +55,8 @@
       "demo/midgard-watcher/tests/settlement-indexer.test.ts",
       "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
       "demo/midgard-watcher/tests/user-event-indexer.test.ts",
-      "demo/midgard-watcher/README.md",
-      "demo/midgard-watcher/midgard-watcher-architecture.md",
+      "demo/midgard-watcher/tsconfig.json",
+      "demo/midgard-watcher/vitest.config.ts",
       "demo/midgard-watcher/watcher-plan-adversarial-review.md"
     ],
     "identityConflictResolution": {
@@ -57,8 +70,8 @@
     "failClosedCommands": ["start", "replay"],
     "strictConfiguration": {
       "schemaVersion": "midgard-watcher-config-v1",
-      "sourceSha256": "4a73976b5f810ce3057ff1ce3b6ebd6f62140773fb8d361ccf2f540d51ea3251",
-      "testSha256": "ee0dcac2a92849bf07a35a65f6e421ea7088f02ce8012293b5831773a983b521",
+      "sourceSha256": "2b2d26b648d8356a3883bf6f72503cac18374c385e2050d3835f63f1eb4b3eab",
+      "testSha256": "69dc43cf3efbf6c443aa066778a2c516443767cb9b854a54524bd2c1466f005d",
       "modes": ["development", "acceptance"],
       "networks": ["Mainnet", "Preprod", "Preview"],
       "l1SourceModes": ["local_node", "external_providers"],
@@ -75,11 +88,21 @@
     },
     "deploymentIdentity": {
       "schemaVersion": "midgard-watcher-signed-deployment-identity-v1",
-      "sourceSha256": "a19208242d7c8848ad23aa7e9b43b4fc5f43193491b6c3ccb5cc5e6171dfdc77",
-      "testSha256": "c210a71b9abbadcf4bc71f80db2492d09ea51757fcfdec30d0ae493e87174004",
+      "sourceSha256": "8c3bc10bdd99d5e8c5e1770e7ae4bb2cf13c388fa1949694a965ed8ac92283a2",
+      "testSha256": "75f649022e9a76f1d9e4f2cba8bee53fef29cd268a224f1994608eb0a7e09e5e",
       "signatureAlgorithm": "ed25519",
       "signatureDomain": "midgard-watcher-deployment-identity-signature-v1",
       "trustRootIdentity": "sha256_spki_der",
+      "catalogueCategoryOrder": [
+        "doubleSpend",
+        "nonExistentInput",
+        "nonExistentInputNoIndex",
+        "invalidRange",
+        "transitionTrace",
+        "zeroInput",
+        "validationTraceDispute"
+      ],
+      "catalogueContractBinding": "exact_category_id_order_and_deployed_script_hash",
       "bindings": [
         "network",
         "hub_oracle_one_shot",
@@ -96,7 +119,7 @@
       ],
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
-      "node22FocusedTestsPassed": 17
+      "node22FocusedTestsPassed": 18
     },
     "durableStore": {
       "schemaVersion": "midgard-watcher-durable-store-v1",
@@ -128,47 +151,51 @@
       "providerSchemaVersion": "midgard-watcher-authenticated-l1-provider-v1",
       "observationSchemaVersion": "midgard-watcher-l1-block-observation-v1",
       "normalizedSchemaVersion": "midgard-watcher-normalized-l1-block-v1",
-      "sourceSha256": "359db458aa76a8d0e055d685f0055fb4e9a8794397f0d5ec3cb405099c368444",
-      "testSha256": "54552120704b13c6692f7ec6b2b9530f164f03f9a705d2668e7be8581d57fd05",
+      "sourceSha256": "aa559a6f3e106448ad3a7b9ba7d18769d7c479fe5c69c4ac63f20436a63a35d8",
+      "testSha256": "0733d5078628ae1fd83ea1837e1f6a3c40cf3d9e77761fa8cb211cae34841cbe",
       "canonicalFixtureSha256": "aeecff9e4492846016727cf2d62193f3c9acf9b09246d01d6255e436059d3d94",
       "sourceModes": ["local_node", "external_providers"],
       "identityPolicy": "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content",
       "inputPolicy": "authenticated_node_derived_l1_only",
+      "totalCollectionMembers": 65536,
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
-      "node22FocusedTestsPassed": 10
+      "node22FocusedTestsPassed": 21
     },
     "multiProviderConsistency": {
       "schemaVersion": "midgard-watcher-multi-provider-consistency-v1",
-      "sourceSha256": "7c8aaea1a8159ffd8a563efb40f29a0f3c0d6c15f5cb32e094df5b5c012a2d92",
-      "testSha256": "1915a0b51ff3ca2993978062b3712238f5d7c6acb91794a26c94dfc8a177d37d",
+      "sourceSha256": "a6cdea9c3a906b5b59b4134d194466d415030b6f89f66ff1076013584665d7e4",
+      "testSha256": "11f4122b638e6f25471286a1e6122fda7605067e5963914e6b76c9c29e6cb1b2",
       "sourceModes": ["local_node", "external_providers"],
-      "minimumIndependentProvidersByMode": {
+      "minimumChainAuthoritiesByMode": {
         "local_node": 1,
         "external_providers": 2
       },
+      "localQuerySurfacesCountAsIndependentProviders": false,
       "compatibleBlockLag": 64,
       "agreementPolicy": "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points",
+      "externalProviderBindingPolicy": "exact_W01_provider_operator_endpoint_https_transport_allowlist",
       "lagPolicy": "bounded_lag_pending_protocol_quarantined",
       "disagreementPolicy": "fork_content_identity_network_or_shape_quarantined",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 13
+      "node22FocusedTestsPassed": 21
     },
     "finalityEngine": {
       "policySchemaVersion": "midgard-watcher-finality-policy-v1",
       "stateSchemaVersion": "midgard-watcher-finality-state-v1",
       "resultSchemaVersion": "midgard-watcher-finality-result-v1",
-      "sourceSha256": "ba2634cf3d899b5aa7f3d130caa6ae618457a005e193bd85456cab43d9862281",
-      "testSha256": "da8c9b209f713b4a6460e257dbf26c15d6c340eda4a91c8939259fce10026ba1",
+      "sourceSha256": "945c52dc5fbb3952ec0dc2c88d002e82aee7b716ff23a75e4a2c2f53454a0921",
+      "testSha256": "5950f88466104f47e2019d492c4bfb4651684ed112d5e54b01b2f5bca807b90f",
       "confirmationDepthPolicy": "release_and_deployment_bound",
       "firstVisibilityPolicy": "always_pending",
       "preFinalityRollbackPolicy": "deterministic_release_bound_rewind",
       "postFinalityRollbackPolicy": "durable_quarantine_incident_preserving_finalized_binding",
       "consistencyPolicy": "exact_source_mode_bound_W11_agreement_required",
+      "externalProviderPolicy": "exact_W01_policy_match_for_every_W11_external_provider_binding",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 19
+      "node22FocusedTestsPassed": 22
     },
     "rollbackEngine": {
       "status": "PASS",
@@ -176,8 +203,8 @@
       "stateSchemaVersion": "midgard-watcher-rollback-state-v1",
       "incidentSchemaVersion": "midgard-watcher-rollback-incident-v1",
       "resultSchemaVersion": "midgard-watcher-rollback-result-v1",
-      "sourceSha256": "4199c4b2b5dee634b2c32529abb5266ab2dcce0309e677fdf0ee710fc1ebb5a6",
-      "testSha256": "480504cb5a79a28902d9f8878936ff2402d9fbe09672e9e431d872ad279d2b9b",
+      "sourceSha256": "c84f5571e2272900fbc11b41fc08e525a08082a6eead20d4d8583b0941b978cb",
+      "testSha256": "80377eb6cb18e530176c85a8de6bb333ebc0d87cd87c01628ba2a9a3e7f5557c",
       "rewindPolicy": "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration",
       "restartPolicy": "externally_bootstrapped_bounded_exact_transition_replay",
       "postFinalityPolicy": "durable_quarantine_incident_preserving_finalized_binding_and_store",
@@ -194,14 +221,14 @@
       "observationSchemaVersion": "midgard-watcher-state-queue-observation-v1",
       "stateSchemaVersion": "midgard-watcher-state-queue-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-state-queue-indexer-result-v1",
-      "sourceSha256": "104de10351f8747a09783135822b6ab15c971d7d413e183beec92722fd63c282",
-      "testSha256": "90b7f311a50bf0ecd92d5ea3f411ab895ec7a5a16ea551b59e8710621d3e384c",
+      "sourceSha256": "cd10f887ad513f480d0056d835c3e603b5769185cefd36d22127cdfd5470a014",
+      "testSha256": "959103b518f80b614baaa903871d778332bceb04d5bb6d87a08d60981dea2c15",
       "inputPolicy": "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_and_W12_finality_plus_W13_rollback",
       "queuePolicy": "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics",
       "rollbackPolicy": "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 11
+      "node22FocusedTestsPassed": 15
     },
     "userEventIndexer": {
       "status": "PASS",
@@ -211,51 +238,51 @@
       "observationSchemaVersion": "midgard-watcher-user-event-observation-v1",
       "stateSchemaVersion": "midgard-watcher-user-event-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-user-event-indexer-result-v1",
-      "sourceSha256": "298176939bd98c1381d239d5d43a8caee5f996c4a1bbfa6b884269a9241de73e",
-      "testSha256": "ecfd65218deeec039c16d02337ac3a6c0b30192b3f0fdb03d0793fe43ceae8a3",
+      "sourceSha256": "21ce296efd7cd3e69f3a2ac547832e9cae3fd5b452ddffd1f7b9835fdc9eb098",
+      "testSha256": "2b9acada49fc035170fe13fa2c76a7fbc0c2b6fea8d52c74e40ea3820a34efb1",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_and_W12_finality_plus_W02_W03_W13",
       "eventPolicy": "exact_deposit_withdrawal_forced_order_NFT_datum_witness_time_content_and_terminal_semantics",
       "finalityPolicy": "independent_active_and_terminal_pending_to_final_transitions",
       "rollbackPolicy": "exact_W13_journal_restoration_suffix_rewind_restart_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 12
+      "node22FocusedTestsPassed": 18
     },
     "settlementIndexer": {
       "status": "PASS",
-      "independentAudit": "PASS_source_replay_residual_journal_preservation_fix_and_hostile_probes",
+      "independentAudit": "PASS_full_restart_replay_canonical_transaction_order_aggregate_bounds_and_hostile_probes",
       "policySchemaVersion": "midgard-watcher-settlement-indexer-policy-v1",
       "snapshotSchemaVersion": "midgard-watcher-settlement-snapshot-v1",
       "observationSchemaVersion": "midgard-watcher-settlement-observation-v1",
       "stateSchemaVersion": "midgard-watcher-settlement-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-settlement-indexer-result-v1",
-      "sourceSha256": "c955e5f5364b821ea55b76554854cbc2dd3c25e6e369da9489ae4456c251256c",
-      "testSha256": "a7a9355ff7b6017cc88b75b9dbcf36382b6654aa67c157a86c4026c7a5fed0bf",
+      "sourceSha256": "938cec4307818d67674a9f416a4f14f7f7416575c77e820cc475ac8c136e8c66",
+      "testSha256": "46ae2a5be33b43d859c3689b9e70fdaf98630aa3abcbc6beb6690104434bcc22",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_W13_replacement_anchor_plus_W02_W03",
       "settlementPolicy": "exact_claim_disproof_resolution_reserve_payout_refund_value_and_terminal_semantics",
-      "retryPolicy": "bounded_retry_stuck_invalid_identity_and_restart_replay",
-      "rollbackPolicy": "exact_W13_journal_restoration_unrelated_archive_preservation_restart_and_reinclusion",
+      "retryPolicy": "bounded_retry_stuck_invalid_identity_and_full_transition_history_restart_replay",
+      "rollbackPolicy": "exact_W13_journal_restoration_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 17
+      "node22FocusedTestsPassed": 23
     },
     "proofThreadIndexer": {
       "status": "PASS",
-      "independentAudit": "PASS_source_mode_recomputation_and_lifecycle_replay",
+      "independentAudit": "PASS_full_restart_replay_revision_monotonicity_canonical_transaction_order_and_aggregate_bounds",
       "policySchemaVersion": "midgard-watcher-proof-thread-policy-v1",
       "journalSchemaVersion": "midgard-watcher-proof-thread-journal-v1",
       "layoutSchemaVersion": "midgard-watcher-proof-thread-layout-v1",
       "observationSchemaVersion": "midgard-watcher-proof-thread-observation-v1",
       "stateSchemaVersion": "midgard-watcher-proof-thread-state-v1",
       "resultSchemaVersion": "midgard-watcher-proof-thread-result-v1",
-      "sourceSha256": "5eb709666549110dfd3dbe4292aefec7335aef354714a10b6b98111aa9d40353",
-      "testSha256": "c44485f455f89733c44336a0ff261e2a6970c7cebef98cf9a0f503c2a2eeabf9",
+      "sourceSha256": "14aa9cc1def74c4948eaaf7058556f1d95cb09d77565947f4db4fa3141bda456",
+      "testSha256": "f4f1850db76010f0c1153b301a324a953d030dabff2dc476c392f29fce77da2e",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_canonical_W13_replacement_anchor_plus_W02_W03",
       "threadPolicy": "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles",
-      "rollbackPolicy": "exact_W13_journal_rewind_restart_replay_and_reinclusion",
+      "rollbackPolicy": "exact_W13_journal_rewind_full_transition_history_restart_replay_revision_monotonicity_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 7
+      "node22FocusedTestsPassed": 18
     },
     "ruleBundle": {
       "status": "PASS",
@@ -263,7 +290,7 @@
       "schemaVersion": "midgard-watcher-rule-bundle-v1",
       "bundleVersion": 1,
       "sourceSha256": "acb65653d1efb51adcac6137aeec986288ab7f141c3fa8eaa68ef1dea4864f2e",
-      "testSha256": "0a3d66b01d130c9e43b9e490587579ffc0a1aae725e3e44e0e6539d6d263ecae",
+      "testSha256": "d2aab85f3edfe82246445922e170cdf700e4c0d542b42db268116479c48770a1",
       "authorityPolicy": "raw_signed_W02_authority_reverified_on_every_security_load",
       "featurePolicy": "exact_enabled_canonical_V1_feature_order_no_unknown_or_disabled_features",
       "parameterPolicy": "exact_commitment_bound_target_snapshot_and_consensus_limits",
@@ -311,7 +338,14 @@
         "DaLibp2pNode.request"
       ],
       "watcherBoundary": "Implement a client in demo/midgard-watcher that dials configured public peers, verifies deployment fingerprint/header/payload hashes and strict envelope/body bytes, and persists bytes before verification.",
-      "remainingTasks": ["Q03", "Q54", "W20", "W21"]
+      "remainingTasks": ["Q03", "Q54", "W20", "W21"],
+      "sourceSha256": {
+        "demo/midgard-core/src/da-transport.ts": "c2ac1c01e01ea3c488d4a03cdd607f5dc562b9df4c6b6e38a7eeff4615eab096",
+        "demo/midgard-core/src/da-payload-envelope.ts": "b2224db628d8cfd68b4052421300b9c3af58f97ffbee1bfd28595f3c28bfe382",
+        "demo/da-committee-node/src/da/libp2p/payload-protocols.ts": "76d6dfbb0fa74ad9c9421b95d154aeab124caa69c9f88b167a4b19ea497ee7d8",
+        "demo/da-committee-node/src/da/payload.ts": "1d172dc6a21de33f1138452e6f07f11af9ce169b26c9e428aab9021a422bb176",
+        "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts": "5fc70e0c290893488ffcd62800423706329e13d8c713ac8ff99aa53bb8bff429"
+      }
     },
     {
       "id": "proof_bundle",
@@ -332,12 +366,19 @@
         "reconstructDaPayloadV1"
       ],
       "watcherBoundary": "Reuse the exact transport codecs and public challenger request path; never read the committee store directly. Verify returned deployment/header/index/event identities before persistence.",
-      "remainingTasks": ["Q03", "W20", "W21", "W27"]
+      "remainingTasks": ["Q03", "W20", "W21", "W27"],
+      "sourceSha256": {
+        "demo/midgard-core/src/da-transport.ts": "c2ac1c01e01ea3c488d4a03cdd607f5dc562b9df4c6b6e38a7eeff4615eab096",
+        "demo/da-committee-node/src/da/proof-artifacts.ts": "10a934d3098cd40528fd90abe3c9a352a4ec2052e579a3edbef77aed654f3218",
+        "demo/da-committee-node/src/da/libp2p/proof-protocols.ts": "2b2124256b570d92057357cde97507cb9a3b1aea2f7537493a31993040f3e54f",
+        "demo/midgard-fault-proofs/src/transition-trace/fetch.ts": "34ea9266296bb2ad75b260f83a0b972fec3b5249b515933223831c244f99d248",
+        "demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts": "2077f51bf1de2d60557c4782743c40bab03fd29cfd13a85461d2f626167a3ac4"
+      }
     },
     {
       "id": "validation",
       "capability": "Canonical native transaction decoding, Phase A/B validation, CEK/script execution, evidence, and one-step semantics",
-      "state": "shared_library_ready_rule_bundle_and_total_replay_open",
+      "state": "shared_library_and_rule_bundle_ready_total_replay_open",
       "trust": "deterministic_local",
       "sourcePaths": [
         "demo/midgard-validation/src/index.ts",
@@ -354,7 +395,15 @@
         "validateMidgardConsensusV1Tx"
       ],
       "watcherBoundary": "Import shared production semantics and the deployment-bound rule/profile identity; a watcher-specific folklore validator is forbidden.",
-      "remainingTasks": ["CG3", "Q00", "W23", "W24", "W25", "W26"]
+      "remainingTasks": ["CG3", "Q00", "W23", "W24", "W25", "W26"],
+      "sourceSha256": {
+        "demo/midgard-validation/src/index.ts": "b2464d3fff2026b5d3ec821d1cf5dc2a5c2def99518043bf50c344bafd42534c",
+        "demo/midgard-validation/src/phase-a.ts": "cb06e1e177a43782e300047d03cbb8ae55e4abf4db97cd70855690588df1f8eb",
+        "demo/midgard-validation/src/phase-b.ts": "2b5bbdde0cd7d50cb0733f64365a5e45ba9f767dd08ac2dacd287874c238edbc",
+        "demo/midgard-validation/src/validation-machine.ts": "362d79a15ec5c1960dec5b28e9103886fe127dc32cb4b5e45d0165bbde9612d8",
+        "demo/midgard-validation/src/validation-dispute-evidence.ts": "914f8038093745759afb2d21f256a6bd4d788215216db790f39b5d4d40ccbfb9",
+        "demo/midgard-core/src/consensus-validation-v1.ts": "d717100b45b3afcf864c59822379f74ab7cc6b8ac70052b0146571bdad25c281"
+      }
     },
     {
       "id": "proof_tooling",
@@ -364,9 +413,13 @@
       "sourcePaths": [
         "demo/midgard-fault-proofs/src/index.ts",
         "demo/midgard-fault-proofs/src/bin.ts",
+        "demo/midgard-fault-proofs/src/prepare-double-spend.ts",
+        "demo/midgard-fault-proofs/src/prepare-invalid-range.ts",
+        "demo/midgard-fault-proofs/src/prepare-non-existent-input.ts",
         "demo/midgard-fault-proofs/src/transition-trace/fetch.ts",
         "demo/midgard-fault-proofs/src/transition-trace/submit.ts",
-        "demo/midgard-fault-proofs/src/validation-dispute/index.ts"
+        "demo/midgard-fault-proofs/src/validation-dispute/index.ts",
+        "demo/midgard-fault-proofs/src/validation-dispute/submit.ts"
       ],
       "sourceSymbols": [
         "prepareDoubleSpendFromFile",
@@ -388,7 +441,18 @@
         "Q51",
         "W30",
         "W32"
-      ]
+      ],
+      "sourceSha256": {
+        "demo/midgard-fault-proofs/src/index.ts": "7f95f68cb70d39eb7ceb383e0a5e1b8014c87fe484a3fbd0f6a73c07a8499fde",
+        "demo/midgard-fault-proofs/src/bin.ts": "be0d5719d928526cee3081c720af213c453babb0f333925ff1f31f3917eeae95",
+        "demo/midgard-fault-proofs/src/prepare-double-spend.ts": "00d6edea16310c11e45363dca6c1bc6b9c81ed921f5896a324d61c38b1862cbe",
+        "demo/midgard-fault-proofs/src/prepare-invalid-range.ts": "c8a75250ec92727b7c62997a423833d68b8a84c4718bea2711ccbcb326e07161",
+        "demo/midgard-fault-proofs/src/prepare-non-existent-input.ts": "28abba8103023685cbca8024bfb74ae384e8c75c9ef59f6499770fa52bbd3855",
+        "demo/midgard-fault-proofs/src/transition-trace/fetch.ts": "34ea9266296bb2ad75b260f83a0b972fec3b5249b515933223831c244f99d248",
+        "demo/midgard-fault-proofs/src/transition-trace/submit.ts": "0fe746b0708b4ef40bf79395ea7627ae90bfece0e57ebefa6dc8e74c7fe3e5c7",
+        "demo/midgard-fault-proofs/src/validation-dispute/index.ts": "78b4e38c5d5140970175da9375e8907aa89834f5bacd3c53455ad3dfbc46f1c1",
+        "demo/midgard-fault-proofs/src/validation-dispute/submit.ts": "c8a6cb83c077cdced77ed9a5512964e070a98876adee23c34dbe9a4b3704ea32"
+      }
     },
     {
       "id": "deployment_manifest",
@@ -408,7 +472,13 @@
         "verifyWatcherDeploymentIdentityV1"
       ],
       "watcherBoundary": "Use the strict signed-identity verifier and persist its exact durable marker through W03 before accepting observations; C70/C75/F41 must replace placeholder release and deployment inputs with final-tree/live evidence.",
-      "remainingTasks": ["C70", "C75", "F41"]
+      "remainingTasks": ["C70", "C75", "F41"],
+      "sourceSha256": {
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts": "c0d92f8e03381cf2d897a92e8172038856f99d89e34523d27d016105ee47fb12",
+        "demo/midgard-node/src/deployment-manifest-v1.ts": "7cde10a0d5ff4c23ef9750f64c18083e5d63ed2597edcbf0e0c8c5a3d3a1dea2",
+        "demo/midgard-node/src/commands/contract-deployment-info.ts": "d94181e5deb7f0b94d2f8460cb75966cd84dbb7cf04aa64854a4855dc961adfb",
+        "demo/midgard-watcher/src/deployment-identity.ts": "8c3bc10bdd99d5e8c5e1770e7ae4bb2cf13c388fa1949694a965ed8ac92283a2"
+      }
     },
     {
       "id": "l1_provider",
@@ -437,7 +507,17 @@
         "evaluateWatcherStateQueueIndexerV1"
       ],
       "watcherBoundary": "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W12-W17 preserve this discriminator, recompute W11/W12 from canonical observations, and propagate exact rollback. W14 indexes node-accepted bytes without duplicating Cardano validator semantics.",
-      "remainingTasks": ["C70"]
+      "remainingTasks": ["C70"],
+      "sourceSha256": {
+        "demo/da-committee-node/src/l1/provider.ts": "3f91ceaeeb2dd31c0d3fb7d93a22ecee15b50b332793020f3376d5fa6d7a4181",
+        "demo/da-committee-node/src/l1/state-queue-scanner.ts": "710858ddb7a7fb143cabace73368a0373802957e6a3d79fdb393cbe0a7f3b772",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
+        "demo/midgard-watcher/src/l1-adapter.ts": "aa559a6f3e106448ad3a7b9ba7d18769d7c479fe5c69c4ac63f20436a63a35d8",
+        "demo/midgard-watcher/src/multi-provider-consistency.ts": "a6cdea9c3a906b5b59b4134d194466d415030b6f89f66ff1076013584665d7e4",
+        "demo/midgard-watcher/src/finality-engine.ts": "945c52dc5fbb3952ec0dc2c88d002e82aee7b716ff23a75e4a2c2f53454a0921",
+        "demo/midgard-watcher/src/rollback-engine.ts": "c84f5571e2272900fbc11b41fc08e525a08082a6eead20d4d8583b0941b978cb",
+        "demo/midgard-watcher/src/state-queue-indexer.ts": "cd10f887ad513f480d0056d835c3e603b5769185cefd36d22127cdfd5470a014"
+      }
     },
     {
       "id": "state_queue",
@@ -450,7 +530,8 @@
         "demo/da-committee-node/src/l1/state-queue-scanner.ts",
         "demo/midgard-node/src/services/state-queue-topology.ts",
         "demo/midgard-watcher/src/durable-store.ts",
-        "demo/midgard-watcher/src/finality-engine.ts"
+        "demo/midgard-watcher/src/finality-engine.ts",
+        "demo/midgard-watcher/src/state-queue-indexer.ts"
       ],
       "sourceSymbols": [
         "fetchSortedStateQueueUTxOs",
@@ -458,10 +539,20 @@
         "scanStateQueue",
         "fetchStateQueueTopologyProgram",
         "migrateWatcherDurableStoreV1",
-        "evaluateWatcherFinalityV1"
+        "evaluateWatcherFinalityV1",
+        "evaluateWatcherStateQueueIndexerV1"
       ],
       "watcherBoundary": "Reuse canonical SDK datum/header decoding from node-derived public UTxOs, persist observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14 consumes the canonical observation/rollback pipeline and indexes node-accepted transaction/output/datum bytes; it does not reimplement the on-chain state-queue validator.",
-      "remainingTasks": ["W20"]
+      "remainingTasks": ["W20"],
+      "sourceSha256": {
+        "demo/midgard-sdk/src/ledger-state.ts": "b138aae7d1ee98f14c83d75000c6a7154d68df5f27e75b70213e6025f66c60b5",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
+        "demo/da-committee-node/src/l1/state-queue-scanner.ts": "710858ddb7a7fb143cabace73368a0373802957e6a3d79fdb393cbe0a7f3b772",
+        "demo/midgard-node/src/services/state-queue-topology.ts": "e508968cff0a23b18f1670a3d7c5eecc860341d29a1ca30fb860de1ea383f8b3",
+        "demo/midgard-watcher/src/durable-store.ts": "b6185b9cd841eb6b7a6b6d8692e31ff337846b124eee668daa552394a04dfaa9",
+        "demo/midgard-watcher/src/finality-engine.ts": "945c52dc5fbb3952ec0dc2c88d002e82aee7b716ff23a75e4a2c2f53454a0921",
+        "demo/midgard-watcher/src/state-queue-indexer.ts": "cd10f887ad513f480d0056d835c3e603b5769185cefd36d22127cdfd5470a014"
+      }
     },
     {
       "id": "correction_removal",
@@ -485,7 +576,13 @@
         "reason": "Non-tail removal currently requires an operator-node admin lease to pause commit/merge workers; this violates the independent watcher trust boundary."
       },
       "watcherBoundary": "The watcher may reuse public L1 topology/refetch and transaction construction only after Q52/W35 replace operator-admin coordination with a protocol-safe public concurrency strategy.",
-      "remainingTasks": ["Q52", "W35"]
+      "remainingTasks": ["Q52", "W35"],
+      "sourceSha256": {
+        "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts": "1f4641fc534ea12e1fb3036e44e7ad4276f00f539f1f8b27786832fcebf56b14",
+        "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
+        "onchain/aiken/validators/state-queue.ak": "eb90efa51b80078acc5fa71adffcbd2a91a058b714ec1bf53c5240f3baba1987",
+        "onchain/aiken/lib/midgard/operator-directory.ak": "746312732f309355b2cca6407420eaa9a3da0dc0a41d4ec603a98b8cd52af74e"
+      }
     }
   ],
   "explicitlyRejectedDependencies": [

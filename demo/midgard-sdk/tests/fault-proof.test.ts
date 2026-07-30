@@ -20,6 +20,7 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  buildZeroInputFaultProofContracts,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -29,6 +30,7 @@ import {
   DoubleSpendStep03SpendRedeemer,
   DoubleSpendStep04Datum,
   DoubleSpendStep04SpendRedeemer,
+  EMPTY_SPEND_INPUTS_HASH,
   FAULT_PROOF_SHARED_TITLES,
   type FaultProofBlueprint,
   FraudProofComputationThreadRedeemer,
@@ -41,6 +43,7 @@ import {
   invalidRangeViolationReason,
   MidgardTxInputList,
   NativeTxBodyCompact,
+  nativeTxBodyHasZeroInputViolation,
   NormalizedTimeRange,
   normalizeNativeTxValidityRange,
   parseFaultProofBlueprint,
@@ -48,6 +51,11 @@ import {
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_RESOLVER_COUNT_V1,
+  ZERO_INPUT_FAULT_PROOF_TITLES,
+  ZeroInputStep01Datum,
+  ZeroInputStep01SpendRedeemer,
+  ZeroInputStep02Datum,
+  ZeroInputStep02SpendRedeemer,
 } from "../src/index.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -297,6 +305,58 @@ describe("fault-proof ABI", () => {
     });
   });
 
+  it("round-trips zero-input step datums and redeemers", () => {
+    expect(
+      roundTrip({ fraud_prover: h28, data: null }, ZeroInputStep01Datum),
+    ).toEqual({ fraud_prover: h28, data: null });
+    expect(
+      roundTrip({ Continue: [txInclusionArgs] }, ZeroInputStep01SpendRedeemer),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step02Datum = {
+      fraud_prover: h28,
+      data: { bad_tx_spend_inputs_hash: EMPTY_SPEND_INPUTS_HASH },
+    };
+    expect(roundTrip(step02Datum, ZeroInputStep02Datum)).toEqual(step02Datum);
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              input_index: 0n,
+              output_index: 0n,
+              fraud_proof_mint_redeemer_index: 1n,
+            },
+          ],
+        },
+        ZeroInputStep02SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [{ fraud_proof_mint_redeemer_index: 1n }],
+    });
+  });
+
+  it("detects a zero-input violation from the native spend-inputs hash", () => {
+    // The empty spend-inputs list uses the native V1 bounded-collection
+    // commitment for field zero, which the step-02 validator pins.
+    expect(EMPTY_SPEND_INPUTS_HASH).toBe(
+      "eb25ed4ae02426602eee44b29d93e9dcd0be514b2087eda02f398b16fbb0ec76",
+    );
+    expect(
+      nativeTxBodyHasZeroInputViolation({
+        txBody: {
+          ...nativeTxBody,
+          spend_inputs_hash: EMPTY_SPEND_INPUTS_HASH,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      nativeTxBodyHasZeroInputViolation({
+        txBody: { ...nativeTxBody, spend_inputs_hash: h32b },
+      }),
+    ).toBe(false);
+  });
+
   it("normalizes native invalid-range validity bounds", () => {
     expect(
       roundTrip(
@@ -431,6 +491,8 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+    expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
+    expect(contracts.zeroInput.steps).toHaveLength(2);
     expect(contracts.transitionTrace.firstStep).toBe(
       contracts.transitionTrace.steps[0],
     );
@@ -438,7 +500,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(85);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(100);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -448,11 +510,12 @@ describe("fault-proof contract builder", () => {
           ...contracts.doubleSpend.steps,
           ...contracts.nonExistentInput.steps,
           ...contracts.invalidRange.steps,
+          ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(100);
+    ).toBe(120);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -540,6 +603,80 @@ describe("fault-proof contract builder", () => {
     expect(contracts.invalidRange.steps).toHaveLength(2);
   });
 
+  it("builds zero-input with the validator parameter order from the blueprint", async () => {
+    const blueprint = loadBlueprint();
+
+    const contracts = await Effect.runPromise(
+      buildZeroInputFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
+    expect(contracts.zeroInput.steps).toHaveLength(2);
+    expect(
+      new Set(contracts.zeroInput.steps.map((step) => step.spendingScriptHash))
+        .size,
+    ).toBe(2);
+
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    const expectedStep02Cbor = applyParamsToScript(
+      compiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step02),
+      [
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedStep01Cbor = applyParamsToScript(
+      compiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step01),
+      [
+        spendingScriptHash(expectedStep02Cbor),
+        contracts.computationThread.policyId,
+        h28b,
+      ],
+    );
+
+    expect(contracts.zeroInput.steps[1].spendingScriptCBOR).toBe(
+      expectedStep02Cbor,
+    );
+    expect(contracts.zeroInput.steps[0].spendingScriptCBOR).toBe(
+      expectedStep01Cbor,
+    );
+    expect(contracts.zeroInput.steps[0].spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedStep01Cbor)),
+    );
+  });
+
+  it("builds zero-input without requiring unrelated category validators", async () => {
+    const blueprint = filterBlueprint(loadBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(ZERO_INPUT_FAULT_PROOF_TITLES),
+    ]);
+
+    const contracts = await Effect.runPromise(
+      buildZeroInputFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
+    expect(contracts.zeroInput.steps).toHaveLength(2);
+  });
+
   it("builds transition-trace with the validator parameter order from the blueprint", async () => {
     const blueprint = loadBlueprint();
 
@@ -615,12 +752,16 @@ describe("fault-proof contract builder", () => {
   it("builds validation-trace dispute with its exact shared-policy parameter order", async () => {
     const blueprint = filterBlueprint(loadBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
+      ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(
@@ -657,11 +798,21 @@ describe("fault-proof contract builder", () => {
     );
     const expectedSemanticResolvers = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-    ).map((title) =>
-      applyParamsToScript(compiledScript(blueprint, title), [
-        spendingScriptHash(expectedAward),
-        contracts.computationThread.policyId,
-      ]),
+    ).map((title, index) =>
+      applyParamsToScript(
+        compiledScript(blueprint, title),
+        index === 1
+          ? [
+              contracts.validationTraceDispute.canonicalDecodeItemStages.source
+                .spendingScriptHash,
+              contracts.computationThread.policyId,
+              contracts.validationTraceDispute.proofItem.spendingScriptHash,
+            ]
+          : [
+              spendingScriptHash(expectedAward),
+              contracts.computationThread.policyId,
+            ],
+      ),
     );
     const expectedSemanticResolverGroups = [
       [expectedSemanticResolvers[0]!, expectedSemanticResolvers[1]!],
@@ -714,19 +865,13 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[43]!,
         expectedSemanticResolvers[44]!,
         expectedSemanticResolvers[45]!,
-      ],
-      [
         expectedSemanticResolvers[46]!,
         expectedSemanticResolvers[47]!,
         expectedSemanticResolvers[48]!,
-      ],
-      [
         expectedSemanticResolvers[49]!,
         expectedSemanticResolvers[50]!,
         expectedSemanticResolvers[51]!,
         expectedSemanticResolvers[52]!,
-      ],
-      [
         expectedSemanticResolvers[53]!,
         expectedSemanticResolvers[54]!,
         expectedSemanticResolvers[55]!,
@@ -734,7 +879,27 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[57]!,
         expectedSemanticResolvers[58]!,
         expectedSemanticResolvers[59]!,
+      ],
+      [
         expectedSemanticResolvers[60]!,
+        expectedSemanticResolvers[61]!,
+        expectedSemanticResolvers[62]!,
+      ],
+      [
+        expectedSemanticResolvers[63]!,
+        expectedSemanticResolvers[64]!,
+        expectedSemanticResolvers[65]!,
+        expectedSemanticResolvers[66]!,
+      ],
+      [
+        expectedSemanticResolvers[67]!,
+        expectedSemanticResolvers[68]!,
+        expectedSemanticResolvers[69]!,
+        expectedSemanticResolvers[70]!,
+        expectedSemanticResolvers[71]!,
+        expectedSemanticResolvers[72]!,
+        expectedSemanticResolvers[73]!,
+        expectedSemanticResolvers[74]!,
       ],
     ] as const;
     const resolverHashesSchema = Data.Array(Data.Bytes());
@@ -856,7 +1021,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(85);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(100);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );

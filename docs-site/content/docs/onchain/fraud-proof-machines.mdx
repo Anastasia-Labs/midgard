@@ -29,20 +29,24 @@ multi-step machine (`step-0N.ak`). The categories present in the source are:
 plus a `transition-trace` proof.
 
 <Callout type="warn" title="Source files are not deployed coverage">
-Only five categories are currently registered by the catalogue, eight compiled
-families retain legacy block/root binding that cannot target current native-v1
-counted-root blocks, and the minimum-fee proof contains a stubbed check. Treat the
-[fault-proof audit](/docs/fault-proofs/overview), not this source-directory list,
-as the coverage statement.
+  The seven deployed catalogue categories, in immutable ID order, are
+  `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
+  `transitionTrace`, `zeroInput`, and `validationTraceDispute`. Other compiled
+  source directories are not registered coverage, and the minimum-fee proof
+  contains a stubbed check. Treat the [fault-proof
+  audit](/docs/fault-proofs/overview), not the source-directory list, as the
+  coverage statement.
 </Callout>
 
-<Mermaid chart={`flowchart LR
+<Mermaid
+  chart={`flowchart LR
   I["init"] --> S1["step-01"]
   S1 --> S2["step-02"]
   S2 --> S3["step-03..0N"]
   S3 --> V{"verdict"}
   V -->|fraud proven| R["remove fraudulent block"]
-  V -->|challenge fails| C["challenge closed"]`} />
+  V -->|challenge fails| C["challenge closed"]`}
+/>
 
 ## Related
 

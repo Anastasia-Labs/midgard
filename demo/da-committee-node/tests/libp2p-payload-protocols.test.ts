@@ -279,6 +279,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       },
       store: {
         getDaPayload: async () => undefined,
+        getL1SourceState: async () => undefined,
         saveDaSignature: async () => undefined,
         listDaSignatures: async () => [{} as never],
       },
@@ -307,6 +308,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const daVkey = Buffer.alloc(32, 0x0c);
     const protocolStore = {
       getDaPayload: async () => undefined,
+      getL1SourceState: async () => undefined,
       saveDaSignature: async () => undefined,
       listDaSignatures: async () => [],
     };

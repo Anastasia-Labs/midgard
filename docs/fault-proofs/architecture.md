@@ -127,9 +127,9 @@ insufficient.
   (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
   the prover.
-- **Catalogue registration ≠ compiled validators.** The deployment layer registers only 5
-  categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts:23-29`,
-  `common.ts:162-168`) of the 12 compiled proof-type families — the other 7 cannot `Init`
+- **Catalogue registration ≠ compiled validators.** The deployment layer registers only 6
+  categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`) of the 12 compiled
+  proof-type families — the other 6 cannot `Init`
   a thread against a deployed instance. The `FaultProofs` type also carries a TODO that
   multi-step registration needs "a more elaborate design" (`common.ts:160-161`).
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only

@@ -30,10 +30,7 @@ fn finish_one_block(
   remaining_rounds: Int,
 ) -> blake2b_224_trace_v1.Blake2b224TraceControlV1 {
   if remaining_rounds == 14 {
-    expect Some(begun) = blake2b_224_trace_v1.step_v1(
-      initial,
-      Some(block),
-    )
+    expect Some(begun) = blake2b_224_trace_v1.step_v1(initial, Some(block))
     finish_one_block(begun, block, remaining_rounds - 1)
   } else if remaining_rounds > 1 {
     expect Some(next) = blake2b_224_trace_v1.step_v1(initial, None)
@@ -56,8 +53,9 @@ test complete_partial_block_trace_matches_the_builtin() {
   let terminal = finish_one_block(initial, message, 14)
   and {
     blake2b_224_trace_v1.digest_v1(terminal) == Some(blake2b_224(message)),
-    blake2b_224_trace_v1.digest_v1(terminal)
-      == Some(script_proof_v1.versioned_script_hash(script)),
+    blake2b_224_trace_v1.digest_v1(terminal) == Some(
+      script_proof_v1.versioned_script_hash(script),
+    ),
   }
 }
 
@@ -73,14 +71,8 @@ test complete_full_block_trace_matches_the_builtin() {
 test one_round_successor_is_bounded() {
   let message = builtin.replicate_byte(128, 107)
   let initial = blake2b_224_trace_v1.initial_control_v1(129)
-  expect Some(begun) = blake2b_224_trace_v1.step_v1(
-    initial,
-    Some(message),
-  )
-  expect Some(after_one_round) = blake2b_224_trace_v1.step_v1(
-    begun,
-    None,
-  )
+  expect Some(begun) = blake2b_224_trace_v1.step_v1(initial, Some(message))
+  expect Some(after_one_round) = blake2b_224_trace_v1.step_v1(begun, None)
   and {
     after_one_round.stage == blake2b_224_trace_v1.stage_round,
     after_one_round.round == 1,
@@ -98,20 +90,16 @@ test decodes_the_typescript_multiblock_terminal_state() {
     control.stage == blake2b_224_trace_v1.stage_terminal,
     control.cursor == 6001,
     control.total_length == 6001,
-    blake2b_224_trace_v1.digest_v1(control)
-      == Some(
-          #"634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098",
-        ),
-    blake2b_224_trace_v1.encode_control_v1(control)
-      == cross_language_terminal_control_cbor,
+    blake2b_224_trace_v1.digest_v1(control) == Some(
+      #"634e9ca63abb532a52c53389db12d1514358f8ff155e3d82c0622098",
+    ),
+    blake2b_224_trace_v1.encode_control_v1(control) == cross_language_terminal_control_cbor,
   }
 }
 
 test decodes_the_typescript_active_state_with_chunked_byte_strings() {
   let control_cbor = cross_language_active_control_cbor()
-  let control = blake2b_224_trace_v1.decode_control_v1(
-    control_cbor,
-  )
+  let control = blake2b_224_trace_v1.decode_control_v1(control_cbor)
   and {
     control.stage == blake2b_224_trace_v1.stage_round,
     control.cursor == 0,
@@ -119,8 +107,7 @@ test decodes_the_typescript_active_state_with_chunked_byte_strings() {
     control.active_block_length == 128,
     bytearray.length(control.active_block) == 128,
     bytearray.length(control.working_value) == 128,
-    blake2b_224_trace_v1.encode_control_v1(control)
-      == control_cbor,
+    blake2b_224_trace_v1.encode_control_v1(control) == control_cbor,
   }
 }
 
@@ -150,10 +137,7 @@ test fails_closed_for_wrong_boundaries_and_malformed_state() {
       |> bytearray.concat(#"01"),
   }
   and {
-    blake2b_224_trace_v1.step_v1(
-      initial,
-      Some(builtin.replicate_byte(127, 0)),
-    ) == None,
+    blake2b_224_trace_v1.step_v1(initial, Some(builtin.replicate_byte(127, 0))) == None,
     blake2b_224_trace_v1.step_v1(
       malformed,
       Some(builtin.replicate_byte(128, 0)),

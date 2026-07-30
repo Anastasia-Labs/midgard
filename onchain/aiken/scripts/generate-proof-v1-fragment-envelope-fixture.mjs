@@ -107,11 +107,7 @@ const makeOutput = ({
         }),
   });
 
-const maximizeParameter = ({
-  maximum,
-  upperBound,
-  build,
-}) => {
+const maximizeParameter = ({ maximum, upperBound, build }) => {
   let low = 0;
   let high = upperBound;
   let best = build(0);
@@ -141,11 +137,7 @@ const makeOutputs = () => {
     build: (totalDatumPayloadBytes) => {
       const outputs = [...base];
       let remaining = totalDatumPayloadBytes;
-      for (
-        let index = 1;
-        index < outputs.length && remaining > 0;
-        index += 1
-      ) {
+      for (let index = 1; index < outputs.length && remaining > 0; index += 1) {
         const datumPayloadBytes = Math.min(remaining, 3_500);
         outputs[index] = makeOutput({ index, datumPayloadBytes });
         remaining -= datumPayloadBytes;
@@ -166,10 +158,7 @@ const makeOutputs = () => {
 };
 
 const makeMint = () => {
-  const quantities = Array.from(
-    { length: fixtureAssetCount },
-    () => 1n,
-  );
+  const quantities = Array.from({ length: fixtureAssetCount }, () => 1n);
   const encode = () => {
     const policies = new Map();
     quantities.forEach((quantity, index) => {
@@ -194,10 +183,7 @@ const makeMint = () => {
 const makeAddressWitnesses = () =>
   encodedByteList(
     Array.from({ length: fixtureAddressWitnessCount }, (_, index) =>
-      encodeCbor([
-        Buffer.alloc(32, index),
-        Buffer.alloc(64, 0xff - index),
-      ]),
+      encodeCbor([Buffer.alloc(32, index), Buffer.alloc(64, 0xff - index)]),
     ),
   );
 
@@ -240,9 +226,10 @@ const encodeRedeemers = (lastPayloadBytes) =>
       0n,
       BigInt(index),
       encodeCbor(
-        Buffer.alloc(index === fixtureScriptExecutionCount - 1
-          ? lastPayloadBytes
-          : 256, index),
+        Buffer.alloc(
+          index === fixtureScriptExecutionCount - 1 ? lastPayloadBytes : 256,
+          index,
+        ),
       ),
       [1n, 2n],
     ]),
@@ -255,14 +242,8 @@ const makeRedeemers = () =>
     build: encodeRedeemers,
   });
 
-const spendInputsPreimageCbor = makeInputs(
-  fixtureInputCount,
-  0x11,
-);
-const referenceInputsPreimageCbor = makeInputs(
-  fixtureInputCount,
-  0x22,
-);
+const spendInputsPreimageCbor = makeInputs(fixtureInputCount, 0x11);
+const referenceInputsPreimageCbor = makeInputs(fixtureInputCount, 0x22);
 const outputsPreimageCbor = makeOutputs();
 const requiredObserversPreimageCbor = encodedByteList(
   Array.from({ length: fixtureObserverCount }, (_, index) =>
@@ -311,8 +292,7 @@ if (violation !== null) {
 }
 const source = deriveMidgardNativeTxProofSourceV1(tx);
 const transactionId = computeMidgardNativeTxIdV1(tx);
-const transactionCommitment =
-  computeMidgardNativeTxProofCommitmentV1(source);
+const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
 const fields = deriveMidgardV1TxFieldPreimages(canonicalCbor);
 const chunks = deriveMidgardV1TxFieldChunks(canonicalCbor);
 if (chunks.some(({ proof }) => proof.chunk.length > 4_095)) {
@@ -330,7 +310,10 @@ const representativeChunks = [
     .reduce((byField, chunk) => {
       const fieldIndex = chunk.proof.fieldIndex;
       const retained = byField.get(fieldIndex);
-      if (retained === undefined || proofShapeScore(chunk) > proofShapeScore(retained)) {
+      if (
+        retained === undefined ||
+        proofShapeScore(chunk) > proofShapeScore(retained)
+      ) {
         byField.set(fieldIndex, chunk);
       }
       return byField;
@@ -348,7 +331,7 @@ const canonicalHeaderSize = (count) => {
 };
 const canonicalBytesSize = (length) => canonicalHeaderSize(length) + length;
 const itemEncodedSize = (fieldIndex, itemLength) => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalBytesSize(itemLength);
   }
   if (fieldIndex === 5) {
@@ -373,27 +356,14 @@ for (const { collectionProof, proof } of chunks) {
   if (proof.chunkIndex + 1 === chunkCount) {
     stateSize += itemEncodedSize(proof.fieldIndex, proof.totalLength);
   }
-  receiptStateByKey.set(
-    chunkKey({ proof }),
-    stateSize,
-  );
+  receiptStateByKey.set(chunkKey({ proof }), stateSize);
 }
-const representativeScenarios = representativeChunks.map((chunk) => {
-  const ordinal = chunkOrdinalByKey.get(chunkKey(chunk));
-  if (ordinal === undefined) {
-    throw new Error("representative field chunk is absent from canonical order");
-  }
-  return {
-    ...chunk,
-    predecessor: ordinal === 0 ? undefined : chunks[ordinal - 1],
-  };
-});
 const terminalChunk = chunks.at(-1);
 if (terminalChunk === undefined) {
   throw new Error("generated fixture has no terminal field receipt");
 }
 const terminalPredecessor = chunks.length === 1 ? undefined : chunks.at(-2);
-const constantChunks = [
+const scenarioChunks = [
   ...new Map(
     [...representativeChunks, terminalChunk].map((chunk) => [
       chunkKey(chunk),
@@ -401,6 +371,19 @@ const constantChunks = [
     ]),
   ).values(),
 ];
+const representativeScenarios = scenarioChunks.map((chunk) => {
+  const ordinal = chunkOrdinalByKey.get(chunkKey(chunk));
+  if (ordinal === undefined) {
+    throw new Error(
+      "representative field chunk is absent from canonical order",
+    );
+  }
+  return {
+    ...chunk,
+    predecessor: ordinal === 0 ? undefined : chunks[ordinal - 1],
+  };
+});
+const constantChunks = scenarioChunks;
 if (
   canonicalCbor.length > limits.maxTxCanonicalCborBytes ||
   canonicalCbor.length <= 8 * 1024
@@ -468,18 +451,17 @@ const chunkConstants = constantChunks
       `const collection_proof_${proof.fieldIndex}_${proof.itemIndex}_${proof.chunkIndex} =\n  ${collectionProofLiteral(collectionProof)}\n\nconst chunk_proof_${proof.fieldIndex}_${proof.itemIndex}_${proof.chunkIndex} =\n  ${chunkProofLiteral(proof)}`,
   )
   .join("\n\n");
-const chunkLengthChecks = representativeChunks
+const chunkLengthChecks = scenarioChunks
   .map(({ proof }) => `${proof.chunk.length} <= 4095`)
   .join(",\n    ");
 const fieldVerificationScenarios = representativeScenarios
-  .map(
-    ({ proof, predecessor }) => {
-      const encodedSize = receiptStateByKey.get(
-        `${proof.fieldIndex}:${proof.itemIndex}:${proof.chunkIndex}`,
-      );
-      const predecessorIndex = predecessor === undefined ? -1 : 1;
-      const predecessorLiteral = predecessorReceiptLiteral(predecessor);
-      return `
+  .map(({ proof, predecessor }) => {
+    const encodedSize = receiptStateByKey.get(
+      `${proof.fieldIndex}:${proof.itemIndex}:${proof.chunkIndex}`,
+    );
+    const predecessorIndex = predecessor === undefined ? -1 : 1;
+    const predecessorLiteral = predecessorReceiptLiteral(predecessor);
+    return `
 fn sample_field_${proof.fieldIndex}_item_${proof.itemIndex}_chunk_${proof.chunkIndex}(
   _size: Int,
 ) -> Fuzzer<bounded_item_v1.ChunkProofV1> {
@@ -530,8 +512,7 @@ bench maximum_profile_field_${proof.fieldIndex}_item_${proof.itemIndex}_chunk_${
   )
 }
 `;
-    },
-  )
+  })
   .join("\n");
 
 const generated = `// Generated by scripts/generate-V1-fragment-envelope-fixture.mjs.

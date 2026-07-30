@@ -49,8 +49,7 @@ validator main(
         transition,
         proof_witness,
       }) -> {
-        let auxiliary =
-          LedgerOutputProofStepWitness { witness: proof_witness }
+        let auxiliary = LedgerOutputProofStepWitness { witness: proof_witness }
         let auxiliary_data: Data = auxiliary
         continue_winning(
           ScriptSources,

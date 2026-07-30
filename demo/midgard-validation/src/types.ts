@@ -212,6 +212,10 @@ export type PhaseBConfig = {
   readonly evaluateProofScript?: (
     programEnvelopeCbor: Uint8Array,
     contextCbor: Uint8Array,
+    executionBudget?: {
+      readonly cpu: bigint;
+      readonly memory: bigint;
+    },
   ) => Effect.Effect<LocalScriptEvalResult, Error>;
 };
 

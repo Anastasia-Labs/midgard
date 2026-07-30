@@ -87,13 +87,7 @@ fn read_canonical_argument(
     let major = initial / 32
     let additional = initial % 32
     if additional < 24 {
-      Some(
-        CborArgumentV1 {
-          major,
-          value: additional,
-          next_offset: offset + 1,
-        },
-      )
+      Some(CborArgumentV1 { major, value: additional, next_offset: offset + 1 })
     } else {
       let byte_count = argument_byte_count(additional)
       if or {
@@ -102,9 +96,8 @@ fn read_canonical_argument(
       } {
         None
       } else {
-        let value =
-          slice_len(bytes, offset + 1, byte_count)
-            |> builtin.bytearray_to_integer(True, _)
+        let value = slice_len(bytes, offset + 1, byte_count)
+          |> builtin.bytearray_to_integer(True, _)
         if argument_is_minimal(additional, value) {
           Some(
             CborArgumentV1 {
@@ -129,10 +122,7 @@ fn unsigned_byte_size(value: Int) -> Int {
   }
 }
 
-pub fn parse_syntax_v1(
-  bytes: ByteArray,
-  source_length: Int,
-) -> Option<Int> {
+pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
   if or {
     source_length < 1,
     source_length > uint32_max,
@@ -169,8 +159,10 @@ pub fn parse_syntax_v1(
             magnitude.next_offset + magnitude.value == source_length,
             magnitude.next_offset < bytearray.length(bytes),
           } {
-            let first_magnitude_byte =
-              bytearray.at(bytes, magnitude.next_offset)
+            let first_magnitude_byte = bytearray.at(
+              bytes,
+              magnitude.next_offset,
+            )
             if first_magnitude_byte == 0 {
               None
             } else {
@@ -224,9 +216,7 @@ pub fn parse_large_constructor_syntax_v1(
   }
 }
 
-pub fn control_is_well_formed(
-  control: CekDataIntegerControlV1,
-) -> Bool {
+pub fn control_is_well_formed(control: CekDataIntegerControlV1) -> Bool {
   and {
     control.version == version,
     control.stage >= stage_syntax,
@@ -244,8 +234,7 @@ pub fn control_is_well_formed(
     } else {
       when control.blob is {
         None -> False
-        Some(blob_control) ->
-          and {
+        Some(blob_control) -> and {
             control.memory >= 5,
             cek_source_blob_v1.control_is_well_formed(blob_control),
             blob_control.source_start == control.source_start,
@@ -289,9 +278,7 @@ fn encode_optional_blob(
   }
 }
 
-pub fn encode_control_v1(
-  control: CekDataIntegerControlV1,
-) -> ByteArray {
+pub fn encode_control_v1(control: CekDataIntegerControlV1) -> ByteArray {
   expect control_is_well_formed(control)
   encode_definite_array_header(6)
     |> bytearray.concat(cbor.serialise(version))
@@ -318,10 +305,11 @@ fn optional_blob_from_data(
 
 pub fn control_from_data_v1(data: Data) -> CekDataIntegerControlV1 {
   expect
-    [
-      version_data, stage_data, source_start_data, source_length_data,
-      memory_data, blob_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, source_start_data, source_length_data,
+        memory_data, blob_data,
+      ]
+    = builtin.un_list_data(data)
   let control = CekDataIntegerControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -334,9 +322,7 @@ pub fn control_from_data_v1(data: Data) -> CekDataIntegerControlV1 {
   control
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
-) -> CekDataIntegerControlV1 {
+pub fn decode_control_v1(control_cbor: ByteArray) -> CekDataIntegerControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
@@ -407,10 +393,7 @@ fn step_blob(
   expect Some(blob_control) = control.blob
   if blob_control.stage == cek_source_blob_v1.stage_terminal {
     if source_bytes == None {
-      let next = CekDataIntegerControlV1 {
-        ..control,
-        stage: stage_terminal,
-      }
+      let next = CekDataIntegerControlV1 { ..control, stage: stage_terminal }
       if control_is_well_formed(next) {
         Some(next)
       } else {

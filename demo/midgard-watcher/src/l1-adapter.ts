@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { CML } from "@lucid-evolution/lucid";
+
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 
 export const WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION =
@@ -8,11 +10,16 @@ export const WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION =
   "midgard-watcher-l1-block-observation-v1" as const;
 export const WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION =
   "midgard-watcher-normalized-l1-block-v1" as const;
+export const WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION =
+  "midgard-watcher-l1-normalization-session-v1" as const;
 
 export const WATCHER_L1_ADAPTER_V1_BOUNDS = Object.freeze({
   arrayMembers: 4_096,
+  totalCollectionMembers: 65_536,
   publicBytes: 1_048_576,
   totalPublicBytes: 67_108_864,
+  normalizationSessionEntries: 256,
+  normalizationSessionBytes: 16_777_216,
 });
 
 export const WATCHER_L1_SCRIPT_LANGUAGES_V1 = [
@@ -129,7 +136,11 @@ export type WatcherL1UtxoV1 = Readonly<{
 
 export type WatcherL1TransactionV1 = Readonly<{
   txHash: string;
+  transactionIndex?: string;
+  isValid: boolean;
+  fullTransaction: WatcherL1PublicBytesV1;
   body: WatcherL1PublicBytesV1;
+  witnessSet: WatcherL1PublicBytesV1;
   utxos: readonly WatcherL1UtxoV1[];
   scripts: readonly WatcherL1ScriptV1[];
   datums: readonly WatcherL1DatumV1[];
@@ -140,6 +151,7 @@ export type WatcherL1ChainPointV1 = Readonly<{
   chainPointId: string;
   pointDigest: string;
   blockHash: string;
+  parentBlockHash: string | null;
   slot: string;
   blockNo: string;
   depth: string;
@@ -154,6 +166,81 @@ export type WatcherNormalizedL1BlockV1 = Readonly<{
   blockContentDigest: string;
   observationDigest: string;
 }>;
+
+export type WatcherL1NormalizationSessionV1 = Readonly<{
+  schemaVersion: typeof WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION;
+}>;
+
+type WatcherDerivedL1TransactionV1 = Readonly<{
+  fullTransaction: WatcherL1PublicBytesV1;
+  body: WatcherL1PublicBytesV1;
+  txHash: string;
+  isValid: boolean;
+  witnessSet: WatcherL1PublicBytesV1;
+  utxos: readonly WatcherL1UtxoV1[];
+  scripts: readonly WatcherL1ScriptV1[];
+  datums: readonly WatcherL1DatumV1[];
+  redeemers: readonly WatcherL1RedeemerV1[];
+}>;
+
+type WatcherL1NormalizationSessionStateV1 = {
+  readonly transactions: Map<
+    string,
+    Readonly<{
+      bytesHex: string;
+      retainedBytes: number;
+      derived: WatcherDerivedL1TransactionV1;
+    }>
+  >;
+  retainedBytes: number;
+};
+
+export type WatcherL1NormalizationSessionStatsV1 = Readonly<{
+  retainedEntries: number;
+  retainedBytes: number;
+  maximumEntries: number;
+  maximumBytes: number;
+}>;
+
+const normalizationSessionStates = new WeakMap<
+  WatcherL1NormalizationSessionV1,
+  WatcherL1NormalizationSessionStateV1
+>();
+const normalizedBlockProvenance = new WeakSet<object>();
+
+export const makeWatcherL1NormalizationSessionV1 =
+  (): WatcherL1NormalizationSessionV1 => {
+    const session = Object.freeze({
+      schemaVersion: WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION,
+    });
+    normalizationSessionStates.set(session, {
+      transactions: new Map(),
+      retainedBytes: 0,
+    });
+    return session;
+  };
+
+export const watcherL1NormalizationSessionStatsV1 = (
+  session: WatcherL1NormalizationSessionV1,
+): WatcherL1NormalizationSessionStatsV1 => {
+  const state = normalizationSessionStates.get(session);
+  if (state === undefined) {
+    throw new Error("unknown watcher L1 normalization session");
+  }
+  return Object.freeze({
+    retainedEntries: state.transactions.size,
+    retainedBytes: state.retainedBytes,
+    maximumEntries: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionEntries,
+    maximumBytes: WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes,
+  });
+};
+
+export const isWatcherL1AdapterNormalizedBlockV1 = (
+  value: unknown,
+): value is WatcherNormalizedL1BlockV1 =>
+  typeof value === "object" &&
+  value !== null &&
+  normalizedBlockProvenance.has(value);
 
 export type WatcherL1AdapterErrorCode =
   | "content_digest_mismatch"
@@ -210,11 +297,13 @@ export const watcherL1AdapterDiagnostic = (
 type JsonRecord = Record<string, unknown>;
 type CanonicalJson =
   | null
+  | boolean
   | string
   | readonly CanonicalJson[]
   | { readonly [key: string]: CanonicalJson };
 
 type ParseBudget = {
+  collectionMembers: number;
   publicBytes: number;
 };
 
@@ -326,6 +415,50 @@ const exactArray = (value: unknown, path: string): readonly unknown[] => {
   return values;
 };
 
+const reserveCollectionMembers = (
+  budget: ParseBudget,
+  count: number,
+  path: string,
+): void => {
+  budget.collectionMembers += count;
+  if (
+    budget.collectionMembers >
+    WATCHER_L1_ADAPTER_V1_BOUNDS.totalCollectionMembers
+  ) {
+    fail("out_of_bounds", path);
+  }
+};
+
+const preflightTransactionCollections = (
+  value: unknown,
+  budget: ParseBudget,
+): readonly unknown[] => {
+  const transactions = exactArray(value, "$.transactions");
+  reserveCollectionMembers(budget, transactions.length, "$.transactions");
+  for (let index = 0; index < transactions.length; index += 1) {
+    const path = `$.transactions[${index.toString()}]`;
+    const unparsed = plainRecord(transactions[index], path);
+    const transaction = exactRecord(transactions[index], path, [
+      "txHash",
+      ...(Object.prototype.hasOwnProperty.call(unparsed, "transactionIndex")
+        ? ["transactionIndex"]
+        : []),
+      "fullTransaction",
+      "body",
+      "witnessSet",
+      "utxos",
+      "scripts",
+      "datums",
+      "redeemers",
+    ]);
+    for (const field of ["utxos", "scripts", "datums", "redeemers"] as const) {
+      const members = exactArray(transaction[field], `${path}.${field}`);
+      reserveCollectionMembers(budget, members.length, "$.transactions");
+    }
+  }
+  return transactions;
+};
+
 const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
 
@@ -333,7 +466,11 @@ const sha256Utf8 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
 const canonicalJson = (value: CanonicalJson): string => {
-  if (value === null || typeof value === "string") {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
@@ -528,24 +665,480 @@ const freezeSortedUnique = <T>(
   return Object.freeze(sorted);
 };
 
+const purposeOrder = new Map(
+  WATCHER_L1_REDEEMER_PURPOSES_V1.map((purpose, index) => [purpose, index]),
+);
+
+const compareRedeemers = (
+  left: WatcherL1RedeemerV1,
+  right: WatcherL1RedeemerV1,
+): number => {
+  const purposeComparison =
+    (purposeOrder.get(left.purpose) as number) -
+    (purposeOrder.get(right.purpose) as number);
+  return purposeComparison === 0
+    ? compareNaturalStrings(left.index, right.index)
+    : purposeComparison;
+};
+
+const publicBytesFromCanonicalCbor = (
+  bytesHex: string,
+): WatcherL1PublicBytesV1 =>
+  freezePublicBytes(bytesHex, sha256Bytes(Buffer.from(bytesHex, "hex")));
+
+type CmlWitnessScript = Readonly<{
+  hash(): Readonly<{ to_hex(): string }>;
+  to_canonical_cbor_hex(): string;
+}>;
+
+type CmlWitnessScriptList = Readonly<{
+  get(index: number): CmlWitnessScript;
+  len(): number;
+}>;
+
+const collectWitnessScripts = (
+  list: CmlWitnessScriptList | undefined,
+  language: WatcherL1ScriptV1["language"],
+): WatcherL1ScriptV1[] => {
+  const scripts: WatcherL1ScriptV1[] = [];
+  if (list === undefined) {
+    return scripts;
+  }
+  for (let index = 0; index < list.len(); index += 1) {
+    const script = list.get(index);
+    scripts.push(
+      Object.freeze({
+        scriptHash: script.hash().to_hex(),
+        language,
+        bytes: publicBytesFromCanonicalCbor(script.to_canonical_cbor_hex()),
+      }),
+    );
+  }
+  return scripts;
+};
+
+const redeemerPurpose = (
+  tag: CML.RedeemerTag,
+  path: string,
+): WatcherL1RedeemerV1["purpose"] => {
+  switch (tag) {
+    case CML.RedeemerTag.Spend:
+      return "spend";
+    case CML.RedeemerTag.Mint:
+      return "mint";
+    case CML.RedeemerTag.Cert:
+      return "certificate";
+    case CML.RedeemerTag.Reward:
+      return "withdrawal";
+    case CML.RedeemerTag.Voting:
+      return "vote";
+    case CML.RedeemerTag.Proposing:
+      return "propose";
+    default:
+      return fail("invalid_field", path);
+  }
+};
+
+const witnessRedeemer = (
+  tag: CML.RedeemerTag,
+  index: bigint,
+  data: CML.PlutusData,
+  path: string,
+): WatcherL1RedeemerV1 =>
+  Object.freeze({
+    purpose: redeemerPurpose(tag, path),
+    index: index.toString(),
+    bytes: publicBytesFromCanonicalCbor(data.to_canonical_cbor_hex()),
+  });
+
+const collectWitnessRedeemers = (
+  witnessSet: CML.TransactionWitnessSet,
+  path: string,
+): readonly WatcherL1RedeemerV1[] => {
+  const redeemers = witnessSet.redeemers();
+  const collected: WatcherL1RedeemerV1[] = [];
+  if (redeemers === undefined) {
+    return Object.freeze(collected);
+  }
+  const legacy = redeemers.as_arr_legacy_redeemer();
+  if (legacy !== undefined) {
+    for (let index = 0; index < legacy.len(); index += 1) {
+      const redeemer = legacy.get(index);
+      collected.push(
+        witnessRedeemer(
+          redeemer.tag(),
+          redeemer.index(),
+          redeemer.data(),
+          `${path}.redeemers[${index.toString()}].purpose`,
+        ),
+      );
+    }
+  } else {
+    const mapped =
+      redeemers.as_map_redeemer_key_to_redeemer_val() ??
+      fail("invalid_field", `${path}.witnessSet.bytesHex`);
+    const keys = mapped.keys();
+    for (let index = 0; index < keys.len(); index += 1) {
+      const key = keys.get(index);
+      const value =
+        mapped.get(key) ?? fail("invalid_field", `${path}.witnessSet.bytesHex`);
+      collected.push(
+        witnessRedeemer(
+          key.tag(),
+          key.index(),
+          value.data(),
+          `${path}.redeemers[${index.toString()}].purpose`,
+        ),
+      );
+    }
+  }
+  return freezeSortedUnique(
+    collected,
+    `${path}.redeemers`,
+    (redeemer) => `${redeemer.purpose}:${redeemer.index}`,
+    compareRedeemers,
+  );
+};
+
+const collectWitnessDatums = (
+  witnessSet: CML.TransactionWitnessSet,
+  path: string,
+): readonly WatcherL1DatumV1[] => {
+  const datums = witnessSet.plutus_datums();
+  const collected: WatcherL1DatumV1[] = [];
+  if (datums !== undefined) {
+    for (let index = 0; index < datums.len(); index += 1) {
+      const bytes = publicBytesFromCanonicalCbor(
+        datums.get(index).to_canonical_cbor_hex(),
+      );
+      collected.push(
+        Object.freeze({
+          datumHash: computeHash32(Buffer.from(bytes.bytesHex, "hex")).toString(
+            "hex",
+          ),
+          bytes,
+        }),
+      );
+    }
+  }
+  return freezeSortedUnique(
+    collected,
+    `${path}.datums`,
+    (datum) => datum.datumHash,
+  );
+};
+
+const collectWitnessViews = (
+  transaction: CML.Transaction,
+  path: string,
+): Readonly<{
+  witnessSet: WatcherL1PublicBytesV1;
+  scripts: readonly WatcherL1ScriptV1[];
+  datums: readonly WatcherL1DatumV1[];
+  redeemers: readonly WatcherL1RedeemerV1[];
+}> => {
+  const witnessSet = transaction.witness_set();
+  const scripts = freezeSortedUnique(
+    [
+      ...collectWitnessScripts(witnessSet.native_scripts(), "Native"),
+      ...collectWitnessScripts(witnessSet.plutus_v1_scripts(), "PlutusV1"),
+      ...collectWitnessScripts(witnessSet.plutus_v2_scripts(), "PlutusV2"),
+      ...collectWitnessScripts(witnessSet.plutus_v3_scripts(), "PlutusV3"),
+    ],
+    `${path}.scripts`,
+    (script) => script.scriptHash,
+  );
+  const datums = collectWitnessDatums(witnessSet, path);
+  const redeemers = collectWitnessRedeemers(witnessSet, path);
+  if (
+    (datums.length > 0 || redeemers.length > 0) &&
+    transaction.body().script_data_hash() === undefined
+  ) {
+    fail("identity_mismatch", `${path}.body.bytesHex`);
+  }
+  return Object.freeze({
+    witnessSet: publicBytesFromCanonicalCbor(
+      witnessSet.to_canonical_cbor_hex(),
+    ),
+    scripts,
+    datums,
+    redeemers,
+  });
+};
+
+const referenceScriptView = (
+  script: CML.Script,
+  path: string,
+): WatcherL1ScriptV1 => {
+  const native = script.as_native();
+  const plutusV1 = script.as_plutus_v1();
+  const plutusV2 = script.as_plutus_v2();
+  const plutusV3 = script.as_plutus_v3();
+  const selected:
+    | Readonly<{
+        language: WatcherL1ScriptV1["language"];
+        script: CmlWitnessScript;
+      }>
+    | undefined =
+    native === undefined
+      ? plutusV1 === undefined
+        ? plutusV2 === undefined
+          ? plutusV3 === undefined
+            ? undefined
+            : { language: "PlutusV3", script: plutusV3 }
+          : { language: "PlutusV2", script: plutusV2 }
+        : { language: "PlutusV1", script: plutusV1 }
+      : { language: "Native", script: native };
+  if (selected === undefined) {
+    return fail("invalid_field", path);
+  }
+  return Object.freeze({
+    scriptHash: script.hash().to_hex(),
+    language: selected.language,
+    bytes: publicBytesFromCanonicalCbor(
+      selected.script.to_canonical_cbor_hex(),
+    ),
+  });
+};
+
+const inlineDatumView = (
+  output: CML.TransactionOutput,
+): WatcherL1DatumV1 | null => {
+  const datum = output.datum()?.as_datum();
+  if (datum === undefined) {
+    return null;
+  }
+  const bytes = publicBytesFromCanonicalCbor(datum.to_canonical_cbor_hex());
+  return Object.freeze({
+    datumHash: computeHash32(Buffer.from(bytes.bytesHex, "hex")).toString(
+      "hex",
+    ),
+    bytes,
+  });
+};
+
+const collectAppliedUtxos = (
+  transaction: CML.Transaction,
+  txHash: string,
+  path: string,
+): readonly WatcherL1UtxoV1[] => {
+  const body = transaction.body();
+  const outputs = body.outputs();
+  const collateralReturn = body.collateral_return();
+  const appliedOutputCount = transaction.is_valid()
+    ? outputs.len()
+    : collateralReturn === undefined
+      ? 0
+      : 1;
+  if (appliedOutputCount > WATCHER_L1_ADAPTER_V1_BOUNDS.arrayMembers) {
+    fail("out_of_bounds", `${path}.utxos`);
+  }
+  const utxos: WatcherL1UtxoV1[] = [];
+  for (let index = 0; index < appliedOutputCount; index += 1) {
+    const output = transaction.is_valid()
+      ? outputs.get(index)
+      : (collateralReturn as CML.TransactionOutput);
+    const ledgerOutputIndex = transaction.is_valid() ? index : outputs.len();
+    const outputIndex = ledgerOutputIndex.toString();
+    const script = output.script_ref();
+    utxos.push(
+      Object.freeze({
+        outRef: `${txHash}#${outputIndex}`,
+        outputIndex,
+        output: publicBytesFromCanonicalCbor(output.to_canonical_cbor_hex()),
+        datum: inlineDatumView(output),
+        referenceScript:
+          script === undefined
+            ? null
+            : referenceScriptView(
+                script,
+                `${path}.utxos[${outputIndex}].referenceScript`,
+              ),
+      }),
+    );
+  }
+  return Object.freeze(utxos);
+};
+
+const decodeCanonicalTransaction = (
+  fullTransaction: WatcherL1PublicBytesV1,
+  path: string,
+): CML.Transaction => {
+  try {
+    const transaction = CML.Transaction.from_cbor_hex(fullTransaction.bytesHex);
+    if (transaction.to_canonical_cbor_hex() !== fullTransaction.bytesHex) {
+      fail("identity_mismatch", `${path}.fullTransaction.bytesHex`);
+    }
+    return transaction;
+  } catch (error) {
+    if (error instanceof WatcherL1AdapterError) {
+      throw error;
+    }
+    return fail("invalid_field", `${path}.fullTransaction.bytesHex`);
+  }
+};
+
+const deriveCanonicalTransaction = (
+  fullTransaction: WatcherL1PublicBytesV1,
+  path: string,
+  session: WatcherL1NormalizationSessionStateV1 | undefined,
+): WatcherDerivedL1TransactionV1 => {
+  const cached = session?.transactions.get(fullTransaction.sha256);
+  if (cached !== undefined && cached.bytesHex === fullTransaction.bytesHex) {
+    return cached.derived;
+  }
+  const transaction = decodeCanonicalTransaction(fullTransaction, path);
+  const canonicalFullTransaction = publicBytesFromCanonicalCbor(
+    transaction.to_canonical_cbor_hex(),
+  );
+  const body = publicBytesFromCanonicalCbor(
+    transaction.body().to_canonical_cbor_hex(),
+  );
+  const txHash = computeHash32(Buffer.from(body.bytesHex, "hex")).toString(
+    "hex",
+  );
+  const witnessViews = collectWitnessViews(transaction, path);
+  const derived = Object.freeze({
+    fullTransaction: canonicalFullTransaction,
+    body,
+    txHash,
+    isValid: transaction.is_valid(),
+    witnessSet: witnessViews.witnessSet,
+    utxos: collectAppliedUtxos(transaction, txHash, path),
+    scripts: witnessViews.scripts,
+    datums: witnessViews.datums,
+    redeemers: witnessViews.redeemers,
+  });
+  if (
+    session !== undefined &&
+    cached === undefined &&
+    session.transactions.size <
+      WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionEntries
+  ) {
+    const retainedBytes = Buffer.byteLength(
+      canonicalJson(derived as unknown as CanonicalJson),
+      "utf8",
+    );
+    if (
+      retainedBytes <=
+      WATCHER_L1_ADAPTER_V1_BOUNDS.normalizationSessionBytes -
+        session.retainedBytes
+    ) {
+      session.transactions.set(
+        fullTransaction.sha256,
+        Object.freeze({
+          bytesHex: fullTransaction.bytesHex,
+          retainedBytes,
+          derived,
+        }),
+      );
+      session.retainedBytes += retainedBytes;
+    }
+  }
+  return derived;
+};
+
+const assertPublicBytesMatch = (
+  claimed: WatcherL1PublicBytesV1,
+  actual: WatcherL1PublicBytesV1,
+  path: string,
+): void => {
+  if (
+    claimed.bytesHex !== actual.bytesHex ||
+    claimed.sha256 !== actual.sha256
+  ) {
+    fail("identity_mismatch", path);
+  }
+};
+
+const assertWitnessViewsMatch = (
+  path: string,
+  claimed: Readonly<{
+    witnessSet: WatcherL1PublicBytesV1;
+    scripts: readonly WatcherL1ScriptV1[];
+    datums: readonly WatcherL1DatumV1[];
+    redeemers: readonly WatcherL1RedeemerV1[];
+  }>,
+  actual: Readonly<{
+    witnessSet: WatcherL1PublicBytesV1;
+    scripts: readonly WatcherL1ScriptV1[];
+    datums: readonly WatcherL1DatumV1[];
+    redeemers: readonly WatcherL1RedeemerV1[];
+  }>,
+): void => {
+  assertPublicBytesMatch(
+    claimed.witnessSet,
+    actual.witnessSet,
+    `${path}.witnessSet`,
+  );
+  for (const field of ["scripts", "datums", "redeemers"] as const) {
+    if (
+      claimed[field].length !== actual[field].length ||
+      claimed[field].some(
+        (entry, index) =>
+          canonicalJson(entry) !== canonicalJson(actual[field][index]!),
+      )
+    ) {
+      fail("identity_mismatch", `${path}.${field}`);
+    }
+  }
+};
+
+const assertUtxoViewsMatch = (
+  claimed: readonly WatcherL1UtxoV1[],
+  actual: readonly WatcherL1UtxoV1[],
+  path: string,
+): void => {
+  if (
+    claimed.length !== actual.length ||
+    claimed.some(
+      (entry, index) => canonicalJson(entry) !== canonicalJson(actual[index]!),
+    )
+  ) {
+    fail("identity_mismatch", path);
+  }
+};
+
 const parseTransaction = (
   value: unknown,
   path: string,
   budget: ParseBudget,
+  session: WatcherL1NormalizationSessionStateV1 | undefined,
 ): WatcherL1TransactionV1 => {
+  const unparsed = plainRecord(value, path);
+  const hasTransactionIndex = Object.prototype.hasOwnProperty.call(
+    unparsed,
+    "transactionIndex",
+  );
   const record = exactRecord(value, path, [
     "txHash",
+    ...(hasTransactionIndex ? ["transactionIndex"] : []),
+    "fullTransaction",
     "body",
+    "witnessSet",
     "utxos",
     "scripts",
     "datums",
     "redeemers",
   ]);
+  const transactionIndex = hasTransactionIndex
+    ? exactNatural(record.transactionIndex, `${path}.transactionIndex`)
+    : undefined;
+  const fullTransaction = parsePublicBytes(
+    record.fullTransaction,
+    `${path}.fullTransaction`,
+    budget,
+  );
   const body = parsePublicBytes(record.body, `${path}.body`, budget);
+  const derived = deriveCanonicalTransaction(fullTransaction, path, session);
+  assertPublicBytesMatch(
+    fullTransaction,
+    derived.fullTransaction,
+    `${path}.fullTransaction.bytesHex`,
+  );
+  assertPublicBytesMatch(body, derived.body, `${path}.body.bytesHex`);
   const txHash = exactString(record.txHash, `${path}.txHash`, HEX_32);
-  if (
-    computeHash32(Buffer.from(body.bytesHex, "hex")).toString("hex") !== txHash
-  ) {
+  if (derived.txHash !== txHash) {
     fail("identity_mismatch", `${path}.txHash`);
   }
   const utxos = freezeSortedUnique(
@@ -570,28 +1163,38 @@ const parseTransaction = (
     `${path}.datums`,
     (entry) => entry.datumHash,
   );
-  const purposeOrder = new Map(
-    WATCHER_L1_REDEEMER_PURPOSES_V1.map((purpose, index) => [purpose, index]),
-  );
   const redeemers = freezeSortedUnique(
     exactArray(record.redeemers, `${path}.redeemers`).map((entry, index) =>
       parseRedeemer(entry, `${path}.redeemers[${index.toString()}]`, budget),
     ),
     `${path}.redeemers`,
     (entry) => `${entry.purpose}:${entry.index}`,
-    (left, right) => {
-      const purposeComparison =
-        (purposeOrder.get(left.purpose) as number) -
-        (purposeOrder.get(right.purpose) as number);
-      return purposeComparison === 0
-        ? compareNaturalStrings(left.index, right.index)
-        : purposeComparison;
+    compareRedeemers,
+  );
+  const witnessSet = parsePublicBytes(
+    record.witnessSet,
+    `${path}.witnessSet`,
+    budget,
+  );
+  assertWitnessViewsMatch(
+    path,
+    { witnessSet, scripts, datums, redeemers },
+    {
+      witnessSet: derived.witnessSet,
+      scripts: derived.scripts,
+      datums: derived.datums,
+      redeemers: derived.redeemers,
     },
   );
+  assertUtxoViewsMatch(utxos, derived.utxos, `${path}.utxos`);
   return Object.freeze({
     txHash,
+    ...(transactionIndex === undefined ? {} : { transactionIndex }),
+    isValid: derived.isValid,
+    fullTransaction,
     body,
-    utxos,
+    witnessSet,
+    utxos: derived.utxos,
     scripts,
     datums,
     redeemers,
@@ -706,7 +1309,13 @@ const transactionJson = (
   transaction: WatcherL1TransactionV1,
 ): CanonicalJson => ({
   txHash: transaction.txHash,
+  ...(transaction.transactionIndex === undefined
+    ? {}
+    : { transactionIndex: transaction.transactionIndex }),
+  isValid: transaction.isValid,
+  fullTransaction: transaction.fullTransaction,
   body: transaction.body,
+  witnessSet: transaction.witnessSet,
   utxos: transaction.utxos,
   scripts: transaction.scripts,
   datums: transaction.datums,
@@ -727,6 +1336,7 @@ const contentJson = (input: {
   network: WatcherL1NetworkV1;
   pointDigest: string;
   blockHash: string;
+  parentBlockHash: string | null;
   slot: string;
   blockNo: string;
   transactions: readonly WatcherL1TransactionV1[];
@@ -734,6 +1344,7 @@ const contentJson = (input: {
   network: input.network,
   pointDigest: input.pointDigest,
   blockHash: input.blockHash,
+  parentBlockHash: input.parentBlockHash,
   slot: input.slot,
   blockNo: input.blockNo,
   transactions: input.transactions.map(transactionJson),
@@ -758,7 +1369,13 @@ export const encodeWatcherNormalizedL1BlockV1 = (
 export const normalizeWatcherL1BlockV1 = (
   authenticatedProviderInput: unknown,
   observationInput: unknown,
+  normalizationSession?: WatcherL1NormalizationSessionV1,
 ): WatcherNormalizedL1BlockV1 => {
+  const session =
+    normalizationSession === undefined
+      ? undefined
+      : (normalizationSessionStates.get(normalizationSession) ??
+        fail("invalid_field", "$.normalizationSession"));
   const provider = parseAuthenticatedProvider(authenticatedProviderInput);
   const observation = exactRecord(observationInput, "$", [
     "schemaVersion",
@@ -786,6 +1403,7 @@ export const normalizeWatcherL1BlockV1 = (
   }
   const point = exactRecord(observation.chainPoint, "$.chainPoint", [
     "blockHash",
+    "parentBlockHash",
     "slot",
     "blockNo",
     "depth",
@@ -795,25 +1413,52 @@ export const normalizeWatcherL1BlockV1 = (
     "$.chainPoint.blockHash",
     HEX_32,
   );
+  const parentBlockHash =
+    point.parentBlockHash === null
+      ? null
+      : exactString(
+          point.parentBlockHash,
+          "$.chainPoint.parentBlockHash",
+          HEX_32,
+        );
   const slot = exactNatural(point.slot, "$.chainPoint.slot");
   const blockNo = exactNatural(point.blockNo, "$.chainPoint.blockNo");
   const depth = exactNatural(point.depth, "$.chainPoint.depth");
-  const budget: ParseBudget = { publicBytes: 0 };
-  const transactions = freezeSortedUnique(
-    exactArray(observation.transactions, "$.transactions").map(
-      (transaction, index) =>
-        parseTransaction(
-          transaction,
-          `$.transactions[${index.toString()}]`,
-          budget,
-        ),
-    ),
-    "$.transactions",
-    (transaction) => transaction.txHash,
+  const budget: ParseBudget = { collectionMembers: 0, publicBytes: 0 };
+  const transactionInputs = preflightTransactionCollections(
+    observation.transactions,
+    budget,
   );
+  const transactions = transactionInputs.map((transaction, index) =>
+    parseTransaction(
+      transaction,
+      `$.transactions[${index.toString()}]`,
+      budget,
+      session,
+    ),
+  );
+  const transactionHashes = new Set<string>();
+  for (let index = 0; index < transactions.length; index += 1) {
+    const transaction = transactions[index]!;
+    if (transactionHashes.has(transaction.txHash)) {
+      fail("duplicate_identity", `$.transactions[${index.toString()}]`);
+    }
+    if (
+      transaction.transactionIndex !== undefined &&
+      transaction.transactionIndex !== index.toString()
+    ) {
+      fail(
+        "identity_mismatch",
+        `$.transactions[${index.toString()}].transactionIndex`,
+      );
+    }
+    transactionHashes.add(transaction.txHash);
+  }
+  Object.freeze(transactions);
   const pointDigest = digestCanonicalJson({
     network,
     blockHash,
+    parentBlockHash,
     slot,
     blockNo,
   });
@@ -826,6 +1471,7 @@ export const normalizeWatcherL1BlockV1 = (
     chainPointId,
     pointDigest,
     blockHash,
+    parentBlockHash,
     slot,
     blockNo,
     depth,
@@ -835,6 +1481,7 @@ export const normalizeWatcherL1BlockV1 = (
       network,
       pointDigest,
       blockHash,
+      parentBlockHash,
       slot,
       blockNo,
       transactions,
@@ -846,7 +1493,7 @@ export const normalizeWatcherL1BlockV1 = (
     chainPoint,
     blockContentDigest,
   });
-  return Object.freeze({
+  const normalized = Object.freeze({
     schemaVersion: WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
     network,
     provider,
@@ -855,4 +1502,6 @@ export const normalizeWatcherL1BlockV1 = (
     blockContentDigest,
     observationDigest,
   });
+  normalizedBlockProvenance.add(normalized);
+  return normalized;
 };

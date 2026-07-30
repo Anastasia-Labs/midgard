@@ -686,6 +686,7 @@ const makeCommitActiveOperatorRedeemer = ({
     )) satisfies BuildTxWithRedeemer;
 
 const submitCommitHeaderTx = async ({
+  emulator,
   lucid,
   contracts,
   anchor,
@@ -695,6 +696,7 @@ const submitCommitHeaderTx = async ({
   hubOracle,
   activeOperatorInput,
 }: {
+  readonly emulator: Emulator;
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly contracts: StateQueueTestContracts;
   readonly anchor: StateQueueUTxO;
@@ -708,6 +710,7 @@ const submitCommitHeaderTx = async ({
   readonly activeOperatorInput: UTxO;
 }> => {
   const continuedActiveOperatorDatum = Data.void();
+  const validityStartSlot = lucid.currentSlot() + 1;
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -721,6 +724,8 @@ const submitCommitHeaderTx = async ({
         schedulerRefInput: scheduler,
         additionalRefInputs: [hubOracle],
         activeOperatorInput,
+        validFrom: BigInt(lucid.slotToUnixTime(validityStartSlot)),
+        validTo: header.endTime + 1n,
         activeOperatorSpendRedeemer: makeCommitActiveOperatorRedeemer({
           contracts,
           operator,
@@ -740,6 +745,7 @@ const submitCommitHeaderTx = async ({
     ),
   );
   const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
+  await emulator.awaitSlot(1);
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
   await lucid.awaitTx(await commitSigned.submit());
 
@@ -913,8 +919,11 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    await emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const transactionsRoot = await buildTransactionsRoot();
     const header: HeaderType = {
@@ -956,6 +965,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const commit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -1058,8 +1068,11 @@ describe("state-queue emulator builders", () => {
       throw new Error("Expected emulator wallet to expose a payment key hash");
     }
     const operator = paymentCredential.hash;
+    // Lucid omits validity_start when it maps to slot zero. Advance one
+    // emulator slot so the real initializer receives a closed range.
+    await emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
-    const initValidTo = initValidFrom + 10_000n;
+    const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
     const firstHeader: HeaderType = {
       prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
@@ -1101,6 +1114,7 @@ describe("state-queue emulator builders", () => {
       utxoToStateQueueUTxO(setup.stateQueueRoot, contracts.stateQueue.policyId),
     );
     const firstCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: stateQueueRoot,
@@ -1121,6 +1135,7 @@ describe("state-queue emulator builders", () => {
       hashBlockHeaderV1(secondHeader),
     );
     const secondCommit = await submitCommitHeaderTx({
+      emulator,
       lucid,
       contracts,
       anchor: firstCommit.block,

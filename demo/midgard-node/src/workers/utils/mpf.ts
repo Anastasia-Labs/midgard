@@ -82,6 +82,7 @@ import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
 import {
   type ClassifiedWithdrawal,
   classifyWithdrawal,
+  indexSelectedLedgerOutputs,
 } from "./mpf/withdrawal-classification.js";
 import {
   type AuthenticatedPackedMpfRecord,
@@ -794,6 +795,16 @@ export const synchronizeCommitMpfStoresFromLedgerEntries = (
 > =>
   Effect.gen(function* () {
     const nodeConfig = yield* NodeConfig;
+    if (nodeConfig.MPF_ENGINE === "architecture_g") {
+      return yield* Effect.fail(
+        MpfError.create(
+          "architecture-g-owner",
+          new Error(
+            "Architecture G ledger ownership belongs to the live native owner; refusing to reopen its LevelDB path for persistent-store synchronization",
+          ),
+        ),
+      );
+    }
     const ledgerMpf = yield* MidgardMpf.create(
       "ledger",
       nodeConfig.LEDGER_MPF_DB_PATH,
@@ -1660,29 +1671,75 @@ const eventKeyFingerprint = (
 ): Effect.Effect<string, MpfError> =>
   eventKeyCbor(eventKey).pipe(Effect.map((encoded) => encoded.toString("hex")));
 
-export const indexTransitionTraceMembersByEventKey = (
-  members: readonly RetainedTransitionTraceMember[],
-): Effect.Effect<
-  ReadonlyMap<string, RetainedTransitionTraceMember>,
-  MpfError
-> =>
+export const validateValidationTraceEventKeySet = ({
+  expectedEventKeys,
+  transitionEventKeyCbors,
+  members,
+}: {
+  readonly expectedEventKeys: readonly SDK.EventKey[];
+  readonly transitionEventKeyCbors: ReadonlySet<string>;
+  readonly members: readonly Pick<
+    RetainedValidationTraceMember,
+    "eventKey" | "keyCbor"
+  >[];
+}): Effect.Effect<void, DatabaseError | MpfError> =>
   Effect.gen(function* () {
-    const byEventKey = new Map<string, RetainedTransitionTraceMember>();
-    for (const member of members) {
-      const fingerprint = yield* eventKeyFingerprint(member.value.event_key);
-      if (byEventKey.has(fingerprint)) {
+    const expected = new Set<string>();
+    for (const eventKey of expectedEventKeys) {
+      const keyHex = (yield* eventKeyCbor(eventKey)).toString("hex");
+      if (expected.has(keyHex)) {
         return yield* Effect.fail(
-          MpfError.rootBuild(
-            "validation trace",
-            new Error(
-              `Transition trace contains duplicate event key ${fingerprint}`,
-            ),
-          ),
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Validation trace inputs contain a duplicate canonical event key",
+            cause: `event_key_cbor=${keyHex}`,
+          }),
         );
       }
-      byEventKey.set(fingerprint, member);
+      expected.add(keyHex);
     }
-    return byEventKey;
+    if (members.length !== expected.size) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Validation trace provider returned the wrong descriptor count",
+          cause: `expected=${expected.size.toString()},actual=${members.length.toString()}`,
+        }),
+      );
+    }
+
+    const seen = new Set<string>();
+    for (const member of members) {
+      const keyHex = member.keyCbor.toString("hex");
+      if (
+        seen.has(keyHex) ||
+        !expected.has(keyHex) ||
+        !transitionEventKeyCbors.has(keyHex) ||
+        !member.keyCbor.equals(yield* eventKeyCbor(member.eventKey))
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
+            cause: `event_key_cbor=${keyHex}`,
+          }),
+        );
+      }
+      seen.add(keyHex);
+    }
+    if (seen.size !== expected.size) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Validation trace provider omitted a required canonical event key",
+          cause: `expected=${expected.size.toString()},actual=${seen.size.toString()}`,
+        }),
+      );
+    }
   });
 
 const assertUniqueTransitionSourceEvents = (
@@ -3482,6 +3539,13 @@ export const processMpfs = (
       includedForcedTransactionEntries.map((entry) =>
         Buffer.from(entry[ForcedTransactionsDB.Columns.TX_ORDER_ID]),
       );
+    const shouldCheckPayloadRoot =
+      (config?.payloadRootCheck ?? "every_block") === "every_block";
+    const initialLedgerEntries =
+      config?.initialLedgerEntries ??
+      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
+    const selectedLedgerOutputs =
+      yield* indexSelectedLedgerOutputs(initialLedgerEntries);
 
     let includedWithdrawalEntries: readonly WithdrawalsDB.Entry[] = [];
     let classifiedWithdrawals: readonly ClassifiedWithdrawal[] = [];
@@ -3523,18 +3587,11 @@ export const processMpfs = (
           );
         }
 
-        const rawLedgerOutput = yield* MempoolLedgerDB.retrieveByTxOutRefs([
-          ledgerOutRef,
-        ]).pipe(
-          Effect.map((entries) => {
-            const entry = entries.find((candidate) =>
-              candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
-            );
-            return entry === undefined
-              ? Option.none<Buffer>()
-              : Option.some(Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]));
-          }),
-        );
+        const selectedLedgerOutput = selectedLedgerOutputs.get(ledgerOutRefHex);
+        const rawLedgerOutput =
+          selectedLedgerOutput === undefined
+            ? Option.none<Buffer>()
+            : Option.some(Buffer.from(selectedLedgerOutput));
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -3586,11 +3643,6 @@ export const processMpfs = (
         classified.ledgerOutRef.toString("hex"),
       ),
     );
-    const shouldCheckPayloadRoot =
-      (config?.payloadRootCheck ?? "every_block") === "every_block";
-    const initialLedgerEntries =
-      config?.initialLedgerEntries ??
-      (shouldCheckPayloadRoot ? yield* ConfirmedLedgerDB.retrieve : []);
     const orderedDecodedMempoolTxs =
       yield* orderDecodedMempoolTxsForLedgerApplication(decodedMempoolTxs);
 
@@ -4349,9 +4401,26 @@ export const processMpfs = (
         const validationTraceBuilder =
           config?.validationTraceBuilder ??
           buildDeterministicValidationTraceMembers;
-        const traceByEventKey = yield* indexTransitionTraceMembersByEventKey(
-          transitionTraceBuild.transitionTraceMembers,
-        );
+        const traceByEventKey = new Map<
+          string,
+          RetainedTransitionTraceMember
+        >();
+        for (const member of transitionTraceBuild.transitionTraceMembers) {
+          const keyHex = (yield* eventKeyCbor(member.value.event_key)).toString(
+            "hex",
+          );
+          if (traceByEventKey.has(keyHex)) {
+            return yield* Effect.fail(
+              new DatabaseError({
+                table: PendingBlockFinalizationsDB.tableName,
+                message:
+                  "Transition trace contains a duplicate validation-trace event key",
+                cause: `event_key_cbor=${keyHex}`,
+              }),
+            );
+          }
+          traceByEventKey.set(keyHex, member);
+        }
         const forcedByOrderId = new Map(
           classifiedForcedTransactionsV1.map((classified) => [
             classified.entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString(
@@ -4467,6 +4536,10 @@ export const processMpfs = (
               };
             }),
         );
+        const validationInputs = [
+          ...forcedValidationInputs,
+          ...normalValidationInputs,
+        ];
         const validationTraceMembers = yield* validationTraceBuilder({
           consensusProfile,
           blockEndTime: effectiveEndTime!,
@@ -4474,37 +4547,15 @@ export const processMpfs = (
           minFeeA: validation.minFeeA,
           minFeeB: validation.minFeeB,
           blockSlot: validation.slotForUnixTime(effectiveEndTime!.getTime()),
-          transactions: [...forcedValidationInputs, ...normalValidationInputs],
+          transactions: validationInputs,
         });
-        if (validationTraceMembers.length !== expectedValidationTraceCount) {
-          return yield* Effect.fail(
-            new DatabaseError({
-              table: PendingBlockFinalizationsDB.tableName,
-              message:
-                "Validation trace provider returned the wrong descriptor count",
-              cause: `expected=${expectedValidationTraceCount.toString()},actual=${validationTraceMembers.length.toString()}`,
-            }),
-          );
-        }
-        const seenEventKeys = new Set<string>();
-        for (const member of validationTraceMembers) {
-          const keyHex = member.keyCbor.toString("hex");
-          if (
-            seenEventKeys.has(keyHex) ||
-            !traceByEventKey.has(keyHex) ||
-            !member.keyCbor.equals(yield* eventKeyCbor(member.eventKey))
-          ) {
-            return yield* Effect.fail(
-              new DatabaseError({
-                table: PendingBlockFinalizationsDB.tableName,
-                message:
-                  "Validation trace provider returned a duplicate, foreign, or non-canonical event key",
-                cause: `event_key_cbor=${keyHex}`,
-              }),
-            );
-          }
-          seenEventKeys.add(keyHex);
-        }
+        yield* validateValidationTraceEventKeySet({
+          expectedEventKeys: validationInputs.map(
+            (transaction) => transaction.eventKey,
+          ),
+          transitionEventKeyCbors: new Set(traceByEventKey.keys()),
+          members: validationTraceMembers,
+        });
         const validationTracesRoot =
           validationTraceMembers.length === 0
             ? SDK.EMPTY_MERKLE_TREE_ROOT

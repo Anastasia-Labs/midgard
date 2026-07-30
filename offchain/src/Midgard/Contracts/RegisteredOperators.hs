@@ -18,7 +18,6 @@ import Convex.BuildTx (
   assetValue,
   execBuildTx,
   findIndexReference,
-  findIndexSpending,
   mintPlutus,
   payToScriptInlineDatum,
   setMinAdaDepositAll,
@@ -268,9 +267,6 @@ registerOperator
         $ \txBody ->
           RegisteredOperators.RegisterOperator
             { registeringOperator = transPubKeyHash operatorPkh
-            , rootInputIndex =
-                toInteger $
-                  findIndexSpending rootRegistryTxIn txBody
             , rootOutputIndex =
                 toInteger $
                   findOutputIndexWithAsset

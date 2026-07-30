@@ -20,12 +20,16 @@ export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
 
 export const FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT = 4;
 
+// Category IDs are the positional index in this list (see
+// `fraudProofsToIndexedValidators`), so new categories must be appended:
+// inserting one shifts the ID of every category after it.
 export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "doubleSpend",
   "nonExistentInput",
   "nonExistentInputNoIndex",
   "invalidRange",
   "transitionTrace",
+  "zeroInput",
   "validationTraceDispute",
 ] as const satisfies readonly (keyof FraudProofs)[];
 

@@ -21,6 +21,7 @@ import {
   formatCommitTimingBudget,
   makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
+  resolveCommitValidityInterval,
 } from "@/workers/utils/commit-end-time.js";
 import {
   type CommitTimingDueWork,
@@ -42,6 +43,7 @@ export type BuiltCommitTx = {
   readonly newHeader: SDK.HeaderV1;
   readonly newHeaderCbor: Buffer;
   readonly blockEndTimeMs: number;
+  readonly txValidFromMs: number;
   readonly txValidToMs: number;
   readonly signAndSubmitProgram: Effect.Effect<
     string,
@@ -99,16 +101,16 @@ export const buildUnsignedCommitTx = (
     const latestEndTime = Number(
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
-    const blockEndTimeMs = endDate.getTime();
+    const candidateEndTimeMs = endDate.getTime();
     if (
-      !Number.isSafeInteger(blockEndTimeMs) ||
-      blockEndTimeMs <= latestEndTime
+      !Number.isSafeInteger(candidateEndTimeMs) ||
+      candidateEndTimeMs <= latestEndTime
     ) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
           message:
             "Refusing to build a block with a non-monotonic semantic end-time",
-          cause: `block_end_time_ms=${String(blockEndTimeMs)},latest_end_time_ms=${latestEndTime.toString()}`,
+          cause: `candidate_end_time_ms=${String(candidateEndTimeMs)},latest_end_time_ms=${latestEndTime.toString()}`,
         }),
       );
     }
@@ -122,7 +124,7 @@ export const buildUnsignedCommitTx = (
       resolveAlignedCommitEndTime({
         lucid: lucid.api,
         latestEndTime,
-        candidateEndTime: blockEndTimeMs,
+        candidateEndTime: candidateEndTimeMs,
         nowMs: commitValidityResolutionNow,
         minimumFutureBufferMs: COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
       });
@@ -131,20 +133,17 @@ export const buildUnsignedCommitTx = (
       stage: string,
     ) =>
       maximumEndTimeMs !== undefined &&
-      commitValidityWindow.resolvedEndTime > maximumEndTimeMs
+      commitValidityWindow.resolvedEndTime - 1 > maximumEndTimeMs
         ? Effect.fail(
             new SDK.StateQueueError({
               message:
                 "Resolved commit transaction validity exceeds the selected scheduler window cap",
-              cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},block_end_time_ms=${blockEndTimeMs.toString()},aligned_candidate_end_time_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_end_time_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_end_time_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
+              cause: `stage=${stage},resolved_valid_to_ms=${commitValidityWindow.resolvedEndTime.toString()},resolved_header_end_time_ms=${(commitValidityWindow.resolvedEndTime - 1).toString()},maximum_end_time_ms=${maximumEndTimeMs.toString()},candidate_end_time_ms=${candidateEndTimeMs.toString()},aligned_candidate_valid_to_ms=${commitValidityWindow.alignedCandidateEndTime.toString()},minimum_monotonic_valid_to_ms=${commitValidityWindow.minimumMonotonicEndTime.toString()},minimum_current_time_valid_to_ms=${commitValidityWindow.minimumCurrentTimeEndTime.toString()}`,
             }),
           )
         : Effect.void;
     let commitValidityWindow = resolveCommitValidityWindow();
-    yield* enforceCommitValidityCap(
-      commitValidityWindow,
-      "initial_resolution",
-    );
+    yield* enforceCommitValidityCap(commitValidityWindow, "initial_resolution");
     let witnessContext: RealStateQueueWitnessContext | undefined;
     let lastFailedBudget: CommitTimingBudget | undefined;
     for (
@@ -162,7 +161,7 @@ export const buildUnsignedCommitTx = (
         commitValidityResolutionNow = anchoredNowMs();
         const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low before witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preWitnessBudget)},block_end=${blockEndTimeMs},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low before witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preWitnessBudget)},candidate_end=${candidateEndTimeMs},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
         yield* enforceCommitValidityCap(
           refreshedCommitValidityWindow,
@@ -200,7 +199,7 @@ export const buildUnsignedCommitTx = (
         commitValidityResolutionNow = anchoredNowMs();
         const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low after witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preBuildBudget)},block_end=${blockEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low after witness assembly; rebuilding with refreshed transaction validity (${formatCommitTimingBudget(preBuildBudget)},candidate_end=${candidateEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
         yield* enforceCommitValidityCap(
           refreshedCommitValidityWindow,
@@ -215,9 +214,17 @@ export const buildUnsignedCommitTx = (
         minimumMonotonicEndTime,
         resolvedEndTime: txValidToMs,
       } = commitValidityWindow;
+      const {
+        validFromMs: txValidFromMs,
+        inclusiveUpperBoundMs: blockEndTimeMs,
+      } = resolveCommitValidityInterval({
+        lucid: lucid.api,
+        submitSlotSnapshot: initialSubmitSlotSnapshot,
+        validToMs: txValidToMs,
+      });
       if (txValidToMs !== alignedCandidateEndTime) {
         yield* Effect.logWarning(
-          `Adjusted commit transaction validity without changing the committed block context (block_end=${blockEndTimeMs},candidate_valid_to=${alignedCandidateEndTime},minimum=${minimumMonotonicEndTime},selected_valid_to=${txValidToMs},latest_block_end=${latestEndTime}).`,
+          `Adjusted commit transaction validity and bound the committed header to its inclusive upper bound (candidate_end=${candidateEndTimeMs},header_end=${blockEndTimeMs},candidate_valid_to=${alignedCandidateEndTime},minimum=${minimumMonotonicEndTime},selected_valid_from=${txValidFromMs},selected_valid_to=${txValidToMs},latest_block_end=${latestEndTime}).`,
         );
       }
       yield* enforceCommitValidityCap(
@@ -257,6 +264,7 @@ export const buildUnsignedCommitTx = (
           latestBlock,
           updatedNodeDatum,
           newHeader,
+          validFrom: txValidFromMs,
           validTo: txValidToMs,
           witness: witnessContext,
           headerNodeLovelace: STATE_QUEUE_HEADER_NODE_LOVELACE,
@@ -277,7 +285,7 @@ export const buildUnsignedCommitTx = (
         commitValidityResolutionNow = anchoredNowMs();
         const refreshedCommitValidityWindow = resolveCommitValidityWindow();
         yield* Effect.logWarning(
-          `Commit timing budget too low before submission; rebuilding transaction validity before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},block_end=${blockEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
+          `Commit timing budget too low before submission; rebuilding transaction validity before pending journal preparation (${formatCommitTimingBudget(preSubmitBudget)},candidate_end=${candidateEndTimeMs},previous_valid_to=${commitValidityWindow.resolvedEndTime},next_valid_to=${refreshedCommitValidityWindow.resolvedEndTime},attempt=${stabilizationAttempts}/${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS}).`,
         );
         yield* enforceCommitValidityCap(
           refreshedCommitValidityWindow,
@@ -333,6 +341,7 @@ export const buildUnsignedCommitTx = (
           "hex",
         ),
         blockEndTimeMs,
+        txValidFromMs,
         txValidToMs,
         signAndSubmitProgram,
         txSize,
@@ -343,7 +352,7 @@ export const buildUnsignedCommitTx = (
       new SDK.StateQueueError({
         message:
           "Failed to stabilize the commit timing budget before building the block commitment transaction",
-        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},block_end_time_ms=${blockEndTimeMs.toString()},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_valid_to_ms=${commitValidityWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,
+        cause: `attempts=${COMMIT_WINDOW_STABILIZATION_MAX_ATTEMPTS},candidate_end_time_ms=${candidateEndTimeMs.toString()},last_failed_checkpoint=${lastFailedBudget?.checkpoint ?? "none"},last_selected_valid_to_ms=${commitValidityWindow.resolvedEndTime},last_budget=${lastFailedBudget === undefined ? "none" : formatCommitTimingBudget(lastFailedBudget)},witness_context=${witnessContext === undefined ? "missing" : "present"},clock_anchor_observed_at_ms=${initialSubmitSlotSnapshot.observedAtMs},clock_now_ms=${anchoredNowMs()}`,
       }),
     );
   });

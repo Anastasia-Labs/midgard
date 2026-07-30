@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { Lucid } from "@lucid-evolution/lucid";
+
 import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
@@ -30,6 +32,11 @@ import {
   validateArchitectureGSourceFileList,
   validateCommitCandidateProbeResult,
 } from "./mpf-architecture-g-gate-config.mjs";
+import {
+  buildNodeSlotConfigEvidenceV1,
+  fetchOgmiosGenesisPayloadV1,
+  readNodeSlotConfigEvidenceV1,
+} from "./node-slot-config-evidence.mjs";
 
 test("candidate gate requires exact root-gate source identity", () => {
   const identity = {
@@ -1287,7 +1294,7 @@ test("numeric arguments reject partial, unsafe, zero, and negative values", () =
   }
 });
 
-const candidateInputDocument = () => {
+const candidateInputDocument = (forcedValidationSlotConfigArtifact) => {
   const submittedTxHash = hash(124);
   const blockEndTimeMs = 1_700_000_000_000;
   return {
@@ -1309,11 +1316,15 @@ const candidateInputDocument = () => {
       entryCount: 1_000_000,
       encodedTupleBytes: 80_000_000,
     },
+    forcedValidationSlotConfigArtifact,
     workerInput: {
       data: {
         availableConfirmedBlock: "",
         availableLocalFinalizationBlock: "",
         currentBlockStartTimeMs: blockEndTimeMs,
+        forcedValidationSlotConfig: structuredClone(
+          forcedValidationSlotConfigArtifact.document.slotConfig,
+        ),
         localFinalizationPending: false,
         ledgerStoreLeaseOwner: "commit:123e4567-e89b-42d3-a456-426614174000",
         mempoolTxsCountSoFar: 0,
@@ -1344,42 +1355,238 @@ const candidateInputDocument = () => {
 };
 
 test("candidate input validator accepts only the complete producer language", () => {
-  const valid = candidateInputDocument();
-  assert.equal(validateArchitectureGCommitCandidateInputV1(valid), valid);
-  for (const mutate of [
-    (value) => void (value.unknown = true),
-    (value) => void (value.phase1FormalBinding.unknown = true),
-    (value) => void (value.runtimeIdentity.unknown = true),
-    (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
-    (value) => void (value.workerInput.unknown = true),
-    (value) => void (value.workerInput.data.unknown = true),
-    (value) => void delete value.workerInput.data.ledgerStoreLeaseOwner,
-    (value) =>
-      void (value.workerInput.data.ledgerStoreLeaseOwner = "commit:shared"),
-    (value) => void (value.workerInput.data.speculativeBuild.unknown = true),
-    (value) =>
-      void (value.workerInput.data.speculativeBuild.base.unknown = true),
-    (value) =>
-      void (value.workerInput.data.speculativeBuild.watermarks.unknown = true),
-    (value) =>
-      void (value.workerInput.data.speculativeBuild.base.headerHash = hash(1)),
-    (value) =>
-      void (value.workerInput.data.speculativeBuild.base.utxosRoot = "bad"),
-    (value) =>
-      void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
-        hash(2),
-      ),
-    (value) => void (value.levelPath = "relative/fixture"),
-    (value) => void (value.corpusSha256 = hash(3)),
-    (value) => void (value.baseUtxoPayloadAggregate.entryCount = 999_999),
-    (value) =>
-      void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
-        value.workerInput.data.currentBlockStartTimeMs),
-  ]) {
-    const invalid = structuredClone(valid);
-    mutate(invalid);
-    assert.throws(() => validateArchitectureGCommitCandidateInputV1(invalid));
+  const directory = mkdtempSync(join(tmpdir(), "midgard-slot-config-"));
+  const artifactPath = join(directory, "slot-config.json");
+  const document = {
+    schemaVersion: "midgard-node-slot-config-evidence-v1",
+    capturedAtIso: "2026-07-28T00:00:00.000Z",
+    network: "Preprod",
+    source: { kind: "lucid_network_table", lucidVersion: "0.6.0" },
+    slotConfig: {
+      zeroTime: 1_655_769_600_000,
+      zeroSlot: 86_400,
+      slotLength: 1_000,
+    },
+  };
+  const artifactBytes = Buffer.from(`${JSON.stringify(document)}\n`);
+  writeFileSync(artifactPath, artifactBytes);
+  const artifact = {
+    path: artifactPath,
+    sha256: createHash("sha256").update(artifactBytes).digest("hex"),
+    document,
+  };
+  const valid = candidateInputDocument(artifact);
+  try {
+    assert.equal(validateArchitectureGCommitCandidateInputV1(valid), valid);
+    for (const mutate of [
+      (value) => void (value.unknown = true),
+      (value) => void (value.phase1FormalBinding.unknown = true),
+      (value) => void (value.runtimeIdentity.unknown = true),
+      (value) => void (value.baseUtxoPayloadAggregate.unknown = true),
+      (value) => void (value.workerInput.unknown = true),
+      (value) => void (value.workerInput.data.unknown = true),
+      (value) => void delete value.workerInput.data.ledgerStoreLeaseOwner,
+      (value) =>
+        void (value.workerInput.data.ledgerStoreLeaseOwner = "commit:shared"),
+      (value) => void (value.workerInput.data.speculativeBuild.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.watermarks.unknown = true),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.headerHash =
+          hash(1)),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.base.utxosRoot = "bad"),
+      (value) =>
+        void value.workerInput.data.speculativeBuild.excludedMempoolTxIds.push(
+          hash(2),
+        ),
+      (value) => void (value.levelPath = "relative/fixture"),
+      (value) => void (value.corpusSha256 = hash(3)),
+      (value) => void (value.baseUtxoPayloadAggregate.entryCount = 999_999),
+      (value) =>
+        void (value.workerInput.data.forcedValidationSlotConfig.slotLength = 2_000),
+      (value) =>
+        void (value.forcedValidationSlotConfigArtifact.document.slotConfig.slotLength = 2_000),
+      (value) =>
+        void (value.forcedValidationSlotConfigArtifact.sha256 = hash(4)),
+      (value) =>
+        void (value.workerInput.data.speculativeBuild.watermarks.depositMs =
+          value.workerInput.data.currentBlockStartTimeMs),
+    ]) {
+      const invalid = structuredClone(valid);
+      mutate(invalid);
+      assert.throws(() => validateArchitectureGCommitCandidateInputV1(invalid));
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("node slot-config evidence pins Lucid tables and Custom Ogmios genesis identity", async () => {
+  for (const network of ["Mainnet", "Preview", "Preprod"]) {
+    const lucid = await Lucid(undefined, network);
+    const document = buildNodeSlotConfigEvidenceV1({
+      network,
+      capturedAtIso: "2026-07-28T00:00:00.000Z",
+    });
+    assert.deepEqual(document.slotConfig, lucid.config().slotConfig);
+  }
+
+  const directory = mkdtempSync(join(tmpdir(), "midgard-slot-genesis-"));
+  try {
+    const ogmiosGenesisPayload = {
+      jsonrpc: "2.0",
+      result: {
+        startTime: "2026-07-28T00:00:00.000Z",
+        slotLength: { milliseconds: 1_000 },
+      },
+      id: "midgard-node-slot-config-evidence",
+    };
+    const document = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      ogmiosGenesisPayload,
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.deepEqual(document.slotConfig, {
+      zeroTime: 1_785_196_800_000,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    });
+
+    const artifactPath = join(directory, "slot-config.json");
+    const artifactBytes = Buffer.from(`${JSON.stringify(document)}\n`);
+    writeFileSync(artifactPath, artifactBytes);
+    assert.deepEqual(
+      readNodeSlotConfigEvidenceV1({
+        path: artifactPath,
+        expectedSha256: createHash("sha256")
+          .update(artifactBytes)
+          .digest("hex"),
+      }),
+      document,
+    );
+
+    const reorderedDocument = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "http://127.0.0.1:1337",
+      ogmiosGenesisPayload: {
+        id: "midgard-node-slot-config-evidence",
+        result: {
+          slotLength: { milliseconds: 1_000 },
+          startTime: "2026-07-28T00:00:00.000Z",
+        },
+        jsonrpc: "2.0",
+      },
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.deepEqual(reorderedDocument.source, document.source);
+
+    const alternateGenesis = buildNodeSlotConfigEvidenceV1({
+      network: "Custom",
+      ogmiosUrl: "http://127.0.0.1:1337",
+      ogmiosGenesisPayload: {
+        ...ogmiosGenesisPayload,
+        result: {
+          ...ogmiosGenesisPayload.result,
+          startTime: "2026-07-28T00:00:01.000Z",
+        },
+      },
+      capturedAtIso: "2026-07-28T00:01:00.000Z",
+    });
+    assert.notEqual(
+      alternateGenesis.source.configurationSha256,
+      document.source.configurationSha256,
+    );
+    assert.throws(
+      () =>
+        buildNodeSlotConfigEvidenceV1({
+          network: "Custom",
+          capturedAtIso: "2026-07-28T00:01:00.000Z",
+        }),
+      /requires an Ogmios URL and genesis response/u,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Custom slot-config capture bounds Ogmios response time and bytes", async () => {
+  const oversized = JSON.stringify({
+    jsonrpc: "2.0",
+    result: { padding: "x".repeat(256) },
+    id: "midgard-node-slot-config-evidence",
+  });
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      maxResponseBytes: 64,
+      fetchImpl: async () =>
+        new Response(oversized, {
+          status: 200,
+          headers: { "content-length": String(Buffer.byteLength(oversized)) },
+        }),
+    }),
+    /response exceeds 64 bytes/u,
+  );
+
+  let cancelled = false;
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      maxResponseBytes: 64,
+      fetchImpl: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(Buffer.alloc(40));
+              controller.enqueue(Buffer.alloc(40));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          }),
+          { status: 200 },
+        ),
+    }),
+    /response exceeds 64 bytes/u,
+  );
+  assert.equal(cancelled, true);
+
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: "ws://127.0.0.1:1337/",
+      timeoutMs: 10,
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init.signal.addEventListener(
+            "abort",
+            () => reject(init.signal.reason),
+            { once: true },
+          );
+        }),
+    }),
+    /timed out after 10 ms/u,
+  );
+
+  const credentialBearingUrl =
+    "http://user:SUPERSECRET@127.0.0.1:9/?token=QUERYSECRET";
+  await assert.rejects(
+    fetchOgmiosGenesisPayloadV1({
+      ogmiosUrl: credentialBearingUrl,
+      fetchImpl: async (url) => {
+        throw new Error(`connect failed for ${url}`);
+      },
+    }),
+    (error) => {
+      assert.equal(error.message, "Ogmios genesis query transport failed");
+      assert.equal(error.message.includes("SUPERSECRET"), false);
+      assert.equal(error.message.includes("QUERYSECRET"), false);
+      return true;
+    },
+  );
 });
 
 const candidateProbeResult = () => ({

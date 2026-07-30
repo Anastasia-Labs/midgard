@@ -8,10 +8,25 @@ import { describe, expect, it } from "vitest";
 import {
   buildRemoveFraudulentBlockCliConfig,
   isCliEntrypoint,
+  main,
   parseArgs,
 } from "../src/bin.js";
 
 describe("fault-proof CLI argument parsing", () => {
+  it("rejects the retired incompatible-output bypass", () => {
+    expect(() =>
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "prepare-double-spend",
+        "--sample-double-spend",
+        "--header-hash",
+        "11".repeat(28),
+        "--allow-incompatible-output",
+      ]),
+    ).toThrow("Unknown argument: --allow-incompatible-output");
+  });
+
   it("maps remove-fraudulent-block live-node lease flags into submission config", () => {
     const parsed = parseArgs([
       "node",
@@ -137,6 +152,17 @@ describe("fault-proof CLI argument parsing", () => {
     expect(validationTraceDisputeInit.fraudCategory).toBe(
       "validationTraceDispute",
     );
+
+    const nonExistentInputNoIndexInit = parseArgs([
+      "node",
+      "bin",
+      "submit-init",
+      "--fraud-category",
+      "nonExistentInputNoIndex",
+    ]);
+    expect(nonExistentInputNoIndexInit.fraudCategory).toBe(
+      "nonExistentInputNoIndex",
+    );
   });
 
   it("rejects unknown fault-proof categories", () => {
@@ -149,7 +175,27 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "validationTraceDispute", or "nonExistentInput"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "validationTraceDispute"',
+    );
+  });
+
+  it("rejects no-index removal until its removal machine is implemented", () => {
+    const parsed = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "remove-fraudulent-block",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--fraudulent-header-hash",
+      "11".repeat(28),
+      "--fraud-category",
+      "nonExistentInputNoIndex",
+    ]);
+
+    expect(() => buildRemoveFraudulentBlockCliConfig(parsed)).toThrow(
+      /does not yet support the nonExistentInputNoIndex proof machine/u,
     );
   });
 
@@ -252,6 +298,38 @@ describe("fault-proof CLI argument parsing", () => {
         "either",
       ]),
     ).toThrow(/must be either "operator" or "challenger"/u);
+  });
+
+  it("accepts the zeroInput fault-proof category", () => {
+    expect(
+      parseArgs([
+        "node",
+        "midgard-fault-proofs",
+        "submit-init",
+        "--fraud-category",
+        "zeroInput",
+      ]).fraudCategory,
+    ).toBe("zeroInput");
+  });
+
+  it("requires the counted header root for zero-input preparation", async () => {
+    const previousArgv = process.argv;
+    process.argv = [
+      "node",
+      "midgard-fault-proofs",
+      "prepare-zero-input",
+      "--transactions-file",
+      "block-transactions.json",
+      "--header-hash",
+      "33".repeat(28),
+    ];
+    try {
+      await expect(main()).rejects.toThrow(
+        "Missing required --expected-transactions-root <hex>.",
+      );
+    } finally {
+      process.argv = previousArgv;
+    }
   });
 
   it("parses non-existent-input prepare, init category, and submit-step arguments", () => {

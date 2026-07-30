@@ -27,8 +27,20 @@ jobs:
         run: |
           ./scripts/generate-user-events-witness-script-prefix.sh
           git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
-      - name: Run Aiken auto-formatter
-        run: aiken fmt --check
+      - name: Run normalized Aiken auto-formatter check
+        run: |
+          sha256sum --check protected-format-checkpoint.sha256
+          git ls-files -z '*.ak' \
+            ':!lib/midgard/cek-data-traverse-v1.ak' \
+            ':!lib/midgard/redeemer-item-proof-v1.ak' \
+            | xargs -0 aiken fmt
+          # Aiken 1.1.22 emits trailing spaces for monadic let/expect syntax.
+          # Normalize only that formatter artifact before comparing sources.
+          git ls-files -z '*.ak' \
+            ':!lib/midgard/cek-data-traverse-v1.ak' \
+            ':!lib/midgard/redeemer-item-proof-v1.ak' \
+            | xargs -0 sed -i 's/[[:space:]]\+$//'
+          git diff --name-only --exit-code -- '*.ak'
       - name: Compile Aiken code and run test suite
         run: aiken check
       - name: Check that aiken.lock is up-to-date

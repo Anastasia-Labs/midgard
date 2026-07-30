@@ -187,6 +187,19 @@ describe("midgard contracts registry", () => {
       expect(resolved.fraudProofs.doubleSpend.spendingScriptCBOR).not.toEqual(
         placeholderContracts.fraudProofs.doubleSpend.spendingScriptCBOR,
       );
+      expect(
+        resolved.fraudProofs.transitionTrace.spendingScriptCBOR,
+      ).not.toEqual(
+        placeholderContracts.fraudProofs.transitionTrace.spendingScriptCBOR,
+      );
+      expect(
+        resolved.fraudProofs.nonExistentInput.spendingScriptCBOR,
+      ).not.toEqual(
+        placeholderContracts.fraudProofs.nonExistentInput.spendingScriptCBOR,
+      );
+      expect(resolved.fraudProofs.zeroInput.spendingScriptCBOR).not.toEqual(
+        placeholderContracts.fraudProofs.zeroInput.spendingScriptCBOR,
+      );
       const validationControlHashes = [
         resolved.fraudProofs.validationTraceDispute.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.source.spendingScriptHash,

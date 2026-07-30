@@ -456,9 +456,26 @@ pnpm run bench:mpf:architecture-g:growth -- \
 
 Prepare one production candidate input per fixture. Each input is SHA-bound to
 the final binary, original corpus, selected slice, funding map, durable fixture
-marker, and recorded aggregate.
+marker, recorded aggregate, and the node-selected slot mapping. Capture the
+slot mapping once from the same network configuration as the candidate run.
+For `Custom`, capture queries the same configured Ogmios endpoint used by the
+node and binds both its normalized endpoint identity and canonical Shelley
+genesis response.
 
 ```bash
+SLOT_CONFIG_ARTIFACT="$RUN/node-slot-config.json"
+if [ "$NETWORK" = "Custom" ]; then
+  pnpm run capture:slot-config -- \
+    --network="$NETWORK" \
+    --ogmios-url="$L1_OGMIOS_KEY" \
+    --out="$SLOT_CONFIG_ARTIFACT"
+else
+  pnpm run capture:slot-config -- \
+    --network="$NETWORK" \
+    --out="$SLOT_CONFIG_ARTIFACT"
+fi
+SLOT_CONFIG_ARTIFACT_SHA256="$(sha256sum "$SLOT_CONFIG_ARTIFACT" | cut -d' ' -f1)"
+
 prepare_candidate() {
   mode="$1"; txs="$2"; size="$3"
   dir="$RUN/$mode"
@@ -476,6 +493,9 @@ prepare_candidate() {
     --transactions="$txs" \
     --aggregate-entry-count="$(jq -r '.utxoPayloadAggregate.entryCount' "$fixture_json")" \
     --aggregate-tuple-bytes="$(jq -r '.utxoPayloadAggregate.encodedTupleBytes' "$fixture_json")" \
+    --network="$NETWORK" \
+    --slot-config-artifact="$SLOT_CONFIG_ARTIFACT" \
+    --slot-config-artifact-sha256="$SLOT_CONFIG_ARTIFACT_SHA256" \
     --out="$input_dir"
 }
 
@@ -484,6 +504,15 @@ prepare_candidate growth 10000 100000
 prepare_candidate growth 10000 300000
 prepare_candidate growth 10000 1000000
 ```
+
+The captured document is byte-bound by SHA-256. Mainnet, Preview, and Preprod
+must equal Lucid `0.6.0`'s immutable network table. `Custom` is derived from and
+binds the canonical genesis response and normalized identity of the configured
+Ogmios endpoint. The production probe compares the document network with
+`NodeConfig.NETWORK`; for `Custom` it re-queries that exact endpoint and
+requires the same canonical genesis digest before the provider-free candidate
+build begins. Candidate construction embeds the verified mapping as plain data
+and does not acquire an L1 provider.
 
 Use dedicated benchmark databases. These names satisfy the seed command's
 fail-closed allow-list and never point at the live `midgard` database.

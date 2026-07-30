@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import {
+  buildMidgardValidationTraceTree,
+  MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
+} from "@al-ft/midgard-core";
+import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
@@ -22,6 +26,7 @@ import { readValidationDisputeCborFile } from "../src/validation-dispute/from-fi
 import {
   encodeValidationDirectResolveSpendRedeemerV1,
   encodeValidationSemanticResolutionRedeemerV1,
+  openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
   requireValidationItemSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
@@ -139,6 +144,82 @@ describe("validation-dispute transaction validity", () => {
         expectedScriptHash: scriptHash,
       }),
     ).toThrow(/script hash mismatch/u);
+  });
+
+  it("starts the response deadline at the authenticated source upper bound", () => {
+    const operator = buildMidgardValidationTraceTree(
+      [Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 3)],
+      "accepted",
+    );
+    const challenger = buildMidgardValidationTraceTree(
+      [Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 4)],
+      "accepted",
+    );
+    const sourceValidityRange = {
+      validFrom: 1_000_000,
+      validTo: 1_000_101,
+    };
+
+    const dispute = openValidationDisputeAfterSourceVerification({
+      operatorDescriptor: operator.descriptor,
+      challengerDescriptor: challenger.descriptor,
+      openTimeUpper: 1_000_000n,
+      challengedBlockEndTime: 1_000_000n,
+      sourceValidityRange,
+    });
+
+    expect(dispute.responseDeadline).toBe(
+      sourceValidityRange.validTo -
+        1 +
+        MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
+    );
+  });
+
+  it("rejects absent, invalid, time-travelling, and stale source timing", () => {
+    const operator = buildMidgardValidationTraceTree(
+      [Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 3)],
+      "accepted",
+    );
+    const challenger = buildMidgardValidationTraceTree(
+      [Buffer.alloc(32, 1), Buffer.alloc(32, 2), Buffer.alloc(32, 4)],
+      "accepted",
+    );
+    const base = {
+      operatorDescriptor: operator.descriptor,
+      challengerDescriptor: challenger.descriptor,
+      openTimeUpper: 1_000_000n,
+      challengedBlockEndTime: 1_000_000n,
+    };
+
+    expect(() =>
+      openValidationDisputeAfterSourceVerification({
+        ...base,
+        sourceValidityRange: undefined as never,
+      }),
+    ).toThrow(/validity range/u);
+    expect(() =>
+      openValidationDisputeAfterSourceVerification({
+        ...base,
+        sourceValidityRange: { validFrom: 1_000_000, validTo: 1_000_000 },
+      }),
+    ).toThrow(/validity range/u);
+    expect(() =>
+      openValidationDisputeAfterSourceVerification({
+        ...base,
+        openTimeUpper: 1_000_100n,
+        sourceValidityRange: { validFrom: 999_900, validTo: 1_000_001 },
+      }),
+    ).toThrow(/cannot precede/u);
+    expect(() =>
+      openValidationDisputeAfterSourceVerification({
+        ...base,
+        challengedBlockEndTime: 0n,
+        sourceValidityRange: {
+          validFrom: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs - 100,
+          validTo: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs + 1,
+        },
+      }),
+    ).toThrow(/cannot complete before the challenged block matures/u);
   });
 
   it("hashes exact canonical one-step evidence and rejects ambiguous data", () => {

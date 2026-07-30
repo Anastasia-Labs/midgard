@@ -1,7 +1,7 @@
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
@@ -15,6 +15,7 @@ import type {
   DaStoredPayloadRootSetV1,
   HeaderV1,
 } from "../src/domain.js";
+import type { ChainSyncCursor, ChainSyncEvent } from "../src/l1/provider.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
 import {
   loadDaSigner,
@@ -22,7 +23,10 @@ import {
   validateDaCommittee,
   validateDaSignerMembership,
 } from "../src/signer.js";
-import { JsonFileWatcherStore } from "../src/store.js";
+import {
+  DECISION_EFFECT_PENDING_LEASE_MS,
+  JsonFileWatcherStore,
+} from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { WatcherService } from "../src/watcher.js";
 import {
@@ -32,6 +36,21 @@ import {
   payloadSourceFromBytes,
   tempDir,
 } from "./helpers.js";
+
+const openStores = new Set<JsonFileWatcherStore>();
+
+const openJsonWatcherStore = async (
+  path: string,
+): Promise<JsonFileWatcherStore> => {
+  const store = await JsonFileWatcherStore.open(path);
+  openStores.add(store);
+  return store;
+};
+
+afterEach(async () => {
+  await Promise.all([...openStores].map(async (store) => store.close()));
+  openStores.clear();
+});
 
 const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
@@ -117,7 +136,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const service = new WatcherService({
       config: configWithDaHash,
@@ -171,6 +190,329 @@ describe("WatcherService", () => {
     });
   });
 
+  it("durably begins signature effects before publish and replays one deterministic effect after an acknowledgement crash", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "61";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstStore = await openJsonWatcherStore(dir);
+    const completeDecisionEffect =
+      firstStore.completeDecisionEffect.bind(firstStore);
+    let failAcknowledgement = true;
+    firstStore.completeDecisionEffect = async (args) => {
+      if (failAcknowledgement) {
+        failAcknowledgement = false;
+        throw new Error("simulated crash after publish before durable ack");
+      }
+      await completeDecisionEffect(args);
+    };
+    const publishedWitnesses: string[] = [];
+    const first = new WatcherService({
+      config: configured,
+      store: firstStore,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+      coordinator: {
+        publishSignature: async (signature) => {
+          publishedWitnesses.push(signature.signatureWitness);
+          await expect(
+            firstStore.listDecisionOutbox(headerHash),
+          ).resolves.toMatchObject([
+            {
+              effectKind: "signature_publish",
+              status: "pending",
+              attemptCount: 1,
+            },
+          ]);
+          await expect(firstStore.getL1SourceState()).resolves.toMatchObject({
+            status: "healthy",
+            observations: [{ headerHash, hasPersistedDecision: true }],
+          });
+          await expect(
+            firstStore.getDaSignature({ headerHash, signerIndex: 0 }),
+          ).resolves.toMatchObject({
+            headerHash,
+            broadcastStatus: "local",
+          });
+          return "posted";
+        },
+      },
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({
+      errors: [
+        expect.stringContaining(
+          "simulated crash after publish before durable ack",
+        ),
+      ],
+    });
+    await expect(
+      firstStore.listDecisionOutbox(headerHash),
+    ).resolves.toMatchObject([
+      {
+        effectKind: "signature_publish",
+        status: "pending",
+        attemptCount: 1,
+      },
+    ]);
+
+    await firstStore.close();
+    const restartedStore = await openJsonWatcherStore(dir);
+    const restarted = new WatcherService({
+      config: configured,
+      store: restartedStore,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: failPayloadSource(
+        "durable local signature must suppress payload refetch",
+      ),
+      signer,
+      signerValidation,
+      coordinator: {
+        publishSignature: async (signature) => {
+          publishedWitnesses.push(signature.signatureWitness);
+          return "posted";
+        },
+      },
+      now: () =>
+        new Date(Date.now() + DECISION_EFFECT_PENDING_LEASE_MS + 1_000),
+    });
+    await restarted.initialize();
+    await expect(restarted.tick()).resolves.toMatchObject({
+      signedHeaders: 0,
+      skippedHeaders: 1,
+      errors: [],
+    });
+    expect(publishedWitnesses).toHaveLength(2);
+    expect(new Set(publishedWitnesses)).toHaveLength(1);
+    await expect(
+      restartedStore.listDecisionOutbox(headerHash),
+    ).resolves.toMatchObject([
+      {
+        effectKind: "signature_publish",
+        status: "published",
+        attemptCount: 2,
+      },
+    ]);
+  });
+
+  it("allows only one watcher worker to own a pending external effect", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "62";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const store = await openJsonWatcherStore(dir);
+    let publishCalls = 0;
+    let enteredPublish!: () => void;
+    let releasePublish!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enteredPublish = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releasePublish = resolve;
+    });
+    const coordinator = {
+      publishSignature: async () => {
+        publishCalls += 1;
+        enteredPublish();
+        await released;
+        return "posted" as const;
+      },
+    };
+    const service = () =>
+      new WatcherService({
+        config: configured,
+        store,
+        stateQueueProvider: {
+          fetchStateQueueNodes: async () => [
+            makeObservedNode({ header, headerHash, depth: 10 }),
+          ],
+        },
+        payloadSource: payloadSourceFromBytes(payloadCbor),
+        signer,
+        signerValidation,
+        coordinator,
+      });
+    const first = service();
+    const second = service();
+    await first.initialize();
+    await second.initialize();
+    const firstTick = first.tick();
+    await entered;
+    await expect(second.tick()).rejects.toThrow(
+      /pending attempt lease has not expired/u,
+    );
+    expect(publishCalls).toBe(1);
+    releasePublish();
+    await expect(firstTick).resolves.toMatchObject({
+      signedHeaders: 1,
+      errors: [],
+    });
+    expect(publishCalls).toBe(1);
+  });
+
+  it("accepts the canonical unattested-to-attested state queue replacement", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "31";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstOutRef = `${"ab".repeat(32)}#0`;
+    const attestedOutRef = `${"ac".repeat(32)}#1`;
+    let sourceView: "unattested" | "attested" | "missing" = "unattested";
+    const store = await openJsonWatcherStore(dir);
+    const service = new WatcherService({
+      config: configured,
+      store,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () =>
+          sourceView === "missing"
+            ? []
+            : [
+                sourceView === "attested"
+                  ? makeObservedNode({
+                      header,
+                      headerHash,
+                      daAttestation: configured.daAttestationPolicyId,
+                      outRef: attestedOutRef,
+                      slot: 2,
+                      blockHash: "de".repeat(32),
+                      depth: 10,
+                    })
+                  : makeObservedNode({
+                      header,
+                      headerHash,
+                      outRef: firstOutRef,
+                      slot: 1,
+                      depth: 10,
+                    }),
+              ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+      coordinator: {
+        publishSignature: async () => "posted",
+      },
+    });
+    await service.initialize();
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 1,
+      errors: [],
+    });
+
+    sourceView = "attested";
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 1,
+      signedHeaders: 0,
+      skippedHeaders: 1,
+      errors: [],
+    });
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [
+        {
+          headerHash,
+          stateQueueOutRef: attestedOutRef,
+          stateQueueStatus: "attested",
+          slot: 2,
+          blockHash: "de".repeat(32),
+          hasPersistedDecision: true,
+        },
+      ],
+    });
+
+    sourceView = "missing";
+    await expect(service.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      signedHeaders: 0,
+      errors: [expect.stringContaining("decision_disappeared")],
+    });
+    await expect(store.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining("decision_disappeared"),
+      observations: [
+        {
+          headerHash,
+          stateQueueStatus: "attested",
+          stateQueueOutRef: attestedOutRef,
+        },
+      ],
+    });
+  });
+
   it("fails readiness after a scanner tick failure", async () => {
     const dir = await tempDir();
     const seed = "00".repeat(31) + "01";
@@ -182,7 +524,7 @@ describe("WatcherService", () => {
       signerSeed: seed,
       signerPublicKey: signer.publicKeyHex,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const service = new WatcherService({
       config,
       store,
@@ -204,6 +546,456 @@ describe("WatcherService", () => {
       },
       reasons: ["last state queue scanner tick failed"],
     });
+  });
+
+  it("persists L1 disappearance quarantine across restart and prevents processing or rebroadcast", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "21";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configWithDaHash = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configWithDaHash.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstStore = await openJsonWatcherStore(dir);
+    const first = new WatcherService({
+      config: configWithDaHash,
+      store: firstStore,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+      coordinator: {
+        publishSignature: async () => "posted",
+      },
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ signedHeaders: 1 });
+    await expect(firstStore.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [{ headerHash, hasPersistedDecision: true }],
+    });
+    await firstStore.saveL1Submission({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      headerHash,
+      txKind: "init",
+      txHash: "71".repeat(32),
+      inputsUsed: [],
+      submittedAt: "2026-07-28T00:00:00.000Z",
+      resultStatus: "submitted",
+    });
+    await firstStore.savePeerBroadcast({
+      deploymentFingerprint: configWithDaHash.deploymentFingerprint,
+      peerId: "peer-a",
+      headerHash,
+      signerIndex: 0,
+      status: "pending",
+      attempts: 1,
+      nextAttemptAt: "2026-07-28T00:01:00.000Z",
+      updatedAt: "2026-07-28T00:00:00.000Z",
+    });
+
+    await firstStore.close();
+    const restartedStore = await openJsonWatcherStore(dir);
+    const disappeared = new WatcherService({
+      config: configWithDaHash,
+      store: restartedStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("quarantine must suppress DA fetch"),
+      signer,
+      signerValidation,
+    });
+    await disappeared.initialize();
+    await expect(disappeared.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      signedHeaders: 0,
+      errors: [expect.stringContaining("decision_disappeared")],
+    });
+    await expect(restartedStore.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining("decision_disappeared"),
+    });
+    await expect(
+      restartedStore.getStateQueueHeader(headerHash),
+    ).resolves.toMatchObject({
+      status: "conflicted",
+      validationErrors: [expect.stringContaining("l1_source_quarantined")],
+    });
+    await expect(
+      restartedStore.getDaPayload(headerHash),
+    ).resolves.toMatchObject({
+      validationStatus: "conflicted",
+      validationError: expect.stringContaining("l1_source_quarantined"),
+    });
+    await expect(
+      restartedStore.getDaSignature({ headerHash, signerIndex: 0 }),
+    ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+    await expect(restartedStore.listL1Submissions()).resolves.toMatchObject([
+      {
+        headerHash,
+        resultStatus: "failed",
+        failureCause: expect.stringContaining("l1_source_quarantined"),
+      },
+    ]);
+    const [quarantinedBroadcast] =
+      await restartedStore.listPeerBroadcasts(headerHash);
+    expect(quarantinedBroadcast).toMatchObject({
+      status: "failed",
+      lastError: expect.stringContaining("l1_source_quarantined"),
+    });
+    expect(quarantinedBroadcast).not.toHaveProperty("nextAttemptAt");
+    await expect(
+      restartedStore.listDecisionOutbox(headerHash),
+    ).resolves.toMatchObject([
+      {
+        status: "failed",
+        lastError: expect.stringContaining("l1_source_quarantined"),
+        quarantineReason: expect.stringContaining("decision_disappeared"),
+        quarantinedAt: expect.any(String),
+      },
+    ]);
+
+    let publishCalls = 0;
+    await restartedStore.close();
+    const afterQuarantine = new WatcherService({
+      config: configWithDaHash,
+      store: await openJsonWatcherStore(dir),
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: failPayloadSource("quarantine must survive restart"),
+      signer,
+      signerValidation,
+      coordinator: {
+        retryPublishedSignatures: true,
+        publishSignature: async () => {
+          publishCalls += 1;
+          return "posted";
+        },
+      },
+    });
+    await afterQuarantine.initialize();
+    await expect(afterQuarantine.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      errors: [expect.stringContaining("L1 source quarantined")],
+    });
+    expect(publishCalls).toBe(0);
+  });
+
+  it("consumes a restarted local-node rollback feed and quarantines a persisted decision", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "23";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      l1Source: {
+        sourceMode: "local_node" as const,
+        authorityNodeId: "node-a",
+        chainSyncProviderUrl: "chain-sync:ogmios:ws://ogmios.local",
+        chainSyncCursorPath: `${dir}/chain-sync.json`,
+        queryProviderUrls: ["kupmios:http://kupo.local|ws://ogmios.local"],
+      },
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const initialPoint = {
+      network: "Preview",
+      slot: 10,
+      blockHash: "11".repeat(32),
+      providerSource: "chain-sync:node-a",
+      observedAt: "2026-07-28T00:00:00.000Z",
+    };
+    const initialCursor: ChainSyncCursor = {
+      sequence: 0,
+      point: initialPoint,
+      rollbackGeneration: 0,
+    };
+    let consumedCursor: ChainSyncCursor | undefined;
+    const firstProvider = {
+      fetchStateQueueNodes: async () => [
+        makeObservedNode({
+          header,
+          headerHash,
+          depth: 10,
+          slot: 10,
+          blockHash: "11".repeat(32),
+        }),
+      ],
+      currentChainSyncCursor: async () => initialCursor,
+      replayChainSyncEvents: async () => [],
+      loadConsumedChainSyncCursor: async () => consumedCursor,
+      acknowledgeChainSyncCursor: async (cursor: ChainSyncCursor) => {
+        consumedCursor = cursor;
+      },
+    };
+    const firstStore = await openJsonWatcherStore(dir);
+    const first = new WatcherService({
+      config: configured,
+      store: firstStore,
+      stateQueueProvider: firstProvider,
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ signedHeaders: 1 });
+    await expect(firstStore.getL1SourceState()).resolves.toMatchObject({
+      status: "healthy",
+      observations: [
+        {
+          headerHash,
+          slot: 10,
+          blockHash: "11".repeat(32),
+          hasPersistedDecision: true,
+        },
+      ],
+    });
+    expect(consumedCursor).toEqual(initialCursor);
+
+    await firstStore.close();
+    const rollbackPoint = {
+      network: "Preview",
+      slot: 9,
+      blockHash: "22".repeat(32),
+      providerSource: "chain-sync:node-a",
+      observedAt: "1970-01-01T00:00:00.000Z",
+    };
+    const currentPoint = {
+      ...rollbackPoint,
+      slot: 12,
+      blockHash: "33".repeat(32),
+    };
+    const currentCursor: ChainSyncCursor = {
+      sequence: 2,
+      point: currentPoint,
+      rollbackGeneration: 1,
+    };
+    const rollbackEvents: readonly ChainSyncEvent[] = [
+      { direction: "roll_backward", point: rollbackPoint },
+      { direction: "roll_forward", point: currentPoint },
+    ];
+    const replayChainSyncEvents = async (
+      afterSequence: number,
+    ): Promise<readonly ChainSyncEvent[]> => {
+      expect(afterSequence).toBe(initialCursor.sequence);
+      return rollbackEvents;
+    };
+    const restartedProvider = {
+      fetchStateQueueNodes: async () => [
+        makeObservedNode({
+          header,
+          headerHash,
+          depth: 10,
+          slot: 10,
+          blockHash: "11".repeat(32),
+        }),
+      ],
+      currentChainSyncCursor: async () => currentCursor,
+      replayChainSyncEvents,
+      loadConsumedChainSyncCursor: async () => consumedCursor,
+      acknowledgeChainSyncCursor: async () => {
+        throw new Error("quarantined rollback must not be acknowledged");
+      },
+    };
+    const restartedStore = await openJsonWatcherStore(dir);
+    const restarted = new WatcherService({
+      config: configured,
+      store: restartedStore,
+      stateQueueProvider: restartedProvider,
+      payloadSource: failPayloadSource(
+        "rollback quarantine must suppress DA fetch",
+      ),
+      signer,
+      signerValidation,
+    });
+    await restarted.initialize();
+
+    await expect(restarted.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      signedHeaders: 0,
+      errors: [expect.stringContaining("chain_sync_rollback")],
+    });
+    await expect(restartedStore.getL1SourceState()).resolves.toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining(
+        `l1_source_chain_sync_rollback:${headerHash}:9:${"22".repeat(32)}`,
+      ),
+    });
+  });
+
+  it("quarantines restart state when the exact L1 authority changes", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "25";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const baseConfig = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const config = {
+      ...baseConfig,
+      l1Source: {
+        sourceMode: "local_node" as const,
+        authorityNodeId: "fixture-node",
+        chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
+        chainSyncCursorPath: `${dir}/chain-sync.json`,
+        queryProviderUrls: ["fixture:/tmp/state-queue.json"],
+      },
+    };
+    const firstStore = await openJsonWatcherStore(dir);
+    const first = new WatcherService({
+      config,
+      store: firstStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("no payload should be fetched"),
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ scannedHeaders: 0 });
+    const persisted = await firstStore.getL1SourceState();
+    expect(persisted).toMatchObject({
+      status: "healthy",
+      authoritySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+
+    await firstStore.close();
+    const restartedStore = await openJsonWatcherStore(dir);
+    const restarted = new WatcherService({
+      config: {
+        ...config,
+        l1Source: {
+          ...config.l1Source,
+          authorityNodeId: "replacement-node",
+        },
+      },
+      store: restartedStore,
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: failPayloadSource("authority drift must fail at startup"),
+    });
+    await expect(restarted.initialize()).rejects.toThrow(
+      /does not match configured source mode\/network/u,
+    );
+    const quarantined = await restartedStore.getL1SourceState();
+    expect(quarantined).toMatchObject({
+      status: "quarantined",
+      quarantineReason: expect.stringContaining(
+        "l1_source_configuration_changed",
+      ),
+      authoritySha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(quarantined?.authoritySha256).not.toBe(persisted?.authoritySha256);
+  });
+
+  it("quarantines a persisted decision when a stale query view loses finality", async () => {
+    const dir = await tempDir();
+    const { header, headerHash, payloadCbor } = await makePayloadFixture();
+    const seed = "00".repeat(31) + "22";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const configured = {
+      ...config,
+      daParams: {
+        ...config.daParams,
+        committeeSignersHash: bytesToHex(
+          blake2b(Buffer.from(signer.publicKeyHex, "hex"), { dkLen: 32 }),
+        ),
+      },
+    };
+    const signerValidation = validateDaSignerMembership({
+      daParams: configured.daParams,
+      signer,
+      signerIndex: 0,
+    });
+    const firstStore = await openJsonWatcherStore(dir);
+    const first = new WatcherService({
+      config: configured,
+      store: firstStore,
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 10 }),
+        ],
+      },
+      payloadSource: payloadSourceFromBytes(payloadCbor),
+      signer,
+      signerValidation,
+    });
+    await first.initialize();
+    await expect(first.tick()).resolves.toMatchObject({ signedHeaders: 1 });
+
+    let publishCalls = 0;
+    await firstStore.close();
+    const stale = new WatcherService({
+      config: configured,
+      store: await openJsonWatcherStore(dir),
+      stateQueueProvider: {
+        fetchStateQueueNodes: async () => [
+          makeObservedNode({ header, headerHash, depth: 0 }),
+        ],
+      },
+      payloadSource: failPayloadSource("stale L1 view must not fetch DA"),
+      signer,
+      signerValidation,
+      coordinator: {
+        retryPublishedSignatures: true,
+        publishSignature: async () => {
+          publishCalls += 1;
+          return "posted";
+        },
+      },
+    });
+    await stale.initialize();
+    await expect(stale.tick()).resolves.toMatchObject({
+      scannedHeaders: 0,
+      errors: [expect.stringContaining("lost_finality")],
+    });
+    expect(publishCalls).toBe(0);
   });
 
   it("fetches payload bytes from the configured DA payload source", async () => {
@@ -232,7 +1024,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const service = new WatcherService({
       config: configWithDaHash,
       store,
@@ -289,7 +1081,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -359,7 +1151,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     await store.saveDaPayload({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -428,7 +1220,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const service = new WatcherService({
       config: configWithDaHash,
       store,
@@ -490,7 +1282,7 @@ describe("WatcherService", () => {
       signerIndex: 0,
     });
     let payloadAvailable = false;
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const service = new WatcherService({
       config: configWithDaHash,
       store,
@@ -579,7 +1371,7 @@ describe("WatcherService", () => {
     });
     let scans = 0;
     let payloadFetches = 0;
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const service = new WatcherService({
       config: configWithDaHash,
       store,
@@ -646,7 +1438,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new WatcherService({
@@ -707,7 +1499,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const published: string[] = [];
     const service = new WatcherService({
@@ -775,7 +1567,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const signature: DaSignatureRecord = {
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -791,7 +1583,12 @@ describe("WatcherService", () => {
       broadcastStatus: "post_failed",
       source: "local",
       verifiedAt: new Date().toISOString(),
-      l1ChainPoint: {},
+      l1ChainPoint: {
+        slot: 1,
+        blockHash: "cd".repeat(32),
+        depth: 10,
+        providerSource: "fixture",
+      },
       validation: {
         payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),
         rootsMatch: true,
@@ -877,7 +1674,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -963,7 +1760,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const payloadSource = payloadSourceFromBytes(payloadCbor);
     const initialized = candidateRecord({
       headerHash,
@@ -1084,7 +1881,7 @@ describe("WatcherService", () => {
       signer,
       signerIndex: 0,
     });
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     await store.saveDaSignature({
       deploymentFingerprint: configWithDaHash.deploymentFingerprint,
       headerHash,
@@ -1311,7 +2108,7 @@ describe("WatcherService", () => {
       },
     ];
     const peerId = "peer-libp2p-1";
-    const store = await JsonFileWatcherStore.open(dir);
+    const store = await openJsonWatcherStore(dir);
     const initialized = candidateRecord({
       headerHash,
       committeeSignersHash,
@@ -1464,7 +2261,7 @@ describe("WatcherService", () => {
       bitmap: "c0" + "00".repeat(31),
     });
     const calls: string[] = [];
-    const firstStore = await JsonFileWatcherStore.open(dir);
+    const firstStore = await openJsonWatcherStore(dir);
     const firstCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,
@@ -1513,7 +2310,8 @@ describe("WatcherService", () => {
       firstStore.getDaSignature({ headerHash, signerIndex: 0 }),
     ).resolves.toMatchObject({ broadcastStatus: "posted" });
 
-    const restartedStore = await JsonFileWatcherStore.open(dir);
+    await firstStore.close();
+    const restartedStore = await openJsonWatcherStore(dir);
     const restartedCoordinator = new OnChainLifecycleCoordinator({
       threshold: 2,
       visibilityRetryCount: 0,

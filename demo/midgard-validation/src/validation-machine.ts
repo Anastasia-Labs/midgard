@@ -244,6 +244,49 @@ const encodeValidationControlListV1 = (
     Buffer.from([0xff]),
   ]);
 
+const encodeValidationFrontierPeaksV1 = (
+  frontier: MidgardValidationMerkleFrontierV1,
+): readonly (readonly [bigint, Buffer])[] =>
+  frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
+
+export type ScriptDiscoveryTraceControlV1 = {
+  readonly purposeCursor: number;
+  readonly sourceCursor: number;
+  readonly redeemerCursor: number;
+  readonly currentPurposeKind: -1 | 0 | 1 | 2 | 3;
+  readonly currentPurposeIndex: bigint;
+  readonly currentScriptHash: Buffer;
+  readonly currentSubject: Buffer;
+  readonly matchedSourceIndex: number;
+  readonly matchedLanguageTag: -1 | 0 | 3 | 128;
+  readonly matchedSourceLeaf: Buffer;
+  readonly usedInlineBitmap: bigint;
+  readonly usedRedeemerBitmap: bigint;
+  readonly redeemerItemControlHash: Buffer;
+  readonly executionFrontier: MidgardValidationMerkleFrontierV1;
+};
+
+export const encodeScriptDiscoveryControlCborV1 = (
+  discovery: ScriptDiscoveryTraceControlV1,
+): Buffer =>
+  encodeCbor([
+    BigInt(discovery.purposeCursor),
+    BigInt(discovery.sourceCursor),
+    BigInt(discovery.redeemerCursor),
+    BigInt(discovery.currentPurposeKind),
+    discovery.currentPurposeIndex,
+    discovery.currentScriptHash,
+    discovery.currentSubject,
+    BigInt(discovery.matchedSourceIndex),
+    BigInt(discovery.matchedLanguageTag),
+    discovery.matchedSourceLeaf,
+    discovery.usedInlineBitmap,
+    discovery.usedRedeemerBitmap,
+    discovery.redeemerItemControlHash,
+    BigInt(discovery.executionFrontier.count),
+    encodeValidationFrontierPeaksV1(discovery.executionFrontier),
+  ]);
+
 export type ValidationMachineLedgerEntry = {
   readonly outRef: Buffer;
   readonly output: Buffer;
@@ -950,14 +993,26 @@ const canonicalCborArgumentHeaderSize = (value: number): number => {
   return 9;
 };
 
+const MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX = 6;
+const MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX = 7;
+
 const canonicalFieldItemEncodedLength = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
-  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
+  if (
+    [0, 1, 2, 3, 4, MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX].includes(
+      fieldIndex,
+    )
+  ) {
     return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
   }
-  if (fieldIndex === 6 || fieldIndex === 8) return itemLength;
+  if (
+    fieldIndex === MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX ||
+    fieldIndex === 8
+  ) {
+    return itemLength;
+  }
   if (fieldIndex !== 5 || itemLength === 0) {
     throw new Error(
       `invalid canonical field item length at field ${fieldIndex.toString()}`,
@@ -1273,7 +1328,14 @@ export const buildDeterministicValidationMachineTrace = (
           nowCardanoSlotNo: input.blockSlot,
           bucketConcurrency: 1,
           enforceScriptBudget: true,
-          evaluateProofScript: (scriptBytes, scriptContextCbor) =>
+          evaluateProofScript: (
+            scriptBytes,
+            scriptContextCbor,
+            executionBudget?: {
+              readonly cpu: bigint;
+              readonly memory: bigint;
+            },
+          ) =>
             Effect.sync(() => {
               let graph: MidgardCekExecutionGraphV1 | null = null;
               let execution: MidgardCekStructuralExecutionV1 | null = null;
@@ -1291,8 +1353,10 @@ export const buildDeterministicValidationMachineTrace = (
                   constantWitnesses: graph.constantWitnesses,
                   maxSteps:
                     input.consensusProfile.limits.maxValidationMachineStepCount,
+                  executionBudget,
                 });
                 result =
+                  execution.stopReason === "budgetExceeded" ||
                   execution.terminalState.mode === "haltSuccess"
                     ? {
                         kind: "accepted",
@@ -1458,11 +1522,11 @@ export const buildDeterministicValidationMachineTrace = (
       preimageCbor: fieldPreimages[5]!.preimageCbor,
     });
     const scriptWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 6,
+      fieldIndex: MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[6]!.preimageCbor,
     });
     const addressWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
-      fieldIndex: 7,
+      fieldIndex: MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
       preimageCbor: fieldPreimages[7]!.preimageCbor,
     });
     const redeemerWitnessesCollection = deriveMidgardNativeFieldCollectionV1({
@@ -1713,7 +1777,10 @@ export const buildDeterministicValidationMachineTrace = (
         throw new Error("V1 script source has a noncanonical item index");
       }
       const item = buildMidgardBoundedItemV1({
-        fieldIndex: source.originKind === "inline" ? 6 : 2,
+        fieldIndex:
+          source.originKind === "inline"
+            ? MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX
+            : 2,
         itemIndex,
         bytes: encodeMidgardVersionedScript(source.script),
       });
@@ -1769,10 +1836,7 @@ export const buildDeterministicValidationMachineTrace = (
     );
     const redeemerFrontier =
       buildMidgardValidationMerkleFrontierV1(redeemerLeafHashes);
-    const encodeFrontierPeaks = (
-      frontier: MidgardValidationMerkleFrontierV1,
-    ): readonly (readonly [bigint, Buffer])[] =>
-      frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
+    const encodeFrontierPeaks = encodeValidationFrontierPeaksV1;
     const emptyValidationFrontier = buildMidgardValidationMerkleFrontierV1([]);
     type SignatureScanControl = {
       readonly stage: 0 | 1 | 2;
@@ -1918,23 +1982,7 @@ export const buildDeterministicValidationMachineTrace = (
       BigInt(control.assetFrontier.count),
       encodeFrontierPeaks(control.assetFrontier),
     ];
-    type ScriptDiscoveryTraceControl = {
-      readonly purposeCursor: number;
-      readonly sourceCursor: number;
-      readonly redeemerCursor: number;
-      readonly currentPurposeKind: -1 | 0 | 1 | 2 | 3;
-      readonly currentPurposeIndex: bigint;
-      readonly currentScriptHash: Buffer;
-      readonly currentSubject: Buffer;
-      readonly matchedSourceIndex: number;
-      readonly matchedLanguageTag: -1 | 0 | 3 | 128;
-      readonly matchedSourceLeaf: Buffer;
-      readonly usedInlineBitmap: bigint;
-      readonly usedRedeemerBitmap: bigint;
-      readonly executionFrontier: MidgardValidationMerkleFrontierV1;
-      readonly redeemerItemControlHash: Buffer;
-    };
-    const emptyScriptDiscoveryControl: ScriptDiscoveryTraceControl = {
+    const emptyScriptDiscoveryControl: ScriptDiscoveryTraceControlV1 = {
       purposeCursor: 0,
       sourceCursor: 0,
       redeemerCursor: 0,
@@ -1950,26 +1998,7 @@ export const buildDeterministicValidationMachineTrace = (
       executionFrontier: emptyValidationFrontier,
       redeemerItemControlHash: Buffer.alloc(0),
     };
-    const scriptDiscoveryControlCbor = (
-      discovery: ScriptDiscoveryTraceControl,
-    ): Buffer =>
-      encodeCbor([
-        BigInt(discovery.purposeCursor),
-        BigInt(discovery.sourceCursor),
-        BigInt(discovery.redeemerCursor),
-        BigInt(discovery.currentPurposeKind),
-        discovery.currentPurposeIndex,
-        discovery.currentScriptHash,
-        discovery.currentSubject,
-        BigInt(discovery.matchedSourceIndex),
-        BigInt(discovery.matchedLanguageTag),
-        discovery.matchedSourceLeaf,
-        discovery.usedInlineBitmap,
-        discovery.usedRedeemerBitmap,
-        BigInt(discovery.executionFrontier.count),
-        encodeFrontierPeaks(discovery.executionFrontier),
-        discovery.redeemerItemControlHash,
-      ]);
+    const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCborV1;
     const scriptSourcesWitnessCbor = (input: {
       readonly resolvedInputCount: number;
       readonly resolvedInputsAccumulator: Buffer;
@@ -1999,7 +2028,7 @@ export const buildDeterministicValidationMachineTrace = (
         readonly previousHash: Buffer;
       };
       readonly outputProof?: MidgardLedgerOutputProofControlV1 | null;
-      readonly discovery?: ScriptDiscoveryTraceControl;
+      readonly discovery?: ScriptDiscoveryTraceControlV1;
       readonly pendingSource?: {
         readonly sourceIndex: number;
         readonly sourceTotalCount: number;
@@ -4340,7 +4369,7 @@ export const buildDeterministicValidationMachineTrace = (
                 const redeemerLeaves = redeemerLeafHashes;
                 const discoveryWitnessCbor = (
                   stage: number,
-                  discovery: ScriptDiscoveryTraceControl,
+                  discovery: ScriptDiscoveryTraceControlV1,
                 ): Buffer =>
                   scriptSourcesWitnessCbor({
                     ...scriptSourceControl,
@@ -4389,8 +4418,8 @@ export const buildDeterministicValidationMachineTrace = (
                   index: number,
                 ): bigint => bitmap | (1n << BigInt(index));
                 const resetCurrent = (
-                  discovery: ScriptDiscoveryTraceControl,
-                ): ScriptDiscoveryTraceControl => ({
+                  discovery: ScriptDiscoveryTraceControlV1,
+                ): ScriptDiscoveryTraceControlV1 => ({
                   ...discovery,
                   sourceCursor: 0,
                   redeemerCursor: 0,
@@ -5538,6 +5567,7 @@ export const buildDeterministicValidationMachineTrace = (
                 "CEK execution is missing its authenticated program graph",
               );
             }
+            const selected = selectedRedeemer(executionEntry);
             const exactExecution = executeMidgardCekStructuralProgramV1({
               root: evaluation.graph.root,
               material: evaluation.graph.material.values(),
@@ -5545,8 +5575,11 @@ export const buildDeterministicValidationMachineTrace = (
               executionIndex: BigInt(executionIndex),
               maxSteps:
                 input.consensusProfile.limits.maxValidationMachineStepCount,
+              executionBudget: {
+                cpu: selected.value.exUnits.steps,
+                memory: selected.value.exUnits.memory,
+              },
             });
-            const selected = selectedRedeemer(executionEntry);
             let contextControl = initialMidgardCekContextControlV1({
               languageTag: executionEntry.languageTag,
               programTermRoot: decodeMidgardCekProgramEnvelopeV1(

@@ -303,9 +303,21 @@ Usage:
 Required configuration follows docs/da-payload-attestation-watcher-plan.md.
 L1 submission requires L1_SUBMITTER_KEY_SOURCE for a funded Cardano wallet.
 Supported CARDANO_PROVIDER_URLS forms:
-  fixture:/path/to/state-queue.json
   blockfrost:https://cardano-preview.blockfrost.io/api/v0#PROJECT_ID
   kupmios:http://kupo:1442|http://ogmios:1337
+  fixture:/path/to/state-queue.json (tests only; requires
+    CARDANO_L1_TEST_MODE=true)
+
+L1 source modes:
+  CARDANO_L1_SOURCE_MODE=local_node
+    requires CARDANO_LOCAL_NODE_AUTHORITY_ID and
+    CARDANO_LOCAL_NODE_CHAIN_SYNC_URL=chain-sync:<provider> and
+    CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH=/durable/path/cursor.jsonl;
+    CARDANO_PROVIDER_URLS are aligned query surfaces for that node and are not
+    counted as independent providers.
+  CARDANO_L1_SOURCE_MODE=external_providers
+    requires at least two CARDANO_PROVIDER_URLS and one distinct operational
+    identity per URL in CARDANO_EXTERNAL_PROVIDER_IDENTITIES.
 `);
 };
 

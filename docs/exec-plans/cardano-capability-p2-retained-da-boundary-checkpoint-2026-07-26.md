@@ -63,15 +63,15 @@ both retained classifications. The collateralized redeemer fixture remains
 rejected by the production bridge; only its exact collateral-free
 shared-schema parallel enters Midgard DA.
 
-| Maximum shape | Canonical bytes | Bounded reveal steps | Inner paired DA bytes | Stored paired DA bytes |
-| --- | ---: | ---: | ---: | ---: |
-| Spend inputs, field 0 | 17,336 | 436 | 37,470 | 37,513 |
-| Reference inputs, field 1 | 17,333 | 436 | 37,466 | 37,509 |
-| Outputs, field 2 | 19,085 | 440 | 41,078 | 41,121 |
-| Observers/native scripts, fields 3/7 | 16,871 | 451 | 36,526 | 36,569 |
-| Required signers/address witnesses, fields 4/6 | 16,685 | 250 | 36,133 | 36,176 |
-| Mint/native policies, fields 5/7 | 16,986 | 265 | 36,766 | 36,809 |
-| Spend redeemers, field 8 | 16,933 | 596 | 36,645 | 36,688 |
+| Maximum shape                                  | Canonical bytes | Bounded reveal steps | Inner paired DA bytes | Stored paired DA bytes |
+| ---------------------------------------------- | --------------: | -------------------: | --------------------: | ---------------------: |
+| Spend inputs, field 0                          |          17,336 |                  436 |                37,470 |                 37,513 |
+| Reference inputs, field 1                      |          17,333 |                  436 |                37,466 |                 37,509 |
+| Outputs, field 2                               |          19,085 |                  440 |                41,078 |                 41,121 |
+| Observers/native scripts, fields 3/6           |          16,871 |                  451 |                36,526 |                 36,569 |
+| Required signers/address witnesses, fields 4/7 |          16,685 |                  250 |                36,133 |                 36,176 |
+| Mint/native policies, fields 5/6               |          16,986 |                  265 |                36,766 |                 36,809 |
+| Spend redeemers, field 8                       |          16,933 |                  596 |                36,645 |                 36,688 |
 
 Each DA size includes two full retained preimages: one normal and one forced.
 Both classifications execute the same number of individually verified reveal
@@ -95,17 +95,17 @@ unchanged.
 `native-size-balanced-15_5k.json` supplies one 16,126-byte canonical
 transaction with all nine dynamic fields populated:
 
-| Field | Items |
-| --- | ---: |
-| Spend inputs | 48 |
-| Reference inputs | 32 |
-| Outputs | 48 |
-| Required observers | 18 |
-| Required signers | 17 |
-| Mint policies | 24 |
-| Address witnesses | 17 |
-| Script witnesses | 68 |
-| Redeemer witnesses | 68 |
+| Field              | Items |
+| ------------------ | ----: |
+| Spend inputs       |    48 |
+| Reference inputs   |    32 |
+| Outputs            |    48 |
+| Required observers |    18 |
+| Required signers   |    17 |
+| Mint policies      |    24 |
+| Address witnesses  |    17 |
+| Script witnesses   |    68 |
+| Redeemer witnesses |    68 |
 
 The complete 340-step reveal sequence reconstructs the exact 16,126 bytes
 from both normal and forced retention. The paired inner payload is 35,004

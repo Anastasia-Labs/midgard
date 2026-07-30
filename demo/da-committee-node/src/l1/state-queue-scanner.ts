@@ -12,9 +12,14 @@ import type {
 } from "../domain.js";
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
 import { classifyDaAttestationMarker } from "./attestation-marker.js";
+import type { ChainSyncCursor, ChainSyncEvent } from "./provider.js";
 
 export interface StateQueueProvider {
   fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]>;
+  currentChainSyncCursor?(): Promise<ChainSyncCursor>;
+  replayChainSyncEvents?(
+    afterSequence: number,
+  ): Promise<readonly ChainSyncEvent[]>;
 }
 
 export type StateQueueScanConfig = {

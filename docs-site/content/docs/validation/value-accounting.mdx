@@ -13,11 +13,11 @@ what argument?). They live in `src/value-accounting.ts` and
 Cardano is multi-asset, so value is a lovelace amount plus a nested map of
 policy id to asset name to quantity. `MidgardValue` (from `midgard-core`) uses
 only positive quantities because it represents spendable output value. Minting,
-however, is a *signed* delta, so validation uses `MidgardValueDelta`:
+however, is a _signed_ delta, so validation uses `MidgardValueDelta`:
 
 ```ts
 type MidgardValueDelta = {
-  readonly lovelace: bigint;                                     // signed
+  readonly lovelace: bigint; // signed
   readonly assets: ReadonlyMap<string, ReadonlyMap<string, bigint>>;
 };
 ```
@@ -60,11 +60,12 @@ this with the transaction's `fee`, the candidate's `derived.mintDelta`, and its
 `derived.outputSum`. If the result is not zero, tested by
 **`isZeroValueDelta`**, the transaction is rejected `E_VALUE_NOT_PRESERVED`.
 
-The equation is intentionally retained even though the launch consensus profile
-rejects non-empty mint preimages in Phase A. Keeping the signed mint term avoids
-deleting the feature's accounting semantics; a future mint-enabled profile still
-requires L1-disputable mint authorization and value-preservation proofs before it
-can be activated.
+Canonical V1 enables mint and burn. Phase A authenticates the canonical mint
+field, and the signed mint delta participates in value preservation exactly as
+shown above. Every non-zero non-Ada policy must also pass its native, PlutusV3,
+or MidgardV1 execution; Ada minting remains forbidden. Release activation
+remains closed until the deployment-bound L1 dispute path covers both policy
+authorization and value preservation.
 
 <Callout type="info">
 The reject detail is produced by **`describeValueDelta`**, which renders the
@@ -73,7 +74,8 @@ non-zero delta as `lovelace=<n> assets=<policy>.<asset>=<qty>,...` (or
 rejection record alone.
 </Callout>
 
-<Mermaid chart={`flowchart LR
+<Mermaid
+  chart={`flowchart LR
   I[inputSum] --> D[valuePreservationDelta]
   F[fee] --> D
   M[mintDelta] --> D
@@ -81,11 +83,12 @@ rejection record alone.
   D --> Z{isZeroValueDelta?}
   Z -->|yes| OK[accept]
   Z -->|no| REJ[reject E_VALUE_NOT_PRESERVED + describeValueDelta]
-`} />
+`}
+/>
 
 ## Redeemer handling: `midgard-redeemers.ts`
 
-A redeemer tells the ledger *which* script runs and *with what* argument. Midgard
+A redeemer tells the ledger _which_ script runs and _with what_ argument. Midgard
 uses Cardano's redeemer tags plus one of its own:
 
 ```ts
@@ -93,7 +96,7 @@ const MidgardRedeemerTag = {
   Spend: CML.RedeemerTag.Spend,
   Mint: CML.RedeemerTag.Mint,
   Reward: CML.RedeemerTag.Reward,
-  Receiving: 6,   // Midgard-specific
+  Receiving: 6, // Midgard-specific
 } as const;
 ```
 
@@ -121,16 +124,16 @@ redeemer a given script purpose points at.
 purpose-specific field (`policyId` for mint, `outRefHex` for spend). Two encoders
 turn a purpose into Plutus data:
 
-| Function | Target |
-| --- | --- |
+| Function                   | Target                                                                              |
+| -------------------------- | ----------------------------------------------------------------------------------- |
 | `cardanoScriptPurposeData` | Cardano script-purpose data. Throws on `receive`, Cardano has no receiving purpose. |
-| `midgardScriptPurposeData` | Midgard's own encoding, including `receive` (constructor 3). |
+| `midgardScriptPurposeData` | Midgard's own encoding, including `receive` (constructor 3).                        |
 
 <Callout type="warn">
-The `receive` purpose is Midgard-specific. Cardano Plutus V3 contexts cannot
-represent it, which is why [Phase B](/docs/validation/phase-b) selects
-`buildMidgardV1ScriptContext` (rather than the Plutus V3 builder) for scripts
-that use it.
+  The `receive` purpose is Midgard-specific. Cardano Plutus V3 contexts cannot
+  represent it, which is why [Phase B](/docs/validation/phase-b) selects
+  `buildMidgardV1ScriptContext` (rather than the Plutus V3 builder) for scripts
+  that use it.
 </Callout>
 
 ## How the pieces connect

@@ -47,6 +47,11 @@ export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
 } as const;
 
+export const ZERO_INPUT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/zero_input/step_01.main.spend",
+  step02: "fraud_proofs/zero_input/step_02.main.spend",
+} as const;
+
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   route: "fraud_proofs/transition_trace/route_v1.main.spend",
   control: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -302,6 +307,14 @@ export type InvalidRangeFaultProofContracts = {
   };
 };
 
+export type ZeroInputFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly zeroInput: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -465,6 +478,7 @@ export type FaultProofContracts = {
   readonly doubleSpend: DoubleSpendFaultProofContracts["doubleSpend"];
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
+  readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
   readonly validationTraceDispute: ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
 };
@@ -489,6 +503,9 @@ export type BuildNonExistentInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildZeroInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -883,6 +900,60 @@ const buildInvalidRangeChain = ({
     return {
       firstStep: invalidRangeStep01,
       steps: [invalidRangeStep01, invalidRangeStep02],
+    };
+  });
+
+const buildZeroInputChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<ZeroInputFaultProofContracts["zeroInput"], Error> =>
+  Effect.gen(function* () {
+    const zeroInputStep02 = yield* tryBuild(
+      "Failed to build zero-input step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step02),
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const zeroInputStep01 = yield* tryBuild(
+      "Failed to build zero-input step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(blueprint, ZERO_INPUT_FAULT_PROOF_TITLES.step01),
+            [
+              zeroInputStep02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: zeroInputStep01,
+      steps: [zeroInputStep01, zeroInputStep02],
     };
   });
 
@@ -1556,6 +1627,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const zeroInput = yield* buildZeroInputChain({
+      ...params,
+      ...shared,
+    });
     const transitionTrace = yield* buildTransitionTraceChain({
       ...params,
       ...shared,
@@ -1571,6 +1646,7 @@ export const buildFaultProofContracts = (
       doubleSpend,
       nonExistentInput,
       invalidRange,
+      zeroInput,
       transitionTrace,
       validationTraceDispute,
     };
@@ -1621,6 +1697,22 @@ export const buildInvalidRangeFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       invalidRange,
+    };
+  });
+
+export const buildZeroInputFaultProofContracts = (
+  params: BuildZeroInputFaultProofContractsParams,
+): Effect.Effect<ZeroInputFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const zeroInput = yield* buildZeroInputChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      zeroInput,
     };
   });
 

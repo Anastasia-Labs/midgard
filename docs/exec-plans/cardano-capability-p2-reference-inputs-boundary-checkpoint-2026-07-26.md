@@ -40,18 +40,18 @@ The complete no-script minimum fee is stabilized using the preserved preprod
 epoch-303 parameters, including `maxTxSize = 16,384`,
 `maxValueSize = 5,000`, `minFeeA = 44`, and `minFeeB = 155,381`.
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
-| Requested and actual reference inputs | 433 | 434 |
-| Funding spend input | `00...00#0` | `00...00#0` |
-| Concrete reference indices | `1..433` | `1..434` |
-| Spending inputs | 1 | 1 |
-| Vkey witnesses | 1 | 1 |
-| Plain-Ada outputs | 1 | 1 |
-| Complete signed Cardano bytes | 16,380 | 16,418 |
-| Margin against `maxTxSize` | +4 | -34 |
-| Exact minimum fee | 876,101 lovelace | 877,773 lovelace |
-| Result | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
+| Measurement                           |                          Accepting shape |                      Adjacent shape |
+| ------------------------------------- | ---------------------------------------: | ----------------------------------: |
+| Requested and actual reference inputs |                                      433 |                                 434 |
+| Funding spend input                   |                              `00...00#0` |                         `00...00#0` |
+| Concrete reference indices            |                                 `1..433` |                            `1..434` |
+| Spending inputs                       |                                        1 |                                   1 |
+| Vkey witnesses                        |                                        1 |                                   1 |
+| Plain-Ada outputs                     |                                        1 |                                   1 |
+| Complete signed Cardano bytes         |                                   16,380 |                              16,418 |
+| Margin against `maxTxSize`            |                                       +4 |                                 -34 |
+| Exact minimum fee                     |                         876,101 lovelace |                    877,773 lovelace |
+| Result                                | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
 
 The accepting transaction passed the emulator's existence, disjoint
 spending/reference-input, unspent-input, funding-signature, and structural
@@ -70,15 +70,15 @@ The accepting signed Cardano bytes feed directly into the production
 existing typed collection/item/chunk constructors, per-reveal verifier, and
 complete terminal reconstruction fold.
 
-| Measurement | Value |
-| --- | ---: |
-| Canonical Midgard transaction bytes | 17,333 |
-| Canonical reference-inputs field bytes | 17,045 |
-| Committed reference-input item count | 433 |
-| Field-1 reveal steps | 433 |
-| Largest revealed chunk | 38 bytes |
+| Measurement                                 |     Value |
+| ------------------------------------------- | --------: |
+| Canonical Midgard transaction bytes         |    17,333 |
+| Canonical reference-inputs field bytes      |    17,045 |
+| Committed reference-input item count        |       433 |
+| Field-1 reveal steps                        |       433 |
+| Largest revealed chunk                      |  38 bytes |
 | Largest serialized auxiliary reveal witness | 615 bytes |
-| Complete transaction fold steps | 436 |
+| Complete transaction fold steps             |       436 |
 
 Every field-1 reveal verifies against the exact converted transaction
 commitment. The complete 436-step field-major receipt sequence reconstructs
@@ -137,7 +137,7 @@ Both pass.
 This checkpoint closes the TypeScript Cardano boundary and terminal-fold
 fixture for field 1. Fields 0, 1, 2, 4, and 6 now have this evidence. The next
 ordered field without equivalent evidence is field 3 (`required_observers`);
-fields 5, 7, and 8 also remain open, as do maximum-shape normal/forced
+fields 5, 6, and 8 also remain open, as do maximum-shape normal/forced
 retained-DA reconstruction and applied Aiken lifecycle evidence.
 
 P2 remains incomplete and unsupported activation remains fail closed.

@@ -101,11 +101,13 @@ export {
 } from "./finality-engine.js";
 export {
   encodeWatcherNormalizedL1BlockV1,
+  makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_ADAPTER_V1_BOUNDS,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION,
   WATCHER_L1_REDEEMER_PURPOSES_V1,
   WATCHER_L1_SCRIPT_LANGUAGES_V1,
   WATCHER_L1_SOURCE_MODES_V1,
@@ -118,6 +120,9 @@ export {
   type WatcherL1AdapterErrorCode,
   type WatcherL1DatumV1,
   type WatcherL1NetworkV1,
+  type WatcherL1NormalizationSessionStatsV1,
+  watcherL1NormalizationSessionStatsV1,
+  type WatcherL1NormalizationSessionV1,
   type WatcherL1PublicBytesV1,
   type WatcherL1RedeemerV1,
   type WatcherL1ScriptV1,

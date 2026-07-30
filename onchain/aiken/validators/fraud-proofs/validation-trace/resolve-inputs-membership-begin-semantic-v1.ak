@@ -5,8 +5,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
-  ScheduledLedgerMembershipWitness, SignerSetProofV1,
-  ValidationOneStepWitnessV1,
+  ScheduledLedgerMembershipWitness, SignerSetProofV1, ValidationOneStepWitnessV1,
   verify_resolve_inputs_membership_begin_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}

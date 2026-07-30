@@ -1865,7 +1865,7 @@ export const preparePendingSubmission = (
           [Columns.EXPECTED_VALIDATION_TRACE_COUNT]:
             metadata.expectedCounts.validationTraceCount,
           [Columns.LEDGER_DELTA_SPENT]: JSON.stringify(
-            ledgerDelta.spent.map((outref) => outref.toString("hex")),
+            input.ledgerDelta.spent.map((outref) => outref.toString("hex")),
           ),
           [Columns.LEDGER_DELTA_PRODUCED]: JSON.stringify(
             ledgerDelta.produced.map((entry) => ({
@@ -2315,7 +2315,10 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
       record.withdrawalMembers,
       record.transitionTraceMembers,
       record.eventToStepMembers,
-    ].some(hasIncompletePayload)
+      record.validationTraceMembers,
+    ].some(hasIncompletePayload) ||
+    BigInt(record.validationTraceMembers.length) !==
+      record[Columns.EXPECTED_VALIDATION_TRACE_COUNT]
   ) {
     return yield* Effect.fail(
       new DatabaseError({

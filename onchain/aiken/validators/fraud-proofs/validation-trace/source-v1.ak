@@ -1,8 +1,10 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
+use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/ledger_state
 use midgard/validation_claim_v1
 use midgard/validation_dispute_v1
 use midgard/validation_game_v1
@@ -42,7 +44,10 @@ validator main(
           tx,
         )
       ct.Continue(VerifySource { input_index, output_index }) -> {
-        let Transaction { inputs, outputs, .. } = tx
+        let Transaction { inputs, outputs, validity_range, .. } = tx
+        let (_, source_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
+          validity_range,
+        )
         expect Some(step_datum) = datum
         continue(
           computation_thread_token_policy_id,
@@ -71,10 +76,13 @@ validator main(
                 state.claim,
               ),
               if committed_endpoints_are_valid {
-                let expected_dispute = validation_dispute_v1.open(
+                let expected_dispute = validation_dispute_v1.open_after_source_verification(
                   state.claim.descriptor_membership.value,
                   state.challenger_descriptor,
                   state.open_time_upper,
+                  source_time_upper,
+                  state.challenged_header.end_time,
+                  ledger_state.block_maturity_duration_v1,
                 )
                 let expected_state: Data = validation_game_v1.ValidationGameStateV1 {
                   challenged_header_hash: state.challenged_header_hash,

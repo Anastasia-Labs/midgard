@@ -1,4 +1,11 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+
+import {
+  ogmiosEndpointIdentitySha256,
+  type ShelleyGenesisSlotEvidence,
+} from "@/local-ledger-slot.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -90,11 +97,40 @@ export type ArchitectureGCommitCandidateInputV1 = {
     readonly entryCount: number;
     readonly encodedTupleBytes: number;
   };
+  readonly forcedValidationSlotConfigArtifact: {
+    readonly path: string;
+    readonly sha256: string;
+    readonly document: {
+      readonly schemaVersion: "midgard-node-slot-config-evidence-v1";
+      readonly capturedAtIso: string;
+      readonly network: "Mainnet" | "Preview" | "Preprod" | "Custom";
+      readonly source:
+        | {
+            readonly kind: "lucid_network_table";
+            readonly lucidVersion: "0.6.0";
+          }
+        | {
+            readonly kind: "local_ogmios_genesis";
+            readonly endpointIdentitySha256: string;
+            readonly configurationSha256: string;
+          };
+      readonly slotConfig: {
+        readonly zeroTime: number;
+        readonly zeroSlot: number;
+        readonly slotLength: number;
+      };
+    };
+  };
   readonly workerInput: {
     readonly data: {
       readonly availableConfirmedBlock: "";
       readonly availableLocalFinalizationBlock: "";
       readonly currentBlockStartTimeMs: number;
+      readonly forcedValidationSlotConfig: {
+        readonly zeroTime: number;
+        readonly zeroSlot: number;
+        readonly slotLength: number;
+      };
       readonly localFinalizationPending: false;
       readonly ledgerStoreLeaseOwner: string;
       readonly mempoolTxsCountSoFar: 0;
@@ -470,6 +506,7 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "fixtureCreationSha256",
       "fixtureInitialUtxoCount",
       "baseUtxoPayloadAggregate",
+      "forcedValidationSlotConfigArtifact",
       "workerInput",
     ],
     "Architecture G commit-candidate input",
@@ -483,6 +520,115 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     ["entryCount", "encodedTupleBytes"],
     "Architecture G candidate base UTxO aggregate",
   );
+  const slotConfigArtifact = exactRecord(
+    input.forcedValidationSlotConfigArtifact,
+    ["path", "sha256", "document"],
+    "Architecture G candidate slot-config artifact binding",
+  );
+  const slotConfigArtifactPath = absolutePath(
+    slotConfigArtifact.path,
+    "candidateInput.forcedValidationSlotConfigArtifact.path",
+  );
+  const slotConfigArtifactSha256 = hash(
+    slotConfigArtifact.sha256,
+    "candidateInput.forcedValidationSlotConfigArtifact.sha256",
+  );
+  const slotConfigArtifactBytes = readFileSync(slotConfigArtifactPath);
+  if (
+    createHash("sha256").update(slotConfigArtifactBytes).digest("hex") !==
+    slotConfigArtifactSha256
+  ) {
+    throw new Error("Node slot-config evidence SHA-256 mismatch");
+  }
+  const slotConfigDocument = exactRecord(
+    slotConfigArtifact.document,
+    ["schemaVersion", "capturedAtIso", "network", "source", "slotConfig"],
+    "Architecture G candidate slot-config artifact document",
+  );
+  if (
+    slotConfigDocument.schemaVersion !== "midgard-node-slot-config-evidence-v1"
+  ) {
+    throw new Error("Unsupported node slot-config evidence schema");
+  }
+  canonicalTimestamp(
+    slotConfigDocument.capturedAtIso,
+    "candidateInput.forcedValidationSlotConfigArtifact.capturedAtIso",
+  );
+  const slotConfigSource =
+    slotConfigDocument.network === "Custom"
+      ? exactRecord(
+          slotConfigDocument.source,
+          ["kind", "endpointIdentitySha256", "configurationSha256"],
+          "Custom slot-config source",
+        )
+      : exactRecord(
+          slotConfigDocument.source,
+          ["kind", "lucidVersion"],
+          "Static slot-config source",
+        );
+  if (slotConfigDocument.network === "Custom") {
+    if (slotConfigSource.kind !== "local_ogmios_genesis") {
+      throw new Error("Custom slot-config source is invalid");
+    }
+    hash(
+      slotConfigSource.endpointIdentitySha256,
+      "candidateInput.forcedValidationSlotConfigArtifact.source.endpointIdentitySha256",
+    );
+    hash(
+      slotConfigSource.configurationSha256,
+      "candidateInput.forcedValidationSlotConfigArtifact.source.configurationSha256",
+    );
+  } else if (
+    !["Mainnet", "Preview", "Preprod"].includes(
+      slotConfigDocument.network as string,
+    ) ||
+    slotConfigSource.kind !== "lucid_network_table" ||
+    slotConfigSource.lucidVersion !== "0.6.0"
+  ) {
+    throw new Error("Static slot-config source is invalid");
+  }
+  const artifactSlotConfig = exactRecord(
+    slotConfigDocument.slotConfig,
+    ["zeroTime", "zeroSlot", "slotLength"],
+    "Architecture G candidate artifact slot configuration",
+  );
+  if (
+    JSON.stringify(
+      JSON.parse(slotConfigArtifactBytes.toString("utf8")) as unknown,
+    ) !== JSON.stringify(slotConfigArtifact.document)
+  ) {
+    throw new Error(
+      "Architecture G candidate slot-config document does not match its bound artifact",
+    );
+  }
+  const staticSlotConfigs: Readonly<
+    Record<string, Readonly<Record<string, number>>>
+  > = {
+    Mainnet: {
+      zeroTime: 1_596_059_091_000,
+      zeroSlot: 4_492_800,
+      slotLength: 1_000,
+    },
+    Preview: {
+      zeroTime: 1_666_656_000_000,
+      zeroSlot: 0,
+      slotLength: 1_000,
+    },
+    Preprod: {
+      zeroTime: 1_655_769_600_000,
+      zeroSlot: 86_400,
+      slotLength: 1_000,
+    },
+  };
+  if (
+    slotConfigDocument.network !== "Custom" &&
+    JSON.stringify(artifactSlotConfig) !==
+      JSON.stringify(staticSlotConfigs[slotConfigDocument.network as string])
+  ) {
+    throw new Error(
+      "Static slot configuration does not match the pinned Lucid network table",
+    );
+  }
   const workerInput = exactRecord(
     input.workerInput,
     ["data"],
@@ -494,6 +640,7 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
       "availableConfirmedBlock",
       "availableLocalFinalizationBlock",
       "currentBlockStartTimeMs",
+      "forcedValidationSlotConfig",
       "localFinalizationPending",
       "ledgerStoreLeaseOwner",
       "mempoolTxsCountSoFar",
@@ -525,6 +672,11 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     speculativeBuild.watermarks,
     ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
     "Architecture G candidate barrier watermarks",
+  );
+  const forcedValidationSlotConfig = exactRecord(
+    data.forcedValidationSlotConfig,
+    ["zeroTime", "zeroSlot", "slotLength"],
+    "Architecture G candidate forced-validation slot configuration",
   );
   if (
     input.schemaVersion !== "midgard-architecture-g-commit-candidate-input-v1"
@@ -579,6 +731,34 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     data.currentBlockStartTimeMs,
     "candidateInput.currentBlockStartTimeMs",
   );
+  const slotZeroTime = nonNegativeSafeInteger(
+    forcedValidationSlotConfig.zeroTime,
+    "candidateInput.forcedValidationSlotConfig.zeroTime",
+  );
+  const slotZeroSlot = nonNegativeSafeInteger(
+    forcedValidationSlotConfig.zeroSlot,
+    "candidateInput.forcedValidationSlotConfig.zeroSlot",
+  );
+  const slotLength = positiveSafeInteger(
+    forcedValidationSlotConfig.slotLength,
+    "candidateInput.forcedValidationSlotConfig.slotLength",
+  );
+  if (
+    JSON.stringify(forcedValidationSlotConfig) !==
+    JSON.stringify(artifactSlotConfig)
+  ) {
+    throw new Error(
+      "Architecture G candidate worker slot configuration does not match its bound artifact",
+    );
+  }
+  const currentBlockSlot =
+    Math.floor((currentBlockStartTimeMs - slotZeroTime) / slotLength) +
+    slotZeroSlot;
+  if (!Number.isSafeInteger(currentBlockSlot) || currentBlockSlot < 0) {
+    throw new Error(
+      "Architecture G candidate block time is outside its forced-validation slot configuration",
+    );
+  }
   const submittedTxHash = hash(
     base.submittedTxHash,
     "candidateInput.speculativeBuild.base.submittedTxHash",
@@ -624,6 +804,44 @@ export const decodeArchitectureGCommitCandidateInputV1 = (
     }
   }
   return input as ArchitectureGCommitCandidateInputV1;
+};
+
+export const assertArchitectureGCandidateSlotRuntimeIdentityV1 = ({
+  input,
+  runtimeNetwork,
+  ogmiosUrl,
+  customGenesis,
+}: {
+  readonly input: ArchitectureGCommitCandidateInputV1;
+  readonly runtimeNetwork: "Mainnet" | "Preview" | "Preprod" | "Custom";
+  readonly ogmiosUrl?: string;
+  readonly customGenesis?: ShelleyGenesisSlotEvidence;
+}): void => {
+  const document = input.forcedValidationSlotConfigArtifact.document;
+  if (document.network !== runtimeNetwork) {
+    throw new Error(
+      "Architecture G candidate slot-config network does not match NodeConfig.NETWORK",
+    );
+  }
+  if (runtimeNetwork !== "Custom") return;
+  if (
+    document.source.kind !== "local_ogmios_genesis" ||
+    ogmiosUrl === undefined ||
+    customGenesis === undefined ||
+    document.source.endpointIdentitySha256 !==
+      ogmiosEndpointIdentitySha256(ogmiosUrl) ||
+    document.source.configurationSha256 !== customGenesis.configurationSha256 ||
+    JSON.stringify(document.slotConfig) !==
+      JSON.stringify({
+        zeroTime: customGenesis.startTimeMs,
+        zeroSlot: 0,
+        slotLength: customGenesis.slotLengthMs,
+      })
+  ) {
+    throw new Error(
+      "Architecture G Custom slot configuration does not match the live configured Ogmios genesis",
+    );
+  }
 };
 
 export const decodeArchitectureGFixtureCreationV1 = ({

@@ -41,10 +41,12 @@ describe("DA conflict evidence V1 lifecycle", () => {
       fixture.record,
     ]);
 
+    await store.close();
     const reopened = await JsonFileWatcherStore.open(directory);
     await expect(reopened.listDaConflictEvidence()).resolves.toEqual([
       fixture.record,
     ]);
+    await reopened.close();
   });
 
   it("rejects forged, malformed, and wrong-deployment evidence before persistence", async () => {

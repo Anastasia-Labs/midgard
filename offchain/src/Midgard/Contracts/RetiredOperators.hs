@@ -14,7 +14,6 @@ import Convex.BuildTx (
   assetValue,
   execBuildTx,
   findIndexReference,
-  findIndexSpending,
   mintPlutusRefWithRedeemerFn,
   payToScriptInlineDatum,
   setMinAdaDepositAll,
@@ -22,6 +21,7 @@ import Convex.BuildTx (
  )
 import Convex.Class (MonadBlockchain (queryNetworkId, queryProtocolParameters), MonadUtxoQuery, utxosByPaymentCredential)
 import Convex.PlutusLedger.V1 (transPubKeyHash)
+import Convex.PlutusLedger.V3 (transTxOutRef)
 import Convex.Utxos (toTxOut)
 import PlutusLedgerApi.V3 (PubKeyHash (PubKeyHash))
 
@@ -253,10 +253,7 @@ retireOperator
             { activeOperatorKey = transPubKeyHash operatorPkh
             , hubOracleRefInputIndex =
                 toInteger $ findIndexReference hubOracleTxIn txBody
-            , activeOperatorAnchorElementInputIndex =
-                toInteger $ findIndexSpending anchorActiveTxIn txBody
-            , activeOperatorRemovedNodeInputIndex =
-                toInteger $ findIndexSpending removalActiveTxIn txBody
+            , activeOperatorAnchorElementInputOutRef = transTxOutRef anchorActiveTxIn
             , activeOperatorAnchorElementOutputIndex =
                 toInteger $ findOutputIndexWithAsset activePolicyId activeAnchorAssetName txBody
             , retiredOperatorsRedeemerIndex =
@@ -279,8 +276,6 @@ retireOperator
             { newRetiredOperatorKey = transPubKeyHash operatorPkh
             , bondUnlockTime
             , hubOracleRefInputIndex = toInteger $ findIndexReference hubOracleTxIn txBody
-            , retiredOperatorAnchorElementInputIndex =
-                toInteger $ findIndexSpending retiredAnchorTxIn txBody
             , retiredOperatorAnchorElementOutputIndex =
                 toInteger $ findOutputIndexWithAsset retiredPolicyId retiredAnchorAssetName txBody
             , retiredOperatorInsertedNodeOutputIndex =

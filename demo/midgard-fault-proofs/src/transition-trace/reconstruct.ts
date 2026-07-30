@@ -58,6 +58,9 @@ export type DecodedTransactionEntry = {
   readonly value: SDK.L2TransactionSourceV1;
   readonly valueBytes: Buffer;
   readonly fullTransactionCbor: Buffer;
+  readonly validity: SDK.MidgardTxValidity;
+  readonly spendInputsPreimage: Buffer;
+  readonly outputsPreimage: Buffer;
 };
 
 export type DecodedForcedTransactionEntry = DecodedRootEntry<
@@ -382,10 +385,7 @@ const decodeTransactions = async ({
         byteLength: 32,
         trim: false,
       }),
-      entryBuffer(
-        value,
-        `transaction_preimages[${index.toString()}].value`,
-      ),
+      entryBuffer(value, `transaction_preimages[${index.toString()}].value`),
     ]),
   );
   if (preimagesByTxId.size !== preimages.length) {
@@ -417,10 +417,9 @@ const decodeTransactions = async ({
         `transaction_preimages is missing tx_id ${txId}.`,
       );
     }
+    let full: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
     try {
-      const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        fullTransactionCbor,
-      );
+      full = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTransactionCbor);
       const expectedTxId = computeMidgardNativeTxIdV1(full).toString("hex");
       const source =
         deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
@@ -443,7 +442,9 @@ const decodeTransactions = async ({
         Data.to(value, SDK.L2TransactionSourceV1) !==
           Data.to(expected, SDK.L2TransactionSourceV1)
       ) {
-        throw new Error("source or commitment does not match canonical preimage");
+        throw new Error(
+          "source or commitment does not match canonical preimage",
+        );
       }
     } catch (cause) {
       throw transitionTraceError(
@@ -458,6 +459,9 @@ const decodeTransactions = async ({
       value,
       valueBytes,
       fullTransactionCbor,
+      validity: full.validity,
+      spendInputsPreimage: Buffer.from(full.body.spendInputsPreimageCbor),
+      outputsPreimage: Buffer.from(full.body.outputsPreimageCbor),
     });
   }
   if (preimagesByTxId.size !== decoded.length) {
@@ -508,10 +512,9 @@ const authenticateForcedTransactionPreimages = (
       const full = decodeMidgardNativeTxFullV1FromCanonicalCbor(
         canonicalTransactionCbor,
       );
-      const source =
-        deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-          canonicalTransactionCbor,
-        );
+      const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
+        canonicalTransactionCbor,
+      );
       const expected: SDK.ForcedInclusionTxV1 = {
         tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
         transaction_commitment:
@@ -529,7 +532,9 @@ const authenticateForcedTransactionPreimages = (
         Data.to(entry.value, SDK.ForcedInclusionTxV1) !==
         Data.to(expected, SDK.ForcedInclusionTxV1)
       ) {
-        throw new Error("source or commitment does not match canonical preimage");
+        throw new Error(
+          "source or commitment does not match canonical preimage",
+        );
       }
     } catch (cause) {
       throw transitionTraceError(

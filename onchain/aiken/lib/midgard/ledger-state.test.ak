@@ -133,24 +133,22 @@ fn confirmed_state(
 }
 
 test genesis_protocol_sentinel_and_first_ordinary_v1_are_distinct() {
-  let exact_genesis =
-    confirmed_state(
-      ledger_state.genesis_header_hash,
-      ledger_state.genesis_header_hash,
-      ledger_state.genesis_utxo_root,
-      10,
-      10,
-      ledger_state.genesis_protocol_version,
-    )
-  let ordinary_v1 =
-    confirmed_state(
-      ordinary_header_hash,
-      ledger_state.genesis_header_hash,
-      non_genesis_root,
-      10,
-      11,
-      ledger_state.protocol_version_v1,
-    )
+  let exact_genesis = confirmed_state(
+    ledger_state.genesis_header_hash,
+    ledger_state.genesis_header_hash,
+    ledger_state.genesis_utxo_root,
+    10,
+    10,
+    ledger_state.genesis_protocol_version,
+  )
+  let ordinary_v1 = confirmed_state(
+    ordinary_header_hash,
+    ledger_state.genesis_header_hash,
+    non_genesis_root,
+    10,
+    11,
+    ledger_state.protocol_version_v1,
+  )
   and {
     ledger_state.genesis_confirmed_state_v1(10) == Some(exact_genesis),
     ledger_state.genesis_confirmed_state_v1(-1) == None,

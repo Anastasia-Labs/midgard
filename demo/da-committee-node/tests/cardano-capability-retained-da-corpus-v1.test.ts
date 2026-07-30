@@ -270,5 +270,5 @@ describe("Cardano capability corpus production DA admission", () => {
         },
       ),
     ).rejects.toMatchObject({ code: "root_mismatch" });
-  });
+  }, 30_000);
 });

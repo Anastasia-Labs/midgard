@@ -15,8 +15,7 @@ pub const stage_active: Int = 0
 
 pub const stage_terminal: Int = 1
 
-const blob_chunk_domain =
-  #"4d69646761726443656b426c6f624368756e6b5631"
+const blob_chunk_domain = #"4d69646761726443656b426c6f624368756e6b5631"
 
 pub type CekSourceBlobControlV1 {
   version: Int,
@@ -44,27 +43,19 @@ fn expected_chunk_count(source_length: Int) -> Int {
   if source_length == 0 {
     1
   } else {
-    (
-      source_length + cek_proof_v1.max_blob_chunk_bytes - 1
-    ) / cek_proof_v1.max_blob_chunk_bytes
+    ( source_length + cek_proof_v1.max_blob_chunk_bytes - 1 ) / cek_proof_v1.max_blob_chunk_bytes
   }
 }
 
-fn expected_frontier_byte_length(
-  source_length: Int,
-  count: Int,
-) -> Int {
-  minimum(
-    source_length,
-    count * cek_proof_v1.max_blob_chunk_bytes,
-  )
+fn expected_frontier_byte_length(source_length: Int, count: Int) -> Int {
+  minimum(source_length, count * cek_proof_v1.max_blob_chunk_bytes)
 }
 
 fn definite_bytes_header(length: Int) -> ByteArray {
   expect and {
-    length >= 0,
-    length <= cek_proof_v1.max_blob_chunk_bytes,
-  }
+      length >= 0,
+      length <= cek_proof_v1.max_blob_chunk_bytes,
+    }
   if length < 24 {
     bytearray.from_int_big_endian(64 + length, 1)
   } else if length <= 255 {
@@ -100,9 +91,7 @@ fn initial_active_hash(
   )
 }
 
-pub fn control_is_well_formed(
-  control: CekSourceBlobControlV1,
-) -> Bool {
+pub fn control_is_well_formed(control: CekSourceBlobControlV1) -> Bool {
   let chunk_count = expected_chunk_count(control.source_length)
   and {
     control.version == version,
@@ -113,11 +102,10 @@ pub fn control_is_well_formed(
     chunk_count <= validation_merkle_v1.maximum_leaf_count,
     cek_blob_frontier_v1.frontier_is_well_formed(control.frontier),
     control.frontier.count <= chunk_count,
-    control.frontier.byte_length
-      == expected_frontier_byte_length(
-          control.source_length,
-          control.frontier.count,
-        ),
+    control.frontier.byte_length == expected_frontier_byte_length(
+      control.source_length,
+      control.frontier.count,
+    ),
     if control.stage == stage_terminal {
       and {
         control.frontier.count == chunk_count,
@@ -132,9 +120,9 @@ pub fn control_is_well_formed(
             control.frontier.count < chunk_count,
             chunk_length >= 0,
             blake2b_256_trace_v1.control_is_well_formed(hash_control),
-            hash_control.total_length
-              == bytearray.length(chunk_prefix(chunk_length))
-                + chunk_length,
+            hash_control.total_length == bytearray.length(
+              chunk_prefix(chunk_length),
+            ) + chunk_length,
           }
         }
       }
@@ -174,9 +162,7 @@ fn encode_optional_active_hash(
   }
 }
 
-pub fn encode_control_v1(
-  control: CekSourceBlobControlV1,
-) -> ByteArray {
+pub fn encode_control_v1(control: CekSourceBlobControlV1) -> ByteArray {
   expect control_is_well_formed(control)
   encode_definite_array_header(6)
     |> bytearray.concat(cbor.serialise(version))
@@ -189,11 +175,8 @@ pub fn encode_control_v1(
     |> bytearray.concat(encode_optional_active_hash(control.active_hash))
 }
 
-fn peak_from_data(
-  data: Data,
-) -> cek_blob_frontier_v1.CekBlobFrontierPeakV1 {
-  expect [height_data, root_data, byte_length_data] =
-    builtin.un_list_data(data)
+fn peak_from_data(data: Data) -> cek_blob_frontier_v1.CekBlobFrontierPeakV1 {
+  expect [height_data, root_data, byte_length_data] = builtin.un_list_data(data)
   cek_blob_frontier_v1.CekBlobFrontierPeakV1 {
     height: builtin.un_i_data(height_data),
     root: builtin.un_b_data(root_data),
@@ -210,13 +193,9 @@ fn peaks_from_data(
   }
 }
 
-fn frontier_from_data(
-  data: Data,
-) -> cek_blob_frontier_v1.CekBlobFrontierV1 {
-  expect
-    [
-      version_data, count_data, byte_length_data, peaks_data,
-    ] = builtin.un_list_data(data)
+fn frontier_from_data(data: Data) -> cek_blob_frontier_v1.CekBlobFrontierV1 {
+  expect [version_data,
+        count_data, byte_length_data, peaks_data] = builtin.un_list_data(data)
   expect builtin.un_i_data(version_data) == cek_blob_frontier_v1.version
   let frontier = cek_blob_frontier_v1.CekBlobFrontierV1 {
     count: builtin.un_i_data(count_data),
@@ -243,10 +222,11 @@ fn optional_active_hash_from_data(
 
 pub fn control_from_data_v1(data: Data) -> CekSourceBlobControlV1 {
   expect
-    [
-      version_data, stage_data, source_start_data, source_length_data,
-      frontier_data, active_hash_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, source_start_data, source_length_data,
+        frontier_data, active_hash_data,
+      ]
+    = builtin.un_list_data(data)
   let control = CekSourceBlobControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -259,9 +239,7 @@ pub fn control_from_data_v1(data: Data) -> CekSourceBlobControlV1 {
   control
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
-) -> CekSourceBlobControlV1 {
+pub fn decode_control_v1(control_cbor: ByteArray) -> CekSourceBlobControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
@@ -300,13 +278,11 @@ pub fn next_source_span_v1(
           )
           Some(
             CekSourceBlobSpanV1 {
-              absolute_start: control.source_start
-                + control.frontier.byte_length
-                + if hash_control.cursor > prefix_length {
-                  hash_control.cursor - prefix_length
-                } else {
-                  0
-                },
+              absolute_start: control.source_start + control.frontier.byte_length + if hash_control.cursor > prefix_length {
+                hash_control.cursor - prefix_length
+              } else {
+                0
+              },
               length: block_length - ( prefix_end - prefix_start ),
             },
           )
@@ -330,10 +306,7 @@ fn active_message_block(
     let block_length = expected_block_length(hash_control)
     let prefix_length = bytearray.length(prefix)
     let prefix_start = minimum(hash_control.cursor, prefix_length)
-    let prefix_end = minimum(
-      hash_control.cursor + block_length,
-      prefix_length,
-    )
+    let prefix_end = minimum(hash_control.cursor + block_length, prefix_length)
     Some(
       slice_len(prefix, prefix_start, prefix_end - prefix_start)
         |> bytearray.concat(source_bytes),
@@ -357,8 +330,9 @@ fn finish_active_chunk(
       is {
         None -> None
         Some(frontier) -> {
-          let terminal =
-            frontier.count == expected_chunk_count(control.source_length)
+          let terminal = frontier.count == expected_chunk_count(
+            control.source_length,
+          )
           let next = CekSourceBlobControlV1 {
             ..control,
             stage: if terminal {
@@ -395,32 +369,24 @@ fn advance_active_hash(
   source_bytes: Option<ByteArray>,
 ) -> Option<CekSourceBlobControlV1> {
   expect Some(hash_control) = control.active_hash
-  let next_hash =
-    if hash_control.stage == blake2b_256_trace_v1.stage_ready {
-      when source_bytes is {
-        None -> None
-        Some(bytes) ->
-          when active_message_block(control, bytes) is {
-            None -> None
-            Some(block) ->
-              blake2b_256_trace_v1.step_v1(
-                hash_control,
-                Some(block),
-              )
-          }
-      }
-    } else if source_bytes == None {
-      blake2b_256_trace_v1.step_v1(hash_control, None)
-    } else {
-      None
+  let next_hash = if hash_control.stage == blake2b_256_trace_v1.stage_ready {
+    when source_bytes is {
+      None -> None
+      Some(bytes) ->
+        when active_message_block(control, bytes) is {
+          None -> None
+          Some(block) -> blake2b_256_trace_v1.step_v1(hash_control, Some(block))
+        }
     }
+  } else if source_bytes == None {
+    blake2b_256_trace_v1.step_v1(hash_control, None)
+  } else {
+    None
+  }
   when next_hash is {
     None -> None
     Some(hash) -> {
-      let next = CekSourceBlobControlV1 {
-        ..control,
-        active_hash: Some(hash),
-      }
+      let next = CekSourceBlobControlV1 { ..control, active_hash: Some(hash) }
       if control_is_well_formed(next) {
         Some(next)
       } else {
@@ -453,9 +419,7 @@ pub fn step_v1(
   }
 }
 
-pub fn finalize_v1(
-  control: CekSourceBlobControlV1,
-) -> Option<ByteArray> {
+pub fn finalize_v1(control: CekSourceBlobControlV1) -> Option<ByteArray> {
   if and {
     control_is_well_formed(control),
     control.stage == stage_terminal,

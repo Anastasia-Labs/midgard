@@ -90,6 +90,7 @@ import {
   makeWatcherSettlementSubjectV1,
   parseWatcherSettlementIndexerResultV1,
   parseWatcherSettlementIndexerStateV1,
+  WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS,
   WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   type WatcherSettlementIndexerPolicyV1,
   type WatcherSettlementIndexerStateV1,
@@ -100,6 +101,7 @@ import {
   type WatcherSettlementTransitionKindV1,
   type WatcherSettlementTransitionV1,
 } from "../src/settlement-indexer.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 type Mutable = Record<string, any>;
 
@@ -151,36 +153,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "validationTraceDispute",
-      ].map((category, index) => {
-        const contractName = {
-          doubleSpend: "fraudProofDoubleSpend",
-          nonExistentInput: "fraudProofNonExistentInput",
-          nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-          invalidRange: "fraudProofInvalidRange",
-          transitionTrace: "fraudProofTransitionTrace",
-          validationTraceDispute: "validationTraceDispute",
-        }[category]!;
-        return [
-          category,
-          {
-            categoryId: index.toString(16).padStart(8, "0"),
-            scriptHash: contracts[contractName].scriptHash,
-            membershipProofCbor: "80",
-          },
-        ];
-      }),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -567,77 +541,86 @@ const finalityPolicy = makeWatcherFinalityPolicyV1(
 
 const LOCAL_NODE_ID = "watcher-node-a";
 const LOCAL_GENESIS_IDENTITY = h32("76");
-const localFinalityPolicy = makeWatcherFinalityPolicyV1(
-  {
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "local_node",
-        authorityNodeId: LOCAL_NODE_ID,
-        chainSync: {
-          kind: "cardano_node_socket",
-          socketPath: "/ipc/node.socket",
-          genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+const makeLocalFinalityPolicy = (
+  queryServices: readonly Readonly<{
+    kind: "ogmios";
+    identity: string;
+    endpoint: string;
+  }>[],
+) =>
+  makeWatcherFinalityPolicyV1(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "acceptance",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "local_node",
+          authorityNodeId: LOCAL_NODE_ID,
+          chainSync: {
+            kind: "cardano_node_socket",
+            socketPath: "/ipc/node.socket",
+            genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+          },
+          queryServices,
         },
-        queryServices: [
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: Number(policy.requiredFinalityDepth),
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: Number(policy.requiredFinalityDepth),
+          },
+        },
+      },
+      da: {
+        peers: [
           {
-            kind: "ogmios",
-            identity: "local-ogmios",
-            endpoint: "http://127.0.0.1:1337",
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
           },
         ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
       },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: {
-        depth: Number(policy.requiredFinalityDepth),
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: Number(policy.requiredFinalityDepth),
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+      },
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
         },
       },
-    },
-    da: {
-      peers: [
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-        },
-      ],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
       },
     },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: policy.network,
+      trustRootId: policy.deploymentTrustRootId,
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
     },
-  },
+  )!;
+const localFinalityPolicy = makeLocalFinalityPolicy([]);
+const localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
   {
-    manifestId: policy.deploymentMarker.manifestId,
-    network: policy.network,
-    trustRootId: policy.deploymentTrustRootId,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments: { validation: h32("55") },
-    durableMarker: policy.deploymentMarker,
+    kind: "ogmios",
+    identity: "local-ogmios",
+    endpoint: "http://127.0.0.1:1337",
   },
-)!;
+]);
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -797,7 +780,27 @@ const transactionBody = (
     }
     body.set_mint(minted);
   }
+  body.set_script_data_hash(SETTLEMENT_SCRIPT_DATA_HASH);
   return body.to_canonical_cbor_hex();
+};
+
+const SETTLEMENT_SCRIPT_DATA_HASH = CML.ScriptDataHash.from_raw_bytes(
+  Buffer.alloc(32, 0x7a),
+);
+
+const settlementRedeemerTag = (purpose: string): CML.RedeemerTag => {
+  switch (purpose) {
+    case "spend":
+      return CML.RedeemerTag.Spend;
+    case "mint":
+      return CML.RedeemerTag.Mint;
+    case "certificate":
+      return CML.RedeemerTag.Cert;
+    case "withdrawal":
+      return CML.RedeemerTag.Reward;
+    default:
+      throw new Error(`unsupported test redeemer purpose: ${purpose}`);
+  }
 };
 
 const settlementSubject = (
@@ -840,6 +843,16 @@ const provider = {
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: h32("97"),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: h32("98"),
+    },
+  ],
 } as const;
 
 const localSource = {
@@ -847,6 +860,7 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  queryServices: [],
 } as const;
 const localChainSyncProvider = {
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -876,6 +890,15 @@ const localOgmiosProvider = {
     publicIdentitySha256: h32("75"),
   },
 } as const;
+const localSourceWithOgmios = {
+  ...localSource,
+  queryServices: [
+    {
+      kind: "ogmios",
+      providerId: localOgmiosProvider.providerId,
+    },
+  ],
+} as const;
 
 const rollbackProvider = (
   providerId: string,
@@ -896,6 +919,7 @@ const rollbackProvider = (
 
 type RollbackPoint = Readonly<{
   blockHash: string;
+  parentBlockHash: string | null;
   slot: string;
   blockNo: string;
   depth: string;
@@ -959,6 +983,15 @@ type Bundle = Readonly<{
   finalityResult: ReturnType<typeof evaluateWatcherFinalityV1>;
 }>;
 
+type SettlementFinalityLineage = NonNullable<
+  WatcherSettlementPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const settlementFinalityLineageByStateDigest = new Map<
+  string,
+  SettlementFinalityLineage
+>();
+
 const bundle = (input: {
   policyOverride?: WatcherSettlementIndexerPolicyV1;
   kind: WatcherSettlementTransitionKindV1;
@@ -986,27 +1019,39 @@ const bundle = (input: {
   durableStore?: WatcherDurableStoreV1;
   previousFinalityState?: unknown;
   rollbackAuthority?: WatcherSettlementPublicContextV1["rollbackAuthority"];
+  chainPointOffset?: bigint;
+  parentBlockHash?: string | null;
+  transactionIsValid?: boolean;
+  forceEmptyBlock?: boolean;
+  transactionPosition?: number;
 }): Bundle => {
   const activePolicy = input.policyOverride ?? policy;
   serial += 1;
-  const isLocal = ["retry", "mark_stuck", "mark_invalid", "rollback"].includes(
-    input.kind,
+  const hasTransaction =
+    !["retry", "mark_stuck", "mark_invalid", "rollback"].includes(input.kind) &&
+    input.forceEmptyBlock !== true;
+  const body = CML.TransactionBody.from_cbor_hex(
+    transactionBody(
+      input.inputs ?? [h32("81") + "#0"],
+      input.outputHexes ?? [],
+      input.mint ?? [],
+    ),
   );
-  const bodyHex = transactionBody(
-    input.inputs ?? [h32("81") + "#0"],
-    input.outputHexes ?? [],
-    input.mint ?? [],
-  );
+  if ((input.redeemers?.length ?? 0) > 0) {
+    body.set_script_data_hash(SETTLEMENT_SCRIPT_DATA_HASH);
+  }
+  const bodyHex = body.to_canonical_cbor_hex();
   const transactionHash = computeHash32(Buffer.from(bodyHex, "hex")).toString(
     "hex",
   );
   const utxos = (input.outputHexes ?? []).map((outputHex, outputIndex) => {
     const output = CML.TransactionOutput.from_cbor_hex(outputHex);
+    const canonicalOutputHex = output.to_canonical_cbor_hex();
     const datumHex = output.datum()?.as_datum()?.to_canonical_cbor_hex();
     return {
       outRef: `${transactionHash}#${outputIndex.toString()}`,
       outputIndex: outputIndex.toString(),
-      output: makeWatcherL1PublicBytesV1(outputHex),
+      output: makeWatcherL1PublicBytesV1(canonicalOutputHex),
       datum:
         datumHex === undefined
           ? null
@@ -1020,6 +1065,50 @@ const bundle = (input: {
     };
   });
   const authenticatedProvider = input.authenticatedProvider ?? provider;
+  const previousStore = input.restartBindings?.at(-1)?.durableStore as
+    | WatcherDurableStoreV1
+    | undefined;
+  const sourceStore =
+    input.sourceDurableStore ?? previousStore ?? bootstrapStore;
+  const parentHash =
+    [...sourceStore.chainPoints]
+      .sort((left, right) =>
+        BigInt(left.blockNo) < BigInt(right.blockNo) ? 1 : -1,
+      )
+      .at(0)?.blockHash ?? null;
+  const parentPoint = [...sourceStore.chainPoints]
+    .sort((left, right) =>
+      BigInt(left.blockNo) < BigInt(right.blockNo) ? 1 : -1,
+    )
+    .at(0);
+  const canonicalRedeemers = (input.redeemers ?? []).map((redeemer) => ({
+    purpose: redeemer.purpose,
+    index: redeemer.index,
+    bytes: makeWatcherL1PublicBytesV1(
+      CML.PlutusData.from_cbor_hex(redeemer.cborHex).to_canonical_cbor_hex(),
+    ),
+  }));
+  const witnessSet = CML.TransactionWitnessSet.new();
+  if (canonicalRedeemers.length > 0) {
+    const redeemers = CML.LegacyRedeemerList.new();
+    for (const redeemer of canonicalRedeemers) {
+      redeemers.add(
+        CML.LegacyRedeemer.new(
+          settlementRedeemerTag(redeemer.purpose),
+          BigInt(redeemer.index),
+          CML.PlutusData.from_cbor_hex(redeemer.bytes.bytesHex),
+          CML.ExUnits.new(0n, 0n),
+        ),
+      );
+    }
+    witnessSet.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
+  }
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    input.transactionIsValid ?? true,
+    undefined,
+  );
   const l1Observation: Mutable =
     input.l1Observation ??
     ({
@@ -1028,36 +1117,41 @@ const bundle = (input: {
       providerId: authenticatedProvider.providerId,
       chainPoint: {
         blockHash: h32(((serial + 50) % 240).toString(16).padStart(2, "0")),
-        slot: (1_000 + serial).toString(),
-        blockNo: (100 + serial).toString(),
+        parentBlockHash: input.parentBlockHash ?? parentHash,
+        slot: (parentPoint === undefined
+          ? BigInt(1_000 + serial)
+          : BigInt(parentPoint.slot) + (input.chainPointOffset ?? 1n)
+        ).toString(),
+        blockNo: (parentPoint === undefined
+          ? 100n
+          : BigInt(parentPoint.blockNo) + (input.chainPointOffset ?? 1n)
+        ).toString(),
         depth: "1",
       },
-      transactions: isLocal
-        ? []
-        : [
+      transactions: hasTransaction
+        ? [
             {
               txHash: transactionHash,
+              transactionIndex: "0",
+              fullTransaction: makeWatcherL1PublicBytesV1(
+                fullTransaction.to_canonical_cbor_hex(),
+              ),
               body: makeWatcherL1PublicBytesV1(bodyHex),
-              utxos,
+              witnessSet: makeWatcherL1PublicBytesV1(
+                witnessSet.to_canonical_cbor_hex(),
+              ),
+              utxos: input.transactionIsValid === false ? [] : utxos,
               scripts: [],
               datums: [],
-              redeemers: (input.redeemers ?? []).map((redeemer) => ({
-                purpose: redeemer.purpose,
-                index: redeemer.index,
-                bytes: makeWatcherL1PublicBytesV1(redeemer.cborHex),
-              })),
+              redeemers: canonicalRedeemers,
             },
-          ],
+          ]
+        : [],
     } satisfies Mutable);
   const normalized = normalizeWatcherL1BlockV1(
     authenticatedProvider,
     l1Observation,
   );
-  const previousStore = input.restartBindings?.at(-1)?.durableStore as
-    | WatcherDurableStoreV1
-    | undefined;
-  const sourceStore =
-    input.sourceDurableStore ?? previousStore ?? bootstrapStore;
   const indexedProtocolUtxos = (input.protocolUtxos ?? []).map(
     (utxo) =>
       sourceStore.protocolUtxos.find(
@@ -1152,9 +1246,10 @@ const bundle = (input: {
     blockHash: normalized.chainPoint.blockHash,
     slot: normalized.chainPoint.slot,
     blockNo: normalized.chainPoint.blockNo,
-    transactionHash: isLocal
-      ? null
-      : (normalized.transactions[0]?.txHash ?? null),
+    transactionHash: hasTransaction
+      ? (normalized.transactions[input.transactionPosition ?? 0]?.txHash ??
+        null)
+      : null,
     sourceObservationDigest: normalized.observationDigest,
     durableStoreDigest: watcherDurableStoreBytesSha256(
       encodeWatcherDurableStoreV1(store),
@@ -1190,17 +1285,43 @@ const bundle = (input: {
       normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
     ),
   );
+  const previousFinalityState = input.previousFinalityState ?? null;
+  const previousStateDigest =
+    previousFinalityState !== null &&
+    typeof previousFinalityState === "object" &&
+    "stateDigest" in previousFinalityState &&
+    typeof previousFinalityState.stateDigest === "string"
+      ? previousFinalityState.stateDigest
+      : null;
+  const lineage =
+    previousStateDigest === null
+      ? []
+      : (settlementFinalityLineageByStateDigest.get(previousStateDigest) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     activeFinalityPolicy,
-    input.previousFinalityState ?? null,
+    previousFinalityState,
     consistency,
   );
+  if (finalityResult.state !== null) {
+    settlementFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const finalityAuthority =
     input.kind === "rollback"
       ? null
       : {
           policy: activeFinalityPolicy,
-          previousState: input.previousFinalityState ?? null,
+          lineage,
+          previousState: previousFinalityState,
           observations: finalityObservations,
           consistency,
           result: finalityResult,
@@ -1350,13 +1471,41 @@ const scenarioBootstrap = (
   return { policy: scenarioPolicy!, store };
 };
 
-const spawnSequence = () => {
+const spawnSequence = (
+  options: Readonly<{
+    sourceMode?: "local_node" | "external_providers";
+    emptyBlockGap?: boolean;
+  }> = {},
+) => {
+  const authenticatedProvider =
+    options.sourceMode === "local_node" ? localChainSyncProvider : provider;
   const bootstrapEvidence = bundle({
     kind: "bootstrap",
     previousState: null,
     snapshot: emptySnapshot(),
+    authenticatedProvider,
   });
   const bootstrapState = accepted(null, bootstrapEvidence);
+  const gapEvidence =
+    options.emptyBlockGap === true
+      ? bundle({
+          kind: "retry",
+          previousState: bootstrapState,
+          snapshot: emptySnapshot(),
+          transition: {
+            subjectId: "empty-block-gap",
+            retryAttempt: "1",
+            failureCode: "empty_block_gap",
+          },
+          restartBindings: [bootstrapEvidence.restartBinding],
+          authenticatedProvider,
+          forceEmptyBlock: true,
+        })
+      : null;
+  const gapPoint =
+    gapEvidence === null
+      ? null
+      : ((gapEvidence.context.l1Observation as Mutable).chainPoint as Mutable);
   const outputHex = settlementOutput();
   const queueOutputHex = stateQueueOutput();
   const inputs = [h32("85") + "#0"];
@@ -1444,6 +1593,10 @@ const spawnSequence = () => {
     },
     restartBindings: [bootstrapEvidence.restartBinding],
     protocolUtxos: [durable],
+    authenticatedProvider,
+    previousFinalityState: gapEvidence?.finalityState,
+    chainPointOffset: gapEvidence === null ? undefined : 2n,
+    parentBlockHash: gapPoint === null ? undefined : String(gapPoint.blockHash),
   });
   const spawnState = accepted(bootstrapState, spawnEvidence);
   return {
@@ -1501,18 +1654,19 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         },
       ];
       const consistency = evaluateWatcherMultiProviderConsistencyV1(
-        localSource,
+        localSourceWithOgmios,
         observations.map(({ authenticatedProvider, l1Observation }) =>
           normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
         ),
       );
       context.finalityAuthority = {
-        policy: localFinalityPolicy,
+        policy: localOgmiosFinalityPolicy,
+        lineage: [],
         previousState: null,
         observations,
         consistency,
         result: evaluateWatcherFinalityV1(
-          localFinalityPolicy,
+          localOgmiosFinalityPolicy,
           null,
           consistency,
         ),
@@ -1542,7 +1696,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
     expect(queryOnly.context.finalityAuthority?.consistency).toMatchObject({
       status: "quarantined",
-      reasonCodes: ["missing_chain_sync_authority"],
+      reasonCodes: expect.arrayContaining(["missing_chain_sync_authority"]),
     });
     expect(
       evaluateWatcherSettlementIndexerV1(
@@ -1583,6 +1737,237 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         null,
         local.observation,
         substitutedMode,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+  });
+
+  it.each(["local_node", "external_providers"] as const)(
+    "rejects %s two-step competing forks and oversized W12 evidence before indexing",
+    (sourceMode) => {
+      const authenticatedProvider =
+        sourceMode === "local_node" ? localChainSyncProvider : provider;
+      const initial = bundle({
+        kind: "bootstrap",
+        previousState: null,
+        snapshot: emptySnapshot(),
+        inputs: [h32(sourceMode === "local_node" ? "c1" : "c2") + "#0"],
+        authenticatedProvider,
+      });
+      const oversized = structuredClone(initial.context) as Mutable;
+      const authority = oversized.finalityAuthority as Mutable;
+      authority.observations = Array.from({ length: 17 }, () =>
+        structuredClone(authority.observations[0]),
+      );
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          oversized,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+      const cyclic = structuredClone(initial.context) as Mutable;
+      cyclic.finalityAuthority.lineage = [cyclic.finalityAuthority];
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          cyclic,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+      const oversizedSparse = structuredClone(initial.context) as Mutable;
+      const sparseLineage: unknown[] = [];
+      sparseLineage.length =
+        WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.evidenceContainerEntries + 1;
+      oversizedSparse.finalityAuthority.lineage = sparseLineage;
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          oversizedSparse,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+      const veryWide = structuredClone(initial.context) as Mutable;
+      veryWide.untrusted = Object.fromEntries(
+        Array.from(
+          {
+            length:
+              WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.evidenceContainerEntries + 1,
+          },
+          (_, index) => [`field_${index.toString()}`, "x"],
+        ),
+      );
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          veryWide,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+
+      const invalid = bundle({
+        kind: "bootstrap",
+        previousState: null,
+        snapshot: emptySnapshot(),
+        inputs: [h32(sourceMode === "local_node" ? "c5" : "c6") + "#0"],
+        outputHexes: [settlementOutput()],
+        mint: [
+          {
+            policyId: settlementPolicyId,
+            assetName: settlementAsset,
+            quantity: 1n,
+          },
+        ],
+        authenticatedProvider,
+        transactionIsValid: false,
+      });
+      expect(
+        normalizeWatcherL1BlockV1(
+          authenticatedProvider,
+          invalid.context.l1Observation,
+        ).transactions[0],
+      ).toMatchObject({ isValid: false, utxos: [] });
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          null,
+          invalid.observation,
+          invalid.context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+
+      const state = accepted(null, initial);
+      const twoStepFork = bundle({
+        kind: "bootstrap",
+        previousState: state,
+        snapshot: emptySnapshot(),
+        inputs: [h32(sourceMode === "local_node" ? "c3" : "c4") + "#0"],
+        restartBindings: [initial.restartBinding],
+        authenticatedProvider,
+        chainPointOffset: 2n,
+      });
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          state,
+          twoStepFork.observation,
+          twoStepFork.context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["stale_chain_point"],
+      });
+    },
+  );
+
+  it.each(["local_node", "external_providers"] as const)(
+    "authenticates %s settlement ancestry across an empty intermediate block",
+    (sourceMode) => {
+      const sequence = spawnSequence({ sourceMode, emptyBlockGap: true });
+      expect(sequence.spawnState.snapshot).toMatchObject({
+        resources: [{ role: "settlement" }],
+        subjects: [{ status: "open" }],
+      });
+    },
+  );
+
+  it("orders same-block transaction-backed transitions by their canonical transactionIndex", () => {
+    const sequence = spawnSequence();
+    const bootstrapState = accepted(null, sequence.bootstrapEvidence);
+    const bootstrapRaw = structuredClone(
+      sequence.bootstrapEvidence.context.l1Observation,
+    ) as Mutable;
+    const spawnRaw = structuredClone(
+      sequence.spawnEvidence.context.l1Observation,
+    ) as Mutable;
+    const priorTransaction = structuredClone(
+      bootstrapRaw.transactions[0],
+    ) as Mutable;
+    priorTransaction.transactionIndex = "0";
+    const currentTransaction = structuredClone(
+      spawnRaw.transactions[0],
+    ) as Mutable;
+    currentTransaction.transactionIndex = "1";
+    const sameBlockRaw = structuredClone(spawnRaw) as Mutable;
+    sameBlockRaw.chainPoint = structuredClone(bootstrapRaw.chainPoint);
+    sameBlockRaw.transactions = [priorTransaction, currentTransaction];
+    const sameBlock = bundle({
+      kind: "spawn_settlement",
+      previousState: bootstrapState,
+      snapshot: sequence.spawnEvidence.observation.snapshot,
+      transition: sequence.spawnEvidence.observation.transition,
+      restartBindings: [sequence.bootstrapEvidence.restartBinding],
+      protocolUtxos: [sequence.durable],
+      l1Observation: sameBlockRaw,
+      transactionPosition: 1,
+    });
+    expect(sameBlock.observation.pointDigest).toBe(
+      sequence.bootstrapEvidence.observation.pointDigest,
+    );
+    expect(accepted(bootstrapState, sameBlock).snapshot).toEqual(
+      sequence.spawnState.snapshot,
+    );
+
+    const reversedRaw = structuredClone(sameBlockRaw) as Mutable;
+    reversedRaw.transactions = [
+      { ...structuredClone(currentTransaction), transactionIndex: "0" },
+      { ...structuredClone(priorTransaction), transactionIndex: "1" },
+    ];
+    const reversed = bundle({
+      kind: "spawn_settlement",
+      previousState: bootstrapState,
+      snapshot: sequence.spawnEvidence.observation.snapshot,
+      transition: sequence.spawnEvidence.observation.transition,
+      restartBindings: [sequence.bootstrapEvidence.restartBinding],
+      protocolUtxos: [sequence.durable],
+      l1Observation: reversedRaw,
+      transactionPosition: 0,
+    });
+    expect(
+      evaluateWatcherSettlementIndexerV1(
+        policy,
+        bootstrapState,
+        reversed.observation,
+        reversed.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["stale_chain_point"],
+    });
+
+    const forgedOrdinalContext = structuredClone(sameBlock.context) as Mutable;
+    forgedOrdinalContext.l1Observation.transactions[1].transactionIndex = "7";
+    for (const candidate of forgedOrdinalContext.finalityAuthority
+      .observations) {
+      candidate.l1Observation.transactions[1].transactionIndex = "7";
+    }
+    expect(
+      evaluateWatcherSettlementIndexerV1(
+        policy,
+        bootstrapState,
+        sameBlock.observation,
+        forgedOrdinalContext,
       ),
     ).toMatchObject({
       action: "reject",
@@ -3489,12 +3874,14 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const rollbackProviderA = rollbackProvider("provider-a", "77");
     const rollbackProviderB = rollbackProvider("provider-b", "78");
+    const fundedHead = fundedState.activeHistory.at(-1)!.observation;
     const oldRawA = structuredClone(terminal.context.l1Observation) as Mutable;
     oldRawA.providerId = rollbackProviderA.providerId;
     oldRawA.chainPoint = {
       blockHash: h32("e1"),
-      slot: "7000",
-      blockNo: "700",
+      parentBlockHash: fundedHead.blockHash,
+      slot: (BigInt(fundedHead.slot) + 1n).toString(),
+      blockNo: (BigInt(fundedHead.blockNo) + 1n).toString(),
       depth: "1",
     };
     const oldRawB = structuredClone(oldRawA) as Mutable;
@@ -3502,8 +3889,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const replacementRawA = structuredClone(oldRawA) as Mutable;
     replacementRawA.chainPoint = {
       blockHash: h32("e2"),
-      slot: "7001",
-      blockNo: "701",
+      parentBlockHash: fundedHead.blockHash,
+      slot: (BigInt(fundedHead.slot) + 2n).toString(),
+      blockNo: (BigInt(fundedHead.blockNo) + 1n).toString(),
       depth: "1",
     };
     const replacementRawB = structuredClone(replacementRawA) as Mutable;
@@ -3759,7 +4147,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       parseWatcherSettlementIndexerStateV1(
         JSON.parse(JSON.stringify(restoredState)),
         scenario.policy,
-        [initial.restartBinding, rollbackEvidence.restartBinding],
+        [
+          initial.restartBinding,
+          terminalForRollback.restartBinding,
+          rollbackEvidence.restartBinding,
+        ],
         [rollbackBinding],
       ),
     ).toEqual(restoredState);
@@ -3888,6 +4280,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       transition: terminal.observation.transition,
       restartBindings: [
         initial.restartBinding,
+        terminalForRollback.restartBinding,
         rollbackEvidence.restartBinding,
       ],
       restartRollbackBindings: [rollbackBinding],
@@ -4506,6 +4899,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       collision,
       {
         ...initial.context,
+        sourceDurableStore: initial.store,
         restartContexts: [initial.restartBinding],
       },
     );
@@ -4558,14 +4952,57 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       },
       SettlementMintRedeemer,
     );
-    const publicTransaction = {
+    const canonicalSpawnRedeemer =
+      CML.PlutusData.from_cbor_hex(spawnRedeemer).to_canonical_cbor_hex();
+    const canonicalMergeRedeemer = CML.PlutusData.from_cbor_hex(
+      stateQueueMergeRedeemer(inputs[0]!),
+    ).to_canonical_cbor_hex();
+    const witnessSet = CML.TransactionWitnessSet.new();
+    const legacyRedeemers = CML.LegacyRedeemerList.new();
+    legacyRedeemers.add(
+      CML.LegacyRedeemer.new(
+        CML.RedeemerTag.Mint,
+        0n,
+        CML.PlutusData.from_cbor_hex(canonicalSpawnRedeemer),
+        CML.ExUnits.new(0n, 0n),
+      ),
+    );
+    legacyRedeemers.add(
+      CML.LegacyRedeemer.new(
+        CML.RedeemerTag.Mint,
+        1n,
+        CML.PlutusData.from_cbor_hex(canonicalMergeRedeemer),
+        CML.ExUnits.new(0n, 0n),
+      ),
+    );
+    witnessSet.set_redeemers(
+      CML.Redeemers.new_arr_legacy_redeemer(legacyRedeemers),
+    );
+    const fullTransaction = CML.Transaction.new(
+      CML.TransactionBody.from_cbor_hex(bodyHex),
+      witnessSet,
+      true,
+      undefined,
+    );
+    const publicTransaction = () => ({
       txHash: transactionHash,
+      transactionIndex: "0",
+      fullTransaction: makeWatcherL1PublicBytesV1(
+        fullTransaction.to_canonical_cbor_hex(),
+      ),
       body: makeWatcherL1PublicBytesV1(bodyHex),
+      witnessSet: makeWatcherL1PublicBytesV1(
+        witnessSet.to_canonical_cbor_hex(),
+      ),
       utxos: [
         {
           outRef,
           outputIndex: "0",
-          output: makeWatcherL1PublicBytesV1(outputHex),
+          output: makeWatcherL1PublicBytesV1(
+            CML.TransactionOutput.from_cbor_hex(
+              outputHex,
+            ).to_canonical_cbor_hex(),
+          ),
           datum: {
             datumHash: computeHash32(Buffer.from(datumHex!, "hex")).toString(
               "hex",
@@ -4577,7 +5014,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         {
           outRef: `${transactionHash}#1`,
           outputIndex: "1",
-          output: makeWatcherL1PublicBytesV1(queueOutputHex),
+          output: makeWatcherL1PublicBytesV1(
+            CML.TransactionOutput.from_cbor_hex(
+              queueOutputHex,
+            ).to_canonical_cbor_hex(),
+          ),
           datum: null,
           referenceScript: null,
         },
@@ -4588,42 +5029,45 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         {
           purpose: "mint",
           index: "0",
-          bytes: makeWatcherL1PublicBytesV1(spawnRedeemer),
+          bytes: makeWatcherL1PublicBytesV1(canonicalSpawnRedeemer),
         },
         {
           purpose: "mint",
           index: "1",
-          bytes: makeWatcherL1PublicBytesV1(
-            stateQueueMergeRedeemer(inputs[0]!),
-          ),
+          bytes: makeWatcherL1PublicBytesV1(canonicalMergeRedeemer),
         },
       ],
-    };
+    });
+    const bootstrapHead = bootstrapState.activeHistory.at(-1)!.observation;
     const oldPoint = {
       blockHash: h32("d2"),
-      slot: "5000",
-      blockNo: "500",
+      parentBlockHash: bootstrapHead.blockHash,
+      slot: (BigInt(bootstrapHead.slot) + 1n).toString(),
+      blockNo: (BigInt(bootstrapHead.blockNo) + 1n).toString(),
       depth: "1",
     } as const;
     const replacementPoint = {
       blockHash: h32("d3"),
-      slot: "5001",
-      blockNo: "501",
+      parentBlockHash: bootstrapHead.blockHash,
+      slot: (BigInt(bootstrapHead.slot) + 2n).toString(),
+      blockNo: (BigInt(bootstrapHead.blockNo) + 1n).toString(),
       depth: "2",
     } as const;
     const providerA = rollbackProvider("provider-a", "77");
     const providerB = rollbackProvider("provider-b", "78");
-    const oldRawA = rawBlock(providerA, oldPoint, publicTransaction);
-    const oldRawB = rawBlock(providerB, oldPoint, publicTransaction);
+    const oldTransaction = publicTransaction();
+    const replacementTransaction = publicTransaction();
+    const oldRawA = rawBlock(providerA, oldPoint, oldTransaction);
+    const oldRawB = rawBlock(providerB, oldPoint, oldTransaction);
     const replacementRawA = rawBlock(
       providerA,
       replacementPoint,
-      publicTransaction,
+      replacementTransaction,
     );
     const replacementRawB = rawBlock(
       providerB,
       replacementPoint,
-      publicTransaction,
+      replacementTransaction,
     );
     const oldA = normalizeWatcherL1BlockV1(providerA, oldRawA);
     const oldB = normalizeWatcherL1BlockV1(providerB, oldRawB);
@@ -4932,7 +5376,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       parseWatcherSettlementIndexerStateV1(
         JSON.parse(JSON.stringify(rollbackState)),
         policy,
-        [bootstrapEvidence.restartBinding, rollbackEvidence.restartBinding],
+        [
+          bootstrapEvidence.restartBinding,
+          spawnEvidence.restartBinding,
+          rollbackEvidence.restartBinding,
+        ],
         [restartRollbackBinding],
       ),
     ).toEqual(rollbackState);
@@ -4948,7 +5396,11 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       parseWatcherSettlementIndexerStateV1(
         rollbackState,
         policy,
-        [bootstrapEvidence.restartBinding, rollbackEvidence.restartBinding],
+        [
+          bootstrapEvidence.restartBinding,
+          spawnEvidence.restartBinding,
+          rollbackEvidence.restartBinding,
+        ],
         [],
       ),
     ).toBeNull();
@@ -4986,26 +5438,55 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).toBeNull();
 
     const nextStore = authoritative.nextStore!;
+    const unrelatedSentinel = {
+      inputId: h32("ed"),
+      kind: "proof_input" as const,
+      payload: makeWatcherDurablePayloadV1("81"),
+    };
+    const extendedSourceStore = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: (BigInt(nextStore.revision) + 1n).toString(),
+      records: {
+        ...nextStore,
+        daProofInputs: [...nextStore.daProofInputs, unrelatedSentinel],
+      },
+    });
+    const deletedPriorRecordSource = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: extendedSourceStore.revision,
+      records: {
+        ...extendedSourceStore,
+        l1Observations: extendedSourceStore.l1Observations.slice(1),
+      },
+    });
+    const mutatedPriorRecordSource = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: extendedSourceStore.revision,
+      records: {
+        ...extendedSourceStore,
+        chainPoints: extendedSourceStore.chainPoints.map((entry, index) =>
+          index === 0
+            ? {
+                ...entry,
+                depth: (BigInt(entry.depth) + 1n).toString(),
+              }
+            : entry,
+        ),
+      },
+    });
     const reIncludedDurable: WatcherProtocolUtxoV1 = {
       ...oldDurable,
       chainPointId: replacementA.chainPoint.chainPointId,
     };
     const reIncludedStore = makeWatcherDurableStoreV1({
       deploymentMarker: policy.deploymentMarker,
-      revision: (BigInt(nextStore.revision) + 1n).toString(),
+      revision: (BigInt(extendedSourceStore.revision) + 1n).toString(),
       records: {
-        l1Observations: nextStore.l1Observations,
-        chainPoints: nextStore.chainPoints,
-        protocolUtxos: [...nextStore.protocolUtxos, reIncludedDurable],
-        daProofInputs: nextStore.daProofInputs,
-        reconstructedStates: nextStore.reconstructedStates,
-        decisions: nextStore.decisions,
-        faults: nextStore.faults,
-        submissions: nextStore.submissions,
-        confirmations: nextStore.confirmations,
-        retries: nextStore.retries,
-        deadlines: nextStore.deadlines,
-        correctionResults: nextStore.correctionResults,
+        ...extendedSourceStore,
+        protocolUtxos: [
+          ...extendedSourceStore.protocolUtxos,
+          reIncludedDurable,
+        ],
       },
     });
     const reIncluded = bundle({
@@ -5019,19 +5500,244 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       transition: spawnTransition,
       restartBindings: [
         bootstrapEvidence.restartBinding,
+        spawnEvidence.restartBinding,
         rollbackEvidence.restartBinding,
       ],
       restartRollbackBindings: [restartRollbackBinding],
       authenticatedProvider: providerA,
       l1Observation: replacementRawA,
+      sourceDurableStore: extendedSourceStore,
       durableStore: reIncludedStore,
     });
     expect(reIncluded.observation.transactionHash).toBe(
       spawnEvidence.observation.transactionHash,
     );
-    expect(accepted(rollbackState, reIncluded).snapshot).toEqual(
-      spawnedSnapshot,
+    const reIncludedState = accepted(rollbackState, reIncluded);
+    expect(reIncludedState.snapshot).toEqual(spawnedSnapshot);
+    expect(reIncluded.store.daProofInputs).toContainEqual(unrelatedSentinel);
+    for (const divergentSource of [
+      deletedPriorRecordSource,
+      mutatedPriorRecordSource,
+    ]) {
+      const divergent = bundle({
+        kind: "spawn_settlement",
+        previousState: rollbackState,
+        snapshot: spawnedSnapshot,
+        inputs,
+        outputHexes: [outputHex],
+        mint,
+        redeemers: [{ purpose: "mint", index: "0", cborHex: spawnRedeemer }],
+        transition: spawnTransition,
+        restartBindings: [
+          bootstrapEvidence.restartBinding,
+          spawnEvidence.restartBinding,
+          rollbackEvidence.restartBinding,
+        ],
+        restartRollbackBindings: [restartRollbackBinding],
+        authenticatedProvider: providerA,
+        l1Observation: replacementRawA,
+        sourceDurableStore: divergentSource,
+      });
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          rollbackState,
+          divergent.observation,
+          divergent.context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["stale_state"],
+      });
+    }
+
+    const secondReplacementPoint = {
+      blockHash: h32("d4"),
+      parentBlockHash: bootstrapHead.blockHash,
+      slot: (BigInt(replacementPoint.slot) + 1n).toString(),
+      blockNo: replacementPoint.blockNo,
+      depth: "3",
+    } as const;
+    const secondReplacementRawA = rawBlock(
+      providerA,
+      secondReplacementPoint,
+      publicTransaction(),
     );
+    const secondReplacementRawB = rawBlock(
+      providerB,
+      secondReplacementPoint,
+      publicTransaction(),
+    );
+    const secondReplacementA = normalizeWatcherL1BlockV1(
+      providerA,
+      secondReplacementRawA,
+    );
+    const secondReplacementB = normalizeWatcherL1BlockV1(
+      providerB,
+      secondReplacementRawB,
+    );
+    const secondSourceStore = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: (BigInt(reIncludedStore.revision) + 1n).toString(),
+      records: {
+        ...reIncludedStore,
+        l1Observations: [
+          ...reIncludedStore.l1Observations,
+          persistedObservation(secondReplacementA),
+          persistedObservation(secondReplacementB),
+        ],
+        chainPoints: [
+          ...reIncludedStore.chainPoints,
+          ...persistedChainPoints([secondReplacementA, secondReplacementB]),
+        ],
+      },
+    });
+    const secondConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [secondReplacementA, secondReplacementB],
+    );
+    const secondFinalityResult = evaluateWatcherFinalityV1(
+      rollbackFinalityPolicy,
+      finalityResult.state,
+      secondConsistency,
+    );
+    expect(secondFinalityResult.action).toBe("rewind_pending");
+    const secondRollbackBootstrap = makeWatcherRollbackBootstrapStateV1(
+      rollbackFinalityPolicy,
+      secondSourceStore,
+      finalityResult.state,
+    )!;
+    const secondRollbackContext = {
+      policy: rollbackFinalityPolicy,
+      sourceStore: secondSourceStore,
+      previousFinalityState: finalityResult.state,
+      consistency: secondConsistency,
+      finalityResult: secondFinalityResult,
+      previousRollbackState: secondRollbackBootstrap,
+      rollbackBootstrapState: secondRollbackBootstrap,
+    };
+    const secondAuthoritative = evaluateWatcherRollbackV1(
+      rollbackFinalityPolicy,
+      secondSourceStore,
+      finalityResult.state,
+      secondConsistency,
+      secondFinalityResult,
+      secondRollbackBootstrap,
+      secondRollbackBootstrap,
+    );
+    expect(secondAuthoritative).toMatchObject({
+      action: "apply_rewind",
+      protocolDecision: "resume_pending",
+      removedRecords: {
+        protocolUtxoOutRefs: [outRef],
+      },
+    });
+    const secondRollbackEvidence = bundle({
+      kind: "rollback",
+      previousState: reIncludedState,
+      snapshot: emptySnapshot(),
+      restartBindings: [
+        bootstrapEvidence.restartBinding,
+        spawnEvidence.restartBinding,
+        rollbackEvidence.restartBinding,
+        reIncluded.restartBinding,
+      ],
+      restartRollbackBindings: [restartRollbackBinding],
+      authenticatedProvider: providerA,
+      l1Observation: secondReplacementRawA,
+      sourceDurableStore: secondSourceStore,
+      durableStore: secondAuthoritative.nextStore!,
+      rollbackAuthority: {
+        result: secondAuthoritative,
+        context: secondRollbackContext,
+      },
+    });
+    const twiceRolledBack = accepted(reIncludedState, secondRollbackEvidence);
+    const secondRollbackBinding = {
+      resultDigest: secondAuthoritative.resultDigest,
+      context: secondRollbackContext,
+    };
+    const allRestartBindings = [
+      bootstrapEvidence.restartBinding,
+      spawnEvidence.restartBinding,
+      rollbackEvidence.restartBinding,
+      reIncluded.restartBinding,
+      secondRollbackEvidence.restartBinding,
+    ];
+    const allRollbackBindings = [restartRollbackBinding, secondRollbackBinding];
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        JSON.parse(JSON.stringify(twiceRolledBack)),
+        policy,
+        allRestartBindings,
+        allRollbackBindings,
+      ),
+    ).toEqual(twiceRolledBack);
+    expect(secondAuthoritative.nextStore!.daProofInputs).toContainEqual(
+      unrelatedSentinel,
+    );
+
+    const rehashState = (state: Mutable): Mutable => {
+      delete state.stateDigest;
+      state.stateDigest = sha256CanonicalForTest(state);
+      return state;
+    };
+    const forgedOrphanLineage = JSON.parse(
+      JSON.stringify(twiceRolledBack),
+    ) as Mutable;
+    forgedOrphanLineage.orphanAuditDigests = [h32("f1")];
+    forgedOrphanLineage.orphanLineageDigest = h32("f2");
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        rehashState(forgedOrphanLineage),
+        policy,
+        allRestartBindings,
+        allRollbackBindings,
+      ),
+    ).toBeNull();
+
+    const swappedRollbackOrder = JSON.parse(
+      JSON.stringify(twiceRolledBack),
+    ) as Mutable;
+    const rollbackIndexes = (
+      swappedRollbackOrder.transitionHistory as Mutable[]
+    )
+      .map((entry, index) => (entry.kind === "rollback" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(rollbackIndexes).toHaveLength(2);
+    const firstRollback = rollbackIndexes[0]!;
+    const secondRollback = rollbackIndexes[1]!;
+    [
+      swappedRollbackOrder.transitionHistory[firstRollback],
+      swappedRollbackOrder.transitionHistory[secondRollback],
+    ] = [
+      swappedRollbackOrder.transitionHistory[secondRollback],
+      swappedRollbackOrder.transitionHistory[firstRollback],
+    ];
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        rehashState(swappedRollbackOrder),
+        policy,
+        allRestartBindings,
+        allRollbackBindings,
+      ),
+    ).toBeNull();
+
+    const truncatedRecombined = JSON.parse(
+      JSON.stringify(twiceRolledBack),
+    ) as Mutable;
+    truncatedRecombined.transitionHistory =
+      truncatedRecombined.transitionHistory.filter(
+        (_entry: unknown, index: number) => index !== 1,
+      );
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        rehashState(truncatedRecombined),
+        policy,
+        allRestartBindings,
+        allRollbackBindings,
+      ),
+    ).toBeNull();
   });
 
   it("fails closed on a fabricated rollback without an exact W13 apply_rewind result", () => {
@@ -5077,6 +5783,49 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     ).toEqual(state);
     expect(
       parseWatcherSettlementIndexerStateV1(state, policy, [], []),
+    ).toBeNull();
+  });
+
+  it("rejects aggregate oversized and cyclic restart evidence at the direct parser boundary", () => {
+    const initial = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+    });
+    const state = accepted(null, initial);
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        state,
+        policy,
+        [initial.restartBinding],
+        [],
+      ),
+    ).toEqual(state);
+
+    const individuallyBoundedButAggregateOversized = Array.from(
+      {
+        length: WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS.transitionHistoryEntries,
+      },
+      () => initial.restartBinding,
+    );
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        state,
+        policy,
+        individuallyBoundedButAggregateOversized,
+        [],
+      ),
+    ).toBeNull();
+
+    const cyclicRestartEvidence: unknown[] = [initial.restartBinding];
+    cyclicRestartEvidence.push(cyclicRestartEvidence);
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        state,
+        policy,
+        cyclicRestartEvidence as unknown as WatcherSettlementPublicContextV1["restartContexts"],
+        [],
+      ),
     ).toBeNull();
   });
 });

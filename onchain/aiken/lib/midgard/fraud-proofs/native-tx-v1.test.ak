@@ -469,6 +469,25 @@ fn sample_proof_compact() -> NativeTxCompact {
   }
 }
 
+test v1_field_preimage_lengths_encode_scripts_before_address_witnesses() {
+  let lengths = NativeTxFieldPreimageLengthsV1 {
+    spend_inputs: 0,
+    reference_inputs: 1,
+    outputs: 2,
+    required_observers: 3,
+    required_signers: 4,
+    mint: 5,
+    address_witnesses: 7,
+    script_witnesses: 6,
+    redeemers: 8,
+  }
+  let encoded = encode_native_tx_field_preimage_lengths_v1(lengths)
+  and {
+    encoded == #"89000102030405060708",
+    decode_native_tx_field_preimage_lengths_v1(encoded) == lengths,
+  }
+}
+
 test v1_transaction_id_matches_typescript_domain_vector() {
   native_tx_id_for_version(native_tx_version_v1, #"80") == #"7d3e96630caf36e88e59bd85692050f6f69c0be4b28550e1671b9fd1942bdd0c"
 }

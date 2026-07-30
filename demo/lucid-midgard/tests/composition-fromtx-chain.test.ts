@@ -6,6 +6,7 @@ import {
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -35,7 +36,10 @@ const protocolInfo = (
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-  submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+  submissionLimits: {
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+  },
   validation: {
     strictnessProfile: "phase1_midgard",
     localValidationIsAuthoritative: false,
@@ -137,6 +141,56 @@ describe("fromTx, compose, and local chaining", () => {
     expect(() => midgard.fromTx(cardanoBody.to_cbor_bytes())).toThrow(
       BuilderInvariantError,
     );
+  });
+
+  it("preserves canonical program material across CompleteTx and raw imports", async () => {
+    const midgard = await LucidMidgard.new(makeProvider(), {
+      network: "Preview",
+      networkId: 0,
+    });
+    const input = makeUtxo(makeOutRef(0x12), address, {
+      lovelace: 2_000_000n,
+    });
+    const canonical = buildMidgardCanonicalCekProgramV1(
+      Buffer.from("010100200101", "hex"),
+    );
+    const completed = await midgard
+      .newTx()
+      .collectFrom([input])
+      .pay.ToAddress(
+        address,
+        { lovelace: 2_000_000n },
+        {
+          scriptRef: {
+            type: "MidgardV1",
+            script: canonical.envelopeCbor.toString("hex"),
+          },
+        },
+      )
+      .complete({
+        fee: 0n,
+        programMaterial: [...canonical.material.values()],
+      });
+
+    const importedComplete = midgard.fromTx(completed);
+    const importedRaw = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [input],
+      programMaterial: completed.programMaterial,
+    });
+    expect(importedComplete.programMaterial).toEqual(completed.programMaterial);
+    expect(importedRaw.programMaterial).toEqual(completed.programMaterial);
+
+    const corrupted = completed.programMaterial.map((entry, index) =>
+      index === 0
+        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
+        : entry,
+    );
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [input],
+        programMaterial: corrupted,
+      }),
+    ).toThrow(/Invalid canonical CEK program material/u);
   });
 
   it("fails closed for signed imports without resolved spend pre-state", async () => {

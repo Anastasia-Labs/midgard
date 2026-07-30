@@ -515,6 +515,7 @@ const collectScriptDescriptors = (
     "fraudProofTransitionTrace",
     contracts.fraudProofs.transitionTrace,
   ),
+  spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
   spendDescriptor(
     "validationTraceDispute",
     contracts.fraudProofs.validationTraceDispute,

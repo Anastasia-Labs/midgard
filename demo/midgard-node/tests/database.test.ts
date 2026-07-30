@@ -3703,6 +3703,50 @@ describe("PendingBlockFinalizationsDB", () => {
   );
 
   it.effect(
+    "rejects startup recovery when an active journal omits committed validation traces",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const headerHash = databaseFixtureBytes(
+            "missing-validation-trace-header",
+            28,
+          );
+          yield* PendingBlockFinalizationsDB.preparePendingSubmission(
+            pendingSubmissionFixture(headerHash),
+          );
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ${sql(PendingBlockFinalizationsDB.tableName)}
+            SET ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns.EXPECTED_TOTAL_EVENT_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_TRANSITION_STEP_COUNT,
+            )} = 1,
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACES_ROOT,
+            )} = ${"11".repeat(32)},
+            ${sql(
+              PendingBlockFinalizationsDB.Columns
+                .EXPECTED_VALIDATION_TRACE_COUNT,
+            )} = 1
+            WHERE ${sql(
+              PendingBlockFinalizationsDB.Columns.HEADER_HASH,
+            )} = ${headerHash}`;
+
+          const exit = yield* Effect.exit(
+            PendingBlockFinalizationsDB.assertActiveJournalPayloadsComplete,
+          );
+          expect(exit._tag).toBe("Failure");
+        }),
+      ),
+  );
+
+  it.effect(
     "retrieves lease-token journal evidence across active and abandoned statuses",
     () =>
       isolatedDb(

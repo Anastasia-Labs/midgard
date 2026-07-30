@@ -1,4 +1,5 @@
 use aiken/cbor
+use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry.{Leaf}
 use aiken/merkle_patricia_forestry as mpf
@@ -7,17 +8,20 @@ use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 use env
-use midgard/bounded_blob_v1
+use midgard/bounded_collection_v1
 use midgard/common/utils
 use midgard/fraud_proofs/native_tx/compact as native_compact
 use midgard/fraud_proofs/native_tx/components as native_components
+use midgard/fraud_proofs/native_tx/preimages as native_preimages
 use midgard/fraud_proofs/native_tx/transaction as native_transaction
 use midgard/fraud_proofs/native_tx/types as native_types
 use midgard/fraud_proofs/transition_trace/proof
 use midgard/hub_oracle
 use midgard/ledger_state
 use midgard/transition_trace
+use midgard/user_events
 use midgard/user_events/deposit
+use midgard/user_events/tx_order_v1 as tx_order
 use midgard/validation_claim_v1
 use midgard/validation_machine_v1
 use midgard/validation_trace_v1
@@ -334,7 +338,23 @@ fn raw_l2_source_membership(
   tx_id: ByteArray,
   compact_cbor: ByteArray,
 ) -> transition_trace.RootMembershipProof<ByteArray, ByteArray> {
-  let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, compact_cbor, []))
+  let witness_set_compact_cbor = native_l2_witness_set_compact_cbor()
+  let field_preimage_lengths_cbor = native_l2_field_preimage_lengths_cbor()
+  let source = ledger_state.L2TransactionSourceV1 {
+    tx_id,
+    transaction_commitment: native_compact.native_tx_proof_commitment_v1(
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    ),
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    },
+  }
+  let source_cbor = cbor.serialise(source)
+  let phas_root = mpf.root(mpf.insert(mpf.empty, tx_id, source_cbor, []))
   transition_trace.RootMembershipProof {
     domain: transition_trace.TransactionsV1RootDomain,
     root: transition_trace.commit_counted_root(
@@ -345,7 +365,7 @@ fn raw_l2_source_membership(
     phas_root,
     count: 1,
     key: tx_id,
-    value: compact_cbor,
+    value: source_cbor,
     proof: [],
   }
 }
@@ -357,6 +377,13 @@ fn ledger_outref_key(out_ref: OutputReference) -> ByteArray {
       output_index: out_ref.output_index,
     },
   )
+}
+
+fn native_input(
+  tx_id: ByteArray,
+  output_index: Int,
+) -> native_types.MidgardTxInput {
+  native_types.MidgardTxInput { tx_id, output_index }
 }
 
 fn native_output() -> native_types.MidgardTxOutput {
@@ -526,6 +553,77 @@ fn authenticated_forced_tx(
   }
 }
 
+fn authenticated_tx_order_payload() -> ledger_state.TxOrderPayloadV1 {
+  let tx = empty_native_transaction()
+  let compact = native_transaction.midgard_transaction_to_compact(tx)
+  let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  ledger_state.TxOrderPayloadV1 {
+    tx_id: native_compact.native_tx_id_for_version(
+      native_types.native_tx_version_v1,
+      native_compact.encode_native_tx_body_compact(compact.body),
+    ),
+    transaction_commitment: native_transaction.midgard_transaction_proof_commitment_v1(
+      tx,
+    ),
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor: proof_source.compact_cbor,
+      witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
+      field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
+    },
+    terminal_receipt_reference: None,
+  }
+}
+
+fn tx_order_reference_input(
+  inclusion_time: Int,
+  event_asset_name: ByteArray,
+) -> Input {
+  let datum: tx_order.Datum = user_events.OptimisticDatum {
+    event: ledger_state.TxOrderEventV1 {
+      id: out_ref(0),
+      tx: authenticated_tx_order_payload(),
+    },
+    inclusion_time,
+    witness: h28_a,
+    refund_address: dummy_address(),
+    refund_datum: NoDatum,
+  }
+  let datum_data: Data = datum
+  Input {
+    output_reference: out_ref(99),
+    output: Output {
+      address: dummy_address(),
+      value: assets.from_asset(h28_a, event_asset_name, 1),
+      datum: InlineDatum(datum_data),
+      reference_script: None,
+    },
+  }
+}
+
+fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
+  let header = base_header()
+  let event_asset_name = #"01"
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OmittedDueL1Event {
+        witness: proof.OmittedDueForcedTransaction {
+          event_ref_input_index: 0,
+          event_asset_name,
+          validity_override: ledger_state.TxIsValid,
+          source_non_membership: empty_non_membership(
+            transition_trace.ForcedTransactionsV1RootDomain,
+            out_ref(0),
+          ),
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [tx_order_reference_input(inclusion_time, event_asset_name)],
+  )
+}
+
 fn accepted_forced_transition_case(
   operator_validity: ledger_state.MidgardTxValidity,
   claimed_post_root: ByteArray,
@@ -673,15 +771,24 @@ fn native_l2_compact_cbor(
   spend_inputs_preimage: ByteArray,
   outputs_preimage: ByteArray,
 ) -> ByteArray {
+  let spend_inputs = native_preimages.decode_midgard_tx_inputs_preimage_cbor(
+    spend_inputs_preimage,
+  )
+  let outputs = native_preimages.decode_midgard_tx_outputs_preimage_cbor(
+    outputs_preimage,
+  )
   native_compact.encode_native_tx_compact_v1(
     native_types.NativeTxCompact {
       body: native_types.NativeTxBodyCompact {
-        spend_inputs_hash: bounded_blob_v1.from_preimage(
+        spend_inputs_hash: bounded_collection_v1.from_items(
           0,
-          spend_inputs_preimage,
+          spend_inputs |> list.map(native_components.encode_midgard_tx_input),
         ),
         reference_inputs_hash: h32_b,
-        outputs_hash: bounded_blob_v1.from_preimage(2, outputs_preimage),
+        outputs_hash: bounded_collection_v1.from_items(
+          2,
+          outputs |> list.map(native_components.encode_midgard_tx_output),
+        ),
         fee: 0,
         validity_interval_start: -1,
         validity_interval_end: -1,
@@ -692,9 +799,43 @@ fn native_l2_compact_cbor(
         auxiliary_data_hash: h32_b,
         network_id: 0,
       },
-      witness_set_hash: h32_c,
+      witness_set_hash: blake2b_256(native_l2_witness_set_compact_cbor()),
       validity_code: 0,
     },
+  )
+}
+
+fn native_l2_witness_set_compact_cbor() -> ByteArray {
+  native_compact.encode_native_tx_witness_set_compact(
+    native_types.NativeTxWitnessSetCompact {
+      addr_tx_wits_hash: h32_a,
+      script_tx_wits_hash: h32_b,
+      redeemer_tx_wits_hash: h32_c,
+    },
+  )
+}
+
+fn native_l2_field_preimage_lengths_cbor() -> ByteArray {
+  native_compact.encode_native_tx_field_preimage_lengths_v1(
+    native_types.NativeTxFieldPreimageLengthsV1 {
+      spend_inputs: 0,
+      reference_inputs: 0,
+      outputs: 0,
+      required_observers: 0,
+      required_signers: 0,
+      mint: 0,
+      address_witnesses: 0,
+      script_witnesses: 0,
+      redeemers: 0,
+    },
+  )
+}
+
+fn native_l2_tx_id(compact_cbor: ByteArray) -> ByteArray {
+  let compact = native_compact.decode_native_tx_compact_v1(compact_cbor)
+  native_compact.native_tx_id_for_version(
+    native_types.native_tx_version_v1,
+    native_compact.encode_native_tx_body_compact(compact.body),
   )
 }
 
@@ -1459,6 +1600,287 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   )
 }
 
+test accepts_l2_transaction_transition_fault() {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_cbor()
+  let produced_output = native_output()
+  let produced_value = native_components.encode_midgard_tx_output(
+    produced_output,
+  )
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let expected_post_root = proof.insert_root(
+    proof.delete_root(pre_root, spent_key, spent_value, []),
+    produced_key,
+    produced_value,
+    [],
+  )
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+
+  expect expected_post_root != opened_step.post_utxos_root
+  proof.validate_accepted_transaction_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.L2TransactionTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage,
+          outputs_preimage,
+          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test rejects_l2_transaction_when_trace_matches_expected_post_root() {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_cbor()
+  let produced_output = native_output()
+  let produced_value = native_components.encode_midgard_tx_output(
+    produced_output,
+  )
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let expected_post_root = proof.insert_root(
+    proof.delete_root(pre_root, spent_key, spent_value, []),
+    produced_key,
+    produced_value,
+    [],
+  )
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    expected_post_root,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+
+  !proof.validate_accepted_transaction_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.L2TransactionTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage,
+          outputs_preimage,
+          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test rejects_l2_transaction_with_wrong_authenticated_transaction_id() fail {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_cbor()
+  let produced_output = native_output()
+  let produced_value = native_components.encode_midgard_tx_output(
+    produced_output,
+  )
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let wrong_tx_id = h32_c
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(wrong_tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(wrong_tx_id, compact_cbor)
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let event_key = ledger_state.L2TransactionEventKey { tx_id: wrong_tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_accepted_transaction_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.L2TransactionTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage,
+          outputs_preimage,
+          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
+test rejects_l2_transaction_with_uncommitted_spend_preimage() fail {
+  let spent_input = native_input(h32_a, 0)
+  let spent_key = native_components.encode_midgard_tx_input(spent_input)
+  let spent_value = native_output_cbor()
+  let produced_output = native_output()
+  let produced_value = native_components.encode_midgard_tx_output(
+    produced_output,
+  )
+  let committed_spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [spent_input],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [produced_output],
+  )
+  let compact_cbor = native_l2_compact_cbor(
+    committed_spend_inputs_preimage,
+    outputs_preimage,
+  )
+  let tx_id = native_l2_tx_id(compact_cbor)
+  let produced_key = native_components.encode_midgard_tx_input(
+    native_input(tx_id, 0),
+  )
+  let source_membership = raw_l2_source_membership(tx_id, compact_cbor)
+  let pre_root = mpf.root(mpf.insert(mpf.empty, spent_key, spent_value, []))
+  let event_key = ledger_state.L2TransactionEventKey { tx_id }
+  let opened_step = step(
+    0,
+    event_key,
+    ledger_state.L2Transaction,
+    pre_root,
+    h32_b,
+  )
+  let trace_proof = trace_membership(opened_step)
+  let event_to_step = event_to_step_membership(
+    event_key,
+    0,
+    ledger_state.L2Transaction,
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    transactions_root: source_membership.root,
+    transition_trace_root: trace_proof.root,
+    event_to_step_root: event_to_step.root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+  proof.validate_accepted_transaction_fault_proof(
+    prove(
+      header,
+      proof.InvalidOneStepTransition {
+        witness: proof.L2TransactionTransition {
+          trace_proof,
+          event_to_step,
+          source_membership,
+          spend_inputs_preimage: native_preimages.encode_input_preimage(
+            [native_input(h32_b, 0)],
+          ),
+          outputs_preimage,
+          spent_utxos: [ledger_delete_witness(spent_key, spent_value)],
+          produced_utxos: [ledger_insert_witness(produced_key, produced_value)],
+        },
+      },
+    ),
+    asset_name_for(header),
+  )
+}
+
 test accepts_duplicate_trace_event_fault() {
   let event_key = withdrawal_event_key(0)
   let left_step = step(0, event_key, ledger_state.Withdrawal, h32_a, h32_b)
@@ -1565,6 +1987,47 @@ test accepts_omitted_due_deposit_fault() {
     asset_name_for(header),
     dummy_hub_datum(),
     [reference_input],
+  )
+}
+
+test accepts_omitted_forced_order_at_authenticated_end_time_boundary() {
+  omitted_forced_event_is_valid(base_header().end_time)
+}
+
+test rejects_omitted_forced_order_at_excluded_start_time_boundary() {
+  !omitted_forced_event_is_valid(base_header().start_time)
+}
+
+test rejects_omitted_forced_order_published_after_challenged_block() {
+  !omitted_forced_event_is_valid(base_header().end_time + 1)
+}
+
+test accepts_late_forced_order_as_out_of_window_source_event() {
+  let event_asset_name = #"01"
+  let source_membership = forced_source_membership(
+    out_ref(0),
+    authenticated_forced_tx(ledger_state.TxIsValid),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base_header(),
+    forced_transactions_root: source_membership.root,
+    forced_transaction_count: 1,
+  }
+  proof.validate_l1_event_fault_proof(
+    prove(
+      header,
+      proof.OutOfWindowSourceEvent {
+        witness: proof.OutOfWindowForcedTransaction {
+          event_ref_input_index: 0,
+          event_asset_name,
+          validity_override: ledger_state.TxIsValid,
+          source_membership,
+        },
+      },
+    ),
+    asset_name_for(header),
+    dummy_hub_datum(),
+    [tx_order_reference_input(header.end_time + 1, event_asset_name)],
   )
 }
 

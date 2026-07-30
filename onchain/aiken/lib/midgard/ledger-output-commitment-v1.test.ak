@@ -81,11 +81,7 @@ test canonical_cross_language_asset_frontier_vector() {
     7,
   )
   let first_peaks = validation_merkle_v1.append_leaf(0, [], shorter_name)
-  let peaks = validation_merkle_v1.append_leaf(
-    1,
-    first_peaks,
-    longer_name,
-  )
+  let peaks = validation_merkle_v1.append_leaf(1, first_peaks, longer_name)
   and {
     longer_name == #"9ed4bad2bc3c66d009d021f8fa57eb32d6035c71aa6f1c415e8f66bf35c6661c",
     shorter_name == #"d4fab6956ed316d6c8094e2f8ba31c07f9b8e11d6b9ed1236541a102187a58ce",

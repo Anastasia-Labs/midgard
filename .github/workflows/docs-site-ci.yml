@@ -18,7 +18,8 @@ on:
       - "demo/package.json"
       - "demo/pnpm-workspace.yaml"
       - "l1-services/.env.example"
-      - "onchain/aiken/plutus.json"
+      - "onchain/aiken/validators/da-attestation.ak"
+      - "onchain/aiken/validators/da-params-governor.ak"
       - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
   pull_request:
@@ -37,7 +38,8 @@ on:
       - "demo/package.json"
       - "demo/pnpm-workspace.yaml"
       - "l1-services/.env.example"
-      - "onchain/aiken/plutus.json"
+      - "onchain/aiken/validators/da-attestation.ak"
+      - "onchain/aiken/validators/da-params-governor.ak"
       - "technical-spec/1-ledger-state/1-block.tex"
       - ".github/workflows/docs-site-ci.yml"
 

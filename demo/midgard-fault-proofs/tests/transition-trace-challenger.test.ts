@@ -1,3 +1,4 @@
+import { Proof as MpfProof, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
@@ -11,6 +12,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonicalV1,
 } from "@al-ft/midgard-core/codec";
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
@@ -36,6 +38,7 @@ import {
   buildEventToStepMismatchFault,
   buildIndexedTraceProof,
   buildInvalidForcedTransactionNoOpWitness,
+  buildL2TransactionTransitionWitness,
   buildOmittedDueL1EventFault,
   buildOutOfWindowSourceEventFault,
   buildSourceNonMembershipProof,
@@ -92,14 +95,21 @@ const withdrawalInfo = (
 
 const canonicalPreimageByCommitment = new Map<string, Buffer>();
 
-const nativeMaterial = (byte: number) => {
+const nativeMaterial = (
+  byte: number,
+  preimages: {
+    readonly spendInputsPreimageCbor?: Buffer;
+    readonly outputsPreimageCbor?: Buffer;
+  } = {},
+) => {
   const canonical: MidgardNativeTxCanonicalV1 = {
     version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
-      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      spendInputsPreimageCbor:
+        preimages.spendInputsPreimageCbor ?? EMPTY_CBOR_LIST,
       referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: preimages.outputsPreimageCbor ?? EMPTY_CBOR_LIST,
       fee: BigInt(byte),
       validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
       validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
@@ -161,6 +171,55 @@ const sorted = (entries: readonly SDK.DaPayloadEntry[]): SDK.DaPayloadEntry[] =>
 
 const LEDGER_OUTPUT_CBOR =
   "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0";
+const TAG4_OUTPUT_ADDRESS = Buffer.from(`70${"aa".repeat(28)}`, "hex");
+const tag4OutputRequiredFields = (lovelaceCbor = Buffer.from([0])): Buffer =>
+  Buffer.concat([
+    Buffer.from([0]),
+    encodeCbor(TAG4_OUTPUT_ADDRESS),
+    Buffer.from([1, 0x82]),
+    lovelaceCbor,
+    Buffer.from([0xa0]),
+  ]);
+const TAG4_OUTPUT_REQUIRED_FIELDS = tag4OutputRequiredFields();
+const tag4OutputWithNonMinimalLovelace = (): Buffer =>
+  Buffer.concat([
+    Buffer.from([0xa2]),
+    tag4OutputRequiredFields(Buffer.from([0x18, 0])),
+  ]);
+const tag4OutputWithAssetOrder = (firstQuantityCbor: Buffer): Buffer =>
+  Buffer.concat([
+    Buffer.from([0xa2, 0]),
+    encodeCbor(TAG4_OUTPUT_ADDRESS),
+    Buffer.from([1, 0x82, 0, 0xa2, 0x58, 28]),
+    Buffer.alloc(28, 0xbb),
+    Buffer.from([0xa2]),
+    encodeCbor(Buffer.from([0xff])),
+    firstQuantityCbor,
+    encodeCbor(Buffer.from([0])),
+    Buffer.from([2, 0x58, 28]),
+    Buffer.alloc(28, 0xaa),
+    Buffer.from([0xa1]),
+    encodeCbor(Buffer.from([1])),
+    Buffer.from([3]),
+  ]);
+const tag4OutputWithNonMinimalQuantity = (): Buffer =>
+  tag4OutputWithAssetOrder(Buffer.from([0x18, 1]));
+const tag4OutputWithPreservedAssetOrder = (firstQuantity = 1): Buffer =>
+  tag4OutputWithAssetOrder(Buffer.from([firstQuantity]));
+const tag4OutputWithOpaqueDatum = (): Buffer =>
+  Buffer.concat([
+    Buffer.from([0xa3]),
+    TAG4_OUTPUT_REQUIRED_FIELDS,
+    Buffer.from([2]),
+    encodeCbor(Buffer.from([0xff])),
+  ]);
+const tag4OutputWithOpaqueNativeScript = (): Buffer =>
+  Buffer.concat([
+    Buffer.from([0xa3]),
+    TAG4_OUTPUT_REQUIRED_FIELDS,
+    Buffer.from([3, 0x82, 0]),
+    encodeCbor(Buffer.from([0xde, 0xad, 0xff])),
+  ]);
 
 const rawLedgerEntry = (byte: number): SDK.DaPayloadEntry => [
   `825820${h32(byte)}00`,
@@ -422,6 +481,140 @@ const withdrawalEventKey = (id: SDK.OutputReference): SDK.EventKey => ({
   WithdrawalEventKey: { withdrawal_id: id },
 });
 
+const sdkProof = (proof: MpfProof): SDK.Proof =>
+  Data.from(proof.toCBOR().toString("hex"), SDK.Proof) as SDK.Proof;
+
+type L2ReplayFixture = {
+  readonly reconstruction: TransitionTraceReconstruction;
+  readonly evidence: {
+    readonly stepIndex: bigint;
+    readonly spentUtxos: readonly SDK.LedgerDeleteWitness[];
+    readonly producedUtxos: readonly SDK.LedgerInsertWitness[];
+  };
+  readonly replayedPostRoot: string;
+};
+
+const buildL2ReplayFixture = async ({
+  matchingCommittedRoot,
+  withBranchProof = false,
+  spendInputCbor,
+  outputCbor,
+  replayedOutputCbor,
+  includeProducedPayloadUtxo = true,
+}: {
+  readonly matchingCommittedRoot: boolean;
+  readonly withBranchProof?: boolean;
+  readonly spendInputCbor?: Buffer;
+  readonly outputCbor?: Buffer;
+  readonly replayedOutputCbor?: Buffer;
+  readonly includeProducedPayloadUtxo?: boolean;
+}): Promise<L2ReplayFixture> => {
+  const spentKey =
+    spendInputCbor ?? encodeCbor([Buffer.from(h32(81), "hex"), 0n]);
+  const spentValue = Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
+  const sourceOutput = outputCbor ?? Buffer.from(LEDGER_OUTPUT_CBOR, "hex");
+  const producedValue = replayedOutputCbor ?? sourceOutput;
+  const material = nativeMaterial(82, {
+    spendInputsPreimageCbor: encodeCbor([spentKey]),
+    outputsPreimageCbor: encodeCbor([sourceOutput]),
+  });
+  const producedKey = encodeCbor([Buffer.from(material.txId, "hex"), 0n]);
+  const survivors = withBranchProof
+    ? Array.from({ length: 16 }, (_, index) => ({
+        key: encodeCbor([Buffer.from(h32(100 + index), "hex"), BigInt(index)]),
+        value: Buffer.from(LEDGER_OUTPUT_CBOR, "hex"),
+      }))
+    : [];
+
+  const ledger = await Trie.fromList([
+    { key: spentKey, value: spentValue },
+    ...survivors,
+  ]);
+  const preRoot = ledger.hash.toString("hex");
+  const membershipProof = await ledger.prove(spentKey);
+  const deleteProof = await ledger.prove(spentKey);
+  await ledger.delete(spentKey);
+  await ledger.insert(producedKey, producedValue);
+  const insertProof = await ledger.prove(producedKey);
+  const replayedPostRoot = ledger.hash.toString("hex");
+
+  const source: SDK.L2TransactionSourceV1 = {
+    tx_id: material.txId,
+    transaction_commitment: material.transactionCommitment,
+    source: material.source,
+  };
+  const eventKey: SDK.EventKey = {
+    L2TransactionEventKey: { tx_id: material.txId },
+  };
+  const fixture = await buildPayloadFixture({
+    prevUtxosRoot: preRoot,
+    utxos: [
+      ...survivors.map(
+        ({ key, value }): SDK.DaPayloadEntry => [
+          key.toString("hex"),
+          value.toString("hex"),
+        ],
+      ),
+      ...(includeProducedPayloadUtxo
+        ? ([
+            [producedKey.toString("hex"), producedValue.toString("hex")],
+          ] satisfies SDK.DaPayloadEntry[])
+        : []),
+    ],
+    transactions: [
+      entry(
+        Buffer.from(material.txId, "hex"),
+        Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+      ),
+    ],
+    transactionPreimages: [
+      entry(Buffer.from(material.txId, "hex"), material.canonicalCbor),
+    ],
+    steps: [
+      {
+        schema_version: 1n,
+        step_index: 0n,
+        event_key: eventKey,
+        phase: "L2Transaction",
+        pre_utxos_root: preRoot,
+        post_utxos_root: matchingCommittedRoot ? replayedPostRoot : h32(83),
+      },
+    ],
+    eventToStep: [
+      eventToStepEntry(eventKey, {
+        step_index: 0n,
+        phase: "L2Transaction",
+      }),
+    ],
+  });
+  const encodedMembershipProof = sdkProof(membershipProof);
+  const encodedDeleteProof = sdkProof(deleteProof);
+  const encodedInsertProof = sdkProof(insertProof);
+  return {
+    reconstruction: await reconstruct(fixture),
+    evidence: {
+      stepIndex: 0n,
+      spentUtxos: [
+        {
+          key: spentKey.toString("hex"),
+          value: spentValue.toString("hex"),
+          membership_proof: encodedMembershipProof,
+          delete_proof: encodedDeleteProof,
+        },
+      ],
+      producedUtxos: [
+        {
+          key: producedKey.toString("hex"),
+          value: producedValue.toString("hex"),
+          non_membership_proof: encodedInsertProof,
+          insert_proof: encodedInsertProof,
+        },
+      ],
+    },
+    replayedPostRoot,
+  };
+};
+
 describe("transition-trace challenger tooling", () => {
   const expectBuildableDetection = (
     detections: readonly unknown[],
@@ -645,6 +838,424 @@ describe("transition-trace challenger tooling", () => {
     await expect(
       buildIndexedTraceProof({ reconstruction, stepIndex: 0n }),
     ).resolves.toMatchObject({ key: 0n });
+  });
+
+  it("reconstructs authenticated L2 preimages and builds the tag-4 replay witness", async () => {
+    const material = nativeMaterial(70);
+    const source: SDK.L2TransactionSourceV1 = {
+      tx_id: material.txId,
+      transaction_commitment: material.transactionCommitment,
+      source: material.source,
+    };
+    const eventKey: SDK.EventKey = {
+      L2TransactionEventKey: { tx_id: material.txId },
+    };
+    const fixture = await buildPayloadFixture({
+      transactions: [
+        entry(
+          Buffer.from(material.txId, "hex"),
+          Buffer.from(Data.to(source, SDK.L2TransactionSourceV1), "hex"),
+        ),
+      ],
+      transactionPreimages: [
+        entry(Buffer.from(material.txId, "hex"), material.canonicalCbor),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: eventKey,
+          phase: "L2Transaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: h32(71),
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(eventKey, {
+          step_index: 0n,
+          phase: "L2Transaction",
+        }),
+      ],
+    });
+    const reconstruction = await reconstruct(fixture);
+    const witness = await buildL2TransactionTransitionWitness({
+      reconstruction,
+      stepIndex: 0n,
+      evidence: { spentUtxos: [], producedUtxos: [] },
+    });
+
+    expect(reconstruction.transactions[0]).toMatchObject({
+      txId: material.txId,
+      validity: "TxIsValid",
+      spendInputsPreimage: Buffer.from(EMPTY_CBOR_LIST),
+      outputsPreimage: Buffer.from(EMPTY_CBOR_LIST),
+    });
+    expect(witness).toMatchObject({
+      L2TransactionTransition: {
+        spend_inputs_preimage: EMPTY_CBOR_LIST.toString("hex"),
+        outputs_preimage: EMPTY_CBOR_LIST.toString("hex"),
+        spent_utxos: [],
+        produced_utxos: [],
+      },
+    });
+    expect(
+      Data.to(
+        witness as never,
+        SDK.InvalidOneStepTransitionWitnessSchema as never,
+      ),
+    ).toMatch(/^d87d/);
+
+    const detections = await detectTransitionTraceFaults(reconstruction, {
+      l2TransactionTransitions: [
+        { stepIndex: 0n, spentUtxos: [], producedUtxos: [] },
+      ],
+    });
+    expectBuildableDetection(detections, {
+      kind: "invalidOneStepTransition",
+      invariant: "l2_transaction_transition_matches_authenticated_replay",
+    });
+  });
+
+  it("returns no tag-4 fault when verified delete/insert replay matches the committed post-root", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: true,
+    });
+    const detections = await detectTransitionTraceFaults(
+      fixture.reconstruction,
+      { l2TransactionTransitions: [fixture.evidence] },
+    );
+
+    expect(
+      detections.filter(
+        ({ invariant }) =>
+          invariant ===
+          "l2_transaction_transition_matches_authenticated_replay",
+      ),
+    ).toEqual([]);
+  });
+
+  it("builds a tag-4 fault only after verified delete/insert replay disagrees with the committed post-root", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+    });
+    const detections = await detectTransitionTraceFaults(
+      fixture.reconstruction,
+      { l2TransactionTransitions: [fixture.evidence] },
+    );
+
+    expectBuildableDetection(detections, {
+      kind: "invalidOneStepTransition",
+      invariant: "l2_transaction_transition_matches_authenticated_replay",
+    });
+  });
+
+  it("replays real four-neighbor MPF branch proofs from a multi-leaf ledger", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: true,
+      withBranchProof: true,
+    });
+    const spent = fixture.evidence.spentUtxos[0]!;
+    const produced = fixture.evidence.producedUtxos[0]!;
+    const proofSteps = [
+      ...spent.membership_proof,
+      ...spent.delete_proof,
+      ...produced.non_membership_proof,
+      ...produced.insert_proof,
+    ];
+    expect(
+      proofSteps.some(
+        (step) =>
+          "Branch" in step &&
+          Buffer.from(step.Branch.neighbors, "hex").length === 4 * 32,
+      ),
+    ).toBe(true);
+
+    const detections = await detectTransitionTraceFaults(
+      fixture.reconstruction,
+      { l2TransactionTransitions: [fixture.evidence] },
+    );
+    expect(
+      detections.filter(
+        ({ invariant }) =>
+          invariant ===
+          "l2_transaction_transition_matches_authenticated_replay",
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    {
+      label: "opaque datum byte ff",
+      outputCbor: tag4OutputWithOpaqueDatum(),
+    },
+    {
+      label: "opaque native-script bytes",
+      outputCbor: tag4OutputWithOpaqueNativeScript(),
+    },
+    {
+      label: "unsorted policy and asset order",
+      outputCbor: tag4OutputWithPreservedAssetOrder(),
+    },
+  ])(
+    "preserves the Aiken tag-4 output encoding for $label",
+    async ({ outputCbor }) => {
+      const fixture = await buildL2ReplayFixture({
+        matchingCommittedRoot: true,
+        outputCbor,
+        includeProducedPayloadUtxo: false,
+      });
+
+      const detections = await detectTransitionTraceFaults(
+        fixture.reconstruction,
+        { l2TransactionTransitions: [fixture.evidence] },
+      );
+      expect(
+        detections.filter(
+          ({ invariant }) =>
+            invariant ===
+            "l2_transaction_transition_matches_authenticated_replay",
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
+      label: "non-minimal lovelace",
+      outputCbor: tag4OutputWithNonMinimalLovelace(),
+      replayedOutputCbor: Buffer.from(LEDGER_OUTPUT_CBOR, "hex"),
+    },
+    {
+      label: "non-minimal asset quantity",
+      outputCbor: tag4OutputWithNonMinimalQuantity(),
+      replayedOutputCbor: tag4OutputWithPreservedAssetOrder(),
+    },
+  ])(
+    "rejects $label when canonical outputs disagree with the authenticated compact",
+    async ({ outputCbor, replayedOutputCbor }) => {
+      const fixture = await buildL2ReplayFixture({
+        matchingCommittedRoot: false,
+        outputCbor,
+        replayedOutputCbor,
+        includeProducedPayloadUtxo: false,
+      });
+
+      await expect(
+        detectTransitionTraceFaults(fixture.reconstruction, {
+          l2TransactionTransitions: [fixture.evidence],
+        }),
+      ).rejects.toMatchObject({
+        code: "missingWitnessData",
+        message: expect.stringContaining(
+          "canonical bounded-collection commitment",
+        ),
+      });
+    },
+  );
+
+  it("rejects a malformed tag-4 mutation proof before reporting a fault", async () => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+    });
+    const spent = fixture.evidence.spentUtxos[0]!;
+    const malformed: SDK.LedgerDeleteWitness = {
+      ...spent,
+      delete_proof: [
+        {
+          Branch: {
+            skip: 0n,
+            neighbors: "00",
+          },
+        },
+      ],
+    };
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [
+          {
+            ...fixture.evidence,
+            spentUtxos: [malformed],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "missingWitnessData" });
+  });
+
+  it.each([
+    {
+      label: "malformed native spend input",
+      spendInputCbor: Buffer.from([0]),
+    },
+    {
+      label: "non-canonical native spend input",
+      spendInputCbor: Buffer.concat([
+        Buffer.from([0x82, 0x58, 0x20]),
+        Buffer.from(h32(88), "hex"),
+        Buffer.from([0x18, 0]),
+      ]),
+    },
+    {
+      label: "oversize native spend index",
+      spendInputCbor: encodeCbor([Buffer.from(h32(89), "hex"), 65_536n]),
+    },
+  ])("rejects $label before MPF replay", async ({ spendInputCbor }) => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+      spendInputCbor,
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [fixture.evidence],
+      }),
+    ).rejects.toMatchObject({ code: "missingWitnessData" });
+  });
+
+  it.each([
+    {
+      label: "malformed native output",
+      outputCbor: Buffer.from([0]),
+    },
+    {
+      label: "non-canonical native output",
+      outputCbor: Buffer.concat([
+        Buffer.from([0xa2, 0x18, 0]),
+        Buffer.from(LEDGER_OUTPUT_CBOR, "hex").subarray(2),
+      ]),
+    },
+    {
+      label: "zero asset quantity",
+      outputCbor: tag4OutputWithPreservedAssetOrder(0),
+    },
+    {
+      label: "unsupported script language",
+      outputCbor: Buffer.concat([
+        Buffer.from([0xa3]),
+        TAG4_OUTPUT_REQUIRED_FIELDS,
+        Buffer.from([3, 0x82, 1, 0x40]),
+      ]),
+    },
+  ])("rejects $label before MPF replay", async ({ outputCbor }) => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+      outputCbor,
+      includeProducedPayloadUtxo: false,
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [fixture.evidence],
+      }),
+    ).rejects.toMatchObject({ code: "missingWitnessData" });
+  });
+
+  it.each([
+    {
+      label: "missing delete proof",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        spentUtxos: [],
+      }),
+    },
+    {
+      label: "extra delete proof",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        spentUtxos: [
+          fixture.evidence.spentUtxos[0]!,
+          fixture.evidence.spentUtxos[0]!,
+        ],
+      }),
+    },
+    {
+      label: "missing insert proof",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        producedUtxos: [],
+      }),
+    },
+    {
+      label: "extra insert proof",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        producedUtxos: [
+          fixture.evidence.producedUtxos[0]!,
+          fixture.evidence.producedUtxos[0]!,
+        ],
+      }),
+    },
+  ])("rejects $label before reporting a tag-4 fault", async ({ mutate }) => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [mutate(fixture)],
+      }),
+    ).rejects.toMatchObject({ code: "missingWitnessData" });
+  });
+
+  it.each([
+    {
+      label: "wrong delete key",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        spentUtxos: [
+          {
+            ...fixture.evidence.spentUtxos[0]!,
+            key: encodeCbor([Buffer.from(h32(84), "hex"), 0n]).toString("hex"),
+          },
+        ],
+      }),
+    },
+    {
+      label: "wrong delete value",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        spentUtxos: [
+          {
+            ...fixture.evidence.spentUtxos[0]!,
+            value: h32(85),
+          },
+        ],
+      }),
+    },
+    {
+      label: "wrong insert key",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        producedUtxos: [
+          {
+            ...fixture.evidence.producedUtxos[0]!,
+            key: encodeCbor([Buffer.from(h32(86), "hex"), 0n]).toString("hex"),
+          },
+        ],
+      }),
+    },
+    {
+      label: "wrong insert value",
+      mutate: (fixture: L2ReplayFixture) => ({
+        ...fixture.evidence,
+        producedUtxos: [
+          {
+            ...fixture.evidence.producedUtxos[0]!,
+            value: h32(87),
+          },
+        ],
+      }),
+    },
+  ])("rejects $label before reporting a tag-4 fault", async ({ mutate }) => {
+    const fixture = await buildL2ReplayFixture({
+      matchingCommittedRoot: false,
+    });
+
+    await expect(
+      detectTransitionTraceFaults(fixture.reconstruction, {
+        l2TransactionTransitions: [mutate(fixture)],
+      }),
+    ).rejects.toMatchObject({ code: "missingWitnessData" });
   });
 
   it("detects a wrong final root caused by an invalid forced no-op step", async () => {

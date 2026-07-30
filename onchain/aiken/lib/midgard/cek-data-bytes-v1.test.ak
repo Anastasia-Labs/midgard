@@ -79,12 +79,10 @@ test proves_canonical_chunked_bytes_in_raw_and_virtual_coordinates() {
   )
   expect Some(summary) = cek_data_bytes_v1.finalize_v1(terminal)
   and {
-    summary.root
-      == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
+    summary.root == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
     summary.cbor_length == 70,
     summary.memory == 69,
-    cek_data_bytes_v1.encode_control_v1(terminal)
-      == typescript_terminal_control_cbor,
+    cek_data_bytes_v1.encode_control_v1(terminal) == typescript_terminal_control_cbor,
   }
 }
 
@@ -98,10 +96,8 @@ test decodes_the_typescript_terminal_control() {
     control.source_start == 17,
     control.source_length == 70,
     control.bytes_length == 65,
-    summary.root
-      == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
-    cek_data_bytes_v1.encode_control_v1(control)
-      == typescript_terminal_control_cbor,
+    summary.root == #"e36bf656c2ebd1bb060fa2a5b3c8d515c595d7ddac821eab2ab29d5e97b29836",
+    cek_data_bytes_v1.encode_control_v1(control) == typescript_terminal_control_cbor,
   }
 }
 
@@ -116,11 +112,17 @@ test canonical_cardano_framing_boundaries_derive_exact_content_lengths() {
     cek_data_bytes_v1.parse_syntax_v1(#"5f58", 70),
     cek_data_bytes_v1.parse_syntax_v1(#"5f58", 134),
     cek_data_bytes_v1.parse_syntax_v1(#"5f58", 136),
+  ] == [
+    Some(0),
+    Some(1),
+    Some(23),
+    Some(24),
+    Some(63),
+    Some(64),
+    Some(65),
+    Some(128),
+    Some(129),
   ]
-    == [
-      Some(0), Some(1), Some(23), Some(24), Some(63), Some(64),
-      Some(65), Some(128), Some(129),
-    ]
 }
 
 test rejects_noncanonical_and_impossible_framing_lengths() {
@@ -142,16 +144,11 @@ test rejects_a_malformed_authenticated_chunk_header() {
     Some(slice_len(source, 0, 2)),
   )
   expect Some(span) = cek_data_bytes_v1.next_source_span_v1(blob_control)
-  let source_bytes = slice_len(
-    source,
-    span.absolute_start - 17,
-    span.length,
-  )
-  let malformed =
-    #"00"
-      |> bytearray.concat(
-          slice_len(source_bytes, 1, bytearray.length(source_bytes) - 1),
-        )
+  let source_bytes = slice_len(source, span.absolute_start - 17, span.length)
+  let malformed = #"00"
+    |> bytearray.concat(
+        slice_len(source_bytes, 1, bytearray.length(source_bytes) - 1),
+      )
   cek_data_bytes_v1.step_v1(blob_control, Some(malformed)) == None
 }
 

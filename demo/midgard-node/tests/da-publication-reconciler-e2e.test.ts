@@ -8,7 +8,6 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
 } from "@al-ft/midgard-core/da-transport";
-import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +17,7 @@ import {
   type DaProducerCommitteePeer,
   type DaProducerPublicationManifest,
   getDaPublicationTransportForTest,
+  parseDaProducerPublicationManifest,
   probeDaEnvelopeCapabilities,
 } from "@/da/libp2p-producer.js";
 import { DaPayloadPublicationsDB, DaPayloadsDB } from "@/database/index.js";
@@ -141,7 +141,7 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       maxChunkBytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
       maxStreamsPerPeer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
       maxGossipMessageBytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
-      listenMultiaddrs: [],
+      listenMultiaddrs: ["/ip4/127.0.0.1/tcp/0"],
       announceMultiaddrs: [
         "/ip4/127.0.0.1/tcp/0/p2p/" + producerIdentity.peerId,
       ],
@@ -149,19 +149,23 @@ describe.skipIf(!enabled)("joined DA publication reconciler E2E", () => {
       committeePeers,
     };
     const manifestPath = join(temp, "producer-manifest.json");
+    const runtimeManifestValue = runtimeManifest(manifest, committeePeers);
     let readinessTransport:
       | Awaited<ReturnType<typeof createDaLibp2pProducerTransport>>
       | undefined;
     try {
-      await writeFile(
-        manifestPath,
-        JSON.stringify(runtimeManifest(manifest, committeePeers)),
-      );
+      await writeFile(manifestPath, JSON.stringify(runtimeManifestValue));
       process.env.MIDGARD_DEPLOYMENT_MANIFEST_PATH = manifestPath;
       process.env.DA_LIBP2P_PRIVATE_KEY_SOURCE = producerSeed;
       process.env.MIDGARD_DA_PUBLISH_CONCURRENCY = "3";
       process.env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MS = "1";
       process.env.MIDGARD_DA_PUBLISH_RETRY_BACKOFF_MAX_MS = "1";
+      expect(
+        parseDaProducerPublicationManifest(runtimeManifestValue),
+      ).toMatchObject({
+        deploymentFingerprint: DEPLOYMENT,
+        threshold: 2,
+      });
 
       for (const node of committeeNodes) {
         await node.start();
@@ -317,11 +321,17 @@ const runtimeManifest = (
   peers: readonly DaProducerCommitteePeer[],
 ): Record<string, unknown> => ({
   schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+  network: "Preview",
   deployment: {
     fingerprint: manifest.deploymentFingerprint,
     contract_deployment_manifest_id: manifest.deploymentFingerprint,
     contract_deployment_info_sha256: "cd".repeat(32),
     identity_source: "contract_deployment_manifest_id",
+  },
+  runtime_topology: {
+    target: "producer",
+    profile: "public",
+    producer_peer_id: manifest.announceMultiaddrs[0]!.split("/p2p/")[1],
   },
   da_transport: {
     kind: "libp2p",
@@ -329,6 +339,7 @@ const runtimeManifest = (
     listen_multiaddrs: manifest.listenMultiaddrs,
     announce_multiaddrs: manifest.announceMultiaddrs,
     bootstrap_multiaddrs: manifest.bootstrapMultiaddrs,
+    retention_days: RETENTION_DAYS,
     gossip: {
       strict_sign: true,
       emit_self: false,
@@ -359,8 +370,7 @@ const insertFromFixture = (
   fixture: Awaited<ReturnType<typeof makePayloadFixture>>,
 ): DaPayloadsDB.InsertInput => ({
   [DaPayloadsDB.Columns.HEADER_HASH]: Buffer.from(fixture.headerHash, "hex"),
-  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]:
-    MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  [DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID]: MIDGARD_CONSENSUS_PROFILE_V1_ID,
   [DaPayloadsDB.Columns.VERSION]: 1,
   [DaPayloadsDB.Columns.PAYLOAD_CBOR]: fixture.payloadCbor,
   [DaPayloadsDB.Columns.PAYLOAD_SHA256]: computeDaSha256Hash(
@@ -375,7 +385,8 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]:
     fixture.header.transitionTraceRoot,
   [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: fixture.header.eventToStepRoot,
-  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: EMPTY_MERKLE_TREE_ROOT,
+  [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
+    fixture.header.validationTracesRoot,
   [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: fixture.header.withdrawalCount,
   [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]:
     fixture.header.forcedTransactionCount,
@@ -385,7 +396,8 @@ const insertFromFixture = (
   [DaPayloadsDB.Columns.TOTAL_EVENT_COUNT]: fixture.header.totalEventCount,
   [DaPayloadsDB.Columns.TRANSITION_STEP_COUNT]:
     fixture.header.transitionStepCount,
-  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]: 0n,
+  [DaPayloadsDB.Columns.VALIDATION_TRACE_COUNT]:
+    fixture.header.validationTraceCount,
   [DaPayloadsDB.Columns.BLOCK_START_TIME]: new Date(1),
   [DaPayloadsDB.Columns.BLOCK_END_TIME]: new Date(2),
 });

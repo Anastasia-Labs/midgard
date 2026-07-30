@@ -285,6 +285,9 @@ export const makeObservedNode = ({
   headerHash,
   daAttestation = SDK.NO_DA_ATTESTATION,
   depth = 10,
+  outRef = "ab".repeat(32) + "#0",
+  slot = 1,
+  blockHash = "cd".repeat(32),
   assetName = `${SDK.STATE_QUEUE_NODE_ASSET_NAME_PREFIX}${headerHash}`,
   linkedListKey = headerHash,
 }: {
@@ -292,17 +295,20 @@ export const makeObservedNode = ({
   readonly headerHash: string;
   readonly daAttestation?: string;
   readonly depth?: number;
+  readonly outRef?: string;
+  readonly slot?: number;
+  readonly blockHash?: string;
   readonly assetName?: string;
   readonly linkedListKey?: string | "Empty";
 }): ObservedStateQueueNode => ({
-  outRef: "ab".repeat(32) + "#0",
+  outRef,
   assetName,
   linkedListKey,
   header,
   daAttestation,
   chainPoint: {
-    slot: 1,
-    blockHash: "cd".repeat(32),
+    slot,
+    blockHash,
     depth,
     providerSource: "fixture",
   },
@@ -390,6 +396,13 @@ export const minimalConfig = ({
       spendingScriptHash: "88".repeat(28),
       spendingScriptAddress: "addr_test1statequeue",
     }),
+  },
+  l1Source: {
+    sourceMode: "local_node",
+    authorityNodeId: "fixture-node",
+    chainSyncProviderUrl: "chain-sync:fixture:/tmp/state-queue.json",
+    chainSyncCursorPath: "/tmp/state-queue.chain-sync-cursor.json",
+    queryProviderUrls: ["fixture:/tmp/state-queue.json"],
   },
   cardanoProviderUrls: ["fixture:/tmp/state-queue.json"],
   finalityDepth: 2,

@@ -124,8 +124,8 @@ Both pass.
 ## Remaining gate cells
 
 This checkpoint closes the TypeScript boundary and terminal-fold fixtures for
-fields 4 and 6. The earliest ordered field without equivalent boundary
-evidence is field 0 (`spend_inputs`). Fields 1, 3, 5, 7, and 8 also remain
+fields 4 and 7. The earliest ordered field without equivalent boundary
+evidence is field 0 (`spend_inputs`). Fields 1, 3, 5, 6, and 8 also remain
 open, as do maximum-shape normal/forced retained-DA reconstruction and applied
 Aiken lifecycle evidence.
 

@@ -75,6 +75,28 @@ const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
   MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
 );
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
+export const PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS = 8 * 60 * 1_000;
+
+export const isProductionCommitValidityInterval = ({
+  validFrom,
+  validTo,
+}: {
+  readonly validFrom: number;
+  readonly validTo: number;
+}): boolean =>
+  Number.isSafeInteger(validFrom) &&
+  Number.isSafeInteger(validTo) &&
+  validFrom < validTo &&
+  validTo - validFrom <= PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+
+export const productionCommitHeaderMatchesValidityUpperBound = ({
+  headerEndTime,
+  validTo,
+}: {
+  readonly headerEndTime: bigint;
+  readonly validTo: number;
+}): boolean =>
+  Number.isSafeInteger(validTo) && headerEndTime === BigInt(validTo - 1);
 
 export type OperatorWalletViewLike = {
   readonly knownUtxos: readonly UTxO[];
@@ -486,6 +508,7 @@ export type ProductionCommitBlockHeaderParams = {
   readonly latestBlock: StateQueueUTxO;
   readonly updatedNodeDatum: LinkedListNodeView;
   readonly newHeader: HeaderV1;
+  readonly validFrom: number;
   readonly validTo: number;
   readonly witness: StateQueueCommitWitnessContext;
   readonly headerNodeLovelace?: bigint;
@@ -503,6 +526,7 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
   latestBlock,
   updatedNodeDatum,
   newHeader,
+  validFrom,
   validTo,
   witness,
   headerNodeLovelace = STATE_QUEUE_HEADER_NODE_LOVELACE,
@@ -512,6 +536,30 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
   StateQueueError | HashingError
 > =>
   Effect.gen(function* () {
+    const inclusiveValidityUpperBound = validTo - 1;
+    if (!isProductionCommitValidityInterval({ validFrom, validTo })) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Refusing to build a commit transaction with an invalid bounded validity interval",
+          cause: `valid_from_ms=${String(validFrom)},valid_to_ms=${String(validTo)},max_range_ms=${PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS.toString()}`,
+        }),
+      );
+    }
+    if (
+      !productionCommitHeaderMatchesValidityUpperBound({
+        headerEndTime: newHeader.endTime,
+        validTo,
+      })
+    ) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Refusing to build a commit transaction whose header end-time is not the inclusive validity upper bound",
+          cause: `header_end_time_ms=${newHeader.endTime.toString()},valid_to_ms=${validTo.toString()},inclusive_upper_bound_ms=${inclusiveValidityUpperBound.toString()}`,
+        }),
+      );
+    }
     const newHeaderHash = yield* hashBlockHeaderV1(newHeader);
     const headerNodeUnit = toUnit(
       contracts.stateQueue.policyId,
@@ -572,6 +620,7 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
     ) =>
       lucid
         .newTx()
+        .validFrom(validFrom)
         .validTo(validTo)
         .collectFrom([latestBlock.utxo], stateQueueCommitRedeemer)
         .pay.ToContract(

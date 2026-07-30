@@ -5,6 +5,7 @@ import {
   createReferenceScriptAuthPolicy,
   type ReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
+  referenceScriptAuthPolicyFromDeploymentInfo,
 } from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -70,6 +71,24 @@ export const assertFreshRedeployReason = (
 
 const manifestPath = (override?: string): string =>
   override ?? ContractDeploymentInfo.defaultContractDeploymentInfoOutputPath();
+
+const readExistingDeploymentManifest = (
+  path: string,
+): ContractDeploymentInfo.DeploymentManifestV1 | null => {
+  if (!existsSync(path)) {
+    return null;
+  }
+  try {
+    return ContractDeploymentInfo.readDeploymentManifestV1File(path);
+  } catch (cause) {
+    throw new RunStateError(
+      `Deployment manifest at "${path}" cannot be reused because it is invalid: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }. Pass --fresh-redeploy --fresh-redeploy-reason <reason> only when replacing the existing identity is intentional.`,
+      { cause },
+    );
+  }
+};
 
 const identityFromContext = ({
   network,
@@ -417,6 +436,19 @@ const assertPolicyIdsMatch = ({
   }
 };
 
+const manifestIdentityToRunIdentity = (
+  manifest: ContractDeploymentInfo.DeploymentManifestV1,
+  manifestPathValue: string,
+): DeploymentRunIdentity => ({
+  network: manifest.network,
+  hubOracleOneShot: {
+    txHash: manifest.hubOracleOneShot.txHash,
+    outputIndex: manifest.hubOracleOneShot.outputIndex,
+  },
+  manifestPath: manifestPathValue,
+  referenceScriptAuthPolicyId: manifest.referenceScriptAuthPolicy.policyId,
+});
+
 export const resolveReferenceScriptAuthPolicyProgram = ({
   options,
   lucid,
@@ -447,8 +479,21 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
         hubOracleOneShotOutputIndex,
         manifestOutputPath: outputPath,
       });
+      const existingManifest = options.freshRedeploy
+        ? null
+        : readExistingDeploymentManifest(outputPath);
+      const manifestPolicy =
+        existingManifest?.referenceScriptAuthPolicy ?? null;
+      if (existingManifest !== null) {
+        assertDeploymentIdentityMatches(
+          manifestIdentityToRunIdentity(existingManifest, outputPath),
+          currentIdentity,
+          "deployment manifest",
+        );
+      }
       let resolvedPolicy: ReferenceScriptAuthPolicy | null = null;
-      let policySource: "run_state" | "created" | "fresh_created" = "created";
+      let policySource: "run_state" | "manifest" | "created" | "fresh_created" =
+        "created";
 
       const transitionState = (
         state: DeploymentRunState,
@@ -465,8 +510,17 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
             rightPolicyId: runStatePolicy.policyId,
             source: "deployment run state",
           });
+          assertPolicyIdsMatch({
+            leftPolicyId: manifestPolicy?.policyId,
+            rightPolicyId: runStatePolicy.policyId,
+            source: "deployment manifest and run state",
+          });
           resolvedPolicy = runStatePolicy;
           policySource = "run_state";
+        } else if (manifestPolicy !== null && !options.freshRedeploy) {
+          resolvedPolicy =
+            referenceScriptAuthPolicyFromDeploymentInfo(manifestPolicy);
+          policySource = "manifest";
         } else {
           resolvedPolicy = createReferenceScriptAuthPolicy(
             lucid,
@@ -497,11 +551,13 @@ export const resolveReferenceScriptAuthPolicyProgram = ({
             message:
               policySource === "run_state"
                 ? "loaded from run state"
-                : `created and persisted before publication${
-                    policySource === "fresh_created"
-                      ? `; fresh_redeploy_reason=${options.freshRedeployReason}`
-                      : ""
-                  }`,
+                : policySource === "manifest"
+                  ? "imported from deployment manifest"
+                  : `created and persisted before publication${
+                      policySource === "fresh_created"
+                        ? `; fresh_redeploy_reason=${options.freshRedeployReason}`
+                        : ""
+                    }`,
           },
         );
       };

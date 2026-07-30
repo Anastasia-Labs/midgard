@@ -7,10 +7,10 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/transition_trace/proof.{
   AcceptedTransactionTransitionMismatch, CountFault, DuplicateTraceEvent,
   EventToStepMismatch, InvalidForcedTransactionNoOpTransition,
-  InvalidOneStepTransition, InvalidWithdrawalNoOpTransition, OmittedDueL1Event,
-  OutOfWindowSourceEvent, SourceMembershipMismatch, TraceBoundaryFault,
-  TraceLinkFault, TransitionFaultProof, ValidDepositTransition,
-  ValidWithdrawalTransition,
+  InvalidOneStepTransition, InvalidWithdrawalNoOpTransition,
+  L2TransactionTransition, OmittedDueL1Event, OutOfWindowSourceEvent,
+  SourceMembershipMismatch, TraceBoundaryFault, TraceLinkFault,
+  TransitionFaultProof, ValidDepositTransition, ValidWithdrawalTransition,
 }
 
 pub type Datum =
@@ -37,6 +37,7 @@ fn route_index(proof: TransitionFaultProof) -> Int {
         ValidWithdrawalTransition { .. } -> 2
         InvalidWithdrawalNoOpTransition { .. } -> 2
         InvalidForcedTransactionNoOpTransition { .. } -> 3
+        L2TransactionTransition { .. } -> 4
         ValidDepositTransition { .. } -> 5
       }
     AcceptedTransactionTransitionMismatch { .. } -> 4
