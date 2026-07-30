@@ -1,0 +1,61 @@
+# §3.2 Necessity artifact — mint-field asset fold
+
+## Binding
+
+- Family / item: `mint-fold-asset` (`MintFoldAssetWitness` with
+  `chunk_proof`/`next_chunk_proof`) / the complete canonical mint field
+  folded asset by asset; maximum shape the 32,768-byte mint aggregate field
+  with up to 16,384 distinct assets.
+- Applied validator hashes measured: shared complete-item route
+  `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
+  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`; blueprint
+  sha256 `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
+  Any change invalidates this artifact (GOAL_SPEC.md §3.2).
+- Parameter snapshot digests: profile digest
+  `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
+  capability floor per
+  `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
+- Fixture: shared exact-size generators in
+  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`;
+  mint boundary corpus in
+  `demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts`.
+
+## Measurements (§3.2 order — stop at the first representation that fits)
+
+| Representation | Tx bytes / maxTxSize | Mem / limit·0.8 | CPU / limit·0.8 | Fee | Fits §3.3? |
+| --- | --- | --- | --- | --- | --- |
+| 1. Complete mint field direct in proof tx | the 32,768-byte aggregate exceeds the envelope outright; measured publication framing at 32,768 bytes: 35,186/16,384 (over by 18,802); fits only through the 13,282-byte measured frontier | 205,594 / 13,200,000 | 500,275,649 / 8,000,000,000 | 974,576 | NO above 13,282 bytes |
+| 2. Complete field as inline-datum publication + reference | fits through 14,396 bytes (15,256/16,384); 16,384 → 18,290; 32,768 → 35,186 | 264,106 / 13,200,000 | 552,114,352 / 8,000,000,000 | pub 826,821 | NO above 14,396 bytes |
+| 3. Minimum multi-output publication + complete reconstruction | value semantics still require per-asset conservation deltas against the ledger `Value` commitments — the per-asset fold, not the bytes, is the binding step | — | — | — | superseded by 4 |
+| 4. Asset-by-asset fold over ≤4,095-byte chunks (`MintFoldAssetWitness`) | each step ≤ one chunk reveal (≤4,675-byte publication, pinned) | within pinned per-step receipts / 13,200,000 | within pinned receipts / 8,000,000,000 | per pinned receipts | YES |
+
+## Exact limiting constraint
+
+`maxTxSize = 16,384` on the complete serialized transaction: the mint
+aggregate field is reserved to 32,768 bytes (measured single-publication
+framing 35,186 bytes, over by 18,802), and the distinct-asset guardrail
+admits up to 16,384 assets whose per-asset conservation mutations
+(`ValueAssetMutationWitnessV1` MPF delta proofs) each carry their own
+sibling paths. One transition per asset with one bounded chunk is the
+largest step shape that stays inside both the byte envelope and the
+reserved execution ceilings for the worst legal field.
+
+## Why no simpler authenticated representation closes the gap
+
+Mint verification is not byte transport: every asset triple must be checked
+against the accumulated `Value` delta commitment. A complete-field
+representation above the measured publication maximum cannot enter one
+transaction, and even below it a one-shot fold across 16,384 assets
+concentrates 16,384 MPF mutations in one step. The deployed fold reuses the
+same bounded chunk commitment for the field bytes and adds only the
+per-asset cursor.
+
+## Preserved complete-item path
+
+Mint fields at or below 14,396 bytes retain complete-item carriage for
+byte authentication (direct at or below the measured 13,282-byte frontier;
+publication + reference at or below 14,396); small fields fold in a single
+chunk whose bytes are the complete field. Chunked and complete
+representations bind the identical bounded-item commitment with hostile
+omission/duplication/reorder/substitution/trailing rejection proven at
+`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`.
