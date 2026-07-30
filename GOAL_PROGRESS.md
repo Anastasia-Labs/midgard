@@ -388,8 +388,36 @@
   `immutable_context_matches` on Terminal/Rejected successors, versus drop
   the clearing requirement in `rejected_successor_is_exact` and instead treat
   a non-empty claimed delta on a rejected transaction as the provable fault.
-  These differ in what a rejection proof *means* on L1, so the normative
-  technical specification governs (§1 authority order); research assigned.
+  RESOLVED 2026-07-30 by normative research (memo committed at
+  `docs/exec-plans/evidence/vm-defect-decision-memo.md`): the technical
+  specification never defines the ledger delta as a data structure (four
+  informal mentions, zero field references) and is silent, but incorporated
+  authority `docs/consensus-profile-v1.md:268-271` is decisive — "A rejecting
+  terminal state derives no operations and requires `pre_utxos_root ==
+  post_utxos_root`" — and that obligation is already enforced three other
+  ways: `validation-claim-v1.ak:396-400`, the rejection work witness encoding
+  an empty operation list `#"80"` (`:1111-1120`), and the unilateral fault at
+  `proof.ak:1029-1051`. Line 2052 is therefore redundant accumulator-era
+  residue (corroborated by `hash_ledger_delta` being dead in production and
+  used only by test fixtures) and its removal restores capability rather than
+  weakening it; the alternatives are rejected (exempting the field from
+  `immutable_context_matches` breaks `validation-claim-v1.ak:143` and makes
+  honest blocks unclaimable; a compare-to-empty variant leaves the same hole
+  and needs a new fault family over an inert value, contrary to invariants
+  3-4). SEVERITY UPGRADED: this is a SOUNDNESS break, not liveness — the
+  challenger is the party who must exhibit a one-step-valid successor
+  (`validation-resolver-v1.ak:203-266`) and normal L2 sources are forced to
+  claim `Accepted` (`validation-claim-v1.ak:288-296`), so a genuinely invalid
+  transaction always carries a non-empty claimed delta and the challenger can
+  never win — the dishonest operator prevails by default. Affects all 80 call
+  sites of `rejected_successor_is_exact`. Fix implementation assigned with
+  mandatory valid-block negative controls. Fix 1 is likewise decisive from
+  cross-language parity (TS `validation-machine.ts:1933` emits `result: -1`,
+  type `-1 | 0 | 1`) — an Aiken transcription slip, not a semantic
+  disagreement. Overstated status rows to correct: `catalogue-status.md:63`
+  (`InvalidOneStepTransition` marked REAL — the clearest AC-X13 exposure),
+  `coverage-matrix.md:130/155/166/390`, `consensus-profile-v1.md:554-563`
+  and its `:192-195` field enumeration.
   Closure impact: AC-C30/AC-C31/CG3 and the interactive-family closure cannot
   be promoted while either defect stands, and no live fault-proof drill for a
   rejection path can succeed.
