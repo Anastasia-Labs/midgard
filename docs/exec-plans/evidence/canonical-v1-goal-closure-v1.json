@@ -15,7 +15,7 @@
       {
         "path": "GOAL_SPEC.md",
         "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "649ca60c63d9ba938697516d9b4f0bec72333e4ea20221ca354f938c83e54a89",
+        "currentExpectedSha256": "1189f05da34bbdd8d7896125a172bfd747bffd6315d28bbadb8b54382dfba61e",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {

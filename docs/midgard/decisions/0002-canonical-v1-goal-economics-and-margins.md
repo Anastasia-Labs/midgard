@@ -8,9 +8,11 @@
 - **Consumers:** Q53, Q61, Q63, W04, W12, W31, C74, C80, and W46 (production
   hardware floor, §5.2) (`GOAL_SPEC.md` §3.3, §7). No task may invent a value
   this record owns.
-- **Owner-accepted exceptions:** §2.1 (public preprod launch economics) and
-  §5.2 (production hardware floor) are ACCEPTED by owner direction on
-  2026-07-29; the rest of this record remains PROVISIONAL pending approval.
+- **Owner-accepted exceptions:** §2.1 (public preprod launch economics),
+  the §3 finality rows (`finalityDepth` 30 with the automated
+  deep-rollback-to-`k` condition), and §5.2 (production hardware floor) are
+  ACCEPTED by owner direction on 2026-07-29; the rest of this record remains
+  PROVISIONAL pending approval.
 
 ## 1. Fixed protocol constants (recorded, not chosen)
 
@@ -62,12 +64,14 @@ The release evidence must record exactly which profile the acceptance
 deployment used; the public launch uses §2.1 verbatim under its own
 deployment identity, and no acceptance shortcut lowers §2.1.
 
-## 3. Finality, retries, deadlines (PROVISIONAL)
+## 3. Finality, retries, deadlines (status per row)
 
 | Parameter | Value | Rationale |
 | --- | --- | --- |
-| `finalityDepth` (local_node and external_providers) | 30 blocks (~10 min Preprod) | Within watcher config bounds (1–2,160); deep enough that finalized rollback is incident-grade, shallow enough for a ≤ 48 h acceptance sweep. |
-| Rollback handling below depth | pending-state rewind (W13) | Spec §3.1.8. |
+| `finalityDepth` (local_node and external_providers) | 30 blocks (~10 min Preprod) — **ACCEPTED** (owner-directed 2026-07-29) for testing and, conditionally, for public launch | Within watcher config bounds (1–2,160). The public-launch acceptance is conditional on the automated deep-rollback requirement below. |
+| Cardano security parameter `k` (maximum credible rollback depth) | 2,160 blocks (Shelley genesis `securityParam`, mainnet and Preprod; ≈ 12 h at mainnet density) | Recorded fact, not a choice. The watcher config maximum (`finalityDepth`/`rollbackDepth` max `2_160`) already matches it. |
+| Automated deep-rollback handling — **ACCEPTED owner condition** | A rollback deeper than `finalityDepth` but within `k` triggers automated W13 rewind/replay recovery plus W33 submission reconciliation and an explicit incident record; verification resumes without manual state surgery. | This automation is the condition under which `finalityDepth` 30 is acceptable for public launch: shallow finality for latency, full-`k` automated recovery for safety. W44 must include a deeper-than-finality rollback case. |
+| Rollback handling below `finalityDepth` | pending-state rewind (W13) | Spec §3.1.8. |
 | Submission retry budget | 5 attempts, exponential backoff capped at 120 s | Bounded by §3.3 maturity fit; W33 reconciles ambiguity before any retry. |
 | DA availability-challenge response deadline | 3,600,000 ms (1 h) | Fits drill inside the acceptance window; retention makes longer response unnecessary. |
 | `da_attestation_timeout` (Q61) | 3,600,000 ms (1 h) | A live committee attests in seconds; 1 h cannot trigger accidentally yet keeps the head-of-line unblock drillable and the queue live. Timeout removal does not slash (D-L1 recommendation). |
