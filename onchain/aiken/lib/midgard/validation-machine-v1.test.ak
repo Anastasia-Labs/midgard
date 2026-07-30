@@ -1868,6 +1868,8 @@ fn canonical_step_fixture() -> Pair<
     encode_native_tx_body_compact(compact.body),
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
+  // A field scan that has not yet counted the field's items carries the
+  // `item_count == -1` sentinel; `verify_canonical_decode_empty` requires it.
   let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
@@ -1876,7 +1878,7 @@ fn canonical_step_fixture() -> Pair<
     0,
     0,
     0,
-    0,
+    -1,
     0,
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -2503,21 +2505,19 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 3,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      3,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // An exact rejection clears the ledger delta to the empty frontier
+  // commitment; `exact_rejection_post` is the canonical successor shape.
+  //
+  // NOTE: this test is currently RED on a production defect, not a stale
+  // expectation. `rejected_successor_is_exact` demands
+  // `post.ledger_delta_root == frontier_commitment(0, [])` while
+  // `immutable_context_matches` (reached via `structural_transition_is_valid`,
+  // which the `verify_one_step` entry point applies) demands
+  // `pre.ledger_delta_root == post.ledger_delta_root`. Those are jointly
+  // unsatisfiable for any `pre` whose delta root is not already the empty
+  // commitment. Do NOT make this green by setting `pre.ledger_delta_root` to
+  // `frontier_commitment(0, [])` -- that is the workaround that hid the defect.
+  let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -2862,6 +2862,11 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     #"",
     0,
     0,
+    // A stage-0 phase-A native scan control MUST carry `result == -1`:
+    // `phase_a_native_control_is_bound` rejects any other value at stage 0, and
+    // `reset_phase_a_native_control` produces -1. Production
+    // `verify_signatures_handoff` currently emits 0 here, which is a defect --
+    // see the write-up; do NOT "fix" this expectation to 0.
     -1,
     signer_frontier.count,
     signer_frontier.peaks,
@@ -3486,21 +3491,9 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
     finalize_work_witness_cbor,
   )
   let rejection_code = #"455f4e41544956455f5343524950545f494e56414c4944"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..finalize_pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: finalize_pre.program_counter + 1,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      finalize_pre.program_counter + 1,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        finalize_pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // An exact rejection also clears the ledger delta to the empty frontier
+  // commitment; `exact_rejection_post` is the canonical successor shape.
+  let terminal = exact_rejection_post(finalize_pre, rejection_code)
   and {
     validation_machine_v1.verify_phase_a_native_item_semantics_v1(
       pre,
@@ -3700,21 +3693,11 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
     validation_trace_v1.hash_ledger_delta(#"80"),
   )
   let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 7,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      7,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // Canonical exact-rejection successor (clears the ledger delta). Currently
+  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
+  // contradiction -- see the note on
+  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -4042,21 +4025,11 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     8,
   )
   let rejection_code = #"455f494e5055545f4e4f545f464f554e44"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 9,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      9,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // Canonical exact-rejection successor (clears the ledger delta). Currently
+  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
+  // contradiction -- see the note on
+  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -5627,21 +5600,9 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     15,
   )
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
-  let terminal = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 16,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      16,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // An exact rejection also clears the ledger delta to the empty frontier
+  // commitment; `exact_rejection_post` is the canonical successor shape.
+  let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
     validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -7934,21 +7895,11 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
   let rejection_code = #"455f504c555455535f5343524950545f494e56414c4944"
-  let post = validation_trace_v1.ValidationMachineStateV1 {
-    ..pre,
-    phase: validation_trace_v1.Terminal,
-    program_counter: 41,
-    work_root: validation_trace_v1.hash_work_witness(
-      validation_trace_v1.Terminal,
-      41,
-      validation_machine_v1.encode_terminal_rejection_witness(
-        rejection_code,
-        pre.prior_ledger_root,
-      ),
-    ),
-    verdict: validation_trace_v1.Rejected,
-    rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-  }
+  // Canonical exact-rejection successor (clears the ledger delta). Currently
+  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
+  // contradiction -- see the note on
+  // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
+  let post = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
     pre,
     validation_machine_v1.ValidationOneStepEvidenceV1 {
