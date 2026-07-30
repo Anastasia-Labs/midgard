@@ -20,10 +20,7 @@ const markdown = readFileSync(markdownPath, "utf8");
 const rowPattern = /^\|\s*((?:C|N|D|L|S|K|V|P|A)\d{2})\s*\|(.+)$/gm;
 
 const normalizeCell = (value) =>
-  value
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/^`|`$/g, "");
+  value.trim().replace(/\s+/g, " ").replace(/^`|`$/g, "");
 
 const markdownRows = [...markdown.matchAll(rowPattern)].map((match) => {
   const cells = match[2]
@@ -87,10 +84,7 @@ const bootstrapAbsenceScans = [
       "demo/midgard-validation/src",
       "demo/midgard-validation/tests",
     ],
-    patterns: [
-      "midgard-launch-consensus-v1",
-      "midgard-proof-consensus-v3",
-    ],
+    patterns: ["midgard-launch-consensus-v1", "midgard-proof-consensus-v3"],
   },
   {
     id: "A22-retired-phase5-da-artifacts",
@@ -106,6 +100,137 @@ const bootstrapAbsenceScans = [
       "midgard-phase-5-live-da-50k-v1",
       "midgard-phase-5-live-da-v1",
       "test:da-phase5-e2e",
+    ],
+  },
+  {
+    id: "A13-A16-retired-stress-artifacts",
+    paths: [
+      "demo/midgard-node/src/commands/stress-wallets.ts",
+      "demo/midgard-node/src/commands/stress-corpus-generate.ts",
+      "demo/midgard-node/src/commands/stress-corpus",
+      "demo/midgard-node/src/commands/stress-open-loop.ts",
+      "demo/midgard-node/scripts/throughput-valid-stress-corpus.mjs",
+    ],
+    patterns: [
+      "midgard-stress-wallet-consolidate-v1",
+      "historicalExtension",
+      "historicalBinding",
+    ],
+  },
+  {
+    id: "N10-obsolete-partial-witness-bundle",
+    paths: [
+      "demo/lucid-midgard/src/builder/witness-bundle.ts",
+      "demo/lucid-midgard/src/builder.ts",
+      "demo/lucid-midgard/tests/partial-signing.test.ts",
+      "demo/lucid-midgard/tests/api-export-snapshot.test.ts",
+    ],
+    patterns: [
+      "MidgardPartialWitnessBundle(?!V1)",
+      "PARTIAL_WITNESS_BUNDLE_VERSION\\s*=\\s*[2-9]",
+    ],
+  },
+  {
+    id: "N01-N09-obsolete-native-transaction-identities",
+    paths: [
+      "demo/midgard-core/src",
+      "demo/midgard-core/tests",
+      "demo/midgard-sdk/src",
+      "demo/midgard-sdk/tests",
+      "demo/midgard-node/src",
+      "demo/midgard-node/tests",
+      "demo/midgard-validation/src",
+      "demo/midgard-validation/tests",
+      "demo/midgard-fault-proofs/src",
+      "demo/midgard-fault-proofs/tests",
+      "onchain/aiken/lib/midgard/fraud-proofs/native-tx",
+      "onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak",
+    ],
+    patterns: [
+      "MidgardNativeTx(?:Canonical|Full|Compact|BodyCompact|BodyCanonical|WitnessSetCompact|WitnessSetCanonical|ProofSource|ProofFieldLengths)V[2-9]",
+      "computeMidgardNativeTxFullHashV[2-9]",
+      "MIDGARD_NATIVE_TX_V[2-9]",
+    ],
+  },
+  {
+    id: "D01-D05-retired-da-payload-identities",
+    paths: [
+      "demo/midgard-sdk/src",
+      "demo/midgard-sdk/tests",
+      "demo/midgard-core/src",
+      "demo/midgard-core/tests",
+      "demo/midgard-node/src",
+      "demo/midgard-node/tests",
+      "demo/da-committee-node/src",
+      "demo/da-committee-node/tests",
+      "demo/midgard-fault-proofs/src",
+      "demo/midgard-fault-proofs/tests",
+    ],
+    patterns: [
+      "(?:DaPayload|VerifiedDaPayload|DaPayloadBody|DaPayloadCounts|DaPayloadEnvelope)V[234]",
+      "DA_PAYLOAD_(?:ENVELOPE_)?V[234]",
+      "(?:encode|decode)DaPayloadV[234]",
+    ],
+  },
+  {
+    id: "A17-A20-obsolete-phase-artifacts",
+    paths: [
+      "demo/midgard-node/scripts/phase1-formal-identity.mjs",
+      "demo/midgard-node/scripts/create-phase1-formal-binding.mjs",
+      "demo/midgard-node/scripts/phase3-architecture-g-load-generator-isolation.mjs",
+      "demo/midgard-node/scripts/phase3-architecture-g-live-e2e.mjs",
+      "demo/midgard-node/scripts/verify-phase3-architecture-g-live-e2e-report.mjs",
+      "demo/midgard-node/scripts/phase3-architecture-g-soak.mjs",
+      "demo/midgard-node/scripts/verify-phase3-architecture-g-soak-report.mjs",
+    ],
+    patterns: [
+      "midgard-phase1-live-corpus-binding-v[2-9]",
+      "midgard-phase3-load-generator-isolation-v[2-9]",
+      "midgard-phase3-architecture-g-clean-live-e2e-v[2-9]",
+      "midgard-phase3-architecture-g-live-soak-v[2-9]",
+    ],
+  },
+  {
+    id: "A10-A12-obsolete-phase4-artifacts",
+    paths: [
+      "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+      "demo/midgard-node/src/commands/phase4-genesis-ledger.ts",
+      "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+      "demo/midgard-node/src/transactions/phas-membership-registration.ts",
+      "demo/midgard-node/scripts/phase4-environment-fingerprint-lib.mjs",
+      "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+      "demo/midgard-node/scripts/verify-phase4-pipelined-report.mjs",
+    ],
+    patterns: [
+      "midgard-phase4-local-devnet-reset-attestation-v[2-9]",
+      "midgard-phase4-matched-snapshot-identity-v[2-9]",
+      "midgard-phase4-environment-artifact-v[2-9]",
+      "midgard-phase4-local-genesis-ledger-v[2-9]",
+      "midgard-phase4-t1-recovery-attestation-v[2-9]",
+      "midgard-phase4-pipelined-commit-process-acceptance-v[2-9]",
+    ],
+  },
+  {
+    id: "A03-A09-obsolete-e2e-artifacts",
+    paths: [
+      "demo/midgard-node/src/e2e/run-state.ts",
+      "demo/midgard-node/src/e2e/runner.ts",
+      "demo/midgard-node/src/e2e/summary.ts",
+      "demo/midgard-node/src/e2e/da-gates.ts",
+      "demo/midgard-node/src/e2e/service-supervisor.ts",
+      "demo/midgard-node/src/e2e/process-ownership.ts",
+      "demo/midgard-node/src/commands/e2e-service.ts",
+      "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+      "demo/midgard-node/src/commands/reconcile.ts",
+    ],
+    patterns: [
+      "midgard-deployment-run-state-v[2-9]",
+      "midgard-e2e-step-v[2-9]",
+      "midgard-e2e-summary-v[2-9]",
+      "midgard-e2e-da-gate-v[2-9]",
+      "midgard-e2e-l2-stress-(?:config|summary)-v[2-9]",
+      "midgard-e2e-(?:managed-service|service-supervisor|owned-process-group)-v[2-9]",
+      "midgard-e2e-reconciliation-v[2-9]",
     ],
   },
 ];
@@ -186,6 +311,7 @@ const verifyReferences = (references, label, contentField) => {
   }
 };
 const activeSourceExtensions = new Set([
+  ".ak",
   ".cjs",
   ".js",
   ".json",
@@ -237,7 +363,9 @@ const collectActiveFiles = (relativePath, label) => {
         visit(child);
       } else if (
         entry.isFile() &&
-        activeSourceExtensions.has(entry.name.slice(entry.name.lastIndexOf(".")))
+        activeSourceExtensions.has(
+          entry.name.slice(entry.name.lastIndexOf(".")),
+        )
       ) {
         files.push(child);
       }
@@ -339,7 +467,9 @@ if (registry !== undefined) {
       (id, index) => actualIds.indexOf(id) !== index,
     );
     if (duplicateIds.length > 0) {
-      fail(`registry has duplicate IDs: ${[...new Set(duplicateIds)].join(", ")}`);
+      fail(
+        `registry has duplicate IDs: ${[...new Set(duplicateIds)].join(", ")}`,
+      );
     }
     if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
       const missing = expectedIds.filter((id) => !actualIds.includes(id));
@@ -351,7 +481,10 @@ if (registry !== undefined) {
 
     for (const row of registry.formats) {
       const label = row.id ?? "<missing-id>";
-      requireNonEmptyString(row.sourceOwnerAndCurrentIdentity, `${label}.source`);
+      requireNonEmptyString(
+        row.sourceOwnerAndCurrentIdentity,
+        `${label}.source`,
+      );
       requireNonEmptyString(row.classification, `${label}.classification`);
       requireNonEmptyString(row.canonicalResult, `${label}.canonicalResult`);
       requireNonEmptyString(
@@ -371,14 +504,23 @@ if (registry !== undefined) {
         fail(`${label} is PASS but still contains UNVERIFIED`);
       }
       if (
-        !["retain", "reset-to-v1", "delete", "external", "semantic", "sentinel"].includes(
-          row.disposition,
-        )
+        ![
+          "retain",
+          "reset-to-v1",
+          "delete",
+          "external",
+          "semantic",
+          "sentinel",
+        ].includes(row.disposition)
       ) {
         fail(`${label}.disposition is not a final disposition`);
       }
 
-      verifyReferences(row.sourceEvidence, `${label}.sourceEvidence`, "symbols");
+      verifyReferences(
+        row.sourceEvidence,
+        `${label}.sourceEvidence`,
+        "symbols",
+      );
       verifyReferences(
         row.positiveEvidence,
         `${label}.positiveEvidence`,
@@ -395,7 +537,10 @@ if (registry !== undefined) {
       );
 
       if (row.disposition === "delete") {
-        if (!Array.isArray(row.canonicalForms) || row.canonicalForms.length !== 0) {
+        if (
+          !Array.isArray(row.canonicalForms) ||
+          row.canonicalForms.length !== 0
+        ) {
           fail(`${label}.canonicalForms must be empty for a deleted format`);
         }
         if (
@@ -405,10 +550,16 @@ if (registry !== undefined) {
           fail(`${label} deletion requires obsoleteBranchEvidence`);
         }
       } else {
-        if (!Array.isArray(row.sourceEvidence) || row.sourceEvidence.length === 0) {
+        if (
+          !Array.isArray(row.sourceEvidence) ||
+          row.sourceEvidence.length === 0
+        ) {
           fail(`${label} requires sourceEvidence`);
         }
-        if (!Array.isArray(row.canonicalForms) || row.canonicalForms.length === 0) {
+        if (
+          !Array.isArray(row.canonicalForms) ||
+          row.canonicalForms.length === 0
+        ) {
           fail(`${label} requires at least one canonical form`);
         } else {
           for (const [index, form] of row.canonicalForms.entries()) {
@@ -450,19 +601,14 @@ if (registry !== undefined) {
                 `${formLabel} requires integer arrayArity or arrayArityNotApplicable`,
               );
             }
-            verifyReferences(
-              form.encoders,
-              `${formLabel}.encoders`,
-              "symbols",
-            );
-            verifyReferences(
-              form.parsers,
-              `${formLabel}.parsers`,
-              "symbols",
-            );
+            verifyReferences(form.encoders, `${formLabel}.encoders`, "symbols");
+            verifyReferences(form.parsers, `${formLabel}.parsers`, "symbols");
           }
         }
-        if (!Array.isArray(row.positiveEvidence) || row.positiveEvidence.length === 0) {
+        if (
+          !Array.isArray(row.positiveEvidence) ||
+          row.positiveEvidence.length === 0
+        ) {
           fail(`${label} requires positiveEvidence`);
         }
         if (
@@ -491,6 +637,42 @@ if (registry !== undefined) {
           `${label}.crossLanguageEvidence needs tests or a non-empty notApplicableReason`,
         );
       }
+    }
+
+    const canonicalFieldsFor = (id) =>
+      registry.formats.find((row) => row.id === id)?.canonicalForms?.[0]
+        ?.exactFields;
+    const expectedN05Fields = [
+      "0: canonical address-witness collection commitment hash32",
+      "1: canonical script-witness collection commitment hash32",
+      "2: canonical redeemer collection commitment hash32",
+    ];
+    const expectedN08Fields = [
+      "0: spend-inputs preimage byte length",
+      "1: reference-inputs preimage byte length",
+      "2: outputs preimage byte length",
+      "3: required-observers preimage byte length",
+      "4: required-signers preimage byte length",
+      "5: mint preimage byte length",
+      "6: script-witnesses preimage byte length",
+      "7: vkey-witnesses preimage byte length",
+      "8: redeemers preimage byte length",
+    ];
+    if (
+      JSON.stringify(canonicalFieldsFor("N05")) !==
+      JSON.stringify(expectedN05Fields)
+    ) {
+      fail(
+        "N05 must preserve the stable compact witness tuple [address, script, redeemer]",
+      );
+    }
+    if (
+      JSON.stringify(canonicalFieldsFor("N08")) !==
+      JSON.stringify(expectedN08Fields)
+    ) {
+      fail(
+        "N08 must preserve transaction field order [spend, reference, outputs, observers, signers, mint, script, vkey, redeemer]",
+      );
     }
   }
 }

@@ -4,7 +4,7 @@ Branch: `codex/tx-validation-capability-checkpoint`
 Clean base: `23aff475`
 
 This checkpoint extends the reusable ordered-collection boundary harness with
-one real Cardano coupling: field 4 (`required_signers`) and field 6
+one real Cardano coupling: field 4 (`required_signers`) and field 7
 (`address_witnesses`) are derived from the same exact fully signed
 transaction. It is one coupled P2 boundary slice, not a complete
 ordered-collection or whole-P2 claim.
@@ -40,16 +40,16 @@ The reusable search compares exact signed Cardano CBOR bytes with the snapshot
 
 ## Exact coupled boundary
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
-| Requested required signers | 124 | 125 |
-| Actual required signers | 124 | 125 |
-| Actual vkey witnesses | 124 | 125 |
-| Cardano outputs | 1 | 1 |
-| Complete signed Cardano bytes | 16,351 | 16,482 |
-| Margin against `maxTxSize` | +33 | -98 |
-| Exact minimum fee | 874,825 lovelace | 880,589 lovelace |
-| Result | submitted to one bounded emulator | rejected by exact snapshot envelope |
+| Measurement                   |                   Accepting shape |                      Adjacent shape |
+| ----------------------------- | --------------------------------: | ----------------------------------: |
+| Requested required signers    |                               124 |                                 125 |
+| Actual required signers       |                               124 |                                 125 |
+| Actual vkey witnesses         |                               124 |                                 125 |
+| Cardano outputs               |                                 1 |                                   1 |
+| Complete signed Cardano bytes |                            16,351 |                              16,482 |
+| Margin against `maxTxSize`    |                               +33 |                                 -98 |
+| Exact minimum fee             |                  874,825 lovelace |                    880,589 lovelace |
+| Result                        | submitted to one bounded emulator | rejected by exact snapshot envelope |
 
 The accepting transaction was submitted to one in-memory emulator configured
 with the preserved 16,384-byte and 5,000-byte Value parameters. It passed all
@@ -64,13 +64,13 @@ The accepting signed Cardano bytes feed directly into
 `cardanoTxBytesToMidgardNativeTxCanonicalCborV1`. The same resulting
 16,685-byte canonical Midgard transaction feeds both field measurements.
 
-| Measurement | Required signers, field 4 | Address witnesses, field 6 |
-| --- | ---: | ---: |
-| Canonical field bytes | 3,722 | 12,774 |
-| Committed item count | 124 | 124 |
-| Reveal steps | 124 | 124 |
-| Largest revealed chunk | 28 bytes | 101 bytes |
-| Largest serialized auxiliary reveal witness | 536 bytes | 613 bytes |
+| Measurement                                 | Required signers, field 4 | Address witnesses, field 7 |
+| ------------------------------------------- | ------------------------: | -------------------------: |
+| Canonical field bytes                       |                     3,722 |                     12,774 |
+| Committed item count                        |                       124 |                        124 |
+| Reveal steps                                |                       124 |                        124 |
+| Largest revealed chunk                      |                  28 bytes |                  101 bytes |
+| Largest serialized auxiliary reveal witness |                 536 bytes |                  613 bytes |
 
 Every reveal in both fields verifies against the exact converted transaction
 commitment. For each field measurement, the complete 250-step field-major

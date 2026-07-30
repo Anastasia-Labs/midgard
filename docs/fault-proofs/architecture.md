@@ -43,6 +43,22 @@ the implementation** — see [`coverage-matrix.md`](coverage-matrix.md) for the 
 | **Witness staking script**               | Per-event registered staking credential whose (non-)registration lets a Plutus script disprove the existence of an L1 event UTxO — the intended hook for fabricated-deposit/withdrawal proofs (no construction implemented).                                        | `technical-spec/2-user-event-protocol/1-deposit.tex:12`; `4-withdrawal-order.tex:106-120`                                           |
 | **Phase A / Phase B (local validation)** | The node's two-phase mempool admission: Phase A stateless per-tx checks; Phase B stateful UTxO/graph/script-execution checks. Reject codes are "operational evidence, not L1 fault proofs" (`technical-spec/7-phase-two-validation/3-fraud-proofs-involved.tex:9`). | `demo/midgard-validation/src/phase-a.ts:338`, `phase-b.ts:1072`                                                                     |
 
+### Proof interaction classification
+
+The governing rule is `GOAL_SPEC.md` §3: every violation that one prover can
+establish from retained public authenticated evidence uses a single-party
+proof. "Single-party" describes who must participate, not how many Cardano
+transactions the proof consumes. L1 size or execution limits may require an
+ordered multi-step, multi-transaction computation-thread chain without making
+the proof interactive.
+
+Challenge/response is permitted only where sound resolution intrinsically
+requires competing authenticated execution traces, an adversarial response, or
+a withholding deadline. Convenience, transaction size, execution cost, or
+implementation reuse are not sufficient reasons. Each interactive proof family
+must carry executable evidence demonstrating why a single-party construction is
+insufficient.
+
 ## 3. End-to-end proof lifecycle
 
 ```

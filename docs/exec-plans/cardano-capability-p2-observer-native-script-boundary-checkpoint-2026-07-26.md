@@ -4,7 +4,7 @@ Branch: `codex/tx-validation-capability-checkpoint`
 Clean base: `ff829619`
 
 This checkpoint adds the exact coupled Cardano boundary fixture for field 3
-(`required_observers`) and native-script entries in field 7
+(`required_observers`) and native-script entries in field 6
 (`script_witnesses`). Every observer is represented by the production
 converter's supported zero-lovelace script reward withdrawal and has exactly
 one matching, consumed native-script witness. This is a focused P2 slice, not
@@ -56,19 +56,19 @@ The complete no-script minimum fee is stabilized using the preserved preprod
 epoch-303 parameters, including `maxTxSize = 16,384`,
 `maxValueSize = 5,000`, `minFeeA = 44`, and `minFeeB = 155,381`.
 
-| Measurement | Accepting shape | Adjacent shape |
-| --- | ---: | ---: |
-| Required observers / zero withdrawals | 224 | 225 |
-| Native-script witnesses | 224 | 225 |
-| Spending inputs | 1 | 1 |
-| Vkey witnesses | 1 | 1 |
-| Plain-Ada outputs | 1 | 1 |
-| Validity interval | lower unset, TTL 10,000 | lower unset, TTL 10,000 |
-| Distinct script expiries | `20,000..20,223` | `20,000..20,224` |
-| Complete signed Cardano bytes | 16,338 | 16,410 |
-| Margin against `maxTxSize` | +46 | -26 |
-| Exact minimum fee | 874,253 lovelace | 877,421 lovelace |
-| Result | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
+| Measurement                           |                          Accepting shape |                      Adjacent shape |
+| ------------------------------------- | ---------------------------------------: | ----------------------------------: |
+| Required observers / zero withdrawals |                                      224 |                                 225 |
+| Native-script witnesses               |                                      224 |                                 225 |
+| Spending inputs                       |                                        1 |                                   1 |
+| Vkey witnesses                        |                                        1 |                                   1 |
+| Plain-Ada outputs                     |                                        1 |                                   1 |
+| Validity interval                     |                  lower unset, TTL 10,000 |             lower unset, TTL 10,000 |
+| Distinct script expiries              |                         `20,000..20,223` |                    `20,000..20,224` |
+| Complete signed Cardano bytes         |                                   16,338 |                              16,410 |
+| Margin against `maxTxSize`            |                                      +46 |                                 -26 |
+| Exact minimum fee                     |                         874,253 lovelace |                    877,421 lovelace |
+| Result                                | submitted to the seeded bounded emulator | rejected by exact snapshot envelope |
 
 The accepting transaction passed native-script evaluation, every withdrawal
 credential check, zero-reward balance matching, funding-signature validation,
@@ -86,13 +86,13 @@ The accepting signed Cardano bytes feed directly into the production
 through the existing typed collection/item/chunk constructors, every
 per-reveal verifier, and the same exact complete terminal reconstruction fold.
 
-| Measurement | Field 3 observers | Field 7 native scripts |
-| --- | ---: | ---: |
-| Canonical field bytes | 6,722 | 9,858 |
-| Committed items | 224 | 224 |
-| Reveal steps | 224 | 224 |
-| Largest revealed chunk | 28 bytes | 44 bytes |
-| Largest serialized auxiliary reveal witness | 492 bytes | 508 bytes |
+| Measurement                                 | Field 3 observers | Field 6 native scripts |
+| ------------------------------------------- | ----------------: | ---------------------: |
+| Canonical field bytes                       |             6,722 |                  9,858 |
+| Committed items                             |               224 |                    224 |
+| Reveal steps                                |               224 |                    224 |
+| Largest revealed chunk                      |          28 bytes |               44 bytes |
+| Largest serialized auxiliary reveal witness |         492 bytes |              508 bytes |
 
 The canonical Midgard transaction is 16,871 bytes. Every reveal verifies
 against its exact converted transaction commitment. The shared 451-step
@@ -154,7 +154,7 @@ Both pass.
 ## Remaining gate cells
 
 This checkpoint closes the TypeScript exact Cardano boundary and terminal-fold
-fixture for field 3 and the coupled NativeCardano form of field 7. Fields 0, 1,
+fixture for field 3 and the coupled NativeCardano form of field 6. Fields 0, 1,
 2, 3, 4, 6, and 7 now have this evidence. The next dynamic field without
 equivalent evidence is field 5 (`mint`); field 8 (`redeemers`) also remains
 open.

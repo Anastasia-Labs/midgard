@@ -28,14 +28,24 @@ The completed release supports:
 
 Proof layout may require more Cardano transactions. User-facing transaction
 capability may not be reduced to make a proof fit one transaction.
+Proof transaction count is orthogonal to interactivity: a prover-only proof may
+be an ordered multi-step, multi-transaction computation-thread chain.
+"Interactive" means that sound resolution intrinsically requires an opposing
+party's authenticated response or a withholding deadline, not merely that the
+complete proof exceeds one L1 transaction.
 
 ## Non-negotiable invariants
 
-1. Existing single-party fault proofs remain single-party. Double spend,
-   nonexistent input, invalid range, and every other fault with a
-   self-contained L1 witness do not enter the interactive validation game.
-2. The validation game is used only where an authenticated execution trace is
-   needed. Its bisection hub does not contain the complete validation machine.
+1. Every fault that one prover can establish from retained public authenticated
+   evidence remains single-party. Double spend, nonexistent input, invalid
+   range, and every other fault with a self-contained L1 witness do not enter
+   the interactive validation game, even when their proof requires multiple
+   computation-thread steps or L1 transactions.
+2. The validation game is used only where soundness intrinsically requires
+   competing authenticated execution traces, an adversarial response, or a
+   withholding deadline. Each interactive family records executable necessity
+   evidence for that claim. The bisection hub does not contain the complete
+   validation machine.
 3. Every validator and every individual revealed field, item, chunk, or
    one-step argument fits the live L1 transaction byte and execution envelopes
    with measured margin.
