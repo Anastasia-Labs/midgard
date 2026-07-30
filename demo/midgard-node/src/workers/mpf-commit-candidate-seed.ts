@@ -16,6 +16,7 @@ import {
 import * as Tx from "@/database/utils/tx.js";
 import { Database, NodeConfig } from "@/services/index.js";
 import { batchProgram, breakDownTx } from "@/utils.js";
+import { decodeCanonicalProbeRow } from "@/workers/mpf-engine-probe-corpus.js";
 import {
   decodeArchitectureGCommitCandidateSeedInputV1,
   decodeArchitectureGCorpusFundingV1,
@@ -65,23 +66,12 @@ const loadInput = async (): Promise<{
     .toString("utf8")
     .split(/\r?\n/u)
     .filter((line) => line.trim().length > 0)
-    .map((line) => {
-      const row = JSON.parse(line) as {
-        readonly txHash?: unknown;
-        readonly canonicalCborHex?: unknown;
-      };
-      const txHash = String(row.txHash ?? "").toLowerCase();
-      const cborHex = String(row.canonicalCborHex ?? "").toLowerCase();
-      const cbor = Buffer.from(cborHex, "hex");
-      if (
-        !/^[0-9a-f]{64}$/u.test(txHash) ||
-        cborHex.length === 0 ||
-        cborHex.length % 2 !== 0 ||
-        cbor.toString("hex") !== cborHex
-      ) {
-        throw new Error("Candidate seed corpus row is invalid");
-      }
-      return { txHash, cbor };
+    .map((line, index) => {
+      const row = decodeCanonicalProbeRow(
+        JSON.parse(line) as Record<string, unknown>,
+        index,
+      );
+      return { txHash: row.txHash, cbor: row.cbor };
     });
   if (rows.length !== input.expectedTransactionCount) {
     throw new Error(

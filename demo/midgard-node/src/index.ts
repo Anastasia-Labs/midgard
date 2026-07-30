@@ -2099,7 +2099,7 @@ reconcile
         failCli("reconcile da-attested", error);
         return;
       }
-      const mainEffect = provideDatabaseServices(
+      const mainEffect = provideDatabaseTxServices(
         ReconcileCommand.reconcileDaAttestedProgram({
           headerHash,
           watcherUrl: options.watcherUrl,

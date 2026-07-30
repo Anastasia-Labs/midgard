@@ -305,11 +305,18 @@ const isHash = (value) =>
 const isCanonicalAbsolutePath = (value) =>
   typeof value === "string" &&
   value.length > 0 &&
+  value.length <= 4096 &&
+  !value.includes("\0") &&
   isAbsolute(value) &&
   resolve(value) === value;
 
-const isNonEmptyString = (value) =>
-  typeof value === "string" && value.trim().length > 0;
+const isBoundedNonEmptyString = (value, maxLength) =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  value.length <= maxLength &&
+  !value.includes("\0");
+
+const isNonEmptyString = (value) => isBoundedNonEmptyString(value, 4096);
 
 const jsonFile = (path, label) => {
   try {
@@ -551,6 +558,110 @@ export const validateArchitectureGCrossGateEvidenceIdentity = ({
 
 const isPositiveSafeInteger = (value) =>
   Number.isSafeInteger(value) && value > 0;
+
+export const validateArchitectureGCommitCandidateSeedInputV1 = (input) => {
+  requireExactObjectKeys(
+    input,
+    [
+      "schemaVersion",
+      "phase1FormalBinding",
+      "runtimeIdentity",
+      "corpusSlicePath",
+      "corpusSliceSha256",
+      "fundingMapPath",
+      "fundingMapSha256",
+      "expectedTransactionCount",
+      "firstTimestampIso",
+    ],
+    "Architecture G commit-candidate seed input",
+  );
+  validateArchitectureGPhase1FormalBindingIdentity(input.phase1FormalBinding);
+  validateArchitectureGRuntimeIdentity({
+    identity: input.runtimeIdentity,
+    expectedVersion: input.runtimeIdentity?.version,
+    expectedExecutableSha256: input.runtimeIdentity?.executableSha256,
+  });
+  if (
+    input.schemaVersion !== "midgard-architecture-g-commit-candidate-seed-v1" ||
+    !isCanonicalAbsolutePath(input.corpusSlicePath) ||
+    !isHash(input.corpusSliceSha256) ||
+    !isCanonicalAbsolutePath(input.fundingMapPath) ||
+    !isHash(input.fundingMapSha256) ||
+    !isPositiveSafeInteger(input.expectedTransactionCount) ||
+    !isCanonicalTimestamp(input.firstTimestampIso)
+  ) {
+    throw new Error("Architecture G commit-candidate seed input is invalid");
+  }
+  return input;
+};
+
+export const validateArchitectureGCorpusFundingV1 = ({
+  artifact,
+  expectedCorpusSha256,
+  expectedSliceSha256,
+  expectedFundingRoots,
+}) => {
+  requireExactObjectKeys(
+    artifact,
+    ["schemaVersion", "corpusSha256", "sliceSha256", "entries"],
+    "Architecture G corpus funding",
+  );
+  if (
+    artifact.schemaVersion !== "midgard-architecture-g-corpus-funding-v1" ||
+    !isHash(expectedCorpusSha256) ||
+    artifact.corpusSha256 !== expectedCorpusSha256 ||
+    !isHash(expectedSliceSha256) ||
+    artifact.sliceSha256 !== expectedSliceSha256 ||
+    !Array.isArray(artifact.entries) ||
+    artifact.entries.length === 0 ||
+    !Array.isArray(expectedFundingRoots) ||
+    expectedFundingRoots.length !== artifact.entries.length
+  ) {
+    throw new Error("Architecture G corpus funding identity is invalid");
+  }
+  const walletIds = new Set();
+  const outrefs = new Set();
+  const identities = artifact.entries.map((value, index) => {
+    const entry = requireExactObjectKeys(
+      value,
+      ["walletId", "outref", "outputCbor"],
+      `Architecture G funding entry ${index.toString()}`,
+    );
+    if (
+      !isNonEmptyString(entry.walletId) ||
+      !isNonEmptyString(entry.outref) ||
+      !isBoundedNonEmptyString(entry.outputCbor, 1_048_576) ||
+      walletIds.has(entry.walletId) ||
+      outrefs.has(entry.outref) ||
+      entry.outref !== entry.outref.toLowerCase() ||
+      entry.outputCbor !== entry.outputCbor.toLowerCase() ||
+      !/^[0-9a-f]{64}#(?:0|[1-9]\d*)$/u.test(entry.outref) ||
+      entry.outputCbor.length % 2 !== 0 ||
+      entry.outputCbor.length > 1_048_576 ||
+      Buffer.from(entry.outputCbor, "hex").toString("hex") !== entry.outputCbor
+    ) {
+      throw new Error(
+        `Architecture G funding entry ${index.toString()} is invalid or duplicated`,
+      );
+    }
+    walletIds.add(entry.walletId);
+    outrefs.add(entry.outref);
+    return { walletId: entry.walletId, outref: entry.outref };
+  });
+  for (const [index, value] of expectedFundingRoots.entries()) {
+    requireExactObjectKeys(
+      value,
+      ["walletId", "outref"],
+      `Expected Architecture G funding root ${index.toString()}`,
+    );
+  }
+  if (!jsonEqual(identities, expectedFundingRoots)) {
+    throw new Error(
+      "Architecture G corpus funding entries do not match the selected corpus roots",
+    );
+  }
+  return artifact;
+};
 
 const ARCHITECTURE_G_OWNER_DIAGNOSTIC_KEYS = Object.freeze([
   "ownerEpoch",

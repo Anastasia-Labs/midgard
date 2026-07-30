@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { computeMidgardNativeTxFullHashFromCanonicalCborV1 } from "@al-ft/midgard-core/codec";
 import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -95,7 +96,7 @@ export type SubmitSource = "native" | "backfill";
 export enum Columns {
   TX_ID = "tx_id",
   TX_CANONICAL_CBOR = "tx_canonical_cbor",
-  TX_CANONICAL_CBOR_SHA256 = "tx_canonical_cbor_sha256",
+  TX_FULL_HASH_V1 = "tx_full_hash_v1",
   CEK_PROGRAM_MATERIAL_SIDECAR_CBOR = "cek_program_material_sidecar_cbor",
   CEK_PROGRAM_MATERIAL_SIDECAR_SHA256 = "cek_program_material_sidecar_sha256",
   ARRIVAL_SEQ = "arrival_seq",
@@ -118,7 +119,7 @@ export enum Columns {
 type RawEntry = {
   readonly [Columns.TX_ID]: Buffer;
   readonly [Columns.TX_CANONICAL_CBOR]: Buffer;
-  readonly [Columns.TX_CANONICAL_CBOR_SHA256]: Buffer;
+  readonly [Columns.TX_FULL_HASH_V1]: Buffer;
   readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]: Buffer;
   readonly [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]: Buffer;
   readonly [Columns.ARRIVAL_SEQ]: bigint | number | string;
@@ -159,6 +160,12 @@ type RawClaimedEntry = Pick<
 export type ClaimedEntry = Omit<RawClaimedEntry, Columns.ARRIVAL_SEQ> & {
   readonly [Columns.ARRIVAL_SEQ]: bigint;
 };
+
+type RawClaimedPayloadEntry = RawClaimedEntry &
+  Pick<
+    RawEntry,
+    Columns.TX_FULL_HASH_V1 | Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
+  >;
 
 /**
  * The ordered, durable half of a claim.  It intentionally omits the payload:
@@ -219,8 +226,13 @@ const normalizeRow = (row: RawEntry): Entry => ({
 });
 
 const normalizeClaimedEntry = (row: RawClaimedEntry): ClaimedEntry => ({
-  ...row,
+  [Columns.TX_ID]: row[Columns.TX_ID],
+  [Columns.TX_CANONICAL_CBOR]: row[Columns.TX_CANONICAL_CBOR],
+  [Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+    row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
   [Columns.ARRIVAL_SEQ]: toBigInt(row[Columns.ARRIVAL_SEQ]),
+  [Columns.FIRST_SEEN_AT]: row[Columns.FIRST_SEEN_AT],
+  [Columns.VALIDATION_STARTED_AT]: row[Columns.VALIDATION_STARTED_AT],
 });
 
 const normalizeClaimedLeaseEntry = (
@@ -232,6 +244,47 @@ const normalizeClaimedLeaseEntry = (
 
 const sha256 = (bytes: Buffer): Buffer =>
   createHash("sha256").update(bytes).digest();
+
+const verifyClaimedPayloadRows = (
+  rows: readonly RawClaimedPayloadEntry[],
+): Effect.Effect<readonly ClaimedEntry[], DatabaseError> =>
+  Effect.gen(function* () {
+    for (const row of rows) {
+      const txIdHex = row[Columns.TX_ID].toString("hex");
+      const expectedFullHash =
+        computeMidgardNativeTxFullHashFromCanonicalCborV1(
+          row[Columns.TX_CANONICAL_CBOR],
+        );
+      if (!expectedFullHash.equals(row[Columns.TX_FULL_HASH_V1])) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: payloadTableName,
+            message:
+              "Admission payload canonical V1 full-transaction commitment does not match its persisted bytes",
+            cause: `tx_id=${txIdHex}`,
+          }),
+        );
+      }
+      const expectedSidecarHash = sha256(
+        row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
+      );
+      if (
+        !expectedSidecarHash.equals(
+          row[Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256],
+        )
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: payloadTableName,
+            message:
+              "Admission payload CEK program-material sidecar commitment does not match its persisted bytes",
+            cause: `tx_id=${txIdHex}`,
+          }),
+        );
+      }
+    }
+    return rows.map(normalizeClaimedEntry);
+  });
 
 export const tryInsert = ({
   txId,
@@ -246,7 +299,8 @@ export const tryInsert = ({
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    const txCanonicalCborSha256 = sha256(txCanonicalCbor);
+    const txFullHashV1 =
+      computeMidgardNativeTxFullHashFromCanonicalCborV1(txCanonicalCbor);
     const materialSidecarSha256 = sha256(programMaterialSidecarCbor);
     const inserted = yield* sql<RawEntry>`WITH inserted_admission AS (
         INSERT INTO ${sql(tableName)} (
@@ -264,14 +318,14 @@ export const tryInsert = ({
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+          ${sql(Columns.TX_FULL_HASH_V1)},
           ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
           ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
         )
         SELECT
           ${sql(Columns.TX_ID)},
           ${txCanonicalCbor},
-          ${txCanonicalCborSha256},
+          ${txFullHashV1},
           ${programMaterialSidecarCbor},
           ${materialSidecarSha256}
         FROM inserted_admission
@@ -280,7 +334,7 @@ export const tryInsert = ({
       SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM inserted_admission admission
@@ -293,14 +347,14 @@ export const tryInsert = ({
 
 const touchDuplicateCount = ({
   txId,
-  txCanonicalCborSha256,
+  txFullHashV1,
   txCanonicalCbor,
   programMaterialSidecarCbor,
   programMaterialSidecarSha256,
   requestCount,
 }: {
   readonly txId: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly programMaterialSidecarCbor: Buffer;
   readonly programMaterialSidecarSha256: Buffer;
@@ -326,7 +380,7 @@ const touchDuplicateCount = ({
       FROM ${sql(payloadTableName)} AS payload
       WHERE admission.${sql(Columns.TX_ID)} = ${txId}
         AND payload.${sql(Columns.TX_ID)} = admission.${sql(Columns.TX_ID)}
-        AND payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)} = ${txCanonicalCborSha256}
+        AND payload.${sql(Columns.TX_FULL_HASH_V1)} = ${txFullHashV1}
         AND payload.${sql(Columns.TX_CANONICAL_CBOR)} = ${txCanonicalCbor}
         AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)} =
           ${programMaterialSidecarSha256}
@@ -335,7 +389,7 @@ const touchDuplicateCount = ({
       RETURNING
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}`;
     return updated.length === 0 ? null : normalizeRow(updated[0]!);
@@ -345,18 +399,18 @@ const touchDuplicateCount = ({
 
 export const touchDuplicate = ({
   txId,
-  txCanonicalCborSha256,
+  txFullHashV1,
   txCanonicalCbor,
   programMaterialSidecarCbor,
 }: {
   readonly txId: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
   readonly txCanonicalCbor: Buffer;
   readonly programMaterialSidecarCbor: Buffer;
 }): Effect.Effect<Entry | null, DatabaseError, Database> =>
   touchDuplicateCount({
     txId,
-    txCanonicalCborSha256,
+    txFullHashV1,
     txCanonicalCbor,
     programMaterialSidecarCbor,
     programMaterialSidecarSha256: sha256(programMaterialSidecarCbor),
@@ -383,12 +437,13 @@ export const admit = ({
   Database
 > =>
   Effect.gen(function* () {
-    const txCanonicalCborSha256 = sha256(txCanonicalCbor);
+    const txFullHashV1 =
+      computeMidgardNativeTxFullHashFromCanonicalCborV1(txCanonicalCbor);
     const max = BigInt(Math.max(0, maxBacklog));
     if (currentBacklog >= max) {
       const duplicate = yield* touchDuplicate({
         txId,
-        txCanonicalCborSha256,
+        txFullHashV1,
         txCanonicalCbor,
         programMaterialSidecarCbor,
       });
@@ -418,7 +473,7 @@ export const admit = ({
 
     const duplicate = yield* touchDuplicate({
       txId,
-      txCanonicalCborSha256,
+      txFullHashV1,
       txCanonicalCbor,
       programMaterialSidecarCbor,
     });
@@ -438,7 +493,7 @@ export const admit = ({
 type ReservedAdmissionVariant = {
   readonly txId: Buffer;
   readonly txCanonicalCbor: Buffer;
-  readonly txCanonicalCborSha256: Buffer;
+  readonly txFullHashV1: Buffer;
   readonly programMaterialSidecarCbor: Buffer;
   readonly programMaterialSidecarSha256: Buffer;
   readonly submitSource: Exclude<SubmitSource, "backfill">;
@@ -471,7 +526,9 @@ const groupReservedAdmissionVariants = (
     if (matching === undefined) {
       variants.push({
         ...request,
-        txCanonicalCborSha256: sha256(request.txCanonicalCbor),
+        txFullHashV1: computeMidgardNativeTxFullHashFromCanonicalCborV1(
+          request.txCanonicalCbor,
+        ),
         programMaterialSidecarSha256: sha256(
           request.programMaterialSidecarCbor,
         ),
@@ -516,7 +573,7 @@ export const admitReservedBatch = (
         FROM unnest(
           ${pg.array(postgresByteaArray(variants.map((value) => value.txId)))}::bytea[],
           ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCbor)))}::bytea[],
-          ${pg.array(postgresByteaArray(variants.map((value) => value.txCanonicalCborSha256)))}::bytea[],
+          ${pg.array(postgresByteaArray(variants.map((value) => value.txFullHashV1)))}::bytea[],
           ${pg.array(
             postgresByteaArray(
               variants.map((value) => value.programMaterialSidecarCbor),
@@ -534,7 +591,7 @@ export const admitReservedBatch = (
         ) AS batch_input(
           tx_id,
           tx_canonical_cbor,
-          tx_canonical_cbor_sha256,
+          tx_full_hash_v1,
           cek_program_material_sidecar_cbor,
           cek_program_material_sidecar_sha256,
           submit_source,
@@ -563,14 +620,14 @@ export const admitReservedBatch = (
         INSERT INTO ${sql(payloadTableName)} (
           ${sql(Columns.TX_ID)},
           ${sql(Columns.TX_CANONICAL_CBOR)},
-          ${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+          ${sql(Columns.TX_FULL_HASH_V1)},
           ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
           ${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
         )
         SELECT
           inserted.${sql(Columns.TX_ID)},
           input.tx_canonical_cbor,
-          input.tx_canonical_cbor_sha256,
+          input.tx_full_hash_v1,
           input.cek_program_material_sidecar_cbor,
           input.cek_program_material_sidecar_sha256
         FROM inserted_admission inserted
@@ -597,8 +654,8 @@ export const admitReservedBatch = (
         FROM input
         INNER JOIN ${sql(payloadTableName)} payload
           ON payload.${sql(Columns.TX_ID)} = input.tx_id
-          AND payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)} =
-            input.tx_canonical_cbor_sha256
+          AND payload.${sql(Columns.TX_FULL_HASH_V1)} =
+            input.tx_full_hash_v1
           AND payload.${sql(Columns.TX_CANONICAL_CBOR)} =
             input.tx_canonical_cbor
           AND payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)}
@@ -618,7 +675,7 @@ export const admitReservedBatch = (
         'new'::text AS result_kind,
         inserted.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM input
@@ -648,7 +705,7 @@ export const admitReservedBatch = (
         updated.${sql(Columns.SUBMIT_SOURCE)},
         updated.${sql(Columns.REQUEST_COUNT)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM updated_existing updated
@@ -670,7 +727,7 @@ export const admitReservedBatch = (
       if (resolvedByVariant.has(variant.variantOrdinal)) continue;
       const duplicate = yield* touchDuplicateCount({
         txId: variant.txId,
-        txCanonicalCborSha256: variant.txCanonicalCborSha256,
+        txFullHashV1: variant.txFullHashV1,
         txCanonicalCbor: variant.txCanonicalCbor,
         programMaterialSidecarCbor: variant.programMaterialSidecarCbor,
         programMaterialSidecarSha256: variant.programMaterialSidecarSha256,
@@ -775,7 +832,7 @@ export const getByTxId = (
     const rows = yield* sql<RawEntry>`SELECT
         admission.*,
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
-        payload.${sql(Columns.TX_CANONICAL_CBOR_SHA256)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)}
       FROM ${sql(tableName)} AS admission
@@ -846,7 +903,7 @@ export const claimBatch = ({
         // queued for safe revalidation. A later synchronous terminal commit
         // WAL-orders and flushes this lease transition first.
         yield* sql`SET LOCAL synchronous_commit = off`;
-        return yield* sql<RawClaimedEntry>`WITH candidates AS (
+        return yield* sql<RawClaimedPayloadEntry>`WITH candidates AS (
           SELECT ${sql(Columns.TX_ID)}
           FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = 'queued'
@@ -890,7 +947,9 @@ export const claimBatch = ({
           RETURNING
             admissions.${sql(Columns.TX_ID)},
             payload.${sql(Columns.TX_CANONICAL_CBOR)},
+            payload.${sql(Columns.TX_FULL_HASH_V1)},
             payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+            payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},
             admissions.${sql(Columns.FIRST_SEEN_AT)},
             admissions.${sql(Columns.VALIDATION_STARTED_AT)}
@@ -902,7 +961,7 @@ export const claimBatch = ({
           ${sql(Columns.TX_ID)} ASC`;
       }),
     );
-    return rows.map(normalizeClaimedEntry);
+    return yield* verifyClaimedPayloadRows(rows);
   }).pipe(
     sqlErrorToDatabaseError(tableName, "Failed to claim admitted transactions"),
   );
@@ -1009,10 +1068,12 @@ export const loadClaimedPayloads = ({
     if (claimed.length === 0) return [];
     const sql = yield* SqlClient.SqlClient;
     const claimedIds = claimed.map((entry) => entry[Columns.TX_ID]);
-    const rows = yield* sql<RawClaimedEntry>`SELECT
+    const rows = yield* sql<RawClaimedPayloadEntry>`SELECT
         admission.${sql(Columns.TX_ID)},
         payload.${sql(Columns.TX_CANONICAL_CBOR)},
+        payload.${sql(Columns.TX_FULL_HASH_V1)},
         payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR)},
+        payload.${sql(Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256)},
         admission.${sql(Columns.ARRIVAL_SEQ)},
         admission.${sql(Columns.FIRST_SEEN_AT)},
         admission.${sql(Columns.VALIDATION_STARTED_AT)}
@@ -1024,7 +1085,7 @@ export const loadClaimedPayloads = ({
       ORDER BY
         admission.${sql(Columns.ARRIVAL_SEQ)} ASC,
         admission.${sql(Columns.TX_ID)} ASC`;
-    const entries = rows.map(normalizeClaimedEntry);
+    const entries = yield* verifyClaimedPayloadRows(rows);
     const expectedIds = new Set(claimedIds.map((txId) => txId.toString("hex")));
     const actualIds = new Set(
       entries.map((entry) => entry[Columns.TX_ID].toString("hex")),

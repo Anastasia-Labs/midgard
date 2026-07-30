@@ -24,6 +24,7 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   GENESIS_HEADER_HASH,
@@ -49,8 +50,11 @@ import {
   parseDeploymentManifestV1Value,
 } from "@/deployment-manifest-v1.js";
 import {
+  bindDeploymentRunStateToMarkerV1,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
+  mutateDeploymentRunState,
+  sha256File,
 } from "@/e2e/run-state.js";
 import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
@@ -608,6 +612,20 @@ export type DeploymentManifestV1IdentityContext = Pick<
   "cardanoProtocolParameters" | "genesis" | "da" | "proofEvidence"
 >;
 
+export const cardanoProtocolParametersIdentityV1FromProvider =
+  async (provider: {
+    readonly getProtocolParameters: () => Promise<unknown>;
+  }): Promise<DeploymentManifestV1Value["cardanoProtocolParameters"]> => {
+    const snapshot = normalizeDeploymentManifestV1JsonValue(
+      await provider.getProtocolParameters(),
+      "cardanoProtocolParameters.snapshot",
+    );
+    return {
+      snapshot,
+      digest: computeDeploymentManifestV1JsonDigest(snapshot),
+    };
+  };
+
 const genesisUtxoIdentitySnapshot = (
   utxos: readonly UTxO[],
 ): ReturnType<typeof normalizeDeploymentManifestV1JsonValue> =>
@@ -641,16 +659,13 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
   const lucidService = yield* Lucid;
-  const cardanoSnapshot = yield* Effect.tryPromise({
+  const cardanoProtocolParameters = yield* Effect.tryPromise({
     try: async () => {
       const provider = lucidService.api.config().provider;
       if (provider === undefined) {
         throw new Error("Lucid has no configured Cardano provider");
       }
-      return normalizeDeploymentManifestV1JsonValue(
-        await provider.getProtocolParameters(),
-        "cardanoProtocolParameters.snapshot",
-      );
+      return cardanoProtocolParametersIdentityV1FromProvider(provider);
     },
     catch: (cause) =>
       new Error(
@@ -682,10 +697,7 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
   const blueprintHash = yield* loadRealBlueprintSha256();
   const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
   return {
-    cardanoProtocolParameters: {
-      snapshot: cardanoSnapshot,
-      digest: computeDeploymentManifestV1JsonDigest(cardanoSnapshot),
-    },
+    cardanoProtocolParameters,
     genesis: {
       headerHash: GENESIS_HEADER_HASH,
       utxoSetDigest: computeDeploymentManifestV1JsonDigest(genesisSnapshot),
@@ -870,9 +882,7 @@ export const verifyDeploymentManifestAgainstConfig = (
     path: context.path,
     mismatches,
     recommendation:
-      mismatches.length === 0
-        ? "attach"
-        : "correct_attach_config",
+      mismatches.length === 0 ? "attach" : "correct_attach_config",
   };
 };
 
@@ -1102,10 +1112,7 @@ const buildLiveDeploymentManifestProgram = (
     const finalizationRequested =
       options.hubOracleOneShotStatus === "consumed_by_init" &&
       options.steps?.initProtocol?.status === "complete";
-    if (
-      existingManifest === undefined &&
-      !finalizationRequested
-    ) {
+    if (existingManifest === undefined && !finalizationRequested) {
       return yield* Effect.fail(
         new Error(
           "A first DeploymentManifestV1 may be created only after initialization and reference-script publication are complete",
@@ -1168,10 +1175,58 @@ export const writeLiveContractDeploymentInfoProgram = (
       outputPath,
       options,
     );
-    return yield* writeContractDeploymentInfoFileProgram(
+    const marker = makeDeploymentMarkerV1(deploymentManifest.manifestId);
+    const runStatePath = defaultDeploymentRunStatePath();
+    const runState = yield* Effect.tryPromise({
+      try: () => loadDeploymentRunState(runStatePath),
+      catch: (cause) =>
+        new Error(`Failed to inspect deployment run-state identity`, {
+          cause,
+        }),
+    });
+    if (
+      runState?.identity.deploymentMarker !== undefined &&
+      runState.identity.deploymentMarker.manifestId !== marker.manifestId
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          `Refusing to replace final deployment manifest ${runState.identity.deploymentMarker.manifestId} with ${marker.manifestId}; start an explicit fresh deployment run instead`,
+        ),
+      );
+    }
+    const manifestPath = yield* writeContractDeploymentInfoFileProgram(
       outputPath,
       deploymentManifest,
     );
+    if (runState !== null) {
+      const manifestSha256 = yield* Effect.tryPromise({
+        try: () => sha256File(manifestPath),
+        catch: (cause) =>
+          new Error(`Failed to hash final deployment manifest`, { cause }),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          mutateDeploymentRunState(
+            runStatePath,
+            () => {
+              throw new Error(
+                "Deployment run state disappeared before final marker binding",
+              );
+            },
+            (current) =>
+              bindDeploymentRunStateToMarkerV1(current, {
+                marker,
+                manifestPath,
+                manifestSha256,
+              }),
+          ),
+        catch: (cause) =>
+          new Error(`Failed to bind deployment run state to final manifest`, {
+            cause,
+          }),
+      });
+    }
+    return manifestPath;
   });
 
 export type ReconcileInitializedDeploymentManifestOptions = {

@@ -22,6 +22,7 @@ import {
 import { Effect } from "effect";
 
 import {
+  decodePhase4GenesisLedgerReportV1,
   PHASE4_GENESIS_BOOTSTRAP_ENV,
   PHASE4_GENESIS_BOOTSTRAP_TOKEN,
   PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE,
@@ -145,6 +146,37 @@ export type Phase4ResetAttestation = {
   readonly snapshotSetSha256: string;
   readonly snapshotIdentitySha256: string;
   readonly phasRegistrationProofSha256: string;
+  readonly phasRegistration: Phase4PhasRegistrationProof;
+  readonly cardanoTip: { readonly slot: number; readonly hash: string };
+  readonly kupoCheckpoint: number;
+};
+
+export type Phase4MatchedSnapshotIdentityV1 = {
+  readonly schemaVersion: "midgard-phase4-matched-snapshot-identity-v1";
+  readonly composeProject: string;
+  readonly networkMagic: number;
+  readonly postgresDatabase: string;
+  readonly deploymentManifestSha256: string;
+  readonly blueprintSha256: string;
+  readonly images: Readonly<
+    Record<
+      "cardanoNode" | "ogmios" | "kupo" | "postgres",
+      { readonly ref: string; readonly id: string }
+    >
+  >;
+  readonly artifacts: Readonly<
+    Record<
+      | "sourceSha256"
+      | "distSha256"
+      | "genesisSha256"
+      | "configSha256"
+      | "acceptanceEnvSha256"
+      | "composeSha256"
+      | "phase4AssetsSha256"
+      | "phasRegistrationProofSha256",
+      string
+    >
+  >;
   readonly phasRegistration: Phase4PhasRegistrationProof;
   readonly cardanoTip: { readonly slot: number; readonly hash: string };
   readonly kupoCheckpoint: number;
@@ -551,14 +583,65 @@ export const validatePhase4ProcessIsolationValues = (
   };
 };
 
-const validatePhase4PhasRegistrationProof = (
+const exactObjectKeys = (
+  value: unknown,
+  expected: readonly string[],
+): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === expected.length &&
+  expected.every((key) => Object.hasOwn(value, key));
+
+export const validatePhase4PhasRegistrationProof = (
   value: unknown,
   label: string,
 ): Phase4PhasRegistrationProof => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "source",
+      "readOnly",
+      "registered",
+      "cardanoImage",
+      "networkMagic",
+      "manifestId",
+      "registrationTxHash",
+      "rewardAddress",
+      "rewardAddressBase16",
+      "scriptHash",
+      "transactionBody",
+      "registrationDepositLovelace",
+      "confirmation",
+      "observedAtTip",
+    ])
+  ) {
+    throw new Error(`${label} fields do not match the exact V1 schema`);
   }
-  const proof = value as Partial<Phase4PhasRegistrationProof>;
+  const proof = value as Record<string, unknown> &
+    Partial<Phase4PhasRegistrationProof>;
+  if (
+    !exactObjectKeys(proof.cardanoImage, ["ref", "id"]) ||
+    !exactObjectKeys(proof.transactionBody, [
+      "schemaVersion",
+      "artifactSha256",
+      "cborSha256",
+      "cborSizeBytes",
+      "cardanoCliTxHash",
+      "certificate",
+    ]) ||
+    !exactObjectKeys(proof.transactionBody.certificate, [
+      "kind",
+      "index",
+      "count",
+      "credentialType",
+      "scriptHash",
+    ]) ||
+    !exactObjectKeys(proof.confirmation, ["slot", "blockHeaderHash"]) ||
+    !exactObjectKeys(proof.observedAtTip, ["slot", "hash"])
+  ) {
+    throw new Error(`${label} nested fields do not match the exact V1 schema`);
+  }
   if (
     proof.schemaVersion !== "midgard-phase4-phas-registration-proof-v1" ||
     proof.source !== "cardano-cli-local-state-query" ||
@@ -571,12 +654,13 @@ const validatePhase4PhasRegistrationProof = (
     typeof proof.cardanoImage?.ref !== "string" ||
     !/@sha256:[a-f0-9]{64}$/u.test(proof.cardanoImage.ref) ||
     typeof proof.cardanoImage.id !== "string" ||
-    proof.cardanoImage.id.length === 0
+    !/^sha256:[a-f0-9]{64}$/u.test(proof.cardanoImage.id)
   ) {
     throw new Error(`${label} has invalid pinned Cardano image identity`);
   }
   if (
     !Number.isSafeInteger(proof.networkMagic) ||
+    (proof.networkMagic ?? 0) <= 0 ||
     !/^[a-f0-9]{64}$/u.test(proof.manifestId ?? "") ||
     !/^[a-f0-9]{64}$/u.test(proof.registrationTxHash ?? "") ||
     !/^stake_test1[0-9a-z]+$/u.test(proof.rewardAddress ?? "") ||
@@ -650,6 +734,122 @@ const validatePhase4PhasRegistrationProof = (
   return proof as Phase4PhasRegistrationProof;
 };
 
+export const decodePhase4MatchedSnapshotIdentityV1 = (
+  value: unknown,
+): Phase4MatchedSnapshotIdentityV1 => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "composeProject",
+      "networkMagic",
+      "postgresDatabase",
+      "deploymentManifestSha256",
+      "blueprintSha256",
+      "images",
+      "artifacts",
+      "phasRegistration",
+      "cardanoTip",
+      "kupoCheckpoint",
+    ])
+  ) {
+    throw new Error(
+      "Phase 4 matched snapshot identity fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    !exactObjectKeys(value.images, [
+      "cardanoNode",
+      "ogmios",
+      "kupo",
+      "postgres",
+    ]) ||
+    !exactObjectKeys(value.artifacts, [
+      "sourceSha256",
+      "distSha256",
+      "genesisSha256",
+      "configSha256",
+      "acceptanceEnvSha256",
+      "composeSha256",
+      "phase4AssetsSha256",
+      "phasRegistrationProofSha256",
+    ]) ||
+    !exactObjectKeys(value.cardanoTip, ["slot", "hash"])
+  ) {
+    throw new Error(
+      "Phase 4 matched snapshot identity nested fields do not match the exact V1 schema",
+    );
+  }
+  for (const imageName of [
+    "cardanoNode",
+    "ogmios",
+    "kupo",
+    "postgres",
+  ] as const) {
+    const image = value.images[imageName];
+    if (
+      !exactObjectKeys(image, ["ref", "id"]) ||
+      typeof image.ref !== "string" ||
+      !/@sha256:[a-f0-9]{64}$/u.test(image.ref) ||
+      typeof image.id !== "string" ||
+      !/^sha256:[a-f0-9]{64}$/u.test(image.id)
+    ) {
+      throw new Error(
+        `Phase 4 matched snapshot ${imageName} image identity is noncanonical`,
+      );
+    }
+  }
+  if (
+    value.schemaVersion !== "midgard-phase4-matched-snapshot-identity-v1" ||
+    typeof value.composeProject !== "string" ||
+    !value.composeProject.startsWith(ISOLATED_COMPOSE_PREFIX) ||
+    !/^[a-z0-9_-]+$/u.test(value.composeProject) ||
+    !Number.isSafeInteger(value.networkMagic) ||
+    (value.networkMagic as number) <= 0 ||
+    typeof value.postgresDatabase !== "string" ||
+    !value.postgresDatabase.startsWith(ISOLATED_DATABASE_PREFIX) ||
+    typeof value.deploymentManifestSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.deploymentManifestSha256) ||
+    typeof value.blueprintSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.blueprintSha256) ||
+    !Number.isSafeInteger(value.cardanoTip.slot) ||
+    (value.cardanoTip.slot as number) < 0 ||
+    typeof value.cardanoTip.hash !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.cardanoTip.hash) ||
+    value.kupoCheckpoint !== value.cardanoTip.slot
+  ) {
+    throw new Error(
+      "Phase 4 matched snapshot identity contains a noncanonical V1 value",
+    );
+  }
+  for (const digest of Object.values(value.artifacts)) {
+    if (typeof digest !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) {
+      throw new Error(
+        "Phase 4 matched snapshot identity contains a noncanonical artifact digest",
+      );
+    }
+  }
+  const phasRegistration = validatePhase4PhasRegistrationProof(
+    value.phasRegistration,
+    "Phase 4 matched snapshot PHAS registration proof",
+  );
+  const cardanoNodeImage = value.images.cardanoNode as {
+    readonly ref: string;
+    readonly id: string;
+  };
+  if (
+    phasRegistration.networkMagic !== value.networkMagic ||
+    phasRegistration.cardanoImage.ref !== cardanoNodeImage.ref ||
+    phasRegistration.cardanoImage.id !== cardanoNodeImage.id ||
+    phasRegistration.observedAtTip.slot !== value.cardanoTip.slot ||
+    phasRegistration.observedAtTip.hash !== value.cardanoTip.hash
+  ) {
+    throw new Error(
+      "Phase 4 matched snapshot PHAS proof is not bound to the snapshot identity",
+    );
+  }
+  return value as Phase4MatchedSnapshotIdentityV1;
+};
+
 export const validatePhase4PhasRegistrationTransactionBody = (
   value: unknown,
   proof: Phase4PhasRegistrationProof,
@@ -708,6 +908,86 @@ export const validatePhase4PhasRegistrationTransactionBody = (
   return envelope as Phase4ProcessIsolationIdentity["snapshotPhasRegistrationTransactionBody"];
 };
 
+export const decodePhase4ResetAttestationV1 = (
+  value: unknown,
+): Phase4ResetAttestation => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "scenarioLabel",
+      "composeProject",
+      "networkMagic",
+      "postgresDatabase",
+      "deploymentManifestSha256",
+      "snapshotSetSha256",
+      "snapshotIdentitySha256",
+      "phasRegistrationProofSha256",
+      "phasRegistration",
+      "cardanoTip",
+      "kupoCheckpoint",
+    ]) ||
+    !exactObjectKeys(value.cardanoTip, ["slot", "hash"])
+  ) {
+    throw new Error(
+      "Phase 4 reset attestation fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    value.schemaVersion !== RESET_ATTESTATION_SCHEMA ||
+    typeof value.scenarioLabel !== "string" ||
+    value.scenarioLabel.length === 0 ||
+    typeof value.composeProject !== "string" ||
+    !value.composeProject.startsWith(ISOLATED_COMPOSE_PREFIX) ||
+    !/^[a-z0-9_-]+$/u.test(value.composeProject) ||
+    !Number.isSafeInteger(value.networkMagic) ||
+    (value.networkMagic as number) <= 0 ||
+    typeof value.postgresDatabase !== "string" ||
+    !value.postgresDatabase.startsWith(ISOLATED_DATABASE_PREFIX) ||
+    typeof value.deploymentManifestSha256 !== "string"
+  ) {
+    throw new Error(
+      "Phase 4 reset attestation contains a noncanonical V1 value",
+    );
+  }
+  for (const key of [
+    "deploymentManifestSha256",
+    "snapshotSetSha256",
+    "snapshotIdentitySha256",
+    "phasRegistrationProofSha256",
+  ] as const) {
+    if (typeof value[key] !== "string" || !/^[a-f0-9]{64}$/u.test(value[key])) {
+      throw new Error(`Phase 4 reset attestation has invalid ${key}`);
+    }
+  }
+  if (
+    !Number.isSafeInteger(value.cardanoTip.slot) ||
+    (value.cardanoTip.slot as number) < 0 ||
+    typeof value.cardanoTip.hash !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.cardanoTip.hash)
+  ) {
+    throw new Error("Phase 4 reset attestation has invalid Cardano tip");
+  }
+  if (value.kupoCheckpoint !== value.cardanoTip.slot) {
+    throw new Error(
+      "Phase 4 reset attestation Kupo checkpoint must equal the Cardano tip slot",
+    );
+  }
+  const phasRegistration = validatePhase4PhasRegistrationProof(
+    value.phasRegistration,
+    "Phase 4 reset PHAS registration proof",
+  );
+  if (
+    phasRegistration.networkMagic !== value.networkMagic ||
+    phasRegistration.observedAtTip.slot !== value.cardanoTip.slot ||
+    phasRegistration.observedAtTip.hash !== value.cardanoTip.hash
+  ) {
+    throw new Error(
+      "Phase 4 reset PHAS registration proof is not bound to its attestation",
+    );
+  }
+  return value as Phase4ResetAttestation;
+};
+
 const parseResetAttestation = (output: string): Phase4ResetAttestation => {
   let parsed: unknown;
   try {
@@ -717,10 +997,7 @@ const parseResetAttestation = (output: string): Phase4ResetAttestation => {
       `Phase 4 reset command must emit exactly one JSON attestation: ${String(cause)}`,
     );
   }
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("Phase 4 reset attestation must be an object");
-  }
-  return parsed as Phase4ResetAttestation;
+  return decodePhase4ResetAttestationV1(parsed);
 };
 
 export const validatePhase4ResetAttestation = ({
@@ -883,26 +1160,9 @@ const loadPhase4ProcessIsolation = async (
   const validated = validatePhase4ProcessIsolationValues(values);
   const deploymentManifestSha256 = await sha256File(deploymentManifestPath);
   const snapshotIdentitySha256 = await sha256File(snapshotIdentityPath);
-  const snapshotIdentity = JSON.parse(
-    await readFile(snapshotIdentityPath, "utf8"),
-  ) as {
-    readonly schemaVersion?: unknown;
-    readonly composeProject?: unknown;
-    readonly networkMagic?: unknown;
-    readonly postgresDatabase?: unknown;
-    readonly deploymentManifestSha256?: unknown;
-    readonly blueprintSha256?: unknown;
-    readonly images?: {
-      readonly cardanoNode?: { readonly ref?: unknown; readonly id?: unknown };
-      readonly ogmios?: { readonly ref?: unknown; readonly id?: unknown };
-      readonly kupo?: { readonly ref?: unknown; readonly id?: unknown };
-      readonly postgres?: { readonly ref?: unknown; readonly id?: unknown };
-    };
-    readonly artifacts?: Record<string, unknown>;
-    readonly phasRegistration?: unknown;
-    readonly cardanoTip?: { readonly slot?: unknown; readonly hash?: unknown };
-    readonly kupoCheckpoint?: unknown;
-  };
+  const snapshotIdentity = decodePhase4MatchedSnapshotIdentityV1(
+    JSON.parse(await readFile(snapshotIdentityPath, "utf8")) as unknown,
+  );
   if (
     snapshotIdentity.schemaVersion !==
       "midgard-phase4-matched-snapshot-identity-v1" ||
@@ -949,7 +1209,7 @@ const loadPhase4ProcessIsolation = async (
     "composeSha256",
     "phase4AssetsSha256",
     "phasRegistrationProofSha256",
-  ]) {
+  ] as const) {
     if (
       !/^[a-f0-9]{64}$/u.test(String(snapshotIdentity.artifacts?.[name] ?? ""))
     ) {
@@ -1015,14 +1275,13 @@ const loadPhase4ProcessIsolation = async (
     snapshotIdentityPath,
     snapshotIdentitySha256,
     snapshotCardanoTip: {
-      slot: snapshotIdentity.cardanoTip.slot as number,
+      slot: snapshotIdentity.cardanoTip.slot,
       hash: snapshotIdentity.cardanoTip.hash,
     },
-    snapshotKupoCheckpoint: snapshotIdentity.kupoCheckpoint as number,
-    snapshotBlueprintSha256: snapshotIdentity.blueprintSha256 as string,
-    snapshotPhasRegistrationProofSha256: String(
-      snapshotIdentity.artifacts?.phasRegistrationProofSha256,
-    ),
+    snapshotKupoCheckpoint: snapshotIdentity.kupoCheckpoint,
+    snapshotBlueprintSha256: snapshotIdentity.blueprintSha256,
+    snapshotPhasRegistrationProofSha256:
+      snapshotIdentity.artifacts.phasRegistrationProofSha256,
     snapshotPhasRegistration,
     snapshotPhasRegistrationTransactionBody,
     ...validated,
@@ -1125,6 +1384,22 @@ const assertPositivePreflightOutput = (label: string, output: string): void => {
     /"(?:status|verdict)"\s*:\s*"(?:failed|failure|missing|unsatisfied|blocked|unhealthy|not_ready)"/i;
   if (negativeBoolean.test(output) || negativeStatus.test(output)) {
     throw new Error(`${label} reported an unsatisfied preflight:\n${output}`);
+  }
+};
+
+const assertExactGenesisPreflightOutput = (
+  label: string,
+  output: string,
+): void => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output.trim()) as unknown;
+  } catch (cause) {
+    throw new Error(`${label} must emit exactly one JSON V1 report`, { cause });
+  }
+  const report = decodePhase4GenesisLedgerReportV1(parsed);
+  if (report.mode !== "verify" || report.status !== "already_present") {
+    throw new Error(`${label} did not verify the exact existing genesis state`);
   }
 };
 
@@ -1419,7 +1694,10 @@ const resetAndPreflight = async ({
     },
     `${label}: A/B genesis ledger`,
   );
-  assertPositivePreflightOutput(`${label}: A/B genesis ledger`, genesisOutput);
+  assertExactGenesisPreflightOutput(
+    `${label}: A/B genesis ledger`,
+    genesisOutput,
+  );
   const preflights: readonly [string, readonly string[]][] = [
     ["deployment status", [dist, "deployment-status"]],
     [
@@ -1984,6 +2262,21 @@ const assertAcceptancePreconditions = async (
   return isolation;
 };
 
+const decodeProcessSummaryBeforePersistence = async (
+  value: unknown,
+): Promise<void> => {
+  const moduleUrl = new URL(
+    "../../scripts/verify-phase4-pipelined-process-summary.mjs",
+    import.meta.url,
+  );
+  const verifier = (await import(moduleUrl.href)) as {
+    readonly decodePhase4PipelinedProcessSummaryV1: (
+      summary: unknown,
+    ) => unknown;
+  };
+  verifier.decodePhase4PipelinedProcessSummaryV1(value);
+};
+
 export const runPipelinedCommitProcessAcceptance = async ({
   cwd = process.cwd(),
 }: {
@@ -2151,6 +2444,7 @@ export const runPipelinedCommitProcessAcceptance = async ({
     journalKillContentionState,
   } as const;
   const evidencePath = join(runDir, "summary.json");
+  await decodeProcessSummaryBeforePersistence(evidence);
   await writeFile(
     evidencePath,
     `${JSON.stringify(evidence, null, 2)}\n`,

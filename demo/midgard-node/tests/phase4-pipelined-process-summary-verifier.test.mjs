@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML } from "@lucid-evolution/lucid";
+
 import {
+  decodePhase4PipelinedProcessSummaryV1,
   evaluatePhase4PipelinedProcessSummary,
   PHASE4_PROCESS_CHECKPOINTS,
   PHASE4_PROCESS_SUMMARY_MODE,
@@ -26,16 +31,40 @@ const h56 = (digit) => digit.repeat(56);
 const h64 = (digit) => digit.repeat(64);
 const txOne = h64("1");
 const txTwo = h64("2");
-const phasRegistrationTxHash =
-  "f7f901aee5bef259fbc62f97cf5b89aae7a11515b490882e03009a5ea952e0ce";
-const phasRegistrationCborSha256 =
-  "6151d248776808489a06558ae4ccebab1c648f2ab41606f2a3e05e279ee49234";
+const canonicalPhasIdentity = (() => {
+  const blueprint = SDK.parsePhasMembershipBlueprint(
+    JSON.parse(
+      readFileSync(
+        new URL("../../../onchain/aiken/plutus.json", import.meta.url),
+        "utf8",
+      ),
+    ),
+  );
+  return SDK.phasMembershipIdentity(
+    "Custom",
+    SDK.phasMembershipWithdrawalScriptFromBlueprint(blueprint),
+  );
+})();
+const cborTemplateScriptHash =
+  "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d";
 const phasRegistrationTransactionBody = {
   type: "Unwitnessed Tx ConwayEra",
   description: "PHAS registration transaction body",
   cborHex:
-    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4da0f5f6",
+    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4da0f5f6".replace(
+      cborTemplateScriptHash,
+      canonicalPhasIdentity.scriptHash,
+    ),
 };
+const phasRegistrationTransaction = CML.Transaction.from_cbor_hex(
+  phasRegistrationTransactionBody.cborHex,
+);
+const phasRegistrationTxHash = CML.hash_transaction(
+  phasRegistrationTransaction.body(),
+).to_hex();
+const phasRegistrationCborSha256 = createHash("sha256")
+  .update(Buffer.from(phasRegistrationTransactionBody.cborHex, "hex"))
+  .digest("hex");
 
 const requiredNodeEnvKeys = [
   "NETWORK",
@@ -123,7 +152,7 @@ const supervisor = ({
 };
 
 const journalMember = (sourceId, ordinal = 0) => ({
-  memberId: h64("a"),
+  memberId: sourceId,
   ordinal,
   payloadSha256: h64("b"),
   sourceTable: "mempool",
@@ -153,7 +182,7 @@ const databaseState = ({
       ),
       transitionTrace: [],
       eventToStep: [],
-      utxos: [],
+      ledgerDelta: { spent: [], produced: [] },
     },
     submittedTxHash,
     status: "submitted_unconfirmed",
@@ -305,11 +334,9 @@ const validSummary = () => {
         networkMagic: 424242,
         manifestId: h64("9"),
         registrationTxHash: phasRegistrationTxHash,
-        rewardAddress:
-          "stake_test17prd7qp8ls90quvhjfxuqlcuy7kxk90t90twl3a88vxmknguu7vsa",
-        rewardAddressBase16:
-          "f046df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
-        scriptHash: "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+        rewardAddress: canonicalPhasIdentity.rewardAddress,
+        rewardAddressBase16: `f0${canonicalPhasIdentity.scriptHash}`,
+        scriptHash: canonicalPhasIdentity.scriptHash,
         transactionBody: {
           schemaVersion: "midgard-phas-registration-transaction-body-v1",
           artifactSha256:
@@ -322,8 +349,7 @@ const validSummary = () => {
             index: 0,
             count: 1,
             credentialType: "script",
-            scriptHash:
-              "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d",
+            scriptHash: canonicalPhasIdentity.scriptHash,
           },
         },
         registrationDepositLovelace: 400_000,
@@ -404,6 +430,10 @@ const validSummary = () => {
 };
 
 test("accepts a complete internally consistent process-acceptance fixture", () => {
+  assert.deepEqual(
+    decodePhase4PipelinedProcessSummaryV1(validSummary()),
+    validSummary(),
+  );
   const result = evaluatePhase4PipelinedProcessSummary(validSummary());
   assert.deepEqual(result.reasons, []);
   assert.equal(result.passed, true);
@@ -484,6 +514,38 @@ test("fails closed on schema, isolation, crash, T1, and contention mutations", (
       "extra recovery field",
       (value) => (value.t1Recovery.recovery.unreviewed = "field"),
     ],
+    [
+      "extra journal-member field",
+      (value) =>
+        (value.t1Recovery.state.activeJournal.journalPayloadIdentity.transactions[0].unreviewed = true),
+    ],
+    [
+      "obsolete cross-family journal payload",
+      (value) => {
+        const payload =
+          value.t1Recovery.state.activeJournal.journalPayloadIdentity;
+        payload.utxos = [];
+        delete payload.ledgerDelta;
+      },
+    ],
+    [
+      "extra ledger-delta output field",
+      (value) => {
+        value.t1Recovery.state.activeJournal.journalPayloadIdentity.ledgerDelta.produced =
+          [{ outref: "00", output: "00", unreviewed: true }];
+      },
+    ],
+    [
+      "noncanonical supervisor timestamp",
+      (value) =>
+        (value.crashes[0].crash.attempts[0].startedAt = "2026-07-14T05:00:00Z"),
+    ],
+    [
+      "wrong PHAS family schema",
+      (value) =>
+        (value.isolation.snapshotPhasRegistration.schemaVersion =
+          "midgard-phase4-t1-probe-v1"),
+    ],
   ];
 
   for (const [label, mutate] of cases) {
@@ -492,6 +554,11 @@ test("fails closed on schema, isolation, crash, T1, and contention mutations", (
     const result = evaluatePhase4PipelinedProcessSummary(summary);
     assert.equal(result.passed, false, label);
     assert(result.reasons.length > 0, label);
+    assert.throws(
+      () => decodePhase4PipelinedProcessSummaryV1(summary),
+      /not exact canonical V1/u,
+      label,
+    );
   }
 });
 

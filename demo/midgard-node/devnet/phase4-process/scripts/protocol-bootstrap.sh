@@ -92,6 +92,20 @@ node dist/index.js register-phas-membership-reward-account \
   --registration-transaction-body-output "$phas_transaction_body" \
   --json >"$phas_output"
 sed -n '/^[[:space:]]*{/,$p' "$phas_output" >"$phas_json"
+jq -e \
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["status","rewardAddress","scriptHash","txHash","transactionBody"]) and
+   .status == "registration_submitted" and
+   (.rewardAddress | test("^stake(_test)?1[0-9a-z]+$")) and
+   (.scriptHash | test("^[a-f0-9]{56}$")) and
+   (.txHash | test("^[a-f0-9]{64}$")) and
+   (.transactionBody | exact(["schemaVersion","txHash","cborSha256","cborSizeBytes","certificate"])) and
+   (.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   .transactionBody.schemaVersion == "midgard-phas-registration-transaction-body-v1" and
+   .transactionBody.txHash == .txHash and
+   .transactionBody.certificate.scriptHash == .scriptHash' \
+  "$phas_json" >/dev/null \
+  || die "fresh Phase 4 PHAS registration output is not exact canonical V1"
 phas_reward_address=$(jq -er '.rewardAddress | select(test("^stake(_test)?1"))' "$phas_json")
 phas_script_hash=$(jq -er '.scriptHash | select(test("^[a-f0-9]{56}$"))' "$phas_json")
 phas_registration_tx_hash=$(jq -er '.steps.phasRegistration.txHash | select(test("^[a-f0-9]{64}$"))' "$manifest")

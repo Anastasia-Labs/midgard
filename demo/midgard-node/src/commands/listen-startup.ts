@@ -35,8 +35,8 @@ import {
   verifyNodeRuntimeReferenceScriptsProgram,
 } from "@/transactions/reference-scripts.js";
 import {
+  applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
-  replaceConfirmedLedgerWithEntriesTransaction,
 } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
 import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
 import {
@@ -333,14 +333,14 @@ export const seedLatestLocalBlockBoundaryOnStartup = Effect.gen(function* () {
           finalizedJournal.value,
         );
         if (finalizedSnapshot.root === onChainUtxoRoot) {
-          yield* replaceConfirmedLedgerWithEntriesTransaction(
-            finalizedSnapshot.entries,
-          );
-          const syncResult = yield* synchronizeCommitMpfStoresFromLedgerEntries(
-            finalizedSnapshot.entries,
-          );
+          const recoveredEntries =
+            yield* applyConfirmedLedgerDeltaChainTransaction(finalizedSnapshot);
+          const syncResult =
+            yield* synchronizeCommitMpfStoresFromLedgerEntries(
+              recoveredEntries,
+            );
           yield* Effect.logWarning(
-            `Startup repaired confirmed_ledger and commit MPFs from finalized clean-queue journal (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
+            `Startup applied ${finalizedSnapshot.deltaChain.length.toString()} authenticated finalized-journal delta(s) to confirmed_ledger and synchronized commit MPFs (header=${snapshot.tailCommitBase.headerHash},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot},previous_confirmed_ledger_root=${confirmedLedgerRoot}).`,
           );
         } else if (confirmedLedgerEntries.length > 0) {
           return yield* Effect.fail(

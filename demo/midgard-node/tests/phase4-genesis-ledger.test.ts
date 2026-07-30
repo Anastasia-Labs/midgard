@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertPhase4GenesisLedgerGate,
   classifyPhase4GenesisLedgerState,
+  decodePhase4GenesisLedgerReportV1,
   makePhase4GenesisLedgerPlan,
   PHASE4_GENESIS_BOOTSTRAP_ENV,
   PHASE4_GENESIS_BOOTSTRAP_TOKEN,
@@ -118,6 +119,60 @@ describe("Phase 4 explicit genesis ledger gate", () => {
         config: { ...gateConfig(), ...configOverride },
       }),
     ).toThrow(message);
+  });
+});
+
+describe("Phase 4 genesis ledger V1 report decoder", () => {
+  const report = () => ({
+    schemaVersion: "midgard-phase4-local-genesis-ledger-v1",
+    satisfied: true,
+    mode: "seed",
+    status: "seeded",
+    rowCount: 3,
+    wallets: {
+      A: { utxoCount: 1, totalLovelace: "4000000000" },
+      B: { utxoCount: 1, totalLovelace: "126943" },
+    },
+    supplementalWalletRowCount: 1,
+    minimumTransferLovelace: "50000",
+  });
+
+  it("accepts only the exact canonical report", () => {
+    expect(decodePhase4GenesisLedgerReportV1(report())).toEqual(report());
+  });
+
+  it.each([
+    [
+      { schemaVersion: "midgard-phase4-local-genesis-ledger-v2" },
+      "noncanonical",
+    ],
+    [{ unexpected: true }, "fields"],
+    [{ wallets: { ...report().wallets, C: report().wallets.A } }, "wallet"],
+    [
+      {
+        wallets: {
+          ...report().wallets,
+          A: { ...report().wallets.A, totalLovelace: "04000000000" },
+        },
+      },
+      "noncanonical",
+    ],
+    [{ status: "complete" }, "noncanonical"],
+    [
+      {
+        schemaVersion: "midgard-phase4-t1-recovery-attestation-v1",
+      },
+      "noncanonical",
+    ],
+  ])("rejects adversarial report mutation %#", (override, message) => {
+    expect(() =>
+      decodePhase4GenesisLedgerReportV1({ ...report(), ...override }),
+    ).toThrow(message);
+  });
+
+  it("rejects a missing required key", () => {
+    const { rowCount: _rowCount, ...missing } = report();
+    expect(() => decodePhase4GenesisLedgerReportV1(missing)).toThrow("fields");
   });
 });
 

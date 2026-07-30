@@ -63,6 +63,7 @@ import {
   MempoolDB,
   MempoolLedgerDB,
   MutationJobsDB,
+  PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
@@ -1882,10 +1883,17 @@ type PipelineStatusCountRow = {
   readonly count: bigint | number | string;
 };
 
-type PipelineStatusOldestActiveRow = {
+export const PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES = [
+  PendingBlockFinalizationsDB.Status.PendingSubmission,
+  PendingBlockFinalizationsDB.Status.SubmittedLocalFinalizationPending,
+  PendingBlockFinalizationsDB.Status.SubmittedUnconfirmed,
+  PendingBlockFinalizationsDB.Status.ObservedWaitingStability,
+] as const satisfies readonly PendingBlockFinalizationsDB.Status[];
+
+export type PipelineStatusOldestActiveRow = {
   readonly header_hash: string;
   readonly submitted_tx_hash: string | null;
-  readonly status: string;
+  readonly status: (typeof PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES)[number];
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly observed_confirmed_at_ms: bigint | number | string | null;
@@ -1897,6 +1905,27 @@ type PipelineStatusCountOnlyRow = {
 
 const bigintString = (value: bigint | number | string): string =>
   BigInt(value).toString();
+
+export const encodePipelineStatusOldestActive = (
+  oldestActive: PipelineStatusOldestActiveRow | undefined,
+  now: Date,
+) =>
+  oldestActive === undefined
+    ? null
+    : {
+        headerHash: oldestActive.header_hash,
+        submittedTxHash: oldestActive.submitted_tx_hash,
+        status: oldestActive.status,
+        ageMs: Math.max(0, now.getTime() - oldestActive.created_at.getTime()),
+        createdAt: oldestActive.created_at.toISOString(),
+        updatedAt: oldestActive.updated_at.toISOString(),
+        observedConfirmedAt:
+          oldestActive.observed_confirmed_at_ms === null
+            ? null
+            : new Date(
+                Number(oldestActive.observed_confirmed_at_ms),
+              ).toISOString(),
+      };
 
 const getPipelineStatusHandler = Effect.gen(function* () {
   const globals = yield* Globals;
@@ -1926,7 +1955,9 @@ const getPipelineStatusHandler = Effect.gen(function* () {
           updated_at,
           observed_confirmed_at_ms
         FROM pending_block_finalizations
-        WHERE status IN ('prepared', 'submitted', 'confirmed')
+        WHERE ${sql(PendingBlockFinalizationsDB.Columns.STATUS)} IN ${sql.in(
+          PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
+        )}
         ORDER BY created_at ASC
         LIMIT 1`,
       TxAdmissionsDB.countBacklog,
@@ -1970,26 +2001,7 @@ const getPipelineStatusHandler = Effect.gen(function* () {
       countsByStatus: Object.fromEntries(
         pendingCounts.map((row) => [row.status, bigintString(row.count)]),
       ),
-      oldestActive:
-        oldestActive === undefined
-          ? null
-          : {
-              headerHash: oldestActive.header_hash,
-              submittedTxHash: oldestActive.submitted_tx_hash,
-              status: oldestActive.status,
-              ageMs: Math.max(
-                0,
-                now.getTime() - oldestActive.created_at.getTime(),
-              ),
-              createdAt: oldestActive.created_at.toISOString(),
-              updatedAt: oldestActive.updated_at.toISOString(),
-              observedConfirmedAt:
-                oldestActive.observed_confirmed_at_ms === null
-                  ? null
-                  : new Date(
-                      Number(oldestActive.observed_confirmed_at_ms),
-                    ).toISOString(),
-            },
+      oldestActive: encodePipelineStatusOldestActive(oldestActive, now),
     },
     stateQueue: {
       queueLength,
@@ -2037,6 +2049,7 @@ const getProtocolInfoHandler = Effect.gen(function* () {
       ProtocolInfoCommand.encodeProtocolInfo({
         nodeConfig,
         currentSlot: lucid.api.currentSlot(),
+        deploymentMarker: deploymentIdentity.deploymentMarker,
         consensusProfile: deploymentIdentity.consensusProfile,
       }),
     catch: (error) => error,

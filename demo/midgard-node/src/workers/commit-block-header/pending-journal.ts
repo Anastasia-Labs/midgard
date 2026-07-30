@@ -191,6 +191,7 @@ export const buildPendingJournalMetadata = ({
   expectedRoots,
   expectedCounts,
   consensusProfile,
+  deploymentMarker,
 }: {
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly workerInput: WorkerInput;
@@ -198,6 +199,9 @@ export const buildPendingJournalMetadata = ({
   readonly expectedRoots: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedRoots"];
   readonly expectedCounts: PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata["expectedCounts"];
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
+  readonly deploymentMarker: NonNullable<
+    ContractDeploymentIdentityValue["deploymentMarker"]
+  >;
 }): Effect.Effect<
   PendingBlockFinalizationsDB.PendingBlockFinalizationMetadata,
   | SDK.CmlUnexpectedError
@@ -218,6 +222,7 @@ export const buildPendingJournalMetadata = ({
       consensusProfile,
     );
     return {
+      deploymentMarker,
       consensusProfileId: consensusProfile.profileId,
       stateQueueLeaseToken,
       baseSnapshotId:

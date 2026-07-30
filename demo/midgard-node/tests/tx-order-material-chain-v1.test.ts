@@ -3,8 +3,12 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeMidgardCekBlobChunkV1,
+  encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
+  encodeMidgardVersionedScriptListPreimage,
+  hashMidgardCekProgramMaterialPreimageV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -14,14 +18,17 @@ import { deriveMidgardTxFieldReceiptAssetNameV1 } from "@al-ft/midgard-core/cons
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
-  toUnit,
   type LucidEvolution,
+  toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { reconstructTxOrderMaterialV1 } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
+import {
+  publishedProgramMaterialEntries,
+  reconstructTxOrderMaterialV1,
+} from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 
 const FIELD_PREIMAGE_ADDRESS = "addr_test1vfieldpreimage";
 const FIELD_RECEIPT_ADDRESS = "addr_test1vfieldreceipt";
@@ -32,7 +39,13 @@ const TX_ORDER_ID: SDK.OutputReference = {
   outputIndex: 4n,
 };
 
-const transactionCbor = (): Buffer =>
+const transactionCbor = ({
+  addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+  scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST,
+}: {
+  readonly addrTxWitsPreimageCbor?: Buffer;
+  readonly scriptTxWitsPreimageCbor?: Buffer;
+} = {}): Buffer =>
   encodeMidgardNativeTxCanonicalV1(
     materializeMidgardNativeTxFromCanonicalV1({
       version: MIDGARD_NATIVE_TX_V1_VERSION,
@@ -71,8 +84,8 @@ const transactionCbor = (): Buffer =>
         networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
       },
       witnessSet: {
-        addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
-        scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
         redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       },
     }),
@@ -83,8 +96,17 @@ const outRefKey = ({
   outputIndex,
 }: SDK.OutputReference): string => `${transactionId}#${outputIndex.toString()}`;
 
-const materialFixture = () => {
-  const nativeTxCbor = transactionCbor();
+const fragmentReference = (ordinal: number): SDK.OutputReference => ({
+  transactionId: (0x80 + ordinal).toString(16).padStart(2, "0").repeat(32),
+  outputIndex: BigInt(ordinal),
+});
+
+const receiptReference = (ordinal: number): SDK.OutputReference => ({
+  transactionId: (0x90 + ordinal).toString(16).padStart(2, "0").repeat(32),
+  outputIndex: BigInt(ordinal),
+});
+
+const materialFixture = (nativeTxCbor = transactionCbor()) => {
   const bundle = SDK.deriveTxOrderFragmentBundleV1({
     nativeTxCbor,
     fieldReceiptPolicyId: FIELD_RECEIPT_POLICY_ID,
@@ -95,10 +117,7 @@ const materialFixture = () => {
   let predecessorReceiptReference: SDK.OutputReference | null = null;
 
   for (const [ordinal, fragment] of bundle.fragments.entries()) {
-    const fieldReference: SDK.OutputReference = {
-      transactionId: (0x80 + ordinal).toString(16).padStart(2, "0").repeat(32),
-      outputIndex: BigInt(ordinal),
-    };
+    const fieldReference = fragmentReference(ordinal);
     utxos.set(outRefKey(fieldReference), {
       txHash: fieldReference.transactionId,
       outputIndex: Number(fieldReference.outputIndex),
@@ -107,10 +126,7 @@ const materialFixture = () => {
       datum: fragment.datumCbor,
     } as UTxO);
 
-    const receiptReference: SDK.OutputReference = {
-      transactionId: (0x90 + ordinal).toString(16).padStart(2, "0").repeat(32),
-      outputIndex: BigInt(ordinal),
-    };
+    const receiptOutRef = receiptReference(ordinal);
     const receiptAssetName = deriveMidgardTxFieldReceiptAssetNameV1({
       txOrderPolicyId: Buffer.from(TX_ORDER_POLICY_ID, "hex"),
       txOrderTransactionId: Buffer.from(TX_ORDER_ID.transactionId, "hex"),
@@ -131,9 +147,9 @@ const materialFixture = () => {
       predecessor_receipt_reference: predecessorReceiptReference,
       field_encoded_size: BigInt(fragment.fieldEncodedSize),
     };
-    utxos.set(outRefKey(receiptReference), {
-      txHash: receiptReference.transactionId,
-      outputIndex: Number(receiptReference.outputIndex),
+    utxos.set(outRefKey(receiptOutRef), {
+      txHash: receiptOutRef.transactionId,
+      outputIndex: Number(receiptOutRef.outputIndex),
       address: FIELD_RECEIPT_ADDRESS,
       assets: {
         lovelace: 2_000_000n,
@@ -141,7 +157,7 @@ const materialFixture = () => {
       },
       datum: Data.to(receiptDatum, SDK.TxFieldReceiptV1),
     } as UTxO);
-    predecessorReceiptReference = receiptReference;
+    predecessorReceiptReference = receiptOutRef;
   }
 
   const lucid = {
@@ -162,6 +178,23 @@ const materialFixture = () => {
     lucid,
     terminalReceiptReference: predecessorReceiptReference!,
   };
+};
+
+const mutateFragment = (
+  fixture: ReturnType<typeof materialFixture>,
+  ordinal: number,
+  mutate: (datum: SDK.TxFieldPreimageV1) => SDK.TxFieldPreimageV1,
+): void => {
+  const reference = fragmentReference(ordinal);
+  const utxo = fixture.utxos.get(outRefKey(reference))!;
+  const datum = Data.from(
+    utxo.datum!,
+    SDK.TxFieldPreimageV1,
+  ) as SDK.TxFieldPreimageV1;
+  fixture.utxos.set(outRefKey(reference), {
+    ...utxo,
+    datum: Data.to(mutate(datum), SDK.TxFieldPreimageV1),
+  });
 };
 
 const reconstruct = (
@@ -193,18 +226,57 @@ describe("V1 tx-order material receipt chain", () => {
     );
   });
 
+  it("reconstructs field 6 scripts raw and field 7 address witnesses as byte-list items", async () => {
+    const scriptTxWitsPreimageCbor = encodeMidgardVersionedScriptListPreimage([
+      {
+        language: "MidgardV1",
+        scriptBytes: encodeMidgardCekProgramEnvelopeV1({
+          uplcVersion: [1n, 1n, 0n],
+          termRoot: Buffer.alloc(32, 0x33),
+          nodeCount: 3n,
+          materialByteLength: 144n,
+        }),
+      },
+    ]);
+    const addressWitnessCbor = encodeCbor([
+      Buffer.alloc(32, 0x44),
+      Buffer.alloc(64, 0x55),
+    ]);
+    const addrTxWitsPreimageCbor = encodeCbor([addressWitnessCbor]);
+    const fixture = materialFixture(
+      transactionCbor({
+        addrTxWitsPreimageCbor,
+        scriptTxWitsPreimageCbor,
+      }),
+    );
+    const scriptFragments = fixture.bundle.fragments.filter(
+      ({ fieldIndex }) => fieldIndex === 6,
+    );
+    const addressFragments = fixture.bundle.fragments.filter(
+      ({ fieldIndex }) => fieldIndex === 7,
+    );
+
+    expect(scriptFragments).toHaveLength(1);
+    expect(scriptFragments[0]).toMatchObject({
+      fieldName: "script_witnesses",
+      fieldEncodedSize: scriptTxWitsPreimageCbor.length,
+    });
+    expect(addressFragments).toHaveLength(1);
+    expect(addressFragments[0]).toMatchObject({
+      fieldName: "address_witnesses",
+      fieldEncodedSize: addrTxWitsPreimageCbor.length,
+    });
+    await expect(Effect.runPromise(reconstruct(fixture))).resolves.toEqual(
+      fixture.nativeTxCbor,
+    );
+  });
+
   it("fails closed when a predecessor lies about its encoded-size state", async () => {
     const fixture = materialFixture();
     const predecessorReference =
       fixture.bundle.fragments.length === 0
         ? fixture.terminalReceiptReference
-        : ({
-            transactionId: (0x90 + fixture.bundle.fragments.length - 2)
-              .toString(16)
-              .padStart(2, "0")
-              .repeat(32),
-            outputIndex: BigInt(fixture.bundle.fragments.length - 2),
-          } satisfies SDK.OutputReference);
+        : receiptReference(fixture.bundle.fragments.length - 2);
     const predecessor = fixture.utxos.get(outRefKey(predecessorReference))!;
     const datum = Data.from(
       predecessor.datum!,
@@ -227,5 +299,143 @@ describe("V1 tx-order material receipt chain", () => {
           "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
       },
     );
+  });
+
+  it.each([
+    {
+      name: "field kind",
+      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
+        ...datum,
+        proof: {
+          ...datum.proof,
+          field_index: datum.proof.field_index + 1n,
+        },
+      }),
+    },
+    {
+      name: "field hash",
+      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
+        ...datum,
+        proof: {
+          ...datum.proof,
+          chunk: `${datum.proof.chunk.startsWith("00") ? "01" : "00"}${datum.proof.chunk.slice(2)}`,
+        },
+      }),
+    },
+    {
+      name: "field length",
+      mutate: (datum: SDK.TxFieldPreimageV1): SDK.TxFieldPreimageV1 => ({
+        ...datum,
+        proof: {
+          ...datum.proof,
+          total_length: datum.proof.total_length + 1n,
+        },
+      }),
+    },
+  ])("fails closed for a mutated $name", async ({ mutate }) => {
+    const fixture = materialFixture();
+    mutateFragment(fixture, 0, mutate);
+    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
+      {
+        message:
+          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
+      },
+    );
+  });
+
+  it("rejects semantically decodable but noncanonical fragment data", async () => {
+    const fixture = materialFixture();
+    const reference = fragmentReference(0);
+    const utxo = fixture.utxos.get(outRefKey(reference))!;
+    const noncanonical = utxo.datum!.replace("d8799f01", "d8799f1801");
+    expect(noncanonical).not.toBe(utxo.datum);
+    expect(Data.from(noncanonical, SDK.TxFieldPreimageV1)).toEqual(
+      Data.from(utxo.datum!, SDK.TxFieldPreimageV1),
+    );
+    fixture.utxos.set(outRefKey(reference), {
+      ...utxo,
+      datum: noncanonical,
+    });
+
+    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
+      {
+        message:
+          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
+      },
+    );
+  });
+
+  it("rejects semantically decodable but noncanonical receipt data", async () => {
+    const fixture = materialFixture();
+    const reference = fixture.terminalReceiptReference;
+    const utxo = fixture.utxos.get(outRefKey(reference))!;
+    const noncanonical = utxo.datum!.replace("d8799f01", "d8799f1801");
+    expect(noncanonical).not.toBe(utxo.datum);
+    expect(Data.from(noncanonical, SDK.TxFieldReceiptV1)).toEqual(
+      Data.from(utxo.datum!, SDK.TxFieldReceiptV1),
+    );
+    fixture.utxos.set(outRefKey(reference), {
+      ...utxo,
+      datum: noncanonical,
+    });
+
+    await expect(Effect.runPromise(reconstruct(fixture))).rejects.toMatchObject(
+      {
+        message:
+          "Failed to walk and reconstruct the authenticated V1 tx-order material chain",
+      },
+    );
+  });
+});
+
+describe("V1 CEK program-material publication ingestion", () => {
+  const materialUtxo = (datum: string, outputIndex = 0): UTxO =>
+    ({
+      txHash: "aa".repeat(32),
+      outputIndex,
+      address: "addr_test1vprogrammaterial",
+      assets: { lovelace: 2_000_000n },
+      datum,
+    }) as UTxO;
+
+  it("accepts one exact typed hash and rejects wrong roots, kinds, and encodings", () => {
+    const preimage = encodeMidgardCekBlobChunkV1(Buffer.from("material"));
+    const root = hashMidgardCekProgramMaterialPreimageV1("blobChunk", preimage);
+    const datum: SDK.CekProgramMaterialDatumV1 = {
+      kind: 3n,
+      root: Buffer.from(root).toString("hex"),
+      preimage: preimage.toString("hex"),
+    };
+    const datumCbor = Data.to(datum, SDK.CekProgramMaterialDatumV1);
+
+    const exact = publishedProgramMaterialEntries([materialUtxo(datumCbor)]);
+    expect(exact.malformedCount).toBe(0);
+    expect(exact.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
+
+    const wrongRoot = Data.to(
+      { ...datum, root: "00".repeat(32) },
+      SDK.CekProgramMaterialDatumV1,
+    );
+    const wrongKind = Data.to(
+      { ...datum, kind: 4n },
+      SDK.CekProgramMaterialDatumV1,
+    );
+    const unknownKind = Data.to(
+      { ...datum, kind: 8n },
+      SDK.CekProgramMaterialDatumV1,
+    );
+    const noncanonicalKind = datumCbor.replace("d8799f03", "d8799f1803");
+    expect(Data.from(noncanonicalKind, SDK.CekProgramMaterialDatumV1)).toEqual(
+      datum,
+    );
+
+    const hostile = publishedProgramMaterialEntries([
+      materialUtxo(wrongRoot, 1),
+      materialUtxo(wrongKind, 2),
+      materialUtxo(unknownKind, 3),
+      materialUtxo(noncanonicalKind, 4),
+    ]);
+    expect(hostile.entries).toEqual([]);
+    expect(hostile.malformedCount).toBe(4);
   });
 });

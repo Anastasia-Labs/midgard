@@ -9,6 +9,7 @@ import {
 } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  computeMidgardNativeTxFullHashFromCanonicalCborV1,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
@@ -27,6 +28,7 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { HttpServerRequest, HttpServerResponse } from "@effect/platform";
@@ -51,7 +53,11 @@ import {
   resolveDepositStatusProgram,
 } from "../src/commands/deposit-status.js";
 import { buildSubmitRouter } from "../src/commands/listen-router.js";
-import { reconcileTxCommittedProgram } from "../src/commands/reconcile.js";
+import {
+  parseReconciliationResultV1,
+  reconcileTxCommittedProgram,
+  RECONCILIATION_SCHEMA_VERSION,
+} from "../src/commands/reconcile.js";
 import {
   // Address history
   AddressHistoryDB,
@@ -119,6 +125,7 @@ import {
 import { makeWriteBehind, WriteBehind } from "../src/services/write-behind.js";
 import {
   applyConfirmedLedgerDelta,
+  applyConfirmedLedgerDeltaChainTransaction,
   decodeConfirmedLedgerDelta,
   materializeConfirmedLedgerSnapshot,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
@@ -218,8 +225,7 @@ const submitThroughRouter = <R>(
             method: "POST",
             headers: {
               "content-type":
-                options.contentType ??
-                "application/vnd.midgard.v1+cbor",
+                options.contentType ?? "application/vnd.midgard.v1+cbor",
             },
             body: new Uint8Array(requestBody),
           }),
@@ -310,8 +316,9 @@ const retrieveAllMempool = MempoolDB.retrievePage({ limit: 100_000 }).pipe(
 const databaseFixtureBytes = (label: string, length: number): Buffer =>
   deterministicFixtureBytes(`database:${label}`, length);
 
-const emptyProgramMaterialSidecarV1 =
-  encodeMidgardCekProgramMaterialSidecarV1([]);
+const emptyProgramMaterialSidecarV1 = encodeMidgardCekProgramMaterialSidecarV1(
+  [],
+);
 const emptyProgramMaterialSidecarSha256V1 = createHash("sha256")
   .update(emptyProgramMaterialSidecarV1)
   .digest();
@@ -427,8 +434,7 @@ const daPayloadInsertFixture = (label: string): DaPayloadsDB.InsertInput => {
     [DaPayloadsDB.Columns.WITHDRAWALS_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.EVENT_TO_STEP_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
-    [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]:
-      SDK.EMPTY_MERKLE_TREE_ROOT,
+    [DaPayloadsDB.Columns.VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
     [DaPayloadsDB.Columns.WITHDRAWAL_COUNT]: 0n,
     [DaPayloadsDB.Columns.FORCED_TRANSACTION_COUNT]: 0n,
     [DaPayloadsDB.Columns.L2_TRANSACTION_COUNT]: 0n,
@@ -629,16 +635,13 @@ describe("TxAdmissionsDB", () => {
           });
           const stored = yield* TxAdmissionsDB.getByTxId(proofTx.txId);
           expect(
-            stored?.[
-              TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
-            ],
+            stored?.[TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR],
           ).toEqual(encodeMidgardCekProgramMaterialSidecarV1([]));
           expect(
             stored?.[
               TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256
             ],
           ).toHaveLength(32);
-
         }).pipe(Effect.provide(Globals.Default)),
       ),
   );
@@ -920,7 +923,10 @@ describe("TxAdmissionsDB", () => {
             txCanonicalCbor: Buffer,
             wake: Effect.Effect<void, never, TxQueueWakeRequirements>,
           ) =>
-            submitThroughRouter(wrapNativeSubmitTxV1(txCanonicalCbor), wake).pipe(
+            submitThroughRouter(
+              wrapNativeSubmitTxV1(txCanonicalCbor),
+              wake,
+            ).pipe(
               Effect.provideService(SqlClient.SqlClient, admissionSql),
               Effect.provideService(ValidationPool, validationPool),
               Effect.provideService(MempoolLedgerCache, cache),
@@ -1124,11 +1130,11 @@ describe("TxAdmissionsDB", () => {
             txs.map(({ txId, txCanonicalCbor }) => ({
               tx_id: txId,
               tx_canonical_cbor: txCanonicalCbor,
-              tx_canonical_cbor_sha256: createHash("sha256")
-                .update(txCanonicalCbor)
-                .digest(),
-              cek_program_material_sidecar_cbor:
-                emptyProgramMaterialSidecarV1,
+              tx_full_hash_v1:
+                computeMidgardNativeTxFullHashFromCanonicalCborV1(
+                  txCanonicalCbor,
+                ),
+              cek_program_material_sidecar_cbor: emptyProgramMaterialSidecarV1,
               cek_program_material_sidecar_sha256:
                 emptyProgramMaterialSidecarSha256V1,
             })),
@@ -3255,6 +3261,7 @@ describe("DaPayloadsDB", () => {
             28,
           );
           const baseTime = new Date("2026-06-12T00:00:00.000Z");
+          const deploymentMarker = makeDeploymentMarkerV1("de".repeat(32));
           const row = (
             headerHash: Buffer,
             status: PendingBlockFinalizationsDB.Status,
@@ -3264,6 +3271,18 @@ describe("DaPayloadsDB", () => {
               "d87980",
               "hex",
             ),
+            [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
+              PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+            [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
+              PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+                .LedgerDelta,
+            [PendingBlockFinalizationsDB.Columns
+              .DEPLOYMENT_MARKER_SCHEMA_VERSION]:
+              deploymentMarker.schemaVersion,
+            [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
+              deploymentMarker.manifestId,
+            [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
+              MIDGARD_CONSENSUS_PROFILE_V1_ID,
             [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]:
               databaseTxHash(`submitted-${headerHash.toString("hex")}`),
             [PendingBlockFinalizationsDB.Columns.STATE_QUEUE_LEASE_TOKEN]:
@@ -3300,6 +3319,10 @@ describe("DaPayloadsDB", () => {
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns
               .EXPECTED_TRANSITION_TRACE_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_VALIDATION_TRACES_ROOT]: SDK.EMPTY_MERKLE_TREE_ROOT,
+            [PendingBlockFinalizationsDB.Columns
+              .EXPECTED_VALIDATION_TRACE_COUNT]: 0n,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
               SDK.EMPTY_MERKLE_TREE_ROOT,
             [PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWAL_COUNT]: 0n,
@@ -3391,6 +3414,143 @@ describe("DaPayloadsDB", () => {
   );
 });
 
+describe("ForeignTipReconciliationsDB", () => {
+  it.effect(
+    "round-trips exact V1 deployment/DA identity and rejects substitutions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const header: SDK.HeaderV1 = {
+            prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            forcedTransactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            depositsRoot: "11".repeat(32),
+            transitionTraceRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            eventToStepRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            validationTracesRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+            withdrawalCount: 0n,
+            forcedTransactionCount: 0n,
+            l2TransactionCount: 0n,
+            depositCount: 1n,
+            totalEventCount: 1n,
+            transitionStepCount: 1n,
+            validationTraceCount: 0n,
+            startTime: 1n,
+            endTime: 2n,
+            blockSlot: 0n,
+            expectedNetworkId: 0n,
+            minFeeA: 0n,
+            minFeeB: 0n,
+            prevHeaderHash: "21".repeat(28),
+            operatorVkey: "22".repeat(28),
+            protocolVersion: 1n,
+          };
+          const foreignHeaderHash = yield* SDK.hashBlockHeaderV1(header);
+          const replacedBaseHeaderHash = "23".repeat(28);
+          const deploymentMarker = makeDeploymentMarkerV1("de".repeat(32));
+          yield* ForeignTipReconciliationsDB.recordMismatch({
+            foreignHeaderHash,
+            replacedBaseHeaderHash,
+            foreignHeader: header,
+            consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+            deploymentMarker,
+          });
+
+          const awaiting =
+            yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+              foreignHeaderHash,
+            );
+          expect(awaiting._tag).toBe("Some");
+          if (Option.isNone(awaiting)) return;
+          expect(
+            awaiting.value[ForeignTipReconciliationsDB.Columns.FORMAT_VERSION],
+          ).toBe(1);
+          expect(
+            awaiting.value[
+              ForeignTipReconciliationsDB.Columns.DEPLOYMENT_MANIFEST_ID
+            ],
+          ).toBe(deploymentMarker.manifestId);
+          expect(
+            awaiting.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
+          ).toBe(ForeignTipReconciliationsDB.EvidenceKind.Pending);
+
+          const payload = Buffer.from("d8799f4101ff", "hex");
+          const daIdentity = {
+            headerHash: Buffer.from(foreignHeaderHash, "hex"),
+            schemaVersion: 1 as const,
+            consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+            payloadCbor: payload,
+            payloadSha256: createHash("sha256").update(payload).digest(),
+          };
+          yield* ForeignTipReconciliationsDB.markResolved({
+            foreignHeaderHash,
+            deploymentMarker,
+            evidence: {
+              kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+              daIdentity,
+            },
+          });
+          yield* ForeignTipReconciliationsDB.markResolved({
+            foreignHeaderHash,
+            deploymentMarker,
+            evidence: {
+              kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+              daIdentity,
+            },
+          });
+
+          const resolved =
+            yield* ForeignTipReconciliationsDB.retrieveByForeignHeaderHash(
+              foreignHeaderHash,
+            );
+          expect(resolved._tag).toBe("Some");
+          if (Option.isNone(resolved)) return;
+          expect(
+            resolved.value[ForeignTipReconciliationsDB.Columns.EVIDENCE_KIND],
+          ).toBe(ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa);
+          expect(
+            resolved.value[
+              ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_SHA256
+            ],
+          ).toEqual(daIdentity.payloadSha256);
+
+          const substitutedPayload = Buffer.from("d8799f4102ff", "hex");
+          const substituted = yield* Effect.either(
+            ForeignTipReconciliationsDB.markResolved({
+              foreignHeaderHash,
+              deploymentMarker,
+              evidence: {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                daIdentity: {
+                  ...daIdentity,
+                  payloadCbor: substitutedPayload,
+                  payloadSha256: createHash("sha256")
+                    .update(substitutedPayload)
+                    .digest(),
+                },
+              },
+            }),
+          );
+          expect(substituted._tag).toBe("Left");
+
+          const wrongDeployment = yield* Effect.either(
+            ForeignTipReconciliationsDB.markResolved({
+              foreignHeaderHash,
+              deploymentMarker: makeDeploymentMarkerV1("ff".repeat(32)),
+              evidence: {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                daIdentity,
+              },
+            }),
+          );
+          expect(wrongDeployment._tag).toBe("Left");
+        }),
+      ),
+  );
+});
+
 describe("PendingBlockFinalizationsDB", () => {
   const pendingSubmissionFixture = (
     headerHash: Buffer,
@@ -3452,6 +3612,7 @@ describe("PendingBlockFinalizationsDB", () => {
         "hex",
       ),
       metadata: {
+        deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
         consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
         stateQueueLeaseToken: "lease-token",
         baseSnapshotId: "snapshot",
@@ -3602,6 +3763,7 @@ describe("PendingBlockFinalizationsDB", () => {
             "architecture-g-replay-header",
             28,
           );
+          const input = pendingSubmissionFixture(headerHash);
           const eventLog = Buffer.alloc(92, 7);
           const replay = {
             schema: 1 as const,
@@ -3609,10 +3771,10 @@ describe("PendingBlockFinalizationsDB", () => {
               "architecture-g-binary-sha",
               32,
             ),
-            baseRoot: databaseFixtureBytes("architecture-g-base-root", 32),
-            candidateRoot: databaseFixtureBytes(
-              "architecture-g-candidate-root",
-              32,
+            baseRoot: Buffer.from(input.metadata.baseRoots.utxosRoot, "hex"),
+            candidateRoot: Buffer.from(
+              input.metadata.expectedRoots.utxosRoot,
+              "hex",
             ),
             eventLog,
             eventLogDigest: databaseFixtureBytes(
@@ -3626,7 +3788,7 @@ describe("PendingBlockFinalizationsDB", () => {
             eventCount: 2,
           };
           yield* PendingBlockFinalizationsDB.preparePendingSubmission({
-            ...pendingSubmissionFixture(headerHash),
+            ...input,
             nativeMpfReplay: replay,
           });
           const active = yield* PendingBlockFinalizationsDB.retrieveActive();
@@ -5755,11 +5917,74 @@ describe("Reconciliation commands", () => {
         expect(resolved.schemaVersion).toEqual("midgard-e2e-reconciliation-v1");
         expect(resolved.milestone).toEqual("tx-committed");
         expect(resolved.status).toEqual("ambiguous");
-        expect(resolved.safeToRetryOriginalStep).toEqual(true);
+        expect(resolved.safeToRetryOriginalStep).toEqual(false);
         expect(resolved.target).toEqual({ txHash: txHash.toString("hex") });
         expect(
           resolved.evidence.some((entry) => entry.kind === "tx_status"),
         ).toEqual(true);
+        expect(parseReconciliationResultV1(resolved)).toEqual(resolved);
+        const missingMilestone = {
+          ...resolved,
+        } as Record<string, unknown>;
+        delete missingMilestone.milestone;
+        expect(() => parseReconciliationResultV1(missingMilestone)).toThrow(
+          "missing required field",
+        );
+        expect(() =>
+          parseReconciliationResultV1({ ...resolved, unexpected: true }),
+        ).toThrow("unknown field");
+        expect(() =>
+          parseReconciliationResultV1({
+            ...resolved,
+            schemaVersion: "midgard-e2e-reconciliation-v0",
+          }),
+        ).toThrow(RECONCILIATION_SCHEMA_VERSION);
+        expect(() =>
+          parseReconciliationResultV1({
+            ...resolved,
+            evidence: [
+              {
+                ...resolved.evidence[0]!,
+                unexpected: true,
+              },
+            ],
+          }),
+        ).toThrow("unknown field");
+        expect(() =>
+          parseReconciliationResultV1({
+            ...resolved,
+            target: { ...resolved.target, milestoneSpecific: { ok: true } },
+          }),
+        ).toThrow("unknown field");
+        expect(
+          parseReconciliationResultV1({
+            ...resolved,
+            evidence: resolved.evidence.map((entry) => ({
+              ...entry,
+              detail: { ...entry.detail, diagnosticSpecific: ["retained"] },
+            })),
+          }).evidence[0]?.detail,
+        ).toHaveProperty("diagnosticSpecific");
+        expect(() =>
+          parseReconciliationResultV1({
+            ...resolved,
+            safeToRetryOriginalStep: true,
+          }),
+        ).toThrow("status, retry, or repair binding is inconsistent");
+        expect(() =>
+          parseReconciliationResultV1({
+            ...resolved,
+            evidence: [
+              {
+                ...resolved.evidence[0]!,
+                detail: {
+                  ...resolved.evidence[0]!.detail,
+                  nonJsonObject: new Date("2026-01-01T00:00:00.000Z"),
+                },
+              },
+            ],
+          }),
+        ).toThrow("plain JSON objects");
       }),
     ),
   );
@@ -6520,6 +6745,7 @@ describe("Phase 3 MPF durable state", () => {
                   "hex",
                 ),
                 metadata: {
+                  deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
                   consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
                   stateQueueLeaseToken: `phase3-${index.toString()}`,
                   baseSnapshotId: `phase3-${index.toString()}`,
@@ -6611,6 +6837,40 @@ describe("Phase 3 MPF durable state", () => {
               item[LedgerUtils.Columns.OUTREF].toString("hex"),
             ),
           );
+          expect(snapshot.deltaChain).toHaveLength(3);
+          const wrongBase = yield* Effect.either(
+            applyConfirmedLedgerDeltaChainTransaction({
+              ...snapshot,
+              baseRoot: roots[1]!,
+            }),
+          );
+          expect(wrongBase._tag).toBe("Left");
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              yield* ConfirmedLedgerDB.retrieve,
+            ),
+          ).toBe(roots[0]);
+          const wrongFinal = yield* Effect.either(
+            applyConfirmedLedgerDeltaChainTransaction({
+              ...snapshot,
+              root: roots[2]!,
+            }),
+          );
+          expect(wrongFinal._tag).toBe("Left");
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              yield* ConfirmedLedgerDB.retrieve,
+            ),
+          ).toBe(roots[0]);
+          const transactionallyRecovered =
+            yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              transactionallyRecovered,
+            ),
+          ).toBe(roots[3]);
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
 
           const fullUtxos = snapshot.entries.map((item) => ({
             outref: item[LedgerUtils.Columns.OUTREF],
@@ -6761,6 +7021,7 @@ describe("Phase 3 MPF durable state", () => {
             headerHash,
             headerCbor: Buffer.from("d87980", "hex"),
             metadata: {
+              deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
               consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
               stateQueueLeaseToken: "implicit-genesis-test",
               baseSnapshotId: "implicit-genesis-test",

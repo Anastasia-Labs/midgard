@@ -6,12 +6,16 @@ import { Effect } from "effect";
 
 import { defaultMidgardNodeEndpoint } from "@/commands/command-utils.js";
 import {
-  E2E_L2_STRESS_SCHEMA_VERSION,
   type E2EL2StressSummary,
   type E2EL2StressTransaction,
+  parseE2EL2StressSummaryV1,
 } from "@/commands/e2e-stress-l2-throughput.js";
 import type { StressMetricWindow } from "@/commands/stress-stage-metrics.js";
-import { E2E_STEP_SCHEMA_VERSION, type StepSummary } from "@/e2e/runner.js";
+import {
+  E2E_STEP_SCHEMA_VERSION,
+  parseE2EStepV1,
+  type StepSummary,
+} from "@/e2e/runner.js";
 import {
   type CleanRunGate,
   createE2ERunSummary,
@@ -151,24 +155,20 @@ const loadStepSummaries = async (
   paths: readonly string[],
 ): Promise<readonly StepSummary[]> =>
   Promise.all(
-    paths.map(
-      async (path) => JSON.parse(await readFile(path, "utf8")) as StepSummary,
+    paths.map(async (path) =>
+      parseE2EStepV1(
+        JSON.parse(await readFile(path, "utf8")) as unknown,
+        `E2E step summary ${path}`,
+      ),
     ),
   );
 
 export const loadStressSummary = async (
   path: string,
-): Promise<E2EL2StressSummary> => {
-  const parsed = JSON.parse(await readFile(path, "utf8")) as {
-    readonly schemaVersion?: unknown;
-  };
-  if (parsed.schemaVersion !== E2E_L2_STRESS_SCHEMA_VERSION) {
-    throw new Error(
-      `${path} is not a ${E2E_L2_STRESS_SCHEMA_VERSION} artifact.`,
-    );
-  }
-  return parsed as E2EL2StressSummary;
-};
+): Promise<E2EL2StressSummary> =>
+  parseE2EL2StressSummaryV1(
+    JSON.parse(await readFile(path, "utf8")) as unknown,
+  );
 
 const stressTxPhaseToEvidenceStatus = (
   tx: E2EL2StressTransaction,

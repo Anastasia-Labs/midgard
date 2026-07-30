@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,7 +22,10 @@ import {
   type DeploymentManifestV1IdentityContext,
 } from "@/commands/contract-deployment-info.js";
 import { parseDaProducerPublicationManifest } from "@/da/libp2p-producer.js";
-import { generateDaLibp2pRuntimeManifest } from "@/da/libp2p-runtime-manifest.js";
+import {
+  generateDaLibp2pRuntimeManifest,
+  writeDaLibp2pRuntimeManifest,
+} from "@/da/libp2p-runtime-manifest.js";
 import {
   computeDeploymentManifestId,
   computeDeploymentManifestV1DaCommitteeSignersHash,
@@ -41,8 +44,9 @@ const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
-const CARDANO_PARAMETERS =
-  normalizeDeploymentManifestV1JsonValue({ maxTxSize: 16_384 });
+const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
+  maxTxSize: 16_384,
+});
 const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   cardanoProtocolParameters: {
     snapshot: CARDANO_PARAMETERS,
@@ -56,8 +60,9 @@ const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
   },
   da: {
     committeeVkeys: [DA_VKEY],
-    committeeSignersHash:
-      computeDeploymentManifestV1DaCommitteeSignersHash([DA_VKEY]),
+    committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+      DA_VKEY,
+    ]),
     threshold: 1,
     transportProfile: {
       protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -150,6 +155,40 @@ describe("DA libp2p runtime manifest profiles", () => {
     });
 
     expect(JSON.stringify(manifest)).toContain("/dns4/watcher-a/tcp/39001/");
+  });
+
+  it("persists the exact runtime manifest atomically", async () => {
+    const deploymentInfo = await writeFinalizedDeploymentInfo();
+    const manifest = await generateDaLibp2pRuntimeManifest({
+      target: "producer",
+      profile: "host",
+      contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
+      producerPrivateKeySource: PRODUCER_KEY,
+      threshold: 1,
+      committeeMembers: [
+        {
+          signerIndex: 0,
+          daVkey: DA_VKEY,
+          libp2pPrivateKeySource: WATCHER_KEY,
+          roles: ["committee"],
+        },
+      ],
+    });
+    const directory = await mkdtemp(
+      join(tmpdir(), "midgard-da-runtime-write-"),
+    );
+    tempDirs.push(directory);
+    const path = join(directory, "runtime-manifest.json");
+
+    await writeDaLibp2pRuntimeManifest(path, manifest);
+
+    expect(await readFile(path, "utf8")).toBe(
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+    expect(
+      (await readdir(directory)).filter((entry) => entry.includes(".tmp-")),
+    ).toEqual([]);
   });
 
   it("keeps producer retrieval peers on the producer port and out of producer bootstrap", async () => {
@@ -329,18 +368,15 @@ const writeFinalizedDeploymentInfo = async (
     postTimelockAudit: { required: true, rule: "test fixture" },
   };
   const referenceScriptOutRefs = new Map(
-    Object.values(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-    ).map((contractName, index) => [
-      contractName,
-      {
-        txHash: (index + 1)
-          .toString(16)
-          .padStart(2, "0")
-          .repeat(32),
-        outputIndex: 0,
-      },
-    ]),
+    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (contractName, index) => [
+        contractName,
+        {
+          txHash: (index + 1).toString(16).padStart(2, "0").repeat(32),
+          outputIndex: 0,
+        },
+      ],
+    ),
   );
   const fraudProofCatalogue = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(

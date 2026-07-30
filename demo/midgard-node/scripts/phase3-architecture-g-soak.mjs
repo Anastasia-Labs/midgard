@@ -19,6 +19,7 @@ import {
   sourceIdentity,
   summarizePhase3WorkloadReport,
 } from "./phase3-architecture-g-closure-lib.mjs";
+import { parsePhase1FormalBindingDocument } from "./phase1-formal-identity.mjs";
 import {
   assertPhase3SoakCorpusPreflightCurrent,
   createPhase3SoakCorpusPreflight,
@@ -375,10 +376,6 @@ export const writePhase3SoakSetupFailureReport = ({
     },
     samples,
   };
-  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, {
-    flag: "wx",
-    mode: 0o600,
-  });
   let evaluation;
   try {
     evaluation = evaluatePhase3ArchitectureGSoakReport(report, {
@@ -392,6 +389,10 @@ export const writePhase3SoakSetupFailureReport = ({
       ],
     };
   }
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, {
+    flag: "wx",
+    mode: 0o600,
+  });
   const verification = {
     schemaVersion: "midgard-phase3-soak-setup-failure-verification-v1",
     ...evaluation,
@@ -463,7 +464,10 @@ const run = async () => {
         "verify-phase3-architecture-g-soak-report.mjs",
       ),
     });
-    const phase1Binding = readJson(closureIdentity.phase1.path);
+    const phase1Binding = parsePhase1FormalBindingDocument(
+      readJson(closureIdentity.phase1.path),
+      closureIdentity.phase1.path,
+    );
     corpusShape = String(
       phase1Binding?.stressCorpusEnv?.STRESS_CORPUS_SHAPE ?? "",
     ).trim();
@@ -788,12 +792,12 @@ const run = async () => {
     },
     samples,
   };
+  const verification = evaluatePhase3ArchitectureGSoakReport(report, {
+    allowTestOnlyDuration: timing.testOnly,
+  });
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, {
     flag: "wx",
     mode: 0o600,
-  });
-  const verification = evaluatePhase3ArchitectureGSoakReport(report, {
-    allowTestOnlyDuration: timing.testOnly,
   });
   fs.writeFileSync(
     verificationPath,

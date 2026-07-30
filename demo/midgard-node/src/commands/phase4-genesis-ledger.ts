@@ -65,6 +65,79 @@ export type Phase4GenesisLedgerReport = {
   readonly minimumTransferLovelace: string;
 };
 
+const exactObjectKeys = (
+  value: unknown,
+  expected: readonly string[],
+): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === expected.length &&
+  expected.every((key) => Object.hasOwn(value, key));
+
+const canonicalNatural = (value: unknown): value is string =>
+  typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value);
+
+export const decodePhase4GenesisLedgerReportV1 = (
+  value: unknown,
+): Phase4GenesisLedgerReport => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "satisfied",
+      "mode",
+      "status",
+      "rowCount",
+      "wallets",
+      "supplementalWalletRowCount",
+      "minimumTransferLovelace",
+    ])
+  ) {
+    return fail(
+      "Phase 4 genesis ledger report fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    !exactObjectKeys(value.wallets, ["A", "B"]) ||
+    !exactObjectKeys(value.wallets.A, ["utxoCount", "totalLovelace"]) ||
+    !exactObjectKeys(value.wallets.B, ["utxoCount", "totalLovelace"])
+  ) {
+    return fail(
+      "Phase 4 genesis ledger wallet fields do not match the exact V1 schema",
+    );
+  }
+  const walletA = value.wallets.A;
+  const walletB = value.wallets.B;
+  if (
+    value.schemaVersion !== PHASE4_GENESIS_LEDGER_SCHEMA ||
+    value.satisfied !== true ||
+    (value.mode !== "seed" && value.mode !== "verify") ||
+    (value.status !== "seeded" && value.status !== "already_present") ||
+    (value.mode === "verify" && value.status !== "already_present") ||
+    !Number.isSafeInteger(value.rowCount) ||
+    (value.rowCount as number) <= 0 ||
+    !Number.isSafeInteger(value.supplementalWalletRowCount) ||
+    (value.supplementalWalletRowCount as number) < 0 ||
+    !Number.isSafeInteger(walletA.utxoCount) ||
+    (walletA.utxoCount as number) <= 0 ||
+    !Number.isSafeInteger(walletB.utxoCount) ||
+    (walletB.utxoCount as number) <= 0 ||
+    !canonicalNatural(walletA.totalLovelace) ||
+    walletA.totalLovelace === "0" ||
+    !canonicalNatural(walletB.totalLovelace) ||
+    walletB.totalLovelace === "0" ||
+    value.minimumTransferLovelace !==
+      PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE.toString() ||
+    value.rowCount !==
+      (walletA.utxoCount as number) +
+        (walletB.utxoCount as number) +
+        (value.supplementalWalletRowCount as number)
+  ) {
+    return fail("Phase 4 genesis ledger report contains a noncanonical value");
+  }
+  return value as Phase4GenesisLedgerReport;
+};
+
 const fail = (message: string, cause?: unknown): never => {
   throw new Phase4GenesisLedgerError({ message, cause });
 };
@@ -463,7 +536,7 @@ export const phase4GenesisLedgerProgram = ({
         return disposition === "seed" ? "seeded" : "already_present";
       }),
     );
-    return {
+    const report = {
       schemaVersion: PHASE4_GENESIS_LEDGER_SCHEMA,
       satisfied: true,
       mode,
@@ -474,6 +547,7 @@ export const phase4GenesisLedgerProgram = ({
       minimumTransferLovelace:
         PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE.toString(),
     } satisfies Phase4GenesisLedgerReport;
+    return yield* attempt(() => decodePhase4GenesisLedgerReportV1(report));
   }).pipe(
     sqlErrorToDatabaseError(
       MempoolLedgerDB.tableName,

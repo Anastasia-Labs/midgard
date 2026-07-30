@@ -2,12 +2,15 @@ import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
   computeHash32,
   computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxBodyCompactV1,
   decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardNativeTxWitnessSetCompactV1,
+  deriveMidgardNativeFieldCollectionV1,
   deriveMidgardNativeTxBodyCompactV1,
   deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCanonicalV1,
@@ -23,6 +26,10 @@ import {
   type MidgardNativeTxWitnessSetCanonicalV1,
   verifyMidgardNativeTxFullConsistencyV1,
 } from "@al-ft/midgard-core/codec";
+import {
+  deriveMidgardV1TxFieldPreimages,
+  verifyMidgardV1TxFieldPreimage,
+} from "@al-ft/midgard-core/consensus-validation-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { encode } from "cborg";
 import { describe, expect, it } from "vitest";
@@ -39,12 +46,22 @@ const makePlutusIntegerData = (value: bigint): CML.PlutusData =>
   CML.PlutusData.new_integer(CML.BigInteger.from_str(value.toString(10)));
 
 const mkBody = (): MidgardNativeTxBodyCanonicalV1 => {
-  const spendInputsPreimageCbor = Buffer.from("820102", "hex");
-  const referenceInputsPreimageCbor = Buffer.from("8103", "hex");
-  const outputsPreimageCbor = Buffer.from("83040506", "hex");
+  const spendInputsPreimageCbor = encodeByteList([
+    Buffer.from([1]),
+    Buffer.from([2]),
+  ]);
+  const referenceInputsPreimageCbor = encodeByteList([Buffer.from([3])]);
+  const outputsPreimageCbor = encodeByteList([
+    Buffer.from([4]),
+    Buffer.from([5]),
+    Buffer.from([6]),
+  ]);
   const requiredObserversPreimageCbor = Buffer.from("80", "hex");
-  const requiredSignersPreimageCbor = Buffer.from("820708", "hex");
-  const mintPreimageCbor = Buffer.from("a0", "hex");
+  const requiredSignersPreimageCbor = encodeByteList([
+    Buffer.from([7]),
+    Buffer.from([8]),
+  ]);
+  const mintPreimageCbor = Buffer.from("80", "hex");
 
   return {
     spendInputsPreimageCbor,
@@ -58,13 +75,13 @@ const mkBody = (): MidgardNativeTxBodyCanonicalV1 => {
     mintPreimageCbor,
     scriptIntegrityHash: mkHash("script-integrity"),
     auxiliaryDataHash: mkHash("aux-data"),
-    networkId: 11n,
+    networkId: 1n,
   };
 };
 
 const mkWitnessSet = (): MidgardNativeTxWitnessSetCanonicalV1 => {
-  const addrTxWitsPreimageCbor = Buffer.from("8101", "hex");
-  const scriptTxWitsPreimageCbor = Buffer.from("8102", "hex");
+  const addrTxWitsPreimageCbor = Buffer.from("81420102", "hex");
+  const scriptTxWitsPreimageCbor = Buffer.from("81820340", "hex");
   const redeemerTxWitsPreimageCbor = Buffer.from("8103", "hex");
 
   return {
@@ -107,7 +124,9 @@ describe("midgard native tx codec - strict roundtrip", () => {
       ),
     ).toEqual(witnessCompact);
     expect(
-      decodeMidgardNativeTxCompactV1(encodeMidgardNativeTxCompactV1(full.compact)),
+      decodeMidgardNativeTxCompactV1(
+        encodeMidgardNativeTxCompactV1(full.compact),
+      ),
     ).toEqual(full.compact);
 
     const encodedCanonical = encodeMidgardNativeTxCanonicalV1(full);
@@ -124,9 +143,7 @@ describe("midgard native tx codec - strict roundtrip", () => {
         Buffer.concat([
           Buffer.from("MidgardNativeTxBodyV1", "ascii"),
           Buffer.from([1]),
-          encodeMidgardNativeTxBodyCompactV1(
-            full.compact.transactionBody,
-          ),
+          encodeMidgardNativeTxBodyCompactV1(full.compact.transactionBody),
         ]),
       ),
     );
@@ -146,9 +163,59 @@ describe("midgard native tx codec - strict roundtrip", () => {
 
     expect(() =>
       decodeMidgardNativeTxWitnessSetCompactV1(unsupportedShape),
-    ).toThrow(
-      /exactly 3 elements/i,
+    ).toThrow(/exactly 3 elements/i);
+  });
+
+  it("keeps the witness tuple ABI while projecting scripts to field 6 and vkeys to field 7", () => {
+    const full = mkFull();
+    const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+    const fields = deriveMidgardV1TxFieldPreimages(canonicalCbor);
+    const source =
+      deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
+    const transactionCommitment =
+      computeMidgardNativeTxProofCommitmentV1(source);
+
+    expect(fields[6]).toMatchObject({
+      fieldIndex: 6,
+      fieldName: "script_witnesses",
+      preimageCbor: full.witnessSet.scriptTxWitsPreimageCbor,
+    });
+    expect(fields[7]).toMatchObject({
+      fieldIndex: 7,
+      fieldName: "address_witnesses",
+      preimageCbor: full.witnessSet.addrTxWitsPreimageCbor,
+    });
+
+    const compactWitnessSet = deriveMidgardNativeTxWitnessSetCompactV1(
+      full.witnessSet,
     );
+    const encodedTuple = Buffer.from(
+      encode([
+        Buffer.from(compactWitnessSet.addrTxWitsHash),
+        Buffer.from(compactWitnessSet.scriptTxWitsHash),
+        Buffer.from(compactWitnessSet.redeemerTxWitsHash),
+      ]),
+    );
+    expect(encodeMidgardNativeTxWitnessSetCompactV1(compactWitnessSet)).toEqual(
+      encodedTuple,
+    );
+
+    for (const [fieldIndex, substitutedPreimage] of [
+      [6, fields[7]!.preimageCbor],
+      [7, fields[6]!.preimageCbor],
+    ] as const) {
+      expect(() =>
+        verifyMidgardV1TxFieldPreimage({
+          transactionId: computeMidgardNativeTxIdV1(full),
+          transactionCommitment,
+          source,
+          fieldIndex,
+          preimageCbor: substitutedPreimage,
+        }),
+      ).toThrow(
+        /(preimage (length does not match|hash mismatch)|must be a CBOR byte string)/u,
+      );
+    }
   });
 });
 
@@ -252,7 +319,12 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
 
     expect(decoded.body.mintPreimageCbor).toEqual(emptyList);
     expect(
-      decoded.compact.transactionBody.mintHash.equals(computeHash32(emptyList)),
+      decoded.compact.transactionBody.mintHash.equals(
+        deriveMidgardNativeFieldCollectionV1({
+          fieldIndex: 5,
+          preimageCbor: emptyList,
+        }).commitment,
+      ),
     ).toBe(true);
   });
 
@@ -290,7 +362,10 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     expect(decoded.body.mintPreimageCbor).toEqual(expectedMintPreimage);
     expect(
       decoded.compact.transactionBody.mintHash.equals(
-        computeHash32(expectedMintPreimage),
+        deriveMidgardNativeFieldCollectionV1({
+          fieldIndex: 5,
+          preimageCbor: expectedMintPreimage,
+        }).commitment,
       ),
     ).toBe(true);
   });
@@ -365,11 +440,14 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     );
     const decoded =
       decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeCanonicalCbor);
+    const expectedNativeRedeemers = Buffer.from(
+      encode([[0, 0, Buffer.from([0x40]), [0, 0]]]),
+    );
 
     expect(decoded.body.scriptIntegrityHash).toEqual(scriptDataHash);
     expect(decoded.body.auxiliaryDataHash).toEqual(auxiliaryDataHash);
     expect(decoded.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
-      redeemerBytes,
+      expectedNativeRedeemers,
     );
     expect(decoded.witnessSet.scriptTxWitsPreimageCbor).toEqual(
       encodeMidgardVersionedScriptListPreimage([
@@ -378,6 +456,17 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
           scriptBytes: Buffer.from(plutusScript.to_raw_bytes()),
         },
       ]),
+    );
+    const roundtrip = CML.Transaction.from_cbor_bytes(
+      midgardNativeTxFullToCardanoTxEncoding(decoded),
+    );
+    const nativeRoundtrip = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        Buffer.from(roundtrip.to_cbor_bytes()),
+      ),
+    );
+    expect(nativeRoundtrip.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
+      expectedNativeRedeemers,
     );
   });
 
@@ -456,7 +545,11 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     const tx: MidgardNativeTxFullV1 = {
       ...full,
       witnessSet,
-      compact: deriveMidgardNativeTxCompactV1(full.body, witnessSet, "TxIsValid"),
+      compact: deriveMidgardNativeTxCompactV1(
+        full.body,
+        witnessSet,
+        "TxIsValid",
+      ),
     };
 
     const defaultExport = CML.Transaction.from_cbor_bytes(
@@ -574,7 +667,7 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
       ),
     );
     const redeemerTxWitsPreimageCbor = Buffer.from(
-      encode([[0, 0, Buffer.alloc(0), [0, 0]]]),
+      encode([[0, 0, Buffer.from([0x00]), [0, 0]]]),
     );
     const scriptIntegrityHash = mkHash("script-data-hash");
     const auxiliaryDataHash = mkHash("auxiliary-data-hash");
@@ -618,6 +711,23 @@ describe("midgard native tx codec - cardano compatibility bridge", () => {
     ).toEqual(auxiliaryDataHash);
     expect(redeemers).toBeDefined();
     expect(Buffer.from(redeemers!.to_cbor_bytes())).toEqual(
+      Buffer.from(
+        encode(
+          new Map([
+            [
+              [0, 0],
+              [0, [0, 0]],
+            ],
+          ]),
+        ),
+      ),
+    );
+    const nativeRoundtrip = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        Buffer.from(cardanoTx.to_cbor_bytes()),
+      ),
+    );
+    expect(nativeRoundtrip.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
       redeemerTxWitsPreimageCbor,
     );
     expect(cardanoTx.witness_set().plutus_datums()).toBeUndefined();

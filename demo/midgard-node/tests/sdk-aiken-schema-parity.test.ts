@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,9 +35,7 @@ type NormalizedSchema =
   | {
       readonly constructors: readonly {
         readonly index: number;
-        readonly name?: string;
         readonly fields: readonly {
-          readonly name?: string;
           readonly schema: NormalizedSchema;
         }[];
       }[];
@@ -45,9 +43,10 @@ type NormalizedSchema =
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
-const blueprint = JSON.parse(
-  readFileSync(path.join(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
-) as Blueprint;
+const blueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  path.join(repoRoot, "onchain/aiken/plutus.json");
+const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
 
 const jsonPointerName = (reference: string): string =>
   reference
@@ -55,19 +54,16 @@ const jsonPointerName = (reference: string): string =>
     .replaceAll("~1", "/")
     .replaceAll("~0", "~");
 
-const snakeCase = (value: string): string =>
-  value
-    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
-    .replace(/([A-Z])([A-Z][a-z])/gu, "$1_$2")
-    .toLowerCase();
-
 const normalizeSchema = (
   schema: DataSchema,
   definitions?: Blueprint["definitions"],
   resolving: ReadonlySet<string> = new Set(),
 ): NormalizedSchema => {
   if (schema.$ref !== undefined) {
-    expect(definitions, "a schema reference requires definitions").toBeDefined();
+    expect(
+      definitions,
+      "a schema reference requires definitions",
+    ).toBeDefined();
     const name = jsonPointerName(schema.$ref);
     expect(resolving.has(name), `recursive ABI schema ${name}`).toBe(false);
     const definition = definitions![name];
@@ -80,17 +76,10 @@ const normalizeSchema = (
   }
 
   if (schema.anyOf !== undefined) {
-    const includeNames = schema.anyOf.length > 1;
     return {
       constructors: schema.anyOf.map((constructor) => ({
         index: constructor.index!,
-        ...(includeNames
-          ? { name: constructor.title }
-          : {}),
         fields: (constructor.fields ?? []).map((field) => ({
-          ...(field.title === undefined
-            ? {}
-            : { name: snakeCase(field.title) }),
           schema: normalizeSchema(field, definitions, resolving),
         })),
       })),
@@ -108,13 +97,20 @@ const normalizeSchema = (
     schema.values !== undefined
   ) {
     expect(schema.keys, "map schema must name its key schema").toBeDefined();
-    expect(schema.values, "map schema must name its value schema").toBeDefined();
+    expect(
+      schema.values,
+      "map schema must name its value schema",
+    ).toBeDefined();
     return {
       map: [
         normalizeSchema(schema.keys!, definitions, resolving),
         normalizeSchema(schema.values!, definitions, resolving),
       ],
     };
+  }
+
+  if (schema.dataType === undefined) {
+    return { type: "data" };
   }
 
   expect(schema.dataType, "unclassified ABI schema").toBeDefined();
@@ -131,11 +127,22 @@ const ABI_MAPPINGS = [
   ["ForcedInclusionTxV1Schema", "midgard/ledger_state/ForcedInclusionTxV1"],
   ["L2TransactionSourceV1Schema", "midgard/ledger_state/L2TransactionSourceV1"],
   ["NativeTxProofSourceV1Schema", "midgard/ledger_state/NativeTxProofSourceV1"],
+  ["TxOrderPayloadV1Schema", "midgard/ledger_state/TxOrderPayloadV1"],
+  ["TxOrderEventV1Schema", "midgard/ledger_state/TxOrderEventV1"],
   ["TxFieldPreimageV1Schema", "midgard/ledger_state/TxFieldPreimageV1"],
   ["TxFieldReceiptV1Schema", "midgard/ledger_state/TxFieldReceiptV1"],
   [
     "CekProgramMaterialDatumV1Schema",
     "midgard/ledger_state/CekProgramMaterialDatumV1",
+  ],
+  ["TxOrderDatumV1Schema", "midgard/user_events/tx_order_v1/Datum"],
+  [
+    "TxOrderSpendRedeemerV1Schema",
+    "midgard/user_events/tx_order_v1/SpendRedeemer",
+  ],
+  [
+    "TxFieldReceiptMintRedeemerV1Schema",
+    "midgard/user_events/tx_field_receipt_v1/MintRedeemer",
   ],
   [
     "ValidationMachineStateV1Schema",
@@ -171,13 +178,41 @@ const VALIDITY_VECTORS = [
   ["FailedScript", 3n, "d87c80"],
   ["FeeTooLow", 4n, "d87d80"],
   ["UnbalancedTx", 5n, "d87e80"],
-] as const satisfies readonly [
-  NativeMidgardTxValidity,
-  bigint,
-  string,
-][];
+] as const satisfies readonly [NativeMidgardTxValidity, bigint, string][];
 
 describe("SDK/Aiken canonical V1 schema parity", () => {
+  it("has no retired transaction-order validator, export, or parser", () => {
+    const retiredName =
+      /(?:TxOrder(?:Datum|Event|Payload)|ForcedInclusionTx)V(?:2|3)/u;
+    expect(Object.keys(SDK).filter((name) => retiredName.test(name))).toEqual(
+      [],
+    );
+
+    const productionSources = [
+      "demo/midgard-sdk/src/user-events/tx-order.ts",
+      "demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts",
+      "onchain/aiken/lib/midgard/user-events/tx-order-v1.ak",
+      "onchain/aiken/validators/user-events/tx-order-v1.ak",
+    ];
+    for (const relativePath of productionSources) {
+      expect(
+        readFileSync(path.join(repoRoot, relativePath), "utf8"),
+        relativePath,
+      ).not.toMatch(retiredName);
+    }
+
+    for (const relativePath of [
+      "onchain/aiken/lib/midgard/user-events/tx-order-v2.ak",
+      "onchain/aiken/lib/midgard/user-events/tx-order-v3.ak",
+      "onchain/aiken/validators/user-events/tx-order-v2.ak",
+      "onchain/aiken/validators/user-events/tx-order-v3.ak",
+    ]) {
+      expect(existsSync(path.join(repoRoot, relativePath)), relativePath).toBe(
+        false,
+      );
+    }
+  });
+
   it.each(ABI_MAPPINGS)(
     "matches %s to %s recursively",
     (typescriptSchemaName, aikenDefinitionName) => {
@@ -210,12 +245,10 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
       expect(MidgardTxValidityCodes[name]).toBe(code);
       expect(encodeValidityCode(name)).toBe(code);
       expect(decodeValidityCode(code, "validity")).toBe(name);
-      expect(
-        Data.to(name as never, SDK.MidgardTxValiditySchema as never),
-      ).toBe(plutusDataCbor);
-      expect(
-        Data.from(plutusDataCbor, SDK.MidgardTxValiditySchema),
-      ).toBe(name);
+      expect(Data.to(name as never, SDK.MidgardTxValiditySchema as never)).toBe(
+        plutusDataCbor,
+      );
+      expect(Data.from(plutusDataCbor, SDK.MidgardTxValiditySchema)).toBe(name);
     },
   );
 
@@ -223,8 +256,6 @@ describe("SDK/Aiken canonical V1 schema parity", () => {
     expect(() => decodeValidityCode(6n, "validity")).toThrow(
       /Unsupported Midgard tx validity code/u,
     );
-    expect(() =>
-      Data.from("d87f80", SDK.MidgardTxValiditySchema),
-    ).toThrow();
+    expect(() => Data.from("d87f80", SDK.MidgardTxValiditySchema)).toThrow();
   });
 });

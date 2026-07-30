@@ -5,7 +5,6 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
@@ -1640,6 +1639,15 @@ const databaseOperationsProgram = (
         : output;
     const nodeConfig = yield* NodeConfig;
     const deploymentIdentity = yield* ContractDeploymentIdentity;
+    if (deploymentIdentity.deploymentMarker === undefined) {
+      return yield* Effect.fail(
+        new CommitWorkerInvariantError({
+          message:
+            "V1 commit production requires a verified final deployment marker",
+        }),
+      );
+    }
+    const deploymentMarker = deploymentIdentity.deploymentMarker;
     yield* configureCommitMpfRuntime(nodeConfig);
     if (
       nodeConfig.MPF_ENGINE === "architecture_g" &&
@@ -2034,11 +2042,7 @@ const databaseOperationsProgram = (
     }
     const mpfProcessingStartedAtMs = Date.now();
     mpfProcessingPasses += 1;
-    const proofValidationLucid = isMidgardConsensusProfileV1(
-      deploymentIdentity.consensusProfile,
-    )
-      ? (yield* acquireCommitLucidOnce).api
-      : undefined;
+    const proofValidationLucid = (yield* acquireCommitLucidOnce).api;
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -2065,17 +2069,14 @@ const databaseOperationsProgram = (
           : undefined,
         initialLedgerEntries,
         consensusProfile: deploymentIdentity.consensusProfile,
-        forcedValidation:
-          proofValidationLucid === undefined
-            ? undefined
-            : {
-                expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-                minFeeA: nodeConfig.MIN_FEE_A,
-                minFeeB: nodeConfig.MIN_FEE_B,
-                bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-                slotForUnixTime: (unixTimeMs) =>
-                  BigInt(proofValidationLucid.unixTimeToSlot(unixTimeMs)),
-              },
+        forcedValidation: {
+          expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+          minFeeA: nodeConfig.MIN_FEE_A,
+          minFeeB: nodeConfig.MIN_FEE_B,
+          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+          slotForUnixTime: (unixTimeMs) =>
+            BigInt(proofValidationLucid.unixTimeToSlot(unixTimeMs)),
+        },
         selectedBaseUtxoRoot: commitBase.root,
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
@@ -2403,9 +2404,7 @@ const databaseOperationsProgram = (
         );
       if (submitSchedulerWindow !== undefined) {
         const confirmedEndTimeMs = Number(
-          (yield* getLatestBlockDatumEndTime(
-            confirmedBlock.datum,
-          )).getTime(),
+          (yield* getLatestBlockDatumEndTime(confirmedBlock.datum)).getTime(),
         );
         const submitFit = resolveCommitEndTimeFit({
           lucid: speculativeLucid.api,
@@ -2513,6 +2512,7 @@ const databaseOperationsProgram = (
         const output = yield* submitDepositOnlyCommit({
           contracts: submissionContracts,
           consensusProfile: deploymentIdentity.consensusProfile,
+          deploymentMarker,
           latestBlock,
           endTime: effectiveUserEventOnlyEndTime,
           includedDepositEntries,
@@ -2555,6 +2555,7 @@ const databaseOperationsProgram = (
         const output = yield* submitTxBackedCommit({
           contracts: submissionContracts,
           consensusProfile: deploymentIdentity.consensusProfile,
+          deploymentMarker,
           latestBlock,
           endTime,
           includedDepositEntries,

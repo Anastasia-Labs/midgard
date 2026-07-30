@@ -7,6 +7,7 @@ import {
 import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 
+import { parseOpenLoopCorpusLine } from "@/commands/stress-open-loop.js";
 import {
   encodeTransactionRootValue,
   type MpfInsertBatchOp,
@@ -39,38 +40,20 @@ export const decodeCanonicalProbeRow = (
   value: Record<string, unknown>,
   index: number,
 ): CanonicalProbeRow => {
-  const txHash = String(value.txHash ?? "").toLowerCase();
-  const canonicalCborHex = String(value.canonicalCborHex ?? "").toLowerCase();
-  const canonicalCborSha256 = String(
-    value.canonicalCborSha256 ?? "",
-  ).toLowerCase();
+  const exact = parseOpenLoopCorpusLine(JSON.stringify(value), index + 1);
+  const txHash = exact.txHash;
+  const canonicalCborHex = exact.canonicalCborHex;
+  const canonicalCborSha256 = exact.canonicalCborSha256;
   const cbor = Buffer.from(canonicalCborHex, "hex");
-  if (!/^[0-9a-f]{64}$/u.test(txHash)) {
-    throw new Error(
-      `Canonical corpus slice row ${(index + 1).toString()} has an invalid txHash`,
-    );
-  }
   if (
-    canonicalCborHex.length === 0 ||
-    canonicalCborHex.length % 2 !== 0 ||
-    cbor.toString("hex") !== canonicalCborHex
-  ) {
-    throw new Error(
-      `Canonical corpus slice row ${(index + 1).toString()} has invalid canonical CBOR`,
-    );
-  }
-  if (
-    !/^[0-9a-f]{64}$/u.test(canonicalCborSha256) ||
     createHash("sha256").update(cbor).digest("hex") !== canonicalCborSha256 ||
-    value.canonicalCborByteLength !== cbor.length
+    exact.canonicalCborByteLength !== cbor.length
   ) {
     throw new Error(
       `Canonical corpus slice row ${(index + 1).toString()} failed CBOR SHA/length verification`,
     );
   }
-  const selectedInputOutref = String(
-    value.selectedInputOutref ?? "",
-  ).toLowerCase();
+  const selectedInputOutref = exact.selectedInputOutref;
   const selectedInput = canonicalOutrefCborFromLabel(selectedInputOutref);
   const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(cbor);
   const spendInputs = decodeMidgardNativeByteListPreimage(
@@ -89,9 +72,7 @@ export const decodeCanonicalProbeRow = (
     native.body.outputsPreimageCbor,
     "native.outputs",
   ).map((output) => Buffer.from(output));
-  const outputOutrefs = Array.isArray(value.outputOutrefs)
-    ? value.outputOutrefs.map((outref) => String(outref).toLowerCase())
-    : [];
+  const outputOutrefs = exact.outputOutrefs;
   const expectedOutputOutrefs = outputs.map(
     (_output, outputIndex) => `${txHash}#${outputIndex.toString()}`,
   );
@@ -105,10 +86,7 @@ export const decodeCanonicalProbeRow = (
       `Canonical corpus slice row ${(index + 1).toString()} output outrefs do not match decoded canonical outputs`,
     );
   }
-  const parentTxHash =
-    value.parentTxHash === null
-      ? null
-      : String(value.parentTxHash ?? "").toLowerCase();
+  const parentTxHash = exact.parentTxHash;
   return {
     txHash,
     cbor,

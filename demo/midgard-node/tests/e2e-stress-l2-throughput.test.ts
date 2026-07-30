@@ -1,13 +1,28 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
+import {
+  computeMidgardNativeTxIdV1,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardTxOutput,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec";
 import { walletFromSeed } from "@lucid-evolution/lucid";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { NodeUtxo } from "@/commands/command-utils.js";
 import {
-  E2E_L2_STRESS_SCHEMA_VERSION,
+  E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
+  E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
   parseE2EL2StressConfig,
+  parseE2EL2StressConfigArtifactV1,
+  parseE2EL2StressSummaryV1,
   runE2EL2StressThroughput,
   type StressSubmitTransfer,
 } from "@/commands/e2e-stress-l2-throughput.js";
@@ -49,16 +64,51 @@ const responseJson = (body: unknown, status = 200): Response =>
 const sha256Hex = (bytes: Buffer): string =>
   createHash("sha256").update(bytes).digest("hex");
 
+const jsonClone = <Value>(value: Value): Value =>
+  JSON.parse(JSON.stringify(value)) as Value;
+
 const corpusRow = (index: number): OpenLoopCorpusRow => {
-  const canonicalCbor = Buffer.from(`tx-${index.toString()}`);
+  const nativeTransaction = materializeMidgardNativeTxFromCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: encodeCbor([
+        encodeMidgardTxOutput({
+          address: Buffer.concat([
+            Buffer.from([0x60]),
+            Buffer.alloc(28, index + 1),
+          ]),
+          value: { lovelace: 2_000_000n, assets: new Map() },
+        }),
+      ]),
+      fee: BigInt(index),
+      validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+      validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  });
+  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(nativeTransaction);
+  const txHash = computeMidgardNativeTxIdV1(nativeTransaction).toString("hex");
   return {
-    txHash: txHashForIndex(index + 100),
+    txHash,
     canonicalCborHex: canonicalCbor.toString("hex"),
     canonicalCborSha256: sha256Hex(canonicalCbor),
     canonicalCborByteLength: canonicalCbor.length,
     senderWalletId: `wallet-${index.toString()}`,
     selectedInputOutref: `${txHashForIndex(index + 200)}#0`,
-    outputOutrefs: [`${txHashForIndex(index + 300)}#0`],
+    outputOutrefs: [`${txHash}#0`],
     planShape: "fanout",
     parentTxHash: null,
     corpusSliceId: "slice-a",
@@ -78,11 +128,11 @@ const writeCorpus = async (
   return path;
 };
 
-const makeClock = () => {
+const makeClock = (stepMs = 1_000) => {
   let time = Date.parse("2026-01-01T00:00:00.000Z");
   return {
     now: () => {
-      time += 1_000;
+      time += stepMs;
       return new Date(time);
     },
     sleep: async (ms: number) => {
@@ -255,7 +305,9 @@ describe("e2e-stress-l2-throughput runner", () => {
       sleep: clock.sleep,
     });
 
-    expect(result.summary.schemaVersion).toBe(E2E_L2_STRESS_SCHEMA_VERSION);
+    expect(result.summary.schemaVersion).toBe(
+      E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
+    );
     expect(result.summary.loadModel).toBe("closed-loop-smoke");
     expect(result.summary.workloadProfile).toBe("production-end-user");
     expect(result.summary.classification).toBe("closed_loop_smoke");
@@ -297,6 +349,30 @@ describe("e2e-stress-l2-throughput runner", () => {
       submitTransfer.mock.calls[0]?.[0].config.submitRequestTimeoutMs,
     ).toBe(300_000);
     const configJson = await readFile(result.configJsonPath, "utf8");
+    const parsedConfig = JSON.parse(configJson) as Record<string, unknown>;
+    expect(parsedConfig.schemaVersion).toBe(
+      E2E_L2_STRESS_CONFIG_SCHEMA_VERSION,
+    );
+    expect(parseE2EL2StressConfigArtifactV1(parsedConfig)).toEqual(
+      parsedConfig,
+    );
+    const missingConfig = { ...parsedConfig };
+    delete missingConfig.runId;
+    expect(() => parseE2EL2StressConfigArtifactV1(missingConfig)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseE2EL2StressConfigArtifactV1({
+        ...parsedConfig,
+        unexpected: true,
+      }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseE2EL2StressConfigArtifactV1({
+        ...parsedConfig,
+        schemaVersion: "wrong-config-version",
+      }),
+    ).toThrow(E2E_L2_STRESS_CONFIG_SCHEMA_VERSION);
     expect(configJson).not.toContain(TEST_SEED);
     expect(configJson).toContain('"advanceOn": "accepted"');
     expect(configJson).not.toContain("commitTimeoutMs");
@@ -305,6 +381,80 @@ describe("e2e-stress-l2-throughput runner", () => {
     );
     const summaryJson = await readFile(result.summaryJsonPath, "utf8");
     const parsedSummary = JSON.parse(summaryJson) as Record<string, unknown>;
+    expect(parsedSummary.schemaVersion).toBe(
+      E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
+    );
+    expect(parseE2EL2StressSummaryV1(parsedSummary)).toEqual(parsedSummary);
+    const missingSummary = { ...parsedSummary };
+    delete missingSummary.runId;
+    expect(() => parseE2EL2StressSummaryV1(missingSummary)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseE2EL2StressSummaryV1({
+        ...parsedSummary,
+        unexpected: true,
+      }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseE2EL2StressSummaryV1({
+        ...parsedSummary,
+        schemaVersion: "wrong-summary-version",
+      }),
+    ).toThrow(E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION);
+    const contradictoryCount = jsonClone(parsedSummary);
+    contradictoryCount.submittedCount = 1;
+    expect(() => parseE2EL2StressSummaryV1(contradictoryCount)).toThrow(
+      "counts",
+    );
+    const contradictoryDuration = jsonClone(parsedSummary);
+    contradictoryDuration.durationMs = 1;
+    expect(() => parseE2EL2StressSummaryV1(contradictoryDuration)).toThrow(
+      "chronology",
+    );
+    const contradictoryPolicy = jsonClone(parsedSummary);
+    const policy = contradictoryPolicy.measurementPolicy as Record<
+      string,
+      unknown
+    >;
+    policy.advanceOn = "scheduled_submit";
+    expect(() => parseE2EL2StressSummaryV1(contradictoryPolicy)).toThrow(
+      "policy",
+    );
+    const contradictoryTransaction = jsonClone(parsedSummary);
+    const transactions = contradictoryTransaction.transactions as Record<
+      string,
+      unknown
+    >[];
+    const firstTransaction = transactions[0]!;
+    const submission = firstTransaction.submission as Record<string, unknown>;
+    submission.submittedAt = null;
+    expect(() => parseE2EL2StressSummaryV1(contradictoryTransaction)).toThrow(
+      "transactions[0]",
+    );
+    const duplicateTransactionIdentity = jsonClone(parsedSummary);
+    const duplicateTransactions =
+      duplicateTransactionIdentity.transactions as Record<string, unknown>[];
+    duplicateTransactions[1]!.txHash = duplicateTransactions[0]!.txHash;
+    expect(() =>
+      parseE2EL2StressSummaryV1(duplicateTransactionIdentity),
+    ).toThrow("identities");
+    const contradictoryMetric = jsonClone(parsedSummary);
+    const metrics = contradictoryMetric.metrics as Record<string, unknown>;
+    const clientSubmission = metrics.clientSubmission as Record<
+      string,
+      unknown
+    >;
+    clientSubmission.perSecond = 999;
+    expect(() => parseE2EL2StressSummaryV1(contradictoryMetric)).toThrow(
+      "rate",
+    );
+    const missingInterruptionReason = jsonClone(parsedSummary);
+    missingInterruptionReason.status = "interrupted";
+    expect(() => parseE2EL2StressSummaryV1(missingInterruptionReason)).toThrow(
+      "status",
+    );
+    expect(() => parseE2EL2StressSummaryV1(parsedConfig)).toThrow();
     expect(summaryJson).toContain('"observedCommittedCount": 2');
     expect(parsedSummary).toHaveProperty("metrics");
     expect(parsedSummary).not.toHaveProperty("throughput");
@@ -1012,6 +1162,7 @@ describe("e2e-stress-l2-throughput runner", () => {
 
   it("runs open-loop upper-bound from a corpus without wallet or tx-status work", async () => {
     const outDir = await makeTempDir();
+    const clock = makeClock(1);
     const rows = [corpusRow(1), corpusRow(2)];
     const corpusPath = await writeCorpus(outDir, rows);
     const config = parseE2EL2StressConfig({
@@ -1027,6 +1178,7 @@ describe("e2e-stress-l2-throughput runner", () => {
       throw new Error("open-loop must not call submit-l2-transfer");
     });
     const observedSamples: unknown[] = [];
+    let submittedAtValues: number[] = [];
 
     const result = await runE2EL2StressThroughput(config, {
       submitTransfer,
@@ -1034,14 +1186,15 @@ describe("e2e-stress-l2-throughput runner", () => {
         throw new Error("open-loop must not fetch /utxos");
       },
       runCanonicalEngine: async ({ paths }) => {
+        submittedAtValues = rows.map(() => clock.now().getTime());
         await writeFile(
           paths.submitRecordsNdjson,
           rows
             .map((row, index) =>
               JSON.stringify({
                 txHash: row.txHash,
-                scheduledAtMs: Date.parse("2026-01-01T00:00:00.000Z") + index,
-                submittedAtMs: Date.parse("2026-01-01T00:00:00.000Z") + index,
+                scheduledAtMs: submittedAtValues[index],
+                submittedAtMs: submittedAtValues[index],
                 scheduleSlipMs: 0,
                 latencyMs: 1,
                 statusCode: 202,
@@ -1093,14 +1246,17 @@ describe("e2e-stress-l2-throughput runner", () => {
         l2Admissions: txHashes.map((txHash, index) => ({
           txHash,
           status: "accepted",
-          firstSeenAt: `2026-01-01T00:00:0${index.toString()}.000Z`,
-          validationStartedAt: `2026-01-01T00:00:0${index.toString()}.500Z`,
-          terminalAt: `2026-01-01T00:00:0${(index + 1).toString()}.000Z`,
+          firstSeenAt: new Date(submittedAtValues[index]!).toISOString(),
+          validationStartedAt: new Date(
+            submittedAtValues[index]! + 1,
+          ).toISOString(),
+          terminalAt: new Date(submittedAtValues[index]! + 2).toISOString(),
         })),
         l1Commits: [],
         immutableObservations: [],
         residue: [],
       }),
+      now: clock.now,
       sleep: async () => undefined,
     });
 

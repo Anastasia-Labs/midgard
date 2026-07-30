@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,
@@ -17,12 +18,16 @@ import {
   resolveReferenceScriptAuthPolicyProgram,
 } from "@/commands/deployment-run-state.js";
 import {
+  bindDeploymentRunStateToMarkerV1,
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
   DEPLOYMENT_RUN_STATE_SCHEMA_VERSION,
   loadDeploymentRunState,
   mutateDeploymentRunState,
+  parseDeploymentRunEventV1,
+  parseDeploymentRunIdentityV1,
   parseDeploymentRunState,
+  parseDeploymentStepStateV1,
   RunStateError,
   sha256File,
   transitionDeploymentStep,
@@ -66,11 +71,95 @@ describe("deployment run state", () => {
 
   it("rejects corrupt or unsupported state", () => {
     expect(() => parseDeploymentRunState({})).toThrow(RunStateError);
+    const state = createDeploymentRunState({
+      mode: "fresh",
+      runId: "wrong-version",
+      now: new Date("2026-01-01T00:00:00.000Z"),
+    });
     expect(() =>
       parseDeploymentRunState({
+        ...state,
         schemaVersion: "old",
       }),
     ).toThrow("Unsupported run-state schemaVersion");
+  });
+
+  it("rejects missing and extra fields at every run-state boundary", () => {
+    const state = transitionDeploymentStep(
+      createDeploymentRunState({
+        mode: "fresh",
+        runId: "run-exact",
+        now: new Date("2026-01-01T00:00:00.000Z"),
+        identity: { network: "Preprod" },
+      }),
+      "init",
+      "complete",
+      {},
+      new Date("2026-01-01T00:00:01.000Z"),
+    );
+    expect(parseDeploymentRunState(state)).toEqual(state);
+    const { runId: _runId, ...missingRunId } = state;
+    expect(() => parseDeploymentRunState(missingRunId)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseDeploymentRunState({ ...state, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseDeploymentRunState({ ...state, schemaVersion: "run-state-v0" }),
+    ).toThrow("Unsupported run-state schemaVersion");
+    expect(() =>
+      parseDeploymentRunState({
+        ...state,
+        updatedAt: "2026-01-01T00:00:00Z",
+      }),
+    ).toThrow("canonical ISO timestamp");
+    expect(() =>
+      parseDeploymentRunState({
+        ...state,
+        updatedAt: "2026-01-01T00:00:02.000Z",
+      }),
+    ).toThrow("creation event are inconsistent");
+    expect(() =>
+      parseDeploymentRunState({
+        ...state,
+        steps: {
+          ...state.steps,
+          init: { ...state.steps.init, status: "failed" },
+        },
+      }),
+    ).toThrow("not bound to its latest transition event");
+    expect(() =>
+      parseDeploymentRunState({
+        ...state,
+        events: [
+          state.events[0],
+          { ...state.events[1], kind: "legacy_transition" },
+        ],
+      }),
+    ).toThrow("must be created or step_transition");
+
+    expect(() =>
+      parseDeploymentRunIdentityV1({
+        ...state.identity,
+        unexpected: true,
+      }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseDeploymentRunIdentityV1({
+        hubOracleOneShot: { txHash: "AA".repeat(32), outputIndex: 0 },
+      }),
+    ).toThrow("lowercase hexadecimal");
+    const step = state.steps.init!;
+    expect(parseDeploymentStepStateV1(step)).toEqual(step);
+    expect(() =>
+      parseDeploymentStepStateV1({ ...step, unexpected: true }),
+    ).toThrow("unknown field");
+    const event = state.events[0]!;
+    expect(parseDeploymentRunEventV1(event)).toEqual(event);
+    expect(() =>
+      parseDeploymentRunEventV1({ ...event, unexpected: true }),
+    ).toThrow("unknown field");
   });
 
   it("transitions steps without dropping prior evidence", () => {
@@ -117,6 +206,43 @@ describe("deployment run state", () => {
       "step_transition",
       "step_transition",
     ]);
+  });
+
+  it("binds the run state exactly once to the final deployment marker", () => {
+    const initial = createDeploymentRunState({
+      mode: "fresh",
+      runId: "run-marker",
+      now: new Date("2026-01-01T00:00:00.000Z"),
+      identity: { network: "Preprod" },
+    });
+    const marker = makeDeploymentMarkerV1("ab".repeat(32));
+    const bound = bindDeploymentRunStateToMarkerV1(initial, {
+      marker,
+      manifestPath: "/deployment/contract-deployment-info.json",
+      manifestSha256: "cd".repeat(32),
+      now: new Date("2026-01-01T00:00:01.000Z"),
+    });
+    expect(parseDeploymentRunState(bound).identity).toMatchObject({
+      deploymentMarker: marker,
+      manifestSha256: "cd".repeat(32),
+    });
+    expect(() =>
+      bindDeploymentRunStateToMarkerV1(bound, {
+        marker: makeDeploymentMarkerV1("ef".repeat(32)),
+        manifestPath: "/deployment/contract-deployment-info.json",
+        manifestSha256: "01".repeat(32),
+        now: new Date("2026-01-01T00:00:02.000Z"),
+      }),
+    ).toThrow("Deployment run state marker mismatch");
+    expect(() =>
+      parseDeploymentRunIdentityV1({
+        deploymentMarker: {
+          schemaVersion: "midgard-deployment-marker-v1",
+          manifestId: "ab".repeat(32),
+          legacyFingerprint: "ab".repeat(32),
+        },
+      }),
+    ).toThrow("must contain exactly schemaVersion and manifestId");
   });
 
   it("writes and reads state atomically", async () => {

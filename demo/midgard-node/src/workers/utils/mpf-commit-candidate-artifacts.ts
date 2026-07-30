@@ -187,6 +187,20 @@ const architectureGFixtureDiagnosticKeys = [
   "flushMs",
 ] as const;
 
+const architectureGOwnerDiagnosticKeys = [
+  "ownerEpoch",
+  "durableRoot",
+  "residentNodes",
+  "residentEdges",
+  "residentBytes",
+  "activeGenerations",
+  "generatedNodes",
+  "generatedBytes",
+  "rssBytes",
+  "peakRssBytes",
+  "childRestarts",
+] as const;
+
 const exactRecord = (
   value: unknown,
   keys: readonly string[],
@@ -212,7 +226,8 @@ const nonEmptyString = (
   if (
     typeof value !== "string" ||
     value.trim().length === 0 ||
-    value.length > maxLength
+    value.length > maxLength ||
+    value.includes("\0")
   ) {
     throw new Error(`${label} must be a bounded nonempty string`);
   }
@@ -274,6 +289,36 @@ const canonicalTimestamp = (value: unknown, label: string): string => {
     throw new Error(`${label} must be a canonical UTC timestamp`);
   }
   return value;
+};
+
+const sameJson = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const decodeArchitectureGOwnerDiagnostics = (
+  value: unknown,
+  label: string,
+): JsonRecord => {
+  const owner = exactRecord(value, architectureGOwnerDiagnosticKeys, label);
+  const ownerEpoch = exactRecord(
+    owner.ownerEpoch,
+    ["type", "data"],
+    `${label}.ownerEpoch`,
+  );
+  if (
+    ownerEpoch.type !== "Buffer" ||
+    !Array.isArray(ownerEpoch.data) ||
+    ownerEpoch.data.length !== 16 ||
+    !ownerEpoch.data.every(
+      (byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255,
+    )
+  ) {
+    throw new Error(`${label}.ownerEpoch is invalid`);
+  }
+  hash(owner.durableRoot, `${label}.durableRoot`);
+  for (const field of architectureGOwnerDiagnosticKeys.slice(2)) {
+    nonNegativeSafeInteger(owner[field], `${label}.${field}`);
+  }
+  return owner;
 };
 
 const decodePhase1FormalBindingIdentity = (
@@ -597,7 +642,7 @@ export const decodeArchitectureGFixtureCreationV1 = ({
     readonly entryCount: number;
     readonly encodedTupleBytes: number;
   };
-  readonly expectedFundingMapSha256: string;
+  readonly expectedFundingMapSha256: string | null;
 }): ArchitectureGFixtureCreationV1 => {
   const artifact = exactRecord(
     value,
@@ -665,24 +710,41 @@ export const decodeArchitectureGFixtureCreationV1 = ({
     "expectedAggregate.encodedTupleBytes",
   );
   positiveFiniteNumber(artifact.durationMs, "fixtureCreation.durationMs");
-  const fundingMapSha256 = hash(
-    expectedFundingMapSha256,
-    "expectedFundingMapSha256",
-  );
-  const canonicalFunding = exactRecord(
-    artifact.canonicalFunding,
-    ["path", "sha256", "entryCount"],
-    "Architecture G fixture canonical-funding identity",
-  );
-  absolutePath(canonicalFunding.path, "fixtureCreation.canonicalFunding.path");
-  const canonicalFundingSha256 = hash(
-    canonicalFunding.sha256,
-    "fixtureCreation.canonicalFunding.sha256",
-  );
-  positiveSafeInteger(
-    canonicalFunding.entryCount,
-    "fixtureCreation.canonicalFunding.entryCount",
-  );
+  let canonicalFundingSha256: string | null = null;
+  if (expectedFundingMapSha256 === null) {
+    if (artifact.canonicalFunding !== null) {
+      throw new Error(
+        "Architecture G fixture creation unexpectedly claims canonical funding",
+      );
+    }
+  } else {
+    const fundingMapSha256 = hash(
+      expectedFundingMapSha256,
+      "expectedFundingMapSha256",
+    );
+    const canonicalFunding = exactRecord(
+      artifact.canonicalFunding,
+      ["path", "sha256", "entryCount"],
+      "Architecture G fixture canonical-funding identity",
+    );
+    absolutePath(
+      canonicalFunding.path,
+      "fixtureCreation.canonicalFunding.path",
+    );
+    canonicalFundingSha256 = hash(
+      canonicalFunding.sha256,
+      "fixtureCreation.canonicalFunding.sha256",
+    );
+    positiveSafeInteger(
+      canonicalFunding.entryCount,
+      "fixtureCreation.canonicalFunding.entryCount",
+    );
+    if (canonicalFundingSha256 !== fundingMapSha256) {
+      throw new Error(
+        "Architecture G fixture creation canonical funding SHA-256 drifted",
+      );
+    }
+  }
   if (
     artifact.fixtureCreated !== true ||
     fixturePath !== expectedPath ||
@@ -690,8 +752,7 @@ export const decodeArchitectureGFixtureCreationV1 = ({
     initialUtxoCount !== expectedCount ||
     aggregateEntryCount !== expectedCount ||
     aggregateEntryCount !== expectedAggregateEntryCount ||
-    aggregateEncodedTupleBytes !== expectedAggregateEncodedTupleBytes ||
-    canonicalFundingSha256 !== fundingMapSha256
+    aggregateEncodedTupleBytes !== expectedAggregateEncodedTupleBytes
   ) {
     throw new Error(
       "Architecture G fixture creation does not bind the candidate path, root, cardinality, payload aggregate, and canonical funding",
@@ -704,10 +765,15 @@ export const decodeArchitectureGCorpusFundingV1 = ({
   value,
   expectedCorpusSha256,
   expectedSliceSha256,
+  expectedFundingRoots,
 }: {
   readonly value: unknown;
   readonly expectedCorpusSha256: string;
   readonly expectedSliceSha256: string;
+  readonly expectedFundingRoots?: readonly {
+    readonly walletId: string;
+    readonly outref: string;
+  }[];
 }): ArchitectureGCorpusFundingV1 => {
   hash(expectedCorpusSha256, "expectedCorpusSha256");
   hash(expectedSliceSha256, "expectedSliceSha256");
@@ -727,6 +793,8 @@ export const decodeArchitectureGCorpusFundingV1 = ({
   }
   const walletIds = new Set<string>();
   const outrefs = new Set<string>();
+  const identities: { readonly walletId: string; readonly outref: string }[] =
+    [];
   for (const [index, value] of funding.entries.entries()) {
     const entry = exactRecord(
       value,
@@ -762,8 +830,507 @@ export const decodeArchitectureGCorpusFundingV1 = ({
     }
     walletIds.add(walletId);
     outrefs.add(outref);
+    identities.push({ walletId, outref });
+  }
+  if (expectedFundingRoots !== undefined) {
+    if (
+      !Array.isArray(expectedFundingRoots) ||
+      expectedFundingRoots.length === 0 ||
+      !sameJson(identities, expectedFundingRoots)
+    ) {
+      throw new Error(
+        "Architecture G corpus funding entries do not match the selected corpus roots",
+      );
+    }
+    for (const [index, value] of expectedFundingRoots.entries()) {
+      const expected = exactRecord(
+        value,
+        ["walletId", "outref"],
+        `Expected Architecture G funding root ${index.toString()}`,
+      );
+      nonEmptyString(
+        expected.walletId,
+        `expectedFundingRoots[${index.toString()}].walletId`,
+      );
+      if (
+        typeof expected.outref !== "string" ||
+        !/^[0-9a-f]{64}#(?:0|[1-9]\d*)$/u.test(expected.outref)
+      ) {
+        throw new Error(
+          `expectedFundingRoots[${index.toString()}].outref is invalid`,
+        );
+      }
+    }
   }
   return funding as ArchitectureGCorpusFundingV1;
+};
+
+export const validateArchitectureGCommitCandidateProbeResultV1 = ({
+  value,
+  expectedInput,
+  expectedInputPath,
+  expectedInputSha256,
+  expectedProbePath,
+  expectedProbeSha256,
+  expectedCpuAffinity,
+}: {
+  readonly value: unknown;
+  readonly expectedInput: ArchitectureGCommitCandidateInputV1;
+  readonly expectedInputPath: string;
+  readonly expectedInputSha256: string;
+  readonly expectedProbePath: string;
+  readonly expectedProbeSha256: string;
+  readonly expectedCpuAffinity: string;
+}): JsonRecord => {
+  const input = decodeArchitectureGCommitCandidateInputV1(expectedInput);
+  const result = exactRecord(
+    JSON.parse(JSON.stringify(value)) as unknown,
+    [
+      "schemaVersion",
+      "probePath",
+      "probeSha256",
+      "inputPath",
+      "inputSha256",
+      "expectedTransactionCount",
+      "corpusSha256",
+      "corpusSliceSha256",
+      "fundingMapSha256",
+      "fixtureCreationSha256",
+      "fixtureInitialUtxoCount",
+      "baseUtxoPayloadAggregate",
+      "binarySha256",
+      "cpuAffinity",
+      "durationMs",
+      "confirmedLedgerFullScans",
+      "journalRowsBefore",
+      "journalRowsAfter",
+      "candidateConfig",
+      "providerBoundaryAttempts",
+      "submissionAttempts",
+      "candidate",
+      "ownerBefore",
+      "ownerAfter",
+    ],
+    "Architecture G commit-candidate probe result",
+  );
+  const aggregate = exactRecord(
+    result.baseUtxoPayloadAggregate,
+    ["entryCount", "encodedTupleBytes"],
+    "Commit-candidate base UTxO payload aggregate",
+  );
+  const config = exactRecord(
+    result.candidateConfig,
+    [
+      "mpfEngine",
+      "scratchBuild",
+      "payloadRootCheck",
+      "parallelRoots",
+      "costModel",
+      "mempoolRetrievePageSize",
+      "maxL2TxCount",
+      "maxLedgerOpCount",
+      "maxTransitionStepCount",
+    ],
+    "Commit-candidate configuration evidence",
+  );
+  const candidate = exactRecord(
+    result.candidate,
+    [
+      "candidateId",
+      "baseHeaderHash",
+      "endTimeMs",
+      "builtAtMs",
+      "buildDurationMs",
+      "invalidationKey",
+      "watermarks",
+      "expectedUserEventCounts",
+      "expectedL2TransactionCount",
+      "roots",
+    ],
+    "Commit-candidate summary",
+  );
+  const watermarks = exactRecord(
+    candidate.watermarks,
+    ["depositMs", "withdrawalMs", "txOrderMs", "refreshedAtMs"],
+    "Commit-candidate barrier watermarks",
+  );
+  const expectedUserEventCounts = exactRecord(
+    candidate.expectedUserEventCounts,
+    ["deposits", "forcedTransactions", "withdrawals"],
+    "Commit-candidate expected user-event counts",
+  );
+  const rootKeys = [
+    "utxos",
+    "rawTransactions",
+    "transactions",
+    "deposits",
+    "forcedTransactions",
+    "withdrawals",
+    "transitionTrace",
+    "eventToStep",
+  ] as const;
+  const roots = exactRecord(
+    candidate.roots,
+    rootKeys,
+    "Commit-candidate roots",
+  );
+  const ownerBefore = decodeArchitectureGOwnerDiagnostics(
+    result.ownerBefore,
+    "Commit-candidate owner-before diagnostics",
+  );
+  const ownerAfter = decodeArchitectureGOwnerDiagnostics(
+    result.ownerAfter,
+    "Commit-candidate owner-after diagnostics",
+  );
+  const inputPath = absolutePath(expectedInputPath, "expectedInputPath");
+  const probePath = absolutePath(expectedProbePath, "expectedProbePath");
+  const inputSha256 = hash(expectedInputSha256, "expectedInputSha256");
+  const probeSha256 = hash(expectedProbeSha256, "expectedProbeSha256");
+  const cpuAffinity = nonEmptyString(
+    expectedCpuAffinity,
+    "expectedCpuAffinity",
+  );
+  const transactionCount = input.expectedTransactionCount;
+  if (
+    result.schemaVersion !==
+      "midgard-architecture-g-commit-candidate-probe-v1" ||
+    result.probePath !== probePath ||
+    result.probeSha256 !== probeSha256 ||
+    result.inputPath !== inputPath ||
+    result.inputSha256 !== inputSha256 ||
+    result.expectedTransactionCount !== transactionCount ||
+    result.corpusSha256 !== input.corpusSha256 ||
+    result.corpusSliceSha256 !== input.corpusSliceSha256 ||
+    result.fundingMapSha256 !== input.fundingMapSha256 ||
+    result.fixtureCreationSha256 !== input.fixtureCreationSha256 ||
+    result.fixtureInitialUtxoCount !== input.fixtureInitialUtxoCount ||
+    !sameJson(aggregate, input.baseUtxoPayloadAggregate) ||
+    result.binarySha256 !== input.binarySha256 ||
+    result.cpuAffinity !== cpuAffinity ||
+    result.confirmedLedgerFullScans !== 0 ||
+    result.journalRowsBefore !== 0 ||
+    result.journalRowsAfter !== 0 ||
+    result.providerBoundaryAttempts !== 0 ||
+    result.submissionAttempts !== result.providerBoundaryAttempts
+  ) {
+    throw new Error(
+      "Architecture G commit-candidate probe boundary identity is invalid",
+    );
+  }
+  positiveFiniteNumber(result.durationMs, "candidateProbe.durationMs");
+  if (
+    config.mpfEngine !== "architecture_g" ||
+    config.scratchBuild !== "fromlist" ||
+    config.payloadRootCheck !== "off" ||
+    config.parallelRoots !== true ||
+    config.costModel !== "ewma" ||
+    positiveSafeInteger(
+      config.mempoolRetrievePageSize,
+      "candidateConfig.mempoolRetrievePageSize",
+    ) < transactionCount ||
+    positiveSafeInteger(config.maxL2TxCount, "candidateConfig.maxL2TxCount") <
+      transactionCount ||
+    positiveSafeInteger(
+      config.maxLedgerOpCount,
+      "candidateConfig.maxLedgerOpCount",
+    ) <
+      transactionCount * 3 ||
+    positiveSafeInteger(
+      config.maxTransitionStepCount,
+      "candidateConfig.maxTransitionStepCount",
+    ) < transactionCount
+  ) {
+    throw new Error("Commit-candidate configuration evidence is invalid");
+  }
+  const watermarkValues = Object.entries(watermarks).map(([field, value]) =>
+    nonNegativeSafeInteger(value, `candidate.watermarks.${field}`),
+  );
+  for (const [field, count] of Object.entries(expectedUserEventCounts)) {
+    nonNegativeSafeInteger(count, `candidate.expectedUserEventCounts.${field}`);
+  }
+  const endTimeMs = positiveSafeInteger(
+    candidate.endTimeMs,
+    "candidate.endTimeMs",
+  );
+  positiveSafeInteger(candidate.builtAtMs, "candidate.builtAtMs");
+  positiveFiniteNumber(candidate.buildDurationMs, "candidate.buildDurationMs");
+  const minimumWatermarkMs = Math.min(...watermarkValues);
+  if (
+    typeof candidate.candidateId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(
+      candidate.candidateId,
+    ) ||
+    candidate.baseHeaderHash !==
+      input.workerInput.data.speculativeBuild.base.headerHash ||
+    !sameJson(watermarks, input.workerInput.data.speculativeBuild.watermarks) ||
+    candidate.expectedL2TransactionCount !== transactionCount ||
+    candidate.invalidationKey !==
+      `${candidate.baseHeaderHash as string}:${endTimeMs.toString()}:${minimumWatermarkMs.toString()}`
+  ) {
+    throw new Error("Commit-candidate identity or barrier evidence is invalid");
+  }
+  for (const field of rootKeys) {
+    hash(roots[field], `candidate.roots.${field}`);
+  }
+  if (
+    ownerBefore.durableRoot !==
+      input.workerInput.data.speculativeBuild.base.utxosRoot ||
+    ownerBefore.durableRoot !== ownerAfter.durableRoot ||
+    !sameJson(ownerBefore.ownerEpoch, ownerAfter.ownerEpoch) ||
+    ownerBefore.childRestarts !== ownerAfter.childRestarts
+  ) {
+    throw new Error("Commit-candidate native owner identity drifted");
+  }
+  return result;
+};
+
+export const validateArchitectureGRootProbeResultV1 = ({
+  value,
+  expectedTransactionCount,
+  expectedInitialUtxoCount,
+  expectedProbePath,
+  expectedProbeSha256,
+}: {
+  readonly value: unknown;
+  readonly expectedTransactionCount: number;
+  readonly expectedInitialUtxoCount: number;
+  readonly expectedProbePath: string;
+  readonly expectedProbeSha256: string;
+}): JsonRecord => {
+  const result = exactRecord(
+    JSON.parse(JSON.stringify(value)) as unknown,
+    [
+      "engine",
+      "transactionCount",
+      "initialUtxoCount",
+      "workloadSha256",
+      "canonicalCorpusSlice",
+      "canonicalFunding",
+      "levelBackedInitialView",
+      "reusedLevelFixture",
+      "ledgerOpCount",
+      "startupMs",
+      "durationMs",
+      "buildPlusCaptureMs",
+      "phaseMs",
+      "utxoRoot",
+      "rawTxRoot",
+      "txRoot",
+      "transitionTraceRoot",
+      "eventToStepRoot",
+      "depositsRoot",
+      "withdrawalsRoot",
+      "forcedTransactionsRoot",
+      "transitionRoots",
+      "nativePhaseMs",
+      "pathHydration",
+      "confirmedLedgerFullScans",
+      "binarySha256",
+      "cpuAffinity",
+      "ownerBefore",
+      "ownerAfter",
+      "probePath",
+      "probeSha256",
+    ],
+    "Architecture G root-probe result",
+  );
+  const phaseMs = exactRecord(
+    result.phaseMs,
+    [
+      "transactionSourceRoot",
+      "transitionTraceBuild",
+      "transactionMpfApply",
+      "auxiliaryRoots",
+    ],
+    "Architecture G root-probe phase timings",
+  );
+  const nativePhaseMs = exactRecord(
+    result.nativePhaseMs,
+    [
+      "validation",
+      "eventLogEncode",
+      "ownerApply",
+      "ownerProofArena",
+      "ownerMutation",
+      "memberAssembly",
+      "retainedRoots",
+    ],
+    "Architecture G root-probe native phase timings",
+  );
+  const hydrationKeys = [
+    "prefetchMs",
+    "uniquePaths",
+    "nodesRequested",
+    "hydrationHits",
+    "hydrationMisses",
+    "loadedNodes",
+    "maxInFlight",
+    "maxBatchKeys",
+    "maxFrontierPaths",
+    "retainedBytesEstimate",
+    "chunkCount",
+    "checkpointMs",
+    "authenticationMs",
+    "materializeMs",
+    "collapseMs",
+    "checkpointSerializedNodes",
+    "checkpointSerializedBytes",
+    "verifiedUpperNodes",
+    "retainedUpperNodes",
+    "collapsedNodes",
+    "peakDecodedNodes",
+  ] as const;
+  const pathHydration = exactRecord(
+    result.pathHydration,
+    hydrationKeys,
+    "Architecture G root-probe path-hydration diagnostics",
+  );
+  const transactionCount = positiveSafeInteger(
+    expectedTransactionCount,
+    "expectedTransactionCount",
+  );
+  const initialUtxoCount = positiveSafeInteger(
+    expectedInitialUtxoCount,
+    "expectedInitialUtxoCount",
+  );
+  const probePath = absolutePath(expectedProbePath, "expectedProbePath");
+  const probeSha256 = hash(expectedProbeSha256, "expectedProbeSha256");
+  if (
+    result.engine !== "architecture_g" ||
+    result.transactionCount !== transactionCount ||
+    result.initialUtxoCount !== initialUtxoCount ||
+    result.levelBackedInitialView !== true ||
+    result.reusedLevelFixture !== true ||
+    result.confirmedLedgerFullScans !== 0 ||
+    result.probePath !== probePath ||
+    result.probeSha256 !== probeSha256
+  ) {
+    throw new Error("Architecture G root-probe boundary identity is invalid");
+  }
+  hash(result.workloadSha256, "rootProbe.workloadSha256");
+  hash(result.binarySha256, "rootProbe.binarySha256");
+  nonEmptyString(result.cpuAffinity, "rootProbe.cpuAffinity");
+  positiveSafeInteger(result.ledgerOpCount, "rootProbe.ledgerOpCount");
+  nonNegativeFiniteNumber(result.startupMs, "rootProbe.startupMs");
+  const durationMs = positiveFiniteNumber(
+    result.durationMs,
+    "rootProbe.durationMs",
+  );
+  if (result.buildPlusCaptureMs !== durationMs) {
+    throw new Error("Architecture G root-probe duration identity drifted");
+  }
+  for (const [field, timing] of Object.entries(phaseMs)) {
+    nonNegativeFiniteNumber(timing, `rootProbe.phaseMs.${field}`);
+  }
+  for (const [field, timing] of Object.entries(nativePhaseMs)) {
+    nonNegativeFiniteNumber(timing, `rootProbe.nativePhaseMs.${field}`);
+  }
+  const hydrationTimingFields = new Set([
+    "prefetchMs",
+    "checkpointMs",
+    "authenticationMs",
+    "materializeMs",
+    "collapseMs",
+  ]);
+  for (const [field, metric] of Object.entries(pathHydration)) {
+    if (hydrationTimingFields.has(field)) {
+      nonNegativeFiniteNumber(metric, `rootProbe.pathHydration.${field}`);
+    } else {
+      nonNegativeSafeInteger(metric, `rootProbe.pathHydration.${field}`);
+    }
+  }
+  for (const field of [
+    "utxoRoot",
+    "rawTxRoot",
+    "txRoot",
+    "transitionTraceRoot",
+    "eventToStepRoot",
+    "depositsRoot",
+    "withdrawalsRoot",
+    "forcedTransactionsRoot",
+  ] as const) {
+    hash(result[field], `rootProbe.${field}`);
+  }
+  if (
+    result.canonicalCorpusSlice === null ||
+    result.canonicalFunding === null
+  ) {
+    if (
+      result.canonicalCorpusSlice !== null ||
+      result.canonicalFunding !== null
+    ) {
+      throw new Error(
+        "Architecture G root-probe corpus and funding identities must be present together",
+      );
+    }
+  } else {
+    const canonicalSlice = exactRecord(
+      result.canonicalCorpusSlice,
+      ["path", "sha256", "rowCount"],
+      "Architecture G root-probe corpus slice",
+    );
+    const canonicalFunding = exactRecord(
+      result.canonicalFunding,
+      ["path", "sha256", "entryCount"],
+      "Architecture G root-probe canonical funding",
+    );
+    absolutePath(canonicalSlice.path, "rootProbe.canonicalCorpusSlice.path");
+    hash(canonicalSlice.sha256, "rootProbe.canonicalCorpusSlice.sha256");
+    if (canonicalSlice.rowCount !== transactionCount) {
+      throw new Error(
+        "Architecture G root-probe corpus row count does not match the workload",
+      );
+    }
+    absolutePath(canonicalFunding.path, "rootProbe.canonicalFunding.path");
+    hash(canonicalFunding.sha256, "rootProbe.canonicalFunding.sha256");
+    positiveSafeInteger(
+      canonicalFunding.entryCount,
+      "rootProbe.canonicalFunding.entryCount",
+    );
+  }
+  if (
+    !Array.isArray(result.transitionRoots) ||
+    result.transitionRoots.length !== transactionCount
+  ) {
+    throw new Error(
+      "Architecture G root-probe transition-root count is invalid",
+    );
+  }
+  const transitions = result.transitionRoots.map((value, index) => {
+    const transition = exactRecord(
+      value,
+      ["pre", "post"],
+      `Architecture G transition-root pair ${index.toString()}`,
+    );
+    hash(transition.pre, `transitionRoots[${index.toString()}].pre`);
+    hash(transition.post, `transitionRoots[${index.toString()}].post`);
+    return transition;
+  });
+  const ownerBefore = decodeArchitectureGOwnerDiagnostics(
+    result.ownerBefore,
+    "Architecture G root-probe owner-before diagnostics",
+  );
+  const ownerAfter = decodeArchitectureGOwnerDiagnostics(
+    result.ownerAfter,
+    "Architecture G root-probe owner-after diagnostics",
+  );
+  if (
+    transitions[0]?.pre !== ownerBefore.durableRoot ||
+    transitions.at(-1)?.post !== result.utxoRoot ||
+    ownerBefore.durableRoot !== ownerAfter.durableRoot ||
+    !sameJson(ownerBefore.ownerEpoch, ownerAfter.ownerEpoch) ||
+    ownerBefore.childRestarts !== ownerAfter.childRestarts
+  ) {
+    throw new Error("Architecture G root-probe owner/root identity drifted");
+  }
+  for (let index = 1; index < transitions.length; index += 1) {
+    if (transitions[index]?.pre !== transitions[index - 1]?.post) {
+      throw new Error(
+        `Architecture G root-probe transition chain broke at ${index.toString()}`,
+      );
+    }
+  }
+  return result;
 };
 
 export const validateArchitectureGCommitCandidateSeedResultV1 = ({

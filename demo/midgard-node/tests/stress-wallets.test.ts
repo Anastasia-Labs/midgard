@@ -16,14 +16,29 @@ import {
   consolidateStressWallets,
   createL2Wallets,
   fanoutStressWallets,
+  parseConsolidationReadiness,
+  parseStressWalletConsolidationJournal,
+  parseStressWalletConsolidationReadinessEvidence,
+  parseStressWalletConsolidationReport,
+  parseStressWalletConsolidationResult,
+  parseStressWalletCreateResult,
+  parseStressWalletFanoutReport,
+  parseStressWalletFanoutResult,
+  parseStressWalletPrepareResult,
   parseStressWalletRecord,
+  parseStressWalletTerminalDrainJournal,
+  parseStressWalletTerminalDrainReport,
+  parseStressWalletTerminalDrainResult,
   prepareStressWallets,
   runBounded,
   runWithSharedFanoutContext,
   stressWalletFileName,
   terminalDrainStressWallets,
 } from "@/commands/stress-wallets.js";
-import { buildTerminalDrainTx, buildTransferTxWithMinFee } from "@/commands/submit-l2-transfer.js";
+import {
+  buildTerminalDrainTx,
+  buildTransferTxWithMinFee,
+} from "@/commands/submit-l2-transfer.js";
 
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
@@ -123,17 +138,38 @@ const prepareCanonicalNativeTransfer = async ({
   };
 };
 
-
-const prepareCanonicalTerminalDrain = async ({ sourceSeedPhrase, sourceAddress, destinationAddress, utxos }: {
-  readonly sourceSeedPhrase: string; readonly sourceAddress: string; readonly destinationAddress: string; readonly utxos: readonly NodeUtxo[];
+const prepareCanonicalTerminalDrain = async ({
+  sourceSeedPhrase,
+  sourceAddress,
+  destinationAddress,
+  utxos,
+}: {
+  readonly sourceSeedPhrase: string;
+  readonly sourceAddress: string;
+  readonly destinationAddress: string;
+  readonly utxos: readonly NodeUtxo[];
 }) => {
   const wallet = walletFromSeed(sourceSeedPhrase, { network: "Preprod" });
-  const built = await buildTerminalDrainTx({ senderAddress: sourceAddress, destinationAddress,
-    signer: CML.PrivateKey.from_bech32(wallet.paymentKey), availableUtxos: utxos,
-    network: "Preprod", networkId: 0n, minFeeA: 0n, minFeeB: 0n });
-  return { txHash: built.txIdHex, signedTxCbor: built.txHex,
-    selectedInputs: built.selectedInputs.map((x) => x.txHash + "#" + x.outputIndex.toString()),
-    requestedLovelace: built.requestedAssets.lovelace ?? 0n, feeLovelace: built.fee, signedTxBytes: built.txCbor.length };
+  const built = await buildTerminalDrainTx({
+    senderAddress: sourceAddress,
+    destinationAddress,
+    signer: CML.PrivateKey.from_bech32(wallet.paymentKey),
+    availableUtxos: utxos,
+    network: "Preprod",
+    networkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+  });
+  return {
+    txHash: built.txIdHex,
+    signedTxCbor: built.txHex,
+    selectedInputs: built.selectedInputs.map(
+      (x) => x.txHash + "#" + x.outputIndex.toString(),
+    ),
+    requestedLovelace: built.requestedAssets.lovelace ?? 0n,
+    feeLovelace: built.fee,
+    signedTxBytes: built.txCbor.length,
+  };
 };
 
 const fullConsolidationReadiness = () => ({
@@ -310,13 +346,45 @@ describe("stress wallet commands", () => {
       expect(result.wallets).toHaveLength(2);
       expect(result.wallets[0]?.envName).toBe("STRESS_WALLET_SEED_PHRASE_0001");
       expect(formatJson(result)).not.toContain(TEST_SEEDS[0]);
+      expect(parseStressWalletCreateResult(result).schemaVersion).toBe(
+        "midgard-stress-wallet-create-result-v1",
+      );
+      expect(() =>
+        parseStressWalletCreateResult({ ...result, extension: true }),
+      ).toThrow("extra=[extension]");
+      expect(() =>
+        parseStressWalletCreateResult({
+          ...result,
+          createdCount: result.createdCount + 1,
+        }),
+      ).toThrow("cardinality binding");
+      expect(() =>
+        parseStressWalletCreateResult({
+          ...result,
+          wallets: [{ ...result.wallets[0], historical: true }],
+        }),
+      ).toThrow("extra=[historical]");
 
       const firstPath = join(dir, stressWalletFileName(1));
-      const firstRecord = parseStressWalletRecord(
-        JSON.parse(await readFile(firstPath, "utf8")) as unknown,
-      );
+      const firstDocument = JSON.parse(
+        await readFile(firstPath, "utf8"),
+      ) as Record<string, unknown>;
+      const firstRecord = parseStressWalletRecord(firstDocument);
       expect(firstRecord.seedPhrase).toBe(TEST_SEEDS[0]);
       expect(firstRecord.l2Address).toBe(result.wallets[0]?.l2Address);
+      expect(() =>
+        parseStressWalletRecord({ ...firstDocument, historical: true }),
+      ).toThrow("extra=[historical]");
+      const { seedPhrase: _seedPhrase, ...missingSeedPhrase } = firstDocument;
+      expect(() => parseStressWalletRecord(missingSeedPhrase)).toThrow(
+        "missing=[seedPhrase]",
+      );
+      expect(() =>
+        parseStressWalletRecord({
+          ...firstDocument,
+          schemaVersion: "midgard-stress-wallet-v2",
+        }),
+      ).toThrow("Unsupported stress wallet schemaVersion");
 
       const envFile = await readFile(result.envFilePath, "utf8");
       const argsFile = await readFile(result.argsFilePath, "utf8");
@@ -405,6 +473,31 @@ describe("stress wallet commands", () => {
         "already_funded",
         "submitted",
       ]);
+      expect(parseStressWalletPrepareResult(result).schemaVersion).toBe(
+        "midgard-stress-wallet-prepare-result-v1",
+      );
+      expect(() =>
+        parseStressWalletPrepareResult({
+          ...result,
+          schemaVersion: "midgard-stress-wallet-prepare-result-v2",
+        }),
+      ).toThrow("schemaVersion must be exactly");
+      const { wallets: _wallets, ...prepareWithoutWallets } = result;
+      expect(() =>
+        parseStressWalletPrepareResult(prepareWithoutWallets),
+      ).toThrow("missing=[wallets]");
+      expect(() =>
+        parseStressWalletPrepareResult({
+          ...result,
+          wallets: [
+            {
+              ...result.wallets[0],
+              wallet: { ...result.wallets[0]!.wallet, historical: true },
+            },
+            result.wallets[1],
+          ],
+        }),
+      ).toThrow("extra=[historical]");
 
       const secondRecord = parseStressWalletRecord(
         JSON.parse(
@@ -609,9 +702,30 @@ describe("stress wallet commands", () => {
       expect(firstRecord.latestFunding?.fundingUtxos?.[0]?.lovelace).toBe(
         "1000",
       );
-      await expect(readFile(result.reportPath, "utf8")).resolves.toContain(
-        "midgard-stress-wallet-fanout-v1",
+      expect(parseStressWalletFanoutResult(result).schemaVersion).toBe(
+        "midgard-stress-wallet-fanout-result-v1",
       );
+      expect(() =>
+        parseStressWalletFanoutResult({ ...result, extension: true }),
+      ).toThrow("extra=[extension]");
+      const fanoutReport = JSON.parse(
+        await readFile(result.reportPath, "utf8"),
+      ) as unknown;
+      expect(parseStressWalletFanoutReport(fanoutReport).schemaVersion).toBe(
+        "midgard-stress-wallet-fanout-report-v1",
+      );
+      expect(() =>
+        parseStressWalletFanoutReport({
+          ...(fanoutReport as Record<string, unknown>),
+          edges: [
+            {
+              ...((fanoutReport as { readonly edges: readonly object[] })
+                .edges[0] as object),
+              historical: true,
+            },
+          ],
+        }),
+      ).toThrow("extra=[historical]");
       expect(formatJson(result)).not.toContain(TEST_SEEDS[0]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -877,15 +991,80 @@ describe("stress wallet commands", () => {
       expect(readinessEvidence.trim().split("\n")).toHaveLength(3);
       expect(readinessEvidence).toContain(`"fullReady":false`);
       expect(readinessEvidence).toContain(`"fullReady":true`);
+      for (const line of readinessEvidence.trim().split("\n")) {
+        expect(
+          parseStressWalletConsolidationReadinessEvidence(
+            JSON.parse(line) as unknown,
+          ).schemaVersion,
+        ).toBe("midgard-stress-wallet-consolidation-readiness-v1");
+      }
+      const exactReadiness = fullConsolidationReadiness();
+      expect(parseConsolidationReadiness(exactReadiness).ready).toBe(true);
+      expect(() =>
+        parseConsolidationReadiness({
+          ...exactReadiness,
+          body: { ...exactReadiness.body, extension: true },
+        }),
+      ).toThrow("extra=[extension]");
       expect(result.treasuryDeltaLovelace).toBe("2800");
       expect(result.sourceBeforeLovelace).toBe("3000");
       expect(result.sourceAfterLovelace).toBe("200");
       expect(result.inferredFeesLovelace).toBe("0");
       expect(result.submittedTransferCount).toBe(2);
       expect(result.resumedTransferCount).toBe(0);
-      const report = await readFile(result.reportPath, "utf8");
-      expect(report).toContain("midgard-stress-wallet-consolidate-v1");
-      expect(report).toContain("selectedInputs");
+      expect(parseStressWalletConsolidationResult(result).schemaVersion).toBe(
+        "midgard-stress-wallet-consolidation-result-v1",
+      );
+      const report = JSON.parse(
+        await readFile(result.reportPath, "utf8"),
+      ) as Record<string, unknown>;
+      expect(parseStressWalletConsolidationReport(report).schemaVersion).toBe(
+        "midgard-stress-wallet-consolidation-report-v1",
+      );
+      expect(JSON.stringify(report)).toContain("selectedInputs");
+      expect(() =>
+        parseStressWalletConsolidationReport({
+          ...report,
+          schemaVersion: "midgard-stress-wallet-consolidation-report-v2",
+        }),
+      ).toThrow("schemaVersion must be exactly");
+      expect(() =>
+        parseStressWalletConsolidationReport({
+          ...report,
+          upgradeVerification: true,
+        }),
+      ).toThrow("extra=[upgradeVerification]");
+      expect(() =>
+        parseStressWalletConsolidationReport({
+          ...report,
+          treasury: {
+            ...(report.treasury as Record<string, unknown>),
+            historical: true,
+          },
+        }),
+      ).toThrow("extra=[historical]");
+      const journal = JSON.parse(
+        await readFile(join(dir, "consolidation-state.json"), "utf8"),
+      ) as Record<string, unknown>;
+      expect(parseStressWalletConsolidationJournal(journal).schemaVersion).toBe(
+        "midgard-stress-wallet-consolidation-journal-v1",
+      );
+      expect(() =>
+        parseStressWalletConsolidationJournal({
+          ...journal,
+          schemaVersion: "midgard-stress-wallet-consolidate-v1",
+        }),
+      ).toThrow("Unsupported consolidation state schema");
+      expect(() =>
+        parseStressWalletConsolidationJournal({
+          ...journal,
+          legacyVerification: {},
+        }),
+      ).toThrow("extra=[legacyVerification]");
+      const { scope: _scope, ...journalWithoutScope } = journal;
+      expect(() =>
+        parseStressWalletConsolidationJournal(journalWithoutScope),
+      ).toThrow("missing=[scope]");
       expect(formatJson(result)).not.toContain(TEST_SEEDS[2]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -1560,203 +1739,640 @@ describe("stress wallet commands", () => {
   it("prepares every terminal drain before submission and resumes exact CBOR to zero with private conservation evidence", async () => {
     const dir = await mkdtemp(join("/tmp", "midgard-terminal-drain-"));
     try {
-      const created = await createL2Wallets({ count: 2, outDir: dir, network: "Preprod",
-        now: () => new Date("2026-01-02T00:00:00.000Z"), generateSeedPhrase: seedGenerator() });
-      const treasuryAddress = walletFromSeed(TEST_SEEDS[2]!, { network: "Preprod" }).address;
+      const created = await createL2Wallets({
+        count: 2,
+        outDir: dir,
+        network: "Preprod",
+        now: () => new Date("2026-01-02T00:00:00.000Z"),
+        generateSeedPhrase: seedGenerator(),
+      });
+      const treasuryAddress = walletFromSeed(TEST_SEEDS[2]!, {
+        network: "Preprod",
+      }).address;
       const sourceUtxos = new Map<string, readonly NodeUtxo[]>();
       for (let i = 0; i < created.wallets.length; i += 1) {
-        const record = created.wallets[i]!; const hash = (i === 0 ? "81" : "82").repeat(32);
-        sourceUtxos.set(record.l2Address, [{ txHash: hash, outputIndex: 0,
-          outrefCbor: Buffer.from(CML.TransactionInput.new(CML.TransactionHash.from_hex(hash), 0n).to_cbor_bytes()),
-          outputCbor: Buffer.from(makeMidgardTxOutput(CML.Address.from_bech32(record.l2Address), assetsToValue({ lovelace: BigInt(1_000 + i * 500) })).to_cbor_bytes()),
-          address: record.l2Address, assets: { lovelace: BigInt(1_000 + i * 500) } }]);
+        const record = created.wallets[i]!;
+        const hash = (i === 0 ? "81" : "82").repeat(32);
+        sourceUtxos.set(record.l2Address, [
+          {
+            txHash: hash,
+            outputIndex: 0,
+            outrefCbor: Buffer.from(
+              CML.TransactionInput.new(
+                CML.TransactionHash.from_hex(hash),
+                0n,
+              ).to_cbor_bytes(),
+            ),
+            outputCbor: Buffer.from(
+              makeMidgardTxOutput(
+                CML.Address.from_bech32(record.l2Address),
+                assetsToValue({ lovelace: BigInt(1_000 + i * 500) }),
+              ).to_cbor_bytes(),
+            ),
+            address: record.l2Address,
+            assets: { lovelace: BigInt(1_000 + i * 500) },
+          },
+        ]);
       }
       let originalSourceUtxos = new Map<string, readonly NodeUtxo[]>();
-      let treasury = 50n; const preparedByHash = new Map<string, { address: string; amount: bigint; cbor: string }>();
-      let prepareCalls = 0; let submitCalls = 0; const submitted = new Set<string>();
-      const fetchUtxos = async (_endpoint: string, address: string): Promise<readonly NodeUtxo[]> => {
-        if (address === treasuryAddress) return treasury === 0n ? [] : [nodeUtxo({ txHashByte: "90", address, lovelace: treasury })];
+      let treasury = 50n;
+      const preparedByHash = new Map<
+        string,
+        { address: string; amount: bigint; cbor: string }
+      >();
+      let prepareCalls = 0;
+      let submitCalls = 0;
+      const submitted = new Set<string>();
+      const fetchUtxos = async (
+        _endpoint: string,
+        address: string,
+      ): Promise<readonly NodeUtxo[]> => {
+        if (address === treasuryAddress)
+          return treasury === 0n
+            ? []
+            : [nodeUtxo({ txHashByte: "90", address, lovelace: treasury })];
         return sourceUtxos.get(address) ?? [];
       };
-      const common = { count: 2, outDir: dir, network: "Preprod" as const, treasurySeedPhrase: TEST_SEEDS[2]!,
-        nodeEndpoint: "http://127.0.0.1:3000", minFeeA: 0n, minFeeB: 0n, maxInFlight: 2,
-        acceptanceTimeoutMs: 1_000, verificationTimeoutMs: 1_000, pollInitialIntervalMs: 1, pollMaxIntervalMs: 1,
-        now: () => new Date("2026-01-02T00:05:00.000Z") };
-      const prepared = await terminalDrainStressWallets({ ...common, prepareOnly: true }, {
-        prepareTransfer: async ({ source, treasuryAddress: destinationAddress }) => { prepareCalls += 1;
-          const tx = await prepareCanonicalTerminalDrain({ sourceSeedPhrase: source.seedPhrase, sourceAddress: source.l2Address,
-            destinationAddress, utxos: sourceUtxos.get(source.l2Address)! });
-          preparedByHash.set(tx.txHash, { address: source.l2Address, amount: tx.requestedLovelace, cbor: tx.signedTxCbor }); return tx; },
-        submitPreparedTransfer: async () => { submitCalls += 1; throw new Error("prepare-only crossed submission barrier"); },
-        fetchTxStatus: async () => "not_found", fetchUtxos,
-      });
-      expect(prepared.phase).toBe("prepared"); expect(prepareCalls).toBe(2); expect(submitCalls).toBe(0);
-      expect((await (await import("node:fs/promises")).stat(prepared.statePath)).mode & 0o777).toBe(0o600);
+      const common = {
+        count: 2,
+        outDir: dir,
+        network: "Preprod" as const,
+        treasurySeedPhrase: TEST_SEEDS[2]!,
+        nodeEndpoint: "http://127.0.0.1:3000",
+        minFeeA: 0n,
+        minFeeB: 0n,
+        maxInFlight: 2,
+        acceptanceTimeoutMs: 1_000,
+        verificationTimeoutMs: 1_000,
+        pollInitialIntervalMs: 1,
+        pollMaxIntervalMs: 1,
+        now: () => new Date("2026-01-02T00:05:00.000Z"),
+      };
+      const prepared = await terminalDrainStressWallets(
+        { ...common, prepareOnly: true },
+        {
+          prepareTransfer: async ({
+            source,
+            treasuryAddress: destinationAddress,
+          }) => {
+            prepareCalls += 1;
+            const tx = await prepareCanonicalTerminalDrain({
+              sourceSeedPhrase: source.seedPhrase,
+              sourceAddress: source.l2Address,
+              destinationAddress,
+              utxos: sourceUtxos.get(source.l2Address)!,
+            });
+            preparedByHash.set(tx.txHash, {
+              address: source.l2Address,
+              amount: tx.requestedLovelace,
+              cbor: tx.signedTxCbor,
+            });
+            return tx;
+          },
+          submitPreparedTransfer: async () => {
+            submitCalls += 1;
+            throw new Error("prepare-only crossed submission barrier");
+          },
+          fetchTxStatus: async () => "not_found",
+          fetchUtxos,
+        },
+      );
+      expect(prepared.phase).toBe("prepared");
+      expect(prepareCalls).toBe(2);
+      expect(submitCalls).toBe(0);
+      expect(parseStressWalletTerminalDrainResult(prepared).schemaVersion).toBe(
+        "midgard-stress-wallet-terminal-drain-result-v1",
+      );
+      expect(
+        (await (await import("node:fs/promises")).stat(prepared.statePath))
+          .mode & 0o777,
+      ).toBe(0o600);
       const canonicalPreparedState = await readFile(prepared.statePath, "utf8");
+      const canonicalPreparedDocument = JSON.parse(
+        canonicalPreparedState,
+      ) as Record<string, unknown>;
+      expect(
+        parseStressWalletTerminalDrainJournal(canonicalPreparedDocument)
+          .schemaVersion,
+      ).toBe("midgard-stress-wallet-terminal-drain-journal-v1");
+      expect(() =>
+        parseStressWalletTerminalDrainJournal({
+          ...canonicalPreparedDocument,
+          schemaVersion: "midgard-stress-wallet-terminal-drain-v1",
+        }),
+      ).toThrow("Unsupported terminal drain journal schema");
+      expect(() =>
+        parseStressWalletTerminalDrainJournal({
+          ...canonicalPreparedDocument,
+          legacyResult: true,
+        }),
+      ).toThrow("extra=[legacyResult]");
+      const { entries: _entries, ...terminalWithoutEntries } =
+        canonicalPreparedDocument;
+      expect(() =>
+        parseStressWalletTerminalDrainJournal(terminalWithoutEntries),
+      ).toThrow("missing=[entries]");
+      expect(() =>
+        parseStressWalletTerminalDrainJournal({
+          ...canonicalPreparedDocument,
+          scopeSha256: "ff".repeat(32),
+        }),
+      ).toThrow("must bind the exact parsed scope");
       const preparedTamperers: readonly ((state: any) => void)[] = [
-        (state) => { state.entries[0].txHash = "00".repeat(32); },
-        (state) => { state.entries[0].signedTxCbor = "00"; },
-        (state) => { state.entries[0].selectedInputs = []; },
-        (state) => { state.entries[0].requestedLovelace = (BigInt(state.entries[0].requestedLovelace) + 1n).toString(); },
-        (state) => { state.entries[0].feeLovelace = "1"; },
-        (state) => { state.entries[0].signedTxBytes += 1; },
-        (state) => { state.scopeSha256 = "ff".repeat(32); },
+        (state) => {
+          state.entries[0].txHash = "00".repeat(32);
+        },
+        (state) => {
+          state.entries[0].signedTxCbor = "00";
+        },
+        (state) => {
+          state.entries[0].selectedInputs = [];
+        },
+        (state) => {
+          state.entries[0].requestedLovelace = (
+            BigInt(state.entries[0].requestedLovelace) + 1n
+          ).toString();
+        },
+        (state) => {
+          state.entries[0].feeLovelace = "1";
+        },
+        (state) => {
+          state.entries[0].signedTxBytes += 1;
+        },
+        (state) => {
+          state.scopeSha256 = "ff".repeat(32);
+        },
       ];
       for (const tamper of preparedTamperers) {
-        const state = JSON.parse(canonicalPreparedState) as any; tamper(state);
-        const tampered = formatJson(state) + "\n"; await writeFile(prepared.statePath, tampered, "utf8");
-        await expect(terminalDrainStressWallets({ ...common, prepareOnly: true }, {
-          prepareTransfer: async () => { throw new Error("tamper rebuilt"); },
-          submitPreparedTransfer: async () => { throw new Error("tamper submitted"); },
-          fetchTxStatus: async () => { throw new Error("tamper queried status"); }, fetchUtxos,
-        })).rejects.toThrow();
+        const state = JSON.parse(canonicalPreparedState) as any;
+        tamper(state);
+        const tampered = formatJson(state) + "\n";
+        await writeFile(prepared.statePath, tampered, "utf8");
+        await expect(
+          terminalDrainStressWallets(
+            { ...common, prepareOnly: true },
+            {
+              prepareTransfer: async () => {
+                throw new Error("tamper rebuilt");
+              },
+              submitPreparedTransfer: async () => {
+                throw new Error("tamper submitted");
+              },
+              fetchTxStatus: async () => {
+                throw new Error("tamper queried status");
+              },
+              fetchUtxos,
+            },
+          ),
+        ).rejects.toThrow();
         expect(await readFile(prepared.statePath, "utf8")).toBe(tampered);
       }
       await writeFile(prepared.statePath, canonicalPreparedState, "utf8");
       originalSourceUtxos = new Map(sourceUtxos);
-      await expect(terminalDrainStressWallets(common, {
-        prepareTransfer: async () => { throw new Error("ambiguous resume rebuilt transaction"); },
-        submitPreparedTransfer: async ({ signedTxCbor }) => { submitCalls += 1;
-          expect([...preparedByHash.values()].some((intent) => intent.cbor === signedTxCbor)).toBe(true);
-          throw new Error("simulated commit-ambiguous interruption"); },
-        fetchTxStatus: async () => "not_found", fetchUtxos,
-      })).rejects.toThrow("simulated commit-ambiguous interruption");
+      await expect(
+        terminalDrainStressWallets(common, {
+          prepareTransfer: async () => {
+            throw new Error("ambiguous resume rebuilt transaction");
+          },
+          submitPreparedTransfer: async ({ signedTxCbor }) => {
+            submitCalls += 1;
+            expect(
+              [...preparedByHash.values()].some(
+                (intent) => intent.cbor === signedTxCbor,
+              ),
+            ).toBe(true);
+            throw new Error("simulated commit-ambiguous interruption");
+          },
+          fetchTxStatus: async () => "not_found",
+          fetchUtxos,
+        }),
+      ).rejects.toThrow("simulated commit-ambiguous interruption");
       expect(submitCalls).toBe(1);
       const firstAddress = created.wallets[0]!.l2Address;
       sourceUtxos.set(firstAddress, []);
-      await expect(terminalDrainStressWallets(common, {
-        prepareTransfer: async () => { throw new Error("missing-input resume rebuilt transaction"); },
-        submitPreparedTransfer: async () => { throw new Error("missing-input resume submitted"); },
-        fetchTxStatus: async () => "not_found", fetchUtxos,
-      })).rejects.toThrow("missing/changed inputs");
+      await expect(
+        terminalDrainStressWallets(common, {
+          prepareTransfer: async () => {
+            throw new Error("missing-input resume rebuilt transaction");
+          },
+          submitPreparedTransfer: async () => {
+            throw new Error("missing-input resume submitted");
+          },
+          fetchTxStatus: async () => "not_found",
+          fetchUtxos,
+        }),
+      ).rejects.toThrow("missing/changed inputs");
       sourceUtxos.set(firstAddress, originalSourceUtxos.get(firstAddress)!);
       const result = await terminalDrainStressWallets(common, {
-        prepareTransfer: async () => { throw new Error("resume rebuilt a durable terminal drain"); },
-        submitPreparedTransfer: async ({ txHash, signedTxCbor }) => { submitCalls += 1; const intent = preparedByHash.get(txHash)!;
-          expect(signedTxCbor).toBe(intent.cbor); sourceUtxos.set(intent.address, []); treasury += intent.amount; submitted.add(txHash);
-          return { txHash, status: "accepted" }; },
-        fetchTxStatus: async (_endpoint, txHash) => submitted.has(txHash) ? "committed" : "not_found", fetchUtxos, sleep: async () => {},
+        prepareTransfer: async () => {
+          throw new Error("resume rebuilt a durable terminal drain");
+        },
+        submitPreparedTransfer: async ({ txHash, signedTxCbor }) => {
+          submitCalls += 1;
+          const intent = preparedByHash.get(txHash)!;
+          expect(signedTxCbor).toBe(intent.cbor);
+          sourceUtxos.set(intent.address, []);
+          treasury += intent.amount;
+          submitted.add(txHash);
+          return { txHash, status: "accepted" };
+        },
+        fetchTxStatus: async (_endpoint, txHash) =>
+          submitted.has(txHash) ? "committed" : "not_found",
+        fetchUtxos,
+        sleep: async () => {},
       });
-      expect(result.phase).toBe("committed"); expect(result.residualSourceLovelace).toBe("0");
-      expect(result.grossSourceLovelace).toBe("2500"); expect(result.treasuryDeltaLovelace).toBe("2500");
-      expect(result.totalFeesLovelace).toBe("0"); expect(submitCalls).toBe(3);
-      expect((await (await import("node:fs/promises")).stat(result.reportPath!)).mode & 0o777).toBe(0o600);
+      expect(result.phase).toBe("committed");
+      expect(result.residualSourceLovelace).toBe("0");
+      expect(parseStressWalletTerminalDrainResult(result).schemaVersion).toBe(
+        "midgard-stress-wallet-terminal-drain-result-v1",
+      );
+      expect(result.grossSourceLovelace).toBe("2500");
+      expect(result.treasuryDeltaLovelace).toBe("2500");
+      expect(result.totalFeesLovelace).toBe("0");
+      expect(submitCalls).toBe(3);
+      expect(
+        (await (await import("node:fs/promises")).stat(result.reportPath!))
+          .mode & 0o777,
+      ).toBe(0o600);
       const immutableReport = await readFile(result.reportPath!, "utf8");
-      await expect(terminalDrainStressWallets(common, {
-        prepareTransfer: async () => { throw new Error("report replay rebuilt"); },
-        submitPreparedTransfer: async () => { throw new Error("report replay submitted"); },
-        fetchTxStatus: async () => "committed", fetchUtxos, sleep: async () => {},
-      })).rejects.toThrow();
+      expect(
+        parseStressWalletTerminalDrainReport(
+          JSON.parse(immutableReport) as unknown,
+        ).schemaVersion,
+      ).toBe("midgard-stress-wallet-terminal-drain-report-v1");
+      const parsedImmutableReport = JSON.parse(immutableReport) as Record<
+        string,
+        unknown
+      >;
+      expect(() =>
+        parseStressWalletTerminalDrainReport({
+          ...parsedImmutableReport,
+          conservation: {
+            ...(parsedImmutableReport.conservation as Record<string, unknown>),
+            historical: true,
+          },
+        }),
+      ).toThrow("extra=[historical]");
+      await expect(
+        terminalDrainStressWallets(common, {
+          prepareTransfer: async () => {
+            throw new Error("report replay rebuilt");
+          },
+          submitPreparedTransfer: async () => {
+            throw new Error("report replay submitted");
+          },
+          fetchTxStatus: async () => "committed",
+          fetchUtxos,
+          sleep: async () => {},
+        }),
+      ).rejects.toThrow();
       expect(await readFile(result.reportPath!, "utf8")).toBe(immutableReport);
-    } finally { await rm(dir, { recursive: true, force: true }); }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
-
 
   it("rejects every non-canonical already_empty variant before status, submission, or journal rewrite", async () => {
     const dir = await mkdtemp(join("/tmp", "midgard-terminal-empty-"));
     try {
-      await createL2Wallets({ count: 1, outDir: dir, network: "Preprod", generateSeedPhrase: seedGenerator() });
-      const options = { count: 1, outDir: dir, network: "Preprod" as const, treasurySeedPhrase: TEST_SEEDS[2]!,
-        nodeEndpoint: "http://127.0.0.1:3000", minFeeA: 0n, minFeeB: 0n, prepareOnly: true };
-      const runtime = { prepareTransfer: async () => { throw new Error("empty wallet prepared"); },
-        submitPreparedTransfer: async () => { throw new Error("empty wallet submitted"); }, fetchTxStatus: vi.fn(async () => "committed"),
-        fetchUtxos: async () => [] as readonly NodeUtxo[] };
+      await createL2Wallets({
+        count: 1,
+        outDir: dir,
+        network: "Preprod",
+        generateSeedPhrase: seedGenerator(),
+      });
+      const options = {
+        count: 1,
+        outDir: dir,
+        network: "Preprod" as const,
+        treasurySeedPhrase: TEST_SEEDS[2]!,
+        nodeEndpoint: "http://127.0.0.1:3000",
+        minFeeA: 0n,
+        minFeeB: 0n,
+        prepareOnly: true,
+      };
+      const runtime = {
+        prepareTransfer: async () => {
+          throw new Error("empty wallet prepared");
+        },
+        submitPreparedTransfer: async () => {
+          throw new Error("empty wallet submitted");
+        },
+        fetchTxStatus: vi.fn(async () => "committed"),
+        fetchUtxos: async () => [] as readonly NodeUtxo[],
+      };
       const prepared = await terminalDrainStressWallets(options, runtime);
       const canonical = await readFile(prepared.statePath, "utf8");
       const variants: readonly ((state: any) => void)[] = [
-        (state) => { state.entries[0].beforeValueSha256 = "00".repeat(32); },
-        (state) => { state.entries[0].txHash = "11".repeat(32); },
-        (state) => { state.entries[0].signedTxCbor = "00"; },
-        (state) => { state.entries[0].selectedInputs = []; },
-        (state) => { state.entries[0].selectedInputLovelace = "0"; },
-        (state) => { state.entries[0].requestedLovelace = "0"; },
-        (state) => { state.entries[0].feeLovelace = "0"; },
-        (state) => { state.entries[0].signedTxBytes = 1; },
-        (state) => { state.entries[0].acceptedStatus = "committed"; },
+        (state) => {
+          state.entries[0].beforeValueSha256 = "00".repeat(32);
+        },
+        (state) => {
+          state.entries[0].txHash = "11".repeat(32);
+        },
+        (state) => {
+          state.entries[0].signedTxCbor = "00";
+        },
+        (state) => {
+          state.entries[0].selectedInputs = [];
+        },
+        (state) => {
+          state.entries[0].selectedInputLovelace = "0";
+        },
+        (state) => {
+          state.entries[0].requestedLovelace = "0";
+        },
+        (state) => {
+          state.entries[0].feeLovelace = "0";
+        },
+        (state) => {
+          state.entries[0].signedTxBytes = 1;
+        },
+        (state) => {
+          state.entries[0].acceptedStatus = "committed";
+        },
       ];
       for (const mutate of variants) {
-        const state = JSON.parse(canonical) as any; mutate(state);
-        const tampered = formatJson(state) + "\n"; await writeFile(prepared.statePath, tampered, "utf8");
-        await expect(terminalDrainStressWallets(options, runtime)).rejects.toThrow();
+        const state = JSON.parse(canonical) as any;
+        mutate(state);
+        const tampered = formatJson(state) + "\n";
+        await writeFile(prepared.statePath, tampered, "utf8");
+        await expect(
+          terminalDrainStressWallets(options, runtime),
+        ).rejects.toThrow();
         expect(await readFile(prepared.statePath, "utf8")).toBe(tampered);
       }
       expect(runtime.fetchTxStatus).not.toHaveBeenCalled();
-    } finally { await rm(dir, { recursive: true, force: true }); }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("keeps the prepare-all barrier on partial failure and rejects a CAS mutation without submission", async () => {
     for (const mode of ["partial", "cas"] as const) {
       const dir = await mkdtemp(join("/tmp", "midgard-terminal-prepare-"));
       try {
-        const created = await createL2Wallets({ count: mode === "partial" ? 2 : 1, outDir: dir, network: "Preprod", generateSeedPhrase: seedGenerator() });
+        const created = await createL2Wallets({
+          count: mode === "partial" ? 2 : 1,
+          outDir: dir,
+          network: "Preprod",
+          generateSeedPhrase: seedGenerator(),
+        });
         const utxos = new Map<string, readonly NodeUtxo[]>();
-        for (let i = 0; i < created.wallets.length; i += 1) { const w=created.wallets[i]!, hash=(i===0?"a1":"a2").repeat(32);
-          utxos.set(w.l2Address, [{ txHash: hash, outputIndex: 0, outrefCbor: Buffer.from(CML.TransactionInput.new(CML.TransactionHash.from_hex(hash),0n).to_cbor_bytes()),
-            outputCbor: Buffer.from(makeMidgardTxOutput(CML.Address.from_bech32(w.l2Address),assetsToValue({lovelace:1000n})).to_cbor_bytes()), address:w.l2Address, assets:{lovelace:1000n} }]); }
-        let prepares=0, submits=0; const statePath=join(dir,"terminal-drain-state.json");
-        await expect(terminalDrainStressWallets({ count: created.wallets.length, outDir: dir, network:"Preprod", treasurySeedPhrase:TEST_SEEDS[2]!,
-          nodeEndpoint:"http://127.0.0.1:3000", minFeeA:0n, minFeeB:0n }, {
-          prepareTransfer: async ({source,treasuryAddress}) => { prepares += 1;
-            if (mode === "partial" && prepares === 2) throw new Error("partial prepare failure");
-            const tx=await prepareCanonicalTerminalDrain({sourceSeedPhrase:source.seedPhrase,sourceAddress:source.l2Address,destinationAddress:treasuryAddress,utxos:utxos.get(source.l2Address)!});
-            if (mode === "cas") await writeFile(statePath,"external-cas-mutation\n","utf8"); return tx; },
-          submitPreparedTransfer: async () => { submits += 1; throw new Error("barrier submitted"); }, fetchTxStatus: async()=>"not_found",
-          fetchUtxos: async (_e,address)=>utxos.get(address) ?? [],
-        })).rejects.toThrow(mode === "partial" ? "partial prepare failure" : "generation changed");
+        for (let i = 0; i < created.wallets.length; i += 1) {
+          const w = created.wallets[i]!,
+            hash = (i === 0 ? "a1" : "a2").repeat(32);
+          utxos.set(w.l2Address, [
+            {
+              txHash: hash,
+              outputIndex: 0,
+              outrefCbor: Buffer.from(
+                CML.TransactionInput.new(
+                  CML.TransactionHash.from_hex(hash),
+                  0n,
+                ).to_cbor_bytes(),
+              ),
+              outputCbor: Buffer.from(
+                makeMidgardTxOutput(
+                  CML.Address.from_bech32(w.l2Address),
+                  assetsToValue({ lovelace: 1000n }),
+                ).to_cbor_bytes(),
+              ),
+              address: w.l2Address,
+              assets: { lovelace: 1000n },
+            },
+          ]);
+        }
+        let prepares = 0,
+          submits = 0;
+        const statePath = join(dir, "terminal-drain-state.json");
+        await expect(
+          terminalDrainStressWallets(
+            {
+              count: created.wallets.length,
+              outDir: dir,
+              network: "Preprod",
+              treasurySeedPhrase: TEST_SEEDS[2]!,
+              nodeEndpoint: "http://127.0.0.1:3000",
+              minFeeA: 0n,
+              minFeeB: 0n,
+            },
+            {
+              prepareTransfer: async ({ source, treasuryAddress }) => {
+                prepares += 1;
+                if (mode === "partial" && prepares === 2)
+                  throw new Error("partial prepare failure");
+                const tx = await prepareCanonicalTerminalDrain({
+                  sourceSeedPhrase: source.seedPhrase,
+                  sourceAddress: source.l2Address,
+                  destinationAddress: treasuryAddress,
+                  utxos: utxos.get(source.l2Address)!,
+                });
+                if (mode === "cas")
+                  await writeFile(statePath, "external-cas-mutation\n", "utf8");
+                return tx;
+              },
+              submitPreparedTransfer: async () => {
+                submits += 1;
+                throw new Error("barrier submitted");
+              },
+              fetchTxStatus: async () => "not_found",
+              fetchUtxos: async (_e, address) => utxos.get(address) ?? [],
+            },
+          ),
+        ).rejects.toThrow(
+          mode === "partial" ? "partial prepare failure" : "generation changed",
+        );
         expect(submits).toBe(0);
-        if (mode === "partial") await expect(access(statePath)).rejects.toThrow();
-        else expect(await readFile(statePath,"utf8")).toBe("external-cas-mutation\n");
-      } finally { await rm(dir,{recursive:true,force:true}); }
+        if (mode === "partial")
+          await expect(access(statePath)).rejects.toThrow();
+        else
+          expect(await readFile(statePath, "utf8")).toBe(
+            "external-cas-mutation\n",
+          );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
     }
   });
 
   it("serializes prepare deposits against terminal drain and never removes a replacement shared lock", async () => {
-    const dir=await mkdtemp(join("/tmp","midgard-funds-lock-"));
+    const dir = await mkdtemp(join("/tmp", "midgard-funds-lock-"));
     try {
-      await createL2Wallets({count:1,outDir:dir,network:"Preprod",generateSeedPhrase:seedGenerator()});
-      let release!:()=>void; const gate=new Promise<void>((resolve)=>{release=resolve;}); let depositStarted!:()=>void;
-      const started=new Promise<void>((resolve)=>{depositStarted=resolve;}); let funded=false;
-      const preparation=prepareStressWallets({count:1,outDir:dir,network:"Preprod",lovelacePerWallet:1000n,projectionWaitMs:0,verifyTimeoutMs:1000,pollIntervalMs:0}, {
-        submitDeposit: async()=>{depositStarted();await gate;funded=true;return{txHash:"aa".repeat(32)};}, projectDeposits:async()=>{},
-        fetchUtxos:async(_e,address)=>funded?[nodeUtxo({txHashByte:"ab",address,lovelace:1000n})]:[], sleep:async()=>{},
+      await createL2Wallets({
+        count: 1,
+        outDir: dir,
+        network: "Preprod",
+        generateSeedPhrase: seedGenerator(),
       });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let depositStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        depositStarted = resolve;
+      });
+      let funded = false;
+      const preparation = prepareStressWallets(
+        {
+          count: 1,
+          outDir: dir,
+          network: "Preprod",
+          lovelacePerWallet: 1000n,
+          projectionWaitMs: 0,
+          verifyTimeoutMs: 1000,
+          pollIntervalMs: 0,
+        },
+        {
+          submitDeposit: async () => {
+            depositStarted();
+            await gate;
+            funded = true;
+            return { txHash: "aa".repeat(32) };
+          },
+          projectDeposits: async () => {},
+          fetchUtxos: async (_e, address) =>
+            funded
+              ? [nodeUtxo({ txHashByte: "ab", address, lovelace: 1000n })]
+              : [],
+          sleep: async () => {},
+        },
+      );
       await started;
-      await expect(terminalDrainStressWallets({count:1,outDir:dir,network:"Preprod",treasurySeedPhrase:TEST_SEEDS[2]!,minFeeA:0n,minFeeB:0n,prepareOnly:true},{
-        prepareTransfer:async()=>{throw new Error("cross-operation prepare");},submitPreparedTransfer:async()=>{throw new Error("cross-operation submit");},
-        fetchTxStatus:async()=>"not_found",fetchUtxos:async()=>[],
-      })).rejects.toThrow("funds operations are exclusively locked");
-      const lockPath=join(dir,"stress-wallet-funds.lock"); await rm(lockPath); await writeFile(lockPath,formatJson({token:"replacement"})+"\n","utf8"); release();
+      await expect(
+        terminalDrainStressWallets(
+          {
+            count: 1,
+            outDir: dir,
+            network: "Preprod",
+            treasurySeedPhrase: TEST_SEEDS[2]!,
+            minFeeA: 0n,
+            minFeeB: 0n,
+            prepareOnly: true,
+          },
+          {
+            prepareTransfer: async () => {
+              throw new Error("cross-operation prepare");
+            },
+            submitPreparedTransfer: async () => {
+              throw new Error("cross-operation submit");
+            },
+            fetchTxStatus: async () => "not_found",
+            fetchUtxos: async () => [],
+          },
+        ),
+      ).rejects.toThrow("funds operations are exclusively locked");
+      const lockPath = join(dir, "stress-wallet-funds.lock");
+      await rm(lockPath);
+      await writeFile(
+        lockPath,
+        formatJson({ token: "replacement" }) + "\n",
+        "utf8",
+      );
+      release();
       await expect(preparation).rejects.toThrow("lock ownership changed");
-      expect(JSON.parse(await readFile(lockPath,"utf8"))).toEqual({token:"replacement"});
-    } finally { await rm(dir,{recursive:true,force:true}); }
-  });
-
-  it("rejects a nonempty zero-value residual UTxO and a treasury conservation mismatch", async () => {
-    for (const mode of ["zero-utxo","conservation"] as const) {
-      const dir=await mkdtemp(join("/tmp","midgard-terminal-final-"));
-      try {
-        const created=await createL2Wallets({count:1,outDir:dir,network:"Preprod",generateSeedPhrase:seedGenerator()}); const source=created.wallets[0]!;
-        const initialHash="b1".repeat(32);
-        const canonicalSource:NodeUtxo={txHash:initialHash,outputIndex:0,
-          outrefCbor:Buffer.from(CML.TransactionInput.new(CML.TransactionHash.from_hex(initialHash),0n).to_cbor_bytes()),
-          outputCbor:Buffer.from(makeMidgardTxOutput(CML.Address.from_bech32(source.l2Address),assetsToValue({lovelace:1000n})).to_cbor_bytes()),
-          address:source.l2Address,assets:{lovelace:1000n}};
-        let sourceUtxos:readonly NodeUtxo[]=mode==="zero-utxo"?[]:[canonicalSource];
-        const options={count:1,outDir:dir,network:"Preprod" as const,treasurySeedPhrase:TEST_SEEDS[2]!,nodeEndpoint:"http://127.0.0.1:3000",minFeeA:0n,minFeeB:0n,
-          verificationTimeoutMs:0,pollInitialIntervalMs:1};
-        const fetchUtxos=async(_e:string,address:string)=>address===source.l2Address?sourceUtxos:[];
-        await terminalDrainStressWallets({...options,prepareOnly:true},{
-          prepareTransfer:async({source:record,treasuryAddress})=>prepareCanonicalTerminalDrain({sourceSeedPhrase:record.seedPhrase,sourceAddress:record.l2Address,destinationAddress:treasuryAddress,utxos:sourceUtxos}),
-          submitPreparedTransfer:async()=>{throw new Error("prepare-only submit");},fetchTxStatus:async()=>"not_found",fetchUtxos,
-        });
-        if(mode==="zero-utxo") sourceUtxos=[nodeUtxo({txHashByte:"b2",address:source.l2Address,lovelace:0n})]; else sourceUtxos=[];
-        await expect(terminalDrainStressWallets(options,{
-          prepareTransfer:async()=>{throw new Error("resume rebuild");},
-          submitPreparedTransfer:async({txHash})=>{sourceUtxos=[];return{txHash,status:"accepted"};},
-          fetchTxStatus:async()=>mode==="zero-utxo"?"committed":"committed",fetchUtxos,sleep:async()=>{},monotonicNow:(()=>{let n=0;return()=>n++;})(),
-        })).rejects.toThrow("exact-zero conservation did not converge");
-      } finally { await rm(dir,{recursive:true,force:true}); }
+      expect(JSON.parse(await readFile(lockPath, "utf8"))).toEqual({
+        token: "replacement",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 
+  it("rejects a nonempty zero-value residual UTxO and a treasury conservation mismatch", async () => {
+    for (const mode of ["zero-utxo", "conservation"] as const) {
+      const dir = await mkdtemp(join("/tmp", "midgard-terminal-final-"));
+      try {
+        const created = await createL2Wallets({
+          count: 1,
+          outDir: dir,
+          network: "Preprod",
+          generateSeedPhrase: seedGenerator(),
+        });
+        const source = created.wallets[0]!;
+        const initialHash = "b1".repeat(32);
+        const canonicalSource: NodeUtxo = {
+          txHash: initialHash,
+          outputIndex: 0,
+          outrefCbor: Buffer.from(
+            CML.TransactionInput.new(
+              CML.TransactionHash.from_hex(initialHash),
+              0n,
+            ).to_cbor_bytes(),
+          ),
+          outputCbor: Buffer.from(
+            makeMidgardTxOutput(
+              CML.Address.from_bech32(source.l2Address),
+              assetsToValue({ lovelace: 1000n }),
+            ).to_cbor_bytes(),
+          ),
+          address: source.l2Address,
+          assets: { lovelace: 1000n },
+        };
+        let sourceUtxos: readonly NodeUtxo[] =
+          mode === "zero-utxo" ? [] : [canonicalSource];
+        const options = {
+          count: 1,
+          outDir: dir,
+          network: "Preprod" as const,
+          treasurySeedPhrase: TEST_SEEDS[2]!,
+          nodeEndpoint: "http://127.0.0.1:3000",
+          minFeeA: 0n,
+          minFeeB: 0n,
+          verificationTimeoutMs: 0,
+          pollInitialIntervalMs: 1,
+        };
+        const fetchUtxos = async (_e: string, address: string) =>
+          address === source.l2Address ? sourceUtxos : [];
+        await terminalDrainStressWallets(
+          { ...options, prepareOnly: true },
+          {
+            prepareTransfer: async ({ source: record, treasuryAddress }) =>
+              prepareCanonicalTerminalDrain({
+                sourceSeedPhrase: record.seedPhrase,
+                sourceAddress: record.l2Address,
+                destinationAddress: treasuryAddress,
+                utxos: sourceUtxos,
+              }),
+            submitPreparedTransfer: async () => {
+              throw new Error("prepare-only submit");
+            },
+            fetchTxStatus: async () => "not_found",
+            fetchUtxos,
+          },
+        );
+        if (mode === "zero-utxo")
+          sourceUtxos = [
+            nodeUtxo({
+              txHashByte: "b2",
+              address: source.l2Address,
+              lovelace: 0n,
+            }),
+          ];
+        else sourceUtxos = [];
+        await expect(
+          terminalDrainStressWallets(options, {
+            prepareTransfer: async () => {
+              throw new Error("resume rebuild");
+            },
+            submitPreparedTransfer: async ({ txHash }) => {
+              sourceUtxos = [];
+              return { txHash, status: "accepted" };
+            },
+            fetchTxStatus: async () =>
+              mode === "zero-utxo" ? "committed" : "committed",
+            fetchUtxos,
+            sleep: async () => {},
+            monotonicNow: (() => {
+              let n = 0;
+              return () => n++;
+            })(),
+          }),
+        ).rejects.toThrow("exact-zero conservation did not converge");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+  });
 });

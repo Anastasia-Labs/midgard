@@ -1,18 +1,19 @@
 import fs from "node:fs";
 
+import {
+  computeMidgardNativeTxIdV1,
+  deriveMidgardNativeTxCompactV1,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCanonicalV1,
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core";
 import { CML, walletFromSeed } from "@lucid-evolution/lucid";
-import { blake2b } from "@noble/hashes/blake2.js";
-import { encode as cborEncode } from "cborg";
 import dotenv from "dotenv";
 
-const MIDGARD_NATIVE_TX_VERSION = 1n;
-const MIDGARD_POSIX_TIME_NONE = -1n;
 const MIDGARD_NETWORK_ID_PREPROD = 0n;
-const TX_IS_VALID_CODE = 0n;
-const HASH32_LEN = 32;
-
-const EMPTY_CBOR_LIST = Buffer.from([0x80]);
-const EMPTY_CBOR_NULL = Buffer.from([0xf6]);
 
 export const parseEnv = (filename) => {
   const raw = fs.readFileSync(filename, "utf8");
@@ -43,12 +44,7 @@ export const makeWalletsFromEnv = (env) => {
     .filter((wallet) => wallet !== null);
 };
 
-export const encodeCbor = (value) => Buffer.from(cborEncode(value));
-
-export const hash32 = (value) =>
-  Buffer.from(blake2b(value, { dkLen: HASH32_LEN }));
-
-export const encodeByteListPreimage = (items) =>
+const encodeByteListPreimage = (items) =>
   encodeCbor(items.map((item) => Buffer.from(item)));
 
 export const toOutRefCbor = (txId, outputIndex) =>
@@ -94,7 +90,6 @@ const buildNativeSignedOutputs = ({
   outputCbors,
   signer,
   fee,
-  txIdMode,
 }) => {
   const spendInputsPreimageCbor = encodeByteListPreimage([spendOutRefCbor]);
   const referenceInputsPreimageCbor = EMPTY_CBOR_LIST;
@@ -105,89 +100,49 @@ const buildNativeSignedOutputs = ({
   ]);
   const mintPreimageCbor = EMPTY_CBOR_LIST;
 
-  const scriptIntegrityHash = hash32(EMPTY_CBOR_NULL);
-  const auxiliaryDataHash = hash32(EMPTY_CBOR_NULL);
-
-  const bodyCompact = [
-    hash32(spendInputsPreimageCbor),
-    hash32(referenceInputsPreimageCbor),
-    hash32(outputsPreimageCbor),
+  const body = {
+    spendInputsPreimageCbor,
+    referenceInputsPreimageCbor,
+    outputsPreimageCbor,
     fee,
-    MIDGARD_POSIX_TIME_NONE,
-    MIDGARD_POSIX_TIME_NONE,
-    hash32(requiredObserversPreimageCbor),
-    hash32(requiredSignersPreimageCbor),
-    hash32(mintPreimageCbor),
-    scriptIntegrityHash,
-    auxiliaryDataHash,
-    MIDGARD_NETWORK_ID_PREPROD,
-  ];
-
-  const bodyHash = hash32(encodeCbor(bodyCompact));
+    validityIntervalStart: MIDGARD_POSIX_TIME_NONE,
+    validityIntervalEnd: MIDGARD_POSIX_TIME_NONE,
+    requiredObserversPreimageCbor,
+    requiredSignersPreimageCbor,
+    mintPreimageCbor,
+    scriptIntegrityHash: EMPTY_NULL_ROOT,
+    auxiliaryDataHash: EMPTY_NULL_ROOT,
+    networkId: MIDGARD_NETWORK_ID_PREPROD,
+  };
+  const emptyWitnessSet = {
+    addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+  };
+  const transactionId = computeMidgardNativeTxIdV1(
+    deriveMidgardNativeTxCompactV1(body, emptyWitnessSet, "TxIsValid"),
+  );
   const witness = CML.make_vkey_witness(
-    CML.TransactionHash.from_raw_bytes(bodyHash),
+    CML.TransactionHash.from_raw_bytes(transactionId),
     signer,
   );
 
-  const addrTxWitsPreimageCbor = encodeByteListPreimage([
-    Buffer.from(witness.to_cbor_bytes()),
-  ]);
-  const scriptTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-  const redeemerTxWitsPreimageCbor = EMPTY_CBOR_LIST;
-
-  const witnessCompact = [
-    hash32(addrTxWitsPreimageCbor),
-    hash32(scriptTxWitsPreimageCbor),
-    hash32(redeemerTxWitsPreimageCbor),
-  ];
-
-  const compact = [
-    MIDGARD_NATIVE_TX_VERSION,
-    bodyHash,
-    hash32(encodeCbor(witnessCompact)),
-    TX_IS_VALID_CODE,
-  ];
-
-  const bodyFull = [
-    bodyCompact[0],
-    spendInputsPreimageCbor,
-    bodyCompact[1],
-    referenceInputsPreimageCbor,
-    bodyCompact[2],
-    outputsPreimageCbor,
-    bodyCompact[3],
-    bodyCompact[4],
-    bodyCompact[5],
-    bodyCompact[6],
-    requiredObserversPreimageCbor,
-    bodyCompact[7],
-    requiredSignersPreimageCbor,
-    bodyCompact[8],
-    mintPreimageCbor,
-    bodyCompact[9],
-    bodyCompact[10],
-    bodyCompact[11],
-  ];
-
-  const witnessFull = [
-    witnessCompact[0],
-    addrTxWitsPreimageCbor,
-    witnessCompact[1],
-    scriptTxWitsPreimageCbor,
-    witnessCompact[2],
-    redeemerTxWitsPreimageCbor,
-  ];
-
-  const txCbor = encodeCbor([
-    MIDGARD_NATIVE_TX_VERSION,
-    compact,
-    bodyFull,
-    witnessFull,
-  ]);
+  const witnessSet = {
+    addrTxWitsPreimageCbor: encodeByteListPreimage([
+      Buffer.from(witness.to_cbor_bytes()),
+    ]),
+    scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+  };
+  const txCbor = encodeMidgardNativeTxCanonicalV1({
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    body,
+    witnessSet,
+    validity: "TxIsValid",
+  });
 
   return {
-    bodyHash,
-    txId: txIdMode === "compact" ? hash32(encodeCbor(compact)) : bodyHash,
+    txId: transactionId,
     txHex: txCbor.toString("hex"),
   };
 };
@@ -197,14 +152,12 @@ export const buildNativeSignedOneToOneWithFee = ({
   outputCbor,
   signer,
   fee,
-  txIdMode = "body",
 }) => {
   const tx = buildNativeSignedOutputs({
     spendOutRefCbor,
     outputCbors: [outputCbor],
     signer,
     fee,
-    txIdMode,
   });
   return {
     txId: tx.txId,
@@ -219,14 +172,12 @@ export const buildNativeSignedOneToOne = ({
   spendOutRefCbor,
   outputCbor,
   signer,
-  txIdMode = "compact",
 }) =>
   buildNativeSignedOneToOneWithFee({
     spendOutRefCbor,
     outputCbor,
     signer,
     fee: 0n,
-    txIdMode,
   });
 
 export const buildNativeSignedSplitWithFee = ({
@@ -267,7 +218,6 @@ export const buildNativeSignedSplitWithFee = ({
     outputCbors: outputs,
     signer,
     fee,
-    txIdMode: "body",
   });
   return {
     txId: tx.txId,
@@ -335,7 +285,6 @@ export const buildNativeSignedOneToOneWithMinFee = ({
       outputCbor,
       signer,
       fee,
-      txIdMode: "body",
     });
     const requiredFee =
       minFeeA * BigInt(Buffer.from(tx.txHex, "hex").length) + minFeeB;

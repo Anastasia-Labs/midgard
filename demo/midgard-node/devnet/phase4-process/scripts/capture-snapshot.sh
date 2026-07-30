@@ -49,18 +49,27 @@ while [ "$attempts" -gt 0 ]; do
 done
 [ "$attempts" -gt 0 ] || die "Cardano tip and Kupo checkpoint did not converge before snapshot"
 phas_registration_proof="$snapshot_dir/phas-registration-proof.json"
-"$script_dir/phas-registration-preflight.sh" >"$phas_registration_proof"
-phas_registration_proof_sha=$(sha256_file "$phas_registration_proof")
+phas_registration_proof_pending="$snapshot_dir/phas-registration-proof.pending.json"
+"$script_dir/phas-registration-preflight.sh" >"$phas_registration_proof_pending"
 jq -e \
   --argjson cardanoSlot "$cardano_slot" \
-  '.schemaVersion == "midgard-phase4-phas-registration-proof-v1" and
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"]) and
+   (.cardanoImage | exact(["ref","id"])) and
+   (.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
+   (.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   (.confirmation | exact(["slot","blockHeaderHash"])) and
+   (.observedAtTip | exact(["slot","hash"])) and
+   .schemaVersion == "midgard-phase4-phas-registration-proof-v1" and
    .readOnly == true and .registered == true and
    .transactionBody.cardanoCliTxHash == .registrationTxHash and
    .transactionBody.certificate.scriptHash == .scriptHash and
    .rewardAddressBase16 == ("f0" + .scriptHash) and
    .confirmation.slot <= $cardanoSlot and .observedAtTip.slot == $cardanoSlot' \
-  "$phas_registration_proof" >/dev/null \
+  "$phas_registration_proof_pending" >/dev/null \
   || die "PHAS registration proof is not bound to the frozen Cardano tip"
+mv "$phas_registration_proof_pending" "$phas_registration_proof"
+phas_registration_proof_sha=$(sha256_file "$phas_registration_proof")
 manifest_sha=$(sha256_file "$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/contract-deployment-info.json")
 blueprint_sha=$(awk 'NR == 1 { print $1 }' "$MIDGARD_PHASE4_RUN_DIR/work/plutus.json.sha256")
 [ "${#blueprint_sha}" -eq 64 ] || die "Aiken blueprint checksum is invalid"
@@ -68,6 +77,8 @@ cardano_image_id=$(image_id "$PHASE4_CARDANO_NODE_IMAGE")
 ogmios_image_id=$(image_id "$PHASE4_OGMIOS_IMAGE")
 kupo_image_id=$(image_id "$PHASE4_KUPO_IMAGE")
 postgres_image_id=$(image_id "$PHASE4_POSTGRES_IMAGE")
+snapshot_identity="$snapshot_dir/snapshot-identity.json"
+snapshot_identity_pending="$snapshot_dir/snapshot-identity.pending.json"
 jq -n \
   --arg schemaVersion midgard-phase4-matched-snapshot-identity-v1 \
   --arg composeProject "$MIDGARD_PHASE4_COMPOSE_PROJECT" \
@@ -92,7 +103,28 @@ jq -n \
   --argjson tip "$(cat "$snapshot_dir/cardano-tip.json")" \
   --argjson kupoCheckpoint "$kupo_checkpoint" \
   '{schemaVersion:$schemaVersion,composeProject:$composeProject,networkMagic:$networkMagic,postgresDatabase:$postgresDatabase,deploymentManifestSha256:$deploymentManifestSha256,blueprintSha256:$blueprintSha256,images:{cardanoNode:{ref:$cardanoImage,id:$cardanoImageId},ogmios:{ref:$ogmiosImage,id:$ogmiosImageId},kupo:{ref:$kupoImage,id:$kupoImageId},postgres:{ref:$postgresImage,id:$postgresImageId}},artifacts:{sourceSha256:$sourceSha256,distSha256:$distSha256,genesisSha256:$genesisSha256,configSha256:$configSha256,acceptanceEnvSha256:$acceptanceEnvSha256,composeSha256:$composeSha256,phase4AssetsSha256:$phase4AssetsSha256,phasRegistrationProofSha256:$phasRegistrationProofSha256},phasRegistration:$phasRegistration,cardanoTip:{slot:$tip.slot,hash:$tip.hash},kupoCheckpoint:$kupoCheckpoint}' \
-  | jq -cS . >"$snapshot_dir/snapshot-identity.json"
+  | jq -cS . >"$snapshot_identity_pending"
+jq -e \
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["schemaVersion","composeProject","networkMagic","postgresDatabase","deploymentManifestSha256","blueprintSha256","images","artifacts","phasRegistration","cardanoTip","kupoCheckpoint"]) and
+   (.images | exact(["cardanoNode","ogmios","kupo","postgres"])) and
+   ([.images[] | exact(["ref","id"])] | all) and
+   (.artifacts | exact(["sourceSha256","distSha256","genesisSha256","configSha256","acceptanceEnvSha256","composeSha256","phase4AssetsSha256","phasRegistrationProofSha256"])) and
+   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
+   (.phasRegistration.cardanoImage | exact(["ref","id"])) and
+   (.phasRegistration.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
+   (.phasRegistration.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   (.phasRegistration.confirmation | exact(["slot","blockHeaderHash"])) and
+   (.phasRegistration.observedAtTip | exact(["slot","hash"])) and
+   (.cardanoTip | exact(["slot","hash"])) and
+   .schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
+   (.deploymentManifestSha256 | test("^[a-f0-9]{64}$")) and
+   (.blueprintSha256 | test("^[a-f0-9]{64}$")) and
+   ([.artifacts[] | strings | test("^[a-f0-9]{64}$")] | length == 8 and all) and
+   .kupoCheckpoint == .cardanoTip.slot' \
+  "$snapshot_identity_pending" >/dev/null \
+  || die "matched snapshot identity producer emitted a noncanonical V1 artifact"
+mv "$snapshot_identity_pending" "$snapshot_identity"
 
 # Freeze every durable participant before copying any of them.
 compose stop kupo ogmios postgres

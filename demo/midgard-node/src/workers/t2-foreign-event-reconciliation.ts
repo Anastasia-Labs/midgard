@@ -1,5 +1,6 @@
 import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { assertDeploymentMarkerV1Matches } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -14,7 +15,7 @@ import {
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { ContractDeploymentIdentity, Database } from "@/services/index.js";
 import { computeDaPayloadRoots } from "@/workers/commit-block-header/da-payload.js";
 
 export type T2CandidateEventIds = {
@@ -301,7 +302,11 @@ export const reconcileOverdueAwaitingEventsAgainstForeignTip = ({
 }: {
   readonly foreignHeaderHash: string;
   readonly header: SDK.HeaderV1;
-}): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+}): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
     const suppliedHash = yield* SDK.hashBlockHeaderV1(header).pipe(
       Effect.mapError(
@@ -409,7 +414,11 @@ const decodeRetainedHeader = (
 
 const reconcileRetainedForeignTipEntry = (
   initialEntry: ForeignTipReconciliationsDB.Entry,
-): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+): Effect.Effect<
+  T2ForeignEventResolution,
+  DatabaseError,
+  Database | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     return yield* sql.withTransaction(
@@ -426,6 +435,34 @@ const reconcileRetainedForeignTipEntry = (
           return { type: "Ready", absent: emptyIds() } as const;
         }
         const entry = currentEntry.value;
+        const reconciliation =
+          ForeignTipReconciliationsDB.decodeForeignTipReconciliationV1(entry);
+        const deploymentIdentity = yield* ContractDeploymentIdentity;
+        if (deploymentIdentity.deploymentMarker === undefined) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: ForeignTipReconciliationsDB.tableName,
+              message:
+                "Foreign-tip recovery requires the exact active deployment marker",
+              cause: "missing_deployment_marker",
+            }),
+          );
+        }
+        yield* Effect.try({
+          try: () =>
+            assertDeploymentMarkerV1Matches(
+              reconciliation.deploymentMarker,
+              deploymentIdentity.deploymentMarker,
+              "ForeignTipReconciliationV1 recovery",
+            ),
+          catch: (cause) =>
+            new DatabaseError({
+              table: ForeignTipReconciliationsDB.tableName,
+              message:
+                "Foreign-tip reconciliation belongs to a different deployment",
+              cause,
+            }),
+        });
         const header = yield* decodeRetainedHeader(entry);
         const startTime =
           entry[ForeignTipReconciliationsDB.Columns.BLOCK_START_TIME];
@@ -476,35 +513,77 @@ const reconcileRetainedForeignTipEntry = (
           entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_CBOR];
         const retainedSchemaVersion =
           entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_SCHEMA_VERSION];
+        const retainedPayloadSha256 =
+          entry[ForeignTipReconciliationsDB.Columns.VERIFIED_DA_PAYLOAD_SHA256];
         const availablePayload =
-          retainedPayloadCbor !== null && retainedSchemaVersion !== null
+          retainedPayloadCbor !== null &&
+          retainedSchemaVersion !== null &&
+          retainedPayloadSha256 !== null
             ? {
+                headerHash:
+                  entry[
+                    ForeignTipReconciliationsDB.Columns.FOREIGN_HEADER_HASH
+                  ],
+                consensusProfileId:
+                  entry[
+                    ForeignTipReconciliationsDB.Columns.CONSENSUS_PROFILE_ID
+                  ],
                 payloadCbor: retainedPayloadCbor,
                 schemaVersion: retainedSchemaVersion,
+                payloadSha256: retainedPayloadSha256,
               }
             : Option.getOrUndefined(
                 yield* DaPayloadsDB.retrieveByHeaderHash(
                   Buffer.from(foreignHeaderHash, "hex"),
                 ),
               );
-        const payloadCbor =
+        const daIdentityCandidate =
           availablePayload === undefined
             ? undefined
             : "payloadCbor" in availablePayload
-              ? availablePayload.payloadCbor
-              : availablePayload[DaPayloadsDB.Columns.PAYLOAD_CBOR];
-        const schemaVersion =
-          availablePayload === undefined
-            ? undefined
-            : "schemaVersion" in availablePayload
-              ? availablePayload.schemaVersion
-              : availablePayload[DaPayloadsDB.Columns.VERSION];
+              ? availablePayload
+              : {
+                  headerHash:
+                    availablePayload[DaPayloadsDB.Columns.HEADER_HASH],
+                  schemaVersion: availablePayload[DaPayloadsDB.Columns.VERSION],
+                  consensusProfileId:
+                    availablePayload[DaPayloadsDB.Columns.CONSENSUS_PROFILE_ID],
+                  payloadCbor:
+                    availablePayload[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+                  payloadSha256:
+                    availablePayload[DaPayloadsDB.Columns.PAYLOAD_SHA256],
+                };
+        let authenticatedDa:
+          | ForeignTipReconciliationsDB.ForeignTipDaIdentityV1
+          | undefined;
         let payload: SDK.DaPayloadV1 | undefined;
         let payloadError: string | undefined;
-        if (payloadCbor !== undefined && schemaVersion !== undefined) {
+        if (daIdentityCandidate !== undefined) {
+          const authenticated = yield* Effect.either(
+            Effect.try({
+              try: () =>
+                ForeignTipReconciliationsDB.authenticateForeignTipDaEvidenceV1({
+                  reconciliation,
+                  deploymentMarker: deploymentIdentity.deploymentMarker,
+                  evidence: daIdentityCandidate,
+                }),
+              catch: (cause) => cause,
+            }),
+          );
+          if (authenticated._tag === "Left") {
+            payloadError = String(authenticated.left);
+          } else {
+            authenticatedDa = authenticated.right;
+          }
+        }
+        if (authenticatedDa !== undefined) {
           const decoded = yield* Effect.either(
             Effect.tryPromise({
-              try: () => decodeStoredPayload({ payloadCbor, schemaVersion }),
+              try: () =>
+                decodeStoredPayload({
+                  payloadCbor: authenticatedDa.payloadCbor,
+                  schemaVersion: authenticatedDa.schemaVersion,
+                }),
               catch: (cause) => cause,
             }),
           );
@@ -553,14 +632,32 @@ const reconcileRetainedForeignTipEntry = (
             ),
           );
         }
+        const requiresDaEvidence =
+          header.depositsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
+          header.forcedTransactionsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT ||
+          header.withdrawalsRoot !== SDK.EMPTY_MERKLE_TREE_ROOT;
+        const resolvedEvidence: ForeignTipReconciliationsDB.ResolveForeignTipEvidenceV1 =
+          !requiresDaEvidence
+            ? {
+                kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedEmpty,
+              }
+            : authenticatedDa !== undefined && payload !== undefined
+              ? {
+                  kind: ForeignTipReconciliationsDB.EvidenceKind.VerifiedDa,
+                  daIdentity: authenticatedDa,
+                }
+              : yield* Effect.fail(
+                  new DatabaseError({
+                    table: ForeignTipReconciliationsDB.tableName,
+                    message:
+                      "Foreign-tip resolution lost its authenticated DA identity",
+                    cause: foreignHeaderHash,
+                  }),
+                );
         yield* ForeignTipReconciliationsDB.markResolved({
           foreignHeaderHash,
-          ...(payloadCbor === undefined || payload === undefined
-            ? {}
-            : {
-                verifiedDaPayloadCbor: payloadCbor,
-                verifiedDaSchemaVersion: 1,
-              }),
+          deploymentMarker: deploymentIdentity.deploymentMarker,
+          evidence: resolvedEvidence,
         });
         return resolution;
       }),
@@ -619,7 +716,11 @@ const resolvedWindowHasAwaitingEvents = (
  * live state-queue tip advances beyond the foreign header.
  */
 export const reconcileOverdueAwaitingEventsAgainstRetainedForeignTips =
-  (): Effect.Effect<T2ForeignEventResolution, DatabaseError, Database> =>
+  (): Effect.Effect<
+    T2ForeignEventResolution,
+    DatabaseError,
+    Database | ContractDeploymentIdentity
+  > =>
     Effect.gen(function* () {
       const history =
         yield* ForeignTipReconciliationsDB.retrieveEvidenceHistory;

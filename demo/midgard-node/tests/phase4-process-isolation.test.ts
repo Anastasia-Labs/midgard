@@ -1,16 +1,21 @@
 import { createHash } from "node:crypto";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   buildPhase4IsolatedChildEnv,
+  decodePhase4MatchedSnapshotIdentityV1,
+  decodePhase4ResetAttestationV1,
   type Phase4ProcessIsolationIdentity,
+  validatePhase4PhasRegistrationProof,
   validatePhase4PhasRegistrationTransactionBody,
   validatePhase4ProcessIsolationValues,
   validatePhase4ResetAttestation,
 } from "@/commands/e2e-pipelined-commit-process-acceptance.js";
 import { PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE } from "@/commands/phase4-genesis-ledger.js";
+import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 
 const values = (): Record<string, string> => ({
   POSTGRES_HOST: "127.0.0.1",
@@ -31,20 +36,32 @@ const values = (): Record<string, string> => ({
   MIDGARD_PHASE4_NETWORK_MAGIC: "420042",
 });
 
-const PHAS_SCRIPT_HASH =
+const canonicalPhasIdentity = SDK.phasMembershipIdentity(
+  "Custom",
+  loadPhasMembershipWithdrawalScript(),
+);
+const PHAS_SCRIPT_HASH = canonicalPhasIdentity.scriptHash;
+const PHAS_REWARD_ADDRESS = canonicalPhasIdentity.rewardAddress;
+const CBOR_TEMPLATE_SCRIPT_HASH =
   "46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4d";
-const PHAS_REWARD_ADDRESS =
-  "stake_test17prd7qp8ls90quvhjfxuqlcuy7kxk90t90twl3a88vxmknguu7vsa";
-const PHAS_REGISTRATION_TX_HASH =
-  "f7f901aee5bef259fbc62f97cf5b89aae7a11515b490882e03009a5ea952e0ce";
-const PHAS_REGISTRATION_CBOR_SHA256 =
-  "6151d248776808489a06558ae4ccebab1c648f2ab41606f2a3e05e279ee49234";
 const PHAS_REGISTRATION_TRANSACTION_BODY = {
   type: "Unwitnessed Tx ConwayEra",
   description: "PHAS registration transaction body",
   cborHex:
-    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4da0f5f6",
+    "84a400d901028182582000000000000000000000000000000000000000000000000000000000000000000001818258390056256482f4e32203bbf0e61f5c0208f776216707b8c1a198e945149ee41bf07d00d3b340e0ba35ee9c82110e6190de18b6d730577223e6c51b00000006fc0299cb021a00028db504d901028182008201581c46df0027fc0af07197924dc07f1c27ac6b15eb2bd6efc7a73b0dbb4da0f5f6".replace(
+      CBOR_TEMPLATE_SCRIPT_HASH,
+      PHAS_SCRIPT_HASH,
+    ),
 } as const;
+const PHAS_REGISTRATION_TRANSACTION = CML.Transaction.from_cbor_hex(
+  PHAS_REGISTRATION_TRANSACTION_BODY.cborHex,
+);
+const PHAS_REGISTRATION_TX_HASH = CML.hash_transaction(
+  PHAS_REGISTRATION_TRANSACTION.body(),
+).to_hex();
+const PHAS_REGISTRATION_CBOR_SHA256 = createHash("sha256")
+  .update(Buffer.from(PHAS_REGISTRATION_TRANSACTION_BODY.cborHex, "hex"))
+  .digest("hex");
 
 const isolation: Phase4ProcessIsolationIdentity = {
   envFile: "/tmp/phase4/phase4.env",
@@ -114,6 +131,43 @@ const attestation = () => ({
   kupoCheckpoint: 1234,
 });
 
+const snapshotIdentity = () => ({
+  schemaVersion: "midgard-phase4-matched-snapshot-identity-v1",
+  composeProject: isolation.composeProject,
+  networkMagic: isolation.networkMagic,
+  postgresDatabase: isolation.postgresDatabase,
+  deploymentManifestSha256: isolation.deploymentManifestSha256,
+  blueprintSha256: isolation.snapshotBlueprintSha256,
+  images: {
+    cardanoNode: isolation.snapshotPhasRegistration.cardanoImage,
+    ogmios: {
+      ref: `ogmios@sha256:${"1".repeat(64)}`,
+      id: `sha256:${"2".repeat(64)}`,
+    },
+    kupo: {
+      ref: `kupo@sha256:${"3".repeat(64)}`,
+      id: `sha256:${"4".repeat(64)}`,
+    },
+    postgres: {
+      ref: `postgres@sha256:${"5".repeat(64)}`,
+      id: `sha256:${"6".repeat(64)}`,
+    },
+  },
+  artifacts: {
+    sourceSha256: "1".repeat(64),
+    distSha256: "2".repeat(64),
+    genesisSha256: "3".repeat(64),
+    configSha256: "4".repeat(64),
+    acceptanceEnvSha256: "5".repeat(64),
+    composeSha256: "6".repeat(64),
+    phase4AssetsSha256: "7".repeat(64),
+    phasRegistrationProofSha256: isolation.snapshotPhasRegistrationProofSha256,
+  },
+  phasRegistration: isolation.snapshotPhasRegistration,
+  cardanoTip: isolation.snapshotCardanoTip,
+  kupoCheckpoint: isolation.snapshotKupoCheckpoint,
+});
+
 describe("Phase 4 process isolation", () => {
   it("keeps the fixed transfer below the configured wallet-B genesis total", () => {
     expect(PHASE4_PROCESS_DEFAULT_TRANSFER_LOVELACE).toBe(50_000n);
@@ -179,6 +233,77 @@ describe("Phase 4 process isolation", () => {
     ).toEqual(attestation());
   });
 
+  it("decodes exact reset, snapshot, and PHAS V1 shapes only", () => {
+    expect(decodePhase4ResetAttestationV1(attestation())).toEqual(
+      attestation(),
+    );
+    expect(decodePhase4MatchedSnapshotIdentityV1(snapshotIdentity())).toEqual(
+      snapshotIdentity(),
+    );
+    expect(
+      validatePhase4PhasRegistrationProof(
+        isolation.snapshotPhasRegistration,
+        "test PHAS proof",
+      ),
+    ).toEqual(isolation.snapshotPhasRegistration);
+
+    for (const mutation of [
+      { ...attestation(), unknown: true },
+      {
+        ...attestation(),
+        cardanoTip: { ...attestation().cardanoTip, unknown: true },
+      },
+      {
+        ...attestation(),
+        phasRegistration: {
+          ...attestation().phasRegistration,
+          transactionBody: {
+            ...attestation().phasRegistration.transactionBody,
+            certificate: {
+              ...attestation().phasRegistration.transactionBody.certificate,
+              unknown: true,
+            },
+          },
+        },
+      },
+      {
+        ...attestation(),
+        schemaVersion: "midgard-phase4-matched-snapshot-identity-v1",
+      },
+    ]) {
+      expect(() => decodePhase4ResetAttestationV1(mutation)).toThrow();
+    }
+    const { snapshotSetSha256: _snapshotSetSha256, ...missingResetKey } =
+      attestation();
+    expect(() => decodePhase4ResetAttestationV1(missingResetKey)).toThrow(
+      "fields",
+    );
+
+    for (const mutation of [
+      { ...snapshotIdentity(), unknown: true },
+      {
+        ...snapshotIdentity(),
+        images: {
+          ...snapshotIdentity().images,
+          ogmios: { ...snapshotIdentity().images.ogmios, unknown: true },
+        },
+      },
+      {
+        ...snapshotIdentity(),
+        artifacts: {
+          ...snapshotIdentity().artifacts,
+          sourceSha256: "A".repeat(64),
+        },
+      },
+      {
+        ...snapshotIdentity(),
+        schemaVersion: "midgard-phase4-local-devnet-reset-attestation-v1",
+      },
+    ]) {
+      expect(() => decodePhase4MatchedSnapshotIdentityV1(mutation)).toThrow();
+    }
+  });
+
   it("accepts only the exact submitted PHAS registration transaction body", () => {
     expect(
       validatePhase4PhasRegistrationTransactionBody(
@@ -241,7 +366,7 @@ describe("Phase 4 process isolation", () => {
 
   it.each([
     [{ scenarioLabel: "wrong" }, "scenarioLabel mismatch"],
-    [{ composeProject: "wrong" }, "composeProject mismatch"],
+    [{ composeProject: "wrong" }, "noncanonical"],
     [{ snapshotSetSha256: "short" }, "snapshotSetSha256"],
     [{ snapshotIdentitySha256: "short" }, "snapshotIdentitySha256"],
     [{ phasRegistrationProofSha256: "short" }, "phasRegistrationProofSha256"],

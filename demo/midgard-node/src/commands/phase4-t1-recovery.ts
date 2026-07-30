@@ -27,6 +27,18 @@ const L2_HEADER_HASH = /^[a-f0-9]{56}$/u;
 const CARDANO_HASH = /^[a-f0-9]{64}$/u;
 const SHA256 = CARDANO_HASH;
 const SAFE_ATTEMPT_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/u;
+const CARDANO_OUT_REF = /^[a-f0-9]{64}#(?:0|[1-9][0-9]*)$/u;
+const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
+
+const exactObjectKeys = (
+  value: unknown,
+  expected: readonly string[],
+): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === expected.length &&
+  expected.every((key) => Object.hasOwn(value, key));
 
 export const requireL2HeaderHash = (value: string, label: string): string => {
   if (!L2_HEADER_HASH.test(value)) {
@@ -200,6 +212,141 @@ export type Phase4T1ProbeEvidence = {
   readonly attemptId: string;
   readonly canonicalHeaderHashes: readonly string[];
   readonly canonicalTip: Phase4T1CanonicalTip;
+};
+
+export const decodePhase4T1CanonicalTipV1 = (
+  value: unknown,
+): Phase4T1CanonicalTip => {
+  if (
+    !exactObjectKeys(value, [
+      "headerHash",
+      "outRef",
+      "datumKind",
+      "prevHeaderHash",
+      "prevUtxosRoot",
+      "utxosRoot",
+      "transactionsRoot",
+      "depositsRoot",
+      "withdrawalsRoot",
+      "forcedTransactionsRoot",
+      "transitionTraceRoot",
+      "eventToStepRoot",
+      "withdrawalCount",
+      "forcedTransactionCount",
+      "l2TransactionCount",
+      "depositCount",
+      "totalEventCount",
+      "transitionStepCount",
+      "startTimeMs",
+      "endTimeMs",
+    ])
+  ) {
+    throw new Error(
+      "Phase 4 T1 canonical tip fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    typeof value.headerHash !== "string" ||
+    !L2_HEADER_HASH.test(value.headerHash) ||
+    typeof value.outRef !== "string" ||
+    !CARDANO_OUT_REF.test(value.outRef) ||
+    (value.datumKind !== "confirmed" && value.datumKind !== "header") ||
+    typeof value.prevHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.prevHeaderHash) ||
+    typeof value.utxosRoot !== "string" ||
+    !CARDANO_HASH.test(value.utxosRoot) ||
+    !Number.isSafeInteger(value.startTimeMs) ||
+    (value.startTimeMs as number) < 0 ||
+    !Number.isSafeInteger(value.endTimeMs) ||
+    (value.endTimeMs as number) <= (value.startTimeMs as number)
+  ) {
+    throw new Error("Phase 4 T1 canonical tip contains a noncanonical value");
+  }
+  const nullableRoots = [
+    "prevUtxosRoot",
+    "transactionsRoot",
+    "depositsRoot",
+    "withdrawalsRoot",
+    "forcedTransactionsRoot",
+    "transitionTraceRoot",
+    "eventToStepRoot",
+  ] as const;
+  const nullableCounts = [
+    "withdrawalCount",
+    "forcedTransactionCount",
+    "l2TransactionCount",
+    "depositCount",
+    "totalEventCount",
+    "transitionStepCount",
+  ] as const;
+  for (const key of nullableRoots) {
+    const root = value[key];
+    if (
+      root !== null &&
+      (typeof root !== "string" || !CARDANO_HASH.test(root))
+    ) {
+      throw new Error(`Phase 4 T1 canonical tip ${key} is noncanonical`);
+    }
+  }
+  for (const key of nullableCounts) {
+    const count = value[key];
+    if (
+      count !== null &&
+      (typeof count !== "string" || !CANONICAL_NATURAL.test(count))
+    ) {
+      throw new Error(`Phase 4 T1 canonical tip ${key} is noncanonical`);
+    }
+  }
+  if (
+    value.datumKind === "confirmed" &&
+    [...nullableRoots, ...nullableCounts].some((key) => value[key] !== null)
+  ) {
+    throw new Error("Phase 4 T1 confirmed tip contains header-only V1 fields");
+  }
+  if (
+    value.datumKind === "header" &&
+    [...nullableRoots, ...nullableCounts].some((key) => value[key] === null)
+  ) {
+    throw new Error("Phase 4 T1 header tip is missing required V1 fields");
+  }
+  return value as Phase4T1CanonicalTip;
+};
+
+export const decodePhase4T1ProbeEvidenceV1 = (
+  value: unknown,
+): Phase4T1ProbeEvidence => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "snapshotIdentitySha256",
+      "attemptId",
+      "canonicalHeaderHashes",
+      "canonicalTip",
+    ])
+  ) {
+    throw new Error("Phase 4 T1 probe fields do not match the exact V1 schema");
+  }
+  if (
+    value.schemaVersion !== PHASE4_T1_PROBE_SCHEMA ||
+    typeof value.snapshotIdentitySha256 !== "string" ||
+    !SHA256.test(value.snapshotIdentitySha256) ||
+    typeof value.attemptId !== "string" ||
+    !SAFE_ATTEMPT_ID.test(value.attemptId) ||
+    !Array.isArray(value.canonicalHeaderHashes) ||
+    value.canonicalHeaderHashes.length === 0 ||
+    value.canonicalHeaderHashes.some(
+      (hash) => typeof hash !== "string" || !L2_HEADER_HASH.test(hash),
+    ) ||
+    new Set(value.canonicalHeaderHashes).size !==
+      value.canonicalHeaderHashes.length
+  ) {
+    throw new Error("Phase 4 T1 probe contains a noncanonical V1 value");
+  }
+  const canonicalTip = decodePhase4T1CanonicalTipV1(value.canonicalTip);
+  if (!value.canonicalHeaderHashes.includes(canonicalTip.headerHash)) {
+    throw new Error("Phase 4 T1 probe canonical tip is absent from its chain");
+  }
+  return value as Phase4T1ProbeEvidence;
 };
 
 const safeTimeMs = (value: bigint, label: string): number => {
@@ -380,12 +527,12 @@ export const phase4T1ProbeProgram = (
         `Forbidden canonical L2 header is still present: ${expectedAbsent}`,
       );
     }
-    return {
+    return decodePhase4T1ProbeEvidenceV1({
       schemaVersion: PHASE4_T1_PROBE_SCHEMA,
       snapshotIdentitySha256: options.snapshotIdentitySha256,
       attemptId: options.attemptId,
       ...state,
-    };
+    });
   });
 
 export type Phase4T1NoopAdvanceAssertion = {
@@ -397,6 +544,48 @@ export type Phase4T1NoopAdvanceAssertion = {
   readonly minimumRecoveredEndTimeMs: number;
   readonly rootsPreserved: true;
   readonly transitionIsEmpty: true;
+};
+
+const decodePhase4T1NoopAdvanceAssertionV1 = (
+  value: unknown,
+): Phase4T1NoopAdvanceAssertion => {
+  if (
+    !exactObjectKeys(value, [
+      "baseHeaderHash",
+      "recoveredTipHeaderHash",
+      "abandonedHeaderHash",
+      "baseEndTimeMs",
+      "recoveredEndTimeMs",
+      "minimumRecoveredEndTimeMs",
+      "rootsPreserved",
+      "transitionIsEmpty",
+    ])
+  ) {
+    throw new Error(
+      "Phase 4 T1 invariant fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    typeof value.baseHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.baseHeaderHash) ||
+    typeof value.recoveredTipHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.recoveredTipHeaderHash) ||
+    typeof value.abandonedHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.abandonedHeaderHash) ||
+    !Number.isSafeInteger(value.baseEndTimeMs) ||
+    (value.baseEndTimeMs as number) < 0 ||
+    !Number.isSafeInteger(value.recoveredEndTimeMs) ||
+    (value.recoveredEndTimeMs as number) <= (value.baseEndTimeMs as number) ||
+    !Number.isSafeInteger(value.minimumRecoveredEndTimeMs) ||
+    (value.minimumRecoveredEndTimeMs as number) <= 0 ||
+    (value.recoveredEndTimeMs as number) <
+      (value.minimumRecoveredEndTimeMs as number) ||
+    value.rootsPreserved !== true ||
+    value.transitionIsEmpty !== true
+  ) {
+    throw new Error("Phase 4 T1 invariant evidence is noncanonical");
+  }
+  return value as Phase4T1NoopAdvanceAssertion;
 };
 
 export const assertPhase4T1NoopAdvance = ({
@@ -498,7 +687,7 @@ export const assertPhase4T1NoopAdvance = ({
   if (after.canonicalHeaderHashes.includes(abandoned)) {
     throw new Error("Abandoned header N reappeared after the no-op advance");
   }
-  return {
+  return decodePhase4T1NoopAdvanceAssertionV1({
     baseHeaderHash: expectedBase,
     recoveredTipHeaderHash: recovered.headerHash,
     abandonedHeaderHash: abandoned,
@@ -507,7 +696,7 @@ export const assertPhase4T1NoopAdvance = ({
     minimumRecoveredEndTimeMs: minimumEndTimeMs,
     rootsPreserved: true,
     transitionIsEmpty: true,
-  };
+  });
 };
 
 export type Phase4T1AdvanceOptions = Phase4T1Gate & {
@@ -529,6 +718,73 @@ export type Phase4T1AdvanceEvidence = {
   readonly blockEndTimeMs: number;
   readonly after: Phase4T1ProbeEvidence;
   readonly invariants: Phase4T1NoopAdvanceAssertion;
+};
+
+export const decodePhase4T1AdvanceEvidenceV1 = (
+  value: unknown,
+): Phase4T1AdvanceEvidence => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "snapshotIdentitySha256",
+      "attemptId",
+      "abandonedHeaderHash",
+      "before",
+      "submittedTxHash",
+      "recoveredTipHeaderHash",
+      "blockOutRef",
+      "txSize",
+      "blockEndTimeMs",
+      "after",
+      "invariants",
+    ])
+  ) {
+    throw new Error(
+      "Phase 4 T1 canonical advance fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    value.schemaVersion !== PHASE4_T1_ADVANCE_SCHEMA ||
+    typeof value.snapshotIdentitySha256 !== "string" ||
+    !SHA256.test(value.snapshotIdentitySha256) ||
+    typeof value.attemptId !== "string" ||
+    !SAFE_ATTEMPT_ID.test(value.attemptId) ||
+    typeof value.abandonedHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.abandonedHeaderHash) ||
+    typeof value.submittedTxHash !== "string" ||
+    !CARDANO_HASH.test(value.submittedTxHash) ||
+    typeof value.recoveredTipHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.recoveredTipHeaderHash) ||
+    typeof value.blockOutRef !== "string" ||
+    !CARDANO_OUT_REF.test(value.blockOutRef) ||
+    !Number.isSafeInteger(value.txSize) ||
+    (value.txSize as number) <= 0 ||
+    !Number.isSafeInteger(value.blockEndTimeMs) ||
+    (value.blockEndTimeMs as number) <= 0
+  ) {
+    throw new Error(
+      "Phase 4 T1 canonical advance contains a noncanonical V1 value",
+    );
+  }
+  const before = decodePhase4T1ProbeEvidenceV1(value.before);
+  const after = decodePhase4T1ProbeEvidenceV1(value.after);
+  const invariants = decodePhase4T1NoopAdvanceAssertionV1(value.invariants);
+  if (
+    before.snapshotIdentitySha256 !== value.snapshotIdentitySha256 ||
+    after.snapshotIdentitySha256 !== value.snapshotIdentitySha256 ||
+    before.attemptId !== value.attemptId ||
+    after.attemptId !== value.attemptId ||
+    value.recoveredTipHeaderHash !== after.canonicalTip.headerHash ||
+    value.blockEndTimeMs !== after.canonicalTip.endTimeMs ||
+    invariants.baseHeaderHash !== before.canonicalTip.headerHash ||
+    invariants.recoveredTipHeaderHash !== value.recoveredTipHeaderHash ||
+    invariants.abandonedHeaderHash !== value.abandonedHeaderHash
+  ) {
+    throw new Error(
+      "Phase 4 T1 canonical advance is not bound to its nested evidence",
+    );
+  }
+  return value as Phase4T1AdvanceEvidence;
 };
 
 export const phase4T1AdvanceProgram = (
@@ -594,7 +850,7 @@ export const phase4T1AdvanceProgram = (
       abandonedHeaderHash,
       minimumEndTimeMs: options.minimumEndTimeMs,
     });
-    return {
+    return decodePhase4T1AdvanceEvidenceV1({
       schemaVersion: PHASE4_T1_ADVANCE_SCHEMA,
       snapshotIdentitySha256: options.snapshotIdentitySha256,
       attemptId: options.attemptId,
@@ -607,7 +863,7 @@ export const phase4T1AdvanceProgram = (
       blockEndTimeMs: submitted.blockEndTimeMs,
       after,
       invariants,
-    };
+    });
   });
 
 export type Phase4T1RecoveryAttestation = {
@@ -627,6 +883,75 @@ export type Phase4T1RecoveryAttestation = {
   readonly journalSha256After: string;
   readonly cardanoTip: { readonly slot: number; readonly hash: string };
   readonly kupoCheckpoint: number;
+};
+
+export const decodePhase4T1RecoveryAttestationV1 = (
+  value: unknown,
+): Phase4T1RecoveryAttestation => {
+  if (
+    !exactObjectKeys(value, [
+      "schemaVersion",
+      "scenarioLabel",
+      "attemptId",
+      "composeProject",
+      "networkMagic",
+      "snapshotSetSha256",
+      "snapshotIdentitySha256",
+      "abandonedHeaderHash",
+      "abandonedSubmittedTxHash",
+      "baseHeaderHash",
+      "recoveredTipHeaderHash",
+      "canonicalAdvanceTxHash",
+      "journalSha256Before",
+      "journalSha256After",
+      "cardanoTip",
+      "kupoCheckpoint",
+    ]) ||
+    !exactObjectKeys(value.cardanoTip, ["slot", "hash"])
+  ) {
+    throw new Error(
+      "T1 recovery attestation fields do not match the exact V1 schema",
+    );
+  }
+  if (
+    value.schemaVersion !== PHASE4_T1_RECOVERY_SCHEMA ||
+    typeof value.scenarioLabel !== "string" ||
+    value.scenarioLabel.length === 0 ||
+    typeof value.attemptId !== "string" ||
+    !SAFE_ATTEMPT_ID.test(value.attemptId) ||
+    typeof value.composeProject !== "string" ||
+    !value.composeProject.startsWith("midgard_phase4_process_") ||
+    !/^[a-z0-9_-]+$/u.test(value.composeProject) ||
+    !Number.isSafeInteger(value.networkMagic) ||
+    (value.networkMagic as number) <= 0 ||
+    typeof value.snapshotSetSha256 !== "string" ||
+    !SHA256.test(value.snapshotSetSha256) ||
+    typeof value.snapshotIdentitySha256 !== "string" ||
+    !SHA256.test(value.snapshotIdentitySha256) ||
+    typeof value.abandonedHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.abandonedHeaderHash) ||
+    typeof value.abandonedSubmittedTxHash !== "string" ||
+    !CARDANO_HASH.test(value.abandonedSubmittedTxHash) ||
+    typeof value.baseHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.baseHeaderHash) ||
+    typeof value.recoveredTipHeaderHash !== "string" ||
+    !L2_HEADER_HASH.test(value.recoveredTipHeaderHash) ||
+    value.recoveredTipHeaderHash === value.abandonedHeaderHash ||
+    value.recoveredTipHeaderHash === value.baseHeaderHash ||
+    typeof value.canonicalAdvanceTxHash !== "string" ||
+    !CARDANO_HASH.test(value.canonicalAdvanceTxHash) ||
+    typeof value.journalSha256Before !== "string" ||
+    !SHA256.test(value.journalSha256Before) ||
+    value.journalSha256After !== value.journalSha256Before ||
+    !Number.isSafeInteger(value.cardanoTip.slot) ||
+    (value.cardanoTip.slot as number) < 0 ||
+    typeof value.cardanoTip.hash !== "string" ||
+    !CARDANO_HASH.test(value.cardanoTip.hash) ||
+    value.kupoCheckpoint !== value.cardanoTip.slot
+  ) {
+    throw new Error("T1 recovery attestation contains a noncanonical V1 value");
+  }
+  return value as Phase4T1RecoveryAttestation;
 };
 
 export const parseAndValidatePhase4T1RecoveryAttestation = ({
@@ -653,36 +978,7 @@ export const parseAndValidatePhase4T1RecoveryAttestation = ({
       `T1 recovery command must emit exactly one JSON object: ${String(cause)}`,
     );
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("T1 recovery attestation must be a JSON object");
-  }
-  const attestationKeys = Object.keys(value).sort((left, right) =>
-    left.localeCompare(right),
-  );
-  const requiredKeys = [
-    "schemaVersion",
-    "scenarioLabel",
-    "attemptId",
-    "composeProject",
-    "networkMagic",
-    "snapshotSetSha256",
-    "snapshotIdentitySha256",
-    "abandonedHeaderHash",
-    "abandonedSubmittedTxHash",
-    "baseHeaderHash",
-    "recoveredTipHeaderHash",
-    "canonicalAdvanceTxHash",
-    "journalSha256Before",
-    "journalSha256After",
-    "cardanoTip",
-    "kupoCheckpoint",
-  ].sort((left, right) => left.localeCompare(right));
-  if (JSON.stringify(attestationKeys) !== JSON.stringify(requiredKeys)) {
-    throw new Error(
-      "T1 recovery attestation fields do not match the exact schema",
-    );
-  }
-  const attestation = value as Phase4T1RecoveryAttestation;
+  const attestation = decodePhase4T1RecoveryAttestationV1(value);
   const exact = {
     schemaVersion: PHASE4_T1_RECOVERY_SCHEMA,
     scenarioLabel: expected.scenarioLabel,
@@ -712,55 +1008,6 @@ export const parseAndValidatePhase4T1RecoveryAttestation = ({
       );
     }
   }
-  requireSha256(attestation.snapshotSetSha256, "snapshot set digest");
-  requireSha256(attestation.journalSha256Before, "pre-recovery journal digest");
-  requireSha256(attestation.journalSha256After, "post-recovery journal digest");
-  if (attestation.journalSha256Before !== attestation.journalSha256After) {
-    throw new Error(
-      "T1 recovery attestation journal digests are not byte-identical",
-    );
-  }
-  requireL2HeaderHash(
-    attestation.recoveredTipHeaderHash,
-    "recovered L2 tip hash",
-  );
-  requireCardanoHash(
-    attestation.canonicalAdvanceTxHash,
-    "canonical advance tx hash",
-  );
-  if (
-    !Number.isSafeInteger(attestation.cardanoTip?.slot) ||
-    attestation.cardanoTip.slot < 0
-  ) {
-    throw new Error("T1 recovery attestation has an invalid Cardano tip slot");
-  }
-  requireCardanoHash(attestation.cardanoTip.hash, "Cardano tip hash");
-  if (
-    typeof attestation.cardanoTip !== "object" ||
-    attestation.cardanoTip === null ||
-    JSON.stringify(Object.keys(attestation.cardanoTip).sort()) !==
-      JSON.stringify(["hash", "slot"])
-  ) {
-    throw new Error(
-      "T1 recovery Cardano tip fields do not match the exact schema",
-    );
-  }
-  if (
-    !Number.isSafeInteger(attestation.kupoCheckpoint) ||
-    attestation.kupoCheckpoint !== attestation.cardanoTip.slot
-  ) {
-    throw new Error(
-      "T1 recovery attestation does not bind synchronized Cardano and Kupo providers",
-    );
-  }
-  if (
-    attestation.recoveredTipHeaderHash === attestation.abandonedHeaderHash ||
-    attestation.recoveredTipHeaderHash === attestation.baseHeaderHash
-  ) {
-    throw new Error(
-      "T1 recovery attestation did not produce a distinct canonical F tip",
-    );
-  }
   return attestation;
 };
 
@@ -771,9 +1018,13 @@ export const writePhase4T1Evidence = async (
   if (!path.startsWith("/")) {
     throw new Error("Phase 4 T1 evidence path must be absolute");
   }
+  const decoded =
+    evidence.schemaVersion === PHASE4_T1_PROBE_SCHEMA
+      ? decodePhase4T1ProbeEvidenceV1(evidence)
+      : decodePhase4T1AdvanceEvidenceV1(evidence);
   await writeTextFileAtomicNoReplace(
     path,
-    `${JSON.stringify(evidence, null, 2)}\n`,
+    `${JSON.stringify(decoded, null, 2)}\n`,
     { mode: 0o600 },
   );
 };

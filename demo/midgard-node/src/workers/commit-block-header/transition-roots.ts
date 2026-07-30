@@ -377,11 +377,11 @@ const transitionTraceEntries = (
       return 0;
     });
     for (const [index, step] of ordered.entries()) {
-      if (step.schema_version < 0n) {
+      if (step.schema_version !== SDK.TRANSITION_STEP_V1_SCHEMA_VERSION) {
         return yield* Effect.fail(
           MpfError.phasRoot(
             new Error(
-              `Transition step schema_version must be non-negative at sorted index ${index.toString()}`,
+              `TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()} at sorted index ${index.toString()}; got=${step.schema_version.toString()}`,
             ),
           ),
         );
@@ -470,6 +470,17 @@ export const verifyIndexedTraceProof = (
   options: Omit<RootProofVerificationOptions, "expectedDomain">,
 ): Effect.Effect<void, MpfError, never> =>
   Effect.gen(function* () {
+    if (
+      witness.value.schema_version !== SDK.TRANSITION_STEP_V1_SCHEMA_VERSION
+    ) {
+      return yield* Effect.fail(
+        MpfError.phasRoot(
+          new Error(
+            `Indexed trace proof TransitionStepV1 schema_version must equal ${SDK.TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}; got=${witness.value.schema_version.toString()}`,
+          ),
+        ),
+      );
+    }
     yield* verifyRootMembershipProof({
       witness,
       keySchema: LucidData.Integer(),

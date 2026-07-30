@@ -12,6 +12,7 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { computeMidgardNativeTxFullHashFromCanonicalCborV1 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -101,7 +102,7 @@ type CorpusManifest = {
 type AdmissionInsert = {
   readonly tx_id: Buffer;
   readonly tx_canonical_cbor: Buffer;
-  readonly tx_canonical_cbor_sha256: Buffer;
+  readonly tx_full_hash_v1: Buffer;
   readonly arrival_seq: bigint;
   readonly status: "queued";
   readonly submit_source: "native";
@@ -763,19 +764,17 @@ const preloadAdmissions = async (
             inserting.map(
               ({
                 tx_canonical_cbor: _cbor,
-                tx_canonical_cbor_sha256: _hash,
+                tx_full_hash_v1: _hash,
                 ...admission
               }) => admission,
             ),
           )}`;
           yield* sql`INSERT INTO tx_admission_payloads ${sql.insert(
-            inserting.map(
-              ({ tx_id, tx_canonical_cbor, tx_canonical_cbor_sha256 }) => ({
-                tx_id,
-                tx_canonical_cbor,
-                tx_canonical_cbor_sha256,
-              }),
-            ),
+            inserting.map(({ tx_id, tx_canonical_cbor, tx_full_hash_v1 }) => ({
+              tx_id,
+              tx_canonical_cbor,
+              tx_full_hash_v1,
+            })),
           )}`;
           yield* sql`INSERT INTO phase2_expected_tx_ids ${sql.insert(
             inserting.map(({ tx_id }) => ({ tx_id })),
@@ -804,7 +803,8 @@ const preloadAdmissions = async (
     batch.push({
       tx_id: Buffer.from(row.txHash, "hex"),
       tx_canonical_cbor: txCbor,
-      tx_canonical_cbor_sha256: Buffer.from(row.canonicalCborSha256, "hex"),
+      tx_full_hash_v1:
+        computeMidgardNativeTxFullHashFromCanonicalCborV1(txCbor),
       arrival_seq: arrivalSeq,
       status: "queued",
       submit_source: "native",

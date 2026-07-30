@@ -37,7 +37,19 @@ jq -e \
   --arg cardanoImage "$PHASE4_CARDANO_NODE_IMAGE" --arg ogmiosImage "$PHASE4_OGMIOS_IMAGE" \
   --arg kupoImage "$PHASE4_KUPO_IMAGE" --arg postgresImage "$PHASE4_POSTGRES_IMAGE" \
   --arg phasRegistrationProofSha256 "$phas_registration_proof_sha" \
-  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["schemaVersion","composeProject","networkMagic","postgresDatabase","deploymentManifestSha256","blueprintSha256","images","artifacts","phasRegistration","cardanoTip","kupoCheckpoint"]) and
+   (.images | exact(["cardanoNode","ogmios","kupo","postgres"])) and
+   ([.images[] | exact(["ref","id"])] | all) and
+   (.artifacts | exact(["sourceSha256","distSha256","genesisSha256","configSha256","acceptanceEnvSha256","composeSha256","phase4AssetsSha256","phasRegistrationProofSha256"])) and
+   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
+   (.phasRegistration.cardanoImage | exact(["ref","id"])) and
+   (.phasRegistration.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
+   (.phasRegistration.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   (.phasRegistration.confirmation | exact(["slot","blockHeaderHash"])) and
+   (.phasRegistration.observedAtTip | exact(["slot","hash"])) and
+   (.cardanoTip | exact(["slot","hash"])) and
+   .schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
    .composeProject == $composeProject and .networkMagic == $networkMagic and
    .postgresDatabase == $postgresDatabase and .deploymentManifestSha256 == $deploymentManifestSha256 and
    .images.cardanoNode.ref == $cardanoImage and .images.ogmios.ref == $ogmiosImage and
@@ -176,6 +188,23 @@ jq -n \
   --argjson phasRegistration "$(cat "$restored_phas_proof")" \
   --argjson tip "$tip" --argjson kupoCheckpoint "$observed_kupo" \
   '{schemaVersion:$schemaVersion,scenarioLabel:$scenarioLabel,composeProject:$composeProject,networkMagic:$networkMagic,postgresDatabase:$postgresDatabase,deploymentManifestSha256:$deploymentManifestSha256,snapshotSetSha256:$snapshotSetSha256,snapshotIdentitySha256:$snapshotIdentitySha256,phasRegistrationProofSha256:$phasRegistrationProofSha256,phasRegistration:$phasRegistration,cardanoTip:{slot:$tip.slot,hash:$tip.hash},kupoCheckpoint:$kupoCheckpoint}' >"$attestation_pending_path"
+jq -e \
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["schemaVersion","scenarioLabel","composeProject","networkMagic","postgresDatabase","deploymentManifestSha256","snapshotSetSha256","snapshotIdentitySha256","phasRegistrationProofSha256","phasRegistration","cardanoTip","kupoCheckpoint"]) and
+   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
+   (.phasRegistration.cardanoImage | exact(["ref","id"])) and
+   (.phasRegistration.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
+   (.phasRegistration.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   (.phasRegistration.confirmation | exact(["slot","blockHeaderHash"])) and
+   (.phasRegistration.observedAtTip | exact(["slot","hash"])) and
+   (.cardanoTip | exact(["slot","hash"])) and
+   .schemaVersion == "midgard-phase4-local-devnet-reset-attestation-v1" and
+   ([.deploymentManifestSha256,.snapshotSetSha256,.snapshotIdentitySha256,.phasRegistrationProofSha256] | all(test("^[a-f0-9]{64}$"))) and
+   .kupoCheckpoint == .cardanoTip.slot and
+   .phasRegistration.networkMagic == .networkMagic and
+   .phasRegistration.observedAtTip == .cardanoTip' \
+  "$attestation_pending_path" >/dev/null \
+  || die "reset producer emitted a noncanonical V1 attestation"
 
 # Resume the producer only after the frozen identity is attested. Recreating the
 # producer replaces the socket inode, so reconnect Ogmios first and Kupo second;

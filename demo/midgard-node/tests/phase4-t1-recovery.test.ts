@@ -4,6 +4,9 @@ import {
   assertPhase4T1Gate,
   assertPhase4T1NoopAdvance,
   assertPhase4T1ReplacementAttemptOrdering,
+  decodePhase4T1AdvanceEvidenceV1,
+  decodePhase4T1ProbeEvidenceV1,
+  decodePhase4T1RecoveryAttestationV1,
   parseAndValidatePhase4T1RecoveryAttestation,
   PHASE4_T1_ACCEPTANCE_TOKEN,
   PHASE4_T1_PROBE_SCHEMA,
@@ -178,6 +181,76 @@ describe("Phase 4 T1 canonical no-op advance", () => {
       assertPhase4T1NoopAdvance({ ...input, minimumEndTimeMs: 20_000 }),
     ).toThrow(/end-time/u);
   });
+
+  it("decodes exact probe and canonical-advance V1 artifacts only", () => {
+    const before = probe(baseTip(), [h28("11")]);
+    const after = probe(recoveredTip(), [h28("11"), h28("22")]);
+    const invariants = assertPhase4T1NoopAdvance({
+      before,
+      after,
+      expectedBaseHeaderHash: h28("11"),
+      abandonedHeaderHash: h28("44"),
+      minimumEndTimeMs: 10_000,
+    });
+    const advance = {
+      schemaVersion: "midgard-phase4-t1-canonical-advance-v1",
+      snapshotIdentitySha256: before.snapshotIdentitySha256,
+      attemptId: before.attemptId,
+      abandonedHeaderHash: h28("44"),
+      before,
+      submittedTxHash: h32("66"),
+      recoveredTipHeaderHash: h28("22"),
+      blockOutRef: `${h32("77")}#0`,
+      txSize: 123,
+      blockEndTimeMs: 12_000,
+      after,
+      invariants,
+    } as const;
+    expect(decodePhase4T1ProbeEvidenceV1(before)).toEqual(before);
+    expect(decodePhase4T1AdvanceEvidenceV1(advance)).toEqual(advance);
+
+    for (const mutation of [
+      { ...before, schemaVersion: "midgard-phase4-t1-probe-v2" },
+      { ...before, unknown: true },
+      {
+        ...before,
+        canonicalTip: { ...before.canonicalTip, unknown: true },
+      },
+      {
+        ...before,
+        canonicalTip: {
+          ...before.canonicalTip,
+          outRef: `${h32("a1")}#00`,
+        },
+      },
+      {
+        ...before,
+        canonicalHeaderHashes: [h28("11"), h28("11")],
+      },
+      {
+        ...before,
+        schemaVersion: "midgard-phase4-t1-canonical-advance-v1",
+      },
+    ]) {
+      expect(() => decodePhase4T1ProbeEvidenceV1(mutation)).toThrow();
+    }
+    const { attemptId: _attemptId, ...missingProbeKey } = before;
+    expect(() => decodePhase4T1ProbeEvidenceV1(missingProbeKey)).toThrow(
+      "fields",
+    );
+    expect(() =>
+      decodePhase4T1AdvanceEvidenceV1({
+        ...advance,
+        after: { ...advance.after, unknown: true },
+      }),
+    ).toThrow();
+    expect(() =>
+      decodePhase4T1AdvanceEvidenceV1({
+        ...advance,
+        recoveredTipHeaderHash: h28("33"),
+      }),
+    ).toThrow("not bound");
+  });
 });
 
 describe("Phase 4 T1 per-attempt process evidence", () => {
@@ -264,6 +337,20 @@ describe("Phase 4 T1 recovery attestation", () => {
           expected,
         }),
       ).toThrow();
+    }
+  });
+
+  it("rejects wrong-family, missing, and unknown nested recovery shapes", () => {
+    expect(decodePhase4T1RecoveryAttestationV1(valid)).toEqual(valid);
+    const { snapshotSetSha256: _snapshotSetSha256, ...missing } = valid;
+    for (const changed of [
+      missing,
+      { ...valid, schemaVersion: PHASE4_T1_PROBE_SCHEMA },
+      { ...valid, unexpected: true },
+      { ...valid, cardanoTip: { ...valid.cardanoTip, unexpected: true } },
+      { ...valid, canonicalAdvanceTxHash: h32("AA") },
+    ]) {
+      expect(() => decodePhase4T1RecoveryAttestationV1(changed)).toThrow();
     }
   });
 });

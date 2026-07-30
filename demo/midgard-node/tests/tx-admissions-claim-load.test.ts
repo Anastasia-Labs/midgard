@@ -29,8 +29,9 @@ const insertAdmissions = (inputs: readonly AdmissionInput[]) =>
     for (const input of inputs) {
       const inserted = yield* TxAdmissionsDB.tryInsert({
         ...input,
-        programMaterialSidecarCbor:
-          encodeMidgardCekProgramMaterialSidecarV1([]),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+          [],
+        ),
         submitSource: "native",
       });
       expect(inserted).not.toBeNull();
@@ -323,6 +324,38 @@ describe("durable admission lightweight claim and payload load", () => {
         ]);
       }),
     ),
+  );
+
+  it.effect(
+    "fails closed when the persisted V1 full-transaction commitment is corrupt",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const input = admissionInput("corrupt-full-hash");
+          yield* insertAdmissions([input]);
+          const leaseOwner = "claim-load:corrupt-full-hash";
+          const claimed = yield* TxAdmissionsDB.claimBatchLease({
+            limit: 1,
+            leaseOwner,
+            leaseDurationMs: 30_000,
+          });
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE tx_admission_payloads
+            SET tx_full_hash_v1 = decode(repeat('00', 32), 'hex')
+            WHERE tx_id = ${input.txId}`;
+
+          const loaded = yield* Effect.either(
+            TxAdmissionsDB.loadClaimedPayloads({ claimed, leaseOwner }),
+          );
+          expect(loaded).toMatchObject({
+            _tag: "Left",
+            left: {
+              message:
+                "Admission payload canonical V1 full-transaction commitment does not match its persisted bytes",
+            },
+          });
+        }),
+      ),
   );
 
   it.effect(

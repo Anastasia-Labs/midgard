@@ -87,7 +87,19 @@ jq -e \
   --arg kupoImage "$PHASE4_KUPO_IMAGE" \
   --arg postgresImage "$PHASE4_POSTGRES_IMAGE" \
   --arg phasRegistrationProofSha256 "$phas_registration_proof_sha" \
-  '.schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
+  'def exact($required): type == "object" and keys == ($required | sort);
+   exact(["schemaVersion","composeProject","networkMagic","postgresDatabase","deploymentManifestSha256","blueprintSha256","images","artifacts","phasRegistration","cardanoTip","kupoCheckpoint"]) and
+   (.images | exact(["cardanoNode","ogmios","kupo","postgres"])) and
+   ([.images[] | exact(["ref","id"])] | all) and
+   (.artifacts | exact(["sourceSha256","distSha256","genesisSha256","configSha256","acceptanceEnvSha256","composeSha256","phase4AssetsSha256","phasRegistrationProofSha256"])) and
+   (.phasRegistration | exact(["schemaVersion","source","readOnly","registered","cardanoImage","networkMagic","manifestId","registrationTxHash","rewardAddress","rewardAddressBase16","scriptHash","transactionBody","registrationDepositLovelace","confirmation","observedAtTip"])) and
+   (.phasRegistration.cardanoImage | exact(["ref","id"])) and
+   (.phasRegistration.transactionBody | exact(["schemaVersion","artifactSha256","cborSha256","cborSizeBytes","cardanoCliTxHash","certificate"])) and
+   (.phasRegistration.transactionBody.certificate | exact(["kind","index","count","credentialType","scriptHash"])) and
+   (.phasRegistration.confirmation | exact(["slot","blockHeaderHash"])) and
+   (.phasRegistration.observedAtTip | exact(["slot","hash"])) and
+   (.cardanoTip | exact(["slot","hash"])) and
+   .schemaVersion == "midgard-phase4-matched-snapshot-identity-v1" and
    .composeProject == $composeProject and .networkMagic == $networkMagic and
    .postgresDatabase == $postgresDatabase and .deploymentManifestSha256 == $deploymentManifestSha256 and
    .images.cardanoNode.ref == $cardanoImage and .images.ogmios.ref == $ogmiosImage and
@@ -263,7 +275,13 @@ jq -e \
   --arg attemptId "$attempt_id" \
   --arg abandonedHeaderHash "$abandoned_header_hash" \
   --arg baseHeaderHash "$base_header_hash" \
-  '.schemaVersion == "midgard-phase4-t1-canonical-advance-v1" and
+  'def exact($required): type == "object" and keys == ($required | sort);
+   def exactTip: exact(["headerHash","outRef","datumKind","prevHeaderHash","prevUtxosRoot","utxosRoot","transactionsRoot","depositsRoot","withdrawalsRoot","forcedTransactionsRoot","transitionTraceRoot","eventToStepRoot","withdrawalCount","forcedTransactionCount","l2TransactionCount","depositCount","totalEventCount","transitionStepCount","startTimeMs","endTimeMs"]);
+   def exactProbe: exact(["schemaVersion","snapshotIdentitySha256","attemptId","canonicalHeaderHashes","canonicalTip"]) and (.canonicalTip | exactTip);
+   exact(["schemaVersion","snapshotIdentitySha256","attemptId","abandonedHeaderHash","before","submittedTxHash","recoveredTipHeaderHash","blockOutRef","txSize","blockEndTimeMs","after","invariants"]) and
+   (.before | exactProbe) and (.after | exactProbe) and
+   (.invariants | exact(["baseHeaderHash","recoveredTipHeaderHash","abandonedHeaderHash","baseEndTimeMs","recoveredEndTimeMs","minimumRecoveredEndTimeMs","rootsPreserved","transitionIsEmpty"])) and
+   .schemaVersion == "midgard-phase4-t1-canonical-advance-v1" and
    .snapshotIdentitySha256 == $snapshotIdentitySha256 and .attemptId == $attemptId and
    .abandonedHeaderHash == $abandonedHeaderHash and
    .before.canonicalTip.headerHash == $baseHeaderHash and

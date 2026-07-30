@@ -1,3 +1,4 @@
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -35,7 +36,7 @@ describe("Architecture G canonical probe workload", () => {
       feeParams: { minFeeA: 0n, minFeeB: 0n },
       network: "Preprod",
       networkId: 0n,
-      maxSubmitTxCborBytes: 32_768,
+      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
       corpusSliceId: "large",
     });
     const first = decodeCanonicalProbeRow(
@@ -61,6 +62,18 @@ describe("Architecture G canonical probe workload", () => {
       second.sourceEvent.ledgerOps[0]?.key,
     );
     expect(first.transactionOp.key.toString("hex")).toBe(chain.rows[0]!.txHash);
+    expect(() =>
+      decodeCanonicalProbeRow(
+        { ...chain.rows[0], unknown: true } as Record<string, unknown>,
+        0,
+      ),
+    ).toThrow("keys must be exact");
+    expect(() =>
+      decodeCanonicalProbeRow(
+        { ...chain.rows[0], corpusSliceId: "" } as Record<string, unknown>,
+        0,
+      ),
+    ).toThrow("corpusSliceId must be a non-empty string");
   });
 
   it("rejects a corpus row whose selected input is not the signed spend", async () => {
@@ -85,7 +98,7 @@ describe("Architecture G canonical probe workload", () => {
       feeParams: { minFeeA: 0n, minFeeB: 0n },
       network: "Preprod",
       networkId: 0n,
-      maxSubmitTxCborBytes: 32_768,
+      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
       corpusSliceId: "large",
     });
     expect(() =>

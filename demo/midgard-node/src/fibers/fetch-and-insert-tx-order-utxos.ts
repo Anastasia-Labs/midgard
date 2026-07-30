@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialEntryV1,
   encodeMidgardCekProgramMaterialEntryV1,
@@ -20,7 +21,6 @@ import {
   reconstructMidgardTransactionV1,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core/consensus-validation-v1";
-import { midgardBoundedItemChunkCountV1 } from "@al-ft/midgard-core";
 import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -144,7 +144,7 @@ const fieldItemEncodedSizeV1 = (
   fieldIndex: number,
   itemLength: number,
 ): number => {
-  if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
     return canonicalHeaderV1(2, itemLength).length + itemLength;
   }
   if (fieldIndex === 5) {
@@ -153,7 +153,7 @@ const fieldItemEncodedSizeV1 = (
     }
     return itemLength - 1;
   }
-  if (fieldIndex === 7 || fieldIndex === 8) return itemLength;
+  if (fieldIndex === 6 || fieldIndex === 8) return itemLength;
   throw new Error(`unknown V1 field index ${fieldIndex.toString()}`);
 };
 
@@ -309,10 +309,9 @@ export const reconstructTxOrderMaterialV1 = ({
               `field receipt ${outRefKeyV1(reference)} is not an inline datum at the compiled receipt validator`,
             );
           }
-          const receipt = Data.from(
-            receiptUtxo.datum,
-            SDK.TxFieldReceiptV1,
-          ) as SDK.TxFieldReceiptV1;
+          const receipt = SDK.decodeTxFieldReceiptV1Cbor(
+            Buffer.from(receiptUtxo.datum, "hex"),
+          );
           const collection = receipt.collection_proof;
           const fieldIndex = Number(collection.field_index);
           const itemIndex = Number(collection.item_index);
@@ -416,10 +415,9 @@ export const reconstructTxOrderMaterialV1 = ({
               `field fragment ${outRefKeyV1(receipt.field_reference)} is not an inline datum at the compiled field validator`,
             );
           }
-          const field = Data.from(
-            fieldUtxo.datum,
-            SDK.TxFieldPreimageV1,
-          ) as SDK.TxFieldPreimageV1;
+          const field = SDK.decodeTxFieldPreimageV1Cbor(
+            Buffer.from(fieldUtxo.datum, "hex"),
+          );
           if (
             field.field_receipt_policy_id !== fieldReceiptPolicyId ||
             field.tx_order_policy_id !== txOrderPolicyId ||
@@ -490,7 +488,7 @@ export const reconstructTxOrderMaterialV1 = ({
           fieldHeader.copy(target, 0);
           const itemStart = sizeBeforeItem;
           const chunkOffset = chunkIndex * 4_095;
-          if ([0, 1, 2, 3, 4, 6].includes(fieldIndex)) {
+          if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
             const bytesHeader = canonicalHeaderV1(2, itemLength);
             bytesHeader.copy(target, itemStart);
             proof.chunk.copy(
@@ -670,10 +668,9 @@ export const publishedProgramMaterialEntries = (
       if (utxo.datum == null) {
         throw new Error("material UTxO has no inline datum");
       }
-      const datum = Data.from(
-        utxo.datum,
-        SDK.CekProgramMaterialDatumV1,
-      ) as SDK.CekProgramMaterialDatumV1;
+      const datum = SDK.decodeCekProgramMaterialDatumV1Cbor(
+        Buffer.from(utxo.datum, "hex"),
+      );
       entries.push(
         decodeMidgardCekProgramMaterialEntryV1(
           encodeMidgardCekProgramMaterialEntryV1({

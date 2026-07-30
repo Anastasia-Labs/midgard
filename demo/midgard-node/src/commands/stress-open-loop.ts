@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 
 import { encodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import {
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
 
 export type OpenLoopCorpusShape = "fanout" | "chain" | "mixed";
 
@@ -82,8 +87,21 @@ export type NoOpCalibrationSummary = OpenLoopSubmitSummary & {
   readonly notes: readonly string[];
 };
 
-const TX_HASH_PATTERN = /^[0-9a-f]{64}$/i;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+const TX_HASH_PATTERN = /^[0-9a-f]{64}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const OUTREF_PATTERN = /^[0-9a-f]{64}#(0|[1-9][0-9]*)$/;
+const CORPUS_ROW_KEYS = [
+  "txHash",
+  "canonicalCborHex",
+  "canonicalCborSha256",
+  "canonicalCborByteLength",
+  "senderWalletId",
+  "selectedInputOutref",
+  "outputOutrefs",
+  "planShape",
+  "parentTxHash",
+  "corpusSliceId",
+] as const;
 
 const normalizeHex = (value: string): string => value.trim().toLowerCase();
 
@@ -113,7 +131,10 @@ const parseStringField = (
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`corpus row ${name} must be a non-empty string`);
   }
-  return value.trim();
+  if (value !== value.trim()) {
+    throw new Error(`corpus row ${name} must be an exact non-empty string`);
+  }
+  return value;
 };
 
 const parseOutputOutrefs = (
@@ -122,11 +143,18 @@ const parseOutputOutrefs = (
   const value = input.outputOutrefs;
   if (
     !Array.isArray(value) ||
-    value.some((entry) => typeof entry !== "string")
+    value.some(
+      (entry) =>
+        typeof entry !== "string" ||
+        entry.length === 0 ||
+        entry !== entry.trim(),
+    )
   ) {
-    throw new Error("corpus row outputOutrefs must be an array of strings");
+    throw new Error(
+      "corpus row outputOutrefs must be an array of exact non-empty strings",
+    );
   }
-  return value.map((entry) => entry.trim());
+  return value;
 };
 
 const parsePlanShape = (value: string): OpenLoopCorpusShape => {
@@ -152,6 +180,28 @@ export const parseOpenLoopCorpusLine = (
     throw new Error(`corpus row ${index.toString()} must be an object`);
   }
   const input = parsed as Record<string, unknown>;
+  const keys = Object.keys(input);
+  const extra = keys.filter(
+    (key) => !CORPUS_ROW_KEYS.includes(key as (typeof CORPUS_ROW_KEYS)[number]),
+  );
+  const missing = CORPUS_ROW_KEYS.filter((key) => !Object.hasOwn(input, key));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `corpus row ${index.toString()} keys must be exact; missing=[${missing.join(",")}], extra=[${extra.join(",")}]`,
+    );
+  }
+  for (const field of [
+    "txHash",
+    "canonicalCborHex",
+    "canonicalCborSha256",
+  ] as const) {
+    const value = input[field];
+    if (typeof value !== "string" || value !== value.trim().toLowerCase()) {
+      throw new Error(
+        `corpus row ${index.toString()} ${field} must use exact lowercase encoding`,
+      );
+    }
+  }
   const txHash = normalizeHex(parseStringField(input, "txHash"));
   const canonicalCborHex = normalizeHex(
     parseStringField(input, "canonicalCborHex"),
@@ -194,15 +244,65 @@ export const parseOpenLoopCorpusLine = (
       `corpus row ${index.toString()} canonicalCborByteLength does not match canonicalCborHex`,
     );
   }
+  let outputCount: number;
+  let computedTxHash: string;
+  try {
+    const nativeTx =
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalCborBytes);
+    computedTxHash = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
+    outputCount = decodeMidgardNativeByteListPreimage(
+      nativeTx.body.outputsPreimageCbor,
+      `corpus row ${index.toString()} outputs`,
+    ).length;
+  } catch (cause) {
+    throw new Error(
+      `corpus row ${index.toString()} canonicalCborHex must be canonical Midgard native V1 transaction CBOR: ${errorMessage(cause)}`,
+    );
+  }
+  if (computedTxHash !== txHash) {
+    throw new Error(
+      `corpus row ${index.toString()} txHash does not bind canonicalCborHex`,
+    );
+  }
 
   const rawParentTxHash = input.parentTxHash;
+  if (rawParentTxHash !== null && typeof rawParentTxHash !== "string") {
+    throw new Error(
+      `corpus row ${index.toString()} parentTxHash must be null or 32-byte hex`,
+    );
+  }
   const parentTxHash =
-    rawParentTxHash === null || rawParentTxHash === undefined
-      ? null
-      : normalizeHex(String(rawParentTxHash));
+    rawParentTxHash === null ? null : normalizeHex(rawParentTxHash);
+  if (
+    typeof rawParentTxHash === "string" &&
+    rawParentTxHash !== rawParentTxHash.trim().toLowerCase()
+  ) {
+    throw new Error(
+      `corpus row ${index.toString()} parentTxHash must use exact lowercase encoding`,
+    );
+  }
   if (parentTxHash !== null && !TX_HASH_PATTERN.test(parentTxHash)) {
     throw new Error(
       `corpus row ${index.toString()} parentTxHash must be null or 32-byte hex`,
+    );
+  }
+
+  const senderWalletId = parseStringField(input, "senderWalletId");
+  const selectedInputOutref = parseStringField(input, "selectedInputOutref");
+  if (!OUTREF_PATTERN.test(selectedInputOutref)) {
+    throw new Error(
+      `corpus row ${index.toString()} selectedInputOutref must be canonical <64hex>#<index>`,
+    );
+  }
+  const outputOutrefs = parseOutputOutrefs(input);
+  if (
+    outputOutrefs.length !== outputCount ||
+    outputOutrefs.some(
+      (outref, outputIndex) => outref !== `${txHash}#${outputIndex.toString()}`,
+    )
+  ) {
+    throw new Error(
+      `corpus row ${index.toString()} outputOutrefs must exactly enumerate canonicalCborHex outputs`,
     );
   }
 
@@ -211,9 +311,9 @@ export const parseOpenLoopCorpusLine = (
     canonicalCborHex,
     canonicalCborSha256,
     canonicalCborByteLength: byteLength,
-    senderWalletId: parseStringField(input, "senderWalletId"),
-    selectedInputOutref: parseStringField(input, "selectedInputOutref"),
-    outputOutrefs: parseOutputOutrefs(input),
+    senderWalletId,
+    selectedInputOutref,
+    outputOutrefs,
     planShape: parsePlanShape(parseStringField(input, "planShape")),
     parentTxHash,
     corpusSliceId: parseStringField(input, "corpusSliceId"),

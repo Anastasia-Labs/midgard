@@ -1,5 +1,3 @@
-import { writeFile } from "node:fs/promises";
-
 import {
   DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE,
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
@@ -12,6 +10,7 @@ import { multiaddr } from "@multiformats/multiaddr";
 
 import { readFinalizedDeploymentIdentity } from "@/commands/contract-deployment-info.js";
 import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
+import { writeJsonFileAtomic } from "@/files/atomic-write.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [
   "host",
@@ -182,9 +181,7 @@ const isProducerMember = (
 export const writeDaLibp2pRuntimeManifest = async (
   path: string,
   manifest: DaLibp2pRuntimeManifest,
-): Promise<void> => {
-  await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-};
+): Promise<void> => writeJsonFileAtomic(path, manifest);
 
 function validateProfile(
   profile: string,

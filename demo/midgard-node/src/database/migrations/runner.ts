@@ -27,7 +27,7 @@ export class MigrationError extends Data.TaggedError("MigrationError")<{
   readonly cause?: unknown;
 }> {}
 
-type AppliedMigrationRow = {
+export type AppliedMigrationRow = {
   readonly version: number;
   readonly name: string;
   readonly checksum_sha256: string;
@@ -300,7 +300,7 @@ const insertMigrationEvent = ({
     ),
   );
 
-const validateAppliedLedger = (
+export const validateAppliedMigrationLedger = (
   applied: readonly AppliedMigrationRow[],
   mode: "exact" | "allowBehind",
 ): void => {
@@ -328,10 +328,22 @@ const validateAppliedLedger = (
         `Database has unknown schema version ${row.version}`,
       );
     }
+    if (row.name !== migration.name) {
+      throw migrationError(
+        "schema_name_mismatch",
+        `Name mismatch for schema version ${row.version}`,
+      );
+    }
     if (row.checksum_sha256 !== migration.checksumSha256) {
       throw migrationError(
         "schema_checksum_mismatch",
         `Checksum mismatch for schema version ${row.version}`,
+      );
+    }
+    if (row.manifest_hash_sha256 !== MIGRATION_MANIFEST_HASH) {
+      throw migrationError(
+        "schema_manifest_hash_mismatch",
+        `Manifest hash mismatch for schema version ${row.version}`,
       );
     }
   }
@@ -351,7 +363,7 @@ const validateAppliedLedgerEffect = (
   mode: "exact" | "allowBehind",
 ): Effect.Effect<void, MigrationError> =>
   Effect.try({
-    try: () => validateAppliedLedger(applied, mode),
+    try: () => validateAppliedMigrationLedger(applied, mode),
     catch: (cause) =>
       cause instanceof MigrationError
         ? cause
@@ -792,7 +804,7 @@ const getStatusUnsafe: Effect.Effect<
 
   let failureCode: string | null = null;
   try {
-    validateAppliedLedger(applied, "exact");
+    validateAppliedMigrationLedger(applied, "exact");
     if (
       missingApplicationTables.length > 0 ||
       missingApplicationIndexes.length > 0

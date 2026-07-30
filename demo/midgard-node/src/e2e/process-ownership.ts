@@ -13,6 +13,15 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import {
+  arrayOf,
+  exactRecord,
+  isoTimestamp,
+  nonEmptyString,
+  positiveInteger,
+  stringValue,
+} from "@/e2e/exact-artifact.js";
+
 export const OWNED_PROCESS_GROUP_SCHEMA_VERSION =
   "midgard-owned-process-group-v1";
 
@@ -79,6 +88,117 @@ const assertRunToken = (runToken: string): void => {
   }
 };
 
+const lowerHex64 = (value: unknown, label: string): string => {
+  const parsed = nonEmptyString(value, label);
+  if (!/^[0-9a-f]{64}$/u.test(parsed)) {
+    throw new Error(`${label} must be 64 lowercase hexadecimal characters`);
+  }
+  return parsed;
+};
+
+const canonicalString = (value: unknown, label: string): string => {
+  const parsed = nonEmptyString(value, label);
+  if (parsed !== parsed.trim()) {
+    throw new Error(`${label} must not contain surrounding whitespace`);
+  }
+  return parsed;
+};
+
+export const parseOwnedProcessGroupRecordV1 = (
+  value: unknown,
+): OwnedProcessGroupRecord => {
+  const input = exactRecord(value, "owned process-group record", [
+    "schemaVersion",
+    "runToken",
+    "bootId",
+    "pid",
+    "pgid",
+    "startTicks",
+    "procCmdlineSha256",
+    "cwd",
+    "command",
+    "args",
+    "commandSha256",
+    "createdAt",
+  ]);
+  if (input.schemaVersion !== OWNED_PROCESS_GROUP_SCHEMA_VERSION) {
+    throw new Error(
+      `owned process-group record.schemaVersion must be ${OWNED_PROCESS_GROUP_SCHEMA_VERSION}`,
+    );
+  }
+  const runToken = nonEmptyString(
+    input.runToken,
+    "owned process-group record.runToken",
+  );
+  assertRunToken(runToken);
+  const startTicks = canonicalString(
+    input.startTicks,
+    "owned process-group record.startTicks",
+  );
+  if (!/^[1-9][0-9]*$/u.test(startTicks)) {
+    throw new Error(
+      "owned process-group record.startTicks must be a canonical positive decimal",
+    );
+  }
+  const bootId = canonicalString(
+    input.bootId,
+    "owned process-group record.bootId",
+  );
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+      bootId,
+    )
+  ) {
+    throw new Error(
+      "owned process-group record.bootId must be a lowercase UUID",
+    );
+  }
+  const cwd = canonicalString(input.cwd, "owned process-group record.cwd");
+  if (!cwd.startsWith("/") || resolve(cwd) !== cwd) {
+    throw new Error(
+      "owned process-group record.cwd must be canonical absolute",
+    );
+  }
+  const pid = positiveInteger(input.pid, "owned process-group record.pid");
+  const pgid = positiveInteger(input.pgid, "owned process-group record.pgid");
+  if (pid !== pgid) {
+    throw new Error(
+      "owned process-group record must identify its process-group leader",
+    );
+  }
+  const record: OwnedProcessGroupRecord = {
+    schemaVersion: OWNED_PROCESS_GROUP_SCHEMA_VERSION,
+    runToken,
+    bootId,
+    pid,
+    pgid,
+    startTicks,
+    procCmdlineSha256: lowerHex64(
+      input.procCmdlineSha256,
+      "owned process-group record.procCmdlineSha256",
+    ),
+    cwd,
+    command: canonicalString(
+      input.command,
+      "owned process-group record.command",
+    ),
+    args: arrayOf(input.args, "owned process-group record.args", stringValue),
+    commandSha256: lowerHex64(
+      input.commandSha256,
+      "owned process-group record.commandSha256",
+    ),
+    createdAt: isoTimestamp(
+      input.createdAt,
+      "owned process-group record.createdAt",
+    ),
+  };
+  const expectedCommandHash = ownedProcessCommandSha256(record);
+  if (record.commandSha256 !== expectedCommandHash) {
+    throw new Error("owned process-group record command hash mismatch");
+  }
+  return record;
+};
+
 export const generateOwnedProcessRunToken = (): string =>
   randomBytes(32).toString("hex");
 
@@ -137,20 +257,9 @@ const processGroupHasLiveMembers = (pgid: number): boolean =>
   });
 
 const parseRecord = (recordPath: string): OwnedProcessGroupRecord => {
-  const parsed = JSON.parse(
-    readFileSync(recordPath, "utf8"),
-  ) as OwnedProcessGroupRecord;
-  if (
-    parsed.schemaVersion !== OWNED_PROCESS_GROUP_SCHEMA_VERSION ||
-    !Number.isSafeInteger(parsed.pid) ||
-    parsed.pid <= 0 ||
-    !Number.isSafeInteger(parsed.pgid) ||
-    parsed.pgid <= 0 ||
-    !Array.isArray(parsed.args)
-  ) {
-    throw new Error("invalid owned process-group record schema");
-  }
-  return parsed;
+  return parseOwnedProcessGroupRecordV1(
+    JSON.parse(readFileSync(recordPath, "utf8")),
+  );
 };
 
 export const writeOwnedProcessGroupRecord = ({
@@ -178,7 +287,7 @@ export const writeOwnedProcessGroupRecord = ({
       `refusing to record pid ${pid.toString()}: process cwd ${proc.cwd} does not match requested cwd ${resolve(cwd)}`,
     );
   }
-  const record: OwnedProcessGroupRecord = {
+  const record = parseOwnedProcessGroupRecordV1({
     schemaVersion: OWNED_PROCESS_GROUP_SCHEMA_VERSION,
     runToken: spec.runToken,
     bootId: readBootId(),
@@ -195,7 +304,7 @@ export const writeOwnedProcessGroupRecord = ({
       cwd: resolve(proc.cwd),
     }),
     createdAt: new Date().toISOString(),
-  };
+  });
   mkdirSync(dirname(spec.recordPath), { recursive: true, mode: 0o700 });
   const temporaryPath = `${spec.recordPath}.tmp-${process.pid.toString()}-${randomBytes(6).toString("hex")}`;
   const fd = openSync(temporaryPath, "wx", 0o600);

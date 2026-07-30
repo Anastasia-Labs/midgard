@@ -38,15 +38,29 @@ import {
   writeTextFileAtomicNoReplace,
 } from "@/files/atomic-write.js";
 
-export const STRESS_WALLET_SCHEMA_VERSION = "midgard-stress-wallet-v1";
-export const STRESS_WALLET_PREPARE_SCHEMA_VERSION =
-  "midgard-stress-wallet-prepare-v1";
-export const STRESS_WALLET_FANOUT_SCHEMA_VERSION =
-  "midgard-stress-wallet-fanout-v1";
-export const STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION =
-  "midgard-stress-wallet-consolidate-v1";
-export const STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION =
-  "midgard-stress-wallet-terminal-drain-v1";
+export const STRESS_WALLET_RECORD_SCHEMA_VERSION = "midgard-stress-wallet-v1";
+export const STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION =
+  "midgard-stress-wallet-create-result-v1";
+export const STRESS_WALLET_PREPARE_RESULT_SCHEMA_VERSION =
+  "midgard-stress-wallet-prepare-result-v1";
+export const STRESS_WALLET_FANOUT_RESULT_SCHEMA_VERSION =
+  "midgard-stress-wallet-fanout-result-v1";
+export const STRESS_WALLET_FANOUT_REPORT_SCHEMA_VERSION =
+  "midgard-stress-wallet-fanout-report-v1";
+export const STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION =
+  "midgard-stress-wallet-consolidation-journal-v1";
+export const STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION =
+  "midgard-stress-wallet-consolidation-result-v1";
+export const STRESS_WALLET_CONSOLIDATION_REPORT_SCHEMA_VERSION =
+  "midgard-stress-wallet-consolidation-report-v1";
+export const STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION =
+  "midgard-stress-wallet-consolidation-readiness-v1";
+export const STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION =
+  "midgard-stress-wallet-terminal-drain-journal-v1";
+export const STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION =
+  "midgard-stress-wallet-terminal-drain-result-v1";
+export const STRESS_WALLET_TERMINAL_DRAIN_REPORT_SCHEMA_VERSION =
+  "midgard-stress-wallet-terminal-drain-report-v1";
 export const DEFAULT_STRESS_WALLET_DIR = ".stress-wallets";
 export const DEFAULT_STRESS_WALLET_ENV_PREFIX = "STRESS_WALLET_SEED_PHRASE";
 export const DEFAULT_PROJECTION_WAIT_MS = 120_000;
@@ -95,7 +109,7 @@ export type StressWalletFundingUtxoSnapshot = {
 };
 
 export type StressWalletRecord = {
-  readonly schemaVersion: typeof STRESS_WALLET_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_RECORD_SCHEMA_VERSION;
   readonly walletId: string;
   readonly index: number;
   readonly envName: string;
@@ -130,7 +144,7 @@ export type CreateL2WalletsOptions = {
 };
 
 export type CreateL2WalletsResult = {
-  readonly schemaVersion: typeof STRESS_WALLET_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION;
   readonly walletDirectory: string;
   readonly createdCount: number;
   readonly reusedCount: number;
@@ -191,7 +205,7 @@ export type StressWalletPrepareEntry = {
 };
 
 export type PrepareStressWalletsResult = {
-  readonly schemaVersion: typeof STRESS_WALLET_PREPARE_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_PREPARE_RESULT_SCHEMA_VERSION;
   readonly walletDirectory: string;
   readonly requestedCount: number;
   readonly generatedWalletCount: number;
@@ -281,7 +295,7 @@ export type StressWalletFanoutEntry = {
 };
 
 export type StressWalletFanoutResult = {
-  readonly schemaVersion: typeof STRESS_WALLET_FANOUT_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_FANOUT_RESULT_SCHEMA_VERSION;
   readonly walletDirectory: string;
   readonly requestedCount: number;
   readonly generatedWalletCount: number;
@@ -372,7 +386,7 @@ export type ConsolidateStressWalletsOptions = {
 };
 
 export type StressWalletConsolidateResult = {
-  readonly schemaVersion: typeof STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION;
   readonly walletDirectory: string;
   readonly requestedCount: number;
   readonly reserveLovelace: string;
@@ -437,7 +451,7 @@ export type TerminalDrainStressWalletsOptions = {
 };
 
 export type StressWalletTerminalDrainResult = {
-  readonly schemaVersion: typeof STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION;
+  readonly schemaVersion: typeof STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION;
   readonly phase: "prepared" | "committed";
   readonly walletDirectory: string;
   readonly requestedCount: number;
@@ -741,7 +755,7 @@ const deriveStressWalletRecord = ({
     network,
   );
   return {
-    schemaVersion: STRESS_WALLET_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_RECORD_SCHEMA_VERSION,
     walletId: `stress-wallet-${walletIndexLabel(index)}`,
     index,
     envName,
@@ -763,11 +777,1222 @@ const asObject = (
   return value as Record<string, unknown>;
 };
 
-const requiredString = (value: unknown, fieldName: string): string => {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new Error(`${fieldName} must be a non-empty string.`);
+const assertExactKeys = (
+  value: Record<string, unknown>,
+  fieldName: string,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): void => {
+  const keys = Object.keys(value);
+  const allowed = new Set([...required, ...optional]);
+  const missing = required.filter((key) => !Object.hasOwn(value, key));
+  const extra = keys.filter((key) => !allowed.has(key));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `${fieldName} keys must be exact; missing=[${missing.join(",")}], extra=[${extra.join(",")}].`,
+    );
   }
-  return value.trim();
+};
+
+const parseExactVersionedArtifact = (
+  value: unknown,
+  label: string,
+  schemaVersion: string,
+  keys: readonly string[],
+  optional: readonly string[] = [],
+): Record<string, unknown> => {
+  const raw = asObject(value, label);
+  assertExactKeys(raw, label, ["schemaVersion", ...keys], optional);
+  if (raw.schemaVersion !== schemaVersion) {
+    throw new Error(`${label} schemaVersion must be exactly ${schemaVersion}.`);
+  }
+  return raw;
+};
+
+const artifactExactString = (value: unknown, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new Error(`${label} must be an exact non-empty string.`);
+  }
+  return value;
+};
+
+const artifactInteger = (
+  value: unknown,
+  label: string,
+  minimum = 0,
+): number => {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum
+  ) {
+    throw new Error(
+      `${label} must be a safe integer >= ${minimum.toString()}.`,
+    );
+  }
+  return value;
+};
+
+const artifactDecimal = (value: unknown, label: string): string => {
+  const decimal = artifactExactString(value, label);
+  if (!/^(0|[1-9]\d*)$/.test(decimal)) {
+    throw new Error(`${label} must be a canonical non-negative decimal.`);
+  }
+  return decimal;
+};
+
+const artifactIsoTimestamp = (value: unknown, label: string): string => {
+  const timestamp = artifactExactString(value, label);
+  const parsed = Date.parse(timestamp);
+  if (Number.isNaN(parsed) || new Date(parsed).toISOString() !== timestamp) {
+    throw new Error(`${label} must be a canonical ISO-8601 timestamp.`);
+  }
+  return timestamp;
+};
+
+const artifactHash32 = (value: unknown, label: string): string => {
+  const digest = artifactExactString(value, label);
+  if (!/^[0-9a-f]{64}$/.test(digest)) {
+    throw new Error(`${label} must be an exact lowercase 32-byte digest.`);
+  }
+  return digest;
+};
+
+const parseStressWalletSummaryArtifact = (
+  value: unknown,
+  label: string,
+): StressWalletSummary => {
+  const raw = asObject(value, label);
+  assertExactKeys(
+    raw,
+    label,
+    [
+      "schemaVersion",
+      "walletId",
+      "index",
+      "envName",
+      "network",
+      "l2Address",
+      "paymentKeyHash",
+      "createdAt",
+      "path",
+    ],
+    ["latestFunding"],
+  );
+  if (raw.schemaVersion !== STRESS_WALLET_RECORD_SCHEMA_VERSION) {
+    throw new Error(
+      `${label}.schemaVersion must be exactly ${STRESS_WALLET_RECORD_SCHEMA_VERSION}.`,
+    );
+  }
+  const index = artifactInteger(raw.index, `${label}.index`, 1);
+  const walletId = artifactExactString(raw.walletId, `${label}.walletId`);
+  if (walletId !== stressWalletId(index)) {
+    throw new Error(`${label}.walletId must bind index.`);
+  }
+  const envName = artifactExactString(raw.envName, `${label}.envName`);
+  if (
+    !ENV_NAME_PATTERN.test(envName) ||
+    !envName.endsWith(`_${walletIndexLabel(index)}`)
+  ) {
+    throw new Error(`${label}.envName must be canonical and bind index.`);
+  }
+  const networkText = artifactExactString(raw.network, `${label}.network`);
+  const network = parseStressWalletNetwork(networkText, {});
+  const paymentKeyHash = artifactExactString(
+    raw.paymentKeyHash,
+    `${label}.paymentKeyHash`,
+  );
+  if (!/^[0-9a-f]{56}$/.test(paymentKeyHash)) {
+    throw new Error(
+      `${label}.paymentKeyHash must be an exact lowercase 28-byte digest.`,
+    );
+  }
+  const latestFunding = parseLatestFunding(raw.latestFunding);
+  if (latestFunding !== undefined) {
+    artifactIsoTimestamp(
+      latestFunding.preparedAt,
+      `${label}.latestFunding.preparedAt`,
+    );
+    artifactDecimal(
+      latestFunding.lovelacePerWallet,
+      `${label}.latestFunding.lovelacePerWallet`,
+    );
+    artifactExactString(
+      latestFunding.nodeEndpoint,
+      `${label}.latestFunding.nodeEndpoint`,
+    );
+    if (
+      latestFunding.fundingUtxos !== undefined &&
+      latestFunding.fundingUtxos.length !==
+        latestFunding.verifiedFundingUtxoCount
+    ) {
+      throw new Error(
+        `${label}.latestFunding funding cardinality is inconsistent.`,
+      );
+    }
+    for (const [fundingIndex, funding] of (
+      latestFunding.fundingUtxos ?? []
+    ).entries()) {
+      if (
+        !/^[0-9a-f]{64}#(0|[1-9]\d*)$/.test(funding.outref) ||
+        !/^[0-9a-f]+$/.test(funding.outputCbor) ||
+        funding.outputCbor.length % 2 !== 0
+      ) {
+        throw new Error(
+          `${label}.latestFunding.fundingUtxos[${fundingIndex.toString()}] encoding is not canonical.`,
+        );
+      }
+      artifactDecimal(
+        funding.lovelace,
+        `${label}.latestFunding.fundingUtxos[${fundingIndex.toString()}].lovelace`,
+      );
+    }
+    if (latestFunding.depositTxHash !== undefined) {
+      artifactHash32(
+        latestFunding.depositTxHash,
+        `${label}.latestFunding.depositTxHash`,
+      );
+    }
+  }
+  return {
+    schemaVersion: STRESS_WALLET_RECORD_SCHEMA_VERSION,
+    walletId,
+    index,
+    envName,
+    network,
+    l2Address: artifactExactString(raw.l2Address, `${label}.l2Address`),
+    paymentKeyHash,
+    createdAt: artifactIsoTimestamp(raw.createdAt, `${label}.createdAt`),
+    path: artifactExactString(raw.path, `${label}.path`),
+    ...(latestFunding === undefined ? {} : { latestFunding }),
+  };
+};
+
+export const parseStressWalletCreateResult = (
+  value: unknown,
+): Record<string, unknown> => {
+  const raw = parseExactVersionedArtifact(
+    value,
+    "stress wallet create result",
+    STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION,
+    [
+      "walletDirectory",
+      "createdCount",
+      "reusedCount",
+      "envFilePath",
+      "argsFilePath",
+      "wallets",
+    ],
+  );
+  const createdCount = artifactInteger(
+    raw.createdCount,
+    "stress wallet create result createdCount",
+  );
+  const reusedCount = artifactInteger(
+    raw.reusedCount,
+    "stress wallet create result reusedCount",
+  );
+  if (!Array.isArray(raw.wallets)) {
+    throw new Error("stress wallet create result wallets must be an array.");
+  }
+  raw.wallets.forEach((wallet, index) =>
+    parseStressWalletSummaryArtifact(
+      wallet,
+      `stress wallet create result wallets[${index.toString()}]`,
+    ),
+  );
+  artifactExactString(
+    raw.walletDirectory,
+    "stress wallet create result walletDirectory",
+  );
+  artifactExactString(
+    raw.envFilePath,
+    "stress wallet create result envFilePath",
+  );
+  artifactExactString(
+    raw.argsFilePath,
+    "stress wallet create result argsFilePath",
+  );
+  if (createdCount + reusedCount !== raw.wallets.length) {
+    throw new Error(
+      "stress wallet create result cardinality binding is inconsistent.",
+    );
+  }
+  return raw;
+};
+
+export const parseStressWalletPrepareResult = (
+  value: unknown,
+): Record<string, unknown> => {
+  const raw = parseExactVersionedArtifact(
+    value,
+    "stress wallet prepare result",
+    STRESS_WALLET_PREPARE_RESULT_SCHEMA_VERSION,
+    [
+      "walletDirectory",
+      "requestedCount",
+      "generatedWalletCount",
+      "submittedDepositCount",
+      "alreadyFundedCount",
+      "verifiedWalletCount",
+      "lovelacePerWallet",
+      "nodeEndpoint",
+      "envFilePath",
+      "argsFilePath",
+      "wallets",
+    ],
+  );
+  if (!Array.isArray(raw.wallets)) {
+    throw new Error("stress wallet prepare result wallets must be an array.");
+  }
+  const requestedCount = artifactInteger(
+    raw.requestedCount,
+    "stress wallet prepare result requestedCount",
+    1,
+  );
+  const generatedWalletCount = artifactInteger(
+    raw.generatedWalletCount,
+    "stress wallet prepare result generatedWalletCount",
+  );
+  const submittedDepositCount = artifactInteger(
+    raw.submittedDepositCount,
+    "stress wallet prepare result submittedDepositCount",
+  );
+  const alreadyFundedCount = artifactInteger(
+    raw.alreadyFundedCount,
+    "stress wallet prepare result alreadyFundedCount",
+  );
+  const verifiedWalletCount = artifactInteger(
+    raw.verifiedWalletCount,
+    "stress wallet prepare result verifiedWalletCount",
+  );
+  const walletIds = new Set<string>();
+  for (const [index, value] of raw.wallets.entries()) {
+    const label = `stress wallet prepare result wallets[${index.toString()}]`;
+    const entry = asObject(value, label);
+    assertExactKeys(
+      entry,
+      label,
+      [
+        "wallet",
+        "status",
+        "beforeUtxoCount",
+        "afterUtxoCount",
+        "verifiedFundingUtxoCount",
+      ],
+      ["depositTxHash", "depositEventId"],
+    );
+    const wallet = parseStressWalletSummaryArtifact(
+      entry.wallet,
+      `${label}.wallet`,
+    );
+    if (walletIds.has(wallet.walletId)) {
+      throw new Error(
+        "stress wallet prepare result wallet IDs must be unique.",
+      );
+    }
+    walletIds.add(wallet.walletId);
+    const status = artifactExactString(entry.status, `${label}.status`);
+    if (status !== "submitted" && status !== "already_funded") {
+      throw new Error(`${label}.status is unsupported.`);
+    }
+    artifactInteger(entry.beforeUtxoCount, `${label}.beforeUtxoCount`);
+    artifactInteger(entry.afterUtxoCount, `${label}.afterUtxoCount`);
+    artifactInteger(
+      entry.verifiedFundingUtxoCount,
+      `${label}.verifiedFundingUtxoCount`,
+      1,
+    );
+    if ((status === "submitted") !== (entry.depositTxHash !== undefined)) {
+      throw new Error(`${label} depositTxHash/status binding is inconsistent.`);
+    }
+    if (entry.depositTxHash !== undefined) {
+      artifactHash32(entry.depositTxHash, `${label}.depositTxHash`);
+    }
+    if (entry.depositEventId !== undefined) {
+      artifactExactString(entry.depositEventId, `${label}.depositEventId`);
+    }
+  }
+  [
+    ["walletDirectory", raw.walletDirectory],
+    ["nodeEndpoint", raw.nodeEndpoint],
+    ["envFilePath", raw.envFilePath],
+    ["argsFilePath", raw.argsFilePath],
+  ].forEach(([name, field]) =>
+    artifactExactString(field, `stress wallet prepare result ${String(name)}`),
+  );
+  artifactDecimal(
+    raw.lovelacePerWallet,
+    "stress wallet prepare result lovelacePerWallet",
+  );
+  if (
+    requestedCount !== raw.wallets.length ||
+    verifiedWalletCount !== raw.wallets.length ||
+    generatedWalletCount > requestedCount ||
+    submittedDepositCount + alreadyFundedCount !== requestedCount
+  ) {
+    throw new Error(
+      "stress wallet prepare result cardinality binding is inconsistent.",
+    );
+  }
+  return raw;
+};
+
+const STRESS_WALLET_FANOUT_RESULT_KEYS = [
+  "walletDirectory",
+  "requestedCount",
+  "generatedWalletCount",
+  "branchFactor",
+  "maxInFlight",
+  "lovelacePerWallet",
+  "feeHeadroomLovelace",
+  "rootRequiredLovelace",
+  "submittedTransferCount",
+  "alreadyFundedTransferCount",
+  "verifiedWalletCount",
+  "nodeEndpoint",
+  "envFilePath",
+  "argsFilePath",
+  "reportPath",
+  "levels",
+  "wallets",
+] as const;
+
+const parseStressWalletFanoutArtifact = (
+  value: unknown,
+  report: boolean,
+): Record<string, unknown> => {
+  const label = report
+    ? "stress wallet fanout report"
+    : "stress wallet fanout result";
+  const raw = parseExactVersionedArtifact(
+    value,
+    label,
+    report
+      ? STRESS_WALLET_FANOUT_REPORT_SCHEMA_VERSION
+      : STRESS_WALLET_FANOUT_RESULT_SCHEMA_VERSION,
+    report
+      ? [...STRESS_WALLET_FANOUT_RESULT_KEYS, "edges"]
+      : STRESS_WALLET_FANOUT_RESULT_KEYS,
+  );
+  const requestedCount = artifactInteger(
+    raw.requestedCount,
+    `${label} requestedCount`,
+    1,
+  );
+  const generatedWalletCount = artifactInteger(
+    raw.generatedWalletCount,
+    `${label} generatedWalletCount`,
+  );
+  const submittedTransferCount = artifactInteger(
+    raw.submittedTransferCount,
+    `${label} submittedTransferCount`,
+  );
+  const alreadyFundedTransferCount = artifactInteger(
+    raw.alreadyFundedTransferCount,
+    `${label} alreadyFundedTransferCount`,
+  );
+  const verifiedWalletCount = artifactInteger(
+    raw.verifiedWalletCount,
+    `${label} verifiedWalletCount`,
+  );
+  artifactInteger(raw.branchFactor, `${label} branchFactor`, 2);
+  artifactInteger(raw.maxInFlight, `${label} maxInFlight`, 1);
+  const lovelacePerWallet = artifactDecimal(
+    raw.lovelacePerWallet,
+    `${label} lovelacePerWallet`,
+  );
+  const feeHeadroomLovelace = artifactDecimal(
+    raw.feeHeadroomLovelace,
+    `${label} feeHeadroomLovelace`,
+  );
+  const rootRequiredLovelace = artifactDecimal(
+    raw.rootRequiredLovelace,
+    `${label} rootRequiredLovelace`,
+  );
+  [
+    "walletDirectory",
+    "nodeEndpoint",
+    "envFilePath",
+    "argsFilePath",
+    "reportPath",
+  ].forEach((name) => artifactExactString(raw[name], `${label} ${name}`));
+  if (!Array.isArray(raw.levels) || !Array.isArray(raw.wallets)) {
+    throw new Error(`${label} levels and wallets must be arrays.`);
+  }
+  let levelTransferCount = 0;
+  const observedLevels = new Set<number>();
+  const declaredTransferCountByLevel = new Map<number, number>();
+  for (const [index, value] of raw.levels.entries()) {
+    const entryLabel = `${label} levels[${index.toString()}]`;
+    const entry = asObject(value, entryLabel);
+    assertExactKeys(entry, entryLabel, ["level", "transferCount"]);
+    const level = artifactInteger(entry.level, `${entryLabel}.level`);
+    if (observedLevels.has(level)) {
+      throw new Error(`${label} levels must be unique.`);
+    }
+    observedLevels.add(level);
+    const transferCount = artifactInteger(
+      entry.transferCount,
+      `${entryLabel}.transferCount`,
+    );
+    levelTransferCount += transferCount;
+    declaredTransferCountByLevel.set(level, transferCount);
+  }
+  const walletIds = new Set<string>();
+  for (const [index, value] of raw.wallets.entries()) {
+    const entryLabel = `${label} wallets[${index.toString()}]`;
+    const entry = asObject(value, entryLabel);
+    assertExactKeys(entry, entryLabel, ["wallet", "verifiedFundingUtxoCount"]);
+    const wallet = parseStressWalletSummaryArtifact(
+      entry.wallet,
+      `${entryLabel}.wallet`,
+    );
+    if (walletIds.has(wallet.walletId)) {
+      throw new Error(`${label} wallet IDs must be unique.`);
+    }
+    walletIds.add(wallet.walletId);
+    artifactInteger(
+      entry.verifiedFundingUtxoCount,
+      `${entryLabel}.verifiedFundingUtxoCount`,
+      1,
+    );
+  }
+  if (
+    requestedCount !== raw.wallets.length ||
+    verifiedWalletCount !== raw.wallets.length ||
+    generatedWalletCount > requestedCount ||
+    submittedTransferCount + alreadyFundedTransferCount !== requestedCount ||
+    levelTransferCount !==
+      submittedTransferCount + alreadyFundedTransferCount ||
+    BigInt(rootRequiredLovelace) !==
+      BigInt(requestedCount) *
+        (BigInt(lovelacePerWallet) + BigInt(feeHeadroomLovelace))
+  ) {
+    throw new Error(`${label} cardinality/value binding is inconsistent.`);
+  }
+  if (report) {
+    if (!Array.isArray(raw.edges)) {
+      throw new Error(`${label} edges must be an array.`);
+    }
+    const childWalletIds = new Set<string>();
+    let submittedEdgeCount = 0;
+    const edgeCountByLevel = new Map<number, number>();
+    for (const [index, value] of raw.edges.entries()) {
+      const edgeLabel = `${label} edges[${index.toString()}]`;
+      const edge = asObject(value, edgeLabel);
+      assertExactKeys(edge, edgeLabel, [
+        "level",
+        "parentWalletId",
+        "childWalletId",
+        "lovelace",
+        "txHash",
+        "acceptedStatus",
+        "submitted",
+      ]);
+      const level = artifactInteger(edge.level, `${edgeLabel}.level`, 1);
+      if (!observedLevels.has(level)) {
+        throw new Error(`${edgeLabel}.level is not declared by levels.`);
+      }
+      edgeCountByLevel.set(level, (edgeCountByLevel.get(level) ?? 0) + 1);
+      const parentWalletId = artifactExactString(
+        edge.parentWalletId,
+        `${edgeLabel}.parentWalletId`,
+      );
+      if (parentWalletId !== "treasury" && !walletIds.has(parentWalletId)) {
+        throw new Error(
+          `${edgeLabel}.parentWalletId is not in the wallet set.`,
+        );
+      }
+      const childWalletId = artifactExactString(
+        edge.childWalletId,
+        `${edgeLabel}.childWalletId`,
+      );
+      if (childWalletIds.has(childWalletId)) {
+        throw new Error(`${label} child wallet IDs must be unique.`);
+      }
+      childWalletIds.add(childWalletId);
+      if (
+        BigInt(artifactDecimal(edge.lovelace, `${edgeLabel}.lovelace`)) <= 0n
+      ) {
+        throw new Error(`${edgeLabel}.lovelace must be positive.`);
+      }
+      artifactHash32(edge.txHash, `${edgeLabel}.txHash`);
+      const acceptedStatus = artifactExactString(
+        edge.acceptedStatus,
+        `${edgeLabel}.acceptedStatus`,
+      );
+      if (typeof edge.submitted !== "boolean") {
+        throw new Error(`${edgeLabel}.submitted must be boolean.`);
+      }
+      if (edge.submitted) {
+        submittedEdgeCount += 1;
+        if (!acceptedTxStatuses.has(acceptedStatus)) {
+          throw new Error(`${edgeLabel}.acceptedStatus is not accepted.`);
+        }
+      } else if (acceptedStatus !== "already_funded") {
+        throw new Error(
+          `${edgeLabel}.acceptedStatus must be already_funded when not submitted.`,
+        );
+      }
+    }
+    if (
+      raw.edges.length !==
+        submittedTransferCount + alreadyFundedTransferCount ||
+      submittedEdgeCount !== submittedTransferCount ||
+      childWalletIds.size !== walletIds.size ||
+      [...childWalletIds].some((walletId) => !walletIds.has(walletId)) ||
+      [...observedLevels].some(
+        (level) =>
+          (edgeCountByLevel.get(level) ?? 0) !==
+          declaredTransferCountByLevel.get(level),
+      )
+    ) {
+      throw new Error(`${label} edge cardinality is inconsistent.`);
+    }
+  }
+  return raw;
+};
+
+export const parseStressWalletFanoutResult = (
+  value: unknown,
+): Record<string, unknown> => parseStressWalletFanoutArtifact(value, false);
+
+export const parseStressWalletFanoutReport = (
+  value: unknown,
+): Record<string, unknown> => parseStressWalletFanoutArtifact(value, true);
+
+const STRESS_WALLET_CONSOLIDATION_RESULT_KEYS = [
+  "walletDirectory",
+  "requestedCount",
+  "reserveLovelace",
+  "maxInFlight",
+  "nodeEndpoint",
+  "treasuryAddress",
+  "treasuryBeforeLovelace",
+  "treasuryAfterLovelace",
+  "treasuryDeltaLovelace",
+  "sourceBeforeLovelace",
+  "sourceAfterLovelace",
+  "inferredFeesLovelace",
+  "projectedTreasuryLovelace",
+  "submittedTransferCount",
+  "resumedTransferCount",
+  "alreadyConsolidatedCount",
+  "reportPath",
+] as const;
+
+const parseStressWalletAccountingArtifact = (
+  value: unknown,
+  label: string,
+): {
+  readonly lovelace: string;
+  readonly utxoCount: number;
+  readonly outrefs: readonly string[];
+} => {
+  const raw = asObject(value, label);
+  assertExactKeys(raw, label, ["lovelace", "utxoCount", "outrefs"]);
+  if (!Array.isArray(raw.outrefs)) {
+    throw new Error(`${label}.outrefs must be an array.`);
+  }
+  const outrefs = raw.outrefs.map((outref, index) => {
+    const parsed = artifactExactString(
+      outref,
+      `${label}.outrefs[${index.toString()}]`,
+    );
+    if (!/^[0-9a-f]{64}#(0|[1-9]\d*)$/.test(parsed)) {
+      throw new Error(
+        `${label}.outrefs[${index.toString()}] must be canonical.`,
+      );
+    }
+    return parsed;
+  });
+  const utxoCount = artifactInteger(raw.utxoCount, `${label}.utxoCount`);
+  if (
+    outrefs.length !== utxoCount ||
+    new Set(outrefs).size !== outrefs.length ||
+    [...outrefs].sort().join("|") !== outrefs.join("|")
+  ) {
+    throw new Error(`${label} outref cardinality/order is inconsistent.`);
+  }
+  return {
+    lovelace: artifactDecimal(raw.lovelace, `${label}.lovelace`),
+    utxoCount,
+    outrefs,
+  };
+};
+
+const parseStressWalletConsolidationResultFields = (
+  raw: Record<string, unknown>,
+  label: string,
+): {
+  readonly requestedCount: number;
+  readonly submittedTransferCount: number;
+  readonly resumedTransferCount: number;
+  readonly alreadyConsolidatedCount: number;
+} => {
+  ["walletDirectory", "nodeEndpoint", "treasuryAddress", "reportPath"].forEach(
+    (name) => artifactExactString(raw[name], `${label} ${name}`),
+  );
+  const requestedCount = artifactInteger(
+    raw.requestedCount,
+    `${label} requestedCount`,
+    1,
+  );
+  artifactInteger(raw.maxInFlight, `${label} maxInFlight`, 1);
+  const decimals = [
+    "reserveLovelace",
+    "treasuryBeforeLovelace",
+    "treasuryAfterLovelace",
+    "treasuryDeltaLovelace",
+    "sourceBeforeLovelace",
+    "sourceAfterLovelace",
+    "inferredFeesLovelace",
+    "projectedTreasuryLovelace",
+  ] as const;
+  const parsedDecimals = Object.fromEntries(
+    decimals.map((name) => [
+      name,
+      artifactDecimal(raw[name], `${label} ${name}`),
+    ]),
+  ) as Record<(typeof decimals)[number], string>;
+  const submittedTransferCount = artifactInteger(
+    raw.submittedTransferCount,
+    `${label} submittedTransferCount`,
+  );
+  const resumedTransferCount = artifactInteger(
+    raw.resumedTransferCount,
+    `${label} resumedTransferCount`,
+  );
+  const alreadyConsolidatedCount = artifactInteger(
+    raw.alreadyConsolidatedCount,
+    `${label} alreadyConsolidatedCount`,
+  );
+  if (
+    alreadyConsolidatedCount > requestedCount ||
+    submittedTransferCount > requestedCount - alreadyConsolidatedCount ||
+    resumedTransferCount > requestedCount - alreadyConsolidatedCount ||
+    BigInt(parsedDecimals.treasuryAfterLovelace) -
+      BigInt(parsedDecimals.treasuryBeforeLovelace) !==
+      BigInt(parsedDecimals.treasuryDeltaLovelace) ||
+    BigInt(parsedDecimals.treasuryAfterLovelace) !==
+      BigInt(parsedDecimals.projectedTreasuryLovelace) ||
+    BigInt(parsedDecimals.sourceBeforeLovelace) -
+      BigInt(parsedDecimals.sourceAfterLovelace) -
+      BigInt(parsedDecimals.treasuryDeltaLovelace) !==
+      BigInt(parsedDecimals.inferredFeesLovelace)
+  ) {
+    throw new Error(`${label} accounting/cardinality binding is inconsistent.`);
+  }
+  return {
+    requestedCount,
+    submittedTransferCount,
+    resumedTransferCount,
+    alreadyConsolidatedCount,
+  };
+};
+
+export const parseStressWalletConsolidationResult = (
+  value: unknown,
+): Record<string, unknown> => {
+  const raw = parseExactVersionedArtifact(
+    value,
+    "stress wallet consolidation result",
+    STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION,
+    STRESS_WALLET_CONSOLIDATION_RESULT_KEYS,
+  );
+  parseStressWalletConsolidationResultFields(
+    raw,
+    "stress wallet consolidation result",
+  );
+  return raw;
+};
+
+export const parseStressWalletConsolidationReport = (
+  value: unknown,
+): Record<string, unknown> => {
+  const label = "stress wallet consolidation report";
+  const raw = parseExactVersionedArtifact(
+    value,
+    label,
+    STRESS_WALLET_CONSOLIDATION_REPORT_SCHEMA_VERSION,
+    [
+      ...STRESS_WALLET_CONSOLIDATION_RESULT_KEYS,
+      "statePath",
+      "treasury",
+      "wallets",
+    ],
+  );
+  const { requestedCount } = parseStressWalletConsolidationResultFields(
+    raw,
+    label,
+  );
+  artifactExactString(raw.statePath, `${label} statePath`);
+  const treasury = asObject(raw.treasury, `${label} treasury`);
+  assertExactKeys(treasury, `${label} treasury`, ["before", "after"]);
+  parseStressWalletAccountingArtifact(
+    treasury.before,
+    `${label} treasury.before`,
+  );
+  parseStressWalletAccountingArtifact(
+    treasury.after,
+    `${label} treasury.after`,
+  );
+  if (!Array.isArray(raw.wallets)) {
+    throw new Error(`${label} wallets must be an array.`);
+  }
+  const walletIds = new Set<string>();
+  for (const [index, value] of raw.wallets.entries()) {
+    const walletLabel = `${label} wallets[${index.toString()}]`;
+    const wallet = asObject(value, walletLabel);
+    assertExactKeys(
+      wallet,
+      walletLabel,
+      ["walletId", "address", "before", "after"],
+      ["transfer"],
+    );
+    const walletId = artifactExactString(
+      wallet.walletId,
+      `${walletLabel}.walletId`,
+    );
+    if (walletIds.has(walletId)) {
+      throw new Error(`${label} wallet IDs must be unique.`);
+    }
+    walletIds.add(walletId);
+    artifactExactString(wallet.address, `${walletLabel}.address`);
+    parseStressWalletAccountingArtifact(wallet.before, `${walletLabel}.before`);
+    parseStressWalletAccountingArtifact(wallet.after, `${walletLabel}.after`);
+    if (wallet.transfer !== undefined) {
+      const transfer = asObject(wallet.transfer, `${walletLabel}.transfer`);
+      assertExactKeys(
+        transfer,
+        `${walletLabel}.transfer`,
+        [
+          "walletId",
+          "address",
+          "beforeLovelace",
+          "beforeOutrefs",
+          "requestedLovelace",
+        ],
+        [
+          "txHash",
+          "signedTxCbor",
+          "selectedInputs",
+          "selectedInputLovelace",
+          "acceptedStatus",
+        ],
+      );
+      if (transfer.walletId !== walletId) {
+        throw new Error(`${walletLabel}.transfer wallet ID is mismatched.`);
+      }
+    }
+  }
+  if (raw.wallets.length !== requestedCount) {
+    throw new Error(`${label} wallet cardinality is inconsistent.`);
+  }
+  return raw;
+};
+
+export const parseStressWalletConsolidationReadinessEvidence = (
+  value: unknown,
+): Record<string, unknown> => {
+  const raw = asObject(value, "stress wallet consolidation readiness evidence");
+  if (
+    raw.schemaVersion !== STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION
+  ) {
+    throw new Error(
+      `stress wallet consolidation readiness evidence schemaVersion must be exactly ${STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION}.`,
+    );
+  }
+  if (raw.malformed === true) {
+    assertExactKeys(raw, "stress wallet consolidation readiness evidence", [
+      "schemaVersion",
+      "observedAt",
+      "batchIndex",
+      "firstWalletId",
+      "attempt",
+      "malformed",
+      "error",
+      "response",
+    ]);
+    artifactIsoTimestamp(
+      raw.observedAt,
+      "stress wallet consolidation readiness evidence observedAt",
+    );
+    artifactInteger(
+      raw.batchIndex,
+      "stress wallet consolidation readiness evidence batchIndex",
+    );
+    artifactExactString(
+      raw.firstWalletId,
+      "stress wallet consolidation readiness evidence firstWalletId",
+    );
+    artifactInteger(
+      raw.attempt,
+      "stress wallet consolidation readiness evidence attempt",
+    );
+    artifactExactString(
+      raw.error,
+      "stress wallet consolidation readiness evidence error",
+    );
+    try {
+      JSON.stringify(raw.response);
+    } catch {
+      throw new Error(
+        "stress wallet consolidation readiness evidence response must be JSON-safe.",
+      );
+    }
+  } else {
+    assertExactKeys(raw, "stress wallet consolidation readiness evidence", [
+      "schemaVersion",
+      "observedAt",
+      "batchIndex",
+      "firstWalletId",
+      "attempt",
+      "fullReady",
+      "snapshot",
+    ]);
+    const snapshot = asObject(
+      raw.snapshot,
+      "stress wallet consolidation readiness evidence snapshot",
+    );
+    assertExactKeys(
+      snapshot,
+      "stress wallet consolidation readiness evidence snapshot",
+      [
+        "httpStatus",
+        "ready",
+        "reasons",
+        "durableAdmissionBacklog",
+        "mempoolTxCount",
+        "unfinishedLocalMutationJobs",
+        "unresolvedBlockSubmissionAgeMs",
+        "providerQueryHealthy",
+        "leaseStatus",
+        "pendingFinalizationCount",
+        "commitWorkerActive",
+        "commitPipelinePhase",
+      ],
+    );
+    artifactIsoTimestamp(
+      raw.observedAt,
+      "stress wallet consolidation readiness evidence observedAt",
+    );
+    artifactInteger(
+      raw.batchIndex,
+      "stress wallet consolidation readiness evidence batchIndex",
+    );
+    artifactExactString(
+      raw.firstWalletId,
+      "stress wallet consolidation readiness evidence firstWalletId",
+    );
+    artifactInteger(
+      raw.attempt,
+      "stress wallet consolidation readiness evidence attempt",
+    );
+    if (typeof raw.fullReady !== "boolean") {
+      throw new Error(
+        "stress wallet consolidation readiness evidence fullReady must be boolean.",
+      );
+    }
+    const httpStatus = artifactInteger(
+      snapshot.httpStatus,
+      "stress wallet consolidation readiness evidence snapshot.httpStatus",
+      100,
+    );
+    if (httpStatus > 599 || typeof snapshot.ready !== "boolean") {
+      throw new Error(
+        "stress wallet consolidation readiness evidence snapshot status/readiness is invalid.",
+      );
+    }
+    if (
+      !Array.isArray(snapshot.reasons) ||
+      snapshot.reasons.some(
+        (reason, index) =>
+          artifactExactString(
+            reason,
+            `stress wallet consolidation readiness evidence snapshot.reasons[${index.toString()}]`,
+          ) === "",
+      )
+    ) {
+      throw new Error(
+        "stress wallet consolidation readiness evidence snapshot.reasons must be an exact string array.",
+      );
+    }
+    [
+      "durableAdmissionBacklog",
+      "mempoolTxCount",
+      "unfinishedLocalMutationJobs",
+      "unresolvedBlockSubmissionAgeMs",
+      "pendingFinalizationCount",
+    ].forEach((name) =>
+      artifactInteger(
+        snapshot[name],
+        `stress wallet consolidation readiness evidence snapshot.${name}`,
+      ),
+    );
+    if (
+      typeof snapshot.providerQueryHealthy !== "boolean" ||
+      typeof snapshot.commitWorkerActive !== "boolean"
+    ) {
+      throw new Error(
+        "stress wallet consolidation readiness evidence snapshot booleans are invalid.",
+      );
+    }
+    artifactExactString(
+      snapshot.leaseStatus,
+      "stress wallet consolidation readiness evidence snapshot.leaseStatus",
+    );
+    artifactExactString(
+      snapshot.commitPipelinePhase,
+      "stress wallet consolidation readiness evidence snapshot.commitPipelinePhase",
+    );
+    const typedSnapshot = snapshot as unknown as ConsolidationReadinessSnapshot;
+    if (raw.fullReady !== isFullConsolidationReadiness(typedSnapshot)) {
+      throw new Error(
+        "stress wallet consolidation readiness evidence fullReady does not bind snapshot.",
+      );
+    }
+  }
+  return raw;
+};
+
+const STRESS_WALLET_TERMINAL_DRAIN_RESULT_KEYS = [
+  "phase",
+  "walletDirectory",
+  "requestedCount",
+  "nodeEndpoint",
+  "treasuryAddress",
+  "treasuryBeforeLovelace",
+  "grossSourceLovelace",
+  "totalFeesLovelace",
+  "preparedTransferCount",
+  "alreadyEmptyCount",
+  "submittedTransferCount",
+  "resumedTransferCount",
+  "statePath",
+] as const;
+
+export const parseStressWalletTerminalDrainResult = (
+  value: unknown,
+): Record<string, unknown> => {
+  const label = "stress wallet terminal drain result";
+  const raw = parseExactVersionedArtifact(
+    value,
+    label,
+    STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION,
+    STRESS_WALLET_TERMINAL_DRAIN_RESULT_KEYS,
+    [
+      "treasuryAfterLovelace",
+      "treasuryDeltaLovelace",
+      "residualSourceLovelace",
+      "reportPath",
+    ],
+  );
+  const phase = artifactExactString(raw.phase, `${label} phase`);
+  if (phase !== "prepared" && phase !== "committed") {
+    throw new Error(`${label} phase is unsupported.`);
+  }
+  ["walletDirectory", "nodeEndpoint", "treasuryAddress", "statePath"].forEach(
+    (name) => artifactExactString(raw[name], `${label} ${name}`),
+  );
+  const requestedCount = artifactInteger(
+    raw.requestedCount,
+    `${label} requestedCount`,
+    1,
+  );
+  const preparedTransferCount = artifactInteger(
+    raw.preparedTransferCount,
+    `${label} preparedTransferCount`,
+  );
+  const alreadyEmptyCount = artifactInteger(
+    raw.alreadyEmptyCount,
+    `${label} alreadyEmptyCount`,
+  );
+  const submittedTransferCount = artifactInteger(
+    raw.submittedTransferCount,
+    `${label} submittedTransferCount`,
+  );
+  const resumedTransferCount = artifactInteger(
+    raw.resumedTransferCount,
+    `${label} resumedTransferCount`,
+  );
+  const treasuryBeforeLovelace = artifactDecimal(
+    raw.treasuryBeforeLovelace,
+    `${label} treasuryBeforeLovelace`,
+  );
+  const grossSourceLovelace = artifactDecimal(
+    raw.grossSourceLovelace,
+    `${label} grossSourceLovelace`,
+  );
+  const totalFeesLovelace = artifactDecimal(
+    raw.totalFeesLovelace,
+    `${label} totalFeesLovelace`,
+  );
+  if (
+    requestedCount !== preparedTransferCount + alreadyEmptyCount ||
+    (phase === "prepared" &&
+      (submittedTransferCount !== 0 ||
+        resumedTransferCount !== 0 ||
+        [
+          raw.treasuryAfterLovelace,
+          raw.treasuryDeltaLovelace,
+          raw.residualSourceLovelace,
+          raw.reportPath,
+        ].some((field) => field !== undefined))) ||
+    (phase === "committed" &&
+      (submittedTransferCount + resumedTransferCount !==
+        preparedTransferCount ||
+        [
+          raw.treasuryAfterLovelace,
+          raw.treasuryDeltaLovelace,
+          raw.residualSourceLovelace,
+          raw.reportPath,
+        ].some((field) => field === undefined)))
+  ) {
+    throw new Error(`${label} phase/cardinality binding is inconsistent.`);
+  }
+  if (phase === "committed") {
+    const treasuryAfterLovelace = artifactDecimal(
+      raw.treasuryAfterLovelace,
+      `${label} treasuryAfterLovelace`,
+    );
+    const treasuryDeltaLovelace = artifactDecimal(
+      raw.treasuryDeltaLovelace,
+      `${label} treasuryDeltaLovelace`,
+    );
+    const residualSourceLovelace = artifactDecimal(
+      raw.residualSourceLovelace,
+      `${label} residualSourceLovelace`,
+    );
+    artifactExactString(raw.reportPath, `${label} reportPath`);
+    if (
+      residualSourceLovelace !== "0" ||
+      BigInt(treasuryAfterLovelace) - BigInt(treasuryBeforeLovelace) !==
+        BigInt(treasuryDeltaLovelace) ||
+      BigInt(treasuryDeltaLovelace) + BigInt(totalFeesLovelace) !==
+        BigInt(grossSourceLovelace)
+    ) {
+      throw new Error(`${label} conservation binding is inconsistent.`);
+    }
+  }
+  return raw;
+};
+
+export const parseStressWalletTerminalDrainReport = (
+  value: unknown,
+): Record<string, unknown> => {
+  const label = "stress wallet terminal drain report";
+  const raw = parseExactVersionedArtifact(
+    value,
+    label,
+    STRESS_WALLET_TERMINAL_DRAIN_REPORT_SCHEMA_VERSION,
+    [
+      "scope",
+      "statePath",
+      "endpoint",
+      "network",
+      "treasuryAddress",
+      "conservation",
+      "wallets",
+    ],
+  );
+  const scope = parseStressWalletOperationScope(raw.scope);
+  ["statePath", "endpoint", "treasuryAddress"].forEach((name) =>
+    artifactExactString(raw[name], `${label} ${name}`),
+  );
+  const networkText = artifactExactString(raw.network, `${label} network`);
+  parseStressWalletNetwork(networkText, {});
+  const conservation = asObject(raw.conservation, `${label} conservation`);
+  assertExactKeys(conservation, `${label} conservation`, [
+    "grossSourceLovelace",
+    "treasuryDeltaLovelace",
+    "totalFeesLovelace",
+    "residualSourceLovelace",
+  ]);
+  const gross = artifactDecimal(
+    conservation.grossSourceLovelace,
+    `${label} conservation.grossSourceLovelace`,
+  );
+  const delta = artifactDecimal(
+    conservation.treasuryDeltaLovelace,
+    `${label} conservation.treasuryDeltaLovelace`,
+  );
+  const fees = artifactDecimal(
+    conservation.totalFeesLovelace,
+    `${label} conservation.totalFeesLovelace`,
+  );
+  const residual = artifactDecimal(
+    conservation.residualSourceLovelace,
+    `${label} conservation.residualSourceLovelace`,
+  );
+  if (residual !== "0" || BigInt(delta) + BigInt(fees) !== BigInt(gross)) {
+    throw new Error(`${label} conservation binding is inconsistent.`);
+  }
+  if (!Array.isArray(raw.wallets) || raw.wallets.length !== scope.count) {
+    throw new Error(`${label} wallet cardinality is inconsistent.`);
+  }
+  const walletIds = new Set<string>();
+  for (const [index, value] of raw.wallets.entries()) {
+    const walletLabel = `${label} wallets[${index.toString()}]`;
+    const wallet = asObject(value, walletLabel);
+    assertExactKeys(wallet, walletLabel, [
+      "walletId",
+      "address",
+      "before",
+      "after",
+    ]);
+    const walletId = artifactExactString(
+      wallet.walletId,
+      `${walletLabel}.walletId`,
+    );
+    if (walletIds.has(walletId)) {
+      throw new Error(`${label} wallet IDs must be unique.`);
+    }
+    walletIds.add(walletId);
+    artifactExactString(wallet.address, `${walletLabel}.address`);
+    const before = asObject(wallet.before, `${walletLabel}.before`);
+    assertExactKeys(
+      before,
+      `${walletLabel}.before`,
+      [
+        "walletId",
+        "address",
+        "beforeOutrefs",
+        "beforeLovelace",
+        "beforeValueSha256",
+        "status",
+      ],
+      [
+        "txHash",
+        "signedTxCbor",
+        "selectedInputs",
+        "requestedLovelace",
+        "feeLovelace",
+        "signedTxBytes",
+      ],
+    );
+    if (before.walletId !== walletId || before.address !== wallet.address) {
+      throw new Error(`${walletLabel}.before identity is mismatched.`);
+    }
+    parseStressWalletAccountingArtifact(wallet.after, `${walletLabel}.after`);
+  }
+  return raw;
+};
+
+const requiredString = (value: unknown, fieldName: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new Error(`${fieldName} must be an exact non-empty string.`);
+  }
+  return value;
 };
 
 const requiredPositiveInteger = (value: unknown, fieldName: string): number => {
@@ -794,6 +2019,20 @@ const parseLatestFunding = (
     return undefined;
   }
   const raw = asObject(value, "latestFunding");
+  assertExactKeys(
+    raw,
+    "latestFunding",
+    [
+      "preparedAt",
+      "status",
+      "lovelacePerWallet",
+      "nodeEndpoint",
+      "beforeUtxoCount",
+      "afterUtxoCount",
+      "verifiedFundingUtxoCount",
+    ],
+    ["fundingUtxos", "depositTxHash", "depositEventId"],
+  );
   const status = requiredString(raw.status, "latestFunding.status");
   if (status !== "submitted" && status !== "already_funded") {
     throw new Error(
@@ -851,6 +2090,11 @@ const parseFundingUtxoSnapshots = (
       entry,
       `latestFunding.fundingUtxos[${index.toString()}]`,
     );
+    assertExactKeys(raw, `latestFunding.fundingUtxos[${index.toString()}]`, [
+      "outref",
+      "outputCbor",
+      "lovelace",
+    ]);
     return {
       outref: requiredString(
         raw.outref,
@@ -870,8 +2114,24 @@ const parseFundingUtxoSnapshots = (
 
 export const parseStressWalletRecord = (value: unknown): StressWalletRecord => {
   const raw = asObject(value, "stress wallet record");
+  assertExactKeys(
+    raw,
+    "stress wallet record",
+    [
+      "schemaVersion",
+      "walletId",
+      "index",
+      "envName",
+      "network",
+      "seedPhrase",
+      "l2Address",
+      "paymentKeyHash",
+      "createdAt",
+    ],
+    ["latestFunding"],
+  );
   const schemaVersion = requiredString(raw.schemaVersion, "schemaVersion");
-  if (schemaVersion !== STRESS_WALLET_SCHEMA_VERSION) {
+  if (schemaVersion !== STRESS_WALLET_RECORD_SCHEMA_VERSION) {
     throw new Error(
       `Unsupported stress wallet schemaVersion "${schemaVersion}".`,
     );
@@ -880,20 +2140,39 @@ export const parseStressWalletRecord = (value: unknown): StressWalletRecord => {
     requiredString(raw.network, "network"),
     {},
   );
+  const seedPhrase = requiredString(raw.seedPhrase, "seedPhrase");
+  if (normalizeSeedPhrase(seedPhrase) !== seedPhrase) {
+    throw new Error("seedPhrase must use canonical single-space word framing.");
+  }
   const record: StressWalletRecord = {
-    schemaVersion: STRESS_WALLET_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_RECORD_SCHEMA_VERSION,
     walletId: requiredString(raw.walletId, "walletId"),
     index: requiredPositiveInteger(raw.index, "index"),
     envName: requiredString(raw.envName, "envName"),
     network,
-    seedPhrase: normalizeSeedPhrase(
-      requiredString(raw.seedPhrase, "seedPhrase"),
-    ),
+    seedPhrase,
     l2Address: requiredString(raw.l2Address, "l2Address"),
     paymentKeyHash: requiredString(raw.paymentKeyHash, "paymentKeyHash"),
     createdAt: requiredString(raw.createdAt, "createdAt"),
     latestFunding: parseLatestFunding(raw.latestFunding),
   };
+  parseStressWalletSummaryArtifact(
+    {
+      schemaVersion: record.schemaVersion,
+      walletId: record.walletId,
+      index: record.index,
+      envName: record.envName,
+      network: record.network,
+      l2Address: record.l2Address,
+      paymentKeyHash: record.paymentKeyHash,
+      createdAt: record.createdAt,
+      ...(record.latestFunding === undefined
+        ? {}
+        : { latestFunding: record.latestFunding }),
+      path: "<memory>",
+    },
+    "stress wallet record",
+  );
   const derived = deriveStressWalletRecord({
     index: record.index,
     envName: record.envName,
@@ -960,7 +2239,10 @@ const writeStressWalletRecord = async (
   path: string,
   record: StressWalletRecord,
 ): Promise<void> => {
-  await writePrivateFileAtomic(path, `${formatJson(record)}\n`);
+  const canonical = parseStressWalletRecord(
+    JSON.parse(formatJson(record)) as unknown,
+  );
+  await writePrivateFileAtomic(path, `${formatJson(canonical)}\n`);
 };
 
 const summaryForRecord = (
@@ -1144,8 +2426,8 @@ export const createL2Wallets = async (
     outDir,
     resolved.map(({ record }) => record),
   );
-  return {
-    schemaVersion: STRESS_WALLET_SCHEMA_VERSION,
+  const result: CreateL2WalletsResult = {
+    schemaVersion: STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION,
     walletDirectory: outDir,
     createdCount: resolved.filter((wallet) => wallet.created).length,
     reusedCount: resolved.filter((wallet) => !wallet.created).length,
@@ -1153,6 +2435,8 @@ export const createL2Wallets = async (
     argsFilePath: exports.argsFilePath,
     wallets: resolved.map(({ path, record }) => summaryForRecord(record, path)),
   };
+  parseStressWalletCreateResult(result);
+  return result;
 };
 
 const outRefKey = (utxo: NodeUtxo): string =>
@@ -1394,8 +2678,8 @@ const prepareStressWalletsUnlocked = async (
     }),
   );
 
-  return {
-    schemaVersion: STRESS_WALLET_PREPARE_SCHEMA_VERSION,
+  const result: PrepareStressWalletsResult = {
+    schemaVersion: STRESS_WALLET_PREPARE_RESULT_SCHEMA_VERSION,
     walletDirectory: outDir,
     requestedCount: options.count,
     generatedWalletCount: resolved.filter((wallet) => wallet.created).length,
@@ -1412,6 +2696,8 @@ const prepareStressWalletsUnlocked = async (
     argsFilePath: exports.argsFilePath,
     wallets: entries,
   };
+  parseStressWalletPrepareResult(result);
+  return result;
 };
 
 export const prepareStressWallets = async (
@@ -1868,7 +3154,7 @@ const fanoutStressWalletsUnlocked = async (
     BigInt(records.length) * feeHeadroomLovelace;
   const reportPath = join(outDir, "fanout-report.json");
   const result: StressWalletFanoutResult = {
-    schemaVersion: STRESS_WALLET_FANOUT_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_FANOUT_RESULT_SCHEMA_VERSION,
     walletDirectory: outDir,
     requestedCount: options.count,
     generatedWalletCount: resolved.filter((wallet) => wallet.created).length,
@@ -1887,14 +3173,14 @@ const fanoutStressWalletsUnlocked = async (
     levels: levelSummaries,
     wallets: walletEntries,
   };
-  await writeFile(
-    reportPath,
-    `${formatJson({
-      ...result,
-      edges,
-    })}\n`,
-    "utf8",
-  );
+  parseStressWalletFanoutResult(result);
+  const report = {
+    ...result,
+    schemaVersion: STRESS_WALLET_FANOUT_REPORT_SCHEMA_VERSION,
+    edges,
+  };
+  parseStressWalletFanoutReport(report);
+  await writeFile(reportPath, `${formatJson(report)}\n`, "utf8");
   return result;
 };
 
@@ -1972,6 +3258,13 @@ const parseStressWalletOperationScope = (
   value: unknown,
 ): StressWalletOperationScope => {
   const raw = asObject(value, "scope");
+  assertExactKeys(raw, "scope", [
+    "count",
+    "startIndex",
+    "envPrefix",
+    "network",
+    "walletSetSha256",
+  ]);
   const walletSetSha256 = requiredString(
     raw.walletSetSha256,
     "scope.walletSetSha256",
@@ -1993,7 +3286,7 @@ const parseStressWalletOperationScope = (
   };
 };
 
-type ConsolidationStateEntry = {
+export type ConsolidationStateEntry = {
   readonly walletId: string;
   readonly address: string;
   readonly beforeLovelace: string;
@@ -2006,8 +3299,8 @@ type ConsolidationStateEntry = {
   readonly acceptedStatus?: string;
 };
 
-type ConsolidationState = {
-  readonly schemaVersion: typeof STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION;
+export type ConsolidationState = {
+  readonly schemaVersion: typeof STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION;
   readonly treasuryAddress: string;
   readonly nodeEndpoint: string;
   readonly reserveLovelace: string;
@@ -2210,15 +3503,22 @@ const utxoAccounting = (utxos: readonly NodeUtxo[]) => ({
   outrefs: utxos.map(outRefKey).sort(),
 });
 
-const readConsolidationState = async (
-  path: string,
-): Promise<ConsolidationState | undefined> => {
-  if (!(await fileExists(path))) return undefined;
-  const raw = asObject(
-    JSON.parse(await readFile(path, "utf8")) as unknown,
-    "stress wallet consolidation state",
-  );
-  if (raw.schemaVersion !== STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION) {
+export const parseStressWalletConsolidationJournal = (
+  value: unknown,
+  path = "<memory>",
+): ConsolidationState => {
+  const raw = asObject(value, "stress wallet consolidation state");
+  assertExactKeys(raw, "stress wallet consolidation state", [
+    "schemaVersion",
+    "treasuryAddress",
+    "nodeEndpoint",
+    "reserveLovelace",
+    "scope",
+    "entries",
+  ]);
+  if (
+    raw.schemaVersion !== STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION
+  ) {
     throw new Error(
       `Unsupported consolidation state schema at ${path}; canonical V1 is required.`,
     );
@@ -2230,6 +3530,24 @@ const readConsolidationState = async (
   const txHashes = new Set<string>();
   const entries = raw.entries.map((value, index): ConsolidationStateEntry => {
     const entry = asObject(value, `entries[${index.toString()}]`);
+    assertExactKeys(
+      entry,
+      `entries[${index.toString()}]`,
+      [
+        "walletId",
+        "address",
+        "beforeLovelace",
+        "beforeOutrefs",
+        "requestedLovelace",
+      ],
+      [
+        "txHash",
+        "signedTxCbor",
+        "selectedInputs",
+        "selectedInputLovelace",
+        "acceptedStatus",
+      ],
+    );
     if (!Array.isArray(entry.beforeOutrefs)) {
       throw new Error(
         `Consolidation state entries[${index.toString()}].beforeOutrefs must be an array.`,
@@ -2354,10 +3672,7 @@ const readConsolidationState = async (
         `Consolidation state entry ${parsed.walletId} has selected input accounting without signedTxCbor.`,
       );
     }
-    if (
-      parsed.txHash !== undefined &&
-      parsed.signedTxCbor === undefined
-    ) {
+    if (parsed.txHash !== undefined && parsed.signedTxCbor === undefined) {
       throw new Error(
         `Consolidation state entry ${parsed.walletId} lacks its exact signedTxCbor.`,
       );
@@ -2365,13 +3680,23 @@ const readConsolidationState = async (
     return parsed;
   });
   return {
-    schemaVersion: STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION,
     treasuryAddress: requiredString(raw.treasuryAddress, "treasuryAddress"),
     nodeEndpoint: requiredString(raw.nodeEndpoint, "nodeEndpoint"),
     reserveLovelace: requiredString(raw.reserveLovelace, "reserveLovelace"),
     scope: parseStressWalletOperationScope(raw.scope),
     entries,
   };
+};
+
+const readConsolidationState = async (
+  path: string,
+): Promise<ConsolidationState | undefined> => {
+  if (!(await fileExists(path))) return undefined;
+  return parseStressWalletConsolidationJournal(
+    JSON.parse(await readFile(path, "utf8")) as unknown,
+    path,
+  );
 };
 
 const waitForConsolidationAcceptance = async ({
@@ -2424,7 +3749,7 @@ const waitForConsolidationAcceptance = async ({
   }
 };
 
-type ConsolidationReadinessSnapshot = {
+export type ConsolidationReadinessSnapshot = {
   readonly httpStatus: number;
   readonly ready: boolean;
   readonly reasons: readonly string[];
@@ -2456,7 +3781,7 @@ const requiredReadinessCount = (value: unknown, fieldName: string): number => {
   return parsed;
 };
 
-const parseConsolidationReadiness = (
+export const parseConsolidationReadiness = (
   response: StressWalletConsolidationReadinessResponse,
 ): ConsolidationReadinessSnapshot => {
   if (!Number.isSafeInteger(response.httpStatus)) {
@@ -2465,6 +3790,23 @@ const parseConsolidationReadiness = (
     );
   }
   const body = asObject(response.body, "consolidation readiness body");
+  try {
+    assertExactKeys(body, "consolidation readiness body", [
+      "ready",
+      "reasons",
+      "durableAdmissionBacklog",
+      "mempoolTxCount",
+      "unfinishedLocalMutationJobs",
+      "unresolvedBlockSubmissionAgeMs",
+      "providerQueryHealthy",
+      "stateQueueMutationLease",
+      "blockCommitmentCoordination",
+    ]);
+  } catch (cause) {
+    throw new Error(
+      `Malformed consolidation readiness response: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
   if (typeof body.ready !== "boolean") {
     throw new Error(
       "Malformed consolidation readiness response: ready must be boolean.",
@@ -2491,6 +3833,14 @@ const parseConsolidationReadiness = (
     body.blockCommitmentCoordination,
     "blockCommitmentCoordination",
   );
+  assertExactKeys(lease, "stateQueueMutationLease", [
+    "status",
+    "pendingFinalizations",
+  ]);
+  assertExactKeys(coordination, "blockCommitmentCoordination", [
+    "commitWorkerActive",
+    "commitPipelinePhase",
+  ]);
   if (
     typeof lease.status !== "string" ||
     !Array.isArray(lease.pendingFinalizations)
@@ -2605,36 +3955,40 @@ const waitForConsolidationReadiness = async ({
     try {
       snapshot = parseConsolidationReadiness(response);
     } catch (error) {
-      await writeFile(
-        readinessPath,
-        JSON.stringify({
-          schemaVersion: "midgard-stress-wallet-consolidation-readiness-v1",
-          observedAt: now().toISOString(),
-          batchIndex,
-          firstWalletId,
-          attempt,
-          malformed: true,
-          error: error instanceof Error ? error.message : String(error),
-          response,
-        }) + "\n",
-        { encoding: "utf8", flag: "a", mode: 0o600 },
-      );
-      throw error;
-    }
-    const fullReady = isFullConsolidationReadiness(snapshot);
-    await writeFile(
-      readinessPath,
-      JSON.stringify({
-        schemaVersion: "midgard-stress-wallet-consolidation-readiness-v1",
+      const evidence = {
+        schemaVersion: STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION,
         observedAt: now().toISOString(),
         batchIndex,
         firstWalletId,
         attempt,
-        fullReady,
-        snapshot,
-      }) + "\n",
-      { encoding: "utf8", flag: "a", mode: 0o600 },
-    );
+        malformed: true,
+        error: error instanceof Error ? error.message : String(error),
+        response,
+      };
+      parseStressWalletConsolidationReadinessEvidence(evidence);
+      await writeFile(readinessPath, JSON.stringify(evidence) + "\n", {
+        encoding: "utf8",
+        flag: "a",
+        mode: 0o600,
+      });
+      throw error;
+    }
+    const fullReady = isFullConsolidationReadiness(snapshot);
+    const evidence = {
+      schemaVersion: STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION,
+      observedAt: now().toISOString(),
+      batchIndex,
+      firstWalletId,
+      attempt,
+      fullReady,
+      snapshot,
+    };
+    parseStressWalletConsolidationReadinessEvidence(evidence);
+    await writeFile(readinessPath, JSON.stringify(evidence) + "\n", {
+      encoding: "utf8",
+      flag: "a",
+      mode: 0o600,
+    });
     if (fullReady) return;
     if (monotonicNow() - startedAt >= timeoutMs) {
       throw new Error(
@@ -2839,14 +4193,15 @@ const consolidateStressWalletsUnlocked = async (
           "Refusing to persist consolidation state because an existing entry would be dropped.",
         );
       }
-      const contents = `${formatJson({
-        schemaVersion: STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION,
+      const document = parseStressWalletConsolidationJournal({
+        schemaVersion: STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION,
         treasuryAddress,
         nodeEndpoint,
         reserveLovelace: reserveLovelace.toString(10),
         scope,
         entries,
-      })}\n`;
+      });
+      const contents = `${formatJson(document)}\n`;
       await assertFileGeneration(statePath, expectedStateSha256);
       await writePrivateFileAtomic(statePath, contents);
       const writtenSha256 = sha256Bytes(Buffer.from(contents, "utf8"));
@@ -3185,7 +4540,7 @@ const consolidateStressWalletsUnlocked = async (
     `consolidation-report-${reportTimestamp.replaceAll(":", "-")}.json`,
   );
   const result: StressWalletConsolidateResult = {
-    schemaVersion: STRESS_WALLET_CONSOLIDATE_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION,
     walletDirectory: outDir,
     requestedCount: options.count,
     reserveLovelace: reserveLovelace.toString(10),
@@ -3204,29 +4559,35 @@ const consolidateStressWalletsUnlocked = async (
     alreadyConsolidatedCount,
     reportPath,
   };
-  await writeFile(
-    reportPath,
-    `${formatJson({
-      ...result,
-      statePath,
-      treasury: {
-        before: utxoAccounting(treasuryBeforeUtxos),
-        after: utxoAccounting(treasuryAfterUtxos),
-      },
-      wallets: records.map((record, index) => ({
-        walletId: record.walletId,
-        address: record.l2Address,
-        before: utxoAccounting(sourceBeforeUtxos[index]!),
-        after: utxoAccounting(sourceAfterUtxos[index]!),
-        transfer: stateEntries.get(record.walletId),
-      })),
-    })}\n`,
-    { encoding: "utf8", flag: "wx", mode: 0o600 },
-  );
+  parseStressWalletConsolidationResult(result);
+  const report = {
+    ...result,
+    schemaVersion: STRESS_WALLET_CONSOLIDATION_REPORT_SCHEMA_VERSION,
+    statePath,
+    treasury: {
+      before: utxoAccounting(treasuryBeforeUtxos),
+      after: utxoAccounting(treasuryAfterUtxos),
+    },
+    wallets: records.map((record, index) => ({
+      walletId: record.walletId,
+      address: record.l2Address,
+      before: utxoAccounting(sourceBeforeUtxos[index]!),
+      after: utxoAccounting(sourceAfterUtxos[index]!),
+      ...(stateEntries.has(record.walletId)
+        ? { transfer: stateEntries.get(record.walletId) }
+        : {}),
+    })),
+  };
+  parseStressWalletConsolidationReport(report);
+  await writeFile(reportPath, `${formatJson(report)}\n`, {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
   return result;
 };
 
-type TerminalDrainEntry = {
+export type TerminalDrainEntry = {
   readonly walletId: string;
   readonly address: string;
   readonly beforeOutrefs: readonly string[];
@@ -3240,8 +4601,8 @@ type TerminalDrainEntry = {
   readonly feeLovelace?: string;
   readonly signedTxBytes?: number;
 };
-type TerminalDrainState = {
-  readonly schemaVersion: typeof STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION;
+export type TerminalDrainState = {
+  readonly schemaVersion: typeof STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION;
   readonly scope: StressWalletOperationScope;
   readonly scopeSha256: string;
   readonly nodeEndpoint: string;
@@ -3277,27 +4638,67 @@ const terminalSnapshotHash = (utxos: readonly NodeUtxo[]): string =>
     ),
   );
 const terminalDecimal = (value: unknown, label: string): string => {
-  const parsed = requiredString(value, label);
+  if (typeof value !== "string" || value.length === 0 || value !== value.trim())
+    throw new Error(label + " must be an exact non-empty string.");
+  const parsed = value;
   if (!/^(0|[1-9]\d*)$/.test(parsed))
     throw new Error(label + " must be a canonical non-negative decimal.");
   return parsed;
 };
-const readTerminalDrainState = async (
-  path: string,
-): Promise<TerminalDrainState | undefined> => {
-  if (!(await fileExists(path))) return undefined;
-  const raw = asObject(
-    JSON.parse(await readFile(path, "utf8")) as unknown,
-    "terminal drain state",
-  );
+const terminalExactString = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || value.length === 0 || value !== value.trim())
+    throw new Error(label + " must be an exact non-empty string.");
+  return value;
+};
+export const parseStressWalletTerminalDrainJournal = (
+  value: unknown,
+): TerminalDrainState => {
+  const raw = asObject(value, "terminal drain state");
+  assertExactKeys(raw, "terminal drain state", [
+    "schemaVersion",
+    "scope",
+    "scopeSha256",
+    "nodeEndpoint",
+    "network",
+    "treasuryAddress",
+    "treasuryBeforeLovelace",
+    "minFeeA",
+    "minFeeB",
+    "feeCapLovelace",
+    "maxFeeIterations",
+    "entries",
+  ]);
   if (
-    raw.schemaVersion !== STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION ||
+    raw.schemaVersion !== STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION ||
     !Array.isArray(raw.entries)
   )
     throw new Error("Unsupported terminal drain journal schema.");
   const scope = parseStressWalletOperationScope(raw.scope);
+  const walletIds = new Set<string>();
+  const addresses = new Set<string>();
+  const txHashes = new Set<string>();
   const entries = raw.entries.map((value, index): TerminalDrainEntry => {
     const e = asObject(value, "entries[" + index.toString() + "]");
+    assertExactKeys(
+      e,
+      "entries[" + index.toString() + "]",
+      [
+        "walletId",
+        "address",
+        "beforeOutrefs",
+        "beforeLovelace",
+        "beforeValueSha256",
+        "status",
+      ],
+      [
+        "txHash",
+        "signedTxCbor",
+        "selectedInputs",
+        "requestedLovelace",
+        "feeLovelace",
+        "signedTxBytes",
+      ],
+    );
     if (
       !Array.isArray(e.beforeOutrefs) ||
       (e.selectedInputs !== undefined && !Array.isArray(e.selectedInputs))
@@ -3310,45 +4711,74 @@ const readTerminalDrainState = async (
       status !== "committed"
     )
       throw new Error("Invalid terminal drain status.");
+    const transactionFields = [
+      e.txHash,
+      e.signedTxCbor,
+      e.selectedInputs,
+      e.requestedLovelace,
+      e.feeLovelace,
+      e.signedTxBytes,
+    ];
     if (
       status === "already_empty" &&
-      [
-        e.txHash,
-        e.signedTxCbor,
-        e.selectedInputs,
-        e.selectedInputLovelace,
-        e.requestedLovelace,
-        e.feeLovelace,
-        e.signedTxBytes,
-        e.acceptedStatus,
-      ].some((field) => field !== undefined)
+      transactionFields.some((field) => field !== undefined)
     )
       throw new Error(
         "Terminal drain already_empty entry contains forbidden transaction fields.",
       );
-    return {
-      walletId: requiredString(e.walletId, "walletId"),
-      address: requiredString(e.address, "address"),
-      beforeOutrefs: e.beforeOutrefs.map((x) =>
-        requiredString(x, "beforeOutref"),
-      ),
-      beforeLovelace: terminalDecimal(e.beforeLovelace, "beforeLovelace"),
-      beforeValueSha256: requiredString(
-        e.beforeValueSha256,
-        "beforeValueSha256",
-      ),
+    if (
+      status !== "already_empty" &&
+      transactionFields.some((field) => field === undefined)
+    )
+      throw new Error("Terminal drain prepared/committed entry is incomplete.");
+    const walletId = terminalExactString(e.walletId, "walletId");
+    const address = terminalExactString(e.address, "address");
+    if (walletIds.has(walletId) || addresses.has(address))
+      throw new Error("Terminal drain wallet identities must be unique.");
+    walletIds.add(walletId);
+    addresses.add(address);
+    const beforeOutrefs = e.beforeOutrefs.map((x) =>
+      terminalExactString(x, "beforeOutref"),
+    );
+    if (
+      beforeOutrefs.some(
+        (outref) => !/^[0-9a-f]{64}#(0|[1-9]\d*)$/.test(outref),
+      ) ||
+      new Set(beforeOutrefs).size !== beforeOutrefs.length ||
+      [...beforeOutrefs].sort().join("|") !== beforeOutrefs.join("|")
+    )
+      throw new Error(
+        "Terminal drain beforeOutrefs must be unique sorted canonical outrefs.",
+      );
+    const beforeLovelace = terminalDecimal(e.beforeLovelace, "beforeLovelace");
+    const beforeValueSha256 = terminalExactString(
+      e.beforeValueSha256,
+      "beforeValueSha256",
+    );
+    if (!/^[0-9a-f]{64}$/.test(beforeValueSha256))
+      throw new Error(
+        "Terminal drain beforeValueSha256 must be a lowercase SHA-256 digest.",
+      );
+    const parsed: TerminalDrainEntry = {
+      walletId,
+      address,
+      beforeOutrefs,
+      beforeLovelace,
+      beforeValueSha256,
       status,
       ...(e.txHash === undefined
         ? {}
-        : { txHash: requiredString(e.txHash, "txHash") }),
+        : { txHash: terminalExactString(e.txHash, "txHash") }),
       ...(e.signedTxCbor === undefined
         ? {}
-        : { signedTxCbor: requiredString(e.signedTxCbor, "signedTxCbor") }),
+        : {
+            signedTxCbor: terminalExactString(e.signedTxCbor, "signedTxCbor"),
+          }),
       ...(e.selectedInputs === undefined
         ? {}
         : {
             selectedInputs: e.selectedInputs.map((x) =>
-              requiredString(x, "selectedInput"),
+              terminalExactString(x, "selectedInput"),
             ),
           }),
       ...(e.requestedLovelace === undefined
@@ -3371,17 +4801,92 @@ const readTerminalDrainState = async (
             ),
           }),
     };
+    if (status === "already_empty") {
+      if (
+        beforeOutrefs.length !== 0 ||
+        beforeLovelace !== "0" ||
+        beforeValueSha256 !== terminalSnapshotHash([])
+      )
+        throw new Error(
+          "Terminal drain already_empty entry must bind the exact empty snapshot.",
+        );
+      return parsed;
+    }
+    const txHash = parsed.txHash!;
+    const signedTxCbor = parsed.signedTxCbor!;
+    const selectedInputs = parsed.selectedInputs!;
+    if (
+      !/^[0-9a-f]{64}$/.test(txHash) ||
+      !/^[0-9a-f]+$/.test(signedTxCbor) ||
+      signedTxCbor.length % 2 !== 0 ||
+      txHashes.has(txHash)
+    )
+      throw new Error(
+        "Terminal drain transaction identities must be unique lowercase canonical encodings.",
+      );
+    txHashes.add(txHash);
+    if (
+      selectedInputs.some(
+        (outref) => !/^[0-9a-f]{64}#(0|[1-9]\d*)$/.test(outref),
+      ) ||
+      new Set(selectedInputs).size !== selectedInputs.length ||
+      [...selectedInputs].sort().join("|") !== selectedInputs.join("|") ||
+      selectedInputs.join("|") !== beforeOutrefs.join("|")
+    )
+      throw new Error(
+        "Terminal drain selectedInputs must exactly equal the sorted snapshot outrefs.",
+      );
+    const signedTxBytes = Buffer.from(signedTxCbor, "hex");
+    if (
+      signedTxBytes.toString("hex") !== signedTxCbor ||
+      signedTxBytes.length !== parsed.signedTxBytes
+    )
+      throw new Error(
+        "Terminal drain signedTxBytes must bind exact signedTxCbor.",
+      );
+    let computedTxHash: string;
+    try {
+      computedTxHash = computeMidgardNativeTxIdV1(
+        decodeMidgardNativeTxFullV1FromCanonicalCbor(signedTxBytes),
+      ).toString("hex");
+    } catch (cause) {
+      throw new Error(
+        "Terminal drain signedTxCbor must be canonical Midgard native V1 transaction CBOR: " +
+          String(cause),
+      );
+    }
+    if (computedTxHash !== txHash)
+      throw new Error("Terminal drain txHash must bind exact signedTxCbor.");
+    if (
+      BigInt(parsed.requestedLovelace!) + BigInt(parsed.feeLovelace!) !==
+      BigInt(beforeLovelace)
+    )
+      throw new Error(
+        "Terminal drain entry must conserve beforeLovelace as requestedLovelace+feeLovelace.",
+      );
+    return parsed;
   });
+  const scopeSha256 = terminalExactString(raw.scopeSha256, "scopeSha256");
+  if (
+    !/^[0-9a-f]{64}$/.test(scopeSha256) ||
+    scopeSha256 !== terminalScopeHash(scope)
+  )
+    throw new Error(
+      "Terminal drain scopeSha256 must bind the exact parsed scope.",
+    );
   return {
-    schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION,
     scope,
-    scopeSha256: requiredString(raw.scopeSha256, "scopeSha256"),
-    nodeEndpoint: requiredString(raw.nodeEndpoint, "nodeEndpoint"),
+    scopeSha256,
+    nodeEndpoint: terminalExactString(raw.nodeEndpoint, "nodeEndpoint"),
     network: parseStressWalletNetwork(
       requiredString(raw.network, "network"),
       {},
     ),
-    treasuryAddress: requiredString(raw.treasuryAddress, "treasuryAddress"),
+    treasuryAddress: terminalExactString(
+      raw.treasuryAddress,
+      "treasuryAddress",
+    ),
     treasuryBeforeLovelace: terminalDecimal(
       raw.treasuryBeforeLovelace,
       "treasuryBeforeLovelace",
@@ -3395,6 +4900,14 @@ const readTerminalDrainState = async (
     ),
     entries,
   };
+};
+const readTerminalDrainState = async (
+  path: string,
+): Promise<TerminalDrainState | undefined> => {
+  if (!(await fileExists(path))) return undefined;
+  return parseStressWalletTerminalDrainJournal(
+    JSON.parse(await readFile(path, "utf8")) as unknown,
+  );
 };
 const assertTerminalDrainIntent = (
   entry: TerminalDrainEntry,
@@ -3619,7 +5132,10 @@ const terminalDrainStressWalletsUnlocked = async (
   let state = await readTerminalDrainState(statePath);
   await assertFileGeneration(statePath, generation);
   const persist = async (next: TerminalDrainState): Promise<void> => {
-    const text = formatJson(next) + "\n";
+    const canonical = parseStressWalletTerminalDrainJournal(
+      JSON.parse(formatJson(next)) as unknown,
+    );
+    const text = formatJson(canonical) + "\n";
     await assertFileGeneration(statePath, generation);
     await writePrivateFileAtomic(statePath, text);
     await chmod(statePath, 0o600);
@@ -3688,7 +5204,7 @@ const terminalDrainStressWalletsUnlocked = async (
       },
     );
     state = {
-      schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION,
+      schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION,
       scope,
       scopeSha256: terminalScopeHash(scope),
       nodeEndpoint: endpoint,
@@ -3749,9 +5265,9 @@ const terminalDrainStressWalletsUnlocked = async (
     (n, x) => n + BigInt(x.feeLovelace ?? "0"),
     0n,
   );
-  if (options.prepareOnly)
-    return {
-      schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION,
+  if (options.prepareOnly) {
+    const result: StressWalletTerminalDrainResult = {
+      schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION,
       phase: "prepared",
       walletDirectory: outDir,
       requestedCount: options.count,
@@ -3766,6 +5282,9 @@ const terminalDrainStressWalletsUnlocked = async (
       resumedTransferCount: 0,
       statePath,
     };
+    parseStressWalletTerminalDrainResult(result);
+    return result;
+  }
   let submitted = 0;
   let resumed = 0;
   const entries = [...state.entries];
@@ -3884,31 +5403,30 @@ const terminalDrainStressWalletsUnlocked = async (
       now().toISOString().replaceAll(":", "-") +
       ".json",
   );
-  await writePrivateFileAtomicNoReplace(
-    reportPath,
-    formatJson({
-      schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION,
-      scope,
-      statePath,
-      endpoint,
-      network,
-      treasuryAddress,
-      conservation: {
-        grossSourceLovelace: gross.toString(10),
-        treasuryDeltaLovelace: delta.toString(10),
-        totalFeesLovelace: fees.toString(10),
-        residualSourceLovelace: "0",
-      },
-      wallets: records.map((record, i) => ({
-        walletId: record.walletId,
-        address: record.l2Address,
-        before: state!.entries[i],
-        after: utxoAccounting(sources[i]!),
-      })),
-    }) + "\n",
-  );
-  return {
-    schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_SCHEMA_VERSION,
+  const report = {
+    schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_REPORT_SCHEMA_VERSION,
+    scope,
+    statePath,
+    endpoint,
+    network,
+    treasuryAddress,
+    conservation: {
+      grossSourceLovelace: gross.toString(10),
+      treasuryDeltaLovelace: delta.toString(10),
+      totalFeesLovelace: fees.toString(10),
+      residualSourceLovelace: "0",
+    },
+    wallets: records.map((record, i) => ({
+      walletId: record.walletId,
+      address: record.l2Address,
+      before: state!.entries[i],
+      after: utxoAccounting(sources[i]!),
+    })),
+  };
+  parseStressWalletTerminalDrainReport(report);
+  await writePrivateFileAtomicNoReplace(reportPath, formatJson(report) + "\n");
+  const result: StressWalletTerminalDrainResult = {
+    schemaVersion: STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION,
     phase: "committed",
     walletDirectory: outDir,
     requestedCount: options.count,
@@ -3927,6 +5445,8 @@ const terminalDrainStressWalletsUnlocked = async (
     statePath,
     reportPath,
   };
+  parseStressWalletTerminalDrainResult(result);
+  return result;
 };
 export const terminalDrainStressWallets = async (
   options: TerminalDrainStressWalletsOptions,

@@ -200,6 +200,36 @@ test("candidate input binds fixture creation identity and payload aggregate", as
     const candidate = JSON.parse(
       readFileSync(result.candidateInputPath, "utf8"),
     );
+    const seed = JSON.parse(readFileSync(result.seedInputPath, "utf8"));
+    assert.deepEqual(Object.keys(seed).sort(), [
+      "corpusSlicePath",
+      "corpusSliceSha256",
+      "expectedTransactionCount",
+      "firstTimestampIso",
+      "fundingMapPath",
+      "fundingMapSha256",
+      "phase1FormalBinding",
+      "runtimeIdentity",
+      "schemaVersion",
+    ]);
+    assert.equal(
+      seed.schemaVersion,
+      "midgard-architecture-g-commit-candidate-seed-v1",
+    );
+    assert.equal(seed.phase1FormalBinding.sha256, bindingSha256);
+    assert.equal(
+      seed.runtimeIdentity.executableSha256,
+      runtimeExecutableSha256,
+    );
+    assert.equal(seed.corpusSlicePath, files.slice);
+    assert.equal(seed.corpusSliceSha256, sha256File(files.slice));
+    assert.equal(seed.fundingMapPath, files.funding);
+    assert.equal(seed.fundingMapSha256, sha256File(files.funding));
+    assert.equal(seed.expectedTransactionCount, 10);
+    assert.match(
+      seed.firstTimestampIso,
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u,
+    );
     assert.equal(candidate.fixtureInitialUtxoCount, 100);
     assert.equal(candidate.phase1FormalBinding.sha256, bindingSha256);
     assert.equal(candidate.runtimeIdentity.version, process.version);

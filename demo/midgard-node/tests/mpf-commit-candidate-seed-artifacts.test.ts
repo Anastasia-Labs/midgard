@@ -83,6 +83,8 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
     (value: ReturnType<typeof seedInput>) =>
       Object.assign(value, { unknown: true }),
     (value: ReturnType<typeof seedInput>) =>
+      void (value.schemaVersion = "candidate-seed-v2"),
+    (value: ReturnType<typeof seedInput>) =>
       Object.assign(value.phase1FormalBinding, { unknown: true }),
     (value: ReturnType<typeof seedInput>) =>
       Object.assign(value.runtimeIdentity, { unknown: true }),
@@ -111,6 +113,10 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
         value,
         expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
         expectedSliceSha256: hash(11),
+        expectedFundingRoots: value.entries.map(({ walletId, outref }) => ({
+          walletId,
+          outref,
+        })),
       }),
     ).toBe(value);
   });
@@ -119,7 +125,11 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
     (value: ReturnType<typeof funding>) =>
       Object.assign(value, { unknown: true }),
     (value: ReturnType<typeof funding>) =>
+      void (value.schemaVersion = "corpus-funding-v2"),
+    (value: ReturnType<typeof funding>) =>
       Object.assign(value.entries[0]!, { unknown: true }),
+    (value: ReturnType<typeof funding>) =>
+      void (value.entries[0]!.walletId = "wallet\0zero"),
     (value: ReturnType<typeof funding>) => void (value.corpusSha256 = hash(30)),
     (value: ReturnType<typeof funding>) => void (value.sliceSha256 = hash(31)),
     (value: ReturnType<typeof funding>) =>
@@ -132,6 +142,8 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
       void (value.entries[0]!.outputCbor = "0"),
     (value: ReturnType<typeof funding>) =>
       void (value.entries[0]!.outputCbor = "AA"),
+    (value: ReturnType<typeof funding>) =>
+      void (value.entries[0]!.outputCbor = "00".repeat(524_289)),
     (value: ReturnType<typeof funding>) => void value.entries.splice(0),
   ])("rejects extended, mismatched, or malformed funding %#", (mutate) => {
     const value = funding();
@@ -141,6 +153,31 @@ describe("Architecture G commit-candidate seed V1 artifacts", () => {
         value,
         expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
         expectedSliceSha256: hash(11),
+        expectedFundingRoots: funding().entries.map(({ walletId, outref }) => ({
+          walletId,
+          outref,
+        })),
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a funding map whose wallet/outref order is not the selected corpus root order", () => {
+    const value = funding();
+    expect(() =>
+      decodeArchitectureGCorpusFundingV1({
+        value,
+        expectedCorpusSha256: phase1FormalBindingIdentity.corpus.corpusSha256,
+        expectedSliceSha256: hash(11),
+        expectedFundingRoots: [
+          {
+            walletId: value.entries[1]!.walletId,
+            outref: value.entries[1]!.outref,
+          },
+          {
+            walletId: value.entries[0]!.walletId,
+            outref: value.entries[0]!.outref,
+          },
+        ],
       }),
     ).toThrow();
   });

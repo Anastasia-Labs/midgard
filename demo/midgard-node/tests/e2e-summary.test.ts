@@ -11,7 +11,7 @@ import {
   stressEvidenceFromSummary,
 } from "@/commands/e2e-finalize-summary.js";
 import {
-  E2E_L2_STRESS_SCHEMA_VERSION,
+  E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
   type E2EL2StressSummary,
 } from "@/commands/e2e-stress-l2-throughput.js";
 import { buildStressMetrics } from "@/commands/stress-stage-metrics.js";
@@ -24,6 +24,7 @@ import {
 import {
   createE2ERunSummary,
   E2E_SUMMARY_SCHEMA_VERSION,
+  parseE2ERunSummaryV1,
   renderSummaryMarkdown,
   type TransactionEvidence,
   transactionEvidenceFromStepSummaries,
@@ -62,8 +63,8 @@ const step = ({
   startedAt: "2026-01-01T00:00:00.000Z",
   finishedAt: "2026-01-01T00:00:01.000Z",
   durationMs: 1000,
-  exitCode: status === "success" ? 0 : 1,
-  signal: null,
+  exitCode: status === "success" ? 0 : status === "failed" ? 1 : null,
+  signal: status === "signaled" ? "SIGTERM" : null,
   timedOut: status === "timeout",
   rawLogPath: `logs/${id}.log`,
   observedTxHashes: txHashes,
@@ -130,7 +131,7 @@ const stressSummary = (
   patch: Partial<E2EL2StressSummary> = {},
 ): E2EL2StressSummary => {
   const base: Omit<E2EL2StressSummary, "metrics"> = {
-    schemaVersion: E2E_L2_STRESS_SCHEMA_VERSION,
+    schemaVersion: E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION,
     runId: "e2e-run-stress",
     status: "completed",
     loadModel: "closed-loop-smoke",
@@ -264,6 +265,47 @@ const stressSummary = (
 };
 
 describe("e2e run summary", () => {
+  it("accepts only the exact V1 summary shape", () => {
+    const summary = createE2ERunSummary({
+      runId: "e2e-run-exact",
+      mode: "fresh",
+      now: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    expect(parseE2ERunSummaryV1(summary)).toEqual(summary);
+    const { runId: _runId, ...missingRunId } = summary;
+    expect(() => parseE2ERunSummaryV1(missingRunId)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseE2ERunSummaryV1({ ...summary, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseE2ERunSummaryV1({
+        ...summary,
+        schemaVersion: "midgard-e2e-summary-v0",
+      }),
+    ).toThrow(E2E_SUMMARY_SCHEMA_VERSION);
+    expect(() =>
+      parseE2ERunSummaryV1({
+        ...summary,
+        rawEvidence: [{ label: "logs", path: "logs/run", unexpected: true }],
+      }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseE2ERunSummaryV1({
+        ...summary,
+        verdict: "success",
+        nextSafeAction: "none_run_complete",
+      }),
+    ).toThrow("derived evidence or verdict is inconsistent");
+    expect(() =>
+      parseE2ERunSummaryV1({
+        ...summary,
+        updatedAt: "2025-12-31T23:59:59.999Z",
+      }),
+    ).toThrow("derived evidence or verdict is inconsistent");
+  });
+
   it("classifies a fully satisfied run as complete", () => {
     const base = createE2ERunSummary({
       runId: "e2e-run-1",

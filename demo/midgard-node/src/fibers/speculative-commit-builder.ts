@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  type MidgardConsensusProfileV1,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";
@@ -36,6 +34,7 @@ import {
 import { makeAwaitedWorkerTerminator } from "@/fibers/worker-lifecycle.js";
 import {
   type CommitSubmitWake,
+  ContractDeploymentIdentity,
   Database,
   Globals,
   Lucid,
@@ -187,11 +186,24 @@ export const persistAuthenticatedForeignTipMismatch = ({
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly assertedForeignHeaderHash?: string;
-  readonly consensusProfile:
-    | MidgardConsensusProfileV1
-    | MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 }) =>
   Effect.gen(function* () {
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
+    if (
+      deploymentIdentity.deploymentMarker === undefined ||
+      deploymentIdentity.consensusProfile.profileId !==
+        consensusProfile.profileId
+    ) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: ForeignTipReconciliationsDB.tableName,
+          message:
+            "Foreign-tip persistence requires the exact active deployment marker and consensus profile",
+          cause: "missing_or_mismatched_deployment_identity",
+        }),
+      );
+    }
     const evidence = yield* authenticateForeignTipEvidence(
       liveTail,
       consensusProfile,
@@ -215,6 +227,7 @@ export const persistAuthenticatedForeignTipMismatch = ({
       replacedBaseHeaderHash: expectedHeaderHash,
       foreignHeader: evidence.header,
       consensusProfile,
+      deploymentMarker: deploymentIdentity.deploymentMarker,
     });
     return true;
   });
@@ -229,9 +242,7 @@ export const recordForeignTipMismatchBeforeInvalidation = <E, R>({
   readonly expectedHeaderHash: string;
   readonly confirmedHeaderHash: string;
   readonly confirmedTip: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
-  readonly consensusProfile:
-    | MidgardConsensusProfileV1
-    | MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfileV1;
   readonly invalidateCandidate: Effect.Effect<void, E, R>;
 }) =>
   Effect.gen(function* () {
@@ -267,9 +278,7 @@ export const decideSpeculativeInstructionForLiveTip = ({
   readonly expectedHeaderHash: string;
   readonly liveTail: SubmitSpeculativeCandidateInstruction["confirmedBlock"];
   readonly submitInstruction: SubmitSpeculativeCandidateInstruction;
-  readonly consensusProfile:
-    | MidgardConsensusProfileV1
-    | MidgardConsensusProfileV1;
+  readonly consensusProfile: MidgardConsensusProfileV1;
 }) =>
   Effect.gen(function* () {
     const mismatchRecorded = yield* persistAuthenticatedForeignTipMismatch({
@@ -995,7 +1004,12 @@ export const submitSpeculativeCandidateOnConfirmation = (
   | SDK.HashingError
   | SDK.LucidError
   | Error,
-  Globals | Database | NodeConfig | Lucid | MidgardContracts
+  | Globals
+  | Database
+  | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     const {
@@ -1218,7 +1232,12 @@ export const speculativeCommitBuilderFiber: Effect.Effect<
 export const speculativeCommitSubmitterFiber: Effect.Effect<
   void,
   never,
-  Globals | Database | NodeConfig | Lucid | MidgardContracts
+  | Globals
+  | Database
+  | NodeConfig
+  | Lucid
+  | MidgardContracts
+  | ContractDeploymentIdentity
 > = Effect.gen(function* () {
   const globals = yield* Globals;
   yield* Effect.logInfo("🟦 Speculative commit submitter wake fiber started.");

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { cpus } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { Worker } from "node:worker_threads";
 
@@ -19,6 +19,11 @@ import {
 } from "@/commands/stress-corpus/plan.js";
 import {
   DEFAULT_STRESS_CORPUS_REBUILD_SAMPLE_RATE,
+  parseStressCorpusIndexLine,
+  parseStressCorpusManifest,
+  parseStressCorpusRebuildSampleResultV1,
+  parseStressCorpusWalletSetIdentityV1,
+  STRESS_CORPUS_MANIFEST_SCHEMA_VERSION,
   STRESS_CORPUS_REBUILD_SAMPLE_ALGORITHM,
   verifyStressCorpus,
   type VerifyStressCorpusOptions,
@@ -93,6 +98,430 @@ export type StressCorpusGenerateResult = {
       readonly path: string;
       readonly sha256: string;
     };
+  };
+};
+
+type SerializedStressCorpusPlanV1 = Omit<
+  StressCorpusPlan,
+  | "amountLovelace"
+  | "estimatedFeePerTxLovelace"
+  | "perWalletFundingLovelace"
+  | "totalFundingLovelace"
+  | "estimatedCorpusBytes"
+> & {
+  readonly amountLovelace: string;
+  readonly estimatedFeePerTxLovelace: string;
+  readonly perWalletFundingLovelace: string;
+  readonly totalFundingLovelace: string;
+  readonly estimatedCorpusBytes: string;
+};
+
+export type StressCorpusGenerationArtifactV1 = Omit<
+  StressCorpusGenerateResult,
+  "plan"
+> & {
+  readonly plan: SerializedStressCorpusPlanV1;
+};
+
+const exactGenerationObject = (
+  value: unknown,
+  label: string,
+  keys: readonly string[],
+): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const missing = keys.filter((key) => !Object.hasOwn(record, key));
+  const extra = Object.keys(record).filter((key) => !keys.includes(key));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `${label} keys must be exact; missing=[${missing.join(",")}], extra=[${extra.join(",")}].`,
+    );
+  }
+  return record;
+};
+
+const generationString = (value: unknown, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim()
+  ) {
+    throw new Error(`${label} must be a non-empty exact string.`);
+  }
+  return value;
+};
+
+const generationInteger = (
+  value: unknown,
+  label: string,
+  minimum: number,
+): number => {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < minimum
+  ) {
+    throw new Error(
+      `${label} must be a safe integer >= ${minimum.toString()}.`,
+    );
+  }
+  return value;
+};
+
+const generationNumber = (value: unknown, label: string): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a finite positive number.`);
+  }
+  return value;
+};
+
+const generationDecimal = (
+  value: unknown,
+  label: string,
+  allowZero: boolean,
+): string => {
+  const decimal = generationString(value, label);
+  if (!/^(0|[1-9][0-9]*)$/u.test(decimal)) {
+    throw new Error(`${label} must be a canonical non-negative decimal.`);
+  }
+  if (!allowZero && decimal === "0") {
+    throw new Error(`${label} must be greater than zero.`);
+  }
+  return decimal;
+};
+
+const generationDigest = (value: unknown, label: string): string => {
+  const digest = generationString(value, label);
+  if (!/^[0-9a-f]{64}$/u.test(digest)) {
+    throw new Error(`${label} must be an exact lowercase SHA-256.`);
+  }
+  return digest;
+};
+
+export const parseStressCorpusGenerationArtifactV1 = (
+  value: unknown,
+): StressCorpusGenerationArtifactV1 => {
+  const root = exactGenerationObject(
+    value,
+    "stress corpus generation artifact",
+    [
+      "schemaVersion",
+      "outDir",
+      "corpusPath",
+      "indexPath",
+      "manifestPath",
+      "plan",
+      "walletSetIdentity",
+      "assembled",
+      "verified",
+    ],
+  );
+  if (root.schemaVersion !== "midgard-stress-corpus-generation-v1") {
+    throw new Error(
+      `Unsupported stress corpus generation artifact schemaVersion ${String(root.schemaVersion)}.`,
+    );
+  }
+  const planDocument = exactGenerationObject(
+    root.plan,
+    "stress corpus generation artifact plan",
+    [
+      "targetRateTps",
+      "durationMs",
+      "warmupCount",
+      "cooldownCount",
+      "rowCount",
+      "walletCount",
+      "chainDepth",
+      "amountLovelace",
+      "estimatedFeePerTxLovelace",
+      "perWalletFundingLovelace",
+      "totalFundingLovelace",
+      "estimatedCorpusBytes",
+      "assumedAcceptanceLatencyMs",
+      "safetyFactor",
+      "corpusShape",
+      "interleavingPlan",
+    ],
+  );
+  if (
+    planDocument.corpusShape !== "fanout" &&
+    planDocument.corpusShape !== "chain" &&
+    planDocument.corpusShape !== "mixed"
+  ) {
+    throw new Error(
+      "stress corpus generation artifact plan.corpusShape is unsupported.",
+    );
+  }
+  if (planDocument.interleavingPlan !== "grouped-by-chain") {
+    throw new Error(
+      "stress corpus generation artifact plan.interleavingPlan is unsupported.",
+    );
+  }
+  const plan: SerializedStressCorpusPlanV1 = {
+    targetRateTps: generationNumber(
+      planDocument.targetRateTps,
+      "stress corpus generation artifact plan.targetRateTps",
+    ),
+    durationMs: generationInteger(
+      planDocument.durationMs,
+      "stress corpus generation artifact plan.durationMs",
+      1,
+    ),
+    warmupCount: generationInteger(
+      planDocument.warmupCount,
+      "stress corpus generation artifact plan.warmupCount",
+      0,
+    ),
+    cooldownCount: generationInteger(
+      planDocument.cooldownCount,
+      "stress corpus generation artifact plan.cooldownCount",
+      0,
+    ),
+    rowCount: generationInteger(
+      planDocument.rowCount,
+      "stress corpus generation artifact plan.rowCount",
+      1,
+    ),
+    walletCount: generationInteger(
+      planDocument.walletCount,
+      "stress corpus generation artifact plan.walletCount",
+      1,
+    ),
+    chainDepth: generationInteger(
+      planDocument.chainDepth,
+      "stress corpus generation artifact plan.chainDepth",
+      1,
+    ),
+    amountLovelace: generationDecimal(
+      planDocument.amountLovelace,
+      "stress corpus generation artifact plan.amountLovelace",
+      false,
+    ),
+    estimatedFeePerTxLovelace: generationDecimal(
+      planDocument.estimatedFeePerTxLovelace,
+      "stress corpus generation artifact plan.estimatedFeePerTxLovelace",
+      true,
+    ),
+    perWalletFundingLovelace: generationDecimal(
+      planDocument.perWalletFundingLovelace,
+      "stress corpus generation artifact plan.perWalletFundingLovelace",
+      false,
+    ),
+    totalFundingLovelace: generationDecimal(
+      planDocument.totalFundingLovelace,
+      "stress corpus generation artifact plan.totalFundingLovelace",
+      false,
+    ),
+    estimatedCorpusBytes: generationDecimal(
+      planDocument.estimatedCorpusBytes,
+      "stress corpus generation artifact plan.estimatedCorpusBytes",
+      false,
+    ),
+    assumedAcceptanceLatencyMs: generationInteger(
+      planDocument.assumedAcceptanceLatencyMs,
+      "stress corpus generation artifact plan.assumedAcceptanceLatencyMs",
+      1,
+    ),
+    safetyFactor: generationNumber(
+      planDocument.safetyFactor,
+      "stress corpus generation artifact plan.safetyFactor",
+    ),
+    corpusShape: planDocument.corpusShape,
+    interleavingPlan: "grouped-by-chain",
+  };
+  if (
+    plan.rowCount !== plan.walletCount * plan.chainDepth ||
+    BigInt(plan.totalFundingLovelace) !==
+      BigInt(plan.perWalletFundingLovelace) * BigInt(plan.walletCount)
+  ) {
+    throw new Error(
+      "stress corpus generation artifact plan cardinality binding is inconsistent.",
+    );
+  }
+
+  const assembledDocument = exactGenerationObject(
+    root.assembled,
+    "stress corpus generation artifact assembled",
+    [
+      "corpusPath",
+      "indexPath",
+      "rowCount",
+      "chainCount",
+      "corpusSha256",
+      "indexSha256",
+      "indexEntries",
+    ],
+  );
+  if (
+    !Array.isArray(assembledDocument.indexEntries) ||
+    assembledDocument.indexEntries.length === 0
+  ) {
+    throw new Error(
+      "stress corpus generation artifact assembled.indexEntries must be a non-empty array.",
+    );
+  }
+  const indexEntries = assembledDocument.indexEntries.map((entry, index) =>
+    parseStressCorpusIndexLine(JSON.stringify(entry), index + 1),
+  );
+  const assembled: AssembleCorpusResult = {
+    corpusPath: generationString(
+      assembledDocument.corpusPath,
+      "stress corpus generation artifact assembled.corpusPath",
+    ),
+    indexPath: generationString(
+      assembledDocument.indexPath,
+      "stress corpus generation artifact assembled.indexPath",
+    ),
+    rowCount: generationInteger(
+      assembledDocument.rowCount,
+      "stress corpus generation artifact assembled.rowCount",
+      1,
+    ),
+    chainCount: generationInteger(
+      assembledDocument.chainCount,
+      "stress corpus generation artifact assembled.chainCount",
+      1,
+    ),
+    corpusSha256: generationDigest(
+      assembledDocument.corpusSha256,
+      "stress corpus generation artifact assembled.corpusSha256",
+    ),
+    indexSha256: generationDigest(
+      assembledDocument.indexSha256,
+      "stress corpus generation artifact assembled.indexSha256",
+    ),
+    indexEntries,
+  };
+  if (
+    assembled.chainCount !== indexEntries.length ||
+    assembled.rowCount !==
+      indexEntries.reduce((sum, entry) => sum + entry.rowCount, 0) ||
+    indexEntries[0]!.startByteOffset !== 0 ||
+    indexEntries.some(
+      (entry, index) =>
+        index > 0 &&
+        entry.startByteOffset !== indexEntries[index - 1]!.endByteOffset,
+    )
+  ) {
+    throw new Error(
+      "stress corpus generation artifact assembled cardinality binding is inconsistent.",
+    );
+  }
+
+  const verifiedDocument = exactGenerationObject(
+    root.verified,
+    "stress corpus generation artifact verified",
+    [
+      "rowCount",
+      "chainCount",
+      "corpusSha256",
+      "indexSha256",
+      "rebuildSample",
+      "walletSetIdentity",
+      "verificationArtifact",
+    ],
+  );
+  const verificationArtifact = exactGenerationObject(
+    verifiedDocument.verificationArtifact,
+    "stress corpus generation artifact verified.verificationArtifact",
+    ["path", "sha256"],
+  );
+  const walletSetIdentity = parseStressCorpusWalletSetIdentityV1(
+    root.walletSetIdentity,
+    "stress corpus generation artifact walletSetIdentity",
+  );
+  const verifiedWalletSetIdentity = parseStressCorpusWalletSetIdentityV1(
+    verifiedDocument.walletSetIdentity,
+    "stress corpus generation artifact verified.walletSetIdentity",
+  );
+  const rebuildSample = parseStressCorpusRebuildSampleResultV1(
+    verifiedDocument.rebuildSample,
+    "stress corpus generation artifact verified.rebuildSample",
+  );
+  const verified = {
+    rowCount: generationInteger(
+      verifiedDocument.rowCount,
+      "stress corpus generation artifact verified.rowCount",
+      1,
+    ),
+    chainCount: generationInteger(
+      verifiedDocument.chainCount,
+      "stress corpus generation artifact verified.chainCount",
+      1,
+    ),
+    corpusSha256: generationDigest(
+      verifiedDocument.corpusSha256,
+      "stress corpus generation artifact verified.corpusSha256",
+    ),
+    indexSha256: generationDigest(
+      verifiedDocument.indexSha256,
+      "stress corpus generation artifact verified.indexSha256",
+    ),
+    rebuildSample,
+    walletSetIdentity: verifiedWalletSetIdentity,
+    verificationArtifact: {
+      path: generationString(
+        verificationArtifact.path,
+        "stress corpus generation artifact verified.verificationArtifact.path",
+      ),
+      sha256: generationDigest(
+        verificationArtifact.sha256,
+        "stress corpus generation artifact verified.verificationArtifact.sha256",
+      ),
+    },
+  };
+  const outDir = generationString(
+    root.outDir,
+    "stress corpus generation artifact outDir",
+  );
+  const corpusPath = generationString(
+    root.corpusPath,
+    "stress corpus generation artifact corpusPath",
+  );
+  const indexPath = generationString(
+    root.indexPath,
+    "stress corpus generation artifact indexPath",
+  );
+  const manifestPath = generationString(
+    root.manifestPath,
+    "stress corpus generation artifact manifestPath",
+  );
+  if (
+    resolve(corpusPath) !== resolve(join(outDir, "corpus.ndjson")) ||
+    resolve(indexPath) !== resolve(`${corpusPath}.index.ndjson`) ||
+    resolve(manifestPath) !== resolve(`${corpusPath}.manifest.json`) ||
+    resolve(verified.verificationArtifact.path) !==
+      resolve(`${corpusPath}.verify.json`) ||
+    corpusPath !== assembled.corpusPath ||
+    indexPath !== assembled.indexPath ||
+    plan.rowCount !== assembled.rowCount ||
+    plan.rowCount !== verified.rowCount ||
+    plan.walletCount !== assembled.chainCount ||
+    plan.walletCount !== verified.chainCount ||
+    plan.walletCount !== walletSetIdentity.walletCount ||
+    assembled.corpusSha256 !== verified.corpusSha256 ||
+    assembled.indexSha256 !== verified.indexSha256 ||
+    JSON.stringify(walletSetIdentity) !==
+      JSON.stringify(verifiedWalletSetIdentity) ||
+    rebuildSample.checkedChainCount > verified.chainCount ||
+    rebuildSample.checkedRowCount > verified.rowCount
+  ) {
+    throw new Error(
+      "stress corpus generation artifact result binding is inconsistent.",
+    );
+  }
+  return {
+    schemaVersion: "midgard-stress-corpus-generation-v1",
+    outDir,
+    corpusPath,
+    indexPath,
+    manifestPath,
+    plan,
+    walletSetIdentity,
+    assembled,
+    verified,
   };
 };
 
@@ -541,7 +970,7 @@ export const generateStressCorpus = async (
     indexPath,
   });
   const manifest = {
-    schemaVersion: "midgard-stress-corpus-manifest-v1",
+    schemaVersion: STRESS_CORPUS_MANIFEST_SCHEMA_VERSION,
     targetRateTps: config.targetRateTps,
     durationMs: config.durationMs,
     warmupCount: config.warmupCount,
@@ -603,7 +1032,10 @@ export const generateStressCorpus = async (
       shards: shardPaths,
     },
   };
-  await writeFile(manifestPath, `${formatJson(manifest)}\n`, "utf8");
+  const canonicalManifest = parseStressCorpusManifest(
+    JSON.parse(formatJson(manifest)) as unknown,
+  );
+  await writeFile(manifestPath, `${formatJson(canonicalManifest)}\n`, "utf8");
   const verified = await verifyStressCorpus({
     corpusPath,
     indexPath,
@@ -623,7 +1055,7 @@ export const generateStressCorpus = async (
     },
     resultOutPath: `${corpusPath}.verify.json`,
   });
-  return {
+  const result: StressCorpusGenerateResult = {
     schemaVersion: "midgard-stress-corpus-generation-v1",
     outDir: config.outDir,
     corpusPath,
@@ -642,6 +1074,10 @@ export const generateStressCorpus = async (
       verificationArtifact: verified.verificationArtifact!,
     },
   };
+  parseStressCorpusGenerationArtifactV1(
+    JSON.parse(formatJson(result)) as unknown,
+  );
+  return result;
 };
 
 export const parseStressCorpusVerifyConfig = (
@@ -668,9 +1104,10 @@ export const parseStressCorpusVerifyConfig = (
   return {
     corpusPath: input.corpusPath,
     indexPath,
-    ...(typeof input.manifestPath === "string" && input.manifestPath.length > 0
-      ? { manifestPath: input.manifestPath }
-      : {}),
+    manifestPath:
+      typeof input.manifestPath === "string" && input.manifestPath.length > 0
+        ? input.manifestPath
+        : `${input.corpusPath}.manifest.json`,
     ...(rebuildWalletsDir === undefined
       ? {}
       : {

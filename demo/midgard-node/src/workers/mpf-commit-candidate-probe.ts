@@ -19,6 +19,7 @@ import {
 import {
   decodeArchitectureGCommitCandidateInputV1,
   decodeArchitectureGFixtureCreationV1,
+  validateArchitectureGCommitCandidateProbeResultV1,
 } from "@/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
@@ -181,8 +182,8 @@ void (async () => {
     if (measured.journalRowsAfter !== measured.journalRowsBefore) {
       throw new Error("Commit-candidate build-only probe mutated the journal");
     }
-    process.stdout.write(
-      `${JSON.stringify({
+    const artifact = validateArchitectureGCommitCandidateProbeResultV1({
+      value: {
         schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
         probePath,
         probeSha256,
@@ -207,8 +208,15 @@ void (async () => {
         candidate: measured.candidate,
         ownerBefore: before,
         ownerAfter: after,
-      })}\n`,
-    );
+      },
+      expectedInput: input,
+      expectedInputPath: resolvedInputPath,
+      expectedInputSha256: inputSha256,
+      expectedProbePath: probePath,
+      expectedProbeSha256: probeSha256,
+      expectedCpuAffinity: cpuAffinity,
+    });
+    process.stdout.write(`${JSON.stringify(artifact)}\n`);
   } finally {
     await owner.close();
   }

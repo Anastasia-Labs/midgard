@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
@@ -43,6 +44,7 @@ const program = Effect.gen(function* () {
     headerHash: Buffer.from(headerHashHex, "hex"),
     headerCbor: Buffer.from("00", "hex"),
     metadata: {
+      deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
       consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
       stateQueueLeaseToken: "crash-probe-lease",
       baseSnapshotId: "crash-probe-snapshot",

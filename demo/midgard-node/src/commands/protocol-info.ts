@@ -10,6 +10,10 @@ import {
   MIDGARD_PROTOCOL_INFO_V1_API_VERSION,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  type DeploymentMarkerV1,
+  parseDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
 export const PROTOCOL_INFO_API_VERSION =
@@ -24,6 +28,7 @@ type ProtocolInfoConfig = {
 };
 
 type ProtocolInfoCommon = {
+  readonly deploymentMarker: DeploymentMarkerV1;
   readonly network: Network;
   readonly currentSlot: string;
   readonly codecSupportedScriptLanguages: typeof MIDGARD_SUPPORTED_SCRIPT_LANGUAGES;
@@ -77,10 +82,12 @@ const asPositiveSafeInteger = (value: number, fieldName: string): number => {
 export const encodeProtocolInfo = ({
   nodeConfig,
   currentSlot,
+  deploymentMarker,
   consensusProfile = MIDGARD_CONSENSUS_PROFILE_V1,
 }: {
   readonly nodeConfig: ProtocolInfoConfig;
   readonly currentSlot: number | bigint;
+  readonly deploymentMarker: unknown;
   readonly consensusProfile?: MidgardConsensusProfileV1;
 }): ProtocolInfo => {
   if (!isMidgardConsensusProfileV1(consensusProfile)) {
@@ -96,6 +103,7 @@ export const encodeProtocolInfo = ({
     );
   }
   const common: ProtocolInfoCommon = {
+    deploymentMarker: parseDeploymentMarkerV1(deploymentMarker),
     network: nodeConfig.NETWORK,
     currentSlot: stringifyCurrentSlot(currentSlot),
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,

@@ -1,4 +1,25 @@
-import type { StepStatus, StepSummary, TxObservation } from "@/e2e/runner.js";
+import { isDeepStrictEqual } from "node:util";
+
+import {
+  arrayOf,
+  exactRecord,
+  integer,
+  isoTimestamp,
+  nonEmptyString,
+  nonNegativeInteger,
+  oneOf,
+  openRecord,
+  positiveInteger,
+  stringArray,
+  stringValue,
+} from "@/e2e/exact-artifact.js";
+import {
+  parseE2EStepV1,
+  parseTxObservationV1,
+  type StepStatus,
+  type StepSummary,
+  type TxObservation,
+} from "@/e2e/runner.js";
 import {
   writeJsonFileAtomic,
   writeTextFileAtomic,
@@ -107,6 +128,344 @@ export type E2ERunSummary = {
   readonly notes: readonly string[];
 };
 
+const parseLowerHex64 = (value: unknown, label: string): string => {
+  const parsed = nonEmptyString(value, label);
+  if (!/^[0-9a-f]{64}$/u.test(parsed)) {
+    throw new Error(`${label} must be 64 lowercase hexadecimal characters`);
+  }
+  return parsed;
+};
+
+const parseStringDetails = (
+  value: unknown,
+  label: string,
+): Readonly<Record<string, string>> => {
+  const input = openRecord(value, label);
+  // Detail key names are intentionally open; only their value domain is fixed.
+  return Object.fromEntries(
+    Object.entries(input).map(([key, entry]) => [
+      key,
+      stringValue(entry, `${label}.${key}`),
+    ]),
+  );
+};
+
+const parseStepRetrySummaryV1 = (
+  value: unknown,
+  label: string,
+): StepRetrySummary => {
+  const input = exactRecord(value, label, [
+    "stepId",
+    "attempts",
+    "failedAttempts",
+    "latestStatus",
+    "latestError",
+    "firstSuccessAt",
+    "lastFinishedAt",
+  ]);
+  const parsed: StepRetrySummary = {
+    stepId: nonEmptyString(input.stepId, `${label}.stepId`),
+    attempts: positiveInteger(input.attempts, `${label}.attempts`),
+    failedAttempts: nonNegativeInteger(
+      input.failedAttempts,
+      `${label}.failedAttempts`,
+    ),
+    latestStatus: oneOf(input.latestStatus, `${label}.latestStatus`, [
+      "success",
+      "failed",
+      "signaled",
+      "timeout",
+      "runner_error",
+    ]),
+    latestError:
+      input.latestError === null
+        ? null
+        : nonEmptyString(input.latestError, `${label}.latestError`),
+    firstSuccessAt:
+      input.firstSuccessAt === null
+        ? null
+        : isoTimestamp(input.firstSuccessAt, `${label}.firstSuccessAt`),
+    lastFinishedAt: isoTimestamp(
+      input.lastFinishedAt,
+      `${label}.lastFinishedAt`,
+    ),
+  };
+  return parsed;
+};
+
+const parseFinalFunctionalGateV1 = (
+  value: unknown,
+  label: string,
+): FinalFunctionalGate => {
+  const input = exactRecord(value, label, [
+    "label",
+    "status",
+    "source",
+    "details",
+  ]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    status: oneOf(input.status, `${label}.status`, [
+      "satisfied",
+      "pending",
+      "blocked",
+      "failed",
+    ]),
+    source: nonEmptyString(input.source, `${label}.source`),
+    details: parseStringDetails(input.details, `${label}.details`),
+  };
+};
+
+const parseCleanRunGateV1 = (value: unknown, label: string): CleanRunGate => {
+  const input = exactRecord(value, label, [
+    "label",
+    "status",
+    "source",
+    "details",
+  ]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    status: oneOf(input.status, `${label}.status`, [
+      "satisfied",
+      "failed",
+      "blocked",
+      "interrupted",
+      "unknown",
+    ]),
+    source: nonEmptyString(input.source, `${label}.source`),
+    details: parseStringDetails(input.details, `${label}.details`),
+  };
+};
+
+const parseTransactionEvidenceV1 = (
+  value: unknown,
+  label: string,
+): TransactionEvidence => {
+  const input = exactRecord(value, label, [
+    "label",
+    "txHash",
+    "status",
+    "source",
+  ]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    txHash: parseLowerHex64(input.txHash, `${label}.txHash`),
+    status: oneOf(input.status, `${label}.status`, [
+      "submitted",
+      "confirmed",
+      "queued",
+      "accepted",
+      "committed",
+      "rejected",
+      "unknown",
+    ]),
+    source: nonEmptyString(input.source, `${label}.source`),
+  };
+};
+
+const parseHttpEvidenceV1 = (value: unknown, label: string): HttpEvidence => {
+  const input = exactRecord(value, label, [
+    "label",
+    "method",
+    "url",
+    "statusCode",
+    "semanticStatus",
+    "source",
+  ]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    method: nonEmptyString(input.method, `${label}.method`),
+    url: nonEmptyString(input.url, `${label}.url`),
+    statusCode: integer(input.statusCode, `${label}.statusCode`),
+    semanticStatus: oneOf(input.semanticStatus, `${label}.semanticStatus`, [
+      "satisfied",
+      "pending",
+      "blocked",
+      "failed",
+    ]),
+    source: nonEmptyString(input.source, `${label}.source`),
+  };
+};
+
+const parseDbEvidenceV1 = (value: unknown, label: string): DbEvidence => {
+  const input = exactRecord(value, label, [
+    "label",
+    "status",
+    "source",
+    "details",
+  ]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    status: oneOf(input.status, `${label}.status`, [
+      "satisfied",
+      "pending",
+      "blocked",
+      "failed",
+    ]),
+    source: nonEmptyString(input.source, `${label}.source`),
+    details: parseStringDetails(input.details, `${label}.details`),
+  };
+};
+
+const parseRawEvidenceRefV1 = (
+  value: unknown,
+  label: string,
+): RawEvidenceRef => {
+  const input = exactRecord(value, label, ["label", "path"]);
+  return {
+    label: nonEmptyString(input.label, `${label}.label`),
+    path: nonEmptyString(input.path, `${label}.path`),
+  };
+};
+
+export const parseE2ERunSummaryV1 = (
+  value: unknown,
+  label = "E2E run summary",
+): E2ERunSummary => {
+  const input = exactRecord(value, label, [
+    "schemaVersion",
+    "runId",
+    "mode",
+    "verdict",
+    "cleanRunVerdict",
+    "functionalVerdict",
+    "nextSafeAction",
+    "startedAt",
+    "updatedAt",
+    "steps",
+    "stepRetrySummary",
+    "txObservations",
+    "finalFunctionalGates",
+    "cleanRunGates",
+    "transactions",
+    "http",
+    "db",
+    "rawEvidence",
+    "notes",
+  ]);
+  if (input.schemaVersion !== E2E_SUMMARY_SCHEMA_VERSION) {
+    throw new Error(
+      `${label}.schemaVersion must be ${E2E_SUMMARY_SCHEMA_VERSION}`,
+    );
+  }
+  const verdicts = [
+    "success",
+    "failed",
+    "blocked",
+    "interrupted",
+    "unknown",
+  ] as const;
+  const parsed: E2ERunSummary = {
+    schemaVersion: E2E_SUMMARY_SCHEMA_VERSION,
+    runId: nonEmptyString(input.runId, `${label}.runId`),
+    mode: oneOf(input.mode, `${label}.mode`, [
+      "attach",
+      "resume",
+      "fresh",
+      "unknown",
+    ]),
+    verdict: oneOf(input.verdict, `${label}.verdict`, verdicts),
+    cleanRunVerdict: oneOf(
+      input.cleanRunVerdict,
+      `${label}.cleanRunVerdict`,
+      verdicts,
+    ),
+    functionalVerdict: oneOf(
+      input.functionalVerdict,
+      `${label}.functionalVerdict`,
+      verdicts,
+    ),
+    nextSafeAction: oneOf(input.nextSafeAction, `${label}.nextSafeAction`, [
+      "none_run_complete",
+      "fix_pre_submit_and_rerun_step",
+      "reconcile_submitted_tx_before_rerun",
+      "wait_until_deposit_projection_due",
+      "inspect_state_queue_lease",
+      "investigate_unknown",
+    ]),
+    startedAt: isoTimestamp(input.startedAt, `${label}.startedAt`),
+    updatedAt: isoTimestamp(input.updatedAt, `${label}.updatedAt`),
+    steps: arrayOf(input.steps, `${label}.steps`, parseE2EStepV1),
+    stepRetrySummary: arrayOf(
+      input.stepRetrySummary,
+      `${label}.stepRetrySummary`,
+      parseStepRetrySummaryV1,
+    ),
+    txObservations: arrayOf(
+      input.txObservations,
+      `${label}.txObservations`,
+      parseTxObservationV1,
+    ),
+    finalFunctionalGates: arrayOf(
+      input.finalFunctionalGates,
+      `${label}.finalFunctionalGates`,
+      parseFinalFunctionalGateV1,
+    ),
+    cleanRunGates: arrayOf(
+      input.cleanRunGates,
+      `${label}.cleanRunGates`,
+      parseCleanRunGateV1,
+    ),
+    transactions: arrayOf(
+      input.transactions,
+      `${label}.transactions`,
+      parseTransactionEvidenceV1,
+    ),
+    http: arrayOf(input.http, `${label}.http`, parseHttpEvidenceV1),
+    db: arrayOf(input.db, `${label}.db`, parseDbEvidenceV1),
+    rawEvidence: arrayOf(
+      input.rawEvidence,
+      `${label}.rawEvidence`,
+      parseRawEvidenceRefV1,
+    ),
+    notes: stringArray(input.notes, `${label}.notes`),
+  };
+  const expectedStepRetrySummary = buildStepRetrySummary(parsed.steps);
+  const expectedTxObservations = parsed.steps.flatMap(stepTxObservations);
+  const expectedTransactions = mergeTransactionEvidence([
+    ...parsed.transactions,
+    ...transactionEvidenceFromStepSummaries(parsed.steps),
+  ]);
+  const expectedFinalFunctionalGates = buildFinalFunctionalGates({
+    ...parsed,
+    transactions: expectedTransactions,
+  });
+  const expectedCleanRunVerdict = recomputeCleanRunVerdict({
+    ...parsed,
+    transactions: expectedTransactions,
+  });
+  const expectedFunctionalVerdict = recomputeFunctionalVerdict(
+    expectedFinalFunctionalGates,
+  );
+  const expectedVerdict = operatorVerdict({
+    cleanRunVerdict: expectedCleanRunVerdict,
+    functionalVerdict: expectedFunctionalVerdict,
+  });
+  const expectedNextSafeAction = classifyNextSafeAction({
+    ...parsed,
+    transactions: expectedTransactions,
+    verdict: expectedVerdict,
+    functionalVerdict: expectedFunctionalVerdict,
+  });
+  if (
+    Date.parse(parsed.updatedAt) < Date.parse(parsed.startedAt) ||
+    !isDeepStrictEqual(parsed.stepRetrySummary, expectedStepRetrySummary) ||
+    !isDeepStrictEqual(parsed.txObservations, expectedTxObservations) ||
+    !isDeepStrictEqual(parsed.transactions, expectedTransactions) ||
+    !isDeepStrictEqual(
+      parsed.finalFunctionalGates,
+      expectedFinalFunctionalGates,
+    ) ||
+    parsed.cleanRunVerdict !== expectedCleanRunVerdict ||
+    parsed.functionalVerdict !== expectedFunctionalVerdict ||
+    parsed.verdict !== expectedVerdict ||
+    parsed.nextSafeAction !== expectedNextSafeAction
+  ) {
+    throw new Error(`${label} derived evidence or verdict is inconsistent`);
+  }
+  return parsed;
+};
+
 export const createE2ERunSummary = ({
   runId,
   mode = "unknown",
@@ -117,7 +476,7 @@ export const createE2ERunSummary = ({
   readonly now?: Date;
 }): E2ERunSummary => {
   const timestamp = now.toISOString();
-  return {
+  return parseE2ERunSummaryV1({
     schemaVersion: E2E_SUMMARY_SCHEMA_VERSION,
     runId,
     mode,
@@ -137,7 +496,7 @@ export const createE2ERunSummary = ({
     db: [],
     rawEvidence: [],
     notes: [],
-  };
+  });
 };
 
 const stepTxObservations = (step: StepSummary): readonly TxObservation[] =>
@@ -587,17 +946,17 @@ export const updateE2ERunSummary = (
     functionalVerdict,
     verdict,
   };
-  return {
+  return parseE2ERunSummaryV1({
     ...next,
     nextSafeAction: classifyNextSafeAction({ ...next, verdict }),
-  };
+  });
 };
 
 export const writeSummaryJsonAtomic = async (
   path: string,
   summary: E2ERunSummary,
 ): Promise<void> => {
-  await writeJsonFileAtomic(path, summary);
+  await writeJsonFileAtomic(path, parseE2ERunSummaryV1(summary));
 };
 
 export const renderSummaryMarkdown = (summary: E2ERunSummary): string => {

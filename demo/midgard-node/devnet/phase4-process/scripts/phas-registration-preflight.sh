@@ -12,6 +12,14 @@ manifest="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/contract-deployment-info.json"
 transaction_body="$MIDGARD_PHASE4_RUN_DIR/deploymentInfo/phas-registration-transaction-body.json"
 [ -s "$manifest" ] || die "deployment manifest is missing"
 [ -s "$transaction_body" ] || die "PHAS registration transaction body is missing"
+jq -e \
+  'type == "object" and
+   keys == ["cborHex","description","type"] and
+   .type == "Unwitnessed Tx ConwayEra" and
+   (.description | type == "string" and length > 0) and
+   (.cborHex | type == "string" and test("^[a-f0-9]+$") and (length % 2 == 0))' \
+  "$transaction_body" >/dev/null \
+  || die "PHAS registration transaction body is not exact canonical V1"
 
 manifest_id=$(jq -er '.manifestId | select(test("^[a-f0-9]{64}$"))' "$manifest")
 registration_tx_hash=$(jq -er '.steps.phasRegistration.txHash | select(test("^[a-f0-9]{64}$"))' "$manifest")

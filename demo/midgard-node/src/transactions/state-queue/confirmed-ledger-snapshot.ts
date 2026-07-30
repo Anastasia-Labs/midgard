@@ -5,7 +5,7 @@ import {
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { CML } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import {
   ConfirmedLedgerDB,
@@ -21,7 +21,9 @@ import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
 
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];
+  readonly baseRoot: string;
   readonly root: string;
+  readonly deltaChain: readonly DecodedConfirmedLedgerDelta[];
   readonly delta: {
     readonly spent: readonly Buffer[];
     readonly produced: readonly Ledger.Entry[];
@@ -95,31 +97,62 @@ const computeRecoveredRoot = (entries: readonly Ledger.Entry[]) =>
 const applyDeltaToEntries = (
   entries: readonly Ledger.Entry[],
   delta: DecodedConfirmedLedgerDelta,
-): readonly Ledger.Entry[] => {
-  const byOutref = new Map(
-    entries.map((entry) => [
-      entry[Ledger.Columns.OUTREF].toString("hex"),
-      entry,
-    ]),
-  );
-  for (const outref of delta.spent) byOutref.delete(outref.toString("hex"));
-  for (const entry of delta.produced) {
-    byOutref.set(entry[Ledger.Columns.OUTREF].toString("hex"), entry);
-  }
-  return [...byOutref.values()];
-};
+): Effect.Effect<readonly Ledger.Entry[], DatabaseError> =>
+  Effect.try({
+    try: () => {
+      const byOutref = new Map(
+        entries.map((entry) => [
+          entry[Ledger.Columns.OUTREF].toString("hex"),
+          entry,
+        ]),
+      );
+      for (const outref of delta.spent) {
+        const outrefHex = outref.toString("hex");
+        if (!byOutref.delete(outrefHex)) {
+          throw new Error(
+            `ledger delta spends an outref absent from its authenticated base: ${outrefHex}`,
+          );
+        }
+      }
+      for (const entry of delta.produced) {
+        const outrefHex = entry[Ledger.Columns.OUTREF].toString("hex");
+        if (byOutref.has(outrefHex)) {
+          throw new Error(
+            `ledger delta substitutes an existing unspent outref: ${outrefHex}`,
+          );
+        }
+        byOutref.set(outrefHex, entry);
+      }
+      return [...byOutref.values()];
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: PendingBlockFinalizationsDB.tableName,
+        message:
+          "Pending-finalization ledger delta is invalid for its authenticated base",
+        cause,
+      }),
+  });
 
-const materializeFromBase = ({
+const materializeFromBase = <R>({
   record,
   confirmedEntries,
   confirmedRoot,
+  retrieveParent,
   seen,
 }: {
   readonly record: PendingBlockFinalizationsDB.Record;
   readonly confirmedEntries: readonly Ledger.Entry[];
   readonly confirmedRoot: string;
+  readonly retrieveParent: (
+    headerHash: Buffer,
+  ) => Effect.Effect<
+    Option.Option<PendingBlockFinalizationsDB.Record>,
+    DatabaseError,
+    R
+  >;
   readonly seen: ReadonlySet<string>;
-}): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
+}): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, R> =>
   Effect.gen(function* () {
     const headerHashHex =
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
@@ -138,15 +171,16 @@ const materializeFromBase = ({
     const baseRoot =
       record[PendingBlockFinalizationsDB.Columns.BASE_UTXOS_ROOT];
     let baseEntries: readonly Ledger.Entry[];
+    let recoveredBaseRoot: string;
+    let baseDeltaChain: readonly DecodedConfirmedLedgerDelta[];
     if (confirmedRoot === baseRoot) {
       baseEntries = confirmedEntries;
+      recoveredBaseRoot = confirmedRoot;
+      baseDeltaChain = [];
     } else {
       const previousHeaderHash =
         record[PendingBlockFinalizationsDB.Columns.BASE_TAIL_HEADER_HASH];
-      const previous =
-        yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
-          previousHeaderHash,
-        );
+      const previous = yield* retrieveParent(previousHeaderHash);
       if (previous._tag === "None") {
         return yield* Effect.fail(
           new DatabaseError({
@@ -157,10 +191,27 @@ const materializeFromBase = ({
           }),
         );
       }
+      if (
+        !previous.value[PendingBlockFinalizationsDB.Columns.HEADER_HASH].equals(
+          previousHeaderHash,
+        )
+      ) {
+        return yield* Effect.fail(
+          new DatabaseError({
+            table: PendingBlockFinalizationsDB.tableName,
+            message:
+              "Pending-finalization ledger delta parent lookup returned a substituted journal",
+            cause: `header_hash=${headerHashHex},requested_parent=${previousHeaderHash.toString("hex")},returned_parent=${previous.value[
+              PendingBlockFinalizationsDB.Columns.HEADER_HASH
+            ].toString("hex")}`,
+          }),
+        );
+      }
       const baseSnapshot = yield* materializeFromBase({
         record: previous.value,
         confirmedEntries,
         confirmedRoot,
+        retrieveParent,
         seen: nextSeen,
       });
       if (baseSnapshot.root !== baseRoot) {
@@ -174,9 +225,11 @@ const materializeFromBase = ({
         );
       }
       baseEntries = baseSnapshot.entries;
+      recoveredBaseRoot = baseSnapshot.baseRoot;
+      baseDeltaChain = baseSnapshot.deltaChain;
     }
 
-    const entries = applyDeltaToEntries(baseEntries, delta);
+    const entries = yield* applyDeltaToEntries(baseEntries, delta);
     const root = yield* computeRecoveredRoot(entries);
     const expectedRoot =
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT];
@@ -190,7 +243,39 @@ const materializeFromBase = ({
         }),
       );
     }
-    return { entries, root, delta };
+    return {
+      entries,
+      baseRoot: recoveredBaseRoot,
+      root,
+      deltaChain: [...baseDeltaChain, delta],
+      delta,
+    };
+  });
+
+export const materializeConfirmedLedgerDeltaChainV1 = <R>({
+  record,
+  confirmedEntries,
+  retrieveParent,
+}: {
+  readonly record: PendingBlockFinalizationsDB.Record;
+  readonly confirmedEntries: readonly Ledger.Entry[];
+  readonly retrieveParent: (
+    headerHash: Buffer,
+  ) => Effect.Effect<
+    Option.Option<PendingBlockFinalizationsDB.Record>,
+    DatabaseError,
+    R
+  >;
+}): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, R> =>
+  Effect.gen(function* () {
+    const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
+    return yield* materializeFromBase({
+      record,
+      confirmedEntries,
+      confirmedRoot,
+      retrieveParent,
+      seen: new Set(),
+    });
   });
 
 export const materializeConfirmedLedgerSnapshot = (
@@ -198,12 +283,10 @@ export const materializeConfirmedLedgerSnapshot = (
 ): Effect.Effect<ConfirmedLedgerSnapshot, DatabaseError, Database> =>
   Effect.gen(function* () {
     const confirmedEntries = yield* ConfirmedLedgerDB.retrieve;
-    const confirmedRoot = yield* computeRecoveredRoot(confirmedEntries);
-    return yield* materializeFromBase({
+    return yield* materializeConfirmedLedgerDeltaChainV1({
       record,
       confirmedEntries,
-      confirmedRoot,
-      seen: new Set(),
+      retrieveParent: PendingBlockFinalizationsDB.retrieveByHeaderHash,
     });
   });
 
@@ -236,33 +319,49 @@ export const applyConfirmedLedgerDelta = ({
     ),
   );
 
-export const replaceConfirmedLedgerWithEntries = (
-  entries: readonly Ledger.Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    const batchSize = 100;
-    yield* ConfirmedLedgerDB.clear;
-    for (let i = 0; i < entries.length; i += batchSize) {
-      yield* ConfirmedLedgerDB.insertMultiple(
-        entries.slice(i, i + batchSize),
-      ).pipe(Effect.withSpan(`confirmed-ledger-snapshot-insert-${i}`));
-    }
-  }).pipe(
-    sqlErrorToDatabaseError(
-      ConfirmedLedgerDB.tableName,
-      "Failed to replace confirmed ledger with finalized UTxO snapshot",
-    ),
-  );
-
-export const replaceConfirmedLedgerWithEntriesTransaction = (
-  entries: readonly Ledger.Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
+export const applyConfirmedLedgerDeltaChainTransaction = (
+  snapshot: ConfirmedLedgerSnapshot,
+): Effect.Effect<readonly Ledger.Entry[], DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql.withTransaction(replaceConfirmedLedgerWithEntries(entries));
+    return yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`LOCK TABLE ${sql(
+          ConfirmedLedgerDB.tableName,
+        )} IN EXCLUSIVE MODE`;
+        const currentEntries = yield* ConfirmedLedgerDB.retrieve;
+        const currentRoot = yield* computeRecoveredRoot(currentEntries);
+        if (currentRoot !== snapshot.baseRoot) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: ConfirmedLedgerDB.tableName,
+              message:
+                "Confirmed-ledger delta-chain base no longer matches the persisted ledger",
+              cause: `persisted_root=${currentRoot},authenticated_base_root=${snapshot.baseRoot}`,
+            }),
+          );
+        }
+        for (const delta of snapshot.deltaChain) {
+          yield* applyConfirmedLedgerDelta(delta);
+        }
+        const recoveredEntries = yield* ConfirmedLedgerDB.retrieve;
+        const recoveredRoot = yield* computeRecoveredRoot(recoveredEntries);
+        if (recoveredRoot !== snapshot.root) {
+          return yield* Effect.fail(
+            new DatabaseError({
+              table: ConfirmedLedgerDB.tableName,
+              message:
+                "Applied confirmed-ledger delta chain does not match its authenticated final root",
+              cause: `recovered_root=${recoveredRoot},authenticated_root=${snapshot.root}`,
+            }),
+          );
+        }
+        return recoveredEntries;
+      }),
+    );
   }).pipe(
     sqlErrorToDatabaseError(
       ConfirmedLedgerDB.tableName,
-      "Failed to transactionally replace confirmed ledger with finalized UTxO snapshot",
+      "Failed to transactionally apply finalized confirmed-ledger delta chain",
     ),
   );

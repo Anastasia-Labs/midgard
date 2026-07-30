@@ -1,5 +1,4 @@
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
-import { MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -10,6 +9,8 @@ import {
   buildEventToStepMembersFromTrace,
   buildTransitionTraceResult as buildTransitionTraceResultFromMpf,
   deleteMpfStore,
+  encodeTransitionEventKeyCbor,
+  indexTransitionTraceMembersByEventKey,
   keyValuePhasRoot,
   keyValuePhasRootWithCount,
   MidgardMpf,
@@ -259,7 +260,62 @@ afterAll(async () => {
 });
 
 describe("transition trace builder", () => {
-  it.effect("emits the exact V1 transition-step schema when selected", () =>
+  it.effect(
+    "indexes validation-trace source material by canonical event key rather than step key",
+    () =>
+      Effect.gen(function* () {
+        const eventKey = l2TransactionEventKey(91);
+        const result = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [noOpEvent("L2Transaction", eventKey)],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        });
+        const [member] = result.transitionTraceMembers;
+        const byEventKey = yield* indexTransitionTraceMembersByEventKey(
+          result.transitionTraceMembers,
+        );
+        const eventKeyHex =
+          encodeTransitionEventKeyCbor(eventKey).toString("hex");
+
+        expect(byEventKey.get(eventKeyHex)).toBe(member);
+        expect(byEventKey.has(member!.keyCbor.toString("hex"))).toBe(false);
+      }),
+  );
+
+  it.effect(
+    "rejects duplicate event keys while indexing validation-trace source material",
+    () =>
+      Effect.gen(function* () {
+        const result = yield* buildTransitionTraceResult({
+          initialUtxos: [],
+          sourceEvents: [noOpEvent("L2Transaction", l2TransactionEventKey(92))],
+          withdrawalCount: 0,
+          forcedTransactionCount: 0,
+          l2TransactionCount: 1,
+          depositCount: 0,
+        });
+        const [member] = result.transitionTraceMembers;
+        const duplicate = yield* indexTransitionTraceMembersByEventKey([
+          member!,
+          {
+            ...member!,
+            stepIndex: 1n,
+            keyCbor: encodePlutusData(1n, LucidData.Integer()),
+            value: {
+              ...member!.value,
+              step_index: 1n,
+            },
+          },
+        ]).pipe(Effect.either);
+
+        expect(duplicate._tag).toBe("Left");
+      }),
+  );
+
+  it.effect("always emits the exact V1 transition-step schema", () =>
     Effect.gen(function* () {
       const ledgerMpf = yield* makeLedgerMpf([initialUtxo(10)]);
       const result = yield* buildTransitionTraceResultFromMpf({
@@ -271,8 +327,6 @@ describe("transition trace builder", () => {
         forcedTransactionCount: 1,
         l2TransactionCount: 0,
         depositCount: 0,
-        transitionStepSchemaVersion:
-          MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
       });
 
       expect(result.transitionTraceMembers).toHaveLength(1);
@@ -763,8 +817,7 @@ describe("transition trace builder", () => {
         const excessiveSourceCount = yield* buildTransitionTraceResult({
           initialUtxos: [],
           sourceEvents: [],
-          withdrawalCount:
-            MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
+          withdrawalCount: MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount + 1,
           forcedTransactionCount: 0,
           l2TransactionCount: 0,
           depositCount: 0,

@@ -40,9 +40,10 @@ type GoldenAbiFixtureFile = {
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(testDir, "../../..");
-const blueprint = JSON.parse(
-  readFileSync(path.join(repoRoot, "onchain/aiken/plutus.json"), "utf8"),
-) as Blueprint;
+const blueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  path.join(repoRoot, "onchain/aiken/plutus.json");
+const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as Blueprint;
 const testnetEnv = readFileSync(
   path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
   "utf8",
@@ -816,13 +817,22 @@ describe("SDK canonical ABI fixtures", () => {
       "source_non_membership",
     ]);
     expect(
-      fields(constructor("fraud_proofs/transition_trace/proof/Args", "Args")),
+      fields(
+        constructor("fraud_proofs/transition_trace/route_v1/Args", "Args"),
+      ),
+    ).toEqual(["input_index", "output_index", "proof"]);
+    expect(
+      fields(
+        constructor(
+          "midgard/fraud_proofs/transition_trace/final_v1/Args",
+          "Args",
+        ),
+      ),
     ).toEqual([
       "input_index",
       "output_index",
       "hub_ref_input_index",
       "fraud_proof_mint_redeemer_index",
-      "proof",
     ]);
     expect(
       fields(

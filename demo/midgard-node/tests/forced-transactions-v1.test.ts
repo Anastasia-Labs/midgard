@@ -33,7 +33,10 @@ import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ForcedTransactionsDB } from "@/database/index.js";
+import {
+  ForcedTransactionsDB,
+  PendingBlockFinalizationsDB,
+} from "@/database/index.js";
 import { publishedProgramMaterialEntries } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 import {
   buildDeterministicValidationTraceMembers,
@@ -296,6 +299,259 @@ describe("V1 forced transaction material", () => {
       canonicalTransactionCbor: nativeTxCbor,
       programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
     });
+  });
+
+  it("encodes the sole canonical ForcedTransactionJournalMemberV1 four-field CBOR form", () => {
+    expect(
+      ForcedTransactionsDB.FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION,
+    ).toBe(1n);
+    expect(MIDGARD_CONSENSUS_PROFILE_V1.forcedTransactionJournalVersion).toBe(
+      1,
+    );
+    const value = {
+      sourceValueCbor: Buffer.from("aa", "hex"),
+      canonicalTransactionCbor: Buffer.from("bbcc", "hex"),
+      programMaterialSidecarCbor: Buffer.from("ddeeff", "hex"),
+    };
+    const encoded =
+      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1(value);
+
+    expect(encoded.toString("hex")).toBe("840141aa42bbcc43ddeeff");
+    expect(
+      ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(encoded),
+    ).toEqual(value);
+  });
+
+  it("rejects legacy versions, defaults, aliases, extra fields, and non-canonical journal CBOR", () => {
+    const source = Buffer.from("aa", "hex");
+    const transaction = Buffer.from("bbcc", "hex");
+    const sidecar = Buffer.from("ddeeff", "hex");
+    const canonical =
+      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
+        sourceValueCbor: source,
+        canonicalTransactionCbor: transaction,
+        programMaterialSidecarCbor: sidecar,
+      });
+    const invalidEncodings: readonly (readonly [string, Buffer])[] = [
+      ["legacy version zero", encodeCbor([0n, source, transaction, sidecar])],
+      ["successor version two", encodeCbor([2n, source, transaction, sidecar])],
+      ["source version five", encodeCbor([5n, source, transaction, sidecar])],
+      ["defaulted version", encodeCbor([source, transaction, sidecar])],
+      ["missing sidecar", encodeCbor([1n, source, transaction])],
+      [
+        "extra field",
+        encodeCbor([1n, source, transaction, sidecar, Buffer.from([0])]),
+      ],
+      [
+        "named-field alias",
+        encodeCbor(
+          new Map<unknown, unknown>([
+            ["version", 1n],
+            ["source_value_cbor", source],
+            ["canonical_transaction_cbor", transaction],
+            ["program_material_sidecar_cbor", sidecar],
+          ]),
+        ),
+      ],
+      ["wrong source type", encodeCbor([1n, 1n, transaction, sidecar])],
+      ["wrong transaction type", encodeCbor([1n, source, 1n, sidecar])],
+      ["wrong sidecar type", encodeCbor([1n, source, transaction, 1n])],
+      ["empty source", encodeCbor([1n, Buffer.alloc(0), transaction, sidecar])],
+      ["empty transaction", encodeCbor([1n, source, Buffer.alloc(0), sidecar])],
+      ["empty sidecar", encodeCbor([1n, source, transaction, Buffer.alloc(0)])],
+      ["trailing CBOR", Buffer.concat([canonical, Buffer.from([0])])],
+      ["non-minimal version", Buffer.from("84180141aa42bbcc43ddeeff", "hex")],
+      [
+        "indefinite outer array",
+        Buffer.from("9f0141aa42bbcc43ddeeffff", "hex"),
+      ],
+    ];
+
+    for (const [name, encoded] of invalidEncodings) {
+      expect(
+        () =>
+          ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(encoded),
+        name,
+      ).toThrow();
+    }
+  });
+
+  it("refuses encoder-side defaults, aliases, extra properties, and empty fields", () => {
+    const sourceValueCbor = Buffer.from("aa", "hex");
+    const canonicalTransactionCbor = Buffer.from("bb", "hex");
+    const programMaterialSidecarCbor = Buffer.from("cc", "hex");
+    const encode =
+      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1 as (
+        value: unknown,
+      ) => Buffer;
+    const symbolExtra = Object.assign(
+      {
+        sourceValueCbor,
+        canonicalTransactionCbor,
+        programMaterialSidecarCbor,
+      },
+      { [Symbol("legacy")]: true },
+    );
+    const inheritedAlias = Object.assign(Object.create({ version: 5 }), {
+      sourceValueCbor,
+      canonicalTransactionCbor,
+      programMaterialSidecarCbor,
+    });
+    const invalidInputs: readonly (readonly [string, unknown])[] = [
+      ["non-record", null],
+      ["missing field", { sourceValueCbor, canonicalTransactionCbor }],
+      [
+        "explicit version property",
+        {
+          version: 1,
+          sourceValueCbor,
+          canonicalTransactionCbor,
+          programMaterialSidecarCbor,
+        },
+      ],
+      [
+        "snake-case aliases",
+        {
+          source_value_cbor: sourceValueCbor,
+          canonical_transaction_cbor: canonicalTransactionCbor,
+          program_material_sidecar_cbor: programMaterialSidecarCbor,
+        },
+      ],
+      ["symbol extra", symbolExtra],
+      ["inherited legacy alias", inheritedAlias],
+      [
+        "empty source",
+        {
+          sourceValueCbor: Buffer.alloc(0),
+          canonicalTransactionCbor,
+          programMaterialSidecarCbor,
+        },
+      ],
+      [
+        "empty transaction",
+        {
+          sourceValueCbor,
+          canonicalTransactionCbor: Buffer.alloc(0),
+          programMaterialSidecarCbor,
+        },
+      ],
+      [
+        "empty sidecar",
+        {
+          sourceValueCbor,
+          canonicalTransactionCbor,
+          programMaterialSidecarCbor: Buffer.alloc(0),
+        },
+      ],
+    ];
+
+    for (const [name, value] of invalidInputs) {
+      expect(() => encode(value), name).toThrow();
+    }
+  });
+
+  it("rejects non-V1, aliased, or digest-invalid members at the Postgres journal read boundary", async () => {
+    const headerHash = Buffer.alloc(28, 0x11);
+    const memberId = Buffer.alloc(34, 0x22);
+    const canonicalPayload =
+      ForcedTransactionsDB.encodeForcedTransactionJournalMemberV1({
+        sourceValueCbor: Buffer.from("aa", "hex"),
+        canonicalTransactionCbor: Buffer.from("bb", "hex"),
+        programMaterialSidecarCbor: Buffer.from("cc", "hex"),
+      });
+    const member = (
+      payload: Buffer,
+      overrides: Partial<PendingBlockFinalizationsDB.MemberRecord> = {},
+    ): PendingBlockFinalizationsDB.MemberRecord => ({
+      [PendingBlockFinalizationsDB.MemberColumns.HEADER_HASH]: headerHash,
+      [PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID]: memberId,
+      [PendingBlockFinalizationsDB.MemberColumns.ORDINAL]: 0,
+      [PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR]: payload,
+      [PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_SHA256]: createHash(
+        "sha256",
+      )
+        .update(payload)
+        .digest(),
+      [PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE]:
+        ForcedTransactionsDB.tableName,
+      [PendingBlockFinalizationsDB.MemberColumns.SOURCE_ID]: memberId,
+      [PendingBlockFinalizationsDB.MemberColumns.SOURCE_TIMESTAMP]: new Date(
+        "2026-07-23T12:00:00.000Z",
+      ),
+      ...overrides,
+    });
+
+    await expect(
+      Effect.runPromise(
+        PendingBlockFinalizationsDB.validateForcedTransactionJournalMembersV1(
+          [member(canonicalPayload)],
+          headerHash,
+        ),
+      ),
+    ).resolves.toBeUndefined();
+
+    const invalidMembers: readonly (readonly [
+      string,
+      PendingBlockFinalizationsDB.MemberRecord,
+    ])[] = [
+      [
+        "source V5 payload",
+        member(
+          encodeCbor([
+            5n,
+            Buffer.from("aa", "hex"),
+            Buffer.from("bb", "hex"),
+            Buffer.from("cc", "hex"),
+          ]),
+        ),
+      ],
+      [
+        "named-field alias payload",
+        member(
+          encodeCbor(
+            new Map<unknown, unknown>([
+              ["version", 1n],
+              ["source_value_cbor", Buffer.from("aa", "hex")],
+              ["canonical_transaction_cbor", Buffer.from("bb", "hex")],
+              ["program_material_sidecar_cbor", Buffer.from("cc", "hex")],
+            ]),
+          ),
+        ),
+      ],
+      [
+        "payload digest mismatch",
+        member(canonicalPayload, {
+          [PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_SHA256]:
+            Buffer.alloc(32),
+        }),
+      ],
+      [
+        "source table alias",
+        member(canonicalPayload, {
+          [PendingBlockFinalizationsDB.MemberColumns.SOURCE_TABLE]:
+            "forced_transactions",
+        }),
+      ],
+      [
+        "source id mismatch",
+        member(canonicalPayload, {
+          [PendingBlockFinalizationsDB.MemberColumns.SOURCE_ID]: Buffer.alloc(
+            memberId.length,
+          ),
+        }),
+      ],
+    ];
+    for (const [name, invalid] of invalidMembers) {
+      const result = await Effect.runPromise(
+        Effect.either(
+          PendingBlockFinalizationsDB.validateForcedTransactionJournalMembersV1(
+            [invalid],
+            headerHash,
+          ),
+        ),
+      );
+      expect(result._tag, name).toBe("Left");
+    }
   });
 
   it("builds a deterministic forced rejection descriptor from the same Phase A/B replay", async () => {

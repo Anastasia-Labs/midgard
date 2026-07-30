@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_STEP_SCHEMA_VERSION,
+  parseE2EStepV1,
   redactArg,
   redactEnvKeys,
   runCommandStep,
@@ -19,6 +20,65 @@ import {
 const makeTempDir = createTrackedTempDirFactory("midgard-e2e-runner-");
 
 describe("e2e step runner", () => {
+  it("accepts only the exact V1 step and command shapes", async () => {
+    const dir = await makeTempDir();
+    const script = await writeScript(dir, "exact.mjs", "console.log('{}');");
+    const summary = await runCommandStep({
+      id: "exact-step",
+      command: process.execPath,
+      args: [script],
+      cwd: dir,
+      rawLogPath: join(dir, "logs", "exact.log"),
+    });
+
+    expect(parseE2EStepV1(summary)).toEqual(summary);
+    const { id: _id, ...missingId } = summary;
+    expect(() => parseE2EStepV1(missingId)).toThrow("missing required field");
+    expect(() => parseE2EStepV1({ ...summary, unexpected: true })).toThrow(
+      "unknown field",
+    );
+    expect(() =>
+      parseE2EStepV1({ ...summary, schemaVersion: "midgard-e2e-step-v0" }),
+    ).toThrow(E2E_STEP_SCHEMA_VERSION);
+    expect(() =>
+      parseE2EStepV1({
+        ...summary,
+        command: { ...summary.command, unexpected: true },
+      }),
+    ).toThrow("unknown field");
+    const { cwd: _cwd, ...missingCommandCwd } = summary.command;
+    expect(() =>
+      parseE2EStepV1({ ...summary, command: missingCommandCwd }),
+    ).toThrow("missing required field");
+    expect(() =>
+      parseE2EStepV1({
+        ...summary,
+        durationMs: summary.durationMs + 1,
+      }),
+    ).toThrow("timing or observation identity is inconsistent");
+    expect(() =>
+      parseE2EStepV1({
+        ...summary,
+        status: "success",
+        exitCode: 1,
+        error: "failed",
+      }),
+    ).toThrow("status and process outcome are inconsistent");
+    expect(() =>
+      parseE2EStepV1({
+        ...summary,
+        hashObservations: [
+          {
+            hash: "aa".repeat(32),
+            role: "unknown",
+            source: "regex",
+            stepId: summary.id,
+          },
+        ],
+      }),
+    ).toThrow("timing or observation identity is inconsistent");
+  });
+
   it("records successful JSON output and explicit submitted tx hashes", async () => {
     const dir = await makeTempDir();
     const script = await writeScript(

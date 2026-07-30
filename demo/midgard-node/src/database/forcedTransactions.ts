@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
@@ -14,6 +16,7 @@ import {
 import {
   isMidgardConsensusProfileV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_ID,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
@@ -38,9 +41,7 @@ if (
   PROOF_MAX_CANONICAL_TRANSACTION_BYTES !==
   MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
 ) {
-  throw new Error(
-    "forced-transaction SQL bound does not match canonical V1",
-  );
+  throw new Error("forced-transaction SQL bound does not match canonical V1");
 }
 
 export enum Columns {
@@ -97,7 +98,15 @@ export type ForcedInclusionValueV1Input = {
   readonly consensusProfile: MidgardConsensusProfileV1;
 };
 
-const FORCED_TRANSACTION_JOURNAL_MEMBER_V1 = 1n;
+export const FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION = 1n;
+if (
+  Number(FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION) !==
+  MIDGARD_CONSENSUS_PROFILE_V1.forcedTransactionJournalVersion
+) {
+  throw new Error(
+    "ForcedTransactionJournalMemberV1 version does not match the compiled consensus profile",
+  );
+}
 
 export type ForcedTransactionJournalMemberV1 = {
   readonly sourceValueCbor: Buffer;
@@ -105,22 +114,82 @@ export type ForcedTransactionJournalMemberV1 = {
   readonly programMaterialSidecarCbor: Buffer;
 };
 
-/**
- * Durable V1 journal representation. The committed source and its DA-only
- * canonical preimage remain distinct so the publisher cannot omit
- * either after header construction.
- */
-export const encodeForcedTransactionJournalMemberV1 = ({
+const FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS = [
+  "sourceValueCbor",
+  "canonicalTransactionCbor",
+  "programMaterialSidecarCbor",
+] as const;
+
+const exactForcedTransactionJournalMemberV1 = (
+  value: unknown,
+): ForcedTransactionJournalMemberV1 => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      "ForcedTransactionJournalMemberV1 must be an exact three-field record",
+    );
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("ForcedTransactionJournalMemberV1 must be a plain record");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== Object.keys(value).length ||
+    keys.length !== FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS.length ||
+    keys.some(
+      (key) =>
+        typeof key !== "string" ||
+        !FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS.includes(
+          key as (typeof FORCED_TRANSACTION_JOURNAL_MEMBER_V1_FIELDS)[number],
+        ),
+    )
+  ) {
+    throw new Error(
+      "ForcedTransactionJournalMemberV1 must contain exactly sourceValueCbor, canonicalTransactionCbor, and programMaterialSidecarCbor",
+    );
+  }
+  const candidate = value as Record<string, unknown>;
+  const exactNonEmptyBytes = (field: string): Buffer => {
+    const bytes = candidate[field];
+    if (!(bytes instanceof Uint8Array) || bytes.length === 0) {
+      throw new Error(
+        `ForcedTransactionJournalMemberV1.${field} must be non-empty bytes`,
+      );
+    }
+    return Buffer.from(bytes);
+  };
+  return {
+    sourceValueCbor: exactNonEmptyBytes("sourceValueCbor"),
+    canonicalTransactionCbor: exactNonEmptyBytes("canonicalTransactionCbor"),
+    programMaterialSidecarCbor: exactNonEmptyBytes(
+      "programMaterialSidecarCbor",
+    ),
+  };
+};
+
+const encodeExactForcedTransactionJournalMemberV1 = ({
   sourceValueCbor,
   canonicalTransactionCbor,
   programMaterialSidecarCbor,
 }: ForcedTransactionJournalMemberV1): Buffer =>
   encodeCbor([
-    FORCED_TRANSACTION_JOURNAL_MEMBER_V1,
-    Buffer.from(sourceValueCbor),
-    Buffer.from(canonicalTransactionCbor),
-    Buffer.from(programMaterialSidecarCbor),
+    FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION,
+    sourceValueCbor,
+    canonicalTransactionCbor,
+    programMaterialSidecarCbor,
   ]);
+
+/**
+ * Durable V1 journal representation. The committed source and its DA-only
+ * canonical preimage remain distinct so the publisher cannot omit
+ * either after header construction.
+ */
+export const encodeForcedTransactionJournalMemberV1 = (
+  value: ForcedTransactionJournalMemberV1,
+): Buffer =>
+  encodeExactForcedTransactionJournalMemberV1(
+    exactForcedTransactionJournalMemberV1(value),
+  );
 
 export const decodeForcedTransactionJournalMemberV1 = (
   bytes: Uint8Array,
@@ -132,38 +201,36 @@ export const decodeForcedTransactionJournalMemberV1 = (
   if (
     fields.length !== 4 ||
     asBigInt(fields[0], "forced_transaction_journal_member_v1.version") !==
-      FORCED_TRANSACTION_JOURNAL_MEMBER_V1
+      FORCED_TRANSACTION_JOURNAL_MEMBER_V1_VERSION
   ) {
     throw new Error(
       "forced_transaction_journal_member_v1 must contain exact version 1 and three byte fields",
     );
   }
-  const sourceValueCbor = asBytes(
-    fields[1],
-    "forced_transaction_journal_member_v1.source_value_cbor",
-  );
-  const canonicalTransactionCbor = asBytes(
-    fields[2],
-    "forced_transaction_journal_member_v1.canonical_transaction_cbor",
-  );
-  const programMaterialSidecarCbor = asBytes(
-    fields[3],
-    "forced_transaction_journal_member_v1.program_material_sidecar_cbor",
-  );
+  const decoded = exactForcedTransactionJournalMemberV1({
+    sourceValueCbor: asBytes(
+      fields[1],
+      "forced_transaction_journal_member_v1.source_value_cbor",
+    ),
+    canonicalTransactionCbor: asBytes(
+      fields[2],
+      "forced_transaction_journal_member_v1.canonical_transaction_cbor",
+    ),
+    programMaterialSidecarCbor: asBytes(
+      fields[3],
+      "forced_transaction_journal_member_v1.program_material_sidecar_cbor",
+    ),
+  });
   if (
-    sourceValueCbor.length === 0 ||
-    canonicalTransactionCbor.length === 0 ||
-    programMaterialSidecarCbor.length === 0
+    !encodeExactForcedTransactionJournalMemberV1(decoded).equals(
+      Buffer.from(bytes),
+    )
   ) {
     throw new Error(
-      "forced_transaction_journal_member_v1 cannot contain an empty source, transaction preimage, or material sidecar",
+      "forced_transaction_journal_member_v1 must use the canonical V1 CBOR encoding",
     );
   }
-  return {
-    sourceValueCbor,
-    canonicalTransactionCbor,
-    programMaterialSidecarCbor,
-  };
+  return decoded;
 };
 
 const sha256 = (payload: Uint8Array): Buffer =>
@@ -597,4 +664,3 @@ export const toRootKeyValue = (
 });
 
 export const clear = clearTable(tableName);
-import { createHash } from "node:crypto";

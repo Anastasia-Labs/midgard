@@ -6,8 +6,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  E2E_MANAGED_SERVICE_SCHEMA_VERSION,
+  parseManagedServiceSummaryV1,
+} from "@/commands/e2e-service.js";
+import {
   classifyServiceError,
+  E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION,
   inspectPidFile,
+  parseServiceSupervisorSummaryV1,
   probeHttpEndpoint,
   superviseHostProcess,
 } from "@/e2e/service-supervisor.js";
@@ -103,11 +109,37 @@ describe("e2e host process supervisor", () => {
     });
 
     expect(summary.status).toBe("exited_success");
+    expect(parseServiceSupervisorSummaryV1(summary)).toEqual(summary);
     expect(summary.restartCount).toBe(1);
     expect(summary.attempts).toHaveLength(2);
     expect(summary.attempts[0]?.classification.class).toBe(
       "transient_provider",
     );
+    const { service: _service, ...missingService } = summary;
+    expect(() => parseServiceSupervisorSummaryV1(missingService)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseServiceSupervisorSummaryV1({ ...summary, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseServiceSupervisorSummaryV1({
+        ...summary,
+        schemaVersion: "midgard-e2e-service-supervisor-v0",
+      }),
+    ).toThrow(E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION);
+    expect(() =>
+      parseServiceSupervisorSummaryV1({
+        ...summary,
+        restartCount: 0,
+      }),
+    ).toThrow("terminal verdict or attempt history is inconsistent");
+    expect(() =>
+      parseServiceSupervisorSummaryV1({
+        ...summary,
+        status: "failed",
+      }),
+    ).toThrow("terminal verdict or attempt history is inconsistent");
   });
 
   it("does not restart fatal configuration failures", async () => {
@@ -127,7 +159,6 @@ describe("e2e host process supervisor", () => {
       maxRestarts: 2,
       sleep: async () => {},
     });
-
     expect(summary.status).toBe("failed");
     expect(summary.restartCount).toBe(0);
     expect(summary.attempts).toHaveLength(1);
@@ -285,10 +316,80 @@ describe("e2e host process supervisor", () => {
       path: stopFile,
       signal: "SIGTERM",
     });
+    expect(summary.status).not.toBe("exited_success");
   });
 });
 
 describe("e2e service probes", () => {
+  it("accepts only the exact managed-service V1 shape", () => {
+    const probe = {
+      label: "node:ready",
+      url: "http://127.0.0.1:3000/readyz",
+      status: "healthy",
+      statusCode: 200,
+      latencyMs: 1,
+      json: { ready: true },
+      error: null,
+    } as const;
+    const summary = {
+      schemaVersion: E2E_MANAGED_SERVICE_SCHEMA_VERSION,
+      service: "node",
+      pid: 123,
+      rawLogPath: "logs/node.log",
+      pidFile: {
+        path: "logs/node.pid",
+        status: "runner_owned",
+        pid: 123,
+      },
+      ready: probe,
+      command: {
+        command: "node",
+        args: ["dist/index.js"],
+        cwd: "/tmp",
+        envKeys: [],
+        envFiles: [],
+        envInheritance: "none",
+      },
+    } as const;
+    expect(parseManagedServiceSummaryV1(summary)).toEqual(summary);
+    const { pid: _pid, ...missingPid } = summary;
+    expect(() => parseManagedServiceSummaryV1(missingPid)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseManagedServiceSummaryV1({ ...summary, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseManagedServiceSummaryV1({
+        ...summary,
+        schemaVersion: "midgard-e2e-managed-service-v0",
+      }),
+    ).toThrow(E2E_MANAGED_SERVICE_SCHEMA_VERSION);
+    expect(() =>
+      parseManagedServiceSummaryV1({
+        ...summary,
+        ready: { ...probe, unexpected: true },
+      }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseManagedServiceSummaryV1({
+        ...summary,
+        pidFile: { ...summary.pidFile, pid: 124 },
+      }),
+    ).toThrow("pid ownership or readiness evidence is inconsistent");
+    expect(() =>
+      parseManagedServiceSummaryV1({
+        ...summary,
+        ready: {
+          ...probe,
+          status: "not_ready",
+          statusCode: 503,
+          json: { ready: false },
+        },
+      }),
+    ).toThrow("pid ownership or readiness evidence is inconsistent");
+  });
+
   it("samples JSON HTTP health endpoints", async () => {
     const server = createServer((_request, response) => {
       response.writeHead(503, { "content-type": "application/json" });

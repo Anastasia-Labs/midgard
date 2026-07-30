@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   cleanupOwnedProcessGroupAndRecord,
   generateOwnedProcessRunToken,
+  OWNED_PROCESS_GROUP_SCHEMA_VERSION,
   ownedProcessCommandSha256,
+  parseOwnedProcessGroupRecordV1,
   terminateOwnedProcessGroup,
   validateOwnedProcessGroupRecord,
   writeOwnedProcessGroupRecord,
@@ -92,13 +94,57 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
       recordPath: join(dir, "owned.json"),
       runToken: generateOwnedProcessRunToken(),
     };
-    writeOwnedProcessGroupRecord({
+    const record = writeOwnedProcessGroupRecord({
       spec,
       pid: leader.pid!,
       command: process.execPath,
       args: [script],
       cwd: dir,
     });
+    expect(parseOwnedProcessGroupRecordV1(record)).toEqual(record);
+    const { cwd: _cwd, ...missingCwd } = record;
+    expect(() => parseOwnedProcessGroupRecordV1(missingCwd)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({ ...record, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        schemaVersion: "midgard-owned-process-group-v0",
+      }),
+    ).toThrow(OWNED_PROCESS_GROUP_SCHEMA_VERSION);
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        commandSha256: "00".repeat(32),
+      }),
+    ).toThrow("command hash mismatch");
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        pgid: record.pgid + 1,
+      }),
+    ).toThrow("process-group leader");
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        startTicks: `0${record.startTicks}`,
+      }),
+    ).toThrow("canonical positive decimal");
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        bootId: record.bootId.toUpperCase(),
+      }),
+    ).toThrow("lowercase UUID");
+    expect(() =>
+      parseOwnedProcessGroupRecordV1({
+        ...record,
+        cwd: `${record.cwd}/.`,
+      }),
+    ).toThrow("canonical absolute");
     await waitFor(() => {
       try {
         return Number(readFileSync(grandchildPidPath, "utf8")) > 0;
@@ -121,7 +167,7 @@ describe.skipIf(process.platform !== "linux")("owned process groups", () => {
   });
 
   it.each([
-    ["startTicks", "0", "start ticks mismatch"],
+    ["startTicks", "0", "canonical positive decimal"],
     ["procCmdlineSha256", "0".repeat(64), "cmdline mismatch"],
     ["cwd", "/", "cwd mismatch"],
     ["commandSha256", "0".repeat(64), "command hash mismatch"],

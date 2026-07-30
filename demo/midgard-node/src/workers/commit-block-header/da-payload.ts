@@ -50,6 +50,11 @@ type PayloadUtxoEntry = {
   readonly output: Buffer;
 };
 
+type DecodedForcedTransactionJournalMemberV1 =
+  ForcedTransactionsDB.ForcedTransactionJournalMemberV1 & {
+    readonly key: Buffer;
+  };
+
 const daPayloadBytesUncompressedGauge = Metric.gauge(
   "da_payload_bytes_uncompressed",
   { description: "Uncompressed canonical DA inner payload bytes per block" },
@@ -73,6 +78,7 @@ const bufferEntry = (key: Buffer, value: Buffer): SDK.DaPayloadEntry => [
 
 const journalCekProgramMaterial = (
   record: PendingBlockFinalizationsDB.Record,
+  forcedMembers: readonly DecodedForcedTransactionJournalMemberV1[],
 ): readonly SDK.DaPayloadEntry[] => {
   const sidecars: Buffer[] = [];
   for (const member of record.txMembers) {
@@ -90,10 +96,7 @@ const journalCekProgramMaterial = (
     }
     sidecars.push(Buffer.from(sidecar));
   }
-  for (const member of record.forcedTransactionMembers) {
-    const forced = ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
-      member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
-    );
+  for (const forced of forcedMembers) {
     sidecars.push(Buffer.from(forced.programMaterialSidecarCbor));
   }
   return Object.freeze(
@@ -343,9 +346,8 @@ const payloadMemberCounts = (payload: SDK.DaPayloadV1): PayloadCountSet => ({
   validationTraceCount: BigInt(payload.block_body.validation_traces.length),
 });
 
-const payloadDeclaredCounts = (
-  payload: SDK.DaPayloadV1,
-): PayloadCountSet => payload.block_body.counts;
+const payloadDeclaredCounts = (payload: SDK.DaPayloadV1): PayloadCountSet =>
+  payload.block_body.counts;
 
 const decodeHeader = (
   record: PendingBlockFinalizationsDB.Record,
@@ -380,7 +382,7 @@ const verifyPayloadCommitments = ({
       record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex");
     if (
       record[PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID] !==
-      MIDGARD_CONSENSUS_PROFILE_V1.profileId ||
+        MIDGARD_CONSENSUS_PROFILE_V1.profileId ||
       payload.version !== SDK.DA_PAYLOAD_V1_VERSION
     ) {
       return yield* Effect.fail(
@@ -472,8 +474,26 @@ export const buildDaPayloadInsert = ({
         }),
       );
     }
+    const forcedMembers = yield* Effect.try({
+      try: () =>
+        record.forcedTransactionMembers.map((member) => ({
+          key: Buffer.from(
+            member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+          ),
+          ...ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
+            member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
+          ),
+        })),
+      catch: (cause) =>
+        new DatabaseError({
+          table: PendingBlockFinalizationsDB.tableName,
+          message:
+            "Refusing to build V1 DA from a non-canonical ForcedTransactionJournalMemberV1",
+          cause,
+        }),
+    });
     const cekProgramMaterial = yield* Effect.try({
-      try: () => journalCekProgramMaterial(record),
+      try: () => journalCekProgramMaterial(record, forcedMembers),
       catch: (cause) =>
         new DatabaseError({
           table: PendingBlockFinalizationsDB.tableName,
@@ -491,12 +511,6 @@ export const buildDaPayloadInsert = ({
         ),
       ),
     );
-    const forcedMembers = record.forcedTransactionMembers.map((member) => ({
-      key: member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
-      ...ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
-        member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
-      ),
-    }));
     const commonBody = {
       header_hash:
         record[PendingBlockFinalizationsDB.Columns.HEADER_HASH].toString("hex"),

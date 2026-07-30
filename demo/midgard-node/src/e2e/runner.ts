@@ -4,6 +4,23 @@ import {
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
+import {
+  arrayOf,
+  booleanValue,
+  exactLiteral,
+  exactRecord,
+  integer,
+  isoTimestamp,
+  jsonValue,
+  nodeSignal,
+  nonEmptyString,
+  nonNegativeNumber,
+  nullable,
+  nullableNonEmptyString,
+  oneOf,
+  positiveInteger,
+  stringArray,
+} from "@/e2e/exact-artifact.js";
 import { runLoggedChildProcessAttempt } from "@/e2e/logged-child-process.js";
 import type { ChildProcessCleanupResult } from "@/e2e/process-cleanup.js";
 
@@ -83,6 +100,274 @@ export type StepSummary = {
   readonly parsedJson: unknown | null;
   readonly error: string | null;
   readonly cleanup?: ChildProcessCleanupResult | null;
+};
+
+const parseLowerHex64 = (value: unknown, label: string): string => {
+  const parsed = nonEmptyString(value, label);
+  if (!/^[0-9a-f]{64}$/u.test(parsed)) {
+    throw new Error(`${label} must be 64 lowercase hexadecimal characters`);
+  }
+  return parsed;
+};
+
+const parseEnvFileProvenanceV1 = (
+  value: unknown,
+  label: string,
+): E2EEnvFileProvenance => {
+  const input = exactRecord(value, label, ["path", "keys"]);
+  return {
+    path: nonEmptyString(input.path, `${label}.path`),
+    keys: stringArray(input.keys, `${label}.keys`),
+  };
+};
+
+export const parseRedactedCommandV1 = (
+  value: unknown,
+  label = "command",
+): RedactedCommand => {
+  const input = exactRecord(value, label, [
+    "command",
+    "args",
+    "cwd",
+    "envKeys",
+    "envFiles",
+    "envInheritance",
+  ]);
+  return {
+    command: nonEmptyString(input.command, `${label}.command`),
+    args: stringArray(input.args, `${label}.args`),
+    cwd: nonEmptyString(input.cwd, `${label}.cwd`),
+    envKeys: stringArray(input.envKeys, `${label}.envKeys`),
+    envFiles: arrayOf(
+      input.envFiles,
+      `${label}.envFiles`,
+      parseEnvFileProvenanceV1,
+    ),
+    envInheritance: oneOf(input.envInheritance, `${label}.envInheritance`, [
+      "process",
+      "none",
+    ]),
+  };
+};
+
+const parseHashObservationV1 = (
+  value: unknown,
+  label: string,
+): HashObservation => {
+  const input = exactRecord(value, label, ["hash", "role", "source", "stepId"]);
+  return {
+    hash: parseLowerHex64(input.hash, `${label}.hash`),
+    role: exactLiteral(input.role, `${label}.role`, "unknown"),
+    source: exactLiteral(input.source, `${label}.source`, "regex"),
+    stepId: nonEmptyString(input.stepId, `${label}.stepId`),
+  };
+};
+
+export const parseTxObservationV1 = (
+  value: unknown,
+  label = "txObservation",
+): TxObservation => {
+  const input = exactRecord(
+    value,
+    label,
+    ["txHash", "role", "status", "source", "stepId"],
+    ["field"],
+  );
+  return {
+    txHash: parseLowerHex64(input.txHash, `${label}.txHash`),
+    role: oneOf(input.role, `${label}.role`, [
+      "prepared",
+      "submitted",
+      "confirmed",
+      "committed",
+      "root",
+      "input",
+      "unknown",
+    ]),
+    status: nonEmptyString(input.status, `${label}.status`),
+    source: nonEmptyString(input.source, `${label}.source`),
+    ...(input.field === undefined
+      ? {}
+      : { field: nonEmptyString(input.field, `${label}.field`) }),
+    stepId: nonEmptyString(input.stepId, `${label}.stepId`),
+  };
+};
+
+export const parseChildProcessCleanupV1 = (
+  value: unknown,
+  label: string,
+): ChildProcessCleanupResult => {
+  const input = exactRecord(
+    value,
+    label,
+    ["attempted", "pid", "target", "signal", "success", "error"],
+    ["ownershipValidation"],
+  );
+  const ownershipValidation =
+    input.ownershipValidation === undefined
+      ? undefined
+      : exactRecord(input.ownershipValidation, `${label}.ownershipValidation`, [
+          "valid",
+          "reason",
+        ]);
+  return {
+    attempted: booleanValue(input.attempted, `${label}.attempted`),
+    pid: nullable(input.pid, `${label}.pid`, positiveInteger),
+    target: oneOf(input.target, `${label}.target`, [
+      "process_group",
+      "process",
+      "none",
+    ]),
+    signal: nodeSignal(input.signal, `${label}.signal`),
+    success: booleanValue(input.success, `${label}.success`),
+    error: nullableNonEmptyString(input.error, `${label}.error`),
+    ...(ownershipValidation === undefined
+      ? {}
+      : {
+          ownershipValidation: {
+            valid: booleanValue(
+              ownershipValidation.valid,
+              `${label}.ownershipValidation.valid`,
+            ),
+            reason: nonEmptyString(
+              ownershipValidation.reason,
+              `${label}.ownershipValidation.reason`,
+            ),
+          },
+        }),
+  };
+};
+
+export const parseE2EStepV1 = (
+  value: unknown,
+  label = "E2E step",
+): StepSummary => {
+  const input = exactRecord(
+    value,
+    label,
+    [
+      "schemaVersion",
+      "id",
+      "status",
+      "command",
+      "pid",
+      "startedAt",
+      "finishedAt",
+      "durationMs",
+      "exitCode",
+      "signal",
+      "timedOut",
+      "rawLogPath",
+      "observedTxHashes",
+      "hashObservations",
+      "txObservations",
+      "parsedJson",
+      "error",
+    ],
+    ["cleanup"],
+  );
+  if (input.schemaVersion !== E2E_STEP_SCHEMA_VERSION) {
+    throw new Error(
+      `${label}.schemaVersion must be ${E2E_STEP_SCHEMA_VERSION}`,
+    );
+  }
+  const parsed: StepSummary = {
+    schemaVersion: E2E_STEP_SCHEMA_VERSION,
+    id: nonEmptyString(input.id, `${label}.id`),
+    status: oneOf(input.status, `${label}.status`, [
+      "success",
+      "failed",
+      "signaled",
+      "timeout",
+      "runner_error",
+    ]),
+    command: parseRedactedCommandV1(input.command, `${label}.command`),
+    pid: nullable(input.pid, `${label}.pid`, positiveInteger),
+    startedAt: isoTimestamp(input.startedAt, `${label}.startedAt`),
+    finishedAt: isoTimestamp(input.finishedAt, `${label}.finishedAt`),
+    durationMs: nonNegativeNumber(input.durationMs, `${label}.durationMs`),
+    exitCode: nullable(input.exitCode, `${label}.exitCode`, integer),
+    signal: nullable(input.signal, `${label}.signal`, nodeSignal),
+    timedOut: booleanValue(input.timedOut, `${label}.timedOut`),
+    rawLogPath: nonEmptyString(input.rawLogPath, `${label}.rawLogPath`),
+    observedTxHashes: arrayOf(
+      input.observedTxHashes,
+      `${label}.observedTxHashes`,
+      parseLowerHex64,
+    ),
+    hashObservations: arrayOf(
+      input.hashObservations,
+      `${label}.hashObservations`,
+      parseHashObservationV1,
+    ),
+    txObservations: arrayOf(
+      input.txObservations,
+      `${label}.txObservations`,
+      parseTxObservationV1,
+    ),
+    parsedJson:
+      input.parsedJson === null
+        ? null
+        : jsonValue(input.parsedJson, `${label}.parsedJson`),
+    error: nullableNonEmptyString(input.error, `${label}.error`),
+    ...(input.cleanup === undefined
+      ? {}
+      : {
+          cleanup:
+            input.cleanup === null
+              ? null
+              : parseChildProcessCleanupV1(input.cleanup, `${label}.cleanup`),
+        }),
+  };
+  const elapsedMs =
+    Date.parse(parsed.finishedAt) - Date.parse(parsed.startedAt);
+  const observationHashes = parsed.hashObservations.map(
+    (observation) => observation.hash,
+  );
+  if (
+    elapsedMs < 0 ||
+    parsed.durationMs !== elapsedMs ||
+    new Set(parsed.observedTxHashes).size !== parsed.observedTxHashes.length ||
+    observationHashes.length !== parsed.observedTxHashes.length ||
+    observationHashes.some(
+      (hash, index) => hash !== parsed.observedTxHashes[index],
+    ) ||
+    parsed.hashObservations.some(
+      (observation) => observation.stepId !== parsed.id,
+    ) ||
+    parsed.txObservations.some(
+      (observation) => observation.stepId !== parsed.id,
+    )
+  ) {
+    throw new Error(`${label} timing or observation identity is inconsistent`);
+  }
+  const hasError = parsed.error !== null;
+  const statusIsCanonical =
+    (parsed.status === "success" &&
+      parsed.exitCode === 0 &&
+      parsed.signal === null &&
+      !parsed.timedOut &&
+      !hasError) ||
+    (parsed.status === "failed" &&
+      parsed.exitCode !== null &&
+      parsed.exitCode !== 0 &&
+      parsed.signal === null &&
+      !parsed.timedOut &&
+      hasError) ||
+    (parsed.status === "signaled" &&
+      parsed.signal !== null &&
+      !parsed.timedOut &&
+      hasError) ||
+    (parsed.status === "timeout" && parsed.timedOut && hasError) ||
+    (parsed.status === "runner_error" &&
+      parsed.exitCode === null &&
+      parsed.signal === null &&
+      !parsed.timedOut &&
+      hasError);
+  if (!statusIsCanonical) {
+    throw new Error(`${label} status and process outcome are inconsistent`);
+  }
+  return parsed;
 };
 
 const SECRET_ARG_PATTERN =
@@ -397,7 +682,7 @@ export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
             ? "success"
             : "failed";
   const parsedJson = parseLastJsonLine(attempt.stdout);
-  return {
+  return parseE2EStepV1({
     schemaVersion: E2E_STEP_SCHEMA_VERSION,
     id: spec.id,
     status,
@@ -427,5 +712,5 @@ export const runCommandStep = async (spec: StepSpec): Promise<StepSummary> => {
             ? `Step timed out after ${spec.timeoutMs?.toString()}ms.`
             : `Step exited with status ${attempt.exitCode?.toString() ?? attempt.signal ?? "unknown"}.`,
     cleanup: attempt.cleanup,
-  };
+  });
 };

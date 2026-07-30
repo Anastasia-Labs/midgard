@@ -7,13 +7,135 @@ import { finished } from "node:stream/promises";
 import { StringDecoder } from "node:string_decoder";
 import { promisify } from "node:util";
 
-import { canonicalJsonSha256 } from "./phase4-environment-fingerprint-lib.mjs";
+import {
+  canonicalJsonSha256,
+  decodePhase4EnvironmentArtifactV1,
+} from "./phase4-environment-fingerprint-lib.mjs";
+import { parsePhase1FormalBindingDocument } from "./phase1-formal-identity.mjs";
 
 const execFileAsync = promisify(execFile);
 
 export const SHA256 = /^[0-9a-f]{64}$/u;
 export const GIT_SHA = /^[0-9a-f]{40}$/u;
 export const NODE_VERSION = "v22.22.2";
+export const isCanonicalAbsolutePath = (value) =>
+  typeof value === "string" &&
+  path.isAbsolute(value) &&
+  path.resolve(value) === value;
+
+export const hasExactV1JsonKeys = (value, expectedKeys) => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+};
+
+export const evaluateExactSourceIdentityShape = (
+  source,
+  label = "source identity",
+) =>
+  hasExactV1JsonKeys(source, [
+    "gitCommit",
+    "gitStatusSha256",
+    "trackedDiffSha256",
+    "sourceTreeSha256",
+    "sourceTreeFileCount",
+    "nodeVersion",
+    "nodeExecutablePath",
+    "nodeExecutableSha256",
+  ])
+    ? []
+    : [`${label} must use the exact V1 keys`];
+
+export const evaluateExactClosureIdentityShape = (
+  identity,
+  extraRootKeys = [],
+) => {
+  const reasons = [];
+  const check = (value, expectedKeys, label) => {
+    if (!hasExactV1JsonKeys(value, expectedKeys)) {
+      reasons.push(`${label} must use the exact V1 keys`);
+    }
+  };
+  check(
+    identity,
+    [
+      "source",
+      "runtime",
+      "deployment",
+      "phase1",
+      "ownerBinary",
+      "tooling",
+      ...extraRootKeys,
+    ],
+    "closure identity",
+  );
+  reasons.push(...evaluateExactSourceIdentityShape(identity?.source));
+  check(
+    identity?.runtime,
+    [
+      "path",
+      "sha256",
+      "schemaVersion",
+      "deploymentManifestSha256",
+      "nodeImageId",
+    ],
+    "runtime identity",
+  );
+  check(
+    identity?.deployment,
+    ["path", "sha256", "schemaVersion", "manifestId"],
+    "deployment identity",
+  );
+  check(
+    identity?.phase1,
+    [
+      "path",
+      "sha256",
+      "schemaVersion",
+      "deploymentManifestId",
+      "nodeImageId",
+      "nodeContainerId",
+      "corpus",
+    ],
+    "Phase 1 identity",
+  );
+  check(
+    identity?.phase1?.corpus,
+    [
+      "path",
+      "indexPath",
+      "manifestPath",
+      "sliceId",
+      "corpusSha256",
+      "indexSha256",
+      "manifestSha256",
+    ],
+    "Phase 1 corpus identity",
+  );
+  check(
+    identity?.ownerBinary,
+    [
+      "path",
+      "sha256",
+      "expectedSha256",
+      "sha256ManifestPath",
+      "sha256ManifestSha256",
+    ],
+    "owner-binary identity",
+  );
+  check(
+    identity?.tooling,
+    ["runnerPath", "runnerSha256", "verifierPath", "verifierSha256"],
+    "closure tooling identity",
+  );
+  return reasons;
+};
 
 export const sha256Bytes = (bytes) =>
   createHash("sha256").update(bytes).digest("hex");
@@ -610,9 +732,12 @@ export const captureClosureIdentity = async ({
   ]) {
     assertRegularFile(filePath, label);
   }
-  const runtime = readJson(runtimePath);
+  const runtime = decodePhase4EnvironmentArtifactV1(readJson(runtimePath));
   const deployment = readJson(deploymentPath);
-  const phase1 = readJson(phase1Path);
+  const phase1 = parsePhase1FormalBindingDocument(
+    readJson(phase1Path),
+    phase1Path,
+  );
   const ownerSha256 = sha256File(ownerBinaryPath);
   const expectedOwnerSha256 = fs
     .readFileSync(ownerSha256ManifestPath, "utf8")
@@ -704,8 +829,7 @@ export const evaluateClosureIdentity = (identity) => {
     );
   }
   if (
-    typeof source?.nodeExecutablePath !== "string" ||
-    !path.isAbsolute(source.nodeExecutablePath) ||
+    !isCanonicalAbsolutePath(source?.nodeExecutablePath) ||
     !SHA256.test(source?.nodeExecutableSha256 ?? "")
   ) {
     reasons.push("Node executable identity is incomplete");
@@ -713,8 +837,7 @@ export const evaluateClosureIdentity = (identity) => {
   for (const label of ["runtime", "deployment", "phase1"]) {
     const value = identity?.[label];
     if (
-      typeof value?.path !== "string" ||
-      !path.isAbsolute(value.path) ||
+      !isCanonicalAbsolutePath(value?.path) ||
       !SHA256.test(value?.sha256 ?? "") ||
       typeof value?.schemaVersion !== "string" ||
       value.schemaVersion.length === 0
@@ -725,10 +848,11 @@ export const evaluateClosureIdentity = (identity) => {
   if (
     identity?.runtime?.schemaVersion !==
       "midgard-phase4-environment-artifact-v1" ||
+    identity?.deployment?.schemaVersion !== "midgard-deployment-manifest-v1" ||
     identity?.phase1?.schemaVersion !==
       "midgard-phase1-live-corpus-binding-v1" ||
     !SHA256.test(identity?.deployment?.manifestId ?? "") ||
-    !/^(?:sha256:)?[0-9a-f]{64}$/u.test(identity?.phase1?.nodeImageId ?? "")
+    !/^sha256:[0-9a-f]{64}$/u.test(identity?.phase1?.nodeImageId ?? "")
   ) {
     reasons.push("runtime/deployment/Phase 1 schemas or IDs are invalid");
   }
@@ -739,10 +863,11 @@ export const evaluateClosureIdentity = (identity) => {
       normalizedImageId(identity?.phase1?.nodeImageId) ||
     identity?.phase1?.deploymentManifestId !==
       identity?.deployment?.manifestId ||
-    typeof identity?.phase1?.nodeContainerId !== "string" ||
-    identity.phase1.nodeContainerId.length === 0 ||
+    !/^sha256:[0-9a-f]{64}$/u.test(identity?.runtime?.nodeImageId ?? "") ||
+    !SHA256.test(identity?.phase1?.nodeContainerId ?? "") ||
     typeof identity?.phase1?.corpus?.sliceId !== "string" ||
-    identity.phase1.corpus.sliceId.length === 0
+    identity.phase1.corpus.sliceId.length === 0 ||
+    identity.phase1.corpus.sliceId !== identity.phase1.corpus.sliceId.trim()
   ) {
     reasons.push("runtime, deployment, and Phase 1 identities diverge");
   }
@@ -753,8 +878,7 @@ export const evaluateClosureIdentity = (identity) => {
   ]) {
     const corpus = identity?.phase1?.corpus;
     if (
-      typeof corpus?.[pathField] !== "string" ||
-      !path.isAbsolute(corpus[pathField]) ||
+      !isCanonicalAbsolutePath(corpus?.[pathField]) ||
       !SHA256.test(corpus?.[shaField] ?? "")
     ) {
       reasons.push("Phase 1 corpus identity is incomplete");
@@ -763,23 +887,19 @@ export const evaluateClosureIdentity = (identity) => {
   }
   const owner = identity?.ownerBinary;
   if (
-    typeof owner?.path !== "string" ||
-    !path.isAbsolute(owner.path) ||
+    !isCanonicalAbsolutePath(owner?.path) ||
     !SHA256.test(owner?.sha256 ?? "") ||
     owner.sha256 !== owner?.expectedSha256 ||
-    typeof owner?.sha256ManifestPath !== "string" ||
-    !path.isAbsolute(owner.sha256ManifestPath) ||
+    !isCanonicalAbsolutePath(owner?.sha256ManifestPath) ||
     !SHA256.test(owner?.sha256ManifestSha256 ?? "")
   ) {
     reasons.push("pinned owner binary identity is invalid");
   }
   const tooling = identity?.tooling;
   if (
-    typeof tooling?.runnerPath !== "string" ||
-    !path.isAbsolute(tooling.runnerPath) ||
+    !isCanonicalAbsolutePath(tooling?.runnerPath) ||
     !SHA256.test(tooling?.runnerSha256 ?? "") ||
-    typeof tooling?.verifierPath !== "string" ||
-    !path.isAbsolute(tooling.verifierPath) ||
+    !isCanonicalAbsolutePath(tooling?.verifierPath) ||
     !SHA256.test(tooling?.verifierSha256 ?? "")
   ) {
     reasons.push("runner/verifier identity is incomplete");
@@ -848,9 +968,14 @@ export const evaluateClosureIdentityArtifacts = (
     }
   }
   try {
-    const runtime = readJson(identity.runtime.path);
+    const runtime = decodePhase4EnvironmentArtifactV1(
+      readJson(identity.runtime.path),
+    );
     const deployment = readJson(identity.deployment.path);
-    const phase1 = readJson(identity.phase1.path);
+    const phase1 = parsePhase1FormalBindingDocument(
+      readJson(identity.phase1.path),
+      identity.phase1.path,
+    );
     const deploymentSha256 = sha256File(identity.deployment.path);
     if (
       runtime?.schemaVersion !== "midgard-phase4-environment-artifact-v1" ||

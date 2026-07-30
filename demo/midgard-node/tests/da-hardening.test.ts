@@ -1,5 +1,6 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +30,7 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible(manifestId, {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarkerV1(manifestId),
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       }),
@@ -37,6 +39,7 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarkerV1(manifestId),
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       }),
@@ -56,6 +59,7 @@ describe("DA hardening startup and configuration", () => {
       assertDaDeploymentIdentityCompatible("cd".repeat(32), {
         kind: "manifest",
         manifestId,
+        deploymentMarker: makeDeploymentMarkerV1(manifestId),
         path: "/deployment.json",
         consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
       });

@@ -254,6 +254,9 @@ describe("V1 deployment manifest", () => {
   });
 
   it("accepts the sole exact authenticated V1 manifest", () => {
+    expect(canonicalManifest().manifestId).toBe(
+      "58fa9eb4d72b7d840ef6900126e09c96935bf11b24ba6622e2d49847c701fd2c",
+    );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
     );

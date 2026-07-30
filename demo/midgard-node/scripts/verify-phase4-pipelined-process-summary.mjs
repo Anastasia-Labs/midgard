@@ -474,18 +474,106 @@ const JOURNAL_PAYLOAD_KEYS = [
   "transactions",
   "transitionTrace",
   "eventToStep",
-  "utxos",
+  "ledgerDelta",
 ];
 
 const validateRoots = (reasons, value, keys, label) => {
   if (!exactKeys(reasons, value, keys, label)) return;
   for (const key of keys) {
+    check(reasons, HASH_32.test(value[key]), `${label}.${key} is invalid`);
+  }
+};
+
+const canonicalJsonOrder = (value) =>
+  isDeepStrictEqual(
+    value,
+    [...value].sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    ),
+  );
+
+const validateJournalMembers = (reasons, value, label) => {
+  if (!Array.isArray(value)) {
+    reasons.push(`${label} must be an array`);
+    return;
+  }
+  check(
+    reasons,
+    canonicalJsonOrder(value),
+    `${label} is not canonically sorted`,
+  );
+  const memberIds = new Set();
+  const ordinals = new Set();
+  value.forEach((member, index) => {
+    const itemLabel = `${label}[${index.toString()}]`;
+    if (
+      !exactKeys(
+        reasons,
+        member,
+        ["memberId", "ordinal", "payloadSha256", "sourceTable", "sourceId"],
+        itemLabel,
+      )
+    ) {
+      return;
+    }
     check(
       reasons,
-      typeof value[key] === "string" && value[key].length > 0,
-      `${label}.${key} is invalid`,
+      HASH_32.test(member.memberId) &&
+        safeNonnegative(member.ordinal) &&
+        HASH_32.test(member.payloadSha256) &&
+        typeof member.sourceTable === "string" &&
+        /^[a-z][a-z0-9_]*$/u.test(member.sourceTable) &&
+        (member.sourceId === null || hexBytes(member.sourceId)),
+      `${itemLabel} contains a noncanonical value`,
     );
+    check(
+      reasons,
+      !memberIds.has(member.memberId) && !ordinals.has(member.ordinal),
+      `${itemLabel} duplicates a member identity or ordinal`,
+    );
+    memberIds.add(member.memberId);
+    ordinals.add(member.ordinal);
+  });
+};
+
+const validateLedgerDelta = (reasons, value, label) => {
+  if (!exactKeys(reasons, value, ["spent", "produced"], label)) return;
+  if (Array.isArray(value.spent)) {
+    check(
+      reasons,
+      value.spent.every(hexBytes) &&
+        new Set(value.spent).size === value.spent.length &&
+        isDeepStrictEqual(
+          value.spent,
+          [...value.spent].sort((left, right) => left.localeCompare(right)),
+        ),
+      `${label}.spent is not canonical`,
+    );
+  } else {
+    reasons.push(`${label}.spent must be an array`);
   }
+  if (!Array.isArray(value.produced)) {
+    reasons.push(`${label}.produced must be an array`);
+    return;
+  }
+  check(
+    reasons,
+    canonicalJsonOrder(value.produced),
+    `${label}.produced is not canonically sorted`,
+  );
+  const outrefs = new Set();
+  value.produced.forEach((member, index) => {
+    const itemLabel = `${label}.produced[${index.toString()}]`;
+    if (!exactKeys(reasons, member, ["outref", "output"], itemLabel)) return;
+    check(
+      reasons,
+      hexBytes(member.outref) &&
+        hexBytes(member.output) &&
+        !outrefs.has(member.outref),
+      `${itemLabel} contains a noncanonical or duplicate value`,
+    );
+    outrefs.add(member.outref);
+  });
 };
 
 const validateDatabaseState = (reasons, value, label) => {
@@ -621,13 +709,18 @@ const validateDatabaseState = (reasons, value, label) => {
           `${label}.journalPayloadIdentity`,
         )
       ) {
-        for (const key of JOURNAL_PAYLOAD_KEYS) {
-          check(
+        for (const key of JOURNAL_PAYLOAD_KEYS.slice(0, -1)) {
+          validateJournalMembers(
             reasons,
-            Array.isArray(journal.journalPayloadIdentity[key]),
-            `${label}.journalPayloadIdentity.${key} must be an array`,
+            journal.journalPayloadIdentity[key],
+            `${label}.journalPayloadIdentity.${key}`,
           );
         }
+        validateLedgerDelta(
+          reasons,
+          journal.journalPayloadIdentity.ledgerDelta,
+          `${label}.journalPayloadIdentity.ledgerDelta`,
+        );
       }
       if (
         exactKeys(
@@ -922,7 +1015,7 @@ const validatePhasRegistrationProof = (reasons, proof, isolation) => {
       reasons,
       /@sha256:[a-f0-9]{64}$/u.test(proof.cardanoImage.ref) &&
         typeof proof.cardanoImage.id === "string" &&
-        proof.cardanoImage.id.length > 0,
+        /^sha256:[a-f0-9]{64}$/u.test(proof.cardanoImage.id),
       "isolation PHAS proof Cardano image identity is invalid",
     );
   }
@@ -1677,6 +1770,16 @@ export const evaluatePhase4PipelinedProcessSummary = (summary) => {
   };
 };
 
+export const decodePhase4PipelinedProcessSummaryV1 = (value) => {
+  const evaluation = evaluatePhase4PipelinedProcessSummary(value);
+  if (!evaluation.passed) {
+    throw new Error(
+      `Phase 4 process summary is not exact canonical V1: ${evaluation.reasons.join("; ")}`,
+    );
+  }
+  return value;
+};
+
 export const verifyPhase4PipelinedProcessSummaryFile = (summaryPath) => {
   const bytes = fs.readFileSync(summaryPath);
   let summary;
@@ -1691,8 +1794,10 @@ export const verifyPhase4PipelinedProcessSummaryFile = (summaryPath) => {
       summarySha256: sha256(bytes),
     };
   }
+  const evaluation = evaluatePhase4PipelinedProcessSummary(summary);
+  if (evaluation.passed) decodePhase4PipelinedProcessSummaryV1(summary);
   return {
-    ...evaluatePhase4PipelinedProcessSummary(summary),
+    ...evaluation,
     summaryPath: path.resolve(summaryPath),
     summarySha256: sha256(bytes),
   };

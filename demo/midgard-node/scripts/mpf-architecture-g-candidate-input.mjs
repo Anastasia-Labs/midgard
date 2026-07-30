@@ -8,6 +8,7 @@ import {
   captureArchitectureGPhase1FormalBindingIdentity,
   captureArchitectureGRuntimeIdentity,
   validateArchitectureGCommitCandidateInputV1,
+  validateArchitectureGCommitCandidateSeedInputV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGFixtureCreationEvidence,
 } from "./mpf-architecture-g-gate-config.mjs";
@@ -125,24 +126,18 @@ const output = resolve(
 mkdirSync(output, { recursive: true });
 const seedInputPath = resolve(output, "seed-input.json");
 const candidateInputPath = resolve(output, "candidate-input.json");
-writeFileSync(
-  seedInputPath,
-  `${JSON.stringify(
-    {
-      schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
-      phase1FormalBinding,
-      runtimeIdentity,
-      corpusSlicePath,
-      corpusSliceSha256,
-      fundingMapPath,
-      fundingMapSha256,
-      expectedTransactionCount,
-      firstTimestampIso,
-    },
-    null,
-    2,
-  )}\n`,
-);
+const seedInput = validateArchitectureGCommitCandidateSeedInputV1({
+  schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
+  phase1FormalBinding,
+  runtimeIdentity,
+  corpusSlicePath,
+  corpusSliceSha256,
+  fundingMapPath,
+  fundingMapSha256,
+  expectedTransactionCount,
+  firstTimestampIso,
+});
+writeFileSync(seedInputPath, `${JSON.stringify(seedInput, null, 2)}\n`);
 const candidateInput = validateArchitectureGCommitCandidateInputV1({
   schemaVersion: "midgard-architecture-g-commit-candidate-input-v1",
   phase1FormalBinding,

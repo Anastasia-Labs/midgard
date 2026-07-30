@@ -1660,6 +1660,31 @@ const eventKeyFingerprint = (
 ): Effect.Effect<string, MpfError> =>
   eventKeyCbor(eventKey).pipe(Effect.map((encoded) => encoded.toString("hex")));
 
+export const indexTransitionTraceMembersByEventKey = (
+  members: readonly RetainedTransitionTraceMember[],
+): Effect.Effect<
+  ReadonlyMap<string, RetainedTransitionTraceMember>,
+  MpfError
+> =>
+  Effect.gen(function* () {
+    const byEventKey = new Map<string, RetainedTransitionTraceMember>();
+    for (const member of members) {
+      const fingerprint = yield* eventKeyFingerprint(member.value.event_key);
+      if (byEventKey.has(fingerprint)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "validation trace",
+            new Error(
+              `Transition trace contains duplicate event key ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      byEventKey.set(fingerprint, member);
+    }
+    return byEventKey;
+  });
+
 const assertUniqueTransitionSourceEvents = (
   sourceEvents: readonly TransitionTraceSourceEvent[],
 ): Effect.Effect<void, MpfError> =>
@@ -2009,7 +2034,6 @@ export const buildTransitionTraceResult = ({
   l2TransactionCount,
   depositCount,
   expectedTotalEventCount,
-  transitionStepSchemaVersion = MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
 }: {
   readonly ledgerMpf: MidgardMpf;
   readonly sourceEvents: readonly TransitionTraceSourceEvent[];
@@ -2018,7 +2042,6 @@ export const buildTransitionTraceResult = ({
   readonly l2TransactionCount: number;
   readonly depositCount: number;
   readonly expectedTotalEventCount?: number;
-  readonly transitionStepSchemaVersion?: 1 | 2 | 3;
 }): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
   Effect.gen(function* () {
     const { totalEventCount, eventKeyCbors } =
@@ -2192,7 +2215,7 @@ export const buildTransitionTraceResult = ({
           runningUtxosRoot = postUtxosRoot;
         }
         const value: SDK.TransitionStep = {
-          schema_version: BigInt(transitionStepSchemaVersion),
+          schema_version: BigInt(MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION),
           step_index: BigInt(index),
           event_key: sourceEvent.eventKey,
           phase: sourceEvent.phase,
@@ -2289,7 +2312,6 @@ export const buildNativeTransitionTraceResult = ({
   l2TransactionCount,
   depositCount,
   expectedTotalEventCount,
-  transitionStepSchemaVersion = MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
 }: {
   readonly nativeMpf: NativeMpfBuildContext;
   readonly sourceEvents: readonly TransitionTraceSourceEvent[];
@@ -2298,7 +2320,6 @@ export const buildNativeTransitionTraceResult = ({
   readonly l2TransactionCount: number;
   readonly depositCount: number;
   readonly expectedTotalEventCount?: number;
-  readonly transitionStepSchemaVersion?: 1 | 2 | 3;
 }): Effect.Effect<TransitionTraceBuildResult, MpfError> =>
   Effect.gen(function* () {
     const validationStartedAt = performance.now();
@@ -2352,7 +2373,7 @@ export const buildNativeTransitionTraceResult = ({
       const preUtxosRoot = runningUtxosRoot;
       runningUtxosRoot = applied.eventRoots[index]!;
       const value: SDK.TransitionStep = {
-        schema_version: BigInt(transitionStepSchemaVersion),
+        schema_version: BigInt(MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION),
         step_index: BigInt(index),
         event_key: sourceEvent.eventKey,
         phase: sourceEvent.phase,
@@ -3502,19 +3523,18 @@ export const processMpfs = (
           );
         }
 
-        const rawLedgerOutput =
-          yield* MempoolLedgerDB.retrieveByTxOutRefs([ledgerOutRef]).pipe(
-            Effect.map((entries) => {
-              const entry = entries.find((candidate) =>
-                candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
-              );
-              return entry === undefined
-                ? Option.none<Buffer>()
-                : Option.some(
-                    Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]),
-                  );
-            }),
-          );
+        const rawLedgerOutput = yield* MempoolLedgerDB.retrieveByTxOutRefs([
+          ledgerOutRef,
+        ]).pipe(
+          Effect.map((entries) => {
+            const entry = entries.find((candidate) =>
+              candidate[MempoolLedgerDB.Columns.OUTREF].equals(ledgerOutRef),
+            );
+            return entry === undefined
+              ? Option.none<Buffer>()
+              : Option.some(Buffer.from(entry[MempoolLedgerDB.Columns.OUTPUT]));
+          }),
+        );
         const classifiedWithdrawal = yield* classifyWithdrawal({
           entry,
           ledgerOutRef,
@@ -4118,9 +4138,7 @@ export const processMpfs = (
           return {
             eventKey: yield* depositTraceEventKey(entry),
             phase: "Deposit" as const,
-            ledgerOps: [
-              ledgerEntryToInsertBatchOp(ledgerEntry),
-            ],
+            ledgerOps: [ledgerEntryToInsertBatchOp(ledgerEntry)],
           } satisfies TransitionTraceSourceEvent;
         }),
     );
@@ -4176,8 +4194,6 @@ export const processMpfs = (
           forcedTransactionCount: includedForcedTransactionEntries.length,
           l2TransactionCount: processedMempoolTxs.length,
           depositCount: includedDepositEntries.length,
-          transitionStepSchemaVersion:
-            MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
         }).pipe(
           Effect.catchAll((error) =>
             Effect.gen(function* () {
@@ -4198,8 +4214,6 @@ export const processMpfs = (
           forcedTransactionCount: includedForcedTransactionEntries.length,
           l2TransactionCount: processedMempoolTxs.length,
           depositCount: includedDepositEntries.length,
-          transitionStepSchemaVersion:
-            MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
         }).pipe(
           Effect.catchAll((error) =>
             ledgerMpf
@@ -4335,11 +4349,8 @@ export const processMpfs = (
         const validationTraceBuilder =
           config?.validationTraceBuilder ??
           buildDeterministicValidationTraceMembers;
-        const traceByEventKey = new Map(
-          transitionTraceBuild.transitionTraceMembers.map((member) => [
-            member.keyCbor.toString("hex"),
-            member,
-          ]),
+        const traceByEventKey = yield* indexTransitionTraceMembersByEventKey(
+          transitionTraceBuild.transitionTraceMembers,
         );
         const forcedByOrderId = new Map(
           classifiedForcedTransactionsV1.map((classified) => [

@@ -503,7 +503,9 @@ test("PHAS preflight is a pinned read-only ledger and canonical-transaction proo
 
 test("reset rejects every immutable drift before stopping services or restoring durable trees", () => {
   const reset = read("scripts/reset.sh");
-  const mutationAt = reset.indexOf("compose_quiet stop kupo ogmios cardano-node postgres");
+  const mutationAt = reset.indexOf(
+    "compose_quiet stop kupo ogmios cardano-node postgres",
+  );
   const restoreAt = reset.indexOf("restore_dir cardano-db.tar.gz");
   assert.ok(mutationAt >= 0 && mutationAt < restoreAt);
   for (const guard of [
@@ -514,7 +516,10 @@ test("reset rejects every immutable drift before stopping services or restoring 
     "effective pinned image IDs do not match",
   ]) {
     const guardAt = reset.indexOf(guard);
-    assert.ok(guardAt >= 0 && guardAt < mutationAt, `${guard} must precede mutation`);
+    assert.ok(
+      guardAt >= 0 && guardAt < mutationAt,
+      `${guard} must precede mutation`,
+    );
   }
   assert.match(reset, /--slurpfile phasRegistration/);
   assert.match(reset, /\.phasRegistration == \$phasRegistration\[0\]/);
@@ -588,6 +593,42 @@ test("reset attestation binds the complete canonical snapshot identity", () => {
     "kupoCheckpoint",
   ])
     assert.match(reset, new RegExp(field));
+});
+
+test("Phase 4 artifact producers validate exact V1 shapes before publication", () => {
+  const capture = read("scripts/capture-snapshot.sh");
+  const identityValidationAt = capture.indexOf(
+    "matched snapshot identity producer emitted a noncanonical V1 artifact",
+  );
+  const identityPublishAt = capture.indexOf(
+    'mv "$snapshot_identity_pending" "$snapshot_identity"',
+  );
+  assert.ok(
+    identityValidationAt >= 0 && identityValidationAt < identityPublishAt,
+  );
+  assert.match(capture, /def exact\(\$required\)/);
+  assert.match(capture, /phas-registration-proof\.pending\.json/);
+
+  const reset = read("scripts/reset.sh");
+  const resetValidationAt = reset.indexOf(
+    "reset producer emitted a noncanonical V1 attestation",
+  );
+  const resetPublishAt = reset.indexOf(
+    'mv "$attestation_pending_path" "$attestation_path"',
+  );
+  assert.ok(resetValidationAt >= 0 && resetValidationAt < resetPublishAt);
+  assert.match(reset, /def exact\(\$required\)/);
+
+  const preflight = read("scripts/phas-registration-preflight.sh");
+  assert.match(preflight, /keys == \["cborHex","description","type"\]/);
+  const bootstrap = read("scripts/protocol-bootstrap.sh");
+  assert.match(
+    bootstrap,
+    /fresh Phase 4 PHAS registration output is not exact canonical V1/,
+  );
+  const recovery = read("scripts/t1-recover.sh");
+  assert.match(recovery, /def exactTip/);
+  assert.match(recovery, /def exactProbe/);
 });
 
 test("crash restart reuses the original durable node identity", () => {
@@ -687,10 +728,7 @@ test("acceptance env is canonical when node.env lacks run-scoped values", async 
   ]) {
     assert.match(output, new RegExp(`^${expected}$`, "m"));
   }
-  assert.doesNotMatch(
-    output,
-    /Blockfrost|POSTGRES_HOST="stale"/,
-  );
+  assert.doesNotMatch(output, /Blockfrost|POSTGRES_HOST="stale"/);
   rmSync(runDir, { recursive: true, force: true });
 });
 

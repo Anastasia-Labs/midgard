@@ -4,9 +4,10 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type {
-  OpenLoopCorpusRow,
-  OpenLoopCorpusShape,
+import {
+  type OpenLoopCorpusRow,
+  type OpenLoopCorpusShape,
+  parseOpenLoopCorpusLine,
 } from "@/commands/stress-open-loop.js";
 
 export type CorpusIndexEntry = {
@@ -66,16 +67,7 @@ const parseRowHeader = (
   OpenLoopCorpusRow,
   "senderWalletId" | "corpusSliceId" | "planShape"
 > => {
-  const parsed = JSON.parse(line) as Partial<OpenLoopCorpusRow>;
-  if (
-    typeof parsed.senderWalletId !== "string" ||
-    typeof parsed.corpusSliceId !== "string" ||
-    (parsed.planShape !== "fanout" &&
-      parsed.planShape !== "chain" &&
-      parsed.planShape !== "mixed")
-  ) {
-    throw new Error("corpus shard row is missing chain index fields.");
-  }
+  const parsed = parseOpenLoopCorpusLine(line, 1);
   return {
     senderWalletId: parsed.senderWalletId,
     corpusSliceId: parsed.corpusSliceId,

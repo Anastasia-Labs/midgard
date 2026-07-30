@@ -18,7 +18,9 @@ import {
   discoverArchitectureGSourceFiles,
   resolveArchitectureGGateConfig,
   validateArchitectureGCommitCandidateInputV1,
+  validateArchitectureGCommitCandidateSeedInputV1,
   validateArchitectureGCorpusPreparationV1,
+  validateArchitectureGCorpusFundingV1,
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGCrossGateFixtureIdentity,
   validateArchitectureGCrossGateSourceIdentity,
@@ -224,6 +226,93 @@ const runtimeIdentity = {
   execPath: "/opt/node-v22.22.2/bin/node",
   executableSha256: hash(89),
 };
+
+const candidateSeedInputDocument = () => ({
+  schemaVersion: "midgard-architecture-g-commit-candidate-seed-v1",
+  phase1FormalBinding: structuredClone(phase1FormalBindingIdentity),
+  runtimeIdentity: structuredClone(runtimeIdentity),
+  corpusSlicePath: "/evidence/canonical-corpus-slice.ndjson",
+  corpusSliceSha256: hash(90),
+  fundingMapPath: "/evidence/canonical-corpus-funding.json",
+  fundingMapSha256: hash(91),
+  expectedTransactionCount: 50_000,
+  firstTimestampIso: "2026-07-28T00:00:00.000Z",
+});
+
+test("candidate seed input has one exact bounded V1 producer language", () => {
+  const valid = candidateSeedInputDocument();
+  assert.equal(validateArchitectureGCommitCandidateSeedInputV1(valid), valid);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.fundingMapSha256,
+    (value) => void (value.schemaVersion = "candidate-seed-v2"),
+    (value) => void (value.phase1FormalBinding.unknown = true),
+    (value) => void (value.runtimeIdentity.unknown = true),
+    (value) => void (value.corpusSlicePath = "relative/slice.ndjson"),
+    (value) => void (value.corpusSlicePath = "/evidence/\0slice.ndjson"),
+    (value) => void (value.corpusSlicePath = `/${"a".repeat(4096)}`),
+    (value) => void (value.corpusSliceSha256 = "bad"),
+    (value) => void (value.expectedTransactionCount = 0),
+    (value) => void (value.firstTimestampIso = "2026-07-28T00:00:00Z"),
+  ]) {
+    const invalid = structuredClone(valid);
+    mutate(invalid);
+    assert.throws(() =>
+      validateArchitectureGCommitCandidateSeedInputV1(invalid),
+    );
+  }
+});
+
+const corpusFundingDocument = () => {
+  const roots = [
+    { walletId: "wallet-0", outref: `${hash(92)}#0` },
+    { walletId: "wallet-1", outref: `${hash(93)}#1` },
+  ];
+  return {
+    roots,
+    artifact: {
+      schemaVersion: "midgard-architecture-g-corpus-funding-v1",
+      corpusSha256: hash(94),
+      sliceSha256: hash(95),
+      entries: roots.map((root, index) => ({
+        ...root,
+        outputCbor: index.toString(16).padStart(2, "0"),
+      })),
+    },
+  };
+};
+
+test("canonical corpus funding binds exact roots and bounded outputs before write", () => {
+  const valid = corpusFundingDocument();
+  const validate = (value) =>
+    validateArchitectureGCorpusFundingV1({
+      artifact: value,
+      expectedCorpusSha256: hash(94),
+      expectedSliceSha256: hash(95),
+      expectedFundingRoots: valid.roots,
+    });
+  assert.equal(validate(valid.artifact), valid.artifact);
+  for (const mutate of [
+    (value) => void (value.unknown = true),
+    (value) => void delete value.entries,
+    (value) => void (value.schemaVersion = "corpus-funding-v2"),
+    (value) => void (value.corpusSha256 = hash(96)),
+    (value) => void (value.sliceSha256 = hash(97)),
+    (value) => void (value.entries[0].unknown = true),
+    (value) => void (value.entries[0].walletId = "different"),
+    (value) => void (value.entries[0].walletId = "wallet\0zero"),
+    (value) => void (value.entries[0].outref = `${hash(98)}#0`),
+    (value) => void (value.entries[1].walletId = value.entries[0].walletId),
+    (value) => void (value.entries[1].outref = value.entries[0].outref),
+    (value) => void (value.entries[0].outputCbor = "0"),
+    (value) => void (value.entries[0].outputCbor = "AA"),
+    (value) => void (value.entries[0].outputCbor = "00".repeat(524_289)),
+  ]) {
+    const invalid = structuredClone(valid.artifact);
+    mutate(invalid);
+    assert.throws(() => validate(invalid));
+  }
+});
 
 test("Phase 3 evidence resolves the explicit current Phase 1 binding and rejects every stale identity edge", () => {
   const cwd = mkdtempSync(join(tmpdir(), "midgard-arch-g-phase1-binding-"));

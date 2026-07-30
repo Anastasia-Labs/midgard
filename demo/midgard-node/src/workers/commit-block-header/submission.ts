@@ -2,10 +2,7 @@ import {
   encodeMidgardCekProgramMaterialDaValueV1,
   mergeMidgardCekProgramMaterialSidecarsV1,
 } from "@al-ft/midgard-core/cek-proof";
-import {
-  isMidgardConsensusProfileV1,
-  MIDGARD_CONSENSUS_PROFILE_V1,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   type DaPayloadEmissionMode,
   maxDaPayloadV1InnerBytes,
@@ -171,13 +168,13 @@ export const assertPreSubmitDaPayloadSize = ({
           cause,
         }),
     });
-    const forcedTransactionPreimages =
-      includedForcedTransactionEntries.map((entry) =>
+    const forcedTransactionPreimages = includedForcedTransactionEntries.map(
+      (entry) =>
         daEntry(
           entry[ForcedTransactionsDB.Columns.TX_ORDER_ID],
           entry[ForcedTransactionsDB.Columns.NATIVE_TX_CBOR],
         ),
-      );
+    );
     const withdrawals = yield* Effect.forEach(
       includedWithdrawalEntries,
       (entry) => {
@@ -519,6 +516,7 @@ const runWithStaleOperatorWalletRetry = <A, E, R>({
 export const submitDepositOnlyCommit = ({
   contracts,
   consensusProfile,
+  deploymentMarker,
   latestBlock,
   endTime,
   includedDepositEntries,
@@ -549,6 +547,9 @@ export const submitDepositOnlyCommit = ({
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
+  readonly deploymentMarker: NonNullable<
+    ContractDeploymentIdentityValue["deploymentMarker"]
+  >;
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
@@ -727,25 +728,21 @@ export const submitDepositOnlyCommit = ({
               } = buildResult;
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
-                const cekProgramMaterial = isMidgardConsensusProfileV1(
-                  consensusProfile,
-                )
-                  ? yield* Effect.try({
-                      try: () =>
-                        daProgramMaterialFromSidecars(
-                          forcedProgramMaterialSidecars(
-                            includedForcedTransactionEntries,
-                          ),
-                        ),
-                      catch: (cause) =>
-                        new DatabaseError({
-                          table: ForcedTransactionsDB.tableName,
-                          message:
-                            "Cannot build V1 DA from missing or conflicting forced-transaction program material",
-                          cause,
-                        }),
-                    })
-                  : [];
+                const cekProgramMaterial = yield* Effect.try({
+                  try: () =>
+                    daProgramMaterialFromSidecars(
+                      forcedProgramMaterialSidecars(
+                        includedForcedTransactionEntries,
+                      ),
+                    ),
+                  catch: (cause) =>
+                    new DatabaseError({
+                      table: ForcedTransactionsDB.tableName,
+                      message:
+                        "Cannot build V1 DA from missing or conflicting forced-transaction program material",
+                      cause,
+                    }),
+                });
                 yield* assertPreSubmitDaPayloadSize({
                   headerHash: newHeaderHash,
                   header: newHeader,
@@ -801,6 +798,7 @@ export const submitDepositOnlyCommit = ({
                     validationTraceCount: BigInt(validationTraceCount),
                   },
                   consensusProfile,
+                  deploymentMarker,
                 });
                 const journalLedgerState =
                   yield* resolvePendingJournalLedgerState({
@@ -957,6 +955,7 @@ export const submitDepositOnlyCommit = ({
 export const submitTxBackedCommit = ({
   contracts,
   consensusProfile,
+  deploymentMarker,
   latestBlock,
   endTime,
   includedDepositEntries,
@@ -992,6 +991,9 @@ export const submitTxBackedCommit = ({
 }: {
   readonly contracts: SDK.MidgardValidators;
   readonly consensusProfile: ContractDeploymentIdentityValue["consensusProfile"];
+  readonly deploymentMarker: NonNullable<
+    ContractDeploymentIdentityValue["deploymentMarker"]
+  >;
   readonly latestBlock: SDK.StateQueueUTxO;
   readonly endTime: Date;
   readonly includedDepositEntries: readonly DepositsDB.Entry[];
@@ -1222,17 +1224,12 @@ export const submitTxBackedCommit = ({
               return Effect.gen(function* () {
                 const headerHashBuffer = Buffer.from(fromHex(newHeaderHash));
                 const mempoolTxProgramMaterialSidecars =
-                  isMidgardConsensusProfileV1(consensusProfile)
-                    ? yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
-                        processedMempoolTxs.map(
-                          (entry) => entry[TxColumns.TX_ID],
-                        ),
-                      )
-                    : [];
+                  yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(
+                    processedMempoolTxs.map((entry) => entry[TxColumns.TX_ID]),
+                  );
                 if (
-                  isMidgardConsensusProfileV1(consensusProfile) &&
                   mempoolTxProgramMaterialSidecars.length !==
-                    processedMempoolTxs.length
+                  processedMempoolTxs.length
                 ) {
                   return yield* Effect.fail(
                     new DatabaseError({
@@ -1317,6 +1314,7 @@ export const submitTxBackedCommit = ({
                     validationTraceCount: BigInt(validationTraceCount),
                   },
                   consensusProfile,
+                  deploymentMarker,
                 });
                 const journalLedgerState =
                   yield* resolvePendingJournalLedgerState({
@@ -1577,13 +1575,10 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
           "Confirmed block datum does not contain a recoverable header for local finalization",
       } satisfies WorkerOutput;
     }
-    const proofProfile = isMidgardConsensusProfileV1(consensusProfile);
-    const confirmedHeader = proofProfile
-      ? yield* getHeaderV1FromStateQueueDatumLocal(latestBlock.datum)
-      : yield* getHeaderV1FromStateQueueDatumLocal(latestBlock.datum);
-    const confirmedHeaderHash = proofProfile
-      ? yield* hashBlockHeaderV1Local(confirmedHeader as SDK.HeaderV1)
-      : yield* hashBlockHeaderV1Local(confirmedHeader as SDK.HeaderV1);
+    const confirmedHeader = yield* getHeaderV1FromStateQueueDatumLocal(
+      latestBlock.datum,
+    );
+    const confirmedHeaderHash = yield* hashBlockHeaderV1Local(confirmedHeader);
     const pendingRecord =
       yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
         Buffer.from(fromHex(confirmedHeaderHash)),
@@ -1610,13 +1605,12 @@ export const recoverLocalFinalizationAgainstConfirmedBlock = ({
         confirmedHeader.depositsRoot &&
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_WITHDRAWALS_ROOT] ===
         confirmedHeader.withdrawalsRoot &&
-      (!proofProfile ||
-        (record[
-          PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT
-        ] === (confirmedHeader as SDK.HeaderV1).validationTracesRoot &&
-          record[
-            PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT
-          ] === (confirmedHeader as SDK.HeaderV1).validationTraceCount));
+      record[
+        PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT
+      ] === confirmedHeader.validationTracesRoot &&
+      record[
+        PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT
+      ] === confirmedHeader.validationTraceCount;
     if (!rootsMatch) {
       return {
         type: "FailureOutput",

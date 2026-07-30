@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   E2E_DA_GATE_SCHEMA_VERSION,
+  parseDaGateProbeResultV1,
+  parseDaGateResultV1,
+  parseWaitForDaGateResultV1,
   probeDaGate,
   waitForDaGate,
 } from "@/e2e/da-gates.js";
@@ -32,6 +35,7 @@ describe("e2e DA publication gates", () => {
     });
 
     expect(result.schemaVersion).toBe(E2E_DA_GATE_SCHEMA_VERSION);
+    expect(result.kind).toBe("probe");
     expect(result.status).toBe("satisfied");
     expect(result.nextSafeAction).toBe("continue");
     expect(result.acceptedPeers).toBe(2);
@@ -116,8 +120,80 @@ describe("e2e DA publication gates", () => {
     });
 
     expect(result.status).toBe("satisfied");
+    expect(result.kind).toBe("wait");
     expect(result.attempts).toBe(2);
     expect(result.timedOut).toBe(false);
+  });
+
+  it("rejects missing, extra, wrong-version, and cross-kind artifacts", async () => {
+    const probe = await probeDaGate({
+      headerHash,
+      publicationReport: {
+        configured: true,
+        headerHash,
+        payloadHash: "cd".repeat(32),
+        deploymentFingerprint: "ef".repeat(32),
+        threshold: 1,
+        acceptedPeers: 1,
+        peerResults: [peerResult(0, "peer-a", "accepted")],
+        announcement: {
+          topic: `/midgard/${"ef".repeat(32)}/da/payload-announcements/1`,
+          payloadHash: "cd".repeat(32),
+          recipients: ["peer-a"],
+        },
+      },
+      now: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    expect(parseDaGateProbeResultV1(probe)).toEqual(probe);
+    expect(parseDaGateResultV1(probe)).toEqual(probe);
+    const { reason: _reason, ...missingReason } = probe;
+    expect(() => parseDaGateProbeResultV1(missingReason)).toThrow(
+      "missing required field",
+    );
+    expect(() =>
+      parseDaGateProbeResultV1({ ...probe, unexpected: true }),
+    ).toThrow("unknown field");
+    expect(() =>
+      parseDaGateProbeResultV1({
+        ...probe,
+        schemaVersion: "midgard-e2e-da-gate-v0",
+      }),
+    ).toThrow(E2E_DA_GATE_SCHEMA_VERSION);
+    expect(() =>
+      parseWaitForDaGateResultV1({
+        ...probe,
+        kind: "wait",
+        attempts: 0,
+        timedOut: false,
+      }),
+    ).toThrow("positive safe integer");
+    expect(() =>
+      parseWaitForDaGateResultV1({
+        ...probe,
+        attempts: 1,
+        timedOut: false,
+      }),
+    ).toThrow(".kind must be wait");
+    expect(() =>
+      parseDaGateProbeResultV1({ ...probe, acceptedPeers: 0 }),
+    ).toThrow("publication evidence is inconsistent");
+    expect(() =>
+      parseDaGateProbeResultV1({
+        ...probe,
+        status: "pending",
+        nextSafeAction: "wait_for_da_payload_publication",
+      }),
+    ).toThrow("publication evidence is inconsistent");
+    expect(() =>
+      parseDaGateProbeResultV1({
+        ...probe,
+        peerResults: [
+          probe.peerResults[0],
+          { ...probe.peerResults[0], peerId: "peer-b" },
+        ],
+        acceptedPeers: 2,
+      }),
+    ).toThrow("publication evidence is inconsistent");
   });
 
   it("rejects malformed header hashes", async () => {
@@ -146,4 +222,5 @@ const peerResult = (
   protocolId: `/midgard/${"ef".repeat(32)}/da/payload-submit/1`,
   status,
   payloadHash: "cd".repeat(32),
+  ...(status === "transport_error" ? { error: "dial failed" } : {}),
 });

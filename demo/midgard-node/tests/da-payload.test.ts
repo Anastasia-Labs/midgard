@@ -1,6 +1,14 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
-import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import {
+  DaPayloadContentEncoding,
+  decodeDaPayloadEnvelopeV1,
+  unwrapDaPayloadV1,
+} from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import {
+  makeDeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
@@ -115,10 +123,7 @@ const headerFor = (roots: TestRoots, counts: TestCounts): SDK.HeaderV1 => ({
 });
 
 const headerCbor = (header: SDK.HeaderV1): Buffer =>
-  Buffer.from(
-    LucidData.to(header as never, SDK.HeaderV1 as never),
-    "hex",
-  );
+  Buffer.from(LucidData.to(header as never, SDK.HeaderV1 as never), "hex");
 
 const retainedPairs = (
   label: string,
@@ -199,6 +204,15 @@ const record = ({
   return {
     [PendingBlockFinalizationsDB.Columns.HEADER_HASH]: headerHash,
     [PendingBlockFinalizationsDB.Columns.HEADER_CBOR]: headerCbor(header),
+    [PendingBlockFinalizationsDB.Columns.FORMAT_VERSION]:
+      PendingBlockFinalizationsDB.PENDING_BLOCK_FINALIZATION_V1_VERSION,
+    [PendingBlockFinalizationsDB.Columns.REPLAY_KIND]:
+      PendingBlockFinalizationsDB.PendingBlockFinalizationReplayKindV1
+        .LedgerDelta,
+    [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
+      MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+    [PendingBlockFinalizationsDB.Columns.DEPLOYMENT_MANIFEST_ID]:
+      makeDeploymentMarkerV1("de".repeat(32)).manifestId,
     [PendingBlockFinalizationsDB.Columns.CONSENSUS_PROFILE_ID]:
       consensusProfileId,
     [PendingBlockFinalizationsDB.Columns.SUBMITTED_TX_HASH]: null,
@@ -440,6 +454,9 @@ describe("DaPayloadV1 builder", () => {
     const unwrapped = await unwrapDaPayloadV1(insert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
     });
+    expect(decodeDaPayloadEnvelopeV1(insert.payload_cbor).contentEncoding).toBe(
+      DaPayloadContentEncoding.identity,
+    );
     const payload = SDK.decodeDaPayloadV1(unwrapped.innerBytes);
 
     expect(insert.version).toBe(1);
@@ -507,6 +524,9 @@ describe("DaPayloadV1 builder", () => {
     const unwrapped = await unwrapDaPayloadV1(zstdInsert.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
     });
+    expect(
+      decodeDaPayloadEnvelopeV1(zstdInsert.payload_cbor).contentEncoding,
+    ).toBe(DaPayloadContentEncoding.zstd);
     expect(zstdInsert.version).toBe(1);
     expect(unwrapped.innerBytes).toEqual(identityUnwrapped.innerBytes);
     expect(zstdInsert.payload_sha256.toString("hex")).toBe(
@@ -554,8 +574,9 @@ describe("DaPayloadV1 builder", () => {
     const backfilled = await unwrapDaPayloadV1(inserts[0]!.payload_cbor, {
       maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
     });
-    expect(SDK.decodeDaPayloadV1(backfilled.innerBytes).block_body.header_hash)
-      .toBe(headerHash.toString("hex"));
+    expect(
+      SDK.decodeDaPayloadV1(backfilled.innerBytes).block_body.header_hash,
+    ).toBe(headerHash.toString("hex"));
   });
 
   it("skips backfill when the V1 delta chain cannot be materialized", async () => {

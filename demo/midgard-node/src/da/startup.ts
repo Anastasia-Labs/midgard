@@ -1,4 +1,8 @@
 import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
+import {
+  assertDeploymentMarkerV1Matches,
+  makeDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Effect } from "effect";
 
 import {
@@ -34,7 +38,8 @@ export const assertDaDeploymentIdentityCompatible = (
 ): void => {
   if (
     contractIdentity.kind !== "manifest" ||
-    contractIdentity.manifestId === undefined
+    contractIdentity.manifestId === undefined ||
+    contractIdentity.deploymentMarker === undefined
   ) {
     throw new DatabaseInitializationError({
       message:
@@ -42,7 +47,13 @@ export const assertDaDeploymentIdentityCompatible = (
       cause: "selected contract source has no deployment manifest identity",
     });
   }
-  if (daManifestId !== contractIdentity.manifestId) {
+  try {
+    assertDeploymentMarkerV1Matches(
+      contractIdentity.deploymentMarker,
+      makeDeploymentMarkerV1(daManifestId),
+      "DA runtime manifest",
+    );
+  } catch {
     throw new DatabaseInitializationError({
       message: "DA and contract deployment manifest identities do not match",
       cause: `da_manifest_id=${daManifestId},contract_manifest_id=${contractIdentity.manifestId}`,

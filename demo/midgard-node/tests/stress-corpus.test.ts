@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   assetsToValue,
   CML,
@@ -14,14 +15,21 @@ import { describe, expect, it } from "vitest";
 
 import { formatJson } from "@/commands/command-utils.js";
 import { planStressCorpus } from "@/commands/stress-corpus/plan.js";
-import { verifyStressCorpus } from "@/commands/stress-corpus/verify.js";
+import {
+  parseStressCorpusIndexLine,
+  parseStressCorpusManifest,
+  parseStressCorpusVerificationArtifactV1,
+  verifyStressCorpus,
+} from "@/commands/stress-corpus/verify.js";
 import { computeStressCorpusWalletSetIdentity } from "@/commands/stress-corpus/wallet-set-identity.js";
 import {
   generateStressCorpus,
   parseStressCorpusGenerateConfig,
+  parseStressCorpusGenerationArtifactV1,
   parseStressCorpusVerifyConfig,
 } from "@/commands/stress-corpus-generate.js";
-import { STRESS_WALLET_SCHEMA_VERSION } from "@/commands/stress-wallets.js";
+import { parseOpenLoopCorpusLine } from "@/commands/stress-open-loop.js";
+import { STRESS_WALLET_RECORD_SCHEMA_VERSION } from "@/commands/stress-wallets.js";
 
 import { makeMidgardTxOutput } from "./midgard-output-helpers.js";
 
@@ -29,6 +37,8 @@ const TEST_SEEDS = [
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart",
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail",
 ] as const;
+const MAX_SUBMIT_TX_CBOR_BYTES =
+  MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString();
 
 const walletLabel = (index: number): string =>
   index.toString().padStart(4, "0");
@@ -60,7 +70,7 @@ const writePreparedWallet = async ({
   const label = walletLabel(index);
   const txHash = index.toString(16).padStart(64, "0");
   const record = {
-    schemaVersion: STRESS_WALLET_SCHEMA_VERSION,
+    schemaVersion: STRESS_WALLET_RECORD_SCHEMA_VERSION,
     walletId: `stress-wallet-${label}`,
     index,
     envName: `STRESS_WALLET_SEED_PHRASE_${label}`,
@@ -181,7 +191,7 @@ describe("stress corpus planner", () => {
         amountLovelace: "1",
         minFeeA: "10",
         minFeeB: "10",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         assumedAcceptanceLatencyMs: "819",
         slices: "1",
         corpusSliceIdPrefix: "phase1",
@@ -207,7 +217,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         walletsDir,
         outDir,
         workers: "1",
@@ -219,14 +229,40 @@ describe("stress corpus generation", () => {
     );
 
     const result = await generateStressCorpus(config);
+    const generationArtifact = JSON.parse(formatJson(result)) as Record<
+      string,
+      unknown
+    >;
+    const parsedGeneration =
+      parseStressCorpusGenerationArtifactV1(generationArtifact);
 
     expect(result.plan.chainDepth).toBe(2);
+    expect(parsedGeneration.plan.amountLovelace).toBe("1000000");
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1({
+        ...generationArtifact,
+        manifestPath: join(outDir, "other-manifest.json"),
+      }),
+    ).toThrow("result binding is inconsistent");
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1({
+        ...generationArtifact,
+        verified: {
+          ...(generationArtifact.verified as Record<string, unknown>),
+          verificationArtifact: {
+            ...((generationArtifact.verified as Record<string, unknown>)
+              .verificationArtifact as Record<string, unknown>),
+            path: join(outDir, "other-verification.json"),
+          },
+        },
+      }),
+    ).toThrow("result binding is inconsistent");
     expect(result.assembled.rowCount).toBe(4);
     expect(result.assembled.chainCount).toBe(2);
     expect(result.verified.rowCount).toBe(4);
     const manifest = JSON.parse(
       await readFile(result.manifestPath, "utf8"),
-    ) as {
+    ) as Record<string, unknown> & {
       readonly corpusSliceIds: readonly string[];
       readonly walletSetIdentity: typeof result.walletSetIdentity;
       readonly sliceSummary: readonly {
@@ -241,6 +277,120 @@ describe("stress corpus generation", () => {
       { corpusSliceId: "phase1-1", walletCount: 1, rowCount: 2 },
       { corpusSliceId: "phase1-2", walletCount: 1, rowCount: 2 },
     ]);
+    expect(parseStressCorpusManifest(manifest).schemaVersion).toBe(
+      "midgard-stress-corpus-manifest-v1",
+    );
+    expect(() =>
+      parseStressCorpusManifest({ ...manifest, schemaVersion: "legacy-v2" }),
+    ).toThrow("Unsupported stress corpus manifest schemaVersion");
+    const { files: _files, ...manifestWithoutFiles } = manifest;
+    expect(() => parseStressCorpusManifest(manifestWithoutFiles)).toThrow(
+      "missing=[files]",
+    );
+    expect(() =>
+      parseStressCorpusManifest({ ...manifest, extension: "historical" }),
+    ).toThrow("extra=[extension]");
+    expect(() =>
+      parseStressCorpusManifest({
+        ...manifest,
+        generatedAtIso: "2026-07-27",
+      }),
+    ).toThrow("canonical ISO-8601");
+    expect(() =>
+      parseStressCorpusManifest({ ...manifest, networkId: "1" }),
+    ).toThrow("cardinality binding");
+    expect(() =>
+      parseStressCorpusManifest({
+        ...manifest,
+        sliceSummary: [...manifest.sliceSummary].reverse(),
+      }),
+    ).toThrow("cardinality binding");
+    expect(() =>
+      parseStressCorpusManifest({
+        ...manifest,
+        fundingSummary: {
+          ...(manifest.fundingSummary as Record<string, unknown>),
+          totalFundingLovelace: "1",
+        },
+      }),
+    ).toThrow("cardinality binding");
+    expect(() =>
+      parseStressCorpusManifest({
+        ...manifest,
+        files: {
+          ...(manifest.files as Record<string, unknown>),
+          shards: [
+            ...(manifest.files as { readonly shards: readonly string[] })
+              .shards,
+            (manifest.files as { readonly shards: readonly string[] })
+              .shards[0],
+          ],
+        },
+      }),
+    ).toThrow("cardinality binding");
+
+    const corpusLine = (await readFile(result.corpusPath, "utf8"))
+      .trim()
+      .split("\n")[0]!;
+    const corpusRow = JSON.parse(corpusLine) as Record<string, unknown>;
+    const { parentTxHash: _parentTxHash, ...rowWithoutParent } = corpusRow;
+    expect(() =>
+      parseOpenLoopCorpusLine(JSON.stringify(rowWithoutParent), 1),
+    ).toThrow("missing=[parentTxHash]");
+    expect(() =>
+      parseOpenLoopCorpusLine(
+        JSON.stringify({ ...corpusRow, extension: true }),
+        1,
+      ),
+    ).toThrow("extra=[extension]");
+    expect(() =>
+      parseOpenLoopCorpusLine(
+        JSON.stringify({
+          ...corpusRow,
+          senderWalletId: ` ${String(corpusRow.senderWalletId)}`,
+        }),
+        1,
+      ),
+    ).toThrow("exact non-empty string");
+    expect(() =>
+      parseOpenLoopCorpusLine(
+        JSON.stringify({ ...corpusRow, txHash: "00".repeat(32) }),
+        1,
+      ),
+    ).toThrow("does not bind canonicalCborHex");
+    expect(() =>
+      parseOpenLoopCorpusLine(
+        JSON.stringify({ ...corpusRow, selectedInputOutref: "not-an-outref" }),
+        1,
+      ),
+    ).toThrow("must be canonical");
+    expect(() =>
+      parseOpenLoopCorpusLine(
+        JSON.stringify({
+          ...corpusRow,
+          outputOutrefs: [`${String(corpusRow.txHash)}#9`],
+        }),
+        1,
+      ),
+    ).toThrow("must exactly enumerate");
+
+    const indexLine = (await readFile(result.indexPath, "utf8"))
+      .trim()
+      .split("\n")[0]!;
+    const indexRow = JSON.parse(indexLine) as Record<string, unknown>;
+    expect(() =>
+      parseStressCorpusIndexLine(
+        JSON.stringify({ ...indexRow, extension: true }),
+        1,
+      ),
+    ).toThrow("extra=[extension]");
+    await expect(
+      verifyStressCorpus({
+        corpusPath: result.corpusPath,
+        indexPath: result.indexPath,
+        manifestPath: join(outDir, "absent-manifest.json"),
+      }),
+    ).rejects.toThrow();
     expect(result.verified.rebuildSample).toMatchObject({
       sampleRate: 0.001,
       checkedChainCount: 1,
@@ -250,12 +400,23 @@ describe("stress corpus generation", () => {
     expect(result.verified.verificationArtifact.sha256).toMatch(
       /^[0-9a-f]{64}$/u,
     );
-    const verificationArtifact = await readFile(
+    const verificationArtifactText = await readFile(
       result.verified.verificationArtifact.path,
       "utf8",
     );
-    expect(verificationArtifact).not.toContain(TEST_SEEDS[0]);
-    expect(verificationArtifact).not.toContain(TEST_SEEDS[1]);
+    const verificationArtifact = JSON.parse(verificationArtifactText) as Record<
+      string,
+      unknown
+    >;
+    expect(
+      parseStressCorpusVerificationArtifactV1(verificationArtifact),
+    ).toMatchObject({
+      schemaVersion: "midgard-stress-corpus-verification-v1",
+      rowCount: 4,
+      chainCount: 2,
+    });
+    expect(verificationArtifactText).not.toContain(TEST_SEEDS[0]);
+    expect(verificationArtifactText).not.toContain(TEST_SEEDS[1]);
     expect(result.verified.rebuildSample.livePreflightEntries).toHaveLength(1);
     expect(result.walletSetIdentity).toMatchObject({
       walletCount: 2,
@@ -267,6 +428,66 @@ describe("stress corpus generation", () => {
     expect(JSON.stringify(result.walletSetIdentity)).not.toContain(
       TEST_SEEDS[0],
     );
+
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1({
+        ...generationArtifact,
+        schemaVersion: "midgard-stress-corpus-generation-v0",
+      }),
+    ).toThrow("Unsupported stress corpus generation artifact schemaVersion");
+    const { verified: _generationVerified, ...generationWithoutVerified } =
+      generationArtifact;
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1(generationWithoutVerified),
+    ).toThrow("missing=[verified]");
+    const generationPlan = generationArtifact.plan as Record<string, unknown>;
+    const {
+      amountLovelace: _generationAmountLovelace,
+      ...generationPlanWithoutAmount
+    } = generationPlan;
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1({
+        ...generationArtifact,
+        plan: generationPlanWithoutAmount,
+      }),
+    ).toThrow("missing=[amountLovelace]");
+    expect(() =>
+      parseStressCorpusGenerationArtifactV1({
+        ...generationArtifact,
+        plan: { ...generationPlan, extension: "historical" },
+      }),
+    ).toThrow("extra=[extension]");
+
+    expect(() =>
+      parseStressCorpusVerificationArtifactV1({
+        ...verificationArtifact,
+        schemaVersion: "midgard-stress-corpus-verification-v0",
+      }),
+    ).toThrow("Unsupported stress corpus verification artifact schemaVersion");
+    const verificationCorpus = verificationArtifact.corpus as Record<
+      string,
+      unknown
+    >;
+    const {
+      manifestSha256: _verificationManifestSha256,
+      ...verificationCorpusWithoutManifestSha256
+    } = verificationCorpus;
+    expect(() =>
+      parseStressCorpusVerificationArtifactV1({
+        ...verificationArtifact,
+        corpus: verificationCorpusWithoutManifestSha256,
+      }),
+    ).toThrow("missing=[manifestSha256]");
+    expect(() =>
+      parseStressCorpusVerificationArtifactV1({
+        ...verificationArtifact,
+        rebuildSample: {
+          ...(verificationArtifact.rebuildSample as Record<string, unknown>),
+          extension: "historical",
+        },
+      }),
+    ).toThrow("extra=[extension]");
+
     const standaloneVerifyConfig = parseStressCorpusVerifyConfig(
       {
         corpusPath: result.corpusPath,
@@ -274,10 +495,11 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
       },
       {},
     );
+    expect(standaloneVerifyConfig.manifestPath).toBe(result.manifestPath);
     await expect(
       verifyStressCorpus({
         corpusPath: result.corpusPath,
@@ -311,7 +533,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         walletsDir,
         outDir,
         workers: "1",
@@ -339,7 +561,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         walletsDir,
         outDir,
         workers: "1",
@@ -391,7 +613,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         walletsDir,
         outDir,
         workers: "1",
@@ -488,7 +710,7 @@ describe("stress corpus generation", () => {
         amountLovelace: "1000000",
         minFeeA: "0",
         minFeeB: "0",
-        maxSubmitTxCborBytes: "32768",
+        maxSubmitTxCborBytes: MAX_SUBMIT_TX_CBOR_BYTES,
         walletsDir,
         outDir,
         workers: "1",
@@ -512,6 +734,7 @@ describe("stress corpus generation", () => {
       verifyStressCorpus({
         corpusPath: result.corpusPath,
         indexPath: result.indexPath,
+        manifestPath: result.manifestPath,
       }),
     ).rejects.toThrow("duplicate selected input");
   });

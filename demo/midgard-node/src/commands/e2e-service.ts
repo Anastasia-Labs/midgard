@@ -5,17 +5,31 @@ import { dirname } from "node:path";
 
 import {
   buildE2EProcessEnv,
-  type E2EEnvFileProvenance,
   type E2EEnvInheritance,
   type E2EEnvProvenance,
 } from "@/e2e/env.js";
-import { redactArg, redactEnvKeys } from "@/e2e/runner.js";
+import {
+  exactRecord,
+  nonEmptyString,
+  positiveInteger,
+} from "@/e2e/exact-artifact.js";
+import {
+  parseRedactedCommandV1,
+  redactArg,
+  type RedactedCommand,
+  redactEnvKeys,
+} from "@/e2e/runner.js";
 import {
   type HttpProbeSample,
   inspectPidFile,
+  parseHttpProbeSampleV1,
+  parsePidFileObservationV1,
   type PidFileObservation,
   probeHttpEndpoint,
 } from "@/e2e/service-supervisor.js";
+
+export const E2E_MANAGED_SERVICE_SCHEMA_VERSION =
+  "midgard-e2e-managed-service-v1";
 
 export type StartServiceOptions = {
   readonly service: string;
@@ -34,21 +48,63 @@ export type StartServiceOptions = {
 };
 
 export type StartServiceSummary = {
-  readonly schemaVersion: "midgard-e2e-managed-service-v1";
+  readonly schemaVersion: typeof E2E_MANAGED_SERVICE_SCHEMA_VERSION;
   readonly service: string;
   readonly pid: number;
   readonly rawLogPath: string;
   readonly pidFile: PidFileObservation;
   readonly ready: HttpProbeSample;
   readonly health?: HttpProbeSample;
-  readonly command: {
-    readonly command: string;
-    readonly args: readonly string[];
-    readonly cwd: string;
-    readonly envKeys: readonly string[];
-    readonly envFiles: readonly E2EEnvFileProvenance[];
-    readonly envInheritance: E2EEnvInheritance;
+  readonly command: RedactedCommand;
+};
+
+export const parseManagedServiceSummaryV1 = (
+  value: unknown,
+): StartServiceSummary => {
+  const label = "managed service summary";
+  const input = exactRecord(
+    value,
+    label,
+    [
+      "schemaVersion",
+      "service",
+      "pid",
+      "rawLogPath",
+      "pidFile",
+      "ready",
+      "command",
+    ],
+    ["health"],
+  );
+  if (input.schemaVersion !== E2E_MANAGED_SERVICE_SCHEMA_VERSION) {
+    throw new Error(
+      `${label}.schemaVersion must be ${E2E_MANAGED_SERVICE_SCHEMA_VERSION}`,
+    );
+  }
+  const parsed: StartServiceSummary = {
+    schemaVersion: E2E_MANAGED_SERVICE_SCHEMA_VERSION,
+    service: nonEmptyString(input.service, `${label}.service`),
+    pid: positiveInteger(input.pid, `${label}.pid`),
+    rawLogPath: nonEmptyString(input.rawLogPath, `${label}.rawLogPath`),
+    pidFile: parsePidFileObservationV1(input.pidFile, `${label}.pidFile`),
+    ready: parseHttpProbeSampleV1(input.ready, `${label}.ready`),
+    ...(input.health === undefined
+      ? {}
+      : {
+          health: parseHttpProbeSampleV1(input.health, `${label}.health`),
+        }),
+    command: parseRedactedCommandV1(input.command, `${label}.command`),
   };
+  if (
+    parsed.pidFile.status !== "runner_owned" ||
+    parsed.pidFile.pid !== parsed.pid ||
+    parsed.ready.status !== "healthy"
+  ) {
+    throw new Error(
+      `${label} pid ownership or readiness evidence is inconsistent`,
+    );
+  }
+  return parsed;
 };
 
 const sleep = (milliseconds: number): Promise<void> =>
@@ -155,8 +211,8 @@ export const startManagedService = async (
             label: `${options.service}:health`,
             url: options.healthUrl,
           });
-    return {
-      schemaVersion: "midgard-e2e-managed-service-v1",
+    return parseManagedServiceSummaryV1({
+      schemaVersion: E2E_MANAGED_SERVICE_SCHEMA_VERSION,
       service: options.service,
       pid,
       rawLogPath: options.rawLogPath,
@@ -167,7 +223,7 @@ export const startManagedService = async (
       ready,
       ...(health === undefined ? {} : { health }),
       command,
-    };
+    });
   } finally {
     closeSync(logFd);
   }

@@ -1,8 +1,14 @@
 import "./utils.js";
 
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { createReferenceScriptAuthPolicy } from "@al-ft/midgard-sdk";
 import {
@@ -30,7 +36,7 @@ import {
 import { Effect, Metric, Option, Queue, Ref } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { NodeUtxo } from "@/commands/command-utils.js";
+import { decodeNodeUtxo, type NodeUtxo } from "@/commands/command-utils.js";
 import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
 import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
 import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
@@ -95,6 +101,7 @@ import {
   NodeConfig,
 } from "@/services/index.js";
 import { fetchStateQueueSnapshotProgram } from "@/services/state-queue-topology.js";
+import { WriteBehindLive } from "@/services/write-behind.js";
 import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
@@ -110,6 +117,7 @@ import {
 } from "@/transactions/register-active-operator.js";
 import { assetsToValue } from "@/transactions/reserve-payout.js";
 import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { mergeMaturityWindow } from "@/transactions/state-queue/merge-readiness.js";
 import {
   buildUnsignedDepositTxFromFundingContextProgram,
   buildUnsignedDepositTxProgram,
@@ -172,6 +180,16 @@ const REQUIRED_BOND_LOVELACE = BigInt(
 );
 const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
 const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
+const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
+  kind: "derived",
+  deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+});
+const EMULATOR_DA_PRODUCER_PEER_ID =
+  "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
+const EMULATOR_DA_COMMITTEE_PEER_ID =
+  "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+const EMULATOR_DA_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 // This harness exercises the real initialization, deposit submission, deposit
 // ingestion, and live commit-worker path against the bundled real blueprint.
 // Keep it sequential because it mutates shared emulator/database state.
@@ -1095,10 +1113,10 @@ const runCommitWorker = async (
           nodeConfig,
         ),
     ).pipe(
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        EMULATOR_DEPLOYMENT_IDENTITY,
+      ),
       Effect.provide(Database.layer),
     ),
   );
@@ -1255,10 +1273,10 @@ const runBarrierRefresherForTest = (
     runUserEventBarrierRefresherPass.pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        EMULATOR_DEPLOYMENT_IDENTITY,
+      ),
       Effect.provideService(Globals, globals),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
@@ -1334,7 +1352,11 @@ const runSpeculativeWorkerWithInstruction = async ({
   readonly watermarks: UserEventBarrierWatermarks;
   readonly onReady: (
     candidate: SpeculativeCandidateSummary,
-  ) => Effect.Effect<SpeculativeCommitWorkerInstruction, unknown, Database>;
+  ) => Effect.Effect<
+    SpeculativeCommitWorkerInstruction,
+    unknown,
+    Database | ContractDeploymentIdentity
+  >;
 }) => {
   const workerInput = await speculativeWorkerInputFromActiveJournal(watermarks);
   let candidate: SpeculativeCandidateSummary | undefined;
@@ -1349,6 +1371,10 @@ const runSpeculativeWorkerWithInstruction = async ({
         candidate = readyCandidate;
         expect(lucidAcquisitions).toBe(0);
         return onReady(readyCandidate).pipe(
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            EMULATOR_DEPLOYMENT_IDENTITY,
+          ),
           Effect.tap((instruction) =>
             instruction.type === "SubmitSpeculativeCandidate"
               ? Effect.sync(() => {
@@ -1374,10 +1400,10 @@ const runSpeculativeWorkerWithInstruction = async ({
               ),
         ),
       ),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        EMULATOR_DEPLOYMENT_IDENTITY,
+      ),
       Effect.provide(Database.layer),
     ),
   );
@@ -1944,10 +1970,10 @@ const runLocalFinalizationRecoveryWorker = async (
       Effect.succeed(lucidService as any),
     ).pipe(
       Effect.provideService(MidgardContracts, contracts as any),
-      Effect.provideService(ContractDeploymentIdentity, ContractDeploymentIdentity.make({
-        kind: "derived",
-        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
-      })),
+      Effect.provideService(
+        ContractDeploymentIdentity,
+        EMULATOR_DEPLOYMENT_IDENTITY,
+      ),
       Effect.provide(Database.layer),
       Effect.provide(NodeConfig.layer),
     ),
@@ -2134,10 +2160,12 @@ const commitConfirmRecoverAndMerge = async ({
   fixture,
   lucidService,
   globals,
+  expectedL2TxIds = [],
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly globals: Globals;
+  readonly expectedL2TxIds?: readonly Buffer[];
 }) => {
   const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
     fixture.operatorLucid,
@@ -2150,11 +2178,12 @@ const commitConfirmRecoverAndMerge = async ({
   });
   await fixture.operatorLucid.awaitTx(commitOutput.submittedTxHash);
   await runBlockConfirmation(globals, fixture.contracts, lucidService);
-  await runLocalFinalizationRecoveryWorker(
+  const recoveryOutput = await runLocalFinalizationRecoveryWorker(
     globals,
     fixture.contracts,
     lucidService,
   );
+  expect(recoveryOutput.type).toBe("SuccessfulLocalFinalizationRecoveryOutput");
 
   const sortedStateQueueBeforeMerge = await Effect.runPromise(
     SDK.fetchSortedStateQueueUTxOsProgram(
@@ -2171,6 +2200,20 @@ const commitConfirmRecoverAndMerge = async ({
   const queuedHeaderHash = await Effect.runPromise(
     SDK.hashBlockHeaderV1(queuedHeaderBeforeMerge),
   );
+  if (recoveryOutput.type !== "SuccessfulLocalFinalizationRecoveryOutput") {
+    throw new Error(
+      `Expected local finalization recovery for ${queuedHeaderHash}, received ${recoveryOutput.type}`,
+    );
+  }
+  expect(recoveryOutput.finalizedHeaderHash).toBe(queuedHeaderHash);
+  expect(recoveryOutput.mempoolTxsCount).toBe(expectedL2TxIds.length);
+  expect(
+    await runNodeDatabaseEffect(
+      BlocksDB.retrieveTxHashesByHeaderHash(
+        Buffer.from(queuedHeaderHash, "hex"),
+      ),
+    ),
+  ).toEqual(expectedL2TxIds);
 
   await attestQueuedStateQueueHeader({
     fixture,
@@ -2181,11 +2224,14 @@ const commitConfirmRecoverAndMerge = async ({
 
   await advanceEmulatorPastUnixTime(
     fixture,
-    Number(queuedHeaderBeforeMerge.endTime) + 60_000,
+    mergeMaturityWindow(
+      fixture.operatorLucid,
+      Number(queuedHeaderBeforeMerge.endTime),
+    ).readyAfterUnixTime,
   );
   vi.setSystemTime(new Date(fixture.emulator.now()));
 
-  await Effect.runPromise(
+  const mergeResult = await Effect.runPromise(
     mergeAction(true).pipe(
       Effect.provideService(LucidService, lucidService as any),
       Effect.provideService(MidgardContracts, fixture.contracts as any),
@@ -2194,6 +2240,8 @@ const commitConfirmRecoverAndMerge = async ({
       Effect.provide(NodeConfig.layer),
     ),
   );
+  expect(mergeResult.status).toBe("merged");
+  vi.setSystemTime(new Date(fixture.emulator.now()));
 
   const settlementUnit = toUnit(
     fixture.contracts.settlement.policyId,
@@ -2243,6 +2291,78 @@ let activeRuntimePaths: {
   readonly ledgerMpfPath: string;
   readonly transactionsMpfPath: string;
 } | null = null;
+let activeDaManifestDirectory: string | null = null;
+
+const configureEmulatorDaRuntimeManifest = async (): Promise<void> => {
+  if (activeDaManifestDirectory !== null) {
+    throw new Error("Emulator DA runtime manifest is already configured");
+  }
+  activeDaManifestDirectory = await mkdtemp(
+    join(tmpdir(), "midgard-deposit-flow-da-"),
+  );
+  const manifestPath = join(activeDaManifestDirectory, "runtime-manifest.json");
+  const deploymentFingerprint = "de".repeat(32);
+  const manifest = {
+    schemaVersion: "midgard-da-libp2p-runtime-manifest-v1",
+    network: "Preview",
+    deployment: {
+      fingerprint: deploymentFingerprint,
+      contract_deployment_manifest_id: deploymentFingerprint,
+      contract_deployment_info_sha256: "cd".repeat(32),
+      identity_source: "contract_deployment_manifest_id",
+    },
+    runtime_topology: {
+      target: "producer",
+      profile: "public",
+      producer_peer_id: EMULATOR_DA_PRODUCER_PEER_ID,
+    },
+    da_transport: {
+      kind: "libp2p",
+      no_http_da_transport: true,
+      listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+      announce_multiaddrs: [
+        `/ip4/127.0.0.1/tcp/4001/p2p/${EMULATOR_DA_PRODUCER_PEER_ID}`,
+      ],
+      bootstrap_multiaddrs: [],
+      gossip: {
+        strict_sign: true,
+        emit_self: false,
+        allowed_topics_only: true,
+        max_gossip_message_bytes: DA_TRANSPORT_LIMITS_V1.maxGossipMessageBytes,
+      },
+      limits: {
+        max_payload_bytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+        max_inline_response_bytes:
+          DA_TRANSPORT_LIMITS_V1.maxInlineResponseBytes,
+        max_chunk_bytes: DA_TRANSPORT_LIMITS_V1.maxChunkBytes,
+        max_streams_per_peer: DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      },
+      retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+    },
+    da_committee: {
+      threshold: 1,
+      members: [
+        {
+          signer_index: 0,
+          da_vkey: "01".repeat(32),
+          peer_id: EMULATOR_DA_COMMITTEE_PEER_ID,
+          multiaddrs: [
+            `/ip4/127.0.0.1/tcp/4002/p2p/${EMULATOR_DA_COMMITTEE_PEER_ID}`,
+          ],
+          roles: ["committee"],
+        },
+      ],
+    },
+  } as const;
+  await writeFile(
+    manifestPath,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
+  vi.stubEnv("MIDGARD_DEPLOYMENT_MANIFEST_PATH", manifestPath);
+  vi.stubEnv("DA_LIBP2P_PRIVATE_KEY_SOURCE", EMULATOR_DA_PRIVATE_KEY_SOURCE);
+};
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -2254,6 +2374,11 @@ afterEach(async () => {
   if (activeRuntimePaths !== null) {
     await cleanupRuntimePaths(activeRuntimePaths);
     activeRuntimePaths = null;
+  }
+  vi.unstubAllEnvs();
+  if (activeDaManifestDirectory !== null) {
+    await rm(activeDaManifestDirectory, { recursive: true, force: true });
+    activeDaManifestDirectory = null;
   }
 });
 
@@ -3773,6 +3898,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     activeRuntimePaths = makeRuntimePaths();
     await cleanupRuntimePaths(activeRuntimePaths);
     await initializeNodeRuntime();
+    await configureEmulatorDaRuntimeManifest();
 
     const fixture = await makeFixture();
     await initializeProtocol(fixture);
@@ -3878,11 +4004,14 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
 
     await advanceEmulatorPastUnixTime(
       fixture,
-      Number(queuedHeaderBeforeMerge.endTime) + 60_000,
+      mergeMaturityWindow(
+        fixture.operatorLucid,
+        Number(queuedHeaderBeforeMerge.endTime),
+      ).readyAfterUnixTime,
     );
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
-    await Effect.runPromise(
+    const mergeResult = await Effect.runPromise(
       mergeAction(true).pipe(
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
@@ -3891,6 +4020,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         Effect.provide(NodeConfig.layer),
       ),
     );
+    expect(mergeResult.status).toBe("merged");
 
     const sortedStateQueueAfterMerge = await Effect.runPromise(
       SDK.fetchSortedStateQueueUTxOsProgram(
@@ -3958,6 +4088,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     activeRuntimePaths = makeRuntimePaths();
     await cleanupRuntimePaths(activeRuntimePaths);
     await initializeNodeRuntime();
+    await configureEmulatorDaRuntimeManifest();
 
     const fixture = await makeFixture();
     await initializeProtocol(fixture);
@@ -3967,6 +4098,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(fixture.emulator.now()));
+
+    const schedulerBeforeJourneyCommit = await fetchSchedulerDatum(fixture);
+    expect(schedulerBeforeJourneyCommit).toEqual(SDK.INITIAL_SCHEDULER_DATUM);
 
     const l2Address = await fixture.depositorLucid.wallet().address();
     await submitDepositWithDiagnostics(fixture, {
@@ -3996,6 +4130,17 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       lucidService,
       globals,
     });
+    const schedulerAfterJourneyCommit = await fetchSchedulerDatum(fixture);
+    expect(schedulerAfterJourneyCommit).not.toEqual(
+      schedulerBeforeJourneyCommit,
+    );
+    expect(
+      typeof schedulerAfterJourneyCommit === "object" &&
+        schedulerAfterJourneyCommit !== null &&
+        "ActiveOperator" in schedulerAfterJourneyCommit
+        ? schedulerAfterJourneyCommit.ActiveOperator.operator
+        : undefined,
+    ).toEqual(fixture.operatorKeyHash);
     const emptyProtocolRoot = SDK.EMPTY_MERKLE_TREE_ROOT;
     const expectedDepositRoot = await expectedAuthenticatedEventRoot(
       SDK.ROOT_DOMAINS.deposits,
@@ -4058,7 +4203,201 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
     );
     expect(projectedDepositUtxos.utxoCount).toEqual(1);
-    const l2WithdrawalTarget = projectedDepositUtxos.utxos[0]!;
+    const projectedDepositEntries = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveSpendableByAddress(l2Address),
+    );
+    expect(projectedDepositEntries).toHaveLength(1);
+    const projectedDepositEntry = projectedDepositEntries[0]!;
+    const l2TransferSource = decodeNodeUtxo({
+      outref:
+        projectedDepositEntry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+      outputCbor:
+        projectedDepositEntry[MempoolLedgerDB.Columns.OUTPUT].toString("hex"),
+    });
+    expect(
+      `${l2TransferSource.txHash}#${l2TransferSource.outputIndex.toString()}`,
+    ).toEqual(
+      `${projectedDepositUtxos.utxos[0]!.txHash}#${projectedDepositUtxos.utxos[0]!.outputIndex.toString()}`,
+    );
+    const withdrawalPrivateKey = CML.PrivateKey.from_bech32(
+      walletFromSeed(fixture.depositorAccount.seedPhrase, {
+        network: "Custom",
+      }).paymentKey,
+    );
+    const l2RecipientAddress = await fixture.referenceScriptsLucid
+      .wallet()
+      .address();
+    const builtL2Transfer = await buildTransferTx({
+      senderAddress: l2Address,
+      destinationAddress: l2RecipientAddress,
+      signer: withdrawalPrivateKey,
+      selectedInputs: [l2TransferSource],
+      requestedAssets: { lovelace: 2_000_000n },
+      networkId: 0n,
+    });
+    const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecarV1(
+      [],
+    );
+    const admittedL2Transfer = await runNodeDatabaseEffect(
+      TxAdmissionsDB.admit({
+        txId: builtL2Transfer.txId,
+        txCanonicalCbor: builtL2Transfer.txCbor,
+        programMaterialSidecarCbor,
+        submitSource: "native",
+        currentBacklog: 0n,
+        maxBacklog: 1,
+      }),
+    );
+    expect(admittedL2Transfer.kind).toBe("new");
+    expect(admittedL2Transfer.entry[TxAdmissionsDB.Columns.STATUS]).toBe(
+      TxAdmissionsDB.Status.Queued,
+    );
+
+    const l2TransferLeaseOwner = `deposit-flow:${randomUUID()}`;
+    const claimedL2Transfers = await runNodeDatabaseEffect(
+      TxAdmissionsDB.claimBatchLease({
+        limit: 1,
+        leaseOwner: l2TransferLeaseOwner,
+        leaseDurationMs: 30_000,
+      }),
+    );
+    expect(claimedL2Transfers).toHaveLength(1);
+    const loadedL2Transfers = await runNodeDatabaseEffect(
+      TxAdmissionsDB.loadClaimedPayloads({
+        claimed: claimedL2Transfers,
+        leaseOwner: l2TransferLeaseOwner,
+      }),
+    );
+    expect(loadedL2Transfers).toHaveLength(1);
+    const queuedL2Transfer: QueuedTx = {
+      txId: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_ID],
+      txCbor: loadedL2Transfers[0]![TxAdmissionsDB.Columns.TX_CANONICAL_CBOR],
+      programMaterialSidecarCbor:
+        loadedL2Transfers[0]![
+          TxAdmissionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR
+        ],
+      arrivalSeq: loadedL2Transfers[0]![TxAdmissionsDB.Columns.ARRIVAL_SEQ],
+      createdAt: loadedL2Transfers[0]![TxAdmissionsDB.Columns.FIRST_SEEN_AT],
+    };
+    const phaseA = await Effect.runPromise(
+      runPhaseAValidation([queuedL2Transfer], {
+        expectedNetworkId: 0n,
+        minFeeA: 0n,
+        minFeeB: 0n,
+        concurrency: 1,
+        strictnessProfile: "phase1_midgard",
+      }),
+    );
+    expect(phaseA.rejected).toEqual([]);
+    expect(phaseA.accepted).toHaveLength(1);
+    const preTransferLedgerEntries = await runNodeDatabaseEffect(
+      MempoolLedgerDB.retrieveSpendable,
+    );
+    const phaseB = await Effect.runPromise(
+      runPhaseBValidationWithPatch(
+        phaseA.accepted,
+        new Map(
+          preTransferLedgerEntries.map((entry) => [
+            entry[MempoolLedgerDB.Columns.OUTREF].toString("hex"),
+            entry[MempoolLedgerDB.Columns.OUTPUT],
+          ]),
+        ),
+        {
+          nowCardanoSlotNo: BigInt(fixture.operatorLucid.currentSlot()),
+          bucketConcurrency: 1,
+          enforceScriptBudget: true,
+        },
+      ),
+    );
+    expect(phaseB.rejected).toEqual([]);
+    expect(phaseB.accepted).toHaveLength(1);
+    const processedL2Transfers = phaseB.accepted.map(
+      processedTxFromValidatedTx,
+    );
+    await Effect.runPromise(
+      Effect.scoped(
+        TxAdmissionsDB.markAccepted({
+          rows: claimedL2Transfers,
+          leaseOwner: l2TransferLeaseOwner,
+          processedTxs: processedL2Transfers,
+        }).pipe(
+          Effect.provide(WriteBehindLive),
+          Effect.provide(Database.layer),
+          Effect.provide(NodeConfig.layer),
+        ),
+      ),
+    );
+    const acceptedL2Transfer = await runNodeDatabaseEffect(
+      TxAdmissionsDB.getByTxId(builtL2Transfer.txId),
+    );
+    expect(acceptedL2Transfer?.[TxAdmissionsDB.Columns.STATUS]).toBe(
+      TxAdmissionsDB.Status.Accepted,
+    );
+    expect(await runNodeDatabaseEffect(MempoolDB.retrieveTxCount)).toBe(1n);
+    const alignedMempoolTimestamp = new Date(
+      Number(depositBlock.queuedHeader.endTime) + 1,
+    );
+    expect(alignedMempoolTimestamp.getTime()).toBeLessThanOrEqual(Date.now());
+    const alignedMempoolRows = await runNodeDatabaseEffect(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql`
+          UPDATE ${sql(MempoolDB.tableName)}
+          SET time_stamp_tz = ${alignedMempoolTimestamp}
+          WHERE tx_id = ${builtL2Transfer.txId}
+          RETURNING tx_id
+        `;
+      }),
+    );
+    expect(alignedMempoolRows).toHaveLength(1);
+    const projectedSenderAfterAdmission = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedSenderAfterAdmission.utxoCount).toEqual(1);
+    expect(projectedSenderAfterAdmission.totals.lovelace).toEqual(10_000_000n);
+    const projectedRecipientAfterAdmission = await Effect.runPromise(
+      utxosProgram(l2RecipientAddress).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedRecipientAfterAdmission.utxoCount).toEqual(1);
+    expect(projectedRecipientAfterAdmission.totals.lovelace).toEqual(
+      2_000_000n,
+    );
+
+    const l2TransactionBlock = await commitConfirmRecoverAndMerge({
+      fixture,
+      lucidService,
+      globals,
+      expectedL2TxIds: [builtL2Transfer.txId],
+    });
+    expect(l2TransactionBlock.commitOutput.mempoolTxsCount).toEqual(1);
+    expect(l2TransactionBlock.queuedHeader.transactionsRoot).not.toEqual(
+      emptyProtocolRoot,
+    );
+    expect(
+      await runNodeDatabaseEffect(
+        BlocksDB.retrieveTxHashesByHeaderHash(
+          Buffer.from(l2TransactionBlock.queuedHeaderHash, "hex"),
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      await runNodeDatabaseEffect(
+        ImmutableDB.retrieveTxCborByHash(builtL2Transfer.txId),
+      ),
+    ).toEqual(builtL2Transfer.txCbor);
+    expect(await runNodeDatabaseEffect(MempoolDB.retrieveTxCount)).toBe(0n);
+
+    const projectedSenderAfterMerge = await Effect.runPromise(
+      utxosProgram(l2Address).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedSenderAfterMerge.utxoCount).toEqual(1);
+    expect(projectedSenderAfterMerge.totals.lovelace).toEqual(10_000_000n);
+    const projectedRecipientAfterMerge = await Effect.runPromise(
+      utxosProgram(l2RecipientAddress).pipe(Effect.provide(Database.layer)),
+    );
+    expect(projectedRecipientAfterMerge.utxoCount).toEqual(1);
+    expect(projectedRecipientAfterMerge.totals.lovelace).toEqual(2_000_000n);
+    const l2WithdrawalTarget = projectedSenderAfterMerge.utxos[0]!;
     const l2PaymentCredential = paymentCredentialOf(l2Address);
     if (l2PaymentCredential?.type !== "Key") {
       throw new Error("Expected withdrawal target L2 owner to be a key hash");
@@ -4072,15 +4411,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         outputIndex: BigInt(l2WithdrawalTarget.outputIndex),
       },
       l2_owner: l2PaymentCredential.hash,
-      l2_value: assetsToValue({ lovelace: 12_000_000n }),
+      l2_value: assetsToValue({ lovelace: 10_000_000n }),
       l1_address: l1AddressData,
       l1_datum: "NoDatum",
     };
-    const withdrawalPrivateKey = CML.PrivateKey.from_bech32(
-      walletFromSeed(fixture.depositorAccount.seedPhrase, {
-        network: "Custom",
-      }).paymentKey,
-    );
     const submittedWithdrawal = await submitWithdrawalWithDiagnostics(fixture, {
       body: withdrawalBody,
       signature: signWithdrawalBody(withdrawalPrivateKey, withdrawalBody),
@@ -4220,7 +4554,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       ),
       payoutUnit,
     );
-    expect(fundedPayout.assets.lovelace).toEqual(12_000_000n);
+    expect(fundedPayout.assets.lovelace).toEqual(10_000_000n);
 
     const conclude = await runNodeCommandProgram(
       concludePayoutProgram({ eventId: withdrawalEventIdHex }),
@@ -4242,7 +4576,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     ).toBe(false);
     expect(
       (await fixture.operatorLucid.utxosAt(l2Address)).some(
-        (utxo) => utxo.assets.lovelace === 12_000_000n,
+        (utxo) => utxo.assets.lovelace === 10_000_000n,
       ),
     ).toBe(true);
   }, 420_000);

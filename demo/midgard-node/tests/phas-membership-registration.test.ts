@@ -10,6 +10,8 @@ import { describe, expect, it, vi } from "vitest";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   type CapturedPhasMembershipRegistrationTransaction,
+  decodePhasMembershipRegistrationTransactionBodyEvidenceV1,
+  decodePhasMembershipRewardRegistrationResultV1,
   ensurePhasMembershipRewardAccountRegisteredProgram,
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
@@ -68,6 +70,59 @@ const capturedTransaction = (
 });
 
 describe("PHAS membership reward registration", () => {
+  it("decodes only exact canonical PHAS V1 evidence and results", () => {
+    const capture = capturedTransaction("aa".repeat(32));
+    const result = {
+      status: "registration_submitted",
+      rewardAddress: phasIdentity.rewardAddress,
+      scriptHash: phasIdentity.scriptHash,
+      txHash: capture.evidence.txHash,
+      transactionBody: capture.evidence,
+    } as const;
+    expect(
+      decodePhasMembershipRegistrationTransactionBodyEvidenceV1(
+        capture.evidence,
+      ),
+    ).toEqual(capture.evidence);
+    expect(decodePhasMembershipRewardRegistrationResultV1(result)).toEqual(
+      result,
+    );
+
+    for (const mutation of [
+      { ...capture.evidence, schemaVersion: "legacy-phas-registration" },
+      { ...capture.evidence, unknown: true },
+      {
+        ...capture.evidence,
+        txHash: capture.evidence.txHash.toUpperCase(),
+      },
+      {
+        ...capture.evidence,
+        certificate: { ...capture.evidence.certificate, unknown: true },
+      },
+      {
+        schemaVersion: "midgard-phase4-t1-probe-v1",
+        txHash: capture.evidence.txHash,
+        cborSha256: capture.evidence.cborSha256,
+        cborSizeBytes: capture.evidence.cborSizeBytes,
+        certificate: capture.evidence.certificate,
+      },
+    ]) {
+      expect(() =>
+        decodePhasMembershipRegistrationTransactionBodyEvidenceV1(mutation),
+      ).toThrow();
+    }
+    const { cborSha256: _cborSha256, ...missing } = capture.evidence;
+    expect(() =>
+      decodePhasMembershipRegistrationTransactionBodyEvidenceV1(missing),
+    ).toThrow("fields");
+    expect(() =>
+      decodePhasMembershipRewardRegistrationResultV1({
+        ...result,
+        txHash: "bb".repeat(32),
+      }),
+    ).toThrow("not bound");
+  });
+
   it("uses typed Ogmios knownCredential data for the idempotent race", () => {
     expect(
       isPhasMembershipAlreadyRegisteredError(

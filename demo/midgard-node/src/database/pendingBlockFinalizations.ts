@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 
 import { decodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  parseDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
@@ -30,6 +36,10 @@ const validationTracesTableName =
 export enum Columns {
   HEADER_HASH = "header_hash",
   HEADER_CBOR = "header_cbor",
+  FORMAT_VERSION = "format_version",
+  REPLAY_KIND = "replay_kind",
+  DEPLOYMENT_MARKER_SCHEMA_VERSION = "deployment_marker_schema_version",
+  DEPLOYMENT_MANIFEST_ID = "deployment_manifest_id",
   CONSENSUS_PROFILE_ID = "consensus_profile_id",
   SUBMITTED_TX_HASH = "submitted_tx_hash",
   STATE_QUEUE_LEASE_TOKEN = "state_queue_lease_token",
@@ -116,7 +126,11 @@ const ACTIVE_STATUSES: readonly Status[] = [
 export type Row = {
   [Columns.HEADER_HASH]: Buffer;
   [Columns.HEADER_CBOR]: Buffer;
-  [Columns.CONSENSUS_PROFILE_ID]: "midgard-consensus-v1";
+  [Columns.FORMAT_VERSION]: typeof PENDING_BLOCK_FINALIZATION_V1_VERSION;
+  [Columns.REPLAY_KIND]: PendingBlockFinalizationReplayKindV1;
+  [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]: typeof MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION;
+  [Columns.DEPLOYMENT_MANIFEST_ID]: string;
+  [Columns.CONSENSUS_PROFILE_ID]: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
   [Columns.SUBMITTED_TX_HASH]: Buffer | null;
   [Columns.STATE_QUEUE_LEASE_TOKEN]: string;
   [Columns.BASE_SNAPSHOT_ID]: string;
@@ -308,8 +322,19 @@ export type NativeMpfReplayInput = {
   readonly eventCount: number;
 };
 
+export const PENDING_BLOCK_FINALIZATION_V1_VERSION = 1 as const;
+
+export const PendingBlockFinalizationReplayKindV1 = {
+  LedgerDelta: "ledger_delta_v1",
+  LedgerDeltaWithNativeMpf: "ledger_delta_native_mpf_v1",
+} as const;
+
+export type PendingBlockFinalizationReplayKindV1 =
+  (typeof PendingBlockFinalizationReplayKindV1)[keyof typeof PendingBlockFinalizationReplayKindV1];
+
 export type PendingBlockFinalizationMetadata = {
-  readonly consensusProfileId: "midgard-consensus-v1";
+  readonly deploymentMarker: DeploymentMarkerV1;
+  readonly consensusProfileId: typeof MIDGARD_CONSENSUS_PROFILE_V1_ID;
   readonly stateQueueLeaseToken: string;
   readonly baseSnapshotId: string;
   readonly baseTailOutRef: string;
@@ -344,6 +369,21 @@ export type PendingBlockFinalizationMetadata = {
   };
 };
 
+export type PendingBlockFinalizationV1 = {
+  readonly version: typeof PENDING_BLOCK_FINALIZATION_V1_VERSION;
+  readonly metadata: PendingBlockFinalizationMetadata;
+  readonly replay:
+    | {
+        readonly kind: typeof PendingBlockFinalizationReplayKindV1.LedgerDelta;
+        readonly ledgerDelta: LedgerDeltaInput;
+      }
+    | {
+        readonly kind: typeof PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf;
+        readonly ledgerDelta: LedgerDeltaInput;
+        readonly nativeMpfReplay: NativeMpfReplayInput;
+      };
+};
+
 export type PrepareInput = {
   readonly headerHash: Buffer;
   readonly headerCbor: Buffer;
@@ -368,6 +408,131 @@ export type PrepareInput = {
   readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
+};
+
+const exactRecord = (
+  value: unknown,
+  fields: readonly string[],
+  label: string,
+): globalThis.Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be a plain record`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error(`${label} must be a plain record`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== Object.keys(value).length ||
+    keys.length !== fields.length ||
+    keys.some((key) => typeof key !== "string" || !fields.includes(key))
+  ) {
+    throw new Error(`${label} must contain exactly ${fields.join(", ")}`);
+  }
+  return value as globalThis.Record<string, unknown>;
+};
+
+const exactBytes = (value: unknown, label: string, length?: number): Buffer => {
+  if (
+    !(value instanceof Uint8Array) ||
+    (length === undefined ? value.length === 0 : value.length !== length)
+  ) {
+    throw new Error(
+      length === undefined
+        ? `${label} must be non-empty bytes`
+        : `${label} must contain exactly ${length.toString()} bytes`,
+    );
+  }
+  return Buffer.from(value);
+};
+
+const exactNonEmptyString = (value: unknown, label: string): string => {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  return value;
+};
+
+const exactHex = (value: unknown, bytes: number, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    !new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value)
+  ) {
+    throw new Error(
+      `${label} must be exactly ${bytes.toString()} lowercase hex bytes`,
+    );
+  }
+  return value;
+};
+
+const exactDate = (value: unknown, label: string): Date => {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error(`${label} must be a valid Date`);
+  }
+  return new Date(value.getTime());
+};
+
+const exactNonNegativeBigInt = (value: unknown, label: string): bigint => {
+  if (typeof value !== "bigint" || value < 0n) {
+    throw new Error(`${label} must be a non-negative bigint`);
+  }
+  return value;
+};
+
+const parseLedgerDeltaV1 = (value: unknown): LedgerDeltaInput => {
+  const candidate = exactRecord(
+    value,
+    ["spent", "produced"],
+    "PendingBlockFinalizationV1 ledgerDelta",
+  );
+  if (!Array.isArray(candidate.spent)) {
+    throw new Error(
+      "PendingBlockFinalizationV1 ledgerDelta.spent must be an array",
+    );
+  }
+  if (!Array.isArray(candidate.produced)) {
+    throw new Error(
+      "PendingBlockFinalizationV1 ledgerDelta.produced must be an array",
+    );
+  }
+  const spent = candidate.spent.map((outref, index) =>
+    exactBytes(
+      outref,
+      `PendingBlockFinalizationV1 ledgerDelta.spent[${index.toString()}]`,
+    ),
+  );
+  const produced = candidate.produced.map((entry, index) => {
+    const item = exactRecord(
+      entry,
+      [UtxoColumns.OUTREF, UtxoColumns.OUTPUT],
+      `PendingBlockFinalizationV1 ledgerDelta.produced[${index.toString()}]`,
+    );
+    return {
+      [UtxoColumns.OUTREF]: exactBytes(
+        item[UtxoColumns.OUTREF],
+        `PendingBlockFinalizationV1 ledgerDelta.produced[${index.toString()}].outref`,
+      ),
+      [UtxoColumns.OUTPUT]: exactBytes(
+        item[UtxoColumns.OUTPUT],
+        `PendingBlockFinalizationV1 ledgerDelta.produced[${index.toString()}].output`,
+      ),
+    };
+  });
+  const spentIds = new Set(spent.map((outref) => outref.toString("hex")));
+  const producedIds = new Set(
+    produced.map((entry) => entry[UtxoColumns.OUTREF].toString("hex")),
+  );
+  if (
+    spentIds.size !== spent.length ||
+    producedIds.size !== produced.length ||
+    [...spentIds].some((outref) => producedIds.has(outref))
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 ledgerDelta outrefs must be unique and disjoint",
+    );
+  }
+  return { spent, produced };
 };
 
 const assertNativeMpfReplay = (replay: NativeMpfReplayInput): void => {
@@ -395,6 +560,346 @@ const assertNativeMpfReplay = (replay: NativeMpfReplayInput): void => {
   }
 };
 
+const parseNativeMpfReplayV1 = (value: unknown): NativeMpfReplayInput => {
+  const candidate = exactRecord(
+    value,
+    [
+      "schema",
+      "ownerBinarySha256",
+      "baseRoot",
+      "candidateRoot",
+      "eventLog",
+      "eventLogDigest",
+      "eventRoots",
+      "eventCount",
+    ],
+    "PendingBlockFinalizationV1 nativeMpfReplay",
+  );
+  if (candidate.schema !== 1) {
+    throw new Error(
+      "PendingBlockFinalizationV1 nativeMpfReplay.schema must equal 1",
+    );
+  }
+  if (
+    typeof candidate.eventCount !== "number" ||
+    !Number.isSafeInteger(candidate.eventCount)
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 nativeMpfReplay.eventCount must be a safe integer",
+    );
+  }
+  const replay: NativeMpfReplayInput = {
+    schema: 1,
+    ownerBinarySha256: exactBytes(
+      candidate.ownerBinarySha256,
+      "PendingBlockFinalizationV1 nativeMpfReplay.ownerBinarySha256",
+      32,
+    ),
+    baseRoot: exactBytes(
+      candidate.baseRoot,
+      "PendingBlockFinalizationV1 nativeMpfReplay.baseRoot",
+      32,
+    ),
+    candidateRoot: exactBytes(
+      candidate.candidateRoot,
+      "PendingBlockFinalizationV1 nativeMpfReplay.candidateRoot",
+      32,
+    ),
+    eventLog: exactBytes(
+      candidate.eventLog,
+      "PendingBlockFinalizationV1 nativeMpfReplay.eventLog",
+    ),
+    eventLogDigest: exactBytes(
+      candidate.eventLogDigest,
+      "PendingBlockFinalizationV1 nativeMpfReplay.eventLogDigest",
+      32,
+    ),
+    eventRoots: exactBytes(
+      candidate.eventRoots,
+      "PendingBlockFinalizationV1 nativeMpfReplay.eventRoots",
+      candidate.eventCount * 32,
+    ),
+    eventCount: candidate.eventCount,
+  };
+  assertNativeMpfReplay(replay);
+  return replay;
+};
+
+const parsePendingBlockFinalizationMetadataV1 = (
+  value: unknown,
+): PendingBlockFinalizationMetadata => {
+  const candidate = exactRecord(
+    value,
+    [
+      "deploymentMarker",
+      "consensusProfileId",
+      "stateQueueLeaseToken",
+      "baseSnapshotId",
+      "baseTailOutRef",
+      "baseTailHeaderHash",
+      "baseTailDatumCbor",
+      "baseRoots",
+      "blockStartTime",
+      "expectedRoots",
+      "expectedCounts",
+    ],
+    "PendingBlockFinalizationV1 metadata",
+  );
+  const baseRoots = exactRecord(
+    candidate.baseRoots,
+    [
+      "utxosRoot",
+      "forcedTransactionsRoot",
+      "transactionsRoot",
+      "depositsRoot",
+      "withdrawalsRoot",
+    ],
+    "PendingBlockFinalizationV1 metadata.baseRoots",
+  );
+  const expectedRoots = exactRecord(
+    candidate.expectedRoots,
+    [
+      "utxosRoot",
+      "forcedTransactionsRoot",
+      "transactionsRoot",
+      "depositsRoot",
+      "withdrawalsRoot",
+      "transitionTraceRoot",
+      "eventToStepRoot",
+      "validationTracesRoot",
+    ],
+    "PendingBlockFinalizationV1 metadata.expectedRoots",
+  );
+  const expectedCounts = exactRecord(
+    candidate.expectedCounts,
+    [
+      "withdrawalCount",
+      "forcedTransactionCount",
+      "l2TransactionCount",
+      "depositCount",
+      "totalEventCount",
+      "transitionStepCount",
+      "validationTraceCount",
+    ],
+    "PendingBlockFinalizationV1 metadata.expectedCounts",
+  );
+  const deploymentMarker = parseDeploymentMarkerV1(candidate.deploymentMarker);
+  if (candidate.consensusProfileId !== MIDGARD_CONSENSUS_PROFILE_V1_ID) {
+    throw new Error(
+      `PendingBlockFinalizationV1 metadata.consensusProfileId must equal ${MIDGARD_CONSENSUS_PROFILE_V1_ID}`,
+    );
+  }
+  const counts = {
+    withdrawalCount: exactNonNegativeBigInt(
+      expectedCounts.withdrawalCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.withdrawalCount",
+    ),
+    forcedTransactionCount: exactNonNegativeBigInt(
+      expectedCounts.forcedTransactionCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.forcedTransactionCount",
+    ),
+    l2TransactionCount: exactNonNegativeBigInt(
+      expectedCounts.l2TransactionCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.l2TransactionCount",
+    ),
+    depositCount: exactNonNegativeBigInt(
+      expectedCounts.depositCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.depositCount",
+    ),
+    totalEventCount: exactNonNegativeBigInt(
+      expectedCounts.totalEventCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.totalEventCount",
+    ),
+    transitionStepCount: exactNonNegativeBigInt(
+      expectedCounts.transitionStepCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.transitionStepCount",
+    ),
+    validationTraceCount: exactNonNegativeBigInt(
+      expectedCounts.validationTraceCount,
+      "PendingBlockFinalizationV1 metadata.expectedCounts.validationTraceCount",
+    ),
+  };
+  if (
+    counts.totalEventCount !==
+      counts.withdrawalCount +
+        counts.forcedTransactionCount +
+        counts.l2TransactionCount +
+        counts.depositCount ||
+    counts.transitionStepCount !== counts.totalEventCount ||
+    counts.validationTraceCount !==
+      counts.forcedTransactionCount + counts.l2TransactionCount
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 metadata expected counts are inconsistent",
+    );
+  }
+  return {
+    deploymentMarker,
+    consensusProfileId: MIDGARD_CONSENSUS_PROFILE_V1_ID,
+    stateQueueLeaseToken: exactNonEmptyString(
+      candidate.stateQueueLeaseToken,
+      "PendingBlockFinalizationV1 metadata.stateQueueLeaseToken",
+    ),
+    baseSnapshotId: exactNonEmptyString(
+      candidate.baseSnapshotId,
+      "PendingBlockFinalizationV1 metadata.baseSnapshotId",
+    ),
+    baseTailOutRef: exactNonEmptyString(
+      candidate.baseTailOutRef,
+      "PendingBlockFinalizationV1 metadata.baseTailOutRef",
+    ),
+    baseTailHeaderHash: exactBytes(
+      candidate.baseTailHeaderHash,
+      "PendingBlockFinalizationV1 metadata.baseTailHeaderHash",
+      28,
+    ),
+    baseTailDatumCbor: exactNonEmptyString(
+      candidate.baseTailDatumCbor,
+      "PendingBlockFinalizationV1 metadata.baseTailDatumCbor",
+    ),
+    baseRoots: {
+      utxosRoot: exactHex(
+        baseRoots.utxosRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.baseRoots.utxosRoot",
+      ),
+      forcedTransactionsRoot: exactHex(
+        baseRoots.forcedTransactionsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.baseRoots.forcedTransactionsRoot",
+      ),
+      transactionsRoot: exactHex(
+        baseRoots.transactionsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.baseRoots.transactionsRoot",
+      ),
+      depositsRoot: exactHex(
+        baseRoots.depositsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.baseRoots.depositsRoot",
+      ),
+      withdrawalsRoot: exactHex(
+        baseRoots.withdrawalsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.baseRoots.withdrawalsRoot",
+      ),
+    },
+    blockStartTime: exactDate(
+      candidate.blockStartTime,
+      "PendingBlockFinalizationV1 metadata.blockStartTime",
+    ),
+    expectedRoots: {
+      utxosRoot: exactHex(
+        expectedRoots.utxosRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.utxosRoot",
+      ),
+      forcedTransactionsRoot: exactHex(
+        expectedRoots.forcedTransactionsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.forcedTransactionsRoot",
+      ),
+      transactionsRoot: exactHex(
+        expectedRoots.transactionsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.transactionsRoot",
+      ),
+      depositsRoot: exactHex(
+        expectedRoots.depositsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.depositsRoot",
+      ),
+      withdrawalsRoot: exactHex(
+        expectedRoots.withdrawalsRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.withdrawalsRoot",
+      ),
+      transitionTraceRoot: exactHex(
+        expectedRoots.transitionTraceRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.transitionTraceRoot",
+      ),
+      eventToStepRoot: exactHex(
+        expectedRoots.eventToStepRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.eventToStepRoot",
+      ),
+      validationTracesRoot: exactHex(
+        expectedRoots.validationTracesRoot,
+        32,
+        "PendingBlockFinalizationV1 metadata.expectedRoots.validationTracesRoot",
+      ),
+    },
+    expectedCounts: counts,
+  };
+};
+
+export const parsePendingBlockFinalizationV1 = (
+  value: unknown,
+): PendingBlockFinalizationV1 => {
+  const candidate = exactRecord(
+    value,
+    ["version", "metadata", "replay"],
+    "PendingBlockFinalizationV1",
+  );
+  if (candidate.version !== PENDING_BLOCK_FINALIZATION_V1_VERSION) {
+    throw new Error(
+      `PendingBlockFinalizationV1 version must equal ${PENDING_BLOCK_FINALIZATION_V1_VERSION.toString()}`,
+    );
+  }
+  const metadata = parsePendingBlockFinalizationMetadataV1(candidate.metadata);
+  const replayCandidate = exactRecord(
+    candidate.replay,
+    (candidate.replay as { readonly kind?: unknown })?.kind ===
+      PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+      ? ["kind", "ledgerDelta", "nativeMpfReplay"]
+      : ["kind", "ledgerDelta"],
+    "PendingBlockFinalizationV1 replay",
+  );
+  const ledgerDelta = parseLedgerDeltaV1(replayCandidate.ledgerDelta);
+  if (
+    replayCandidate.kind === PendingBlockFinalizationReplayKindV1.LedgerDelta
+  ) {
+    return {
+      version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+      metadata,
+      replay: {
+        kind: PendingBlockFinalizationReplayKindV1.LedgerDelta,
+        ledgerDelta,
+      },
+    };
+  }
+  if (
+    replayCandidate.kind !==
+    PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 replay kind must be an exact V1 discriminator",
+    );
+  }
+  const nativeMpfReplay = parseNativeMpfReplayV1(
+    replayCandidate.nativeMpfReplay,
+  );
+  if (
+    nativeMpfReplay.baseRoot.toString("hex") !== metadata.baseRoots.utxosRoot ||
+    nativeMpfReplay.candidateRoot.toString("hex") !==
+      metadata.expectedRoots.utxosRoot
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 native MPF replay roots do not match metadata",
+    );
+  }
+  return {
+    version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+    metadata,
+    replay: {
+      kind: PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf,
+      ledgerDelta,
+      nativeMpfReplay,
+    },
+  };
+};
+
 const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
   const values = [
     row[Columns.MPF_OWNER_SCHEMA],
@@ -406,9 +911,29 @@ const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
     row[Columns.MPF_REPLAY_EVENT_ROOTS],
     row[Columns.MPF_REPLAY_EVENT_COUNT],
   ];
-  if (values.every((value) => value == null)) return undefined;
+  if (
+    row[Columns.REPLAY_KIND] ===
+    PendingBlockFinalizationReplayKindV1.LedgerDelta
+  ) {
+    if (values.some((value) => value != null)) {
+      throw new Error(
+        "PendingBlockFinalizationV1 delta-only replay contains native MPF fields",
+      );
+    }
+    return undefined;
+  }
+  if (
+    row[Columns.REPLAY_KIND] !==
+    PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+  ) {
+    throw new Error(
+      "PendingBlockFinalizationV1 persisted replay kind is unsupported",
+    );
+  }
   if (values.some((value) => value == null)) {
-    throw new Error("Architecture G replay journal fields are partially null");
+    throw new Error(
+      "PendingBlockFinalizationV1 native MPF replay fields are partially null",
+    );
   }
   const replay: NativeMpfReplayInput = {
     schema: row[Columns.MPF_OWNER_SCHEMA] as 1,
@@ -420,15 +945,31 @@ const decodeNativeMpfReplay = (row: Row): NativeMpfReplayInput | undefined => {
     eventRoots: Buffer.from(row[Columns.MPF_REPLAY_EVENT_ROOTS]!),
     eventCount: row[Columns.MPF_REPLAY_EVENT_COUNT]!,
   };
-  assertNativeMpfReplay(replay);
-  return replay;
+  return parseNativeMpfReplayV1(replay);
 };
 
 const decodeHexArray = (value: unknown, label: string): readonly Buffer[] => {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`${label} must be an array of hex strings`);
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array of exact lowercase hex strings`);
   }
-  return value.map((item) => Buffer.from(item as string, "hex"));
+  return value.map((item, index) =>
+    Buffer.from(
+      exactNonEmptyCanonicalHex(item, `${label}[${index.toString()}]`),
+      "hex",
+    ),
+  );
+};
+
+const exactNonEmptyCanonicalHex = (value: unknown, label: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length % 2 !== 0 ||
+    !/^[0-9a-f]+$/u.test(value)
+  ) {
+    throw new Error(`${label} must be non-empty even-length lowercase hex`);
+  }
+  return value;
 };
 
 const decodeLedgerDelta = (row: Row): LedgerDeltaInput => {
@@ -439,26 +980,75 @@ const decodeLedgerDelta = (row: Row): LedgerDeltaInput => {
   if (!Array.isArray(produced)) {
     throw new Error("ledger_delta_produced must be an array");
   }
-  return {
+  return parseLedgerDeltaV1({
     spent: decodeHexArray(spent, "ledger_delta_spent"),
     produced: produced.map((entry) => {
-      if (
-        typeof entry !== "object" ||
-        entry === null ||
-        !("outref" in entry) ||
-        !("output" in entry) ||
-        typeof entry.outref !== "string" ||
-        typeof entry.output !== "string"
-      ) {
-        throw new Error("Invalid ledger_delta_produced entry");
-      }
+      const candidate = exactRecord(
+        entry,
+        ["outref", "output"],
+        "ledger_delta_produced entry",
+      );
       return {
-        [UtxoColumns.OUTREF]: Buffer.from(entry.outref, "hex"),
-        [UtxoColumns.OUTPUT]: Buffer.from(entry.output, "hex"),
+        [UtxoColumns.OUTREF]: Buffer.from(
+          exactNonEmptyCanonicalHex(
+            candidate.outref,
+            "ledger_delta_produced.outref",
+          ),
+          "hex",
+        ),
+        [UtxoColumns.OUTPUT]: Buffer.from(
+          exactNonEmptyCanonicalHex(
+            candidate.output,
+            "ledger_delta_produced.output",
+          ),
+          "hex",
+        ),
       };
     }),
-  };
+  });
 };
+
+const pendingBlockFinalizationMetadataFromRow = (
+  row: Row,
+): PendingBlockFinalizationMetadata => ({
+  deploymentMarker: {
+    schemaVersion: row[Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION],
+    manifestId: row[Columns.DEPLOYMENT_MANIFEST_ID],
+  },
+  consensusProfileId: row[Columns.CONSENSUS_PROFILE_ID],
+  stateQueueLeaseToken: row[Columns.STATE_QUEUE_LEASE_TOKEN],
+  baseSnapshotId: row[Columns.BASE_SNAPSHOT_ID],
+  baseTailOutRef: row[Columns.BASE_TAIL_OUT_REF],
+  baseTailHeaderHash: row[Columns.BASE_TAIL_HEADER_HASH],
+  baseTailDatumCbor: row[Columns.BASE_TAIL_DATUM_CBOR],
+  baseRoots: {
+    utxosRoot: row[Columns.BASE_UTXOS_ROOT],
+    forcedTransactionsRoot: row[Columns.BASE_FORCED_TRANSACTIONS_ROOT],
+    transactionsRoot: row[Columns.BASE_TRANSACTIONS_ROOT],
+    depositsRoot: row[Columns.BASE_DEPOSITS_ROOT],
+    withdrawalsRoot: row[Columns.BASE_WITHDRAWALS_ROOT],
+  },
+  blockStartTime: row[Columns.BLOCK_START_TIME],
+  expectedRoots: {
+    utxosRoot: row[Columns.EXPECTED_UTXOS_ROOT],
+    forcedTransactionsRoot: row[Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT],
+    transactionsRoot: row[Columns.EXPECTED_TRANSACTIONS_ROOT],
+    depositsRoot: row[Columns.EXPECTED_DEPOSITS_ROOT],
+    withdrawalsRoot: row[Columns.EXPECTED_WITHDRAWALS_ROOT],
+    transitionTraceRoot: row[Columns.EXPECTED_TRANSITION_TRACE_ROOT],
+    eventToStepRoot: row[Columns.EXPECTED_EVENT_TO_STEP_ROOT],
+    validationTracesRoot: row[Columns.EXPECTED_VALIDATION_TRACES_ROOT],
+  },
+  expectedCounts: {
+    withdrawalCount: row[Columns.EXPECTED_WITHDRAWAL_COUNT],
+    forcedTransactionCount: row[Columns.EXPECTED_FORCED_TRANSACTION_COUNT],
+    l2TransactionCount: row[Columns.EXPECTED_L2_TRANSACTION_COUNT],
+    depositCount: row[Columns.EXPECTED_DEPOSIT_COUNT],
+    totalEventCount: row[Columns.EXPECTED_TOTAL_EVENT_COUNT],
+    transitionStepCount: row[Columns.EXPECTED_TRANSITION_STEP_COUNT],
+    validationTraceCount: row[Columns.EXPECTED_VALIDATION_TRACE_COUNT],
+  },
+});
 
 const sha256 = (payload: Buffer): Buffer =>
   createHash("sha256").update(payload).digest();
@@ -554,18 +1144,17 @@ const forcedTransactionMemberEntry = (
     const programMaterialSidecarSha256 =
       entry[ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256];
     if (
+      sourceValueCbor.length === 0 ||
       canonicalTransactionCbor.length === 0 ||
-        programMaterialSidecarCbor.length === 0 ||
-        programMaterialSidecarSha256.length !== 32 ||
-        !sha256(programMaterialSidecarCbor).equals(
-          programMaterialSidecarSha256,
-        )
+      programMaterialSidecarCbor.length === 0 ||
+      programMaterialSidecarSha256.length !== 32 ||
+      !sha256(programMaterialSidecarCbor).equals(programMaterialSidecarSha256)
     ) {
       return yield* Effect.fail(
         new DatabaseError({
           table: ForcedTransactionsDB.tableName,
           message:
-            "Refusing to journal a V1 forced transaction without its canonical transaction preimage and authenticated CEK material sidecar",
+            "Refusing to journal a V1 forced transaction without its exact source value, canonical transaction preimage, and authenticated CEK material sidecar",
           cause: `tx_order_id=${entry[
             ForcedTransactionsDB.Columns.TX_ORDER_ID
           ].toString("hex")}`,
@@ -664,12 +1253,113 @@ const retrieveMembers = (
       ORDER BY ${sql(MemberColumns.ORDINAL)} ASC`;
   }).pipe(Effect.orDie);
 
+export const validateForcedTransactionJournalMembersV1 = (
+  members: readonly MemberRecord[],
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError> =>
+  Effect.try({
+    try: () => {
+      for (const member of members) {
+        const memberId = member[MemberColumns.MEMBER_ID];
+        const payload = member[MemberColumns.PAYLOAD_CBOR];
+        const payloadSha256 = member[MemberColumns.PAYLOAD_SHA256];
+        if (
+          member[MemberColumns.SOURCE_TABLE] !==
+            ForcedTransactionsDB.tableName ||
+          !member[MemberColumns.SOURCE_ID].equals(memberId) ||
+          payloadSha256.length !== 32 ||
+          !sha256(payload).equals(payloadSha256)
+        ) {
+          throw new Error(
+            `forced journal member identity or payload digest mismatch: member_id=${memberId.toString("hex")}`,
+          );
+        }
+        ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(payload);
+      }
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: tableName,
+        message:
+          "Refusing to load a pending-finalization journal containing a non-canonical ForcedTransactionJournalMemberV1",
+        cause: `header_hash=${headerHash.toString("hex")}; ${String(cause)}`,
+      }),
+  });
+
+const decodePendingBlockFinalizationRowV1 = (
+  row: RawRow,
+): Effect.Effect<
+  {
+    readonly normalizedRow: Row;
+    readonly ledgerDelta: LedgerDeltaInput;
+    readonly nativeMpfReplay?: NativeMpfReplayInput;
+  },
+  DatabaseError
+> =>
+  Effect.try({
+    try: () => {
+      const persistedFormatVersion: unknown = row[Columns.FORMAT_VERSION];
+      if (persistedFormatVersion !== PENDING_BLOCK_FINALIZATION_V1_VERSION) {
+        throw new Error(
+          `persisted format_version must equal ${PENDING_BLOCK_FINALIZATION_V1_VERSION.toString()}`,
+        );
+      }
+      const normalizedRow = normalizeRow(row);
+      const ledgerDelta = decodeLedgerDelta(normalizedRow);
+      const nativeMpfReplay = decodeNativeMpfReplay(normalizedRow);
+      const pending = parsePendingBlockFinalizationV1({
+        version: normalizedRow[Columns.FORMAT_VERSION],
+        metadata: pendingBlockFinalizationMetadataFromRow(normalizedRow),
+        replay:
+          nativeMpfReplay === undefined
+            ? {
+                kind: normalizedRow[Columns.REPLAY_KIND],
+                ledgerDelta,
+              }
+            : {
+                kind: normalizedRow[Columns.REPLAY_KIND],
+                ledgerDelta,
+                nativeMpfReplay,
+              },
+      });
+      if (
+        normalizedRow[Columns.HEADER_HASH].length !== 28 ||
+        normalizedRow[Columns.HEADER_CBOR].length === 0 ||
+        (normalizedRow[Columns.SUBMITTED_TX_HASH] !== null &&
+          normalizedRow[Columns.SUBMITTED_TX_HASH].length !== 32) ||
+        normalizedRow[Columns.BLOCK_END_TIME].getTime() <=
+          pending.metadata.blockStartTime.getTime() ||
+        !Object.values(Status).includes(normalizedRow[Columns.STATUS])
+      ) {
+        throw new Error(
+          "persisted header, status, transaction hash, or block window is invalid",
+        );
+      }
+      return {
+        normalizedRow,
+        ledgerDelta: pending.replay.ledgerDelta,
+        nativeMpfReplay:
+          pending.replay.kind ===
+          PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+            ? pending.replay.nativeMpfReplay
+            : undefined,
+      };
+    },
+    catch: (cause) =>
+      new DatabaseError({
+        table: tableName,
+        message: "Refusing to load a non-canonical PendingBlockFinalizationV1",
+        cause: String(cause),
+      }),
+  });
+
 const retrieveRecord = (
   sql: SqlClient.SqlClient,
   row: RawRow,
-): Effect.Effect<Record, never, never> =>
+): Effect.Effect<Record, DatabaseError, never> =>
   Effect.gen(function* () {
-    const normalizedRow = normalizeRow(row);
+    const decoded = yield* decodePendingBlockFinalizationRowV1(row);
+    const { normalizedRow, ledgerDelta, nativeMpfReplay } = decoded;
     const [
       depositEventIds,
       forcedTransactionEventIds,
@@ -714,10 +1404,14 @@ const retrieveRecord = (
       ],
       { concurrency: 1 },
     );
+    yield* validateForcedTransactionJournalMembersV1(
+      forcedTransactionEventIds,
+      normalizedRow[Columns.HEADER_HASH],
+    );
     return {
       ...normalizedRow,
-      ledgerDelta: decodeLedgerDelta(normalizedRow),
-      nativeMpfReplay: decodeNativeMpfReplay(normalizedRow),
+      ledgerDelta,
+      nativeMpfReplay,
       utxoPayloadAggregate:
         normalizedRow[Columns.UTXO_PAYLOAD_ENTRY_COUNT] == null ||
         normalizedRow[Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES] == null
@@ -747,7 +1441,7 @@ const retrieveRecord = (
       eventToStepMembers,
       validationTraceMembers,
     };
-  }).pipe(Effect.orDie);
+  });
 
 export const retrieveActive = (): Effect.Effect<
   Option.Option<Record>,
@@ -814,7 +1508,14 @@ export const retrieveActiveByStateQueueLeaseToken = (
       WHERE ${sql(Columns.STATE_QUEUE_LEASE_TOKEN)} = ${stateQueueLeaseToken}
         AND ${sql(Columns.STATUS)} IN ${sql.in(ACTIVE_STATUSES)}
       ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
-    return rows.map(normalizeRow);
+    return yield* Effect.forEach(
+      rows,
+      (row) =>
+        decodePendingBlockFinalizationRowV1(row).pipe(
+          Effect.map(({ normalizedRow }) => normalizedRow),
+        ),
+      { concurrency: 1 },
+    );
   }).pipe(
     Effect.withLogSpan(`retrieveActiveByStateQueueLeaseToken ${tableName}`),
     sqlErrorToDatabaseError(
@@ -831,7 +1532,14 @@ export const retrieveByStateQueueLeaseToken = (
     const rows = yield* sql<RawRow>`SELECT * FROM ${sql(tableName)}
       WHERE ${sql(Columns.STATE_QUEUE_LEASE_TOKEN)} = ${stateQueueLeaseToken}
       ORDER BY ${sql(Columns.CREATED_AT)} ASC`;
-    return rows.map(normalizeRow);
+    return yield* Effect.forEach(
+      rows,
+      (row) =>
+        decodePendingBlockFinalizationRowV1(row).pipe(
+          Effect.map(({ normalizedRow }) => normalizedRow),
+        ),
+      { concurrency: 1 },
+    );
   }).pipe(
     Effect.withLogSpan(`retrieveByStateQueueLeaseToken ${tableName}`),
     sqlErrorToDatabaseError(
@@ -899,6 +1607,58 @@ export const preparePendingSubmission = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const pendingV1 = yield* Effect.try({
+      try: () => {
+        const pending = parsePendingBlockFinalizationV1({
+          version: PENDING_BLOCK_FINALIZATION_V1_VERSION,
+          metadata: input.metadata,
+          replay:
+            input.nativeMpfReplay === undefined
+              ? {
+                  kind: PendingBlockFinalizationReplayKindV1.LedgerDelta,
+                  ledgerDelta: input.ledgerDelta,
+                }
+              : {
+                  kind: PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf,
+                  ledgerDelta: input.ledgerDelta,
+                  nativeMpfReplay: input.nativeMpfReplay,
+                },
+        });
+        exactBytes(
+          input.headerHash,
+          "PendingBlockFinalizationV1 headerHash",
+          28,
+        );
+        exactBytes(input.headerCbor, "PendingBlockFinalizationV1 headerCbor");
+        const blockEndTime = exactDate(
+          input.blockEndTime,
+          "PendingBlockFinalizationV1 blockEndTime",
+        );
+        if (
+          blockEndTime.getTime() <= pending.metadata.blockStartTime.getTime()
+        ) {
+          throw new Error(
+            "PendingBlockFinalizationV1 block window must be increasing",
+          );
+        }
+        return pending;
+      },
+      catch: (cause) =>
+        new DatabaseError({
+          table: tableName,
+          message:
+            "Refusing to prepare a non-canonical PendingBlockFinalizationV1",
+          cause,
+        }),
+    });
+    const metadata = pendingV1.metadata;
+    const ledgerDelta = pendingV1.replay.ledgerDelta;
+    const nativeMpfReplay =
+      pendingV1.replay.kind ===
+      PendingBlockFinalizationReplayKindV1.LedgerDeltaWithNativeMpf
+        ? pendingV1.replay.nativeMpfReplay
+        : undefined;
+    const deploymentMarker = metadata.deploymentMarker;
     yield* assertSameIdSet(
       tableName,
       "deposit",
@@ -925,18 +1685,6 @@ export const preparePendingSubmission = (
       input.mempoolTxIds,
       input.mempoolTxs.map((entry) => entry[TxTable.Columns.TX_ID]),
     );
-    if (input.nativeMpfReplay !== undefined) {
-      yield* Effect.try({
-        try: () => assertNativeMpfReplay(input.nativeMpfReplay!),
-        catch: (cause) =>
-          new DatabaseError({
-            table: tableName,
-            message:
-              "Refusing to prepare an invalid Architecture G replay journal",
-            cause,
-          }),
-      });
-    }
     const depositMembers = input.depositEntries.map((entry, ordinal) =>
       depositMemberEntry(input.headerHash, entry, ordinal),
     );
@@ -978,12 +1726,12 @@ export const preparePendingSubmission = (
     }
     if (
       programMaterialByTxId.size !== input.mempoolTxs.length ||
-        input.mempoolTxs.some(
-          (entry) =>
-            !programMaterialByTxId.has(
-              entry[TxTable.Columns.TX_ID].toString("hex"),
-            ),
-        )
+      input.mempoolTxs.some(
+        (entry) =>
+          !programMaterialByTxId.has(
+            entry[TxTable.Columns.TX_ID].toString("hex"),
+          ),
+      )
     ) {
       return yield* Effect.fail(
         new DatabaseError({
@@ -1068,60 +1816,59 @@ export const preparePendingSubmission = (
         yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert({
           [Columns.HEADER_HASH]: input.headerHash,
           [Columns.HEADER_CBOR]: input.headerCbor,
-          [Columns.CONSENSUS_PROFILE_ID]: input.metadata.consensusProfileId,
+          [Columns.FORMAT_VERSION]: pendingV1.version,
+          [Columns.REPLAY_KIND]: pendingV1.replay.kind,
+          [Columns.DEPLOYMENT_MARKER_SCHEMA_VERSION]:
+            deploymentMarker.schemaVersion,
+          [Columns.DEPLOYMENT_MANIFEST_ID]: deploymentMarker.manifestId,
+          [Columns.CONSENSUS_PROFILE_ID]: metadata.consensusProfileId,
           [Columns.SUBMITTED_TX_HASH]: null,
-          [Columns.STATE_QUEUE_LEASE_TOKEN]:
-            input.metadata.stateQueueLeaseToken,
-          [Columns.BASE_SNAPSHOT_ID]: input.metadata.baseSnapshotId,
-          [Columns.BASE_TAIL_OUT_REF]: input.metadata.baseTailOutRef,
-          [Columns.BASE_TAIL_HEADER_HASH]: input.metadata.baseTailHeaderHash,
-          [Columns.BASE_TAIL_DATUM_CBOR]: input.metadata.baseTailDatumCbor,
-          [Columns.BASE_UTXOS_ROOT]: input.metadata.baseRoots.utxosRoot,
+          [Columns.STATE_QUEUE_LEASE_TOKEN]: metadata.stateQueueLeaseToken,
+          [Columns.BASE_SNAPSHOT_ID]: metadata.baseSnapshotId,
+          [Columns.BASE_TAIL_OUT_REF]: metadata.baseTailOutRef,
+          [Columns.BASE_TAIL_HEADER_HASH]: metadata.baseTailHeaderHash,
+          [Columns.BASE_TAIL_DATUM_CBOR]: metadata.baseTailDatumCbor,
+          [Columns.BASE_UTXOS_ROOT]: metadata.baseRoots.utxosRoot,
           [Columns.BASE_FORCED_TRANSACTIONS_ROOT]:
-            input.metadata.baseRoots.forcedTransactionsRoot,
-          [Columns.BASE_TRANSACTIONS_ROOT]:
-            input.metadata.baseRoots.transactionsRoot,
-          [Columns.BASE_DEPOSITS_ROOT]: input.metadata.baseRoots.depositsRoot,
-          [Columns.BASE_WITHDRAWALS_ROOT]:
-            input.metadata.baseRoots.withdrawalsRoot,
-          [Columns.BLOCK_START_TIME]: input.metadata.blockStartTime,
+            metadata.baseRoots.forcedTransactionsRoot,
+          [Columns.BASE_TRANSACTIONS_ROOT]: metadata.baseRoots.transactionsRoot,
+          [Columns.BASE_DEPOSITS_ROOT]: metadata.baseRoots.depositsRoot,
+          [Columns.BASE_WITHDRAWALS_ROOT]: metadata.baseRoots.withdrawalsRoot,
+          [Columns.BLOCK_START_TIME]: metadata.blockStartTime,
           [Columns.BLOCK_END_TIME]: input.blockEndTime,
-          [Columns.EXPECTED_UTXOS_ROOT]: input.metadata.expectedRoots.utxosRoot,
+          [Columns.EXPECTED_UTXOS_ROOT]: metadata.expectedRoots.utxosRoot,
           [Columns.EXPECTED_FORCED_TRANSACTIONS_ROOT]:
-            input.metadata.expectedRoots.forcedTransactionsRoot,
+            metadata.expectedRoots.forcedTransactionsRoot,
           [Columns.EXPECTED_TRANSACTIONS_ROOT]:
-            input.metadata.expectedRoots.transactionsRoot,
-          [Columns.EXPECTED_DEPOSITS_ROOT]:
-            input.metadata.expectedRoots.depositsRoot,
+            metadata.expectedRoots.transactionsRoot,
+          [Columns.EXPECTED_DEPOSITS_ROOT]: metadata.expectedRoots.depositsRoot,
           [Columns.EXPECTED_WITHDRAWALS_ROOT]:
-            input.metadata.expectedRoots.withdrawalsRoot,
+            metadata.expectedRoots.withdrawalsRoot,
           [Columns.EXPECTED_TRANSITION_TRACE_ROOT]:
-            input.metadata.expectedRoots.transitionTraceRoot,
+            metadata.expectedRoots.transitionTraceRoot,
           [Columns.EXPECTED_EVENT_TO_STEP_ROOT]:
-            input.metadata.expectedRoots.eventToStepRoot,
+            metadata.expectedRoots.eventToStepRoot,
           [Columns.EXPECTED_VALIDATION_TRACES_ROOT]:
-            input.metadata.expectedRoots.validationTracesRoot,
+            metadata.expectedRoots.validationTracesRoot,
           [Columns.EXPECTED_WITHDRAWAL_COUNT]:
-            input.metadata.expectedCounts.withdrawalCount,
+            metadata.expectedCounts.withdrawalCount,
           [Columns.EXPECTED_FORCED_TRANSACTION_COUNT]:
-            input.metadata.expectedCounts.forcedTransactionCount,
+            metadata.expectedCounts.forcedTransactionCount,
           [Columns.EXPECTED_L2_TRANSACTION_COUNT]:
-            input.metadata.expectedCounts.l2TransactionCount,
+            metadata.expectedCounts.l2TransactionCount,
           [Columns.EXPECTED_DEPOSIT_COUNT]:
-            input.metadata.expectedCounts.depositCount,
+            metadata.expectedCounts.depositCount,
           [Columns.EXPECTED_TOTAL_EVENT_COUNT]:
-            input.metadata.expectedCounts.totalEventCount,
+            metadata.expectedCounts.totalEventCount,
           [Columns.EXPECTED_TRANSITION_STEP_COUNT]:
-            input.metadata.expectedCounts.transitionStepCount,
+            metadata.expectedCounts.transitionStepCount,
           [Columns.EXPECTED_VALIDATION_TRACE_COUNT]:
-            input.metadata.expectedCounts.validationTraceCount,
+            metadata.expectedCounts.validationTraceCount,
           [Columns.LEDGER_DELTA_SPENT]: JSON.stringify(
-            input.ledgerDelta.spent.map((outref) =>
-              outref.toString("hex"),
-            ),
+            ledgerDelta.spent.map((outref) => outref.toString("hex")),
           ),
           [Columns.LEDGER_DELTA_PRODUCED]: JSON.stringify(
-            input.ledgerDelta.produced.map((entry) => ({
+            ledgerDelta.produced.map((entry) => ({
               outref: entry[UtxoColumns.OUTREF].toString("hex"),
               output: entry[UtxoColumns.OUTPUT].toString("hex"),
             })),
@@ -1130,21 +1877,17 @@ export const preparePendingSubmission = (
             input.utxoPayloadAggregate?.entryCount ?? null,
           [Columns.UTXO_PAYLOAD_ENCODED_TUPLE_BYTES]:
             input.utxoPayloadAggregate?.encodedTupleBytes ?? null,
-          [Columns.MPF_OWNER_SCHEMA]: input.nativeMpfReplay?.schema ?? null,
+          [Columns.MPF_OWNER_SCHEMA]: nativeMpfReplay?.schema ?? null,
           [Columns.MPF_OWNER_BINARY_SHA256]:
-            input.nativeMpfReplay?.ownerBinarySha256 ?? null,
-          [Columns.MPF_REPLAY_BASE_ROOT]:
-            input.nativeMpfReplay?.baseRoot ?? null,
+            nativeMpfReplay?.ownerBinarySha256 ?? null,
+          [Columns.MPF_REPLAY_BASE_ROOT]: nativeMpfReplay?.baseRoot ?? null,
           [Columns.MPF_REPLAY_CANDIDATE_ROOT]:
-            input.nativeMpfReplay?.candidateRoot ?? null,
-          [Columns.MPF_REPLAY_EVENT_LOG]:
-            input.nativeMpfReplay?.eventLog ?? null,
+            nativeMpfReplay?.candidateRoot ?? null,
+          [Columns.MPF_REPLAY_EVENT_LOG]: nativeMpfReplay?.eventLog ?? null,
           [Columns.MPF_REPLAY_EVENT_LOG_DIGEST]:
-            input.nativeMpfReplay?.eventLogDigest ?? null,
-          [Columns.MPF_REPLAY_EVENT_ROOTS]:
-            input.nativeMpfReplay?.eventRoots ?? null,
-          [Columns.MPF_REPLAY_EVENT_COUNT]:
-            input.nativeMpfReplay?.eventCount ?? null,
+            nativeMpfReplay?.eventLogDigest ?? null,
+          [Columns.MPF_REPLAY_EVENT_ROOTS]: nativeMpfReplay?.eventRoots ?? null,
+          [Columns.MPF_REPLAY_EVENT_COUNT]: nativeMpfReplay?.eventCount ?? null,
           [Columns.STATUS]: Status.PendingSubmission,
           [Columns.OBSERVED_CONFIRMED_AT_MS]: null,
         })}`;
@@ -1468,9 +2211,13 @@ export const deleteSupersededAbandonedUnsubmitted = (): Effect.Effect<
         const deletedRows = yield* Effect.forEach(
           finalizedRows,
           (finalized) =>
-            deleteSupersededAbandonedUnsubmittedJournals(
-              sql,
-              normalizeRow(finalized),
+            decodePendingBlockFinalizationRowV1(finalized).pipe(
+              Effect.flatMap(({ normalizedRow }) =>
+                deleteSupersededAbandonedUnsubmittedJournals(
+                  sql,
+                  normalizedRow,
+                ),
+              ),
             ),
           { concurrency: 1 },
         );

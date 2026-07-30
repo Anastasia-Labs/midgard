@@ -8,6 +8,11 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  assertDeploymentMarkerV1Matches,
+  type DeploymentMarkerV1,
+  makeDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -71,6 +76,7 @@ type DeploymentManifestCandidate = DeploymentManifestV1Value & {
 export type ContractDeploymentIdentityValue = {
   readonly kind: "manifest" | "derived";
   readonly manifestId?: string;
+  readonly deploymentMarker?: DeploymentMarkerV1;
   readonly path?: string;
   readonly consensusProfile: MidgardConsensusProfileV1;
 };
@@ -1828,6 +1834,49 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
           )}`,
         ),
     });
+    const runStatePath = defaultDeploymentRunStatePath();
+    const runState = yield* Effect.tryPromise({
+      try: () => loadDeploymentRunState(runStatePath),
+      catch: (cause) =>
+        new Error(
+          `Failed to inspect deployment run state at ${runStatePath}: ${formatUnknownError(
+            cause,
+          )}`,
+        ),
+    });
+    if (runState !== null) {
+      yield* Effect.try({
+        try: () => {
+          const marker = makeDeploymentMarkerV1(
+            configuredManifest.manifest.manifestId,
+          );
+          assertDeploymentMarkerV1Matches(
+            marker,
+            runState.identity.deploymentMarker,
+            "node deployment run state",
+          );
+          const expectedManifestSha256 = createHash("sha256")
+            .update(readFileSync(configuredManifest.path))
+            .digest("hex");
+          if (
+            runState.identity.manifestSha256 !== expectedManifestSha256 ||
+            runState.identity.manifestPath === undefined ||
+            path.resolve(runState.identity.manifestPath) !==
+              path.resolve(configuredManifest.path)
+          ) {
+            throw new Error(
+              `deployment run-state manifest binding does not match configured manifest path/hash`,
+            );
+          }
+        },
+        catch: (cause) =>
+          new Error(
+            `Configured deployment manifest cannot use run state ${runStatePath}: ${formatUnknownError(
+              cause,
+            )}`,
+          ),
+      });
+    }
     yield* Effect.logInfo(
       `🔐 Contract source selected: deployment-manifest path=${configuredManifest.path},manifestId=${String(
         configuredManifest.manifest.manifestId ?? "unknown",
@@ -1838,6 +1887,9 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
       identity: {
         kind: "manifest",
         manifestId: configuredManifest.manifest.manifestId,
+        deploymentMarker: makeDeploymentMarkerV1(
+          configuredManifest.manifest.manifestId,
+        ),
         path: configuredManifest.path,
         consensusProfile: configuredManifest.manifest.consensusProfile,
       },
