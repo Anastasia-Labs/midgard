@@ -86,10 +86,7 @@ const canonical = (
     requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
     mintPreimageCbor: encodeCbor(
       new Map([
-        [
-          Buffer.alloc(28, 8),
-          new Map([[Buffer.from("asset", "ascii"), 1n]]),
-        ],
+        [Buffer.alloc(28, 8), new Map([[Buffer.from("asset", "ascii"), 1n]])],
       ]),
     ),
     scriptIntegrityHash: Buffer.alloc(32, 9),
@@ -493,18 +490,16 @@ describe("canonical V1 consensus transaction bounds", () => {
         ]),
       },
     });
-    expect(validateMidgardConsensusV1Tx(malformedReference, 1)).toMatchObject(
-      {
-        code: "E_SCRIPT_PROGRAM_ENCODING",
-        featureId: "reference_scripts",
-      },
-    );
+    expect(validateMidgardConsensusV1Tx(malformedReference, 1)).toMatchObject({
+      code: "E_SCRIPT_PROGRAM_ENCODING",
+      featureId: "reference_scripts",
+    });
   });
 
   it("uses the sum of bounded fields as the effective transaction cap", () => {
-    expect(
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
-    ).toBeGreaterThan(8 * 1024);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes).toBeGreaterThan(
+      8 * 1024,
+    );
     const base = materializeMidgardNativeTxFromCanonicalV1(canonical());
     const oversizedField = {
       ...base,
@@ -563,9 +558,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         output({
           datum: {
             kind: "inline",
-            cbor: canonicalDataBytes(
-              Buffer.alloc(payloadBytes, 0x66),
-            ),
+            cbor: canonicalDataBytes(Buffer.alloc(payloadBytes, 0x66)),
           },
           script_ref: undefined,
         }),
@@ -622,14 +615,9 @@ describe("canonical V1 consensus transaction bounds", () => {
         },
       });
     expect(
-      validateMidgardConsensusV1Tx(
-        transactionWithScripts(aboveOldLimit),
-        1,
-      ),
+      validateMidgardConsensusV1Tx(transactionWithScripts(aboveOldLimit), 1),
     ).toBeNull();
-    expect(() => transactionWithScripts(malformed)).toThrow(
-      /trailing bytes/u,
-    );
+    expect(() => transactionWithScripts(malformed)).toThrow(/trailing bytes/u);
   });
 
   it("does not impose the old arbitrary 128-asset transaction cap", () => {
@@ -684,16 +672,10 @@ describe("canonical V1 consensus transaction bounds", () => {
       });
 
     expect(
-      validateMidgardConsensusV1Tx(
-        withNativeScript(nestedNativeScript(16)),
-        1,
-      ),
+      validateMidgardConsensusV1Tx(withNativeScript(nestedNativeScript(16)), 1),
     ).toBeNull();
     expect(
-      validateMidgardConsensusV1Tx(
-        withNativeScript(nestedNativeScript(17)),
-        1,
-      ),
+      validateMidgardConsensusV1Tx(withNativeScript(nestedNativeScript(17)), 1),
     ).toBeNull();
     expect(
       validateMidgardConsensusV1Tx(
@@ -707,9 +689,7 @@ describe("canonical V1 consensus transaction bounds", () => {
         1,
       ),
     ).toBeNull();
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth).toBeGreaterThan(
-      16,
-    );
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptDepth).toBe(16_384);
     expect(
       MIDGARD_CONSENSUS_LIMITS_V1.maxNativeScriptNodeCount,
     ).toBeGreaterThan(32);

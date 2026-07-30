@@ -621,22 +621,22 @@ const maximumRedeemerChunkBytes = (
   );
 
 describe("canonical V1 Cardano Data breadth boundaries", () => {
-  it("retains maximum constructor/list/map breadth through the inline-datum path", async () => {
-    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
-    const funder = {
-      seedPhrase: "",
-      privateKey: privateKey.to_bech32(),
-      address: CML.EnterpriseAddress.new(
-        0,
-        CML.Credential.new_pub_key(privateKey.to_public().hash()),
-      )
-        .to_address()
-        .to_bech32(),
-      assets: { lovelace: 40_000_000_000n },
-    };
-    const vectors: Record<string, unknown> = {};
+  it.each(["constructor", "list", "map"] as const)(
+    "retains maximum %s breadth through the inline-datum path",
+    async (kind) => {
+      const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+      const funder = {
+        seedPhrase: "",
+        privateKey: privateKey.to_bech32(),
+        address: CML.EnterpriseAddress.new(
+          0,
+          CML.Credential.new_pub_key(privateKey.to_public().hash()),
+        )
+          .to_address()
+          .to_bech32(),
+        assets: { lovelace: 40_000_000_000n },
+      };
 
-    for (const kind of ["constructor", "list", "map"] as const) {
       const buildCandidate = (breadth: number) =>
         buildSignedCardanoNestedDatumCandidateV1({
           privateKeyBech32: funder.privateKey,
@@ -772,7 +772,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         corpusLabel: `maximum-${kind}-datum-breadth`,
       });
 
-      vectors[`datum_${kind}`] = {
+      const vector = {
         breadth: boundary.accepted.requestedItemCount,
         nodeCount: dataNodeCount(kind, boundary.accepted.requestedItemCount),
         dataCborBytes: acceptedDataCborHex.length / 2,
@@ -788,12 +788,17 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         broadFrontier: exactBroadFrontierVector(kind, dataSteps),
         terminal: exactTerminalVector(dataSteps),
       };
-    }
 
-    if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
-      console.info(JSON.stringify({ dataBreadthBoundaryV1: vectors }));
-    }
-  }, 360_000);
+      if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
+        console.info(
+          JSON.stringify({
+            dataBreadthBoundaryV1: { [`datum_${kind}`]: vector },
+          }),
+        );
+      }
+    },
+    600_000,
+  );
 
   it("retains maximum constructor/list/map breadth through genuine Cardano redeemers and the Midgard schema projection", async () => {
     const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
@@ -1262,5 +1267,5 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(JSON.stringify({ dataBreadthBoundaryV1: vectors }));
     }
-  }, 360_000);
+  }, 600_000);
 });

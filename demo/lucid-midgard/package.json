@@ -20,6 +20,7 @@
     "clean": "rimraf dist",
     "prebuild": "pnpm --dir ../midgard-validation run build",
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "fixtures:native-compact": "node scripts/generate-native-compact-aiken-goldens.mjs",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

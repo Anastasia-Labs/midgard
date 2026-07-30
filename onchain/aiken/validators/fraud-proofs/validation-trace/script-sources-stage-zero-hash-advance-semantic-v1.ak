@@ -41,9 +41,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(
-        VerifyHashAdvance { input_index, output_index, transition },
-      ) -> {
+      ct.Continue(VerifyHashAdvance { input_index, output_index, transition }) -> {
         let auxiliary_data: Data = NoAuxiliaryWitness
         continue_winning(
           ScriptSources,

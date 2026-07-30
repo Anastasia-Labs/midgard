@@ -257,6 +257,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
     const transitionTrace = yield* mkFP("transition_trace");
+    const zeroInput = yield* mkFP("zero_input");
     const validationTraceDispute: SDK.ValidationTraceDisputeValidators = {
       ...transitionTrace,
       source: transitionTrace,
@@ -272,6 +273,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       nonExistentInputNoIndex,
       invalidRange,
       transitionTrace,
+      zeroInput,
       validationTraceDispute,
     };
 

@@ -60,6 +60,7 @@ import {
 import {
   evaluateWatcherFinalityV1,
   parseWatcherFinalityPolicyV1,
+  watcherFinalityConfiguredSourceV1,
   type WatcherFinalityPolicyV1,
   type WatcherFinalityResultV1,
 } from "./finality-engine.js";
@@ -95,10 +96,15 @@ export const WATCHER_USER_EVENT_INDEXER_V1_BOUNDS = Object.freeze({
   terminalEvents: 8_192,
   activeHistoryEntries: 128,
   auditHistoryEntries: 1_024,
-  evidenceGraphNodes: 250_000,
-  evidenceGraphBytes: 8 * 1_024 * 1_024,
+  evidenceGraphNodes: 2_000_000,
+  evidenceGraphBytes: 134_217_728,
   maximumDepositNonNftAssets: 10,
   requiredFinalityDepthMaximum: 2_160,
+  finalityLineageSteps: 2_160,
+  observationsPerFinalityStep: 16,
+  evidenceContainerEntries: 16_384,
+  cumulativeEvidenceBytes: 134_217_728,
+  cumulativeEvidenceNodes: 2_000_000,
 });
 
 export const WATCHER_USER_EVENT_INDEXER_REASON_CODES_V1 = [
@@ -253,6 +259,14 @@ export type WatcherUserEventRollbackAuthorityV1 = Readonly<{
 
 export type WatcherUserEventFinalityAuthorityV1 = Readonly<{
   policy: unknown;
+  lineage: readonly Readonly<{
+    observations: readonly Readonly<{
+      authenticatedProvider: unknown;
+      l1Observation: unknown;
+    }>[];
+    consistency: unknown;
+    result: unknown;
+  }>[];
   previousState: unknown;
   observations: readonly Readonly<{
     authenticatedProvider: unknown;
@@ -339,87 +353,110 @@ const evidenceWithinBounds = (
   value: unknown,
   budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 },
 ): boolean => {
-  try {
-    const pending: unknown[] = [value];
-    const seen = new WeakSet<object>();
-    while (pending.length > 0) {
-      const candidate = pending.pop();
-      budget.nodes += 1;
+  const seen = new WeakSet<object>();
+  const path = new WeakSet<object>();
+  const visit = (candidate: unknown): boolean => {
+    budget.nodes += 1;
+    if (
+      budget.nodes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphNodes
+    ) {
+      return false;
+    }
+    if (typeof candidate === "string") {
+      budget.bytes += Buffer.byteLength(candidate, "utf8");
+    } else if (
+      typeof candidate === "number" ||
+      typeof candidate === "bigint" ||
+      typeof candidate === "boolean"
+    ) {
+      budget.bytes += 8;
+    } else if (
+      typeof candidate === "symbol" ||
+      typeof candidate === "function"
+    ) {
+      return false;
+    }
+    if (
+      budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
+    ) {
+      return false;
+    }
+    if (typeof candidate !== "object" || candidate === null) {
+      return true;
+    }
+    if (path.has(candidate)) {
+      // A node reachable from itself is a true cycle; recursive parsers must
+      // never see one.
+      return false;
+    }
+    if (seen.has(candidate)) {
+      // Shared acyclic evidence is walked and budgeted once.
+      return true;
+    }
+    seen.add(candidate);
+    path.add(candidate);
+    const array = Array.isArray(candidate);
+    if (
+      Object.getPrototypeOf(candidate) !==
+      (array ? Array.prototype : Object.prototype)
+    ) {
+      return false;
+    }
+    if (
+      array &&
+      candidate.length >
+        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
+    ) {
+      return false;
+    }
+    const keys = Reflect.ownKeys(candidate);
+    if (
+      keys.some((key) => typeof key !== "string") ||
+      (array &&
+        (keys.length !== candidate.length + 1 ||
+          keys.some(
+            (key) =>
+              key !== "length" &&
+              (!NATURAL.test(key as string) ||
+                BigInt(key as string) >= BigInt(candidate.length)),
+          )))
+    ) {
+      return false;
+    }
+    if (
+      !array &&
+      keys.length > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
+    ) {
+      return false;
+    }
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
       if (
-        budget.nodes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphNodes
+        descriptor === undefined ||
+        descriptor.get !== undefined ||
+        descriptor.set !== undefined ||
+        (key !== "length" && !descriptor.enumerable)
       ) {
         return false;
       }
-      if (typeof candidate === "string") {
-        budget.bytes += Buffer.byteLength(candidate, "utf8");
-      } else if (
-        typeof candidate === "number" ||
-        typeof candidate === "bigint" ||
-        typeof candidate === "boolean"
-      ) {
-        budget.bytes += 8;
-      } else if (
-        typeof candidate === "symbol" ||
-        typeof candidate === "function"
-      ) {
-        return false;
+      if (key === "length") {
+        continue;
       }
+      budget.bytes += Buffer.byteLength(key as string, "utf8");
       if (
         budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
       ) {
         return false;
       }
-      if (typeof candidate !== "object" || candidate === null) {
-        continue;
-      }
-      if (seen.has(candidate)) {
+      if (!visit(descriptor.value)) {
         return false;
-      }
-      seen.add(candidate);
-      const array = Array.isArray(candidate);
-      if (
-        Object.getPrototypeOf(candidate) !==
-        (array ? Array.prototype : Object.prototype)
-      ) {
-        return false;
-      }
-      const keys = Reflect.ownKeys(candidate);
-      if (
-        keys.some((key) => typeof key !== "string") ||
-        (array &&
-          (keys.length !== candidate.length + 1 ||
-            keys.some(
-              (key) =>
-                key !== "length" &&
-                (!NATURAL.test(key as string) ||
-                  BigInt(key as string) >= BigInt(candidate.length)),
-            )))
-      ) {
-        return false;
-      }
-      for (const key of keys) {
-        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
-        if (
-          descriptor === undefined ||
-          descriptor.get !== undefined ||
-          descriptor.set !== undefined ||
-          (key !== "length" && !descriptor.enumerable)
-        ) {
-          return false;
-        }
-        if (key === "length") {
-          continue;
-        }
-        budget.bytes += Buffer.byteLength(key as string, "utf8");
-        if (
-          budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
-        ) {
-          return false;
-        }
-        pending.push(descriptor.value);
       }
     }
+    path.delete(candidate);
     return true;
+  };
+  try {
+    return visit(value);
   } catch {
     return false;
   }
@@ -462,6 +499,7 @@ const exactRecord = (
   }
   return value as PlainRecord;
 };
+
 
 const isHex28 = (value: unknown): value is string =>
   typeof value === "string" && HEX_28.test(value);
@@ -675,7 +713,12 @@ const kindForPolicy = (
 const dataRoundTrip = <T>(cborHex: string, schema: EventSchema): T | null => {
   try {
     const value = Data.from(cborHex, schema) as T;
-    return Data.to(value as never, schema) === cborHex ? value : null;
+    const canonicalInput =
+      CML.PlutusData.from_cbor_hex(cborHex).to_canonical_cbor_hex();
+    const canonicalRoundTrip = CML.PlutusData.from_cbor_hex(
+      Data.to(value as never, schema),
+    ).to_canonical_cbor_hex();
+    return canonicalRoundTrip === canonicalInput ? value : null;
   } catch {
     return null;
   }
@@ -980,6 +1023,9 @@ const scanCreatedEvents = (
   const failCreated = (_label: string): null => null;
   const events: WatcherIndexedUserEventV1[] = [];
   for (const transaction of block.transactions) {
+    if (!transaction.isValid) {
+      continue;
+    }
     const body = canonicalBody(transaction.body.bytesHex);
     if (body === null) {
       return failCreated("body");
@@ -1474,7 +1520,7 @@ const membershipWithdrawalCbor = (
         Data.to(proof.proof as never, Proof as never),
       ),
     );
-    return CML.PlutusData.new_list(values).to_cbor_hex();
+    return CML.PlutusData.new_list(values).to_canonical_cbor_hex();
   } catch {
     return null;
   }
@@ -2030,6 +2076,9 @@ const scanConsumedEvents = (
   const active = new Map(activeEvents.map((event) => [event.outRef, event]));
   const terminal: WatcherTerminalUserEventV1[] = [];
   for (const transaction of block.transactions) {
+    if (!transaction.isValid) {
+      continue;
+    }
     const body = canonicalBody(transaction.body.bytesHex);
     if (body === null) {
       return null;
@@ -2209,6 +2258,7 @@ const topologyMatches = (
 
 type VerifiedBlockContext = Readonly<{
   block: WatcherNormalizedL1BlockV1;
+  lineageBlocks: readonly WatcherNormalizedL1BlockV1[];
   sourceStore: WatcherDurableStoreV1;
   store: WatcherDurableStoreV1;
   finalityPolicy: WatcherFinalityPolicyV1;
@@ -2218,6 +2268,97 @@ type VerifiedBlockContext = Readonly<{
 
 const storeDigest = (store: WatcherDurableStoreV1): string =>
   watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
+
+const canonicalSuccessor = (
+  prior: WatcherUserEventObservationV1,
+  next: WatcherNormalizedL1BlockV1,
+  lineage: readonly WatcherNormalizedL1BlockV1[],
+): boolean => {
+  if (
+    prior.transitionKind !== "apply_block" ||
+    prior.pointDigest === null ||
+    prior.blockHash === null ||
+    prior.slot === null ||
+    prior.blockNo === null
+  ) {
+    return false;
+  }
+  if (next.chainPoint.pointDigest === prior.pointDigest) {
+    return (
+      next.chainPoint.blockHash === prior.blockHash &&
+      next.chainPoint.slot === prior.slot &&
+      next.chainPoint.blockNo === prior.blockNo
+    );
+  }
+  if (
+    BigInt(next.chainPoint.blockNo) <= BigInt(prior.blockNo) ||
+    BigInt(next.chainPoint.slot) <= BigInt(prior.slot)
+  ) {
+    return false;
+  }
+  const ancestors = new Map<string, WatcherNormalizedL1BlockV1>();
+  for (const candidate of lineage) {
+    const existing = ancestors.get(candidate.chainPoint.blockHash);
+    if (
+      existing !== undefined &&
+      (existing.chainPoint.pointDigest !== candidate.chainPoint.pointDigest ||
+        existing.chainPoint.parentBlockHash !==
+          candidate.chainPoint.parentBlockHash)
+    ) {
+      return false;
+    }
+    ancestors.set(candidate.chainPoint.blockHash, candidate);
+  }
+  let cursor = next;
+  const visited = new Set<string>();
+  while (!visited.has(cursor.chainPoint.blockHash)) {
+    visited.add(cursor.chainPoint.blockHash);
+    const parentHash = cursor.chainPoint.parentBlockHash;
+    if (parentHash === prior.blockHash) {
+      return (
+        BigInt(cursor.chainPoint.blockNo) === BigInt(prior.blockNo) + 1n &&
+        BigInt(cursor.chainPoint.slot) > BigInt(prior.slot)
+      );
+    }
+    if (parentHash === null) {
+      return false;
+    }
+    const parent = ancestors.get(parentHash);
+    if (
+      parent === undefined ||
+      BigInt(cursor.chainPoint.blockNo) !==
+        BigInt(parent.chainPoint.blockNo) + 1n ||
+      BigInt(cursor.chainPoint.slot) <= BigInt(parent.chainPoint.slot)
+    ) {
+      return false;
+    }
+    cursor = parent;
+  }
+  return false;
+};
+
+const canonicalSuccessorAfterRollback = (
+  source: WatcherDurableStoreV1,
+  next: WatcherNormalizedL1BlockV1,
+): boolean => {
+  const prior = [...source.chainPoints]
+    .filter(
+      ({ blockNo, slot }) =>
+        BigInt(blockNo) < BigInt(next.chainPoint.blockNo) &&
+        BigInt(slot) < BigInt(next.chainPoint.slot),
+    )
+    .sort((left, right) =>
+      BigInt(left.blockNo) < BigInt(right.blockNo) ? 1 : -1,
+    )
+    .at(0);
+  if (
+    prior === undefined ||
+    BigInt(next.chainPoint.blockNo) !== BigInt(prior.blockNo) + 1n
+  ) {
+    return false;
+  }
+  return next.chainPoint.parentBlockHash === prior.blockHash;
+};
 
 const verifyDeploymentAuthority = (
   policy: WatcherUserEventIndexerPolicyV1,
@@ -2340,31 +2481,112 @@ const rollbackSourceExtends = (
   prior: WatcherDurableStoreV1,
   source: WatcherDurableStoreV1,
 ): boolean => {
-  const observations = new Map(
-    source.l1Observations.map((entry) => [entry.observationId, entry]),
+  const retainsExactRecords = <T>(
+    priorRecords: readonly T[],
+    sourceRecords: readonly T[],
+    keyOf: (record: T) => string,
+  ): boolean => {
+    const sourceByKey = new Map(
+      sourceRecords.map((entry) => [keyOf(entry), entry]),
+    );
+    return priorRecords.every((entry) =>
+      same(sourceByKey.get(keyOf(entry)), entry),
+    );
+  };
+  const eventRoles = new Set(["deposit", "withdrawal", "forced_transaction"]);
+  const priorEventUtxos = prior.protocolUtxos.filter(({ role }) =>
+    eventRoles.has(role),
   );
-  const points = new Map(
-    source.chainPoints.map((entry) => [entry.chainPointId, entry]),
+  const sourceEventUtxos = source.protocolUtxos.filter(({ role }) =>
+    eventRoles.has(role),
+  );
+  const priorUnrelatedUtxos = prior.protocolUtxos.filter(
+    ({ role }) => !eventRoles.has(role),
+  );
+  const sourceUnrelatedUtxos = source.protocolUtxos.filter(
+    ({ role }) => !eventRoles.has(role),
+  );
+  const priorSpentEventUtxos = prior.spentProtocolUtxos.filter(({ role }) =>
+    eventRoles.has(role),
+  );
+  const sourceSpentEventUtxos = source.spentProtocolUtxos.filter(({ role }) =>
+    eventRoles.has(role),
+  );
+  const priorUnrelatedSpentUtxos = prior.spentProtocolUtxos.filter(
+    ({ role }) => !eventRoles.has(role),
+  );
+  const sourceUnrelatedSpentUtxos = source.spentProtocolUtxos.filter(
+    ({ role }) => !eventRoles.has(role),
   );
   return (
-    BigInt(source.revision) >= BigInt(prior.revision) &&
+    (BigInt(source.revision) > BigInt(prior.revision) || same(source, prior)) &&
     same(source.deploymentMarker, prior.deploymentMarker) &&
-    same(source.protocolUtxos, prior.protocolUtxos) &&
-    same(source.spentProtocolUtxos, prior.spentProtocolUtxos) &&
-    same(source.daProofInputs, prior.daProofInputs) &&
-    same(source.reconstructedStates, prior.reconstructedStates) &&
-    same(source.decisions, prior.decisions) &&
-    same(source.faults, prior.faults) &&
-    same(source.submissions, prior.submissions) &&
-    same(source.confirmations, prior.confirmations) &&
-    same(source.retries, prior.retries) &&
-    same(source.deadlines, prior.deadlines) &&
-    same(source.correctionResults, prior.correctionResults) &&
-    prior.l1Observations.every((entry) =>
-      same(observations.get(entry.observationId), entry),
+    same(sourceEventUtxos, priorEventUtxos) &&
+    same(sourceSpentEventUtxos, priorSpentEventUtxos) &&
+    retainsExactRecords(
+      priorUnrelatedUtxos,
+      sourceUnrelatedUtxos,
+      (entry) => entry.outRef,
     ) &&
-    prior.chainPoints.every((entry) =>
-      same(points.get(entry.chainPointId), entry),
+    retainsExactRecords(
+      priorUnrelatedSpentUtxos,
+      sourceUnrelatedSpentUtxos,
+      (entry) => entry.outRef,
+    ) &&
+    retainsExactRecords(
+      prior.daProofInputs,
+      source.daProofInputs,
+      (entry) => entry.inputId,
+    ) &&
+    retainsExactRecords(
+      prior.reconstructedStates,
+      source.reconstructedStates,
+      (entry) => entry.blockHash,
+    ) &&
+    retainsExactRecords(
+      prior.decisions,
+      source.decisions,
+      (entry) => entry.blockHash,
+    ) &&
+    retainsExactRecords(
+      prior.faults,
+      source.faults,
+      (entry) => entry.faultId,
+    ) &&
+    retainsExactRecords(
+      prior.submissions,
+      source.submissions,
+      (entry) => entry.submissionId,
+    ) &&
+    retainsExactRecords(
+      prior.confirmations,
+      source.confirmations,
+      (entry) => entry.confirmationId,
+    ) &&
+    retainsExactRecords(
+      prior.retries,
+      source.retries,
+      (entry) => entry.retryId,
+    ) &&
+    retainsExactRecords(
+      prior.deadlines,
+      source.deadlines,
+      (entry) => entry.deadlineId,
+    ) &&
+    retainsExactRecords(
+      prior.correctionResults,
+      source.correctionResults,
+      (entry) => entry.correctionId,
+    ) &&
+    retainsExactRecords(
+      prior.l1Observations,
+      source.l1Observations,
+      (entry) => entry.observationId,
+    ) &&
+    retainsExactRecords(
+      prior.chainPoints,
+      source.chainPoints,
+      (entry) => entry.chainPointId,
     )
   );
 };
@@ -2372,6 +2594,9 @@ const rollbackSourceExtends = (
 const parsePublicContext = (
   value: unknown,
 ): WatcherUserEventPublicContextV1 | null => {
+  if (!evidenceWithinBounds(value)) {
+    return null;
+  }
   const record = exactRecord(value, [
     "schemaVersion",
     "authenticatedProvider",
@@ -2401,6 +2626,7 @@ const parsePublicContext = (
       ? null
       : exactRecord(record.finalityAuthority, [
           "policy",
+          "lineage",
           "previousState",
           "observations",
           "consistency",
@@ -2409,7 +2635,12 @@ const parsePublicContext = (
   if (
     record.finalityAuthority !== null &&
     (finalityAuthority === null ||
-      !Array.isArray(finalityAuthority.observations))
+      !Array.isArray(finalityAuthority.lineage) ||
+      finalityAuthority.lineage.length >
+        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.finalityLineageSteps ||
+      !Array.isArray(finalityAuthority.observations) ||
+      finalityAuthority.observations.length >
+        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.observationsPerFinalityStep)
   ) {
     return null;
   }
@@ -2417,7 +2648,52 @@ const parsePublicContext = (
     authenticatedProvider: unknown;
     l1Observation: unknown;
   }[] = [];
+  const finalityLineage: {
+    observations: readonly {
+      authenticatedProvider: unknown;
+      l1Observation: unknown;
+    }[];
+    consistency: unknown;
+    result: unknown;
+  }[] = [];
   if (finalityAuthority !== null) {
+    for (const candidate of finalityAuthority.lineage as readonly unknown[]) {
+      const step = exactRecord(candidate, [
+        "observations",
+        "consistency",
+        "result",
+      ]);
+      if (
+        step === null ||
+        !Array.isArray(step.observations) ||
+        step.observations.length >
+          WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.observationsPerFinalityStep
+      ) {
+        return null;
+      }
+      const observations: {
+        authenticatedProvider: unknown;
+        l1Observation: unknown;
+      }[] = [];
+      for (const stepCandidate of step.observations) {
+        const observation = exactRecord(stepCandidate, [
+          "authenticatedProvider",
+          "l1Observation",
+        ]);
+        if (observation === null) {
+          return null;
+        }
+        observations.push({
+          authenticatedProvider: observation.authenticatedProvider,
+          l1Observation: observation.l1Observation,
+        });
+      }
+      finalityLineage.push({
+        observations: Object.freeze(observations),
+        consistency: step.consistency,
+        result: step.result,
+      });
+    }
     for (const candidate of finalityAuthority.observations as readonly unknown[]) {
       const observation = exactRecord(candidate, [
         "authenticatedProvider",
@@ -2465,6 +2741,7 @@ const parsePublicContext = (
         ? null
         : {
             policy: finalityAuthority.policy,
+            lineage: Object.freeze(finalityLineage),
             previousState: finalityAuthority.previousState,
             observations: Object.freeze(finalityObservations),
             consistency: finalityAuthority.consistency,
@@ -2523,23 +2800,41 @@ const verifyBlockContext = (
     ) {
       return null;
     }
+    let replayedState: unknown = null;
+    const lineageBlocks: WatcherNormalizedL1BlockV1[] = [];
+    for (const step of context.finalityAuthority.lineage) {
+      const normalizedStep = step.observations.map(
+        ({ authenticatedProvider, l1Observation }) =>
+          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      );
+      lineageBlocks.push(...normalizedStep);
+      const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        watcherFinalityConfiguredSourceV1(finalityPolicy),
+        normalizedStep,
+      );
+      const stepResult = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        replayedState,
+        stepConsistency,
+      );
+      if (
+        !same(stepConsistency, step.consistency) ||
+        !same(stepResult, step.result) ||
+        stepResult.state === null
+      ) {
+        return null;
+      }
+      replayedState = stepResult.state;
+    }
+    if (!same(replayedState, context.finalityAuthority.previousState)) {
+      return null;
+    }
     const normalized = context.finalityAuthority.observations.map(
       ({ authenticatedProvider, l1Observation }) =>
         normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
     );
     const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      finalityPolicy.sourceMode === "local_node"
-        ? {
-            sourceMode: "local_node",
-            network: finalityPolicy.network,
-            authorityNodeId: finalityPolicy.authorityNodeId as string,
-            genesisIdentitySha256:
-              finalityPolicy.authorityGenesisIdentitySha256 as string,
-          }
-        : {
-            sourceMode: "external_providers",
-            network: finalityPolicy.network,
-          },
+      watcherFinalityConfiguredSourceV1(finalityPolicy),
       normalized,
     );
     const finalityResult = evaluateWatcherFinalityV1(
@@ -2566,10 +2861,16 @@ const verifyBlockContext = (
     if (
       !same(consistency, context.finalityAuthority.consistency) ||
       !same(finalityResult, context.finalityAuthority.result) ||
-      !["hold", "finality_granted"].includes(finalityResult.protocolDecision) ||
-      !["observe_pending", "advance_pending", "finalize", "duplicate"].includes(
-        finalityResult.action,
+      !["hold", "finality_granted", "rewind_required"].includes(
+        finalityResult.protocolDecision,
       ) ||
+      ![
+        "observe_pending",
+        "advance_pending",
+        "finalize",
+        "duplicate",
+        "rewind_pending",
+      ].includes(finalityResult.action) ||
       !sourceMatchesFinality ||
       !normalized.some(
         (candidate) => candidate.observationDigest === block.observationDigest,
@@ -2606,6 +2907,7 @@ const verifyBlockContext = (
     }
     return Object.freeze({
       block,
+      lineageBlocks: Object.freeze(lineageBlocks),
       sourceStore,
       store,
       finalityPolicy,
@@ -2693,10 +2995,44 @@ const deriveBlockObservation = (
     return null;
   }
   const sourceDigest = storeDigest(verified.sourceStore);
+  const priorEntry =
+    previous === null
+      ? null
+      : ([...previous.activeEntryDigests]
+          .reverse()
+          .map((digest) =>
+            previous.history.find(({ entryDigest }) => entryDigest === digest),
+          )
+          .find(
+            (entry) => entry?.observation.transitionKind === "apply_block",
+          ) ?? null);
+  const followsRollback =
+    previous?.history.at(-1)?.observation.transitionKind === "rollback";
+  let priorStore: WatcherDurableStoreV1 | null = null;
+  try {
+    priorStore =
+      previous === null
+        ? null
+        : parseWatcherDurableStoreV1(
+            previous.history.at(-1)?.publicContext.durableStore,
+          );
+  } catch {
+    return null;
+  }
   if (
     sourceDigest !==
       (previous?.durableStoreDigest ?? policy.bootstrapStoreDigest) ||
-    (previous === null && verified.sourceStore.revision !== "0")
+    verified.sourceStore.revision !== (previous?.durableStoreRevision ?? "0") ||
+    (priorStore !== null && !same(priorStore, verified.sourceStore)) ||
+    (followsRollback &&
+      !canonicalSuccessorAfterRollback(verified.sourceStore, verified.block)) ||
+    (!followsRollback &&
+      priorEntry !== null &&
+      !canonicalSuccessor(
+        priorEntry.observation,
+        verified.block,
+        verified.lineageBlocks,
+      ))
   ) {
     return null;
   }

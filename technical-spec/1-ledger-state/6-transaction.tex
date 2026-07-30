@@ -27,21 +27,31 @@ An L2 transaction request in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
 
-\paragraph{Launch consensus profile.}
-The transaction structures below describe the codec's representational
-superset. The immutable launch profile is narrower: protocol version (0),
-native transaction version (1), public-key payment credentials only, and no
-mint or burn, reference inputs, scripts, redeemers, observers, reference
-scripts, or protected outputs. Unknown versions and every representable field
-outside that profile fail closed. The canonical full transaction is at most
-(8{,}192) bytes and each encoded output value is at most (1{,}024) bytes;
-the reference-script limit is zero. These limits are consensus admission and
-DA-attestation rules, not operator-tunable policy.
+\paragraph{Canonical V1 consensus profile.}
+The transaction structures below describe the canonical protocol-version (1),
+native-transaction-version (1) surface. Canonical V1 enables public-key,
+native-script, PlutusV3, and MidgardV1 authorization together with mint and
+burn, reference inputs, script witnesses, redeemers, observers, reference
+scripts, script payment credentials, and protected outputs. These features are
+part of the normative V1 profile rather than dormant codec fields. Unknown
+versions, languages, purposes, or encodings fail closed.
 
-The codec retains future transaction fields, but the launch profile does not
-admit script-controlled spends or token minting. Launch transactions spend
-public-key outputs using address witnesses and preserve value according to the
-no-mint equation in \cref{h:custom-midgard-ledger-rules}.
+Canonical V1 has no independent (8{,}192)-byte whole-transaction ceiling.
+Each canonical transaction aggregate preimage is bounded independently at
+(32{,}768) bytes and is authenticated and revealed in chunks of at most
+(4{,}095) bytes. A ledger-output preimage is at most (16{,}384) bytes, and
+the canonical CBOR encoding of an output value is at most (5{,}000) bytes.
+Reference scripts are supported: a consensus program envelope is at most
+(50) bytes and commits to at most (1{,}597{,}819) canonical CEK material
+nodes and (67{,}108{,}418) structural material bytes, with blob chunks of at
+most (4{,}095) bytes. Wrapping all independently bounded transaction
+preimages in the canonical encoding gives the exact derived full-transaction
+maximum of (295{,}041) bytes. None of these limits is operator-tunable policy.
+
+Script-controlled spends and mint or burn are admitted only when the
+corresponding scripts and policies authorize them. Their effects participate
+in the mint-aware value-preservation equation in
+\cref{h:custom-midgard-ledger-rules}.
 
 \subsection{Cardano transaction types}
 \label{h:cardano-transaction-types}
@@ -109,10 +119,14 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       For this reason, staking and governance actions are prohibited in Midgard L2 transactions.
     \item[No pre-Conway features.] Midgard does not need to maintain backwards compatibility with pre-Conway eras.
       Midgard deposits and transactions will be prohibited from using bootstrap addresses, and Shelley addresses with Plutus versions older than Plutus V3.
-      The codec can represent public key, native-script, and Plutus credentials,
-      but the launch profile admits public-key payment credentials only.
-    \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
-      This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
+      Canonical V1 admits public-key and native-script credentials together
+      with PlutusV3 and MidgardV1 programs and script payment credentials;
+      unknown or pre-Conway language versions fail closed.
+    \item[No transaction metadata.] Midgard prohibits metadata in L2
+      transactions. Canonical V1 therefore requires
+      \code{auxiliary\_data\_hash} to equal the empty-null root; a non-empty
+      hash fails closed because no authenticated auxiliary-data preimage is
+      carried by the transaction.
     \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.
       Datum-hash outputs are invalid in Midgard L2 transactions and deposits, and transactions do not carry a datum-witness bucket.
       This avoids maintaining a datum-hash to datum witness map and makes each UTxO's script-visible datum fully determined by the UTxO itself.

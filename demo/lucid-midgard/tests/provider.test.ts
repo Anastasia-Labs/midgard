@@ -1,5 +1,9 @@
 import { decodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
+import {
+  computeMidgardNativeTxIdV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
+} from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
@@ -40,7 +44,8 @@ const protocolInfo: MidgardProtocolInfo = {
     minFeeB: 155381n,
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -62,7 +67,8 @@ const protocolInfoJson = {
     minFeeB: "155381",
   },
   submissionLimits: {
-    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
   },
   validation: {
     strictnessProfile: "phase1_midgard",
@@ -83,10 +89,15 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
   }).toString("hex"),
 });
 
+const submitTxHex =
+  "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000";
 const submitTx = {
-  txHex:
-    "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
-  txId: "3a3ecbf11a2b49bc0fb6951dfc33be97b1e9f20442413890236034420cc6c2af",
+  txHex: submitTxHex,
+  txId: computeMidgardNativeTxIdV1(
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      Buffer.from(submitTxHex, "hex"),
+    ),
+  ).toString("hex"),
 };
 
 const submitAdmission = (
@@ -296,7 +307,8 @@ describe("MidgardNodeProvider", () => {
       minFeeB: 155381n,
       networkId: 0n,
       deploymentManifestId: deploymentMarker.manifestId,
-      maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
   });

@@ -59,8 +59,13 @@ validator main(
           signer_proof,
         }
         let auxiliary_data: Data = auxiliary
-        expect SignerSetProofV1.SignerMembershipProof { peaks, signer_index, siblings } =
-          signer_proof
+        expect
+            SignerSetProofV1.SignerMembershipProof {
+              peaks,
+              signer_index,
+              siblings,
+            }
+          = signer_proof
         continue_winning(
           PhaseANativeScripts,
           award_script_hash,

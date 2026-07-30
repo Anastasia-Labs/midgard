@@ -37,7 +37,7 @@ describe("onChainCoordinatorFromConfig", () => {
     let referenceScriptsResolved = false;
 
     await expect(
-      onChainCoordinatorFromConfig(config, undefined, undefined, {
+      onChainCoordinatorFromConfig(config, fakeChainReader, undefined, {
         lucidFromProviderUrl: async () => ({
           lucid: {} as LucidEvolution,
           providerSource: "test",
@@ -107,6 +107,13 @@ describe("onChainCoordinatorFromConfig", () => {
       "preflight:private-key:funder",
       "reference-scripts",
     ]);
+  });
+
+  it("does not construct an unproven fallback chain reader", async () => {
+    const config = l1ReadyConfig();
+    await expect(onChainCoordinatorFromConfig(config)).rejects.toThrow(
+      /canonical configured DA chain reader/u,
+    );
   });
 });
 

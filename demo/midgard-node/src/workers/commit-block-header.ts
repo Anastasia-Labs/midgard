@@ -5,6 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 
+import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
@@ -44,6 +45,7 @@ import {
   minimumBarrierWatermarkMs,
   sameSpeculativeSourceIdSet,
 } from "@/fibers/speculative-commit-state.js";
+import { unixTimeToSlotForConfig } from "@/lucid-time.js";
 import {
   ConfigError,
   ContractDeploymentIdentity,
@@ -162,14 +164,20 @@ export type CommitLucidFactory = () => Effect.Effect<Lucid, ConfigError>;
 export const defaultCommitLucidFactory: CommitLucidFactory = () =>
   Effect.provide(Lucid, Lucid.Default);
 
-const pendingUserEventCountUpTo = (
+type PendingUserEventCounts = {
+  readonly deposits: number;
+  readonly forcedTransactions: number;
+  readonly withdrawals: number;
+};
+
+const pendingUserEventCountsUpTo = (
   effectiveEndTime: Date,
   excluded?: {
     readonly depositEventIds: ReadonlySet<string>;
     readonly forcedTransactionEventIds: ReadonlySet<string>;
     readonly withdrawalEventIds: ReadonlySet<string>;
   },
-): Effect.Effect<number, DatabaseError, Database> =>
+): Effect.Effect<PendingUserEventCounts, DatabaseError, Database> =>
   Effect.gen(function* () {
     const [depositEntries, forcedTransactionEntries, withdrawalEntries] =
       yield* Effect.all(
@@ -182,27 +190,55 @@ const pendingUserEventCountUpTo = (
         ],
         { concurrency: "unbounded" },
       );
-    return (
-      depositEntries.filter(
+    return {
+      deposits: depositEntries.filter(
         (entry) =>
           !excluded?.depositEventIds.has(
             entry[DepositsDB.Columns.ID].toString("hex"),
           ),
-      ).length +
-      forcedTransactionEntries.filter(
+      ).length,
+      forcedTransactions: forcedTransactionEntries.filter(
         (entry) =>
           !excluded?.forcedTransactionEventIds.has(
             entry[ForcedTransactionsDB.Columns.TX_ORDER_ID].toString("hex"),
           ),
-      ).length +
-      withdrawalEntries.filter(
+      ).length,
+      withdrawals: withdrawalEntries.filter(
         (entry) =>
           !excluded?.withdrawalEventIds.has(
             entry[WithdrawalsDB.Columns.ID].toString("hex"),
           ),
-      ).length
-    );
+      ).length,
+    };
   });
+
+const pendingUserEventCountUpTo = (
+  effectiveEndTime: Date,
+  excluded?: {
+    readonly depositEventIds: ReadonlySet<string>;
+    readonly forcedTransactionEventIds: ReadonlySet<string>;
+    readonly withdrawalEventIds: ReadonlySet<string>;
+  },
+): Effect.Effect<number, DatabaseError, Database> =>
+  pendingUserEventCountsUpTo(effectiveEndTime, excluded).pipe(
+    Effect.map(
+      ({ deposits, forcedTransactions, withdrawals }) =>
+        deposits + forcedTransactions + withdrawals,
+    ),
+  );
+
+export const shouldHydrateCommitBaseEntries = ({
+  payloadRootCheck,
+  recordCorpus,
+  pendingWithdrawalCount,
+}: {
+  readonly payloadRootCheck: string;
+  readonly recordCorpus: string;
+  readonly pendingWithdrawalCount: number;
+}): boolean =>
+  payloadRootCheck === "every_block" ||
+  recordCorpus.trim().length > 0 ||
+  pendingWithdrawalCount > 0;
 
 export const revalidateAndPersistSpeculativeCandidateSources = ({
   includedDepositEntries,
@@ -1960,9 +1996,13 @@ const databaseOperationsProgram = (
       }
     }
 
-    const pendingUserEventCount = yield* pendingUserEventCountUpTo(
+    const pendingUserEventCounts = yield* pendingUserEventCountsUpTo(
       effectiveUserEventOnlyEndTime,
     );
+    const pendingUserEventCount =
+      pendingUserEventCounts.deposits +
+      pendingUserEventCounts.forcedTransactions +
+      pendingUserEventCounts.withdrawals;
     if (
       shouldSkipIdleCommitBehindUnmergedTail({
         localFinalizationPending: workerInput.data.localFinalizationPending,
@@ -2004,9 +2044,11 @@ const databaseOperationsProgram = (
       speculativeBase: speculativeBuild?.base,
       ledgerMpf,
       nativeMpfRoot: workerInput.nativeMpf?.durableRoot,
-      requireEntries:
-        nodeConfig.MPF_PAYLOAD_ROOT_CHECK === "every_block" ||
-        nodeConfig.MPF_RECORD_CORPUS.trim().length > 0,
+      requireEntries: shouldHydrateCommitBaseEntries({
+        payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
+        recordCorpus: nodeConfig.MPF_RECORD_CORPUS,
+        pendingWithdrawalCount: pendingUserEventCounts.withdrawals,
+      }),
     });
     const initialLedgerEntries = yield* alignCommitMpfsToBase({
       ledgerMpf,
@@ -2042,7 +2084,21 @@ const databaseOperationsProgram = (
     }
     const mpfProcessingStartedAtMs = Date.now();
     mpfProcessingPasses += 1;
-    const proofValidationLucid = (yield* acquireCommitLucidOnce).api;
+    const proofValidationSlotConfig = isMidgardConsensusProfileV1(
+      deploymentIdentity.consensusProfile,
+    )
+      ? workerInput.data.forcedValidationSlotConfig
+      : undefined;
+    if (
+      isMidgardConsensusProfileV1(deploymentIdentity.consensusProfile) &&
+      proofValidationSlotConfig === undefined
+    ) {
+      return yield* Effect.fail(
+        new Error(
+          "Canonical V1 commitment input is missing its node-selected slot configuration",
+        ),
+      );
+    }
     const processed = yield* processMpfs(
       ledgerMpf,
       transactionsMpf,
@@ -2069,14 +2125,22 @@ const databaseOperationsProgram = (
           : undefined,
         initialLedgerEntries,
         consensusProfile: deploymentIdentity.consensusProfile,
-        forcedValidation: {
-          expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-          minFeeA: nodeConfig.MIN_FEE_A,
-          minFeeB: nodeConfig.MIN_FEE_B,
-          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-          slotForUnixTime: (unixTimeMs) =>
-            BigInt(proofValidationLucid.unixTimeToSlot(unixTimeMs)),
-        },
+        forcedValidation:
+          proofValidationSlotConfig === undefined
+            ? undefined
+            : {
+                expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+                minFeeA: nodeConfig.MIN_FEE_A,
+                minFeeB: nodeConfig.MIN_FEE_B,
+                bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+                slotForUnixTime: (unixTimeMs) =>
+                  BigInt(
+                    unixTimeToSlotForConfig(
+                      unixTimeMs,
+                      proofValidationSlotConfig,
+                    ),
+                  ),
+              },
         selectedBaseUtxoRoot: commitBase.root,
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
@@ -2222,7 +2286,9 @@ const databaseOperationsProgram = (
     let submitAvailableConfirmedBlock = availableConfirmedBlock;
     let submitWorkerInput = workerInput;
     let beforePendingJournalInsert:
-      | Effect.Effect<void, DatabaseError, Database>
+      | ((
+          blockEndTimeMs: number,
+        ) => Effect.Effect<void, DatabaseError, Database>)
       | undefined;
 
     if (
@@ -2433,7 +2499,7 @@ const databaseOperationsProgram = (
       // The speculative builder is read-only. Journal preparation invokes
       // this effect only after confirmation and inside the journal SQL
       // transaction, while both state-queue and MPF leases are held.
-      beforePendingJournalInsert =
+      beforePendingJournalInsert = (blockEndTimeMs) =>
         revalidateAndPersistSpeculativeCandidateSources({
           includedDepositEntries,
           includedForcedTransactionEntries,
@@ -2447,7 +2513,7 @@ const databaseOperationsProgram = (
             forcedTransactions: candidate.roots.forcedTransactions,
             withdrawals: candidate.roots.withdrawals,
           },
-          candidateEndTime,
+          candidateEndTime: new Date(blockEndTimeMs),
           excludedUserEventIds,
           stateQueueLeaseToken: instruction.stateQueueLeaseToken,
           activeMpfLeaseOwner,

@@ -7,11 +7,9 @@ use midgard/fraud_proofs/native_tx/codec.{
 }
 use midgard/validation_merkle_v1
 
-const frame_domain =
-  #"4d69646761726443656b446174614672616d655631"
+const frame_domain = #"4d69646761726443656b446174614672616d655631"
 
-const child_domain =
-  #"4d69646761726443656b446174614672616d654368696c645631"
+const child_domain = #"4d69646761726443656b446174614672616d654368696c645631"
 
 const uint32_max = 4_294_967_295
 
@@ -85,9 +83,7 @@ fn constructor_is_well_formed(frame: DataFrameV1) -> Bool {
   }
 }
 
-fn empty_sequence_for(
-  frame: DataFrameV1,
-) -> cek_data_v1.DataSequenceSummaryV1 {
+fn empty_sequence_for(frame: DataFrameV1) -> cek_data_v1.DataSequenceSummaryV1 {
   if frame.kind == map_frame {
     cek_data_v1.empty_data_pair_summary_v1()
   } else {
@@ -134,9 +130,7 @@ pub fn frame_is_well_formed(frame: DataFrameV1) -> Bool {
   }
 }
 
-fn encode_sequence(
-  summary: cek_data_v1.DataSequenceSummaryV1,
-) -> ByteArray {
+fn encode_sequence(summary: cek_data_v1.DataSequenceSummaryV1) -> ByteArray {
   encode_definite_array_header(4)
     |> bytearray.concat(encode_definite_bytes(summary.root))
     |> bytearray.concat(cbor.serialise(summary.length))
@@ -155,9 +149,7 @@ pub fn encode_frame_v1(frame: DataFrameV1) -> ByteArray {
     |> bytearray.concat(encode_definite_bytes(frame.tail))
     |> bytearray.concat(cbor.serialise(frame.expected_children))
     |> bytearray.concat(cbor.serialise(frame.child_count))
-    |> bytearray.concat(
-        validation_merkle_v1.encode_frontier(frame.child_peaks),
-      )
+    |> bytearray.concat(validation_merkle_v1.encode_frontier(frame.child_peaks))
     |> bytearray.concat(cbor.serialise(frame.fold_cursor))
     |> bytearray.concat(encode_sequence(frame.sequence))
 }
@@ -168,9 +160,7 @@ pub fn hash_frame_v1(frame: DataFrameV1) -> ByteArray {
     |> blake2b_256
 }
 
-fn summary_is_well_formed(
-  summary: cek_data_v1.DataSummaryV1,
-) -> Bool {
+fn summary_is_well_formed(summary: cek_data_v1.DataSummaryV1) -> Bool {
   and {
     bytearray.length(summary.root) == 32,
     summary.cbor_length > 0,

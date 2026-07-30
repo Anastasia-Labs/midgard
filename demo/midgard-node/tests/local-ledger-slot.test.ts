@@ -46,6 +46,8 @@ describe("local Ogmios submit slot snapshots", () => {
     ).resolves.toEqual({
       startTimeMs: 1_784_004_979_000,
       slotLengthMs: 1_000,
+      configurationSha256:
+        "758747f21adb257941483959dfb37f5dc8c94262eebe7d5aef8ebe2d1cce88f8",
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0]?.[0]).toBe("http://127.0.0.1:1337");

@@ -60,6 +60,8 @@ describe("speculative commit safety guards", () => {
 
   it("defers Lucid construction until a ready candidate receives Submit", async () => {
     const source = await readSource("../src/workers/commit-block-header.ts");
+    expect(source).not.toContain("proofValidationLucid");
+    expect(source).toContain("workerInput.data.forcedValidationSlotConfig");
     const outerProvider = source.slice(
       source.indexOf("export const provideCommitBlockWorkerServices"),
       source.indexOf("const pendingUserEventCountUpTo"),

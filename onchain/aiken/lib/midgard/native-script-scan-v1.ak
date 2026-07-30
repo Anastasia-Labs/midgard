@@ -77,9 +77,7 @@ pub type NativeScriptStructureControlV1 {
 }
 
 pub type NativeScriptStructureStepResultV1 {
-  NativeScriptStructureAdvanced {
-    control: NativeScriptStructureControlV1,
-  }
+  NativeScriptStructureAdvanced { control: NativeScriptStructureControlV1 }
   NativeScriptStructureInvalid
   NativeScriptStructureNodeLimit
   NativeScriptStructureDepthLimit
@@ -118,12 +116,7 @@ fn read_big_endian(
     when byte_at_if_present(bytes, offset) is {
       None -> None
       Some(next) ->
-        read_big_endian(
-          bytes,
-          offset + 1,
-          remaining - 1,
-          value * 256 + next,
-        )
+        read_big_endian(bytes, offset + 1, remaining - 1, value * 256 + next)
     }
   }
 }
@@ -620,9 +613,7 @@ pub fn frame_for_token_v1(
   }
 }
 
-pub fn empty_container_result_v1(
-  token: NativeScriptTokenV1,
-) -> Option<Bool> {
+pub fn empty_container_result_v1(token: NativeScriptTokenV1) -> Option<Bool> {
   if token.child_count != 0 {
     None
   } else if token.kind == all_node {
@@ -751,10 +742,11 @@ pub fn structure_control_from_data_v1(
   data: Data,
 ) -> NativeScriptStructureControlV1 {
   expect
-    [
-      version_data, stage_data, start_offset_data, cursor_data,
-      end_offset_data, stack_root_data, stack_depth_data, node_count_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, start_offset_data, cursor_data,
+        end_offset_data, stack_root_data, stack_depth_data, node_count_data,
+      ]
+    = builtin.un_list_data(data)
   let control = NativeScriptStructureControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -860,11 +852,7 @@ pub fn structure_token_step_v1(
             }
           } else {
             Some(
-              complete_structure_node_v1(
-                control,
-                token.next_offset,
-                node_count,
-              ),
+              complete_structure_node_v1(control, token.next_offset, node_count),
             )
           }
         }

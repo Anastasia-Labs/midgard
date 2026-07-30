@@ -62,9 +62,7 @@ const fieldIndexV1 = (fieldIndex: number): number => {
 
 const itemIndexV1 = (itemIndex: number): number => {
   if (!Number.isSafeInteger(itemIndex) || itemIndex < 0) {
-    throw new Error(
-      "V1 bounded-collection item index must be non-negative",
-    );
+    throw new Error("V1 bounded-collection item index must be non-negative");
   }
   return itemIndex;
 };
@@ -88,10 +86,7 @@ export const hashMidgardBoundedCollectionItemV1 = ({
         BigInt(fieldIndexV1(fieldIndex)),
         BigInt(itemIndexV1(itemIndex)),
         BigInt(itemIndexV1(itemLength)),
-        ensureHash32(
-          itemCommitment,
-          "bounded_collection_v1.item_commitment",
-        ),
+        ensureHash32(itemCommitment, "bounded_collection_v1.item_commitment"),
       ]),
     ]),
   );
@@ -211,10 +206,7 @@ export const verifyMidgardBoundedCollectionItemProofV1 = ({
         fieldIndex: proof.fieldIndex,
         frontier: proof.frontier,
       }).equals(
-        ensureHash32(
-          expectedCommitment,
-          "bounded_collection_v1.expected",
-        ),
+        ensureHash32(expectedCommitment, "bounded_collection_v1.expected"),
       )
     );
   } catch {

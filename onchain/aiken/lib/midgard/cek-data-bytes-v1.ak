@@ -50,9 +50,9 @@ fn minimum(first: Int, second: Int) -> Int {
 
 fn definite_bytes_header(length: Int) -> ByteArray {
   expect and {
-    length >= 0,
-    length <= cardano_data_bytes_chunk,
-  }
+      length >= 0,
+      length <= cardano_data_bytes_chunk,
+    }
   if length < 24 {
     bytearray.from_int_big_endian(64 + length, 1)
   } else {
@@ -65,10 +65,7 @@ fn definite_header_length(length: Int) -> Int {
   bytearray.length(definite_bytes_header(length))
 }
 
-pub fn parse_syntax_v1(
-  bytes: ByteArray,
-  source_length: Int,
-) -> Option<Int> {
+pub fn parse_syntax_v1(bytes: ByteArray, source_length: Int) -> Option<Int> {
   if or {
     source_length < 1,
     source_length > uint32_max,
@@ -107,34 +104,31 @@ pub fn parse_syntax_v1(
       source_length >= 2,
     } {
       let framed_payload_length = source_length - 2
-      let full_chunks =
-        framed_payload_length / ( cardano_data_bytes_chunk + 2 )
-      let encoded_remainder =
-        framed_payload_length % ( cardano_data_bytes_chunk + 2 )
-      let remainder =
-        if encoded_remainder == 0 {
-          0
-        } else if and {
-          encoded_remainder >= 2,
-          encoded_remainder <= 24,
-        } {
-          encoded_remainder - 1
-        } else if and {
-          encoded_remainder >= 26,
-          encoded_remainder <= 65,
-        } {
-          encoded_remainder - 2
-        } else {
-          -1
-        }
-      let bytes_length =
-        full_chunks * cardano_data_bytes_chunk + remainder
+      let full_chunks = framed_payload_length / ( cardano_data_bytes_chunk + 2 )
+      let encoded_remainder = framed_payload_length % (
+        cardano_data_bytes_chunk + 2
+      )
+      let remainder = if encoded_remainder == 0 {
+        0
+      } else if and {
+        encoded_remainder >= 2,
+        encoded_remainder <= 24,
+      } {
+        encoded_remainder - 1
+      } else if and {
+        encoded_remainder >= 26,
+        encoded_remainder <= 65,
+      } {
+        encoded_remainder - 2
+      } else {
+        -1
+      }
+      let bytes_length = full_chunks * cardano_data_bytes_chunk + remainder
       if and {
         remainder >= 0,
         bytes_length > cardano_data_bytes_chunk,
         bytes_length <= uint32_max,
-        cek_data_v1.bytes_data_cbor_length_v1(bytes_length)
-          == source_length,
+        cek_data_v1.bytes_data_cbor_length_v1(bytes_length) == source_length,
       } {
         Some(bytes_length)
       } else {
@@ -146,9 +140,7 @@ pub fn parse_syntax_v1(
   }
 }
 
-pub fn control_is_well_formed(
-  control: CekDataBytesControlV1,
-) -> Bool {
+pub fn control_is_well_formed(control: CekDataBytesControlV1) -> Bool {
   and {
     control.version == version,
     control.stage >= stage_syntax,
@@ -166,10 +158,8 @@ pub fn control_is_well_formed(
     } else {
       when control.blob is {
         None -> False
-        Some(blob_control) ->
-          and {
-            cek_data_v1.bytes_data_cbor_length_v1(control.bytes_length)
-              == control.source_length,
+        Some(blob_control) -> and {
+            cek_data_v1.bytes_data_cbor_length_v1(control.bytes_length) == control.source_length,
             cek_source_blob_v1.control_is_well_formed(blob_control),
             blob_control.source_start == 0,
             blob_control.source_length == control.bytes_length,
@@ -217,9 +207,7 @@ fn encode_optional_blob(
   }
 }
 
-pub fn encode_control_v1(
-  control: CekDataBytesControlV1,
-) -> ByteArray {
+pub fn encode_control_v1(control: CekDataBytesControlV1) -> ByteArray {
   expect control_is_well_formed(control)
   encode_definite_array_header(6)
     |> bytearray.concat(cbor.serialise(version))
@@ -246,10 +234,11 @@ fn optional_blob_from_data(
 
 pub fn control_from_data_v1(data: Data) -> CekDataBytesControlV1 {
   expect
-    [
-      version_data, stage_data, source_start_data, source_length_data,
-      bytes_length_data, blob_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, source_start_data, source_length_data,
+        bytes_length_data, blob_data,
+      ]
+    = builtin.un_list_data(data)
   let control = CekDataBytesControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -262,9 +251,7 @@ pub fn control_from_data_v1(data: Data) -> CekDataBytesControlV1 {
   control
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
-) -> CekDataBytesControlV1 {
+pub fn decode_control_v1(control_cbor: ByteArray) -> CekDataBytesControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
@@ -285,8 +272,7 @@ fn indefinite_raw_start(
       cardano_data_bytes_chunk,
       control.bytes_length - chunk_start,
     )
-    let header_start =
-      1 + chunk_index * ( cardano_data_bytes_chunk + 2 )
+    let header_start = 1 + chunk_index * ( cardano_data_bytes_chunk + 2 )
     if within_chunk == 0 {
       header_start
     } else {
@@ -303,9 +289,7 @@ fn mapped_raw_length(
   if remaining == 0 {
     0
   } else {
-    let chunk_start =
-      ( content_cursor / cardano_data_bytes_chunk )
-        * cardano_data_bytes_chunk
+    let chunk_start = content_cursor / cardano_data_bytes_chunk * cardano_data_bytes_chunk
     let within_chunk = content_cursor - chunk_start
     let chunk_length = minimum(
       cardano_data_bytes_chunk,
@@ -325,9 +309,7 @@ fn mapped_raw_length(
   }
 }
 
-fn content_plan(
-  control: CekDataBytesControlV1,
-) -> Option<ContentPlanV1> {
+fn content_plan(control: CekDataBytesControlV1) -> Option<ContentPlanV1> {
   if control.stage != stage_blob {
     None
   } else {
@@ -346,9 +328,9 @@ fn content_plan(
           Some(
             ContentPlanV1 {
               span: cek_source_blob_v1.CekSourceBlobSpanV1 {
-                absolute_start: control.source_start
-                  + definite_header_length(control.bytes_length)
-                  + content_start,
+                absolute_start: control.source_start + definite_header_length(
+                  control.bytes_length,
+                ) + content_start,
                 length: virtual_span.length,
               },
               content_start,
@@ -367,8 +349,10 @@ fn content_plan(
             Some(
               ContentPlanV1 {
                 span: cek_source_blob_v1.CekSourceBlobSpanV1 {
-                  absolute_start: control.source_start
-                    + indefinite_raw_start(control, content_start),
+                  absolute_start: control.source_start + indefinite_raw_start(
+                    control,
+                    content_start,
+                  ),
                   length: raw_length,
                 },
                 content_start,
@@ -396,9 +380,7 @@ fn extract_indefinite_content(
       None
     }
   } else {
-    let chunk_start =
-      ( content_cursor / cardano_data_bytes_chunk )
-        * cardano_data_bytes_chunk
+    let chunk_start = content_cursor / cardano_data_bytes_chunk * cardano_data_bytes_chunk
     let within_chunk = content_cursor - chunk_start
     let chunk_length = minimum(
       cardano_data_bytes_chunk,
@@ -418,11 +400,7 @@ fn extract_indefinite_content(
     } {
       None
     } else {
-      let content = slice_len(
-        source_bytes,
-        raw_cursor + header_length,
-        take,
-      )
+      let content = slice_len(source_bytes, raw_cursor + header_length, take)
       when
         extract_indefinite_content(
           source_bytes,
@@ -504,9 +482,7 @@ fn step_syntax(
               ..control,
               stage: stage_blob,
               bytes_length,
-              blob: Some(
-                cek_source_blob_v1.initial_control_v1(0, bytes_length),
-              ),
+              blob: Some(cek_source_blob_v1.initial_control_v1(0, bytes_length)),
             }
             if control_is_well_formed(next) {
               Some(next)
@@ -528,10 +504,7 @@ fn step_break(
     None -> None
     Some(bytes) ->
       if bytes == #"ff" {
-        let next = CekDataBytesControlV1 {
-          ..control,
-          stage: stage_terminal,
-        }
+        let next = CekDataBytesControlV1 { ..control, stage: stage_terminal }
         if control_is_well_formed(next) {
           Some(next)
         } else {
@@ -573,10 +546,7 @@ fn step_blob(
           when cek_source_blob_v1.step_v1(blob_control, None) is {
             None -> None
             Some(blob) -> {
-              let next = CekDataBytesControlV1 {
-                ..control,
-                blob: Some(blob),
-              }
+              let next = CekDataBytesControlV1 { ..control, blob: Some(blob) }
               if control_is_well_formed(next) {
                 Some(next)
               } else {
@@ -595,10 +565,7 @@ fn step_blob(
               None -> None
               Some(content) ->
                 when
-                  cek_source_blob_v1.step_v1(
-                    blob_control,
-                    Some(content),
-                  )
+                  cek_source_blob_v1.step_v1(blob_control, Some(content))
                 is {
                   None -> None
                   Some(blob) -> {

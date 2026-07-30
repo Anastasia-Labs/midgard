@@ -2,9 +2,7 @@ use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
-use midgard/fraud_proofs/native_tx/codec.{
-  encode_definite_array_header,
-}
+use midgard/fraud_proofs/native_tx/codec.{encode_definite_array_header}
 
 pub const version: Int = 1
 
@@ -67,11 +65,7 @@ fn word_at_le(bytes: ByteArray, index: Int) -> Int {
     |> builtin.bytearray_to_integer(False, _)
 }
 
-fn replace_word_le(
-  bytes: ByteArray,
-  index: Int,
-  value: Int,
-) -> ByteArray {
+fn replace_word_le(bytes: ByteArray, index: Int, value: Int) -> ByteArray {
   let start = index * 8
   let suffix_start = start + 8
   builtin.slice_bytearray(0, start, bytes)
@@ -86,7 +80,7 @@ fn replace_word_le(
 }
 
 fn add64(first: Int, second: Int, third: Int) -> Int {
-  (first + second + third) % word_modulus
+  ( first + second + third ) % word_modulus
 }
 
 fn xor64(first: Int, second: Int) -> Int {
@@ -127,15 +121,9 @@ fn mix(
   y: Int,
 ) -> ByteArray {
   let first_a = add64(word_at_le(words, a), word_at_le(words, b), x)
-  let first_d = rotate_right64(
-    xor64(word_at_le(words, d), first_a),
-    32,
-  )
+  let first_d = rotate_right64(xor64(word_at_le(words, d), first_a), 32)
   let first_c = add64(word_at_le(words, c), first_d, 0)
-  let first_b = rotate_right64(
-    xor64(word_at_le(words, b), first_c),
-    24,
-  )
+  let first_b = rotate_right64(xor64(word_at_le(words, b), first_c), 24)
   let second_a = add64(first_a, first_b, y)
   let second_d = rotate_right64(xor64(first_d, second_a), 16)
   let second_c = add64(first_c, second_d, 0)
@@ -234,25 +222,17 @@ fn fold_chaining_value(
   } else {
     word_le(
       xor64(
-        xor64(
-          word_at_le(chaining_value, index),
-          word_at_le(words, index),
-        ),
+        xor64(word_at_le(chaining_value, index), word_at_le(words, index)),
         word_at_le(words, index + 8),
       ),
     )
-      |> bytearray.concat(
-          fold_chaining_value(chaining_value, words, index + 1),
-        )
+      |> bytearray.concat(fold_chaining_value(chaining_value, words, index + 1))
   }
 }
 
 fn initial_chaining_value_v1() -> ByteArray {
   iv_le
-    |> replace_word_le(
-        0,
-        xor64(word_at_le(iv_le, 0), parameter_block_v1),
-      )
+    |> replace_word_le(0, xor64(word_at_le(iv_le, 0), parameter_block_v1))
 }
 
 fn initialize_working_value(
@@ -264,33 +244,22 @@ fn initialize_working_value(
   let with_low_counter = initial_words
     |> replace_word_le(
         12,
-        xor64(
-          word_at_le(initial_words, 12),
-          bytes_compressed % word_modulus,
-        ),
+        xor64(word_at_le(initial_words, 12), bytes_compressed % word_modulus),
       )
   let with_counter = with_low_counter
     |> replace_word_le(
         13,
-        xor64(
-          word_at_le(with_low_counter, 13),
-          bytes_compressed / word_modulus,
-        ),
+        xor64(word_at_le(with_low_counter, 13), bytes_compressed / word_modulus),
       )
   if final {
     with_counter
-      |> replace_word_le(
-          14,
-          xor64(word_at_le(with_counter, 14), word_mask),
-        )
+      |> replace_word_le(14, xor64(word_at_le(with_counter, 14), word_mask))
   } else {
     with_counter
   }
 }
 
-fn expected_active_block_length(
-  control: Blake2b256TraceControlV1,
-) -> Int {
+fn expected_active_block_length(control: Blake2b256TraceControlV1) -> Int {
   let remaining = control.total_length - control.cursor
   if remaining < block_bytes {
     remaining
@@ -299,9 +268,7 @@ fn expected_active_block_length(
   }
 }
 
-fn active_state_is_empty(
-  control: Blake2b256TraceControlV1,
-) -> Bool {
+fn active_state_is_empty(control: Blake2b256TraceControlV1) -> Bool {
   and {
     control.active_block == #"",
     control.active_block_length == 0,
@@ -310,9 +277,7 @@ fn active_state_is_empty(
   }
 }
 
-fn active_block_padding_is_zero(
-  control: Blake2b256TraceControlV1,
-) -> Bool {
+fn active_block_padding_is_zero(control: Blake2b256TraceControlV1) -> Bool {
   if control.active_block_length == block_bytes {
     True
   } else {
@@ -325,9 +290,7 @@ fn active_block_padding_is_zero(
   }
 }
 
-pub fn control_is_well_formed(
-  control: Blake2b256TraceControlV1,
-) -> Bool {
+pub fn control_is_well_formed(control: Blake2b256TraceControlV1) -> Bool {
   and {
     control.version == version,
     control.stage >= stage_ready,
@@ -373,9 +336,7 @@ pub fn control_is_well_formed(
   }
 }
 
-pub fn initial_control_v1(
-  total_length: Int,
-) -> Blake2b256TraceControlV1 {
+pub fn initial_control_v1(total_length: Int) -> Blake2b256TraceControlV1 {
   let control = Blake2b256TraceControlV1 {
     version,
     stage: stage_ready,
@@ -391,33 +352,28 @@ pub fn initial_control_v1(
   control
 }
 
-pub fn encode_control_v1(
-  control: Blake2b256TraceControlV1,
-) -> ByteArray {
+pub fn encode_control_v1(control: Blake2b256TraceControlV1) -> ByteArray {
   expect control_is_well_formed(control)
   encode_definite_array_header(9)
     |> bytearray.concat(cbor.serialise(version))
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.cursor))
     |> bytearray.concat(cbor.serialise(control.total_length))
-    |> bytearray.concat(
-        cbor.serialise(builtin.b_data(control.chaining_value)),
-      )
+    |> bytearray.concat(cbor.serialise(builtin.b_data(control.chaining_value)))
     |> bytearray.concat(cbor.serialise(builtin.b_data(control.active_block)))
     |> bytearray.concat(cbor.serialise(control.active_block_length))
     |> bytearray.concat(cbor.serialise(builtin.b_data(control.working_value)))
     |> bytearray.concat(cbor.serialise(control.round))
 }
 
-pub fn control_from_data_v1(
-  data: Data,
-) -> Blake2b256TraceControlV1 {
+pub fn control_from_data_v1(data: Data) -> Blake2b256TraceControlV1 {
   expect
-    [
-      version_data, stage_data, cursor_data, total_length_data,
-      chaining_value_data, active_block_data, active_block_length_data,
-      working_value_data, round_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, cursor_data, total_length_data,
+        chaining_value_data, active_block_data, active_block_length_data,
+        working_value_data, round_data,
+      ]
+    = builtin.un_list_data(data)
   let control = Blake2b256TraceControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -433,9 +389,7 @@ pub fn control_from_data_v1(
   control
 }
 
-pub fn decode_control_v1(
-  control_cbor: ByteArray,
-) -> Blake2b256TraceControlV1 {
+pub fn decode_control_v1(control_cbor: ByteArray) -> Blake2b256TraceControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
   let control = control_from_data_v1(data)
   expect encode_control_v1(control) == control_cbor
@@ -472,9 +426,7 @@ fn begin_block_v1(
   }
 }
 
-fn round_v1(
-  control: Blake2b256TraceControlV1,
-) -> Blake2b256TraceControlV1 {
+fn round_v1(control: Blake2b256TraceControlV1) -> Blake2b256TraceControlV1 {
   expect Some(row) = list.at(sigma_rows, control.round % 10)
   let next_round = control.round + 1
   Blake2b256TraceControlV1 {
@@ -484,11 +436,7 @@ fn round_v1(
     } else {
       stage_round
     },
-    working_value: apply_round(
-      control.working_value,
-      control.active_block,
-      row,
-    ),
+    working_value: apply_round(control.working_value, control.active_block, row),
     round: next_round,
   }
 }
@@ -550,9 +498,7 @@ pub fn step_v1(
   }
 }
 
-pub fn digest_v1(
-  control: Blake2b256TraceControlV1,
-) -> Option<ByteArray> {
+pub fn digest_v1(control: Blake2b256TraceControlV1) -> Option<ByteArray> {
   if and {
     control_is_well_formed(control),
     control.stage == stage_terminal,

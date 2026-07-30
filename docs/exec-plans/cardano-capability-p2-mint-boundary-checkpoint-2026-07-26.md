@@ -115,7 +115,8 @@ and the exact complete terminal reconstruction fold.
 
 Every field-5 reveal verifies against the exact converted transaction
 commitment. The complete 265-step field-major receipt sequence reconstructs
-the original canonical Midgard transaction byte for byte. Field 6 also
+the original canonical Midgard transaction byte for byte. Field 7 also
+completes all 130 vkey-witness reveals and the same terminal fold. Field 6
 completes all 130 native-script reveals and the same terminal fold, but it is
 only an authorization-coupling control for this checkpoint.
 
@@ -178,7 +179,7 @@ Both pass.
 
 This checkpoint closes the TypeScript exact Cardano boundary and terminal-fold
 fixture for field 5. Fields 0 through 7 now have this evidence, with field 7
-covered by vkey witnesses and field 6 covered by its real native-script
+covered by its real vkey-witness boundary and field 6 covered by native-script
 observer and policy authorization controls.
 The remaining transaction dynamic field without equivalent evidence is field
 8 (`redeemers`).

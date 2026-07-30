@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
@@ -20,6 +21,7 @@ import {
   type WatcherFinalityStateV1,
 } from "../src/finality-engine.js";
 import {
+  makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -31,6 +33,10 @@ const hex32 = (byte: string): string => byte.repeat(32);
 const externalSource = {
   sourceMode: "external_providers",
   network: "Preprod",
+  providers: [
+    { providerId: "provider-a", operatorIdentitySha256: hex32("a1") },
+    { providerId: "provider-b", operatorIdentitySha256: hex32("b2") },
+  ],
 } as const;
 
 const config = (depth = 3, rollbackDepth = depth) => ({
@@ -150,13 +156,17 @@ const localPolicy = (depth = 3): WatcherFinalityPolicyV1 => {
   return value as WatcherFinalityPolicyV1;
 };
 
-const provider = (providerId: string, identityByte: string) => ({
+const provider = (
+  providerId: string,
+  identityByte: string,
+  operatorIdentityByte = identityByte,
+) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod" as const,
   providerId,
   source: {
     sourceMode: "external_providers" as const,
-    operatorIdentitySha256: hex32(identityByte),
+    operatorIdentitySha256: hex32(operatorIdentityByte),
   },
   authentication: {
     kind: "https_tls_identity_v1" as const,
@@ -185,26 +195,42 @@ const localNodeProvider = (
   },
 });
 
-const transaction = (bodyHex: string) => ({
-  txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-  body: {
-    bytesHex: bodyHex,
-    sha256: createHash("sha256")
-      .update(Buffer.from(bodyHex, "hex"))
-      .digest("hex"),
-  },
-  utxos: [],
-  scripts: [],
-  datums: [],
-  redeemers: [],
-});
+const transaction = (bodySeedHex: string) => {
+  const body = CML.TransactionBody.new(
+    CML.TransactionInputList.new(),
+    CML.TransactionOutputList.new(),
+    BigInt(`0x${bodySeedHex}`),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
+  const bodyHex = body.to_canonical_cbor_hex();
+  return {
+    txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
+    fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction.to_canonical_cbor_hex(),
+    ),
+    body: makeWatcherL1PublicBytesV1(bodyHex),
+    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    utxos: [],
+    scripts: [],
+    datums: [],
+    redeemers: [],
+  };
+};
 
 type ObservationOptions = Readonly<{
   blockHash?: string;
+  parentBlockHash?: string | null;
   slot?: string;
   blockNo?: string;
   depth?: string;
   bodyHex?: string;
+  operatorIdentityByte?: string;
 }>;
 
 const observation = (
@@ -212,19 +238,27 @@ const observation = (
   identityByte: string,
   options: ObservationOptions = {},
 ): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(provider(providerId, identityByte), {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-    network: "Preprod",
-    providerId,
-    chainPoint: {
-      blockHash: options.blockHash ?? hex32("aa"),
-      slot: options.slot ?? "1000",
-      blockNo: options.blockNo ?? "100",
-      depth: options.depth ?? "0",
+  normalizeWatcherL1BlockV1(
+    provider(
+      providerId,
+      identityByte,
+      options.operatorIdentityByte ?? identityByte,
+    ),
+    {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      network: "Preprod",
+      providerId,
+      chainPoint: {
+        blockHash: options.blockHash ?? hex32("aa"),
+        parentBlockHash: options.parentBlockHash ?? null,
+        slot: options.slot ?? "1000",
+        blockNo: options.blockNo ?? "100",
+        depth: options.depth ?? "0",
+      },
+      transactions:
+        options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
     },
-    transactions:
-      options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
-  });
+  );
 
 const agreement = (
   depth: string,
@@ -258,6 +292,7 @@ const localAgreement = (
           : `cardano-node-a-${surface}`,
       chainPoint: {
         blockHash: options.blockHash ?? hex32("aa"),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth,
@@ -271,6 +306,9 @@ const localAgreement = (
       network: "Preprod",
       authorityNodeId: "cardano-node-a",
       genesisIdentitySha256: hex32("a1"),
+      queryServices: includeAlignedQuery
+        ? [{ kind: "ogmios" as const, providerId: "cardano-node-a-ogmios" }]
+        : [],
     },
     [
       normalized("chain_sync"),
@@ -317,6 +355,20 @@ describe("canonical release-bound watcher finality", () => {
       sourceMode: "external_providers",
       authorityNodeId: null,
       authorityGenesisIdentitySha256: null,
+      externalProviders: [
+        {
+          providerId: "provider-a",
+          operatorIdentitySha256: hex32("a1"),
+          endpoint: "https://cardano-a.example",
+          authenticationKind: "https_tls_identity_v1",
+        },
+        {
+          providerId: "provider-b",
+          operatorIdentitySha256: hex32("b2"),
+          endpoint: "https://cardano-b.example",
+          authenticationKind: "https_tls_identity_v1",
+        },
+      ],
       confirmationDepth: "3",
       maximumPreFinalityRollbackDepth: "3",
       beforeFinalityRollback: "rewind",
@@ -330,6 +382,32 @@ describe("canonical release-bound watcher finality", () => {
     expect(value.policyDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
     expect(Object.isFrozen(value)).toBe(true);
+
+    const changedEndpointConfig = config();
+    changedEndpointConfig.l1.source.providers[0]!.endpoint =
+      "https://cardano-a-new.example";
+    const changedEndpointPolicy = makeWatcherFinalityPolicyV1(
+      changedEndpointConfig,
+      deploymentIdentity(),
+    );
+    expect(changedEndpointPolicy).not.toBeNull();
+    expect(changedEndpointPolicy?.policyDigest).not.toBe(value.policyDigest);
+
+    const reorderedConfig = config();
+    reorderedConfig.l1.source.providers.reverse();
+    expect(
+      makeWatcherFinalityPolicyV1(reorderedConfig, deploymentIdentity()),
+    ).toEqual(value);
+
+    const unauthenticatedTransportConfig = config();
+    unauthenticatedTransportConfig.l1.source.providers[0]!.endpoint =
+      "http://127.0.0.1:1442";
+    expect(
+      makeWatcherFinalityPolicyV1(
+        unauthenticatedTransportConfig,
+        deploymentIdentity(),
+      ),
+    ).toBeNull();
 
     expect(localPolicy()).toMatchObject({
       sourceMode: "local_node",
@@ -363,7 +441,7 @@ describe("canonical release-bound watcher finality", () => {
     const finalized = evaluateWatcherFinalityV1(
       finalityPolicy,
       first.state,
-      localAgreement("3", {}, true),
+      localAgreement("3"),
     );
     const externalSubstitution = evaluateWatcherFinalityV1(
       finalityPolicy,
@@ -419,6 +497,77 @@ describe("canonical release-bound watcher finality", () => {
       evaluateWatcherFinalityV1(foreignPolicy, null, firstConsistency),
     ).toMatchObject({
       action: "reject",
+      reasonCodes: ["source_authority_mismatch"],
+    });
+  });
+
+  it("rejects agreement from two distinct providers outside the W01 allowlist", () => {
+    const finalityPolicy = policy();
+    const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [
+        observation("provider-x", "c3", {
+          operatorIdentityByte: "d4",
+        }),
+        observation("provider-y", "e5", {
+          operatorIdentityByte: "f6",
+        }),
+      ],
+    );
+
+    expect(hostileAgreement.status).toBe("quarantined");
+    expect(
+      evaluateWatcherFinalityV1(finalityPolicy, null, hostileAgreement),
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_result_quarantined"],
+      alertCodes: ["watcher_finality_input_rejected"],
+      state: { phase: "unobserved" },
+    });
+  });
+
+  it("rejects configured provider labels with substituted operator identities", () => {
+    const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [
+        observation("provider-a", "c3", {
+          operatorIdentityByte: "d4",
+        }),
+        observation("provider-b", "e5", {
+          operatorIdentityByte: "f6",
+        }),
+      ],
+    );
+
+    expect(
+      evaluateWatcherFinalityV1(policy(), null, hostileAgreement),
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_result_quarantined"],
+    });
+  });
+
+  it("rejects an otherwise valid W11 agreement bound to another configured provider set", () => {
+    const foreign = evaluateWatcherMultiProviderConsistencyV1(
+      {
+        sourceMode: "external_providers",
+        network: "Preprod",
+        providers: [
+          { providerId: "provider-c", operatorIdentitySha256: hex32("c3") },
+          { providerId: "provider-d", operatorIdentitySha256: hex32("d4") },
+        ],
+      },
+      [
+        observation("provider-c", "c3", { depth: "3" }),
+        observation("provider-d", "d4", { depth: "3" }),
+      ],
+    );
+    expect(foreign.status).toBe("agreed");
+    expect(evaluateWatcherFinalityV1(policy(), null, foreign)).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
       reasonCodes: ["source_authority_mismatch"],
     });
   });
@@ -641,19 +790,20 @@ describe("canonical release-bound watcher finality", () => {
   it("fails closed on same-depth stale evidence", () => {
     const finalityPolicy = policy();
     const pending = pendingAt(finalityPolicy, "1");
-    const third = observation("provider-c", "c3", { depth: "1" });
-    const threeProviderAgreement = evaluateWatcherMultiProviderConsistencyV1(
+    const freshTransportAgreement = evaluateWatcherMultiProviderConsistencyV1(
       externalSource,
       [
-        observation("provider-a", "a1", { depth: "1" }),
+        observation("provider-a", "c3", {
+          depth: "1",
+          operatorIdentityByte: "a1",
+        }),
         observation("provider-b", "b2", { depth: "1" }),
-        third,
       ],
     );
     const stale = evaluateWatcherFinalityV1(
       finalityPolicy,
       pending,
-      threeProviderAgreement,
+      freshTransportAgreement,
     );
 
     expect(stale).toMatchObject({

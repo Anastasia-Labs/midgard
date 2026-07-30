@@ -1,13 +1,38 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { parse } from "@typescript-eslint/parser";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
-const mapPath = resolve(
-  repositoryRoot,
-  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+const execGit = (args, encoding = "buffer") => {
+  let output;
+  try {
+    output = execFileSync("git", args, {
+      cwd: repositoryRoot,
+      encoding,
+      maxBuffer: 128 * 1024 * 1024,
+    });
+  } catch (error) {
+    if (error.status !== 0 || error.stdout === undefined) {
+      throw error;
+    }
+    output = error.stdout;
+  }
+  if (encoding === "buffer") {
+    return Buffer.isBuffer(output) ? output : Buffer.from(output);
+  }
+  return typeof output === "string"
+    ? output
+    : Buffer.from(output).toString(encoding);
+};
+const readIndexedFile = (path, encoding = "buffer") =>
+  execGit(["show", `:${path}`], encoding);
+const dependencyMap = JSON.parse(
+  readIndexedFile(
+    "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+    "utf8",
+  ),
 );
-const dependencyMap = JSON.parse(await readFile(mapPath, "utf8"));
 
 const fail = (message) => {
   throw new Error(`Watcher dependency map verification failed: ${message}`);
@@ -22,6 +47,7 @@ if (
 if (dependencyMap.trustPolicy?.unknownBehavior !== "fail_closed") {
   fail("unknown behavior must fail closed");
 }
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const requiredIds = [
   "public_da",
@@ -33,6 +59,450 @@ const requiredIds = [
   "state_queue",
   "correction_removal",
 ];
+const requiredTrustById = new Map([
+  ["public_da", "public_protocol"],
+  ["proof_bundle", "public_protocol"],
+  ["validation", "deterministic_local"],
+  ["proof_tooling", "mixed_public_and_file_inputs"],
+  ["deployment_manifest", "signed_deployment_identity_required"],
+  ["l1_provider", "authenticated_cardano_l1"],
+  ["state_queue", "authenticated_cardano_l1"],
+  ["correction_removal", "public_l1_with_prohibited_optional_dependency"],
+]);
+const requiredSourcesById = new Map([
+  [
+    "public_da",
+    {
+      paths: [
+        "demo/midgard-core/src/da-transport.ts",
+        "demo/midgard-core/src/da-payload-envelope.ts",
+        "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+        "demo/da-committee-node/src/da/payload.ts",
+        "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts",
+      ],
+      symbols: [
+        "DaRequestResponseProtocol",
+        "DaLibp2pPayloadProtocolHandlers",
+        "decodeDaPayloadByHeaderResponseV1Cbor",
+        "decodeDaPayloadV1Strict",
+        "DaLibp2pNode.request",
+      ],
+    },
+  ],
+  [
+    "proof_bundle",
+    {
+      paths: [
+        "demo/midgard-core/src/da-transport.ts",
+        "demo/da-committee-node/src/da/proof-artifacts.ts",
+        "demo/da-committee-node/src/da/libp2p/proof-protocols.ts",
+        "demo/midgard-fault-proofs/src/transition-trace/fetch.ts",
+        "demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts",
+      ],
+      symbols: [
+        "DaProofArtifactDeriver",
+        "DaLibp2pProofProtocolHandlers",
+        "DaLibp2pRetainedDaSource",
+        "reconstructDaPayloadV1",
+      ],
+    },
+  ],
+  [
+    "validation",
+    {
+      paths: [
+        "demo/midgard-validation/src/index.ts",
+        "demo/midgard-validation/src/phase-a.ts",
+        "demo/midgard-validation/src/phase-b.ts",
+        "demo/midgard-validation/src/validation-machine.ts",
+        "demo/midgard-validation/src/validation-dispute-evidence.ts",
+        "demo/midgard-core/src/consensus-validation-v1.ts",
+      ],
+      symbols: [
+        "runPhaseAValidation",
+        "runPhaseBValidationWithPatch",
+        "buildDeterministicValidationMachineTrace",
+        "validateMidgardConsensusV1Tx",
+      ],
+    },
+  ],
+  [
+    "proof_tooling",
+    {
+      paths: [
+        "demo/midgard-fault-proofs/src/index.ts",
+        "demo/midgard-fault-proofs/src/bin.ts",
+        "demo/midgard-fault-proofs/src/prepare-double-spend.ts",
+        "demo/midgard-fault-proofs/src/prepare-invalid-range.ts",
+        "demo/midgard-fault-proofs/src/prepare-non-existent-input.ts",
+        "demo/midgard-fault-proofs/src/transition-trace/fetch.ts",
+        "demo/midgard-fault-proofs/src/transition-trace/submit.ts",
+        "demo/midgard-fault-proofs/src/validation-dispute/index.ts",
+        "demo/midgard-fault-proofs/src/validation-dispute/submit.ts",
+      ],
+      symbols: [
+        "prepareDoubleSpendFromFile",
+        "prepareInvalidRangeFromFile",
+        "prepareNonExistentInputFromFile",
+        "DaLibp2pRetainedDaSource",
+        "submitTransitionTraceProof",
+        "submitValidationDisputeOpen",
+      ],
+    },
+  ],
+  [
+    "deployment_manifest",
+    {
+      paths: [
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+        "demo/midgard-node/src/deployment-manifest-v1.ts",
+        "demo/midgard-node/src/commands/contract-deployment-info.ts",
+        "demo/midgard-watcher/src/deployment-identity.ts",
+      ],
+      symbols: [
+        "verifyDeploymentManifestV1Identity",
+        "parseDeploymentManifestV1Value",
+        "verifyDeploymentManifestAgainstConfig",
+        "verifyWatcherDeploymentIdentityV1",
+      ],
+    },
+  ],
+  [
+    "l1_provider",
+    {
+      paths: [
+        "demo/da-committee-node/src/l1/provider.ts",
+        "demo/da-committee-node/src/l1/state-queue-scanner.ts",
+        "demo/midgard-sdk/src/state-queue.ts",
+        "demo/midgard-watcher/src/l1-adapter.ts",
+        "demo/midgard-watcher/src/multi-provider-consistency.ts",
+        "demo/midgard-watcher/src/finality-engine.ts",
+        "demo/midgard-watcher/src/rollback-engine.ts",
+        "demo/midgard-watcher/src/state-queue-indexer.ts",
+      ],
+      symbols: [
+        "StateQueueProvider",
+        "LucidStateQueueProvider",
+        "MultiStateQueueProvider",
+        "scanStateQueue",
+        "normalizeWatcherL1BlockV1",
+        "evaluateWatcherMultiProviderConsistencyV1",
+        "evaluateWatcherFinalityV1",
+        "evaluateWatcherRollbackV1",
+        "evaluateWatcherStateQueueIndexerV1",
+      ],
+    },
+  ],
+  [
+    "state_queue",
+    {
+      paths: [
+        "demo/midgard-sdk/src/ledger-state.ts",
+        "demo/midgard-sdk/src/state-queue.ts",
+        "demo/da-committee-node/src/l1/state-queue-scanner.ts",
+        "demo/midgard-node/src/services/state-queue-topology.ts",
+        "demo/midgard-watcher/src/durable-store.ts",
+        "demo/midgard-watcher/src/finality-engine.ts",
+        "demo/midgard-watcher/src/state-queue-indexer.ts",
+      ],
+      symbols: [
+        "fetchSortedStateQueueUTxOs",
+        "getStateQueueNodeV1FromStateQueueDatum",
+        "scanStateQueue",
+        "fetchStateQueueTopologyProgram",
+        "migrateWatcherDurableStoreV1",
+        "evaluateWatcherFinalityV1",
+        "evaluateWatcherStateQueueIndexerV1",
+      ],
+    },
+  ],
+  [
+    "correction_removal",
+    {
+      paths: [
+        "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts",
+        "demo/midgard-sdk/src/state-queue.ts",
+        "onchain/aiken/validators/state-queue.ak",
+        "onchain/aiken/lib/midgard/operator-directory.ak",
+      ],
+      symbols: [
+        "submitRemoveFraudulentBlock",
+        "submitRemoveFraudulentBlockFromFiles",
+        "createHttpStateQueueMutationLeaseCoordinator",
+      ],
+    },
+  ],
+]);
+const requiredSymbolBindingsById = new Map([
+  [
+    "public_da",
+    [
+      {
+        symbol: "DaRequestResponseProtocol",
+        path: "demo/midgard-core/src/da-transport.ts",
+      },
+      {
+        symbol: "DaLibp2pPayloadProtocolHandlers",
+        path: "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+      },
+      {
+        symbol: "decodeDaPayloadByHeaderResponseV1Cbor",
+        path: "demo/midgard-core/src/da-transport.ts",
+      },
+      {
+        symbol: "decodeDaPayloadV1Strict",
+        path: "demo/da-committee-node/src/da/payload.ts",
+      },
+      {
+        symbol: "DaLibp2pNode.request",
+        path: "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts",
+        owner: "DaLibp2pNode",
+        member: "request",
+      },
+    ],
+  ],
+  [
+    "proof_bundle",
+    [
+      {
+        symbol: "DaProofArtifactDeriver",
+        path: "demo/da-committee-node/src/da/proof-artifacts.ts",
+      },
+      {
+        symbol: "DaLibp2pProofProtocolHandlers",
+        path: "demo/da-committee-node/src/da/libp2p/proof-protocols.ts",
+      },
+      {
+        symbol: "DaLibp2pRetainedDaSource",
+        path: "demo/midgard-fault-proofs/src/transition-trace/fetch.ts",
+      },
+      {
+        symbol: "reconstructDaPayloadV1",
+        path: "demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts",
+      },
+    ],
+  ],
+  [
+    "validation",
+    [
+      {
+        symbol: "runPhaseAValidation",
+        path: "demo/midgard-validation/src/phase-a.ts",
+      },
+      {
+        symbol: "runPhaseBValidationWithPatch",
+        path: "demo/midgard-validation/src/phase-b.ts",
+      },
+      {
+        symbol: "buildDeterministicValidationMachineTrace",
+        path: "demo/midgard-validation/src/validation-machine.ts",
+      },
+      {
+        symbol: "validateMidgardConsensusV1Tx",
+        path: "demo/midgard-core/src/consensus-validation-v1.ts",
+      },
+    ],
+  ],
+  [
+    "proof_tooling",
+    [
+      {
+        symbol: "prepareDoubleSpendFromFile",
+        path: "demo/midgard-fault-proofs/src/prepare-double-spend.ts",
+      },
+      {
+        symbol: "prepareInvalidRangeFromFile",
+        path: "demo/midgard-fault-proofs/src/prepare-invalid-range.ts",
+      },
+      {
+        symbol: "prepareNonExistentInputFromFile",
+        path: "demo/midgard-fault-proofs/src/prepare-non-existent-input.ts",
+      },
+      {
+        symbol: "DaLibp2pRetainedDaSource",
+        path: "demo/midgard-fault-proofs/src/transition-trace/fetch.ts",
+      },
+      {
+        symbol: "submitTransitionTraceProof",
+        path: "demo/midgard-fault-proofs/src/transition-trace/submit.ts",
+      },
+      {
+        symbol: "submitValidationDisputeOpen",
+        path: "demo/midgard-fault-proofs/src/validation-dispute/submit.ts",
+      },
+    ],
+  ],
+  [
+    "deployment_manifest",
+    [
+      {
+        symbol: "verifyDeploymentManifestV1Identity",
+        path: "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+      },
+      {
+        symbol: "parseDeploymentManifestV1Value",
+        path: "demo/midgard-node/src/deployment-manifest-v1.ts",
+      },
+      {
+        symbol: "verifyDeploymentManifestAgainstConfig",
+        path: "demo/midgard-node/src/commands/contract-deployment-info.ts",
+      },
+      {
+        symbol: "verifyWatcherDeploymentIdentityV1",
+        path: "demo/midgard-watcher/src/deployment-identity.ts",
+      },
+    ],
+  ],
+  [
+    "l1_provider",
+    [
+      {
+        symbol: "StateQueueProvider",
+        path: "demo/da-committee-node/src/l1/state-queue-scanner.ts",
+      },
+      {
+        symbol: "LucidStateQueueProvider",
+        path: "demo/da-committee-node/src/l1/provider.ts",
+      },
+      {
+        symbol: "MultiStateQueueProvider",
+        path: "demo/da-committee-node/src/l1/provider.ts",
+      },
+      {
+        symbol: "scanStateQueue",
+        path: "demo/da-committee-node/src/l1/state-queue-scanner.ts",
+      },
+      {
+        symbol: "normalizeWatcherL1BlockV1",
+        path: "demo/midgard-watcher/src/l1-adapter.ts",
+      },
+      {
+        symbol: "evaluateWatcherMultiProviderConsistencyV1",
+        path: "demo/midgard-watcher/src/multi-provider-consistency.ts",
+      },
+      {
+        symbol: "evaluateWatcherFinalityV1",
+        path: "demo/midgard-watcher/src/finality-engine.ts",
+      },
+      {
+        symbol: "evaluateWatcherRollbackV1",
+        path: "demo/midgard-watcher/src/rollback-engine.ts",
+      },
+      {
+        symbol: "evaluateWatcherStateQueueIndexerV1",
+        path: "demo/midgard-watcher/src/state-queue-indexer.ts",
+      },
+    ],
+  ],
+  [
+    "state_queue",
+    [
+      {
+        symbol: "fetchSortedStateQueueUTxOs",
+        path: "demo/midgard-sdk/src/state-queue.ts",
+      },
+      {
+        symbol: "getStateQueueNodeV1FromStateQueueDatum",
+        path: "demo/midgard-sdk/src/ledger-state.ts",
+      },
+      {
+        symbol: "scanStateQueue",
+        path: "demo/da-committee-node/src/l1/state-queue-scanner.ts",
+      },
+      {
+        symbol: "fetchStateQueueTopologyProgram",
+        path: "demo/midgard-node/src/services/state-queue-topology.ts",
+      },
+      {
+        symbol: "migrateWatcherDurableStoreV1",
+        path: "demo/midgard-watcher/src/durable-store.ts",
+      },
+      {
+        symbol: "evaluateWatcherFinalityV1",
+        path: "demo/midgard-watcher/src/finality-engine.ts",
+      },
+      {
+        symbol: "evaluateWatcherStateQueueIndexerV1",
+        path: "demo/midgard-watcher/src/state-queue-indexer.ts",
+      },
+    ],
+  ],
+  [
+    "correction_removal",
+    [
+      {
+        symbol: "submitRemoveFraudulentBlock",
+        path: "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts",
+      },
+      {
+        symbol: "submitRemoveFraudulentBlockFromFiles",
+        path: "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts",
+      },
+      {
+        symbol: "createHttpStateQueueMutationLeaseCoordinator",
+        path: "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts",
+      },
+    ],
+  ],
+]);
+
+const parseTypescriptModule = (source) => {
+  try {
+    return parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    });
+  } catch {
+    return null;
+  }
+};
+
+const declarationHasName = (declaration, symbol) => {
+  if (declaration.type === "VariableDeclaration") {
+    return declaration.declarations.some(
+      ({ id }) => id.type === "Identifier" && id.name === symbol,
+    );
+  }
+  return (
+    declaration.id?.type === "Identifier" && declaration.id.name === symbol
+  );
+};
+
+const exportedDeclarationPresent = (moduleAst, symbol) =>
+  moduleAst.body.some(
+    (statement) =>
+      statement.type === "ExportNamedDeclaration" &&
+      statement.declaration !== null &&
+      declarationHasName(statement.declaration, symbol),
+  );
+
+const directClassMemberPresent = (moduleAst, owner, member) => {
+  const ownerDeclaration = moduleAst.body.find(
+    (statement) =>
+      statement.type === "ExportNamedDeclaration" &&
+      statement.declaration?.type === "ClassDeclaration" &&
+      statement.declaration.id?.name === owner,
+  )?.declaration;
+  if (ownerDeclaration?.type !== "ClassDeclaration") {
+    return false;
+  }
+  return ownerDeclaration.body.body.some(
+    (element) =>
+      (element.type === "MethodDefinition" ||
+        element.type === "TSAbstractMethodDefinition") &&
+      element.computed === false &&
+      element.kind === "method" &&
+      element.key.type === "Identifier" &&
+      element.key.name === member,
+  );
+};
+
+const sourceDeclaresBinding = (moduleAst, binding) => {
+  if (binding.owner === undefined || binding.member === undefined) {
+    return exportedDeclarationPresent(moduleAst, binding.symbol);
+  }
+  return directClassMemberPresent(moduleAst, binding.owner, binding.member);
+};
 const dependencies = dependencyMap.dependencies;
 if (!Array.isArray(dependencies)) {
   fail("dependencies must be an array");
@@ -41,16 +511,53 @@ const byId = new Map(dependencies.map((entry) => [entry.id, entry]));
 if (byId.size !== dependencies.length) {
   fail("dependency ids must be unique");
 }
+if (
+  dependencies.length !== requiredIds.length ||
+  requiredIds.some((id, index) => dependencies[index]?.id !== id)
+) {
+  fail("dependency ids and order must match the exact required set");
+}
 for (const id of requiredIds) {
   const entry = byId.get(id);
   if (entry === undefined) {
     fail(`missing dependency ${id}`);
   }
+  if (entry.trust !== requiredTrustById.get(id)) {
+    fail(`${id} has an invalid trust classification`);
+  }
+  const requiredSources = requiredSourcesById.get(id);
+  if (
+    requiredSources === undefined ||
+    JSON.stringify(entry.sourcePaths) !==
+      JSON.stringify(requiredSources.paths) ||
+    JSON.stringify(entry.sourceSymbols) !==
+      JSON.stringify(requiredSources.symbols)
+  ) {
+    fail(`${id} source paths and symbols must match the exact required set`);
+  }
   if (!Array.isArray(entry.sourcePaths) || entry.sourcePaths.length === 0) {
     fail(`${id} must name source paths`);
   }
+  if (
+    entry.sourceSha256 === null ||
+    typeof entry.sourceSha256 !== "object" ||
+    Array.isArray(entry.sourceSha256) ||
+    JSON.stringify(Object.keys(entry.sourceSha256).sort()) !==
+      JSON.stringify([...entry.sourcePaths].sort())
+  ) {
+    fail(`${id} must hash-bind every source path exactly`);
+  }
   if (!Array.isArray(entry.sourceSymbols) || entry.sourceSymbols.length === 0) {
     fail(`${id} must name source symbols`);
+  }
+  const requiredBindings = requiredSymbolBindingsById.get(id);
+  if (
+    requiredBindings === undefined ||
+    JSON.stringify(requiredBindings.map(({ symbol }) => symbol)) !==
+      JSON.stringify(entry.sourceSymbols) ||
+    requiredBindings.some(({ path }) => !entry.sourcePaths.includes(path))
+  ) {
+    fail(`${id} symbol bindings must match exact owning source paths`);
   }
   if (
     !Array.isArray(entry.remainingTasks) ||
@@ -64,20 +571,31 @@ for (const id of requiredIds) {
   ) {
     fail(`${id} must define the watcher boundary`);
   }
-  const sourceTexts = [];
+  const sourceTexts = new Map();
+  const sourceModules = new Map();
   for (const sourcePath of entry.sourcePaths) {
-    sourceTexts.push(
-      await readFile(resolve(repositoryRoot, sourcePath), "utf8"),
-    );
+    if (
+      sourcePath.startsWith("/") ||
+      sourcePath.split("/").includes("..") ||
+      entry.sourceSha256[sourcePath] !== sha256(readIndexedFile(sourcePath))
+    ) {
+      fail(`${id} source hash is stale for ${sourcePath}`);
+    }
+    const sourceText = readIndexedFile(sourcePath, "utf8");
+    sourceTexts.set(sourcePath, sourceText);
+    sourceModules.set(sourcePath, parseTypescriptModule(sourceText));
   }
-  const combinedSource = sourceTexts.join("\n");
-  for (const sourceSymbol of entry.sourceSymbols) {
-    const searchableSymbol = sourceSymbol.includes(".")
-      ? sourceSymbol.slice(sourceSymbol.lastIndexOf(".") + 1)
-      : sourceSymbol;
-    if (!combinedSource.includes(searchableSymbol)) {
+  for (const binding of requiredBindings) {
+    const source = sourceTexts.get(binding.path);
+    const sourceModule = sourceModules.get(binding.path);
+    if (
+      source === undefined ||
+      sourceModule === undefined ||
+      sourceModule === null ||
+      !sourceDeclaresBinding(sourceModule, binding)
+    ) {
       fail(
-        `${id} source symbol ${sourceSymbol} is absent from its source paths`,
+        `${id} source symbol ${binding.symbol} is not declared by ${binding.path}`,
       );
     }
   }
@@ -95,12 +613,46 @@ if (
 const rejected = dependencyMap.explicitlyRejectedDependencies;
 if (
   !Array.isArray(rejected) ||
-  !rejected.some((entry) => entry.path === "demo/midgard-node/src/database") ||
-  !rejected.some(
-    (entry) => entry.symbol === "createHttpStateQueueMutationLeaseCoordinator",
-  )
+  JSON.stringify(rejected) !==
+    JSON.stringify([
+      {
+        path: "demo/midgard-node/src/database",
+        reason: "operator-private database",
+      },
+      {
+        path: "demo/midgard-node/src/commands/e2e-service.ts",
+        reason: "operator administration and test orchestration",
+      },
+      {
+        symbol: "createHttpStateQueueMutationLeaseCoordinator",
+        reason: "operator-admin mutation lease",
+      },
+      {
+        mode: "--midgard-node-url evidence preparation",
+        reason:
+          "operator endpoint is diagnostic only; watcher evidence must originate from authenticated public L1 and DA",
+      },
+    ])
 ) {
-  fail("operator-private database and mutation lease must be rejected");
+  fail("operator-private and diagnostic dependencies must be exactly rejected");
+}
+if (
+  JSON.stringify(dependencyMap.trustPolicy?.allowedSecurityInputs) !==
+    JSON.stringify([
+      "authenticated_cardano_l1",
+      "public_or_permissionless_da",
+      "signed_deployment_identity",
+      "deterministic_local_computation",
+    ]) ||
+  JSON.stringify(dependencyMap.trustPolicy?.prohibitedSecurityInputs) !==
+    JSON.stringify([
+      "operator_private_database",
+      "operator_admin_api",
+      "operator_private_file",
+      "operator_only_diagnostic_endpoint",
+    ])
+) {
+  fail("allowed and prohibited security inputs must match the exact policy");
 }
 
 if (
@@ -112,27 +664,89 @@ if (
   fail("W00-W02 watcher production sources must exist");
 }
 const watcherManifest = JSON.parse(
-  await readFile(
-    resolve(repositoryRoot, "demo/midgard-watcher/package.json"),
-    "utf8",
-  ),
+  readIndexedFile("demo/midgard-watcher/package.json", "utf8"),
+);
+const workspaceManifest = JSON.parse(
+  readIndexedFile("demo/package.json", "utf8"),
 );
 const committeeManifest = JSON.parse(
-  await readFile(
-    resolve(repositoryRoot, "demo/da-committee-node/package.json"),
-    "utf8",
-  ),
+  readIndexedFile("demo/da-committee-node/package.json", "utf8"),
 );
 if (
   watcherManifest.name !== "midgard-watcher" ||
   watcherManifest.bin?.["midgard-watcher"] !== "./dist/cli.js" ||
+  watcherManifest.packageManager !== undefined ||
+  workspaceManifest.packageManager !==
+    "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0" ||
   committeeManifest.name !== "da-committee-node" ||
   committeeManifest.bin?.["da-committee-node"] !== "./dist/index.js"
 ) {
-  fail("watcher and committee package identities must remain distinct");
+  fail(
+    "watcher/committee identities and the workspace package-manager authority must remain exact",
+  );
 }
-const watcherSource = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/scaffold.ts"),
+const listIndexedPackageFiles = (relativeDirectory) =>
+  execGit(["ls-files", "-z", "--", relativeDirectory], "utf8")
+    .split("\0")
+    .filter((path) => path !== "")
+    .sort((left, right) =>
+      Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+    );
+const declaredWatcherContents = [
+  ...(dependencyMap.requiredWatcherPackage?.currentContents ?? []),
+].sort((left, right) =>
+  Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+);
+const actualWatcherContents = listIndexedPackageFiles("demo/midgard-watcher");
+if (
+  JSON.stringify(declaredWatcherContents) !==
+  JSON.stringify(actualWatcherContents)
+) {
+  fail("requiredWatcherPackage.currentContents must exactly cover the package");
+}
+if (
+  workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
+    "node scripts/verify-canonical-v1-watcher-dependency-map.mjs" ||
+  workspaceManifest.scripts?.["watcher:dependency-map:test"] !==
+    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
+) {
+  fail(
+    "workspace must expose the canonical watcher dependency-map verifier and mutation tests",
+  );
+}
+const nodeCi = readIndexedFile(".github/workflows/midgard-node-ci.yml", "utf8");
+for (const requiredCiText of [
+  "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+  "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify",
+]) {
+  if (!nodeCi.includes(requiredCiText)) {
+    fail(`Midgard node CI is missing ${requiredCiText}`);
+  }
+}
+const watcherArchitecture = readIndexedFile(
+  "demo/midgard-watcher/midgard-watcher-architecture.md",
+  "utf8",
+);
+const watcherAdversarialReview = readIndexedFile(
+  "demo/midgard-watcher/watcher-plan-adversarial-review.md",
+  "utf8",
+);
+for (const sourceModeDocument of [
+  watcherArchitecture,
+  watcherAdversarialReview,
+]) {
+  if (
+    !sourceModeDocument.includes("`local_node`") ||
+    !sourceModeDocument.includes("`external_providers`") ||
+    !sourceModeDocument.includes("watcher-operated")
+  ) {
+    fail("shipped watcher documents must define both L1-source modes");
+  }
+}
+const watcherSource = readIndexedFile(
+  "demo/midgard-watcher/src/scaffold.ts",
   "utf8",
 );
 if (
@@ -143,104 +757,156 @@ if (
 }
 const strictConfiguration =
   dependencyMap.requiredWatcherPackage?.strictConfiguration;
-const configBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/config.ts"),
+const configBytes = readIndexedFile("demo/midgard-watcher/src/config.ts");
+const configTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/config.test.ts",
 );
-const configTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/config.test.ts"),
+const deploymentIdentityBytes = readIndexedFile(
+  "demo/midgard-watcher/src/deployment-identity.ts",
 );
-const deploymentIdentityBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/deployment-identity.ts"),
+const deploymentIdentityTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/deployment-identity.test.ts",
 );
-const deploymentIdentityTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/deployment-identity.test.ts",
-  ),
+const durableStoreBytes = readIndexedFile(
+  "demo/midgard-watcher/src/durable-store.ts",
 );
-const durableStoreBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/durable-store.ts"),
+const durableStoreTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/durable-store.test.ts",
 );
-const durableStoreTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/durable-store.test.ts"),
+const l1AdapterBytes = readIndexedFile(
+  "demo/midgard-watcher/src/l1-adapter.ts",
 );
-const l1AdapterBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/l1-adapter.ts"),
+const l1AdapterTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/l1-adapter.test.ts",
 );
-const l1AdapterTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/l1-adapter.test.ts"),
+const multiProviderConsistencyBytes = readIndexedFile(
+  "demo/midgard-watcher/src/multi-provider-consistency.ts",
 );
-const multiProviderConsistencyBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/src/multi-provider-consistency.ts",
-  ),
+const multiProviderConsistencyTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
 );
-const multiProviderConsistencyTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
-  ),
+const finalityEngineBytes = readIndexedFile(
+  "demo/midgard-watcher/src/finality-engine.ts",
 );
-const finalityEngineBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/finality-engine.ts"),
+const finalityEngineTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/finality-engine.test.ts",
 );
-const finalityEngineTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/finality-engine.test.ts"),
+const rollbackEngineBytes = readIndexedFile(
+  "demo/midgard-watcher/src/rollback-engine.ts",
 );
-const rollbackEngineBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/rollback-engine.ts"),
+const rollbackEngineTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/rollback-engine.test.ts",
 );
-const rollbackEngineTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/rollback-engine.test.ts"),
+const ruleBundleBytes = readIndexedFile(
+  "demo/midgard-watcher/src/rule-bundle-v1.ts",
 );
-const ruleBundleBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/rule-bundle-v1.ts"),
+const ruleBundleTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/rule-bundle-v1.test.ts",
 );
-const ruleBundleTestBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/tests/rule-bundle-v1.test.ts"),
+const stateQueueIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/state-queue-indexer.ts",
 );
-const stateQueueIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/state-queue-indexer.ts"),
+const stateQueueIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
 );
-const stateQueueIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
-  ),
+const userEventIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/user-event-indexer.ts",
 );
-const userEventIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/user-event-indexer.ts"),
+const userEventIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/user-event-indexer.test.ts",
 );
-const userEventIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/user-event-indexer.test.ts",
-  ),
+const settlementIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/settlement-indexer.ts",
 );
-const settlementIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/settlement-indexer.ts"),
+const settlementIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/settlement-indexer.test.ts",
 );
-const settlementIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/settlement-indexer.test.ts",
-  ),
+const proofThreadIndexerBytes = readIndexedFile(
+  "demo/midgard-watcher/src/proof-thread-indexer.ts",
 );
-const proofThreadIndexerBytes = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/proof-thread-indexer.ts"),
+const proofThreadIndexerTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
 );
-const proofThreadIndexerTestBytes = await readFile(
-  resolve(
-    repositoryRoot,
-    "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
-  ),
-);
-const watcherIndexSource = await readFile(
-  resolve(repositoryRoot, "demo/midgard-watcher/src/index.ts"),
+const watcherIndexSource = readIndexedFile(
+  "demo/midgard-watcher/src/index.ts",
   "utf8",
 );
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const readTrackedBytes = ({ mode, objectId }) => {
+  if (mode === "160000") {
+    return Buffer.from(`gitlink:${objectId}`);
+  }
+  return execGit(["cat-file", "blob", objectId]);
+};
+const contentTreeExclusions = [
+  "GOAL_PROGRESS.md",
+  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+];
+if (
+  JSON.stringify(dependencyMap.authority?.publishedParentRevisions) !==
+    JSON.stringify([
+      "2b755a776d6af4a57d877633485ca0701e4cc51d",
+      "d8fcc0f74f659fe614dc215dcef0f3d2c9b16590",
+    ]) ||
+  dependencyMap.authority?.sourceRevision !==
+    "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
+  dependencyMap.authority?.baseRevision !==
+    "8bae9403a13124f647f215999848ff5c82784e37" ||
+  dependencyMap.authority?.treeState !==
+    "reviewed merge content tree bound by resultContentTreeSha256" ||
+  JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
+    JSON.stringify(contentTreeExclusions)
+) {
+  fail("authority must bind both reviewed merge parents and exact exclusions");
+}
+const trackedEntriesFromIndex = execGit(["ls-files", "--stage", "-z"], "utf8")
+  .split("\0")
+  .filter((record) => record !== "")
+  .map((record) => {
+    const separatorIndex = record.indexOf("\t");
+    if (separatorIndex <= 0) {
+      fail("tracked index contains a malformed entry");
+    }
+    const metadata = record.slice(0, separatorIndex);
+    const match = metadata.match(
+      /^(100644|100755|120000|160000) ([0-9a-f]{40}|[0-9a-f]{64}) 0$/,
+    );
+    if (match === null) {
+      fail("tracked index must contain only supported stage-zero entries");
+    }
+    const [, mode, objectId] = match;
+    return {
+      mode,
+      objectId,
+      path: record.slice(separatorIndex + 1),
+    };
+  })
+  .filter(({ path }) => !contentTreeExclusions.includes(path))
+  .sort((left, right) =>
+    Buffer.compare(
+      Buffer.from(left.path, "utf8"),
+      Buffer.from(right.path, "utf8"),
+    ),
+  );
+const trackedEntries = trackedEntriesFromIndex.map((entry) => ({
+  path: entry.path,
+  mode: entry.mode,
+  sha256: sha256(readTrackedBytes(entry)),
+}));
+const resultContentTreeSha256 = sha256(
+  JSON.stringify({
+    domain: "midgard-reviewed-integration-content-tree-v1",
+    entries: trackedEntries,
+  }),
+);
+if (process.argv.includes("--print-result-content-tree-sha256")) {
+  process.stdout.write(`${resultContentTreeSha256}\n`);
+  process.exit(0);
+}
+if (
+  dependencyMap.authority?.resultContentTreeSha256 !== resultContentTreeSha256
+) {
+  fail("authority result content tree is stale");
+}
 if (
   strictConfiguration?.schemaVersion !== "midgard-watcher-config-v1" ||
   strictConfiguration.sourceSha256 !== sha256(configBytes) ||
@@ -286,9 +952,21 @@ if (
   deploymentIdentity.signatureDomain !==
     "midgard-watcher-deployment-identity-signature-v1" ||
   deploymentIdentity.trustRootIdentity !== "sha256_spki_der" ||
+  JSON.stringify(deploymentIdentity.catalogueCategoryOrder) !==
+    JSON.stringify([
+      "doubleSpend",
+      "nonExistentInput",
+      "nonExistentInputNoIndex",
+      "invalidRange",
+      "transitionTrace",
+      "zeroInput",
+      "validationTraceDispute",
+    ]) ||
+  deploymentIdentity.catalogueContractBinding !==
+    "exact_category_id_order_and_deployed_script_hash" ||
   deploymentIdentity.unknownBehavior !== "fail_closed" ||
   deploymentIdentity.diagnostics !== "code_and_schema_path_only" ||
-  deploymentIdentity.node22FocusedTestsPassed !== 17
+  deploymentIdentity.node22FocusedTestsPassed !== 18
 ) {
   fail("W02 deployment-identity evidence is incomplete or stale");
 }
@@ -329,6 +1007,9 @@ for (const requiredSymbol of [
   ) {
     fail(`W02 deployment-identity symbol ${requiredSymbol} is not public`);
   }
+}
+if (!deploymentIdentitySource.includes('zeroInput: "fraudProofZeroInput"')) {
+  fail("W02 deployment identity must bind the zeroInput catalogue family");
 }
 const durableStore = dependencyMap.requiredWatcherPackage?.durableStore;
 const requiredRecordClasses = [
@@ -397,9 +1078,10 @@ if (
   l1Adapter.identityPolicy !==
     "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content" ||
   l1Adapter.inputPolicy !== "authenticated_node_derived_l1_only" ||
+  l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 10
+  l1Adapter.node22FocusedTestsPassed !== 21
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -432,20 +1114,23 @@ if (
     sha256(multiProviderConsistencyTestBytes) ||
   JSON.stringify(multiProviderConsistency.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
-  multiProviderConsistency.minimumIndependentProvidersByMode?.local_node !==
-    1 ||
-  multiProviderConsistency.minimumIndependentProvidersByMode
-    ?.external_providers !== 2 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.local_node !== 1 ||
+  multiProviderConsistency.minimumChainAuthoritiesByMode?.external_providers !==
+    2 ||
+  multiProviderConsistency.localQuerySurfacesCountAsIndependentProviders !==
+    false ||
   multiProviderConsistency.compatibleBlockLag !== 64 ||
   multiProviderConsistency.agreementPolicy !==
     "local_node_chain_sync_authority_with_aligned_query_surfaces_or_two_independent_external_providers_at_compatible_points" ||
+  multiProviderConsistency.externalProviderBindingPolicy !==
+    "exact_W01_provider_operator_endpoint_https_transport_allowlist" ||
   multiProviderConsistency.lagPolicy !==
     "bounded_lag_pending_protocol_quarantined" ||
   multiProviderConsistency.disagreementPolicy !==
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 13
+  multiProviderConsistency.node22FocusedTestsPassed !== 21
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -465,6 +1150,9 @@ for (const requiredSymbol of [
     fail(`W11 multi-provider symbol ${requiredSymbol} is not public`);
   }
 }
+if (!multiProviderConsistencySource.includes("externalProviderBindings")) {
+  fail("W11 consistency evidence must bind configured external providers");
+}
 const finalityEngine = dependencyMap.requiredWatcherPackage?.finalityEngine;
 if (
   finalityEngine?.policySchemaVersion !==
@@ -481,9 +1169,11 @@ if (
     "durable_quarantine_incident_preserving_finalized_binding" ||
   finalityEngine.consistencyPolicy !==
     "exact_source_mode_bound_W11_agreement_required" ||
+  finalityEngine.externalProviderPolicy !==
+    "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 19
+  finalityEngine.node22FocusedTestsPassed !== 22
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -504,6 +1194,9 @@ for (const requiredSymbol of [
   ) {
     fail(`W12 finality-engine symbol ${requiredSymbol} is not public`);
   }
+}
+if (!finalityEngineSource.includes("externalProviderBindingsMatchPolicy")) {
+  fail("W12 finality must match W11 provider bindings to W01 policy");
 }
 const rollbackEngine = dependencyMap.requiredWatcherPackage?.rollbackEngine;
 if (
@@ -551,6 +1244,9 @@ for (const requiredSymbol of [
     fail(`W13 rollback-engine symbol ${requiredSymbol} is not public`);
   }
 }
+if (!rollbackEngineSource.includes("externalProviderBindings")) {
+  fail("W13 rollback provenance must retain W11 external provider bindings");
+}
 const stateQueueIndexer =
   dependencyMap.requiredWatcherPackage?.stateQueueIndexer;
 if (
@@ -577,7 +1273,7 @@ if (
     "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.node22FocusedTestsPassed !== 11
+  stateQueueIndexer.node22FocusedTestsPassed !== 15
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -630,7 +1326,7 @@ if (
     "exact_W13_journal_restoration_suffix_rewind_restart_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.node22FocusedTestsPassed !== 12
+  userEventIndexer.node22FocusedTestsPassed !== 18
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -661,7 +1357,7 @@ const settlementIndexer =
 if (
   settlementIndexer?.status !== "PASS" ||
   settlementIndexer.independentAudit !==
-    "PASS_source_replay_residual_journal_preservation_fix_and_hostile_probes" ||
+    "PASS_full_restart_replay_canonical_transaction_order_aggregate_bounds_and_hostile_probes" ||
   settlementIndexer.policySchemaVersion !==
     "midgard-watcher-settlement-indexer-policy-v1" ||
   settlementIndexer.snapshotSchemaVersion !==
@@ -679,12 +1375,12 @@ if (
   settlementIndexer.settlementPolicy !==
     "exact_claim_disproof_resolution_reserve_payout_refund_value_and_terminal_semantics" ||
   settlementIndexer.retryPolicy !==
-    "bounded_retry_stuck_invalid_identity_and_restart_replay" ||
+    "bounded_retry_stuck_invalid_identity_and_full_transition_history_restart_replay" ||
   settlementIndexer.rollbackPolicy !==
-    "exact_W13_journal_restoration_unrelated_archive_preservation_restart_and_reinclusion" ||
+    "exact_W13_journal_restoration_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.node22FocusedTestsPassed !== 17
+  settlementIndexer.node22FocusedTestsPassed !== 23
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -715,7 +1411,7 @@ const proofThreadIndexer =
 if (
   proofThreadIndexer?.status !== "PASS" ||
   proofThreadIndexer.independentAudit !==
-    "PASS_source_mode_recomputation_and_lifecycle_replay" ||
+    "PASS_full_restart_replay_revision_monotonicity_canonical_transaction_order_and_aggregate_bounds" ||
   proofThreadIndexer.policySchemaVersion !==
     "midgard-watcher-proof-thread-policy-v1" ||
   proofThreadIndexer.journalSchemaVersion !==
@@ -735,10 +1431,10 @@ if (
   proofThreadIndexer.threadPolicy !==
     "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles" ||
   proofThreadIndexer.rollbackPolicy !==
-    "exact_W13_journal_rewind_restart_replay_and_reinclusion" ||
+    "exact_W13_journal_rewind_full_transition_history_restart_replay_revision_monotonicity_and_reinclusion" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  proofThreadIndexer.node22FocusedTestsPassed !== 7
+  proofThreadIndexer.node22FocusedTestsPassed !== 18
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }

@@ -34,6 +34,7 @@ import {
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityPolicyV1,
 } from "../src/deployment-identity.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH =
@@ -83,26 +84,8 @@ const canonicalIdentity = (): MutableRecord => {
       },
     ]),
   ) as MutableRecord;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: "33".repeat(32),
-    categories: Object.fromEntries(
-      [
-        "doubleSpend",
-        "nonExistentInput",
-        "nonExistentInputNoIndex",
-        "invalidRange",
-        "transitionTrace",
-        "validationTraceDispute",
-      ].map((category, index) => [
-        category,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: CONTRACT_SCRIPT_HASH,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -384,6 +367,45 @@ describe("watcher deployment identity", () => {
         fixture.signedIdentity.releaseBindings.programCommitments,
       durableMarker: fixture.durableMarker,
     });
+  });
+
+  it("binds zero-input and validation-trace catalogue entries to their deployed contracts", () => {
+    const fixture = makeFixture();
+    const categories = fixture.policy.fraudProofCatalogue.categories;
+
+    expect(categories.zeroInput).toEqual({
+      categoryId: "00000005",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofZeroInput,
+    });
+    expect(categories.validationTraceDispute).toEqual({
+      categoryId: "00000006",
+      scriptHash: fixture.policy.appliedScriptHashes.validationTraceDispute,
+    });
+
+    fixture.policy = {
+      ...fixture.policy,
+      fraudProofCatalogue: {
+        ...fixture.policy.fraudProofCatalogue,
+        categories: {
+          ...categories,
+          zeroInput: {
+            ...categories.zeroInput,
+            scriptHash: NATIVE_SCRIPT_HASH,
+          },
+        },
+      },
+    };
+    rejection(
+      () =>
+        verifyWatcherDeploymentIdentityV1({
+          signedIdentity: fixture.signedIdentity,
+          policy: fixture.policy,
+          trustRoots: [fixture.trustRoot],
+          durableMarker: fixture.durableMarker,
+        }),
+      "mismatched_identity",
+      "$.manifest.contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.zeroInput",
+    );
   });
 
   it("requires the exact durable deployment marker", () => {

@@ -59,6 +59,14 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   async publishSignature(
     record: DaSignatureRecord,
   ): Promise<"posted" | "post_failed"> {
+    const l1State = await this.deps.store.getL1SourceState();
+    if (l1State?.status === "quarantined") {
+      this.lastErrors.set(
+        record.headerHash,
+        `L1 source quarantined: ${l1State.quarantineReason ?? "unknown reason"}`,
+      );
+      return "post_failed";
+    }
     await this.pollPeerSignatures(record.headerHash);
     const peerResults = await Promise.all(
       this.deps.peers.map((peer) => this.broadcastSignature(peer, record)),
@@ -105,6 +113,9 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
   }
 
   async pollPeerSignatures(headerHash: string): Promise<void> {
+    if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
+      return;
+    }
     await this.poller.pollPeerSignatures(headerHash);
   }
 

@@ -20,11 +20,12 @@ adopted `fault proof`, while the deployed contracts and the protocol specificati
 `fraud proof`.
 
 <Callout type="info" title="Where this fits">
-This tooling is the challenge side of the optimistic model. The watchers that detect
-fraud are documented under [Watchers &amp; Data Availability](/docs/watchers/concept); the
-on-chain validators these commands drive are the fraud-proof machines described in
-[On-chain: Fraud-Proof Machines](/docs/onchain/fraud-proof-machines). For the
-protocol-level design, see [Protocol Spec](/docs/fault-proofs/protocol-spec).
+  This tooling is the challenge side of the optimistic model. The watchers that
+  detect fraud are documented under [Watchers &amp; Data
+  Availability](/docs/watchers/concept); the on-chain validators these commands
+  drive are the fraud-proof machines described in [On-chain: Fraud-Proof
+  Machines](/docs/onchain/fraud-proof-machines). For the protocol-level design,
+  see [Protocol Spec](/docs/fault-proofs/protocol-spec).
 </Callout>
 
 ## How the CLI dispatches commands
@@ -36,31 +37,9 @@ then validates the command against a fixed allow-list and calls the matching
 module function, writing the result to stdout as JSON. Passing `--help` or `-h`
 prints the usage block and exits.
 
-The command is rejected unless it is exactly one of the sixteen real commands
-below, from the guard in `main()`:
-
-```ts
-if (
-  args.command !== "prepare-double-spend" &&
-  args.command !== "prepare-invalid-range" &&
-  args.command !== "prepare-non-existent-input" &&
-  args.command !== "inspect-contracts" &&
-  args.command !== "submit-init" &&
-  args.command !== "submit-step-01" &&
-  args.command !== "submit-step-02" &&
-  args.command !== "submit-step-03" &&
-  args.command !== "submit-step-04" &&
-  args.command !== "submit-invalid-range-step-01" &&
-  args.command !== "submit-invalid-range-step-02" &&
-  args.command !== "submit-non-existent-input-step-01" &&
-  args.command !== "submit-non-existent-input-step-02" &&
-  args.command !== "submit-non-existent-input-step-03" &&
-  args.command !== "submit-non-existent-input-step-04" &&
-  args.command !== "remove-fraudulent-block"
-) {
-  throw new Error(/* Expected command "..." */);
-}
-```
+The 30 commands are declared in the canonical `usage` template in `bin.ts`.
+Argument parsing rejects any command that does not have a matching dispatch
+branch.
 
 Each command delegates to a `*FromFiles` / `*FromNode` function exported from its
 own module (all re-exported through `src/index.ts`), so the CLI and the library
@@ -68,18 +47,18 @@ surface stay in lock-step.
 
 ## The command groups
 
-The sixteen commands fall into four groups.
+The commands fall into four groups.
 
-| Group | Commands | Module(s) | What it does |
-| --- | --- | --- | --- |
-| **Prepare** | `prepare-double-spend`, `prepare-invalid-range`, `prepare-non-existent-input` | `prepare-double-spend.ts`, `prepare-invalid-range.ts`, `prepare-non-existent-input.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
-| **Inspect** | `inspect-contracts` | `inspect-contracts.ts` | Resolve a blueprint + deployment against the fraud-proof catalogue and report policy IDs, addresses, step hashes, and init-readiness. |
-| **Submit** | `submit-init`, `submit-step-01`…`submit-step-04`, `submit-invalid-range-step-01`, `submit-invalid-range-step-02`, `submit-non-existent-input-step-01`…`submit-non-existent-input-step-04` | `submit-init.ts`, `submit-step-0N.ts`, `submit-invalid-range-step-0N.ts`, `ne-submit-step-0N.ts` | Start a computation thread (`submit-init`) and drive it through its per-category steps, ending by minting a fraud-proof token. |
-| **Remove** | `remove-fraudulent-block` | `remove-fraudulent-block.ts` | After a successful proof exists, remove the fraudulent block from the state queue and slash the operator. |
+| Group       | Commands                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Module(s)                                                                                                       | What it does                                                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Prepare** | `prepare-double-spend`, `prepare-invalid-range`, `prepare-non-existent-input`, `prepare-zero-input`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `prepare-double-spend.ts`, `prepare-invalid-range.ts`, `prepare-non-existent-input.ts`, `prepare-zero-input.ts` | Pull a block's transactions (from a node, a file, or a built-in sample), find the violating transaction(s), and emit the JSON artifacts later steps consume. |
+| **Inspect** | `inspect-contracts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `inspect-contracts.ts`                                                                                          | Resolve a blueprint + deployment against the fraud-proof catalogue and report policy IDs, addresses, step hashes, and init-readiness.                        |
+| **Submit**  | `submit-init`; `submit-step-01`, `submit-step-02`, `submit-step-03`, `submit-step-04`; `submit-invalid-range-step-01`, `submit-invalid-range-step-02`; `submit-non-existent-input-step-01`, `submit-non-existent-input-step-02`, `submit-non-existent-input-step-03`, `submit-non-existent-input-step-04`; `submit-zero-input-step-01`, `submit-zero-input-step-02`; `submit-validation-dispute-open`, `submit-validation-dispute-verify-source`, `submit-validation-dispute-reveal`, `submit-validation-dispute-enter-resolution`, `submit-validation-dispute-prepare-resolution`, `submit-validation-dispute-prepare-selected`, `submit-validation-dispute-semantic-resolution`, `submit-validation-dispute-award`, `submit-validation-dispute-direct-resolution`, `submit-validation-dispute-enter-timeout`, `submit-validation-dispute-timeout` | `submit-init.ts`, category-specific `submit-*.ts` modules, and `submit-validation-dispute.ts`                   | Start a computation thread (`submit-init`) and drive it through its category-specific state machine, ending by minting a fraud-proof token.                  |
+| **Remove**  | `remove-fraudulent-block`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `remove-fraudulent-block.ts`                                                                                    | After a successful proof exists, remove the fraudulent block from the state queue and slash the operator.                                                    |
 
 ## Fraud categories
 
-The tooling implements four of Midgard's fraud-proof categories, selected with
+The tooling implements six of Midgard's fraud-proof categories, selected with
 `--fraud-category`. The parser in `bin.ts` (`parseFraudCategory`) accepts exactly
 these values:
 
@@ -91,10 +70,16 @@ these values:
 - `nonExistentInput`: a transaction spends an input that is absent from the
   previous ledger state and not produced within the block. Proven with
   `submit-non-existent-input-step-01` through `-step-04`.
+- `zeroInput`: a transaction declares an empty spend-input set, which the
+  ledger rules forbid. Proven with `submit-zero-input-step-01` and `-step-02`.
 - `transitionTrace`: state-transition-trace faults (the `transition-trace/`
   challenger module: `detect.ts`, `fetch.ts`, `reconstruct.ts`, `witnesses.ts`,
   `submit.ts`). The CLI exposes `submit-init` and `remove-fraudulent-block` for it, but
   no dedicated per-step commands, so it is not driveable end to end from the CLI alone.
+- `validationTraceDispute`: validation-trace disagreements between an operator
+  and challenger. The eleven `submit-validation-dispute-*` commands open the
+  dispute, verify and reveal evidence, execute the selected or direct resolver,
+  award the result, and handle timeout paths.
 
 Every category runs through the same **computation-thread state machine**: mint a
 thread token, advance it step-by-step through category-specific spending
@@ -116,21 +101,37 @@ Every submit/remove command shares the same L1 wiring, resolved in `src/runtime.
   `resolveProverSigner` falls back to the `USER_WALLET` seed-phrase env var.
 - **Contracts**: every command needs `--blueprint <path>` (the compiled
   `plutus.json`) and `--deployment-info <path>` (the deployed script hashes and
-  fraud-proof catalogue). The two `prepare-*` commands are the exception: they
+  fraud-proof catalogue). The four `prepare-*` commands are the exception: they
   work purely off transaction data and need neither.
 
 <Callout type="warn" title="Manual tooling">
-These commands submit real L1 transactions and sign with a real wallet. They are
-low-level building blocks for a prover, not an automated watcher. Run
-`inspect-contracts` first to confirm your blueprint and deployment agree before
-initializing a thread.
+  These commands submit real L1 transactions and sign with a real wallet. They
+  are low-level building blocks for a prover, not an automated watcher. Run
+  `inspect-contracts` first to confirm your blueprint and deployment agree
+  before initializing a thread.
 </Callout>
 
 ## Next steps
 
 <Cards>
-  <Card title="Preparing proofs" href="/docs/fault-proofs/preparing-proofs" description="Turn a block's transactions into fraud-proof artifacts with the prepare-* commands." />
-  <Card title="Submitting steps" href="/docs/fault-proofs/submitting-steps" description="Walk a computation thread from submit-init through the per-category steps to a minted fraud-proof token." />
-  <Card title="Removing blocks" href="/docs/fault-proofs/removing-blocks" description="Remove a fraudulent block after a successful proof, and inspect deployed contracts." />
-  <Card title="Protocol spec" href="/docs/fault-proofs/protocol-spec" description="The catalogue, fraud-proof tokens, and the computation-thread state machine." />
+  <Card
+    title="Preparing proofs"
+    href="/docs/fault-proofs/preparing-proofs"
+    description="Turn a block's transactions into fraud-proof artifacts with the prepare-* commands."
+  />
+  <Card
+    title="Submitting steps"
+    href="/docs/fault-proofs/submitting-steps"
+    description="Walk a computation thread from submit-init through the per-category steps to a minted fraud-proof token."
+  />
+  <Card
+    title="Removing blocks"
+    href="/docs/fault-proofs/removing-blocks"
+    description="Remove a fraudulent block after a successful proof, and inspect deployed contracts."
+  />
+  <Card
+    title="Protocol spec"
+    href="/docs/fault-proofs/protocol-spec"
+    description="The catalogue, fraud-proof tokens, and the computation-thread state machine."
+  />
 </Cards>

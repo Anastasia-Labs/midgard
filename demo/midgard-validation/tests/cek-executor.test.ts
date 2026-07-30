@@ -99,6 +99,46 @@ describe("V1 CEK trace generator", () => {
     ).toThrow(/7-step bound/u);
   });
 
+  it("stops after retaining the first transition over the execution budget", () => {
+    const selfApplication = new Lambda(
+      new Application(new UPLCVar(0), new UPLCVar(0)),
+    );
+    const program = buildMidgardCanonicalCekProgramV1(
+      compile(new Application(selfApplication, selfApplication)),
+    );
+    const graph = buildMidgardCekExecutionGraphV1(
+      program.envelope,
+      program.material.values(),
+      Buffer.from("d87980", "hex"),
+    );
+    const execution = executeMidgardCekStructuralProgramV1({
+      root: graph.root,
+      material: graph.material.values(),
+      constantWitnesses: graph.constantWitnesses,
+      maxSteps: 64,
+      executionBudget: { cpu: 0n, memory: 0n },
+    });
+
+    expect(execution.stopReason).toBe("budgetExceeded");
+    expect(execution.steps.length).toBeGreaterThan(0);
+    expect(execution.steps.length).toBeLessThan(64);
+    expect(execution.terminalState.mode).not.toMatch(/^halt/u);
+    expect(
+      execution.terminalState.cpu > 0n ||
+        execution.terminalState.memory > 0n,
+    ).toBe(true);
+    expect(
+      execution.steps
+        .slice(0, -1)
+        .every((step) => step.post.cpu <= 0n && step.post.memory <= 0n),
+    ).toBe(true);
+    expect(
+      execution.steps.every((step) =>
+        verifyMidgardCekCoreStepV1(step.pre, step.post, step.witness),
+      ),
+    ).toBe(true);
+  });
+
   it("rejects source constants above the independently revealed L1 preimage bound", () => {
     const payload = Buffer.alloc(9_216, 0x5a);
     expect(() =>

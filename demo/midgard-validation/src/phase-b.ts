@@ -643,12 +643,20 @@ const runLocalScriptEvaluation = (
               redeemer,
             );
       const contextCbor = encodeScriptContextCbor(context);
+      const executionBudget =
+        config.enforceScriptBudget === false
+          ? undefined
+          : {
+              cpu: redeemer.exUnits.steps,
+              memory: redeemer.exUnits.memory,
+            };
       let result: LocalScriptEvalResult;
       if (proofProgramMaterial !== null) {
         if (config.evaluateProofScript !== undefined) {
           result = yield* config.evaluateProofScript(
             execution.resolved.source.scriptBytes,
             contextCbor,
+            executionBudget,
           );
         } else {
           try {
@@ -667,8 +675,10 @@ const runLocalScriptEvaluation = (
               maxSteps:
                 MIDGARD_CONSENSUS_LIMITS_V1
                   .maxValidationMachineStepCount,
+              executionBudget,
             });
             result =
+              cek.stopReason === "budgetExceeded" ||
               cek.terminalState.mode === "haltSuccess"
                 ? {
                     kind: "accepted",

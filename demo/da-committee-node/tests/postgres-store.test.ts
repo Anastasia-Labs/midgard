@@ -15,6 +15,10 @@ import type {
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
+import {
+  DECISION_EFFECT_PENDING_LEASE_MS,
+  decisionEffectId,
+} from "../src/store.js";
 import { PostgresWatcherStore } from "../src/store/postgres.js";
 import { fixtureHeaderBase } from "./helpers.js";
 
@@ -52,6 +56,18 @@ describe("PostgresWatcherStore", () => {
           store.getStateQueueHeader(header.headerHash),
         ).resolves.toEqual(header);
         await expect(store.listStateQueueHeaders()).resolves.toEqual([header]);
+
+        const l1SourceState = {
+          schemaVersion: 1 as const,
+          sourceMode: "external_providers" as const,
+          network: "Preview",
+          authoritySha256: "91".repeat(32),
+          status: "healthy" as const,
+          observations: [],
+          observedAt: "2026-07-28T00:00:00.000Z",
+        };
+        await store.saveL1SourceState(l1SourceState);
+        await expect(store.getL1SourceState()).resolves.toEqual(l1SourceState);
 
         const payload = daPayloadRecord();
         await expect(store.saveDaPayload(payload)).resolves.toEqual({
@@ -108,6 +124,120 @@ describe("PostgresWatcherStore", () => {
         await expect(
           store.listDaSignatures(signature.headerHash),
         ).resolves.toEqual([signature]);
+        const effectId = decisionEffectId({
+          deploymentFingerprint: signature.deploymentFingerprint,
+          headerHash: signature.headerHash,
+          stateQueueOutRef: header.stateQueueOutRef,
+          effectKind: "signature_publish",
+          signerIndex: signature.signerIndex,
+        });
+        const effect = {
+          schemaVersion: 1 as const,
+          effectId,
+          deploymentFingerprint: signature.deploymentFingerprint,
+          sourceMode: "external_providers" as const,
+          network: "Preview",
+          effectKind: "signature_publish" as const,
+          headerHash: signature.headerHash,
+          stateQueueOutRef: header.stateQueueOutRef,
+          signerIndex: signature.signerIndex,
+          slot: 1,
+          blockHash: "66".repeat(32),
+          finalized: true as const,
+          status: "pending" as const,
+          attemptCount: 1,
+          createdAt: "2026-07-28T00:00:00.000Z",
+          updatedAt: "2026-07-28T00:00:00.000Z",
+        };
+        const effectSourceState = {
+          ...l1SourceState,
+          observations: [
+            {
+              headerHash: header.headerHash,
+              stateQueueOutRef: header.stateQueueOutRef,
+              stateQueueStatus: header.status,
+              slot: 1,
+              blockHash: "66".repeat(32),
+              finalized: true,
+              hasPersistedDecision: true,
+            },
+          ],
+        };
+        await store.beginDecisionEffect({
+          effect,
+          sourceState: effectSourceState,
+          signature: { ...signature, broadcastStatus: "local" },
+        });
+        const retryEffect = {
+          ...effect,
+          attemptCount: 2,
+          updatedAt: "2099-07-28T00:05:00.000Z",
+        };
+        await expect(
+          store.beginDecisionEffect({
+            effect: retryEffect,
+            sourceState: effectSourceState,
+            signature: { ...signature, broadcastStatus: "local" },
+          }),
+        ).rejects.toThrow(/pending attempt lease has not expired/u);
+        await admin.query(
+          `UPDATE ${schema}.watcher_decision_outbox
+           SET updated_at = NOW() + INTERVAL '1 hour'
+           WHERE effect_id = $1`,
+          [effectId],
+        );
+        await expect(
+          store.beginDecisionEffect({
+            effect: retryEffect,
+            sourceState: effectSourceState,
+            signature: { ...signature, broadcastStatus: "local" },
+          }),
+        ).rejects.toThrow(/pending attempt lease has not expired/u);
+        await admin.query(
+          `UPDATE ${schema}.watcher_decision_outbox
+           SET updated_at =
+                 NOW() -
+                 ($1::bigint * INTERVAL '1 millisecond')
+           WHERE effect_id = $2`,
+          [DECISION_EFFECT_PENDING_LEASE_MS, effectId],
+        );
+        await store.beginDecisionEffect({
+          effect: {
+            ...retryEffect,
+            updatedAt: "2026-07-28T00:05:00.000Z",
+          },
+          sourceState: effectSourceState,
+          signature: { ...signature, broadcastStatus: "local" },
+        });
+        await store.completeDecisionEffect({
+          effectId,
+          expectedAttemptCount: 2,
+          status: "published",
+          updatedAt: "2026-07-28T00:05:01.000Z",
+          signature,
+        });
+        await expect(store.getDecisionOutbox(effectId)).resolves.toMatchObject({
+          status: "published",
+          attemptCount: 2,
+        });
+        await admin.query(
+          `UPDATE ${schema}.watcher_decision_outbox
+           SET header_hash = $1
+           WHERE effect_id = $2`,
+          ["ff".repeat(28), effectId],
+        );
+        await expect(store.getDecisionOutbox(effectId)).rejects.toThrow(
+          /row key does not match record identity/u,
+        );
+        await expect(store.listDecisionOutbox()).rejects.toThrow(
+          /row key does not match record identity/u,
+        );
+        await admin.query(
+          `UPDATE ${schema}.watcher_decision_outbox
+           SET header_hash = $1
+           WHERE effect_id = $2`,
+          [signature.headerHash, effectId],
+        );
 
         const conflictEvidence = daConflictEvidenceRecord();
         await expect(
@@ -159,6 +289,59 @@ describe("PostgresWatcherStore", () => {
         const submission = l1SubmissionRecord();
         await store.saveL1Submission(submission);
         await expect(store.listL1Submissions()).resolves.toEqual([submission]);
+        await store.quarantineL1Decisions({
+          schemaVersion: 1,
+          sourceMode: "external_providers",
+          network: "Preview",
+          authoritySha256: "91".repeat(32),
+          status: "quarantined",
+          observations: [
+            {
+              headerHash: header.headerHash,
+              stateQueueOutRef: header.stateQueueOutRef,
+              stateQueueStatus: "unattested",
+              slot: 1,
+              blockHash: "66".repeat(32),
+              finalized: true,
+              hasPersistedDecision: true,
+            },
+          ],
+          observedAt: "2026-07-28T00:00:00.000Z",
+          quarantineReason: "provider fork",
+          quarantinedAt: "2026-07-28T00:00:01.000Z",
+        });
+        await expect(store.getL1SourceState()).resolves.toMatchObject({
+          status: "quarantined",
+          quarantineReason: "provider fork",
+        });
+        await expect(
+          store.getStateQueueHeader(header.headerHash),
+        ).resolves.toMatchObject({ status: "conflicted" });
+        await expect(
+          store.getDaSignature({
+            headerHash: signature.headerHash,
+            signerIndex: signature.signerIndex,
+          }),
+        ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+        await expect(
+          store.saveDaSignature({
+            ...signature,
+            broadcastStatus: "posted",
+          }),
+        ).rejects.toThrow(/L1 source is quarantined/u);
+        await expect(
+          store.getDaSignature({
+            headerHash: signature.headerHash,
+            signerIndex: signature.signerIndex,
+          }),
+        ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+        await expect(store.listL1Submissions()).resolves.toMatchObject([
+          { resultStatus: "failed" },
+        ]);
+        await expect(store.getDecisionOutbox(effectId)).resolves.toMatchObject({
+          status: "failed",
+          quarantineReason: "provider fork",
+        });
 
         await admin.query(
           `UPDATE ${schema}.watcher_da_payloads
@@ -258,8 +441,12 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
   broadcastStatus: "posted",
   source: "local",
   l1ChainPoint: {
+    slot: 1,
+    blockHash: "66".repeat(32),
+    blockHeight: 1,
     providerSource: "test",
     depth: 12,
+    finalized: true,
   },
   validation: {
     payloadVersion: Number(SDK.DA_PAYLOAD_V1_VERSION),

@@ -1,8 +1,5 @@
 import type { WatcherConfig } from "../config.js";
-import {
-  type DaAttestationChainReader,
-  LucidDaAttestationChainReader,
-} from "../l1/da-attestation-reader.js";
+import { type DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
 import { lucidFromProviderUrl } from "../l1/lucid.js";
 import { fetchDaAttestationReferenceScripts } from "../l1/reference-scripts.js";
@@ -46,7 +43,12 @@ export const onChainCoordinatorFromConfig = async (
   if (config.l1SubmitterKeySource === undefined) {
     throw new Error("L1_SUBMITTER_KEY_SOURCE is required for L1 submission");
   }
-  const { lucid, providerSource } = await deps.lucidFromProviderUrl(
+  if (chainReader === undefined) {
+    throw new Error(
+      "L1 submission requires the canonical configured DA chain reader",
+    );
+  }
+  const { lucid } = await deps.lucidFromProviderUrl(
     config.cardanoProviderUrls[0]!,
     config.network,
   );
@@ -76,16 +78,13 @@ export const onChainCoordinatorFromConfig = async (
       "configured DA attestation policy id does not match Midgard node deployment-info",
     );
   }
-  const resolvedChainReader =
-    chainReader ??
-    new LucidDaAttestationChainReader({ lucid, config, providerSource });
   const submitter = new LucidDaAttestationSubmitter({
     lucid,
     contracts,
     referenceScripts,
   });
   return new OnChainLifecycleCoordinator({
-    chainReader: resolvedChainReader,
+    chainReader,
     submitter,
     threshold: config.daParams.threshold,
     recordCandidate:

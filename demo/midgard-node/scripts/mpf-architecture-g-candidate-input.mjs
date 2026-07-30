@@ -12,6 +12,7 @@ import {
   validateArchitectureGCrossGateEvidenceIdentity,
   validateArchitectureGFixtureCreationEvidence,
 } from "./mpf-architecture-g-gate-config.mjs";
+import { readNodeSlotConfigEvidenceV1 } from "./node-slot-config-evidence.mjs";
 
 const option = (name, fallback) =>
   process.argv
@@ -57,6 +58,18 @@ const fixtureCreationPath = resolve(required("fixture-creation-summary"));
 const expectedTransactionCount = positiveInteger("transactions");
 const entryCount = positiveInteger("aggregate-entry-count");
 const encodedTupleBytes = positiveInteger("aggregate-tuple-bytes");
+const slotConfigArtifactPath = resolve(required("slot-config-artifact"));
+const slotConfigArtifactSha256 = required("slot-config-artifact-sha256");
+const slotConfigArtifactDocument = readNodeSlotConfigEvidenceV1({
+  path: slotConfigArtifactPath,
+  expectedSha256: slotConfigArtifactSha256,
+});
+const expectedNetwork = required("network");
+if (slotConfigArtifactDocument.network !== expectedNetwork) {
+  throw new Error(
+    `Slot-config artifact network ${slotConfigArtifactDocument.network} does not match --network=${expectedNetwork}`,
+  );
+}
 for (const path of [
   levelPath,
   binaryPath,
@@ -154,11 +167,17 @@ const candidateInput = validateArchitectureGCommitCandidateInputV1({
   fixtureCreationSha256,
   fixtureInitialUtxoCount: fixtureCreation.initialUtxoCount,
   baseUtxoPayloadAggregate: { entryCount, encodedTupleBytes },
+  forcedValidationSlotConfigArtifact: {
+    path: slotConfigArtifactPath,
+    sha256: slotConfigArtifactSha256,
+    document: slotConfigArtifactDocument,
+  },
   workerInput: {
     data: {
       availableConfirmedBlock: "",
       availableLocalFinalizationBlock: "",
       currentBlockStartTimeMs: baseBlockEndTimeMs,
+      forcedValidationSlotConfig: slotConfigArtifactDocument.slotConfig,
       localFinalizationPending: false,
       ledgerStoreLeaseOwner: `commit:${randomUUID()}`,
       mempoolTxsCountSoFar: 0,

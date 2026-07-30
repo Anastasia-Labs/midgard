@@ -1,6 +1,10 @@
 import {
   decodeMidgardCekProgramEnvelopeV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  type MidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
+  verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeHash32,
@@ -294,6 +298,56 @@ export type PreparedProofBuilderState = {
   readonly programMaterial: readonly MidgardCekProgramMaterialEntryV1[];
 };
 
+const insertProgramMaterial = (
+  material: Map<string, MidgardCekProgramMaterialEntryV1>,
+  entry: MidgardCekProgramMaterialEntryV1,
+): void => {
+  const root = Buffer.from(entry.root).toString("hex");
+  const prior = material.get(root);
+  if (
+    prior !== undefined &&
+    (prior.kind !== entry.kind ||
+      !Buffer.from(prior.preimage).equals(entry.preimage))
+  ) {
+    throw new BuilderInvariantError(
+      "CEK program material hash collision",
+      root,
+    );
+  }
+  material.set(root, entry);
+};
+
+/**
+ * Revalidates, merges, and canonically sorts exact V1 material collections.
+ * Equal roots deduplicate only when their typed preimages are byte-identical.
+ */
+export const mergeCanonicalProofProgramMaterial = (
+  ...collections: readonly (readonly MidgardCekProgramMaterialEntryV1[])[]
+): readonly MidgardCekProgramMaterialEntryV1[] => {
+  const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  try {
+    for (const entries of collections) {
+      const canonical = decodeMidgardCekProgramMaterialSidecarV1(
+        encodeMidgardCekProgramMaterialSidecarV1(entries),
+      );
+      for (const entry of canonical) {
+        insertProgramMaterial(material, entry);
+      }
+    }
+  } catch (cause) {
+    if (cause instanceof BuilderInvariantError) throw cause;
+    throw new BuilderInvariantError(
+      "Invalid canonical CEK program material",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
+  return Object.freeze(
+    [...material.values()].sort((left, right) =>
+      Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
+    ),
+  );
+};
+
 const canonicalProofProgram = (
   script: MidgardVersionedScript,
   material: Map<string, MidgardCekProgramMaterialEntryV1>,
@@ -304,19 +358,8 @@ const canonicalProofProgram = (
     return script;
   } catch {
     const canonical = buildMidgardCanonicalCekProgramV1(script.scriptBytes);
-    for (const [root, entry] of canonical.material) {
-      const prior = material.get(root);
-      if (
-        prior !== undefined &&
-        (prior.kind !== entry.kind ||
-          !Buffer.from(prior.preimage).equals(entry.preimage))
-      ) {
-        throw new BuilderInvariantError(
-          "CEK program material hash collision",
-          root,
-        );
-      }
-      material.set(root, entry);
+    for (const entry of canonical.material.values()) {
+      insertProgramMaterial(material, entry);
     }
     return {
       language: script.language,
@@ -325,16 +368,36 @@ const canonicalProofProgram = (
   }
 };
 
+const proofProgramEnvelope = (
+  script: MidgardVersionedScript,
+  sourceId: string,
+): MidgardCekProgramEnvelopeV1 | undefined => {
+  if (script.language === "NativeCardano") return undefined;
+  try {
+    return decodeMidgardCekProgramEnvelopeV1(script.scriptBytes);
+  } catch (cause) {
+    throw new BuilderInvariantError(
+      "V1 reference script must contain a canonical CEK program envelope",
+      `${sourceId}: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+};
+
 /**
  * Replaces proof-profile raw UPLC authoring inputs with their compact
  * consensus envelopes and retains the exact content-addressed graph sidecar.
- * Already-enveloped programs remain usable for content previously retained
- * by the node/DA network.
+ * Historical reference inputs cannot be rewritten, so every non-native
+ * reference envelope must be accompanied by its exact explicit material.
  */
 export const prepareProofBuilderState = (
   state: BuilderState,
+  explicitProgramMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
 ): PreparedProofBuilderState => {
-  const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  const material = new Map(
+    mergeCanonicalProofProgramMaterial(explicitProgramMaterial).map(
+      (entry) => [Buffer.from(entry.root).toString("hex"), entry] as const,
+    ),
+  );
   const scripts = state.scripts.scripts.map((source, index): ScriptSource => {
     if (source.kind === "native") return source;
     if (source.kind === "dual-plutus-v3-midgard-v1") {
@@ -343,11 +406,7 @@ export const prepareProofBuilderState = (
         `inline:${index.toString()}`,
       );
     }
-    const known = knownScriptSource(
-      source,
-      `inline:${index.toString()}`,
-      true,
-    );
+    const known = knownScriptSource(source, `inline:${index.toString()}`, true);
     if (known.witnessScript === undefined) {
       throw new BuilderInvariantError(
         "Inline V1 script is missing witness bytes",
@@ -381,6 +440,57 @@ export const prepareProofBuilderState = (
       } as const,
     };
   });
+  const envelopes: MidgardCekProgramEnvelopeV1[] = [];
+  for (const [index, source] of scripts.entries()) {
+    if (source.kind === "native") continue;
+    if (source.kind === "dual-plutus-v3-midgard-v1") {
+      throw new BuilderInvariantError(
+        "Dual PlutusV3/MidgardV1 script witnesses are not supported; attach explicit versioned scripts",
+        `inline:${index.toString()}`,
+      );
+    }
+    const known = knownScriptSource(source, `inline:${index.toString()}`, true);
+    if (known.witnessScript === undefined) {
+      throw new BuilderInvariantError(
+        "Inline V1 script is missing witness bytes",
+      );
+    }
+    const envelope = proofProgramEnvelope(
+      known.witnessScript,
+      `inline:${index.toString()}`,
+    );
+    if (envelope !== undefined) envelopes.push(envelope);
+  }
+  for (const [index, output] of outputs.entries()) {
+    if (output.scriptRef === undefined) continue;
+    const envelope = proofProgramEnvelope(
+      normalizeScriptRef(output.scriptRef),
+      `output:${index.toString()}`,
+    );
+    if (envelope !== undefined) envelopes.push(envelope);
+  }
+  for (const input of state.referenceInputs) {
+    const scriptRef = decodeMidgardTxOutput(utxoOutputCbor(input)).txOutput
+      .scriptRef;
+    if (scriptRef === undefined || scriptRef === null) continue;
+    const label = outRefLabel(input);
+    const envelope = proofProgramEnvelope(
+      normalizeScriptRef(scriptRef),
+      `reference:${label}`,
+    );
+    if (envelope !== undefined) envelopes.push(envelope);
+  }
+  const programMaterial = mergeCanonicalProofProgramMaterial([
+    ...material.values(),
+  ]);
+  try {
+    verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial);
+  } catch (cause) {
+    throw new BuilderInvariantError(
+      "Incomplete or mismatched CEK program material",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
   return Object.freeze({
     state: {
       ...state,
@@ -390,11 +500,7 @@ export const prepareProofBuilderState = (
       },
       outputs,
     },
-    programMaterial: Object.freeze(
-      [...material.values()].sort((left, right) =>
-        Buffer.compare(Buffer.from(left.root), Buffer.from(right.root)),
-      ),
-    ),
+    programMaterial,
   });
 };
 

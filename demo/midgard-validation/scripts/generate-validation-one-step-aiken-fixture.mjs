@@ -31,6 +31,7 @@ import {
   buildValidationMachineLedgerMutationSteps,
   encodeValidationBoundaryEvidenceCborV1,
   encodeValidationDisputeDataCborV1,
+  encodeScriptDiscoveryControlCborV1,
 } from "../dist/index.js";
 
 const scriptPath = fileURLToPath(import.meta.url);
@@ -43,10 +44,7 @@ const outputPath = path.resolve(
 const privateKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 0x42));
 const publicKey = privateKey.to_public();
 const address = Buffer.from(
-  CML.EnterpriseAddress.new(
-    0,
-    CML.Credential.new_pub_key(publicKey.hash()),
-  )
+  CML.EnterpriseAddress.new(0, CML.Credential.new_pub_key(publicKey.hash()))
     .to_address()
     .to_raw_bytes(),
 );
@@ -106,8 +104,7 @@ const transaction = {
   witnessSet,
 };
 const transactionId = computeMidgardNativeTxIdV1(transaction);
-const canonicalTransactionCbor =
-  encodeMidgardNativeTxCanonicalV1(transaction);
+const canonicalTransactionCbor = encodeMidgardNativeTxCanonicalV1(transaction);
 const createdOutRef = Buffer.from(
   CML.TransactionInput.new(
     CML.TransactionHash.from_raw_bytes(transactionId),
@@ -149,8 +146,7 @@ const trace = await Effect.runPromise(
 
 const lowIndex = trace.witnesses.findIndex(
   (witness) =>
-    witness.phase === "canonicalDecode" &&
-    witness.auxiliary === null,
+    witness.phase === "canonicalDecode" && witness.auxiliary === null,
 );
 if (lowIndex < 0) {
   throw new Error("generated trace has no canonical decode/empty transition");
@@ -208,6 +204,33 @@ const evidenceHash = computeHash32(
     ),
   ]),
 );
+const scriptDiscoveryControlCbor = encodeScriptDiscoveryControlCborV1({
+  purposeCursor: 1,
+  sourceCursor: 2,
+  redeemerCursor: 3,
+  currentPurposeKind: 0,
+  currentPurposeIndex: 4n,
+  currentScriptHash: Buffer.from("aa", "hex"),
+  currentSubject: Buffer.from("bb", "hex"),
+  matchedSourceIndex: 5,
+  matchedLanguageTag: 3,
+  matchedSourceLeaf: Buffer.from("cc", "hex"),
+  usedInlineBitmap: 6n,
+  usedRedeemerBitmap: 7n,
+  redeemerItemControlHash: Buffer.from("dd", "hex"),
+  executionFrontier: {
+    count: 8,
+    peaks: [{ height: 9, hash: Buffer.from("ee", "hex") }],
+  },
+});
+const expectedScriptDiscoveryControlCborHex =
+  "8f010203000441aa41bb050341cc060741dd0881820941ee";
+if (
+  scriptDiscoveryControlCbor.toString("hex") !==
+  expectedScriptDiscoveryControlCborHex
+) {
+  throw new Error("script discovery control wire order changed");
+}
 if (
   oneStepArgument.resolverIndex !== 0 ||
   oneStepArgument.semanticResolverIndex !== 0
@@ -229,6 +252,7 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/validation_dispute_v1
 use midgard/validation_machine_v1
+use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
 const dispute_cbor =
@@ -240,23 +264,23 @@ const boundary_evidence_cbor =
 const transition_cbor =
   #"${oneStepArgument.transitionCbor.toString("hex")}"
 
-const auxiliary_cbor =
-  #"${oneStepArgument.auxiliaryCbor.toString("hex")}"
+const auxiliary_cbor = #"${oneStepArgument.auxiliaryCbor.toString("hex")}"
 
 const evidence_hash =
   #"${evidenceHash.toString("hex")}"
 
+const script_discovery_control_cbor =
+  #"${scriptDiscoveryControlCbor.toString("hex")}"
+
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
   expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
-  expect Some(boundary_evidence_data) =
-    cbor.deserialise(boundary_evidence_cbor)
-  expect boundary_evidence:
-    validation_resolution_v1.ValidationBoundaryEvidenceV1 =
-      boundary_evidence_data
+  expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
+  expect
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+    = boundary_evidence_data
   and {
-    bytearray.length(boundary_evidence_cbor) ==
-      ${boundaryEvidenceCbor.length.toString()},
+    bytearray.length(boundary_evidence_cbor) == ${boundaryEvidenceCbor.length.toString()},
     bytearray.length(boundary_evidence_cbor) < 16_384,
     validation_resolution_v1.one_step_boundary_is_authenticated(
       dispute,
@@ -268,22 +292,17 @@ test typescript_generated_one_step_boundary_is_authenticated() {
 }
 
 test typescript_generated_canonical_decode_step_is_exact() {
-  expect Some(boundary_evidence_data) =
-    cbor.deserialise(boundary_evidence_cbor)
-  expect boundary_evidence:
-    validation_resolution_v1.ValidationBoundaryEvidenceV1 =
-      boundary_evidence_data
+  expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
+  expect
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
+    = boundary_evidence_data
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
-  expect transition: validation_machine_v1.ValidationOneStepWitnessV1 =
-    transition_data
+  expect transition: validation_machine_v1.ValidationOneStepWitnessV1 = transition_data
   expect Some(auxiliary_data) = cbor.deserialise(auxiliary_cbor)
-  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 =
-    auxiliary_data
+  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 = auxiliary_data
   and {
-    bytearray.length(transition_cbor) ==
-      ${oneStepArgument.transitionCbor.length.toString()},
-    bytearray.length(auxiliary_cbor) ==
-      ${oneStepArgument.auxiliaryCbor.length.toString()},
+    bytearray.length(transition_cbor) == ${oneStepArgument.transitionCbor.length.toString()},
+    bytearray.length(auxiliary_cbor) == ${oneStepArgument.auxiliaryCbor.length.toString()},
     bytearray.length(transition_cbor) < 16_384,
     bytearray.length(auxiliary_cbor) < 16_384,
     validation_machine_v1.verify_canonical_decode_empty_semantics_v1(
@@ -296,6 +315,29 @@ test typescript_generated_canonical_decode_step_is_exact() {
       auxiliary_data,
     ) == evidence_hash,
   }
+}
+
+test typescript_generated_script_discovery_control_wire_is_exact() {
+  let control = validation_machine_v1.ScriptDiscoveryControlV1 {
+    purpose_cursor: 1,
+    source_cursor: 2,
+    redeemer_cursor: 3,
+    current_purpose_kind: 0,
+    current_purpose_index: 4,
+    current_script_hash: #"aa",
+    current_subject: #"bb",
+    matched_source_index: 5,
+    matched_language_tag: 3,
+    matched_source_leaf: #"cc",
+    used_inline_bitmap: 6,
+    used_redeemer_bitmap: 7,
+    redeemer_item_control_hash: #"dd",
+    execution_count: 8,
+    execution_peaks: [
+      validation_merkle_v1.FrontierPeak { height: 9, hash: #"ee" },
+    ],
+  }
+  validation_machine_v1.encode_script_discovery_control(control) == script_discovery_control_cbor
 }
 `;
 

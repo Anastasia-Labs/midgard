@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { buildMidgardBoundedItemV1 } from "../src/bounded-item-v1.js";
 import { encodeMidgardCekProgramEnvelopeV1 } from "../src/cek-proof.js";
 import { encodeCbor } from "../src/codec/cbor.js";
 import {
@@ -13,11 +14,13 @@ import {
   type MidgardNativeTxCanonicalV1,
 } from "../src/codec/index.js";
 import {
+  encodeMidgardVersionedScript,
   hashMidgardVersionedScript,
   type MidgardVersionedScript,
 } from "../src/codec/versioned-script.js";
 import {
   collectMidgardV1ReferencedProgramEnvelopes,
+  hashMidgardInlineScriptSourceLeafV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputLeafV1,
@@ -114,6 +117,35 @@ describe("script proof primitives", () => {
         memory: 218n,
       }).toString("hex"),
     ).toBe("2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3");
+  });
+
+  it("binds inline script sources to raw-item field 6, not address field 7", () => {
+    const script = {
+      language: "PlutusV3",
+      scriptBytes: Buffer.from("010203", "hex"),
+    } satisfies MidgardVersionedScript;
+    const scriptCbor = encodeMidgardVersionedScript(script);
+    const scriptHash = Buffer.from(hashMidgardVersionedScript(script), "hex");
+    const sourceLeaf = hashMidgardScriptSourceLeafV1({
+      originKind: "inline",
+      sourceKey: Buffer.from("00", "hex"),
+      script,
+    });
+    const sourceLeafForField = (fieldIndex: 6 | 7) =>
+      hashMidgardInlineScriptSourceLeafV1({
+        sourceIndex: 0n,
+        scriptLanguageTag: 3,
+        scriptHash,
+        scriptTotalLength: scriptCbor.length,
+        itemCommitment: buildMidgardBoundedItemV1({
+          fieldIndex,
+          itemIndex: 0,
+          bytes: scriptCbor,
+        }).commitment,
+      });
+
+    expect(sourceLeaf).toEqual(sourceLeafForField(6));
+    expect(sourceLeaf).not.toEqual(sourceLeafForField(7));
   });
 
   it("matches the Aiken signer leaf and seven-leaf frontier root vector", () => {

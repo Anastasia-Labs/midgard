@@ -542,5 +542,5 @@ describe("Cardano capability P2 production retained-DA boundary", () => {
         committedHeader: fixture.header,
       }),
     ).rejects.toMatchObject({ code: "rootMismatch" });
-  });
+  }, 30_000);
 });

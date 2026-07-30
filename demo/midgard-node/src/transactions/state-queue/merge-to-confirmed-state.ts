@@ -57,7 +57,12 @@ import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
 } from "@/operator-wallet-view.js";
+import type { NodeConfigDep } from "@/services/config.js";
 import { Database, Globals, NodeConfig } from "@/services/index.js";
+import {
+  assertNativeMpfHashHex,
+  type NativeMpfOwnerService,
+} from "@/services/mpf-native-owner/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -96,6 +101,84 @@ const mergeBlockCounter = Metric.counter("merge_block_count", {
   bigint: true,
   incremental: true,
 });
+
+type PersistentCommitMpfSynchronization = {
+  readonly ledgerEntryCount: number;
+  readonly ledgerRoot: string;
+  readonly transactionsRoot: string;
+};
+
+export type ConfirmedMergeMpfSynchronization =
+  | ({
+      readonly mode: "persistent_stores";
+    } & PersistentCommitMpfSynchronization)
+  | {
+      readonly mode: "architecture_g_owner";
+      readonly confirmedLedgerEntryCount: number;
+      readonly confirmedLedgerRoot: string;
+      readonly durableLedgerRoot: string;
+      readonly activeGenerations: number;
+    };
+
+/**
+ * A confirmed-state merge advances the L1 queue head but does not change the
+ * latest committed L2 tail. Architecture G therefore retains the root already
+ * promoted by its single native owner and verifies that owner is live instead
+ * of reopening the owner's LevelDB path through MidgardMpf.
+ */
+export const synchronizeCommitMpfAfterConfirmedMerge = <E, R>({
+  mpfEngine,
+  nativeMpfOwner,
+  confirmedLedgerEntryCount,
+  confirmedLedgerRoot,
+  synchronizePersistentStores,
+}: {
+  readonly mpfEngine: NodeConfigDep["MPF_ENGINE"];
+  readonly nativeMpfOwner:
+    | Pick<NativeMpfOwnerService, "diagnostics">
+    | undefined;
+  readonly confirmedLedgerEntryCount: number;
+  readonly confirmedLedgerRoot: string;
+  readonly synchronizePersistentStores: Effect.Effect<
+    PersistentCommitMpfSynchronization,
+    E,
+    R
+  >;
+}): Effect.Effect<ConfirmedMergeMpfSynchronization, E | Error, R> => {
+  if (mpfEngine !== "architecture_g") {
+    return synchronizePersistentStores.pipe(
+      Effect.map((result) => ({
+        mode: "persistent_stores" as const,
+        ...result,
+      })),
+    );
+  }
+  return Effect.tryPromise({
+    try: async () => {
+      if (nativeMpfOwner === undefined) {
+        throw new Error(
+          "Architecture G native owner is not initialized during confirmed-state merge finalization",
+        );
+      }
+      const diagnostics = await nativeMpfOwner.diagnostics();
+      assertNativeMpfHashHex(
+        diagnostics.durableRoot,
+        "Architecture G durable root",
+      );
+      return {
+        mode: "architecture_g_owner" as const,
+        confirmedLedgerEntryCount,
+        confirmedLedgerRoot,
+        durableLedgerRoot: diagnostics.durableRoot,
+        activeGenerations: diagnostics.activeGenerations,
+      };
+    },
+    catch: (cause) =>
+      cause instanceof Error
+        ? cause
+        : new Error("Architecture G owner observation failed", { cause }),
+  });
+};
 
 export const MERGE_CONFIRMATION_PROVIDER_RETRIES = 12;
 
@@ -1111,9 +1194,7 @@ export const buildAndSubmitMergeTx = (
           );
         }
         const confirmedLedgerSnapshot =
-          yield* materializeConfirmedLedgerSnapshot(
-          finalizedJournal.value,
-        );
+          yield* materializeConfirmedLedgerSnapshot(finalizedJournal.value);
         const confirmedLedgerSnapshotRoot = confirmedLedgerSnapshot.root;
         const expectedSnapshotRoot =
           finalizedJournal.value[
@@ -1186,23 +1267,35 @@ export const buildAndSubmitMergeTx = (
               "Failed to finalize confirmed-state merge locally",
             ),
           );
-        const syncResult =
-          yield* synchronizeCommitMpfStoresFromConfirmedLedger.pipe(
-            Effect.mapError(
-              (error) =>
-                new DatabaseError({
-                  table: "confirmed_merge_finalization",
-                  message:
-                    "Failed to synchronize commit MPF stores after confirmed-state merge",
-                  cause: formatUnknownError(error),
-                }),
-            ),
-          );
-        yield* Effect.logInfo(
-          `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
-            "hex",
-          )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+        const syncResult = yield* synchronizeCommitMpfAfterConfirmedMerge({
+          mpfEngine: nodeConfig.MPF_ENGINE,
+          nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
+          confirmedLedgerEntryCount: confirmedLedgerSnapshot.entries.length,
+          confirmedLedgerRoot: confirmedLedgerSnapshotRoot,
+          synchronizePersistentStores:
+            synchronizeCommitMpfStoresFromConfirmedLedger,
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new DatabaseError({
+                table: "confirmed_merge_finalization",
+                message:
+                  "Failed to synchronize commit MPF stores after confirmed-state merge",
+                cause: formatUnknownError(error),
+              }),
+          ),
         );
+        yield* syncResult.mode === "architecture_g_owner"
+          ? Effect.logInfo(
+              `🔸 Retained Architecture G owner after merge local finalization (header=${headerHash.toString(
+                "hex",
+              )},confirmed_ledger_entries=${syncResult.confirmedLedgerEntryCount.toString()},confirmed_ledger_root=${syncResult.confirmedLedgerRoot},durable_tail_root=${syncResult.durableLedgerRoot},active_generations=${syncResult.activeGenerations.toString()}).`,
+            )
+          : Effect.logInfo(
+              `🔸 Synchronized commit MPFs after merge local finalization (header=${headerHash.toString(
+                "hex",
+              )},ledger_entries=${syncResult.ledgerEntryCount.toString()},ledger_root=${syncResult.ledgerRoot}).`,
+            );
         yield* MutationJobsDB.markCompleted(jobId);
       }).pipe(
         Effect.tapError((error) =>

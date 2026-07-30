@@ -579,7 +579,7 @@ export const planSchedulerAwareCommitSelection = ({
   const commitEndTimeFitExceedsSchedulerWindow =
     currentWindowCommitEndTimeFit === undefined ||
     currentWindowCommitEndTimeFit.status === "exceeds_cap" ||
-    currentWindowCommitEndTimeFit.resolvedEndTime >
+    currentWindowCommitEndTimeFit.resolvedEndTime - 1 >
       currentSchedulerWindow.endTimeMs;
   if (
     !commitEndTimeFitUsesSchedulerCap ||
@@ -594,7 +594,7 @@ export const planSchedulerAwareCommitSelection = ({
           ? currentWindowCommitEndTimeFit.reason
           : !commitEndTimeFitUsesSchedulerCap
             ? `commit_end_time_fit_cap_mismatch=${String(currentWindowCommitEndTimeFit.maximumEndTimeMs)}`
-            : "commit_end_time_fit_exceeds_scheduler_window";
+            : "commit_inclusive_end_time_fit_exceeds_scheduler_window";
     return {
       candidateSelection,
       userEventOnlyEndTime,
@@ -602,7 +602,7 @@ export const planSchedulerAwareCommitSelection = ({
       status: "current_scheduler_end_time_floor_exceeds_window",
       prunedTxCount: 0,
       originalTxCount: candidateSelection.candidateTxs.length,
-      reason: `resolved_end_time_ms=${resolvedEndTimeMs.toString()},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(productionMinimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
+      reason: `resolved_valid_to_ms=${resolvedEndTimeMs.toString()},resolved_inclusive_end_time_ms=${typeof resolvedEndTimeMs === "number" ? (resolvedEndTimeMs - 1).toString() : "missing"},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},minimum_future_buffer_ms=${(productionMinimumFutureBufferMs ?? 0).toString()},remaining_current_window_ms=${remainingCurrentWindowMs.toString()},${fitReason}`,
     };
   }
 
@@ -628,7 +628,7 @@ export const planSchedulerAwareCommitSelection = ({
     prunedTxCount,
     originalTxCount: candidateSelection.candidateTxs.length,
     blockEndTimeCapMs: currentSchedulerWindow.endTimeMs,
-    reason: `scheduler_out_ref=${currentSchedulerWindow.schedulerOutRef},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},resolved_end_time_ms=${currentWindowCommitEndTimeFit.resolvedEndTime.toString()},pruned_tx_count=${prunedTxCount.toString()}`,
+    reason: `scheduler_out_ref=${currentSchedulerWindow.schedulerOutRef},current_scheduler_end_ms=${currentSchedulerWindow.endTimeMs.toString()},resolved_valid_to_ms=${currentWindowCommitEndTimeFit.resolvedEndTime.toString()},resolved_inclusive_end_time_ms=${(currentWindowCommitEndTimeFit.resolvedEndTime - 1).toString()},pruned_tx_count=${prunedTxCount.toString()}`,
   };
 };
 

@@ -16,8 +16,9 @@ test reproduces_a_left_balanced_three_leaf_blob_root() {
     cek_proof_v1.hash_blob_chunk_v1(final),
     8191,
   )
-  cek_blob_frontier_v1.root_from_chunks_v1([first, second, final])
-    == Some(expected)
+  cek_blob_frontier_v1.root_from_chunks_v1([first, second, final]) == Some(
+    expected,
+  )
 }
 
 test encodes_the_typescript_three_leaf_frontier_canonically() {
@@ -29,12 +30,8 @@ test encodes_the_typescript_three_leaf_frontier_canonically() {
     first,
     builtin.replicate_byte(4095, 106),
   )
-  expect Some(terminal) = cek_blob_frontier_v1.append_chunk_v1(
-    second,
-    #"6a",
-  )
-  cek_blob_frontier_v1.encode_frontier_v1(terminal)
-    == #"840103191fff8283005820344b2b0f0e31517cd429e9ed6bc07028defbc437648e4988fbd3f20c64f87d7b01830158203160ec563e32826cc3fc245286437e12ab09796f078e4780a8596b2a09995d8b191ffe"
+  expect Some(terminal) = cek_blob_frontier_v1.append_chunk_v1(second, #"6a")
+  cek_blob_frontier_v1.encode_frontier_v1(terminal) == #"840103191fff8283005820344b2b0f0e31517cd429e9ed6bc07028defbc437648e4988fbd3f20c64f87d7b01830158203160ec563e32826cc3fc245286437e12ab09796f078e4780a8596b2a09995d8b191ffe"
 }
 
 test appends_an_authenticated_chunk_root_without_retaining_its_bytes() {

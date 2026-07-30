@@ -3,6 +3,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/validation_resolver_v1.{
   Datum, PrepareSelectedSpendRedeemer, prepare_selected,
+  script_sources_semantic_resolver_count,
 }
 use midgard/validation_trace_v1.{ScriptSources}
 
@@ -19,7 +20,7 @@ validator main(
     prepare_selected(
       ScriptSources,
       semantic_resolver_script_hashes,
-      14,
+      script_sources_semantic_resolver_count,
       computation_thread_policy_id,
       datum,
       redeemer,

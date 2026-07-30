@@ -6861,9 +6861,9 @@ pub type ScriptDiscoveryControlV1 {
   matched_source_leaf: ByteArray,
   used_inline_bitmap: Int,
   used_redeemer_bitmap: Int,
+  redeemer_item_control_hash: ByteArray,
   execution_count: Int,
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
-  redeemer_item_control_hash: ByteArray,
 }
 
 pub fn empty_script_discovery_control() -> ScriptDiscoveryControlV1 {
@@ -6880,9 +6880,9 @@ pub fn empty_script_discovery_control() -> ScriptDiscoveryControlV1 {
     matched_source_leaf: #"",
     used_inline_bitmap: 0,
     used_redeemer_bitmap: 0,
+    redeemer_item_control_hash: #"",
     execution_count: 0,
     execution_peaks: validation_merkle_v1.empty_frontier(),
-    redeemer_item_control_hash: #"",
   }
 }
 
@@ -6902,12 +6902,12 @@ pub fn encode_script_discovery_control(
     |> bytearray.concat(encode_definite_bytes(control.matched_source_leaf))
     |> bytearray.concat(cbor.serialise(control.used_inline_bitmap))
     |> bytearray.concat(cbor.serialise(control.used_redeemer_bitmap))
+    |> bytearray.concat(
+        encode_definite_bytes(control.redeemer_item_control_hash),
+      )
     |> bytearray.concat(cbor.serialise(control.execution_count))
     |> bytearray.concat(
         validation_merkle_v1.encode_frontier(control.execution_peaks),
-      )
-    |> bytearray.concat(
-        encode_definite_bytes(control.redeemer_item_control_hash),
       )
 }
 
@@ -6922,8 +6922,8 @@ fn script_discovery_control_from_cbor(
         current_script_hash_data, current_subject_data,
         matched_source_index_data, matched_language_tag_data,
         matched_source_leaf_data, used_inline_bitmap_data,
-        used_redeemer_bitmap_data, execution_count_data, execution_peaks_data,
-        redeemer_item_control_hash_data,
+        used_redeemer_bitmap_data, redeemer_item_control_hash_data,
+        execution_count_data, execution_peaks_data,
       ]
     = builtin.un_list_data(data)
   ScriptDiscoveryControlV1 {
@@ -6939,11 +6939,11 @@ fn script_discovery_control_from_cbor(
     matched_source_leaf: builtin.un_b_data(matched_source_leaf_data),
     used_inline_bitmap: builtin.un_i_data(used_inline_bitmap_data),
     used_redeemer_bitmap: builtin.un_i_data(used_redeemer_bitmap_data),
-    execution_count: builtin.un_i_data(execution_count_data),
-    execution_peaks: decode_frontier_peaks(execution_peaks_data),
     redeemer_item_control_hash: builtin.un_b_data(
       redeemer_item_control_hash_data,
     ),
+    execution_count: builtin.un_i_data(execution_count_data),
+    execution_peaks: decode_frontier_peaks(execution_peaks_data),
   }
 }
 
@@ -8466,7 +8466,9 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
         ),
       )
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(
+      script_sources_control_from_witness(witness.work_witness_cbor),
+    ) == witness.work_witness_cbor,
     builtin.un_i_data(stage_data) == 1,
     native_tx_proof_commitment_v1(
       compact_cbor,
@@ -9902,12 +9904,11 @@ fn script_sources_stage_seven_control_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let receive_scan = control.receive_scan
   let observer_scan = control.observer_scan
   let mint_fold = control.mint_fold
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     control.stage == 7,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -10498,10 +10499,9 @@ fn script_sources_stage_eight_control_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let discovery = control.discovery
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     control.stage == 8,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -11309,10 +11309,9 @@ fn script_sources_stage_ten_control_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let discovery = control.discovery
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     control.stage == 10,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -11547,10 +11546,9 @@ fn script_sources_stage_eleven_control_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let discovery = control.discovery
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     control.stage == 11,
     native_tx_proof_commitment_v1(
       control.compact_cbor,
@@ -11832,10 +11830,9 @@ fn script_sources_stage_twelve_control_is_bound(
   witness: ValidationOneStepWitnessV1,
   control: ScriptSourcesControlV1,
 ) -> Bool {
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
   let discovery = control.discovery
   and {
-    cbor.serialise(control_data) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     control.stage == 12,
     native_tx_proof_commitment_v1(
       control.compact_cbor,

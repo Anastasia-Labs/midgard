@@ -80,6 +80,7 @@ import {
 } from "./builder/normalizers.js";
 import {
   deriveScriptMaterialization,
+  mergeCanonicalProofProgramMaterial,
   normalizeMintAssetsForNormalizedPolicy,
   normalizePolicyId,
   normalizeScriptHash,
@@ -1832,8 +1833,9 @@ const normalizeLocalPreflightPhase = (
 const queuedTxFromComplete = (tx: CompleteTx): QueuedTx => ({
   txId: tx.txId,
   txCbor: tx.txCbor,
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1(tx.programMaterial),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+    tx.programMaterial,
+  ),
   arrivalSeq: 0n,
   createdAt: new Date(0),
 });
@@ -2521,9 +2523,7 @@ export class TxBuilder {
       resolved: completionInputs,
       initialFee: resolveInitialFee(state, options.fee),
       maxFeeIterations: resolveMaxFeeIterations(options.maxFeeIterations),
-      nativeTxVersion: BigInt(
-        this.context.config.midgardNativeTxVersion,
-      ),
+      nativeTxVersion: BigInt(this.context.config.midgardNativeTxVersion),
       deriveScriptMaterialization,
     });
     return this.finalizeCompleteTx(
@@ -2539,7 +2539,7 @@ export class TxBuilder {
     const prepared = isMidgardConsensusProfileV1(
       this.context.config.consensusProfile,
     )
-      ? prepareProofBuilderState(clonedState)
+      ? prepareProofBuilderState(clonedState, options.programMaterial)
       : { state: clonedState, programMaterial: [] };
     const state = prepared.state;
     const balanceRequested = shouldBalanceWithWalletDefault(
@@ -2685,7 +2685,7 @@ export class TxBuilder {
     const prepared = isMidgardConsensusProfileV1(
       this.context.config.consensusProfile,
     )
-      ? prepareProofBuilderState(clonedState)
+      ? prepareProofBuilderState(clonedState, options.programMaterial)
       : { state: clonedState, programMaterial: [] };
     const state = prepared.state;
     const balanceRequested = shouldBalanceWithWalletDefault(
@@ -3089,13 +3089,16 @@ export class LucidMidgard {
     return midgardSafe(() => this.awaitTx(txId, options));
   }
 
-  private completeTxContext(): CompleteTxContext {
+  private completeTxContext(
+    programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+  ): CompleteTxContext {
     return {
       provider: this.#providerSnapshot.provider,
       wallet: () => this.selectedWallet,
       networkId: configNetworkId(this.#config),
       maxSubmitTxCborBytes: this.#config.submissionLimits.maxSubmitTxCborBytes,
       consensusProfile: this.#config.consensusProfile,
+      programMaterial,
     };
   }
 
@@ -3128,6 +3131,10 @@ export class LucidMidgard {
     const expectedBodyNetworkId = configNetworkId(this.#config);
     const tx =
       input instanceof CompleteTx ? input.tx : decodeFromTxInput(input);
+    const programMaterial = mergeCanonicalProofProgramMaterial(
+      input instanceof CompleteTx ? input.programMaterial : [],
+      options.programMaterial ?? [],
+    );
     assertTxNetworkMatchesExpected(
       tx,
       expectedBodyNetworkId,
@@ -3138,8 +3145,12 @@ export class LucidMidgard {
       this.#providerSnapshot,
     );
     return options.partial === true
-      ? makePartiallySignedTx(tx, metadata, this.completeTxContext())
-      : makeCompleteTx(tx, metadata, this.completeTxContext());
+      ? makePartiallySignedTx(
+          tx,
+          metadata,
+          this.completeTxContext(programMaterial),
+        )
+      : makeCompleteTx(tx, metadata, this.completeTxContext(programMaterial));
   }
 
   async walletAddress(): Promise<Address> {

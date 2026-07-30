@@ -221,6 +221,7 @@ export type FraudProofs = {
    * V1 stateful dispute game for a transaction-validation trace.
    */
   validationTraceDispute: ValidationTraceDisputeValidators;
+  zeroInput: SpendingValidator;
 };
 
 export type MidgardValidators = {

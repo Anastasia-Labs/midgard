@@ -189,9 +189,10 @@ export const validationDisputeTimeoutValidityRange = (
 };
 
 const requireValidityRange = (
-  range: ValidationDisputeValidityRange,
+  range: ValidationDisputeValidityRange | null | undefined,
 ): ValidationDisputeValidityRange => {
   if (
+    range == null ||
     !Number.isSafeInteger(range.validFrom) ||
     !Number.isSafeInteger(range.validTo) ||
     range.validFrom < 0 ||
@@ -235,6 +236,56 @@ export const refreshExpiredValidationDisputeValidityRange = ({
 const inclusiveValidityUpperBound = (
   range: ValidationDisputeValidityRange,
 ): number => range.validTo - 1;
+
+export const openValidationDisputeAfterSourceVerification = ({
+  operatorDescriptor,
+  challengerDescriptor,
+  openTimeUpper,
+  challengedBlockEndTime,
+  sourceValidityRange,
+}: {
+  readonly operatorDescriptor: Parameters<
+    typeof openMidgardValidationDispute
+  >[0]["operatorDescriptor"];
+  readonly challengerDescriptor: Parameters<
+    typeof openMidgardValidationDispute
+  >[0]["challengerDescriptor"];
+  readonly openTimeUpper: bigint;
+  readonly challengedBlockEndTime: bigint;
+  readonly sourceValidityRange: ValidationDisputeValidityRange;
+}): ReturnType<typeof openMidgardValidationDispute> => {
+  const range = requireValidityRange(sourceValidityRange);
+  const authenticatedOpenTimeUpper = safeUnsignedNumber(
+    openTimeUpper,
+    "pending.open_time_upper",
+  );
+  const sourceTimeUpper = inclusiveValidityUpperBound(range);
+  if (sourceTimeUpper < authenticatedOpenTimeUpper) {
+    throw new Error(
+      "Validation-dispute source verification cannot precede the authenticated open transaction",
+    );
+  }
+  const authenticatedBlockEndTime = safeUnsignedNumber(
+    challengedBlockEndTime,
+    "pending.challenged_header.endTime",
+  );
+  if (
+    !canOpenMidgardValidationDisputeBeforeMaturity({
+      currentTimeUpper: sourceTimeUpper,
+      challengedBlockEndTime: authenticatedBlockEndTime,
+      maturityDuration: MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs,
+    })
+  ) {
+    throw new Error(
+      "Validation dispute cannot complete before the challenged block matures after source verification",
+    );
+  }
+  return openMidgardValidationDispute({
+    operatorDescriptor,
+    challengerDescriptor,
+    currentTime: sourceTimeUpper,
+  });
+};
 
 const threadAssets = (threadUtxo: UTxO, threadUnit: string) => ({
   lovelace: threadUtxo.assets.lovelace ?? 0n,
@@ -1434,13 +1485,12 @@ export const submitValidationDisputeVerifySource = async ({
   const challengerDescriptor = validationTraceDescriptorCoreFromData(
     inputDatum.data.challenger_descriptor,
   );
-  const dispute = openMidgardValidationDispute({
+  const dispute = openValidationDisputeAfterSourceVerification({
     operatorDescriptor,
     challengerDescriptor,
-    currentTime: safeUnsignedNumber(
-      inputDatum.data.open_time_upper,
-      "pending.open_time_upper",
-    ),
+    openTimeUpper: inputDatum.data.open_time_upper,
+    challengedBlockEndTime: inputDatum.data.challenged_header.endTime,
+    sourceValidityRange: range,
   });
   const outputDatum = Data.to(
     {

@@ -73,6 +73,7 @@ import {
   parseWatcherProofThreadResultV1,
   parseWatcherProofThreadStateV1,
   WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+  WATCHER_PROOF_THREAD_V1_BOUNDS,
   type WatcherProofThreadFamilyV1,
   type WatcherProofThreadJournalV1,
   type WatcherProofThreadObservationV1,
@@ -84,6 +85,7 @@ import {
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
 } from "../src/rollback-engine.js";
+import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -129,6 +131,21 @@ const canonicalJson = (value: unknown): string => {
 const digest = (value: unknown): string =>
   createHash("sha256").update(canonicalJson(value), "utf8").digest("hex");
 
+const rehashProofThreadEntry = (value: Mutable): Mutable => {
+  const { entryDigest: _entryDigest, ...canonical } = value;
+  return { ...canonical, entryDigest: digest(canonical) };
+};
+
+const rehashProofThreadAudit = (value: Mutable): Mutable => {
+  const { auditDigest: _auditDigest, ...canonical } = value;
+  return { ...canonical, auditDigest: digest(canonical) };
+};
+
+const rehashProofThreadState = (value: Mutable): Mutable => {
+  const { stateDigest: _stateDigest, ...canonical } = value;
+  return { ...canonical, stateDigest: digest(canonical) };
+};
+
 const same = (left: unknown, right: unknown): boolean =>
   canonicalJson(left) === canonicalJson(right);
 
@@ -148,6 +165,7 @@ const familyNames = [
   ["non-existent-input-no-index", "nonExistentInputNoIndex"],
   ["transition-trace", "transitionTrace"],
   ["validation-trace-dispute", "validationTraceDispute"],
+  ["zero-input", "zeroInput"],
 ] as const;
 
 const makeDeploymentAuthority = () => {
@@ -180,35 +198,8 @@ const makeDeploymentAuthority = () => {
       ];
     }),
   ) as Mutable;
-  const catalogueNames = [
-    "doubleSpend",
-    "nonExistentInput",
-    "nonExistentInputNoIndex",
-    "invalidRange",
-    "transitionTrace",
-    "validationTraceDispute",
-  ] as const;
-  const contractByCategory = {
-    doubleSpend: "fraudProofDoubleSpend",
-    nonExistentInput: "fraudProofNonExistentInput",
-    nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-    invalidRange: "fraudProofInvalidRange",
-    transitionTrace: "fraudProofTransitionTrace",
-    validationTraceDispute: "validationTraceDispute",
-  } as const;
-  contracts.fraudProofCatalogueMint.fraudProofCatalogue = {
-    root: h32("13"),
-    categories: Object.fromEntries(
-      catalogueNames.map((name, index) => [
-        name,
-        {
-          categoryId: index.toString(16).padStart(8, "0"),
-          scriptHash: contracts[contractByCategory[name]].scriptHash,
-          membershipProofCbor: "80",
-        },
-      ]),
-    ),
-  };
+  contracts.fraudProofCatalogueMint.fraudProofCatalogue =
+    canonicalFraudProofCatalogueFixture(contracts);
   const referenceScripts = Object.fromEntries(
     Object.entries(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
@@ -620,6 +611,12 @@ const sourceFixture = (
           network: "Preprod",
           authorityNodeId: localSource.authorityNodeId,
           genesisIdentitySha256: localSource.chainSync.genesisIdentitySha256,
+          queryServices: [
+            {
+              kind: "ogmios",
+              providerId: localProviders[1].providerId,
+            },
+          ],
         },
       }
     : {
@@ -628,6 +625,10 @@ const sourceFixture = (
         consistencyConfig: {
           sourceMode: "external_providers",
           network: "Preprod",
+          providers: providers.map((provider) => ({
+            providerId: provider.providerId,
+            operatorIdentitySha256: provider.source.operatorIdentitySha256,
+          })),
         },
       };
 
@@ -678,6 +679,48 @@ type TxFixture = Readonly<{
   }>[];
 }>;
 
+const SCRIPT_DATA_HASH = CML.ScriptDataHash.from_raw_bytes(
+  Buffer.alloc(32, 0x5a),
+);
+
+const redeemerTag = (
+  purpose: WatcherL1RedeemerV1["purpose"],
+): CML.RedeemerTag => {
+  switch (purpose) {
+    case "spend":
+      return CML.RedeemerTag.Spend;
+    case "mint":
+      return CML.RedeemerTag.Mint;
+    case "certificate":
+      return CML.RedeemerTag.Cert;
+    case "withdrawal":
+      return CML.RedeemerTag.Reward;
+    case "vote":
+      return CML.RedeemerTag.Voting;
+    case "propose":
+      return CML.RedeemerTag.Proposing;
+  }
+};
+
+const witnessSetFor = (fixture: TxFixture): CML.TransactionWitnessSet => {
+  const witnessSet = CML.TransactionWitnessSet.new();
+  if (fixture.redeemers.length > 0) {
+    const redeemers = CML.LegacyRedeemerList.new();
+    for (const redeemer of fixture.redeemers) {
+      redeemers.add(
+        CML.LegacyRedeemer.new(
+          redeemerTag(redeemer.purpose),
+          BigInt(redeemer.index),
+          CML.PlutusData.from_cbor_hex(redeemer.bytesHex),
+          CML.ExUnits.new(0n, 0n),
+        ),
+      );
+    }
+    witnessSet.set_redeemers(CML.Redeemers.new_arr_legacy_redeemer(redeemers));
+  }
+  return witnessSet;
+};
+
 const initTransaction = (): TxFixture => {
   const family = policy.families.find(
     ({ familyId }) => familyId === "double-spend",
@@ -710,6 +753,7 @@ const initTransaction = (): TxFixture => {
     1n,
   );
   body.set_mint(mint);
+  body.set_script_data_hash(SCRIPT_DATA_HASH);
   const bodyHex = body.to_canonical_cbor_hex();
   const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
   const mintRedeemer = CML.PlutusData.from_cbor_hex(
@@ -771,6 +815,7 @@ const stepTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
   const outputs = CML.TransactionOutputList.new();
   outputs.add(output);
   const body = CML.TransactionBody.new(inputs, outputs, 170_000n);
+  body.set_script_data_hash(SCRIPT_DATA_HASH);
   const bodyHex = body.to_canonical_cbor_hex();
   return {
     bodyHex,
@@ -812,6 +857,7 @@ const successTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
     1n,
   );
   body.set_mint(mint);
+  body.set_script_data_hash(SCRIPT_DATA_HASH);
   const bodyHex = body.to_canonical_cbor_hex();
   const canonicalBody = CML.TransactionBody.from_cbor_hex(bodyHex);
   const ctGlobalIndex = 2n;
@@ -872,6 +918,7 @@ const cancelTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
     -1n,
   );
   body.set_mint(mint);
+  body.set_script_data_hash(SCRIPT_DATA_HASH);
   const bodyHex = body.to_canonical_cbor_hex();
   return {
     bodyHex,
@@ -921,53 +968,98 @@ const removalTransaction = (source: WatcherProofThreadJournalV1): TxFixture => {
   };
 };
 
-const rawTransaction = (fixture: TxFixture) => ({
-  txHash: fixture.txHash,
-  body: publicBytes(fixture.bodyHex),
-  utxos: fixture.outputs.map((output, index) => {
-    const datum = output.datum()?.as_datum();
-    const datumHex = datum?.to_canonical_cbor_hex() ?? null;
-    return {
-      outRef: `${fixture.txHash}#${index.toString()}`,
-      outputIndex: index.toString(),
-      output: publicBytes(output.to_canonical_cbor_hex()),
-      datum:
-        datumHex === null
-          ? null
-          : {
-              datumHash: computeHash32(Buffer.from(datumHex, "hex")).toString(
-                "hex",
-              ),
-              bytes: publicBytes(datumHex),
-            },
-      referenceScript: null,
-    };
-  }),
-  scripts: [],
-  datums: [],
-  redeemers: fixture.redeemers.map(({ purpose, index, bytesHex }) => ({
-    purpose,
-    index,
-    bytes: publicBytes(bytesHex),
-  })),
-});
+const rawTransaction = (
+  fixture: TxFixture,
+  isValid = true,
+  transactionIndex = "0",
+) => {
+  const body = CML.TransactionBody.from_cbor_hex(fixture.bodyHex);
+  const witnessSet = witnessSetFor(fixture);
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    isValid,
+    undefined,
+  );
+  return {
+    txHash: fixture.txHash,
+    transactionIndex,
+    fullTransaction: publicBytes(fullTransaction.to_canonical_cbor_hex()),
+    body: publicBytes(fixture.bodyHex),
+    witnessSet: publicBytes(witnessSet.to_canonical_cbor_hex()),
+    utxos: isValid
+      ? fixture.outputs.map((output, index) => {
+          const datum = output.datum()?.as_datum();
+          const datumHex = datum?.to_canonical_cbor_hex() ?? null;
+          return {
+            outRef: `${fixture.txHash}#${index.toString()}`,
+            outputIndex: index.toString(),
+            output: publicBytes(output.to_canonical_cbor_hex()),
+            datum:
+              datumHex === null
+                ? null
+                : {
+                    datumHash: computeHash32(
+                      Buffer.from(datumHex, "hex"),
+                    ).toString("hex"),
+                    bytes: publicBytes(datumHex),
+                  },
+            referenceScript: null,
+          };
+        })
+      : [],
+    scripts: [],
+    datums: [],
+    redeemers: fixture.redeemers.map(({ purpose, index, bytesHex }) => ({
+      purpose,
+      index,
+      bytes: publicBytes(bytesHex),
+    })),
+  };
+};
+
+type RawObservationOptions = Readonly<{
+  empty?: boolean;
+  transactionIsValid?: boolean;
+  transactions?: readonly Readonly<{
+    fixture: TxFixture;
+    isValid?: boolean;
+    transactionIndex?: string;
+  }>[];
+}>;
 
 const rawObservation = (
   provider: WatcherAuthenticatedL1ProviderV1,
   fixture: TxFixture,
   depth: string,
   ordinal = 0,
+  options: RawObservationOptions = {},
 ) => ({
   schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   network: "Preprod",
   providerId: provider.providerId,
   chainPoint: {
     blockHash: h32((0x40 + ordinal).toString(16).padStart(2, "0")),
+    parentBlockHash:
+      ordinal === 0
+        ? null
+        : h32((0x40 + ordinal - 1).toString(16).padStart(2, "0")),
     slot: (1000 + ordinal).toString(),
     blockNo: (100 + ordinal).toString(),
     depth,
   },
-  transactions: [rawTransaction(fixture)],
+  transactions:
+    options.transactions !== undefined
+      ? options.transactions.map((candidate, index) =>
+          rawTransaction(
+            candidate.fixture,
+            candidate.isValid,
+            candidate.transactionIndex ?? index.toString(),
+          ),
+        )
+      : options.empty
+        ? []
+        : [rawTransaction(fixture, options.transactionIsValid)],
 });
 
 const normalize = (
@@ -975,10 +1067,11 @@ const normalize = (
   fixture: TxFixture,
   depth: string,
   ordinal = 0,
+  options: RawObservationOptions = {},
 ): WatcherNormalizedL1BlockV1 =>
   normalizeWatcherL1BlockV1(
     provider,
-    rawObservation(provider, fixture, depth, ordinal),
+    rawObservation(provider, fixture, depth, ordinal, options),
   );
 
 const protocolUtxo = (
@@ -1216,34 +1309,72 @@ type InitStage = Readonly<{
   journal: WatcherProofThreadJournalV1;
 }>;
 
+type ProofThreadFinalityLineage = NonNullable<
+  WatcherProofThreadPublicContextV1["finalityAuthority"]
+>["lineage"];
+
+const proofThreadFinalityLineageByStateDigest = new Map<
+  string,
+  ProofThreadFinalityLineage
+>();
+
 const initStage = ({
   phase,
   previousState,
   previousFinalityState,
   sourceStore: suppliedSource,
   sourceMode = "external_providers",
+  transactionIsValid = true,
+  ordinal = 0,
 }: {
   phase: "pending" | "final";
   previousState: WatcherProofThreadStateV1 | null;
   previousFinalityState: WatcherFinalityStateV1 | null;
   sourceStore?: WatcherDurableStoreV1;
   sourceMode?: FixtureSourceMode;
+  transactionIsValid?: boolean;
+  ordinal?: number;
 }): InitStage => {
   const fixture = initTransaction();
   const depth = phase === "pending" ? "1" : "2";
   const l1 = sourceFixture(sourceMode);
   const normalized = l1.providers.map((provider) =>
-    normalize(provider, fixture, depth),
+    normalize(provider, fixture, depth, ordinal, { transactionIsValid }),
   );
   const consistency = evaluateWatcherMultiProviderConsistencyV1(
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(provider, fixture, depth, ordinal, {
+      transactionIsValid,
+    }),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const sourceStore = suppliedSource ?? baseStore(fixture);
   const store = appendPublicStore({
     source: sourceStore,
@@ -1296,17 +1427,17 @@ const initStage = ({
   const context: WatcherProofThreadPublicContextV1 = {
     schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
     authenticatedProvider: l1.providers[0],
-    l1Observation: rawObservation(l1.providers[0]!, fixture, depth),
+    l1Observation: rawObservation(l1.providers[0]!, fixture, depth, ordinal, {
+      transactionIsValid,
+    }),
     sourceDurableStore: sourceStore,
     durableStore: store,
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },
@@ -1585,6 +1716,8 @@ const transitionStage = ({
   sourceJournal,
   ordinal,
   sourceMode = "external_providers",
+  blockTransactions,
+  blockOrdinal = ordinal,
 }: {
   transitionKind: OrdinaryTransition;
   fixture: TxFixture;
@@ -1595,22 +1728,55 @@ const transitionStage = ({
   sourceJournal: WatcherProofThreadJournalV1;
   ordinal: number;
   sourceMode?: FixtureSourceMode;
+  blockTransactions?: RawObservationOptions["transactions"];
+  blockOrdinal?: number;
 }): TransitionStage => {
   const ids = transitionIds(ordinal);
   const depth = phase === "pending" ? "1" : "2";
   const l1 = sourceFixture(sourceMode);
+  const observationOptions: RawObservationOptions =
+    blockTransactions === undefined ? {} : { transactions: blockTransactions };
   const normalized = l1.providers.map((provider) =>
-    normalize(provider, fixture, depth, ordinal),
+    normalize(provider, fixture, depth, blockOrdinal, observationOptions),
   );
   const consistency = evaluateWatcherMultiProviderConsistencyV1(
     l1.consistencyConfig,
     normalized,
   );
+  const lineage =
+    previousFinalityState === null
+      ? []
+      : (proofThreadFinalityLineageByStateDigest.get(
+          previousFinalityState.stateDigest,
+        ) ?? []);
   const finalityResult = evaluateWatcherFinalityV1(
     l1.policy,
     previousFinalityState,
     consistency,
   );
+  const finalityObservations = l1.providers.map((provider) => ({
+    authenticatedProvider: provider,
+    l1Observation: rawObservation(
+      provider,
+      fixture,
+      depth,
+      blockOrdinal,
+      observationOptions,
+    ),
+  }));
+  if (finalityResult.state !== null) {
+    proofThreadFinalityLineageByStateDigest.set(
+      finalityResult.state.stateDigest,
+      [
+        ...lineage,
+        {
+          observations: finalityObservations,
+          consistency,
+          result: finalityResult,
+        },
+      ],
+    );
+  }
   const store = appendTransitionStore({
     source: sourceStore,
     block: normalized[0]!,
@@ -1661,17 +1827,21 @@ const transitionStage = ({
   const context: WatcherProofThreadPublicContextV1 = {
     schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
     authenticatedProvider: l1.providers[0],
-    l1Observation: rawObservation(l1.providers[0]!, fixture, depth, ordinal),
+    l1Observation: rawObservation(
+      l1.providers[0]!,
+      fixture,
+      depth,
+      blockOrdinal,
+      observationOptions,
+    ),
     sourceDurableStore: sourceStore,
     durableStore: store,
     deploymentAuthority: authority.deploymentAuthority,
     finalityAuthority: {
       policy: l1.policy,
+      lineage,
       previousState: previousFinalityState,
-      observations: l1.providers.map((provider) => ({
-        authenticatedProvider: provider,
-        l1Observation: rawObservation(provider, fixture, depth, ordinal),
-      })),
+      observations: finalityObservations,
       consistency,
       result: finalityResult,
     },
@@ -1829,7 +1999,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       }),
     ).not.toBeNull();
     expect(policy).not.toBeNull();
-    expect(policy.families).toHaveLength(6);
+    expect(policy.families).toHaveLength(7);
     expect(policy.families[0]!.familyId).toBe("double-spend");
 
     const hostile = structuredClone(authority.deploymentAuthority);
@@ -1909,6 +2079,230 @@ describe("W17 public proof/computation-thread indexer", () => {
         publicContext: final.context,
       }),
     ).toEqual(finalResult);
+  });
+
+  it("rejects a same-revision durable-store addition between accepted transitions", () => {
+    const pending = initStage({
+      phase: "pending",
+      previousState: null,
+      previousFinalityState: null,
+    });
+    const pendingResult = evaluateWatcherProofThreadIndexerV1(
+      policy,
+      null,
+      pending.observation,
+      pending.context,
+    );
+    expect(pendingResult.action).toBe("accept");
+
+    const sameRevisionSource = makeWatcherDurableStoreV1({
+      deploymentMarker: authority.marker,
+      revision: pending.store.revision,
+      records: {
+        ...pending.store,
+        daProofInputs: [
+          ...pending.store.daProofInputs,
+          {
+            inputId: h32("d1"),
+            kind: "da_payload",
+            payload: makeWatcherDurablePayloadV1("81"),
+          },
+        ],
+      },
+    });
+    expect(sameRevisionSource.revision).toBe(pending.store.revision);
+    expect(
+      watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(sameRevisionSource),
+      ),
+    ).not.toBe(
+      watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(pending.store),
+      ),
+    );
+
+    const final = initStage({
+      phase: "final",
+      previousState: pendingResult.state!,
+      previousFinalityState: pending.finalityState,
+      sourceStore: sameRevisionSource,
+    });
+    expect(
+      evaluateWatcherProofThreadIndexerV1(
+        policy,
+        pendingResult.state,
+        final.observation,
+        final.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "hold",
+      reasonCodes: ["stale_state"],
+    });
+  });
+
+  it("rejects aggregate restart evidence spread across retained transitions and cyclic state evidence", () => {
+    const aggregateFragmentHex = "ab".repeat(8_500_000);
+    const sourceFixtureValue = initTransaction();
+    const aggregateBaseStore = baseStore(sourceFixtureValue);
+    const bulkySource = makeWatcherDurableStoreV1({
+      deploymentMarker: authority.marker,
+      revision: (BigInt(aggregateBaseStore.revision) + 1n).toString(),
+      records: {
+        ...aggregateBaseStore,
+        daProofInputs: [
+          ...aggregateBaseStore.daProofInputs,
+          {
+            inputId: h32("d2"),
+            kind: "da_payload",
+            payload: makeWatcherDurablePayloadV1(aggregateFragmentHex),
+          },
+        ],
+      },
+    });
+    const pending = initStage({
+      phase: "pending",
+      previousState: null,
+      previousFinalityState: null,
+      sourceStore: bulkySource,
+    });
+    const pendingResult = evaluateWatcherProofThreadIndexerV1(
+      policy,
+      null,
+      pending.observation,
+      pending.context,
+    );
+    expect(pendingResult.action).toBe("accept");
+    const final = initStage({
+      phase: "final",
+      previousState: pendingResult.state!,
+      previousFinalityState: pending.finalityState,
+      sourceStore: pending.store,
+    });
+    const finalResult = evaluateWatcherProofThreadIndexerV1(
+      policy,
+      pendingResult.state,
+      final.observation,
+      final.context,
+    );
+    expect(finalResult.action).toBe("accept");
+    expect(finalResult.state?.transitionHistory).toHaveLength(2);
+    expect(
+      parseWatcherProofThreadStateV1(
+        structuredClone(finalResult.state),
+        policy,
+      ),
+    ).toBeNull();
+
+    const cyclic = structuredClone(pendingResult.state) as Mutable;
+    cyclic.transitionHistory.push(cyclic);
+    expect(parseWatcherProofThreadStateV1(cyclic, policy)).toBeNull();
+  }, 60_000);
+
+  it("orders distinct same-block proof transactions and rejects reversed or forged ordinals", () => {
+    const initPending = initStage({
+      phase: "pending",
+      previousState: null,
+      previousFinalityState: null,
+    });
+    const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+      policy,
+      null,
+      initPending.observation,
+      initPending.context,
+    );
+    const initFinal = initStage({
+      phase: "final",
+      previousState: initPendingResult.state!,
+      previousFinalityState: initPending.finalityState,
+      sourceStore: initPending.store,
+    });
+    const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+      policy,
+      initPendingResult.state,
+      initFinal.observation,
+      initFinal.context,
+    );
+    expect(initFinalResult.action).toBe("accept");
+
+    const stepFixture = stepTransaction(initFinal.journal);
+    const stepSource = addSubmittedTransaction(
+      initFinal.store,
+      stepFixture,
+      transitionIds(1).submissionId,
+    );
+    const orderedTransactions = [
+      { fixture: initFinal.fixture, transactionIndex: "0" },
+      { fixture: stepFixture, transactionIndex: "1" },
+    ] as const;
+    const ordered = transitionStage({
+      transitionKind: "step",
+      fixture: stepFixture,
+      phase: "pending",
+      previousState: initFinalResult.state!,
+      previousFinalityState: null,
+      sourceStore: stepSource,
+      sourceJournal: initFinal.journal,
+      ordinal: 1,
+      blockOrdinal: 0,
+      blockTransactions: orderedTransactions,
+    });
+    expect(
+      evaluateWatcherProofThreadIndexerV1(
+        policy,
+        initFinalResult.state,
+        ordered.observation,
+        ordered.context,
+      ),
+    ).toMatchObject({
+      action: "accept",
+      reasonCodes: ["step_pending"],
+    });
+
+    const reversed = transitionStage({
+      transitionKind: "step",
+      fixture: stepFixture,
+      phase: "pending",
+      previousState: initFinalResult.state!,
+      previousFinalityState: null,
+      sourceStore: stepSource,
+      sourceJournal: initFinal.journal,
+      ordinal: 1,
+      blockOrdinal: 0,
+      blockTransactions: [
+        { fixture: stepFixture, transactionIndex: "0" },
+        { fixture: initFinal.fixture, transactionIndex: "1" },
+      ],
+    });
+    expect(
+      evaluateWatcherProofThreadIndexerV1(
+        policy,
+        initFinalResult.state,
+        reversed.observation,
+        reversed.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["stale_state"],
+    });
+
+    expect(() =>
+      transitionStage({
+        transitionKind: "step",
+        fixture: stepFixture,
+        phase: "pending",
+        previousState: initFinalResult.state!,
+        previousFinalityState: null,
+        sourceStore: stepSource,
+        sourceJournal: initFinal.journal,
+        ordinal: 1,
+        blockOrdinal: 0,
+        blockTransactions: [
+          { fixture: initFinal.fixture, transactionIndex: "0" },
+          { fixture: stepFixture, transactionIndex: "7" },
+        ],
+      }),
+    ).toThrow(/transactionIndex/u);
   });
 
   it("indexes through one local chain-sync authority with an aligned query surface and no provider quorum", () => {
@@ -2047,6 +2441,148 @@ describe("W17 public proof/computation-thread indexer", () => {
     });
   });
 
+  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+    "traverses authenticated empty-block ancestry in %s mode",
+    (sourceMode) => {
+      const initPending = initStage({
+        phase: "pending",
+        previousState: null,
+        previousFinalityState: null,
+        sourceMode,
+      });
+      const initPendingResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        null,
+        initPending.observation,
+        initPending.context,
+      );
+      const initFinal = initStage({
+        phase: "final",
+        previousState: initPendingResult.state!,
+        previousFinalityState: initPending.finalityState,
+        sourceStore: initPending.store,
+        sourceMode,
+      });
+      const initFinalResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        initPendingResult.state,
+        initFinal.observation,
+        initFinal.context,
+      );
+      expect(initFinalResult.action).toBe("accept");
+
+      const fixture = stepTransaction(initFinal.journal);
+      const l1 = sourceFixture(sourceMode);
+      const finalityStep = (
+        previousState: WatcherFinalityStateV1 | null,
+        depth: string,
+        ordinal: number,
+        empty: boolean,
+      ) => {
+        const blocks = l1.providers.map((provider) =>
+          normalize(provider, fixture, depth, ordinal, { empty }),
+        );
+        const observations = l1.providers.map((provider) => ({
+          authenticatedProvider: provider,
+          l1Observation: rawObservation(provider, fixture, depth, ordinal, {
+            empty,
+          }),
+        }));
+        const consistency = evaluateWatcherMultiProviderConsistencyV1(
+          l1.consistencyConfig,
+          blocks,
+        );
+        const result = evaluateWatcherFinalityV1(
+          l1.policy,
+          previousState,
+          consistency,
+        );
+        return { blocks, observations, consistency, result };
+      };
+      const empty = finalityStep(null, "1", 1, true);
+      expect(empty.blocks[0]?.transactions).toEqual([]);
+      const target = finalityStep(empty.result.state, "0", 2, false);
+      expect(target.result).toMatchObject({
+        action: "rewind_pending",
+        protocolDecision: "rewind_required",
+      });
+      proofThreadFinalityLineageByStateDigest.set(
+        target.result.state!.stateDigest,
+        [
+          {
+            observations: empty.observations,
+            consistency: empty.consistency,
+            result: empty.result,
+          },
+          {
+            observations: target.observations,
+            consistency: target.consistency,
+            result: target.result,
+          },
+        ],
+      );
+
+      const sourceStore = addSubmittedTransaction(
+        initFinal.store,
+        fixture,
+        transitionIds(2).submissionId,
+      );
+      const step = transitionStage({
+        transitionKind: "step",
+        fixture,
+        phase: "pending",
+        previousState: initFinalResult.state!,
+        previousFinalityState: target.result.state,
+        sourceStore,
+        sourceJournal: initFinal.journal,
+        ordinal: 2,
+        sourceMode,
+      });
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          initFinalResult.state,
+          step.observation,
+          step.context,
+        ),
+      ).toMatchObject({
+        action: "accept",
+        protocolDecision: "hold",
+        reasonCodes: ["step_pending"],
+      });
+    },
+  );
+
+  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+    "ignores a phase-2-invalid phantom proof transaction in %s mode",
+    (sourceMode) => {
+      const phantom = initStage({
+        phase: "pending",
+        previousState: null,
+        previousFinalityState: null,
+        sourceMode,
+        transactionIsValid: false,
+      });
+      expect(phantom.block.transactions[0]).toMatchObject({
+        txHash: phantom.fixture.txHash,
+        isValid: false,
+        utxos: [],
+      });
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          null,
+          phantom.observation,
+          phantom.context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        protocolDecision: "hold",
+        reasonCodes: ["malformed_public_context"],
+      });
+    },
+  );
+
   it("indexes deterministic step, success, proof-token removal, and cancellation lifecycles", () => {
     const initPending = initStage({
       phase: "pending",
@@ -2154,7 +2690,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     const cancelSource = addSubmittedTransaction(
       initFinal.store,
       cancelFixture,
-      transitionIds(4).submissionId,
+      transitionIds(1).submissionId,
     );
     const cancel = runFinalTransition({
       transitionKind: "cancel",
@@ -2163,7 +2699,7 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousFinalityState: null,
       sourceStore: cancelSource,
       sourceJournal: initFinal.journal,
-      ordinal: 4,
+      ordinal: 1,
     });
     expect(cancel.state.journal).toMatchObject({
       phase: "cancelled",
@@ -2204,11 +2740,27 @@ describe("W17 public proof/computation-thread indexer", () => {
         initFinal.context,
       );
       const stepFixture = stepTransaction(initFinal.journal);
-      const stepSource = addSubmittedTransaction(
+      const submittedStepSource = addSubmittedTransaction(
         initFinal.store,
         stepFixture,
-        transitionIds(5).submissionId,
+        transitionIds(1).submissionId,
       );
+      const continuitySentinel = {
+        inputId: h32("de"),
+        kind: "da_payload" as const,
+        payload: makeWatcherDurablePayloadV1("81"),
+      };
+      const stepSource = makeWatcherDurableStoreV1({
+        deploymentMarker: authority.marker,
+        revision: (BigInt(submittedStepSource.revision) + 1n).toString(),
+        records: {
+          ...submittedStepSource,
+          daProofInputs: [
+            ...submittedStepSource.daProofInputs,
+            continuitySentinel,
+          ],
+        },
+      });
       const stepPending = transitionStage({
         transitionKind: "step",
         fixture: stepFixture,
@@ -2217,7 +2769,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         previousFinalityState: null,
         sourceStore: stepSource,
         sourceJournal: initFinal.journal,
-        ordinal: 5,
+        ordinal: 1,
         sourceMode,
       });
       const stepPendingResult = evaluateWatcherProofThreadIndexerV1(
@@ -2227,10 +2779,13 @@ describe("W17 public proof/computation-thread indexer", () => {
         stepPending.context,
       );
       expect(stepPendingResult.action).toBe("accept");
+      expect(stepPending.store.daProofInputs).toContainEqual(
+        continuitySentinel,
+      );
 
       const replacementL1 = sourceFixture(sourceMode);
       const replacement = replacementL1.providers.map((provider) =>
-        normalize(provider, stepFixture, "1", 6),
+        normalize(provider, stepFixture, "1", 2),
       );
       const consistency = evaluateWatcherMultiProviderConsistencyV1(
         replacementL1.consistencyConfig,
@@ -2286,7 +2841,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         reasonCodes: ["rewind_applied"],
       });
       expect(rollbackResult.removedRecords.confirmationIds).toContain(
-        transitionIds(5).confirmationId,
+        transitionIds(1).confirmationId,
       );
       expect(rollbackResult.nextStore).not.toBeNull();
       const replacementBlock = replacement[0]!;
@@ -2354,6 +2909,228 @@ describe("W17 public proof/computation-thread indexer", () => {
       });
       expect(indexed.state?.history).toHaveLength(2);
       expect(indexed.state?.auditHistory.at(-1)?.status).toBe("rollback");
+      expect(indexed.state?.transitionHistory).toHaveLength(4);
+      expect(
+        parseWatcherProofThreadStateV1(structuredClone(indexed.state), policy),
+      ).toEqual(indexed.state);
+
+      const {
+        schemaVersion: _divergentObservationSchema,
+        observationDigest: _divergentObservationDigest,
+        ...rollbackObservationInput
+      } = rollbackObservation;
+      const duplicateRollbackContext = {
+        ...rollbackContext,
+        sourceStore: rollbackResult.nextStore!,
+        previousRollbackState: rollbackResult.rollbackState,
+      };
+      const duplicateRollbackResult = evaluateWatcherRollbackV1(
+        replacementL1.policy,
+        rollbackResult.nextStore,
+        stepPending.finalityState,
+        consistency,
+        finalityResult,
+        rollbackResult.rollbackState,
+        bootstrap,
+      );
+      expect(duplicateRollbackResult.action).toBe("duplicate_rewind");
+      const duplicateRollbackObservation = makeWatcherProofThreadObservationV1({
+        ...rollbackObservationInput,
+        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+        ),
+        sourceDurableStoreRevision: rollbackResult.nextStore!.revision,
+        durableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+        ),
+        durableStoreRevision: rollbackResult.nextStore!.revision,
+        predecessorStateDigest: indexed.state!.stateDigest,
+      })!;
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          indexed.state,
+          duplicateRollbackObservation,
+          {
+            ...rollbackPublicContext,
+            sourceDurableStore: rollbackResult.nextStore!,
+            durableStore: rollbackResult.nextStore!,
+            rollbackAuthority: {
+              result: duplicateRollbackResult,
+              context: duplicateRollbackContext,
+            },
+          },
+        ),
+      ).toMatchObject({
+        action: "duplicate",
+        reasonCodes: ["duplicate_observation"],
+        state: indexed.state,
+      });
+      const divergentRollbackSource = makeWatcherDurableStoreV1({
+        deploymentMarker: authority.marker,
+        revision: rollbackSource.revision,
+        records: {
+          ...rollbackSource,
+          daProofInputs: rollbackSource.daProofInputs.filter(
+            ({ inputId }) => inputId !== continuitySentinel.inputId,
+          ),
+        },
+      });
+      const divergentBootstrap = makeWatcherRollbackBootstrapStateV1(
+        replacementL1.policy,
+        divergentRollbackSource,
+        stepPending.finalityState,
+      )!;
+      const divergentRollbackContext = {
+        policy: replacementL1.policy,
+        sourceStore: divergentRollbackSource,
+        previousFinalityState: stepPending.finalityState,
+        consistency,
+        finalityResult,
+        previousRollbackState: divergentBootstrap,
+        rollbackBootstrapState: divergentBootstrap,
+      };
+      const divergentRollbackResult = evaluateWatcherRollbackV1(
+        replacementL1.policy,
+        divergentRollbackSource,
+        stepPending.finalityState,
+        consistency,
+        finalityResult,
+        divergentBootstrap,
+        divergentBootstrap,
+      );
+      expect(divergentRollbackResult.action).toBe("apply_rewind");
+      const divergentRollbackObservation = makeWatcherProofThreadObservationV1({
+        ...rollbackObservationInput,
+        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(divergentRollbackSource),
+        ),
+        sourceDurableStoreRevision: divergentRollbackSource.revision,
+        durableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(divergentRollbackResult.nextStore!),
+        ),
+        durableStoreRevision: divergentRollbackResult.nextStore!.revision,
+      })!;
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          stepPendingResult.state,
+          divergentRollbackObservation,
+          {
+            ...rollbackPublicContext,
+            sourceDurableStore: divergentRollbackSource,
+            durableStore: divergentRollbackResult.nextStore!,
+            rollbackAuthority: {
+              result: divergentRollbackResult,
+              context: divergentRollbackContext,
+            },
+          },
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["rollback_authority_mismatch"],
+      });
+
+      const rehashedPredecessor = structuredClone(indexed.state) as Mutable;
+      const predecessorTransition = rehashedPredecessor.transitionHistory.at(
+        -1,
+      ) as Mutable;
+      const {
+        schemaVersion: _predecessorSchema,
+        observationDigest: _predecessorDigest,
+        ...predecessorObservation
+      } = predecessorTransition.observation;
+      predecessorTransition.observation = makeWatcherProofThreadObservationV1({
+        ...predecessorObservation,
+        predecessorStateDigest: h32("bd"),
+      })!;
+      predecessorTransition.predecessorStateDigest = h32("bd");
+      const rehashedPredecessorEntry = rehashProofThreadEntry(
+        predecessorTransition,
+      );
+      rehashedPredecessor.transitionHistory[
+        rehashedPredecessor.transitionHistory.length - 1
+      ] = rehashedPredecessorEntry;
+      const rollbackAudit = rehashedPredecessor.auditHistory.at(-1) as Mutable;
+      rollbackAudit.entry = structuredClone(rehashedPredecessorEntry);
+      rehashedPredecessor.auditHistory[
+        rehashedPredecessor.auditHistory.length - 1
+      ] = rehashProofThreadAudit(rollbackAudit);
+      expect(
+        parseWatcherProofThreadStateV1(
+          rehashProofThreadState(rehashedPredecessor),
+          policy,
+        ),
+      ).toBeNull();
+
+      const swappedRollbackResult = structuredClone(indexed.state) as Mutable;
+      const swappedTransition = swappedRollbackResult.transitionHistory.at(
+        -1,
+      ) as Mutable;
+      (
+        swappedTransition.rollbackResult.removedRecords as Mutable
+      ).confirmationIds = [];
+      const swappedEntry = rehashProofThreadEntry(swappedTransition);
+      swappedRollbackResult.transitionHistory[
+        swappedRollbackResult.transitionHistory.length - 1
+      ] = swappedEntry;
+      const swappedAudit = swappedRollbackResult.auditHistory.at(-1) as Mutable;
+      swappedAudit.entry = structuredClone(swappedEntry);
+      swappedRollbackResult.auditHistory[
+        swappedRollbackResult.auditHistory.length - 1
+      ] = rehashProofThreadAudit(swappedAudit);
+      expect(
+        parseWatcherProofThreadStateV1(
+          rehashProofThreadState(swappedRollbackResult),
+          policy,
+        ),
+      ).toBeNull();
+
+      const swappedRollbackContext = structuredClone(indexed.state) as Mutable;
+      const contextTransition = swappedRollbackContext.transitionHistory.at(
+        -1,
+      ) as Mutable;
+      contextTransition.publicContext.rollbackAuthority = {
+        result: structuredClone(duplicateRollbackResult),
+        context: structuredClone(duplicateRollbackContext),
+      };
+      const contextEntry = rehashProofThreadEntry(contextTransition);
+      swappedRollbackContext.transitionHistory[
+        swappedRollbackContext.transitionHistory.length - 1
+      ] = contextEntry;
+      const contextAudit = swappedRollbackContext.auditHistory.at(
+        -1,
+      ) as Mutable;
+      contextAudit.entry = structuredClone(contextEntry);
+      swappedRollbackContext.auditHistory[
+        swappedRollbackContext.auditHistory.length - 1
+      ] = rehashProofThreadAudit(contextAudit);
+      expect(
+        parseWatcherProofThreadStateV1(
+          rehashProofThreadState(swappedRollbackContext),
+          policy,
+        ),
+      ).toBeNull();
+
+      const reordered = structuredClone(indexed.state) as Mutable;
+      [reordered.transitionHistory[0], reordered.transitionHistory[1]] = [
+        reordered.transitionHistory[1],
+        reordered.transitionHistory[0],
+      ];
+      expect(
+        parseWatcherProofThreadStateV1(
+          rehashProofThreadState(reordered),
+          policy,
+        ),
+      ).toBeNull();
+      const truncated = structuredClone(indexed.state) as Mutable;
+      truncated.transitionHistory = truncated.transitionHistory.slice(1);
+      expect(
+        parseWatcherProofThreadStateV1(
+          rehashProofThreadState(truncated),
+          policy,
+        ),
+      ).toBeNull();
       const {
         schemaVersion: _rollbackObservationSchema,
         observationDigest: _rollbackObservationDigest,
@@ -2403,6 +3180,317 @@ describe("W17 public proof/computation-thread indexer", () => {
           },
         ).action,
       ).toBe("reject");
+    },
+  );
+
+  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+    "fully rewinds %s history, restarts from the rollback anchor, and retains unrelated durable updates",
+    (sourceMode) => {
+      const pending = initStage({
+        phase: "pending",
+        previousState: null,
+        previousFinalityState: null,
+        sourceMode,
+      });
+      const pendingResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        null,
+        pending.observation,
+        pending.context,
+      );
+      expect(pendingResult.action).toBe("accept");
+
+      const unrelatedInput = {
+        inputId: h32("e1"),
+        kind: "da_payload" as const,
+        payload: makeWatcherDurablePayloadV1("81"),
+      };
+      const sourceWithUnrelatedUpdate = makeWatcherDurableStoreV1({
+        deploymentMarker: authority.marker,
+        revision: (BigInt(pending.store.revision) + 1n).toString(),
+        records: {
+          ...pending.store,
+          daProofInputs: [...pending.store.daProofInputs, unrelatedInput],
+        },
+      });
+      const l1 = sourceFixture(sourceMode);
+      const replacementBlocks = l1.providers.map((provider) =>
+        normalize(provider, pending.fixture, "1", 1),
+      );
+      const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
+        l1.consistencyConfig,
+        replacementBlocks,
+      );
+      const replacementFinality = evaluateWatcherFinalityV1(
+        l1.policy,
+        pending.finalityState,
+        replacementConsistency,
+      );
+      expect(replacementFinality).toMatchObject({
+        action: "rewind_pending",
+        protocolDecision: "rewind_required",
+      });
+      const rollbackSource = persistNormalizedObservations(
+        sourceWithUnrelatedUpdate,
+        replacementBlocks,
+      );
+      const bootstrap = makeWatcherRollbackBootstrapStateV1(
+        l1.policy,
+        rollbackSource,
+        pending.finalityState,
+      )!;
+      const rollbackContext = {
+        policy: l1.policy,
+        sourceStore: rollbackSource,
+        previousFinalityState: pending.finalityState,
+        consistency: replacementConsistency,
+        finalityResult: replacementFinality,
+        previousRollbackState: bootstrap,
+        rollbackBootstrapState: bootstrap,
+      };
+      const rollbackResult = evaluateWatcherRollbackV1(
+        l1.policy,
+        rollbackSource,
+        pending.finalityState,
+        replacementConsistency,
+        replacementFinality,
+        bootstrap,
+        bootstrap,
+      );
+      expect(rollbackResult).toMatchObject({
+        action: "apply_rewind",
+        reasonCodes: ["rewind_applied"],
+      });
+      expect(rollbackResult.nextStore?.daProofInputs).toContainEqual(
+        unrelatedInput,
+      );
+
+      const replacement = replacementBlocks[0]!;
+      const rollbackObservation = makeWatcherProofThreadObservationV1({
+        policyDigest: policy.policyDigest,
+        network: policy.network,
+        releaseEvidenceDigest: policy.releaseEvidenceDigest,
+        deploymentMarker: policy.deploymentMarker,
+        transitionKind: "rollback",
+        confirmationPhase: null,
+        pointDigest: replacement.chainPoint.pointDigest,
+        blockHash: replacement.chainPoint.blockHash,
+        slot: replacement.chainPoint.slot,
+        blockNo: replacement.chainPoint.blockNo,
+        transactionHash: null,
+        publicInputDigest: createHash("sha256")
+          .update(encodeWatcherNormalizedL1BlockV1(replacement))
+          .digest("hex"),
+        sourceObservationDigest: replacement.observationDigest,
+        chainPointId: replacement.chainPoint.chainPointId,
+        sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(rollbackSource),
+        ),
+        sourceDurableStoreRevision: rollbackSource.revision,
+        durableStoreDigest: watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(rollbackResult.nextStore!),
+        ),
+        durableStoreRevision: rollbackResult.nextStore!.revision,
+        predecessorStateDigest: pendingResult.state!.stateDigest,
+        submissionId: null,
+        confirmationId: null,
+        rollbackTargetStateDigest: null,
+        layout: null,
+        journal: null,
+      })!;
+      const rollbackPublicContext: WatcherProofThreadPublicContextV1 = {
+        schemaVersion: WATCHER_PROOF_THREAD_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+        authenticatedProvider: null,
+        l1Observation: null,
+        sourceDurableStore: rollbackSource,
+        durableStore: rollbackResult.nextStore!,
+        deploymentAuthority: authority.deploymentAuthority,
+        finalityAuthority: null,
+        rollbackAuthority: {
+          result: rollbackResult,
+          context: rollbackContext,
+        },
+        sourceJournal: null,
+        durableJournal: null,
+      };
+      const rewound = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        pendingResult.state,
+        rollbackObservation,
+        rollbackPublicContext,
+      );
+      expect(rewound).toMatchObject({
+        action: "accept",
+        protocolDecision: "indexed",
+        reasonCodes: ["rollback_confirmed"],
+        state: {
+          journal: null,
+          pending: null,
+          history: [],
+          transitionHistory: expect.arrayContaining([
+            expect.objectContaining({ transitionKind: "rollback" }),
+          ]),
+        },
+      });
+      const restartedState = parseWatcherProofThreadStateV1(
+        structuredClone(rewound.state),
+        policy,
+      );
+      expect(restartedState).toEqual(rewound.state);
+
+      const restartFixture = initTransaction();
+      const restartSource = makeWatcherDurableStoreV1({
+        deploymentMarker: authority.marker,
+        revision: (BigInt(rollbackResult.nextStore!.revision) + 1n).toString(),
+        records: {
+          ...rollbackResult.nextStore!,
+          submissions: [
+            ...rollbackResult.nextStore!.submissions.filter(
+              ({ submissionId }) => submissionId !== SUBMISSION_ID,
+            ),
+            {
+              submissionId: SUBMISSION_ID,
+              faultId: FAULT_ID,
+              txBodyHash: restartFixture.txHash,
+              status: "submitted",
+            },
+          ],
+        },
+      });
+      expect(restartSource.daProofInputs).toContainEqual(unrelatedInput);
+      const restarted = initStage({
+        phase: "pending",
+        previousState: restartedState,
+        previousFinalityState: null,
+        sourceStore: restartSource,
+        sourceMode,
+        ordinal: 2,
+      });
+      const restartedResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        restartedState,
+        restarted.observation,
+        restarted.context,
+      );
+      expect(restartedResult).toMatchObject({
+        action: "accept",
+        protocolDecision: "hold",
+        reasonCodes: ["init_pending"],
+      });
+      expect((restartedResult.state?.history.length ?? 0) > 0).toBe(true);
+      expect(restarted.store.daProofInputs).toContainEqual(unrelatedInput);
+    },
+  );
+
+  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+    "rejects %s two-step competing forks and oversized W12 evidence before indexing",
+    (sourceMode) => {
+      const initial = initStage({
+        phase: "pending",
+        previousState: null,
+        previousFinalityState: null,
+        sourceMode,
+      });
+      const oversized = structuredClone(initial.context);
+      const authority = oversized.finalityAuthority as Mutable;
+      authority.observations = Array.from({ length: 17 }, () =>
+        structuredClone(authority.observations[0]),
+      );
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          oversized,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+      const excessiveWidth = structuredClone(initial.context);
+      (excessiveWidth.finalityAuthority as Mutable).lineage = Array.from(
+        {
+          length: WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries + 1,
+        },
+        () => null,
+      );
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          excessiveWidth,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+      const cyclic = structuredClone(initial.context);
+      (cyclic.finalityAuthority as Mutable).lineage = [
+        cyclic.finalityAuthority,
+      ];
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          null,
+          initial.observation,
+          cyclic,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["malformed_public_context"],
+      });
+
+      const pendingResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        null,
+        initial.observation,
+        initial.context,
+      );
+      expect(pendingResult.action).toBe("accept");
+      const finalized = initStage({
+        phase: "final",
+        previousState: pendingResult.state!,
+        previousFinalityState: initial.finalityState,
+        sourceStore: initial.store,
+        sourceMode,
+      });
+      const finalizedResult = evaluateWatcherProofThreadIndexerV1(
+        policy,
+        pendingResult.state,
+        finalized.observation,
+        finalized.context,
+      );
+      expect(finalizedResult.action).toBe("accept");
+
+      const stepFixture = stepTransaction(finalized.journal);
+      const forkSource = addSubmittedTransaction(
+        finalized.store,
+        stepFixture,
+        transitionIds(2).submissionId,
+      );
+      const twoStepFork = transitionStage({
+        transitionKind: "step",
+        fixture: stepFixture,
+        phase: "pending",
+        previousState: finalizedResult.state!,
+        previousFinalityState: null,
+        sourceStore: forkSource,
+        sourceJournal: finalized.journal,
+        ordinal: 2,
+        sourceMode,
+      });
+      expect(
+        evaluateWatcherProofThreadIndexerV1(
+          policy,
+          finalizedResult.state,
+          twoStepFork.observation,
+          twoStepFork.context,
+        ),
+      ).toMatchObject({
+        action: "reject",
+        reasonCodes: ["stale_state"],
+      });
     },
   );
 

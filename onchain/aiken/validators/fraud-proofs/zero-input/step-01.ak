@@ -58,7 +58,9 @@ validator main(
         )
 
         // 2. The UTxO must be produced at next step's script hash with the
-        //    native spend-inputs hash of the bad transaction.
+        //    native spend-inputs hash of the bad transaction. Step-02 concludes
+        //    the proof by comparing it against the hash of an empty input list,
+        //    so no block roots need to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
           bad_tx_spend_inputs_hash: bad_tx_view.tx_compact.body.spend_inputs_hash,

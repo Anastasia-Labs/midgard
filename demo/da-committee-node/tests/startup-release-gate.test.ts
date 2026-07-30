@@ -15,10 +15,8 @@ import {
   writeDaDeploymentFixture,
 } from "./helpers/deployment-fixture.js";
 
-const committeePeerId =
-  "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
-const producerPeerId =
-  "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
+const committeePeerId = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+const producerPeerId = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
 
 describe("canonical V1 startup release gate", () => {
   it("fails closed while validator-hash-bound release evidence is unavailable", async () => {
@@ -66,8 +64,7 @@ describe("canonical V1 startup release gate", () => {
             max_inline_response_bytes:
               LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
             max_chunk_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
-            max_streams_per_peer:
-              LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+            max_streams_per_peer: LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
             request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
           },
         },
@@ -78,9 +75,7 @@ describe("canonical V1 startup release gate", () => {
               signer_index: 0,
               da_vkey: "01".repeat(32),
               peer_id: committeePeerId,
-              multiaddrs: [
-                `/dns4/da.example/tcp/4001/p2p/${committeePeerId}`,
-              ],
+              multiaddrs: [`/dns4/da.example/tcp/4001/p2p/${committeePeerId}`],
               roles: ["committee", "retrieval"],
             },
           ],

@@ -3,7 +3,7 @@
 Status: Historical review input. Its findings were incorporated into
 `midgard-watcher-architecture.md`; it is not a current implementation plan.
 
-Last reviewed: 2026-07-22
+Last reviewed: 2026-07-29
 
 Reviewer: historical adversarial production-readiness review
 
@@ -22,6 +22,22 @@ Additional context consulted by reviewer:
 - `demo/midgard-validation/src`
 - `demo/midgard-node/src/workers/utils/mpf.ts`
 - `onchain/aiken/lib/midgard`
+
+## Authoritative L1-Source Clarification
+
+The original finding below is superseded where it treated two providers as an
+unconditional acceptance requirement. The watcher now has two explicit,
+mutually exclusive modes:
+
+- `local_node`: one watcher-operated Cardano full node is the chain-consensus
+  authority. Ogmios, Kupo/Kupmios, and db-sync are only aligned query surfaces
+  for that node and do not count as independent providers.
+- `external_providers`: at least two operationally independent providers must
+  agree on network and a compatible chain point.
+
+Both modes fail closed on mismatched or stale evidence and propagate
+rollbacks. W14 consumes canonical node-derived bytes and indexes accepted
+state; it does not duplicate Cardano state-queue validator semantics.
 
 ## Verdict
 
@@ -72,15 +88,23 @@ Disposition:
 
 ### 4. Critical: L1 finality and provider consistency were not strong enough
 
-The first plan accepted "at least one provider, with a path to multiple", conflicting with the architecture's production requirement for at least two independent L1 sources and Midgard readiness requirements around first-visibility finalization.
+The first plan accepted an ambiguous "at least one provider, with a path to
+multiple" policy and did not distinguish a watcher-operated full node from
+externally operated providers.
 
 Recommendation:
 
-- Make multi-provider same-chain-point validation, explicit finality depth, rollback quarantine, and provider disagreement tests mandatory for production.
+- Require an explicit `local_node | external_providers` source discriminator.
+  `local_node` uses the watcher's own full-node chain-sync stream as the sole
+  consensus authority and requires aligned same-node query/index surfaces plus
+  rollback propagation. `external_providers` requires at least two
+  operationally independent providers to agree on network and compatible chain
+  point. Both modes require explicit finality and rollback quarantine.
 
 Disposition:
 
-- Incorporated into Tasks 2.1 and 2.2.
+- Incorporated into W01 and W10–W14 with the authoritative source-mode
+  discriminator.
 
 ### 5. High: Spec, implementation, and proof roots required one conformance rule
 

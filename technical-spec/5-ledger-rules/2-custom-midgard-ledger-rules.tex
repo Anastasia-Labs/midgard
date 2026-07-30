@@ -5,6 +5,12 @@
 \section{Custom Midgard ledger rules}
 \label{h:custom-midgard-ledger-rules}
 
+These rules apply to the exact canonical protocol-version (1) profile. Its
+mint and burn, reference-input, script, redeemer, observer, reference-script,
+script-credential, and protected-output surfaces are enabled normative
+features; they are not optional proof obligations that an implementation may
+disable.
+
 \subsection{Rule: Is valid}
 
 Every normal canonical V1 L2 transaction has the canonical \code{TxIsValid} tag.
@@ -34,8 +40,10 @@ For every canonical V1 transaction (t), the multi-asset conservation equation is
 Every non-zero policy in \code{mint} must be authorized by the corresponding
 native, PlutusV3, or MidgardV1 policy execution. Both the conservation equation
 and the policy verdict are instructions in the L1-disputable validation
-machine. Mint/burn APIs are therefore retained across the SDK, admission, DA,
-and proof surfaces.
+machine. The Ada component of \code{mint} remains zero under
+\cref{rule:no-ada-minted}; non-Ada mint and burn remain part of the
+conservation equation. Mint/burn APIs are therefore enabled across the SDK,
+admission, DA, and proof surfaces.
 
 \subsection{Rule: Canonical V1 script surface}
 

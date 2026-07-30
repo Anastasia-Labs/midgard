@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
-
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
+  makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -18,6 +18,9 @@ const provider = (
   providerId: string,
   identityByte: string,
   operatorIdentityByte = identityByte,
+  authenticationKind:
+    | "https_tls_identity_v1"
+    | "cardano_node_genesis_v1" = "https_tls_identity_v1",
 ) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod",
@@ -27,7 +30,7 @@ const provider = (
     operatorIdentitySha256: operatorIdentityByte.repeat(32),
   },
   authentication: {
-    kind: "https_tls_identity_v1",
+    kind: authenticationKind,
     publicIdentitySha256: identityByte.repeat(32),
   },
 });
@@ -36,10 +39,11 @@ const localProvider = (
   surface: "chain_sync" | "ogmios" | "kupo" | "kupmios" | "db_sync",
   identityByte: string,
   authorityNodeId = "watcher-node-a",
+  providerId = surface.replace("_", "-"),
 ) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod",
-  providerId: surface.replace("_", "-"),
+  providerId,
   source: {
     sourceMode: "local_node",
     authorityNodeId,
@@ -57,39 +61,82 @@ const localProvider = (
 const externalConfig = (network = "Preprod") => ({
   sourceMode: "external_providers",
   network,
+  providers: [
+    {
+      providerId: "provider-a",
+      operatorIdentitySha256: "aa".repeat(32),
+    },
+    {
+      providerId: "provider-b",
+      operatorIdentitySha256: "bb".repeat(32),
+    },
+  ],
 });
 
-const localConfig = () => ({
+const threeProviderExternalConfig = () => ({
+  ...externalConfig(),
+  providers: [
+    ...externalConfig().providers,
+    {
+      providerId: "provider-c",
+      operatorIdentitySha256: "cc".repeat(32),
+    },
+  ],
+});
+
+const localConfig = (
+  queryServices: readonly Readonly<{
+    kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
+    providerId: string;
+  }>[] = [],
+) => ({
   sourceMode: "local_node",
   network: "Preprod",
   authorityNodeId: "watcher-node-a",
   genesisIdentitySha256: "cc".repeat(32),
+  queryServices,
 });
 
-const transaction = (bodyHex: string) => ({
-  txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-  body: {
-    bytesHex: bodyHex,
-    sha256: createHash("sha256")
-      .update(Buffer.from(bodyHex, "hex"))
-      .digest("hex"),
-  },
-  utxos: [],
-  scripts: [],
-  datums: [],
-  redeemers: [],
-});
+const transaction = (bodySeedHex: string) => {
+  const body = CML.TransactionBody.new(
+    CML.TransactionInputList.new(),
+    CML.TransactionOutputList.new(),
+    BigInt(`0x${bodySeedHex}`),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
+  const bodyHex = body.to_canonical_cbor_hex();
+  return {
+    txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
+    fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction.to_canonical_cbor_hex(),
+    ),
+    body: makeWatcherL1PublicBytesV1(bodyHex),
+    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    utxos: [],
+    scripts: [],
+    datums: [],
+    redeemers: [],
+  };
+};
 
 const observation = (
   providerId: string,
   identityByte: string,
   options: {
     blockHash?: string;
+    parentBlockHash?: string | null;
     slot?: string;
     blockNo?: string;
     depth?: string;
     bodyHex?: string;
     operatorIdentityByte?: string;
+    authenticationKind?: "https_tls_identity_v1" | "cardano_node_genesis_v1";
   } = {},
 ): WatcherNormalizedL1BlockV1 =>
   normalizeWatcherL1BlockV1(
@@ -97,6 +144,7 @@ const observation = (
       providerId,
       identityByte,
       options.operatorIdentityByte ?? identityByte,
+      options.authenticationKind,
     ),
     {
       schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -104,6 +152,7 @@ const observation = (
       providerId,
       chainPoint: {
         blockHash: options.blockHash ?? "11".repeat(32),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth: options.depth ?? "15",
@@ -119,20 +168,28 @@ const localObservation = (
   options: {
     authorityNodeId?: string;
     blockHash?: string;
+    parentBlockHash?: string | null;
     slot?: string;
     blockNo?: string;
     depth?: string;
     bodyHex?: string;
+    providerId?: string;
   } = {},
 ): WatcherNormalizedL1BlockV1 =>
   normalizeWatcherL1BlockV1(
-    localProvider(surface, identityByte, options.authorityNodeId),
+    localProvider(
+      surface,
+      identityByte,
+      options.authorityNodeId,
+      options.providerId,
+    ),
     {
       schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
       network: "Preprod",
-      providerId: surface.replace("_", "-"),
+      providerId: options.providerId ?? surface.replace("_", "-"),
       chainPoint: {
         blockHash: options.blockHash ?? "11".repeat(32),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth: options.depth ?? "15",
@@ -163,6 +220,20 @@ describe("fail-closed multi-provider consistency", () => {
       queryObservationCount: 0,
       observationCount: 2,
       independentProviderCount: 2,
+      externalProviderBindings: [
+        {
+          providerId: "provider-a",
+          operatorIdentitySha256: "aa".repeat(32),
+          authenticationKind: "https_tls_identity_v1",
+          publicIdentitySha256: "aa".repeat(32),
+        },
+        {
+          providerId: "provider-b",
+          operatorIdentitySha256: "bb".repeat(32),
+          authenticationKind: "https_tls_identity_v1",
+          publicIdentitySha256: "bb".repeat(32),
+        },
+      ],
       reasonCodes: ["providers_consistent"],
       alertCodes: [],
       rejectedObservationCount: 0,
@@ -194,6 +265,32 @@ describe("fail-closed multi-provider consistency", () => {
       [second, first],
     );
 
+    expect(reverse).toEqual(forward);
+    expect(reverse.consistencyDigest).toBe(forward.consistencyDigest);
+  });
+
+  it("is byte-stable when a configured provider id is bound to an unconfigured identity", () => {
+    const first = observation("provider-a", "aa");
+    const second = observation("provider-a", "bb");
+
+    const forward = evaluateWatcherMultiProviderConsistencyV1(
+      externalConfig(),
+      [first, second],
+    );
+    const reverse = evaluateWatcherMultiProviderConsistencyV1(
+      externalConfig(),
+      [second, first],
+    );
+
+    expect(forward).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      independentProviderCount: 1,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "unconfigured_provider",
+      ],
+    });
     expect(reverse).toEqual(forward);
     expect(reverse.consistencyDigest).toBe(forward.consistencyDigest);
   });
@@ -255,8 +352,28 @@ describe("fail-closed multi-provider consistency", () => {
     );
     expect(sharedOperator.reasonCodes).toEqual([
       "insufficient_independent_providers",
-      "duplicate_operator_identity",
+      "unconfigured_provider",
     ]);
+  });
+
+  it("rejects an external-provider transport-auth downgrade", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      observation("provider-a", "aa", {
+        authenticationKind: "cardano_node_genesis_v1",
+      }),
+      observation("provider-b", "bb", {
+        authenticationKind: "cardano_node_genesis_v1",
+      }),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_transport_mismatch"],
+      alertCodes: ["watcher_provider_transport_mismatch"],
+      externalProviderBindings: [],
+      agreement: null,
+    });
   });
 
   it("quarantines observations from the wrong configured network", () => {
@@ -294,6 +411,55 @@ describe("fail-closed multi-provider consistency", () => {
       protocolDecision: "quarantined",
       reasonCodes: ["bounded_provider_lag"],
       alertCodes: ["watcher_provider_lag"],
+      agreement: null,
+    });
+  });
+
+  it("deduplicates canonical points before checking three-provider bounded lag", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      threeProviderExternalConfig(),
+      [
+        observation("provider-a", "aa"),
+        observation("provider-b", "bb"),
+        observation("provider-c", "cc", {
+          blockHash: "22".repeat(32),
+          slot: "1001",
+          blockNo: "101",
+          depth: "0",
+        }),
+      ],
+    );
+
+    expect(result).toMatchObject({
+      status: "pending",
+      protocolDecision: "quarantined",
+      independentProviderCount: 3,
+      reasonCodes: ["bounded_provider_lag"],
+      alertCodes: ["watcher_provider_lag"],
+      agreement: null,
+    });
+
+    const mismatchedContent = evaluateWatcherMultiProviderConsistencyV1(
+      threeProviderExternalConfig(),
+      [
+        observation("provider-a", "aa", { bodyHex: "a100" }),
+        observation("provider-b", "bb", { bodyHex: "a101" }),
+        observation("provider-c", "cc", {
+          blockHash: "22".repeat(32),
+          slot: "1001",
+          blockNo: "101",
+          depth: "0",
+        }),
+      ],
+    );
+    expect(mismatchedContent).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      reasonCodes: ["bounded_provider_lag", "block_content_mismatch"],
+      alertCodes: [
+        "watcher_provider_lag",
+        "watcher_provider_content_disagreement",
+      ],
       agreement: null,
     });
   });
@@ -374,12 +540,16 @@ describe("fail-closed multi-provider consistency", () => {
     const chainSync = localObservation("chain_sync", "cc");
     const ogmios = localObservation("ogmios", "dd");
     const kupo = localObservation("kupo", "dd");
-    const forward = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
+    const configured = localConfig([
+      { kind: "ogmios", providerId: "ogmios" },
+      { kind: "kupo", providerId: "kupo" },
+    ]);
+    const forward = evaluateWatcherMultiProviderConsistencyV1(configured, [
       chainSync,
       ogmios,
       kupo,
     ]);
-    const reverse = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
+    const reverse = evaluateWatcherMultiProviderConsistencyV1(configured, [
       kupo,
       ogmios,
       chainSync,
@@ -396,31 +566,95 @@ describe("fail-closed multi-provider consistency", () => {
     expect(reverse).toEqual(forward);
   });
 
+  it("accepts distinct aligned query services of the same local surface kind", () => {
+    const chainSync = localObservation("chain_sync", "cc");
+    const ogmiosA = localObservation("ogmios", "dd", {
+      providerId: "ogmios-a",
+    });
+    const ogmiosB = localObservation("ogmios", "ee", {
+      providerId: "ogmios-b",
+    });
+
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([
+        { kind: "ogmios", providerId: "ogmios-a" },
+        { kind: "ogmios", providerId: "ogmios-b" },
+      ]),
+      [chainSync, ogmiosA, ogmiosB],
+    );
+
+    expect(result).toMatchObject({
+      status: "agreed",
+      protocolDecision: "allowed",
+      independentProviderCount: 1,
+      queryObservationCount: 2,
+      reasonCodes: ["local_node_consistent"],
+      alertCodes: [],
+    });
+  });
+
+  it("enumerates every configured local query and quarantines omitted evidence", () => {
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([
+        { kind: "ogmios", providerId: "ogmios" },
+        { kind: "kupo", providerId: "kupo" },
+      ]),
+      [localObservation("chain_sync", "cc"), localObservation("ogmios", "dd")],
+    );
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      queryObservationCount: 1,
+      reasonCodes: ["missing_local_query_evidence"],
+      alertCodes: ["watcher_local_node_query_evidence_missing"],
+      localQueryServiceBindings: [
+        {
+          kind: "kupo",
+          providerId: "kupo",
+          observationStatus: "unavailable",
+          observationDigest: null,
+        },
+        {
+          kind: "ogmios",
+          providerId: "ogmios",
+          observationStatus: "aligned",
+        },
+      ],
+    });
+  });
+
   it("fails closed when local query data is stale, forked, content-mismatched, or has not propagated a rollback", () => {
     const chainSync = localObservation("chain_sync", "cc");
-    const stale = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
-      chainSync,
-      localObservation("ogmios", "dd", {
-        blockHash: "22".repeat(32),
-        slot: "999",
-        blockNo: "99",
-      }),
-    ]);
-    const fork = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
-      chainSync,
-      localObservation("kupo", "ee", {
-        blockHash: "22".repeat(32),
-      }),
-    ]);
+    const stale = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([{ kind: "ogmios", providerId: "ogmios" }]),
+      [
+        chainSync,
+        localObservation("ogmios", "dd", {
+          blockHash: "22".repeat(32),
+          slot: "999",
+          blockNo: "99",
+        }),
+      ],
+    );
+    const fork = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig([{ kind: "kupo", providerId: "kupo" }]),
+      [
+        chainSync,
+        localObservation("kupo", "ee", {
+          blockHash: "22".repeat(32),
+        }),
+      ],
+    );
     const mismatchedBytes = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
+      localConfig([{ kind: "db_sync", providerId: "db-sync" }]),
       [
         localObservation("chain_sync", "cc", { bodyHex: "a100" }),
         localObservation("db_sync", "ff", { bodyHex: "a101" }),
       ],
     );
     const rollbackNotPropagated = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
+      localConfig([{ kind: "kupmios", providerId: "kupmios" }]),
       [
         chainSync,
         localObservation("kupmios", "11", {
@@ -484,6 +718,7 @@ describe("fail-closed multi-provider consistency", () => {
       "missing_chain_sync_authority",
     ]);
     expect(missingChainSync.reasonCodes).toEqual([
+      "unconfigured_local_query_service",
       "missing_chain_sync_authority",
     ]);
     expect(externalSubstitution.reasonCodes).toEqual([
@@ -498,6 +733,42 @@ describe("fail-closed multi-provider consistency", () => {
         externalSubstitution,
       ].every(({ protocolDecision }) => protocolDecision === "quarantined"),
     ).toBe(true);
+  });
+
+  it("rejects a normalized transaction whose derived validity is spoofed", () => {
+    const canonical = observation("provider-a", "aa", { bodyHex: "01" });
+    const transaction = canonical.transactions[0]!;
+    expect(transaction.isValid).toBe(true);
+
+    const spoofed = {
+      ...canonical,
+      transactions: [
+        {
+          ...transaction,
+          isValid: false,
+        },
+      ],
+    };
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      spoofed,
+      observation("provider-b", "bb", { bodyHex: "01" }),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      independentProviderCount: 1,
+      rejectedObservationCount: 1,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "malformed_observation",
+      ],
+      alertCodes: [
+        "watcher_provider_quorum_unavailable",
+        "watcher_provider_observation_rejected",
+      ],
+      agreement: null,
+    });
   });
 
   it("quarantines malformed, unknown, and foreign input at a secret-safe boundary", () => {
@@ -547,10 +818,7 @@ describe("fail-closed multi-provider consistency", () => {
       status: "quarantined",
       protocolDecision: "quarantined",
       sourceMode: null,
-      reasonCodes: [
-        "insufficient_independent_providers",
-        "invalid_configured_network",
-      ],
+      reasonCodes: ["invalid_configured_network"],
     });
     expect(
       JSON.stringify([
@@ -560,5 +828,56 @@ describe("fail-closed multi-provider consistency", () => {
         missingDiscriminator,
       ]),
     ).not.toContain(secret);
+  });
+
+  it("never emits provider-quorum findings for a malformed local-node configuration", () => {
+    const malformedLocal = {
+      ...localConfig(),
+      genesisIdentitySha256: "not-a-digest",
+    };
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      malformedLocal,
+      [],
+    );
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      sourceMode: "local_node",
+      reasonCodes: ["invalid_configured_network"],
+      alertCodes: ["watcher_provider_observation_rejected"],
+    });
+    expect(result.reasonCodes).not.toContain(
+      "insufficient_independent_providers",
+    );
+    expect(result.alertCodes).not.toContain(
+      "watcher_provider_quorum_unavailable",
+    );
+  });
+
+  it("quarantines a hostile configured-source proxy without exposing its error", () => {
+    const secret = "https://operator:secret@example.invalid";
+    const hostileConfig = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw new Error(secret);
+        },
+      },
+    );
+
+    const result = evaluateWatcherMultiProviderConsistencyV1(hostileConfig, [
+      observation("provider-a", "aa"),
+      observation("provider-b", "bb"),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      sourceMode: null,
+      reasonCodes: ["invalid_configured_network"],
+      agreement: null,
+    });
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 });

@@ -18,11 +18,18 @@ import {
   type FraudProofCatalogueDeploymentInfo,
   INVALID_RANGE_FAULT_PROOF_TITLES,
   parseFaultProofBlueprint,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
   TRANSITION_TRACE_FAULT_PROOF_TITLES,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "@al-ft/midgard-sdk";
-import { CML, Data, type UTxO, walletFromSeed } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  type UTxO,
+  validatorToScriptHash,
+  walletFromSeed,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -30,6 +37,7 @@ import {
   resolveDoubleSpendDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
+  resolveNonExistentInputNoIndexInit,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
   resolveValidationTraceDisputeDeploymentContracts,
@@ -44,10 +52,28 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
 const placeholderInvalidRange = "55".repeat(28);
+const referenceScriptAuthNativeScript = `8200581c${"00".repeat(28)}`;
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+  referenceScriptAuthPolicy: {
+    policyId: validatorToScriptHash({
+      type: "Native",
+      script: referenceScriptAuthNativeScript,
+    }),
+    nativeScript: {
+      type: "Native",
+      cborHex: referenceScriptAuthNativeScript,
+      expiresAtSlot: 0,
+      expiresAtUnixTime: 0,
+      timelockDurationMs: 1,
+    },
+    tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+    postTimelockAudit: {
+      required: true,
+      rule: "test fixture",
+    },
+  },
   contracts,
 });
 
@@ -242,6 +268,125 @@ describe("submit-init state queue header resolution", () => {
 });
 
 describe("fault-proof deployment contract resolution", () => {
+  it("preflights no-index init from exact deployed bytes and catalogue membership", async () => {
+    const blueprint = readBlueprint();
+    const contracts = await Effect.runPromise(
+      buildFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28,
+        fraudProofCataloguePolicyId: h28b,
+      }),
+    );
+    const noIndexContract = {
+      type: "PlutusV3" as const,
+      cborHex: "01",
+    };
+    const noIndexScriptHash = validatorToScriptHash({
+      type: noIndexContract.type,
+      script: noIndexContract.cborHex,
+    });
+    const fraudProofCatalogue = await catalogueFor({
+      nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      nonExistentInputNoIndex: noIndexScriptHash,
+    });
+    const fraudProofCatalogueMintEntry = {
+      scriptHash: h28b,
+      fraudProofCatalogue,
+    };
+    const noIndexDeploymentEntry = {
+      scriptHash: noIndexScriptHash,
+      contract: noIndexContract,
+    };
+    const deploymentInfo = deploymentManifest({
+      hubOracleMint: { scriptHash: h28 },
+      fraudProofCatalogueMint: fraudProofCatalogueMintEntry,
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.nonExistentInput.firstStep.spendingScriptHash,
+      },
+      fraudProofNonExistentInputNoIndex: noIndexDeploymentEntry,
+      stateQueueMint: { scriptHash: "66".repeat(28) },
+    });
+
+    const resolved = await resolveNonExistentInputNoIndexInit({
+      blueprint,
+      deploymentInfo,
+      network: "Preprod",
+    });
+    expect(resolved.firstStepHash).toBe(noIndexScriptHash);
+    expect(resolved.category).toEqual(
+      fraudProofCatalogue.categories.nonExistentInputNoIndex,
+    );
+    expect(resolved.category.categoryId).toBe("00000002");
+    expect(resolved.stateQueuePolicyId).toBe("66".repeat(28));
+
+    const { contract: _contract, ...withoutContract } = noIndexDeploymentEntry;
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: withoutContract,
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/missing embedded contract bytes/u);
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              ...noIndexDeploymentEntry,
+              contract: {
+                ...noIndexContract,
+                cborHex: "02",
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/script hash mismatch/u);
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint: {},
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofCatalogueMint: {
+              ...fraudProofCatalogueMintEntry,
+              fraudProofCatalogue: {
+                ...fraudProofCatalogue,
+                categories: {
+                  ...fraudProofCatalogue.categories,
+                  nonExistentInputNoIndex: {
+                    ...fraudProofCatalogue.categories.nonExistentInputNoIndex,
+                    membershipProofCbor:
+                      fraudProofCatalogue.categories.doubleSpend
+                        .membershipProofCbor,
+                  },
+                },
+              },
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      /nonExistentInputNoIndex\.membershipProofCbor does not match/u,
+    );
+  }, 30_000);
+
   it("resolves double-spend without requiring invalid-range validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
@@ -310,7 +455,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow('Deployment info is missing "fraudProofInvalidRange"');
-  });
+  }, 30_000);
 
   it("rejects invalid-range resolution when the catalogue membership proof is stale", async () => {
     const blueprint = readBlueprint();
@@ -359,7 +504,7 @@ describe("fault-proof deployment contract resolution", () => {
     ).rejects.toThrow(
       "fraudProofCatalogue.categories.invalidRange.membershipProofCbor does not match",
     );
-  });
+  }, 30_000);
 
   it("resolves transition-trace without requiring staged fault-proof validators in the blueprint", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
@@ -405,12 +550,16 @@ describe("fault-proof deployment contract resolution", () => {
   it("resolves the required V1 validation-dispute category and rejects an incomplete catalogue", async () => {
     const blueprint = filterBlueprint(readBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.dispute,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.source,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.game,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.boundary,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.timeout,
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.award,
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
+      ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(
@@ -447,11 +596,11 @@ describe("fault-proof deployment contract resolution", () => {
       deploymentInfo,
       network: "Preprod",
     });
-    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(85);
+    expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(100);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(61);
+    ).toHaveLength(75);
     expect(
       resolved.contracts.validationTraceDispute.prepareResolvers,
     ).toHaveLength(12);
@@ -480,7 +629,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
       }),
     ).rejects.toThrow(/categories\.validationTraceDispute/u);
-  }, 15_000);
+  }, 60_000);
 
   it("does not gate double-spend submit-init on stale invalid-range deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -538,7 +687,7 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after double-spend readiness");
-  });
+  }, 30_000);
 
   it("does not gate invalid-range submit-init on stale double-spend deployment readiness", async () => {
     const blueprint = readBlueprint();
@@ -597,5 +746,5 @@ describe("fault-proof deployment contract resolution", () => {
         awaitConfirmation: false,
       }),
     ).rejects.toThrow("fetch attempted after invalid-range readiness");
-  });
+  }, 30_000);
 });

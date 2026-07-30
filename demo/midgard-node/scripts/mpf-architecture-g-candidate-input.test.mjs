@@ -169,6 +169,22 @@ test("candidate input binds fixture creation identity and payload aggregate", as
       },
     };
     writeFileSync(fixtureCreationPath, JSON.stringify(fixtureCreation));
+    const slotConfigArtifactPath = resolve(directory, "slot-config.json");
+    writeFileSync(
+      slotConfigArtifactPath,
+      `${JSON.stringify({
+        schemaVersion: "midgard-node-slot-config-evidence-v1",
+        capturedAtIso: "2026-07-28T00:00:00.000Z",
+        network: "Preprod",
+        source: { kind: "lucid_network_table", lucidVersion: "0.6.0" },
+        slotConfig: {
+          zeroTime: 1_655_769_600_000,
+          zeroSlot: 86_400,
+          slotLength: 1_000,
+        },
+      })}\n`,
+    );
+    const slotConfigArtifactSha256 = sha256File(slotConfigArtifactPath);
 
     const run = (output) =>
       spawnSync(
@@ -188,6 +204,9 @@ test("candidate input binds fixture creation identity and payload aggregate", as
           "--transactions=10",
           "--aggregate-entry-count=100",
           "--aggregate-tuple-bytes=8000",
+          "--network=Preprod",
+          `--slot-config-artifact=${slotConfigArtifactPath}`,
+          `--slot-config-artifact-sha256=${slotConfigArtifactSha256}`,
           `--out=${output}`,
         ],
         { cwd: process.cwd(), encoding: "utf8" },

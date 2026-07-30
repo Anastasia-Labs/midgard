@@ -46,6 +46,52 @@ export type CardanoL1SourceConfig =
       readonly networkMagic: number;
     };
 
+export type L1SourceConfig =
+  | {
+      readonly sourceMode: "local_node";
+      readonly authorityNodeId: string;
+      readonly chainSyncProviderUrl: string;
+      readonly chainSyncCursorPath?: string;
+      readonly queryProviderUrls: readonly string[];
+    }
+  | {
+      readonly sourceMode: "external_providers";
+      readonly providers: readonly {
+        readonly identity: string;
+        readonly url: string;
+        readonly operationalIdentity: {
+          readonly operatorId: string;
+          readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+          readonly normalizedEndpoints: readonly string[];
+          readonly backendKey: string;
+        };
+      }[];
+    };
+
+export const l1SourceAuthorityDigest = (
+  network: string,
+  source: L1SourceConfig,
+): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        source.sourceMode === "local_node"
+          ? {
+              network,
+              sourceMode: source.sourceMode,
+              authorityNodeId: source.authorityNodeId,
+              chainSyncProviderUrl: source.chainSyncProviderUrl,
+              queryProviderUrls: source.queryProviderUrls,
+            }
+          : {
+              network,
+              sourceMode: source.sourceMode,
+              providers: source.providers,
+            },
+      ),
+    )
+    .digest("hex");
+
 export type WatcherConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
@@ -58,6 +104,7 @@ export type WatcherConfig = {
   readonly contractDeploymentInfo: Record<string, unknown>;
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
+  readonly l1Source: L1SourceConfig;
   readonly cardanoProviderUrls: readonly string[];
   readonly finalityDepth: number;
   readonly daTransport: Libp2pDaTransportConfig;
@@ -271,6 +318,7 @@ export const loadWatcherConfig = async (
     network,
     cardanoProviderUrls,
   });
+  const l1Source = parseL1SourceConfig(env, cardanoProviderUrls);
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
     vkey: member.daVkey,
@@ -318,6 +366,7 @@ export const loadWatcherConfig = async (
     contractDeploymentInfo,
     consensusProfile,
     midgardNodeDeployment,
+    l1Source,
     cardanoProviderUrls,
     finalityDepth: nonNegativeInt(
       requireEnv(env, "CARDANO_FINALITY_DEPTH"),
@@ -454,6 +503,319 @@ const splitList = (value: string): readonly string[] => {
 const optionalSplitList = (value: string | undefined): readonly string[] => {
   const trimmed = optionalNonEmpty(value);
   return trimmed === undefined ? [] : splitList(trimmed);
+};
+
+export const parseL1SourceConfig = (
+  env: Env,
+  cardanoProviderUrls: readonly string[],
+): L1SourceConfig => {
+  const sourceMode = requireEnv(env, "CARDANO_L1_SOURCE_MODE");
+  const testMode = booleanEnv(env.CARDANO_L1_TEST_MODE, false);
+  if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
+    throw new Error(
+      "CARDANO_L1_SOURCE_MODE must be local_node or external_providers",
+    );
+  }
+  if (
+    !testMode &&
+    cardanoProviderUrls.some((url) => isFixtureProviderUrl(url))
+  ) {
+    throw new Error(
+      "fixture:/file: Cardano providers require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (sourceMode === "local_node") {
+    if (
+      optionalNonEmpty(env.CARDANO_EXTERNAL_PROVIDER_IDENTITIES) !== undefined
+    ) {
+      throw new Error(
+        "CARDANO_EXTERNAL_PROVIDER_IDENTITIES is forbidden in local_node mode",
+      );
+    }
+    const chainSyncProviderUrl = localChainSyncUrl(
+      requireEnv(env, "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL"),
+      testMode,
+    );
+    if (!testMode) {
+      assertLocalQuerySurfacesShareAuthority(
+        chainSyncProviderUrl,
+        cardanoProviderUrls,
+      );
+    }
+    return {
+      sourceMode,
+      authorityNodeId: boundedIdentity(
+        requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID"),
+        "CARDANO_LOCAL_NODE_AUTHORITY_ID",
+      ),
+      chainSyncProviderUrl,
+      chainSyncCursorPath: requireEnv(
+        env,
+        "CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH",
+      ),
+      queryProviderUrls: cardanoProviderUrls,
+    };
+  }
+  if (
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_URL) !== undefined ||
+    optionalNonEmpty(env.CARDANO_LOCAL_NODE_CHAIN_SYNC_CURSOR_PATH) !==
+      undefined
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_* configuration is forbidden in external_providers mode",
+    );
+  }
+  if (cardanoProviderUrls.length < 2) {
+    throw new Error(
+      "external_providers mode requires at least two operationally independent CARDANO_PROVIDER_URLS entries",
+    );
+  }
+  const identities = splitList(
+    requireEnv(env, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  ).map((identity) =>
+    boundedIdentity(identity, "CARDANO_EXTERNAL_PROVIDER_IDENTITIES"),
+  );
+  if (identities.length !== cardanoProviderUrls.length) {
+    throw new Error(
+      "CARDANO_EXTERNAL_PROVIDER_IDENTITIES must contain one identity per CARDANO_PROVIDER_URLS entry",
+    );
+  }
+  if (new Set(identities).size !== identities.length) {
+    throw new Error(
+      "external_providers mode requires distinct operational provider identities",
+    );
+  }
+  const operationalIdentities = cardanoProviderUrls.map((url, index) =>
+    operationalProviderIdentity(url, identities[index]!, testMode),
+  );
+  const endpointOwners = new Map<string, string>();
+  for (const identity of operationalIdentities) {
+    for (const endpoint of identity.normalizedEndpoints) {
+      const existingOwner = endpointOwners.get(endpoint);
+      if (existingOwner !== undefined) {
+        throw new Error(
+          `external_providers mode requires operationally independent backends; ${existingOwner} and ${identity.operatorId} share normalized endpoint ${endpoint}`,
+        );
+      }
+      endpointOwners.set(endpoint, identity.operatorId);
+    }
+  }
+  if (
+    new Set(operationalIdentities.map(({ backendKey }) => backendKey)).size !==
+    operationalIdentities.length
+  ) {
+    throw new Error(
+      "external_providers mode requires distinct normalized provider backends",
+    );
+  }
+  return {
+    sourceMode,
+    providers: cardanoProviderUrls.map((url, index) => ({
+      identity: identities[index]!,
+      url,
+      operationalIdentity: operationalIdentities[index]!,
+    })),
+  };
+};
+
+const localChainSyncUrl = (value: string, testMode: boolean): string => {
+  if (!value.startsWith("chain-sync:") || value === "chain-sync:") {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL must use the chain-sync:<provider> form",
+    );
+  }
+  const provider = value.slice("chain-sync:".length);
+  if (!testMode && isFixtureProviderUrl(provider)) {
+    throw new Error(
+      "fixture:/file: local chain-sync sources require explicit CARDANO_L1_TEST_MODE=true",
+    );
+  }
+  if (
+    !provider.startsWith("kupmios:") &&
+    !provider.startsWith("ogmios:") &&
+    !provider.startsWith("fixture:") &&
+    !provider.startsWith("file:")
+  ) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_CHAIN_SYNC_URL authority must be a local ogmios: or kupmios: surface (fixture:/file: only in tests)",
+    );
+  }
+  return value;
+};
+
+const assertLocalQuerySurfacesShareAuthority = (
+  chainSyncProviderUrl: string,
+  queryProviderUrls: readonly string[],
+): void => {
+  const authorityProvider = chainSyncProviderUrl.slice("chain-sync:".length);
+  const authorityOgmiosUrl = authorityProvider.startsWith("ogmios:")
+    ? authorityProvider.slice("ogmios:".length)
+    : authorityProvider.startsWith("kupmios:")
+      ? authorityProvider.slice("kupmios:".length).split("|")[1]
+      : undefined;
+  if (authorityOgmiosUrl === undefined) {
+    throw new Error(
+      "production local_node chain sync requires an Ogmios authority endpoint",
+    );
+  }
+  const normalizedAuthority = normalizeOperationalEndpoint(
+    authorityOgmiosUrl,
+    "local authority Ogmios",
+  );
+  for (const [index, providerUrl] of queryProviderUrls.entries()) {
+    if (!providerUrl.startsWith("kupmios:")) {
+      throw new Error(
+        `production local_node query surface ${index.toString()} must be kupmios: backed by the local authority`,
+      );
+    }
+    const [, queryOgmiosUrl, extra] = providerUrl
+      .slice("kupmios:".length)
+      .split("|");
+    if (queryOgmiosUrl === undefined || extra !== undefined) {
+      throw new Error(
+        "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      );
+    }
+    const normalizedQueryAuthority = normalizeOperationalEndpoint(
+      queryOgmiosUrl,
+      "query Ogmios",
+    );
+    if (normalizedQueryAuthority !== normalizedAuthority) {
+      throw new Error(
+        `production local_node query surface ${index.toString()} is not backed by the configured chain-sync authority`,
+      );
+    }
+  }
+};
+
+const isFixtureProviderUrl = (value: string): boolean =>
+  value.startsWith("fixture:") || value.startsWith("file:");
+
+const operationalProviderIdentity = (
+  value: string,
+  operatorId: string,
+  testMode: boolean,
+): {
+  readonly operatorId: string;
+  readonly transport: "blockfrost_https" | "kupmios" | "fixture";
+  readonly normalizedEndpoints: readonly string[];
+  readonly backendKey: string;
+} => {
+  if (value.startsWith("blockfrost:")) {
+    const raw = value.slice("blockfrost:".length);
+    const projectSeparator = raw.lastIndexOf("#");
+    if (projectSeparator <= 0 || projectSeparator === raw.length - 1) {
+      throw new Error(
+        "blockfrost provider URL must be blockfrost:<api-url>#<project-id>",
+      );
+    }
+    const endpoint = normalizeOperationalEndpoint(
+      raw.slice(0, projectSeparator),
+      "blockfrost",
+    );
+    if (!endpoint.startsWith("https://")) {
+      throw new Error(
+        "external Blockfrost providers require HTTPS transport evidence",
+      );
+    }
+    return {
+      operatorId,
+      transport: "blockfrost_https",
+      normalizedEndpoints: [endpoint],
+      backendKey: `blockfrost:${endpoint}`,
+    };
+  }
+  if (value.startsWith("kupmios:")) {
+    const [kupoUrl, ogmiosUrl, extra] = value
+      .slice("kupmios:".length)
+      .split("|");
+    if (
+      kupoUrl === undefined ||
+      ogmiosUrl === undefined ||
+      extra !== undefined
+    ) {
+      throw new Error(
+        "kupmios provider URL must be kupmios:<kupo-url>|<ogmios-url>",
+      );
+    }
+    const normalizedKupo = normalizeOperationalEndpoint(kupoUrl, "Kupo");
+    const normalizedOgmios = normalizeOperationalEndpoint(ogmiosUrl, "Ogmios");
+    if (
+      !testMode &&
+      (!normalizedKupo.startsWith("https://") ||
+        !normalizedOgmios.startsWith("https://"))
+    ) {
+      throw new Error(
+        "external Kupmios providers require HTTPS Kupo and TLS-protected WSS/HTTPS Ogmios transport evidence",
+      );
+    }
+    const endpoints = [normalizedKupo, normalizedOgmios].sort();
+    return {
+      operatorId,
+      transport: "kupmios",
+      normalizedEndpoints: endpoints,
+      backendKey: `kupmios:${endpoints.join("|")}`,
+    };
+  }
+  if (testMode && isFixtureProviderUrl(value)) {
+    const endpoint = value.startsWith("file:")
+      ? new URL(value).pathname
+      : value.slice("fixture:".length);
+    const normalized = `fixture:${endpoint}`;
+    return {
+      operatorId,
+      transport: "fixture",
+      normalizedEndpoints: [normalized],
+      backendKey: normalized,
+    };
+  }
+  throw new Error(
+    `unsupported external Cardano provider ${value}; operational identity evidence requires blockfrost: or kupmios:`,
+  );
+};
+
+const normalizeOperationalEndpoint = (value: string, label: string): string => {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${label} operational endpoint must be an absolute URL`);
+  }
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:" &&
+    parsed.protocol !== "wss:" &&
+    parsed.protocol !== "ws:"
+  ) {
+    throw new Error(`${label} operational endpoint uses unsupported transport`);
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    throw new Error(
+      `${label} operational endpoint must not embed credentials in its identity`,
+    );
+  }
+  const canonicalProtocol =
+    parsed.protocol === "wss:"
+      ? "https:"
+      : parsed.protocol === "ws:"
+        ? "http:"
+        : parsed.protocol;
+  const defaultPort =
+    canonicalProtocol === "https:" && parsed.port === "443"
+      ? ""
+      : canonicalProtocol === "http:" && parsed.port === "80"
+        ? ""
+        : parsed.port;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${canonicalProtocol}//${hostname}${defaultPort === "" ? "" : `:${defaultPort}`}`;
+};
+
+const boundedIdentity = (value: string, name: string): string => {
+  if (!/^[a-z][a-z0-9-]{2,63}$/u.test(value)) {
+    throw new Error(`${name} entries must be lowercase operational identities`);
+  }
+  return value;
 };
 
 const isLiveLucidProviderUrl = (value: string): boolean =>
