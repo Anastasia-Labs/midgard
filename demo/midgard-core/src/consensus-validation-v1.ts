@@ -4,6 +4,7 @@ import {
   verifyMidgardBoundedCollectionItemProofV1,
 } from "./bounded-collection-v1.js";
 import {
+  buildMidgardBoundedItemV1,
   buildMidgardBoundedItemChunkProofV1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
@@ -192,6 +193,24 @@ export type MidgardV1TxFieldChunk = {
   readonly fieldEncodedSize: number;
 };
 
+export type MidgardV1TxFieldEvidence =
+  | {
+      readonly kind: "completeItem";
+      readonly fieldName: MidgardV1TxFieldName;
+      readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+      readonly itemCbor: Buffer;
+      /** Canonical field bytes completed through this proof position. */
+      readonly fieldEncodedSize: number;
+    }
+  | {
+      readonly kind: "itemChunk";
+      readonly fieldName: MidgardV1TxFieldName;
+      readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+      readonly proof: MidgardBoundedItemChunkProofV1;
+      /** Canonical field bytes completed through this proof position. */
+      readonly fieldEncodedSize: number;
+    };
+
 const canonicalCborHeaderSizeV1 = (length: number): number => {
   if (!Number.isSafeInteger(length) || length < 0) {
     throw new Error(
@@ -317,6 +336,76 @@ export const deriveMidgardV1TxFieldChunks = (
     }
   }
   return chunks;
+};
+
+/**
+ * Canonical prover-facing evidence selection.
+ *
+ * Callers provide the complete canonical transaction. Fitting logical items
+ * remain complete; the exceptional publication-overflow case is decomposed
+ * internally so ordinary provers never construct chunk proofs or fold
+ * controls by hand.
+ */
+export const deriveMidgardV1TxFieldEvidence = (
+  canonicalTransactionCbor: Uint8Array,
+): readonly MidgardV1TxFieldEvidence[] => {
+  const evidence: MidgardV1TxFieldEvidence[] = [];
+  for (const field of deriveMidgardV1TxFieldPreimages(
+    canonicalTransactionCbor,
+  )) {
+    const collection = deriveMidgardNativeFieldCollectionV1({
+      fieldIndex: field.fieldIndex,
+      preimageCbor: field.preimageCbor,
+    });
+    if (!collection.commitment.equals(field.expectedHash)) {
+      throw new Error(
+        `V1 ${field.fieldName} preimage does not match its compact commitment`,
+      );
+    }
+    let fieldEncodedSize = canonicalCborHeaderSizeV1(collection.items.length);
+    for (const [itemIndex, item] of collection.items.entries()) {
+      const collectionProof = buildMidgardBoundedCollectionItemProofV1(
+        collection,
+        itemIndex,
+      );
+      const itemEncodedSize = nativeFieldItemEncodedSizeV1({
+        fieldIndex: field.fieldIndex,
+        itemLength: item.bytes.length,
+      });
+      if (
+        item.bytes.length <=
+        MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes
+      ) {
+        fieldEncodedSize += itemEncodedSize;
+        evidence.push({
+          kind: "completeItem",
+          fieldName: field.fieldName,
+          collectionProof,
+          itemCbor: Buffer.from(item.bytes),
+          fieldEncodedSize,
+        });
+        continue;
+      }
+      for (const [chunkIndex] of item.chunkHashes.entries()) {
+        if (chunkIndex + 1 === item.chunkHashes.length) {
+          fieldEncodedSize += itemEncodedSize;
+        }
+        evidence.push({
+          kind: "itemChunk",
+          fieldName: field.fieldName,
+          collectionProof,
+          proof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
+          fieldEncodedSize,
+        });
+      }
+    }
+    if (fieldEncodedSize !== field.preimageCbor.length) {
+      throw new Error(
+        `V1 ${field.fieldName} evidence state does not terminate at the committed field length`,
+      );
+    }
+  }
+  return evidence;
 };
 
 export const verifyMidgardV1TxFieldPreimage = ({
@@ -462,6 +551,84 @@ export const verifyMidgardV1TxFieldChunk = ({
     );
   }
   return proof;
+};
+
+export const verifyMidgardV1TxFieldItem = ({
+  transactionId,
+  transactionCommitment,
+  source,
+  collectionProof,
+  itemCbor,
+}: {
+  readonly transactionId: Uint8Array;
+  readonly transactionCommitment: Uint8Array;
+  readonly source: MidgardNativeTxProofSourceV1;
+  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
+  readonly itemCbor: Uint8Array;
+}): Buffer => {
+  const fieldIndex = collectionProof.fieldIndex;
+  if (
+    !Number.isSafeInteger(fieldIndex) ||
+    fieldIndex < 0 ||
+    fieldIndex >= MIDGARD_V1_TX_FIELD_NAMES.length
+  ) {
+    throw new Error(`unknown V1 transaction field index ${fieldIndex}`);
+  }
+  const compact = verifyMidgardNativeTxProofSourceV1({
+    transactionId,
+    source,
+  });
+  if (
+    !computeMidgardNativeTxProofCommitmentV1(source).equals(
+      Buffer.from(transactionCommitment),
+    )
+  ) {
+    throw new Error(
+      "V1 transaction field source does not match transaction commitment",
+    );
+  }
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+    source.witnessSetCompactCbor,
+  );
+  const commitments = [
+    compact.transactionBody.spendInputsHash,
+    compact.transactionBody.referenceInputsHash,
+    compact.transactionBody.outputsHash,
+    compact.transactionBody.requiredObserversHash,
+    compact.transactionBody.requiredSignersHash,
+    compact.transactionBody.mintHash,
+    witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
+    witnessSet.redeemerTxWitsHash,
+  ] as const;
+  const bytes = Buffer.from(itemCbor);
+  if (collectionProof.itemLength !== bytes.length) {
+    throw new Error(
+      `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} complete item length does not match its collection proof`,
+    );
+  }
+  if (
+    !verifyMidgardBoundedCollectionItemProofV1({
+      expectedCommitment: commitments[fieldIndex]!,
+      proof: collectionProof,
+    })
+  ) {
+    throw new Error(
+      `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} collection proof does not match its compact commitment`,
+    );
+  }
+  if (
+    !buildMidgardBoundedItemV1({
+      fieldIndex,
+      itemIndex: collectionProof.itemIndex,
+      bytes,
+    }).commitment.equals(collectionProof.itemCommitment)
+  ) {
+    throw new Error(
+      `V1 ${MIDGARD_V1_TX_FIELD_NAMES[fieldIndex]} complete item does not match its authenticated commitment`,
+    );
+  }
+  return bytes;
 };
 
 export const reconstructMidgardTransactionV1 = ({

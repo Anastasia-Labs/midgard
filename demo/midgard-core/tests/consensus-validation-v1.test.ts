@@ -7,6 +7,7 @@ import {
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardTxFieldReceiptAssetNameV1,
   deriveMidgardV1TxFieldChunks,
+  deriveMidgardV1TxFieldEvidence,
   deriveMidgardV1TxFieldPreimages,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -31,6 +32,7 @@ import {
   validateMidgardConsensusV1TxCbor,
   verifyMidgardNativeTxProofSourceV1,
   verifyMidgardV1TxFieldChunk,
+  verifyMidgardV1TxFieldItem,
   verifyMidgardV1TxFieldPreimage,
 } from "../src/index.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../src/plutus-data-cbor.js";
@@ -256,6 +258,52 @@ describe("canonical V1 consensus transaction bounds", () => {
         proof,
       }),
     ).toThrow(/does not match transaction commitment/u);
+  });
+
+  it("keeps fitting canonical proof items complete and commitment-bound", () => {
+    const tx = materializeMidgardNativeTxFromCanonicalV1(canonical());
+    const canonicalCbor = encodeMidgardNativeTxCanonicalV1(tx);
+    const source = deriveMidgardNativeTxProofSourceV1(tx);
+    const transactionId = computeMidgardNativeTxIdV1(tx);
+    const transactionCommitment =
+      computeMidgardNativeTxProofCommitmentV1(source);
+    const evidence = deriveMidgardV1TxFieldEvidence(canonicalCbor);
+    const item = evidence.find(
+      (entry) =>
+        entry.kind === "completeItem" &&
+        entry.collectionProof.fieldIndex === 2,
+    );
+    expect(item?.kind).toBe("completeItem");
+    if (item?.kind !== "completeItem") {
+      throw new Error("expected a complete output item");
+    }
+    expect(
+      verifyMidgardV1TxFieldItem({
+        transactionId,
+        transactionCommitment,
+        source,
+        collectionProof: item.collectionProof,
+        itemCbor: item.itemCbor,
+      }),
+    ).toEqual(item.itemCbor);
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        transactionId,
+        transactionCommitment,
+        source,
+        collectionProof: item.collectionProof,
+        itemCbor: Buffer.concat([item.itemCbor, Buffer.from([0])]),
+      }),
+    ).toThrow(/length|commitment/u);
+    expect(
+      evidence
+        .filter((entry) => entry.kind === "completeItem")
+        .every(
+          (entry) =>
+            entry.itemCbor.length <=
+            MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+        ),
+    ).toBe(true);
   });
 
   it("reconstructs the exact canonical forced transaction from nine authenticated fragments", () => {

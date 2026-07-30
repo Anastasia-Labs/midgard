@@ -42,6 +42,13 @@ const cborByteStringSize = (payloadBytes: number): number => {
 };
 
 const MAX_L1_FAULT_PROOF_TX_BYTES = 16 * 1024;
+// The repository-owned Conway measurements apply the final proof-item and
+// five-stage canonical-decode item validators. The publication cap remains
+// 14,396 raw item bytes: the applied SDK publisher produces a 15,256-byte
+// complete signed transaction at that cap, retaining 1,128 bytes below the
+// 16,384-byte deployment floor. Direct carriage is separately bounded by the
+// larger of the authentication and observation transactions below.
+const MAX_SINGLE_PUBLICATION_COMPLETE_ITEM_BYTES = 14_396;
 // This reservation applies to one independently revealed proof chunk. It is
 // not a user-facing field or transaction limit: aggregate fields are
 // authenticated and consumed through bounded-blob continuations.
@@ -71,6 +78,22 @@ const MAX_CEK_PROGRAM_MATERIAL_BYTES = Number(
  * consensus limits.
  */
 export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
+  proofItemEnvelopeReliabilityReserveBytes: 512,
+  maxExactCompleteItemPublicationBytes: 15_489,
+  maxReliableCompleteItemPublicationBytes: 14_993,
+  maxReliableCompleteItemPublicationTransactionBytes: 15_872,
+  maxReliableCompleteItemPublicationDatumBytes: 15_624,
+  maxReliableCompleteItemPublicationMinAdaLovelace: 68_231_610,
+  maxReliableCompleteItemPublicationFeeLovelace: 853_925,
+  maxExactDirectCompleteItemBytes: 8_769,
+  maxReliableDirectCompleteItemBytes: 8_273,
+  maxReliableDirectCompleteItemProofTransactionBytes: 15_872,
+  maxReliableDirectCompleteItemAuthenticationTransactionBytes: 14_543,
+  maxReliableDirectCompleteItemObservationTransactionBytes: 15_872,
+  referenceCompleteItemProofTransactionBytes: 8_275,
+  referenceCompleteItemAuthenticationTransactionBytes: 5_967,
+  referenceCompleteItemObservationTransactionBytes: 7_296,
+  referenceCompleteItemProofReferenceInputCount: 1,
   maxGeneralFieldResolverArgumentsBytes: 14_082,
   maxLedgerOutputResolverArgumentsBytes: 13_459,
   maxScriptEnvelopeResolverArgumentsBytes: 7_546,
@@ -162,6 +185,8 @@ const MAX_EFFECTIVE_TRANSACTION_CBOR_BYTES = (() => {
 
 export const MIDGARD_CONSENSUS_LIMITS_V1 = Object.freeze({
   minSupportedL1MaxTxBytes: MAX_L1_FAULT_PROOF_TX_BYTES,
+  maxSinglePublicationCompleteItemBytes:
+    MAX_SINGLE_PUBLICATION_COMPLETE_ITEM_BYTES,
   minSupportedL1MaxTxMemoryUnits: 16_500_000,
   minSupportedL1MaxTxCpuUnits: 10_000_000_000,
   // These are capability floors, not execution caps. Midgard must admit at

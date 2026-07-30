@@ -57,7 +57,7 @@ describe("script proof primitives", () => {
       script,
     });
     expect(sourceLeaf.toString("hex")).toBe(
-      "80339781c7437cf249ebf0d5ea03b26964f30bc857c53bd332f11d6cc7696775",
+      "6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
     );
     const redeemerLeaf = hashMidgardRedeemerLeafV1({
       redeemerIndex: 0,
@@ -82,7 +82,7 @@ describe("script proof primitives", () => {
         sourceLeaf,
         redeemerLeaf,
       }).toString("hex"),
-    ).toBe("128c959c93e06cf97b245b8d281deb63278338460b81d522e8246ff30829b6ed");
+    ).toBe("b5f8846e6888a5ebab1619bd6738ce3591323a63eb41fc06954729c5f4418d21");
     expect(
       hashMidgardOutputLeafV1({
         outputIndex: 2,
@@ -124,7 +124,7 @@ describe("script proof primitives", () => {
 
     const frontier = buildMidgardValidationMerkleFrontierV1([
       Buffer.from(
-        "80339781c7437cf249ebf0d5ea03b26964f30bc857c53bd332f11d6cc7696775",
+        "6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
         "hex",
       ),
       Buffer.from(
@@ -136,7 +136,7 @@ describe("script proof primitives", () => {
         "hex",
       ),
       Buffer.from(
-        "128c959c93e06cf97b245b8d281deb63278338460b81d522e8246ff30829b6ed",
+        "b5f8846e6888a5ebab1619bd6738ce3591323a63eb41fc06954729c5f4418d21",
         "hex",
       ),
       signerLeaf,
@@ -155,11 +155,11 @@ describe("script proof primitives", () => {
     ).toEqual([
       [0, "2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3"],
       [1, "9bb71e0b9929d3033fa1a74d906acb5e040f5ffc05ca359f27602878fb40d2d3"],
-      [2, "e0bbf2cea9550aa9bc27035fd409803fabe16d6a52385c8db2deb5c329fcdd4a"],
+      [2, "6782c5608a8972e206c68c1693c7ce08730b0140df296974013184b4874aa813"],
     ]);
     expect(
       commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
-    ).toBe("aa064eed74ea954d127aaab072d1703e1ed5d9dee6ef4ff5ba506a7a0e9db1ba");
+    ).toBe("3f81171ae98f8745f125cbe28461e23204fe4f39e609e9ac4be7537b9dac126f");
   });
 
   it("keeps raw Cardano-style hashing isolated from V1 envelope admission", () => {

@@ -133,14 +133,48 @@ const recordTiming = (
   }
 };
 
-const encodeValue = (envelope: DaPayloadEnvelopeV1): Buffer =>
-  encodeCbor([
+const encodeValue = (envelope: DaPayloadEnvelopeV1): Buffer => {
+  if (envelope.version !== DA_PAYLOAD_ENVELOPE_V1_VERSION) {
+    return fail(
+      "wrong_envelope_version",
+      `expected DA payload envelope version 1, got ${String(envelope.version)}`,
+    );
+  }
+  if (
+    envelope.contentEncoding !== DaPayloadContentEncoding.identity &&
+    envelope.contentEncoding !== DaPayloadContentEncoding.zstd
+  ) {
+    return fail(
+      "unknown_content_encoding",
+      `unknown DA payload content encoding ${String(envelope.contentEncoding)}`,
+    );
+  }
+  if (!Number.isSafeInteger(envelope.innerBytes) || envelope.innerBytes <= 0) {
+    return fail(
+      "declared_inner_too_large",
+      "envelope.inner_bytes must be a positive safe integer",
+    );
+  }
+  if (
+    !Buffer.isBuffer(envelope.innerSha256) ||
+    envelope.innerSha256.length !== 32
+  ) {
+    return fail(
+      "malformed_envelope",
+      "envelope.inner_sha256 must be exactly 32 bytes",
+    );
+  }
+  if (!Buffer.isBuffer(envelope.body) || envelope.body.length === 0) {
+    return fail("empty_payload", "envelope.body must be non-empty bytes");
+  }
+  return encodeCbor([
     BigInt(envelope.version),
     BigInt(envelope.contentEncoding),
     BigInt(envelope.innerBytes),
     envelope.innerSha256,
     envelope.body,
   ]);
+};
 
 export const encodeDaPayloadEnvelopeV1 = (
   envelope: DaPayloadEnvelopeV1,
@@ -255,6 +289,12 @@ export const wrapDaPayloadV1 = async (
   const inner = Buffer.from(innerBytes);
   if (inner.length === 0) {
     return fail("empty_payload", "cannot wrap an empty DA payload");
+  }
+  if (mode !== "identity" && mode !== "zstd") {
+    return fail(
+      "unknown_content_encoding",
+      `unknown DA payload envelope mode ${String(mode)}`,
+    );
   }
   const contentEncoding =
     mode === "identity"

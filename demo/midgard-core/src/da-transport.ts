@@ -13,12 +13,16 @@ import {
 } from "./codec/errors.js";
 import { ensureHash32 } from "./codec/hash.js";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "./consensus-profile-v1.js";
-import { DA_PAYLOAD_INNER_V1_SCHEMA_VERSION } from "./da-payload-envelope.js";
+import {
+  DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
+  DaPayloadContentEncoding,
+} from "./da-payload-envelope.js";
 
 export const DA_TRANSPORT_V1_PROTOCOL_VERSION = 1 as const;
 export const DA_DEPLOYMENT_FINGERPRINT_LENGTH = 32;
 export const DA_HEADER_HASH_LENGTH = 28;
 export const DA_HASH_LENGTH = 32;
+export const DA_GOSSIP_SIGNATURE_LENGTH = 64;
 export const DA_ON_CHAIN_WITNESS_LENGTH = 65;
 export const DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION =
   "midgard-da-libp2p-runtime-manifest-v1";
@@ -384,6 +388,15 @@ export type DaConflictEvidenceV1 = {
   readonly compactEvidence: Buffer | null;
 };
 
+export type DaConflictingSignatureHeaderEvidenceV1 = {
+  readonly signerIndex: number;
+  readonly daVkey: Buffer;
+  readonly lowerHeaderHash: Buffer;
+  readonly lowerHeaderWitness: Buffer;
+  readonly upperHeaderHash: Buffer;
+  readonly upperHeaderWitness: Buffer;
+};
+
 type NumericEnumTable = Readonly<Record<string, number>>;
 type NumericEnumLabel<T extends NumericEnumTable> = Extract<keyof T, string>;
 
@@ -499,6 +512,22 @@ const stringValue = (value: unknown, fieldName: string): string => {
     );
   }
   return value as string;
+};
+
+const exactStringEnumValue = <T extends Readonly<Record<string, string>>>(
+  table: T,
+  value: unknown,
+  fieldName: string,
+): T[keyof T] => {
+  const exact = stringValue(value, fieldName);
+  if (!Object.values(table).includes(exact)) {
+    fail(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} is not supported by DA transport V1`,
+      exact,
+    );
+  }
+  return exact as T[keyof T];
 };
 
 const optionalStringValue = (
@@ -1030,7 +1059,11 @@ export const daGossipTopic = (
 ): string =>
   `/midgard/${normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
-  )}/da/${topic}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
+  )}/da/${exactStringEnumValue(
+    DaGossipTopic,
+    topic,
+    "gossip_topic",
+  )}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
 
 export const daRequestResponseProtocolId = (
   deploymentFingerprint: string | Uint8Array,
@@ -1038,7 +1071,11 @@ export const daRequestResponseProtocolId = (
 ): string =>
   `/midgard/${normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
-  )}/da/${protocol}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
+  )}/da/${exactStringEnumValue(
+    DaRequestResponseProtocol,
+    protocol,
+    "request_response_protocol",
+  )}/${DA_TRANSPORT_V1_PROTOCOL_VERSION}`;
 
 const hashValue = (value: unknown, fieldName: string): Buffer =>
   ensureDaHash32(asBytes(value, fieldName), fieldName);
@@ -1129,6 +1166,26 @@ const cborSortedUintArray = (
   return normalized.map(BigInt);
 };
 
+const signerIndexArrayValue = (value: unknown, fieldName: string): number[] => {
+  const result = asArray(value, fieldName).map((item, index) =>
+    ensureUint8(item, `${fieldName}[${index}]`),
+  );
+  for (let index = 1; index < result.length; index += 1) {
+    if (result[index - 1]! >= result[index]!) {
+      fail(
+        MidgardTxCodecErrorCodes.SchemaMismatch,
+        `${fieldName} must be strictly increasing`,
+      );
+    }
+  }
+  return result;
+};
+
+const cborSignerIndexArray = (
+  value: readonly number[],
+  fieldName: string,
+): bigint[] => signerIndexArrayValue(value, fieldName).map(BigInt);
+
 const exactDaPayloadSchemaVersionsV1 = (
   value: unknown,
   fieldName: string,
@@ -1144,6 +1201,41 @@ const exactDaPayloadSchemaVersionsV1 = (
     );
   }
   return [DA_PAYLOAD_INNER_V1_SCHEMA_VERSION];
+};
+
+const exactDaEnvelopeContentEncodingsV1 = (
+  value: unknown,
+  fieldName: string,
+): readonly number[] => {
+  const encodings = sortedUintArrayValue(value, fieldName);
+  const supported = new Set<number>(Object.values(DaPayloadContentEncoding));
+  if (
+    encodings.length === 0 ||
+    encodings.some((encoding) => !supported.has(encoding))
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must contain only DA envelope V1 content encodings`,
+    );
+  }
+  return encodings;
+};
+
+const payloadAnnouncementSignatureValue = (
+  value: unknown,
+  fieldName: string,
+): Buffer => {
+  const signature = bytesValue(value, fieldName);
+  if (
+    signature.length !== 0 &&
+    signature.length !== DA_GOSSIP_SIGNATURE_LENGTH
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be 64 bytes or empty only for the signing preimage`,
+    );
+  }
+  return signature;
 };
 
 const encodePayloadChunkManifestValue = (
@@ -1221,9 +1313,9 @@ const encodePayloadAnnouncementValue = (
   cborUint(message.chunkSize, "chunk_size"),
   cborUint(message.chunkCount, "chunk_count"),
   ensureDaHash32(message.rootSummaryHash, "root_summary_hash"),
-  stringValue(message.announcedByPeerId, "announced_by_peer_id"),
+  nonEmptyStringValue(message.announcedByPeerId, "announced_by_peer_id"),
   cborUint(message.announcedAtSlot, "announced_at_slot"),
-  bytesValue(message.signature, "signature"),
+  payloadAnnouncementSignatureValue(message.signature, "signature"),
 ];
 
 const decodePayloadAnnouncementValue = (
@@ -1246,9 +1338,16 @@ const decodePayloadAnnouncementValue = (
     chunkSize: ensureUint(v[5], `${fieldName}.chunk_size`),
     chunkCount: ensureUint(v[6], `${fieldName}.chunk_count`),
     rootSummaryHash: hashValue(v[7], `${fieldName}.root_summary_hash`),
-    announcedByPeerId: stringValue(v[8], `${fieldName}.announced_by_peer_id`),
+    announcedByPeerId: nonEmptyStringValue(
+      v[8],
+      `${fieldName}.announced_by_peer_id`,
+    ),
     announcedAtSlot: ensureUint(v[9], `${fieldName}.announced_at_slot`),
-    signature: bytesValue(v[10], `${fieldName}.signature`),
+    signature: ensureByteLength(
+      asBytes(v[10], `${fieldName}.signature`),
+      DA_GOSSIP_SIGNATURE_LENGTH,
+      `${fieldName}.signature`,
+    ),
   };
 };
 
@@ -1608,10 +1707,7 @@ const decodeMetadataByHeaderResponseValue = (
     payloadSchemaVersion:
       v[3] == null
         ? null
-        : ensureDaPayloadSchemaV1(
-            v[3],
-            `${fieldName}.payload_schema_version`,
-          ),
+        : ensureDaPayloadSchemaV1(v[3], `${fieldName}.payload_schema_version`),
     payloadBytes:
       v[4] == null ? null : ensureUint(v[4], `${fieldName}.payload_bytes`),
     rootSummaryHash:
@@ -1922,7 +2018,7 @@ const encodeAttestationGossipValue = (
     "on_chain_witness",
   ),
   cborUint(message.retentionUntilSlot, "retention_until_slot"),
-  stringValue(message.announcedByPeerId, "announced_by_peer_id"),
+  nonEmptyStringValue(message.announcedByPeerId, "announced_by_peer_id"),
 ];
 
 const decodeAttestationGossipValue = (
@@ -1945,7 +2041,10 @@ const decodeAttestationGossipValue = (
       `${fieldName}.on_chain_witness`,
     ),
     retentionUntilSlot: ensureUint(v[6], `${fieldName}.retention_until_slot`),
-    announcedByPeerId: stringValue(v[7], `${fieldName}.announced_by_peer_id`),
+    announcedByPeerId: nonEmptyStringValue(
+      v[7],
+      `${fieldName}.announced_by_peer_id`,
+    ),
   };
 };
 
@@ -1965,11 +2064,9 @@ const encodeAttestationsByHeaderRequestValue = (
   ensureDaHeaderHash(message.headerHash),
   message.acceptedSignerIndexes == null
     ? null
-    : message.acceptedSignerIndexes.map((signerIndex, index) =>
-        cborUint(
-          ensureUint8(signerIndex, `accepted_signer_indexes[${index}]`),
-          `accepted_signer_indexes[${index}]`,
-        ),
+    : cborSignerIndexArray(
+        message.acceptedSignerIndexes,
+        "accepted_signer_indexes",
       ),
   cborOptionalUint(message.maxAttestations, "max_attestations"),
 ];
@@ -1988,13 +2085,7 @@ const decodeAttestationsByHeaderRequestValue = (
     acceptedSignerIndexes:
       v[2] == null
         ? null
-        : asArray(v[2], `${fieldName}.accepted_signer_indexes`).map(
-            (signerIndex, index) =>
-              ensureUint8(
-                signerIndex,
-                `${fieldName}.accepted_signer_indexes[${index}]`,
-              ),
-          ),
+        : signerIndexArrayValue(v[2], `${fieldName}.accepted_signer_indexes`),
     maxAttestations:
       v[3] == null ? null : ensureUint(v[3], `${fieldName}.max_attestations`),
   };
@@ -2054,6 +2145,105 @@ export const decodeDaAttestationsByHeaderResponseV1Cbor = (
     bytes,
     "AttestationsByHeaderResponseV1",
     decodeAttestationsByHeaderResponseValue,
+  );
+
+const validateConflictingSignatureHeaderEvidenceV1 = (
+  evidence: DaConflictingSignatureHeaderEvidenceV1,
+): DaConflictingSignatureHeaderEvidenceV1 => {
+  const signerIndex = ensureUint8(evidence.signerIndex, "signer_index");
+  const daVkey = ensureDaHash32(evidence.daVkey, "da_vkey");
+  const lowerHeaderHash = ensureDaHeaderHash(evidence.lowerHeaderHash);
+  const upperHeaderHash = ensureDaHeaderHash(evidence.upperHeaderHash);
+  const lowerHeaderWitness = ensureByteLength(
+    evidence.lowerHeaderWitness,
+    DA_ON_CHAIN_WITNESS_LENGTH,
+    "lower_header_witness",
+  );
+  const upperHeaderWitness = ensureByteLength(
+    evidence.upperHeaderWitness,
+    DA_ON_CHAIN_WITNESS_LENGTH,
+    "upper_header_witness",
+  );
+  if (Buffer.compare(lowerHeaderHash, upperHeaderHash) >= 0) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "conflicting signature/header evidence hashes must be strictly ordered",
+    );
+  }
+  if (
+    lowerHeaderWitness[0] !== signerIndex ||
+    upperHeaderWitness[0] !== signerIndex
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      "conflicting signature/header witnesses must embed signer_index",
+    );
+  }
+  return {
+    signerIndex,
+    daVkey,
+    lowerHeaderHash,
+    lowerHeaderWitness,
+    upperHeaderHash,
+    upperHeaderWitness,
+  };
+};
+
+const encodeConflictingSignatureHeaderEvidenceValue = (
+  evidence: DaConflictingSignatureHeaderEvidenceV1,
+): unknown[] => {
+  const canonical = validateConflictingSignatureHeaderEvidenceV1(evidence);
+  return [
+    cborUint(canonical.signerIndex, "signer_index"),
+    canonical.daVkey,
+    canonical.lowerHeaderHash,
+    canonical.lowerHeaderWitness,
+    canonical.upperHeaderHash,
+    canonical.upperHeaderWitness,
+  ];
+};
+
+const decodeConflictingSignatureHeaderEvidenceValue = (
+  value: unknown,
+  fieldName: string,
+): DaConflictingSignatureHeaderEvidenceV1 => {
+  const tuple = fixedArray(value, 6, fieldName);
+  return validateConflictingSignatureHeaderEvidenceV1({
+    signerIndex: ensureUint8(tuple[0], `${fieldName}.signer_index`),
+    daVkey: hashValue(tuple[1], `${fieldName}.da_vkey`),
+    lowerHeaderHash: headerHashValue(
+      tuple[2],
+      `${fieldName}.lower_header_hash`,
+    ),
+    lowerHeaderWitness: ensureByteLength(
+      asBytes(tuple[3], `${fieldName}.lower_header_witness`),
+      DA_ON_CHAIN_WITNESS_LENGTH,
+      `${fieldName}.lower_header_witness`,
+    ),
+    upperHeaderHash: headerHashValue(
+      tuple[4],
+      `${fieldName}.upper_header_hash`,
+    ),
+    upperHeaderWitness: ensureByteLength(
+      asBytes(tuple[5], `${fieldName}.upper_header_witness`),
+      DA_ON_CHAIN_WITNESS_LENGTH,
+      `${fieldName}.upper_header_witness`,
+    ),
+  });
+};
+
+export const encodeDaConflictingSignatureHeaderEvidenceV1Cbor = (
+  evidence: DaConflictingSignatureHeaderEvidenceV1,
+): Buffer =>
+  encodeCbor(encodeConflictingSignatureHeaderEvidenceValue(evidence));
+
+export const decodeDaConflictingSignatureHeaderEvidenceV1Cbor = (
+  bytes: Uint8Array,
+): DaConflictingSignatureHeaderEvidenceV1 =>
+  decodeTupleCbor(
+    bytes,
+    "DaConflictingSignatureHeaderEvidenceV1",
+    decodeConflictingSignatureHeaderEvidenceValue,
   );
 
 const encodeConflictEvidenceValue = (
@@ -2146,7 +2336,10 @@ const encodeCapabilitiesResponseValue = (
     "payload_schema_versions",
   ),
   cborSortedUintArray(
-    message.envelopeContentEncodings,
+    exactDaEnvelopeContentEncodingsV1(
+      message.envelopeContentEncodings,
+      "envelope_content_encodings",
+    ),
     "envelope_content_encodings",
   ),
   cborUint(message.maxPayloadBytes, "max_payload_bytes"),
@@ -2174,7 +2367,7 @@ const decodeCapabilitiesResponseValue = (
       fields[2],
       `${fieldName}.payload_schema_versions`,
     ),
-    envelopeContentEncodings: sortedUintArrayValue(
+    envelopeContentEncodings: exactDaEnvelopeContentEncodingsV1(
       fields[3],
       `${fieldName}.envelope_content_encodings`,
     ),

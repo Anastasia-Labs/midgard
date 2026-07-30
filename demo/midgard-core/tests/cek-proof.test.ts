@@ -7,11 +7,13 @@ import {
   decodeMidgardCekProgramMaterialEntryV1,
   decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardProofSubmissionV1,
+  encodeMidgardCekBlobBranchV1,
   encodeMidgardCekBlobChunkV1,
   encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardCekProgramMaterialDaValueV1,
   encodeMidgardCekProgramMaterialEntryV1,
   encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekSequenceNodeV1,
   encodeMidgardCekTermNodeV1,
   encodeMidgardCekValueNodeV1,
   encodeMidgardProofSubmissionV1,
@@ -21,6 +23,7 @@ import {
   hashMidgardCekEnvironmentNodeV1,
   hashMidgardCekMachineStateV1,
   hashMidgardCekProgramEnvelopeV1,
+  hashMidgardCekProgramMaterialPreimageV1,
   hashMidgardCekSequenceNodeV1,
   hashMidgardCekTermNodeV1,
   hashMidgardCekValueNodeV1,
@@ -35,14 +38,19 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_ENTRY_BYTES_V1,
   MIDGARD_CEK_MAX_PROGRAM_MATERIAL_PREIMAGE_BYTES_V1,
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
+  midgardCekProgramMaterialDependenciesV1,
   type MidgardCekProgramMaterialEntryV1,
+  type MidgardCekProgramMaterialKindV1,
   verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardCekProgramMaterialV1,
 } from "../src/cek-proof.js";
 import {
+  encodeMidgardCekDataListNodeV1,
   encodeMidgardCekDataNodeV1,
+  encodeMidgardCekDataPairNodeV1,
   hashMidgardCekDataNodeV1,
   MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+  MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
   midgardCekDataBytesCborLengthV1,
   midgardCekDataConstrCborLengthV1,
 } from "../src/cek-semantic.js";
@@ -50,6 +58,14 @@ import type { Hash32 } from "../src/codec/hash.js";
 
 const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
+const programMaterialEntry = (
+  kind: MidgardCekProgramMaterialKindV1,
+  preimage: Buffer,
+): MidgardCekProgramMaterialEntryV1 => ({
+  kind,
+  root: hashMidgardCekProgramMaterialPreimageV1(kind, preimage),
+  preimage,
+});
 
 describe("V1 CEK commitments", () => {
   it("matches the Aiken node, state, and program vectors", () => {
@@ -291,6 +307,732 @@ describe("V1 CEK commitments", () => {
     ).toThrow(/material length/u);
   });
 
+  it("extracts the exact ordered direct dependency set for every V1 material kind", () => {
+    const one = hash(1);
+    const two = hash(2);
+    const three = hash(3);
+    const four = hash(4);
+    const five = hash(5);
+    const six = hash(6);
+    const dataList = (length: bigint, head: Hash32, tail: Hash32) =>
+      encodeMidgardCekDataListNodeV1({
+        head,
+        headCborLength: 1n,
+        headMemory: 1n,
+        tail,
+        length,
+        payloadCborLength: length,
+        memory: length,
+      });
+    const dataPair = (
+      length: bigint,
+      key: Hash32,
+      value: Hash32,
+      tail: Hash32,
+    ) =>
+      encodeMidgardCekDataPairNodeV1({
+        key,
+        keyCborLength: 1n,
+        keyMemory: 1n,
+        value,
+        valueCborLength: 1n,
+        valueMemory: 1n,
+        tail,
+        length,
+        payloadCborLength: length * 2n,
+        memory: length * 2n,
+      });
+    const cases: readonly {
+      readonly name: string;
+      readonly entry: MidgardCekProgramMaterialEntryV1;
+      readonly expected: readonly Hash32[];
+    }[] = [
+      {
+        name: "term variable",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "variable", index: 0n }),
+        ),
+        expected: [],
+      },
+      {
+        name: "term error",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "error" }),
+        ),
+        expected: [],
+      },
+      {
+        name: "term builtin",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "builtin", tag: 0n }),
+        ),
+        expected: [],
+      },
+      {
+        name: "term delay",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "delay", body: one }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "term lambda",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "lambda", body: one }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "term force",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "force", term: one }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "term application",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "application",
+            function: one,
+            argument: two,
+          }),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "term application deduplicates",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "application",
+            function: one,
+            argument: one,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "term constant",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({ kind: "constant", value: three }),
+        ),
+        expected: [three],
+      },
+      {
+        name: "empty term constr",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "constr",
+            tag: 0n,
+            termsCount: 0n,
+            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+          }),
+        ),
+        expected: [],
+      },
+      {
+        name: "non-empty term constr",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "constr",
+            tag: 0n,
+            termsCount: 2n,
+            termsRoot: four,
+          }),
+        ),
+        expected: [four],
+      },
+      {
+        name: "empty term case",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "case",
+            scrutinee: one,
+            branchesCount: 0n,
+            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "non-empty term case",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "case",
+            scrutinee: one,
+            branchesCount: 2n,
+            branchesRoot: four,
+          }),
+        ),
+        expected: [one, four],
+      },
+      {
+        name: "value",
+        entry: programMaterialEntry(
+          "value",
+          encodeMidgardCekValueNodeV1({
+            kind: "constant",
+            typeRoot: one,
+            payloadRoot: two,
+            payloadLength: 1n,
+            semanticRoot: two,
+            memory: 1n,
+          }),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "value deduplicates roots",
+        entry: programMaterialEntry(
+          "value",
+          encodeMidgardCekValueNodeV1({
+            kind: "constant",
+            typeRoot: one,
+            payloadRoot: one,
+            payloadLength: 1n,
+            semanticRoot: one,
+            memory: 1n,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "one-item sequence",
+        entry: programMaterialEntry(
+          "sequence",
+          encodeMidgardCekSequenceNodeV1({
+            head: one,
+            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            length: 1n,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "multi-item sequence",
+        entry: programMaterialEntry(
+          "sequence",
+          encodeMidgardCekSequenceNodeV1({
+            head: one,
+            tail: two,
+            length: 2n,
+          }),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "blob chunk",
+        entry: programMaterialEntry(
+          "blobChunk",
+          encodeMidgardCekBlobChunkV1(Buffer.from("0102", "hex")),
+        ),
+        expected: [],
+      },
+      {
+        name: "blob branch",
+        entry: programMaterialEntry(
+          "blobBranch",
+          encodeMidgardCekBlobBranchV1({
+            left: one,
+            right: two,
+            byteLength: 2n,
+          }),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "blob branch deduplicates",
+        entry: programMaterialEntry(
+          "blobBranch",
+          encodeMidgardCekBlobBranchV1({
+            left: one,
+            right: one,
+            byteLength: 2n,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "empty small constructor Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrSmall",
+            constructor: 0n,
+            fieldsCount: 0n,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [],
+      },
+      {
+        name: "non-empty small constructor Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrSmall",
+            constructor: 0n,
+            fieldsCount: 1n,
+            fieldsRoot: one,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [one],
+      },
+      {
+        name: "empty large constructor Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrLarge",
+            constructorCborRoot: two,
+            constructorCborLength: 1n,
+            constructorMemory: 1n,
+            fieldsCount: 0n,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [two],
+      },
+      {
+        name: "non-empty large constructor Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrLarge",
+            constructorCborRoot: two,
+            constructorCborLength: 1n,
+            constructorMemory: 1n,
+            fieldsCount: 1n,
+            fieldsRoot: one,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "empty map Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "map",
+            entriesCount: 0n,
+            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [],
+      },
+      {
+        name: "non-empty map Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "map",
+            entriesCount: 1n,
+            entriesRoot: three,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [three],
+      },
+      {
+        name: "empty list Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "list",
+            itemsCount: 0n,
+            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [],
+      },
+      {
+        name: "non-empty list Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "list",
+            itemsCount: 1n,
+            itemsRoot: four,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [four],
+      },
+      {
+        name: "integer Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "integer",
+            cborRoot: five,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [five],
+      },
+      {
+        name: "bytes Data",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "bytes",
+            bytesRoot: six,
+            bytesLength: 1n,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        expected: [six],
+      },
+      {
+        name: "one-item Data list",
+        entry: programMaterialEntry(
+          "dataList",
+          dataList(1n, one, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+        ),
+        expected: [one],
+      },
+      {
+        name: "multi-item Data list",
+        entry: programMaterialEntry("dataList", dataList(2n, one, two)),
+        expected: [one, two],
+      },
+      {
+        name: "one-item Data pair",
+        entry: programMaterialEntry(
+          "dataPair",
+          dataPair(1n, one, two, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+        ),
+        expected: [one, two],
+      },
+      {
+        name: "multi-item Data pair deduplicates",
+        entry: programMaterialEntry("dataPair", dataPair(2n, one, one, two)),
+        expected: [one, two],
+      },
+    ];
+
+    expect(
+      cases.map(({ name, entry }) => ({
+        name,
+        dependencies: midgardCekProgramMaterialDependenciesV1(entry).map(hex),
+      })),
+    ).toEqual(
+      cases.map(({ name, expected }) => ({
+        name,
+        dependencies: expected.map(hex),
+      })),
+    );
+  });
+
+  it("fails closed while extracting hostile material dependencies", () => {
+    const one = hash(1);
+    const two = hash(2);
+    const dataList = (length: bigint, tail: Hash32) =>
+      programMaterialEntry(
+        "dataList",
+        encodeMidgardCekDataListNodeV1({
+          head: one,
+          headCborLength: 1n,
+          headMemory: 1n,
+          tail,
+          length,
+          payloadCborLength: 1n,
+          memory: 1n,
+        }),
+      );
+    const dataPair = (length: bigint, tail: Hash32) =>
+      programMaterialEntry(
+        "dataPair",
+        encodeMidgardCekDataPairNodeV1({
+          key: one,
+          keyCborLength: 1n,
+          keyMemory: 1n,
+          value: two,
+          valueCborLength: 1n,
+          valueMemory: 1n,
+          tail,
+          length,
+          payloadCborLength: 2n,
+          memory: 2n,
+        }),
+      );
+    const hostile: readonly {
+      readonly name: string;
+      readonly entry: MidgardCekProgramMaterialEntryV1;
+      readonly error: RegExp;
+    }[] = [
+      {
+        name: "unauthenticated root",
+        entry: {
+          ...programMaterialEntry(
+            "term",
+            encodeMidgardCekTermNodeV1({ kind: "error" }),
+          ),
+          root: hash(99),
+        },
+        error: /root does not match its preimage/u,
+      },
+      {
+        name: "non-canonical preimage",
+        entry: programMaterialEntry("term", Buffer.from("811806", "hex")),
+        error: /Non-minimal CBOR/u,
+      },
+      {
+        name: "runtime-only context constant",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "contextConstant",
+            value: one,
+          }),
+        ),
+        error: /runtime-only context constant/u,
+      },
+      {
+        name: "split value roots",
+        entry: programMaterialEntry(
+          "value",
+          encodeMidgardCekValueNodeV1({
+            kind: "constant",
+            typeRoot: one,
+            payloadRoot: one,
+            payloadLength: 1n,
+            semanticRoot: two,
+            memory: 1n,
+          }),
+        ),
+        error: /payload root must equal its canonical semantic root/u,
+      },
+      {
+        name: "empty constr with non-canonical root",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "constr",
+            tag: 0n,
+            termsCount: 0n,
+            termsRoot: one,
+          }),
+        ),
+        error: /empty CEK constr sequence/u,
+      },
+      {
+        name: "non-empty constr with empty root",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "constr",
+            tag: 0n,
+            termsCount: 1n,
+            termsRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+          }),
+        ),
+        error: /non-empty CEK constr sequence/u,
+      },
+      {
+        name: "empty case with non-canonical root",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "case",
+            scrutinee: one,
+            branchesCount: 0n,
+            branchesRoot: two,
+          }),
+        ),
+        error: /empty CEK case sequence/u,
+      },
+      {
+        name: "non-empty case with empty root",
+        entry: programMaterialEntry(
+          "term",
+          encodeMidgardCekTermNodeV1({
+            kind: "case",
+            scrutinee: one,
+            branchesCount: 1n,
+            branchesRoot: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+          }),
+        ),
+        error: /non-empty CEK case sequence/u,
+      },
+      {
+        name: "one-item sequence with non-canonical tail",
+        entry: programMaterialEntry(
+          "sequence",
+          encodeMidgardCekSequenceNodeV1({
+            head: one,
+            tail: two,
+            length: 1n,
+          }),
+        ),
+        error: /one-item CEK sequence/u,
+      },
+      {
+        name: "multi-item sequence with empty tail",
+        entry: programMaterialEntry(
+          "sequence",
+          encodeMidgardCekSequenceNodeV1({
+            head: one,
+            tail: MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
+            length: 2n,
+          }),
+        ),
+        error: /multi-item CEK sequence/u,
+      },
+      {
+        name: "empty Data constructor with non-canonical root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrSmall",
+            constructor: 0n,
+            fieldsCount: 0n,
+            fieldsRoot: one,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /empty CEK Data constructor/u,
+      },
+      {
+        name: "non-empty Data constructor with empty root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "constrSmall",
+            constructor: 0n,
+            fieldsCount: 1n,
+            fieldsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /non-empty CEK Data constructor/u,
+      },
+      {
+        name: "empty Data map with non-canonical root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "map",
+            entriesCount: 0n,
+            entriesRoot: one,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /empty CEK Data map/u,
+      },
+      {
+        name: "non-empty Data map with empty root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "map",
+            entriesCount: 1n,
+            entriesRoot: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /non-empty CEK Data map/u,
+      },
+      {
+        name: "empty Data list node with non-canonical root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "list",
+            itemsCount: 0n,
+            itemsRoot: one,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /empty CEK Data list/u,
+      },
+      {
+        name: "non-empty Data list node with empty root",
+        entry: programMaterialEntry(
+          "dataNode",
+          encodeMidgardCekDataNodeV1({
+            kind: "list",
+            itemsCount: 1n,
+            itemsRoot: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+            cborLength: 1n,
+            memory: 1n,
+          }),
+        ),
+        error: /non-empty CEK Data list/u,
+      },
+      {
+        name: "zero-length Data list material",
+        entry: dataList(0n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+        error: /Data list material length must be positive/u,
+      },
+      {
+        name: "one-item Data list with non-canonical tail",
+        entry: dataList(1n, two),
+        error: /one-item CEK Data list/u,
+      },
+      {
+        name: "multi-item Data list with empty tail",
+        entry: dataList(2n, MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1),
+        error: /multi-item CEK Data list/u,
+      },
+      {
+        name: "zero-length Data pair material",
+        entry: dataPair(0n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+        error: /Data pair material length must be positive/u,
+      },
+      {
+        name: "one-item Data pair with non-canonical tail",
+        entry: dataPair(1n, hash(3)),
+        error: /one-item CEK Data pair list/u,
+      },
+      {
+        name: "multi-item Data pair with empty tail",
+        entry: dataPair(2n, MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1),
+        error: /multi-item CEK Data pair list/u,
+      },
+    ];
+
+    for (const { entry, error } of hostile) {
+      expect(() => midgardCekProgramMaterialDependenciesV1(entry)).toThrow(
+        error,
+      );
+    }
+  });
+
   it("authenticates and traverses exact content-addressed program material", () => {
     const typeBlob = commitMidgardCekBlobV1(Buffer.from("9f01ff", "hex"));
     const rawValue = Buffer.alloc(MIDGARD_CEK_BLOB_CHUNK_BYTES + 1, 0x5a);
@@ -369,6 +1111,32 @@ describe("V1 CEK commitments", () => {
     expect(
       verifyMidgardCekProgramMaterialBundleV1([envelope], material),
     ).toHaveLength(1);
+
+    const unrelated = programMaterialEntry(
+      "term",
+      encodeMidgardCekTermNodeV1({ kind: "error" }),
+    );
+    const availableByRoot = new Map(
+      [...material, unrelated].map((entry) => [hex(entry.root), entry]),
+    );
+    const fetchedRoots: string[] = [];
+    const gathered = new Set<string>();
+    const pending: Hash32[] = [termRoot];
+    for (let cursor = 0; cursor < pending.length; cursor += 1) {
+      const root = pending[cursor]!;
+      const key = hex(root);
+      if (gathered.has(key)) continue;
+      fetchedRoots.push(key);
+      const entry = availableByRoot.get(key);
+      if (entry === undefined) {
+        throw new Error(`test material is missing ${key}`);
+      }
+      gathered.add(key);
+      pending.push(...midgardCekProgramMaterialDependenciesV1(entry));
+    }
+    expect(gathered).toEqual(verified.reachableRoots);
+    expect(fetchedRoots).toHaveLength(gathered.size);
+    expect(fetchedRoots).not.toContain(hex(unrelated.root));
 
     const maximumChunkEntry = {
       kind: "blobChunk",

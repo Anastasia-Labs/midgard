@@ -33,6 +33,26 @@ const expectReason = async (
 };
 
 describe("DaPayloadEnvelopeV1", () => {
+  it("pins the exact five-field identity envelope vector", async () => {
+    const storedBytes = await wrapDaPayloadV1(Buffer.from([0]), {
+      mode: "identity",
+    });
+
+    expect(storedBytes.toString("hex")).toBe(
+      "8501000158206e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d4100",
+    );
+    expect(decodeDaPayloadEnvelopeV1(storedBytes)).toEqual({
+      version: 1,
+      contentEncoding: 0,
+      innerBytes: 1,
+      innerSha256: Buffer.from(
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "hex",
+      ),
+      body: Buffer.from([0]),
+    });
+  });
+
   it.each(["identity", "zstd"] as const)(
     "round-trips canonical %s envelopes and preserves stored-byte identity",
     async (mode) => {
@@ -62,23 +82,105 @@ describe("DaPayloadEnvelopeV1", () => {
     );
   });
 
-  it("rejects unknown content encodings before decompression", async () => {
+  it("rejects adjacent envelope versions and unknown encodings before decompression", async () => {
     const decompress = vi.fn(async () => Buffer.alloc(1));
-    const stored = encodeCbor([
-      1n,
-      99n,
-      BigInt(inner.length),
-      Buffer.alloc(32),
-      Buffer.from("body"),
-    ]);
+    for (const version of [0n, 2n]) {
+      await expectReason(
+        unwrapDaPayloadV1(
+          encodeCbor([
+            version,
+            0n,
+            BigInt(inner.length),
+            Buffer.alloc(32),
+            Buffer.from("body"),
+          ]),
+          {
+            maxPayloadBytes: MAX,
+            decompress,
+          },
+        ),
+        "wrong_envelope_version",
+      );
+    }
     await expectReason(
-      unwrapDaPayloadV1(stored, {
-        maxPayloadBytes: MAX,
-        decompress,
-      }),
+      unwrapDaPayloadV1(
+        encodeCbor([
+          1n,
+          -1n,
+          BigInt(inner.length),
+          Buffer.alloc(32),
+          Buffer.from("body"),
+        ]),
+        {
+          maxPayloadBytes: MAX,
+          decompress,
+        },
+      ),
+      "malformed_envelope",
+    );
+    await expectReason(
+      unwrapDaPayloadV1(
+        encodeCbor([
+          1n,
+          2n,
+          BigInt(inner.length),
+          Buffer.alloc(32),
+          Buffer.from("body"),
+        ]),
+        {
+          maxPayloadBytes: MAX,
+          decompress,
+        },
+      ),
       "unknown_content_encoding",
     );
     expect(decompress).not.toHaveBeenCalled();
+  });
+
+  it("rejects inferred or off modes instead of treating them as zstd", async () => {
+    for (const mode of ["off", "auto", "raw"]) {
+      await expectReason(
+        wrapDaPayloadV1(inner, {
+          mode: mode as "identity",
+        }),
+        "unknown_content_encoding",
+      );
+    }
+  });
+
+  it("refuses to encode structurally invalid V1 envelopes", async () => {
+    const canonical = {
+      version: DA_PAYLOAD_ENVELOPE_V1_VERSION,
+      contentEncoding: DaPayloadContentEncoding.identity,
+      innerBytes: inner.length,
+      innerSha256: Buffer.alloc(32),
+      body: inner,
+    } as const;
+
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelopeV1({
+          ...canonical,
+          version: 2 as never,
+        }),
+      "wrong_envelope_version",
+    );
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelopeV1({
+          ...canonical,
+          contentEncoding: 2 as never,
+        }),
+      "unknown_content_encoding",
+    );
+    await expectReason(
+      () =>
+        encodeDaPayloadEnvelopeV1({
+          ...canonical,
+          innerSha256: Buffer.alloc(31),
+        }),
+      "malformed_envelope",
+    );
   });
 
   it("normalizes malformed envelope fields to a structured envelope error", async () => {
