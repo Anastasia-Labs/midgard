@@ -3231,7 +3231,7 @@ const deriveRollbackObservation = (
   policy: WatcherUserEventIndexerPolicyV1,
   previous: WatcherUserEventIndexerStateV1,
   rawContext: unknown,
-  rollbackTargetEntryDigest: string | null,
+  requestedRollbackTargetEntryDigest: string | null,
 ): WatcherUserEventObservationV1 | null => {
   const verified = verifyRollbackContext(policy, rawContext);
   if (verified === null) {
@@ -3291,70 +3291,101 @@ const deriveRollbackObservation = (
           snapshot,
         });
   }
-  if (
-    rollbackTargetEntryDigest === null ||
-    !previous.activeEntryDigests.includes(rollbackTargetEntryDigest)
-  ) {
-    return null;
-  }
-  const target = historyEntryForDigest(previous, rollbackTargetEntryDigest);
-  if (
-    verified.kind === "post_finality_recovery" &&
-    (target?.observation.pointDigest === null ||
-      target?.observation.pointDigest !==
-        verified.result.recoveryState?.path.commonAncestorPointDigest)
-  ) {
-    return null;
-  }
   const activeEntries = previous.activeEntryDigests
     .map((digest) => historyEntryForDigest(previous, digest))
     .filter(
       (entry): entry is WatcherUserEventHistoryEntryV1 =>
         entry !== null && entry.observation.transitionKind === "apply_block",
     );
+  const commonAncestorBlockNo =
+    verified.kind === "post_finality_recovery"
+      ? (verified.result.recoveryState?.path.commonAncestorBlockNo ?? null)
+      : null;
+  const target =
+    verified.kind === "post_finality_recovery"
+      ? commonAncestorBlockNo === null
+        ? null
+        : (activeEntries
+            .filter(
+              (entry) =>
+                entry.observation.blockNo !== null &&
+                BigInt(entry.observation.blockNo) <=
+                  BigInt(commonAncestorBlockNo),
+            )
+            .at(-1) ?? null)
+      : requestedRollbackTargetEntryDigest === null
+        ? null
+        : historyEntryForDigest(previous, requestedRollbackTargetEntryDigest);
+  const rollbackTargetEntryDigest = target?.entryDigest ?? null;
+  if (
+    verified.kind === "pre_finality_rollback" &&
+    (rollbackTargetEntryDigest === null ||
+      !previous.activeEntryDigests.includes(rollbackTargetEntryDigest))
+  ) {
+    return null;
+  }
   const removedPoints = new Set(verified.result.removedRecords.chainPointIds);
   const removedObservations = new Set(
     verified.result.removedRecords.l1ObservationIds,
   );
-  const retained = activeEntries.filter(
-    (entry) =>
-      !(
-        (entry.observation.chainPointId !== null &&
-          removedPoints.has(entry.observation.chainPointId)) ||
-        (entry.observation.sourceObservationDigest !== null &&
-          removedObservations.has(entry.observation.sourceObservationDigest))
-      ),
-  );
+  const removed = (entry: WatcherUserEventHistoryEntryV1): boolean =>
+    (entry.observation.chainPointId !== null &&
+      removedPoints.has(entry.observation.chainPointId)) ||
+    (entry.observation.sourceObservationDigest !== null &&
+      removedObservations.has(entry.observation.sourceObservationDigest));
+  const retained =
+    verified.kind === "post_finality_recovery"
+      ? activeEntries.filter(
+          (entry) =>
+            entry.observation.blockNo !== null &&
+            commonAncestorBlockNo !== null &&
+            BigInt(entry.observation.blockNo) <= BigInt(commonAncestorBlockNo),
+        )
+      : activeEntries.filter((entry) => !removed(entry));
+  const orphaned =
+    verified.kind === "post_finality_recovery"
+      ? activeEntries.slice(retained.length)
+      : activeEntries.filter((entry) => removed(entry));
   if (
-    target === null ||
-    target.observation.transitionKind !== "apply_block" ||
-    retained.at(-1)?.entryDigest !== rollbackTargetEntryDigest
+    (target !== null && target.observation.transitionKind !== "apply_block") ||
+    (target === null && retained.length !== 0) ||
+    retained.at(-1)?.entryDigest !== rollbackTargetEntryDigest ||
+    (verified.kind === "post_finality_recovery" &&
+      (retained.some((entry) => removed(entry)) ||
+        orphaned.some((entry) => !removed(entry))))
   ) {
     return null;
   }
-  let targetStore: WatcherDurableStoreV1;
-  try {
-    targetStore = parseWatcherDurableStoreV1(target.publicContext.durableStore);
-  } catch {
-    return null;
+  let targetStore: WatcherDurableStoreV1 | null = null;
+  if (target !== null) {
+    try {
+      targetStore = parseWatcherDurableStoreV1(
+        target.publicContext.durableStore,
+      );
+    } catch {
+      return null;
+    }
   }
   const sourceOutRefs = new Set(
     verified.sourceStore.protocolUtxos.map(({ outRef }) => outRef),
   );
-  const restored = targetStore.protocolUtxos.filter(
+  const restored = (targetStore?.protocolUtxos ?? []).filter(
     ({ outRef, role }) =>
       ["deposit", "withdrawal", "forced_transaction"].includes(role) &&
       !sourceOutRefs.has(outRef) &&
       verified.store.protocolUtxos.some(
         (candidate) => candidate.outRef === outRef,
       ) &&
-      target.observation.snapshot.activeEvents.some(
+      target?.observation.snapshot.activeEvents.some(
         (event) => event.outRef === outRef,
-      ),
+      ) === true,
   );
+  const targetSnapshot =
+    target?.observation.snapshot ?? makeSnapshot([], [], false);
   if (
+    targetSnapshot === null ||
     !same(restored, verified.context.rollbackRestoredEventUtxos) ||
-    !topologyMatches(verified.store, target.observation.snapshot)
+    !topologyMatches(verified.store, targetSnapshot)
   ) {
     return null;
   }
@@ -3362,7 +3393,7 @@ const deriveRollbackObservation = (
     verified.result.removedRecords.protocolUtxoOutRefs,
   );
   const targetActive = new Set(
-    target.observation.snapshot.activeEvents.map(({ outRef }) => outRef),
+    targetSnapshot.activeEvents.map(({ outRef }) => outRef),
   );
   for (const event of previous.snapshot.activeEvents) {
     if (!targetActive.has(event.outRef) && !removedOutRefs.has(event.outRef)) {
@@ -3389,7 +3420,7 @@ const deriveRollbackObservation = (
     ),
     durableStoreRevision: verified.store.revision,
     rollbackTargetEntryDigest,
-    snapshot: target.observation.snapshot,
+    snapshot: targetSnapshot,
   });
 };
 
@@ -3468,14 +3499,17 @@ const applyObservation = (
   });
   const history = Object.freeze([...(previous?.history ?? []), entry]);
   let activeEntryDigests =
-    observation.transitionKind === "rollback" &&
-    observation.rollbackTargetEntryDigest !== null
-      ? (previous?.activeEntryDigests.slice(
-          0,
-          previous.activeEntryDigests.indexOf(
-            observation.rollbackTargetEntryDigest,
-          ) + 1,
-        ) ?? [])
+    observation.transitionKind === "rollback"
+      ? observation.rollbackTargetEntryDigest === null
+        ? observation.snapshot.quarantined
+          ? [...(previous?.activeEntryDigests ?? [])]
+          : []
+        : (previous?.activeEntryDigests.slice(
+            0,
+            previous.activeEntryDigests.indexOf(
+              observation.rollbackTargetEntryDigest,
+            ) + 1,
+          ) ?? [])
       : [...(previous?.activeEntryDigests ?? [])];
   activeEntryDigests = [...activeEntryDigests, entry.entryDigest];
   if (
@@ -3500,46 +3534,6 @@ const applyObservation = (
     ...canonical,
     stateDigest: sha256Canonical(canonical),
   });
-};
-
-const replayHistoryThroughEntry = (
-  policy: WatcherUserEventIndexerPolicyV1,
-  state: WatcherUserEventIndexerStateV1,
-  targetEntryDigest: string,
-): WatcherUserEventIndexerStateV1 | null => {
-  let replay: WatcherUserEventIndexerStateV1 | null = null;
-  for (const entry of state.history) {
-    const expected =
-      entry.publicContext.rollbackAuthority === null
-        ? deriveBlockObservation(policy, replay, entry.publicContext)
-        : replay === null
-          ? null
-          : deriveRollbackObservation(
-              policy,
-              replay,
-              entry.publicContext,
-              entry.observation.rollbackTargetEntryDigest,
-            );
-    if (expected === null || !same(expected, entry.observation)) {
-      return null;
-    }
-    replay = applyObservation(
-      policy,
-      replay,
-      entry.observation,
-      entry.publicContext,
-    );
-    if (
-      replay === null ||
-      replay.history.at(-1)?.entryDigest !== entry.entryDigest
-    ) {
-      return null;
-    }
-    if (entry.entryDigest === targetEntryDigest) {
-      return replay;
-    }
-  }
-  return null;
 };
 
 const parseObservationStructural = (
@@ -3776,33 +3770,7 @@ export const evaluateWatcherUserEventIndexerV1 = (
       "watcher_user_event_transition_rejected",
     );
   }
-  let applicationPrevious = previous;
-  if (
-    previous !== null &&
-    observation.transitionKind === "rollback" &&
-    observation.rollbackTargetEntryDigest !== null
-  ) {
-    const verifiedRollback = verifyRollbackContext(policy, publicContext);
-    if (verifiedRollback?.kind === "post_finality_recovery") {
-      applicationPrevious = replayHistoryThroughEntry(
-        policy,
-        previous,
-        observation.rollbackTargetEntryDigest,
-      );
-      if (applicationPrevious === null) {
-        return reject(
-          "rollback_authority_mismatch",
-          "watcher_user_event_transition_rejected",
-        );
-      }
-    }
-  }
-  const next = applyObservation(
-    policy,
-    applicationPrevious,
-    observation,
-    publicContext,
-  );
+  const next = applyObservation(policy, previous, observation, publicContext);
   if (next === null) {
     return reject("history_limit_exceeded");
   }

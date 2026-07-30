@@ -5,7 +5,6 @@ import {
   type MidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
   verifyMidgardCekProgramMaterialBundleV1,
-  verifyMidgardCekProgramMaterialV1,
 } from "@al-ft/midgard-core/cek-proof";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
@@ -67,13 +66,25 @@ export const persistVerifiedBundles = (
   Effect.try({
     try: () => {
       const material = canonicalEntries(entries);
-      const materialByRoot = new Map(
-        material.map((entry) => [rootHex(entry.root), entry]),
-      );
       const verifications = verifyMidgardCekProgramMaterialBundleV1(
         envelopes,
         material,
         { allowUnreachable: true },
+      );
+      const reachableRoots = new Set(
+        verifications.flatMap((verification) => [
+          ...verification.reachableRoots,
+        ]),
+      );
+      const verifiedMaterial = material.filter((entry) =>
+        reachableRoots.has(rootHex(entry.root)),
+      );
+      // The availability/index store never persists caller-supplied extras.
+      // The permissive pass above identifies each envelope's reachable union;
+      // this strict pass proves that the filtered material is exact.
+      verifyMidgardCekProgramMaterialBundleV1(envelopes, verifiedMaterial);
+      const materialByRoot = new Map(
+        verifiedMaterial.map((entry) => [rootHex(entry.root), entry]),
       );
       const memberships = new Map<
         string,
@@ -100,7 +111,7 @@ export const persistVerifiedBundles = (
         }
       }
       return {
-        material,
+        material: verifiedMaterial,
         memberships: [...memberships.values()],
       };
     },
@@ -241,11 +252,7 @@ export const retrieveVerifiedBundles = (
             ),
           ),
         );
-        for (const envelope of envelopes) {
-          verifyMidgardCekProgramMaterialV1(envelope, entries, {
-            allowUnreachable: true,
-          });
-        }
+        verifyMidgardCekProgramMaterialBundleV1(envelopes, entries);
         return Object.freeze(entries);
       },
       catch: (cause) =>

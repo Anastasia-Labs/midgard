@@ -23,8 +23,12 @@ jobs:
       - name: Install evidence-verifier dependencies
         run: >-
           pnpm --dir demo install --frozen-lockfile
-          --filter midgard-demo --ignore-scripts
+          --filter midgard-demo --filter midgard-watcher --ignore-scripts
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
       - name: Verify canonical watcher dependency map and staged-tree identity
         run: node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs
+      - name: Verify canonical watcher dependency-map mutation coverage
+        run: node --test demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs
+      - name: Verify canonical watcher focused-test evidence
+        run: node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs

@@ -4,8 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  decodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramEnvelopeV1,
   encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekTermNodeV1,
   encodeMidgardProofSubmissionV1,
+  hashMidgardCekTermNodeV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
@@ -57,6 +61,7 @@ import {
   AddressHistoryDB,
   // Block
   BlocksDB,
+  CekProgramMaterialDB,
   CommitBuildCalibrationDB,
   // Utils
   CommonUtils,
@@ -602,6 +607,12 @@ describe("TxAdmissionsDB", () => {
             transactionCbor: proofTx.txCanonicalCbor,
             programMaterial: [],
           });
+          const unclaimedNode = { kind: "error" as const };
+          const unclaimedMaterial = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNodeV1(unclaimedNode),
+            preimage: encodeMidgardCekTermNodeV1(unclaimedNode),
+          };
           const submitProof = (body: Buffer, contentType: string) =>
             submitThroughRouter(body, Effect.void, {
               contentType,
@@ -616,6 +627,23 @@ describe("TxAdmissionsDB", () => {
             "application/cbor",
           );
           expect(rawToProof.status).toBe(415);
+
+          const unclaimed = yield* submitProof(
+            encodeMidgardProofSubmissionV1({
+              transactionCbor: proofTx.txCanonicalCbor,
+              programMaterial: [unclaimedMaterial],
+            }),
+            "application/vnd.midgard.v1+cbor",
+          );
+          expect(unclaimed).toEqual({
+            status: 400,
+            body: {
+              error: "E_CEK_PROGRAM_MATERIAL",
+              detail:
+                "V1 program material does not cover every attached program envelope",
+            },
+          });
+          expect(yield* TxAdmissionsDB.getByTxId(proofTx.txId)).toBeNull();
 
           const accepted = yield* submitProof(
             proofEnvelope,
@@ -636,6 +664,50 @@ describe("TxAdmissionsDB", () => {
             ],
           ).toHaveLength(32);
         }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "persists only material reachable from an authorized envelope",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const reachableNode = { kind: "error" as const };
+          const reachable = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNodeV1(reachableNode),
+            preimage: encodeMidgardCekTermNodeV1(reachableNode),
+          };
+          const extraNode = { kind: "variable" as const, index: 0n };
+          const extra = {
+            kind: "term" as const,
+            root: hashMidgardCekTermNodeV1(extraNode),
+            preimage: encodeMidgardCekTermNodeV1(extraNode),
+          };
+          const envelope = decodeMidgardCekProgramEnvelopeV1(
+            encodeMidgardCekProgramEnvelopeV1({
+              uplcVersion: [1n, 1n, 0n],
+              termRoot: reachable.root,
+              nodeCount: 1n,
+              materialByteLength: BigInt(reachable.preimage.length),
+            }),
+          );
+
+          yield* CekProgramMaterialDB.persistVerifiedBundles(
+            [envelope],
+            [reachable, extra],
+          );
+          const stored = yield* CekProgramMaterialDB.retrieveVerifiedBundles([
+            envelope,
+          ]);
+          expect(stored).toEqual([reachable]);
+          const sql = yield* SqlClient.SqlClient;
+          const extras = yield* sql<{ readonly count: string }>`
+          SELECT COUNT(*)::text AS count
+          FROM cek_program_material_entries
+          WHERE material_root = ${Buffer.from(extra.root)}`;
+          expect(extras[0]?.count).toBe("0");
+        }),
       ),
   );
 
@@ -753,6 +825,77 @@ describe("TxAdmissionsDB", () => {
           expect(
             (yield* TxAdmissionsDB.getByTxId(identicalTx.txId))?.request_count,
           ).toBe(12n);
+        }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "atomically caps aggregate pending sidecar bytes across parallel submissions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const admissionSql = yield* AdmissionSql;
+          const baseConfig = yield* NodeConfig;
+          const maxBacklogBytes = emptyProgramMaterialSidecarV1.length * 4;
+          const testConfig = {
+            ...baseConfig,
+            MAX_DURABLE_ADMISSION_BACKLOG: 100,
+            MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxBacklogBytes,
+          };
+          const submit = (txCanonicalCbor: Buffer) =>
+            submitThroughRouter(
+              wrapNativeSubmitTxV1(txCanonicalCbor),
+              Effect.void,
+            ).pipe(
+              Effect.provideService(SqlClient.SqlClient, admissionSql),
+              Effect.provideService(NodeConfig, testConfig),
+            );
+          const attempts = Array.from({ length: 32 }, () =>
+            makeNativeSubmitTx(),
+          );
+          const results = yield* Effect.all(
+            attempts.map((attempt) => submit(attempt.txCanonicalCbor)),
+            { concurrency: "unbounded" },
+          );
+          const accepted = results
+            .map((result, index) => ({ result, index }))
+            .filter(({ result }) => result.status === 202);
+          const denied = results.filter((result) => result.status === 503);
+          expect(accepted).toHaveLength(4);
+          expect(denied).toHaveLength(28);
+          expect(
+            denied.every(
+              ({ body }) =>
+                body.error ===
+                  "Durable submission admission byte backlog is full" &&
+                body.maxBacklogBytes === maxBacklogBytes.toString(),
+            ),
+          ).toBe(true);
+
+          const sql = yield* SqlClient.SqlClient;
+          const pending = yield* sql<{
+            readonly bytes: string;
+            readonly count: string;
+          }>`SELECT
+              COALESCE(
+                SUM(octet_length(payload.cek_program_material_sidecar_cbor)),
+                0
+              )::text AS bytes,
+              COUNT(*)::text AS count
+            FROM tx_admissions admission
+            INNER JOIN tx_admission_payloads payload
+              ON payload.tx_id = admission.tx_id
+            WHERE admission.status IN ('queued', 'validating')`;
+          expect(pending[0]).toEqual({
+            bytes: maxBacklogBytes.toString(),
+            count: "4",
+          });
+
+          const duplicate = yield* submit(
+            attempts[accepted[0]!.index]!.txCanonicalCbor,
+          );
+          expect(duplicate.status).toBe(200);
+          expect(duplicate.body.duplicate).toBe(true);
         }).pipe(Effect.provide(Globals.Default)),
       ),
   );

@@ -400,6 +400,88 @@ and rejected operator-private surfaces. W23's completed rule-bundle state is
 consistent across the map, and the final tree digest is regenerated only
 after staging.
 
+## Fresh PR-head review and remediation cycle
+
+The published checkpoint at
+`da65efebf556ed9998604fd5b03c458c11111b4f` was reviewed again against
+`8bae9403a13124f647f215999848ff5c82784e37`. Four non-overlapping lanes
+covered W13 recovery authority, W14-W17 downstream projections, evidence/CI
+and Aiken/SDK equivalence, and cross-cutting public admission/resource
+boundaries. The parent re-read every finding, reviewed the remediations,
+integrated shared surfaces, and owns the final evidence binding.
+
+The review found four high-severity and four medium-severity issues. Every
+finding below is fixed in the reviewed result tree:
+
+- **High — sparse projection recovery required a domain event at the W13
+  common ancestor.** W14-W17 now cut history at the latest domain transition
+  whose block number is at or before W13's authenticated common ancestor.
+  Every later projection entry must be covered by W13's exact removed sets.
+  A projection with no owned change can still append its recovery audit.
+  W15 derives its target internally rather than accepting a caller-selected
+  post-finality entry.
+- **High — W16/W17 advanced directly to the replacement tip and could skip a
+  relevant non-tip transaction.** Their recovery cursor remains at the common
+  ancestor. Replacement blocks replay in canonical order before an eventual
+  tip/successor advance. Three-block replacement-path tests place relevant
+  settlement and proof activity in a non-tip block, restart, replay, and then
+  accept the next successor.
+- **High — W13 exhausted its 128-entry journal and rejected transition 129.**
+  W13 now rotates a bounded epoch checkpoint at the limit. The checkpoint
+  binds the root bootstrap, prior terminal state and lineage, store, W12
+  finality state, incident, and any recovered-incident lifecycle. Rotation
+  and recovery return the active bootstrap and checkpoint digest for atomic
+  persistence.
+- **High — public submission durably retained unclaimed CEK material.** HTTP
+  admission and Phase A are strict when no reference inputs exist. When
+  reference-script outputs are not yet resolvable, attached programs must be
+  complete and only residual exactness is deferred. Phase B unions attached,
+  newly created, and resolved historical reference-script envelopes and
+  verifies exact material coverage. The DA committee is strict. The CEK store
+  persists only the verified reachable union and strict-rechecks retrieval.
+  Rejected admissions replace the retained sidecar with canonical empty bytes
+  while preserving its original digest for duplicate identity. A PostgreSQL
+  transaction advisory lock serializes an aggregate queued/validating sidecar
+  byte quota across direct and microbatch writers; the default is one full
+  64 MiB V1 DA envelope, invalid limits fail configuration, and duplicates do
+  not consume new capacity.
+- **Medium — a pull-request branch filter could bypass Midgard Node CI.** The
+  verifier rejects `branches` and `branches-ignore` filters, including quoted
+  and spaced YAML keys, under `pull_request`. Both push and pull-request path
+  scopes include every verifier surface.
+- **Medium — required class capabilities could become private, protected,
+  static, or optional.** AST verification now accepts only a concrete public
+  instance method with a body. Mutation coverage exercises every rejected
+  shape.
+- **Medium — focused test counts were duplicated literals rather than runner
+  evidence.** The map now declares expected collection counts. A dedicated
+  verifier runs all 13 watcher files serially with Vitest JSON, requires
+  nonzero exact collection and all-pass status per file, and matches the
+  declared total. Midgard Node CI and Evidence Integrity CI both execute it;
+  Evidence Integrity also executes the mutation suite.
+- **Medium — the resolver applied-hash fixture used dummy parameters without
+  crossing production construction.** The SDK check now invokes
+  `buildFaultProofContracts` over the committed blueprint, compares the exact
+  75 production-builder semantic identities to the Aiken fixture groups, and
+  independently reapplies the Phase-A and ScriptSources prepare validators.
+  The evidence is accurately labeled a deterministic production-builder
+  fixture, not a live-deployment identity.
+
+During the W13 fix review, a residual authentication flaw was found before
+integration: an unkeyed prior-checkpoint digest was not an authority when the
+caller controlled both the compacted state and replacement bootstrap. Epochs
+above zero now require the separately persisted trusted checkpoint-state
+digest. A hostile test self-hashes a forged epoch-one bootstrap and supplies
+it as both state inputs; parsing returns `null` and evaluation rejects it.
+Genesis remains the explicit installation trust anchor.
+
+These fixes preserve the authoritative L1-source discriminator. `local_node`
+uses one watcher-operated chain-sync authority plus aligned same-node query
+surfaces without provider quorum. `external_providers` requires at least two
+independent authorities. W14 consumes the canonical W10-W13 observation and
+rollback pipeline and indexes node-accepted transaction/output/datum bytes; it
+does not reimplement Cardano validator semantics.
+
 ## Final-tree evidence
 
 - Aiken `v1.1.22+39d6b04` build and blueprint generation: PASS.
@@ -409,10 +491,11 @@ after staging.
 - Canonical native V1 cross-language selectors: 7/7 PASS. The newly covered
   maximum-profile terminal proof chunk selector passes 1/1.
 - Watcher build, typecheck, lint, and format check: PASS.
-- Watcher suite: 199/199 PASS.
+- Watcher suite: all 13 files and 267/267 tests PASS in one serial,
+  machine-counted run.
 - Canonical watcher dependency-map verifier: 8/8 dependency classes PASS.
 - Core package: 36 files and 273/273 tests PASS; production build PASS.
-- Validation package: 37 files and 174/174 tests PASS; build/typecheck PASS.
+- Validation package: 37 files and 175/175 tests PASS; build/typecheck PASS.
 - Lucid SDK: 148/148 tests PASS; typecheck PASS under Node `22.22.2`.
 - Node material-chain focused suite: 3/3 PASS; Phase-4 isolation/verifier:
   27/27 PASS; native transaction integration: 79/79 PASS; SDK ABI fixtures:
@@ -430,6 +513,22 @@ after staging.
   PostgreSQL instance.
 - DA source-mode typecheck, production build, and no-HTTP transport guard:
   PASS.
+- Fresh CC-01 focused evidence: Phase A/B 50/50, retained DA corpus 20/20,
+  Node writer/pipeline 15/15, database HTTP/material/quota 4/4 with 93
+  unrelated tests skipped by exact selection, terminal scrub/duplicate 1/1,
+  and quota configuration 5/5 PASS. The concurrency case admits exactly four
+  empty-sidecar submissions at a four-sidecar cap, rejects 28/32 with the
+  byte-quota response, proves the SQL byte/count cap, and still accepts an
+  exact duplicate while full.
+- Fresh W13 evidence: 25/25 PASS, including automatic 128-to-129 rotation,
+  serialized restart, incident recovery, external checkpoint anchoring, and
+  forged compacted-bootstrap rejection.
+- Fresh W14-W17 evidence: 93/93 PASS (20 W14, 22 W15, 28 W16, 23 W17);
+  watcher build, typecheck, ESLint, and Prettier PASS.
+- SDK production-builder/Aiken applied-hash equivalence: 1/1 PASS; SDK
+  typecheck, scoped ESLint, and scoped Prettier PASS. All eight affected Aiken
+  guards independently collected one test and passed one test; Aiken formatter
+  check PASS.
 - Fault-proof typecheck, ESLint, and scoped Prettier: PASS.
 - Documentation facts (10 groups), links (190 Markdown/MDX files), and voice
   (83 pages): PASS under pinned Node 22.

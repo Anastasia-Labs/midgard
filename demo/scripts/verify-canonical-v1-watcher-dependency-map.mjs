@@ -629,6 +629,10 @@ const directClassMemberPresent = (moduleAst, owner, member) => {
       element.type === "MethodDefinition" &&
       element.computed === false &&
       element.kind === "method" &&
+      element.static !== true &&
+      element.optional !== true &&
+      (element.accessibility === undefined ||
+        element.accessibility === "public") &&
       element.key.type === "Identifier" &&
       element.key.name === member &&
       element.value.body?.type === "BlockStatement",
@@ -857,10 +861,12 @@ if (
   workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
     "node scripts/verify-canonical-v1-watcher-dependency-map.mjs" ||
   workspaceManifest.scripts?.["watcher:dependency-map:test"] !==
-    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
+    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs" ||
+  workspaceManifest.scripts?.["watcher:focused-tests:verify"] !==
+    "node scripts/verify-canonical-v1-watcher-focused-tests.mjs"
 ) {
   fail(
-    "workspace must expose the canonical watcher dependency-map verifier and mutation tests",
+    "workspace must expose the canonical watcher dependency-map verifier, mutation tests, and focused-test verifier",
   );
 }
 const nodeCi = readIndexedFile(".github/workflows/midgard-node-ci.yml", "utf8");
@@ -901,7 +907,38 @@ const activeRunCommands = nodeCiActiveLines.flatMap(({ trimmed }) => {
   const match = trimmed.match(/^run:\s*(.+)$/u);
   return match === null ? [] : [decodeYamlScalar(match[1].trim())];
 });
+const exactActiveStepCount = (lines, name, command) => {
+  let count = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (
+      lines[index]?.indent !== 6 ||
+      lines[index]?.trimmed !== `- name: ${name}`
+    ) {
+      continue;
+    }
+    let end = index + 1;
+    while (
+      end < lines.length &&
+      !(lines[end]?.indent === 6 && lines[end]?.trimmed.startsWith("- "))
+    ) {
+      end += 1;
+    }
+    const step = lines.slice(index, end);
+    if (
+      step.length === 2 &&
+      step[1]?.indent === 8 &&
+      step[1]?.trimmed === `run: ${command}`
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+};
 const triggerPathEntries = new Map([
+  ["push", []],
+  ["pull_request", []],
+]);
+const triggerBranchFilters = new Map([
   ["push", []],
   ["pull_request", []],
 ]);
@@ -922,21 +959,30 @@ for (const { indent, trimmed } of nodeCiActiveLines) {
     inTriggerPaths = true;
     continue;
   }
+  if (
+    trigger !== null &&
+    indent === 4 &&
+    /^(?:["']?branches["']?|["']?branches-ignore["']?)\s*:/u.test(trimmed)
+  ) {
+    triggerBranchFilters.get(trigger).push(trimmed);
+  }
   if (inTriggerPaths && indent <= 4) {
     inTriggerPaths = false;
   }
   if (trigger !== null && inTriggerPaths && indent === 6) {
     const match = trimmed.match(/^-\s+(.+)$/u);
     if (match !== null) {
-      triggerPathEntries.get(trigger).push(
-        decodeYamlScalar(match[1].trim()),
-      );
+      triggerPathEntries.get(trigger).push(decodeYamlScalar(match[1].trim()));
     }
   }
+}
+if (triggerBranchFilters.get("pull_request").length !== 0) {
+  fail("Midgard node CI pull_request must not be restricted by branch filters");
 }
 for (const requiredCiPath of [
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+  "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 ]) {
   for (const triggerName of ["push", "pull_request"]) {
@@ -954,8 +1000,7 @@ for (const requiredCiPath of [
 const requiredDependencyCommand =
   "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify";
 const dependencyCommandIndex = nodeCiActiveLines.findIndex(
-  ({ trimmed }) =>
-    trimmed === `run: ${requiredDependencyCommand}`,
+  ({ trimmed }) => trimmed === `run: ${requiredDependencyCommand}`,
 );
 let dependencyStepStart = dependencyCommandIndex;
 while (
@@ -997,6 +1042,57 @@ if (
     `Midgard node CI must actively run exactly one ${requiredDependencyCommand}`,
   );
 }
+const requiredFocusedTestCommand =
+  "pnpm --dir demo run watcher:focused-tests:verify";
+const requiredWatcherGateCommand =
+  "pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo run watcher:focused-tests:verify";
+if (
+  activeRunCommands.filter((command) => command === requiredWatcherGateCommand)
+    .length !== 1 ||
+  exactActiveStepCount(
+    nodeCiActiveLines,
+    "Build, typecheck, lint, format-check, and test Midgard watcher scaffold",
+    requiredWatcherGateCommand,
+  ) !== 1
+) {
+  fail(
+    `Midgard node CI must actively run exactly one ${requiredFocusedTestCommand}`,
+  );
+}
+const evidenceCi = readIndexedFile(
+  ".github/workflows/evidence-integrity-ci.yml",
+  "utf8",
+);
+const evidenceCiActiveLines = activeYamlLines(evidenceCi);
+for (const [name, requiredEvidenceCommand] of [
+  [
+    "Verify canonical watcher dependency-map mutation coverage",
+    "node --test demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+  ],
+  [
+    "Verify canonical watcher dependency map and staged-tree identity",
+    "node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  ],
+  [
+    "Verify canonical watcher focused-test evidence",
+    "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+  ],
+]) {
+  if (
+    evidenceCiActiveLines.filter(
+      ({ trimmed }) => trimmed === `run: ${requiredEvidenceCommand}`,
+    ).length !== 1 ||
+    exactActiveStepCount(
+      evidenceCiActiveLines,
+      name,
+      requiredEvidenceCommand,
+    ) !== 1
+  ) {
+    fail(
+      `Evidence Integrity CI must actively run exactly one ${requiredEvidenceCommand}`,
+    );
+  }
+}
 const watcherArchitecture = readIndexedFile(
   "demo/midgard-watcher/midgard-watcher-architecture.md",
   "utf8",
@@ -1021,11 +1117,22 @@ const watcherSource = readIndexedFile(
   "demo/midgard-watcher/src/scaffold.ts",
   "utf8",
 );
+const watcherScaffoldTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/scaffold.test.ts",
+);
 if (
   !watcherSource.includes('state: "foundation_incomplete"') ||
   !watcherSource.includes("productionReady: false")
 ) {
   fail("W00 watcher commands must remain explicitly fail closed");
+}
+const scaffold = dependencyMap.requiredWatcherPackage?.scaffold;
+if (
+  scaffold?.sourceSha256 !== sha256(Buffer.from(watcherSource, "utf8")) ||
+  scaffold.testSha256 !== sha256(watcherScaffoldTestBytes) ||
+  scaffold.expectedFocusedTestCount !== 5
+) {
+  fail("W00 watcher scaffold evidence is incomplete or stale");
 }
 const strictConfiguration =
   dependencyMap.requiredWatcherPackage?.strictConfiguration;
@@ -1199,7 +1306,8 @@ if (
   strictConfiguration.finalityPolicy?.transientSourceEvidencePolicy !==
     "per_decision_quarantine_preserving_exact_finalized_state_without_incident" ||
   strictConfiguration.unknownBehavior !== "fail_closed" ||
-  strictConfiguration.diagnostics !== "code_and_schema_path_only"
+  strictConfiguration.diagnostics !== "code_and_schema_path_only" ||
+  strictConfiguration.expectedFocusedTestCount !== 41
 ) {
   fail("W01 strict watcher configuration evidence is incomplete or stale");
 }
@@ -1244,7 +1352,7 @@ if (
     "exact_category_id_order_and_deployed_script_hash" ||
   deploymentIdentity.unknownBehavior !== "fail_closed" ||
   deploymentIdentity.diagnostics !== "code_and_schema_path_only" ||
-  deploymentIdentity.node22FocusedTestsPassed !== 18
+  deploymentIdentity.expectedFocusedTestCount !== 18
 ) {
   fail("W02 deployment-identity evidence is incomplete or stale");
 }
@@ -1316,7 +1424,7 @@ if (
   durableStore.cachePolicy !== "deterministic_rebuild_from_canonical_records" ||
   durableStore.migrationPolicy !== "fresh_install_atomic_compare_and_swap" ||
   durableStore.unknownBehavior !== "fail_closed" ||
-  durableStore.node22FocusedTestsPassed !== 11 ||
+  durableStore.expectedFocusedTestCount !== 11 ||
   !Array.isArray(durableStore.recordClasses) ||
   durableStore.recordClasses.length !== requiredRecordClasses.length ||
   requiredRecordClasses.some(
@@ -1368,7 +1476,7 @@ if (
   l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 21
+  l1Adapter.expectedFocusedTestCount !== 21
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -1417,7 +1525,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 21
+  multiProviderConsistency.expectedFocusedTestCount !== 21
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -1460,7 +1568,7 @@ if (
     "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 23
+  finalityEngine.expectedFocusedTestCount !== 23
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -1495,7 +1603,10 @@ if (
     "midgard-watcher-post-finality-recovery-state-v1" ||
   rollbackEngine.postFinalityRecoveryResultSchemaVersion !==
     "midgard-watcher-post-finality-recovery-result-v1" ||
+  rollbackEngine.epochCheckpointSchemaVersion !==
+    "midgard-watcher-rollback-epoch-checkpoint-v1" ||
   rollbackEngine.maximumPostFinalityRecoveryDepth !== 2160 ||
+  rollbackEngine.transitionHistoryPerEpoch !== 128 ||
   rollbackEngine.sourceSha256 !== sha256(rollbackEngineBytes) ||
   rollbackEngine.testSha256 !== sha256(rollbackEngineTestBytes) ||
   rollbackEngine.status !== "PASS" ||
@@ -1504,14 +1615,16 @@ if (
   rollbackEngine.rewindPolicy !==
     "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration" ||
   rollbackEngine.restartPolicy !==
-    "externally_bootstrapped_bounded_exact_transition_and_recovery_replay" ||
+    "externally_bootstrapped_bounded_exact_transition_and_recovery_replay_with_atomically_persisted_trusted_epoch_checkpoint_digest" ||
   rollbackEngine.postFinalityPolicy !==
-    "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k" ||
+    "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k_and_recovery_lifecycle_bound_epoch_rotation" ||
+  rollbackEngine.checkpointAuthorityPolicy !==
+    "genesis_installation_anchor_then_atomic_CAS_trusted_checkpoint_state_digest_bound_to_prior_terminal_lineage_store_finality_incident_and_recovery_lifecycle" ||
   rollbackEngine.inputPolicy !==
     "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.node22FocusedTestsPassed !== 24
+  rollbackEngine.expectedFocusedTestCount !== 25
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -1521,6 +1634,7 @@ for (const requiredSymbol of [
   "WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION",
+  "WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION",
   "WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION",
   "WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_V1_BOUNDS",
@@ -1539,6 +1653,12 @@ for (const requiredSymbol of [
   ) {
     fail(`W13 rollback-engine symbol ${requiredSymbol} is not public`);
   }
+}
+if (
+  !rollbackEngineSource.includes("trustedCheckpointStateDigest") ||
+  !rollbackEngineSource.includes("resumableTrustedCheckpointStateDigest")
+) {
+  fail("W13 rollback epoch checkpoint authority is not implemented");
 }
 if (!rollbackEngineSource.includes("externalProviderBindings")) {
   fail("W13 rollback provenance must retain W11 external provider bindings");
@@ -1568,10 +1688,10 @@ if (
   stateQueueIndexer.durableRolePolicy !==
     "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly" ||
   stateQueueIndexer.rollbackPolicy !==
-    "exact_W13_pre_and_post_finality_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.node22FocusedTestsPassed !== 19
+  stateQueueIndexer.expectedFocusedTestCount !== 20
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -1621,10 +1741,10 @@ if (
   userEventIndexer.finalityPolicy !==
     "independent_active_and_terminal_pending_to_final_transitions" ||
   userEventIndexer.rollbackPolicy !==
-    "exact_W13_pre_and_post_finality_journal_restoration_suffix_rewind_restart_replay_and_reinclusion" ||
+    "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.node22FocusedTestsPassed !== 21
+  userEventIndexer.expectedFocusedTestCount !== 22
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -1677,10 +1797,10 @@ if (
   settlementIndexer.durableRolePolicy !==
     "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly" ||
   settlementIndexer.rollbackPolicy !==
-    "exact_W13_pre_and_post_finality_journal_restoration_unrelated_archive_preservation_restart_replay_reinclusion_and_same_point_transaction_order" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.node22FocusedTestsPassed !== 27
+  settlementIndexer.expectedFocusedTestCount !== 28
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -1733,10 +1853,10 @@ if (
   proofThreadIndexer.durableRolePolicy !==
     "derive_proof_computation_and_shared_DA_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_other_roles_exactly" ||
   proofThreadIndexer.rollbackPolicy !==
-    "exact_W13_pre_and_post_finality_journal_rewind_full_transition_history_restart_replay_revision_monotonicity_and_reinclusion" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  proofThreadIndexer.node22FocusedTestsPassed !== 23
+  proofThreadIndexer.expectedFocusedTestCount !== 23
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }
@@ -1783,7 +1903,7 @@ if (
   ruleBundle.programPolicy !== "exact_W02_program_commitment_map" ||
   ruleBundle.unknownBehavior !== "fail_closed" ||
   ruleBundle.diagnostics !== "deterministic_code_and_path_only" ||
-  ruleBundle.node22FocusedTestsPassed !== 9
+  ruleBundle.expectedFocusedTestCount !== 9
 ) {
   fail("W23 rule-bundle evidence is incomplete or stale");
 }

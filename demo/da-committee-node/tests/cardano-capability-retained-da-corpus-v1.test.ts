@@ -8,7 +8,9 @@ import {
   decodeMidgardTxOutput,
   decodeMidgardVersionedScriptListPreimage,
   encodeMidgardCekProgramMaterialDaValueV1,
+  encodeMidgardCekTermNodeV1,
   encodeMidgardTxOutput,
+  hashMidgardCekTermNodeV1,
   hashMidgardVersionedScript,
   verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core";
@@ -177,9 +179,33 @@ describe("Cardano capability corpus production DA admission", () => {
     const [entry] = materialFor(fixture.payload);
     const mutatedPreimage = Buffer.from(entry!.preimage);
     mutatedPreimage[mutatedPreimage.length - 1] ^= 0x01;
+    const existingRoots = new Set(
+      fixture.payload.block_body.cek_program_material.map(([root]) => root),
+    );
+    let extraIndex = 0xffff_ffffn;
+    while (
+      existingRoots.has(
+        hashMidgardCekTermNodeV1({
+          kind: "variable",
+          index: extraIndex,
+        }).toString("hex"),
+      )
+    ) {
+      extraIndex -= 1n;
+    }
+    const extraNode = { kind: "variable" as const, index: extraIndex };
+    const extraRoot = hashMidgardCekTermNodeV1(extraNode).toString("hex");
+    const extraValue = encodeMidgardCekProgramMaterialDaValueV1({
+      kind: "term",
+      preimage: encodeMidgardCekTermNodeV1(extraNode),
+    }).toString("hex");
 
     const malformedMaterialSets: readonly SDK.DaPayloadEntry[][] = [
       [],
+      [
+        ...fixture.payload.block_body.cek_program_material,
+        [extraRoot, extraValue] satisfies SDK.DaPayloadEntry,
+      ].sort(([left], [right]) => left.localeCompare(right)),
       [
         [
           rootHex,

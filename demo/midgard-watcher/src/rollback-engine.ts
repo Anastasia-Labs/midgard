@@ -43,6 +43,8 @@ export const WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-result-v1" as const;
 export const WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-transition-v1" as const;
+export const WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION =
+  "midgard-watcher-rollback-epoch-checkpoint-v1" as const;
 export const WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION =
   "midgard-watcher-post-finality-recovery-state-v1" as const;
 export const WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION =
@@ -131,6 +133,24 @@ export type WatcherRollbackIncidentV1 = Readonly<{
   incidentDigest: string;
 }>;
 
+export type WatcherRollbackEpochCheckpointV1 = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION;
+  epoch: string;
+  rootBootstrapStateDigest: string;
+  priorCheckpointDigest: string | null;
+  priorTerminalStateDigest: string;
+  priorTerminalTransitionCount: string;
+  priorTerminalTransitionLineageDigest: string;
+  priorTerminalStoreDigest: string;
+  priorTerminalFinalityStateDigest: string;
+  priorTerminalIncidentDigest: string | null;
+  recoveryStateDigest: string | null;
+  recoveryLifecycleDigest: string | null;
+  checkpointStoreDigest: string;
+  checkpointFinalityStateDigest: string;
+  checkpointDigest: string;
+}>;
+
 export type WatcherRollbackStateV1 = Readonly<{
   schemaVersion: typeof WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION;
   policyDigest: string;
@@ -139,6 +159,8 @@ export type WatcherRollbackStateV1 = Readonly<{
   deploymentMarker: DeploymentMarkerV1;
   bootstrapStore: WatcherDurableStoreV1;
   bootstrapFinalityState: WatcherFinalityStateV1;
+  epoch: string;
+  epochCheckpoint: WatcherRollbackEpochCheckpointV1 | null;
   transitions: readonly WatcherRollbackTransitionV1[];
   storeDigest: string;
   transitionCount: string;
@@ -163,6 +185,7 @@ export type WatcherRollbackTransitionV1 = Readonly<{
 export type WatcherRollbackStateVerificationContextV1 = Readonly<{
   policy: unknown;
   rollbackBootstrapState: unknown;
+  trustedCheckpointStateDigest?: unknown;
   currentStore: unknown;
 }>;
 
@@ -174,6 +197,7 @@ export type WatcherRollbackVerificationContextV1 = Readonly<{
   finalityResult: unknown;
   previousRollbackState: unknown;
   rollbackBootstrapState: unknown;
+  trustedCheckpointStateDigest?: unknown;
 }>;
 
 export type WatcherRollbackResultV1 = Readonly<{
@@ -194,6 +218,8 @@ export type WatcherRollbackResultV1 = Readonly<{
   removedRecords: WatcherRollbackRemovedRecordsV1;
   nextStore: WatcherDurableStoreV1 | null;
   rollbackState: WatcherRollbackStateV1 | null;
+  rollbackBootstrapState: WatcherRollbackStateV1 | null;
+  trustedCheckpointStateDigest: string | null;
   resultDigest: string;
 }>;
 
@@ -276,6 +302,9 @@ export type WatcherPostFinalityRecoveryResultV1 = Readonly<{
   removedRecords: WatcherRollbackRemovedRecordsV1;
   nextStore: WatcherDurableStoreV1 | null;
   resumableFinalityState: WatcherFinalityStateV1 | null;
+  resumableRollbackState: WatcherRollbackStateV1 | null;
+  resumableRollbackBootstrapState: WatcherRollbackStateV1 | null;
+  resumableTrustedCheckpointStateDigest: string | null;
   recoveryState: WatcherPostFinalityRecoveryStateV1 | null;
   resultDigest: string;
 }>;
@@ -286,6 +315,7 @@ export type WatcherPostFinalityRecoveryInputV1 = Readonly<{
   currentStore: unknown;
   quarantinedRollbackState: unknown;
   rollbackBootstrapState: unknown;
+  trustedCheckpointStateDigest?: unknown;
   previousCanonicalPath: unknown;
   replacementCanonicalPath: unknown;
   previousRecoveryState: unknown;
@@ -485,6 +515,8 @@ const makeResult = (
     removedRecords: value.removedRecords,
     nextStore: value.nextStore,
     rollbackState: value.rollbackState,
+    rollbackBootstrapState: value.rollbackBootstrapState,
+    trustedCheckpointStateDigest: value.trustedCheckpointStateDigest,
   };
   return Object.freeze({
     ...canonical,
@@ -509,6 +541,8 @@ const reject = (
     removedRecords: emptyRemovedRecords(),
     nextStore: null,
     rollbackState: null,
+    rollbackBootstrapState: null,
+    trustedCheckpointStateDigest: null,
   });
 
 const parseInstruction = (
@@ -802,6 +836,8 @@ const makeRollbackState = (
   value: Readonly<{
     bootstrapStore: WatcherDurableStoreV1;
     bootstrapFinalityState: WatcherFinalityStateV1;
+    epoch: string;
+    epochCheckpoint: WatcherRollbackEpochCheckpointV1 | null;
     transitions: readonly WatcherRollbackTransitionV1[];
     storeDigest: string;
     transitionCount: string;
@@ -822,6 +858,8 @@ const makeRollbackState = (
     deploymentMarker: policy.deploymentMarker,
     bootstrapStore: value.bootstrapStore,
     bootstrapFinalityState: value.bootstrapFinalityState,
+    epoch: value.epoch,
+    epochCheckpoint: value.epochCheckpoint,
     transitions: Object.freeze([...value.transitions]),
     storeDigest: value.storeDigest,
     transitionCount: value.transitionCount,
@@ -857,6 +895,8 @@ const initialRollbackState = (
   makeRollbackState(policy, {
     bootstrapStore,
     bootstrapFinalityState,
+    epoch: "0",
+    epochCheckpoint: null,
     transitions: [],
     storeDigest: storeDigest(bootstrapStore),
     transitionCount: "0",
@@ -868,6 +908,87 @@ const initialRollbackState = (
     transitionLineageDigest: genesisLineageDigest(policy),
     incident: null,
   });
+
+const rootBootstrapStateDigest = (
+  policy: WatcherFinalityPolicyV1,
+  state: WatcherRollbackStateV1,
+): string =>
+  state.epochCheckpoint?.rootBootstrapStateDigest ??
+  initialRollbackState(
+    policy,
+    state.bootstrapStore,
+    state.bootstrapFinalityState,
+  ).stateDigest;
+
+const makeEpochCheckpoint = (
+  policy: WatcherFinalityPolicyV1,
+  prior: WatcherRollbackStateV1,
+  checkpointStore: WatcherDurableStoreV1,
+  checkpointFinalityState: WatcherFinalityStateV1,
+  recovery: Readonly<{
+    stateDigest: string;
+    lifecycleDigest: string;
+  }> | null = null,
+): WatcherRollbackEpochCheckpointV1 => {
+  const canonical = {
+    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION,
+    epoch: (BigInt(prior.epoch) + 1n).toString(),
+    rootBootstrapStateDigest: rootBootstrapStateDigest(policy, prior),
+    priorCheckpointDigest: prior.epochCheckpoint?.checkpointDigest ?? null,
+    priorTerminalStateDigest: prior.stateDigest,
+    priorTerminalTransitionCount: prior.transitionCount,
+    priorTerminalTransitionLineageDigest: prior.transitionLineageDigest,
+    priorTerminalStoreDigest: prior.storeDigest,
+    priorTerminalFinalityStateDigest:
+      prior.currentFinalityStateDigest ??
+      prior.bootstrapFinalityState.stateDigest,
+    priorTerminalIncidentDigest: prior.incident?.incidentDigest ?? null,
+    recoveryStateDigest: recovery?.stateDigest ?? null,
+    recoveryLifecycleDigest: recovery?.lifecycleDigest ?? null,
+    checkpointStoreDigest: storeDigest(checkpointStore),
+    checkpointFinalityStateDigest: checkpointFinalityState.stateDigest,
+  };
+  return Object.freeze({
+    ...canonical,
+    checkpointDigest: sha256Canonical(canonical),
+  });
+};
+
+const makeEpochBootstrapState = (
+  policy: WatcherFinalityPolicyV1,
+  prior: WatcherRollbackStateV1,
+  checkpointStore: WatcherDurableStoreV1,
+  checkpointFinalityState: WatcherFinalityStateV1,
+  recovery: Readonly<{
+    stateDigest: string;
+    lifecycleDigest: string;
+  }> | null = null,
+): WatcherRollbackStateV1 => {
+  const epochCheckpoint = makeEpochCheckpoint(
+    policy,
+    prior,
+    checkpointStore,
+    checkpointFinalityState,
+    recovery,
+  );
+  return makeRollbackState(policy, {
+    bootstrapStore: checkpointStore,
+    bootstrapFinalityState: checkpointFinalityState,
+    epoch: epochCheckpoint.epoch,
+    epochCheckpoint,
+    transitions: [],
+    storeDigest: epochCheckpoint.checkpointStoreDigest,
+    transitionCount: prior.transitionCount,
+    currentFinalityStateDigest: epochCheckpoint.checkpointFinalityStateDigest,
+    lastPreviousFinalityStateDigest: null,
+    lastConsistencyDigest: null,
+    lastFinalityResultDigest: null,
+    lastInstructionDigest: null,
+    transitionLineageDigest:
+      epochCheckpoint.priorTerminalTransitionLineageDigest,
+    incident: null,
+  });
+};
 
 const makeTransitionRecord = (
   transition: ParsedFinalityTransition,
@@ -887,17 +1008,31 @@ const makeTransitionRecord = (
 const advanceRollbackState = (
   policy: WatcherFinalityPolicyV1,
   previous: WatcherRollbackStateV1,
+  activeBootstrapState: WatcherRollbackStateV1,
   transition: ParsedFinalityTransition,
+  sourceStore: WatcherDurableStoreV1,
   durableStoreDigest: string,
   incident: WatcherRollbackIncidentV1 | null,
-): WatcherRollbackStateV1 => {
-  const transitionCount = (BigInt(previous.transitionCount) + 1n).toString();
+): Readonly<{
+  state: WatcherRollbackStateV1;
+  bootstrapState: WatcherRollbackStateV1;
+}> => {
+  const epochState =
+    previous.transitions.length >= WATCHER_ROLLBACK_V1_BOUNDS.transitionHistory
+      ? makeEpochBootstrapState(
+          policy,
+          previous,
+          sourceStore,
+          transition.previous,
+        )
+      : previous;
+  const transitionCount = (BigInt(epochState.transitionCount) + 1n).toString();
   const lastInstructionDigest =
     transition.kind === "rewind"
       ? transition.instruction.instructionDigest
       : null;
   const transitionLineageDigest = sha256Canonical({
-    priorLineageDigest: previous.transitionLineageDigest,
+    priorLineageDigest: epochState.transitionLineageDigest,
     transitionCount,
     previousFinalityStateDigest: transition.previous.stateDigest,
     consistencyDigest: transition.consistency.consistencyDigest,
@@ -907,12 +1042,14 @@ const advanceRollbackState = (
     storeDigest: durableStoreDigest,
   });
   const transitions = Object.freeze([
-    ...previous.transitions,
+    ...epochState.transitions,
     makeTransitionRecord(transition),
   ]);
-  return makeRollbackState(policy, {
-    bootstrapStore: previous.bootstrapStore,
-    bootstrapFinalityState: previous.bootstrapFinalityState,
+  const state = makeRollbackState(policy, {
+    bootstrapStore: epochState.bootstrapStore,
+    bootstrapFinalityState: epochState.bootstrapFinalityState,
+    epoch: epochState.epoch,
+    epochCheckpoint: epochState.epochCheckpoint,
     transitions,
     storeDigest: durableStoreDigest,
     transitionCount,
@@ -923,6 +1060,10 @@ const advanceRollbackState = (
     lastInstructionDigest,
     transitionLineageDigest,
     incident,
+  });
+  return Object.freeze({
+    state,
+    bootstrapState: epochState === previous ? activeBootstrapState : epochState,
   });
 };
 
@@ -1142,6 +1283,94 @@ const parseTransitionRecord = (
   });
 };
 
+const parseEpochCheckpoint = (
+  value: unknown,
+): WatcherRollbackEpochCheckpointV1 | null => {
+  const record = exactPlainRecord(value, [
+    "schemaVersion",
+    "epoch",
+    "rootBootstrapStateDigest",
+    "priorCheckpointDigest",
+    "priorTerminalStateDigest",
+    "priorTerminalTransitionCount",
+    "priorTerminalTransitionLineageDigest",
+    "priorTerminalStoreDigest",
+    "priorTerminalFinalityStateDigest",
+    "priorTerminalIncidentDigest",
+    "recoveryStateDigest",
+    "recoveryLifecycleDigest",
+    "checkpointStoreDigest",
+    "checkpointFinalityStateDigest",
+    "checkpointDigest",
+  ]);
+  if (
+    record === null ||
+    record.schemaVersion !==
+      WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION ||
+    typeof record.epoch !== "string" ||
+    !/^[1-9][0-9]*$/u.test(record.epoch) ||
+    typeof record.priorTerminalTransitionCount !== "string" ||
+    !CANONICAL_NATURAL.test(record.priorTerminalTransitionCount) ||
+    ![
+      record.rootBootstrapStateDigest,
+      record.priorTerminalStateDigest,
+      record.priorTerminalTransitionLineageDigest,
+      record.priorTerminalStoreDigest,
+      record.priorTerminalFinalityStateDigest,
+      record.checkpointStoreDigest,
+      record.checkpointFinalityStateDigest,
+      record.checkpointDigest,
+    ].every((digest) => typeof digest === "string" && HEX_32.test(digest)) ||
+    ![
+      record.priorCheckpointDigest,
+      record.priorTerminalIncidentDigest,
+      record.recoveryStateDigest,
+      record.recoveryLifecycleDigest,
+    ].every(
+      (digest) =>
+        digest === null || (typeof digest === "string" && HEX_32.test(digest)),
+    ) ||
+    (record.recoveryStateDigest === null) !==
+      (record.recoveryLifecycleDigest === null) ||
+    (record.priorCheckpointDigest === null) !== (record.epoch === "1") ||
+    (record.recoveryStateDigest === null
+      ? record.priorTerminalIncidentDigest !== null ||
+        record.checkpointStoreDigest !== record.priorTerminalStoreDigest ||
+        record.checkpointFinalityStateDigest !==
+          record.priorTerminalFinalityStateDigest
+      : record.priorTerminalIncidentDigest === null)
+  ) {
+    return null;
+  }
+  const canonical = {
+    schemaVersion: WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION,
+    epoch: record.epoch,
+    rootBootstrapStateDigest: record.rootBootstrapStateDigest as string,
+    priorCheckpointDigest: record.priorCheckpointDigest as string | null,
+    priorTerminalStateDigest: record.priorTerminalStateDigest as string,
+    priorTerminalTransitionCount: record.priorTerminalTransitionCount,
+    priorTerminalTransitionLineageDigest:
+      record.priorTerminalTransitionLineageDigest as string,
+    priorTerminalStoreDigest: record.priorTerminalStoreDigest as string,
+    priorTerminalFinalityStateDigest:
+      record.priorTerminalFinalityStateDigest as string,
+    priorTerminalIncidentDigest: record.priorTerminalIncidentDigest as
+      | string
+      | null,
+    recoveryStateDigest: record.recoveryStateDigest as string | null,
+    recoveryLifecycleDigest: record.recoveryLifecycleDigest as string | null,
+    checkpointStoreDigest: record.checkpointStoreDigest as string,
+    checkpointFinalityStateDigest:
+      record.checkpointFinalityStateDigest as string,
+  };
+  return sha256Canonical(canonical) === record.checkpointDigest
+    ? Object.freeze({
+        ...canonical,
+        checkpointDigest: record.checkpointDigest as string,
+      })
+    : null;
+};
+
 const decodeWatcherRollbackStateV1Structural = (
   value: unknown,
 ): WatcherRollbackStateV1 | null => {
@@ -1154,6 +1383,8 @@ const decodeWatcherRollbackStateV1Structural = (
       "deploymentMarker",
       "bootstrapStore",
       "bootstrapFinalityState",
+      "epoch",
+      "epochCheckpoint",
       "transitions",
       "storeDigest",
       "transitionCount",
@@ -1176,6 +1407,8 @@ const decodeWatcherRollbackStateV1Structural = (
       !HEX_32.test(record.releaseEvidenceDigest) ||
       typeof record.storeDigest !== "string" ||
       !HEX_32.test(record.storeDigest) ||
+      typeof record.epoch !== "string" ||
+      !CANONICAL_NATURAL.test(record.epoch) ||
       typeof record.transitionCount !== "string" ||
       !CANONICAL_NATURAL.test(record.transitionCount) ||
       ![
@@ -1206,6 +1439,10 @@ const decodeWatcherRollbackStateV1Structural = (
     const bootstrapFinalityState = parseWatcherFinalityStateV1(
       record.bootstrapFinalityState,
     );
+    const epochCheckpoint =
+      record.epochCheckpoint === null
+        ? null
+        : parseEpochCheckpoint(record.epochCheckpoint);
     const transitionInputs = exactArray(record.transitions);
     if (
       bootstrapFinalityState === null ||
@@ -1219,6 +1456,7 @@ const decodeWatcherRollbackStateV1Structural = (
       record.incident === null ? null : parseRollbackIncident(record.incident);
     if (
       deploymentMarker === null ||
+      (record.epochCheckpoint !== null && epochCheckpoint === null) ||
       transitions.some((transition) => transition === null) ||
       !sameMarker(bootstrapStore.deploymentMarker, deploymentMarker) ||
       (record.incident !== null && parsedIncident === null)
@@ -1233,6 +1471,8 @@ const decodeWatcherRollbackStateV1Structural = (
       deploymentMarker,
       bootstrapStore,
       bootstrapFinalityState,
+      epoch: record.epoch,
+      epochCheckpoint,
       transitions: Object.freeze(
         transitions as readonly WatcherRollbackTransitionV1[],
       ),
@@ -1252,11 +1492,26 @@ const decodeWatcherRollbackStateV1Structural = (
       incident: parsedIncident,
     };
     const count = BigInt(canonical.transitionCount);
-    if (count !== BigInt(canonical.transitions.length)) {
+    const epochTransitionCount = BigInt(canonical.transitions.length);
+    const priorTransitionCount = BigInt(
+      canonical.epochCheckpoint?.priorTerminalTransitionCount ?? "0",
+    );
+    if (
+      count !== priorTransitionCount + epochTransitionCount ||
+      BigInt(canonical.epoch) !==
+        BigInt(canonical.epochCheckpoint?.epoch ?? "0") ||
+      (canonical.epochCheckpoint === null) !== (canonical.epoch === "0") ||
+      (canonical.epochCheckpoint !== null &&
+        (canonical.epochCheckpoint.checkpointStoreDigest !==
+          storeDigest(canonical.bootstrapStore) ||
+          canonical.epochCheckpoint.checkpointFinalityStateDigest !==
+            canonical.bootstrapFinalityState.stateDigest))
+    ) {
       return null;
     }
     const initialShape =
       count === 0n &&
+      canonical.epoch === "0" &&
       canonical.currentFinalityStateDigest === null &&
       canonical.lastPreviousFinalityStateDigest === null &&
       canonical.lastConsistencyDigest === null &&
@@ -1272,8 +1527,20 @@ const decodeWatcherRollbackStateV1Structural = (
           releaseEvidenceDigest: canonical.releaseEvidenceDigest,
           deploymentMarker: canonical.deploymentMarker,
         });
+    const checkpointShape =
+      canonical.epochCheckpoint !== null &&
+      epochTransitionCount === 0n &&
+      canonical.currentFinalityStateDigest ===
+        canonical.epochCheckpoint.checkpointFinalityStateDigest &&
+      canonical.lastPreviousFinalityStateDigest === null &&
+      canonical.lastConsistencyDigest === null &&
+      canonical.lastFinalityResultDigest === null &&
+      canonical.lastInstructionDigest === null &&
+      canonical.incident === null &&
+      canonical.transitionLineageDigest ===
+        canonical.epochCheckpoint.priorTerminalTransitionLineageDigest;
     const transitionedShape =
-      count > 0n &&
+      epochTransitionCount > 0n &&
       canonical.currentFinalityStateDigest !== null &&
       canonical.lastPreviousFinalityStateDigest !== null &&
       canonical.lastConsistencyDigest !== null &&
@@ -1282,7 +1549,7 @@ const decodeWatcherRollbackStateV1Structural = (
         canonical.lastInstructionDigest !== null) ||
         (canonical.incident !== null &&
           canonical.lastInstructionDigest === null));
-    if (!initialShape && !transitionedShape) {
+    if (!initialShape && !checkpointShape && !transitionedShape) {
       return null;
     }
     if (
@@ -1392,6 +1659,8 @@ const decodeWatcherRollbackResultV1Structural = (
       "removedRecords",
       "nextStore",
       "rollbackState",
+      "rollbackBootstrapState",
+      "trustedCheckpointStateDigest",
       "resultDigest",
     ]);
     if (
@@ -1411,6 +1680,7 @@ const decodeWatcherRollbackResultV1Structural = (
       !nullableDigest(record.instructionDigest) ||
       !nullableDigest(record.sourceStoreDigest) ||
       !nullableDigest(record.nextStoreDigest) ||
+      !nullableDigest(record.trustedCheckpointStateDigest) ||
       typeof record.resultDigest !== "string" ||
       !HEX_32.test(record.resultDigest)
     ) {
@@ -1437,11 +1707,17 @@ const decodeWatcherRollbackResultV1Structural = (
       record.rollbackState === null
         ? null
         : decodeWatcherRollbackStateV1Structural(record.rollbackState);
+    const rollbackBootstrapState =
+      record.rollbackBootstrapState === null
+        ? null
+        : decodeWatcherRollbackStateV1Structural(record.rollbackBootstrapState);
     if (
       reasonCodes === null ||
       alertCodes === null ||
       removedRecords === null ||
-      (record.rollbackState !== null && rollbackState === null)
+      (record.rollbackState !== null && rollbackState === null) ||
+      (record.rollbackBootstrapState !== null &&
+        rollbackBootstrapState === null)
     ) {
       return null;
     }
@@ -1455,6 +1731,13 @@ const decodeWatcherRollbackResultV1Structural = (
     if (
       rollbackState !== null &&
       rollbackState.storeDigest !== record.nextStoreDigest
+    ) {
+      return null;
+    }
+    if (
+      rollbackBootstrapState !== null &&
+      record.trustedCheckpointStateDigest !==
+        trustedCheckpointStateDigest(rollbackBootstrapState)
     ) {
       return null;
     }
@@ -1476,6 +1759,7 @@ const decodeWatcherRollbackResultV1Structural = (
         hasRemovedRecords &&
         nextStore !== null &&
         rollbackState !== null &&
+        rollbackBootstrapState !== null &&
         rollbackState.incident === null &&
         rollbackState.lastInstructionDigest === record.instructionDigest) ||
       (action === "duplicate_rewind" &&
@@ -1488,6 +1772,7 @@ const decodeWatcherRollbackResultV1Structural = (
         !hasRemovedRecords &&
         nextStore !== null &&
         rollbackState !== null &&
+        rollbackBootstrapState !== null &&
         rollbackState.incident === null &&
         rollbackState.lastInstructionDigest === record.instructionDigest) ||
       (action === "quarantine_incident" &&
@@ -1503,6 +1788,7 @@ const decodeWatcherRollbackResultV1Structural = (
         !hasRemovedRecords &&
         nextStore !== null &&
         rollbackState !== null &&
+        rollbackBootstrapState !== null &&
         rollbackState.incident !== null) ||
       (action === "reject" &&
         protocolDecision === "quarantined" &&
@@ -1513,6 +1799,7 @@ const decodeWatcherRollbackResultV1Structural = (
           record.sourceStoreDigest === record.nextStoreDigest &&
           nextStore !== null &&
           rollbackState !== null &&
+          rollbackBootstrapState !== null &&
           rollbackState.incident !== null) ||
           (nextStore === null &&
             rollbackState === null &&
@@ -1520,7 +1807,8 @@ const decodeWatcherRollbackResultV1Structural = (
             record.nextRevision === null &&
             record.instructionDigest === null &&
             record.sourceStoreDigest === null &&
-            record.nextStoreDigest === null)));
+            record.nextStoreDigest === null &&
+            rollbackBootstrapState === null)));
     if (!validSemantics) {
       return null;
     }
@@ -1538,6 +1826,10 @@ const decodeWatcherRollbackResultV1Structural = (
       removedRecords,
       nextStore,
       rollbackState,
+      rollbackBootstrapState,
+      trustedCheckpointStateDigest: record.trustedCheckpointStateDigest as
+        | string
+        | null,
     };
     if (sha256Canonical(canonical) !== record.resultDigest) {
       return null;
@@ -1981,10 +2273,16 @@ const rollbackStateBindingFailure = (
   return state.policyDigest === policy.policyDigest ? null : "policy_mismatch";
 };
 
+const trustedCheckpointStateDigest = (
+  bootstrapState: WatcherRollbackStateV1,
+): string | null =>
+  bootstrapState.epoch === "0" ? null : bootstrapState.stateDigest;
+
 const evaluateWatcherRollbackStep = (
   policy: WatcherFinalityPolicyV1,
   store: WatcherDurableStoreV1,
   rollbackState: WatcherRollbackStateV1,
+  rollbackBootstrapState: WatcherRollbackStateV1,
   previousFinalityStateInput: unknown,
   consistencyInput: unknown,
   finalityResultInput: unknown,
@@ -2004,6 +2302,10 @@ const evaluateWatcherRollbackStep = (
       removedRecords: emptyRemovedRecords(),
       nextStore: store,
       rollbackState,
+      rollbackBootstrapState,
+      trustedCheckpointStateDigest: trustedCheckpointStateDigest(
+        rollbackBootstrapState,
+      ),
     });
   }
 
@@ -2050,17 +2352,6 @@ const evaluateWatcherRollbackStep = (
   ) {
     return reject("stale_finality_state", "watcher_rollback_state_rejected");
   }
-  if (
-    !adjacentDuplicate &&
-    rollbackState.transitions.length >=
-      WATCHER_ROLLBACK_V1_BOUNDS.transitionHistory
-  ) {
-    return reject(
-      "malformed_rollback_state",
-      "watcher_rollback_state_rejected",
-    );
-  }
-
   if (transition.kind === "incident") {
     const consistencyEvidence = verifyPersistedConsistencyEvidence(
       policy,
@@ -2090,10 +2381,12 @@ const evaluateWatcherRollbackStep = (
       nextStoreDigest,
       transitionCount,
     );
-    const nextRollbackState = advanceRollbackState(
+    const nextRollback = advanceRollbackState(
       policy,
       rollbackState,
+      rollbackBootstrapState,
       canonicalTransition,
+      store,
       nextStoreDigest,
       incident,
     );
@@ -2109,7 +2402,11 @@ const evaluateWatcherRollbackStep = (
       nextStoreDigest,
       removedRecords: emptyRemovedRecords(),
       nextStore,
-      rollbackState: nextRollbackState,
+      rollbackState: nextRollback.state,
+      rollbackBootstrapState: nextRollback.bootstrapState,
+      trustedCheckpointStateDigest: trustedCheckpointStateDigest(
+        nextRollback.bootstrapState,
+      ),
     });
   }
 
@@ -2140,6 +2437,10 @@ const evaluateWatcherRollbackStep = (
       removedRecords: emptyRemovedRecords(),
       nextStore: store,
       rollbackState,
+      rollbackBootstrapState,
+      trustedCheckpointStateDigest: trustedCheckpointStateDigest(
+        rollbackBootstrapState,
+      ),
     });
   }
 
@@ -2163,10 +2464,12 @@ const evaluateWatcherRollbackStep = (
     records: plan.records,
   });
   const nextStoreDigest = storeDigest(nextStore);
-  const nextRollbackState = advanceRollbackState(
+  const nextRollback = advanceRollbackState(
     policy,
     rollbackState,
+    rollbackBootstrapState,
     canonicalTransition,
+    store,
     nextStoreDigest,
     null,
   );
@@ -2182,7 +2485,11 @@ const evaluateWatcherRollbackStep = (
     nextStoreDigest,
     removedRecords: plan.removed,
     nextStore,
-    rollbackState: nextRollbackState,
+    rollbackState: nextRollback.state,
+    rollbackBootstrapState: nextRollback.bootstrapState,
+    trustedCheckpointStateDigest: trustedCheckpointStateDigest(
+      nextRollback.bootstrapState,
+    ),
   });
 };
 
@@ -2201,6 +2508,17 @@ const replayWatcherRollbackState = (
   ) {
     return null;
   }
+  if (
+    candidate.epoch !== bootstrapState.epoch ||
+    JSON.stringify(candidate.epochCheckpoint) !==
+      JSON.stringify(bootstrapState.epochCheckpoint) ||
+    JSON.stringify(candidate.bootstrapStore) !==
+      JSON.stringify(bootstrapState.bootstrapStore) ||
+    JSON.stringify(candidate.bootstrapFinalityState) !==
+      JSON.stringify(bootstrapState.bootstrapFinalityState)
+  ) {
+    return null;
+  }
   let derivedState = bootstrapState;
   let derivedStore = bootstrapState.bootstrapStore;
   for (const transition of candidate.transitions) {
@@ -2208,6 +2526,7 @@ const replayWatcherRollbackState = (
       policy,
       derivedStore,
       derivedState,
+      bootstrapState,
       transition.previousFinalityState,
       transition.consistency,
       transition.finalityResult,
@@ -2262,6 +2581,7 @@ export const makeWatcherRollbackBootstrapStateV1 = (
 const parseRollbackBootstrapState = (
   policy: WatcherFinalityPolicyV1,
   value: unknown,
+  trustedCheckpointStateDigestInput: unknown = undefined,
 ): WatcherRollbackStateV1 | null => {
   const candidate = decodeWatcherRollbackStateV1Structural(value);
   if (
@@ -2277,9 +2597,18 @@ const parseRollbackBootstrapState = (
     candidate.bootstrapStore,
     candidate.bootstrapFinalityState,
   );
-  return JSON.stringify(candidate) === JSON.stringify(expected)
-    ? candidate
-    : null;
+  return candidate.epoch === "0"
+    ? JSON.stringify(candidate) === JSON.stringify(expected)
+      ? candidate
+      : null
+    : candidate.epochCheckpoint !== null &&
+        candidate.transitions.length === 0 &&
+        candidate.incident === null &&
+        typeof trustedCheckpointStateDigestInput === "string" &&
+        HEX_32.test(trustedCheckpointStateDigestInput) &&
+        trustedCheckpointStateDigestInput === candidate.stateDigest
+      ? candidate
+      : null;
 };
 
 /**
@@ -2301,6 +2630,7 @@ export const parseWatcherRollbackStateV1 = (
     const bootstrapState = parseRollbackBootstrapState(
       policy,
       context.rollbackBootstrapState,
+      context.trustedCheckpointStateDigest,
     );
     const currentStore = parseWatcherDurableStoreV1(context.currentStore);
     return bootstrapState === null
@@ -2329,6 +2659,7 @@ export const evaluateWatcherRollbackV1 = (
   finalityResultInput: unknown,
   previousRollbackStateInput: unknown,
   rollbackBootstrapStateInput: unknown,
+  trustedCheckpointStateDigestInput: unknown = undefined,
 ): WatcherRollbackResultV1 => {
   const policy = parseWatcherFinalityPolicyV1(policyInput);
   if (policy === null) {
@@ -2374,6 +2705,7 @@ export const evaluateWatcherRollbackV1 = (
   const rollbackBootstrapState = parseRollbackBootstrapState(
     policy,
     rollbackBootstrapStateInput,
+    trustedCheckpointStateDigestInput,
   );
   if (rollbackBootstrapState === null) {
     return reject(
@@ -2397,6 +2729,7 @@ export const evaluateWatcherRollbackV1 = (
     policy,
     store,
     rollbackState,
+    rollbackBootstrapState,
     previousFinalityStateInput,
     consistencyInput,
     finalityResultInput,
@@ -2426,6 +2759,7 @@ export const parseWatcherRollbackResultV1 = (
       context.finalityResult,
       context.previousRollbackState,
       context.rollbackBootstrapState,
+      context.trustedCheckpointStateDigest,
     );
     return JSON.stringify(parsed) === JSON.stringify(expected) ? parsed : null;
   } catch {
@@ -2461,6 +2795,10 @@ const makePostFinalityRecoveryResult = (
     removedRecords: value.removedRecords,
     nextStore: value.nextStore,
     resumableFinalityState: value.resumableFinalityState,
+    resumableRollbackState: value.resumableRollbackState,
+    resumableRollbackBootstrapState: value.resumableRollbackBootstrapState,
+    resumableTrustedCheckpointStateDigest:
+      value.resumableTrustedCheckpointStateDigest,
     recoveryState: value.recoveryState,
   };
   return Object.freeze({
@@ -2483,6 +2821,9 @@ const rejectPostFinalityRecovery = (
     removedRecords: emptyRemovedRecords(),
     nextStore: null,
     resumableFinalityState: null,
+    resumableRollbackState: null,
+    resumableRollbackBootstrapState: null,
+    resumableTrustedCheckpointStateDigest: null,
     recoveryState: null,
   });
 
@@ -2919,17 +3260,28 @@ const decodePostFinalityRecoveryState = (
 const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   input: WatcherPostFinalityRecoveryInputV1,
 ): WatcherPostFinalityRecoveryResultV1 => {
+  const recoveryInputKeys = [
+    "policy",
+    "sourceStore",
+    "currentStore",
+    "quarantinedRollbackState",
+    "rollbackBootstrapState",
+    "previousCanonicalPath",
+    "replacementCanonicalPath",
+    "previousRecoveryState",
+  ];
+  const hasTrustedCheckpointStateDigest =
+    typeof input === "object" &&
+    input !== null &&
+    !Array.isArray(input) &&
+    Reflect.ownKeys(input).includes("trustedCheckpointStateDigest");
   if (
-    exactPlainRecord(input, [
-      "policy",
-      "sourceStore",
-      "currentStore",
-      "quarantinedRollbackState",
-      "rollbackBootstrapState",
-      "previousCanonicalPath",
-      "replacementCanonicalPath",
-      "previousRecoveryState",
-    ]) === null
+    exactPlainRecord(
+      input,
+      hasTrustedCheckpointStateDigest
+        ? [...recoveryInputKeys, "trustedCheckpointStateDigest"]
+        : recoveryInputKeys,
+    ) === null
   ) {
     return rejectPostFinalityRecovery("recovery_path_malformed");
   }
@@ -2963,6 +3315,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     {
       policy,
       rollbackBootstrapState: input.rollbackBootstrapState,
+      trustedCheckpointStateDigest: input.trustedCheckpointStateDigest,
       currentStore: sourceStore,
     },
   );
@@ -3130,6 +3483,16 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     plan.removed,
     resumableFinalityState,
   );
+  const resumableRollbackState = makeEpochBootstrapState(
+    policy,
+    rollbackState,
+    nextStore,
+    resumableFinalityState,
+    {
+      stateDigest: recoveryState.stateDigest,
+      lifecycleDigest: recoveryState.incidentLifecycle.lifecycleDigest,
+    },
+  );
   if (previousRecoveryState !== null) {
     const currentStoreDigest = storeDigest(currentStore);
     if (
@@ -3150,6 +3513,9 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
       removedRecords: emptyRemovedRecords(),
       nextStore: currentStore,
       resumableFinalityState,
+      resumableRollbackState,
+      resumableRollbackBootstrapState: resumableRollbackState,
+      resumableTrustedCheckpointStateDigest: resumableRollbackState.stateDigest,
       recoveryState,
     });
   }
@@ -3164,6 +3530,9 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     removedRecords: plan.removed,
     nextStore,
     resumableFinalityState,
+    resumableRollbackState,
+    resumableRollbackBootstrapState: resumableRollbackState,
+    resumableTrustedCheckpointStateDigest: resumableRollbackState.stateDigest,
     recoveryState,
   });
 };

@@ -1606,6 +1606,7 @@ const spawnSequence = (
   return {
     bootstrapEvidence,
     bootstrapState,
+    gapEvidence,
     spawnEvidence,
     spawnState,
     outRef,
@@ -1649,7 +1650,7 @@ const postFinalitySettlementEvidence = (
     sourceMode,
     independentProviderCount: sourceMode === "local_node" ? 1 : 2,
   });
-  return { observations, consistency };
+  return { primaryRaw, observations, consistency };
 };
 
 const postFinalitySettlementRecoveryBundle = (
@@ -1658,7 +1659,8 @@ const postFinalitySettlementRecoveryBundle = (
 ) => {
   const selectedFinalityPolicy =
     sourceMode === "local_node" ? localFinalityPolicy : finalityPolicy;
-  const commonRaw = sequence.bootstrapEvidence.context.l1Observation as Mutable;
+  const commonRaw = (sequence.gapEvidence?.context.l1Observation ??
+    sequence.bootstrapEvidence.context.l1Observation) as Mutable;
   const orphanRaw = sequence.spawnEvidence.context.l1Observation as Mutable;
   const common = postFinalitySettlementEvidence(sourceMode, commonRaw, "0");
   const orphanPending = postFinalitySettlementEvidence(
@@ -1686,13 +1688,41 @@ const postFinalitySettlementRecoveryBundle = (
       ).toString(),
       depth: "0",
     },
-    transactions: [],
+    transactions: structuredClone(
+      (sequence.spawnEvidence.context.l1Observation as Mutable).transactions,
+    ),
   };
   const replacement = postFinalitySettlementEvidence(
     sourceMode,
     replacementRaw,
     "0",
   );
+  const replacementTail = [2, 3].map((offset) => {
+    const prior = offset === 2 ? replacement.observations[0]! : undefined;
+    const raw: Mutable = {
+      ...structuredClone(replacementRaw),
+      chainPoint: {
+        blockHash: h32(
+          `${sourceMode === "local_node" ? "d" : "c"}${offset.toString()}`,
+        ),
+        parentBlockHash:
+          prior?.chainPoint.blockHash ??
+          h32(`${sourceMode === "local_node" ? "d" : "c"}2`),
+        slot: (
+          BigInt(common.observations[0]!.chainPoint.slot) + BigInt(offset + 1)
+        ).toString(),
+        blockNo: (
+          BigInt(common.observations[0]!.chainPoint.blockNo) + BigInt(offset)
+        ).toString(),
+        depth: "0",
+      },
+      transactions: [],
+    };
+    return {
+      raw,
+      evidence: postFinalitySettlementEvidence(sourceMode, raw, "0"),
+    };
+  });
   const pending = evaluateWatcherFinalityV1(
     selectedFinalityPolicy,
     null,
@@ -1708,7 +1738,7 @@ const postFinalitySettlementRecoveryBundle = (
   const contradiction = evaluateWatcherFinalityV1(
     selectedFinalityPolicy,
     finalized.state,
-    replacement.consistency,
+    replacementTail.at(-1)!.evidence.consistency,
   );
   expect(contradiction.action).toBe("quarantine_incident");
 
@@ -1718,6 +1748,7 @@ const postFinalitySettlementRecoveryBundle = (
     ...orphanPending.observations,
     ...orphanFinalized.observations,
     ...replacement.observations,
+    ...replacementTail.flatMap(({ evidence }) => evidence.observations),
   ];
   const sourceStore = makeWatcherDurableStoreV1({
     deploymentMarker: baseStore.deploymentMarker,
@@ -1756,7 +1787,7 @@ const postFinalitySettlementRecoveryBundle = (
     selectedFinalityPolicy,
     sourceStore,
     finalized.state,
-    replacement.consistency,
+    replacementTail.at(-1)!.evidence.consistency,
     contradiction,
     rollbackBootstrapState,
     rollbackBootstrapState,
@@ -1772,7 +1803,11 @@ const postFinalitySettlementRecoveryBundle = (
     quarantinedRollbackState: incident.rollbackState,
     rollbackBootstrapState,
     previousCanonicalPath: [common.consistency, orphanFinalized.consistency],
-    replacementCanonicalPath: [common.consistency, replacement.consistency],
+    replacementCanonicalPath: [
+      common.consistency,
+      replacement.consistency,
+      ...replacementTail.map(({ evidence }) => evidence.consistency),
+    ],
     previousRecoveryState: null,
   };
   const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
@@ -1785,7 +1820,8 @@ const postFinalitySettlementRecoveryBundle = (
         commonAncestorPointDigest:
           common.observations[0]!.chainPoint.pointDigest,
         replacementTipPointDigest:
-          replacement.observations[0]!.chainPoint.pointDigest,
+          replacementTail.at(-1)!.evidence.observations[0]!.chainPoint
+            .pointDigest,
       },
     },
   });
@@ -1793,14 +1829,14 @@ const postFinalitySettlementRecoveryBundle = (
   const recoveryEvidence = bundle({
     kind: "rollback",
     previousState: sequence.spawnState,
-    predecessorStateDigest: sequence.bootstrapState.stateDigest,
+    predecessorStateDigest: sequence.spawnState.stateDigest,
     snapshot: emptySnapshot(),
     restartBindings: [
       sequence.bootstrapEvidence.restartBinding,
       sequence.spawnEvidence.restartBinding,
     ],
     authenticatedProvider: replacementProvider,
-    l1Observation: replacementRaw,
+    l1Observation: common.primaryRaw,
     sourceDurableStore: incident.nextStore!,
     durableStore: recovery.nextStore!,
     rollbackAuthority: {
@@ -5177,17 +5213,20 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
   it.each<PostFinalityRecoverySourceMode>(["local_node", "external_providers"])(
     "consumes an exact %s W13 post-finality recovery, prunes W16 orphan state, restarts, and resumes",
     (sourceMode) => {
-      const sequence = spawnSequence({ sourceMode });
+      const sparseSequence = spawnSequence({
+        sourceMode,
+        emptyBlockGap: true,
+      });
       const recovery = postFinalitySettlementRecoveryBundle(
         sourceMode,
-        sequence,
+        sparseSequence,
       );
       expect(recovery.recovery.removedRecords.protocolUtxoOutRefs).toContain(
-        sequence.outRef,
+        sparseSequence.outRef,
       );
       const result = evaluateWatcherSettlementIndexerV1(
         policy,
-        sequence.spawnState,
+        sparseSequence.spawnState,
         recovery.recoveryEvidence.observation,
         recovery.recoveryEvidence.context,
       );
@@ -5200,13 +5239,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         },
       });
       expect(result.state?.activeHistory).toEqual(
-        sequence.bootstrapState.activeHistory,
+        sparseSequence.bootstrapState.activeHistory,
       );
       expect(result.state?.transitionHistory).toHaveLength(
-        sequence.bootstrapState.transitionHistory.length + 1,
+        sparseSequence.spawnState.transitionHistory.length + 1,
       );
-      expect(result.state?.transitionHistory).not.toContainEqual(
-        sequence.spawnState.transitionHistory.at(-1),
+      expect(result.state?.transitionHistory).toContainEqual(
+        sparseSequence.spawnState.transitionHistory.at(-1),
       );
       expect(result.state?.rollbackHistory).toHaveLength(1);
       expect(result.state?.durableStoreDigest).toBe(
@@ -5239,7 +5278,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         context: recovery.recoveryInput,
       };
       const restartBindings = [
-        sequence.bootstrapEvidence.restartBinding,
+        sparseSequence.bootstrapEvidence.restartBinding,
+        sparseSequence.spawnEvidence.restartBinding,
         recovery.recoveryEvidence.restartBinding,
       ];
       const restarted = parseWatcherSettlementIndexerStateV1(
@@ -5269,37 +5309,81 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         state: result.state,
       });
 
-      const replacementPoint = recovery.replacement.observations[0]!.chainPoint;
-      const reIncludedRaw = structuredClone(
-        sequence.spawnEvidence.context.l1Observation,
-      ) as Mutable;
+      const reIncludedRaw = structuredClone(recovery.replacementRaw) as Mutable;
       reIncludedRaw.providerId = recovery.replacementProvider.providerId;
-      reIncludedRaw.chainPoint = {
-        ...reIncludedRaw.chainPoint,
-        blockHash: h32(sourceMode === "local_node" ? "ea" : "eb"),
-        parentBlockHash: replacementPoint.blockHash,
-        slot: (BigInt(replacementPoint.slot) + 1n).toString(),
-        blockNo: (BigInt(replacementPoint.blockNo) + 1n).toString(),
-        depth: "1",
-      };
+      reIncludedRaw.chainPoint.depth = "1";
       const resumed = bundle({
         kind: "spawn_settlement",
         previousState: restarted,
-        snapshot: sequence.spawnEvidence.observation.snapshot,
-        transition: sequence.spawnEvidence.observation.transition,
+        snapshot: sparseSequence.spawnEvidence.observation.snapshot,
+        transition: sparseSequence.spawnEvidence.observation.transition,
         restartBindings,
         restartRollbackBindings: [recoveryBinding],
         authenticatedProvider: recovery.replacementProvider,
         l1Observation: reIncludedRaw,
         sourceDurableStore: recovery.recovery.nextStore!,
-        protocolUtxos: [sequence.durable],
+        protocolUtxos: [sparseSequence.durable],
       });
       expect(accepted(restarted, resumed).snapshot).toEqual(
-        sequence.spawnEvidence.observation.snapshot,
+        sparseSequence.spawnEvidence.observation.snapshot,
       );
     },
     30_000,
   );
+
+  it("records an authenticated W16 recovery when W13 removed no indexed settlement change", () => {
+    const sequence = spawnSequence({
+      sourceMode: "external_providers",
+      emptyBlockGap: true,
+    });
+    const recovery = postFinalitySettlementRecoveryBundle(
+      "external_providers",
+      sequence,
+    );
+    const evidence = bundle({
+      kind: "rollback",
+      previousState: sequence.bootstrapState,
+      predecessorStateDigest: sequence.bootstrapState.stateDigest,
+      snapshot: emptySnapshot(),
+      restartBindings: [sequence.bootstrapEvidence.restartBinding],
+      authenticatedProvider: recovery.replacementProvider,
+      l1Observation: recovery.recoveryEvidence.context.l1Observation as Mutable,
+      sourceDurableStore: recovery.incident.nextStore!,
+      durableStore: recovery.recovery.nextStore!,
+      rollbackAuthority: {
+        result: recovery.recovery,
+        context: recovery.recoveryInput,
+      },
+    });
+    const result = evaluateWatcherSettlementIndexerV1(
+      policy,
+      sequence.bootstrapState,
+      evidence.observation,
+      evidence.context,
+    );
+    expect(result).toMatchObject({
+      action: "accept",
+      reasonCodes: ["rollback_authenticated"],
+      state: {
+        pointDigest: recovery.common.observations[0]!.chainPoint.pointDigest,
+        activeHistory: sequence.bootstrapState.activeHistory,
+        rollbackHistory: [expect.any(Object)],
+      },
+    });
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        structuredClone(result.state),
+        policy,
+        [sequence.bootstrapEvidence.restartBinding, evidence.restartBinding],
+        [
+          {
+            resultDigest: recovery.recovery.resultDigest,
+            context: recovery.recoveryInput,
+          },
+        ],
+      ),
+    ).toEqual(result.state);
+  }, 30_000);
 
   it("rejects forged, mismatched, wrong-target, wrong-mode, and duplicate-only W13 recovery evidence", () => {
     const sequence = spawnSequence();
@@ -5359,7 +5443,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
     const wrongTarget = makeWatcherSettlementObservationV1({
       ...recovery.recoveryEvidence.observation,
-      predecessorStateDigest: sequence.spawnState.stateDigest,
+      predecessorStateDigest: sequence.bootstrapState.stateDigest,
     })!;
     expect(
       evaluate(wrongTarget, recovery.recoveryEvidence.context),

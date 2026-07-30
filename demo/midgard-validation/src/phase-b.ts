@@ -2,21 +2,21 @@ import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramEnvelopeV1,
   decodeMidgardCekProgramMaterialSidecarV1,
-  verifyMidgardCekProgramMaterialV1,
+  verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeScriptIntegrityHashForLanguages,
   decodeMidgardAddressBytes,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
   type MidgardTxOutput,
   type MidgardValue,
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
-  MIDGARD_CONSENSUS_LIMITS_V1,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import {
+  collectMidgardV1AttachedProgramEnvelopes,
   decodeMidgardV1ScriptProgramEnvelope,
 } from "@al-ft/midgard-core/script-proof";
 import { Effect } from "effect";
@@ -221,28 +221,31 @@ const resolveReferenceInputs = (
     scriptHashes.add(source.scriptHash);
   }
 
-  const sidecar =
-    node.candidate.submission.programMaterialSidecarCbor;
+  const sidecar = node.candidate.submission.programMaterialSidecarCbor;
   if (sidecar !== null) {
     try {
-      const material =
-        decodeMidgardCekProgramMaterialSidecarV1(sidecar);
+      const material = decodeMidgardCekProgramMaterialSidecarV1(sidecar);
+      const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        node.candidate.submission.txCbor,
+      );
+      const envelopes = [
+        ...collectMidgardV1AttachedProgramEnvelopes(canonicalTx),
+      ];
       for (const input of inputs) {
         if (input.output.script_ref === undefined) continue;
         const envelope = decodeMidgardV1ScriptProgramEnvelope(
           input.output.script_ref,
         );
         if (envelope !== null) {
-          verifyMidgardCekProgramMaterialV1(envelope, material, {
-            allowUnreachable: true,
-          });
+          envelopes.push(envelope);
         }
       }
+      verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
     } catch (cause) {
       return reject(
         node.candidate.ledgerTx.txId,
         RejectCodes.CekProgramMaterial,
-        `invalid reference-script CEK material: ${String(cause)}`,
+        `invalid exact attached/reference-script CEK material: ${String(cause)}`,
         "scriptSources",
       );
     }
@@ -534,15 +537,14 @@ const runLocalScriptEvaluation = (
     if (discovered.kind === "rejected") {
       return discovered;
     }
-    let proofProgramMaterial:
-      | ReturnType<typeof decodeMidgardCekProgramMaterialSidecarV1>
-      | null = null;
+    let proofProgramMaterial: ReturnType<
+      typeof decodeMidgardCekProgramMaterialSidecarV1
+    > | null = null;
     if (candidate.submission.programMaterialSidecarCbor !== null) {
       try {
-        proofProgramMaterial =
-          decodeMidgardCekProgramMaterialSidecarV1(
-            candidate.submission.programMaterialSidecarCbor,
-          );
+        proofProgramMaterial = decodeMidgardCekProgramMaterialSidecarV1(
+          candidate.submission.programMaterialSidecarCbor,
+        );
       } catch (cause) {
         return {
           kind: "rejected",
@@ -673,8 +675,7 @@ const runLocalScriptEvaluation = (
               material: graph.material.values(),
               constantWitnesses: graph.constantWitnesses,
               maxSteps:
-                MIDGARD_CONSENSUS_LIMITS_V1
-                  .maxValidationMachineStepCount,
+                MIDGARD_CONSENSUS_LIMITS_V1.maxValidationMachineStepCount,
               executionBudget,
             });
             result =

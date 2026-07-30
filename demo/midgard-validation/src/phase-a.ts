@@ -1,6 +1,7 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import {
   decodeMidgardCekProgramMaterialSidecarV1,
+  verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardCekProgramMaterialV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
@@ -456,8 +457,7 @@ export const validatePhaseASingle = (
       "V1 admission is missing its canonical program-material sidecar",
     );
   }
-  const consensusViolation =
-    validateMidgardConsensusV1TxCbor(queuedTx.txCbor);
+  const consensusViolation = validateMidgardConsensusV1TxCbor(queuedTx.txCbor);
   if (consensusViolation !== null) {
     return reject(
       ledgerTx.txId,
@@ -472,12 +472,18 @@ export const validatePhaseASingle = (
     const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
       queuedTx.txCbor,
     );
-    for (const envelope of collectMidgardV1AttachedProgramEnvelopes(
-      canonicalTx,
-    )) {
-      verifyMidgardCekProgramMaterialV1(envelope, material, {
-        allowUnreachable: true,
-      });
+    const envelopes = collectMidgardV1AttachedProgramEnvelopes(canonicalTx);
+    if (ledgerTx.referenceInputs.length > 0) {
+      // Phase A has not resolved reference-input outputs yet. Require complete
+      // attached programs now; Phase B checks the exact combined bundle once
+      // the referenced program envelopes are authoritative.
+      for (const envelope of envelopes) {
+        verifyMidgardCekProgramMaterialV1(envelope, material, {
+          allowUnreachable: true,
+        });
+      }
+    } else {
+      verifyMidgardCekProgramMaterialBundleV1(envelopes, material);
     }
   } catch (cause) {
     return reject(
@@ -532,8 +538,7 @@ export const validatePhaseASingle = (
     return buildPhaseAValidatedTx({
       ledgerTx,
       txCbor: submittedTx.txCbor,
-      programMaterialSidecarCbor:
-        queuedTx.programMaterialSidecarCbor ?? null,
+      programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
       arrivalSeq: queuedTx.arrivalSeq,
       createdAt: queuedTx.createdAt,
       redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

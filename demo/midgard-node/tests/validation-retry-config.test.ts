@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -32,6 +33,33 @@ describe("validation retry configuration", () => {
 
     await expect(loadNodeConfig()).rejects.toThrow(
       "VALIDATION_RETRY_BACKOFF_MAX_MS must not be less than VALIDATION_RETRY_BACKOFF_BASE_MS",
+    );
+  });
+});
+
+describe("durable admission byte backlog configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to one full V1 DA envelope", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      MAX_DURABLE_ADMISSION_BACKLOG_BYTES:
+        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+    });
+  });
+
+  it("accepts a positive operator override", async () => {
+    vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "1048576");
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      MAX_DURABLE_ADMISSION_BACKLOG_BYTES: 1_048_576,
+    });
+  });
+
+  it("rejects non-positive byte quotas", async () => {
+    vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "0");
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
     );
   });
 });

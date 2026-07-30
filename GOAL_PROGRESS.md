@@ -1572,3 +1572,120 @@ GitHub discussion and applicable CI check to terminal completion, fix every
 actionable finding additively, and repeat until the checkpoint is good to
 merge on its stated scope. Do not ready the draft or mark the overarching Goal
 complete.
+
+## Superseding complete-PR review remediation checkpoint
+
+- The publication surface remains draft PR #471 from
+  `colll78/canonical-v1-watcher-l1-source-checkpoint` to `tx-validation`.
+  This additive remediation tree starts from signed published head
+  `da65efebf556ed9998604fd5b03c458c11111b4f`; no `codex/` branch is or may
+  become a publication target.
+- Four bounded, non-overlapping fresh review lanes inspected the complete
+  base-to-head differential: W13 recovery authority; W14-W17 downstream
+  projections; evidence/CI plus Aiken/SDK equivalence; and cross-cutting
+  public admission/resource boundaries. They reported four high-severity and
+  four medium-severity findings. The parent reviewed every finding and the
+  complete remediation diff. The tracked differential report records the
+  attack paths and dispositions.
+- W13 no longer dead-ends after its 128th transition. Transition 129 rotates
+  to a bounded epoch checkpoint binding the root bootstrap, prior terminal
+  state/lineage, durable store, W12 finality state, incident, and recovered
+  lifecycle. A remediation audit found that an unkeyed prior checkpoint digest
+  was self-forgeable if the caller controlled both compacted inputs. Epochs
+  above zero therefore require a separately persisted trusted
+  checkpoint-state digest returned for atomic/CAS persistence. The hostile
+  forged epoch-one bootstrap rejects. W13 focused evidence is 25/25 PASS.
+- W14-W17 use the authenticated W13 common-ancestor block number as a sparse
+  projection cut, prove every later domain entry through W13's removed sets,
+  allow zero-domain-change audit transitions, and retain their cursor at the
+  common ancestor for ordered replacement-path replay. W15 derives its target
+  internally. Three-block replacement regressions cover a relevant non-tip
+  settlement/proof transaction, restart, replay, and the next successor.
+  Final W14-W17 evidence is 93/93 PASS: W14 20, W15 22, W16 28, W17 23.
+- Public CEK admission now uses exact coverage immediately unless
+  reference-script outputs remain unresolved. Phase B combines attached,
+  newly created, and resolved historical reference-script envelopes and
+  strict-verifies the exact material union; DA verification and retrieval are
+  strict. Persistence stores only the verified reachable union. Terminal
+  rejection replaces sidecar bytes with canonical empty bytes while preserving
+  the original digest for exact duplicate identity. Direct and microbatch
+  writers share a PostgreSQL transaction advisory lock and an aggregate
+  queued/validating sidecar-byte quota, defaulting to one 64 MiB V1 DA
+  envelope. A 32-way hostile test admits exactly four at a four-sidecar cap,
+  rejects 28 with the byte-quota response, proves the SQL byte/count bound,
+  and accepts an exact duplicate while full.
+- Evidence Integrity and Midgard Node CI now run a serial machine-readable
+  watcher result verifier. It requires exact nonzero per-file collection and
+  all-pass status against map-declared expectations. The complete final
+  watcher gate passes build, typecheck, ESLint, Prettier, and 13 files with
+  267/267 tests. Pull-request branch filters are forbidden, the new verifier
+  path is explicitly trigger-scoped, and Evidence Integrity runs both the
+  normal verifier and mutation suite.
+- Dependency capability AST checks now require concrete public instance
+  methods and reject private, protected, static, optional, abstract, ambient,
+  type-only, comment/regex, wrong-owner, and nested-local substitutes. The
+  final mutation suite passes 17/17; the staged dependency verifier resolves
+  all 8/8 dependency classes.
+- The resolver cross-language test now invokes the production
+  `buildFaultProofContracts` boundary over the committed blueprint, compares
+  all 75 semantic identities, and independently reapplies the two affected
+  prepare validators. It is accurately labeled deterministic
+  production-builder fixture evidence rather than a live-deployment claim.
+  SDK test 1/1, typecheck, ESLint, and Prettier pass. All eight affected Aiken
+  guards independently collect 1 and pass 1; Aiken formatter check passes.
+- Fresh CC-01 final-tree evidence passes: Phase A/B 50/50; retained DA corpus
+  20/20; Node writer/pipeline 15/15; database HTTP/material/quota 4/4 with 93
+  unrelated tests skipped by exact selection; terminal scrub/duplicate 1/1;
+  quota configuration 5/5; validation, Node, and DA TypeScript checks; scoped
+  ESLint, Prettier, and diff checks. The affected validation package replay
+  passes 37 files and 175/175 tests.
+- Principal SHA-256 identities are:
+  - W13 source/test
+    `80618532f88771a11a25dbc31762bbcce02a7e8bcf05de474971e42b41ddad1c` /
+    `38c7423e989e1133656904f60ce3e18d2fb416e09e2a6f1b70e11e14f9ffdc60`;
+  - W14 source/test
+    `16fc90eb9d4b1c9e6f68b59e04f91aa8ca65f7faf4a14d65bc33d6b22c4920ba` /
+    `2b73c3c0227f7b251239d213cbed685387158ce8ae19324f782d7fcafcae54b8`;
+  - W15 source/test
+    `aa7180c01d3aefad0412592ee0b13fb4d60c079957e4b9f2442a626940b2b94d` /
+    `484af06f85821e8eb128e960d136bda07e396ee468fd5d25b7af784367bd2742`;
+  - W16 source/test
+    `899c0675b8921262e2e0385306ce584b363706474d9ad822017fa64b110d7759` /
+    `f843026f6d5f0522607eb511f5f5c6e13fcf2616ae10602045d2db4ccde48ff7`;
+  - W17 source/test
+    `e71ebeaf4fe416cd1725992113e49c12f8345c2ad177643daf1caad921efbfed` /
+    `405c8331cb66751a2aad04cd69bfcca5d276e9cb081e20b594aa77deca767f2f`;
+  - dependency verifier/mutations/focused-result verifier
+    `0ee0da73901f7ced84948afec4d28c8ab06eb4f06b2e7af6a1b1c4647313f8ff` /
+    `4c8e8e33f2167e489d42986212178c827f019edfbcd33a15d8666e134071245b` /
+    `388db4b0593fc75c4f472a5497e86a24d9206ff025b150bc8d9ff485f288ab84`;
+  - SDK applied-hash test/Aiken resolver fixture
+    `17e30d66670dca05ed9abb301eb9767df013ad39c32e51720e2e81fc3031506b` /
+    `6ba0ad08b48a5ecf35171fd785939463addcff4fb823d498e12ecf7a23aaad9d`;
+  - CEK admission DB/Phase B/DA boundary
+    `01416dc3f9c8c8d947afd213fcb441fdc623fd7ce274a8a14021ff447f5f7149` /
+    `69471e582643cc6ae2a21f7bf05dd98f01c177b5b94105e828ffcc9004013b9c` /
+    `def14f182bce40105cba4de9e66fb7bf5386725f7135a4552fe5ce724b8ae912`.
+- The reviewed staged result-content tree, excluding only this ledger and the
+  self-referential dependency map, is
+  `5ee5de5c00a958f40603c8912c01eefb405b29ff34ec8061d5a6d101dc95aadb`.
+  `git diff --cached --check`, the stage-zero unmerged-index scan, map JSON,
+  and the normal verifier pass.
+- All implementation/review leases are closed. The protected primary checkout
+  remains independently dirty and was never used as this batch's edit,
+  staging, test-artifact, or commit surface. Its protected `GOAL_SPEC.md`
+  SHA-256 remains
+  `30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde`.
+- This is a PR-checkpoint remediation, not Goal completion. The 122 registry
+  promotions, formal release journeys, target-testnet acceptance, remaining
+  §12 criteria, closure manifest, and §15 remain open. The PR must remain
+  draft.
+
+## Superseding complete-PR review publication action
+
+Create one signed additive commit from this exact staged tree, push it to the
+same `colll78/` branch, and refresh draft PR #471. Then run a second complete
+fresh-head review of the entire target-to-head differential in the same
+non-overlapping lanes, inspect every discussion surface and current-head CI to
+terminal completion, and fix any new actionable finding additively before the
+checkpoint can be called good to merge on its stated scope.

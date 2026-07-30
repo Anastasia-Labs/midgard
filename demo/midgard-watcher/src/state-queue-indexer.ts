@@ -3155,8 +3155,7 @@ const auditGroups = (
       (entry.status === "orphaned" &&
         current.some(({ status }) => status === "rollback")) ||
       (entry.status === "rollback" &&
-        (current.length === 0 ||
-          current.some(({ status }) => status === "rollback")))
+        current.some(({ status }) => status === "rollback"))
     ) {
       return null;
     }
@@ -3254,6 +3253,7 @@ const rollbackSourceExtends = (
   policy: WatcherStateQueueIndexerPolicyV1,
   prior: WatcherDurableStoreV1,
   sourceInput: unknown,
+  recoverableOwnedOutRefs: ReadonlySet<string> | null = null,
 ): WatcherDurableStoreV1 | null => {
   let source: WatcherDurableStoreV1;
   try {
@@ -3283,12 +3283,18 @@ const rollbackSourceExtends = (
     (spent ? store.spentProtocolUtxos : store.protocolUtxos).filter(
       (entry) => classifyStateQueueRole(policy, entry) === classification,
     );
-  return sameMarker(source.deploymentMarker, prior.deploymentMarker) &&
+  const sourceOwned = (spent: boolean) =>
+    classified(source, "owned", spent).filter(
+      ({ outRef }) => !recoverableOwnedOutRefs?.has(outRef),
+    );
+  const ownedMatches = (spent: boolean) =>
     same(
-      classified(source, "owned", false),
-      classified(prior, "owned", false),
-    ) &&
-    same(classified(source, "owned", true), classified(prior, "owned", true)) &&
+      classified(source, "owned", spent),
+      classified(prior, "owned", spent),
+    ) || same(sourceOwned(spent), classified(prior, "owned", spent));
+  return sameMarker(source.deploymentMarker, prior.deploymentMarker) &&
+    ownedMatches(false) &&
+    ownedMatches(true) &&
     retainsExactRecords(
       classified(prior, "foreign", false),
       classified(source, "foreign", false),
@@ -3347,14 +3353,22 @@ const verifiedRollbackBinding = (
         )
       : null;
   const result = rollbackResult ?? recoveryResult;
+  const recoverableOwnedOutRefs =
+    recoveryResult === null
+      ? null
+      : new Set(recoveryResult.removedRecords.protocolUtxoOutRefs);
   if (
     result === null ||
     !same(result, persistedResult) ||
     result.nextStore === null ||
     !same(result.nextStore, verified.store) ||
     result.nextStoreDigest !== observation.durableStoreDigest ||
-    rollbackSourceExtends(policy, priorStore, authority.context.sourceStore) ===
-      null
+    rollbackSourceExtends(
+      policy,
+      priorStore,
+      authority.context.sourceStore,
+      recoverableOwnedOutRefs,
+    ) === null
   ) {
     return null;
   }
@@ -4199,6 +4213,9 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       );
     }
     const postFinalityRecovery = isPostFinalityRecoveryResult(rollbackResult);
+    const postFinalityRecoveryState = postFinalityRecovery
+      ? rollbackResult.recoveryState
+      : null;
     if (!postFinalityRecovery && rollbackResult.action === "duplicate_rewind") {
       if (
         rollbackResult.protocolDecision !== "hold" ||
@@ -4247,23 +4264,34 @@ export const evaluateWatcherStateQueueIndexerV1 = (
     }
     const retained: WatcherStateQueueHistoryEntryV1[] = [];
     const orphaned: WatcherStateQueueHistoryEntryV1[] = [];
+    const commonAncestorBlockNo =
+      postFinalityRecoveryState?.path.commonAncestorBlockNo ?? null;
     for (const entry of previousState.history) {
       const topology = previousTopologies.get(entry.entryDigest);
-      const orphan =
+      const removed =
         removedPoints.has(entry.chainPointId) ||
         removedObservations.has(entry.observation.sourceObservationDigest) ||
         (topology !== undefined &&
           [...topology.outRefs.values()].some((outRef) =>
             removedOutRefs.has(outRef),
           ));
-      (orphan ? orphaned : retained).push(entry);
+      if (postFinalityRecovery) {
+        if (commonAncestorBlockNo === null) {
+          return rejected("rollback_mismatch");
+        }
+        const beyondCommonAncestor =
+          BigInt(entry.observation.blockNo) > BigInt(commonAncestorBlockNo);
+        if (removed !== beyondCommonAncestor) {
+          return rejected("rollback_mismatch");
+        }
+        (beyondCommonAncestor ? orphaned : retained).push(entry);
+      } else {
+        (removed ? orphaned : retained).push(entry);
+      }
     }
     if (
       retained.length === 0 ||
-      !same(retained.at(-1)!.snapshot, nextTopology.snapshot) ||
-      (postFinalityRecovery &&
-        retained.at(-1)!.pointDigest !==
-          rollbackResult.recoveryState?.path.commonAncestorPointDigest)
+      !same(retained.at(-1)!.snapshot, nextTopology.snapshot)
     ) {
       return rejected("rollback_mismatch");
     }
@@ -4287,17 +4315,14 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         stateQueueOwnedRecords(policy, targetVerified.store, true),
       ) ||
       (postFinalityRecovery &&
-        (rollbackResult.recoveryState === null ||
-          rollbackResult.recoveryState.path.commonAncestorBlockHash !==
-            targetVerified.block.chainPoint.blockHash ||
-          rollbackResult.recoveryState.path.commonAncestorBlockNo !==
-            targetVerified.block.chainPoint.blockNo ||
+        (postFinalityRecoveryState === null ||
+          BigInt(targetVerified.block.chainPoint.blockNo) >
+            BigInt(postFinalityRecoveryState.path.commonAncestorBlockNo) ||
           !verified.store.chainPoints.some(
             ({ blockHash, blockNo }) =>
               blockHash ===
-                rollbackResult.recoveryState!.path.replacementTipBlockHash &&
-              blockNo ===
-                rollbackResult.recoveryState!.path.replacementTipBlockNo,
+                postFinalityRecoveryState.path.replacementTipBlockHash &&
+              blockNo === postFinalityRecoveryState.path.replacementTipBlockNo,
           ))) ||
       verified.store.protocolUtxos.some(({ outRef }) =>
         removedOutRefs.has(outRef),

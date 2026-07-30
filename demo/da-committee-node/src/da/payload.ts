@@ -782,9 +782,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         hexToBytes(valueHex, "cek_program_material.value"),
       ),
     );
-    verifyMidgardCekProgramMaterialBundleV1(programEnvelopes, material, {
-      allowUnreachable: true,
-    });
+    verifyMidgardCekProgramMaterialBundleV1(programEnvelopes, material);
   } catch (cause) {
     throw new DaPayloadValidationError(
       "coverage_mismatch",

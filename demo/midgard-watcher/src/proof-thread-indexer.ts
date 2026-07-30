@@ -1969,7 +1969,7 @@ const rollbackReplacementBlock = (
   return block;
 };
 
-const postFinalityRecoveryReplacementBlock = (
+const postFinalityRecoveryCommonAncestorBlock = (
   policy: WatcherProofThreadPolicyV1,
   observation: WatcherProofThreadObservationV1,
   sourceStore: WatcherDurableStoreV1,
@@ -1982,7 +1982,7 @@ const postFinalityRecoveryReplacementBlock = (
   const consistency =
     replacementPath.length === 0
       ? null
-      : (replacementPath.at(-1) as WatcherMultiProviderConsistencyV1);
+      : (replacementPath[0] as WatcherMultiProviderConsistencyV1);
   const path = recovery.recoveryState?.path;
   const block = decodePersistedRollbackObservation(
     sourceStore,
@@ -1998,8 +1998,7 @@ const postFinalityRecoveryReplacementBlock = (
     consistency.status !== "agreed" ||
     consistency.protocolDecision !== "allowed" ||
     consistency.agreement === null ||
-    consistency.consistencyDigest !==
-      path.replacementConsistencyDigests.at(-1) ||
+    consistency.consistencyDigest !== path.replacementConsistencyDigests[0] ||
     !consistency.observationEvidenceDigests.includes(
       observation.sourceObservationDigest,
     ) ||
@@ -2010,9 +2009,9 @@ const postFinalityRecoveryReplacementBlock = (
       : consistency.independentProviderCount < 2) ||
     block === null ||
     block.network !== policy.network ||
-    block.chainPoint.pointDigest !== path.replacementTipPointDigest ||
-    block.chainPoint.blockHash !== path.replacementTipBlockHash ||
-    block.chainPoint.blockNo !== path.replacementTipBlockNo ||
+    block.chainPoint.pointDigest !== path.commonAncestorPointDigest ||
+    block.chainPoint.blockHash !== path.commonAncestorBlockHash ||
+    block.chainPoint.blockNo !== path.commonAncestorBlockNo ||
     block.chainPoint.pointDigest !== consistency.agreement.pointDigest ||
     block.chainPoint.blockHash !== consistency.agreement.blockHash ||
     block.chainPoint.slot !== consistency.agreement.slot ||
@@ -2191,7 +2190,7 @@ const parsePublicContext = (
             sourceStore,
             rollbackResult,
           )
-        : postFinalityRecoveryReplacementBlock(
+        : postFinalityRecoveryCommonAncestorBlock(
             policy,
             observation,
             sourceStore,
@@ -4058,22 +4057,32 @@ const applyWatcherProofThreadTransitionV1 = (
       rollback.removedRecords.confirmationIds,
     );
     const removedPoints = new Set(rollback.removedRecords.chainPointIds);
-    const firstOrphan = previous.history.findIndex(
-      (entry) =>
-        (entry.submissionId !== null &&
-          removedSubmissions.has(entry.submissionId)) ||
-        (entry.confirmationId !== null &&
-          removedConfirmations.has(entry.confirmationId)) ||
-        removedPoints.has(entry.chainPointId),
-    );
-    if (firstOrphan < 0) {
+    const commonAncestorBlockNo =
+      recoveryResult?.recoveryState?.path.commonAncestorBlockNo ?? null;
+    const firstOrphan =
+      recoveryResult === null
+        ? previous.history.findIndex(
+            (entry) =>
+              (entry.submissionId !== null &&
+                removedSubmissions.has(entry.submissionId)) ||
+              (entry.confirmationId !== null &&
+                removedConfirmations.has(entry.confirmationId)) ||
+              removedPoints.has(entry.chainPointId),
+          )
+        : previous.history.findIndex(
+            (entry) =>
+              commonAncestorBlockNo !== null &&
+              BigInt(entry.observation.blockNo) > BigInt(commonAncestorBlockNo),
+          );
+    if (recoveryResult === null && firstOrphan < 0) {
       return rejected("rollback_mismatch");
     }
     const retained = previous.history.slice(0, firstOrphan);
-    const orphaned = previous.history.slice(firstOrphan);
-    const target = verifyHistory(policy, retained);
+    const orphaned = firstOrphan < 0 ? [] : previous.history.slice(firstOrphan);
+    const retainedHistory = firstOrphan < 0 ? [...previous.history] : retained;
+    const target = verifyHistory(policy, retainedHistory);
     let targetStore: WatcherDurableStoreV1 | null = null;
-    const targetAnchor = retained.at(-1);
+    const targetAnchor = retainedHistory.at(-1);
     try {
       targetStore =
         targetAnchor === undefined
@@ -4085,15 +4094,23 @@ const applyWatcherProofThreadTransitionV1 = (
     if (
       target === null ||
       observation.rollbackTargetStateDigest !==
-        orphaned[0]!.predecessorStateDigest ||
+        (orphaned.length === 0
+          ? previous.stateDigest
+          : orphaned[0]!.predecessorStateDigest) ||
       (recoveryResult !== null &&
-        (targetAnchor === undefined ||
-          targetAnchor.observation.pointDigest !==
-            recoveryResult.recoveryState!.path.commonAncestorPointDigest ||
-          targetAnchor.observation.blockHash !==
-            recoveryResult.recoveryState!.path.commonAncestorBlockHash ||
-          targetAnchor.observation.blockNo !==
-            recoveryResult.recoveryState!.path.commonAncestorBlockNo)) ||
+        (commonAncestorBlockNo === null ||
+          retainedHistory.some(
+            (entry) =>
+              BigInt(entry.observation.blockNo) > BigInt(commonAncestorBlockNo),
+          ) ||
+          retainedHistory.some(
+            (entry) =>
+              (entry.submissionId !== null &&
+                removedSubmissions.has(entry.submissionId)) ||
+              (entry.confirmationId !== null &&
+                removedConfirmations.has(entry.confirmationId)) ||
+              removedPoints.has(entry.chainPointId),
+          ))) ||
       !relevantRemovedSetMatchesSuffix(previous, orphaned, rollback) ||
       !same(verified.sourceJournal, previous.journal) ||
       !same(verified.journal, target.journal) ||
@@ -4137,7 +4154,7 @@ const applyWatcherProofThreadTransitionV1 = (
       observation,
       target.journal,
       target.pending,
-      retained,
+      retainedHistory,
       audit,
       [...previous.transitionHistory, rollbackEntry],
     );

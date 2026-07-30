@@ -15,7 +15,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "bf66dc40d76ff381e94c537eef4012ae95dfb6de685474f90caeabb8b3ac88da"
+    "resultContentTreeSha256": "5ee5de5c00a958f40603c8912c01eefb405b29ff34ec8061d5a6d101dc95aadb"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -87,7 +87,8 @@
         "transientSourceEvidencePolicy": "per_decision_quarantine_preserving_exact_finalized_state_without_incident"
       },
       "unknownBehavior": "fail_closed",
-      "diagnostics": "code_and_schema_path_only"
+      "diagnostics": "code_and_schema_path_only",
+      "expectedFocusedTestCount": 41
     },
     "deploymentIdentity": {
       "schemaVersion": "midgard-watcher-signed-deployment-identity-v1",
@@ -122,7 +123,7 @@
       ],
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
-      "node22FocusedTestsPassed": 18
+      "expectedFocusedTestCount": 18
     },
     "durableStore": {
       "schemaVersion": "midgard-watcher-durable-store-v1",
@@ -149,7 +150,7 @@
       "cachePolicy": "deterministic_rebuild_from_canonical_records",
       "migrationPolicy": "fresh_install_atomic_compare_and_swap",
       "unknownBehavior": "fail_closed",
-      "node22FocusedTestsPassed": 11
+      "expectedFocusedTestCount": 11
     },
     "l1Adapter": {
       "providerSchemaVersion": "midgard-watcher-authenticated-l1-provider-v1",
@@ -164,7 +165,7 @@
       "totalCollectionMembers": 65536,
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
-      "node22FocusedTestsPassed": 21
+      "expectedFocusedTestCount": 21
     },
     "multiProviderConsistency": {
       "schemaVersion": "midgard-watcher-multi-provider-consistency-v1",
@@ -183,7 +184,7 @@
       "disagreementPolicy": "fork_content_identity_network_or_shape_quarantined",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 21
+      "expectedFocusedTestCount": 21
     },
     "finalityEngine": {
       "policySchemaVersion": "midgard-watcher-finality-policy-v1",
@@ -199,7 +200,7 @@
       "externalProviderPolicy": "exact_W01_policy_match_for_every_W11_external_provider_binding",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 23
+      "expectedFocusedTestCount": 23
     },
     "rollbackEngine": {
       "status": "PASS",
@@ -209,16 +210,19 @@
       "resultSchemaVersion": "midgard-watcher-rollback-result-v1",
       "postFinalityRecoveryStateSchemaVersion": "midgard-watcher-post-finality-recovery-state-v1",
       "postFinalityRecoveryResultSchemaVersion": "midgard-watcher-post-finality-recovery-result-v1",
+      "epochCheckpointSchemaVersion": "midgard-watcher-rollback-epoch-checkpoint-v1",
       "maximumPostFinalityRecoveryDepth": 2160,
-      "sourceSha256": "4bd6302c81cd352b9000056e5b3bfe37058d0190fc0c9089f352d12905d544a6",
-      "testSha256": "66fd2e2c27706bcde4ada6e596c80300b5e8ce6a5c9b9e9a097d272121d39a8e",
+      "transitionHistoryPerEpoch": 128,
+      "sourceSha256": "80618532f88771a11a25dbc31762bbcce02a7e8bcf05de474971e42b41ddad1c",
+      "testSha256": "38c7423e989e1133656904f60ce3e18d2fb416e09e2a6f1b70e11e14f9ffdc60",
       "rewindPolicy": "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration",
-      "restartPolicy": "externally_bootstrapped_bounded_exact_transition_and_recovery_replay",
-      "postFinalityPolicy": "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k",
+      "restartPolicy": "externally_bootstrapped_bounded_exact_transition_and_recovery_replay_with_atomically_persisted_trusted_epoch_checkpoint_digest",
+      "postFinalityPolicy": "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k_and_recovery_lifecycle_bound_epoch_rotation",
+      "checkpointAuthorityPolicy": "genesis_installation_anchor_then_atomic_CAS_trusted_checkpoint_state_digest_bound_to_prior_terminal_lineage_store_finality_incident_and_recovery_lifecycle",
       "inputPolicy": "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 24
+      "expectedFocusedTestCount": 25
     },
     "stateQueueIndexer": {
       "status": "PASS",
@@ -228,15 +232,15 @@
       "observationSchemaVersion": "midgard-watcher-state-queue-observation-v1",
       "stateSchemaVersion": "midgard-watcher-state-queue-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-state-queue-indexer-result-v1",
-      "sourceSha256": "3539be3cdc67b412e33af227fa233abe8d5c3ad2220492387e89a28822c3a44b",
-      "testSha256": "cd21422129a13c1ea668477017bb8d8032c51fff1c67d7a433d4a46bbad56c60",
+      "sourceSha256": "16fc90eb9d4b1c9e6f68b59e04f91aa8ca65f7faf4a14d65bc33d6b22c4920ba",
+      "testSha256": "2b73c3c0227f7b251239d213cbed685387158ce8ae19324f782d7fcafcae54b8",
       "inputPolicy": "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery",
       "queuePolicy": "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics",
       "durableRolePolicy": "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly",
-      "rollbackPolicy": "exact_W13_pre_and_post_finality_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold",
+      "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 19
+      "expectedFocusedTestCount": 20
     },
     "userEventIndexer": {
       "status": "PASS",
@@ -246,15 +250,15 @@
       "observationSchemaVersion": "midgard-watcher-user-event-observation-v1",
       "stateSchemaVersion": "midgard-watcher-user-event-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-user-event-indexer-result-v1",
-      "sourceSha256": "670aea1b11760b43ae6107827c2a97772545140d4c17a93292a0487ac5651213",
-      "testSha256": "c35db700430451fce31cca324f18cdbf1fd5630e9c6727392265e0946e0b464c",
+      "sourceSha256": "aa7180c01d3aefad0412592ee0b13fb4d60c079957e4b9f2442a626940b2b94d",
+      "testSha256": "484af06f85821e8eb128e960d136bda07e396ee468fd5d25b7af784367bd2742",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03",
       "eventPolicy": "exact_deposit_withdrawal_forced_order_NFT_datum_witness_time_content_and_terminal_semantics",
       "finalityPolicy": "independent_active_and_terminal_pending_to_final_transitions",
-      "rollbackPolicy": "exact_W13_pre_and_post_finality_journal_restoration_suffix_rewind_restart_replay_and_reinclusion",
+      "rollbackPolicy": "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 21
+      "expectedFocusedTestCount": 22
     },
     "settlementIndexer": {
       "status": "PASS",
@@ -264,16 +268,16 @@
       "observationSchemaVersion": "midgard-watcher-settlement-observation-v1",
       "stateSchemaVersion": "midgard-watcher-settlement-indexer-state-v1",
       "resultSchemaVersion": "midgard-watcher-settlement-indexer-result-v1",
-      "sourceSha256": "c7c94821684ff7da10b67792b5cb88acf08516a6d054c51b32073a8851e91b5b",
-      "testSha256": "e9920219c026d83ccb018b7a048199f75d0fd8c334bf403ff2f63cef14edd94c",
+      "sourceSha256": "899c0675b8921262e2e0385306ce584b363706474d9ad822017fa64b110d7759",
+      "testSha256": "f843026f6d5f0522607eb511f5f5c6e13fcf2616ae10602045d2db4ccde48ff7",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03",
       "settlementPolicy": "exact_claim_disproof_resolution_reserve_payout_refund_value_and_terminal_semantics",
       "retryPolicy": "bounded_retry_stuck_invalid_identity_and_full_transition_history_restart_replay",
       "durableRolePolicy": "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly",
-      "rollbackPolicy": "exact_W13_pre_and_post_finality_journal_restoration_unrelated_archive_preservation_restart_replay_reinclusion_and_same_point_transaction_order",
+      "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 27
+      "expectedFocusedTestCount": 28
     },
     "proofThreadIndexer": {
       "status": "PASS",
@@ -284,15 +288,15 @@
       "observationSchemaVersion": "midgard-watcher-proof-thread-observation-v1",
       "stateSchemaVersion": "midgard-watcher-proof-thread-state-v1",
       "resultSchemaVersion": "midgard-watcher-proof-thread-result-v1",
-      "sourceSha256": "b26e19cb27d9663fcc134800b3e83e6ca62131e2ecc9ae5eb8c8fcc144862a68",
-      "testSha256": "66e7350e51bcfb6a6709e4cc698560cf122fe489f6080b94662d7b76dea29cd4",
+      "sourceSha256": "e71ebeaf4fe416cd1725992113e49c12f8345c2ad177643daf1caad921efbfed",
+      "testSha256": "405c8331cb66751a2aad04cd69bfcca5d276e9cb081e20b594aa77deca767f2f",
       "inputPolicy": "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03",
       "threadPolicy": "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles",
       "durableRolePolicy": "derive_proof_computation_and_shared_DA_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_other_roles_exactly",
-      "rollbackPolicy": "exact_W13_pre_and_post_finality_journal_rewind_full_transition_history_restart_replay_revision_monotonicity_and_reinclusion",
+      "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "node22FocusedTestsPassed": 23
+      "expectedFocusedTestCount": 23
     },
     "ruleBundle": {
       "status": "PASS",
@@ -308,7 +312,12 @@
       "programPolicy": "exact_W02_program_commitment_map",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_code_and_path_only",
-      "node22FocusedTestsPassed": 9
+      "expectedFocusedTestCount": 9
+    },
+    "scaffold": {
+      "sourceSha256": "00f45dee3b6a8c2612ddfd9b54859756470019d4199e6c63b823b52efa01e5a7",
+      "testSha256": "f14dc1e70bc35278ac6f60febc806ae07c58972264edc7613f5e8c8ae5065519",
+      "expectedFocusedTestCount": 5
     },
     "remainingTasks": ["W04", "W20-W22", "W24-W46", "WG1", "WG2"]
   },
@@ -353,7 +362,7 @@
         "demo/midgard-core/src/da-transport.ts": "c2ac1c01e01ea3c488d4a03cdd607f5dc562b9df4c6b6e38a7eeff4615eab096",
         "demo/midgard-core/src/da-payload-envelope.ts": "b2224db628d8cfd68b4052421300b9c3af58f97ffbee1bfd28595f3c28bfe382",
         "demo/da-committee-node/src/da/libp2p/payload-protocols.ts": "76d6dfbb0fa74ad9c9421b95d154aeab124caa69c9f88b167a4b19ea497ee7d8",
-        "demo/da-committee-node/src/da/payload.ts": "1d172dc6a21de33f1138452e6f07f11af9ce169b26c9e428aab9021a422bb176",
+        "demo/da-committee-node/src/da/payload.ts": "def14f182bce40105cba4de9e66fb7bf5386725f7135a4552fe5ce724b8ae912",
         "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts": "5fc70e0c290893488ffcd62800423706329e13d8c713ac8ff99aa53bb8bff429"
       }
     },
@@ -408,8 +417,8 @@
       "remainingTasks": ["CG3", "Q00", "W23", "W24", "W25", "W26"],
       "sourceSha256": {
         "demo/midgard-validation/src/index.ts": "b2464d3fff2026b5d3ec821d1cf5dc2a5c2def99518043bf50c344bafd42534c",
-        "demo/midgard-validation/src/phase-a.ts": "cb06e1e177a43782e300047d03cbb8ae55e4abf4db97cd70855690588df1f8eb",
-        "demo/midgard-validation/src/phase-b.ts": "2b5bbdde0cd7d50cb0733f64365a5e45ba9f767dd08ac2dacd287874c238edbc",
+        "demo/midgard-validation/src/phase-a.ts": "63838a67968dcee125d59ca603281d0d2a399c38aaf54ac48f9be03402368e0d",
+        "demo/midgard-validation/src/phase-b.ts": "69471e582643cc6ae2a21f7bf05dd98f01c177b5b94105e828ffcc9004013b9c",
         "demo/midgard-validation/src/validation-machine.ts": "362d79a15ec5c1960dec5b28e9103886fe127dc32cb4b5e45d0165bbde9612d8",
         "demo/midgard-validation/src/validation-dispute-evidence.ts": "914f8038093745759afb2d21f256a6bd4d788215216db790f39b5d4d40ccbfb9",
         "demo/midgard-core/src/consensus-validation-v1.ts": "d717100b45b3afcf864c59822379f74ab7cc6b8ac70052b0146571bdad25c281"
@@ -525,8 +534,8 @@
         "demo/midgard-watcher/src/l1-adapter.ts": "aa559a6f3e106448ad3a7b9ba7d18769d7c479fe5c69c4ac63f20436a63a35d8",
         "demo/midgard-watcher/src/multi-provider-consistency.ts": "a6cdea9c3a906b5b59b4134d194466d415030b6f89f66ff1076013584665d7e4",
         "demo/midgard-watcher/src/finality-engine.ts": "5e773488b9469fccb64f9989315fea48801470db0663a1ebc37a8629cb300441",
-        "demo/midgard-watcher/src/rollback-engine.ts": "4bd6302c81cd352b9000056e5b3bfe37058d0190fc0c9089f352d12905d544a6",
-        "demo/midgard-watcher/src/state-queue-indexer.ts": "3539be3cdc67b412e33af227fa233abe8d5c3ad2220492387e89a28822c3a44b"
+        "demo/midgard-watcher/src/rollback-engine.ts": "80618532f88771a11a25dbc31762bbcce02a7e8bcf05de474971e42b41ddad1c",
+        "demo/midgard-watcher/src/state-queue-indexer.ts": "16fc90eb9d4b1c9e6f68b59e04f91aa8ca65f7faf4a14d65bc33d6b22c4920ba"
       }
     },
     {
@@ -561,7 +570,7 @@
         "demo/midgard-node/src/services/state-queue-topology.ts": "e508968cff0a23b18f1670a3d7c5eecc860341d29a1ca30fb860de1ea383f8b3",
         "demo/midgard-watcher/src/durable-store.ts": "73b3044a48ceb16a46f4b61e89c796adde9159b9c576f2ddbc1aa5c7d76a91c2",
         "demo/midgard-watcher/src/finality-engine.ts": "5e773488b9469fccb64f9989315fea48801470db0663a1ebc37a8629cb300441",
-        "demo/midgard-watcher/src/state-queue-indexer.ts": "3539be3cdc67b412e33af227fa233abe8d5c3ad2220492387e89a28822c3a44b"
+        "demo/midgard-watcher/src/state-queue-indexer.ts": "16fc90eb9d4b1c9e6f68b59e04f91aa8ca65f7faf4a14d65bc33d6b22c4920ba"
       }
     },
     {

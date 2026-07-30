@@ -161,10 +161,10 @@ test("rejects weakened post-finality recovery and durable-role claims", async ()
   const mutations = [
     {
       mutate(dependencyMap) {
-        dependencyMap.requiredWatcherPackage.strictConfiguration.finalityPolicy.postFinalityRecoveryMaxDepth =
-          1;
+        dependencyMap.requiredWatcherPackage.strictConfiguration.finalityPolicy.postFinalityRecoveryMaxDepth = 1;
       },
-      message: /W01 strict watcher configuration evidence is incomplete or stale/,
+      message:
+        /W01 strict watcher configuration evidence is incomplete or stale/,
     },
     {
       mutate(dependencyMap) {
@@ -360,6 +360,29 @@ test("rejects a concrete member preserved only on an abstract class", async () =
   );
 });
 
+test("rejects private, protected, static, or optional class capabilities", async () => {
+  const owner = "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts";
+  for (const replacement of [
+    "  private async request({",
+    "  protected async request({",
+    "  static async request({",
+    "  async request?({",
+  ]) {
+    const result = await runWithMutatedIndexedMap(
+      (_dependencyMap, { replaceSource }) => {
+        replaceSource(owner, (source) =>
+          source.replace("  async request({", replacement),
+        );
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /public_da source symbol DaLibp2pNode\.request is not declared by demo\/da-committee-node\/src\/da\/libp2p\/DaLibp2pNode\.ts/,
+    );
+  }
+});
+
 test("rejects a dependency command preserved only in a CI comment", async () => {
   const workflow = ".github/workflows/midgard-node-ci.yml";
   const command =
@@ -376,6 +399,55 @@ test("rejects a dependency command preserved only in a CI comment", async () => 
     `${result.stdout}${result.stderr}`,
     /Midgard node CI must actively run exactly one/,
   );
+});
+
+test("rejects a pull-request branch filter that bypasses the target branch", async () => {
+  const workflow = ".github/workflows/midgard-node-ci.yml";
+  for (const branchFilter of [
+    'branches: ["main"]',
+    'branches-ignore : ["tx-validation"]',
+    "'branches': [\"main\"]",
+  ]) {
+    const result = await runWithMutatedIndexedMap(
+      (_dependencyMap, { replaceSource }) => {
+        replaceSource(workflow, (source) =>
+          source.replace(
+            "  pull_request:\n    paths:",
+            `  pull_request:\n    ${branchFilter}\n    paths:`,
+          ),
+        );
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /pull_request must not be restricted by branch filters/,
+    );
+  }
+});
+
+test("rejects missing or inert Evidence Integrity watcher gates", async () => {
+  const workflow = ".github/workflows/evidence-integrity-ci.yml";
+  for (const stepName of [
+    "Verify canonical watcher dependency-map mutation coverage",
+    "Verify canonical watcher focused-test evidence",
+  ]) {
+    const result = await runWithMutatedIndexedMap(
+      (_dependencyMap, { replaceSource }) => {
+        replaceSource(workflow, (source) =>
+          source.replace(
+            `      - name: ${stepName}\n`,
+            `      - name: ${stepName}\n        if: false\n`,
+          ),
+        );
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /Evidence Integrity CI must actively run exactly one/,
+    );
+  }
 });
 
 test("rejects an inert dependency step and a trigger path moved outside paths", async () => {
@@ -403,13 +475,15 @@ test("rejects an inert dependency step and a trigger path moved outside paths", 
   const misplaced = await runWithMutatedIndexedMap(
     (_dependencyMap, { replaceSource }) => {
       replaceSource(workflow, (source) =>
-        source.replace(
-          `      - "${requiredPath}"`,
-          `      # removed ${requiredPath}`,
-        ).replace(
-          "    env:\n      L1_PROVIDER: Kupmios",
-          `    env:\n      EVIDENCE_PATH: "${requiredPath}"\n      L1_PROVIDER: Kupmios`,
-        ),
+        source
+          .replace(
+            `      - "${requiredPath}"`,
+            `      # removed ${requiredPath}`,
+          )
+          .replace(
+            "    env:\n      L1_PROVIDER: Kupmios",
+            `    env:\n      EVIDENCE_PATH: "${requiredPath}"\n      L1_PROVIDER: Kupmios`,
+          ),
       );
     },
   );

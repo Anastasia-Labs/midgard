@@ -111,6 +111,7 @@ export type NodeConfigDep = {
   RUN_GENESIS_ON_STARTUP: boolean;
   ADMIN_API_KEY: string;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
+  MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: number;
@@ -491,6 +492,19 @@ const makeConfig = Effect.gen(function* () {
   const maxDurableAdmissionBacklog = yield* Config.integer(
     "MAX_DURABLE_ADMISSION_BACKLOG",
   ).pipe(Config.withDefault(10_000));
+  const maxDurableAdmissionBacklogBytes = yield* Config.integer(
+    "MAX_DURABLE_ADMISSION_BACKLOG_BYTES",
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes),
+    Config.mapAttempt((value) => {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new Error(
+          "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
   const maxSubmitTxCborBytes = yield* Config.integer(
     "MAX_SUBMIT_TX_CBOR_BYTES",
   ).pipe(
@@ -1150,6 +1164,7 @@ const makeConfig = Effect.gen(function* () {
     RUN_GENESIS_ON_STARTUP: runGenesisOnStartup,
     ADMIN_API_KEY: adminApiKey,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
+    MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:

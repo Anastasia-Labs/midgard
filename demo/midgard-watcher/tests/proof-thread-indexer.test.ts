@@ -2030,6 +2030,9 @@ const postFinalityProofRecoveryBundle = (
   const commonBlocks = l1.providers.map((provider) =>
     normalize(provider, common.fixture, "0", 0),
   );
+  const commonRawObservations = l1.providers.map((provider) =>
+    rawObservation(provider, common.fixture, "0", 0),
+  );
   const commonConsistency = evaluateWatcherMultiProviderConsistencyV1(
     l1.consistencyConfig,
     commonBlocks,
@@ -2083,10 +2086,34 @@ const postFinalityProofRecoveryBundle = (
     l1.consistencyConfig,
     replacementBlocks,
   );
+  const replacementTail = [2, 3].map((ordinal) => {
+    const parent = ordinal === 2 ? replacementBlocks[0]! : undefined;
+    const rawObservations = l1.providers.map((provider) =>
+      rawObservation(provider, replacementFixture, "1", ordinal, {
+        empty: true,
+      }),
+    );
+    for (const raw of rawObservations) {
+      raw.chainPoint.parentBlockHash =
+        parent?.chainPoint.blockHash ??
+        h32((0x40 + ordinal - 1).toString(16).padStart(2, "0"));
+    }
+    const blocks = l1.providers.map((provider, index) =>
+      normalizeWatcherL1BlockV1(provider, rawObservations[index]!),
+    );
+    return {
+      rawObservations,
+      blocks,
+      consistency: evaluateWatcherMultiProviderConsistencyV1(
+        l1.consistencyConfig,
+        blocks,
+      ),
+    };
+  });
   const contradiction = evaluateWatcherFinalityV1(
     l1.policy,
     orphanFinalized.state,
-    replacementConsistency,
+    replacementTail.at(-1)!.consistency,
   );
   expect(contradiction.action).toBe("quarantine_incident");
   const sourceStore = persistRecoveryObservations(orphan.store, [
@@ -2094,6 +2121,7 @@ const postFinalityProofRecoveryBundle = (
     ...orphanPendingBlocks,
     ...orphanFinalBlocks,
     ...replacementBlocks,
+    ...replacementTail.flatMap(({ blocks }) => blocks),
   ]);
   const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
     l1.policy,
@@ -2104,7 +2132,7 @@ const postFinalityProofRecoveryBundle = (
     l1.policy,
     sourceStore,
     orphanFinalized.state,
-    replacementConsistency,
+    replacementTail.at(-1)!.consistency,
     contradiction,
     rollbackBootstrapState,
     rollbackBootstrapState,
@@ -2122,7 +2150,11 @@ const postFinalityProofRecoveryBundle = (
     quarantinedRollbackState: incident.rollbackState,
     rollbackBootstrapState,
     previousCanonicalPath: [commonConsistency, orphanFinalConsistency],
-    replacementCanonicalPath: [commonConsistency, replacementConsistency],
+    replacementCanonicalPath: [
+      commonConsistency,
+      replacementConsistency,
+      ...replacementTail.map(({ consistency }) => consistency),
+    ],
     previousRecoveryState: null,
   };
   const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
@@ -2134,7 +2166,8 @@ const postFinalityProofRecoveryBundle = (
       network: "Preprod",
       path: {
         commonAncestorPointDigest: commonBlocks[0]!.chainPoint.pointDigest,
-        replacementTipPointDigest: replacementBlocks[0]!.chainPoint.pointDigest,
+        replacementTipPointDigest:
+          replacementTail.at(-1)!.blocks[0]!.chainPoint.pointDigest,
         rollbackDepth: "1",
       },
       incidentLifecycle: { status: "recovered" },
@@ -2147,6 +2180,8 @@ const postFinalityProofRecoveryBundle = (
   return {
     recovery,
     recoveryInput,
+    commonBlocks,
+    commonRawObservations,
     replacementBlocks,
     replacementConsistency,
     replacementRawObservations,
@@ -2244,6 +2279,7 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     { ...orphanFinal, store: recoverySource },
     resumeFixture,
   );
+  const common = bundle.commonBlocks[0]!;
   const replacement = bundle.replacementBlocks[0]!;
   const sourceStore = bundle.recoveryInput.sourceStore as WatcherDurableStoreV1;
   const observation = makeWatcherProofThreadObservationV1({
@@ -2253,16 +2289,16 @@ const postFinalityProofThreadScenario = (sourceMode: FixtureSourceMode) => {
     deploymentMarker: policy.deploymentMarker,
     transitionKind: "rollback",
     confirmationPhase: null,
-    pointDigest: replacement.chainPoint.pointDigest,
-    blockHash: replacement.chainPoint.blockHash,
-    slot: replacement.chainPoint.slot,
-    blockNo: replacement.chainPoint.blockNo,
+    pointDigest: common.chainPoint.pointDigest,
+    blockHash: common.chainPoint.blockHash,
+    slot: common.chainPoint.slot,
+    blockNo: common.chainPoint.blockNo,
     transactionHash: null,
     publicInputDigest: createHash("sha256")
-      .update(encodeWatcherNormalizedL1BlockV1(replacement))
+      .update(encodeWatcherNormalizedL1BlockV1(common))
       .digest("hex"),
-    sourceObservationDigest: replacement.observationDigest,
-    chainPointId: replacement.chainPoint.chainPointId,
+    sourceObservationDigest: common.observationDigest,
+    chainPointId: common.chainPoint.chainPointId,
     sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
       encodeWatcherDurableStoreV1(sourceStore),
     ),

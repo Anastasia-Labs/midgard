@@ -3254,11 +3254,9 @@ describe("canonical authenticated user-event indexer", () => {
         },
       });
       expect(applied.state?.history).toHaveLength(
-        commonState.history.length + 1,
+        orphanState.history.length + 1,
       );
-      expect(applied.state?.history).not.toContainEqual(
-        orphanState.history.at(-1),
-      );
+      expect(applied.state?.history).toContainEqual(orphanState.history.at(-1));
       expect(applied.state?.activeEntryDigests).not.toContain(
         orphanState.activeEntryDigests.at(-1),
       );
@@ -3280,7 +3278,7 @@ describe("canonical authenticated user-event indexer", () => {
       expect(
         deriveWatcherUserEventObservationV1(
           policy,
-          commonState,
+          orphanState,
           serializedContext,
           targetEntryDigest,
         ),
@@ -3288,7 +3286,7 @@ describe("canonical authenticated user-event indexer", () => {
       expect(
         evaluateWatcherUserEventIndexerV1(
           policy,
-          commonState,
+          orphanState,
           observation,
           serializedContext,
         ).state,
@@ -3326,6 +3324,60 @@ describe("canonical authenticated user-event indexer", () => {
     },
     30_000,
   );
+
+  it("derives a post-finality target internally and records a no-owned-change recovery", () => {
+    const commonBundle = blockBundle([], null, 1_150, 0);
+    const commonState = accepted(null, commonBundle);
+    const orphanBundle = blockBundle(
+      [makeEventFixture("deposit", "df", 0, 1_000n)],
+      commonBundle.store,
+      1_151,
+      1,
+    );
+    const recovery = postFinalityUserEventRecoveryBundle(
+      "external_providers",
+      commonBundle,
+      orphanBundle,
+    );
+    const derivedWithoutCallerTarget = deriveWatcherUserEventObservationV1(
+      policy,
+      commonState,
+      recovery.context,
+    );
+    expect(derivedWithoutCallerTarget).not.toBeNull();
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        commonState,
+        recovery.context,
+        h32("ff"),
+      ),
+    ).toEqual(derivedWithoutCallerTarget);
+    const applied = evaluateWatcherUserEventIndexerV1(
+      policy,
+      commonState,
+      derivedWithoutCallerTarget,
+      recovery.context,
+    );
+    expect(applied).toMatchObject({
+      action: "accept",
+      reasonCodes: ["rollback_authenticated"],
+      state: {
+        snapshot: commonState.snapshot,
+        activeEntryDigests: [
+          ...commonState.activeEntryDigests,
+          expect.any(String),
+        ],
+      },
+    });
+    expect(applied.state?.history).toHaveLength(commonState.history.length + 1);
+    expect(
+      parseWatcherUserEventIndexerStateV1(
+        structuredClone(applied.state),
+        policy,
+      ),
+    ).toEqual(applied.state);
+  }, 30_000);
 
   it("rejects forged, mismatched, wrong-target, mode-invalid, and duplicate-only post-finality recovery authorities", () => {
     const commonBundle = blockBundle([], null, 1_200, 0);
@@ -3384,7 +3436,7 @@ describe("canonical authenticated user-event indexer", () => {
         recovery.context,
         orphanState.activeEntryDigests.at(-1)!,
       ),
-    ).toBeNull();
+    ).toEqual(derive(recovery.context));
 
     const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
       ...recovery.recoveryInput,

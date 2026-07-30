@@ -49,14 +49,15 @@ const own_out_ref =
 const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
 
-// Generated from the committed plutus.json deployment blueprint by applying
-// [award_script_hash, computation_thread_policy] in the SDK's canonical
-// semantic-resolver order. These are deployed script identities, not hashes of
-// human-readable validator titles.
+// Bound by the SDK cross-language test to buildFaultProofContracts over the
+// committed plutus.json and deterministic fixture policy IDs. The same test
+// independently applies the Phase-A and ScriptSources prepare validators to
+// these exact semantic groups. These are parameterized production-builder
+// fixture identities, not a claim about a live deployment.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
-    #"7a905ce9aa7101b43871c6d6cd818b43ab629a19e7327ec433569493",
-    #"e8f63ef58281c194408a8d7f4832e7daed67ed7c598b7d7019c48d1e",
+    #"1d0bc85899aad32247d1b16fc7c871aa525632e5e1d366b58c52f562",
+    #"f62ab6bcc90f1d36dd9d0a74cf26e33fd86e4eacfa379e59ae27466c",
   ]
 }
 
@@ -66,34 +67,34 @@ fn input_sets_resolvers() -> List<ScriptHash> {
 
 fn script_source_resolvers() -> List<ScriptHash> {
   [
-    #"b020f22cd47b22f23f210bd21ace7717896102dd7f1cada568de4f17",
-    #"4830b66c5c20d510403f0ec02e50d9c98ad21f6c03f34caa26a157a8",
-    #"ea2122da93f7b6d0201dcd8ea3c9f5caf8a73069aaf30beb4d48812d",
-    #"c3e6f7348799e7dc9d9a758682720ad716525634b593457ed81cb09a",
-    #"05c1a02cb91bb8eaf9307fe026e5d8ba7057b74e5a04a58b93e6968a",
-    #"ec8aa69388320672937cc35ca6b6c2822f524eea6df3bd529658b19c",
-    #"f65d21d85291be34717b5f20a6b764dec58533f8e227e43df4d3c5d3",
-    #"a2409ae0f7ac3e90a9798229179dc8bdd755c8146f57dd6877a5a0f2",
-    #"690d2709f67643a7a01e3f5f5b73187bd114200495cf4dd1818bd786",
-    #"9fa08b2a789509c1e100170ac2ff10f0cf6b707079454038d7067283",
-    #"c5984cfddc7daaef3f152d5729e1d3ad436384cbed619f30221ba30e",
-    #"785c6d37ebf46b8731927474afc3e3696be346bf09aad61c48904e8a",
-    #"92353f1e8d337c396a08451379287c0b6375c8ab348981799cc6efc4",
-    #"e5e2f31db9311cc7e41a05d4671be22ac6cdb7f2165966f2d43e3eca",
-    #"7de75d139a52cd149d194a4706ab6bb0806b923b4048eeb0d77aca0f",
-    #"c57f7aeebe4f04b2a8e20c6a8aa0bd65f13d3f4cb6d085c591cb3224",
-    #"e97dc3ba3d5d8ce447547d31a62d0a8cc3c3abede78119bd93fd4eee",
-    #"f6db01f229e28d2bf2d45e3ce15e2ccf4c79b40f6b90f86efa02eb36",
-    #"97e6dda128138216f21246ccf0d37bdfb34dfcc6116581b2e3cb692b",
-    #"474cc11054c2b98ced7a93127af9581cdb6bc630d4f4451840975f3c",
-    #"7a2b2078d47568ed78e175c64b4c93b491000e0f6727a25091bdca06",
-    #"078424b95ead6c9397009dd5a7d28660413b25f4d079887afdb7b216",
-    #"078424b95ead6c9397009dd5a7d28660413b25f4d079887afdb7b216",
-    #"051fec3b2b7b181e8f377b3cdc0065b225e87fe42257b09d681bbc89",
-    #"ef6b5fed72d02612ba0e2b0de62bde03162c71ef7266476bef795118",
-    #"bc65986eeb926aee7bd0336a7163cd23f2a511c65cf0d7fd6c49dfa3",
-    #"dee886f184c96ade6db48662b9d7a4566eed348e73a48f93a2907dfb",
-    #"6c6f6a2981b146a1953bdad33f24b6466cbd2c18cce70cc49bf3dc4e",
+    #"61abff4d19b3e9e3bd9a417db31ab0f14cd3ef201eccbc52ce34e0cf",
+    #"70ecb2539a96a31611dceb2669cb7910b7b3afaa8c109d57af313b07",
+    #"a996ab6c689f6ce114073615d1583e481d8769f597f094f603e40cca",
+    #"15be6c38c2b5959f4233eed6b1474ec5f831a27361bb57d361c2a355",
+    #"f890e913e3085154ffe503397f2e8520ffc872650626df4436ebc2db",
+    #"e38b0ebfa3939edef9f2b011059128582127f639b6b3283b124ea3ef",
+    #"37618d1d07d266924ac5f0631a1791c27d9bd76d3bacad893466f6ca",
+    #"9ad7b6418d9b3cca582f7c12377a3f7f09c6ab5203ea23898288160b",
+    #"8cc9c85b11695228483e63d0a59684a989d8236ca2ec654f8e8ec0c1",
+    #"be5e382cd992ec856b427e1dac37aad24d07765a09aefb7f8509fae7",
+    #"61efe809cedf54f469a9b02fa2cbfee21dca57686825d4a3477aa679",
+    #"806c8367c3169be5ced8e87b3b291ff8c75eecc5488bc3df164ef9a0",
+    #"d502771cb641ff4f137289cd3ad841a7b6d2035423876dc47ecf248d",
+    #"275bb6afa2ffb3f03b266b2e94f0e445949fef640a192964c5957c7f",
+    #"9ee873433cb7262b6a9581f544eefb79cb30a09cd4e5e9d6f5bb8c1e",
+    #"83d473f8520f154caa44bfa3d8261e0689c29789597752f650994449",
+    #"83fdc76a2fd08bbe98de3cfc9c4887fdacc9569471732537a466d2f4",
+    #"be1eabdee771be8d91498be46ecc5b282c7a03dbc219a46756ca6749",
+    #"0258383a99b515a2eca2574a3d25a97d6f5006ffca02792393a8f582",
+    #"d1a963174faeddbc89a58b25e64f08e119397d621d4f9a6762a115e8",
+    #"3004afd94cfd2305aefaadde3f82de62203f7bb078957561768ed538",
+    #"633f19360f4b8d381813eebd16e75cad367ab59d2c5c011f88da745e",
+    #"633f19360f4b8d381813eebd16e75cad367ab59d2c5c011f88da745e",
+    #"d7ee04abf30408af3d7c5193414036d0f158d6eb3e4068a0a0c3c9d7",
+    #"c28239858c3738dd502d1a4ac748c47b668ea470e39bba56979ee5d3",
+    #"0827340edd4b28e7a12b1bcb8cc6629def58dbbee7522111a922f503",
+    #"857eff92f1c3fc36bbdc38f2d0a24257c93eac54382de083973866d8",
+    #"30ad51c0ef8b272d79aa2b0797c6e1a9d1198e3da84de89b79d2bac6",
   ]
 }
 

@@ -1443,6 +1443,81 @@ describe("canonical watcher rollback engine", () => {
           recoveryInput,
         ),
       ).toEqual(applied);
+      expect(applied.resumableRollbackState).toMatchObject({
+        epoch: "1",
+        transitions: [],
+        epochCheckpoint: {
+          priorTerminalStateDigest: fixture.rollbackState.stateDigest,
+          priorTerminalStoreDigest: fixture.rollbackState.storeDigest,
+          priorTerminalFinalityStateDigest:
+            fixture.rollbackState.currentFinalityStateDigest,
+          priorTerminalIncidentDigest:
+            fixture.rollbackState.incident?.incidentDigest,
+          recoveryStateDigest: applied.recoveryState?.stateDigest,
+          recoveryLifecycleDigest:
+            applied.recoveryState?.incidentLifecycle.lifecycleDigest,
+          checkpointStoreDigest: applied.nextStoreDigest,
+          checkpointFinalityStateDigest:
+            applied.resumableFinalityState?.stateDigest,
+        },
+      });
+      expect(applied.resumableRollbackBootstrapState).toEqual(
+        applied.resumableRollbackState,
+      );
+      expect(applied.resumableTrustedCheckpointStateDigest).toBe(
+        applied.resumableRollbackState?.stateDigest,
+      );
+      expect(
+        parseWatcherRollbackStateV1(
+          JSON.parse(JSON.stringify(applied.resumableRollbackState)),
+          {
+            policy: fixture.finalityPolicy,
+            rollbackBootstrapState: JSON.parse(
+              JSON.stringify(applied.resumableRollbackBootstrapState),
+            ),
+            trustedCheckpointStateDigest:
+              applied.resumableTrustedCheckpointStateDigest,
+            currentStore: JSON.parse(JSON.stringify(applied.nextStore)),
+          },
+        ),
+      ).toEqual(applied.resumableRollbackState);
+
+      const forgedRecoveryCheckpoint = JSON.parse(
+        JSON.stringify(applied),
+      ) as Record<string, any>;
+      for (const key of [
+        "resumableRollbackState",
+        "resumableRollbackBootstrapState",
+      ]) {
+        forgedRecoveryCheckpoint[key].epochCheckpoint.recoveryLifecycleDigest =
+          hex32("f3");
+        const {
+          checkpointDigest: _discardedCheckpointDigest,
+          ...checkpointCanonical
+        } = forgedRecoveryCheckpoint[key].epochCheckpoint;
+        forgedRecoveryCheckpoint[key].epochCheckpoint.checkpointDigest =
+          sha256Canonical(checkpointCanonical);
+        const {
+          stateDigest: _discardedRollbackStateDigest,
+          ...rollbackStateCanonical
+        } = forgedRecoveryCheckpoint[key];
+        forgedRecoveryCheckpoint[key].stateDigest = sha256Canonical(
+          rollbackStateCanonical,
+        );
+      }
+      const {
+        resultDigest: _discardedRecoveryResultDigest,
+        ...recoveryResultCanonical
+      } = forgedRecoveryCheckpoint;
+      forgedRecoveryCheckpoint.resultDigest = sha256Canonical(
+        recoveryResultCanonical,
+      );
+      expect(
+        parseWatcherPostFinalityRecoveryResultV1(
+          forgedRecoveryCheckpoint,
+          recoveryInput,
+        ),
+      ).toBeNull();
 
       const restarted = evaluateWatcherPostFinalityRecoveryV1({
         policy: JSON.parse(JSON.stringify(fixture.finalityPolicy)),
@@ -2575,6 +2650,237 @@ describe("canonical watcher rollback engine", () => {
       ).reasonCodes,
     ).toEqual(["malformed_rollback_state"]);
   });
+
+  it("rotates an authenticated checkpoint at transition 129 and rejects linked-state reset or forgery", () => {
+    const value = makeWatcherFinalityPolicyV1(
+      localConfig(256),
+      deploymentIdentity(),
+    );
+    expect(value).not.toBeNull();
+    const finalityPolicy = value as WatcherFinalityPolicyV1;
+    const points = Array.from({ length: 130 }, (_, depth) => ({
+      ...oldPoint,
+      depth: depth.toString(),
+    }));
+    const observations = points.map((point) => localObservation(point));
+    let currentStore = combine(
+      finalityPolicy.deploymentMarker,
+      "0",
+      [],
+      undefined,
+      observations,
+    );
+    let previousFinalityState = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      null,
+      localAgreement(points[129]!),
+    ).state as WatcherFinalityStateV1;
+    const rootBootstrapState = bootstrap(
+      finalityPolicy,
+      currentStore,
+      previousFinalityState,
+    );
+    let currentRollbackState = rootBootstrapState;
+    let currentRollbackBootstrapState = rootBootstrapState;
+
+    for (let depth = 128; depth >= 1; depth -= 1) {
+      const consistency = localAgreement(points[depth]!);
+      const finalityResult = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        previousFinalityState,
+        consistency,
+      );
+      expect(finalityResult.action).toBe("rewind_pending");
+      const applied = evaluateWatcherRollbackV1(
+        finalityPolicy,
+        currentStore,
+        previousFinalityState,
+        consistency,
+        finalityResult,
+        currentRollbackState,
+        currentRollbackBootstrapState,
+      );
+      expect(applied.action).toBe("apply_rewind");
+      currentStore = applied.nextStore!;
+      currentRollbackState = applied.rollbackState!;
+      currentRollbackBootstrapState = applied.rollbackBootstrapState!;
+      previousFinalityState = finalityResult.state!;
+    }
+
+    expect(currentRollbackState).toMatchObject({
+      epoch: "0",
+      transitionCount: "128",
+    });
+    expect(currentRollbackState.transitions).toHaveLength(128);
+    expect(currentRollbackBootstrapState).toEqual(rootBootstrapState);
+
+    const sourceStore = currentStore;
+    const priorRollbackState = currentRollbackState;
+    const priorRollbackBootstrapState = currentRollbackBootstrapState;
+    const priorFinalityState = previousFinalityState;
+    const consistency = localAgreement(points[0]!);
+    const finalityResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      priorFinalityState,
+      consistency,
+    );
+    const rotated = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      sourceStore,
+      priorFinalityState,
+      consistency,
+      finalityResult,
+      priorRollbackState,
+      priorRollbackBootstrapState,
+    );
+
+    expect(rotated).toMatchObject({
+      action: "apply_rewind",
+      rollbackState: {
+        epoch: "1",
+        transitionCount: "129",
+        epochCheckpoint: {
+          epoch: "1",
+          rootBootstrapStateDigest: rootBootstrapState.stateDigest,
+          priorCheckpointDigest: null,
+          priorTerminalStateDigest: priorRollbackState.stateDigest,
+          priorTerminalTransitionCount: "128",
+          priorTerminalTransitionLineageDigest:
+            priorRollbackState.transitionLineageDigest,
+          priorTerminalStoreDigest: priorRollbackState.storeDigest,
+          priorTerminalFinalityStateDigest: priorFinalityState.stateDigest,
+          priorTerminalIncidentDigest: null,
+          recoveryStateDigest: null,
+          recoveryLifecycleDigest: null,
+        },
+      },
+    });
+    expect(rotated.rollbackState?.transitions).toHaveLength(1);
+    expect(rotated.rollbackBootstrapState).toMatchObject({
+      epoch: "1",
+      transitionCount: "128",
+      transitions: [],
+      epochCheckpoint: rotated.rollbackState?.epochCheckpoint,
+    });
+    expect(rotated.trustedCheckpointStateDigest).toBe(
+      rotated.rollbackBootstrapState?.stateDigest,
+    );
+    expect(
+      parseWatcherRollbackResultV1(JSON.parse(JSON.stringify(rotated)), {
+        policy: finalityPolicy,
+        sourceStore,
+        previousFinalityState: priorFinalityState,
+        consistency,
+        finalityResult,
+        previousRollbackState: priorRollbackState,
+        rollbackBootstrapState: priorRollbackBootstrapState,
+      }),
+    ).toEqual(rotated);
+    expect(
+      parseWatcherRollbackStateV1(
+        JSON.parse(JSON.stringify(rotated.rollbackState)),
+        {
+          policy: finalityPolicy,
+          rollbackBootstrapState: JSON.parse(
+            JSON.stringify(rotated.rollbackBootstrapState),
+          ),
+          trustedCheckpointStateDigest: rotated.trustedCheckpointStateDigest,
+          currentStore: JSON.parse(JSON.stringify(rotated.nextStore)),
+        },
+      ),
+    ).toEqual(rotated.rollbackState);
+
+    const duplicate = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      rotated.nextStore,
+      priorFinalityState,
+      consistency,
+      finalityResult,
+      rotated.rollbackState,
+      rotated.rollbackBootstrapState,
+      rotated.trustedCheckpointStateDigest,
+    );
+    expect(duplicate).toMatchObject({
+      action: "duplicate_rewind",
+      rollbackBootstrapState: rotated.rollbackBootstrapState,
+    });
+
+    const forged = JSON.parse(JSON.stringify(rotated.rollbackState)) as Record<
+      string,
+      any
+    >;
+    forged.epochCheckpoint.priorTerminalTransitionLineageDigest = hex32("f1");
+    const {
+      checkpointDigest: _discardedCheckpointDigest,
+      ...checkpointCanonical
+    } = forged.epochCheckpoint;
+    forged.epochCheckpoint.checkpointDigest =
+      sha256Canonical(checkpointCanonical);
+    const { stateDigest: _discardedStateDigest, ...stateCanonical } = forged;
+    forged.stateDigest = sha256Canonical(stateCanonical);
+    expect(
+      parseWatcherRollbackStateV1(forged, {
+        policy: finalityPolicy,
+        rollbackBootstrapState: rotated.rollbackBootstrapState,
+        trustedCheckpointStateDigest: rotated.trustedCheckpointStateDigest,
+        currentStore: rotated.nextStore,
+      }),
+    ).toBeNull();
+
+    const resetState = bootstrap(
+      finalityPolicy,
+      rotated.nextStore!,
+      finalityResult.state!,
+    );
+    expect(
+      parseWatcherRollbackStateV1(resetState, {
+        policy: finalityPolicy,
+        rollbackBootstrapState: rotated.rollbackBootstrapState,
+        trustedCheckpointStateDigest: rotated.trustedCheckpointStateDigest,
+        currentStore: rotated.nextStore,
+      }),
+    ).toBeNull();
+
+    const forgedBootstrap = JSON.parse(
+      JSON.stringify(rotated.rollbackBootstrapState),
+    ) as Record<string, any>;
+    forgedBootstrap.epochCheckpoint.priorTerminalTransitionLineageDigest =
+      hex32("f2");
+    const {
+      checkpointDigest: _discardedBootstrapCheckpointDigest,
+      ...bootstrapCheckpointCanonical
+    } = forgedBootstrap.epochCheckpoint;
+    forgedBootstrap.epochCheckpoint.checkpointDigest = sha256Canonical(
+      bootstrapCheckpointCanonical,
+    );
+    forgedBootstrap.transitionLineageDigest = hex32("f2");
+    const {
+      stateDigest: _discardedBootstrapStateDigest,
+      ...bootstrapStateCanonical
+    } = forgedBootstrap;
+    forgedBootstrap.stateDigest = sha256Canonical(bootstrapStateCanonical);
+    expect(
+      parseWatcherRollbackStateV1(forgedBootstrap, {
+        policy: finalityPolicy,
+        rollbackBootstrapState: forgedBootstrap,
+        currentStore: sourceStore,
+      }),
+    ).toBeNull();
+    expect(
+      evaluateWatcherRollbackV1(
+        finalityPolicy,
+        sourceStore,
+        priorFinalityState,
+        consistency,
+        finalityResult,
+        forgedBootstrap,
+        forgedBootstrap,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_rollback_state"],
+    });
+  }, 180_000);
 
   it("rejects a convergent alternate first-transition origin against the persisted W12 bootstrap", () => {
     const finalityPolicy = policy();

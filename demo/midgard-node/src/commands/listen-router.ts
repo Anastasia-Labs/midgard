@@ -7,9 +7,13 @@ import {
   decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardProofSubmissionV1,
   encodeMidgardCekProgramMaterialSidecarV1,
+  verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardCekProgramMaterialV1,
 } from "@al-ft/midgard-core/cek-proof";
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardNativeByteListPreimage,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+} from "@al-ft/midgard-core/codec";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_CONSENSUS_PROFILE_V1,
@@ -2730,10 +2734,25 @@ const postSubmitHandler = <R>(
               normalized.txCanonicalCbor,
             );
             const envelopes = collectMidgardV1AttachedProgramEnvelopes(tx);
-            for (const envelope of envelopes) {
-              verifyMidgardCekProgramMaterialV1(envelope, programMaterial, {
-                allowUnreachable: true,
-              });
+            const hasUnresolvedReferenceInputs =
+              decodeMidgardNativeByteListPreimage(
+                tx.body.referenceInputsPreimageCbor,
+                "reference_inputs_preimage",
+              ).length > 0;
+            if (hasUnresolvedReferenceInputs) {
+              // Reference-input program envelopes are ledger-state dependent
+              // and become authoritative in Phase B. Attached envelopes must
+              // still be complete before durable admission.
+              for (const envelope of envelopes) {
+                verifyMidgardCekProgramMaterialV1(envelope, programMaterial, {
+                  allowUnreachable: true,
+                });
+              }
+            } else {
+              verifyMidgardCekProgramMaterialBundleV1(
+                envelopes,
+                programMaterial,
+              );
             }
             return envelopes;
           },
@@ -2777,6 +2796,7 @@ const postSubmitHandler = <R>(
             txCanonicalCbor: normalized.txCanonicalCbor,
             programMaterialSidecarCbor,
             submitSource: normalized.source,
+            maxBacklogBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
           })
         : TxAdmissionsDB.admit({
             txId: normalized.txId,
@@ -2785,6 +2805,7 @@ const postSubmitHandler = <R>(
             submitSource: normalized.source,
             currentBacklog: reservation.currentBacklog,
             maxBacklog: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG,
+            maxBacklogBytes: nodeConfig.MAX_DURABLE_ADMISSION_BACKLOG_BYTES,
           });
       const admitted = yield* admissionEffect.pipe(
         Effect.onExit((exit) => {
@@ -2856,6 +2877,16 @@ const postSubmitHandler = <R>(
         Effect.gen(function* () {
           yield* Metric.increment(submitQueueOfferFailureCounter);
           yield* recordLatency();
+          if (e.unit === "bytes") {
+            return yield* HttpServerResponse.json(
+              {
+                error: "Durable submission admission byte backlog is full",
+                backlogBytes: e.backlog.toString(),
+                maxBacklogBytes: e.maxBacklog.toString(),
+              },
+              { status: 503 },
+            );
+          }
           return yield* HttpServerResponse.json(
             {
               error: "Durable submission admission backlog is full",

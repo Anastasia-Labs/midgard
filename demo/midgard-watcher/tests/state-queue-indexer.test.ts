@@ -1615,6 +1615,7 @@ const recoveryAppendBundle = (
     ReturnType<typeof evaluateWatcherStateQueueIndexerV1>["state"]
   >,
   sourceMode: RecoverySourceMode = "external_providers",
+  parentBlockHash?: string,
 ) => {
   const header = makeWatcherStateQueueHeaderV1({
     nextHeaderHash: null,
@@ -1712,46 +1713,51 @@ const recoveryAppendBundle = (
     4_000n,
     upper,
   );
-  const externalBlock = l1Block(body, outputs, [
-    {
-      purpose: "spend",
-      index: "0",
-      bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
-    },
-    {
-      purpose: "spend",
-      index: "1",
-      bytesHex: Data.to(
-        {
-          UpdateBondHoldNewState: {
-            active_operator: operator,
-            active_node_input_index: 1n,
-            active_node_output_index: 2n,
-            hub_oracle_ref_input_index: 1n,
-            state_queue_redeemer_index: 2n,
+  const externalBlock = l1Block(
+    body,
+    outputs,
+    [
+      {
+        purpose: "spend",
+        index: "0",
+        bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+      },
+      {
+        purpose: "spend",
+        index: "1",
+        bytesHex: Data.to(
+          {
+            UpdateBondHoldNewState: {
+              active_operator: operator,
+              active_node_input_index: 1n,
+              active_node_output_index: 2n,
+              hub_oracle_ref_input_index: 1n,
+              state_queue_redeemer_index: 2n,
+            },
           },
-        },
-        ActiveOperatorSpendRedeemer,
-      ),
-    },
-    {
-      purpose: "mint",
-      index: "0",
-      bytesHex: Data.to(
-        {
-          CommitBlockHeader: {
-            new_block_output_index: 1n,
-            continued_latest_block_output_index: 0n,
-            operator,
-            scheduler_ref_input_index: 0n,
-            active_operators_input_index: 1n,
-            active_operators_redeemer_index: 1n,
+          ActiveOperatorSpendRedeemer,
+        ),
+      },
+      {
+        purpose: "mint",
+        index: "0",
+        bytesHex: Data.to(
+          {
+            CommitBlockHeader: {
+              new_block_output_index: 1n,
+              continued_latest_block_output_index: 0n,
+              operator,
+              scheduler_ref_input_index: 0n,
+              active_operators_input_index: 1n,
+              active_operators_redeemer_index: 1n,
+            },
           },
-        },
-        StateQueueRedeemer,
-      ),
-    },
-  ]);
+          StateQueueRedeemer,
+        ),
+      },
+    ],
+    parentBlockHash,
+  );
   const block =
     sourceMode === "local_node"
       ? asLocalNodeBlock(externalBlock)
@@ -1847,12 +1853,14 @@ const postFinalityStateQueueRecoveryBundle = (
   sourceMode: RecoverySourceMode,
   bootBundle: ReturnType<typeof bootstrapBundle>,
   orphanBundle: ReturnType<typeof recoveryAppendBundle>,
+  commonBlock: ReturnType<typeof l1Block> = bootBundle.block,
+  includeOrphanProtocolUtxos = true,
 ) => {
   const selectedPolicy = finalityPolicyAtDepth(2, sourceMode);
   const common = recoveryEvidence(
     sourceMode,
-    bootBundle.block.raw as Mutable,
-    bootBundle.block.normalized.chainPoint.depth,
+    commonBlock.raw as Mutable,
+    commonBlock.normalized.chainPoint.depth,
   );
   const orphanPending = recoveryEvidence(
     sourceMode,
@@ -1908,13 +1916,16 @@ const postFinalityStateQueueRecoveryBundle = (
     ...orphanFinalized.observations,
     ...replacement.observations,
   ];
+  const sourceBaseStore = includeOrphanProtocolUtxos
+    ? orphanBundle.store
+    : bootBundle.store;
   const sourceStore = remakeStore(
-    orphanBundle.store,
+    sourceBaseStore,
     {
       l1Observations: [
         ...new Map(
           [
-            ...orphanBundle.store.l1Observations,
+            ...sourceBaseStore.l1Observations,
             ...persisted.map((observation) => ({
               observationId: observation.observationDigest,
               providerId: observation.provider.providerId,
@@ -1929,7 +1940,7 @@ const postFinalityStateQueueRecoveryBundle = (
       chainPoints: [
         ...new Map(
           [
-            ...orphanBundle.store.chainPoints,
+            ...sourceBaseStore.chainPoints,
             ...persisted.map((observation) => ({
               chainPointId: observation.chainPoint.chainPointId,
               providerId: observation.provider.providerId,
@@ -1941,9 +1952,9 @@ const postFinalityStateQueueRecoveryBundle = (
           ].map((entry) => [entry.chainPointId, entry]),
         ).values(),
       ],
-      protocolUtxos: orphanBundle.store.protocolUtxos,
+      protocolUtxos: sourceBaseStore.protocolUtxos,
     },
-    (BigInt(orphanBundle.store.revision) + 1n).toString(),
+    (BigInt(sourceBaseStore.revision) + 1n).toString(),
   );
   const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
     selectedPolicy,
@@ -1987,7 +1998,7 @@ const postFinalityStateQueueRecoveryBundle = (
     expect(recovery.nextStore?.protocolUtxos).toContainEqual(foreignSentinel);
   }
   const contextBlock: ReturnType<typeof l1Block> = {
-    ...bootBundle.block,
+    ...commonBlock,
     raw: common.primaryRaw as ReturnType<typeof l1Block>["raw"],
     normalized: common.observations[0]!,
   };
@@ -4519,6 +4530,56 @@ describe("authenticated state-queue indexer", () => {
     },
     30_000,
   );
+
+  it("accepts post-finality recovery with no indexed owned change", () => {
+    const bootBundle = bootstrapBundleWithForeignRole();
+    const boot = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      null,
+      bootBundle.observation,
+      bootBundle.context,
+    ).state!;
+    const orphan = recoveryAppendBundle(bootBundle, boot);
+    const bundle = postFinalityStateQueueRecoveryBundle(
+      "external_providers",
+      bootBundle,
+      orphan,
+      bootBundle.block,
+      false,
+    );
+    const noOwnedChangeObservation = observationFor(
+      bundle.contextBlock,
+      bundle.recovery.nextStore!,
+      boot.snapshot,
+      "rollback",
+      boot.stateDigest,
+      null,
+      null,
+      { transactionHash: null },
+    );
+    const noOwnedChange = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      boot,
+      noOwnedChangeObservation,
+      bundle.context,
+    );
+    expect(noOwnedChange.reasonCodes).toEqual(["rollback_authenticated"]);
+    expect(noOwnedChange).toMatchObject({
+      action: "accept",
+      reasonCodes: ["rollback_authenticated"],
+      state: {
+        pointDigest: bootBundle.block.normalized.chainPoint.pointDigest,
+        history: boot.history,
+        auditHistory: [expect.objectContaining({ status: "rollback" })],
+      },
+    });
+    expect(
+      parseWatcherStateQueueIndexerStateV1(
+        structuredClone(noOwnedChange.state),
+        policy,
+      ),
+    ).toEqual(noOwnedChange.state);
+  }, 30_000);
 
   it("rejects forged, mismatched, wrong-target, source-mode-invalid, duplicate-only, and self-rehashed recovery evidence", () => {
     const bootBundle = bootstrapBundleWithForeignRole();

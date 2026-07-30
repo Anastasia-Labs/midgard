@@ -4,11 +4,16 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyParamsToScript,
+  Data,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES } from "../src/index.js";
+import {
+  buildFaultProofContracts,
+  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
+} from "../src/index.js";
 
 type BlueprintValidator = Readonly<{
   compiledCode: string;
@@ -42,37 +47,74 @@ const extractResolverGroup = (
   ].map((match) => match[1]!);
 };
 
-const semanticTitles = Object.values(
-  VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
-);
-const awardScriptHash = "66".repeat(28);
-const computationThreadPolicyId = "22".repeat(28);
-const appliedSemanticHashes = semanticTitles.map((title) => {
+const appliedPrepareHash = (
+  title: string,
+  semanticHashes: readonly string[],
+  computationThreadPolicyId: string,
+): string => {
   const validator = blueprint.validators.find((entry) => entry.title === title);
   if (validator === undefined) {
-    throw new Error(`Blueprint semantic resolver ${title} is missing`);
+    throw new Error(`Blueprint prepare resolver ${title} is missing`);
   }
-  const appliedScript = applyParamsToScript(validator.compiledCode, [
-    awardScriptHash,
-    computationThreadPolicyId,
-  ]);
+  const hashesSchema = Data.Array(Data.Bytes());
+  type Hashes = Data.Static<typeof hashesSchema>;
+  const Hashes = hashesSchema as unknown as Hashes;
+  const semanticHashesData = Data.from(
+    Data.to([...semanticHashes], Hashes),
+  ) as Data;
   return validatorToScriptHash({
     type: "PlutusV3",
-    script: appliedScript,
+    script: applyParamsToScript(validator.compiledCode, [
+      semanticHashesData,
+      computationThreadPolicyId,
+    ]),
   });
-});
+};
 
-describe("validation resolver applied-hash Aiken fixture", () => {
-  it("matches the SDK deployment order and exact parameterized blueprint hashes", () => {
-    expect(semanticTitles).toHaveLength(75);
+describe("validation resolver production-builder applied-hash Aiken fixture", () => {
+  it("matches the production SDK builder's exact applied semantic hashes", async () => {
+    const contracts = await Effect.runPromise(
+      buildFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: "bb".repeat(28),
+        fraudProofCataloguePolicyId: "cc".repeat(28),
+      }),
+    );
+    const deployedSemanticHashes =
+      contracts.validationTraceDispute.semanticResolvers.map(
+        ({ spendingScriptHash }) => spendingScriptHash,
+      );
+
+    expect(deployedSemanticHashes).toHaveLength(75);
+    expect(contracts.validationTraceDispute.prepareResolvers).toHaveLength(12);
     expect(
       extractResolverGroup(
         "phase_a_script_precondition_resolvers",
         "input_sets_resolvers",
       ),
-    ).toEqual(appliedSemanticHashes.slice(24, 26));
+    ).toEqual(deployedSemanticHashes.slice(24, 26));
     expect(
       extractResolverGroup("script_source_resolvers", "script_address"),
-    ).toEqual(appliedSemanticHashes.slice(32, 60));
+    ).toEqual(deployedSemanticHashes.slice(32, 60));
+    expect(
+      contracts.validationTraceDispute.prepareResolvers[6].spendingScriptHash,
+    ).toBe(
+      appliedPrepareHash(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares
+          .phaseAScriptPreconditions,
+        deployedSemanticHashes.slice(24, 26),
+        contracts.computationThread.policyId,
+      ),
+    );
+    expect(
+      contracts.validationTraceDispute.prepareResolvers[8].spendingScriptHash,
+    ).toBe(
+      appliedPrepareHash(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.scriptSources,
+        deployedSemanticHashes.slice(32, 60),
+        contracts.computationThread.policyId,
+      ),
+    );
   });
 });
