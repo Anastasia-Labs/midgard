@@ -56,6 +56,13 @@ export const INPUT_NO_IDX_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/input_no_idx/step_04.main.spend",
 } as const;
 
+export const REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/reference_input_no_idx/step_01.main.spend",
+  step02: "fraud_proofs/reference_input_no_idx/step_02.main.spend",
+  step03: "fraud_proofs/reference_input_no_idx/step_03.main.spend",
+  step04: "fraud_proofs/reference_input_no_idx/step_04.main.spend",
+} as const;
+
 export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/invalid_range/step_01.main.spend",
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
@@ -133,6 +140,19 @@ export type InputNoIdxFaultProofContracts = {
   };
 };
 
+export type ReferenceInputNoIdxFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly referenceInputNoIdx: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type InvalidRangeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -164,6 +184,7 @@ export type FaultProofContracts = {
   readonly nonExistentInput: NonExistentInputFaultProofContracts["nonExistentInput"];
   readonly noReferenceInput: NoReferenceInputFaultProofContracts["noReferenceInput"];
   readonly inputNoIdx: InputNoIdxFaultProofContracts["inputNoIdx"];
+  readonly referenceInputNoIdx: ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
@@ -192,6 +213,9 @@ export type BuildNoReferenceInputFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInputNoIdxFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildReferenceInputNoIdxFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
@@ -550,13 +574,98 @@ const buildInputNoIdxChain = ({
   Effect.gen(function* () {
     // step-04 params: (ct_policy, fraud_proof_policy, fraud_proof_address) —
     // note the order differs from no-input's step-04.
+    const step04 = yield* tryBuild("Failed to build input-no-idx step 04", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step04),
+          [
+            computationThread.policyId,
+            fraudProof.policyId,
+            fraudProofTokenAddressData,
+          ],
+        ),
+      ),
+    );
+
+    // step-03 binds the producing native tx, so — unlike no-input's step-03 —
+    // it takes the hub-oracle policy id as a third parameter.
+    const step03 = yield* tryBuild("Failed to build input-no-idx step 03", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step03),
+          [
+            step04.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ],
+        ),
+      ),
+    );
+
+    const step02 = yield* tryBuild("Failed to build input-no-idx step 02", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
+          [step03.spendingScriptHash, computationThread.policyId],
+        ),
+      ),
+    );
+
+    const step01 = yield* tryBuild("Failed to build input-no-idx step 01", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step01),
+          [
+            step02.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ],
+        ),
+      ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
+const buildReferenceInputNoIdxChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"],
+  Error
+> =>
+  Effect.gen(function* () {
+    // Parameter order matches input-no-idx exactly — the two chains share their
+    // step-02..04 validators (identical UPLC), so they must also share the
+    // parameters applied to them or the shared hashes would diverge.
     const step04 = yield* tryBuild(
-      "Failed to build input-no-idx step 04",
+      "Failed to build reference-input-no-idx step 04",
       () =>
         makeSpendingValidator(
           network,
           applyParamsToScript(
-            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step04),
+            getCompiledScript(
+              blueprint,
+              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step04,
+            ),
             [
               computationThread.policyId,
               fraudProof.policyId,
@@ -566,15 +675,16 @@ const buildInputNoIdxChain = ({
         ),
     );
 
-    // step-03 binds the producing native tx, so — unlike no-input's step-03 —
-    // it takes the hub-oracle policy id as a third parameter.
     const step03 = yield* tryBuild(
-      "Failed to build input-no-idx step 03",
+      "Failed to build reference-input-no-idx step 03",
       () =>
         makeSpendingValidator(
           network,
           applyParamsToScript(
-            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step03),
+            getCompiledScript(
+              blueprint,
+              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step03,
+            ),
             [
               step04.spendingScriptHash,
               computationThread.policyId,
@@ -585,24 +695,30 @@ const buildInputNoIdxChain = ({
     );
 
     const step02 = yield* tryBuild(
-      "Failed to build input-no-idx step 02",
+      "Failed to build reference-input-no-idx step 02",
       () =>
         makeSpendingValidator(
           network,
           applyParamsToScript(
-            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
+            getCompiledScript(
+              blueprint,
+              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step02,
+            ),
             [step03.spendingScriptHash, computationThread.policyId],
           ),
         ),
     );
 
     const step01 = yield* tryBuild(
-      "Failed to build input-no-idx step 01",
+      "Failed to build reference-input-no-idx step 01",
       () =>
         makeSpendingValidator(
           network,
           applyParamsToScript(
-            getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step01),
+            getCompiledScript(
+              blueprint,
+              REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES.step01,
+            ),
             [
               step02.spendingScriptHash,
               computationThread.policyId,
@@ -891,6 +1007,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const referenceInputNoIdx = yield* buildReferenceInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
     const invalidRange = yield* buildInvalidRangeChain({
       ...params,
       ...shared,
@@ -911,6 +1031,7 @@ export const buildFaultProofContracts = (
       nonExistentInput,
       noReferenceInput,
       inputNoIdx,
+      referenceInputNoIdx,
       invalidRange,
       zeroInput,
       transitionTrace,
@@ -978,6 +1099,22 @@ export const buildInputNoIdxFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       inputNoIdx,
+    };
+  });
+
+export const buildReferenceInputNoIdxFaultProofContracts = (
+  params: BuildReferenceInputNoIdxFaultProofContractsParams,
+): Effect.Effect<ReferenceInputNoIdxFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const referenceInputNoIdx = yield* buildReferenceInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      referenceInputNoIdx,
     };
   });
 

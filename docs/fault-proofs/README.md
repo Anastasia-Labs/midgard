@@ -93,7 +93,7 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 
 **3. Missing but documented** (spec/gap-reports define it as fault; no working verifier):
 
-- Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
+- Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
 - Offchain tooling for 5 of the 12 already-implemented onchain types; CLI wiring for

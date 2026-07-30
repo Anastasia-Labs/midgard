@@ -33,6 +33,7 @@ import {
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
+  buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
   commitCountedRootProgram,
@@ -156,6 +157,10 @@ import {
   parseSubmitStep01TxInclusion,
   reconstructDaPayloadV2,
   resolveProverSigner,
+  rinxSubmitStep01,
+  rinxSubmitStep02,
+  rinxSubmitStep03,
+  rinxSubmitStep04,
   type StateQueueMutationLeaseCoordinator,
   submitInit,
   submitInvalidRangeStep01,
@@ -326,6 +331,14 @@ const makeAlwaysSucceedsContracts = (
     zeroInput: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
     ),
+    noReferenceInputNoIndex: makeSpendingValidator(
+      alwaysScript(
+        blueprint,
+        "fraud_proofs",
+        "reference_input_no_idx",
+        "spend",
+      ),
+    ),
     noReferenceInput: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "no_reference_input", "spend"),
     ),
@@ -377,6 +390,7 @@ const buildMinimalFaultProofContracts = async (
     realTransitionTrace = false,
     realZeroInput = false,
     realNoReferenceInput = false,
+    realReferenceInputNoIdx = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -385,6 +399,7 @@ const buildMinimalFaultProofContracts = async (
     readonly realTransitionTrace?: boolean;
     readonly realZeroInput?: boolean;
     readonly realNoReferenceInput?: boolean;
+    readonly realReferenceInputNoIdx?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<MidgardValidators> => {
@@ -561,6 +576,21 @@ const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const referenceInputNoIdxContracts = realReferenceInputNoIdx
+    ? await Effect.runPromise(
+        buildReferenceInputNoIdxFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (referenceInputNoIdxContracts !== undefined) {
+    expect(referenceInputNoIdxContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -647,6 +677,9 @@ const buildMinimalFaultProofContracts = async (
       noReferenceInput:
         noReferenceInputContracts?.noReferenceInput.firstStep ??
         withActiveOperators.fraudProofs.noReferenceInput,
+      noReferenceInputNoIndex:
+        referenceInputNoIdxContracts?.referenceInputNoIdx.firstStep ??
+        withActiveOperators.fraudProofs.noReferenceInputNoIndex,
     },
   };
 };
@@ -1331,7 +1364,9 @@ const buildInputNoIdxFixture = async (): Promise<{
   readonly badTxInclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
   readonly inputsPreimage: readonly NeInputPreimageEntry[];
   readonly badInputsIndex: bigint;
-  readonly producingTxInclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  readonly producingTxInclusion: ReturnType<
+    typeof parseSubmitStep01TxInclusion
+  >;
   readonly outputsPreimage: readonly string[];
   readonly producingTxId: string;
   readonly badTxNativeId: string;
@@ -1410,13 +1445,120 @@ const buildInputNoIdxFixture = async (): Promise<{
       nativeTx: producingTx.nativeTx,
       nativeTxCompactCbor: producingTxCompactCbor.toString("hex"),
       transactionsPhasRoot: transactionsRoot,
-      txMembershipProofCbor: producingTxMembershipProof.toCBOR().toString("hex"),
+      txMembershipProofCbor: producingTxMembershipProof
+        .toCBOR()
+        .toString("hex"),
     }),
     // makeNativeTx's single output preimage entry is `h32(outputByte)`.
     outputsPreimage: [h32(producingOutputByte)],
     producingTxId: producingTx.nativeTxId,
     badTxNativeId: badTx.nativeTxId,
     badInputOutputIndex,
+  };
+};
+
+const buildReferenceInputNoIdxFixture = async (): Promise<{
+  readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
+  readonly badTxInclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  readonly referenceInputsPreimage: readonly NriReferenceInputPreimageEntry[];
+  readonly badReferenceInputIndex: bigint;
+  readonly producingTxInclusion: ReturnType<
+    typeof parseSubmitStep01TxInclusion
+  >;
+  readonly outputsPreimage: readonly string[];
+  readonly producingTxId: string;
+  readonly badTxNativeId: string;
+  readonly badReferenceInputOutputIndex: bigint;
+}> => {
+  // The producing transaction. `makeNativeTx` commits exactly one output, so any
+  // referenced output index >= 1 is out of range of it.
+  const producingOutputByte = "c4";
+  const producingTxNative = makeNativeTx({
+    spendInputCbors: [
+      outputReferenceCbor({ transactionId: h32("c1"), outputIndex: 0n }),
+    ],
+    fee: 2n,
+    referenceByte: "c3",
+    outputByte: producingOutputByte,
+    witnessByte: "c5",
+  });
+  const producingTx = compactTxEntry(producingTxNative);
+  const producingTxCompactCbor = encodeMidgardNativeTxCompact(
+    producingTxNative.compact,
+  );
+
+  // The bad transaction *reads* the producing tx's output at an out-of-range
+  // index. Its spend inputs are unrelated and in range.
+  const badReferenceInputOutputIndex = 5n;
+  const badTxNative = makeNativeTx({
+    spendInputCbors: [
+      outputReferenceCbor({ transactionId: h32("d1"), outputIndex: 0n }),
+    ],
+    referenceInputCbors: [
+      outputReferenceCbor({
+        transactionId: producingTx.nativeTxId,
+        outputIndex: badReferenceInputOutputIndex,
+      }),
+    ],
+    fee: 0n,
+    referenceByte: "d3",
+    outputByte: "d4",
+    witnessByte: "d5",
+  });
+  const badTx = compactTxEntry(badTxNative);
+  const badTxCompactCbor = encodeMidgardNativeTxCompact(badTxNative.compact);
+
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(badTx.nativeTxId, "hex"),
+    Buffer.from(badTxCompactCbor),
+  );
+  await trie.insert(
+    Buffer.from(producingTx.nativeTxId, "hex"),
+    Buffer.from(producingTxCompactCbor),
+  );
+  const transactionsRoot = trieRootHex(trie);
+  const badTxMembershipProof = await trie.prove(
+    Buffer.from(badTx.nativeTxId, "hex"),
+  );
+  const producingTxMembershipProof = await trie.prove(
+    Buffer.from(producingTx.nativeTxId, "hex"),
+  );
+
+  return {
+    transactionsRoot,
+    l2TransactionCount: 2n,
+    badTxInclusion: parseSubmitStep01TxInclusion({
+      nativeTxId: badTx.nativeTxId,
+      nativeTx: badTx.nativeTx,
+      nativeTxCompactCbor: badTxCompactCbor.toString("hex"),
+      transactionsPhasRoot: transactionsRoot,
+      txMembershipProofCbor: badTxMembershipProof.toCBOR().toString("hex"),
+    }),
+    referenceInputsPreimage: [
+      {
+        txId: producingTx.nativeTxId,
+        index: badReferenceInputOutputIndex,
+      },
+    ],
+    badReferenceInputIndex: 0n,
+    producingTxInclusion: parseSubmitStep01TxInclusion({
+      nativeTxId: producingTx.nativeTxId,
+      nativeTx: producingTx.nativeTx,
+      nativeTxCompactCbor: producingTxCompactCbor.toString("hex"),
+      transactionsPhasRoot: transactionsRoot,
+      txMembershipProofCbor: producingTxMembershipProof
+        .toCBOR()
+        .toString("hex"),
+    }),
+    // makeNativeTx's single output preimage entry is `h32(outputByte)`.
+    outputsPreimage: [h32(producingOutputByte)],
+    producingTxId: producingTx.nativeTxId,
+    badTxNativeId: badTx.nativeTxId,
+    badReferenceInputOutputIndex,
   };
 };
 
@@ -2471,6 +2613,10 @@ const buildRemovalDeploymentInfo = (
     },
     fraudProofNoReferenceInput: {
       scriptHash: contracts.fraudProofs.noReferenceInput.spendingScriptHash,
+    },
+    fraudProofNoReferenceInputNoIndex: {
+      scriptHash:
+        contracts.fraudProofs.noReferenceInputNoIndex.spendingScriptHash,
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -4783,6 +4929,205 @@ describe("fault-proof emulator integration", () => {
       validTo: removeNow + 300_000n,
     });
     expect(removeResult.fraudCategory).toBe("nonExistentInputNoIndex");
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [headerHash],
+    );
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
+  it("proves and removes a tail reference-input-no-idx block end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realReferenceInputNoIdx: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const fixture = await buildReferenceInputNoIdxFixture();
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const fraudulentHeader = makeHeader(
+      funderPaymentCredential.hash,
+      headerStartTime,
+      await countedTransactionsRoot(
+        fixture.transactionsRoot,
+        fixture.l2TransactionCount,
+      ),
+      fixture.l2TransactionCount,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "noReferenceInputNoIndex",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+    expect(initResult.fraudCategoryName).toBe("noReferenceInputNoIndex");
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.noReferenceInputNoIndex.categoryId}${headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step01Result = await rinxSubmitStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.badTxInclusion,
+      awaitConfirmation: true,
+    });
+    expect(step01Result.nativeTxId).toBe(fixture.badTxNativeId);
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step02Result = await rinxSubmitStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      referenceInputsPreimage: fixture.referenceInputsPreimage,
+      badReferenceInputIndex: fixture.badReferenceInputIndex,
+      awaitConfirmation: true,
+    });
+    expect(step02Result.badReferenceInput.tx_id).toBe(fixture.producingTxId);
+
+    const thirdStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.thirdStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step03Result = await rinxSubmitStep03({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(thirdStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.producingTxInclusion,
+      awaitConfirmation: true,
+    });
+    expect(step03Result.producingTxId).toBe(fixture.producingTxId);
+    expect(step03Result.badReferenceInputOutputIndex).toBe(
+      Number(fixture.badReferenceInputOutputIndex),
+    );
+
+    const fourthStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step03Result.fourthStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const step04Result = await rinxSubmitStep04({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(fourthStepUtxo),
+      outputsPreimage: fixture.outputsPreimage,
+      awaitConfirmation: true,
+    });
+    expect(step04Result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+
+    const proverPaymentKeyHash = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential!.hash;
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "noReferenceInputNoIndex",
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+    expect(removeResult.fraudCategory).toBe("noReferenceInputNoIndex");
     expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
       [headerHash],
     );

@@ -70,6 +70,7 @@ export type InspectContractsOutput = {
     readonly nonExistentInput: InspectContractsCatalogueCategoryOutput;
     readonly nonExistentInputNoIndex: InspectContractsCatalogueCategoryOutput;
     readonly noReferenceInput: InspectContractsCatalogueCategoryOutput;
+    readonly noReferenceInputNoIndex: InspectContractsCatalogueCategoryOutput;
     readonly invalidRange: InspectContractsCatalogueCategoryOutput;
     readonly zeroInput: InspectContractsCatalogueCategoryOutput;
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
@@ -111,6 +112,17 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentNoReferenceInputScriptHash: string | null;
     readonly deploymentNoReferenceInputMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly noReferenceInputNoIndex: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentNoReferenceInputNoIndexScriptHash: string | null;
+    readonly deploymentNoReferenceInputNoIndexMatchesFirstStep: boolean | null;
     readonly steps: readonly [
       InspectContractsStepOutput,
       InspectContractsStepOutput,
@@ -166,6 +178,7 @@ export type ImplementedFraudProofCategoryName =
   | "nonExistentInput"
   | "nonExistentInputNoIndex"
   | "noReferenceInput"
+  | "noReferenceInputNoIndex"
   | "invalidRange"
   | "zeroInput"
   | "transitionTrace";
@@ -589,6 +602,7 @@ const inspectFraudProofCatalogue = (
       nonExistentInput: emptyCatalogueCategoryInspection(),
       nonExistentInputNoIndex: emptyCatalogueCategoryInspection(),
       noReferenceInput: emptyCatalogueCategoryInspection(),
+      noReferenceInputNoIndex: emptyCatalogueCategoryInspection(),
       invalidRange: emptyCatalogueCategoryInspection(),
       zeroInput: emptyCatalogueCategoryInspection(),
       transitionTrace: emptyCatalogueCategoryInspection(),
@@ -646,6 +660,9 @@ const inspectFraudProofCatalogue = (
         "nonExistentInputNoIndex",
       );
       const noReferenceInput = await inspectCategory("noReferenceInput");
+      const noReferenceInputNoIndex = await inspectCategory(
+        "noReferenceInputNoIndex",
+      );
       const invalidRange = await inspectCategory("invalidRange");
       const zeroInput = await inspectCategory("zeroInput");
       const transitionTrace = await inspectCategory("transitionTrace");
@@ -655,6 +672,7 @@ const inspectFraudProofCatalogue = (
           "nonExistentInput",
           "nonExistentInputNoIndex",
           "noReferenceInput",
+          "noReferenceInputNoIndex",
           "invalidRange",
           "zeroInput",
           "transitionTrace",
@@ -665,6 +683,7 @@ const inspectFraudProofCatalogue = (
           nonExistentInput,
           nonExistentInputNoIndex,
           noReferenceInput,
+          noReferenceInputNoIndex,
           invalidRange,
           zeroInput,
           transitionTrace,
@@ -680,6 +699,7 @@ const inspectFraudProofCatalogue = (
         nonExistentInput,
         nonExistentInputNoIndex,
         noReferenceInput,
+        noReferenceInputNoIndex,
         invalidRange,
         zeroInput,
         transitionTrace,
@@ -734,6 +754,11 @@ export const inspectContracts = ({
       parsedDeploymentInfo,
       "fraudProofNoReferenceInput",
     );
+    const deploymentNoReferenceInputNoIndexScriptHash =
+      optionalDeploymentScriptHash(
+        parsedDeploymentInfo,
+        "fraudProofNoReferenceInputNoIndex",
+      );
     const deploymentInvalidRangeScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofInvalidRange",
@@ -786,6 +811,12 @@ export const inspectContracts = ({
       noReferenceInputStep03,
       noReferenceInputStep04,
     ] = contracts.noReferenceInput.steps;
+    const [
+      referenceInputNoIdxStep01,
+      referenceInputNoIdxStep02,
+      referenceInputNoIdxStep03,
+      referenceInputNoIdxStep04,
+    ] = contracts.referenceInputNoIdx.steps;
     const stepOutput = (
       name: InspectContractsStepOutput["name"],
       step: typeof step01,
@@ -808,6 +839,8 @@ export const inspectContracts = ({
       contracts.inputNoIdx.firstStep.spendingScriptHash;
     const noReferenceInputCategoryFirstStepHash =
       contracts.noReferenceInput.firstStep.spendingScriptHash;
+    const noReferenceInputNoIndexCategoryFirstStepHash =
+      contracts.referenceInputNoIdx.firstStep.spendingScriptHash;
     const invalidRangeCategoryFirstStepHash =
       contracts.invalidRange.firstStep.spendingScriptHash;
     const zeroInputCategoryFirstStepHash =
@@ -833,6 +866,11 @@ export const inspectContracts = ({
         ? null
         : deploymentNoReferenceInputScriptHash ===
           noReferenceInputCategoryFirstStepHash;
+    const deploymentNoReferenceInputNoIndexMatchesFirstStep =
+      deploymentNoReferenceInputNoIndexScriptHash === null
+        ? null
+        : deploymentNoReferenceInputNoIndexScriptHash ===
+          noReferenceInputNoIndexCategoryFirstStepHash;
     const deploymentInvalidRangeMatchesFirstStep =
       deploymentInvalidRangeScriptHash === null
         ? null
@@ -854,6 +892,7 @@ export const inspectContracts = ({
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
         nonExistentInputNoIndex: nonExistentInputNoIndexCategoryFirstStepHash,
         noReferenceInput: noReferenceInputCategoryFirstStepHash,
+        noReferenceInputNoIndex: noReferenceInputNoIndexCategoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
         zeroInput: zeroInputCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
@@ -864,6 +903,8 @@ export const inspectContracts = ({
         nonExistentInputNoIndex:
           deploymentNonExistentInputNoIndexMatchesFirstStep,
         noReferenceInput: deploymentNoReferenceInputMatchesFirstStep,
+        noReferenceInputNoIndex:
+          deploymentNoReferenceInputNoIndexMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
         zeroInput: deploymentZeroInputMatchesFirstStep,
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,
@@ -918,6 +959,17 @@ export const inspectContracts = ({
           stepOutput("step02", noReferenceInputStep02),
           stepOutput("step03", noReferenceInputStep03),
           stepOutput("step04", noReferenceInputStep04),
+        ],
+      },
+      noReferenceInputNoIndex: {
+        categoryFirstStepHash: noReferenceInputNoIndexCategoryFirstStepHash,
+        deploymentNoReferenceInputNoIndexScriptHash,
+        deploymentNoReferenceInputNoIndexMatchesFirstStep,
+        steps: [
+          stepOutput("step01", referenceInputNoIdxStep01),
+          stepOutput("step02", referenceInputNoIdxStep02),
+          stepOutput("step03", referenceInputNoIdxStep03),
+          stepOutput("step04", referenceInputNoIdxStep04),
         ],
       },
       invalidRange: {

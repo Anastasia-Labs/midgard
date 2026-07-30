@@ -31,6 +31,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "transitionTrace",
   "zeroInput",
   "noReferenceInput",
+  "noReferenceInputNoIndex",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =

@@ -44,10 +44,18 @@ import {
   prepareNonExistentInputFromNode,
 } from "./prepare-non-existent-input.js";
 import {
+  prepareReferenceInputNoIdxFromFile,
+  prepareReferenceInputNoIdxFromNode,
+} from "./prepare-reference-input-no-idx.js";
+import {
   prepareZeroInputFromFile,
   prepareZeroInputFromNode,
 } from "./prepare-zero-input.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
+import { rinxSubmitStep01FromFiles } from "./rinx-submit-step-01.js";
+import { rinxSubmitStep02FromFiles } from "./rinx-submit-step-02.js";
+import { rinxSubmitStep03FromFiles } from "./rinx-submit-step-03.js";
+import { rinxSubmitStep04FromFiles } from "./rinx-submit-step-04.js";
 import { type ProviderKind } from "./runtime.js";
 import {
   type SubmitInitFraudCategory,
@@ -119,9 +127,10 @@ const usage = `Usage:
   midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-no-reference-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-reference-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-input-no-idx (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--expected-transactions-root <hex>] [--output-dir <path>]
+  midgard-fault-proofs prepare-reference-input-no-idx (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-reference-input-index <n>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -140,9 +149,13 @@ const usage = `Usage:
   midgard-fault-proofs submit-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <path> --bad-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producingTxInclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <badTxInclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <path> --bad-reference-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producingTxInclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -158,12 +171,13 @@ export const parseFraudCategory = (
     value === "nonExistentInput" ||
     value === "nonExistentInputNoIndex" ||
     value === "zeroInput" ||
-    value === "noReferenceInput"
+    value === "noReferenceInput" ||
+    value === "noReferenceInputNoIndex"
   ) {
     return value;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "noReferenceInput".',
+    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "noReferenceInput", or "noReferenceInputNoIndex".',
   );
 };
 
@@ -500,6 +514,7 @@ export const main = async (): Promise<void> => {
     args.command !== "prepare-non-existent-input" &&
     args.command !== "prepare-no-reference-input" &&
     args.command !== "prepare-input-no-idx" &&
+    args.command !== "prepare-reference-input-no-idx" &&
     args.command !== "prepare-zero-input" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
@@ -521,12 +536,16 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-input-no-idx-step-02" &&
     args.command !== "submit-input-no-idx-step-03" &&
     args.command !== "submit-input-no-idx-step-04" &&
+    args.command !== "submit-reference-input-no-idx-step-01" &&
+    args.command !== "submit-reference-input-no-idx-step-02" &&
+    args.command !== "submit-reference-input-no-idx-step-03" &&
+    args.command !== "submit-reference-input-no-idx-step-04" &&
     args.command !== "submit-zero-input-step-01" &&
     args.command !== "submit-zero-input-step-02" &&
     args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
-      `Expected command "prepare-double-spend", "prepare-invalid-range", "prepare-non-existent-input", "prepare-no-reference-input", "prepare-input-no-idx", "prepare-zero-input", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", "submit-non-existent-input-step-01", "submit-non-existent-input-step-02", "submit-non-existent-input-step-03", "submit-non-existent-input-step-04", "submit-no-reference-input-step-01", "submit-no-reference-input-step-02", "submit-no-reference-input-step-03", "submit-no-reference-input-step-04", "submit-input-no-idx-step-01", "submit-input-no-idx-step-02", "submit-input-no-idx-step-03", "submit-input-no-idx-step-04", "submit-zero-input-step-01", "submit-zero-input-step-02", or "remove-fraudulent-block".\n${usage}`,
+      `Expected command "prepare-double-spend", "prepare-invalid-range", "prepare-non-existent-input", "prepare-no-reference-input", "prepare-input-no-idx", "prepare-reference-input-no-idx", "prepare-zero-input", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", "submit-non-existent-input-step-01", "submit-non-existent-input-step-02", "submit-non-existent-input-step-03", "submit-non-existent-input-step-04", "submit-no-reference-input-step-01", "submit-no-reference-input-step-02", "submit-no-reference-input-step-03", "submit-no-reference-input-step-04", "submit-input-no-idx-step-01", "submit-input-no-idx-step-02", "submit-input-no-idx-step-03", "submit-input-no-idx-step-04", "submit-reference-input-no-idx-step-01", "submit-reference-input-no-idx-step-02", "submit-reference-input-no-idx-step-03", "submit-reference-input-no-idx-step-04", "submit-zero-input-step-01", "submit-zero-input-step-02", or "remove-fraudulent-block".\n${usage}`,
     );
   }
 
@@ -728,6 +747,41 @@ export const main = async (): Promise<void> => {
             headerHash: args.headerHash,
             badTxId: args.badTxId,
             badInputIndex: args.badInputIndex,
+            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            outputDir: args.outputDir,
+          });
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "prepare-reference-input-no-idx") {
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
+    }
+    const inputModes = [
+      args.midgardNodeUrl !== undefined,
+      args.transactionsPath !== undefined,
+    ].filter(Boolean).length;
+    if (inputModes !== 1) {
+      throw new Error(
+        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
+      );
+    }
+    const output =
+      args.midgardNodeUrl !== undefined
+        ? await prepareReferenceInputNoIdxFromNode({
+            midgardNodeUrl: args.midgardNodeUrl,
+            headerHash: args.headerHash,
+            badTxId: args.badTxId,
+            badReferenceInputIndex: args.badReferenceInputIndex,
+            expectedTransactionsRoot: args.expectedTransactionsRoot,
+            outputDir: args.outputDir,
+          })
+        : await prepareReferenceInputNoIdxFromFile({
+            transactionsPath: args.transactionsPath!,
+            headerHash: args.headerHash,
+            badTxId: args.badTxId,
+            badReferenceInputIndex: args.badReferenceInputIndex,
             expectedTransactionsRoot: args.expectedTransactionsRoot,
             outputDir: args.outputDir,
           });
@@ -1485,6 +1539,150 @@ export const main = async (): Promise<void> => {
       throw new Error(`Missing required --outputs-preimage <path>.\n${usage}`);
     }
     const output = await inxSubmitStep04FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      outputsPreimagePath: args.outputsPreimagePath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-reference-input-no-idx-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await rinxSubmitStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-reference-input-no-idx-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.referenceInputsPreimagePath === undefined) {
+      throw new Error(
+        `Missing required --reference-inputs-preimage <path>.\n${usage}`,
+      );
+    }
+    if (args.badReferenceInputIndex === undefined) {
+      throw new Error(
+        `Missing required --bad-reference-input-index <n>.\n${usage}`,
+      );
+    }
+    const output = await rinxSubmitStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      referenceInputsPreimagePath: args.referenceInputsPreimagePath,
+      badReferenceInputIndex: args.badReferenceInputIndex,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-reference-input-no-idx-step-03") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await rinxSubmitStep03FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      producingTxInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-reference-input-no-idx-step-04") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.outputsPreimagePath === undefined) {
+      throw new Error(`Missing required --outputs-preimage <path>.\n${usage}`);
+    }
+    const output = await rinxSubmitStep04FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
       network: parseNetwork(args.network),

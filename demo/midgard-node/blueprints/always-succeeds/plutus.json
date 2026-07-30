@@ -60,6 +60,14 @@
       "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
     {
+      "title": "fraud_proofs.reference_input_no_idx.else",
+      "redeemer": {
+        "schema": {}
+      },
+      "compiledCode": "5101010023259800a518a4d136564004ae69",
+      "hash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
+    },
+    {
       "title": "fraud_proofs.no_reference_input.else",
       "redeemer": {
         "schema": {}

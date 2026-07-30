@@ -19,15 +19,18 @@
 
 ## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts:441-462`)
 
-`prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` · `prepare-zero-input` ·
+`prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` ·
+`prepare-no-reference-input` · `prepare-input-no-idx` ·
+`prepare-reference-input-no-idx` · `prepare-zero-input` ·
 `inspect-contracts` · `submit-init` · `submit-step-01..04` ·
 `submit-invalid-range-step-01..02` · `submit-non-existent-input-step-01..04` ·
-`submit-zero-input-step-01..02` ·
+`submit-no-reference-input-step-01..04` · `submit-input-no-idx-step-01..04` ·
+`submit-reference-input-no-idx-step-01..04` · `submit-zero-input-step-01..02` ·
 `remove-fraudulent-block`.
 
-`submit-init --fraud-category` accepts five values — `doubleSpend | nonExistentInput |
-invalidRange | transitionTrace | zeroInput`; `nonExistentInputNoIndex` is
-registered in the catalogue but rejected by the CLI parser) — and
+`submit-init --fraud-category` accepts all eight registered categories —
+`doubleSpend | nonExistentInput | nonExistentInputNoIndex | invalidRange |
+transitionTrace | zeroInput | noReferenceInput | noReferenceInputNoIndex` — but
 **no transition-trace proof-submission command exists** — `bin.ts` never imports
 `./transition-trace/`; `submitTransitionTraceProofFromFiles`
 (`src/transition-trace/submit.ts:421-439`) is library-only.
