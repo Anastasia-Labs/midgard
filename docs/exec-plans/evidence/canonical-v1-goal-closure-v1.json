@@ -15,7 +15,7 @@
       {
         "path": "GOAL_SPEC.md",
         "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "1189f05da34bbdd8d7896125a172bfd747bffd6315d28bbadb8b54382dfba61e",
+        "currentExpectedSha256": "30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -197,7 +197,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json",
-      "sha256": "165f24959d30a56ac4dfef74beeb186b1459aabe7ce60019f7151a67b26eef6b",
+      "sha256": "40cbc9b15b6b10a6f42d860fee0f4f60117914a7c77921dcdcab18f4f745fbb8",
       "status": "BOUND"
     },
     {

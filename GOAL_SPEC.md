@@ -286,11 +286,19 @@ state; every such reference must satisfy the evidence storage contract in
    concrete final-validator measurements prove that a simpler complete-item
    path cannot fit. Every concrete transaction must fit the live byte/execution
    envelope within the §3.3 margin thresholds.
-3. **Single-party faults remain single-party.** Do not move a self-contained
-   proof into the interactive game.
-4. **Interactive proofs remain narrow.** The dispute hub authenticates and
-   routes; instruction-specific resolvers consume the simplest authenticated
-   proof input that fits, preferring the complete canonical item.
+3. **Every sufficient single-party proof remains single-party.** If one prover
+   can establish a violation from retained public authenticated evidence, the
+   family must use a non-interactive proof path. L1 byte or execution limits may
+   decompose that proof into an ordered multi-step, multi-transaction
+   computation-thread chain; transaction count alone never justifies moving it
+   into challenge/response. Interactive proof is permitted only when sound
+   resolution intrinsically requires competing authenticated execution traces,
+   adversarial responses, or a withholding deadline. Every interactive family
+   must record executable necessity evidence for that claim.
+4. **Interactive proofs remain necessary and narrow.** The dispute hub
+   authenticates and routes; instruction-specific resolvers consume the
+   simplest authenticated proof input that fits, preferring the complete
+   canonical item.
 5. **No unjustified bounded-only proof path.** A helper, codec,
    select/discovery witness, test fixture, or bridge may not force provers to
    provide chunks or incremental reveals when the complete item fits directly
