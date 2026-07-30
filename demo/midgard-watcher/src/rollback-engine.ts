@@ -1,13 +1,16 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import {
   type DeploymentMarkerV1,
   parseDeploymentMarkerV1,
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
+  compareAndSwapWatcherDurableAtomicSnapshotV1,
   encodeWatcherDurableStoreV1,
   makeWatcherDurableStoreV1,
   parseWatcherDurableStoreV1,
+  readWatcherDurableAtomicSnapshotV1,
+  type WatcherDurableAtomicBackend,
   type WatcherDurableRecordsV1,
   watcherDurableStoreBytesSha256,
   type WatcherDurableStoreV1,
@@ -28,6 +31,7 @@ import {
 } from "./finality-engine.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
+  type WatcherL1TransportAttestationContextV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
 import {
@@ -45,6 +49,12 @@ export const WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-transition-v1" as const;
 export const WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-epoch-checkpoint-v1" as const;
+export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION =
+  "midgard-watcher-rollback-durable-authority-v1" as const;
+export const WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION =
+  "midgard-watcher-rollback-durable-authority-handle-v1" as const;
+export const WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION =
+  "midgard-watcher-rollback-durable-trusted-head-v1" as const;
 export const WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION =
   "midgard-watcher-post-finality-recovery-state-v1" as const;
 export const WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION =
@@ -55,6 +65,7 @@ export const WATCHER_ROLLBACK_V1_BOUNDS = Object.freeze({
 });
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
+const ROLLBACK_AUTHORITY_KEY_BYTES = 32;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
@@ -185,8 +196,9 @@ export type WatcherRollbackTransitionV1 = Readonly<{
 export type WatcherRollbackStateVerificationContextV1 = Readonly<{
   policy: unknown;
   rollbackBootstrapState: unknown;
-  trustedCheckpointStateDigest?: unknown;
+  trustedCheckpointAuthority?: unknown;
   currentStore: unknown;
+  transportAttestations?: unknown;
 }>;
 
 export type WatcherRollbackVerificationContextV1 = Readonly<{
@@ -197,7 +209,8 @@ export type WatcherRollbackVerificationContextV1 = Readonly<{
   finalityResult: unknown;
   previousRollbackState: unknown;
   rollbackBootstrapState: unknown;
-  trustedCheckpointStateDigest?: unknown;
+  trustedCheckpointAuthority?: unknown;
+  transportAttestations?: unknown;
 }>;
 
 export type WatcherRollbackResultV1 = Readonly<{
@@ -315,11 +328,119 @@ export type WatcherPostFinalityRecoveryInputV1 = Readonly<{
   currentStore: unknown;
   quarantinedRollbackState: unknown;
   rollbackBootstrapState: unknown;
-  trustedCheckpointStateDigest?: unknown;
+  trustedCheckpointAuthority?: unknown;
   previousCanonicalPath: unknown;
   replacementCanonicalPath: unknown;
   previousRecoveryState: unknown;
+  transportAttestations?: unknown;
 }>;
+
+export type WatcherRollbackDurableAuthorityV1 = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION;
+  revision: string;
+  snapshotSha256: string;
+  authorityDigest: string;
+}>;
+
+export type WatcherRollbackDurableAuthorityStatusV1 = Readonly<{
+  revision: string;
+  snapshotSha256: string;
+  authorityDigest: string;
+  priorSnapshotSha256: string | null;
+  storeDigest: string;
+  rollbackStateDigest: string;
+  rollbackBootstrapStateDigest: string;
+  trustedCheckpointStateDigest: string;
+  authenticationKeyId: string;
+  epoch: string;
+  transitionCount: string;
+  incidentDigest: string | null;
+}>;
+
+/**
+ * This head must be stored by a monotonic, non-rollbackable authority that is
+ * independent of the snapshot backend. An ordinary row in the same database,
+ * even in another table, cannot establish freshness when that database can be
+ * restored from an older backup.
+ */
+export type WatcherRollbackDurableTrustedHeadV1 = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION;
+  policyDigest: string;
+  deploymentMarker: DeploymentMarkerV1;
+  authenticationKeyId: string;
+  revision: string;
+  snapshotSha256: string;
+  authorityDigest: string;
+  headMac: string;
+}>;
+
+export type WatcherRollbackDurableAuthorityOpenResultV1 = Readonly<{
+  initialized: boolean;
+  authority: WatcherRollbackDurableAuthorityV1;
+  trustedHead: WatcherRollbackDurableTrustedHeadV1;
+}>;
+
+export type WatcherRollbackDurableTrustedHeadReconciliationV1 =
+  | Readonly<{
+      action: "already_aligned";
+      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+    }>
+  | Readonly<{
+      action: "publish_direct_successor";
+      expectedTrustedHead: WatcherRollbackDurableTrustedHeadV1 | null;
+      nextTrustedHead: WatcherRollbackDurableTrustedHeadV1;
+    }>;
+
+type WatcherRollbackDurablePersistenceConflictV1 = Readonly<{
+  persistence: "conflict";
+}>;
+
+export type WatcherRollbackDurableEvaluationResultV1 =
+  | Readonly<{
+      persistence: "committed" | "unchanged";
+      authority: WatcherRollbackDurableAuthorityV1;
+      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+      result: WatcherRollbackResultV1;
+    }>
+  | WatcherRollbackDurablePersistenceConflictV1;
+
+export type WatcherRollbackDurableRecoveryResultV1 =
+  | Readonly<{
+      persistence: "committed" | "unchanged";
+      authority: WatcherRollbackDurableAuthorityV1;
+      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+      result: WatcherPostFinalityRecoveryResultV1;
+    }>
+  | WatcherRollbackDurablePersistenceConflictV1;
+
+type WatcherRollbackDurableAuthoritySnapshotV1 = Readonly<{
+  schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION;
+  revision: string;
+  priorSnapshotSha256: string | null;
+  policyDigest: string;
+  deploymentMarker: DeploymentMarkerV1;
+  currentStore: WatcherDurableStoreV1;
+  rollbackState: WatcherRollbackStateV1;
+  rollbackBootstrapState: WatcherRollbackStateV1;
+  trustedCheckpointStateDigest: string;
+  authenticationKeyId: string;
+  authorityDigest: string;
+  authorityMac: string;
+}>;
+
+type WatcherRollbackDurableAuthorityRuntimeV1 = Readonly<{
+  backend: WatcherDurableAtomicBackend;
+  policy: WatcherFinalityPolicyV1;
+  snapshot: WatcherRollbackDurableAuthoritySnapshotV1;
+  encoded: Uint8Array;
+  snapshotSha256: string;
+  authenticationKey: Uint8Array;
+}>;
+
+const rollbackDurableAuthorityRuntime = new WeakMap<
+  WatcherRollbackDurableAuthorityV1,
+  WatcherRollbackDurableAuthorityRuntimeV1
+>();
 
 type PlainRecord = Record<string, unknown>;
 
@@ -638,6 +759,7 @@ const parseFinalityTransition = (
     "configuredSourceDigest",
     "authorityNodeId",
     "authorityGenesisIdentitySha256",
+    "authorityChainSyncSocketPath",
     "chainAuthorityObservationDigest",
     "queryObservationCount",
     "observationCount",
@@ -1238,6 +1360,7 @@ const parseTransitionRecord = (
     "configuredSourceDigest",
     "authorityNodeId",
     "authorityGenesisIdentitySha256",
+    "authorityChainSyncSocketPath",
     "chainAuthorityObservationDigest",
     "queryObservationCount",
     "observationCount",
@@ -1929,11 +2052,19 @@ const indexPersistedObservations = (
   return index;
 };
 
+const AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE = Symbol(
+  "authenticated-rollback-snapshot-evidence",
+);
+
 const verifyPersistedConsistencyEvidence = (
   policy: WatcherFinalityPolicyV1,
   store: WatcherDurableStoreV1,
   consistency: WatcherMultiProviderConsistencyV1,
+  transportAttestationsInput: unknown,
   persistedIndex: PersistedObservationIndex = indexPersistedObservations(store),
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null = null,
 ): PersistedConsistencyEvidence | null => {
   const structuralVerification = evaluateWatcherFinalityV1(
     policy,
@@ -1997,10 +2128,14 @@ const verifyPersistedConsistencyEvidence = (
   ) {
     return null;
   }
-  const recomputed = evaluateWatcherMultiProviderConsistencyV1(
-    watcherFinalityConfiguredSourceV1(policy),
-    decoded,
-  );
+  const recomputed =
+    authenticatedSnapshotEvidence === AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+      ? consistency
+      : evaluateWatcherMultiProviderConsistencyV1(
+          watcherFinalityConfiguredSourceV1(policy),
+          decoded,
+          transportAttestationsInput as readonly WatcherL1TransportAttestationContextV1[],
+        );
   return JSON.stringify(recomputed) === JSON.stringify(consistency)
     ? Object.freeze({
         observationIds,
@@ -2015,11 +2150,18 @@ const verifyPersistedReplacementEvidence = (
   policy: WatcherFinalityPolicyV1,
   store: WatcherDurableStoreV1,
   transition: Extract<ParsedFinalityTransition, { readonly kind: "rewind" }>,
+  transportAttestationsInput: unknown,
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null = null,
 ): PersistedConsistencyEvidence | null => {
   const evidence = verifyPersistedConsistencyEvidence(
     policy,
     store,
     transition.consistency,
+    transportAttestationsInput,
+    undefined,
+    authenticatedSnapshotEvidence,
   );
   const agreement = transition.consistency.agreement;
   const replacement = transition.next
@@ -2286,6 +2428,10 @@ const evaluateWatcherRollbackStep = (
   previousFinalityStateInput: unknown,
   consistencyInput: unknown,
   finalityResultInput: unknown,
+  transportAttestationsInput: unknown,
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null = null,
 ): WatcherRollbackResultV1 => {
   const sourceStoreDigest = storeDigest(store);
   if (rollbackState.incident !== null) {
@@ -2357,6 +2503,9 @@ const evaluateWatcherRollbackStep = (
       policy,
       store,
       transition.consistency,
+      transportAttestationsInput,
+      undefined,
+      authenticatedSnapshotEvidence,
     );
     if (consistencyEvidence === null) {
       return reject("consistency_evidence_missing");
@@ -2415,6 +2564,8 @@ const evaluateWatcherRollbackStep = (
     policy,
     store,
     transition,
+    transportAttestationsInput,
+    authenticatedSnapshotEvidence,
   );
   if (replacementEvidence === null) {
     return reject("replacement_evidence_missing");
@@ -2498,6 +2649,10 @@ const replayWatcherRollbackState = (
   bootstrapState: WatcherRollbackStateV1,
   candidate: WatcherRollbackStateV1,
   currentStore: WatcherDurableStoreV1,
+  transportAttestationsInput: unknown,
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null = null,
 ): WatcherRollbackStateV1 | null => {
   if (
     rollbackStateBindingFailure(policy, candidate) !== null ||
@@ -2530,6 +2685,8 @@ const replayWatcherRollbackState = (
       transition.previousFinalityState,
       transition.consistency,
       transition.finalityResult,
+      transportAttestationsInput,
+      authenticatedSnapshotEvidence,
     );
     if (
       !["apply_rewind", "quarantine_incident"].includes(result.action) ||
@@ -2578,10 +2735,10 @@ export const makeWatcherRollbackBootstrapStateV1 = (
   }
 };
 
-const parseRollbackBootstrapState = (
+const parseRollbackBootstrapStateWithTrustedDigest = (
   policy: WatcherFinalityPolicyV1,
   value: unknown,
-  trustedCheckpointStateDigestInput: unknown = undefined,
+  trustedCheckpointStateDigest: string | null,
 ): WatcherRollbackStateV1 | null => {
   const candidate = decodeWatcherRollbackStateV1Structural(value);
   if (
@@ -2604,11 +2761,31 @@ const parseRollbackBootstrapState = (
     : candidate.epochCheckpoint !== null &&
         candidate.transitions.length === 0 &&
         candidate.incident === null &&
-        typeof trustedCheckpointStateDigestInput === "string" &&
-        HEX_32.test(trustedCheckpointStateDigestInput) &&
-        trustedCheckpointStateDigestInput === candidate.stateDigest
+        trustedCheckpointStateDigest === candidate.stateDigest
       ? candidate
       : null;
+};
+
+const parseRollbackBootstrapState = (
+  policy: WatcherFinalityPolicyV1,
+  value: unknown,
+  trustedCheckpointAuthorityInput: unknown = undefined,
+): WatcherRollbackStateV1 | null => {
+  const trustedAuthority =
+    typeof trustedCheckpointAuthorityInput === "object" &&
+    trustedCheckpointAuthorityInput !== null
+      ? rollbackDurableAuthorityRuntime.get(
+          trustedCheckpointAuthorityInput as WatcherRollbackDurableAuthorityV1,
+        )
+      : undefined;
+  return parseRollbackBootstrapStateWithTrustedDigest(
+    policy,
+    value,
+    trustedAuthority !== undefined &&
+      trustedAuthority.policy.policyDigest === policy.policyDigest
+      ? trustedAuthority.snapshot.trustedCheckpointStateDigest
+      : null,
+  );
 };
 
 /**
@@ -2630,7 +2807,7 @@ export const parseWatcherRollbackStateV1 = (
     const bootstrapState = parseRollbackBootstrapState(
       policy,
       context.rollbackBootstrapState,
-      context.trustedCheckpointStateDigest,
+      context.trustedCheckpointAuthority,
     );
     const currentStore = parseWatcherDurableStoreV1(context.currentStore);
     return bootstrapState === null
@@ -2640,6 +2817,7 @@ export const parseWatcherRollbackStateV1 = (
           bootstrapState,
           candidate,
           currentStore,
+          context.transportAttestations,
         );
   } catch {
     return null;
@@ -2659,7 +2837,8 @@ export const evaluateWatcherRollbackV1 = (
   finalityResultInput: unknown,
   previousRollbackStateInput: unknown,
   rollbackBootstrapStateInput: unknown,
-  trustedCheckpointStateDigestInput: unknown = undefined,
+  trustedCheckpointAuthorityInput: unknown = undefined,
+  transportAttestationsInput: unknown = [],
 ): WatcherRollbackResultV1 => {
   const policy = parseWatcherFinalityPolicyV1(policyInput);
   if (policy === null) {
@@ -2705,7 +2884,7 @@ export const evaluateWatcherRollbackV1 = (
   const rollbackBootstrapState = parseRollbackBootstrapState(
     policy,
     rollbackBootstrapStateInput,
-    trustedCheckpointStateDigestInput,
+    trustedCheckpointAuthorityInput,
   );
   if (rollbackBootstrapState === null) {
     return reject(
@@ -2718,6 +2897,7 @@ export const evaluateWatcherRollbackV1 = (
     rollbackBootstrapState,
     rollbackStateCandidate,
     store,
+    transportAttestationsInput,
   );
   if (rollbackState === null) {
     return reject(
@@ -2733,6 +2913,7 @@ export const evaluateWatcherRollbackV1 = (
     previousFinalityStateInput,
     consistencyInput,
     finalityResultInput,
+    transportAttestationsInput,
   );
 };
 
@@ -2759,7 +2940,8 @@ export const parseWatcherRollbackResultV1 = (
       context.finalityResult,
       context.previousRollbackState,
       context.rollbackBootstrapState,
-      context.trustedCheckpointStateDigest,
+      context.trustedCheckpointAuthority,
+      context.transportAttestations,
     );
     return JSON.stringify(parsed) === JSON.stringify(expected) ? parsed : null;
   } catch {
@@ -2832,6 +3014,7 @@ const verifyPostFinalityPath = (
   store: WatcherDurableStoreV1,
   value: unknown,
   persistedIndex: PersistedObservationIndex,
+  transportAttestationsInput: unknown,
 ): VerifiedPostFinalityPath | WatcherPostFinalityRecoveryReasonCodeV1 => {
   const inputs = exactArray(value);
   if (inputs === null || inputs.length < 2) {
@@ -2858,6 +3041,7 @@ const verifyPostFinalityPath = (
         "configuredSourceDigest",
         "authorityNodeId",
         "authorityGenesisIdentitySha256",
+        "authorityChainSyncSocketPath",
         "chainAuthorityObservationDigest",
         "queryObservationCount",
         "observationCount",
@@ -2878,6 +3062,7 @@ const verifyPostFinalityPath = (
       policy,
       store,
       input as WatcherMultiProviderConsistencyV1,
+      transportAttestationsInput,
       persistedIndex,
     );
     const consistency = persisted?.consistency;
@@ -3270,18 +3455,22 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     "replacementCanonicalPath",
     "previousRecoveryState",
   ];
-  const hasTrustedCheckpointStateDigest =
+  const hasTrustedCheckpointAuthority =
     typeof input === "object" &&
     input !== null &&
     !Array.isArray(input) &&
-    Reflect.ownKeys(input).includes("trustedCheckpointStateDigest");
+    Reflect.ownKeys(input).includes("trustedCheckpointAuthority");
+  const hasTransportAttestations =
+    typeof input === "object" &&
+    input !== null &&
+    !Array.isArray(input) &&
+    Reflect.ownKeys(input).includes("transportAttestations");
   if (
-    exactPlainRecord(
-      input,
-      hasTrustedCheckpointStateDigest
-        ? [...recoveryInputKeys, "trustedCheckpointStateDigest"]
-        : recoveryInputKeys,
-    ) === null
+    exactPlainRecord(input, [
+      ...recoveryInputKeys,
+      ...(hasTrustedCheckpointAuthority ? ["trustedCheckpointAuthority"] : []),
+      ...(hasTransportAttestations ? ["transportAttestations"] : []),
+    ]) === null
   ) {
     return rejectPostFinalityRecovery("recovery_path_malformed");
   }
@@ -3315,8 +3504,9 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     {
       policy,
       rollbackBootstrapState: input.rollbackBootstrapState,
-      trustedCheckpointStateDigest: input.trustedCheckpointStateDigest,
+      trustedCheckpointAuthority: input.trustedCheckpointAuthority,
       currentStore: sourceStore,
+      transportAttestations: input.transportAttestations,
     },
   );
   if (rollbackState === null) {
@@ -3338,6 +3528,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     sourceStore,
     input.previousCanonicalPath,
     persistedIndex,
+    input.transportAttestations,
   );
   if (typeof previousPath === "string") {
     return rejectPostFinalityRecovery(previousPath);
@@ -3347,6 +3538,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     sourceStore,
     input.replacementCanonicalPath,
     persistedIndex,
+    input.transportAttestations,
   );
   if (typeof replacementPath === "string") {
     return rejectPostFinalityRecovery(replacementPath);
@@ -3612,4 +3804,854 @@ export const parseWatcherPostFinalityRecoveryResultV1 = (
   } catch {
     return null;
   }
+};
+
+const rollbackAuthorityEncoder = new TextEncoder();
+const rollbackAuthorityDecoder = new TextDecoder("utf-8", { fatal: true });
+
+type WatcherRollbackDurableAuthorityContentV1 = Omit<
+  WatcherRollbackDurableAuthoritySnapshotV1,
+  "authorityDigest" | "authorityMac"
+>;
+
+const rollbackAuthorityCanonical = (
+  value: WatcherRollbackDurableAuthorityContentV1,
+): WatcherRollbackDurableAuthorityContentV1 => ({
+  schemaVersion: value.schemaVersion,
+  revision: value.revision,
+  priorSnapshotSha256: value.priorSnapshotSha256,
+  policyDigest: value.policyDigest,
+  deploymentMarker: value.deploymentMarker,
+  currentStore: value.currentStore,
+  rollbackState: value.rollbackState,
+  rollbackBootstrapState: value.rollbackBootstrapState,
+  trustedCheckpointStateDigest: value.trustedCheckpointStateDigest,
+  authenticationKeyId: value.authenticationKeyId,
+});
+
+const parseRollbackAuthorityAuthenticationKey = (
+  value: unknown,
+): Uint8Array => {
+  if (
+    !(value instanceof Uint8Array) ||
+    value.byteLength !== ROLLBACK_AUTHORITY_KEY_BYTES
+  ) {
+    throw new Error("invalid watcher rollback authority authentication key");
+  }
+  return Uint8Array.from(value);
+};
+
+const rollbackAuthorityKeyId = (key: Uint8Array): string =>
+  createHash("sha256").update(key).digest("hex");
+
+const rollbackAuthorityMac = (
+  key: Uint8Array,
+  canonical: Readonly<
+    WatcherRollbackDurableAuthorityContentV1 & {
+      authorityDigest: string;
+    }
+  >,
+): string =>
+  createHmac("sha256", key)
+    .update(JSON.stringify(canonical), "utf8")
+    .digest("hex");
+
+const encodeRollbackDurableAuthoritySnapshot = (
+  value: WatcherRollbackDurableAuthoritySnapshotV1,
+): Uint8Array => rollbackAuthorityEncoder.encode(JSON.stringify(value));
+
+const decodeRollbackDurableAuthoritySnapshot = (
+  bytes: Uint8Array,
+  policy: WatcherFinalityPolicyV1,
+  authenticationKeyInput: unknown,
+): WatcherRollbackDurableAuthoritySnapshotV1 | null => {
+  try {
+    const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+      authenticationKeyInput,
+    );
+    const text = rollbackAuthorityDecoder.decode(bytes);
+    const decoded = JSON.parse(text) as unknown;
+    const record = exactPlainRecord(decoded, [
+      "schemaVersion",
+      "revision",
+      "priorSnapshotSha256",
+      "policyDigest",
+      "deploymentMarker",
+      "currentStore",
+      "rollbackState",
+      "rollbackBootstrapState",
+      "trustedCheckpointStateDigest",
+      "authenticationKeyId",
+      "authorityDigest",
+      "authorityMac",
+    ]);
+    if (
+      record === null ||
+      record.schemaVersion !==
+        WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION ||
+      typeof record.revision !== "string" ||
+      !CANONICAL_NATURAL.test(record.revision) ||
+      (record.priorSnapshotSha256 !== null &&
+        (typeof record.priorSnapshotSha256 !== "string" ||
+          !HEX_32.test(record.priorSnapshotSha256))) ||
+      (record.revision === "0") !== (record.priorSnapshotSha256 === null) ||
+      record.policyDigest !== policy.policyDigest ||
+      typeof record.trustedCheckpointStateDigest !== "string" ||
+      !HEX_32.test(record.trustedCheckpointStateDigest) ||
+      record.authenticationKeyId !==
+        rollbackAuthorityKeyId(authenticationKey) ||
+      typeof record.authorityDigest !== "string" ||
+      !HEX_32.test(record.authorityDigest) ||
+      typeof record.authorityMac !== "string" ||
+      !HEX_32.test(record.authorityMac)
+    ) {
+      return null;
+    }
+    const untrustedCanonical = rollbackAuthorityCanonical({
+      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+      revision: record.revision,
+      priorSnapshotSha256: record.priorSnapshotSha256 as string | null,
+      policyDigest: record.policyDigest as string,
+      deploymentMarker: record.deploymentMarker as DeploymentMarkerV1,
+      currentStore: record.currentStore as WatcherDurableStoreV1,
+      rollbackState: record.rollbackState as WatcherRollbackStateV1,
+      rollbackBootstrapState:
+        record.rollbackBootstrapState as WatcherRollbackStateV1,
+      trustedCheckpointStateDigest:
+        record.trustedCheckpointStateDigest as string,
+      authenticationKeyId: record.authenticationKeyId as string,
+    });
+    const expectedMac = rollbackAuthorityMac(authenticationKey, {
+      ...untrustedCanonical,
+      authorityDigest: record.authorityDigest,
+    });
+    if (
+      !timingSafeEqual(
+        Buffer.from(expectedMac, "hex"),
+        Buffer.from(record.authorityMac, "hex"),
+      )
+    ) {
+      return null;
+    }
+    const deploymentMarker = parseDeploymentMarkerV1(record.deploymentMarker);
+    if (!sameMarker(deploymentMarker, policy.deploymentMarker)) {
+      return null;
+    }
+    const currentStore = parseWatcherDurableStoreV1(record.currentStore);
+    if (!sameMarker(currentStore.deploymentMarker, policy.deploymentMarker)) {
+      return null;
+    }
+    const rollbackState = decodeWatcherRollbackStateV1Structural(
+      record.rollbackState,
+    );
+    const rollbackBootstrapState = parseRollbackBootstrapStateWithTrustedDigest(
+      policy,
+      record.rollbackBootstrapState,
+      record.trustedCheckpointStateDigest,
+    );
+    if (
+      rollbackState === null ||
+      rollbackBootstrapState === null ||
+      rollbackBootstrapState.stateDigest !==
+        record.trustedCheckpointStateDigest ||
+      rollbackState.storeDigest !== storeDigest(currentStore) ||
+      replayWatcherRollbackState(
+        policy,
+        rollbackBootstrapState,
+        rollbackState,
+        currentStore,
+        [],
+        AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE,
+      ) === null
+    ) {
+      return null;
+    }
+    const canonicalWithoutDigest = rollbackAuthorityCanonical({
+      schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+      revision: record.revision,
+      priorSnapshotSha256: record.priorSnapshotSha256 as string | null,
+      policyDigest: policy.policyDigest,
+      deploymentMarker,
+      currentStore,
+      rollbackState,
+      rollbackBootstrapState,
+      trustedCheckpointStateDigest:
+        record.trustedCheckpointStateDigest as string,
+      authenticationKeyId: record.authenticationKeyId as string,
+    });
+    const snapshot = Object.freeze({
+      ...canonicalWithoutDigest,
+      authorityDigest: record.authorityDigest as string,
+      authorityMac: record.authorityMac as string,
+    });
+    return sha256Canonical(canonicalWithoutDigest) ===
+      snapshot.authorityDigest && text === JSON.stringify(snapshot)
+      ? snapshot
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const makeRollbackDurableAuthoritySnapshot = (
+  policy: WatcherFinalityPolicyV1,
+  revision: string,
+  priorSnapshotSha256: string | null,
+  currentStore: WatcherDurableStoreV1,
+  rollbackState: WatcherRollbackStateV1,
+  rollbackBootstrapState: WatcherRollbackStateV1,
+  trustedCheckpointStateDigest: string,
+  authenticationKeyInput: unknown,
+): Readonly<{
+  snapshot: WatcherRollbackDurableAuthoritySnapshotV1;
+  encoded: Uint8Array;
+}> => {
+  const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+    authenticationKeyInput,
+  );
+  const canonical = rollbackAuthorityCanonical({
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION,
+    revision,
+    priorSnapshotSha256,
+    policyDigest: policy.policyDigest,
+    deploymentMarker: policy.deploymentMarker,
+    currentStore,
+    rollbackState,
+    rollbackBootstrapState,
+    trustedCheckpointStateDigest,
+    authenticationKeyId: rollbackAuthorityKeyId(authenticationKey),
+  });
+  const authorityDigest = sha256Canonical(canonical);
+  const candidate = Object.freeze({
+    ...canonical,
+    authorityDigest,
+    authorityMac: rollbackAuthorityMac(authenticationKey, {
+      ...canonical,
+      authorityDigest,
+    }),
+  });
+  const encoded = encodeRollbackDurableAuthoritySnapshot(candidate);
+  return Object.freeze({ snapshot: candidate, encoded });
+};
+
+const makeRollbackDurableAuthorityHandle = (
+  runtime: WatcherRollbackDurableAuthorityRuntimeV1,
+): WatcherRollbackDurableAuthorityV1 => {
+  const authority = Object.freeze({
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_AUTHORITY_HANDLE_V1_SCHEMA_VERSION,
+    revision: runtime.snapshot.revision,
+    snapshotSha256: runtime.snapshotSha256,
+    authorityDigest: runtime.snapshot.authorityDigest,
+  });
+  rollbackDurableAuthorityRuntime.set(authority, runtime);
+  return authority;
+};
+
+type WatcherRollbackDurableTrustedHeadContentV1 = Omit<
+  WatcherRollbackDurableTrustedHeadV1,
+  "headMac"
+>;
+
+const rollbackDurableTrustedHeadCanonical = (
+  value: WatcherRollbackDurableTrustedHeadContentV1,
+): WatcherRollbackDurableTrustedHeadContentV1 => ({
+  schemaVersion: value.schemaVersion,
+  policyDigest: value.policyDigest,
+  deploymentMarker: value.deploymentMarker,
+  authenticationKeyId: value.authenticationKeyId,
+  revision: value.revision,
+  snapshotSha256: value.snapshotSha256,
+  authorityDigest: value.authorityDigest,
+});
+
+const rollbackDurableTrustedHeadMac = (
+  authenticationKey: Uint8Array,
+  value: WatcherRollbackDurableTrustedHeadContentV1,
+): string =>
+  createHmac("sha256", authenticationKey)
+    .update(
+      `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION}:${JSON.stringify(value)}`,
+      "utf8",
+    )
+    .digest("hex");
+
+const makeRollbackDurableTrustedHead = (
+  policy: WatcherFinalityPolicyV1,
+  snapshot: WatcherRollbackDurableAuthoritySnapshotV1,
+  snapshotSha256: string,
+  authenticationKey: Uint8Array,
+): WatcherRollbackDurableTrustedHeadV1 => {
+  const canonical = rollbackDurableTrustedHeadCanonical({
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+    policyDigest: policy.policyDigest,
+    deploymentMarker: policy.deploymentMarker,
+    authenticationKeyId: snapshot.authenticationKeyId,
+    revision: snapshot.revision,
+    snapshotSha256,
+    authorityDigest: snapshot.authorityDigest,
+  });
+  return Object.freeze({
+    ...canonical,
+    headMac: rollbackDurableTrustedHeadMac(authenticationKey, canonical),
+  });
+};
+
+const parseRollbackDurableTrustedHead = (
+  value: unknown,
+  policy: WatcherFinalityPolicyV1,
+  authenticationKey: Uint8Array,
+): WatcherRollbackDurableTrustedHeadV1 => {
+  const record = exactPlainRecord(value, [
+    "schemaVersion",
+    "policyDigest",
+    "deploymentMarker",
+    "authenticationKeyId",
+    "revision",
+    "snapshotSha256",
+    "authorityDigest",
+    "headMac",
+  ]);
+  if (
+    record === null ||
+    record.schemaVersion !==
+      WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION ||
+    record.policyDigest !== policy.policyDigest ||
+    record.authenticationKeyId !== rollbackAuthorityKeyId(authenticationKey) ||
+    typeof record.revision !== "string" ||
+    !CANONICAL_NATURAL.test(record.revision) ||
+    typeof record.snapshotSha256 !== "string" ||
+    !HEX_32.test(record.snapshotSha256) ||
+    typeof record.authorityDigest !== "string" ||
+    !HEX_32.test(record.authorityDigest) ||
+    typeof record.headMac !== "string" ||
+    !HEX_32.test(record.headMac)
+  ) {
+    throw new Error("invalid watcher rollback durable trusted head");
+  }
+  let deploymentMarker: DeploymentMarkerV1;
+  try {
+    deploymentMarker = parseDeploymentMarkerV1(record.deploymentMarker);
+  } catch {
+    throw new Error("invalid watcher rollback durable trusted head");
+  }
+  if (!sameMarker(deploymentMarker, policy.deploymentMarker)) {
+    throw new Error("invalid watcher rollback durable trusted head");
+  }
+  const canonical = rollbackDurableTrustedHeadCanonical({
+    schemaVersion: WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION,
+    policyDigest: policy.policyDigest,
+    deploymentMarker,
+    authenticationKeyId: record.authenticationKeyId,
+    revision: record.revision,
+    snapshotSha256: record.snapshotSha256,
+    authorityDigest: record.authorityDigest,
+  }) as WatcherRollbackDurableTrustedHeadContentV1;
+  const expectedMac = rollbackDurableTrustedHeadMac(
+    authenticationKey,
+    canonical,
+  );
+  if (
+    !timingSafeEqual(
+      Buffer.from(expectedMac, "hex"),
+      Buffer.from(record.headMac, "hex"),
+    )
+  ) {
+    throw new Error("invalid watcher rollback durable trusted head");
+  }
+  return Object.freeze({
+    ...canonical,
+    headMac: record.headMac,
+  }) as WatcherRollbackDurableTrustedHeadV1;
+};
+
+const assertRollbackDurableTrustedHeadMatches = (
+  trustedHead: WatcherRollbackDurableTrustedHeadV1,
+  snapshot: WatcherRollbackDurableAuthoritySnapshotV1,
+  snapshotSha256: string,
+): void => {
+  if (
+    trustedHead.revision !== snapshot.revision ||
+    trustedHead.snapshotSha256 !== snapshotSha256 ||
+    trustedHead.authorityDigest !== snapshot.authorityDigest ||
+    trustedHead.authenticationKeyId !== snapshot.authenticationKeyId
+  ) {
+    throw new Error("watcher rollback durable trusted head mismatch");
+  }
+};
+
+const runtimeForRollbackDurableAuthority = (
+  authority: WatcherRollbackDurableAuthorityV1,
+): WatcherRollbackDurableAuthorityRuntimeV1 => {
+  const runtime = rollbackDurableAuthorityRuntime.get(authority);
+  if (runtime === undefined) {
+    throw new Error("unknown watcher rollback durable authority");
+  }
+  return runtime;
+};
+
+const authorityFromEncodedSnapshot = (
+  backend: WatcherDurableAtomicBackend,
+  policy: WatcherFinalityPolicyV1,
+  encoded: Uint8Array,
+  snapshotSha256: string,
+  authenticationKeyInput: unknown,
+  trustedHeadInput: unknown,
+): WatcherRollbackDurableAuthorityV1 => {
+  const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+    authenticationKeyInput,
+  );
+  const trustedHead = parseRollbackDurableTrustedHead(
+    trustedHeadInput,
+    policy,
+    authenticationKey,
+  );
+  const copy = Uint8Array.from(encoded);
+  if (watcherDurableStoreBytesSha256(copy) !== snapshotSha256) {
+    throw new Error("watcher rollback durable authority digest mismatch");
+  }
+  const snapshot = decodeRollbackDurableAuthoritySnapshot(
+    copy,
+    policy,
+    authenticationKey,
+  );
+  if (snapshot === null) {
+    throw new Error("invalid watcher rollback durable authority");
+  }
+  assertRollbackDurableTrustedHeadMatches(
+    trustedHead,
+    snapshot,
+    snapshotSha256,
+  );
+  return makeRollbackDurableAuthorityHandle(
+    Object.freeze({
+      backend,
+      policy,
+      snapshot,
+      encoded: copy,
+      snapshotSha256,
+      authenticationKey,
+    }),
+  );
+};
+
+/**
+ * Loads the rollback journal, its active epoch bootstrap, and its trust anchor
+ * from one backend snapshot. `trustedHead` must come from independently
+ * protected monotonic storage: the candidate snapshot can authenticate its
+ * bytes but can never testify that it is the newest committed snapshot. An
+ * ordinary row in the same rollbackable database is insufficient. The
+ * returned handle is an in-process capability; a copied plain object cannot
+ * authorize an epoch restart.
+ */
+export const loadWatcherRollbackDurableAuthorityV1 = async (input: {
+  readonly backend: WatcherDurableAtomicBackend;
+  readonly policy: unknown;
+  readonly authenticationKey: Uint8Array;
+  readonly trustedHead: unknown;
+}): Promise<WatcherRollbackDurableAuthorityV1> => {
+  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  if (policy === null) {
+    throw new Error("invalid watcher rollback durable authority policy");
+  }
+  const stored = await readWatcherDurableAtomicSnapshotV1(input.backend);
+  if (stored === null) {
+    throw new Error("watcher rollback durable authority missing");
+  }
+  return authorityFromEncodedSnapshot(
+    input.backend,
+    policy,
+    stored.bytes,
+    stored.sha256,
+    input.authenticationKey,
+    input.trustedHead,
+  );
+};
+
+/**
+ * Prepares the only safe recovery from a crash between snapshot CAS and
+ * external trusted-head publication. The result contains no authority and no
+ * protocol decision. The operator must atomically compare-and-swap the
+ * independent monotonic authority from `expectedTrustedHead` to
+ * `nextTrustedHead`, then call `loadWatcherRollbackDurableAuthorityV1` with
+ * the externally read-back head.
+ *
+ * Recovery is deliberately bounded to an authenticated revision-zero snapshot
+ * when the external head is null, or to one authenticated direct successor
+ * whose prior snapshot digest is the protected head. A same-database head,
+ * an older restored snapshot, a skipped revision, or a divergent successor
+ * cannot produce a publication proposal. Re-running after external
+ * publication returns `already_aligned`.
+ */
+export const prepareWatcherRollbackDurableTrustedHeadReconciliationV1 =
+  async (input: {
+    readonly backend: WatcherDurableAtomicBackend;
+    readonly policy: unknown;
+    readonly authenticationKey: Uint8Array;
+    readonly trustedHead: unknown | null;
+  }): Promise<WatcherRollbackDurableTrustedHeadReconciliationV1> => {
+    const policy = parseWatcherFinalityPolicyV1(input.policy);
+    if (policy === null) {
+      throw new Error("invalid watcher rollback durable authority policy");
+    }
+    const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+      input.authenticationKey,
+    );
+    const stored = await readWatcherDurableAtomicSnapshotV1(input.backend);
+    if (stored === null) {
+      throw new Error("watcher rollback durable authority missing");
+    }
+    const snapshot = decodeRollbackDurableAuthoritySnapshot(
+      stored.bytes,
+      policy,
+      authenticationKey,
+    );
+    if (snapshot === null) {
+      throw new Error("invalid watcher rollback durable authority");
+    }
+
+    const expectedTrustedHead =
+      input.trustedHead === null
+        ? null
+        : parseRollbackDurableTrustedHead(
+            input.trustedHead,
+            policy,
+            authenticationKey,
+          );
+    if (
+      expectedTrustedHead !== null &&
+      expectedTrustedHead.snapshotSha256 === stored.sha256
+    ) {
+      assertRollbackDurableTrustedHeadMatches(
+        expectedTrustedHead,
+        snapshot,
+        stored.sha256,
+      );
+      return Object.freeze({
+        action: "already_aligned",
+        trustedHead: expectedTrustedHead,
+      });
+    }
+
+    const isDirectSuccessor =
+      expectedTrustedHead === null
+        ? snapshot.revision === "0" && snapshot.priorSnapshotSha256 === null
+        : BigInt(snapshot.revision) ===
+            BigInt(expectedTrustedHead.revision) + 1n &&
+          snapshot.priorSnapshotSha256 === expectedTrustedHead.snapshotSha256;
+    if (!isDirectSuccessor) {
+      throw new Error(
+        "watcher rollback durable trusted head reconciliation refused",
+      );
+    }
+    return Object.freeze({
+      action: "publish_direct_successor",
+      expectedTrustedHead,
+      nextTrustedHead: makeRollbackDurableTrustedHead(
+        policy,
+        snapshot,
+        stored.sha256,
+        authenticationKey,
+      ),
+    });
+  };
+
+/**
+ * Creates the epoch-zero authority exactly once. `trustedHead` must be null
+ * only for a genuinely empty deployment and must otherwise be the independently
+ * protected exact head. Every success emits the head that must be atomically
+ * published to non-rollbackable external authority before the returned
+ * capability or any resulting protocol decision is used. A same-database row
+ * does not satisfy that contract.
+ */
+export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
+  readonly backend: WatcherDurableAtomicBackend;
+  readonly policy: unknown;
+  readonly bootstrapStore: unknown;
+  readonly bootstrapFinalityState: unknown;
+  readonly authenticationKey: Uint8Array;
+  readonly trustedHead: unknown | null;
+}): Promise<WatcherRollbackDurableAuthorityOpenResultV1> => {
+  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  if (policy === null) {
+    throw new Error("invalid watcher rollback durable authority policy");
+  }
+  const bootstrapState = makeWatcherRollbackBootstrapStateV1(
+    policy,
+    input.bootstrapStore,
+    input.bootstrapFinalityState,
+  );
+  if (bootstrapState === null) {
+    throw new Error("invalid watcher rollback durable authority bootstrap");
+  }
+  const bootstrapStore = parseWatcherDurableStoreV1(input.bootstrapStore);
+  const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+    input.authenticationKey,
+  );
+  const existing = await readWatcherDurableAtomicSnapshotV1(input.backend);
+  if (existing !== null) {
+    if (input.trustedHead === null) {
+      throw new Error("watcher rollback durable trusted head required");
+    }
+    const authority = authorityFromEncodedSnapshot(
+      input.backend,
+      policy,
+      existing.bytes,
+      existing.sha256,
+      authenticationKey,
+      input.trustedHead,
+    );
+    const runtime = runtimeForRollbackDurableAuthority(authority);
+    return Object.freeze({
+      initialized: false,
+      authority,
+      trustedHead: makeRollbackDurableTrustedHead(
+        policy,
+        runtime.snapshot,
+        runtime.snapshotSha256,
+        runtime.authenticationKey,
+      ),
+    });
+  }
+  if (input.trustedHead !== null) {
+    throw new Error("watcher rollback durable authority missing");
+  }
+  const { snapshot, encoded } = makeRollbackDurableAuthoritySnapshot(
+    policy,
+    "0",
+    null,
+    bootstrapStore,
+    bootstrapState,
+    bootstrapState,
+    bootstrapState.stateDigest,
+    authenticationKey,
+  );
+  const commit = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+    backend: input.backend,
+    expectedSha256: null,
+    next: encoded,
+  });
+  if (!commit.committed) {
+    throw new Error("watcher rollback durable authority conflict");
+  }
+  const authority = makeRollbackDurableAuthorityHandle(
+    Object.freeze({
+      backend: input.backend,
+      policy,
+      snapshot,
+      encoded,
+      snapshotSha256: commit.sha256,
+      authenticationKey,
+    }),
+  );
+  return Object.freeze({
+    initialized: true,
+    authority,
+    trustedHead: makeRollbackDurableTrustedHead(
+      policy,
+      snapshot,
+      commit.sha256,
+      authenticationKey,
+    ),
+  });
+};
+
+export const watcherRollbackDurableAuthorityStatusV1 = (
+  authority: WatcherRollbackDurableAuthorityV1,
+): WatcherRollbackDurableAuthorityStatusV1 => {
+  const runtime = runtimeForRollbackDurableAuthority(authority);
+  const { snapshot } = runtime;
+  return Object.freeze({
+    revision: snapshot.revision,
+    snapshotSha256: runtime.snapshotSha256,
+    authorityDigest: snapshot.authorityDigest,
+    priorSnapshotSha256: snapshot.priorSnapshotSha256,
+    storeDigest: storeDigest(snapshot.currentStore),
+    rollbackStateDigest: snapshot.rollbackState.stateDigest,
+    rollbackBootstrapStateDigest: snapshot.rollbackBootstrapState.stateDigest,
+    trustedCheckpointStateDigest: snapshot.trustedCheckpointStateDigest,
+    authenticationKeyId: snapshot.authenticationKeyId,
+    epoch: snapshot.rollbackState.epoch,
+    transitionCount: snapshot.rollbackState.transitionCount,
+    incidentDigest: snapshot.rollbackState.incident?.incidentDigest ?? null,
+  });
+};
+
+const commitRollbackDurableAuthority = async (
+  authority: WatcherRollbackDurableAuthorityV1,
+  currentStore: WatcherDurableStoreV1,
+  rollbackState: WatcherRollbackStateV1,
+  rollbackBootstrapState: WatcherRollbackStateV1,
+  trustedCheckpointStateDigest: string,
+): Promise<Readonly<{
+  authority: WatcherRollbackDurableAuthorityV1;
+  trustedHead: WatcherRollbackDurableTrustedHeadV1;
+}> | null> => {
+  const runtime = runtimeForRollbackDurableAuthority(authority);
+  const { snapshot, encoded } = makeRollbackDurableAuthoritySnapshot(
+    runtime.policy,
+    (BigInt(runtime.snapshot.revision) + 1n).toString(),
+    runtime.snapshotSha256,
+    currentStore,
+    rollbackState,
+    rollbackBootstrapState,
+    trustedCheckpointStateDigest,
+    runtime.authenticationKey,
+  );
+  const commit = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+    backend: runtime.backend,
+    expectedSha256: runtime.snapshotSha256,
+    next: encoded,
+  });
+  if (!commit.committed) {
+    return null;
+  }
+  return Object.freeze({
+    authority: makeRollbackDurableAuthorityHandle(
+      Object.freeze({
+        backend: runtime.backend,
+        policy: runtime.policy,
+        snapshot,
+        encoded,
+        snapshotSha256: commit.sha256,
+        authenticationKey: runtime.authenticationKey,
+      }),
+    ),
+    trustedHead: makeRollbackDurableTrustedHead(
+      runtime.policy,
+      snapshot,
+      commit.sha256,
+      runtime.authenticationKey,
+    ),
+  });
+};
+
+/**
+ * Applies one W13 transition from the already authenticated, atomically loaded
+ * authority, then persists store, journal, bootstrap, and anchor in one
+ * expected-prior CAS. A stale/concurrent handle can compute but cannot commit.
+ * A committed result is not actionable until its emitted `trustedHead` has
+ * been atomically published to the independent monotonic authority.
+ */
+export const evaluateAndPersistWatcherRollbackV1 = async (input: {
+  readonly authority: WatcherRollbackDurableAuthorityV1;
+  readonly previousFinalityState: unknown;
+  readonly consistency: unknown;
+  readonly finalityResult: unknown;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+}): Promise<WatcherRollbackDurableEvaluationResultV1> => {
+  const runtime = runtimeForRollbackDurableAuthority(input.authority);
+  const verified = evaluateWatcherRollbackStep(
+    runtime.policy,
+    runtime.snapshot.currentStore,
+    runtime.snapshot.rollbackState,
+    runtime.snapshot.rollbackBootstrapState,
+    input.previousFinalityState,
+    input.consistency,
+    input.finalityResult,
+    input.transportAttestations,
+  );
+  if (
+    verified.action === "reject" ||
+    verified.action === "duplicate_rewind" ||
+    verified.nextStore === null ||
+    verified.rollbackState === null ||
+    verified.rollbackBootstrapState === null
+  ) {
+    return Object.freeze({
+      persistence: "unchanged",
+      authority: input.authority,
+      trustedHead: makeRollbackDurableTrustedHead(
+        runtime.policy,
+        runtime.snapshot,
+        runtime.snapshotSha256,
+        runtime.authenticationKey,
+      ),
+      result: verified,
+    });
+  }
+  const committed = await commitRollbackDurableAuthority(
+    input.authority,
+    verified.nextStore,
+    verified.rollbackState,
+    verified.rollbackBootstrapState,
+    verified.trustedCheckpointStateDigest ??
+      runtime.snapshot.trustedCheckpointStateDigest,
+  );
+  return committed === null
+    ? Object.freeze({ persistence: "conflict" })
+    : Object.freeze({
+        persistence: "committed",
+        authority: committed.authority,
+        trustedHead: committed.trustedHead,
+        result: verified,
+      });
+};
+
+/**
+ * Runs post-finality recovery from the backend-owned incident state and
+ * atomically installs the recovered store plus the new epoch trust anchor.
+ * A committed recovery is not actionable until its emitted `trustedHead` has
+ * been atomically published to the independent monotonic authority.
+ */
+export const evaluateAndPersistWatcherPostFinalityRecoveryV1 = async (input: {
+  readonly authority: WatcherRollbackDurableAuthorityV1;
+  readonly previousCanonicalPath: unknown;
+  readonly replacementCanonicalPath: unknown;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+}): Promise<WatcherRollbackDurableRecoveryResultV1> => {
+  const runtime = runtimeForRollbackDurableAuthority(input.authority);
+  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+    policy: runtime.policy,
+    sourceStore: runtime.snapshot.currentStore,
+    currentStore: runtime.snapshot.currentStore,
+    quarantinedRollbackState: runtime.snapshot.rollbackState,
+    rollbackBootstrapState: runtime.snapshot.rollbackBootstrapState,
+    trustedCheckpointAuthority: input.authority,
+    previousCanonicalPath: input.previousCanonicalPath,
+    replacementCanonicalPath: input.replacementCanonicalPath,
+    previousRecoveryState: null,
+    transportAttestations: input.transportAttestations,
+  };
+  const result = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  const verified = parseWatcherPostFinalityRecoveryResultV1(
+    result,
+    recoveryInput,
+  );
+  if (verified === null) {
+    throw new Error("watcher rollback durable recovery verification failed");
+  }
+  if (
+    verified.action !== "rewind_and_replay" ||
+    verified.nextStore === null ||
+    verified.resumableRollbackState === null ||
+    verified.resumableRollbackBootstrapState === null ||
+    verified.resumableTrustedCheckpointStateDigest === null
+  ) {
+    return Object.freeze({
+      persistence: "unchanged",
+      authority: input.authority,
+      trustedHead: makeRollbackDurableTrustedHead(
+        runtime.policy,
+        runtime.snapshot,
+        runtime.snapshotSha256,
+        runtime.authenticationKey,
+      ),
+      result: verified,
+    });
+  }
+  const committed = await commitRollbackDurableAuthority(
+    input.authority,
+    verified.nextStore,
+    verified.resumableRollbackState,
+    verified.resumableRollbackBootstrapState,
+    verified.resumableTrustedCheckpointStateDigest,
+  );
+  return committed === null
+    ? Object.freeze({ persistence: "conflict" })
+    : Object.freeze({
+        persistence: "committed",
+        authority: committed.authority,
+        trustedHead: committed.trustedHead,
+        result: verified,
+      });
 };

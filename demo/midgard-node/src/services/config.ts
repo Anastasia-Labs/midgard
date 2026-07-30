@@ -1,5 +1,9 @@
 import { availableParallelism } from "node:os";
 
+import {
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1,
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
+} from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -20,6 +24,18 @@ import { validateRetentionDays } from "@/database/retention-policy.js";
  * production configuration easier to audit.
  */
 type Provider = "Kupmios";
+
+/**
+ * The SQL quota counts each unique material entry (32-byte root plus at most
+ * six bytes of DA-value framing), its membership row (32 + 32 + boolean), and
+ * its admission-owner row (32 + 32 + 32). Reserving 199 bytes per maximum
+ * reachable node in addition to the authenticated preimages guarantees that
+ * one protocol-valid maximum envelope fits even at the configured minimum.
+ */
+export const CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES = Number(
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1 +
+    MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 * 199n,
+);
 
 export const resolveValidationWorkerPoolSize = (
   configured: number | undefined,
@@ -112,6 +128,9 @@ export type NodeConfigDep = {
   ADMIN_API_KEY: string;
   MAX_DURABLE_ADMISSION_BACKLOG: number;
   MAX_DURABLE_ADMISSION_BACKLOG_BYTES: number;
+  SUBMIT_INGRESS_MAX_CONCURRENCY: number;
+  SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: number;
+  CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: number;
   MAX_SUBMIT_TX_CBOR_BYTES: number;
   READINESS_MAX_HEARTBEAT_AGE_MS: number;
   READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS: number;
@@ -500,6 +519,42 @@ const makeConfig = Effect.gen(function* () {
       if (!Number.isSafeInteger(value) || value <= 0) {
         throw new Error(
           "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
+        );
+      }
+      return value;
+    }),
+  );
+  const submitIngressMaxConcurrency = yield* positiveSafeIntegerConfig(
+    "SUBMIT_INGRESS_MAX_CONCURRENCY",
+    4,
+  );
+  const submitIngressMaxInFlightBytes = yield* Config.integer(
+    "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+  ).pipe(
+    Config.withDefault(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value < MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes
+      ) {
+        throw new Error(
+          `SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least ${MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes.toString()}`,
+        );
+      }
+      return value;
+    }),
+  );
+  const cekProgramMaterialStoreMaxBytes = yield* Config.integer(
+    "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
+  ).pipe(
+    Config.withDefault(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4),
+    Config.mapAttempt((value) => {
+      if (
+        !Number.isSafeInteger(value) ||
+        value < CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES
+      ) {
+        throw new Error(
+          `CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least ${CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES.toString()}`,
         );
       }
       return value;
@@ -1165,6 +1220,9 @@ const makeConfig = Effect.gen(function* () {
     ADMIN_API_KEY: adminApiKey,
     MAX_DURABLE_ADMISSION_BACKLOG: maxDurableAdmissionBacklog,
     MAX_DURABLE_ADMISSION_BACKLOG_BYTES: maxDurableAdmissionBacklogBytes,
+    SUBMIT_INGRESS_MAX_CONCURRENCY: submitIngressMaxConcurrency,
+    SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES: submitIngressMaxInFlightBytes,
+    CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES: cekProgramMaterialStoreMaxBytes,
     MAX_SUBMIT_TX_CBOR_BYTES: maxSubmitTxCborBytes,
     READINESS_MAX_HEARTBEAT_AGE_MS: readinessMaxHeartbeatAgeMs,
     READINESS_L1_PROVIDER_EVIDENCE_MAX_AGE_MS:

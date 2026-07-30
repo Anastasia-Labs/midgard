@@ -1,4 +1,15 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { execFile } from "node:child_process";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign,
+  X509Certificate,
+} from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer, type Server } from "node:net";
+import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 import {
   ActiveOperatorMintRedeemer,
@@ -25,7 +36,7 @@ import {
   Data,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
@@ -68,30 +79,36 @@ import {
   makeWatcherFinalityPolicyV1,
 } from "../src/finality-engine.js";
 import {
+  closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
+  establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
+  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
+  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   type WatcherAuthenticatedL1ProviderV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
   type WatcherNormalizedL1BlockV1,
 } from "../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../src/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1,
-  evaluateWatcherRollbackV1,
+  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
+  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
   makeWatcherRollbackBootstrapStateV1,
   type WatcherPostFinalityRecoveryInputV1,
 } from "../src/rollback-engine.js";
 import {
-  evaluateWatcherSettlementIndexerV1,
+  evaluateWatcherSettlementIndexerV1 as evaluateWatcherSettlementIndexerV1Raw,
   makeWatcherSettlementIndexerPolicyV1,
   makeWatcherSettlementObservationV1,
   makeWatcherSettlementResourceFromProtocolUtxoV1,
   makeWatcherSettlementSnapshotV1,
   makeWatcherSettlementSubjectV1,
-  parseWatcherSettlementIndexerResultV1,
-  parseWatcherSettlementIndexerStateV1,
+  parseWatcherSettlementIndexerResultV1 as parseWatcherSettlementIndexerResultV1Raw,
+  parseWatcherSettlementIndexerStateV1 as parseWatcherSettlementIndexerStateV1Raw,
   WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS,
   WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   type WatcherSettlementIndexerPolicyV1,
@@ -106,6 +123,176 @@ import {
 import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 type Mutable = Record<string, any>;
+const execFileAsync = promisify(execFile);
+const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const tlsServers: Server[] = [];
+const tlsIdentityByProviderId = new Map<string, string>();
+const transportEndpointByProviderId = new Map<string, string>();
+let transportFixtureDirectory = "";
+let localNodeServer: Server;
+
+const listen = async (server: Server, target: string | number): Promise<void> =>
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    const onListen = () => {
+      server.off("error", reject);
+      resolve();
+    };
+    if (typeof target === "string") {
+      server.listen(target, onListen);
+    } else {
+      server.listen(target, "127.0.0.1", onListen);
+    }
+  });
+
+const makeTlsTransportFixture = async (providerId: string) => {
+  const keyPath = join(transportFixtureDirectory, `${providerId}.key`);
+  const certificatePath = join(transportFixtureDirectory, `${providerId}.crt`);
+  await execFileAsync("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    keyPath,
+    "-out",
+    certificatePath,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost",
+  ]);
+  const [key, certificate] = await Promise.all([
+    readFile(keyPath, "utf8"),
+    readFile(certificatePath, "utf8"),
+  ]);
+  const server = createTlsServer({ key, cert: certificate });
+  await listen(server, 0);
+  tlsServers.push(server);
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("TLS fixture did not bind a TCP port");
+  }
+  return {
+    certificate,
+    identitySha256: createHash("sha256")
+      .update(new X509Certificate(certificate).raw)
+      .digest("hex"),
+    port: address.port,
+  };
+};
+
+const transportFor = (
+  authenticatedProvider: unknown,
+): WatcherL1TransportAttestationContextV1 => {
+  const matching = transportContexts.filter((context) => {
+    const details = watcherL1TransportAttestationDetailsV1(context);
+    return (
+      details !== null &&
+      isDeepStrictEqual(details.provider, authenticatedProvider)
+    );
+  });
+  if (matching.length !== 1) {
+    throw new Error("test provider has no unique live transport attestation");
+  }
+  return matching[0]!;
+};
+
+const normalizeWatcherL1BlockV1 = (
+  authenticatedProvider: unknown,
+  observation: unknown,
+  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+) =>
+  normalizeWatcherL1BlockV1Raw(
+    transportFor(authenticatedProvider),
+    observation,
+    session,
+  );
+
+const evaluateWatcherMultiProviderConsistencyV1 = (
+  configuredSource: unknown,
+  observations: unknown,
+) =>
+  evaluateWatcherMultiProviderConsistencyV1Raw(
+    configuredSource,
+    observations,
+    transportContexts,
+  );
+
+const parseWatcherSettlementIndexerStateV1 = (
+  value: unknown,
+  policyValue: unknown,
+  restartContexts: readonly WatcherSettlementPublicContextV1["restartContexts"][number][] = [],
+  restartRollbackContexts: Parameters<
+    typeof parseWatcherSettlementIndexerStateV1Raw
+  >[4] = [],
+) =>
+  parseWatcherSettlementIndexerStateV1Raw(
+    value,
+    policyValue,
+    transportContexts,
+    restartContexts,
+    restartRollbackContexts,
+  );
+
+const evaluateWatcherSettlementIndexerV1 = (
+  policyValue: unknown,
+  previousStateValue: unknown,
+  observationValue: unknown,
+  publicContextValue: unknown,
+) =>
+  evaluateWatcherSettlementIndexerV1Raw(
+    policyValue,
+    previousStateValue,
+    observationValue,
+    publicContextValue,
+    transportContexts,
+  );
+
+const evaluateWatcherRollbackV1 = (
+  policyInput: unknown,
+  storeInput: unknown,
+  previousFinalityStateInput: unknown,
+  consistencyInput: unknown,
+  finalityResultInput: unknown,
+  previousRollbackStateInput: unknown,
+  rollbackBootstrapStateInput: unknown,
+  trustedCheckpointAuthorityInput?: unknown,
+) =>
+  evaluateWatcherRollbackV1Raw(
+    policyInput,
+    storeInput,
+    previousFinalityStateInput,
+    consistencyInput,
+    finalityResultInput,
+    previousRollbackStateInput,
+    rollbackBootstrapStateInput,
+    trustedCheckpointAuthorityInput,
+    transportContexts,
+  );
+
+const evaluateWatcherPostFinalityRecoveryV1 = (
+  input: WatcherPostFinalityRecoveryInputV1,
+) =>
+  evaluateWatcherPostFinalityRecoveryV1Raw({
+    ...input,
+    transportAttestations: transportContexts,
+  });
+
+const parseWatcherSettlementIndexerResultV1 = (
+  value: unknown,
+  context: Omit<
+    Parameters<typeof parseWatcherSettlementIndexerResultV1Raw>[1],
+    "transportAttestations"
+  >,
+) =>
+  parseWatcherSettlementIndexerResultV1Raw(value, {
+    ...context,
+    transportAttestations: transportContexts,
+  });
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -470,79 +657,91 @@ const policy = makeWatcherSettlementIndexerPolicyV1({
   maximumRetryAttempts: "2",
 }) as WatcherSettlementIndexerPolicyV1;
 
-const finalityPolicy = makeWatcherFinalityPolicyV1(
-  {
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "external_providers",
-        providers: [
-          {
-            identity: "provider-a",
-            operatorIdentitySha256: h32("97"),
-            endpoint: "https://cardano-a.example",
+const makeExternalFinalityPolicy = () =>
+  makeWatcherFinalityPolicyV1(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "development",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "external_providers",
+          providers: [
+            {
+              identity: "provider-a",
+              operatorIdentitySha256: h32("97"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-a") ??
+                "https://cardano-a.example",
+            },
+            {
+              identity: "provider-b",
+              operatorIdentitySha256: h32("98"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-b") ??
+                "https://cardano-b.example",
+            },
+          ],
+        },
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: Number(policy.requiredFinalityDepth),
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: Number(policy.requiredFinalityDepth),
           },
+        },
+      },
+      da: {
+        peers: [
           {
-            identity: "provider-b",
-            operatorIdentitySha256: h32("98"),
-            endpoint: "https://cardano-b.example",
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
           },
         ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
       },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: {
-        depth: Number(policy.requiredFinalityDepth),
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: Number(policy.requiredFinalityDepth),
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
         },
       },
-    },
-    da: {
-      peers: [
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
         },
-      ],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
+      },
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
       },
     },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: policy.network,
+      trustRootId: policy.deploymentTrustRootId,
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
     },
-  },
-  {
-    manifestId: policy.deploymentMarker.manifestId,
-    network: policy.network,
-    trustRootId: policy.deploymentTrustRootId,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments: { validation: h32("55") },
-    durableMarker: policy.deploymentMarker,
-  },
-)!;
+  )!;
 
 const LOCAL_NODE_ID = "watcher-node-a";
-const LOCAL_GENESIS_IDENTITY = h32("76");
+const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
+const LOCAL_GENESIS_IDENTITY = createHash("sha256")
+  .update(LOCAL_GENESIS_BYTES)
+  .digest("hex");
 const makeLocalFinalityPolicy = (
   queryServices: readonly Readonly<{
     kind: "ogmios";
@@ -553,7 +752,7 @@ const makeLocalFinalityPolicy = (
   makeWatcherFinalityPolicyV1(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "acceptance",
+      mode: "development",
       targetNetwork: "Preprod",
       l1: {
         source: {
@@ -561,7 +760,7 @@ const makeLocalFinalityPolicy = (
           authorityNodeId: LOCAL_NODE_ID,
           chainSync: {
             kind: "cardano_node_socket",
-            socketPath: "/ipc/node.socket",
+            socketPath: localSource.chainSyncSocketPath,
             genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
           },
           queryServices,
@@ -591,6 +790,10 @@ const makeLocalFinalityPolicy = (
       storage: {
         driver: "sqlite",
         path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+        },
       },
       proverWallet: {
         keySource: {
@@ -615,14 +818,13 @@ const makeLocalFinalityPolicy = (
       durableMarker: policy.deploymentMarker,
     },
   )!;
-const localFinalityPolicy = makeLocalFinalityPolicy([]);
-const localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
-  {
-    kind: "ogmios",
-    identity: "local-ogmios",
-    endpoint: "http://127.0.0.1:1337",
-  },
-]);
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let localFinalityPolicy: NonNullable<
+  ReturnType<typeof makeWatcherFinalityPolicyV1>
+>;
+let localOgmiosFinalityPolicy: NonNullable<
+  ReturnType<typeof makeWatcherFinalityPolicyV1>
+>;
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -849,10 +1051,12 @@ const externalSource = {
     {
       providerId: "provider-a",
       operatorIdentitySha256: h32("97"),
+      endpoint: "https://cardano-a.example",
     },
     {
       providerId: "provider-b",
       operatorIdentitySha256: h32("98"),
+      endpoint: "https://cardano-b.example",
     },
   ],
 } as const;
@@ -862,6 +1066,7 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  chainSyncSocketPath: "/ipc/node.socket",
   queryServices: [],
 } as const;
 const localChainSyncProvider = {
@@ -898,6 +1103,7 @@ const localSourceWithOgmios = {
     {
       kind: "ogmios",
       providerId: localOgmiosProvider.providerId,
+      endpoint: "http://127.0.0.1:1337",
     },
   ],
 } as const;
@@ -915,8 +1121,103 @@ const rollbackProvider = (
   },
   authentication: {
     kind: "https_tls_identity_v1",
-    publicIdentitySha256: h32(identityByte),
+    publicIdentitySha256:
+      tlsIdentityByProviderId.get(providerId) ?? h32(identityByte),
   },
+});
+
+beforeAll(async () => {
+  transportFixtureDirectory = await mkdtemp(
+    join("/dev/shm", "midgard-w15-settlement-"),
+  );
+  const socketPath = join(transportFixtureDirectory, "node.socket");
+  (localSource as Mutable).chainSyncSocketPath = socketPath;
+  (localSourceWithOgmios as Mutable).chainSyncSocketPath = socketPath;
+  const genesisPath = join(transportFixtureDirectory, "genesis.json");
+  await writeFile(genesisPath, LOCAL_GENESIS_BYTES);
+  localNodeServer = createNetServer();
+  await listen(localNodeServer, socketPath);
+  const localAuthority = await establishWatcherLocalNodeAuthorityTransportV1({
+    network: "Preprod",
+    authorityNodeId: LOCAL_NODE_ID,
+    providerId: localChainSyncProvider.providerId,
+    nodeSocketPath: socketPath,
+    genesisFilePath: genesisPath,
+    expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+    connectTimeoutMs: 2_000,
+  });
+  transportContexts.push(localAuthority);
+
+  const ogmiosFixture = await makeTlsTransportFixture(
+    localOgmiosProvider.providerId,
+  );
+  const ogmiosEndpoint = `https://localhost:${ogmiosFixture.port}`;
+  (localSourceWithOgmios.queryServices[0] as Mutable).endpoint = ogmiosEndpoint;
+  (localOgmiosProvider.authentication as Mutable).publicIdentitySha256 =
+    ogmiosFixture.identitySha256;
+  transportContexts.push(
+    await establishWatcherLocalNodeQueryTransportV1(localAuthority, {
+      transportKind: "https_tls",
+      providerId: localOgmiosProvider.providerId,
+      surface: "ogmios",
+      endpoint: ogmiosEndpoint,
+      caPem: ogmiosFixture.certificate,
+      expectedTlsPublicIdentitySha256: ogmiosFixture.identitySha256,
+      connectTimeoutMs: 2_000,
+    }),
+  );
+
+  for (const [providerId, operatorIdentitySha256] of [
+    ["provider-a", h32("97")],
+    ["provider-b", h32("98")],
+  ] as const) {
+    const fixture = await makeTlsTransportFixture(providerId);
+    const endpoint = `https://localhost:${fixture.port}`;
+    tlsIdentityByProviderId.set(providerId, fixture.identitySha256);
+    transportEndpointByProviderId.set(providerId, endpoint);
+    const configuredProvider = externalSource.providers.find(
+      ({ providerId: configuredProviderId }) =>
+        configuredProviderId === providerId,
+    );
+    if (configuredProvider === undefined) {
+      throw new Error("missing external-provider fixture policy");
+    }
+    (configuredProvider as Mutable).endpoint = endpoint;
+    if (providerId === provider.providerId) {
+      (provider.authentication as Mutable).publicIdentitySha256 =
+        fixture.identitySha256;
+    }
+    transportContexts.push(
+      await establishWatcherExternalProviderTransportV1({
+        network: "Preprod",
+        providerId,
+        operatorIdentitySha256,
+        endpoint,
+        caPem: fixture.certificate,
+        expectedTlsPublicIdentitySha256: fixture.identitySha256,
+        connectTimeoutMs: 2_000,
+      }),
+    );
+  }
+  finalityPolicy = makeExternalFinalityPolicy();
+  localFinalityPolicy = makeLocalFinalityPolicy([]);
+  localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
+    {
+      kind: "ogmios",
+      identity: "local-ogmios",
+      endpoint: ogmiosEndpoint,
+    },
+  ]);
+});
+
+afterAll(async () => {
+  for (const context of transportContexts) {
+    closeWatcherL1TransportAttestationContextV1(context);
+  }
+  for (const server of [...tlsServers, localNodeServer]) {
+    server.close();
+  }
+  await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
 type RollbackPoint = Readonly<{
@@ -5755,7 +6056,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const rollbackFinalityPolicy = makeWatcherFinalityPolicyV1(
       {
         schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-        mode: "acceptance",
+        mode: "development",
         targetNetwork: "Preprod",
         l1: {
           source: {
@@ -5764,12 +6065,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
               {
                 identity: "provider-a",
                 operatorIdentitySha256: h32("97"),
-                endpoint: "https://cardano-a.example",
+                endpoint: transportEndpointByProviderId.get("provider-a")!,
               },
               {
                 identity: "provider-b",
                 operatorIdentitySha256: h32("98"),
-                endpoint: "https://cardano-b.example",
+                endpoint: transportEndpointByProviderId.get("provider-b")!,
               },
             ],
           },
@@ -5798,6 +6099,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         storage: {
           driver: "sqlite",
           path: "/var/lib/midgard-watcher/watcher.sqlite",
+          rollbackAuthorityKeySource: {
+            kind: "environment",
+            variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+          },
         },
         proverWallet: {
           keySource: {
@@ -6324,7 +6629,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         allRollbackBindings,
       ),
     ).toBeNull();
-  });
+  }, 30_000);
 
   it("fails closed on a fabricated rollback without an exact W13 apply_rewind result", () => {
     const initial = bundle({
@@ -6413,5 +6718,52 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         [],
       ),
     ).toBeNull();
+  });
+
+  it("fails closed when W15 receives missing, detached, mismatched, or closed transport capabilities", () => {
+    const initial = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+    });
+    const providerATransport = transportFor(provider);
+    const providerBTransport = transportFor(
+      rollbackProvider("provider-b", "78"),
+    );
+    const evaluateRaw = (
+      attestations: readonly WatcherL1TransportAttestationContextV1[],
+    ) =>
+      evaluateWatcherSettlementIndexerV1Raw(
+        policy,
+        null,
+        initial.observation,
+        initial.context,
+        attestations,
+      );
+
+    expect(evaluateRaw([])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(
+      evaluateRaw(
+        structuredClone(
+          transportContexts,
+        ) as WatcherL1TransportAttestationContextV1[],
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(evaluateRaw([providerBTransport])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+
+    closeWatcherL1TransportAttestationContextV1(providerATransport);
+    expect(evaluateRaw(transportContexts)).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
   });
 });

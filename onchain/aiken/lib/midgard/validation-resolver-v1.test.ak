@@ -49,11 +49,12 @@ const own_out_ref =
 const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
 
-// Bound by the SDK cross-language test to buildFaultProofContracts over the
-// committed plutus.json and deterministic fixture policy IDs. The same test
-// independently applies the Phase-A and ScriptSources prepare validators to
-// these exact semantic groups. These are parameterized production-builder
-// fixture identities, not a claim about a live deployment.
+// Bound by the SDK cross-language test to buildFaultProofContracts over a
+// freshly generated, compiler-pinned testnet plutus.json and deterministic
+// fixture policy IDs. The same test independently applies the Phase-A and
+// ScriptSources prepare validators to these exact semantic groups. These are
+// parameterized production-builder fixture identities, not a claim about a
+// live deployment.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
     #"1d0bc85899aad32247d1b16fc7c871aa525632e5e1d366b58c52f562",

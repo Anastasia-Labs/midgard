@@ -21,9 +21,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: demo/pnpm-lock.yaml
       - name: Install evidence-verifier dependencies
+        run: pnpm --dir demo install --frozen-lockfile --ignore-scripts
+      - name: Build focused-test workspace dependencies
         run: >-
-          pnpm --dir demo install --frozen-lockfile
-          --filter midgard-demo --filter midgard-watcher --ignore-scripts
+          pnpm --dir demo/midgard-core run build &&
+          pnpm --dir demo/midgard-sdk run build
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
       - name: Verify canonical watcher dependency map and staged-tree identity

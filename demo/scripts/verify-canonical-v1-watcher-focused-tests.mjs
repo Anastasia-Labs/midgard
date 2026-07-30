@@ -108,6 +108,23 @@ try {
   if (run.status !== 0) {
     process.stderr.write(run.stdout);
     process.stderr.write(run.stderr);
+    try {
+      const failedReport = JSON.parse(readFileSync(reportPath, "utf8"));
+      for (const failedFile of failedReport.testResults ?? []) {
+        if (failedFile.status === "passed") {
+          continue;
+        }
+        process.stderr.write(
+          `${basename(failedFile.name)}: ${failedFile.message ?? "failed without a diagnostic"}\n`,
+        );
+      }
+    } catch (error) {
+      process.stderr.write(
+        `Unable to read failed Vitest JSON: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
+    }
     fail(`Vitest exited with status ${String(run.status)}`);
   }
 

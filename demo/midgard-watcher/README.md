@@ -63,7 +63,11 @@ include rejected values.
   },
   "storage": {
     "driver": "sqlite",
-    "path": "/var/lib/midgard-watcher/watcher.sqlite"
+    "path": "/var/lib/midgard-watcher/watcher.sqlite",
+    "rollbackAuthorityKeySource": {
+      "kind": "environment",
+      "variable": "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY"
+    }
   },
   "proverWallet": {
     "keySource": {
@@ -93,9 +97,13 @@ The L1 source is an exact disjoint union:
   agree before a protocol decision is authorized.
 
 DA peers must be public DNS libp2p multiaddresses. The SQLite path must be
-absolute and durable. Prover keys are referenced only through a named
-environment variable or an absolute file; an inline key, seed, token, or
-password field is always rejected.
+absolute and durable. The rollback-authority key and prover key are separate
+required secret references, each through a named environment variable or an
+absolute file. The rollback-authority source must resolve to the same 32-byte
+key across restarts and restores; missing, changed, reused, random, or
+ephemeral key material fails closed because W13 recovery snapshots are
+authenticated with it. Inline keys, seeds, tokens, and password fields are
+always rejected.
 
 Finality is explicit: pre-finality rollback rewinds pending work. A mode-valid,
 agreed canonical contradiction after finality opens a durable incident, and
@@ -112,6 +120,27 @@ corresponding request timeout.
 No operational command consumes the new library surfaces in this checkpoint.
 `start` and `replay` therefore continue to return the W00
 `foundation_incomplete` result with exit code 78.
+Before either command can be enabled, the SQLite implementation must persist
+the authenticated W03/W13 recovery bundle and its compare-and-swap revision
+in one transaction. It must then publish the emitted HMAC-bound trusted head
+with an expected-prior compare-and-swap to an independently protected,
+monotonic, non-rollbackable authority before the associated recovery result is
+acted upon. A row in the same rollbackable database is not a freshness
+authority. If the process crashes after the database commit but before that
+publication, the reconciliation API permits only the authenticated epoch-zero
+head or one exact direct successor, returns no protocol decision, and requires
+external CAS plus read-back before load. Startup rejects any older, skipped,
+divergent, tampered, or deployment-mismatched head/snapshot pair.
+
+The live W10 transport capability proves the configured node socket or
+provider endpoint and peer identity. Its current normalization call is an
+in-process boundary: the future watcher-owned Cardano/provider wire adapter
+must pass only bytes it decoded from that exact live connection. This
+checkpoint does not include that wire adapter and therefore does not claim
+that an arbitrary caller-supplied observation was read from the socket. W10
+and W14 acceptance requires the operational adapter to close that boundary;
+the disabled `start` and `replay` commands prevent this library checkpoint
+from being used as a production provenance path.
 
 ## Commands
 

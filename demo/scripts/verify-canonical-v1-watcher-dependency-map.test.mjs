@@ -407,6 +407,7 @@ test("rejects a pull-request branch filter that bypasses the target branch", asy
     'branches: ["main"]',
     'branches-ignore : ["tx-validation"]',
     "'branches': [\"main\"]",
+    '"br\\u0061nches": ["main"]',
   ]) {
     const result = await runWithMutatedIndexedMap(
       (_dependencyMap, { replaceSource }) => {
@@ -422,6 +423,51 @@ test("rejects a pull-request branch filter that bypasses the target branch", asy
     assert.match(
       `${result.stdout}${result.stderr}`,
       /pull_request must not be restricted by branch filters/,
+    );
+  }
+});
+
+test("rejects missing or branch-filtered Evidence Integrity pull requests", async () => {
+  const workflow = ".github/workflows/evidence-integrity-ci.yml";
+  for (const replacement of [
+    "  workflow_dispatch:\n",
+    '  pull_request:\n    branches: ["main"]\n',
+    '  pull_request:\n    "br\\u0061nches-ignore": ["tx-validation"]\n',
+    '  pull_request:\n    paths: ["docs/**"]\n',
+    '  pull_request:\n    types: ["closed"]\n',
+  ]) {
+    const result = await runWithMutatedIndexedMap(
+      (_dependencyMap, { replaceSource }) => {
+        replaceSource(workflow, (source) =>
+          source.replace("  pull_request:\n", replacement),
+        );
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /(?:evidence-integrity-ci\.yml must declare pull_request|Evidence Integrity CI pull_request must be unrestricted)/,
+    );
+  }
+});
+
+test("rejects a conditional or non-strict Evidence Integrity job", async () => {
+  const workflow = ".github/workflows/evidence-integrity-ci.yml";
+  for (const jobControl of ["if: false", "continue-on-error: true"]) {
+    const result = await runWithMutatedIndexedMap(
+      (_dependencyMap, { replaceSource }) => {
+        replaceSource(workflow, (source) =>
+          source.replace(
+            "  verify:\n    runs-on:",
+            `  verify:\n    ${jobControl}\n    runs-on:`,
+          ),
+        );
+      },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(
+      `${result.stdout}${result.stderr}`,
+      /Evidence Integrity CI verify job must be unconditional and strict/,
     );
   }
 });
@@ -490,6 +536,23 @@ test("rejects an inert dependency step and a trigger path moved outside paths", 
   assert.notEqual(misplaced.status, 0);
   assert.match(
     `${misplaced.stdout}${misplaced.stderr}`,
+    /Midgard node CI must actively scope push/,
+  );
+
+  const evidenceWorkflowPath = ".github/workflows/evidence-integrity-ci.yml";
+  const missingEvidenceWorkflowScope = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(workflow, (source) =>
+        source.replace(
+          `      - "${evidenceWorkflowPath}"`,
+          `      # removed ${evidenceWorkflowPath}`,
+        ),
+      );
+    },
+  );
+  assert.notEqual(missingEvidenceWorkflowScope.status, 0);
+  assert.match(
+    `${missingEvidenceWorkflowScope.stdout}${missingEvidenceWorkflowScope.stderr}`,
     /Midgard node CI must actively scope push/,
   );
 });

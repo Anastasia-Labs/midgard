@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { parse } from "@typescript-eslint/parser";
+import { parseDocument } from "yaml";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execGit = (args, encoding = "buffer") => {
@@ -143,10 +144,10 @@ const requiredMetadataById = new Map([
       capability:
         "Mode-discriminated local-node chain authority or independent external-provider observations with canonical chain-point agreement",
       state:
-        "strict_source_mode_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready",
-      remainingTasks: ["C70"],
+        "strict_source_mode_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_operational_wire_open",
+      remainingTasks: ["C70", "W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"],
       watcherBoundary:
-        "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160, and W14-W17 consume that authorized recovery. W14 indexes node-accepted bytes without duplicating Cardano validator semantics.",
+        "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W10 proves exact configured transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
     },
   ],
   [
@@ -155,10 +156,10 @@ const requiredMetadataById = new Map([
       capability:
         "Decode, sort, authenticate, and traverse canonical state-queue nodes and headers",
       state:
-        "read_helpers_strict_durable_schema_finality_automated_rollback_recovery_and_protocol_index_ready",
-      remainingTasks: ["W20"],
+        "read_helpers_strict_durable_schema_finality_automated_rollback_recovery_and_protocol_index_library_ready_live_provenance_open",
+      remainingTasks: ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE", "W20"],
       watcherBoundary:
-        "Reuse canonical SDK datum/header decoding from node-derived public UTxOs, persist observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14 consumes the canonical observation and automated rollback/replay pipeline, derives its durable roles from deployed policy and actual output bytes, and indexes node-accepted transaction/output/datum bytes; it does not reimplement the on-chain state-queue validator.",
+        "Reuse canonical SDK datum/header decoding, persist supplied W10 observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14's library state machine consumes the canonical observation and automated rollback/replay pipeline, derives durable roles from deployed policy and actual output bytes, and does not reimplement the on-chain state-queue validator. Actual node-accepted transaction/output/datum provenance remains open until the operational W10 adapter supplies every observation directly from the configured live transport.",
     },
   ],
   [
@@ -934,62 +935,68 @@ const exactActiveStepCount = (lines, name, command) => {
   }
   return count;
 };
-const triggerPathEntries = new Map([
-  ["push", []],
-  ["pull_request", []],
-]);
-const triggerBranchFilters = new Map([
-  ["push", []],
-  ["pull_request", []],
-]);
-let trigger = null;
-let inTriggerPaths = false;
-for (const { indent, trimmed } of nodeCiActiveLines) {
-  if (indent === 2 && /^(push|pull_request):$/u.test(trimmed)) {
-    trigger = trimmed.slice(0, -1);
-    inTriggerPaths = false;
-    continue;
+const isYamlRecord = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const parseWorkflow = (source, path) => {
+  const document = parseDocument(source, {
+    maxAliasCount: 0,
+    uniqueKeys: true,
+  });
+  if (document.errors.length !== 0) {
+    fail(`${path} must be valid unique-key YAML`);
   }
-  if (indent <= 2) {
-    trigger = null;
-    inTriggerPaths = false;
-    continue;
+  const workflow = document.toJS({ maxAliasCount: 0 });
+  if (!isYamlRecord(workflow) || !isYamlRecord(workflow.on)) {
+    fail(`${path} must declare event triggers as a YAML mapping`);
   }
-  if (trigger !== null && indent === 4 && trimmed === "paths:") {
-    inTriggerPaths = true;
-    continue;
+  return workflow;
+};
+const workflowEvent = (workflow, eventName, path) => {
+  if (!Object.hasOwn(workflow.on, eventName)) {
+    fail(`${path} must declare ${eventName}`);
   }
-  if (
-    trigger !== null &&
-    indent === 4 &&
-    /^(?:["']?branches["']?|["']?branches-ignore["']?)\s*:/u.test(trimmed)
-  ) {
-    triggerBranchFilters.get(trigger).push(trimmed);
+  const event = workflow.on[eventName];
+  if (event === null) {
+    return {};
   }
-  if (inTriggerPaths && indent <= 4) {
-    inTriggerPaths = false;
+  if (!isYamlRecord(event)) {
+    fail(`${path} ${eventName} configuration must be a YAML mapping or null`);
   }
-  if (trigger !== null && inTriggerPaths && indent === 6) {
-    const match = trimmed.match(/^-\s+(.+)$/u);
-    if (match !== null) {
-      triggerPathEntries.get(trigger).push(decodeYamlScalar(match[1].trim()));
-    }
-  }
-}
-if (triggerBranchFilters.get("pull_request").length !== 0) {
+  return event;
+};
+const nodeCiWorkflow = parseWorkflow(
+  nodeCi,
+  ".github/workflows/midgard-node-ci.yml",
+);
+const nodeCiEvents = new Map(
+  ["push", "pull_request"].map((eventName) => [
+    eventName,
+    workflowEvent(
+      nodeCiWorkflow,
+      eventName,
+      ".github/workflows/midgard-node-ci.yml",
+    ),
+  ]),
+);
+const pullRequestEvent = nodeCiEvents.get("pull_request");
+if (
+  Object.hasOwn(pullRequestEvent, "branches") ||
+  Object.hasOwn(pullRequestEvent, "branches-ignore")
+) {
   fail("Midgard node CI pull_request must not be restricted by branch filters");
 }
 for (const requiredCiPath of [
+  ".github/workflows/evidence-integrity-ci.yml",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
   "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 ]) {
   for (const triggerName of ["push", "pull_request"]) {
+    const paths = nodeCiEvents.get(triggerName).paths;
     if (
-      triggerPathEntries
-        .get(triggerName)
-        .filter((entry) => entry === requiredCiPath).length !== 1
+      !Array.isArray(paths) ||
+      paths.filter((entry) => entry === requiredCiPath).length !== 1
     ) {
       fail(
         `Midgard node CI must actively scope ${triggerName} to ${requiredCiPath}`,
@@ -1063,6 +1070,32 @@ const evidenceCi = readIndexedFile(
   ".github/workflows/evidence-integrity-ci.yml",
   "utf8",
 );
+const evidenceCiWorkflow = parseWorkflow(
+  evidenceCi,
+  ".github/workflows/evidence-integrity-ci.yml",
+);
+const evidencePullRequestEvent = workflowEvent(
+  evidenceCiWorkflow,
+  "pull_request",
+  ".github/workflows/evidence-integrity-ci.yml",
+);
+if (
+  evidenceCiWorkflow.on.pull_request !== null ||
+  Object.hasOwn(evidencePullRequestEvent, "branches") ||
+  Object.hasOwn(evidencePullRequestEvent, "branches-ignore")
+) {
+  fail(
+    "Evidence Integrity CI pull_request must be unrestricted by branch, path, or type filters",
+  );
+}
+if (
+  !isYamlRecord(evidenceCiWorkflow.jobs) ||
+  !isYamlRecord(evidenceCiWorkflow.jobs.verify) ||
+  Object.hasOwn(evidenceCiWorkflow.jobs.verify, "if") ||
+  Object.hasOwn(evidenceCiWorkflow.jobs.verify, "continue-on-error")
+) {
+  fail("Evidence Integrity CI verify job must be unconditional and strict");
+}
 const evidenceCiActiveLines = activeYamlLines(evidenceCi);
 for (const [name, requiredEvidenceCommand] of [
   [
@@ -1298,6 +1331,10 @@ if (
     "one_chain_sync_authority_zero_to_eight_aligned_query_surfaces_no_provider_quorum" ||
   strictConfiguration.externalProviderPolicy !==
     "two_to_four_operationally_independent_provider_operator_endpoint_identities" ||
+  strictConfiguration.endpointBindingPolicy !==
+    "exact_configured_https_provider_endpoints_and_local_socket_query_endpoints" ||
+  strictConfiguration.rollbackAuthorityKeyPolicy !==
+    "separate_required_key_source_not_inline_and_not_reused_from_prover_credentials" ||
   strictConfiguration.finalityPolicy?.beforeFinality !== "rewind" ||
   strictConfiguration.finalityPolicy?.afterFinality !== "quarantine" ||
   strictConfiguration.finalityPolicy?.postFinalityRecoveryMaxDepth !== 2160 ||
@@ -1307,7 +1344,7 @@ if (
     "per_decision_quarantine_preserving_exact_finalized_state_without_incident" ||
   strictConfiguration.unknownBehavior !== "fail_closed" ||
   strictConfiguration.diagnostics !== "code_and_schema_path_only" ||
-  strictConfiguration.expectedFocusedTestCount !== 41
+  strictConfiguration.expectedFocusedTestCount !== 43
 ) {
   fail("W01 strict watcher configuration evidence is incomplete or stale");
 }
@@ -1319,6 +1356,7 @@ for (const requiredSymbol of [
   "WatcherL1SourceMode",
   '"local_node"',
   '"external_providers"',
+  "rollbackAuthorityKeySource",
   "parseWatcherConfig",
   "parseWatcherConfigJson",
   "watcherConfigDiagnostic",
@@ -1424,7 +1462,7 @@ if (
   durableStore.cachePolicy !== "deterministic_rebuild_from_canonical_records" ||
   durableStore.migrationPolicy !== "fresh_install_atomic_compare_and_swap" ||
   durableStore.unknownBehavior !== "fail_closed" ||
-  durableStore.expectedFocusedTestCount !== 11 ||
+  durableStore.expectedFocusedTestCount !== 12 ||
   !Array.isArray(durableStore.recordClasses) ||
   durableStore.recordClasses.length !== requiredRecordClasses.length ||
   requiredRecordClasses.some(
@@ -1458,7 +1496,8 @@ for (const requiredSymbol of [
 }
 const l1Adapter = dependencyMap.requiredWatcherPackage?.l1Adapter;
 if (
-  l1Adapter?.providerSchemaVersion !==
+  l1Adapter?.status !== "LIBRARY_PASS_OPERATIONAL_WIRE_OPEN" ||
+  l1Adapter.providerSchemaVersion !==
     "midgard-watcher-authenticated-l1-provider-v1" ||
   l1Adapter.observationSchemaVersion !==
     "midgard-watcher-l1-block-observation-v1" ||
@@ -1472,11 +1511,12 @@ if (
     JSON.stringify(["local_node", "external_providers"]) ||
   l1Adapter.identityPolicy !==
     "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content" ||
-  l1Adapter.inputPolicy !== "authenticated_node_derived_l1_only" ||
+  l1Adapter.inputPolicy !==
+    "exact_configured_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required" ||
   l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.expectedFocusedTestCount !== 21
+  l1Adapter.expectedFocusedTestCount !== 23
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -1525,7 +1565,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.expectedFocusedTestCount !== 21
+  multiProviderConsistency.expectedFocusedTestCount !== 24
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -1605,6 +1645,8 @@ if (
     "midgard-watcher-post-finality-recovery-result-v1" ||
   rollbackEngine.epochCheckpointSchemaVersion !==
     "midgard-watcher-rollback-epoch-checkpoint-v1" ||
+  rollbackEngine.durableTrustedHeadSchemaVersion !==
+    "midgard-watcher-rollback-durable-trusted-head-v1" ||
   rollbackEngine.maximumPostFinalityRecoveryDepth !== 2160 ||
   rollbackEngine.transitionHistoryPerEpoch !== 128 ||
   rollbackEngine.sourceSha256 !== sha256(rollbackEngineBytes) ||
@@ -1615,16 +1657,16 @@ if (
   rollbackEngine.rewindPolicy !==
     "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration" ||
   rollbackEngine.restartPolicy !==
-    "externally_bootstrapped_bounded_exact_transition_and_recovery_replay_with_atomically_persisted_trusted_epoch_checkpoint_digest" ||
+    "externally_bootstrapped_bounded_exact_transition_and_recovery_replay_with_HMAC_bound_snapshot_and_monotonic_trusted_head" ||
   rollbackEngine.postFinalityPolicy !==
     "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k_and_recovery_lifecycle_bound_epoch_rotation" ||
   rollbackEngine.checkpointAuthorityPolicy !==
-    "genesis_installation_anchor_then_atomic_CAS_trusted_checkpoint_state_digest_bound_to_prior_terminal_lineage_store_finality_incident_and_recovery_lifecycle" ||
+    "genesis_installation_anchor_then_HMAC_bound_monotonic_trusted_head_atomic_CAS_and_direct_successor_reconciliation" ||
   rollbackEngine.inputPolicy !==
     "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.expectedFocusedTestCount !== 25
+  rollbackEngine.expectedFocusedTestCount !== 26
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -1635,6 +1677,7 @@ for (const requiredSymbol of [
   "WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION",
+  "WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION",
   "WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION",
   "WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_V1_BOUNDS",
@@ -1646,6 +1689,7 @@ for (const requiredSymbol of [
   "parseWatcherPostFinalityRecoveryResultV1",
   "evaluateWatcherPostFinalityRecoveryV1",
   "evaluateWatcherRollbackV1",
+  "prepareWatcherRollbackDurableTrustedHeadReconciliationV1",
 ]) {
   if (
     !rollbackEngineSource.includes(requiredSymbol) ||
@@ -1666,9 +1710,9 @@ if (!rollbackEngineSource.includes("externalProviderBindings")) {
 const stateQueueIndexer =
   dependencyMap.requiredWatcherPackage?.stateQueueIndexer;
 if (
-  stateQueueIndexer?.status !== "PASS" ||
+  stateQueueIndexer?.status !== "LIBRARY_PASS_CANONICAL_WIRE_PROVENANCE_OPEN" ||
   stateQueueIndexer.independentAudit !==
-    "PASS_remediated_original_and_spent_journal_hostile_probes" ||
+    "PASS_library_remediated_original_and_spent_journal_hostile_probes" ||
   stateQueueIndexer.policySchemaVersion !==
     "midgard-watcher-state-queue-indexer-policy-v1" ||
   stateQueueIndexer.snapshotSchemaVersion !==
@@ -1682,16 +1726,16 @@ if (
   stateQueueIndexer.sourceSha256 !== sha256(stateQueueIndexerBytes) ||
   stateQueueIndexer.testSha256 !== sha256(stateQueueIndexerTestBytes) ||
   stateQueueIndexer.inputPolicy !==
-    "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery" ||
+    "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_operational_W10_wire_provenance_open_and_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery" ||
   stateQueueIndexer.queuePolicy !==
-    "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics" ||
+    "decode_and_index_canonical_transaction_output_and_datum_bytes_from_W10_without_replaying_Cardano_validator_semantics_operational_node_acceptance_provenance_open" ||
   stateQueueIndexer.durableRolePolicy !==
     "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly" ||
   stateQueueIndexer.rollbackPolicy !==
     "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.expectedFocusedTestCount !== 20
+  stateQueueIndexer.expectedFocusedTestCount !== 21
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -1744,7 +1788,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 22
+  userEventIndexer.expectedFocusedTestCount !== 23
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -1800,7 +1844,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.expectedFocusedTestCount !== 28
+  settlementIndexer.expectedFocusedTestCount !== 29
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -1856,7 +1900,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  proofThreadIndexer.expectedFocusedTestCount !== 23
+  proofThreadIndexer.expectedFocusedTestCount !== 24
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }
@@ -1932,22 +1976,26 @@ for (const requiredSymbol of [
 }
 if (
   dependencyMap.requiredWatcherPackage.foundationStatus !==
-    "W13_through_W17_and_W23_pass_source_modes_exact" ||
+    "W01_W03_and_W11_W17_library_surfaces_pass_operational_W10_wire_binding_open" ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W01") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W02") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W03") ||
-  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W10") ||
+  !dependencyMap.requiredWatcherPackage.remainingTasks.includes(
+    "W10-OPERATIONAL-WIRE",
+  ) ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W11") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W12") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W13") ||
-  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W14") ||
+  !dependencyMap.requiredWatcherPackage.remainingTasks.includes(
+    "W14-LIVE-PROVENANCE",
+  ) ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W15") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W16") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W17") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W23")
 ) {
   fail(
-    "W01-W03, W10-W17, and W23 must be complete without promoting watcher readiness",
+    "W01-W03, W11-W17 library surfaces, and W23 must be complete while W10 operational wire provenance remains explicitly open",
   );
 }
 if (dependencyMap.f30Conclusion?.status !== "pass") {

@@ -23,6 +23,7 @@ on:
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
+      - ".github/workflows/evidence-integrity-ci.yml"
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
     paths:
@@ -45,6 +46,7 @@ on:
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
+      - ".github/workflows/evidence-integrity-ci.yml"
       - ".github/workflows/midgard-node-ci.yml"
 
 jobs:

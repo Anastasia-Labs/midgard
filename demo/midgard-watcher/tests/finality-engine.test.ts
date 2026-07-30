@@ -1,7 +1,13 @@
-import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { createHash, X509Certificate } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer, type Server } from "node:net";
+import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
+import { promisify } from "node:util";
 
 import { CML } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
@@ -21,27 +27,239 @@ import {
   type WatcherFinalityStateV1,
 } from "../src/finality-engine.js";
 import {
+  closeWatcherL1TransportAttestationContextV1,
+  establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
+  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  type WatcherL1TransportAttestationContextV1,
   type WatcherNormalizedL1BlockV1,
 } from "../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../src/multi-provider-consistency.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
-const externalSource = {
-  sourceMode: "external_providers",
-  network: "Preprod",
-  providers: [
-    { providerId: "provider-a", operatorIdentitySha256: hex32("a1") },
-    { providerId: "provider-b", operatorIdentitySha256: hex32("b2") },
-  ],
-} as const;
+const execFileAsync = promisify(execFile);
+const observationAttestations = new WeakMap<
+  object,
+  WatcherL1TransportAttestationContextV1
+>();
+const transportContexts = new Map<
+  string,
+  WatcherL1TransportAttestationContextV1
+>();
+let transportFixtureDirectory = "";
+let localTransportServer: Server | undefined;
+let localQueryTransportServer: Server | undefined;
+const tlsTransportServers: Server[] = [];
+let localGenesisIdentitySha256 = "";
+let localNodeSocketPath = "";
+let localQueryEndpoint = "";
+const externalEndpoints = new Map<string, string>();
+
+const listen = async (server: Server, target: string | number): Promise<void> =>
+  await new Promise((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.off("listening", onListen);
+      reject(error);
+    };
+    const onListen = () => {
+      server.off("error", onError);
+      resolve();
+    };
+    server.once("error", onError);
+    server.once("listening", onListen);
+    if (typeof target === "string") server.listen(target);
+    else server.listen(target, "127.0.0.1");
+  });
+
+const closeServer = async (server: Server): Promise<void> => {
+  if (!server.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error === undefined) resolve();
+      else reject(error);
+    });
+  });
+};
+
+const makeTlsTransport = async (identityByte: string) => {
+  const keyPath = join(transportFixtureDirectory, `${identityByte}.key`);
+  const certificatePath = join(
+    transportFixtureDirectory,
+    `${identityByte}.crt`,
+  );
+  await execFileAsync("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    keyPath,
+    "-out",
+    certificatePath,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost",
+  ]);
+  const [key, certificate] = await Promise.all([
+    readFile(keyPath, "utf8"),
+    readFile(certificatePath, "utf8"),
+  ]);
+  const server = createTlsServer({ key, cert: certificate });
+  await listen(server, 0);
+  tlsTransportServers.push(server);
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("TLS fixture did not bind a TCP port");
+  }
+  return {
+    certificate,
+    identitySha256: createHash("sha256")
+      .update(new X509Certificate(certificate).raw)
+      .digest("hex"),
+    port: address.port,
+  };
+};
+
+const cleanupTransportFixtures = async (): Promise<void> => {
+  for (const context of transportContexts.values()) {
+    closeWatcherL1TransportAttestationContextV1(context);
+  }
+  transportContexts.clear();
+  const servers = [
+    ...tlsTransportServers,
+    ...(localTransportServer === undefined ? [] : [localTransportServer]),
+    ...(localQueryTransportServer === undefined
+      ? []
+      : [localQueryTransportServer]),
+  ];
+  tlsTransportServers.length = 0;
+  localTransportServer = undefined;
+  localQueryTransportServer = undefined;
+  externalEndpoints.clear();
+  await Promise.all(servers.map(closeServer));
+  if (transportFixtureDirectory !== "") {
+    await rm(transportFixtureDirectory, { recursive: true, force: true });
+    transportFixtureDirectory = "";
+  }
+};
+
+beforeAll(async () => {
+  try {
+    transportFixtureDirectory = await mkdtemp(
+      join("/dev/shm", "midgard-w12-finality-"),
+    );
+    const nodeSocketPath = join(transportFixtureDirectory, "node.socket");
+    localNodeSocketPath = nodeSocketPath;
+    const genesisFilePath = join(transportFixtureDirectory, "genesis.json");
+    const genesisBytes = Buffer.from('{"networkMagic":1}', "utf8");
+    await writeFile(genesisFilePath, genesisBytes);
+    localGenesisIdentitySha256 = createHash("sha256")
+      .update(genesisBytes)
+      .digest("hex");
+    localTransportServer = createNetServer();
+    await listen(localTransportServer, nodeSocketPath);
+    const authority = await establishWatcherLocalNodeAuthorityTransportV1({
+      network: "Preprod",
+      authorityNodeId: "cardano-node-a",
+      providerId: "cardano-node-a",
+      nodeSocketPath,
+      genesisFilePath,
+      expectedGenesisIdentitySha256: localGenesisIdentitySha256,
+      connectTimeoutMs: 2_000,
+    });
+    transportContexts.set("local:chain_sync", authority);
+    localQueryTransportServer = createNetServer();
+    await listen(localQueryTransportServer, 0);
+    const queryAddress = localQueryTransportServer.address();
+    if (queryAddress === null || typeof queryAddress === "string") {
+      throw new Error("local query fixture did not bind a TCP port");
+    }
+    localQueryEndpoint = `http://127.0.0.1:${queryAddress.port.toString()}/ogmios`;
+    transportContexts.set(
+      "local:ogmios",
+      await establishWatcherLocalNodeQueryTransportV1(authority, {
+        transportKind: "tcp",
+        providerId: "cardano-node-a-ogmios",
+        surface: "ogmios",
+        endpoint: localQueryEndpoint,
+        connectTimeoutMs: 2_000,
+      }),
+    );
+
+    const fixtures = new Map<
+      string,
+      Awaited<ReturnType<typeof makeTlsTransport>>
+    >();
+    for (const identityByte of ["a1", "b2", "c3", "d4", "e5"]) {
+      fixtures.set(identityByte, await makeTlsTransport(identityByte));
+    }
+    for (const [providerId, identityByte, operatorIdentityByte] of [
+      ["provider-a", "a1", "a1"],
+      ["provider-b", "b2", "b2"],
+      ["provider-a", "c3", "a1"],
+      ["provider-a", "c3", "d4"],
+      ["provider-b", "e5", "f6"],
+      ["provider-c", "c3", "c3"],
+      ["provider-d", "d4", "d4"],
+      ["provider-x", "c3", "d4"],
+      ["provider-y", "e5", "f6"],
+    ] as const) {
+      const fixture = fixtures.get(identityByte)!;
+      const endpoint = `https://localhost:${fixture.port.toString()}/${providerId}`;
+      externalEndpoints.set(
+        `${providerId}:${identityByte}:${operatorIdentityByte}`,
+        endpoint,
+      );
+      transportContexts.set(
+        `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
+        await establishWatcherExternalProviderTransportV1({
+          network: "Preprod",
+          providerId,
+          operatorIdentitySha256: hex32(operatorIdentityByte),
+          endpoint,
+          caPem: fixture.certificate,
+          expectedTlsPublicIdentitySha256: fixture.identitySha256,
+          connectTimeoutMs: 2_000,
+        }),
+      );
+    }
+  } catch (error) {
+    await cleanupTransportFixtures();
+    throw error;
+  }
+}, 60_000);
+
+afterAll(async () => {
+  await cleanupTransportFixtures();
+}, 30_000);
+const externalSource = () =>
+  ({
+    sourceMode: "external_providers",
+    network: "Preprod",
+    providers: [
+      {
+        providerId: "provider-a",
+        operatorIdentitySha256: hex32("a1"),
+        endpoint: externalEndpoints.get("provider-a:a1:a1")!,
+      },
+      {
+        providerId: "provider-b",
+        operatorIdentitySha256: hex32("b2"),
+        endpoint: externalEndpoints.get("provider-b:b2:b2")!,
+      },
+    ],
+  }) as const;
 
 const config = (depth = 3, rollbackDepth = depth) => ({
   schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-  mode: "acceptance",
+  mode: "development",
   targetNetwork: "Preprod",
   l1: {
     source: {
@@ -50,12 +268,12 @@ const config = (depth = 3, rollbackDepth = depth) => ({
         {
           identity: "provider-a",
           operatorIdentitySha256: hex32("a1"),
-          endpoint: "https://cardano-a.example",
+          endpoint: externalEndpoints.get("provider-a:a1:a1")!,
         },
         {
           identity: "provider-b",
           operatorIdentitySha256: hex32("b2"),
-          endpoint: "https://cardano-b.example",
+          endpoint: externalEndpoints.get("provider-b:b2:b2")!,
         },
       ],
     },
@@ -84,6 +302,10 @@ const config = (depth = 3, rollbackDepth = depth) => ({
   storage: {
     driver: "sqlite",
     path: "/var/lib/midgard-watcher/watcher.sqlite",
+    rollbackAuthorityKeySource: {
+      kind: "environment",
+      variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+    },
   },
   proverWallet: {
     keySource: {
@@ -110,8 +332,8 @@ const localConfig = (depth = 3, rollbackDepth = depth) => {
         authorityNodeId: "cardano-node-a",
         chainSync: {
           kind: "cardano_node_socket" as const,
-          socketPath: "/var/lib/cardano/node.socket",
-          genesisIdentitySha256: hex32("a1"),
+          socketPath: localNodeSocketPath,
+          genesisIdentitySha256: localGenesisIdentitySha256,
         },
         queryServices: [],
       },
@@ -160,40 +382,13 @@ const provider = (
   providerId: string,
   identityByte: string,
   operatorIdentityByte = identityByte,
-) => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  network: "Preprod" as const,
-  providerId,
-  source: {
-    sourceMode: "external_providers" as const,
-    operatorIdentitySha256: hex32(operatorIdentityByte),
-  },
-  authentication: {
-    kind: "https_tls_identity_v1" as const,
-    publicIdentitySha256: hex32(identityByte),
-  },
-});
+) =>
+  transportContexts.get(
+    `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
+  )!;
 
-const localNodeProvider = (
-  surface: "chain_sync" | "ogmios" = "chain_sync",
-) => ({
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  network: "Preprod" as const,
-  providerId:
-    surface === "chain_sync" ? "cardano-node-a" : `cardano-node-a-${surface}`,
-  source: {
-    sourceMode: "local_node" as const,
-    authorityNodeId: "cardano-node-a",
-    surface,
-  },
-  authentication: {
-    kind:
-      surface === "chain_sync"
-        ? ("cardano_node_genesis_v1" as const)
-        : ("https_tls_identity_v1" as const),
-    publicIdentitySha256: surface === "chain_sync" ? hex32("a1") : hex32("b2"),
-  },
-});
+const localNodeProvider = (surface: "chain_sync" | "ogmios" = "chain_sync") =>
+  transportContexts.get(`local:${surface}`)!;
 
 const transaction = (bodySeedHex: string) => {
   const body = CML.TransactionBody.new(
@@ -237,28 +432,48 @@ const observation = (
   providerId: string,
   identityByte: string,
   options: ObservationOptions = {},
-): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(
-    provider(
-      providerId,
-      identityByte,
-      options.operatorIdentityByte ?? identityByte,
-    ),
-    {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-      network: "Preprod",
-      providerId,
-      chainPoint: {
-        blockHash: options.blockHash ?? hex32("aa"),
-        parentBlockHash: options.parentBlockHash ?? null,
-        slot: options.slot ?? "1000",
-        blockNo: options.blockNo ?? "100",
-        depth: options.depth ?? "0",
-      },
-      transactions:
-        options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
-    },
+): WatcherNormalizedL1BlockV1 => {
+  const attestation = provider(
+    providerId,
+    identityByte,
+    options.operatorIdentityByte ?? identityByte,
   );
+  const normalized = normalizeWatcherL1BlockV1(attestation, {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    network: "Preprod",
+    providerId,
+    chainPoint: {
+      blockHash: options.blockHash ?? hex32("aa"),
+      parentBlockHash: options.parentBlockHash ?? null,
+      slot: options.slot ?? "1000",
+      blockNo: options.blockNo ?? "100",
+      depth: options.depth ?? "0",
+    },
+    transactions:
+      options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
+  });
+  observationAttestations.set(normalized, attestation);
+  return normalized;
+};
+
+const evaluateWatcherMultiProviderConsistencyV1 = (
+  configuredSource: unknown,
+  observations: unknown,
+  explicitAttestations?: readonly WatcherL1TransportAttestationContextV1[],
+) => {
+  const inferred = Array.isArray(observations)
+    ? observations.flatMap((candidate) => {
+        if (typeof candidate !== "object" || candidate === null) return [];
+        const attestation = observationAttestations.get(candidate);
+        return attestation === undefined ? [] : [attestation];
+      })
+    : [];
+  return evaluateWatcherMultiProviderConsistencyV1Raw(
+    configuredSource,
+    observations,
+    explicitAttestations ?? [...new Set(inferred)],
+  );
+};
 
 const agreement = (
   depth: string,
@@ -270,7 +485,7 @@ const agreement = (
     observation("provider-b", "b2", { ...options, depth }),
   ];
   return evaluateWatcherMultiProviderConsistencyV1(
-    externalSource,
+    externalSource(),
     reverse ? observations.reverse() : observations,
   );
 };
@@ -283,8 +498,9 @@ const localAgreement = (
 ) => {
   const normalized = (
     surface: "chain_sync" | "ogmios",
-  ): WatcherNormalizedL1BlockV1 =>
-    normalizeWatcherL1BlockV1(localNodeProvider(surface), {
+  ): WatcherNormalizedL1BlockV1 => {
+    const attestation = localNodeProvider(surface);
+    const value = normalizeWatcherL1BlockV1(attestation, {
       schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
       network: "Preprod",
       providerId:
@@ -301,14 +517,24 @@ const localAgreement = (
       transactions:
         options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
     });
+    observationAttestations.set(value, attestation);
+    return value;
+  };
   return evaluateWatcherMultiProviderConsistencyV1(
     {
       sourceMode: "local_node",
       network: "Preprod",
       authorityNodeId: "cardano-node-a",
-      genesisIdentitySha256: hex32("a1"),
+      genesisIdentitySha256: localGenesisIdentitySha256,
+      chainSyncSocketPath: localNodeSocketPath,
       queryServices: includeAlignedQuery
-        ? [{ kind: "ogmios" as const, providerId: "cardano-node-a-ogmios" }]
+        ? [
+            {
+              kind: "ogmios" as const,
+              providerId: "cardano-node-a-ogmios",
+              endpoint: localQueryEndpoint,
+            },
+          ]
         : [],
     },
     [
@@ -356,17 +582,18 @@ describe("canonical release-bound watcher finality", () => {
       sourceMode: "external_providers",
       authorityNodeId: null,
       authorityGenesisIdentitySha256: null,
+      authorityChainSyncSocketPath: null,
       externalProviders: [
         {
           providerId: "provider-a",
           operatorIdentitySha256: hex32("a1"),
-          endpoint: "https://cardano-a.example",
+          endpoint: externalEndpoints.get("provider-a:a1:a1"),
           authenticationKind: "https_tls_identity_v1",
         },
         {
           providerId: "provider-b",
           operatorIdentitySha256: hex32("b2"),
-          endpoint: "https://cardano-b.example",
+          endpoint: externalEndpoints.get("provider-b:b2:b2"),
           authenticationKind: "https_tls_identity_v1",
         },
       ],
@@ -433,7 +660,8 @@ describe("canonical release-bound watcher finality", () => {
     expect(localPolicy()).toMatchObject({
       sourceMode: "local_node",
       authorityNodeId: "cardano-node-a",
-      authorityGenesisIdentitySha256: hex32("a1"),
+      authorityGenesisIdentitySha256: localGenesisIdentitySha256,
+      authorityChainSyncSocketPath: localNodeSocketPath,
     });
   });
 
@@ -493,7 +721,8 @@ describe("canonical release-bound watcher finality", () => {
       protocolDecision: "allowed",
       sourceMode: "local_node",
       authorityNodeId: "cardano-node-a",
-      authorityGenesisIdentitySha256: hex32("a1"),
+      authorityGenesisIdentitySha256: localGenesisIdentitySha256,
+      authorityChainSyncSocketPath: localNodeSocketPath,
       observationCount: 1,
       independentProviderCount: 1,
       queryObservationCount: 0,
@@ -525,7 +754,7 @@ describe("canonical release-bound watcher finality", () => {
   it("rejects agreement from two distinct providers outside the W01 allowlist", () => {
     const finalityPolicy = policy();
     const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-x", "c3", {
           operatorIdentityByte: "d4",
@@ -550,7 +779,7 @@ describe("canonical release-bound watcher finality", () => {
 
   it("rejects configured provider labels with substituted operator identities", () => {
     const hostileAgreement = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-a", "c3", {
           operatorIdentityByte: "d4",
@@ -576,8 +805,16 @@ describe("canonical release-bound watcher finality", () => {
         sourceMode: "external_providers",
         network: "Preprod",
         providers: [
-          { providerId: "provider-c", operatorIdentitySha256: hex32("c3") },
-          { providerId: "provider-d", operatorIdentitySha256: hex32("d4") },
+          {
+            providerId: "provider-c",
+            operatorIdentitySha256: hex32("c3"),
+            endpoint: externalEndpoints.get("provider-c:c3:c3"),
+          },
+          {
+            providerId: "provider-d",
+            operatorIdentitySha256: hex32("d4"),
+            endpoint: externalEndpoints.get("provider-d:d4:d4"),
+          },
         ],
       },
       [
@@ -808,11 +1045,11 @@ describe("canonical release-bound watcher finality", () => {
     ]);
   });
 
-  it("fails closed on same-depth stale evidence", () => {
+  it("fails closed when same-depth evidence arrives over a substituted endpoint", () => {
     const finalityPolicy = policy();
     const pending = pendingAt(finalityPolicy, "1");
     const freshTransportAgreement = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-a", "c3", {
           depth: "1",
@@ -829,8 +1066,8 @@ describe("canonical release-bound watcher finality", () => {
 
     expect(stale).toMatchObject({
       action: "reject",
-      protocolDecision: "hold",
-      reasonCodes: ["stale_observation"],
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_result_quarantined"],
       state: pending,
     });
   });
@@ -838,7 +1075,7 @@ describe("canonical release-bound watcher finality", () => {
   it("rejects W11 pending and quarantine without advancing state", () => {
     const finalityPolicy = policy();
     const initialPending = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-a", "a1", { depth: "0" }),
         observation("provider-b", "b2", {
@@ -850,7 +1087,7 @@ describe("canonical release-bound watcher finality", () => {
       ],
     );
     const quarantined = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [observation("provider-a", "a1")],
     );
 
@@ -922,7 +1159,7 @@ describe("canonical release-bound watcher finality", () => {
       agreement("4", { bodyHex: "a100" }),
     );
     const pendingW11 = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-a", "a1"),
         observation("provider-b", "b2", {
@@ -974,7 +1211,7 @@ describe("canonical release-bound watcher finality", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
     const boundedLag = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
+      externalSource(),
       [
         observation("provider-a", "a1", { depth: "4" }),
         observation("provider-b", "b2", {
@@ -1023,7 +1260,7 @@ describe("canonical release-bound watcher finality", () => {
               {
                 kind: "ogmios",
                 identity: "cardano-node-a-ogmios",
-                endpoint: "ws://127.0.0.1:1337",
+                endpoint: localQueryEndpoint,
               },
             ],
           },

@@ -461,7 +461,8 @@ finding below is fixed in the reviewed result tree:
   Evidence Integrity also executes the mutation suite.
 - **Medium — the resolver applied-hash fixture used dummy parameters without
   crossing production construction.** The SDK check now invokes
-  `buildFaultProofContracts` over the committed blueprint, compares the exact
+  `buildFaultProofContracts` over the freshly generated, compiler-pinned
+  testnet blueprint, compares the exact
   75 production-builder semantic identities to the Aiken fixture groups, and
   independently reapplies the Phase-A and ScriptSources prepare validators.
   The evidence is accurately labeled a deterministic production-builder
@@ -479,8 +480,13 @@ These fixes preserve the authoritative L1-source discriminator. `local_node`
 uses one watcher-operated chain-sync authority plus aligned same-node query
 surfaces without provider quorum. `external_providers` requires at least two
 independent authorities. W14 consumes the canonical W10-W13 observation and
-rollback pipeline and indexes node-accepted transaction/output/datum bytes; it
-does not reimplement Cardano validator semantics.
+rollback pipeline and does not reimplement Cardano validator semantics.
+However, this library-only checkpoint does not yet own a Cardano/provider wire
+decoder: its live capability authenticates the configured socket/endpoint,
+while the normalization call still receives in-process observation values.
+Consequently this checkpoint does not claim that W10/W14 inputs were actually
+read from that connection. Operational `start` and `replay` remain disabled
+until a watcher-owned adapter closes that provenance boundary.
 
 ## Final-tree evidence
 
@@ -544,3 +550,107 @@ The checkpoint commit and publication/PR review result are recorded in
   sandbox; sandbox `listen EPERM` is not treated as product evidence.
 - Formal §4.4 journey, target-testnet acceptance, and all still-open §12
   criteria remain explicitly unpromoted.
+
+## Superseding second complete-PR review cycle
+
+The next additive review started from published PR head
+`ac0e8aa48af5a5ce27860d14ae5600cc1f6fc243`. Four bounded review lanes covered
+exact L1 transport/configuration binding, W03/W13 persistence authority, CEK
+verification resource bounds, and Node admission/storage lifecycle. The
+parent reviewed each result, integrated the non-overlapping remediations, and
+replayed the affected final-tree gates.
+
+### Fixed: configured L1 identities did not bind the exact live endpoint
+
+W01, W10, W11, and W12 now carry the exact configured URL or node socket path.
+External transports accept an HTTPS URL rather than independently supplied
+host/port/SNI fields. Local query transports use the exact configured
+HTTP(S), WebSocket, or PostgreSQL endpoint. Endpoint aliases, path changes,
+wrong sockets, wrong peer identities, source-mode substitutions, and
+policy/transport disagreement fail closed. The test-only loopback transports
+are explicit `development` configurations; acceptance configuration continues
+to require public HTTPS external-provider endpoints. Local-node execution
+still counts the full node as exactly one chain authority and never counts its
+query surfaces as independent providers.
+
+W01 also requires a separately sourced rollback-authority key. Inline
+secrets, reuse of the prover key's environment variable, and reuse of its file
+path are rejected.
+
+### Fixed: authenticated rollback snapshots lacked independent freshness
+
+A valid older W03/W13 HMAC snapshot could previously be restored after restart
+because the snapshot backend testified only to integrity, not recency. The
+durable authority now requires an independently protected monotonic trusted
+head binding deployment, policy, key identity, revision, snapshot digest, and
+authority digest. The head has its own domain-separated HMAC. Loading an old,
+tampered, missing, divergent, or mismatched head/snapshot pair fails closed.
+
+Snapshot CAS precedes external-head publication, so the public reconciliation
+API covers the crash window without exposing an authority or protocol
+decision. It proposes only authenticated epoch zero or exactly one direct
+successor of the externally protected head. The operator must perform an
+expected-prior external CAS, read the head back, and then load; aligned reruns
+are idempotent. Skipped revisions, restored older snapshots, divergent
+successors, and head-MAC mutation are refused.
+
+Concurrent W13 CAS losers now receive only `{persistence: "conflict"}`.
+They no longer receive a stale authority, recovery result, or actionable
+decision that a caller could accidentally apply.
+
+### Fixed: canonical CEK material amplified heap and repeated bundle work
+
+The verifier previously concatenated complete child buffers at every blob
+branch, retained every subtree, enforced the 9,215-byte constant limit only
+after reconstruction, recursively decoded type tags, and repeated
+materialization across distinct envelopes. A canonical sub-64 MiB payload
+could therefore cause superlinear copying/retention or a JavaScript stack
+failure before rejection.
+
+Blob validation now stores only length/leaf metadata. It materializes bounded
+final roots once, rejects an authenticated constant payload declaration above
+9,215 bytes before semantic traversal, enforces the exact 64-byte L1 type-CBOR
+bound with an iterative parser, shares root/constant caches across the bundle,
+and imposes aggregate unique-envelope byte-work/result bounds before material
+iteration. DA exact-coverage verification uses a result-free form and does not
+retain unused per-envelope constant buffers. Hostile tests cover zero
+materialization on oversized input, exact/adjacent type bounds, shared-root
+cache reuse, aggregate rejection before a trap iterator, and the same cases
+through strict DA decoding.
+
+### Fixed: Node admission resources and CEK ownership were not globally bounded
+
+The submit route now acquires process-global count and byte-weighted permits
+before reading the body, reserves a full V1 envelope for an unknown length,
+enforces the 64 MiB read cap, and rejects conflicting or oversized
+`Content-Length`. Validation performs one strict bundle traversal.
+
+Pre-accept HTTP requests no longer populate a global CEK cache. Accepted
+transactions atomically promote only their exact verified attached and
+Phase-B-resolved reference envelopes, scrub the admission sidecar, and record
+ownership. Finalization and commit-stage rejection release ownership and
+collect only unpinned, unowned memberships and orphan entries inside their
+existing SQL transactions. L1 material remains durably pinned; shared material
+survives until its final owner releases. Rollback tests prove that a later SQL
+failure restores mempool, ownership, and material together.
+
+One parent-review residual was fixed before publication: the configurable
+store minimum originally allowed 64 MiB even though the enforced SQL quota
+also counts entry roots/framing, membership rows, and admission-owner rows.
+The minimum now conservatively adds 199 bytes for every maximum reachable
+node to the maximum authenticated preimage total. Thus one protocol-valid
+maximum envelope cannot be rejected solely because quota bookkeeping was
+omitted from the configuration floor.
+
+### Honest remaining provenance boundary
+
+No fake wire receipt was introduced. Exact endpoint possession proves which
+transport is live, but it does not prove that arbitrary JavaScript observation
+values supplied to the normalizer were decoded from that socket. A
+watcher-owned Cardano node/provider protocol adapter remains required before
+W10/W14 can receive Goal acceptance credit. `start` and `replay` stay
+fail-closed, and the dependency map, README, architecture, ledger, and PR
+description must describe this limitation rather than claiming actual
+node-derived byte provenance. W14 continues to decode and index canonical
+transaction/output/datum bytes and deliberately does not duplicate Cardano
+validator semantics.

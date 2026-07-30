@@ -25,10 +25,15 @@ The watcher has one explicit, mutually exclusive L1-source discriminator:
   Same-network and compatible-chain-point agreement is mandatory; disagreement
   quarantines protocol decisions.
 
-W14 consumes canonical node-derived transaction, output, datum, and rollback
-observations. Cardano consensus and the deployed validators establish L1
-transaction validity; the watcher indexes accepted state and does not
-reimplement the state-queue validator.
+W14 must consume canonical node-derived transaction, output, datum, and
+rollback observations. Cardano consensus and the deployed validators
+establish L1 transaction validity; the watcher indexes accepted state and
+does not reimplement the state-queue validator. The current foundation proves
+live configured transport capabilities and deterministic normalization, but
+does not yet contain the watcher-owned Cardano/provider wire adapter that
+proves each supplied observation was read from that transport. Operational
+`start` and `replay` remain disabled until that provenance boundary and the
+other production gates are complete.
 
 This note summarizes what a Midgard watcher is, why it exists, and how a production watcher node should work.
 It is based on a review of the Midgard protocol specification, Aiken
@@ -121,6 +126,13 @@ The watcher should maintain durable local state for:
 
 - Deployment fingerprint and verified protocol parameters.
 - L1 chain cursor, observed chain points, rollback depth, and provider source.
+- The W03/W13 rollback bundle, authenticated with a stable external 32-byte
+  HMAC key that is separate from the prover wallet, plus its atomic
+  compare-and-swap revision and an independently protected monotonic trusted
+  head. Missing or invalid authentication, an absent head after
+  initialization, or a head/snapshot mismatch must fail closed before
+  recovery state is trusted. A row in the same rollbackable database cannot
+  establish freshness.
 - Authenticated views of the hub oracle, state queue, scheduler, operator directory, settlement UTxOs, and user-event UTxOs.
 - Full DA block material by header hash and DA commitment.
 - Canonical roots and proof material: UTxO root, transactions root, deposits root, withdrawals root, PHAS/MPF membership proofs, non-membership proofs, and field-list preimages.
@@ -151,6 +163,20 @@ same-point content mismatch, and same-point depth regression quarantine only
 the current decision while
 preserving the finalized binding; neither creates a terminal incident or a
 manual state-repair requirement.
+
+The durable W03/W13 bundle is one authenticated authority: the store,
+rollback state, bootstrap, and checkpoint anchor are covered by an HMAC from
+an external stable key and updated by compare-and-swap. A self-hashed or
+caller-supplied checkpoint digest is not authority. The operational SQLite
+backend must commit both the bundle and revision in one transaction. Each
+successful revision must then publish its HMAC-bound trusted head through an
+expected-prior CAS to an independently protected, monotonic, non-rollbackable
+authority before its protocol result is actionable. If a crash separates the
+database commit from head publication, reconciliation exposes no protocol
+decision and permits only epoch zero or one authenticated direct successor;
+external CAS and read-back are required before load. Startup rejects older,
+skipped, divergent, or tampered snapshot/head pairs. These persistence and
+publication steps are required before `start` or `replay` is enabled.
 
 ### 2. State Queue Tracking
 

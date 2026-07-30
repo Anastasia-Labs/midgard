@@ -40,6 +40,8 @@ import {
   normalizeWatcherL1BlockV1,
   type WatcherL1RedeemerV1,
   type WatcherL1TransactionV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
 import {
@@ -1059,6 +1061,45 @@ type VerifiedPublicContext = Readonly<{
   journal: WatcherProofThreadJournalV1 | null;
 }>;
 
+const transportAttestationForProvider = (
+  provider: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+): WatcherL1TransportAttestationContextV1 | null => {
+  if (
+    !Array.isArray(transportAttestations) ||
+    transportAttestations.length >
+      WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+  ) {
+    return null;
+  }
+  const matches = transportAttestations.filter((candidate) => {
+    const details = watcherL1TransportAttestationDetailsV1(candidate);
+    return details !== null && same(details.provider, provider);
+  });
+  return matches.length === 1 ? matches[0]! : null;
+};
+
+const normalizeTransportAttestedBlock = (
+  provider: unknown,
+  observation: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
+): Readonly<{
+  block: WatcherNormalizedL1BlockV1;
+  transportAttestation: WatcherL1TransportAttestationContextV1;
+}> | null => {
+  const transportAttestation = transportAttestationForProvider(
+    provider,
+    transportAttestations,
+  );
+  if (transportAttestation === null) {
+    return null;
+  }
+  return Object.freeze({
+    block: normalizeWatcherL1BlockV1(transportAttestation, observation),
+    transportAttestation,
+  });
+};
+
 const storeDigest = (store: WatcherDurableStoreV1): string =>
   watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
 
@@ -2037,6 +2078,7 @@ const parsePublicContext = (
   observation: WatcherProofThreadObservationV1,
   value: unknown,
   applyTransactionEffects: boolean,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): VerifiedPublicContext | null => {
   if (!evidenceWithinBounds(value)) {
     return null;
@@ -2147,14 +2189,17 @@ const parsePublicContext = (
     }
     const rollbackResult = parseWatcherRollbackResultV1(
       rollbackAuthority.result,
-      rollbackAuthority.context as WatcherRollbackVerificationContextV1,
+      {
+        ...(rollbackAuthority.context as WatcherRollbackVerificationContextV1),
+        transportAttestations,
+      },
     );
     const recoveryResult =
       rollbackResult === null
-        ? parseWatcherPostFinalityRecoveryResultV1(
-            rollbackAuthority.result,
-            rollbackAuthority.context as WatcherPostFinalityRecoveryInputV1,
-          )
+        ? parseWatcherPostFinalityRecoveryResultV1(rollbackAuthority.result, {
+            ...(rollbackAuthority.context as WatcherPostFinalityRecoveryInputV1),
+            transportAttestations,
+          })
         : null;
     const result = rollbackResult ?? recoveryResult;
     if (
@@ -2254,24 +2299,36 @@ const parsePublicContext = (
   let finalityResult: WatcherFinalityResultV1;
   let verifiedLineageBlocks: readonly WatcherNormalizedL1BlockV1[] = [];
   try {
-    block = normalizeWatcherL1BlockV1(
+    const normalizedBlock = normalizeTransportAttestedBlock(
       record.authenticatedProvider,
       record.l1Observation,
+      transportAttestations,
     );
-    const observations = (finality.observations as readonly unknown[]).map(
-      (candidate) => {
-        const authority = exactRecord(candidate, [
-          "authenticatedProvider",
-          "l1Observation",
-        ]);
-        if (authority === null) {
-          throw new Error("malformed W10 authority");
-        }
-        return normalizeWatcherL1BlockV1(
-          authority.authenticatedProvider,
-          authority.l1Observation,
-        );
-      },
+    if (normalizedBlock === null) {
+      return null;
+    }
+    block = normalizedBlock.block;
+    const observationsWithAttestations = (
+      finality.observations as readonly unknown[]
+    ).map((candidate) => {
+      const authority = exactRecord(candidate, [
+        "authenticatedProvider",
+        "l1Observation",
+      ]);
+      if (authority === null) {
+        throw new Error("malformed W10 authority");
+      }
+      return normalizeTransportAttestedBlock(
+        authority.authenticatedProvider,
+        authority.l1Observation,
+        transportAttestations,
+      );
+    });
+    if (observationsWithAttestations.some((entry) => entry === null)) {
+      return null;
+    }
+    const observations = observationsWithAttestations.map(
+      (entry) => entry!.block,
     );
     const finalityPolicy = parseWatcherFinalityPolicyV1(finality.policy);
     if (
@@ -2304,23 +2361,35 @@ const parsePublicContext = (
       ) {
         return null;
       }
-      const stepObservations = step.observations.map((observation) => {
-        const authority = exactRecord(observation, [
-          "authenticatedProvider",
-          "l1Observation",
-        ]);
-        if (authority === null) {
-          throw new Error("malformed W10 lineage authority");
-        }
-        return normalizeWatcherL1BlockV1(
-          authority.authenticatedProvider,
-          authority.l1Observation,
-        );
-      });
+      const stepObservationsWithAttestations = step.observations.map(
+        (stepObservation) => {
+          const authority = exactRecord(stepObservation, [
+            "authenticatedProvider",
+            "l1Observation",
+          ]);
+          if (authority === null) {
+            throw new Error("malformed W10 lineage authority");
+          }
+          return normalizeTransportAttestedBlock(
+            authority.authenticatedProvider,
+            authority.l1Observation,
+            transportAttestations,
+          );
+        },
+      );
+      if (stepObservationsWithAttestations.some((entry) => entry === null)) {
+        return null;
+      }
+      const stepObservations = stepObservationsWithAttestations.map(
+        (entry) => entry!.block,
+      );
       lineageBlocks.push(...stepObservations);
       const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
         watcherFinalityConfiguredSourceV1(finalityPolicy),
         stepObservations,
+        stepObservationsWithAttestations.map(
+          (entry) => entry!.transportAttestation,
+        ),
       );
       const stepResult = evaluateWatcherFinalityV1(
         finalityPolicy,
@@ -2347,6 +2416,7 @@ const parsePublicContext = (
     const consistency = evaluateWatcherMultiProviderConsistencyV1(
       watcherFinalityConfiguredSourceV1(finalityPolicy),
       observations,
+      observationsWithAttestations.map((entry) => entry!.transportAttestation),
     );
     finalityResult = evaluateWatcherFinalityV1(
       finalityPolicy,
@@ -3591,6 +3661,7 @@ type ReplayedHistory = Readonly<{
 const verifyHistory = (
   policy: WatcherProofThreadPolicyV1,
   entries: readonly WatcherProofThreadHistoryEntryV1[],
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): ReplayedHistory | null => {
   let journal: WatcherProofThreadJournalV1 | null = null;
   let pending: WatcherProofThreadPendingV1 | null = null;
@@ -3614,6 +3685,7 @@ const verifyHistory = (
       entry.observation,
       entry.publicContext,
       !promotion,
+      transportAttestations,
     );
     const lifecycle: LifecycleVerification | null =
       verified === null
@@ -3731,6 +3803,7 @@ const authenticatedStateStore = (
 export const parseWatcherProofThreadStateV1 = (
   value: unknown,
   policyInput: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherProofThreadStateV1 | null => {
   if (!evidenceWithinBounds({ policy: policyInput, state: value })) {
     return null;
@@ -3844,6 +3917,7 @@ export const parseWatcherProofThreadStateV1 = (
       replayedState,
       transition.observation,
       transition.publicContext,
+      transportAttestations,
     );
     if (
       replayed.action !== "accept" ||
@@ -3949,6 +4023,7 @@ const applyWatcherProofThreadTransitionV1 = (
   previous: WatcherProofThreadStateV1 | null,
   observation: WatcherProofThreadObservationV1,
   publicContextInput: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherProofThreadResultV1 => {
   if (
     observation.policyDigest !== policy.policyDigest ||
@@ -3997,21 +4072,22 @@ const applyWatcherProofThreadTransitionV1 = (
       observation,
       publicContextInput,
       false,
+      transportAttestations,
     );
     const authority = verified?.context.rollbackAuthority;
     const rollbackResult =
       authority === null || authority === undefined
         ? null
-        : parseWatcherRollbackResultV1(
-            authority.result,
-            authority.context as WatcherRollbackVerificationContextV1,
-          );
+        : parseWatcherRollbackResultV1(authority.result, {
+            ...(authority.context as WatcherRollbackVerificationContextV1),
+            transportAttestations,
+          });
     const recoveryResult =
       rollbackResult === null && authority !== null && authority !== undefined
-        ? parseWatcherPostFinalityRecoveryResultV1(
-            authority.result,
-            authority.context as WatcherPostFinalityRecoveryInputV1,
-          )
+        ? parseWatcherPostFinalityRecoveryResultV1(authority.result, {
+            ...(authority.context as WatcherPostFinalityRecoveryInputV1),
+            transportAttestations,
+          })
         : null;
     const rollback = rollbackResult ?? recoveryResult;
     const previousAuthenticated = authenticatedStateStore(previous);
@@ -4080,7 +4156,11 @@ const applyWatcherProofThreadTransitionV1 = (
     const retained = previous.history.slice(0, firstOrphan);
     const orphaned = firstOrphan < 0 ? [] : previous.history.slice(firstOrphan);
     const retainedHistory = firstOrphan < 0 ? [...previous.history] : retained;
-    const target = verifyHistory(policy, retainedHistory);
+    const target = verifyHistory(
+      policy,
+      retainedHistory,
+      transportAttestations,
+    );
     let targetStore: WatcherDurableStoreV1 | null = null;
     const targetAnchor = retainedHistory.at(-1);
     try {
@@ -4193,6 +4273,7 @@ const applyWatcherProofThreadTransitionV1 = (
     observation,
     publicContextInput,
     !promotion,
+    transportAttestations,
   );
   if (verified === null) {
     return rejected(
@@ -4290,6 +4371,7 @@ export const evaluateWatcherProofThreadIndexerV1 = (
   previousStateInput: unknown,
   observationInput: unknown,
   publicContextInput: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherProofThreadResultV1 => {
   const policy = parseWatcherProofThreadPolicyV1(policyInput);
   if (policy === null) {
@@ -4302,7 +4384,11 @@ export const evaluateWatcherProofThreadIndexerV1 = (
   const previous =
     previousStateInput === null
       ? null
-      : parseWatcherProofThreadStateV1(previousStateInput, policy);
+      : parseWatcherProofThreadStateV1(
+          previousStateInput,
+          policy,
+          transportAttestations,
+        );
   if (previousStateInput !== null && previous === null) {
     return rejected("malformed_state", "watcher_proof_thread_state_rejected");
   }
@@ -4311,6 +4397,7 @@ export const evaluateWatcherProofThreadIndexerV1 = (
     previous,
     observation,
     publicContextInput,
+    transportAttestations,
   );
 };
 
@@ -4319,6 +4406,7 @@ export type WatcherProofThreadResultVerificationContextV1 = Readonly<{
   previousState: unknown;
   observation: unknown;
   publicContext: unknown;
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
 }>;
 
 export const parseWatcherProofThreadResultV1 = (
@@ -4330,6 +4418,7 @@ export const parseWatcherProofThreadResultV1 = (
     context.previousState,
     context.observation,
     context.publicContext,
+    context.transportAttestations,
   );
   return same(value, expected) ? expected : null;
 };

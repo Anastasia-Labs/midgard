@@ -91,13 +91,35 @@ export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 = BigInt(
       MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1,
   ),
 );
+/**
+ * A bundle may contain many transactions that use the same program, but
+ * distinct program identities must not multiply verification work beyond one
+ * maximum-size V1 program. Identical envelopes are verified once and reuse the
+ * same positional result.
+ */
+export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1 =
+  MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1;
 export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1 = BigInt(
   MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 -
     MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1,
 );
+/**
+ * Each unique envelope declares the exact bytes reachable from its root. The
+ * sum is therefore a conservative upper bound on both byte verification work
+ * and retained type/payload result bytes, including when envelopes share
+ * material. V1 permits at most one maximum-size program's work per bundle.
+ */
+export const MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK_V1 =
+  MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1;
 // [v1, [1,1,0], h32, uint32(node_count), uint32(material_bytes)].
 export const MIDGARD_CEK_MAX_PROGRAM_ENVELOPE_BYTES_V1 = 50;
 export const MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1 = 9_215;
+/**
+ * Matches the L1 constant decoder's direct type-CBOR limit. Constant types are
+ * flat Plutus-Data tag lists, so this byte cap also gives the iterative parser
+ * a deterministic bound independent of JavaScript's call-stack depth.
+ */
+export const MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1 = 64;
 
 export const MidgardCekTermTags = Object.freeze({
   Variable: 0n,
@@ -1656,6 +1678,7 @@ type ProgramMaterialTaskV1 =
       readonly kind: "blob";
       readonly root: Hash32;
       readonly byteLength?: bigint;
+      readonly maxByteLength?: bigint;
     }
   | {
       readonly kind: "dataNode";
@@ -1689,15 +1712,50 @@ export type MidgardCekProgramMaterialVerificationV1 = {
   readonly constants: readonly MidgardCekProgramConstantMaterialV1[];
 };
 
+export type MidgardCekProgramMaterialVerificationOptionsV1 = {
+  readonly allowUnreachable?: boolean;
+  /**
+   * Allocation observability for resource-bound tests and metrics. It fires
+   * only when a final content root is assembled, never for branch validation
+   * or a bundle-cache hit. Callback failures are ignored so observability
+   * cannot change verifier acceptance.
+   */
+  readonly onBlobMaterialized?: (rootHex: string, byteLength: bigint) => void;
+  /**
+   * Fires on the first validated constant-result materialization for a value
+   * content root in a bundle. Callback failures are ignored.
+   */
+  readonly onConstantMaterialized?: (
+    valueRootHex: string,
+    payloadByteLength: bigint,
+  ) => void;
+};
+
 type NormalizedProgramMaterialV1 = ReadonlyMap<
   string,
   MidgardCekProgramMaterialEntryV1
 >;
 
+type ProgramMaterialBundleCacheV1 = {
+  /**
+   * Internal-only buffers keyed by authenticated content root. Callers receive
+   * copies, so cached bytes are immutable for the lifetime of verification.
+   */
+  readonly materializedBlobs: Map<string, Buffer>;
+  readonly validatedConstants: Map<
+    string,
+    {
+      readonly typeCbor: Buffer;
+      readonly payloadCbor: Buffer;
+    }
+  >;
+};
+
 const normalizeProgramMaterialV1 = (
   entries: Iterable<MidgardCekProgramMaterialEntryV1>,
 ): NormalizedProgramMaterialV1 => {
   const normalized = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  let materialByteLength = 0n;
   for (const entry of entries) {
     const exact = decodeMidgardCekProgramMaterialEntryV1(
       encodeMidgardCekProgramMaterialEntryV1(entry),
@@ -1707,8 +1765,32 @@ const normalizeProgramMaterialV1 = (
       throw new Error(`duplicate CEK program material root ${key}`);
     }
     normalized.set(key, exact);
+    if (BigInt(normalized.size) > MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1) {
+      throw new Error(
+        `CEK program material contains more than ${MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1.toString()} nodes`,
+      );
+    }
+    materialByteLength += BigInt(exact.preimage.length);
+    if (materialByteLength > MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1) {
+      throw new Error(
+        `CEK program material exceeds ${MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES_V1.toString()} bytes`,
+      );
+    }
   }
   return normalized;
+};
+
+const canonicalProgramEnvelopeV1 = (
+  envelope: MidgardCekProgramEnvelopeV1,
+): {
+  readonly envelope: MidgardCekProgramEnvelopeV1;
+  readonly identity: string;
+} => {
+  const encoded = encodeMidgardCekProgramEnvelopeV1(envelope);
+  return {
+    envelope: decodeMidgardCekProgramEnvelopeV1(encoded),
+    identity: encoded.toString("hex"),
+  };
 };
 
 const greatestPowerOfTwoBelow = (value: bigint): bigint => {
@@ -1739,50 +1821,14 @@ type SemanticConstantTypeV1 =
   | { readonly kind: "blsG2" }
   | { readonly kind: "blsMillerLoop" };
 
-const semanticTypeAt = (
-  tags: readonly bigint[],
-  offset: number,
-): {
-  readonly type: SemanticConstantTypeV1;
-  readonly nextOffset: number;
-} => {
-  const tag = tags[offset];
-  if (tag === 0n) return { type: { kind: "integer" }, nextOffset: offset + 1 };
-  if (tag === 1n) return { type: { kind: "bytes" }, nextOffset: offset + 1 };
-  if (tag === 2n) return { type: { kind: "string" }, nextOffset: offset + 1 };
-  if (tag === 3n) return { type: { kind: "unit" }, nextOffset: offset + 1 };
-  if (tag === 4n) return { type: { kind: "boolean" }, nextOffset: offset + 1 };
-  if (tag === 5n) {
-    const element = semanticTypeAt(tags, offset + 1);
-    return {
-      type: { kind: "list", element: element.type },
-      nextOffset: element.nextOffset,
-    };
-  }
-  if (tag === 6n) {
-    const first = semanticTypeAt(tags, offset + 1);
-    const second = semanticTypeAt(tags, first.nextOffset);
-    return {
-      type: {
-        kind: "pair",
-        first: first.type,
-        second: second.type,
-      },
-      nextOffset: second.nextOffset,
-    };
-  }
-  if (tag === 8n) return { type: { kind: "data" }, nextOffset: offset + 1 };
-  if (tag === 9n) return { type: { kind: "blsG1" }, nextOffset: offset + 1 };
-  if (tag === 10n) return { type: { kind: "blsG2" }, nextOffset: offset + 1 };
-  if (tag === 11n) {
-    return { type: { kind: "blsMillerLoop" }, nextOffset: offset + 1 };
-  }
-  throw new Error("CEK constant has an unknown semantic type tag");
-};
-
 const decodeSemanticConstantTypeV1 = (
   typeCbor: Uint8Array,
 ): SemanticConstantTypeV1 => {
+  if (typeCbor.length > MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1) {
+    throw new Error(
+      `CEK constant type exceeds the ${MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1.toString()}-byte L1 bound`,
+    );
+  }
   const decoded = LucidData.from(Buffer.from(typeCbor).toString("hex"));
   if (
     !Array.isArray(decoded) ||
@@ -1790,11 +1836,39 @@ const decodeSemanticConstantTypeV1 = (
   ) {
     throw new Error("CEK constant type payload is not an integer list");
   }
-  const parsed = semanticTypeAt(decoded as readonly bigint[], 0);
-  if (parsed.nextOffset !== decoded.length) {
+  const stack: SemanticConstantTypeV1[] = [];
+  for (let offset = decoded.length - 1; offset >= 0; offset -= 1) {
+    const tag = decoded[offset];
+    if (tag === 0n) stack.push({ kind: "integer" });
+    else if (tag === 1n) stack.push({ kind: "bytes" });
+    else if (tag === 2n) stack.push({ kind: "string" });
+    else if (tag === 3n) stack.push({ kind: "unit" });
+    else if (tag === 4n) stack.push({ kind: "boolean" });
+    else if (tag === 8n) stack.push({ kind: "data" });
+    else if (tag === 9n) stack.push({ kind: "blsG1" });
+    else if (tag === 10n) stack.push({ kind: "blsG2" });
+    else if (tag === 11n) stack.push({ kind: "blsMillerLoop" });
+    else if (tag === 5n) {
+      const element = stack.pop();
+      if (element === undefined) {
+        throw new Error("CEK constant list type is missing its element type");
+      }
+      stack.push({ kind: "list", element });
+    } else if (tag === 6n) {
+      const first = stack.pop();
+      const second = stack.pop();
+      if (first === undefined || second === undefined) {
+        throw new Error("CEK constant pair type is missing a child type");
+      }
+      stack.push({ kind: "pair", first, second });
+    } else {
+      throw new Error("CEK constant has an unknown semantic type tag");
+    }
+  }
+  if (stack.length !== 1) {
     throw new Error("CEK constant type payload has trailing tags");
   }
-  return parsed.type;
+  return stack[0]!;
 };
 
 const semanticIntegerMemoryV1 = (value: bigint): bigint => {
@@ -2146,6 +2220,15 @@ const semanticConstantMemoryV1 = (
 const verifyOneProgramMaterialV1 = (
   envelope: MidgardCekProgramEnvelopeV1,
   material: NormalizedProgramMaterialV1,
+  cache: ProgramMaterialBundleCacheV1,
+  options: {
+    readonly includeConstants: boolean;
+    readonly onBlobMaterialized?: (rootHex: string, byteLength: bigint) => void;
+    readonly onConstantMaterialized?: (
+      valueRootHex: string,
+      payloadByteLength: bigint,
+    ) => void;
+  },
 ): MidgardCekProgramMaterialVerificationV1 => {
   const reachable = new Set<string>();
   const dependencies = new Map<string, readonly string[]>();
@@ -2155,6 +2238,7 @@ const verifyOneProgramMaterialV1 = (
   const decodedDataLists = new Map<string, MidgardCekDataListNodeV1>();
   const decodedDataPairs = new Map<string, MidgardCekDataPairNodeV1>();
   const blobLengthExpectations = new Map<string, Set<bigint>>();
+  const blobMaximumLengthExpectations = new Map<string, Set<bigint>>();
   const sequenceLengthExpectations = new Map<string, Set<bigint>>();
   const dataListLengthExpectations = new Map<string, Set<bigint>>();
   const dataPairLengthExpectations = new Map<string, Set<bigint>>();
@@ -2237,6 +2321,7 @@ const verifyOneProgramMaterialV1 = (
       noteExpectation(sequenceLengthExpectations, key, task.length);
     } else if (task.kind === "blob") {
       noteExpectation(blobLengthExpectations, key, task.byteLength);
+      noteExpectation(blobMaximumLengthExpectations, key, task.maxByteLength);
     } else if (task.kind === "dataList") {
       noteExpectation(dataListLengthExpectations, key, task.length);
     } else if (task.kind === "dataPair") {
@@ -2329,10 +2414,22 @@ const verifyOneProgramMaterialV1 = (
           "CEK constant payload root must equal its canonical semantic root",
         );
       }
+      if (
+        value.payloadLength >
+        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1)
+      ) {
+        throw new Error(
+          `CEK source constant payload exceeds the ${MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1.toString()}-byte L1 proof envelope`,
+        );
+      }
       addDependency(key, value.typeRoot);
       addDependency(key, value.semanticRoot);
       tasks.push(
-        { kind: "blob", root: value.typeRoot },
+        {
+          kind: "blob",
+          root: value.typeRoot,
+          maxByteLength: BigInt(MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1),
+        },
         { kind: "dataNode", root: value.semanticRoot },
       );
       continue;
@@ -2523,6 +2620,16 @@ const verifyOneProgramMaterialV1 = (
       entry.kind,
       entry.preimage,
     );
+    const declaredBlobByteLength =
+      blob.kind === "chunk" ? BigInt(blob.bytes.length) : blob.byteLength;
+    if (
+      task.maxByteLength !== undefined &&
+      declaredBlobByteLength > task.maxByteLength
+    ) {
+      throw new Error(
+        `CEK blob root ${key} declares ${declaredBlobByteLength.toString()} bytes, exceeding ${task.maxByteLength.toString()}`,
+      );
+    }
     decodedBlobs.set(key, blob);
     if (blob.kind === "branch") {
       addDependency(key, blob.left);
@@ -2609,7 +2716,7 @@ const verifyOneProgramMaterialV1 = (
   }
 
   type BlobShape = {
-    readonly bytes: Buffer;
+    readonly byteLength: bigint;
     readonly leafCount: bigint;
     readonly lastLeafLength: number;
   };
@@ -2619,7 +2726,7 @@ const verifyOneProgramMaterialV1 = (
     if (blob === undefined) continue;
     if (blob.kind === "chunk") {
       blobShapes.set(key, {
-        bytes: blob.bytes,
+        byteLength: BigInt(blob.bytes.length),
         leafCount: 1n,
         lastLeafLength: blob.bytes.length,
       });
@@ -2631,8 +2738,8 @@ const verifyOneProgramMaterialV1 = (
       throw new Error("CEK blob branch child is not a canonical blob node");
     }
     if (
-      left.bytes.length === 0 ||
-      right.bytes.length === 0 ||
+      left.byteLength === 0n ||
+      right.byteLength === 0n ||
       left.lastLeafLength !== MIDGARD_CEK_BLOB_CHUNK_BYTES
     ) {
       throw new Error(
@@ -2643,14 +2750,14 @@ const verifyOneProgramMaterialV1 = (
     if (left.leafCount !== greatestPowerOfTwoBelow(leafCount)) {
       throw new Error("CEK blob branch is not canonically left-balanced");
     }
-    const bytes = Buffer.concat([left.bytes, right.bytes]);
-    if (BigInt(bytes.length) !== blob.byteLength) {
+    const byteLength = left.byteLength + right.byteLength;
+    if (byteLength !== blob.byteLength) {
       throw new Error(
         "CEK blob branch byte length does not match its children",
       );
     }
     blobShapes.set(key, {
-      bytes,
+      byteLength,
       leafCount,
       lastLeafLength: right.lastLeafLength,
     });
@@ -2662,13 +2769,68 @@ const verifyOneProgramMaterialV1 = (
       throw new Error(`CEK blob root ${key} was not reconstructed`);
     }
     for (const expected of expectedLengths) {
-      if (BigInt(shape.bytes.length) !== expected) {
+      if (shape.byteLength !== expected) {
         throw new Error(
-          `CEK blob root ${key} has ${shape.bytes.length.toString()} bytes, expected ${expected.toString()}`,
+          `CEK blob root ${key} has ${shape.byteLength.toString()} bytes, expected ${expected.toString()}`,
         );
       }
     }
   }
+  for (const [key, maximumLengths] of blobMaximumLengthExpectations) {
+    const shape = blobShapes.get(key);
+    if (shape === undefined) {
+      throw new Error(`CEK blob root ${key} was not reconstructed`);
+    }
+    for (const maximum of maximumLengths) {
+      if (shape.byteLength > maximum) {
+        throw new Error(
+          `CEK blob root ${key} has ${shape.byteLength.toString()} bytes, exceeding ${maximum.toString()}`,
+        );
+      }
+    }
+  }
+
+  const materializeBlob = (
+    root: Uint8Array,
+    maximumByteLength: bigint,
+    fieldName: string,
+  ): Buffer => {
+    const key = rootKey(root);
+    const shape = blobShapes.get(key);
+    if (shape === undefined) {
+      throw new Error(`${fieldName} blob is missing`);
+    }
+    if (shape.byteLength > maximumByteLength) {
+      throw new Error(
+        `${fieldName} blob has ${shape.byteLength.toString()} bytes, exceeding ${maximumByteLength.toString()}`,
+      );
+    }
+    const cached = cache.materializedBlobs.get(key);
+    if (cached !== undefined) return cached;
+
+    const leaves: Buffer[] = [];
+    const stack = [key];
+    while (stack.length > 0) {
+      const currentKey = stack.pop()!;
+      const blob = decodedBlobs.get(currentKey);
+      if (blob === undefined) {
+        throw new Error(`${fieldName} blob has an incomplete branch`);
+      }
+      if (blob.kind === "chunk") {
+        leaves.push(blob.bytes);
+      } else {
+        stack.push(rootKey(blob.right), rootKey(blob.left));
+      }
+    }
+    const materialized = Buffer.concat(leaves, Number(shape.byteLength));
+    cache.materializedBlobs.set(key, materialized);
+    try {
+      options.onBlobMaterialized?.(key, shape.byteLength);
+    } catch {
+      // Allocation observability must not change verification semantics.
+    }
+    return materialized;
+  };
 
   for (const key of postorder) {
     const listNode = decodedDataLists.get(key);
@@ -2873,18 +3035,22 @@ const verifyOneProgramMaterialV1 = (
     }
     let value: SemanticDataValueV1;
     if (node.kind === "integer") {
-      const bytes = blobShapes.get(rootKey(node.cborRoot))?.bytes;
-      const decoded =
-        bytes === undefined ? undefined : LucidData.from(bytes.toString("hex"));
+      const bytes = materializeBlob(
+        node.cborRoot,
+        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1),
+        "CEK semantic integer",
+      );
+      const decoded = LucidData.from(bytes.toString("hex"));
       if (typeof decoded !== "bigint") {
         throw new Error("CEK semantic integer leaf is invalid");
       }
       value = decoded;
     } else if (node.kind === "bytes") {
-      const bytes = blobShapes.get(rootKey(node.bytesRoot))?.bytes;
-      if (bytes === undefined) {
-        throw new Error("CEK semantic bytes leaf is missing");
-      }
+      const bytes = materializeBlob(
+        node.bytesRoot,
+        BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1),
+        "CEK semantic bytes",
+      );
       value = bytes.toString("hex");
     } else if (node.kind === "list") {
       value = reconstructDataList(node.itemsRoot, node.itemsCount);
@@ -2893,11 +3059,12 @@ const verifyOneProgramMaterialV1 = (
     } else {
       let constructor: bigint;
       if (node.kind === "constrLarge") {
-        const bytes = blobShapes.get(rootKey(node.constructorCborRoot))?.bytes;
-        const decoded =
-          bytes === undefined
-            ? undefined
-            : LucidData.from(bytes.toString("hex"));
+        const bytes = materializeBlob(
+          node.constructorCborRoot,
+          BigInt(MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1),
+          "CEK semantic constructor",
+        );
+        const decoded = LucidData.from(bytes.toString("hex"));
         if (typeof decoded !== "bigint") {
           throw new Error("CEK semantic constructor index is invalid");
         }
@@ -2918,37 +3085,57 @@ const verifyOneProgramMaterialV1 = (
     return value;
   }
 
+  const retainedConstants = new Map<
+    string,
+    {
+      readonly typeCbor: Buffer;
+      readonly payloadCbor: Buffer;
+    }
+  >();
   for (const [valueKey, value] of decodedValues) {
-    const type = blobShapes.get(rootKey(value.typeRoot));
-    if (type === undefined) {
-      throw new Error(
-        `CEK constant value ${valueKey} has incomplete type material`,
+    let validated = cache.validatedConstants.get(valueKey);
+    if (validated === undefined) {
+      const typeCbor = materializeBlob(
+        value.typeRoot,
+        BigInt(MIDGARD_CEK_MAX_CONSTANT_TYPE_CBOR_BYTES_V1),
+        `CEK constant value ${valueKey} type`,
       );
+      const decodedPayload = reconstructData(value.semanticRoot);
+      const payloadCbor = encodeSemanticDataV1(decodedPayload);
+      const semantic = commitSemanticDataV1(decodedPayload);
+      if (!Buffer.from(semantic.root).equals(value.semanticRoot)) {
+        throw new Error(
+          `CEK constant value ${valueKey} semantic root does not match its canonical payload`,
+        );
+      }
+      if (semantic.cborLength !== value.payloadLength) {
+        throw new Error(
+          `CEK constant value ${valueKey} payload length does not match its semantic tree`,
+        );
+      }
+      const constantType = decodeSemanticConstantTypeV1(typeCbor);
+      const memory = semanticConstantMemoryV1(constantType, decodedPayload);
+      if (memory !== value.memory) {
+        throw new Error(
+          `CEK constant value ${valueKey} memory does not match its semantic payload`,
+        );
+      }
+      validated = {
+        typeCbor: Buffer.from(typeCbor),
+        payloadCbor: Buffer.from(payloadCbor),
+      };
+      cache.validatedConstants.set(valueKey, validated);
+      try {
+        options.onConstantMaterialized?.(valueKey, BigInt(payloadCbor.length));
+      } catch {
+        // Allocation observability must not change verification semantics.
+      }
     }
-    const decodedPayload = reconstructData(value.semanticRoot);
-    const payloadCbor = encodeSemanticDataV1(decodedPayload);
-    if (payloadCbor.length > MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1) {
-      throw new Error(
-        `CEK source constant payload exceeds the ${MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1.toString()}-byte L1 proof envelope`,
-      );
-    }
-    const semantic = commitSemanticDataV1(decodedPayload);
-    if (!Buffer.from(semantic.root).equals(value.semanticRoot)) {
-      throw new Error(
-        `CEK constant value ${valueKey} semantic root does not match its canonical payload`,
-      );
-    }
-    if (semantic.cborLength !== value.payloadLength) {
-      throw new Error(
-        `CEK constant value ${valueKey} payload length does not match its semantic tree`,
-      );
-    }
-    const constantType = decodeSemanticConstantTypeV1(type.bytes);
-    const memory = semanticConstantMemoryV1(constantType, decodedPayload);
-    if (memory !== value.memory) {
-      throw new Error(
-        `CEK constant value ${valueKey} memory does not match its semantic payload`,
-      );
+    if (options.includeConstants) {
+      retainedConstants.set(valueKey, {
+        typeCbor: Buffer.from(validated.typeCbor),
+        payloadCbor: Buffer.from(validated.payloadCbor),
+      });
     }
   }
 
@@ -2967,26 +3154,25 @@ const verifyOneProgramMaterialV1 = (
     );
   }
 
-  const constants = [...decodedValues.entries()].map(
-    ([valueKey, value]): MidgardCekProgramConstantMaterialV1 => {
-      const type = blobShapes.get(rootKey(value.typeRoot));
-      if (type === undefined) {
-        throw new Error(
-          `CEK constant value ${valueKey} has incomplete type material`,
-        );
-      }
-      const payload = reconstructData(value.semanticRoot);
-      return Object.freeze({
-        valueRoot: Buffer.from(valueKey, "hex") as Hash32,
-        typeRoot: value.typeRoot,
-        payloadRoot: value.payloadRoot,
-        semanticRoot: value.semanticRoot,
-        memory: value.memory,
-        typeCbor: type.bytes,
-        payloadCbor: encodeSemanticDataV1(payload),
-      });
-    },
-  );
+  const constants = options.includeConstants
+    ? [...decodedValues.entries()].map(
+        ([valueKey, value]): MidgardCekProgramConstantMaterialV1 => {
+          const retained = retainedConstants.get(valueKey);
+          if (retained === undefined) {
+            throw new Error(`CEK constant value ${valueKey} was not retained`);
+          }
+          return Object.freeze({
+            valueRoot: Buffer.from(valueKey, "hex") as Hash32,
+            typeRoot: value.typeRoot,
+            payloadRoot: value.payloadRoot,
+            semanticRoot: value.semanticRoot,
+            memory: value.memory,
+            typeCbor: retained.typeCbor,
+            payloadCbor: retained.payloadCbor,
+          });
+        },
+      )
+    : [];
   return Object.freeze({
     reachableRoots: reachable,
     nodeCount: BigInt(reachable.size),
@@ -3003,10 +3189,20 @@ const verifyOneProgramMaterialV1 = (
 export const verifyMidgardCekProgramMaterialV1 = (
   envelope: MidgardCekProgramEnvelopeV1,
   entries: Iterable<MidgardCekProgramMaterialEntryV1>,
-  options: { readonly allowUnreachable?: boolean } = {},
+  options: MidgardCekProgramMaterialVerificationOptionsV1 = {},
 ): MidgardCekProgramMaterialVerificationV1 => {
+  const exactEnvelope = canonicalProgramEnvelopeV1(envelope).envelope;
   const material = normalizeProgramMaterialV1(entries);
-  const verified = verifyOneProgramMaterialV1(envelope, material);
+  const verified = verifyOneProgramMaterialV1(
+    exactEnvelope,
+    material,
+    { materializedBlobs: new Map(), validatedConstants: new Map() },
+    {
+      includeConstants: true,
+      onBlobMaterialized: options.onBlobMaterialized,
+      onConstantMaterialized: options.onConstantMaterialized,
+    },
+  );
   if (
     options.allowUnreachable !== true &&
     verified.reachableRoots.size !== material.size
@@ -3016,15 +3212,35 @@ export const verifyMidgardCekProgramMaterialV1 = (
   return verified;
 };
 
-/**
- * Verifies a DA block's deduplicated material against every referenced
- * program. Every supplied node must be reachable from at least one envelope.
- */
-export const verifyMidgardCekProgramMaterialBundleV1 = (
+const verifyProgramMaterialBundleV1 = (
   envelopes: readonly MidgardCekProgramEnvelopeV1[],
   entries: Iterable<MidgardCekProgramMaterialEntryV1>,
-  options: { readonly allowUnreachable?: boolean } = {},
+  options: MidgardCekProgramMaterialVerificationOptionsV1,
+  includeResults: boolean,
 ): readonly MidgardCekProgramMaterialVerificationV1[] => {
+  const envelopeIdentities: string[] = [];
+  const uniqueEnvelopes = new Map<string, MidgardCekProgramEnvelopeV1>();
+  let aggregateNodeVisits = 0n;
+  let aggregateByteWork = 0n;
+  for (const envelope of envelopes) {
+    const canonical = canonicalProgramEnvelopeV1(envelope);
+    envelopeIdentities.push(canonical.identity);
+    if (uniqueEnvelopes.has(canonical.identity)) continue;
+    aggregateNodeVisits += canonical.envelope.nodeCount;
+    if (aggregateNodeVisits > MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1) {
+      throw new Error(
+        `CEK program material bundle declares ${aggregateNodeVisits.toString()} aggregate unique-envelope node visits, exceeding ${MIDGARD_CEK_MAX_PROGRAM_BUNDLE_NODE_VISITS_V1.toString()}`,
+      );
+    }
+    aggregateByteWork += canonical.envelope.materialByteLength;
+    if (aggregateByteWork > MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK_V1) {
+      throw new Error(
+        `CEK program material bundle declares ${aggregateByteWork.toString()} aggregate unique-envelope byte work/result, exceeding ${MIDGARD_CEK_MAX_PROGRAM_BUNDLE_BYTE_WORK_V1.toString()}`,
+      );
+    }
+    uniqueEnvelopes.set(canonical.identity, canonical.envelope);
+  }
+
   const material = normalizeProgramMaterialV1(entries);
   if (envelopes.length === 0) {
     if (material.size !== 0 && options.allowUnreachable !== true) {
@@ -3035,17 +3251,56 @@ export const verifyMidgardCekProgramMaterialBundleV1 = (
     return Object.freeze([]);
   }
   const reached = new Set<string>();
-  const verified = envelopes.map((envelope) => {
-    const result = verifyOneProgramMaterialV1(envelope, material);
+  const verifiedByIdentity = new Map<
+    string,
+    MidgardCekProgramMaterialVerificationV1
+  >();
+  const cache: ProgramMaterialBundleCacheV1 = {
+    materializedBlobs: new Map(),
+    validatedConstants: new Map(),
+  };
+  for (const [identity, envelope] of uniqueEnvelopes) {
+    const result = verifyOneProgramMaterialV1(envelope, material, cache, {
+      includeConstants: includeResults,
+      onBlobMaterialized: options.onBlobMaterialized,
+      onConstantMaterialized: options.onConstantMaterialized,
+    });
     for (const key of result.reachableRoots) reached.add(key);
-    return result;
-  });
+    if (includeResults) verifiedByIdentity.set(identity, result);
+  }
   if (options.allowUnreachable !== true && reached.size !== material.size) {
     throw new Error(
       "CEK program material bundle contains nodes unreachable from every envelope",
     );
   }
-  return Object.freeze(verified);
+  return includeResults
+    ? Object.freeze(
+        envelopeIdentities.map((identity) => verifiedByIdentity.get(identity)!),
+      )
+    : Object.freeze([]);
+};
+
+/**
+ * Verifies a DA block's deduplicated material against every referenced
+ * program. Every supplied node must be reachable from at least one envelope.
+ */
+export const verifyMidgardCekProgramMaterialBundleV1 = (
+  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+  entries: Iterable<MidgardCekProgramMaterialEntryV1>,
+  options: MidgardCekProgramMaterialVerificationOptionsV1 = {},
+): readonly MidgardCekProgramMaterialVerificationV1[] =>
+  verifyProgramMaterialBundleV1(envelopes, entries, options, true);
+
+/**
+ * Strict coverage-only form for DA admission. It performs the same validation
+ * but does not retain per-envelope constant buffers after verification.
+ */
+export const assertMidgardCekProgramMaterialBundleV1 = (
+  envelopes: readonly MidgardCekProgramEnvelopeV1[],
+  entries: Iterable<MidgardCekProgramMaterialEntryV1>,
+  options: MidgardCekProgramMaterialVerificationOptionsV1 = {},
+): void => {
+  verifyProgramMaterialBundleV1(envelopes, entries, options, false);
 };
 
 export const MIDGARD_PROOF_SUBMISSION_ENVELOPE_V1_VERSION = 1n;

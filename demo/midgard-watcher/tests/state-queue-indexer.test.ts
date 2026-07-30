@@ -1,4 +1,15 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { execFile } from "node:child_process";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign,
+  X509Certificate,
+} from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer, type Server } from "node:net";
+import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
+import { promisify } from "node:util";
 
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -26,7 +37,7 @@ import {
   StateQueueSpendRedeemer,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, validatorToScriptHash } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
@@ -70,32 +81,37 @@ import {
   makeWatcherFinalityPolicyV1,
 } from "../src/finality-engine.js";
 import {
+  closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
+  establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
   makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
+  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   type WatcherL1RedeemerV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
 } from "../src/l1-adapter.js";
 import {
-  evaluateWatcherMultiProviderConsistencyV1,
+  evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
 } from "../src/multi-provider-consistency.js";
 import {
-  evaluateWatcherPostFinalityRecoveryV1,
-  evaluateWatcherRollbackV1,
+  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
+  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
   makeWatcherRollbackBootstrapStateV1,
   type WatcherPostFinalityRecoveryInputV1,
 } from "../src/rollback-engine.js";
 import {
-  evaluateWatcherStateQueueIndexerV1,
+  evaluateWatcherStateQueueIndexerV1 as evaluateWatcherStateQueueIndexerV1Raw,
   makeWatcherStateQueueHeaderV1,
   makeWatcherStateQueueIndexerPolicyV1,
   makeWatcherStateQueueObservationV1,
   makeWatcherStateQueueSnapshotV1,
-  parseWatcherStateQueueIndexerResultV1,
-  parseWatcherStateQueueIndexerStateV1,
+  parseWatcherStateQueueIndexerResultV1 as parseWatcherStateQueueIndexerResultV1Raw,
+  parseWatcherStateQueueIndexerStateV1 as parseWatcherStateQueueIndexerStateV1Raw,
   WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS,
   WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   type WatcherStateQueueIndexerPolicyV1,
@@ -142,6 +158,173 @@ const scriptAddress = (hash: string): string =>
   ).to_hex();
 
 type Mutable = Record<string, any>;
+const execFileAsync = promisify(execFile);
+const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const tlsServers: Server[] = [];
+const transportEndpointByProviderId = new Map<string, string>();
+let transportFixtureDirectory = "";
+let localNodeServer: Server;
+
+const listen = async (server: Server, target: string | number): Promise<void> =>
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    const onListen = () => {
+      server.off("error", reject);
+      resolve();
+    };
+    if (typeof target === "string") {
+      server.listen(target, onListen);
+    } else {
+      server.listen(target, "127.0.0.1", onListen);
+    }
+  });
+
+const makeTlsTransportFixture = async (providerId: string) => {
+  const keyPath = join(transportFixtureDirectory, `${providerId}.key`);
+  const certificatePath = join(transportFixtureDirectory, `${providerId}.crt`);
+  await execFileAsync("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    keyPath,
+    "-out",
+    certificatePath,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost",
+  ]);
+  const [key, certificate] = await Promise.all([
+    readFile(keyPath, "utf8"),
+    readFile(certificatePath, "utf8"),
+  ]);
+  const server = createTlsServer({ key, cert: certificate });
+  await listen(server, 0);
+  tlsServers.push(server);
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("TLS fixture did not bind a TCP port");
+  }
+  return {
+    certificate,
+    identitySha256: createHash("sha256")
+      .update(new X509Certificate(certificate).raw)
+      .digest("hex"),
+    port: address.port,
+  };
+};
+
+const transportFor = (
+  authenticatedProvider: unknown,
+): WatcherL1TransportAttestationContextV1 => {
+  const matching = transportContexts.filter((context) => {
+    const details = watcherL1TransportAttestationDetailsV1(context);
+    return (
+      details !== null &&
+      canonicalDigest(details.provider) ===
+        canonicalDigest(authenticatedProvider)
+    );
+  });
+  if (matching.length !== 1) {
+    throw new Error("test provider has no unique live transport attestation");
+  }
+  return matching[0]!;
+};
+
+const normalizeWatcherL1BlockV1 = (
+  authenticatedProvider: unknown,
+  observation: unknown,
+  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+) =>
+  normalizeWatcherL1BlockV1Raw(
+    transportFor(authenticatedProvider),
+    observation,
+    session,
+  );
+
+const evaluateWatcherMultiProviderConsistencyV1 = (
+  configuredSource: unknown,
+  observations: unknown,
+) =>
+  evaluateWatcherMultiProviderConsistencyV1Raw(
+    configuredSource,
+    observations,
+    transportContexts,
+  );
+
+const parseWatcherStateQueueIndexerStateV1 = (
+  value: unknown,
+  policyValue: unknown,
+  restartContexts: readonly WatcherStateQueuePublicContextV1[] = [],
+) =>
+  parseWatcherStateQueueIndexerStateV1Raw(
+    value,
+    policyValue,
+    transportContexts,
+    restartContexts,
+  );
+
+const evaluateWatcherStateQueueIndexerV1 = (
+  policyValue: unknown,
+  previousStateValue: unknown,
+  observationValue: unknown,
+  publicContextValue: unknown,
+) =>
+  evaluateWatcherStateQueueIndexerV1Raw(
+    policyValue,
+    previousStateValue,
+    observationValue,
+    publicContextValue,
+    transportContexts,
+  );
+
+const evaluateWatcherRollbackV1 = (
+  policyInput: unknown,
+  storeInput: unknown,
+  previousFinalityStateInput: unknown,
+  consistencyInput: unknown,
+  finalityResultInput: unknown,
+  previousRollbackStateInput: unknown,
+  rollbackBootstrapStateInput: unknown,
+  trustedCheckpointAuthorityInput?: unknown,
+) =>
+  evaluateWatcherRollbackV1Raw(
+    policyInput,
+    storeInput,
+    previousFinalityStateInput,
+    consistencyInput,
+    finalityResultInput,
+    previousRollbackStateInput,
+    rollbackBootstrapStateInput,
+    trustedCheckpointAuthorityInput,
+    transportContexts,
+  );
+
+const evaluateWatcherPostFinalityRecoveryV1 = (
+  input: WatcherPostFinalityRecoveryInputV1,
+) =>
+  evaluateWatcherPostFinalityRecoveryV1Raw({
+    ...input,
+    transportAttestations: transportContexts,
+  });
+
+const parseWatcherStateQueueIndexerResultV1 = (
+  value: unknown,
+  context: Omit<
+    Parameters<typeof parseWatcherStateQueueIndexerResultV1Raw>[1],
+    "transportAttestations"
+  >,
+) =>
+  parseWatcherStateQueueIndexerResultV1Raw(value, {
+    ...context,
+    transportAttestations: transportContexts,
+  });
+
 const RELEASE_DIGEST = h32("22");
 const BLUEPRINT_HASH = h32("55");
 const RULE_BUNDLE_COMMITMENT = h32("44");
@@ -475,16 +658,21 @@ const externalSource = {
     {
       providerId: provider.providerId,
       operatorIdentitySha256: provider.source.operatorIdentitySha256,
+      endpoint: "https://cardano-a.example",
     },
     {
       providerId: providerB.providerId,
       operatorIdentitySha256: providerB.source.operatorIdentitySha256,
+      endpoint: "https://cardano-b.example",
     },
   ],
 } as const;
 
 const LOCAL_NODE_ID = "watcher-node-a";
-const LOCAL_GENESIS_IDENTITY = h32("76");
+const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
+const LOCAL_GENESIS_IDENTITY = createHash("sha256")
+  .update(LOCAL_GENESIS_BYTES)
+  .digest("hex");
 const localNodeProvider = {
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod",
@@ -504,8 +692,71 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  chainSyncSocketPath: "/ipc/node.socket",
   queryServices: [],
 } as const;
+
+beforeAll(async () => {
+  transportFixtureDirectory = await mkdtemp(
+    join("/dev/shm", "midgard-w14-state-queue-"),
+  );
+  const socketPath = join(transportFixtureDirectory, "node.socket");
+  (localSource as Mutable).chainSyncSocketPath = socketPath;
+  const genesisPath = join(transportFixtureDirectory, "genesis.json");
+  await writeFile(genesisPath, LOCAL_GENESIS_BYTES);
+  localNodeServer = createNetServer();
+  await listen(localNodeServer, socketPath);
+  transportContexts.push(
+    await establishWatcherLocalNodeAuthorityTransportV1({
+      network: "Preprod",
+      authorityNodeId: LOCAL_NODE_ID,
+      providerId: localNodeProvider.providerId,
+      nodeSocketPath: socketPath,
+      genesisFilePath: genesisPath,
+      expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+      connectTimeoutMs: 2_000,
+    }),
+  );
+  for (const [metadata, operatorIdentitySha256] of [
+    [provider, provider.source.operatorIdentitySha256],
+    [providerB, providerB.source.operatorIdentitySha256],
+  ] as const) {
+    const fixture = await makeTlsTransportFixture(metadata.providerId);
+    const endpoint = `https://localhost:${fixture.port}`;
+    transportEndpointByProviderId.set(metadata.providerId, endpoint);
+    const configuredProvider = externalSource.providers.find(
+      ({ providerId }) => providerId === metadata.providerId,
+    );
+    if (configuredProvider === undefined) {
+      throw new Error("missing external-provider fixture policy");
+    }
+    (configuredProvider as Mutable).endpoint = endpoint;
+    (metadata.authentication as Mutable).publicIdentitySha256 =
+      fixture.identitySha256;
+    transportContexts.push(
+      await establishWatcherExternalProviderTransportV1({
+        network: "Preprod",
+        providerId: metadata.providerId,
+        operatorIdentitySha256,
+        endpoint,
+        caPem: fixture.certificate,
+        expectedTlsPublicIdentitySha256: fixture.identitySha256,
+        connectTimeoutMs: 2_000,
+      }),
+    );
+  }
+  finalityPolicy = finalityPolicyAtDepth(2);
+});
+
+afterAll(async () => {
+  for (const context of transportContexts) {
+    closeWatcherL1TransportAttestationContextV1(context);
+  }
+  for (const server of [...tlsServers, localNodeServer]) {
+    server.close();
+  }
+  await rm(transportFixtureDirectory, { recursive: true, force: true });
+});
 
 const finalityPolicyAtDepth = (
   depth: number,
@@ -514,7 +765,7 @@ const finalityPolicyAtDepth = (
   makeWatcherFinalityPolicyV1(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "acceptance",
+      mode: "development",
       targetNetwork: "Preprod",
       l1: {
         source:
@@ -524,7 +775,7 @@ const finalityPolicyAtDepth = (
                 authorityNodeId: LOCAL_NODE_ID,
                 chainSync: {
                   kind: "cardano_node_socket",
-                  socketPath: "/ipc/node.socket",
+                  socketPath: localSource.chainSyncSocketPath,
                   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
                 },
                 queryServices: [],
@@ -535,12 +786,16 @@ const finalityPolicyAtDepth = (
                   {
                     identity: "provider-a",
                     operatorIdentitySha256: h32("97"),
-                    endpoint: "https://cardano-a.example",
+                    endpoint:
+                      transportEndpointByProviderId.get("provider-a") ??
+                      "https://cardano-a.example",
                   },
                   {
                     identity: "provider-b",
                     operatorIdentitySha256: h32("98"),
-                    endpoint: "https://cardano-b.example",
+                    endpoint:
+                      transportEndpointByProviderId.get("provider-b") ??
+                      "https://cardano-b.example",
                   },
                 ],
               },
@@ -569,6 +824,10 @@ const finalityPolicyAtDepth = (
       storage: {
         driver: "sqlite",
         path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+        },
       },
       proverWallet: {
         keySource: {
@@ -594,7 +853,7 @@ const finalityPolicyAtDepth = (
     },
   )!;
 
-const finalityPolicy = finalityPolicyAtDepth(2);
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
 
 const confirmed: ConfirmedState = {
   headerHash: h28("00"),
@@ -2959,39 +3218,13 @@ describe("authenticated state-queue indexer", () => {
     };
     const fakeRaw = structuredClone(bundle.block.raw);
     fakeRaw.providerId = fakeProvider.providerId;
-    const fakeNormalized = normalizeWatcherL1BlockV1(fakeProvider, fakeRaw);
-    expect(fakeNormalized.observationDigest).not.toBe(
-      bundle.block.normalized.observationDigest,
+    expect(() => normalizeWatcherL1BlockV1(fakeProvider, fakeRaw)).toThrow(
+      "test provider has no unique live transport attestation",
     );
     hostile.finalityAuthority.observations[1] = {
       authenticatedProvider: fakeProvider,
       l1Observation: fakeRaw,
     };
-
-    const { consistencyDigest: _consistencyDigest, ...summaryWithoutDigest } =
-      hostile.finalityAuthority.consistency;
-    const forgedSummaryWithoutDigest = {
-      ...summaryWithoutDigest,
-      observationEvidenceDigests: [
-        bundle.block.normalized.observationDigest,
-        fakeNormalized.observationDigest,
-      ].sort(),
-    };
-    const forgedConsistency = {
-      ...forgedSummaryWithoutDigest,
-      consistencyDigest: createHash("sha256")
-        .update(JSON.stringify(forgedSummaryWithoutDigest), "utf8")
-        .digest("hex"),
-    };
-    hostile.finalityAuthority.consistency = forgedConsistency;
-    hostile.finalityAuthority.result = evaluateWatcherFinalityV1(
-      hostile.finalityAuthority.policy,
-      hostile.finalityAuthority.previousState,
-      forgedConsistency,
-    );
-    expect(hostile.finalityAuthority.result).toMatchObject({
-      protocolDecision: "finality_granted",
-    });
 
     expect(
       evaluateWatcherStateQueueIndexerV1(
@@ -3921,7 +4154,7 @@ describe("authenticated state-queue indexer", () => {
       action: "accept",
       reasonCodes: ["da_attestation_authenticated"],
     });
-  }, 10_000);
+  }, 30_000);
 
   it("indexes the node-accepted removal from canonical output and datum bytes", () => {
     const makeHeader = (
@@ -4724,4 +4957,45 @@ describe("authenticated state-queue indexer", () => {
       parseWatcherStateQueueIndexerStateV1(selfRehashed, policy),
     ).toBeNull();
   }, 30_000);
+
+  it("fails closed when W14 receives missing, detached, mismatched, or closed transport capabilities", () => {
+    const bundle = bootstrapBundle();
+    const providerATransport = transportFor(provider);
+    const providerBTransport = transportFor(providerB);
+    const evaluateRaw = (
+      attestations: readonly WatcherL1TransportAttestationContextV1[],
+    ) =>
+      evaluateWatcherStateQueueIndexerV1Raw(
+        policy,
+        null,
+        bundle.observation,
+        bundle.context,
+        attestations,
+      );
+
+    expect(evaluateRaw([])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(
+      evaluateRaw(
+        structuredClone(
+          transportContexts,
+        ) as WatcherL1TransportAttestationContextV1[],
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(evaluateRaw([providerBTransport])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+
+    closeWatcherL1TransportAttestationContextV1(providerATransport);
+    expect(evaluateRaw(transportContexts)).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+  });
 });

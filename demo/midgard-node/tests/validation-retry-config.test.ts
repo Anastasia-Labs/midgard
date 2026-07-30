@@ -4,7 +4,10 @@ import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profi
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NodeConfig } from "@/services/config.js";
+import {
+  CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
+  NodeConfig,
+} from "@/services/config.js";
 
 const loadNodeConfig = () =>
   Effect.runPromise(
@@ -60,6 +63,83 @@ describe("durable admission byte backlog configuration", () => {
     vi.stubEnv("MAX_DURABLE_ADMISSION_BACKLOG_BYTES", "0");
     await expect(loadNodeConfig()).rejects.toThrow(
       "MAX_DURABLE_ADMISSION_BACKLOG_BYTES must be a positive safe integer",
+    );
+  });
+});
+
+describe("submit ingress resource configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to four concurrent requests and one full V1 envelope", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      SUBMIT_INGRESS_MAX_CONCURRENCY: 4,
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
+        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+    });
+  });
+
+  it("accepts bounded operator overrides", async () => {
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "8");
+    vi.stubEnv(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+      String(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes * 2),
+    );
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      SUBMIT_INGRESS_MAX_CONCURRENCY: 8,
+      SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES:
+        MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes * 2,
+    });
+  });
+
+  it("rejects non-positive concurrency and a byte cap below one envelope", async () => {
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "0");
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "SUBMIT_INGRESS_MAX_CONCURRENCY must be a positive safe integer",
+    );
+
+    vi.stubEnv("SUBMIT_INGRESS_MAX_CONCURRENCY", "4");
+    vi.stubEnv(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES",
+      String(MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes - 1),
+    );
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "SUBMIT_INGRESS_MAX_IN_FLIGHT_BYTES must be a safe integer at least",
+    );
+  });
+});
+
+describe("CEK program material store configuration", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("defaults to four full V1 DA envelopes", async () => {
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES:
+        CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 4,
+    });
+  });
+
+  it("accepts a bounded operator override", async () => {
+    vi.stubEnv(
+      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
+      String(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 2),
+    );
+    await expect(loadNodeConfig()).resolves.toMatchObject({
+      CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES:
+        CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES * 2,
+    });
+  });
+
+  it("rejects a cap below one full V1 envelope", async () => {
+    vi.stubEnv(
+      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES",
+      String(CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES - 1),
+    );
+    await expect(loadNodeConfig()).rejects.toThrow(
+      "CEK_PROGRAM_MATERIAL_STORE_MAX_BYTES must be a safe integer at least",
     );
   });
 });
