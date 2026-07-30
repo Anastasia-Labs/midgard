@@ -9,6 +9,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { parseDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
 import { ProviderPayloadError } from "../core/errors.js";
@@ -296,6 +297,7 @@ export const parseProtocolInfo = (
       "midgardNativeTxVersion",
       "currentSlot",
       "consensusProfile",
+      "deploymentMarker",
       "supportedScriptLanguages",
       "codecSupportedScriptLanguages",
       "protocolFeeParameters",
@@ -353,6 +355,17 @@ export const parseProtocolInfo = (
       "consensusProfile does not exactly match the compiled V1 profile",
     );
   }
+  const deploymentMarker = (() => {
+    try {
+      return parseDeploymentMarkerV1(info.deploymentMarker);
+    } catch (cause) {
+      throw new ProviderPayloadError(
+        endpoint,
+        "deploymentMarker must be the exact final DeploymentMarkerV1",
+        cause instanceof Error ? cause.message : String(cause),
+      );
+    }
+  })();
   const expectedNativeTxVersion = 1;
   const midgardNativeTxVersion = requireNumber(
     info.midgardNativeTxVersion,
@@ -429,6 +442,7 @@ export const parseProtocolInfo = (
     ...common,
     apiVersion: 1,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    deploymentMarker,
   };
 };
 

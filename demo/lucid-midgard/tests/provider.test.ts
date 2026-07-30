@@ -1,6 +1,7 @@
 import { decodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_SUPPORTED_SCRIPT_LANGUAGES } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +24,7 @@ const outRef: OutRef = {
   txHash: "11".repeat(32),
   outputIndex: 0,
 };
+const deploymentMarker = makeDeploymentMarkerV1("ab".repeat(32));
 
 const protocolInfo: MidgardProtocolInfo = {
   apiVersion: 1,
@@ -30,6 +32,7 @@ const protocolInfo: MidgardProtocolInfo = {
   midgardNativeTxVersion: 1,
   currentSlot: 123456n,
   consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
@@ -51,6 +54,7 @@ const protocolInfoJson = {
   midgardNativeTxVersion: 1,
   currentSlot: "123456",
   consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  deploymentMarker,
   supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   protocolFeeParameters: {
@@ -82,7 +86,7 @@ const encodedUtxo = (ref: OutRef = outRef) => ({
 const submitTx = {
   txHex:
     "84018c418041804180002020418041804180582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff8341804180418000",
-  txId: "75c4ea27a41fe204572bdf9c2bcc0b21b76ca74eeca5337a5f726065e27d334a",
+  txId: "3a3ecbf11a2b49bc0fb6951dfc33be97b1e9f20442413890236034420cc6c2af",
 };
 
 const submitAdmission = (
@@ -130,6 +134,7 @@ describe("MidgardNodeProvider", () => {
     await expect(provider.getProtocolInfo()).resolves.toMatchObject({
       apiVersion: 1,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      deploymentMarker,
       supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     });
     await expect(
@@ -290,6 +295,7 @@ describe("MidgardNodeProvider", () => {
       minFeeA: 44n,
       minFeeB: 155381n,
       networkId: 0n,
+      deploymentManifestId: deploymentMarker.manifestId,
       maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     });
     expect(provider.diagnostics().protocolInfoSource).toBe("node");
@@ -310,6 +316,13 @@ describe("MidgardNodeProvider", () => {
 
   it("rejects unknown nested protocol-info fields", async () => {
     const unknownKeyProtocolInfos = [
+      {
+        ...protocolInfoJson,
+        deploymentMarker: {
+          ...protocolInfoJson.deploymentMarker,
+          legacyFingerprint: protocolInfoJson.deploymentMarker.manifestId,
+        },
+      },
       {
         ...protocolInfoJson,
         protocolFeeParameters: {
@@ -368,6 +381,29 @@ describe("MidgardNodeProvider", () => {
         }),
       ).rejects.toBeInstanceOf(ProviderPayloadError);
     }
+  });
+
+  it("rejects a missing or malformed final deployment marker", async () => {
+    const { deploymentMarker: _missing, ...missingMarker } = protocolInfoJson;
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () => jsonResponse(missingMarker),
+      }),
+    ).rejects.toThrow(/deploymentMarker/u);
+    await expect(
+      MidgardNodeProvider.create({
+        endpoint: "http://127.0.0.1:3000",
+        fetch: async () =>
+          jsonResponse({
+            ...protocolInfoJson,
+            deploymentMarker: {
+              ...deploymentMarker,
+              schemaVersion: "midgard-deployment-marker-v0",
+            },
+          }),
+      }),
+    ).rejects.toThrow(/deploymentMarker/u);
   });
 
   it("redacts endpoint credentials and query strings in diagnostics", async () => {

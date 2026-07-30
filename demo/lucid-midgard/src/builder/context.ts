@@ -5,6 +5,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   type MidgardConsensusProfileV1,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { DeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {
@@ -70,6 +71,7 @@ export type LucidMidgardConfigSnapshot = {
   readonly midgardNativeTxVersion: number;
   readonly currentSlot: bigint;
   readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly deploymentMarker?: DeploymentMarkerV1;
   readonly supportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly codecSupportedScriptLanguages: readonly ProtocolScriptLanguage[];
   readonly protocolFeeParameters: {
@@ -190,6 +192,9 @@ export const cloneProtocolInfo = (
     ...common,
     apiVersion: 1,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    ...(info.deploymentMarker === undefined
+      ? {}
+      : { deploymentMarker: { ...info.deploymentMarker } }),
   };
 };
 
@@ -442,6 +447,9 @@ export const buildConfigSnapshot = ({
     midgardNativeTxVersion: protocolInfo.midgardNativeTxVersion,
     currentSlot: protocolInfo.currentSlot,
     consensusProfile: protocolInfo.consensusProfile,
+    ...(protocolInfo.deploymentMarker === undefined
+      ? {}
+      : { deploymentMarker: { ...protocolInfo.deploymentMarker } }),
     supportedScriptLanguages: cloneSupportedScriptLanguages(
       protocolInfo.supportedScriptLanguages,
     ),
