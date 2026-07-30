@@ -115,7 +115,9 @@ const makeNativeTx = ({
     networkId: 0n,
   };
   const bodyHash = computeHash32(
-    encodeMidgardNativeTxBodyCompactV1(deriveMidgardNativeTxBodyCompactV1(body)),
+    encodeMidgardNativeTxBodyCompactV1(
+      deriveMidgardNativeTxBodyCompactV1(body),
+    ),
   );
   const witnessSet: MidgardNativeTxWitnessSetCanonicalV1 = {
     addrTxWitsPreimageCbor: encodeByteList([
@@ -195,6 +197,8 @@ describe("validation parallelization", () => {
       txIdOffset: 0,
       cborOffset: 32,
       cborLength: 3,
+      programMaterialOffset: 35,
+      programMaterialLength: 0,
       arrivalSeq: 9n,
       createdAtMs: 1234,
     });

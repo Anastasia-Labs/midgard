@@ -67,7 +67,12 @@ export const WATCHER_PROOF_THREAD_V1_BOUNDS = Object.freeze({
   stepsPerFamily: 512,
   historyEntries: 256,
   auditEntries: 256,
+  transitionEntries: 512,
+  evidenceContainerEntries: 16_384,
   finalityLineageSteps: 2_160,
+  observationsPerFinalityStep: 16,
+  cumulativeEvidenceBytes: 134_217_728,
+  cumulativeEvidenceNodes: 2_000_000,
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
@@ -293,6 +298,8 @@ export type WatcherProofThreadStateV1 = Readonly<{
   pending: WatcherProofThreadPendingV1 | null;
   history: readonly WatcherProofThreadHistoryEntryV1[];
   auditHistory: readonly WatcherProofThreadAuditEntryV1[];
+  /** Append-only accepted transitions; restart derives history/audit/head. */
+  transitionHistory: readonly WatcherProofThreadHistoryEntryV1[];
   stateDigest: string;
 }>;
 
@@ -391,6 +398,88 @@ const exactRecord = (
     }
   }
   return value as PlainRecord;
+};
+
+const evidenceWithinBounds = (value: unknown): boolean => {
+  const pending: { readonly value: unknown; readonly exiting: boolean }[] = [
+    { value, exiting: false },
+  ];
+  const active = new Set<object>();
+  let bytes = typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
+  let nodes = 1;
+  if (
+    bytes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceBytes ||
+    nodes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceNodes
+  ) {
+    return false;
+  }
+  while (pending.length > 0) {
+    const frame = pending.pop()!;
+    const candidate = frame.value;
+    if (frame.exiting) {
+      active.delete(candidate as object);
+      continue;
+    }
+    if (typeof candidate === "object" && candidate !== null) {
+      if (active.has(candidate)) {
+        return false;
+      }
+      active.add(candidate);
+      const prototype = Object.getPrototypeOf(candidate);
+      if (
+        prototype !== Object.prototype &&
+        prototype !== Array.prototype &&
+        prototype !== null
+      ) {
+        return false;
+      }
+      if (
+        Array.isArray(candidate) &&
+        candidate.length >
+          WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries
+      ) {
+        return false;
+      }
+      const children: unknown[] = [];
+      let entryCount = 0;
+      for (const key in candidate) {
+        if (!Object.prototype.hasOwnProperty.call(candidate, key)) {
+          continue;
+        }
+        entryCount += 1;
+        if (
+          entryCount > WATCHER_PROOF_THREAD_V1_BOUNDS.evidenceContainerEntries
+        ) {
+          return false;
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (
+          descriptor === undefined ||
+          descriptor.get !== undefined ||
+          descriptor.set !== undefined
+        ) {
+          return false;
+        }
+        bytes += Buffer.byteLength(key, "utf8");
+        children.push(descriptor.value);
+        nodes += 1;
+        if (typeof descriptor.value === "string") {
+          bytes += Buffer.byteLength(descriptor.value, "utf8");
+        }
+        if (
+          bytes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceBytes ||
+          nodes > WATCHER_PROOF_THREAD_V1_BOUNDS.cumulativeEvidenceNodes
+        ) {
+          return false;
+        }
+      }
+      pending.push({ value: candidate, exiting: true });
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        pending.push({ value: children[index], exiting: false });
+      }
+    }
+  }
+  return true;
 };
 
 const exactArray = (
@@ -902,7 +991,7 @@ export const parseWatcherProofThreadObservationV1 = (
     rollback !== (record.submissionId === null) ||
     rollback !== (record.confirmationId === null) ||
     rollback !== (record.layout === null) ||
-    rollback !== (record.rollbackTargetStateDigest !== null) ||
+    (!rollback && record.rollbackTargetStateDigest !== null) ||
     rollback !== (record.journal === null) ||
     (!rollback && (layout === null || journal === null))
   ) {
@@ -947,6 +1036,7 @@ export const parseWatcherProofThreadObservationV1 = (
 type VerifiedPublicContext = Readonly<{
   context: WatcherProofThreadPublicContextV1;
   block: WatcherNormalizedL1BlockV1;
+  lineageBlocks: readonly WatcherNormalizedL1BlockV1[];
   transaction: WatcherL1TransactionV1 | null;
   sourceStore: WatcherDurableStoreV1;
   store: WatcherDurableStoreV1;
@@ -958,6 +1048,135 @@ type VerifiedPublicContext = Readonly<{
 
 const storeDigest = (store: WatcherDurableStoreV1): string =>
   watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
+
+const canonicalSuccessor = (
+  prior: WatcherProofThreadObservationV1,
+  current: WatcherProofThreadObservationV1,
+  next: WatcherNormalizedL1BlockV1,
+  lineage: readonly WatcherNormalizedL1BlockV1[],
+  allowSameTransaction: boolean,
+): boolean => {
+  if (next.chainPoint.pointDigest === prior.pointDigest) {
+    if (
+      next.chainPoint.blockHash !== prior.blockHash ||
+      next.chainPoint.slot !== prior.slot ||
+      next.chainPoint.blockNo !== prior.blockNo ||
+      current.transactionHash === null
+    ) {
+      return false;
+    }
+    const currentIndex = next.transactions.findIndex(
+      ({ txHash }) => txHash === current.transactionHash,
+    );
+    if (prior.transactionHash === null) {
+      return (
+        prior.transitionKind === "rollback" &&
+        currentIndex >= 0 &&
+        next.transactions[currentIndex]?.transactionIndex ===
+          currentIndex.toString()
+      );
+    }
+    const priorIndex = next.transactions.findIndex(
+      ({ txHash }) => txHash === prior.transactionHash,
+    );
+    return (
+      priorIndex >= 0 &&
+      currentIndex >= 0 &&
+      (currentIndex > priorIndex ||
+        (allowSameTransaction && currentIndex === priorIndex)) &&
+      next.transactions[priorIndex]?.transactionIndex ===
+        priorIndex.toString() &&
+      next.transactions[currentIndex]?.transactionIndex ===
+        currentIndex.toString()
+    );
+  }
+  if (
+    BigInt(next.chainPoint.blockNo) <= BigInt(prior.blockNo) ||
+    BigInt(next.chainPoint.slot) <= BigInt(prior.slot)
+  ) {
+    return false;
+  }
+  const ancestors = new Map<string, WatcherNormalizedL1BlockV1>();
+  for (const candidate of lineage) {
+    const existing = ancestors.get(candidate.chainPoint.blockHash);
+    if (
+      existing !== undefined &&
+      (existing.chainPoint.pointDigest !== candidate.chainPoint.pointDigest ||
+        existing.chainPoint.parentBlockHash !==
+          candidate.chainPoint.parentBlockHash)
+    ) {
+      return false;
+    }
+    ancestors.set(candidate.chainPoint.blockHash, candidate);
+  }
+  let cursor = next;
+  const visited = new Set<string>();
+  while (!visited.has(cursor.chainPoint.blockHash)) {
+    visited.add(cursor.chainPoint.blockHash);
+    const parentHash = cursor.chainPoint.parentBlockHash;
+    if (parentHash === prior.blockHash) {
+      return (
+        BigInt(cursor.chainPoint.blockNo) === BigInt(prior.blockNo) + 1n &&
+        BigInt(cursor.chainPoint.slot) > BigInt(prior.slot)
+      );
+    }
+    if (parentHash === null) {
+      return false;
+    }
+    const parent = ancestors.get(parentHash);
+    if (
+      parent === undefined ||
+      BigInt(cursor.chainPoint.blockNo) !==
+        BigInt(parent.chainPoint.blockNo) + 1n ||
+      BigInt(cursor.chainPoint.slot) <= BigInt(parent.chainPoint.slot)
+    ) {
+      return false;
+    }
+    cursor = parent;
+  }
+  return false;
+};
+
+const durableStoreExtends = (
+  prior: WatcherDurableStoreV1,
+  source: WatcherDurableStoreV1,
+): boolean => {
+  const priorRevision = BigInt(prior.revision);
+  const sourceRevision = BigInt(source.revision);
+  if (
+    sourceRevision < priorRevision ||
+    !sameMarker(source.deploymentMarker, prior.deploymentMarker)
+  ) {
+    return false;
+  }
+  if (sourceRevision === priorRevision) {
+    return same(source, prior);
+  }
+  for (const field of [
+    "l1Observations",
+    "chainPoints",
+    "protocolUtxos",
+    "spentProtocolUtxos",
+    "daProofInputs",
+    "reconstructedStates",
+    "decisions",
+    "faults",
+    "submissions",
+    "confirmations",
+    "retries",
+    "deadlines",
+    "correctionResults",
+  ] as const) {
+    if (
+      !prior[field].every((entry) =>
+        source[field].some((candidate) => same(candidate, entry)),
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 const bodyInputs = (body: CML.TransactionBody): readonly string[] => {
   const inputs = body.inputs();
@@ -1636,6 +1855,9 @@ const parsePublicContext = (
   value: unknown,
   applyTransactionEffects: boolean,
 ): VerifiedPublicContext | null => {
+  if (!evidenceWithinBounds(value)) {
+    return null;
+  }
   const record = exactRecord(value, [
     "schemaVersion",
     "authenticatedProvider",
@@ -1767,6 +1989,7 @@ const parsePublicContext = (
         durableJournal: journal,
       },
       block: replacementBlock,
+      lineageBlocks: Object.freeze([]),
       transaction: null,
       sourceStore,
       store,
@@ -1795,6 +2018,8 @@ const parsePublicContext = (
     finality.lineage.length >
       WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
     !Array.isArray(finality.observations) ||
+    finality.observations.length >
+      WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep ||
     rollbackAuthority !== null
   ) {
     return null;
@@ -1802,6 +2027,7 @@ const parsePublicContext = (
   let block: WatcherNormalizedL1BlockV1;
   let transaction: WatcherL1TransactionV1 | undefined;
   let finalityResult: WatcherFinalityResultV1;
+  let verifiedLineageBlocks: readonly WatcherNormalizedL1BlockV1[] = [];
   try {
     block = normalizeWatcherL1BlockV1(
       record.authenticatedProvider,
@@ -1837,6 +2063,7 @@ const parsePublicContext = (
       consistency: unknown;
       result: unknown;
     }[] = [];
+    const lineageBlocks: WatcherNormalizedL1BlockV1[] = [];
     let replayedState: unknown = null;
     for (const candidate of finality.lineage as readonly unknown[]) {
       const step = exactRecord(candidate, [
@@ -1844,7 +2071,12 @@ const parsePublicContext = (
         "consistency",
         "result",
       ]);
-      if (step === null || !Array.isArray(step.observations)) {
+      if (
+        step === null ||
+        !Array.isArray(step.observations) ||
+        step.observations.length >
+          WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+      ) {
         return null;
       }
       const stepObservations = step.observations.map((observation) => {
@@ -1860,6 +2092,7 @@ const parsePublicContext = (
           authority.l1Observation,
         );
       });
+      lineageBlocks.push(...stepObservations);
       const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
         watcherFinalityConfiguredSourceV1(finalityPolicy),
         stepObservations,
@@ -1907,8 +2140,10 @@ const parsePublicContext = (
       return null;
     }
     transaction = block.transactions.find(
-      ({ txHash }) => txHash === observation.transactionHash,
+      ({ txHash, isValid }) =>
+        isValid && txHash === observation.transactionHash,
     );
+    verifiedLineageBlocks = lineageBlocks;
   } catch {
     return null;
   }
@@ -1918,6 +2153,8 @@ const parsePublicContext = (
       : finalityResult.state?.pending;
   if (
     transaction === undefined ||
+    transaction.transactionIndex !==
+      block.transactions.indexOf(transaction).toString() ||
     block.network !== observation.network ||
     block.chainPoint.chainPointId !== observation.chainPointId ||
     block.chainPoint.pointDigest !== observation.pointDigest ||
@@ -1972,6 +2209,7 @@ const parsePublicContext = (
       durableJournal: journal,
     },
     block,
+    lineageBlocks: Object.freeze(verifiedLineageBlocks),
     transaction,
     sourceStore,
     store,
@@ -2833,6 +3071,9 @@ const verifyLifecycle = (
 const contextStructural = (
   value: unknown,
 ): WatcherProofThreadPublicContextV1 | null => {
+  if (!evidenceWithinBounds(value)) {
+    return null;
+  }
   const record = exactRecord(value, [
     "schemaVersion",
     "authenticatedProvider",
@@ -2880,7 +3121,22 @@ const contextStructural = (
         !Array.isArray(finality.lineage) ||
         finality.lineage.length >
           WATCHER_PROOF_THREAD_V1_BOUNDS.finalityLineageSteps ||
-        !Array.isArray(finality.observations))) ||
+        !Array.isArray(finality.observations) ||
+        finality.observations.length >
+          WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep ||
+        finality.lineage.some((candidate) => {
+          const step = exactRecord(candidate, [
+            "observations",
+            "consistency",
+            "result",
+          ]);
+          return (
+            step === null ||
+            !Array.isArray(step.observations) ||
+            step.observations.length >
+              WATCHER_PROOF_THREAD_V1_BOUNDS.observationsPerFinalityStep
+          );
+        }))) ||
     (record.rollbackAuthority !== null && rollback === null)
   ) {
     return null;
@@ -2953,6 +3209,7 @@ const parseEntryStructural = (
     context === null ||
     (record.journal !== null && journal === null) ||
     !isNullableHex32(record.predecessorStateDigest) ||
+    record.predecessorStateDigest !== observation.predecessorStateDigest ||
     record.transitionKind !== observation.transitionKind ||
     record.confirmationPhase !== observation.confirmationPhase ||
     record.chainPointId !== observation.chainPointId ||
@@ -2961,7 +3218,8 @@ const parseEntryStructural = (
     record.confirmationId !== observation.confirmationId ||
     !isNullableHex32(record.sourceJournalDigest) ||
     !isHex32(record.entryDigest) ||
-    !same(record.journal, observation.journal)
+    (observation.transitionKind !== "rollback" &&
+      !same(record.journal, observation.journal))
   ) {
     return null;
   }
@@ -3154,8 +3412,14 @@ const verifyHistory = (
 };
 
 const stateWithoutDigest = (
-  value: Omit<WatcherProofThreadStateV1, "stateDigest">,
-) => ({ ...value });
+  value:
+    | WatcherProofThreadStateV1
+    | Omit<WatcherProofThreadStateV1, "stateDigest">,
+) => {
+  const { stateDigest: _stateDigest, ...canonical } =
+    value as WatcherProofThreadStateV1;
+  return canonical;
+};
 
 const makeState = (
   policy: WatcherProofThreadPolicyV1,
@@ -3164,6 +3428,7 @@ const makeState = (
   pending: WatcherProofThreadPendingV1 | null,
   history: readonly WatcherProofThreadHistoryEntryV1[],
   auditHistory: readonly WatcherProofThreadAuditEntryV1[],
+  transitionHistory: readonly WatcherProofThreadHistoryEntryV1[],
 ): WatcherProofThreadStateV1 => {
   const canonical = Object.freeze({
     schemaVersion: WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION,
@@ -3177,6 +3442,7 @@ const makeState = (
     pending,
     history: Object.freeze([...history]),
     auditHistory: Object.freeze([...auditHistory]),
+    transitionHistory: Object.freeze([...transitionHistory]),
   });
   return Object.freeze({
     ...canonical,
@@ -3184,10 +3450,60 @@ const makeState = (
   });
 };
 
+const currentStateAnchorEntry = (
+  pointDigest: string,
+  durableStoreDigest: string,
+  history: readonly WatcherProofThreadHistoryEntryV1[],
+  auditHistory: readonly WatcherProofThreadAuditEntryV1[],
+): WatcherProofThreadHistoryEntryV1 | null => {
+  const historyEntry = history.at(-1);
+  if (
+    historyEntry !== undefined &&
+    historyEntry.observation.pointDigest === pointDigest &&
+    historyEntry.observation.durableStoreDigest === durableStoreDigest
+  ) {
+    return historyEntry;
+  }
+  const rollbackAudit = auditHistory.at(-1);
+  return rollbackAudit?.status === "rollback" &&
+    rollbackAudit.entry.observation.pointDigest === pointDigest &&
+    rollbackAudit.entry.observation.durableStoreDigest === durableStoreDigest
+    ? rollbackAudit.entry
+    : null;
+};
+
+const authenticatedStateStore = (
+  state: WatcherProofThreadStateV1,
+): Readonly<{
+  anchor: WatcherProofThreadHistoryEntryV1;
+  store: WatcherDurableStoreV1;
+}> | null => {
+  const anchor = currentStateAnchorEntry(
+    state.pointDigest,
+    state.durableStoreDigest,
+    state.history,
+    state.auditHistory,
+  );
+  if (anchor === null) {
+    return null;
+  }
+  try {
+    const store = parseWatcherDurableStoreV1(anchor.publicContext.durableStore);
+    return storeDigest(store) === state.durableStoreDigest
+      ? Object.freeze({ anchor, store })
+      : null;
+  } catch {
+    return null;
+  }
+};
+
 export const parseWatcherProofThreadStateV1 = (
   value: unknown,
   policyInput: unknown,
 ): WatcherProofThreadStateV1 | null => {
+  if (!evidenceWithinBounds({ policy: policyInput, state: value })) {
+    return null;
+  }
   const policy = parseWatcherProofThreadPolicyV1(policyInput);
   const record = exactRecord(value, [
     "schemaVersion",
@@ -3201,6 +3517,7 @@ export const parseWatcherProofThreadStateV1 = (
     "pending",
     "history",
     "auditHistory",
+    "transitionHistory",
     "stateDigest",
   ]);
   const marker = record === null ? null : parseMarker(record.deploymentMarker);
@@ -3224,18 +3541,29 @@ export const parseWatcherProofThreadStateV1 = (
           record.auditHistory,
           WATCHER_PROOF_THREAD_V1_BOUNDS.auditEntries,
         );
+  const transitionValues =
+    record === null
+      ? null
+      : exactArray(
+          record.transitionHistory,
+          WATCHER_PROOF_THREAD_V1_BOUNDS.transitionEntries,
+        );
   const history = historyValues?.map(parseEntryStructural) ?? null;
   const audit = auditValues?.map(parseAuditStructural) ?? null;
+  const transitions = transitionValues?.map(parseEntryStructural) ?? null;
   if (
     policy === null ||
     record === null ||
     marker === null ||
     historyValues === null ||
     auditValues === null ||
+    transitionValues === null ||
     history === null ||
     audit === null ||
+    transitions === null ||
     history.some((entry) => entry === null) ||
     audit.some((entry) => entry === null) ||
+    transitions.some((entry) => entry === null) ||
     (record.journal !== null && journal === null) ||
     (record.pending !== null && pending === null) ||
     record.schemaVersion !== WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION ||
@@ -3246,61 +3574,21 @@ export const parseWatcherProofThreadStateV1 = (
     !isHex32(record.pointDigest) ||
     !isHex32(record.durableStoreDigest) ||
     !isHex32(record.stateDigest) ||
-    history.length === 0 ||
     history.length > Number(policy.maximumHistoryEntries) ||
+    transitions.length === 0 ||
     new Set(history.map((entry) => entry!.entryDigest)).size !==
       history.length ||
-    new Set(audit.map((entry) => entry!.auditDigest)).size !== audit.length
+    new Set(audit.map((entry) => entry!.auditDigest)).size !== audit.length ||
+    new Set(transitions.map((entry) => entry!.entryDigest)).size !==
+      transitions.length
   ) {
     return null;
   }
   const canonicalHistory = history as WatcherProofThreadHistoryEntryV1[];
   const canonicalAudit = audit as WatcherProofThreadAuditEntryV1[];
-  const replayed = verifyHistory(policy, canonicalHistory);
-  if (
-    replayed === null ||
-    !same(replayed.journal, journal) ||
-    !same(replayed.pending, pending)
-  ) {
-    return null;
-  }
-  for (const auditEntry of canonicalAudit) {
-    if (auditEntry.status === "orphaned") {
-      const context = parsePublicContext(
-        policy,
-        auditEntry.entry.observation,
-        auditEntry.entry.publicContext,
-        auditEntry.entry.confirmationPhase === "pending",
-      );
-      if (
-        context === null ||
-        verifyLifecycle(
-          policy,
-          auditEntry.entry.observation,
-          context,
-          context.sourceJournal,
-        ) === null
-      ) {
-        return null;
-      }
-    } else {
-      const authority = auditEntry.entry.publicContext.rollbackAuthority;
-      if (
-        authority === null ||
-        parseWatcherRollbackResultV1(
-          auditEntry.entry.rollbackResult,
-          authority.context,
-        ) === null
-      ) {
-        return null;
-      }
-    }
-  }
-  const lastObservation =
-    canonicalAudit.at(-1)?.status === "rollback"
-      ? canonicalAudit.at(-1)!.entry.observation
-      : canonicalHistory.at(-1)!.observation;
-  const canonical = Object.freeze({
+  const canonicalTransitions =
+    transitions as WatcherProofThreadHistoryEntryV1[];
+  const claimed = Object.freeze({
     schemaVersion: WATCHER_PROOF_THREAD_STATE_V1_SCHEMA_VERSION,
     policyDigest: policy.policyDigest,
     network: policy.network,
@@ -3312,12 +3600,33 @@ export const parseWatcherProofThreadStateV1 = (
     pending,
     history: Object.freeze(canonicalHistory),
     auditHistory: Object.freeze(canonicalAudit),
+    transitionHistory: Object.freeze(canonicalTransitions),
+    stateDigest: record.stateDigest,
   });
-  return record.pointDigest === lastObservation.pointDigest &&
-    record.durableStoreDigest === lastObservation.durableStoreDigest &&
-    sha256Canonical(stateWithoutDigest(canonical)) === record.stateDigest
-    ? Object.freeze({ ...canonical, stateDigest: record.stateDigest })
-    : null;
+  if (sha256Canonical(stateWithoutDigest(claimed)) !== record.stateDigest) {
+    return null;
+  }
+  let replayedState: WatcherProofThreadStateV1 | null = null;
+  for (const transition of canonicalTransitions) {
+    const replayed = applyWatcherProofThreadTransitionV1(
+      policy,
+      replayedState,
+      transition.observation,
+      transition.publicContext,
+    );
+    if (
+      replayed.action !== "accept" ||
+      replayed.state === null ||
+      !same(replayed.state.transitionHistory.at(-1), transition)
+    ) {
+      return null;
+    }
+    replayedState = replayed.state;
+  }
+  if (replayedState !== null && same(replayedState, claimed)) {
+    return replayedState;
+  }
+  return null;
 };
 
 const resultWithoutDigest = (
@@ -3404,20 +3713,12 @@ const relevantRemovedSetMatchesSuffix = (
   );
 };
 
-export const evaluateWatcherProofThreadIndexerV1 = (
-  policyInput: unknown,
-  previousStateInput: unknown,
-  observationInput: unknown,
+const applyWatcherProofThreadTransitionV1 = (
+  policy: WatcherProofThreadPolicyV1,
+  previous: WatcherProofThreadStateV1 | null,
+  observation: WatcherProofThreadObservationV1,
   publicContextInput: unknown,
 ): WatcherProofThreadResultV1 => {
-  const policy = parseWatcherProofThreadPolicyV1(policyInput);
-  if (policy === null) {
-    return rejected("malformed_policy");
-  }
-  const observation = parseWatcherProofThreadObservationV1(observationInput);
-  if (observation === null) {
-    return rejected("malformed_observation");
-  }
   if (
     observation.policyDigest !== policy.policyDigest ||
     observation.network !== policy.network ||
@@ -3428,13 +3729,6 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       "deployment_mismatch",
       "watcher_proof_thread_binding_rejected",
     );
-  }
-  const previous =
-    previousStateInput === null
-      ? null
-      : parseWatcherProofThreadStateV1(previousStateInput, policy);
-  if (previousStateInput !== null && previous === null) {
-    return rejected("malformed_state", "watcher_proof_thread_state_rejected");
   }
   if (
     observation.predecessorStateDigest !== (previous?.stateDigest ?? null) ||
@@ -3456,6 +3750,13 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       state: previous,
     });
   }
+  if (
+    previous !== null &&
+    previous.transitionHistory.length >=
+      WATCHER_PROOF_THREAD_V1_BOUNDS.transitionEntries
+  ) {
+    return rejected("history_limit_exceeded");
+  }
   if (observation.transitionKind === "rollback") {
     if (previous === null) {
       return rejected("rollback_mismatch");
@@ -3471,11 +3772,14 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       authority === null || authority === undefined
         ? null
         : parseWatcherRollbackResultV1(authority.result, authority.context);
+    const previousAuthenticated = authenticatedStateStore(previous);
     if (
       verified === null ||
       rollback === null ||
       rollback.nextStore === null ||
-      rollback.action === "quarantine_incident"
+      rollback.action === "quarantine_incident" ||
+      previousAuthenticated === null ||
+      !durableStoreExtends(previousAuthenticated.store, verified.sourceStore)
     ) {
       return rejected(
         rollback?.action === "quarantine_incident"
@@ -3522,13 +3826,28 @@ export const evaluateWatcherProofThreadIndexerV1 = (
     const retained = previous.history.slice(0, firstOrphan);
     const orphaned = previous.history.slice(firstOrphan);
     const target = verifyHistory(policy, retained);
+    let targetStore: WatcherDurableStoreV1 | null = null;
+    const targetAnchor = retained.at(-1);
+    try {
+      targetStore =
+        targetAnchor === undefined
+          ? null
+          : parseWatcherDurableStoreV1(targetAnchor.publicContext.durableStore);
+    } catch {
+      return rejected("rollback_mismatch");
+    }
     if (
       target === null ||
       observation.rollbackTargetStateDigest !==
         orphaned[0]!.predecessorStateDigest ||
       !relevantRemovedSetMatchesSuffix(previous, orphaned, rollback) ||
       !same(verified.sourceJournal, previous.journal) ||
-      !same(verified.journal, target.journal)
+      !same(verified.journal, target.journal) ||
+      (targetAnchor !== undefined &&
+        (targetStore === null ||
+          storeDigest(targetStore) !==
+            targetAnchor.observation.durableStoreDigest ||
+          !durableStoreExtends(targetStore, verified.store)))
     ) {
       return rejected("rollback_mismatch");
     }
@@ -3566,6 +3885,7 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       target.pending,
       retained,
       audit,
+      [...previous.transitionHistory, rollbackEntry],
     );
     return makeResult({
       action: "accept",
@@ -3609,6 +3929,42 @@ export const evaluateWatcherProofThreadIndexerV1 = (
       "watcher_proof_thread_binding_rejected",
     );
   }
+  let previousStore: WatcherDurableStoreV1 | null = null;
+  const previousAnchor =
+    previous === null
+      ? null
+      : currentStateAnchorEntry(
+          previous.pointDigest,
+          previous.durableStoreDigest,
+          previous.history,
+          previous.auditHistory,
+        );
+  try {
+    previousStore =
+      previous === null
+        ? null
+        : parseWatcherDurableStoreV1(
+            previousAnchor?.publicContext.durableStore,
+          );
+  } catch {
+    return rejected("stale_state", "watcher_proof_thread_binding_rejected");
+  }
+  if (
+    previous !== null &&
+    (previousStore === null ||
+      previousAnchor === null ||
+      storeDigest(previousStore) !== previous.durableStoreDigest ||
+      !durableStoreExtends(previousStore, verified.sourceStore) ||
+      !canonicalSuccessor(
+        previousAnchor.observation,
+        observation,
+        verified.block,
+        verified.lineageBlocks,
+        promotion,
+      ))
+  ) {
+    return rejected("stale_state", "watcher_proof_thread_binding_rejected");
+  }
   const lifecycle = verifyLifecycle(
     policy,
     observation,
@@ -3642,6 +3998,7 @@ export const evaluateWatcherProofThreadIndexerV1 = (
     pending,
     history,
     previous?.auditHistory ?? [],
+    [...(previous?.transitionHistory ?? []), entry],
   );
   return makeResult({
     action: "accept",
@@ -3655,6 +4012,35 @@ export const evaluateWatcherProofThreadIndexerV1 = (
     alertCodes: Object.freeze([]),
     state,
   });
+};
+
+export const evaluateWatcherProofThreadIndexerV1 = (
+  policyInput: unknown,
+  previousStateInput: unknown,
+  observationInput: unknown,
+  publicContextInput: unknown,
+): WatcherProofThreadResultV1 => {
+  const policy = parseWatcherProofThreadPolicyV1(policyInput);
+  if (policy === null) {
+    return rejected("malformed_policy");
+  }
+  const observation = parseWatcherProofThreadObservationV1(observationInput);
+  if (observation === null) {
+    return rejected("malformed_observation");
+  }
+  const previous =
+    previousStateInput === null
+      ? null
+      : parseWatcherProofThreadStateV1(previousStateInput, policy);
+  if (previousStateInput !== null && previous === null) {
+    return rejected("malformed_state", "watcher_proof_thread_state_rejected");
+  }
+  return applyWatcherProofThreadTransitionV1(
+    policy,
+    previous,
+    observation,
+    publicContextInput,
+  );
 };
 
 export type WatcherProofThreadResultVerificationContextV1 = Readonly<{

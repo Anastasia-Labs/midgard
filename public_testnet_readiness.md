@@ -1,7 +1,8 @@
 # Public Testnet Readiness Checklist
 
-Last reviewed: 2026-07-22 against `tx-validation` HEAD `0aeaa700` plus the
-documentation changes in this worktree.
+Last reviewed: 2026-07-29 against the exact Git tree containing this file.
+The publication commit, reviewed parents, base revision, and final-tree
+evidence identities are recorded in `GOAL_PROGRESS.md` and draft PR #471.
 
 Scope: this checklist reviews the current Midgard repository state for an externally reachable public testnet deployment. It treats Midgard as a production-grade L2, so "public testnet ready" includes adversarial safety, deterministic deployment identity, restart/recovery behavior, public client ergonomics, monitoring, and explicit runbooks. It is stricter than "the local happy path works."
 
@@ -62,8 +63,8 @@ Current decision: no-go for an open public testnet.
 
 - [ ] Define and enforce L1 finality, rollback, and provider-consistency policy.
 
-  - Acceptance: protocol-affecting L1 observations do not finalize local state from first provider visibility alone.
-  - Acceptance: every finalized L1 observation records chain point, provider source, observed depth, and finality threshold.
+  - Acceptance: protocol-affecting L1 observations finalize only after the selected source mode's authority/agreement rule and configured depth are satisfied.
+  - Acceptance: every finalized L1 observation records chain point, source mode, chain-authority/provider identity, observed depth, and finality threshold.
   - Acceptance: rollback before threshold quarantines pending local state; rollback after local finalization is treated as an incident with an explicit recovery path.
 
 - [ ] Define public key custody and admin authority model.
@@ -325,9 +326,17 @@ These are the main code-backed reasons for the no-go decision. They should be ke
 
 ## L1 Finality, Rollbacks, And Provider Consistency
 
+- [ ] Select exactly one explicit L1 source mode: `local_node` or `external_providers`.
+  - Acceptance: configuration never infers a mode from endpoint count and never falls back or mixes authority models after startup.
+  - Acceptance (`local_node`): one watcher-operated Cardano full node is the chain-consensus authority and chain-sync supplies roll-forward and rollback events.
+  - Acceptance (`local_node`): Ogmios, Kupo/Kupmios, and db-sync may query the same local node, but never count as independent providers or create a quorum requirement.
+  - Acceptance (`local_node`): every query/index result is proven to use the authority node's network and a compatible canonical chain point; stale or mismatched results fail closed.
+  - Acceptance (`external_providers`): at least two operationally independent provider operators/endpoints agree on network and compatible chain points before any protocol decision.
+  - Acceptance (`external_providers`): disagreement or loss of independence quarantines protocol decisions.
+  - Acceptance (both modes): canonical rollbacks propagate through every watcher index, and accepted state is decoded deterministically from actual node-derived transaction/output/datum bytes without replaying Cardano validator semantics.
 - [ ] Define and enforce an L1 finality policy for every protocol-affecting L1 transaction.
-  - Acceptance: commit, merge, deposit, withdrawal, reserve/payout, scheduler, operator lifecycle, proof, and initialization flows do not locally finalize from first provider visibility alone.
-  - Acceptance: each finalized L1 observation records tx hash, block hash, slot, block number if available, provider source, observed depth, and finality threshold.
+  - Acceptance: commit, merge, deposit, withdrawal, reserve/payout, scheduler, operator lifecycle, proof, and initialization flows finalize only after the selected source mode's authority/agreement rule and configured depth are satisfied.
+  - Acceptance: each finalized L1 observation records tx hash, block hash, slot, block number if available, source mode, chain-authority/provider identity, observed depth, and finality threshold.
   - Acceptance: reorg below the threshold leaves local state pending or quarantined; reorg after local finalization is detected as an incident and has an explicit recovery runbook.
   - Acceptance: public-testnet config states finality depth/settlement assumptions and tests cover rollback before and after the threshold.
 - [ ] Make deposit and withdrawal ingestion rollback-aware.
@@ -335,11 +344,12 @@ These are the main code-backed reasons for the no-go decision. They should be ke
   - Acceptance: commit-time event barriers only accept events visible through a stable indexed tip, not merely present in the current UTxO query.
   - Acceptance: if a previously ingested but unfinalized event disappears or moves due to rollback/indexer correction, the node invalidates or quarantines it before projection/finalization.
   - Acceptance: tests simulate event appearance, rollback disappearance, reappearance at a different chain point, and conflicting same-event payloads.
-- [ ] Add provider consistency gates for public-testnet L1 reads and confirmations.
-  - Acceptance: protocol decisions never mix Blockfrost, Koios, Kupo, Ogmios, or Cardano-node data unless sources are proven to describe the same network and compatible chain point.
-  - Acceptance: fallback providers are allowed only for explicitly classified read-only diagnostics or after same-tip validation; state-changing decisions fail closed on inconsistent provider views.
+- [ ] Add source-mode consistency gates for public-testnet L1 reads and confirmations.
+  - Acceptance: in `local_node`, Cardano-node chain-sync is authoritative and Kupo, Ogmios, or db-sync results are accepted only after same-network, compatible-canonical-chain-point validation against that node.
+  - Acceptance: in `external_providers`, protocol decisions require at least two operationally independent provider operators/endpoints to agree on network and compatible chain points.
+  - Acceptance: fallback or diagnostic sources never silently change the configured authority model; state-changing decisions fail closed on stale, mismatched, or disagreeing views.
   - Acceptance: Kupo/Ogmios readiness includes network id, era, tip hash/slot, Kupo indexed-through point, Ogmios node tip, and maximum allowed drift.
-  - Acceptance: logs/DB records include provider source for each L1 observation used to finalize or project protocol state.
+  - Acceptance: logs/DB records include source mode and exact chain-authority/provider identity for each L1 observation used to finalize or project protocol state.
 - [ ] Define a public-testnet slot/time authority and clock-skew policy.
   - Acceptance: public chain-window construction uses provider/Cardano-node chain time as the authority, with local wall clock only after bounded skew validation.
   - Acceptance: startup/readiness fails or degrades when local clock skew exceeds the configured bound or when slot/time conversion is unavailable for the active network.

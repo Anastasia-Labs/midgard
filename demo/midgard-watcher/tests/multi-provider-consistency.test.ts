@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
-
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
+  makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -97,25 +97,40 @@ const localConfig = (
   queryServices,
 });
 
-const transaction = (bodyHex: string) => ({
-  txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-  body: {
-    bytesHex: bodyHex,
-    sha256: createHash("sha256")
-      .update(Buffer.from(bodyHex, "hex"))
-      .digest("hex"),
-  },
-  utxos: [],
-  scripts: [],
-  datums: [],
-  redeemers: [],
-});
+const transaction = (bodySeedHex: string) => {
+  const body = CML.TransactionBody.new(
+    CML.TransactionInputList.new(),
+    CML.TransactionOutputList.new(),
+    BigInt(`0x${bodySeedHex}`),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
+  const bodyHex = body.to_canonical_cbor_hex();
+  return {
+    txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
+    fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction.to_canonical_cbor_hex(),
+    ),
+    body: makeWatcherL1PublicBytesV1(bodyHex),
+    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    utxos: [],
+    scripts: [],
+    datums: [],
+    redeemers: [],
+  };
+};
 
 const observation = (
   providerId: string,
   identityByte: string,
   options: {
     blockHash?: string;
+    parentBlockHash?: string | null;
     slot?: string;
     blockNo?: string;
     depth?: string;
@@ -137,6 +152,7 @@ const observation = (
       providerId,
       chainPoint: {
         blockHash: options.blockHash ?? "11".repeat(32),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth: options.depth ?? "15",
@@ -152,6 +168,7 @@ const localObservation = (
   options: {
     authorityNodeId?: string;
     blockHash?: string;
+    parentBlockHash?: string | null;
     slot?: string;
     blockNo?: string;
     depth?: string;
@@ -172,6 +189,7 @@ const localObservation = (
       providerId: options.providerId ?? surface.replace("_", "-"),
       chainPoint: {
         blockHash: options.blockHash ?? "11".repeat(32),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth: options.depth ?? "15",
@@ -717,6 +735,42 @@ describe("fail-closed multi-provider consistency", () => {
     ).toBe(true);
   });
 
+  it("rejects a normalized transaction whose derived validity is spoofed", () => {
+    const canonical = observation("provider-a", "aa", { bodyHex: "01" });
+    const transaction = canonical.transactions[0]!;
+    expect(transaction.isValid).toBe(true);
+
+    const spoofed = {
+      ...canonical,
+      transactions: [
+        {
+          ...transaction,
+          isValid: false,
+        },
+      ],
+    };
+    const result = evaluateWatcherMultiProviderConsistencyV1(externalConfig(), [
+      spoofed,
+      observation("provider-b", "bb", { bodyHex: "01" }),
+    ]);
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      independentProviderCount: 1,
+      rejectedObservationCount: 1,
+      reasonCodes: [
+        "insufficient_independent_providers",
+        "malformed_observation",
+      ],
+      alertCodes: [
+        "watcher_provider_quorum_unavailable",
+        "watcher_provider_observation_rejected",
+      ],
+      agreement: null,
+    });
+  });
+
   it("quarantines malformed, unknown, and foreign input at a secret-safe boundary", () => {
     const secret = "https://operator:secret@example.invalid";
     const malformed = {
@@ -764,10 +818,7 @@ describe("fail-closed multi-provider consistency", () => {
       status: "quarantined",
       protocolDecision: "quarantined",
       sourceMode: null,
-      reasonCodes: [
-        "insufficient_independent_providers",
-        "invalid_configured_network",
-      ],
+      reasonCodes: ["invalid_configured_network"],
     });
     expect(
       JSON.stringify([
@@ -777,6 +828,31 @@ describe("fail-closed multi-provider consistency", () => {
         missingDiscriminator,
       ]),
     ).not.toContain(secret);
+  });
+
+  it("never emits provider-quorum findings for a malformed local-node configuration", () => {
+    const malformedLocal = {
+      ...localConfig(),
+      genesisIdentitySha256: "not-a-digest",
+    };
+    const result = evaluateWatcherMultiProviderConsistencyV1(
+      malformedLocal,
+      [],
+    );
+
+    expect(result).toMatchObject({
+      status: "quarantined",
+      protocolDecision: "quarantined",
+      sourceMode: "local_node",
+      reasonCodes: ["invalid_configured_network"],
+      alertCodes: ["watcher_provider_observation_rejected"],
+    });
+    expect(result.reasonCodes).not.toContain(
+      "insufficient_independent_providers",
+    );
+    expect(result.alertCodes).not.toContain(
+      "watcher_provider_quorum_unavailable",
+    );
   });
 
   it("quarantines a hostile configured-source proxy without exposing its error", () => {
@@ -799,10 +875,7 @@ describe("fail-closed multi-provider consistency", () => {
       status: "quarantined",
       protocolDecision: "quarantined",
       sourceMode: null,
-      reasonCodes: [
-        "insufficient_independent_providers",
-        "invalid_configured_network",
-      ],
+      reasonCodes: ["invalid_configured_network"],
       agreement: null,
     });
     expect(JSON.stringify(result)).not.toContain(secret);

@@ -1,3 +1,4 @@
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
   computeMidgardNativeTxIdV1,
@@ -29,6 +30,9 @@ const phaseAConfig = {
   concurrency: 1,
   strictnessProfile: "phase1_midgard",
 } as const;
+const emptyProgramMaterialSidecar = encodeMidgardCekProgramMaterialSidecarV1(
+  [],
+);
 
 const makePubKeyOutput = (
   keyHash: CML.Ed25519KeyHash,
@@ -54,6 +58,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
+      programMaterialSidecarCbor: emptyProgramMaterialSidecar,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     };
@@ -114,7 +119,9 @@ describe("phase-a converted fixture signature bridge", () => {
     const vkeyWitnesses = CML.VkeywitnessList.new();
     vkeyWitnesses.add(
       CML.make_vkey_witness(
-        CML.TransactionHash.from_raw_bytes(computeMidgardNativeTxIdV1(nativeTx)),
+        CML.TransactionHash.from_raw_bytes(
+          computeMidgardNativeTxIdV1(nativeTx),
+        ),
         signerKey,
       ),
     );
@@ -133,6 +140,7 @@ describe("phase-a converted fixture signature bridge", () => {
     const queued: QueuedTx = {
       txId,
       txCbor: nativeBytes,
+      programMaterialSidecarCbor: emptyProgramMaterialSidecar,
       arrivalSeq: 0n,
       createdAt: new Date(0),
     };

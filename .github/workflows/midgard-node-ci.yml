@@ -12,16 +12,15 @@ on:
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
       - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
       - "demo/midgard-validation/**"
       - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/.nvmrc"
       - "demo/patches/**"
-      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "scripts/ci/**"
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
@@ -34,16 +33,15 @@ on:
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
       - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
       - "demo/midgard-validation/**"
       - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
       - "demo/package.json"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
       - "demo/.nvmrc"
       - "demo/patches/**"
-      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "scripts/ci/**"
       - ".github/workflows/midgard-node-ci.yml"
 
@@ -117,7 +115,7 @@ jobs:
       - name: Build, typecheck, lint, format-check, and test Midgard watcher scaffold
         run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test
       - name: Verify canonical watcher dependency map
-        run: pnpm --dir demo run watcher:dependency-map:verify
+        run: pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard
@@ -142,10 +140,9 @@ jobs:
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-gate-config
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
-          pnpm --dir demo/midgard-node run test:phase5:distribution-verifier
           node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs demo/midgard-node/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node/devnet/phase4-process/tests/custom-chain-config.test.mjs
-      - name: Verify Phase 5 real multi-process DA path
+      - name: Verify canonical V1 multi-process DA path
         env:
           MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"
           NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm --dir demo/midgard-node run test:da-phase5-e2e
+        run: pnpm --dir demo/midgard-node run test:da-canonical-v1-e2e

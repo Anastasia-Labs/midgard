@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
@@ -20,6 +21,7 @@ import {
   type WatcherFinalityStateV1,
 } from "../src/finality-engine.js";
 import {
+  makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -193,22 +195,37 @@ const localNodeProvider = (
   },
 });
 
-const transaction = (bodyHex: string) => ({
-  txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
-  body: {
-    bytesHex: bodyHex,
-    sha256: createHash("sha256")
-      .update(Buffer.from(bodyHex, "hex"))
-      .digest("hex"),
-  },
-  utxos: [],
-  scripts: [],
-  datums: [],
-  redeemers: [],
-});
+const transaction = (bodySeedHex: string) => {
+  const body = CML.TransactionBody.new(
+    CML.TransactionInputList.new(),
+    CML.TransactionOutputList.new(),
+    BigInt(`0x${bodySeedHex}`),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
+  const bodyHex = body.to_canonical_cbor_hex();
+  return {
+    txHash: computeHash32(Buffer.from(bodyHex, "hex")).toString("hex"),
+    fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction.to_canonical_cbor_hex(),
+    ),
+    body: makeWatcherL1PublicBytesV1(bodyHex),
+    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    utxos: [],
+    scripts: [],
+    datums: [],
+    redeemers: [],
+  };
+};
 
 type ObservationOptions = Readonly<{
   blockHash?: string;
+  parentBlockHash?: string | null;
   slot?: string;
   blockNo?: string;
   depth?: string;
@@ -233,6 +250,7 @@ const observation = (
       providerId,
       chainPoint: {
         blockHash: options.blockHash ?? hex32("aa"),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth: options.depth ?? "0",
@@ -274,6 +292,7 @@ const localAgreement = (
           : `cardano-node-a-${surface}`,
       chainPoint: {
         blockHash: options.blockHash ?? hex32("aa"),
+        parentBlockHash: options.parentBlockHash ?? null,
         slot: options.slot ?? "1000",
         blockNo: options.blockNo ?? "100",
         depth,

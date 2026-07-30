@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   encodeWatcherNormalizedL1BlockV1,
+  isWatcherL1AdapterNormalizedBlockV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -239,6 +240,62 @@ const isNatural = (value: unknown): value is string =>
 const sameBytes = (left: Buffer, right: Buffer): boolean =>
   left.length === right.length && left.equals(right);
 
+const rawTransactionsFromNormalized = (
+  value: unknown,
+): readonly PlainRecord[] | null => {
+  const inputs = exactObservationArray(value);
+  if (inputs === null) {
+    return null;
+  }
+  const transactions: PlainRecord[] = [];
+  for (const input of inputs) {
+    const withoutIndex = exactPlainRecord(input, [
+      "txHash",
+      "isValid",
+      "fullTransaction",
+      "body",
+      "witnessSet",
+      "utxos",
+      "scripts",
+      "datums",
+      "redeemers",
+    ]);
+    const withIndex =
+      withoutIndex === null
+        ? exactPlainRecord(input, [
+            "txHash",
+            "transactionIndex",
+            "isValid",
+            "fullTransaction",
+            "body",
+            "witnessSet",
+            "utxos",
+            "scripts",
+            "datums",
+            "redeemers",
+          ])
+        : null;
+    const transaction = withoutIndex ?? withIndex;
+    if (transaction === null || typeof transaction.isValid !== "boolean") {
+      return null;
+    }
+    transactions.push({
+      txHash: transaction.txHash,
+      ...(withIndex === null
+        ? {}
+        : { transactionIndex: transaction.transactionIndex }),
+      fullTransaction: transaction.fullTransaction,
+      body: transaction.body,
+      witnessSet: transaction.witnessSet,
+      utxos: transaction.utxos,
+      scripts: transaction.scripts,
+      datums: transaction.datums,
+      redeemers: transaction.redeemers,
+    });
+  }
+  return transactions;
+};
+
 /**
  * Re-validates an adapter result at this trust boundary. Re-normalization
  * prevents callers from forging provider, point, content, or observation
@@ -247,6 +304,9 @@ const sameBytes = (left: Buffer, right: Buffer): boolean =>
 const parseNormalizedObservation = (
   value: unknown,
 ): WatcherNormalizedL1BlockV1 | null => {
+  if (isWatcherL1AdapterNormalizedBlockV1(value)) {
+    return value;
+  }
   const block = exactPlainRecord(value, [
     "schemaVersion",
     "network",
@@ -269,6 +329,7 @@ const parseNormalizedObservation = (
     "chainPointId",
     "pointDigest",
     "blockHash",
+    "parentBlockHash",
     "slot",
     "blockNo",
     "depth",
@@ -278,6 +339,7 @@ const parseNormalizedObservation = (
     !isHex32(point.chainPointId) ||
     !isHex32(point.pointDigest) ||
     !isHex32(point.blockHash) ||
+    (point.parentBlockHash !== null && !isHex32(point.parentBlockHash)) ||
     !isNatural(point.slot) ||
     !isNatural(point.blockNo) ||
     !isNatural(point.depth)
@@ -298,6 +360,10 @@ const parseNormalizedObservation = (
   ) {
     return null;
   }
+  const rawTransactions = rawTransactionsFromNormalized(block.transactions);
+  if (rawTransactions === null) {
+    return null;
+  }
 
   const normalized = normalizeWatcherL1BlockV1(block.provider, {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -305,11 +371,12 @@ const parseNormalizedObservation = (
     providerId: provider.providerId,
     chainPoint: {
       blockHash: point.blockHash,
+      parentBlockHash: point.parentBlockHash,
       slot: point.slot,
       blockNo: point.blockNo,
       depth: point.depth,
     },
-    transactions: block.transactions,
+    transactions: rawTransactions,
   });
   if (
     normalized.chainPoint.chainPointId !== point.chainPointId ||
@@ -378,15 +445,14 @@ const makeResult = (
 const rejectedBoundaryResult = (
   configuredSource: WatcherL1SourceConsistencyConfigV1 | null,
   reason: WatcherMultiProviderReasonCodeV1,
+  recognizedSourceMode: WatcherL1SourceModeV1 | null = configuredSource?.sourceMode ??
+    null,
 ): WatcherMultiProviderConsistencyV1 => {
   const reasons = new Set<WatcherMultiProviderReasonCodeV1>([reason]);
   const alerts = new Set<WatcherMultiProviderAlertCodeV1>([
     "watcher_provider_observation_rejected",
   ]);
-  if (
-    configuredSource === null ||
-    configuredSource.sourceMode === "external_providers"
-  ) {
+  if (recognizedSourceMode === "external_providers") {
     reasons.add("insufficient_independent_providers");
     alerts.add("watcher_provider_quorum_unavailable");
   }
@@ -394,7 +460,7 @@ const rejectedBoundaryResult = (
     schemaVersion: WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
     status: "quarantined",
     protocolDecision: "quarantined",
-    sourceMode: configuredSource?.sourceMode ?? null,
+    sourceMode: recognizedSourceMode,
     configuredNetwork: configuredSource?.network ?? null,
     configuredSourceDigest:
       configuredSource === null ? null : sha256Canonical(configuredSource),
@@ -418,6 +484,26 @@ const rejectedBoundaryResult = (
     rejectedObservationCount: 1,
     agreement: null,
   });
+};
+
+const recognizedConfiguredSourceMode = (
+  input: unknown,
+): WatcherL1SourceModeV1 | null => {
+  try {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return null;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(input, "sourceMode");
+    return descriptor?.enumerable === true &&
+      descriptor.get === undefined &&
+      descriptor.set === undefined &&
+      (descriptor.value === "local_node" ||
+        descriptor.value === "external_providers")
+      ? descriptor.value
+      : null;
+  } catch {
+    return null;
+  }
 };
 
 const parseConfiguredSource = (
@@ -549,14 +635,23 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   configuredSourceInput: unknown,
   observationsInput: unknown,
 ): WatcherMultiProviderConsistencyV1 => {
+  const sourceMode = recognizedConfiguredSourceMode(configuredSourceInput);
   let configuredSource: WatcherL1SourceConsistencyConfigV1 | null;
   try {
     configuredSource = parseConfiguredSource(configuredSourceInput);
   } catch {
-    return rejectedBoundaryResult(null, "invalid_configured_network");
+    return rejectedBoundaryResult(
+      null,
+      "invalid_configured_network",
+      sourceMode,
+    );
   }
   if (configuredSource === null) {
-    return rejectedBoundaryResult(null, "invalid_configured_network");
+    return rejectedBoundaryResult(
+      null,
+      "invalid_configured_network",
+      sourceMode,
+    );
   }
   const configuredNetwork = configuredSource.network;
 

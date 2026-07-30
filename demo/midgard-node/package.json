@@ -100,6 +100,7 @@
     "test:tx-prep:emulator": "export NODE_ENV='emulator' && vitest run tests/initialization-emulator.test.ts tests/operator-lifecycle-emulator.test.ts tests/deposit-flow-emulator.test.ts tests/reserve-payout-builders.test.ts --reporter=basic --disable-console-intercept",
     "test:e2e-reliability": "export NODE_ENV='emulator' && vitest run tests/transactions-utils.test.ts tests/commit-end-time.test.ts tests/scheduler-refresh.test.ts tests/da-payload.test.ts tests/e2e-da-gates.test.ts tests/e2e-service-supervisor.test.ts tests/e2e-runner.test.ts tests/e2e-summary.test.ts --reporter=basic --disable-console-intercept",
     "accept:phase4:pipelined-process": "node dist/index.js e2e-pipelined-commit-process-acceptance",
+    "test:da-canonical-v1-e2e": "export NODE_ENV='emulator' && export MIDGARD_RUN_DA_PHASE5_JOINED_E2E='1' && vitest run tests/da-hardening.test.ts tests/da-payload-libp2p-producer.test.ts tests/da-multi-peer-integration.test.ts tests/da-publication-reconciler-e2e.test.ts --reporter=default",
     "test": "pnpm run test:phase4:pipelined-process-summary-verifier && export NODE_ENV='emulator' && vitest run -- --reporter=basic --disable-console-intercept"
   },
   "keywords": [

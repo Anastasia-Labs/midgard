@@ -14,6 +14,7 @@
     "test:tx-prep:emulator": "pnpm --filter midgard-node run test:tx-prep:emulator && pnpm --filter @al-ft/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
     "test:tx-prep:local": "pnpm run test:tx-prep:sdk && pnpm run test:tx-prep:node && pnpm run test:tx-prep:emulator",
     "watcher:dependency-map:verify": "node scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+    "watcher:dependency-map:test": "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
     "test": "pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",
     "clean": "pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules",
     "install-sdk": "pnpm --filter midgard-sdk install",

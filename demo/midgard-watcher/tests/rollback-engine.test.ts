@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
@@ -23,6 +24,7 @@ import {
 } from "../src/finality-engine.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
+  makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -208,11 +210,40 @@ const localNodeProvider = () => ({
 
 type Point = Readonly<{
   blockHash: string;
+  parentBlockHash?: string | null;
   slot: string;
   blockNo: string;
   depth: string;
   bodyHex?: string;
 }>;
+
+const transaction = (seedHex: string) => {
+  const body = CML.TransactionBody.new(
+    CML.TransactionInputList.new(),
+    CML.TransactionOutputList.new(),
+    BigInt(`0x${seedHex}`),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
+  const bodyBytes = body.to_canonical_cbor_hex();
+  return {
+    txHash: computeHash32(Buffer.from(bodyBytes, "hex")).toString("hex"),
+    fullTransaction: makeWatcherL1PublicBytesV1(
+      fullTransaction.to_canonical_cbor_hex(),
+    ),
+    body: makeWatcherL1PublicBytesV1(bodyBytes),
+    witnessSet: makeWatcherL1PublicBytesV1(witnessSet.to_canonical_cbor_hex()),
+    utxos: [],
+    scripts: [],
+    datums: [],
+    redeemers: [],
+  };
+};
 
 const observation = (
   providerId: string,
@@ -225,30 +256,13 @@ const observation = (
     providerId,
     chainPoint: {
       blockHash: point.blockHash,
+      parentBlockHash: point.parentBlockHash ?? null,
       slot: point.slot,
       blockNo: point.blockNo,
       depth: point.depth,
     },
     transactions:
-      point.bodyHex === undefined
-        ? []
-        : [
-            {
-              txHash: computeHash32(Buffer.from(point.bodyHex, "hex")).toString(
-                "hex",
-              ),
-              body: {
-                bytesHex: point.bodyHex,
-                sha256: createHash("sha256")
-                  .update(Buffer.from(point.bodyHex, "hex"))
-                  .digest("hex"),
-              },
-              utxos: [],
-              scripts: [],
-              datums: [],
-              redeemers: [],
-            },
-          ],
+      point.bodyHex === undefined ? [] : [transaction(point.bodyHex)],
   });
 
 const localObservation = (point: Point): WatcherNormalizedL1BlockV1 =>
@@ -258,30 +272,13 @@ const localObservation = (point: Point): WatcherNormalizedL1BlockV1 =>
     providerId: "cardano-node-a",
     chainPoint: {
       blockHash: point.blockHash,
+      parentBlockHash: point.parentBlockHash ?? null,
       slot: point.slot,
       blockNo: point.blockNo,
       depth: point.depth,
     },
     transactions:
-      point.bodyHex === undefined
-        ? []
-        : [
-            {
-              txHash: computeHash32(Buffer.from(point.bodyHex, "hex")).toString(
-                "hex",
-              ),
-              body: {
-                bytesHex: point.bodyHex,
-                sha256: createHash("sha256")
-                  .update(Buffer.from(point.bodyHex, "hex"))
-                  .digest("hex"),
-              },
-              utxos: [],
-              scripts: [],
-              datums: [],
-              redeemers: [],
-            },
-          ],
+      point.bodyHex === undefined ? [] : [transaction(point.bodyHex)],
   });
 
 const localAgreement = (point: Point) =>

@@ -50,7 +50,9 @@ import {
 } from "./finality-engine.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
+  makeWatcherL1NormalizationSessionV1,
   normalizeWatcherL1BlockV1,
+  type WatcherL1NormalizationSessionV1,
   type WatcherL1TransactionV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
@@ -85,6 +87,7 @@ export const WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS = Object.freeze({
   deploymentTrustRoots: 16,
   originAuthorities: 256,
   finalityLineageSteps: 2_160,
+  evidenceContainerEntries: 16_384,
   cumulativeEvidenceBytes: 134_217_728,
   cumulativeEvidenceNodes: 2_000_000,
   cumulativeFinalitySteps: 2_162,
@@ -1361,12 +1364,14 @@ type EvidenceBudget = {
   bytes: number;
   nodes: number;
   finalitySteps: number;
+  normalizationSession: WatcherL1NormalizationSessionV1;
 };
 
 const newEvidenceBudget = (): EvidenceBudget => ({
   bytes: 0,
   nodes: 0,
   finalitySteps: 0,
+  normalizationSession: makeWatcherL1NormalizationSessionV1(),
 });
 
 const consumeRawEvidence = (
@@ -1376,12 +1381,22 @@ const consumeRawEvidence = (
 ): void => {
   const pending: unknown[] = [value];
   const visited = new Set<object>();
+  const rootBytes =
+    typeof value === "string" ? Buffer.byteLength(value, "utf8") : 0;
+  if (
+    budget.nodes >=
+      WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceNodes ||
+    rootBytes >
+      WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceBytes -
+        budget.bytes
+  ) {
+    throw new Error("cumulative W10 evidence budget exceeded");
+  }
+  budget.nodes += 1;
+  budget.bytes += rootBytes;
   while (pending.length > 0) {
     const candidate = pending.pop();
-    budget.nodes += 1;
-    if (typeof candidate === "string") {
-      budget.bytes += Buffer.byteLength(candidate, "utf8");
-    } else if (typeof candidate === "object" && candidate !== null) {
+    if (typeof candidate === "object" && candidate !== null) {
       if (visited.has(candidate)) {
         if (rejectAliases) {
           throw new Error("aliased W10 evidence rejected");
@@ -1397,9 +1412,24 @@ const consumeRawEvidence = (
       ) {
         throw new Error("unsafe W10 evidence rejected");
       }
-      for (const key of Reflect.ownKeys(candidate)) {
-        if (typeof key !== "string") {
-          throw new Error("unsafe W10 evidence key rejected");
+      if (
+        Array.isArray(candidate) &&
+        candidate.length >
+          WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.evidenceContainerEntries
+      ) {
+        throw new Error("cumulative W10 evidence budget exceeded");
+      }
+      let childCount = 0;
+      for (const key in candidate) {
+        if (!Object.hasOwn(candidate, key)) {
+          continue;
+        }
+        childCount += 1;
+        if (
+          childCount >
+          WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.evidenceContainerEntries
+        ) {
+          throw new Error("cumulative W10 evidence budget exceeded");
         }
         const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
         if (
@@ -1409,19 +1439,35 @@ const consumeRawEvidence = (
         ) {
           throw new Error("unsafe W10 evidence descriptor rejected");
         }
-        budget.bytes += Buffer.byteLength(key, "utf8");
-        if (key !== "length") {
-          pending.push(descriptor.value);
+        const keyBytes = Buffer.byteLength(key, "utf8");
+        if (
+          keyBytes >
+          WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceBytes -
+            budget.bytes
+        ) {
+          throw new Error("cumulative W10 evidence budget exceeded");
         }
+        budget.bytes += keyBytes;
+        if (
+          budget.nodes >=
+          WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceNodes
+        ) {
+          throw new Error("cumulative W10 evidence budget exceeded");
+        }
+        budget.nodes += 1;
+        if (typeof descriptor.value === "string") {
+          const valueBytes = Buffer.byteLength(descriptor.value, "utf8");
+          if (
+            valueBytes >
+            WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceBytes -
+              budget.bytes
+          ) {
+            throw new Error("cumulative W10 evidence budget exceeded");
+          }
+          budget.bytes += valueBytes;
+        }
+        pending.push(descriptor.value);
       }
-    }
-    if (
-      budget.bytes >
-        WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceBytes ||
-      budget.nodes >
-        WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.cumulativeEvidenceNodes
-    ) {
-      throw new Error("cumulative W10 evidence budget exceeded");
     }
   }
 };
@@ -1433,7 +1479,11 @@ const normalizeBudgetedL1Block = (
 ): WatcherNormalizedL1BlockV1 => {
   consumeRawEvidence(budget, authenticatedProvider, true);
   consumeRawEvidence(budget, observation, true);
-  return normalizeWatcherL1BlockV1(authenticatedProvider, observation);
+  return normalizeWatcherL1BlockV1(
+    authenticatedProvider,
+    observation,
+    budget.normalizationSession,
+  );
 };
 
 const consumeFinalityStep = (budget: EvidenceBudget): void => {
@@ -1449,16 +1499,12 @@ const consumeFinalityStep = (budget: EvidenceBudget): void => {
 const hasAuthenticatedBlockSequence = (
   block: WatcherNormalizedL1BlockV1,
 ): boolean =>
-  block.transactions.length > 0 &&
   block.transactions.every(
-    (transaction, index) =>
-      transaction.transactionIndex === index.toString() &&
-      transaction.blockParentHash !== undefined,
+    (transaction, index) => transaction.transactionIndex === index.toString(),
   );
 
-const blockParentHash = (
-  block: WatcherNormalizedL1BlockV1,
-): string | null | undefined => block.transactions[0]?.blockParentHash;
+const blockParentHash = (block: WatcherNormalizedL1BlockV1): string | null =>
+  block.chainPoint.parentBlockHash;
 
 const storeDigest = (store: WatcherDurableStoreV1): string =>
   watcherDurableStoreBytesSha256(encodeWatcherDurableStoreV1(store));
@@ -2015,7 +2061,8 @@ const parsePublicContext = (
   const transactions = block.transactions
     .map((candidate, index) => ({ candidate, index }))
     .filter(
-      ({ candidate }) => candidate.txHash === observation.transactionHash,
+      ({ candidate }) =>
+        candidate.isValid && candidate.txHash === observation.transactionHash,
     );
   const transaction =
     observation.transactionHash === null
@@ -2188,6 +2235,9 @@ const authenticatedOutputs = (
       transactionIndex,
       transaction,
     ] of block.transactions.entries()) {
+      if (!transaction.isValid) {
+        continue;
+      }
       let body: CML.TransactionBody;
       try {
         body = CML.TransactionBody.from_cbor_hex(transaction.body.bytesHex);

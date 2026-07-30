@@ -71,6 +71,7 @@ import {
 } from "../src/finality-engine.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
+  makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -734,10 +735,31 @@ const bodyFrom = (
 
 let blockSerial = 0;
 let latestBlockHash: string | null = null;
+const STATE_QUEUE_SCRIPT_DATA_HASH = CML.ScriptDataHash.from_raw_bytes(
+  Buffer.alloc(32, 0x6a),
+);
 const chainPointByBlockHash = new Map<
   string,
   Readonly<{ slot: bigint; blockNo: bigint }>
 >();
+const stateQueueRedeemerTag = (
+  purpose: WatcherL1RedeemerV1["purpose"],
+): CML.RedeemerTag => {
+  switch (purpose) {
+    case "spend":
+      return CML.RedeemerTag.Spend;
+    case "mint":
+      return CML.RedeemerTag.Mint;
+    case "certificate":
+      return CML.RedeemerTag.Cert;
+    case "withdrawal":
+      return CML.RedeemerTag.Reward;
+    case "vote":
+      return CML.RedeemerTag.Voting;
+    case "propose":
+      return CML.RedeemerTag.Proposing;
+  }
+};
 const l1Block = (
   bodyHex: string,
   outputs: readonly OutputFixture[],
@@ -750,16 +772,22 @@ const l1Block = (
 ) => {
   blockSerial += 1;
   const blockHash = blockSerial.toString(16).padStart(2, "0").repeat(32);
-  const blockParentHash = parentBlockHash;
   const parentPoint =
-    blockParentHash === null
+    parentBlockHash === null
       ? undefined
-      : chainPointByBlockHash.get(blockParentHash);
+      : chainPointByBlockHash.get(parentBlockHash);
   const slot = (parentPoint?.slot ?? BigInt(1_000 + blockSerial)) + 1n;
   const blockNo = (parentPoint?.blockNo ?? BigInt(100 + blockSerial)) + 1n;
   chainPointByBlockHash.set(blockHash, { slot, blockNo });
   latestBlockHash = blockHash;
-  const txHash = computeHash32(Buffer.from(bodyHex, "hex")).toString("hex");
+  const body = CML.TransactionBody.from_cbor_hex(bodyHex);
+  if (redeemers.length > 0 && body.script_data_hash() === undefined) {
+    body.set_script_data_hash(STATE_QUEUE_SCRIPT_DATA_HASH);
+  }
+  const canonicalBodyHex = body.to_canonical_cbor_hex();
+  const txHash = computeHash32(Buffer.from(canonicalBodyHex, "hex")).toString(
+    "hex",
+  );
   const utxos = outputs.map((fixture, index) => {
     const datum = CML.PlutusData.from_cbor_hex(fixture.datumHex);
     return {
@@ -773,12 +801,43 @@ const l1Block = (
       referenceScript: null,
     };
   });
+  const canonicalRedeemers = redeemers.map(({ purpose, index, bytesHex }) => ({
+    purpose,
+    index,
+    bytes: makeWatcherL1PublicBytesV1(
+      CML.PlutusData.from_cbor_hex(bytesHex).to_canonical_cbor_hex(),
+    ),
+  }));
+  const witnessSet = CML.TransactionWitnessSet.new();
+  if (canonicalRedeemers.length > 0) {
+    const witnessRedeemers = CML.LegacyRedeemerList.new();
+    for (const redeemer of canonicalRedeemers) {
+      witnessRedeemers.add(
+        CML.LegacyRedeemer.new(
+          stateQueueRedeemerTag(redeemer.purpose),
+          BigInt(redeemer.index),
+          CML.PlutusData.from_cbor_hex(redeemer.bytes.bytesHex),
+          CML.ExUnits.new(0n, 0n),
+        ),
+      );
+    }
+    witnessSet.set_redeemers(
+      CML.Redeemers.new_arr_legacy_redeemer(witnessRedeemers),
+    );
+  }
+  const fullTransaction = CML.Transaction.new(
+    body,
+    witnessSet,
+    true,
+    undefined,
+  );
   const observation = {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
     network: "Preprod",
     providerId: "provider-a",
     chainPoint: {
       blockHash,
+      parentBlockHash,
       slot: slot.toString(),
       blockNo: blockNo.toString(),
       depth: "2",
@@ -787,16 +846,17 @@ const l1Block = (
       {
         txHash,
         transactionIndex: "0",
-        blockParentHash,
-        body: makeWatcherL1PublicBytesV1(bodyHex),
+        fullTransaction: makeWatcherL1PublicBytesV1(
+          fullTransaction.to_canonical_cbor_hex(),
+        ),
+        body: makeWatcherL1PublicBytesV1(canonicalBodyHex),
+        witnessSet: makeWatcherL1PublicBytesV1(
+          witnessSet.to_canonical_cbor_hex(),
+        ),
         utxos,
         scripts: [],
         datums: [],
-        redeemers: redeemers.map(({ purpose, index, bytesHex }) => ({
-          purpose,
-          index,
-          bytes: makeWatcherL1PublicBytesV1(bytesHex),
-        })),
+        redeemers: canonicalRedeemers,
       },
     ],
   };
@@ -1716,7 +1776,6 @@ describe("authenticated state-queue indexer", () => {
       .map((transaction, index) => ({
         ...transaction,
         transactionIndex: index.toString(),
-        blockParentHash: canonical.block.raw.transactions[0]!.blockParentHash,
       }));
     const raw = {
       ...canonical.block.raw,
@@ -1796,7 +1855,6 @@ describe("authenticated state-queue indexer", () => {
         {
           ...decoy.raw.transactions[0]!,
           transactionIndex: "1",
-          blockParentHash: canonical.block.raw.transactions[0]!.blockParentHash,
         },
       ],
     };
@@ -1994,6 +2052,7 @@ describe("authenticated state-queue indexer", () => {
   });
 
   it("accepts the cumulative finality budget boundary and rejects the next valid authority", () => {
+    const setupNormalizationSession = makeWatcherL1NormalizationSessionV1();
     const origin = l1Block(bodyFrom([], [], [], [], null, null), [], []);
     const bundle = bootstrapBundle();
     const maximumLineage =
@@ -2008,7 +2067,11 @@ describe("authenticated state-queue indexer", () => {
     const currentBlock = {
       ...bundle.block,
       raw: currentRaw,
-      normalized: normalizeWatcherL1BlockV1(provider, currentRaw),
+      normalized: normalizeWatcherL1BlockV1(
+        provider,
+        currentRaw,
+        setupNormalizationSession,
+      ),
     };
     blocksByObservationDigest.set(
       currentBlock.normalized.observationDigest,
@@ -2050,7 +2113,11 @@ describe("authenticated state-queue indexer", () => {
       const consistency = evaluateWatcherMultiProviderConsistencyV1(
         externalSource,
         observations.map(({ authenticatedProvider, l1Observation }) =>
-          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+          normalizeWatcherL1BlockV1(
+            authenticatedProvider,
+            l1Observation,
+            setupNormalizationSession,
+          ),
         ),
       );
       const result = evaluateWatcherFinalityV1(
@@ -2074,7 +2141,11 @@ describe("authenticated state-queue indexer", () => {
     const currentConsistency = evaluateWatcherMultiProviderConsistencyV1(
       externalSource,
       currentObservations.map(({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+        normalizeWatcherL1BlockV1(
+          authenticatedProvider,
+          l1Observation,
+          setupNormalizationSession,
+        ),
       ),
     );
     const currentResult = evaluateWatcherFinalityV1(
