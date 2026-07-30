@@ -6,9 +6,10 @@ use aiken/primitive/bytearray
 use midgard/bounded_collection_v1
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_tx/codec.{
-  decode_definite_array_header_at, decode_definite_bytes_at, decode_int_at,
-  decode_uint_at, encode_definite_bytes, encode_native_byte_list,
-  validity_from_code, validity_to_code,
+  decode_canonical_int_at, decode_canonical_uint_at,
+  decode_definite_array_header_at, decode_definite_bytes_at,
+  encode_definite_bytes, encode_native_byte_list, expect_h32, expect_network_id,
+  expect_non_negative, validity_from_code, validity_to_code,
 }
 use midgard/fraud_proofs/native_tx/compact.{
   decode_native_tx_field_preimage_lengths_v1, encode_native_tx_body_compact,
@@ -142,6 +143,10 @@ fn decode_midgard_tx_redeemer_witnesses_preimage(
 pub fn encode_midgard_transaction_body_full(
   body: MidgardTransactionBody,
 ) -> ByteArray {
+  expect _fee = expect_non_negative(body.fee)
+  expect _script_integrity_hash = expect_h32(body.script_integrity_hash)
+  expect _auxiliary_data_hash = expect_h32(body.auxiliary_data_hash)
+  expect _network_id = expect_network_id(body.network_id)
   #"8c"
     |> bytearray.concat(
         encode_definite_bytes(encode_input_preimage(body.inputs)),
@@ -227,11 +232,11 @@ pub fn midgard_transaction_witness_set_to_compact(
 ) -> NativeTxWitnessSetCompact {
   NativeTxWitnessSetCompact {
     addr_tx_wits_hash: bounded_collection_v1.from_items(
-      6,
+      7,
       list.map(witness_set.addr_tx_wits, encode_midgard_address_witness),
     ),
     script_tx_wits_hash: bounded_collection_v1.from_items(
-      7,
+      6,
       list.map(witness_set.script_tx_wits, encode_midgard_versioned_script),
     ),
     redeemer_tx_wits_hash: bounded_collection_v1.from_items(
@@ -367,22 +372,22 @@ fn verify_midgard_transaction_field_preimage_against_source_v1(
       verify_canonical_mint_preimage_cbor(preimage_cbor, body.mint_hash)
     }
     6 -> {
-      expect bytearray.length(preimage_cbor) == field_lengths.address_witnesses
-      let decoded = decode_midgard_tx_address_witnesses_preimage(
-        6,
-        preimage_cbor,
-        witness_set.addr_tx_wits_hash,
-      )
-      encode_address_witness_preimage(decoded) == preimage_cbor
-    }
-    7 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.script_witnesses
       let decoded = decode_midgard_tx_script_witnesses_preimage(
-        7,
+        6,
         preimage_cbor,
         witness_set.script_tx_wits_hash,
       )
       encode_script_witness_preimage(decoded) == preimage_cbor
+    }
+    7 -> {
+      expect bytearray.length(preimage_cbor) == field_lengths.address_witnesses
+      let decoded = decode_midgard_tx_address_witnesses_preimage(
+        7,
+        preimage_cbor,
+        witness_set.addr_tx_wits_hash,
+      )
+      encode_address_witness_preimage(decoded) == preimage_cbor
     }
     8 -> {
       expect bytearray.length(preimage_cbor) == field_lengths.redeemers
@@ -410,8 +415,8 @@ fn transaction_field_commitment_v1(
     3 -> body.required_observers_hash
     4 -> body.required_signers_hash
     5 -> body.mint_hash
-    6 -> witness_set.addr_tx_wits_hash
-    7 -> witness_set.script_tx_wits_hash
+    6 -> witness_set.script_tx_wits_hash
+    7 -> witness_set.addr_tx_wits_hash
     8 -> witness_set.redeemer_tx_wits_hash
     _ -> fail
   }
@@ -423,7 +428,7 @@ fn transaction_field_commitment_v1(
 ///
 /// Field indices are consensus ordered:
 /// 0 spend inputs, 1 reference inputs, 2 outputs, 3 observers, 4 signers,
-/// 5 mint, 6 address witnesses, 7 script witnesses, 8 redeemers.
+/// 5 mint, 6 script witnesses, 7 address witnesses, 8 redeemers.
 pub fn verify_midgard_transaction_field_preimage_v1(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
@@ -558,7 +563,7 @@ pub fn verify_midgard_transaction_field_preimages_v1(
   expect
       [
         spend_inputs, reference_inputs, outputs, required_observers,
-        required_signers, mint, address_witnesses, script_witnesses, redeemers,
+        required_signers, mint, script_witnesses, address_witnesses, redeemers,
       ]
     = preimages
 
@@ -610,14 +615,14 @@ pub fn verify_midgard_transaction_field_preimages_v1(
       witness_set,
       field_lengths,
       6,
-      address_witnesses,
+      script_witnesses,
     ),
     verify_midgard_transaction_field_preimage_against_source_v1(
       verified,
       witness_set,
       field_lengths,
       7,
-      script_witnesses,
+      address_witnesses,
     ),
     verify_midgard_transaction_field_preimage_against_source_v1(
       verified,
@@ -633,6 +638,7 @@ fn encode_midgard_transaction_for_version(
   expected_version: Int,
   tx: MidgardTransaction,
 ) -> ByteArray {
+  expect expected_version == native_tx_version_v1
   expect tx.version == expected_version
   #"84"
     |> bytearray.concat(cbor.serialise(tx.version))
@@ -733,9 +739,15 @@ fn decode_midgard_transaction_body_at(
     tx_cbor,
     offset,
   )
-  let Pair(offset, fee) = decode_uint_at(tx_cbor, offset)
-  let Pair(offset, validity_interval_start) = decode_int_at(tx_cbor, offset)
-  let Pair(offset, validity_interval_end) = decode_int_at(tx_cbor, offset)
+  let Pair(offset, fee) = decode_canonical_uint_at(tx_cbor, offset)
+  let Pair(offset, validity_interval_start) = decode_canonical_int_at(
+    tx_cbor,
+    offset,
+  )
+  let Pair(offset, validity_interval_end) = decode_canonical_int_at(
+    tx_cbor,
+    offset,
+  )
   let Pair(offset, required_observers_preimage_cbor) = decode_definite_bytes_at(
     tx_cbor,
     offset,
@@ -756,7 +768,7 @@ fn decode_midgard_transaction_body_at(
     tx_cbor,
     offset,
   )
-  let Pair(offset, network_id) = decode_uint_at(tx_cbor, offset)
+  let Pair(offset, network_id) = decode_canonical_uint_at(tx_cbor, offset)
 
   Pair(
     offset,
@@ -765,7 +777,7 @@ fn decode_midgard_transaction_body_at(
       reference_inputs: reference_inputs_preimage_cbor
         |> decode_midgard_tx_inputs_preimage_cbor,
       outputs: outputs_preimage_cbor |> decode_midgard_tx_outputs_preimage_cbor,
-      fee,
+      fee: expect_non_negative(fee),
       validity_interval_start,
       validity_interval_end,
       required_observers: required_observers_preimage_cbor
@@ -773,9 +785,9 @@ fn decode_midgard_transaction_body_at(
       required_signers: required_signers_preimage_cbor
         |> decode_midgard_tx_byte_list_preimage_cbor,
       mint: mint_preimage_cbor |> decode_midgard_tx_mint_preimage_cbor,
-      script_integrity_hash,
-      auxiliary_data_hash,
-      network_id,
+      script_integrity_hash: expect_h32(script_integrity_hash),
+      auxiliary_data_hash: expect_h32(auxiliary_data_hash),
+      network_id: expect_network_id(network_id),
     },
   )
 }
@@ -822,22 +834,26 @@ fn decode_midgard_transaction_for_version(
 ) -> MidgardTransaction {
   let Pair(offset, field_count) = decode_definite_array_header_at(tx_cbor, 0)
   expect field_count == 4
-  let Pair(offset, version) = decode_uint_at(tx_cbor, offset)
+  expect expected_version == native_tx_version_v1
+  let Pair(offset, version) = decode_canonical_uint_at(tx_cbor, offset)
   expect version == expected_version
   let Pair(offset, body) = decode_midgard_transaction_body_at(tx_cbor, offset)
   let Pair(offset, witness_set) = decode_midgard_transaction_witness_set_at(
     tx_cbor,
     offset,
   )
-  let Pair(offset, validity_code) = decode_uint_at(tx_cbor, offset)
+  let Pair(offset, validity_code) = decode_canonical_uint_at(tx_cbor, offset)
   expect offset == bytearray.length(tx_cbor)
 
-  MidgardTransaction {
+  let transaction = MidgardTransaction {
     version,
     validity: validity_code |> validity_from_code,
     body,
     witness_set,
   }
+  expect
+    encode_midgard_transaction_for_version(expected_version, transaction) == tx_cbor
+  transaction
 }
 
 pub fn decode_midgard_transaction_v1(tx_cbor: ByteArray) -> MidgardTransaction {
@@ -1068,12 +1084,12 @@ pub fn partial_witness_set_view_from_compact_and_preimages(
 ) -> MidgardTransactionWitnessSetPartialView {
   MidgardTransactionWitnessSetPartialView {
     addr_tx_wits: decode_optional_address_witnesses_preimage(
-      6,
+      7,
       preimages.addr_tx_wits,
       witness_set.addr_tx_wits_hash,
     ),
     script_tx_wits: decode_optional_script_witnesses_preimage(
-      7,
+      6,
       preimages.script_tx_wits,
       witness_set.script_tx_wits_hash,
     ),

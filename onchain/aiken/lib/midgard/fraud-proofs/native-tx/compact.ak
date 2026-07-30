@@ -193,8 +193,8 @@ pub fn encode_native_tx_field_preimage_lengths_v1(
     |> bytearray.concat(cbor.serialise(required_observers))
     |> bytearray.concat(cbor.serialise(required_signers))
     |> bytearray.concat(cbor.serialise(mint))
-    |> bytearray.concat(cbor.serialise(address_witnesses))
     |> bytearray.concat(cbor.serialise(script_witnesses))
+    |> bytearray.concat(cbor.serialise(address_witnesses))
     |> bytearray.concat(cbor.serialise(redeemers))
 }
 
@@ -220,11 +220,11 @@ pub fn decode_native_tx_field_preimage_lengths_v1(
     offset,
   )
   let Pair(offset, mint) = decode_canonical_uint_at(lengths_cbor, offset)
-  let Pair(offset, address_witnesses) = decode_canonical_uint_at(
+  let Pair(offset, script_witnesses) = decode_canonical_uint_at(
     lengths_cbor,
     offset,
   )
-  let Pair(offset, script_witnesses) = decode_canonical_uint_at(
+  let Pair(offset, address_witnesses) = decode_canonical_uint_at(
     lengths_cbor,
     offset,
   )
