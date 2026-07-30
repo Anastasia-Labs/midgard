@@ -4,7 +4,7 @@
   "generatedAt": "2026-07-29T00:00:00.000Z",
   "revision": {
     "branch": "colll78/canonical-v1-watcher-l1-source-checkpoint",
-    "headCommit": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+    "headCommit": "784145ce5035c95964f3459ca3498a7220165a04",
     "releaseCommit": null,
     "worktree": "IN_PROGRESS"
   },
@@ -15,7 +15,7 @@
       {
         "path": "GOAL_SPEC.md",
         "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "212196660ed5681d556cedbbc8fd59b4858be11df45f3482b6af6c6765588c12",
+        "currentExpectedSha256": "649ca60c63d9ba938697516d9b4f0bec72333e4ea20221ca354f938c83e54a89",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -144,7 +144,7 @@
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-closure.mjs",
-      "sha256": "4e10635f582fa7fc15f35a9f117a99b37af7a6b5b5248721d5d87ef134dd010f",
+      "sha256": "5346529d184e6f07744fbaf145f987590961f0779fbacc4a3f2291d73fa93c83",
       "status": "BOUND"
     },
     {
@@ -154,7 +154,7 @@
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-closure-self-test.mjs",
-      "sha256": "af3339c0219d730edfe9cde910b4b72d94b390d2182f492763527edf65aafd66",
+      "sha256": "50874afe42e75b0613e31658432cca58e6a2e983f89f0fee2c278eb5c3b015a8",
       "status": "BOUND"
     },
     {
@@ -197,7 +197,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json",
-      "sha256": "b363fcb0ab85a7c4c922de5cd4976f61c4c13ba1d06c054c86918647436a5da5",
+      "sha256": "28a8ddda56ce36c0971fd96b807eaa676f805aebf2a740312e74777f2d93549c",
       "status": "BOUND"
     },
     {

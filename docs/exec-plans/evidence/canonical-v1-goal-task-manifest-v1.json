@@ -4,7 +4,7 @@
   "generatedAt": "2026-07-29",
   "goalSpec": {
     "path": "GOAL_SPEC.md",
-    "sha256": "212196660ed5681d556cedbbc8fd59b4858be11df45f3482b6af6c6765588c12"
+    "sha256": "649ca60c63d9ba938697516d9b4f0bec72333e4ea20221ca354f938c83e54a89"
   },
   "parentOwnedPaths": [
     "GOAL_SPEC.md",
