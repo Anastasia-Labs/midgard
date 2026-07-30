@@ -43,7 +43,6 @@ import {
   SchedulerSpendRedeemer,
   type SchedulerSpendRedeemer as SchedulerSpendRedeemerData,
   type SlashingApproach as SlashingApproachData,
-  SlashingArguments,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
@@ -1337,22 +1336,19 @@ const makeRetiredOperatorsMintRedeemerFromPlan =
   ({ operator }: { readonly operator: string }) =>
   (layout: OperatorSlashingLayout): RetiredOperatorMintRedeemerData => ({
     SlashOperator: {
-      slashing_arguments: Data.castTo(
-        {
-          slashed_operator: operator,
-          hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
-          slashed_operator_anchor_element_input_outref:
-            layout.operatorDirectoryAnchorInputOutRef,
-          slashed_operator_anchor_element_output_index:
-            layout.operatorDirectoryAnchorOutputIndex,
-          slashing_reason: {
-            SlashOperatorForBadState: {
-              state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
-            },
+      slashing_arguments: {
+        slashed_operator: operator,
+        hub_oracle_ref_input_index: layout.hubOracleRefInputIndex,
+        slashed_operator_anchor_element_input_outref:
+          layout.operatorDirectoryAnchorInputOutRef,
+        slashed_operator_anchor_element_output_index:
+          layout.operatorDirectoryAnchorOutputIndex,
+        slashing_reason: {
+          SlashOperatorForBadState: {
+            state_queue_redeemer_index: layout.stateQueueRedeemerTxInfoIndex,
           },
         },
-        SlashingArguments,
-      ),
+      },
     },
   });
 

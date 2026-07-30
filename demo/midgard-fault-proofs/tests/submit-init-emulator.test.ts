@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
   buildMidgardValidationTraceTree,
   compareOutRefs,
   computeMidgardNativeTxIdV1,
@@ -16,17 +17,16 @@ import {
   encodeCbor,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardTxOutput,
   findOutRefIndex,
   hashMidgardValidationMachineStateV1,
-  hashMidgardValidationRejectionCodeV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_PROTOCOL_V1_VERSION,
-  MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
   type MidgardNativeTxFullV1,
-  type MidgardValidationVerdictName,
   outRefLabel,
 } from "@al-ft/midgard-core";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
@@ -69,6 +69,7 @@ import {
   type FraudProofs,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
@@ -192,6 +193,7 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
+  VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeValidityRange,
 } from "../src/index.js";
 import { buildNonMembershipProof, type TrieEntry } from "../src/ne-proofs.js";
@@ -265,9 +267,7 @@ const requireBigIntParameter = (
   const value = record[key];
   if (
     (typeof value !== "string" || !/^(?:0|[1-9][0-9]*)$/u.test(value)) &&
-    (typeof value !== "number" ||
-      !Number.isSafeInteger(value) ||
-      value < 0)
+    (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
   ) {
     throw new Error(
       `Diagnostic Cardano parameter ${key} must be a non-negative integer`,
@@ -299,9 +299,7 @@ const loadDiagnosticCardanoParameterOverrides =
     if (parameterPath == null || parameterPath.length === 0) {
       return {};
     }
-    const parsed = JSON.parse(
-      readFileSync(parameterPath, "utf8"),
-    ) as unknown;
+    const parsed = JSON.parse(readFileSync(parameterPath, "utf8")) as unknown;
     if (!Array.isArray(parsed) || parsed.length !== 1) {
       throw new Error(
         "Diagnostic Cardano parameter snapshot must contain exactly one epoch",
@@ -804,8 +802,7 @@ const buildMinimalFaultProofContracts = async (
                 validationTraceDisputeContracts.validationTraceDispute.source,
               game: validationTraceDisputeContracts.validationTraceDispute.game,
               boundary:
-                validationTraceDisputeContracts.validationTraceDispute
-                  .boundary,
+                validationTraceDisputeContracts.validationTraceDispute.boundary,
               timeout:
                 validationTraceDisputeContracts.validationTraceDispute.timeout,
               award:
@@ -1006,6 +1003,25 @@ const outputReferenceCbor = (outRef: TestOutputReference): Buffer =>
     ).to_cbor_bytes(),
   );
 
+const largeFittingOutputCbor = (
+  inlineDatumPayloadBytes: number = 13_600,
+): Buffer =>
+  encodeMidgardTxOutput({
+    address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x55)]),
+    value: { lovelace: 100_000_000n, assets: new Map() },
+    datum: {
+      kind: "inline",
+      cbor: Buffer.from(
+        aikenSerialisedPlutusDataCborPreservingMapOrder(
+          CML.PlutusData.new_bytes(
+            Buffer.alloc(inlineDatumPayloadBytes, 0xa5),
+          ).to_cbor_hex(),
+        ),
+        "hex",
+      ),
+    },
+  });
+
 const midgardTxInput = (outRef: TestOutputReference) => ({
   tx_id: outRef.transactionId,
   output_index: outRef.outputIndex,
@@ -1016,6 +1032,7 @@ const makeNativeTx = ({
   fee,
   referenceByte,
   outputByte,
+  outputCbor,
   witnessByte,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
@@ -1024,6 +1041,7 @@ const makeNativeTx = ({
   readonly fee: bigint;
   readonly referenceByte?: string;
   readonly outputByte?: string;
+  readonly outputCbor?: Buffer;
   readonly witnessByte?: string;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
@@ -1038,9 +1056,11 @@ const makeNativeTx = ({
           ? EMPTY_CBOR_LIST
           : encodeCbor([Buffer.from(h32(referenceByte), "hex")]),
       outputsPreimageCbor:
-        outputByte === undefined
-          ? EMPTY_CBOR_LIST
-          : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
+        outputCbor !== undefined
+          ? encodeCbor([outputCbor])
+          : outputByte === undefined
+            ? EMPTY_CBOR_LIST
+            : encodeCbor([Buffer.from(h32(outputByte), "hex")]),
       requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
       requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
       mintPreimageCbor: EMPTY_CBOR_LIST,
@@ -1481,11 +1501,10 @@ const buildInvalidForcedTransitionTraceFixture = async ({
     `825820${h32("01")}00`,
     "a200581d70aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa018200a0",
   );
-  const finalDescriptor =
-    buildCanonicalMidgardLedgerEntryOutputMaterialV1({
-      outRef: Buffer.from(finalUtxo[0], "hex"),
-      outputCbor: Buffer.from(finalUtxo[1], "hex"),
-    }).descriptorCbor;
+  const finalDescriptor = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+    outRef: Buffer.from(finalUtxo[0], "hex"),
+    outputCbor: Buffer.from(finalUtxo[1], "hex"),
+  }).descriptorCbor;
   const finalUtxosRoot = await keyValuePhasRootWithCount([
     {
       key: Buffer.from(finalUtxo[0], "hex"),
@@ -1499,12 +1518,9 @@ const buildInvalidForcedTransitionTraceFixture = async ({
     outputByte: "b2",
     witnessByte: "b8",
   });
-  const forcedCanonicalCbor =
-    encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
   const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-      forcedCanonicalCbor,
-    );
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
   const forcedTransaction = {
     tx_id: computeMidgardNativeTxIdV1(forcedNativeTx).toString("hex"),
     transaction_commitment:
@@ -1638,8 +1654,7 @@ const buildInvalidForcedTransitionTraceFixture = async ({
         transition_trace: sortedDaEntries(traceEntries),
         event_to_step: sortedDaEntries(eventToStepEntries),
         transaction_preimages: [],
-        forced_transaction_preimages:
-          sortedDaEntries(forcedPreimageEntries),
+        forced_transaction_preimages: sortedDaEntries(forcedPreimageEntries),
         cek_program_material: [],
         validation_traces: sortedDaEntries(validationTraceEntries),
         counts,
@@ -1665,54 +1680,25 @@ const buildInvalidForcedTransitionTraceFixture = async ({
   };
 };
 
-const falsifyValidationTerminalVerdict = (
-  trace: DeterministicValidationMachineTrace,
-  verdict: Exclude<MidgardValidationVerdictName, "pending">,
-): DeterministicValidationMachineTrace => {
-  const rejectionCode =
-    verdict === "accepted" ? null : RejectCodes.EmptyInputs;
-  const rejectionCodeHash =
-    rejectionCode === null
-      ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
-      : hashMidgardValidationRejectionCodeV1(rejectionCode);
-  const states = trace.states.map((state, index) =>
-    index === trace.states.length - 1
-      ? {
-          ...state,
-          verdict,
-          rejectionCodeHash,
-        }
-      : state,
-  );
-  const tree = buildMidgardValidationTraceTree(
-    states.map(hashMidgardValidationMachineStateV1),
-    verdict,
-    rejectionCodeHash,
-  );
-  return {
-    ...trace,
-    states,
-    tree,
-    verdict,
-    rejectionCode,
-  };
-};
-
 const buildInvalidForcedValidationDisputeFixture = async ({
   operatorVkey,
   now,
+  inlineDatumPayloadBytes = 13_600,
+  minimumCompleteItemBytes = MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
+  readonly inlineDatumPayloadBytes?: number;
+  readonly minimumCompleteItemBytes?: number;
 }) => {
   const txOrderId = transitionTraceOutRef("e1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
   const forcedNativeTx = makeNativeTx({
     spendInputCbors: [],
     fee: 0n,
+    outputCbor: largeFittingOutputCbor(inlineDatumPayloadBytes),
   });
-  const forcedCanonicalCbor =
-    encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
+  const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
   const decodedForcedNativeTx =
     decodeMidgardNativeTxFullV1FromCanonicalCbor(forcedCanonicalCbor);
   if (
@@ -1726,11 +1712,8 @@ const buildInvalidForcedValidationDisputeFixture = async ({
     );
   }
   const forcedSource =
-    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-      forcedCanonicalCbor,
-    );
-  const transactionId =
-    computeMidgardNativeTxIdV1(forcedNativeTx);
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(forcedCanonicalCbor);
+  const transactionId = computeMidgardNativeTxIdV1(forcedNativeTx);
   const forcedTransaction = {
     tx_id: transactionId.toString("hex"),
     transaction_commitment:
@@ -1765,10 +1748,50 @@ const buildInvalidForcedValidationDisputeFixture = async ({
       expectedRejectionCode: RejectCodes.EmptyInputs,
     }),
   );
-  const operatorTrace = falsifyValidationTerminalVerdict(
-    challengerTrace,
-    "accepted",
+  const disputedWitnessIndex = challengerTrace.witnesses.findIndex(
+    (witness) =>
+      witness.phase === "canonicalDecode" &&
+      witness.auxiliary?.kind === "transactionFieldItem" &&
+      witness.auxiliary.itemCbor.length > minimumCompleteItemBytes,
   );
+  if (disputedWitnessIndex < 0) {
+    throw new Error(
+      "validation-dispute fixture is missing its selected fitting complete item",
+    );
+  }
+  const completeItemWitness = challengerTrace.witnesses[disputedWitnessIndex]!;
+  if (completeItemWitness.auxiliary?.kind !== "transactionFieldItem") {
+    throw new Error(
+      "validation-dispute fixture selected a non-item canonical witness",
+    );
+  }
+  const completeItemBytes = completeItemWitness.auxiliary.itemCbor.length;
+  const operatorRejectionCodeHash = Buffer.alloc(32);
+  const operatorStates = challengerTrace.states.map((state, index) =>
+    index >= disputedWitnessIndex + 1
+      ? {
+          ...state,
+          workRoot: Buffer.alloc(32, 0x7e),
+          ...(index === challengerTrace.states.length - 1
+            ? {
+                verdict: "accepted" as const,
+                rejectionCodeHash: operatorRejectionCodeHash,
+              }
+            : {}),
+        }
+      : state,
+  );
+  const operatorTrace: DeterministicValidationMachineTrace = {
+    ...challengerTrace,
+    states: operatorStates,
+    tree: buildMidgardValidationTraceTree(
+      operatorStates.map(hashMidgardValidationMachineStateV1),
+      "accepted",
+      operatorRejectionCodeHash,
+    ),
+    verdict: "accepted",
+    rejectionCode: null,
+  };
   const evidence = buildValidationDisputeEvidenceBundleV1({
     operatorTrace,
     challengerTrace,
@@ -1786,14 +1809,12 @@ const buildInvalidForcedValidationDisputeFixture = async ({
     step_index: 0n,
     phase: "ForcedTransaction" as const,
   };
-  const operatorDescriptor =
-    validationTraceDescriptorDataFromCore(
-      operatorTrace.tree.descriptor,
-    );
-  const challengerDescriptor =
-    validationTraceDescriptorDataFromCore(
-      challengerTrace.tree.descriptor,
-    );
+  const operatorDescriptor = validationTraceDescriptorDataFromCore(
+    operatorTrace.tree.descriptor,
+  );
+  const challengerDescriptor = validationTraceDescriptorDataFromCore(
+    challengerTrace.tree.descriptor,
+  );
   const forcedEntry = transitionTraceDaEntry({
     key: txOrderId,
     keySchema: OutputReference as never,
@@ -1818,42 +1839,30 @@ const buildInvalidForcedValidationDisputeFixture = async ({
     value: operatorDescriptor,
     valueSchema: ValidationTraceDescriptorV1Schema,
   });
-  const forcedRoot = await buildCountedRoot(
-    ROOT_DOMAINS.forcedTransactionsV1,
-    [
-      {
-        key: Buffer.from(forcedEntry[0], "hex"),
-        value: Buffer.from(forcedEntry[1], "hex"),
-      },
-    ],
-  );
-  const transitionRoot = await buildCountedRoot(
-    ROOT_DOMAINS.transitionTrace,
-    [
-      {
-        key: Buffer.from(transitionEntry[0], "hex"),
-        value: Buffer.from(transitionEntry[1], "hex"),
-      },
-    ],
-  );
-  const eventToStepRoot = await buildCountedRoot(
-    ROOT_DOMAINS.eventToStep,
-    [
-      {
-        key: Buffer.from(eventToStepEntry[0], "hex"),
-        value: Buffer.from(eventToStepEntry[1], "hex"),
-      },
-    ],
-  );
-  const descriptorRoot = await buildCountedRoot(
-    ROOT_DOMAINS.validationTraces,
-    [
-      {
-        key: Buffer.from(descriptorEntry[0], "hex"),
-        value: Buffer.from(descriptorEntry[1], "hex"),
-      },
-    ],
-  );
+  const forcedRoot = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [
+    {
+      key: Buffer.from(forcedEntry[0], "hex"),
+      value: Buffer.from(forcedEntry[1], "hex"),
+    },
+  ]);
+  const transitionRoot = await buildCountedRoot(ROOT_DOMAINS.transitionTrace, [
+    {
+      key: Buffer.from(transitionEntry[0], "hex"),
+      value: Buffer.from(transitionEntry[1], "hex"),
+    },
+  ]);
+  const eventToStepRoot = await buildCountedRoot(ROOT_DOMAINS.eventToStep, [
+    {
+      key: Buffer.from(eventToStepEntry[0], "hex"),
+      value: Buffer.from(eventToStepEntry[1], "hex"),
+    },
+  ]);
+  const descriptorRoot = await buildCountedRoot(ROOT_DOMAINS.validationTraces, [
+    {
+      key: Buffer.from(descriptorEntry[0], "hex"),
+      value: Buffer.from(descriptorEntry[1], "hex"),
+    },
+  ]);
   const membership = async (
     root: typeof forcedRoot,
     entry: readonly [string, string],
@@ -1929,6 +1938,7 @@ const buildInvalidForcedValidationDisputeFixture = async ({
     challengerTrace,
     challengerDescriptor,
     evidence,
+    completeItemBytes,
   };
 };
 
@@ -2014,11 +2024,17 @@ const captureEmulatorSubmission = async <T>(
 ): Promise<{
   readonly result: T;
   readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly measurements: readonly CompleteSignedTransactionMeasurement[];
+  readonly transactionCbors: readonly string[];
 }> => {
   const submit = emulator.submitTx.bind(emulator);
   let measurement: CompleteSignedTransactionMeasurement | undefined;
+  const measurements: CompleteSignedTransactionMeasurement[] = [];
+  const transactionCbors: string[] = [];
   emulator.submitTx = async (transaction) => {
     measurement = measureCompleteSignedTransaction(transaction);
+    measurements.push(measurement);
+    transactionCbors.push(transaction);
     return submit(transaction);
   };
   try {
@@ -2026,7 +2042,7 @@ const captureEmulatorSubmission = async <T>(
     if (measurement === undefined) {
       throw new Error("Expected emulator operation to submit a transaction");
     }
-    return { result, measurement };
+    return { result, measurement, measurements, transactionCbors };
   } finally {
     emulator.submitTx = submit;
   }
@@ -2103,7 +2119,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: header.startTime,
     endTime: header.startTime,
-    protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
   const unsigned = await lucid
     .newTx()
@@ -2222,9 +2238,8 @@ const submitSetupTx = async ({
     .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
-  await runEmulatorLifecycleStage(
-    "setup.initial",
-    async () => lucid.awaitTx(await signed.submit()),
+  await runEmulatorLifecycleStage("setup.initial", async () =>
+    lucid.awaitTx(await signed.submit()),
   );
 
   const [initialActiveOperatorsRoot] = await lucid.utxosAtWithUnit(
@@ -2338,9 +2353,8 @@ const submitSetupTx = async ({
   const activationSigned = await activationUnsigned.sign
     .withWallet()
     .complete();
-  await runEmulatorLifecycleStage(
-    "setup.operator-activation",
-    async () => lucid.awaitTx(await activationSigned.submit()),
+  await runEmulatorLifecycleStage("setup.operator-activation", async () =>
+    lucid.awaitTx(await activationSigned.submit()),
   );
 
   const [hubOracleUtxo] = await lucid.utxosAtWithUnit(
@@ -2454,9 +2468,8 @@ const submitSetupTx = async ({
   const appointmentSigned = await appointmentUnsigned.sign
     .withWallet()
     .complete();
-  await runEmulatorLifecycleStage(
-    "setup.operator-appointment",
-    async () => lucid.awaitTx(await appointmentSigned.submit()),
+  await runEmulatorLifecycleStage("setup.operator-appointment", async () =>
+    lucid.awaitTx(await appointmentSigned.submit()),
   );
 
   const [appointedSchedulerUtxo] = await lucid.utxosAtWithUnit(
@@ -2557,9 +2570,8 @@ const submitSetupTx = async ({
     () => commitTx.complete({ localUPLCEval: true }),
   );
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
-  await runEmulatorLifecycleStage(
-    "setup.header-commit",
-    async () => lucid.awaitTx(await commitSigned.submit()),
+  await runEmulatorLifecycleStage("setup.header-commit", async () =>
+    lucid.awaitTx(await commitSigned.submit()),
   );
 
   const [fraudulentBlockUtxo] = await lucid.utxosAtWithUnit(
@@ -2647,7 +2659,9 @@ const submitSuccessorBlockTx = async ({
   const anchorBlock = await Effect.runPromise(
     utxoToStateQueueUTxO(anchorBlockUtxo, contracts.stateQueue.policyId),
   );
-  const successorHeaderHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const successorHeaderHash = await Effect.runPromise(
+    hashBlockHeaderV1(header),
+  );
   const successorBlockUnit = toUnit(
     contracts.stateQueue.policyId,
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX + successorHeaderHash,
@@ -2758,7 +2772,9 @@ const submitSuccessorBlockTx = async ({
   const continuedAnchor = await Effect.runPromise(
     utxoToStateQueueUTxO(continuedAnchorUtxo, contracts.stateQueue.policyId),
   );
-  await Effect.runPromise(getHeaderV1FromStateQueueDatum(continuedAnchor.datum));
+  await Effect.runPromise(
+    getHeaderV1FromStateQueueDatum(continuedAnchor.datum),
+  );
   expect(continuedAnchor.datum.next).toEqual({
     Key: { key: successorHeaderHash },
   });
@@ -2772,8 +2788,7 @@ const submitSuccessorBlockTx = async ({
   };
 };
 
-const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
-  "V1 validation-trace dispute";
+const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE = "V1 validation-trace dispute";
 
 const validationDisputeControlPublicationTargets = (
   contracts: MidgardValidators,
@@ -2899,12 +2914,80 @@ const publishValidationDisputeReferenceScript = async ({
   });
 };
 
+// Publishes a deployed validator as a plain reference-script UTxO at the
+// publisher wallet address, following the hash-checked deployment
+// consumption pattern (`requireDeploymentReferenceScript`); the consuming
+// submit path re-derives the applied script hash and requires the published
+// scriptRef to match it exactly.
+const publishPlainReferenceScriptUtxo = async ({
+  lucid,
+  script,
+  label,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly script: Script;
+  readonly label: string;
+}): Promise<{
+  readonly utxo: UTxO;
+  readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
+}> => {
+  // Park the reference script at an unspendable script credential so no
+  // later wallet coin selection can consume the published UTxO mid-flow.
+  const parkAddress = credentialToAddress(
+    network,
+    scriptHashToCredential("2f".repeat(28)),
+  );
+  const unsigned = await lucid
+    .newTx()
+    .pay.ToAddressWithData(
+      parkAddress,
+      undefined,
+      { lovelace: 20_000_000n },
+      script,
+    )
+    .complete();
+  const signed = await unsigned.sign.withWallet().complete();
+  const signedCbor = signed.toCBOR();
+  const publicationMeasurement = measureCompleteSignedTransaction(signedCbor);
+  if (publicationMeasurement.l1ByteMargin <= 0) {
+    throw new Error(
+      `${label} reference-script publication is ${publicationMeasurement.completeSignedBytes.toString()} bytes and does not fit the 16,384-byte L1 envelope`,
+    );
+  }
+  const outputs = CML.Transaction.from_cbor_hex(signedCbor).body().outputs();
+  let scriptRefOutputIndex = -1;
+  for (let index = 0; index < outputs.len(); index += 1) {
+    if (outputs.get(index).script_ref() !== undefined) {
+      scriptRefOutputIndex = index;
+      break;
+    }
+  }
+  if (scriptRefOutputIndex < 0) {
+    throw new Error(`${label} publication omitted its script-ref output`);
+  }
+  const txHash = await signed.submit();
+  await lucid.awaitTx(txHash);
+  const published = await lucid.utxosByOutRef([
+    { txHash, outputIndex: scriptRefOutputIndex },
+  ]);
+  if (published.length !== 1 || published[0]!.scriptRef == null) {
+    throw new Error(
+      `Expected one live ${label} reference-script UTxO at ${txHash}#${scriptRefOutputIndex.toString()}`,
+    );
+  }
+  return { utxo: published[0]!, publicationMeasurement };
+};
+
 const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators,
   catalogue: FraudProofCatalogueDeploymentInfo,
   validationDisputePublication?: Awaited<
     ReturnType<typeof publishValidationDisputeReferenceScript>
   >,
+  validationItemSemanticReference?: {
+    readonly scriptHash: string;
+    readonly utxo: UTxO;
+  },
 ) => {
   const deploymentEntry = (scriptHash: string, script: Script) => ({
     scriptHash,
@@ -2914,85 +2997,100 @@ const buildRemovalDeploymentInfo = (
       cborHex: script.script,
     },
   });
-  return deploymentManifest({
-    hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
-    fraudProofCatalogueMint: {
-      scriptHash: contracts.fraudProofCatalogue.policyId,
-      fraudProofCatalogue: catalogue,
-    },
-    fraudProofCatalogueSpend: {
-      scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
-    },
-    fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-    fraudProofSpend: {
-      scriptHash: contracts.fraudProof.spendingScriptHash,
-    },
-    fraudProofDoubleSpend: {
-      scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-    },
-    fraudProofNonExistentInput: {
-      scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
-    },
-    fraudProofInvalidRange: {
-      scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
-    },
-    fraudProofTransitionTrace: {
-      scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
-    },
-    validationTraceDispute: {
-      scriptHash:
-        contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
-      refScriptUTxO:
-        validationDisputePublication === undefined
-          ? null
-          : {
-              txHash: validationDisputePublication.utxo.txHash,
-              outputIndex: validationDisputePublication.utxo.outputIndex,
+  return deploymentManifest(
+    {
+      ...(validationItemSemanticReference === undefined
+        ? {}
+        : {
+            [VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+              scriptHash: validationItemSemanticReference.scriptHash,
+              refScriptUTxO: {
+                txHash: validationItemSemanticReference.utxo.txHash,
+                outputIndex: validationItemSemanticReference.utxo.outputIndex,
+              },
             },
-      contract: {
-        type: contracts.fraudProofs.validationTraceDispute.spendingScript.type,
-        cborHex:
-          contracts.fraudProofs.validationTraceDispute.spendingScript.script,
+          }),
+      hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
+      fraudProofCatalogueMint: {
+        scriptHash: contracts.fraudProofCatalogue.policyId,
+        fraudProofCatalogue: catalogue,
       },
+      fraudProofCatalogueSpend: {
+        scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
+      },
+      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+      fraudProofSpend: {
+        scriptHash: contracts.fraudProof.spendingScriptHash,
+      },
+      fraudProofDoubleSpend: {
+        scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+      },
+      fraudProofNonExistentInput: {
+        scriptHash: contracts.fraudProofs.nonExistentInput.spendingScriptHash,
+      },
+      fraudProofInvalidRange: {
+        scriptHash: contracts.fraudProofs.invalidRange.spendingScriptHash,
+      },
+      fraudProofTransitionTrace: {
+        scriptHash: contracts.fraudProofs.transitionTrace.spendingScriptHash,
+      },
+      validationTraceDispute: {
+        scriptHash:
+          contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+        refScriptUTxO:
+          validationDisputePublication === undefined
+            ? null
+            : {
+                txHash: validationDisputePublication.utxo.txHash,
+                outputIndex: validationDisputePublication.utxo.outputIndex,
+              },
+        contract: {
+          type: contracts.fraudProofs.validationTraceDispute.spendingScript
+            .type,
+          cborHex:
+            contracts.fraudProofs.validationTraceDispute.spendingScript.script,
+        },
+      },
+      stateQueueMint: deploymentEntry(
+        contracts.stateQueue.policyId,
+        contracts.stateQueue.mintingScript,
+      ),
+      stateQueueSpend: deploymentEntry(
+        contracts.stateQueue.spendingScriptHash,
+        contracts.stateQueue.spendingScript,
+      ),
+      retiredOperatorsMint: deploymentEntry(
+        contracts.retiredOperators.policyId,
+        contracts.retiredOperators.mintingScript,
+      ),
+      retiredOperatorsSpend: deploymentEntry(
+        contracts.retiredOperators.spendingScriptHash,
+        contracts.retiredOperators.spendingScript,
+      ),
+      registeredOperatorsMint: {
+        scriptHash: contracts.registeredOperators.policyId,
+      },
+      registeredOperatorsSpend: deploymentEntry(
+        contracts.registeredOperators.spendingScriptHash,
+        contracts.registeredOperators.spendingScript,
+      ),
+      activeOperatorsMint: deploymentEntry(
+        contracts.activeOperators.policyId,
+        contracts.activeOperators.mintingScript,
+      ),
+      activeOperatorsSpend: deploymentEntry(
+        contracts.activeOperators.spendingScriptHash,
+        contracts.activeOperators.spendingScript,
+      ),
+      schedulerMint: { scriptHash: contracts.scheduler.policyId },
+      schedulerSpend: deploymentEntry(
+        contracts.scheduler.spendingScriptHash,
+        contracts.scheduler.spendingScript,
+      ),
+      settlementMint: { scriptHash: contracts.settlement.policyId },
     },
-    stateQueueMint: deploymentEntry(
-      contracts.stateQueue.policyId,
-      contracts.stateQueue.mintingScript,
-    ),
-    stateQueueSpend: deploymentEntry(
-      contracts.stateQueue.spendingScriptHash,
-      contracts.stateQueue.spendingScript,
-    ),
-    retiredOperatorsMint: deploymentEntry(
-      contracts.retiredOperators.policyId,
-      contracts.retiredOperators.mintingScript,
-    ),
-    retiredOperatorsSpend: deploymentEntry(
-      contracts.retiredOperators.spendingScriptHash,
-      contracts.retiredOperators.spendingScript,
-    ),
-    registeredOperatorsMint: {
-      scriptHash: contracts.registeredOperators.policyId,
-    },
-    registeredOperatorsSpend: deploymentEntry(
-      contracts.registeredOperators.spendingScriptHash,
-      contracts.registeredOperators.spendingScript,
-    ),
-    activeOperatorsMint: deploymentEntry(
-      contracts.activeOperators.policyId,
-      contracts.activeOperators.mintingScript,
-    ),
-    activeOperatorsSpend: deploymentEntry(
-      contracts.activeOperators.spendingScriptHash,
-      contracts.activeOperators.spendingScript,
-    ),
-    schedulerMint: { scriptHash: contracts.scheduler.policyId },
-    schedulerSpend: deploymentEntry(
-      contracts.scheduler.spendingScriptHash,
-      contracts.scheduler.spendingScript,
-    ),
-    settlementMint: { scriptHash: contracts.settlement.policyId },
-  }, validationDisputePublication?.authPolicyDeploymentInfo);
+    validationDisputePublication?.authPolicyDeploymentInfo,
+  );
 };
 
 type SuccessorBlockFixture = Awaited<
@@ -3607,13 +3705,10 @@ describe("fault-proof emulator integration", () => {
     const publisher = generateEmulatorAccount({
       lovelace: 40_000_000_000n,
     });
-    const emulator = new Emulator(
-      [publisher],
-      {
-        ...EMULATOR_PROTOCOL_PARAMETERS,
-        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-      },
-    );
+    const emulator = new Emulator([publisher], {
+      ...EMULATOR_PROTOCOL_PARAMETERS,
+      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    });
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(publisher.seedPhrase);
     const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -4813,92 +4908,132 @@ describe("fault-proof emulator integration", () => {
     expect(retainedFraudProof.assets[proofResult.fraudProofUnit]).toBe(1n);
   }, 180_000);
 
-  it("opens, bisects, resolves, and awards a validation dispute end to end", async () => {
-    const realBlueprint = readBlueprint(realBlueprintPath);
-    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
-    const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-    const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
-    const feeUtxoCount = 12;
-    const feeUtxoLovelace = 100_000_000n;
-    const emulator = new Emulator(
-      [
-        {
-          ...operator,
-          assets: {
-            lovelace:
-              operator.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
+  it.each([
+    {
+      name: "direct",
+      inlineDatumPayloadBytes: 7_976,
+      minimumCompleteItemBytes: 0,
+      expectedCarriage: "direct" as const,
+    },
+    {
+      name: "reference",
+      inlineDatumPayloadBytes: 13_600,
+      minimumCompleteItemBytes:
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes,
+      expectedCarriage: "reference" as const,
+    },
+  ])(
+    "opens, bisects, resolves a fitting complete item by $name, and awards a validation dispute",
+    async ({
+      inlineDatumPayloadBytes,
+      minimumCompleteItemBytes,
+      expectedCarriage,
+    }) => {
+      const realBlueprint = readBlueprint(realBlueprintPath);
+      const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+      const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+      const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+      const feeUtxoCount = 12;
+      const feeUtxoLovelace = 100_000_000n;
+      const emulator = new Emulator(
+        [
+          {
+            ...operator,
+            assets: {
+              lovelace:
+                operator.assets.lovelace -
+                BigInt(feeUtxoCount) * feeUtxoLovelace,
+            },
           },
-        },
-        ...Array.from({ length: feeUtxoCount }, () => ({
-          ...operator,
-          assets: { lovelace: feeUtxoLovelace },
-        })),
-        {
-          ...challenger,
-          assets: {
-            lovelace:
-              challenger.assets.lovelace -
-              BigInt(feeUtxoCount) * feeUtxoLovelace,
+          ...Array.from({ length: feeUtxoCount }, () => ({
+            ...operator,
+            assets: { lovelace: feeUtxoLovelace },
+          })),
+          {
+            ...challenger,
+            assets: {
+              lovelace:
+                challenger.assets.lovelace -
+                BigInt(feeUtxoCount) * feeUtxoLovelace,
+            },
           },
-        },
-        ...Array.from({ length: feeUtxoCount }, () => ({
-          ...challenger,
-          assets: { lovelace: feeUtxoLovelace },
-        })),
-      ],
-      EMULATOR_PROTOCOL_PARAMETERS,
-    );
-    const operatorLucid = await Lucid(emulator, "Custom");
-    const challengerLucid = await Lucid(emulator, "Custom");
-    operatorLucid.selectWallet.fromSeed(operator.seedPhrase);
-    challengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
-    const operatorSigner = resolveProverSigner({
-      network,
-      walletSeedPhrase: operator.seedPhrase,
-    });
-    const challengerSigner = resolveProverSigner({
-      network,
-      walletSeedPhrase: challenger.seedPhrase,
-    });
-    const validityRange = () =>
-      validationDisputeValidityRange(emulator.now());
+          ...Array.from({ length: feeUtxoCount }, () => ({
+            ...challenger,
+            assets: { lovelace: feeUtxoLovelace },
+          })),
+        ],
+        EMULATOR_PROTOCOL_PARAMETERS,
+      );
+      const operatorLucid = await Lucid(emulator, "Custom");
+      const challengerLucid = await Lucid(emulator, "Custom");
+      operatorLucid.selectWallet.fromSeed(operator.seedPhrase);
+      challengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+      const operatorSigner = resolveProverSigner({
+        network,
+        walletSeedPhrase: operator.seedPhrase,
+      });
+      const challengerSigner = resolveProverSigner({
+        network,
+        walletSeedPhrase: challenger.seedPhrase,
+      });
+      const validityRange = () =>
+        validationDisputeValidityRange(emulator.now());
 
-    await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
-    const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
-    if (nonceUtxo === undefined) {
-      throw new Error("Expected operator wallet to expose a nonce UTxO");
-    }
-    const contracts = await buildMinimalFaultProofContracts(
-      realBlueprint,
-      alwaysBlueprint,
-      nonceUtxo,
-      {
-        realValidationTraceDispute: true,
-        alwaysFraudProofCatalogue: true,
-      },
-    );
-    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
-    const operatorPaymentCredential = getAddressDetails(
-      await operatorLucid.wallet().address(),
-    ).paymentCredential;
-    if (
-      operatorPaymentCredential === undefined ||
-      operatorPaymentCredential.type !== "Key"
-    ) {
-      throw new Error("Expected operator wallet to expose a payment key hash");
-    }
-    const headerStartTime =
-      alignUnixTimeToEmulatorSlotBoundary(
-        operatorLucid,
-        emulator.now() + 120_000,
-      ) - 1;
-    const fixture = await buildInvalidForcedValidationDisputeFixture({
-      operatorVkey: operatorPaymentCredential.hash,
-      now: headerStartTime,
-    });
-    const setup = await runEmulatorLifecycleStage(
-      "setup",
-      () =>
+      await registerPhasMembershipRewardAccount(operatorLucid, realBlueprint);
+      const nonceUtxo = (await operatorLucid.wallet().getUtxos())[0];
+      if (nonceUtxo === undefined) {
+        throw new Error("Expected operator wallet to expose a nonce UTxO");
+      }
+      const contracts = await buildMinimalFaultProofContracts(
+        realBlueprint,
+        alwaysBlueprint,
+        nonceUtxo,
+        {
+          realValidationTraceDispute: true,
+          alwaysFraudProofCatalogue: true,
+        },
+      );
+      // Re-derive the applied canonical-decode item-semantic validator (the
+      // same deterministic build the submit path performs) so its reference
+      // script can be published and its body pinned as absent from the proof
+      // transactions.
+      const validationDisputeSdkContracts = await Effect.runPromise(
+        buildValidationTraceDisputeFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: contracts.hubOracle.policyId,
+          fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+        }),
+      );
+      const itemSemanticContract =
+        validationDisputeSdkContracts.validationTraceDispute
+          .semanticResolvers[1];
+      const catalogue = await buildCatalogueDeploymentInfo(
+        contracts.fraudProofs,
+      );
+      const operatorPaymentCredential = getAddressDetails(
+        await operatorLucid.wallet().address(),
+      ).paymentCredential;
+      if (
+        operatorPaymentCredential === undefined ||
+        operatorPaymentCredential.type !== "Key"
+      ) {
+        throw new Error(
+          "Expected operator wallet to expose a payment key hash",
+        );
+      }
+      const headerStartTime =
+        alignUnixTimeToEmulatorSlotBoundary(
+          operatorLucid,
+          emulator.now() + 120_000,
+        ) - 1;
+      const fixture = await buildInvalidForcedValidationDisputeFixture({
+        operatorVkey: operatorPaymentCredential.hash,
+        now: headerStartTime,
+        inlineDatumPayloadBytes,
+        minimumCompleteItemBytes,
+      });
+      const setup = await runEmulatorLifecycleStage("setup", () =>
         submitSetupTx({
           lucid: operatorLucid,
           contracts,
@@ -4906,44 +5041,64 @@ describe("fault-proof emulator integration", () => {
           catalogue,
           header: fixture.header,
         }),
-    );
-    const publicationSlotConfig = operatorLucid.config().slotConfig;
-    if (publicationSlotConfig === undefined) {
-      throw new Error(
-        "Expected reference-script publisher Lucid to expose its Custom slot config",
       );
-    }
-    const setupProtocolParameters = emulator.protocolParameters;
-    emulator.protocolParameters = {
-      ...setupProtocolParameters,
-      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-    };
-    const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
-      slotConfig: publicationSlotConfig,
-    });
-    referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-    const validationDisputePublication = await runEmulatorLifecycleStage(
-      "reference-script.publish-authenticated",
-      async () => {
-        try {
-          return await publishValidationDisputeReferenceScript({
-            lucid: referenceScriptPublisherLucid,
-            contracts,
-            now: emulator.now(),
-          });
-        } finally {
-          emulator.protocolParameters = setupProtocolParameters;
-        }
-      },
-    );
-    const deploymentInfo = buildRemovalDeploymentInfo(
-      contracts,
-      catalogue,
-      validationDisputePublication,
-    );
-    const initResult = await runEmulatorLifecycleStage(
-      "init",
-      () =>
+      const publicationSlotConfig = operatorLucid.config().slotConfig;
+      if (publicationSlotConfig === undefined) {
+        throw new Error(
+          "Expected reference-script publisher Lucid to expose its Custom slot config",
+        );
+      }
+      const setupProtocolParameters = emulator.protocolParameters;
+      emulator.protocolParameters = {
+        ...setupProtocolParameters,
+        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      };
+      const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
+        slotConfig: publicationSlotConfig,
+      });
+      referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
+      const validationDisputePublication = await runEmulatorLifecycleStage(
+        "reference-script.publish-authenticated",
+        async () => {
+          try {
+            return await publishValidationDisputeReferenceScript({
+              lucid: referenceScriptPublisherLucid,
+              contracts,
+              now: emulator.now(),
+            });
+          } finally {
+            emulator.protocolParameters = setupProtocolParameters;
+          }
+        },
+      );
+      const itemSemanticPublication = await runEmulatorLifecycleStage(
+        "reference-script.publish-item-semantic",
+        async () => {
+          emulator.protocolParameters = {
+            ...setupProtocolParameters,
+            maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+          };
+          try {
+            return await publishPlainReferenceScriptUtxo({
+              lucid: referenceScriptPublisherLucid,
+              script: itemSemanticContract.spendingScript,
+              label: "validation item-semantic",
+            });
+          } finally {
+            emulator.protocolParameters = setupProtocolParameters;
+          }
+        },
+      );
+      const deploymentInfo = buildRemovalDeploymentInfo(
+        contracts,
+        catalogue,
+        validationDisputePublication,
+        {
+          scriptHash: itemSemanticContract.spendingScriptHash,
+          utxo: itemSemanticPublication.utxo,
+        },
+      );
+      const initResult = await runEmulatorLifecycleStage("init", () =>
         submitInit({
           lucid: challengerLucid,
           blueprint: realBlueprint,
@@ -4954,235 +5109,320 @@ describe("fault-proof emulator integration", () => {
           fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
           awaitConfirmation: true,
         }),
-    );
-    const functionalProtocolParameters = emulator.protocolParameters;
-    const functionalSlotConfig = challengerLucid.config().slotConfig;
-    if (functionalSlotConfig === undefined) {
-      throw new Error(
-        "Expected functional emulator Lucid to expose its Custom slot config",
       );
-    }
-    emulator.protocolParameters = {
-      ...functionalProtocolParameters,
-      maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-    };
-    const targetOperatorLucid = await Lucid(emulator, "Custom", {
-      slotConfig: functionalSlotConfig,
-    });
-    const targetChallengerLucid = await Lucid(emulator, "Custom", {
-      slotConfig: functionalSlotConfig,
-    });
-    targetOperatorLucid.selectWallet.fromSeed(operator.seedPhrase);
-    targetChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
-    const firstStepUtxo = await expectSingleUtxoWithUnit(
-      targetChallengerLucid,
-      initResult.firstStepAddress,
-      initResult.computationThreadUnit,
-    );
-    const openSubmission = await runEmulatorLifecycleStage("open", () =>
-      captureEmulatorSubmission(emulator, () =>
-        submitValidationDisputeOpen({
-          lucid: targetChallengerLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: challengerSigner,
-          threadOutRef: outRefLabel(firstStepUtxo),
-          stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-          claim: fixture.claim,
-          challengerDescriptor: fixture.challengerDescriptor,
-          validityRange: validityRange(),
-          awaitConfirmation: true,
-        }),
-      ),
-    );
-    const openResult = openSubmission.result;
-    const publicationMeasurement = openSubmission.measurement;
-    const sourceResult = await runEmulatorLifecycleStage("source", () =>
-      submitValidationDisputeVerifySource({
-        lucid: targetChallengerLucid,
-        blueprint: realBlueprint,
-        deploymentInfo,
-        network,
-        signer: challengerSigner,
-        threadOutRef: openResult.nextThreadOutRef,
-        validityRange: validityRange(),
-        awaitConfirmation: true,
-      }),
-    );
-
-    let threadOutRef = sourceResult.nextThreadOutRef;
-    for (const move of fixture.evidence.moves) {
-      const revealResult = await runEmulatorLifecycleStage(
-        `reveal.${move.role}`,
-        () =>
-          submitValidationDisputeReveal({
-            lucid:
-              move.role === "operator"
-                ? targetOperatorLucid
-                : targetChallengerLucid,
-            blueprint: realBlueprint,
-            deploymentInfo,
-            network,
-            signer:
-              move.role === "operator" ? operatorSigner : challengerSigner,
-            threadOutRef,
-            role: move.role,
-            proof: move.proof,
-            validityRange: validityRange(),
-            awaitConfirmation: true,
-          }),
+      const functionalProtocolParameters = emulator.protocolParameters;
+      const functionalSlotConfig = challengerLucid.config().slotConfig;
+      if (functionalSlotConfig === undefined) {
+        throw new Error(
+          "Expected functional emulator Lucid to expose its Custom slot config",
+        );
+      }
+      emulator.protocolParameters = {
+        ...functionalProtocolParameters,
+        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      };
+      const targetOperatorLucid = await Lucid(emulator, "Custom", {
+        slotConfig: functionalSlotConfig,
+      });
+      const targetChallengerLucid = await Lucid(emulator, "Custom", {
+        slotConfig: functionalSlotConfig,
+      });
+      targetOperatorLucid.selectWallet.fromSeed(operator.seedPhrase);
+      targetChallengerLucid.selectWallet.fromSeed(challenger.seedPhrase);
+      const firstStepUtxo = await expectSingleUtxoWithUnit(
+        targetChallengerLucid,
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
       );
-      threadOutRef = revealResult.nextThreadOutRef;
-    }
-
-    const resolutionResult = await runEmulatorLifecycleStage(
-      "enter-resolution",
-      () =>
-        submitValidationDisputeEnterResolution({
-          lucid: targetChallengerLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: challengerSigner,
-          threadOutRef,
-          validityRange: validityRange(),
-          awaitConfirmation: true,
-        }),
-    );
-    const { lowIndex, highIndex } = fixture.evidence.finalDispute;
-    const prepareResult = await runEmulatorLifecycleStage(
-      "prepare-resolution",
-      () =>
-        submitValidationDisputePrepareResolution({
-          lucid: targetChallengerLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: challengerSigner,
-          threadOutRef: resolutionResult.nextThreadOutRef,
-          preState: validationMachineStateDataFromCore(
-            fixture.operatorTrace.states[lowIndex]!,
-          ),
-          operatorPost: validationTraceProofDataFromCore(
-            fixture.operatorTrace.tree.proofs[highIndex]!,
-          ),
-          challengerPost: validationTraceProofDataFromCore(
-            fixture.challengerTrace.tree.proofs[highIndex]!,
-          ),
-          validityRange: validityRange(),
-          awaitConfirmation: true,
-        }),
-    );
-    const selectedResult = await runEmulatorLifecycleStage(
-      "prepare-selected",
-      () =>
-        submitValidationDisputePrepareSelected({
-          lucid: targetChallengerLucid,
-          blueprint: realBlueprint,
-          deploymentInfo,
-          network,
-          signer: challengerSigner,
-          threadOutRef: prepareResult.nextThreadOutRef,
-          oneStepArgument: fixture.evidence.oneStepArgument,
-          validityRange: validityRange(),
-          awaitConfirmation: true,
-        }),
-    );
-    const semanticSubmission = await runEmulatorLifecycleStage(
-      "semantic-resolution",
-      () =>
+      const openSubmission = await runEmulatorLifecycleStage("open", () =>
         captureEmulatorSubmission(emulator, () =>
-          submitValidationDisputeSemanticResolution({
+          submitValidationDisputeOpen({
             lucid: targetChallengerLucid,
             blueprint: realBlueprint,
             deploymentInfo,
             network,
             signer: challengerSigner,
-            threadOutRef: selectedResult.nextThreadOutRef,
-            oneStepArgument: fixture.evidence.oneStepArgument,
+            threadOutRef: outRefLabel(firstStepUtxo),
+            stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+            claim: fixture.claim,
+            challengerDescriptor: fixture.challengerDescriptor,
             validityRange: validityRange(),
             awaitConfirmation: true,
           }),
         ),
-    );
-    const semanticResult = semanticSubmission.result;
-    const awardSubmission = await runEmulatorLifecycleStage("award", () =>
-      captureEmulatorSubmission(emulator, () =>
-        submitValidationDisputeAward({
+      );
+      const openResult = openSubmission.result;
+      const publicationMeasurement = openSubmission.measurement;
+      const sourceResult = await runEmulatorLifecycleStage("source", () =>
+        submitValidationDisputeVerifySource({
           lucid: targetChallengerLucid,
           blueprint: realBlueprint,
           deploymentInfo,
           network,
           signer: challengerSigner,
-          threadOutRef: semanticResult.nextThreadOutRef,
+          threadOutRef: openResult.nextThreadOutRef,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
-      ),
-    );
-    const awardResult = awardSubmission.result;
-    const proofTransactionMeasurements = {
-      referenceScriptPublication:
-        validationDisputePublication.publicationMeasurement,
-      publication: publicationMeasurement,
-      resolution: semanticSubmission.measurement,
-      award: awardSubmission.measurement,
-    };
-    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
-      console.info(
-        JSON.stringify(
-          { transactions: proofTransactionMeasurements },
-          (_key, value: unknown) =>
-            typeof value === "bigint" ? value.toString() : value,
-          2,
+      );
+
+      let threadOutRef = sourceResult.nextThreadOutRef;
+      for (const move of fixture.evidence.moves) {
+        const revealResult = await runEmulatorLifecycleStage(
+          `reveal.${move.role}`,
+          () =>
+            submitValidationDisputeReveal({
+              lucid:
+                move.role === "operator"
+                  ? targetOperatorLucid
+                  : targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo,
+              network,
+              signer:
+                move.role === "operator" ? operatorSigner : challengerSigner,
+              threadOutRef,
+              role: move.role,
+              proof: move.proof,
+              validityRange: validityRange(),
+              awaitConfirmation: true,
+            }),
+        );
+        threadOutRef = revealResult.nextThreadOutRef;
+      }
+
+      const resolutionResult = await runEmulatorLifecycleStage(
+        "enter-resolution",
+        () =>
+          submitValidationDisputeEnterResolution({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
+      );
+      const { lowIndex, highIndex } = fixture.evidence.finalDispute;
+      const prepareResult = await runEmulatorLifecycleStage(
+        "prepare-resolution",
+        () =>
+          submitValidationDisputePrepareResolution({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: resolutionResult.nextThreadOutRef,
+            preState: validationMachineStateDataFromCore(
+              fixture.operatorTrace.states[lowIndex]!,
+            ),
+            operatorPost: validationTraceProofDataFromCore(
+              fixture.operatorTrace.tree.proofs[highIndex]!,
+            ),
+            challengerPost: validationTraceProofDataFromCore(
+              fixture.challengerTrace.tree.proofs[highIndex]!,
+            ),
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
+      );
+      const selectedResult = await runEmulatorLifecycleStage(
+        "prepare-selected",
+        () =>
+          submitValidationDisputePrepareSelected({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: prepareResult.nextThreadOutRef,
+            oneStepArgument: fixture.evidence.oneStepArgument,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
+      );
+      const semanticSubmission = await runEmulatorLifecycleStage(
+        "semantic-resolution",
+        () =>
+          captureEmulatorSubmission(emulator, () =>
+            submitValidationDisputeSemanticResolution({
+              lucid: targetChallengerLucid,
+              blueprint: realBlueprint,
+              deploymentInfo,
+              network,
+              signer: challengerSigner,
+              threadOutRef: selectedResult.nextThreadOutRef,
+              oneStepArgument: fixture.evidence.oneStepArgument,
+              validityRange: validityRange(),
+              awaitConfirmation: true,
+            }),
+          ),
+      );
+      const semanticResult = semanticSubmission.result;
+      const awardSubmission = await runEmulatorLifecycleStage("award", () =>
+        captureEmulatorSubmission(emulator, () =>
+          submitValidationDisputeAward({
+            lucid: targetChallengerLucid,
+            blueprint: realBlueprint,
+            deploymentInfo,
+            network,
+            signer: challengerSigner,
+            threadOutRef: semanticResult.nextThreadOutRef,
+            validityRange: validityRange(),
+            awaitConfirmation: true,
+          }),
         ),
       );
-    }
+      const awardResult = awardSubmission.result;
+      const proofTransactionMeasurements = {
+        referenceScriptPublication:
+          validationDisputePublication.publicationMeasurement,
+        publication: publicationMeasurement,
+        resolution: semanticSubmission.measurement,
+        resolutionTransactions: semanticSubmission.measurements,
+        award: awardSubmission.measurement,
+      };
+      const allProofTransactionMeasurements = [
+        validationDisputePublication.publicationMeasurement,
+        publicationMeasurement,
+        ...semanticSubmission.measurements,
+        awardSubmission.measurement,
+      ];
+      if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+        console.info(
+          JSON.stringify(
+            {
+              completeItemBytes: fixture.completeItemBytes,
+              transactions: proofTransactionMeasurements,
+            },
+            (_key, value: unknown) =>
+              typeof value === "bigint" ? value.toString() : value,
+            2,
+          ),
+        );
+      }
 
-    expect(fixture.evidence.finalDispute.turn).toEqual({
-      type: "readyForOneStep",
-    });
-    expect(fixture.evidence.moves.length).toBeGreaterThan(0);
-    expect(prepareResult.resolverIndex).toBe(
-      fixture.evidence.oneStepArgument.resolverIndex,
-    );
-    expect(selectedResult.semanticResolverIndex).toBe(
-      fixture.evidence.oneStepArgument.semanticResolverIndex,
-    );
-    expect(semanticResult.nextThreadOutRef).toBe(
-      awardResult.threadOutRef,
-    );
-    expect(awardResult.txHash).toHaveLength(64);
-    expect(awardResult.fraudProofUnit).toBe(
-      toUnit(
-        contracts.fraudProof.policyId,
-        initResult.computationThreadAssetName,
-      ),
-    );
-    expect(publicationMeasurement.l1ByteMargin).toBeGreaterThan(0);
-    expect(publicationMeasurement.referenceInputCount).toBe(3);
-    expect(
-      validationDisputePublication.publicationMeasurement.nativeScriptCount,
-    ).toBe(1);
-    expect(publicationMeasurement.plutusV3ScriptCount).toBe(0);
-    expect(semanticSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
-    expect(awardSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
-    for (const measurement of Object.values(proofTransactionMeasurements)) {
-      expect(measurement.executionMemory).toBeLessThanOrEqual(
-        emulator.protocolParameters.maxTxExMem,
+      expect(fixture.evidence.finalDispute.turn).toEqual({
+        type: "readyForOneStep",
+      });
+      expect(fixture.evidence.moves.length).toBeGreaterThan(0);
+      expect(prepareResult.resolverIndex).toBe(
+        fixture.evidence.oneStepArgument.resolverIndex,
       );
-      expect(measurement.executionSteps).toBeLessThanOrEqual(
-        emulator.protocolParameters.maxTxExSteps,
+      expect(selectedResult.semanticResolverIndex).toBe(
+        fixture.evidence.oneStepArgument.semanticResolverIndex,
       );
-    }
-    await expect(
-      targetChallengerLucid.utxosAtWithUnit(
-        contracts.fraudProof.spendingScriptAddress,
-        awardResult.fraudProofUnit,
-      ),
-    ).resolves.toHaveLength(1);
-  }, 300_000);
+      expect(semanticResult.proofItemCarriage).toBe(expectedCarriage);
+      if (expectedCarriage === "reference") {
+        expect(semanticResult.proofItemReferenceOutRef).toBe(
+          semanticResult.proofItemPublication?.outRef,
+        );
+        expect(semanticResult.proofItemPublication).toMatchObject({
+          awaitedConfirmation: true,
+        });
+        expect(
+          semanticResult.proofItemPublication?.completeSignedBytes,
+        ).toBeLessThanOrEqual(PROTOCOL_PARAMETERS_DEFAULT.maxTxSize);
+        expect(
+          semanticResult.proofItemPublication?.lovelace ?? 0n,
+        ).toBeGreaterThan(0n);
+      } else {
+        expect(semanticResult.proofItemReferenceOutRef).toBeUndefined();
+        expect(semanticResult.proofItemPublication).toBeUndefined();
+      }
+      expect(semanticResult.stageTransactions).toHaveLength(5);
+      expect(semanticSubmission.measurements).toHaveLength(
+        expectedCarriage === "reference" ? 6 : 5,
+      );
+      // The semantic-resolution (authentication) proof transaction sources
+      // the item-semantic validator from the published reference script: one
+      // extra reference input beside the direct route, two beside the
+      // published proof item on the reference route.
+      expect(
+        semanticSubmission.measurements.map(
+          (measurement) => measurement.referenceInputCount,
+        ),
+      ).toEqual(
+        expectedCarriage === "reference" ? [0, 2, 0, 1, 0, 0] : [1, 0, 0, 0, 0],
+      );
+      expect(
+        semanticSubmission.measurements.every(
+          (measurement) =>
+            measurement.completeSignedBytes <=
+            PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+        ),
+      ).toBe(true);
+      // C21-DISPUTE-SUBMIT defect 2: the representative complete-item
+      // semantic-resolution transaction stays at or below the literal
+      // 16,384-byte L1 envelope and does not embed the ~3.4 KiB applied
+      // item-semantic validator body — no Plutus script witness at all; the
+      // validator arrives via the published reference script.
+      const resolutionMeasurements = semanticSubmission.measurements.slice(
+        expectedCarriage === "reference" ? 1 : 0,
+      );
+      const resolutionCbors = semanticSubmission.transactionCbors.slice(
+        expectedCarriage === "reference" ? 1 : 0,
+      );
+      const authenticationMeasurement = resolutionMeasurements[0]!;
+      const authenticationCbor = resolutionCbors[0]!;
+      expect(authenticationMeasurement.completeSignedBytes).toBeLessThanOrEqual(
+        16_384,
+      );
+      expect(authenticationMeasurement.plutusV3ScriptCount).toBe(0);
+      expect(authenticationMeasurement.plutusV2ScriptCount).toBe(0);
+      expect(authenticationMeasurement.plutusV1ScriptCount).toBe(0);
+      expect(authenticationMeasurement.nativeScriptCount).toBe(0);
+      expect(itemSemanticContract.spendingScript.script.length).toBeGreaterThan(
+        0,
+      );
+      expect(
+        authenticationCbor.includes(itemSemanticContract.spendingScript.script),
+      ).toBe(false);
+      expect(
+        semanticResult.stageTransactions?.map(
+          (transaction) => transaction.completeSignedBytes,
+        ),
+      ).toEqual(
+        semanticSubmission.measurements
+          .slice(expectedCarriage === "reference" ? 1 : 0)
+          .map((measurement) => measurement.completeSignedBytes),
+      );
+      expect(semanticResult.nextThreadOutRef).toBe(awardResult.threadOutRef);
+      expect(awardResult.txHash).toHaveLength(64);
+      expect(awardResult.fraudProofUnit).toBe(
+        toUnit(
+          contracts.fraudProof.policyId,
+          initResult.computationThreadAssetName,
+        ),
+      );
+      expect(publicationMeasurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(publicationMeasurement.referenceInputCount).toBe(3);
+      expect(
+        validationDisputePublication.publicationMeasurement.nativeScriptCount,
+      ).toBe(1);
+      expect(publicationMeasurement.plutusV3ScriptCount).toBe(0);
+      expect(semanticSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(awardSubmission.measurement.l1ByteMargin).toBeGreaterThan(0);
+      for (const measurement of allProofTransactionMeasurements) {
+        expect(measurement.executionMemory).toBeLessThanOrEqual(
+          emulator.protocolParameters.maxTxExMem,
+        );
+        expect(measurement.executionSteps).toBeLessThanOrEqual(
+          emulator.protocolParameters.maxTxExSteps,
+        );
+      }
+      await expect(
+        targetChallengerLucid.utxosAtWithUnit(
+          contracts.fraudProof.spendingScriptAddress,
+          awardResult.fraudProofUnit,
+        ),
+      ).resolves.toHaveLength(1);
+    },
+    300_000,
+  );
 
   it("coordinates non-tail removal with lease acquire, refetch, renew, and release ordering", async () => {
     const fixture = await buildProvedDoubleSpendFixture({ successorCount: 1 });

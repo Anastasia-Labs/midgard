@@ -448,7 +448,7 @@ describe("fault-proof deployment contract resolution", () => {
       network: "Preprod",
     });
     expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000005");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(81);
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(85);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
     ).toHaveLength(61);

@@ -1,14 +1,29 @@
 import {
+  asArray,
+  asBytes,
+  buildMidgardBoundedItemV1,
   canOpenMidgardValidationDisputeBeforeMaturity,
   computeHash32,
+  decodeMidgardNativeTxProofFieldLengthsV1,
+  decodeMidgardNativeTxWitnessSetCompactV1,
+  decodeSingleCbor,
   type MidgardValidationTraceProofV1,
   openMidgardValidationDispute,
   revealMidgardValidationChallengerMidpoint,
   revealMidgardValidationOperatorMidpoint,
   timeoutMidgardValidationDispute,
+  verifyMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  AuthenticatedCanonicalDecodeItemDatumV1,
+  BoundedCollectionItemProofV1,
+  type BoundedCollectionItemProofV1 as BoundedCollectionItemProofV1Data,
+  buildUnsignedValidationProofItemPublicationV1Program,
+  deriveValidationProofItemPublicationV1,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
@@ -16,8 +31,10 @@ import {
   getLinkedListNodeViewFromUTxO,
   hashBlockHeaderV1,
   HUB_ORACLE_ASSET_NAME,
+  ObservedCanonicalDecodeItemDatumV1,
   PendingValidationClaimDatumV1,
   type PendingValidationClaimDatumV1 as PendingValidationClaimDatumV1Data,
+  PreparedCanonicalDecodeItemDatumV1,
   PreparedValidationResolutionDatumV1,
   type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
   referenceScriptAuthUnit,
@@ -27,10 +44,13 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  ValidationAuxiliaryWitnessV1,
+  type ValidationAuxiliaryWitnessV1 as ValidationAuxiliaryWitnessV1Data,
   ValidationAwardSpendRedeemerV1,
   ValidationBoundarySpendRedeemerV1,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
   type ValidationClaimWitnessV1,
-  ValidationDirectResolveSpendRedeemerV1,
+  ValidationDirectResolveSpendRedeemerV1Schema,
   validationDisputeCoreFromData,
   validationDisputeDataFromCore,
   ValidationDisputeDatumV1,
@@ -40,7 +60,8 @@ import {
   type ValidationMachineStateV1,
   ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1,
-  ValidationPrepareSelectedSpendRedeemerV1,
+  ValidationPrepareSelectedSpendRedeemerV1Schema,
+  ValidationProofItemDatumV1,
   ValidationResolutionDatumV1,
   type ValidationResolutionDatumV1 as ValidationResolutionDatumV1Data,
   ValidationSourceSpendRedeemerV1,
@@ -51,12 +72,15 @@ import {
   validationTraceProofCoreFromData,
   validationTraceProofDataFromCore,
   type ValidationTraceProofV1,
+  VerifiedCanonicalDecodeItemDatumV1,
   WinningValidationResolutionDatumV1,
   type WinningValidationResolutionDatumV1 as WinningValidationResolutionDatumV1Data,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
+  CML,
   Constr,
+  coreToTxOutput,
   credentialToAddress,
   Data,
   type LucidEvolution,
@@ -70,6 +94,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -93,8 +118,26 @@ import {
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;
 export const MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024;
-const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE =
-  "V1 validation-trace dispute";
+const VALIDATION_DISPUTE_REFERENCE_SCRIPT_ROLE = "V1 validation-trace dispute";
+
+export const selectValidationCompleteItemCarriageV1 = (
+  itemBytes: number,
+): "direct" | "reference" => {
+  if (
+    !Number.isSafeInteger(itemBytes) ||
+    itemBytes < 0 ||
+    itemBytes >
+      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes
+  ) {
+    throw new Error(
+      "Complete validation proof item exceeds the measured single-publication envelope",
+    );
+  }
+  return itemBytes <=
+    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes
+    ? "direct"
+    : "reference";
+};
 
 export type ValidationDisputeValidityRange = {
   readonly validFrom: number;
@@ -164,6 +207,31 @@ const requireValidityRange = (
   return range;
 };
 
+export const refreshExpiredValidationDisputeValidityRange = ({
+  range,
+  currentLedgerTime,
+}: {
+  readonly range: ValidationDisputeValidityRange;
+  readonly currentLedgerTime: number;
+}): ValidationDisputeValidityRange => {
+  const checked = requireValidityRange(range);
+  if (!Number.isSafeInteger(currentLedgerTime) || currentLedgerTime < 0) {
+    throw new Error(
+      "Validation-dispute current ledger time must be a non-negative safe integer",
+    );
+  }
+  if (currentLedgerTime < checked.validTo) {
+    return checked;
+  }
+  const width = checked.validTo - checked.validFrom;
+  const backoff = Math.min(VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS, width - 1);
+  const validFrom = Math.max(0, currentLedgerTime - backoff);
+  return requireValidityRange({
+    validFrom,
+    validTo: validFrom + width,
+  });
+};
+
 const inclusiveValidityUpperBound = (
   range: ValidationDisputeValidityRange,
 ): number => range.validTo - 1;
@@ -187,6 +255,34 @@ const requireL1ProofEnvelope = (
       `${label} transaction is ${bytes.toString()} bytes; the complete signed L1 proof transaction must be no larger than ${MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES.toString()} bytes`,
     );
   }
+};
+
+const findUniqueInlineDatumOutputIndex = ({
+  transactionCbor,
+  address,
+  datum,
+  label,
+}: {
+  readonly transactionCbor: string;
+  readonly address: string;
+  readonly datum: string;
+  readonly label: string;
+}): number => {
+  const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+  const outputs = transaction.body().outputs();
+  const matches: number[] = [];
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = coreToTxOutput(outputs.get(index));
+    if (output.address === address && output.datum === datum) {
+      matches.push(index);
+    }
+  }
+  if (matches.length !== 1) {
+    throw new Error(
+      `${label} must contain exactly one matching inline-datum output; found ${matches.length.toString()}`,
+    );
+  }
+  return matches[0]!;
 };
 
 const requireValidationDisputeReferenceScript = ({
@@ -233,12 +329,119 @@ const requireValidationDisputeReferenceScript = ({
   }
 };
 
+/**
+ * Deployment-info entry that publishes the applied
+ * `canonical_decode_item_semantic_v1` validator as an L1 reference script.
+ * The complete-item semantic-resolution proof transaction must consume the
+ * validator by reference: embedding the validator body in the proof
+ * transaction spends the 16,384-byte L1 envelope that the measured
+ * complete-item redeemer needs (docs/exec-plans ledger row
+ * C21-DISPUTE-SUBMIT).
+ */
+export const VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
+  "validationTraceDisputeItemSemantic";
+
+export const requireValidationItemSemanticReferenceScriptOutRef = ({
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): { readonly txHash: string; readonly outputIndex: number } => {
+  const entry =
+    deploymentInfo[VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment info is missing "${VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}"; publish the V1 canonical-decode item-semantic reference script and regenerate deployment info before submitting a complete-item semantic resolution`,
+    );
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" is missing refScriptUTxO; publish the V1 canonical-decode item-semantic reference script and regenerate deployment info before submitting a complete-item semantic resolution`,
+    );
+  }
+  if (entry.scriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Deployment entry "${VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+const requireValidationItemSemanticReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): Promise<UTxO> => {
+  const outRef = requireValidationItemSemanticReferenceScriptOutRef({
+    deploymentInfo,
+    expectedScriptHash,
+  });
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef,
+    label: "validation item-semantic reference-script UTxO",
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `Validation item-semantic reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualScriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Validation item-semantic reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  return utxo;
+};
+
 const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1 = Buffer.from(
   "MidgardValidationOneStepEvidenceV1",
   "ascii",
 );
 
 type PlutusDataValue = Data;
+type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
+
+type RuntimeSchemaEncoder = (
+  data: unknown,
+  schema: PlutusDataSchema,
+) => ReturnType<typeof Data.to>;
+
+/*
+ * Lucid's runtime encoder accepts a TypeBox schema as its second argument, but
+ * its public generic types model that argument as the decoded static value.
+ * Expanding Exact<T> for the 42-variant auxiliary witness exceeds TypeScript's
+ * instantiation limit. Keep each caller's value exactly typed and isolate that
+ * declaration mismatch at this runtime-schema boundary.
+ */
+const encodeWithRuntimeSchema = Data.to as unknown as RuntimeSchemaEncoder;
+const validationDirectResolveSpendRedeemerV1RuntimeSchema =
+  ValidationDirectResolveSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+const validationPrepareSelectedSpendRedeemerV1RuntimeSchema =
+  ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+const validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema =
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+
+type ValidationDirectResolveActionV1Input = {
+  readonly input_index: bigint;
+  readonly output_index: bigint;
+  readonly fraud_proof_mint_redeemer_index: bigint;
+  readonly challenger_evidence: ValidationOneStepEvidenceV1;
+};
+
+export const encodeValidationDirectResolveSpendRedeemerV1 = (
+  action: ValidationDirectResolveActionV1Input,
+): ReturnType<typeof Data.to> =>
+  encodeWithRuntimeSchema(
+    { Continue: [action] },
+    validationDirectResolveSpendRedeemerV1RuntimeSchema,
+  );
 
 export type ValidationOneStepSubmissionArgumentV1 = {
   readonly resolverIndex: number;
@@ -295,15 +498,9 @@ const validationOneStepEvidenceHashFromDataV1 = (
   transition: PlutusDataValue,
   auxiliary: PlutusDataValue,
 ): string => {
-  const evidencePayload = Buffer.from(
-    Data.to([transition, auxiliary]),
-    "hex",
-  );
+  const evidencePayload = Buffer.from(Data.to([transition, auxiliary]), "hex");
   return computeHash32(
-    Buffer.concat([
-      VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1,
-      evidencePayload,
-    ]),
+    Buffer.concat([VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1, evidencePayload]),
   ).toString("hex");
 };
 
@@ -315,14 +512,8 @@ export const validationOneStepEvidenceHashV1 = ({
   "transitionCbor" | "auxiliaryCbor"
 >): string =>
   validationOneStepEvidenceHashFromDataV1(
-    exactPlutusDataFromCbor(
-      transitionCbor,
-      "validation transition",
-    ),
-    exactPlutusDataFromCbor(
-      auxiliaryCbor,
-      "validation auxiliary witness",
-    ),
+    exactPlutusDataFromCbor(transitionCbor, "validation transition"),
+    exactPlutusDataFromCbor(auxiliaryCbor, "validation auxiliary witness"),
   );
 
 const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
@@ -331,6 +522,37 @@ const VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1 = [
 const VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1 = [
   0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, -1, -1, 67,
 ] as const;
+
+const VALIDATION_AUXILIARY_SHAPES_V1 = {
+  none: [0, 0],
+  transactionFieldChunk: [1, 2],
+  transactionFieldItem: [30, 2],
+  requiredSignerItem: [2, 3],
+  nativeScriptToken: [3, 3],
+  nativeScriptFrame: [4, 1],
+  scheduledLedgerMembership: [5, 6],
+  resolvedInputReplay: [7, 4],
+  scriptPurposeScan: [8, 5],
+  scriptSourceScan: [9, 8],
+  redeemerScanBegin: [10, 5],
+  redeemerItemStep: [18, 3],
+  ledgerDeltaReplay: [27, 4],
+  ledgerDeltaOutput: [28, 3],
+  transactionRedeemerItemBegin: [29, 1],
+  ledgerOutputProofBegin: [31, 4],
+  ledgerOutputProofStep: [32, 1],
+  ledgerOutputProofFinalize: [33, 2],
+  ledgerDeltaProofFrame: [34, 2],
+  ledgerDeltaOperation: [35, 4],
+  scriptSourceHashBlock: [36, 2],
+  nativeExecutionDescriptor: [37, 17],
+} as const satisfies Record<string, readonly [number, number]>;
+
+const hasValidationAuxiliaryShapeV1 = (
+  auxiliary: Constr<PlutusDataValue>,
+  shape: readonly [number, number],
+): boolean =>
+  auxiliary.index === shape[0] && auxiliary.fields.length === shape[1];
 
 const auxiliaryShapeV1 = ({
   resolverIndex,
@@ -341,20 +563,46 @@ const auxiliaryShapeV1 = ({
   readonly semanticResolverIndex: number;
   readonly auxiliary: PlutusDataValue;
 }): Constr<PlutusDataValue> => {
+  if (resolverIndex === 0) {
+    if (semanticResolverIndex === 0) {
+      return requireConstr({
+        value: auxiliary,
+        index: VALIDATION_AUXILIARY_SHAPES_V1.none[0],
+        fields: VALIDATION_AUXILIARY_SHAPES_V1.none[1],
+        label: "validation CanonicalDecode empty auxiliary witness",
+      });
+    }
+    if (
+      auxiliary instanceof Constr &&
+      (hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      ) ||
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+        ))
+    ) {
+      return auxiliary;
+    }
+    throw new Error(
+      "validation CanonicalDecode auxiliary witness must carry an authenticated chunk or complete item",
+    );
+  }
   if (resolverIndex === 13) {
     const expected =
       semanticResolverIndex === 2 ||
       semanticResolverIndex === 4 ||
       semanticResolverIndex === 6 ||
       semanticResolverIndex === 7
-        ? [0, 0]
+        ? VALIDATION_AUXILIARY_SHAPES_V1.none
         : semanticResolverIndex === 0
-          ? [39, 4]
+          ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOperation
           : semanticResolverIndex === 1
-            ? [31, 4]
+            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaReplay
             : semanticResolverIndex === 3
-              ? [32, 3]
-              : [38, 2];
+              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOutput
+              : VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaProofFrame;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -365,14 +613,14 @@ const auxiliaryShapeV1 = ({
   if (resolverIndex === 7) {
     const expected =
       semanticResolverIndex === 0 || semanticResolverIndex === 1
-        ? [0, 0]
+        ? VALIDATION_AUXILIARY_SHAPES_V1.none
         : semanticResolverIndex === 2
-          ? [8, 6]
+          ? VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerMembership
           : semanticResolverIndex === 3
-            ? [36, 1]
+            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep
             : semanticResolverIndex === 4
-              ? [37, 2]
-              : [9, 4];
+              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize
+              : VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -382,18 +630,19 @@ const auxiliaryShapeV1 = ({
   }
   if (resolverIndex === 8) {
     if (!(auxiliary instanceof Constr)) {
-      throw new Error(
-        "validation auxiliary witness must be a constructor",
-      );
+      throw new Error("validation auxiliary witness must be a constructor");
     }
-    const isRedeemerItemStage =
-      auxiliary.index === 22 && auxiliary.fields.length === 3;
+    const isRedeemerItemStage = hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+    );
     if (
       semanticResolverIndex === 15 &&
       !(
-        (auxiliary.index === 33 &&
-          auxiliary.fields.length === 1) ||
-        isRedeemerItemStage
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.transactionRedeemerItemBegin,
+        ) || isRedeemerItemStage
       )
     ) {
       throw new Error(
@@ -405,9 +654,10 @@ const auxiliaryShapeV1 = ({
         semanticResolverIndex === 21 ||
         semanticResolverIndex === 22) &&
       !(
-        (auxiliary.index === 14 &&
-          auxiliary.fields.length === 5) ||
-        isRedeemerItemStage
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+        ) || isRedeemerItemStage
       )
     ) {
       throw new Error(
@@ -418,41 +668,38 @@ const auxiliaryShapeV1 = ({
       semanticResolverIndex === 0
         ? null
         : semanticResolverIndex === 1
-          ? [35, 4]
+          ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofBegin
           : semanticResolverIndex === 2
-            ? [36, 1]
+            ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep
             : semanticResolverIndex === 3
-              ? [37, 2]
+              ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize
               : semanticResolverIndex === 5
-                ? [2, 2]
+                ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
                 : semanticResolverIndex === 7
-                  ? [40, 2]
-                  : semanticResolverIndex >= 10 &&
-                      semanticResolverIndex <= 12
-                    ? [13, 8]
+                  ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceHashBlock
+                  : semanticResolverIndex >= 10 && semanticResolverIndex <= 12
+                    ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan
                     : semanticResolverIndex === 17
-                      ? [13, 8]
-                    : semanticResolverIndex === 19
+                      ? VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan
+                      : semanticResolverIndex === 19
                         ? null
                         : semanticResolverIndex === 21 ||
                             semanticResolverIndex === 22
                           ? null
                           : semanticResolverIndex === 24
-                            ? [12, 5]
+                            ? VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan
                             : semanticResolverIndex === 25
-                              ? [2, 2]
+                              ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
                               : semanticResolverIndex === 26
-                                ? [12, 5]
-                    : semanticResolverIndex === 15
-                      ? null
-                    : [0, 0];
+                                ? VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan
+                                : semanticResolverIndex === 15
+                                  ? null
+                                  : VALIDATION_AUXILIARY_SHAPES_V1.none;
     const outputAuxiliary = auxiliary;
     if (
       outputExpected !== null &&
-      (
-        outputAuxiliary.index !== outputExpected[0] ||
-        outputAuxiliary.fields.length !== outputExpected[1]
-      )
+      (outputAuxiliary.index !== outputExpected[0] ||
+        outputAuxiliary.fields.length !== outputExpected[1])
     ) {
       throw new Error(
         "validation auxiliary witness does not match the selected ScriptSources proof family",
@@ -462,7 +709,9 @@ const auxiliaryShapeV1 = ({
   }
   if (resolverIndex === 9) {
     const expected =
-      semanticResolverIndex === 0 ? [0, 0] : [41, 17];
+      semanticResolverIndex === 0
+        ? VALIDATION_AUXILIARY_SHAPES_V1.none
+        : VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionDescriptor;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -471,38 +720,31 @@ const auxiliaryShapeV1 = ({
     });
   }
   const expected =
-    resolverIndex === 0
-      ? semanticResolverIndex === 0
-        ? [0, 0]
-        : [2, 2]
-      : resolverIndex === 1 ||
-          resolverIndex === 2 ||
-          resolverIndex === 10
-        ? [0, 0]
-        : resolverIndex === 3
-          ? semanticResolverIndex === 0
-            ? [0, 0]
-            : [2, 2]
-          : resolverIndex === 4
-            ? semanticResolverIndex === 0 ||
-              semanticResolverIndex === 3
-              ? [0, 0]
+    resolverIndex === 1 || resolverIndex === 2 || resolverIndex === 10
+      ? VALIDATION_AUXILIARY_SHAPES_V1.none
+      : resolverIndex === 3
+        ? semanticResolverIndex === 0
+          ? VALIDATION_AUXILIARY_SHAPES_V1.none
+          : VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+        : resolverIndex === 4
+          ? semanticResolverIndex === 0 || semanticResolverIndex === 3
+            ? VALIDATION_AUXILIARY_SHAPES_V1.none
+            : semanticResolverIndex === 1
+              ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+              : VALIDATION_AUXILIARY_SHAPES_V1.requiredSignerItem
+          : resolverIndex === 5
+            ? semanticResolverIndex === 0
+              ? VALIDATION_AUXILIARY_SHAPES_V1.none
               : semanticResolverIndex === 1
-                ? [2, 2]
-                : [3, 3]
-            : resolverIndex === 5
+                ? VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+                : semanticResolverIndex === 13
+                  ? VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptFrame
+                  : VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken
+            : resolverIndex === 6
               ? semanticResolverIndex === 0
-                ? [0, 0]
-                : semanticResolverIndex === 1
-                  ? [2, 2]
-                  : semanticResolverIndex === 13
-                    ? [5, 1]
-                    : [4, 3]
-              : resolverIndex === 6
-                ? semanticResolverIndex === 0
-                  ? [0, 0]
-                  : [2, 2]
-                : null;
+                ? VALIDATION_AUXILIARY_SHAPES_V1.none
+                : VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk
+              : null;
   if (expected === null) {
     throw new Error(
       `Validation resolver ${resolverIndex.toString()} has no staged semantic proof family`,
@@ -522,6 +764,7 @@ const requireStagedOneStepArgumentV1 = (
   readonly transition: ValidationOneStepWitnessV1;
   readonly transitionData: PlutusDataValue;
   readonly auxiliaryData: PlutusDataValue;
+  readonly auxiliaryWitness: ValidationAuxiliaryWitnessV1Data;
   readonly auxiliary: Constr<PlutusDataValue>;
   readonly semanticResolverIndex: number;
   readonly semanticResolverGlobalIndex: number;
@@ -530,8 +773,7 @@ const requireStagedOneStepArgumentV1 = (
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 0 ||
-    argument.resolverIndex >=
-      VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
+    argument.resolverIndex >= VALIDATION_SEMANTIC_RESOLVER_COUNTS_V1.length
   ) {
     throw new Error(
       "Staged validation one-step argument must select a prepare resolver",
@@ -558,6 +800,10 @@ const requireStagedOneStepArgumentV1 = (
     argument.auxiliaryCbor,
     "validation auxiliary witness",
   );
+  const auxiliaryWitness = Data.from(
+    Buffer.from(argument.auxiliaryCbor).toString("hex"),
+    ValidationAuxiliaryWitnessV1,
+  );
   const transition = Data.from(
     Buffer.from(argument.transitionCbor).toString("hex"),
     ValidationOneStepWitnessV1,
@@ -571,12 +817,12 @@ const requireStagedOneStepArgumentV1 = (
     transition,
     transitionData,
     auxiliaryData,
+    auxiliaryWitness,
     auxiliary,
     semanticResolverIndex,
     semanticResolverGlobalIndex:
-      VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1[
-        argument.resolverIndex
-      ]! + semanticResolverIndex,
+      VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1[argument.resolverIndex]! +
+      semanticResolverIndex,
     evidenceHash: validationOneStepEvidenceHashFromDataV1(
       transitionData,
       auxiliaryData,
@@ -611,10 +857,7 @@ const requireDirectOneStepArgumentV1 = (
     Buffer.from(argument.transitionCbor).toString("hex"),
     ValidationOneStepWitnessV1,
   );
-  const evidenceData = new Constr(0, [
-    transitionData,
-    auxiliaryData,
-  ]);
+  const evidenceData = new Constr(0, [transitionData, auxiliaryData]);
   const evidenceCbor = Data.to(evidenceData);
   return {
     evidence: Data.from(evidenceCbor, ValidationOneStepEvidenceV1),
@@ -709,11 +952,7 @@ const makeVerifySourceRedeemer = ({
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
-    requireOwnSpendPurpose(
-      ctx,
-      threadUtxo,
-      "validation dispute verify source",
-    );
+    requireOwnSpendPurpose(ctx, threadUtxo, "validation dispute verify source");
     const layout: ContinueLayout = {
       inputIndex: requireInputIndex(
         ctx,
@@ -848,10 +1087,7 @@ const makeGameHandoffRedeemer = ({
               output_index: layout.outputIndex,
             },
           };
-    return Data.to(
-      { Continue: [action] },
-      ValidationGameSpendRedeemerV1,
-    );
+    return Data.to({ Continue: [action] }, ValidationGameSpendRedeemerV1);
   }) satisfies BuildTxWithRedeemer;
 
 export type SubmitValidationDisputeOpenResult = {
@@ -919,8 +1155,7 @@ export const buildValidationDisputeOpen = async ({
   } = resolved;
   const stateQueuePolicyId = resolved.stateQueuePolicyId!;
   const disputeContract = contracts.validationTraceDispute.firstStep;
-  const disputeDeploymentEntry =
-    parsedDeploymentInfo.validationTraceDispute;
+  const disputeDeploymentEntry = parsedDeploymentInfo.validationTraceDispute;
   if (disputeDeploymentEntry === undefined) {
     throw new Error('Deployment info is missing "validationTraceDispute"');
   }
@@ -929,37 +1164,36 @@ export const buildValidationDisputeOpen = async ({
       'Deployment info entry "validationTraceDispute" is missing refScriptUTxO; publish the authenticated V1 validation-trace dispute reference script and regenerate deployment info before opening a dispute',
     );
   }
-  const [
-    threadUtxo,
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    disputeReferenceUtxo,
-  ] = await Promise.all([
-    fetchUtxoByOutRef({
-      lucid,
-      outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
-      label: "validation-dispute computation-thread UTxO",
-    }),
-    requireSingletonUtxo({
-      lucid,
-      address: credentialToAddress(
-        network,
-        scriptHashToCredential(hubOraclePolicyId),
-      ),
-      unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
-      label: "hub oracle",
-    }),
-    fetchUtxoByOutRef({
-      lucid,
-      outRef: parseOutRef(stateQueueBlockOutRef, "--state-queue-block-out-ref"),
-      label: "validation-dispute state-queue block UTxO",
-    }),
-    fetchUtxoByOutRef({
-      lucid,
-      outRef: disputeDeploymentEntry.refScriptUTxO,
-      label: "validation-dispute authenticated reference-script UTxO",
-    }),
-  ]);
+  const [threadUtxo, hubOracleUtxo, stateQueueBlockUtxo, disputeReferenceUtxo] =
+    await Promise.all([
+      fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
+        label: "validation-dispute computation-thread UTxO",
+      }),
+      requireSingletonUtxo({
+        lucid,
+        address: credentialToAddress(
+          network,
+          scriptHashToCredential(hubOraclePolicyId),
+        ),
+        unit: toUnit(hubOraclePolicyId, HUB_ORACLE_ASSET_NAME),
+        label: "hub oracle",
+      }),
+      fetchUtxoByOutRef({
+        lucid,
+        outRef: parseOutRef(
+          stateQueueBlockOutRef,
+          "--state-queue-block-out-ref",
+        ),
+        label: "validation-dispute state-queue block UTxO",
+      }),
+      fetchUtxoByOutRef({
+        lucid,
+        outRef: disputeDeploymentEntry.refScriptUTxO,
+        label: "validation-dispute authenticated reference-script UTxO",
+      }),
+    ]);
   requireValidationDisputeReferenceScript({
     utxo: disputeReferenceUtxo,
     deployedScriptHash: disputeDeploymentEntry.scriptHash,
@@ -1060,11 +1294,7 @@ export const buildValidationDisputeOpen = async ({
         },
       }),
     )
-    .readFrom([
-      hubOracleUtxo,
-      stateQueueBlockUtxo,
-      disputeReferenceUtxo,
-    ])
+    .readFrom([hubOracleUtxo, stateQueueBlockUtxo, disputeReferenceUtxo])
     .pay.ToContract(
       contracts.validationTraceDispute.source.spendingScriptAddress,
       { kind: "inline", value: outputDatum },
@@ -1233,7 +1463,8 @@ export const submitValidationDisputeVerifySource = async ({
       [threadUtxo],
       makeVerifySourceRedeemer({
         threadUtxo,
-        outputAddress: contracts.validationTraceDispute.game.spendingScriptAddress,
+        outputAddress:
+          contracts.validationTraceDispute.game.spendingScriptAddress,
         outputDatum,
         threadUnit: token.unit,
         onLayout: (resolvedLayout) => {
@@ -1670,10 +1901,7 @@ export const submitValidationDisputeEnterTimeout = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  requireL1ProofEnvelope(
-    signed.toCBOR(),
-    "Validation-dispute timeout handoff",
-  );
+  requireL1ProofEnvelope(signed.toCBOR(), "Validation-dispute timeout handoff");
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -2270,9 +2498,7 @@ const requireResolutionDatum = (
 const requirePreparedResolutionDatum = (
   threadUtxo: UTxO,
 ): PreparedValidationResolutionDatumV1Data & {
-  readonly data: NonNullable<
-    PreparedValidationResolutionDatumV1Data["data"]
-  >;
+  readonly data: NonNullable<PreparedValidationResolutionDatumV1Data["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
@@ -2289,37 +2515,28 @@ const requirePreparedResolutionDatum = (
     );
   }
   return datum as PreparedValidationResolutionDatumV1Data & {
-    readonly data: NonNullable<
-      PreparedValidationResolutionDatumV1Data["data"]
-    >;
+    readonly data: NonNullable<PreparedValidationResolutionDatumV1Data["data"]>;
   };
 };
 
 const requireWinningResolutionDatum = (
   threadUtxo: UTxO,
 ): WinningValidationResolutionDatumV1Data & {
-  readonly data: NonNullable<
-    WinningValidationResolutionDatumV1Data["data"]
-  >;
+  readonly data: NonNullable<WinningValidationResolutionDatumV1Data["data"]>;
 } => {
   if (threadUtxo.datum == null) {
     throw new Error(
       `Winning validation resolution UTxO ${outRefLabel(threadUtxo)} is missing datum`,
     );
   }
-  const datum = Data.from(
-    threadUtxo.datum,
-    WinningValidationResolutionDatumV1,
-  );
+  const datum = Data.from(threadUtxo.datum, WinningValidationResolutionDatumV1);
   if (datum.data === null || datum.data.version !== 1n) {
     throw new Error(
       "Winning validation resolution requires canonical V1 state",
     );
   }
   return datum as WinningValidationResolutionDatumV1Data & {
-    readonly data: NonNullable<
-      WinningValidationResolutionDatumV1Data["data"]
-    >;
+    readonly data: NonNullable<WinningValidationResolutionDatumV1Data["data"]>;
   };
 };
 
@@ -2331,6 +2548,7 @@ const makePrepareSelectedRedeemer = ({
   semanticResolverIndex,
   transition,
   auxiliary,
+  evidenceHash,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -2339,7 +2557,8 @@ const makePrepareSelectedRedeemer = ({
   readonly threadUnit: string;
   readonly semanticResolverIndex: number;
   readonly transition: ValidationOneStepWitnessV1;
-  readonly auxiliary: PlutusDataValue;
+  readonly auxiliary: ValidationAuxiliaryWitnessV1Data;
+  readonly evidenceHash?: string;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -2365,22 +2584,30 @@ const makePrepareSelectedRedeemer = ({
       ),
     };
     onLayout(layout);
-    return Data.to(
-      {
-        Continue: [
+    const base = {
+      input_index: layout.inputIndex,
+      output_index: layout.outputIndex,
+      semantic_resolver_index: BigInt(semanticResolverIndex),
+      transition,
+    };
+    return evidenceHash === undefined
+      ? encodeWithRuntimeSchema(
+          { Continue: [{ ...base, auxiliary }] },
+          validationPrepareSelectedSpendRedeemerV1RuntimeSchema,
+        )
+      : encodeWithRuntimeSchema(
           {
-            input_index: layout.inputIndex,
-            output_index: layout.outputIndex,
-            semantic_resolver_index: BigInt(
-              semanticResolverIndex,
-            ),
-            transition,
-            auxiliary,
+            Continue: [
+              {
+                PrepareSelectedByEvidenceHash: {
+                  ...base,
+                  evidence_hash: evidenceHash,
+                },
+              },
+            ],
           },
-        ],
-      },
-      ValidationPrepareSelectedSpendRedeemerV1,
-    );
+          validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema,
+        );
   }) satisfies BuildTxWithRedeemer;
 
 const semanticActionFieldsV1 = ({
@@ -2403,6 +2630,33 @@ const semanticActionFieldsV1 = ({
     outputIndex,
     transition,
   ];
+  if (resolverIndex === 0) {
+    if (
+      semanticResolverIndex === 0 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.none,
+      )
+    ) {
+      return base;
+    }
+    if (
+      semanticResolverIndex === 1 &&
+      (hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      ) ||
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+        ))
+    ) {
+      return [...base, auxiliary];
+    }
+    throw new Error(
+      "CanonicalDecode auxiliary witness cannot construct the selected semantic redeemer",
+    );
+  }
   if (resolverIndex === 13) {
     if (
       (semanticResolverIndex === 2 ||
@@ -2415,10 +2669,26 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 0 && auxiliary.index === 39) ||
-      (semanticResolverIndex === 1 && auxiliary.index === 31) ||
-      (semanticResolverIndex === 3 && auxiliary.index === 32) ||
-      (semanticResolverIndex === 5 && auxiliary.index === 38)
+      (semanticResolverIndex === 0 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOperation,
+        )) ||
+      (semanticResolverIndex === 1 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaReplay,
+        )) ||
+      (semanticResolverIndex === 3 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaOutput,
+        )) ||
+      (semanticResolverIndex === 5 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerDeltaProofFrame,
+        ))
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2435,10 +2705,26 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 2 && auxiliary.index === 8) ||
-      (semanticResolverIndex === 3 && auxiliary.index === 36) ||
-      (semanticResolverIndex === 4 && auxiliary.index === 37) ||
-      (semanticResolverIndex === 5 && auxiliary.index === 9)
+      (semanticResolverIndex === 2 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerMembership,
+        )) ||
+      (semanticResolverIndex === 3 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep,
+        )) ||
+      (semanticResolverIndex === 4 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize,
+        )) ||
+      (semanticResolverIndex === 5 &&
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay,
+        ))
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2450,13 +2736,31 @@ const semanticActionFieldsV1 = ({
     if (semanticResolverIndex === 0) {
       return [...base, auxiliary];
     }
-    if (semanticResolverIndex === 1 && auxiliary.index === 35) {
+    if (
+      semanticResolverIndex === 1 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofBegin,
+      )
+    ) {
       return [...base, ...auxiliary.fields];
     }
-    if (semanticResolverIndex === 2 && auxiliary.index === 36) {
+    if (
+      semanticResolverIndex === 2 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep,
+      )
+    ) {
       return [...base, ...auxiliary.fields];
     }
-    if (semanticResolverIndex === 3 && auxiliary.index === 37) {
+    if (
+      semanticResolverIndex === 3 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize,
+      )
+    ) {
       return [...base, ...auxiliary.fields];
     }
     if (
@@ -2466,7 +2770,13 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
-    if (semanticResolverIndex === 5 && auxiliary.index === 2) {
+    if (
+      semanticResolverIndex === 5 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      )
+    ) {
       return [...base, ...auxiliary.fields];
     }
     if (
@@ -2476,7 +2786,13 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
-    if (semanticResolverIndex === 7 && auxiliary.index === 40) {
+    if (
+      semanticResolverIndex === 7 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceHashBlock,
+      )
+    ) {
       return [...base, ...auxiliary.fields];
     }
     if (
@@ -2487,17 +2803,20 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 10 ||
-        semanticResolverIndex === 12) &&
-      auxiliary.index === 13 &&
-      auxiliary.fields.length === 8
+      (semanticResolverIndex === 10 || semanticResolverIndex === 12) &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 11 &&
-      auxiliary.index === 13 &&
-      auxiliary.fields.length === 8
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+      )
     ) {
       return [
         ...base,
@@ -2526,8 +2845,14 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 15 &&
-      ((auxiliary.index === 33 && auxiliary.fields.length === 1) ||
-        (auxiliary.index === 22 && auxiliary.fields.length === 3))
+      (hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionRedeemerItemBegin,
+      ) ||
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+        ))
     ) {
       return [...base, auxiliary];
     }
@@ -2540,8 +2865,10 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 17 &&
-      auxiliary.index === 13 &&
-      auxiliary.fields.length === 8
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptSourceScan,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2554,8 +2881,14 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 19 &&
-      ((auxiliary.index === 14 && auxiliary.fields.length === 5) ||
-        (auxiliary.index === 22 && auxiliary.fields.length === 3))
+      (hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+      ) ||
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+        ))
     ) {
       return [...base, auxiliary];
     }
@@ -2567,10 +2900,15 @@ const semanticActionFieldsV1 = ({
       return base;
     }
     if (
-      (semanticResolverIndex === 21 ||
-        semanticResolverIndex === 22) &&
-      ((auxiliary.index === 14 && auxiliary.fields.length === 5) ||
-        (auxiliary.index === 22 && auxiliary.fields.length === 3))
+      (semanticResolverIndex === 21 || semanticResolverIndex === 22) &&
+      (hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.redeemerScanBegin,
+      ) ||
+        hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
+        ))
     ) {
       return [...base, auxiliary];
     }
@@ -2583,22 +2921,28 @@ const semanticActionFieldsV1 = ({
     }
     if (
       semanticResolverIndex === 24 &&
-      auxiliary.index === 12 &&
-      auxiliary.fields.length === 5
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 25 &&
-      auxiliary.index === 2 &&
-      auxiliary.fields.length === 2
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
     if (
       semanticResolverIndex === 26 &&
-      auxiliary.index === 12 &&
-      auxiliary.fields.length === 5
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.scriptPurposeScan,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2621,7 +2965,12 @@ const semanticActionFieldsV1 = ({
     ) {
       return base;
     }
-    if (auxiliary.index === 41 && auxiliary.fields.length === 17) {
+    if (
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.nativeExecutionDescriptor,
+      )
+    ) {
       if (semanticResolverIndex === 1) {
         const firstChunk = requireConstr({
           value: auxiliary.fields[15]!,
@@ -2669,23 +3018,37 @@ const semanticActionFieldsV1 = ({
     );
   }
   if (
-    auxiliary.index === 0 &&
-    auxiliary.fields.length === 0
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.none,
+    )
   ) {
     return base;
   }
-  if (auxiliary.index === 2 && auxiliary.fields.length === 2) {
+  if (
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+    )
+  ) {
     return [...base, ...auxiliary.fields];
   }
-  if (auxiliary.index === 3 && auxiliary.fields.length === 3) {
+  if (
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.requiredSignerItem,
+    )
+  ) {
     return [...base, ...auxiliary.fields];
   }
   if (
     resolverIndex === 5 &&
     semanticResolverIndex >= 2 &&
     semanticResolverIndex <= 7 &&
-    auxiliary.index === 4 &&
-    auxiliary.fields.length === 3
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken,
+    )
   ) {
     return [...base, auxiliary.fields[0]!, auxiliary.fields[1]!];
   }
@@ -2693,31 +3056,39 @@ const semanticActionFieldsV1 = ({
     resolverIndex === 5 &&
     semanticResolverIndex >= 8 &&
     semanticResolverIndex <= 12 &&
-    auxiliary.index === 4 &&
-    auxiliary.fields.length === 3
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken,
+    )
   ) {
     return [...base, ...auxiliary.fields];
   }
   if (
     resolverIndex === 5 &&
     semanticResolverIndex === 13 &&
-    auxiliary.index === 5 &&
-    auxiliary.fields.length === 1
+    hasValidationAuxiliaryShapeV1(
+      auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptFrame,
+    )
   ) {
     return [...base, auxiliary.fields[0]!];
   }
   if (resolverIndex === 6) {
     if (
       semanticResolverIndex === 0 &&
-      auxiliary.index === 0 &&
-      auxiliary.fields.length === 0
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.none,
+      )
     ) {
       return base;
     }
     if (
       semanticResolverIndex === 1 &&
-      auxiliary.index === 2 &&
-      auxiliary.fields.length === 2
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldChunk,
+      )
     ) {
       return [...base, ...auxiliary.fields];
     }
@@ -2731,10 +3102,12 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
   oneStepArgument,
   inputIndex,
   outputIndex,
+  proofItemReferenceInputIndex,
 }: {
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
   readonly inputIndex: bigint;
   readonly outputIndex: bigint;
+  readonly proofItemReferenceInputIndex?: bigint;
 }): Buffer => {
   if (inputIndex < 0n || outputIndex < 0n) {
     throw new Error(
@@ -2742,6 +3115,57 @@ export const encodeValidationSemanticResolutionRedeemerV1 = ({
     );
   }
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
+  if (proofItemReferenceInputIndex !== undefined) {
+    if (
+      proofItemReferenceInputIndex < 0n ||
+      oneStepArgument.resolverIndex !== 0 ||
+      staged.semanticResolverIndex !== 1 ||
+      !hasValidationAuxiliaryShapeV1(
+        staged.auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+      )
+    ) {
+      throw new Error(
+        "Validation proof-item reference route requires a non-negative reference-input index and a CanonicalDecode complete item",
+      );
+    }
+    return Buffer.from(
+      Data.to(
+        new Constr(1, [
+          new Constr(1, [
+            inputIndex,
+            outputIndex,
+            staged.transitionData,
+            proofItemReferenceInputIndex,
+          ]),
+        ]),
+      ),
+      "hex",
+    );
+  }
+  if (
+    oneStepArgument.resolverIndex === 0 &&
+    staged.semanticResolverIndex === 1 &&
+    hasValidationAuxiliaryShapeV1(
+      staged.auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+    )
+  ) {
+    return Buffer.from(
+      Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            inputIndex,
+            outputIndex,
+            staged.transitionData,
+            staged.auxiliary.fields[0]!,
+            staged.auxiliary.fields[1]!,
+          ]),
+        ]),
+      ),
+      "hex",
+    );
+  }
   const fields = semanticActionFieldsV1({
     resolverIndex: oneStepArgument.resolverIndex,
     semanticResolverIndex: staged.semanticResolverIndex,
@@ -2765,6 +3189,7 @@ const makeSemanticResolutionRedeemer = ({
   semanticResolverIndex,
   transition,
   auxiliary,
+  proofItemReferenceUtxo,
   onLayout,
 }: {
   readonly threadUtxo: UTxO;
@@ -2775,6 +3200,7 @@ const makeSemanticResolutionRedeemer = ({
   readonly semanticResolverIndex: number;
   readonly transition: PlutusDataValue;
   readonly auxiliary: Constr<PlutusDataValue>;
+  readonly proofItemReferenceUtxo?: UTxO;
   readonly onLayout: (layout: ContinueLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -2800,6 +3226,54 @@ const makeSemanticResolutionRedeemer = ({
       ),
     };
     onLayout(layout);
+    if (proofItemReferenceUtxo !== undefined) {
+      if (
+        resolverIndex !== 0 ||
+        semanticResolverIndex !== 1 ||
+        !hasValidationAuxiliaryShapeV1(
+          auxiliary,
+          VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+        )
+      ) {
+        throw new Error(
+          "Validation proof-item reference route requires a CanonicalDecode complete item",
+        );
+      }
+      return Data.to(
+        new Constr(1, [
+          new Constr(1, [
+            layout.inputIndex,
+            layout.outputIndex,
+            transition,
+            requireReferenceInputIndex(
+              ctx,
+              proofItemReferenceUtxo,
+              "validation complete proof item",
+            ),
+          ]),
+        ]),
+      );
+    }
+    if (
+      resolverIndex === 0 &&
+      semanticResolverIndex === 1 &&
+      hasValidationAuxiliaryShapeV1(
+        auxiliary,
+        VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+      )
+    ) {
+      return Data.to(
+        new Constr(1, [
+          new Constr(0, [
+            layout.inputIndex,
+            layout.outputIndex,
+            transition,
+            auxiliary.fields[0]!,
+            auxiliary.fields[1]!,
+          ]),
+        ]),
+      );
+    }
     const fields = semanticActionFieldsV1({
       resolverIndex,
       semanticResolverIndex,
@@ -2808,9 +3282,59 @@ const makeSemanticResolutionRedeemer = ({
       transition,
       auxiliary,
     });
-    return Data.to(
-      new Constr(1, [new Constr(0, [...fields])]),
-    );
+    return Data.to(new Constr(1, [new Constr(0, [...fields])]));
+  }) satisfies BuildTxWithRedeemer;
+
+const makeIndexedValidationStageRedeemer = ({
+  threadUtxo,
+  outputAddress,
+  outputDatum,
+  threadUnit,
+  proofItemReferenceUtxo,
+  label,
+  encode,
+  onLayout,
+}: {
+  readonly threadUtxo: UTxO;
+  readonly outputAddress: string;
+  readonly outputDatum: string;
+  readonly threadUnit: string;
+  readonly proofItemReferenceUtxo?: UTxO;
+  readonly label: string;
+  readonly encode: (layout: {
+    readonly inputIndex: bigint;
+    readonly outputIndex: bigint;
+    readonly referenceInputIndex?: bigint;
+  }) => string;
+  readonly onLayout: (layout: ContinueLayout) => void;
+}): BuildTxWithRedeemer =>
+  ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, label);
+    const layout: ContinueLayout = {
+      inputIndex: requireInputIndex(ctx, threadUtxo, label),
+      outputIndex: requireUniqueOutputIndex(
+        ctx.outputs,
+        computationThreadOutputPredicate({
+          address: outputAddress,
+          datum: outputDatum,
+          unit: threadUnit,
+        }),
+        label,
+      ),
+    };
+    onLayout(layout);
+    return encode({
+      ...layout,
+      ...(proofItemReferenceUtxo === undefined
+        ? {}
+        : {
+            referenceInputIndex: requireReferenceInputIndex(
+              ctx,
+              proofItemReferenceUtxo,
+              "validation complete proof item",
+            ),
+          }),
+    });
   }) satisfies BuildTxWithRedeemer;
 
 type ValidationFinalizationResult = {
@@ -2842,16 +3366,10 @@ const makeValidationFinalizingSpendRedeemer = ({
   readonly fraudProofDatum: string;
   readonly label: string;
   readonly encodeRedeemer: (
-    layout: Omit<
-      FinalizeLayout,
-      "computationThreadMintRedeemerIndex"
-    >,
+    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
   ) => string;
   readonly onLayout: (
-    layout: Omit<
-      FinalizeLayout,
-      "computationThreadMintRedeemerIndex"
-    >,
+    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
   ) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
@@ -2892,9 +3410,7 @@ const submitValidationFinalizationTransaction = async ({
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: Awaited<
-    ReturnType<
-      typeof resolveValidationTraceDisputeDeploymentContracts
-    >
+    ReturnType<typeof resolveValidationTraceDisputeDeploymentContracts>
   >["contracts"];
   readonly signer: ResolvedProverSigner;
   readonly threadUtxo: UTxO;
@@ -2905,27 +3421,18 @@ const submitValidationFinalizationTransaction = async ({
   };
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
-    layout: Omit<
-      FinalizeLayout,
-      "computationThreadMintRedeemerIndex"
-    >,
+    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
   ) => string;
   readonly validityRange: ValidationDisputeValidityRange;
   readonly awaitConfirmation: boolean;
 }): Promise<ValidationFinalizationResult> => {
-  const fraudProofUnit = toUnit(
-    contracts.fraudProof.policyId,
-    token.assetName,
-  );
+  const fraudProofUnit = toUnit(contracts.fraudProof.policyId, token.assetName);
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
     FraudProofTokenDatum,
   );
   let partialLayout:
-    | Omit<
-        FinalizeLayout,
-        "computationThreadMintRedeemerIndex"
-      >
+    | Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">
     | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
@@ -2937,8 +3444,7 @@ const submitValidationFinalizationTransaction = async ({
       [threadUtxo],
       makeValidationFinalizingSpendRedeemer({
         threadUtxo,
-        fraudProofAddress:
-          contracts.fraudProof.spendingScriptAddress,
+        fraudProofAddress: contracts.fraudProof.spendingScriptAddress,
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
@@ -2952,8 +3458,7 @@ const submitValidationFinalizationTransaction = async ({
     .mintAssets(
       { [token.unit]: -1n },
       makeComputationThreadSuccessRedeemer({
-        computationThreadPolicyId:
-          contracts.computationThread.policyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
         computationThreadAssetName: token.assetName,
       }),
     )
@@ -2961,8 +3466,7 @@ const submitValidationFinalizationTransaction = async ({
       { [fraudProofUnit]: 1n },
       makeFraudProofMintRedeemer({
         fraudProofPolicyId: contracts.fraudProof.policyId,
-        computationThreadPolicyId:
-          contracts.computationThread.policyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
         computationThreadAssetName: token.assetName,
         onComputationThreadMintRedeemerIndex: (index) => {
           computationThreadMintRedeemerIndex = index;
@@ -2987,9 +3491,7 @@ const submitValidationFinalizationTransaction = async ({
     partialLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
   ) {
-    throw new Error(
-      `BuildTxWithRedeemer did not resolve ${spendLabel} layout`,
-    );
+    throw new Error(`BuildTxWithRedeemer did not resolve ${spendLabel} layout`);
   }
   const layout: FinalizeLayout = {
     ...partialLayout,
@@ -3011,9 +3513,7 @@ const submitValidationFinalizationTransaction = async ({
     computationThreadMintRedeemerIndex: Number(
       layout.computationThreadMintRedeemerIndex,
     ),
-    fraudProofMintRedeemerIndex: Number(
-      layout.fraudProofMintRedeemerIndex,
-    ),
+    fraudProofMintRedeemerIndex: Number(layout.fraudProofMintRedeemerIndex),
     awaitedConfirmation: awaitConfirmation,
   };
 };
@@ -3084,6 +3584,17 @@ export const submitValidationDisputePrepareSelected = async ({
     );
   }
   const staged = requireStagedOneStepArgumentV1(oneStepArgument);
+  const prepareCompleteItemByHash =
+    oneStepArgument.resolverIndex === 0 &&
+    staged.semanticResolverIndex === 1 &&
+    hasValidationAuxiliaryShapeV1(
+      staged.auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+    ) &&
+    typeof staged.auxiliary.fields[1] === "string" &&
+    selectValidationCompleteItemCarriageV1(
+      Buffer.from(staged.auxiliary.fields[1], "hex").length,
+    ) === "reference";
   const prepareContract =
     contracts.validationTraceDispute.prepareResolvers[
       validationPrepareResolverDeploymentIndexV1(resolverIndex)
@@ -3093,9 +3604,7 @@ export const submitValidationDisputePrepareSelected = async ({
       staged.semanticResolverGlobalIndex
     ];
   if (prepareContract === undefined || semanticContract === undefined) {
-    throw new Error(
-      "Validation staged resolver deployment is incomplete",
-    );
+    throw new Error("Validation staged resolver deployment is incomplete");
   }
   if (threadUtxo.address !== prepareContract.spendingScriptAddress) {
     throw new Error(
@@ -3128,7 +3637,10 @@ export const submitValidationDisputePrepareSelected = async ({
         threadUnit: token.unit,
         semanticResolverIndex: staged.semanticResolverIndex,
         transition: staged.transition,
-        auxiliary: staged.auxiliaryData,
+        auxiliary: staged.auxiliaryWitness,
+        ...(prepareCompleteItemByHash
+          ? { evidenceHash: staged.evidenceHash }
+          : {}),
         onLayout: (resolvedLayout) => {
           layout = resolvedLayout;
         },
@@ -3150,10 +3662,7 @@ export const submitValidationDisputePrepareSelected = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  requireL1ProofEnvelope(
-    signed.toCBOR(),
-    "Validation semantic preparation",
-  );
+  requireL1ProofEnvelope(signed.toCBOR(), "Validation semantic preparation");
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3164,8 +3673,7 @@ export const submitValidationDisputePrepareSelected = async ({
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
     resolverIndex,
     semanticResolverIndex: staged.semanticResolverIndex,
-    semanticResolverGlobalIndex:
-      staged.semanticResolverGlobalIndex,
+    semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
@@ -3176,12 +3684,226 @@ export type SubmitValidationDisputeSemanticResolutionResult = {
   readonly txHash: string;
   readonly threadOutRef: string;
   readonly nextThreadOutRef: string;
+  readonly proofItemCarriage: "direct" | "reference";
+  readonly proofItemReferenceOutRef?: string;
+  readonly proofItemPublication?: {
+    readonly txHash: string;
+    readonly outRef: string;
+    readonly outputIndex: number;
+    readonly completeSignedBytes: number;
+    readonly lovelace: bigint;
+    readonly awaitedConfirmation: true;
+  };
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number;
   readonly semanticResolverGlobalIndex: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly awaitedConfirmation: boolean;
+  readonly stageTransactions?: readonly {
+    readonly kind: "authenticate" | "source" | "observe" | "proof" | "settle";
+    readonly txHash: string;
+    readonly nextThreadOutRef: string;
+    readonly completeSignedBytes: number;
+  }[];
+};
+
+const exactSafeCborInteger = (value: unknown, label: string): number => {
+  const integer =
+    typeof value === "bigint"
+      ? value
+      : typeof value === "number" && Number.isSafeInteger(value)
+        ? BigInt(value)
+        : undefined;
+  if (
+    integer === undefined ||
+    integer < BigInt(Number.MIN_SAFE_INTEGER) ||
+    integer > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
+    throw new Error(`${label} must be an exact safe CBOR integer`);
+  }
+  return Number(integer);
+};
+
+const canonicalCborArgumentHeaderSize = (value: number): number => {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("Canonical CBOR argument must be non-negative");
+  }
+  if (value < 24) return 1;
+  if (value < 0x100) return 2;
+  if (value < 0x1_0000) return 3;
+  if (value < 0x1_0000_0000) return 5;
+  return 9;
+};
+
+const canonicalFieldItemEncodedLength = ({
+  fieldIndex,
+  itemLength,
+}: {
+  readonly fieldIndex: number;
+  readonly itemLength: number;
+}): number | null => {
+  if ([0, 1, 2, 3, 4, 7].includes(fieldIndex)) {
+    return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
+  }
+  if (fieldIndex === 6 || fieldIndex === 8) return itemLength;
+  if (fieldIndex !== 5) {
+    throw new Error(`Unknown canonical field index ${fieldIndex.toString()}`);
+  }
+  return itemLength === 0 ? null : itemLength - 1;
+};
+
+const deriveCanonicalDecodeItemStageDataV1 = ({
+  preparedResolution,
+  transition,
+  collectionProof,
+  itemCbor,
+}: {
+  readonly preparedResolution: NonNullable<
+    PreparedValidationResolutionDatumV1Data["data"]
+  >;
+  readonly transition: ValidationOneStepWitnessV1;
+  readonly collectionProof: BoundedCollectionItemProofV1Data;
+  readonly itemCbor: string;
+}) => {
+  const control = asArray(
+    decodeSingleCbor(Buffer.from(transition.work_witness_cbor, "hex")),
+    "canonical_decode_item.control",
+  );
+  if (control.length !== 9) {
+    throw new Error("Canonical decode item control must contain nine fields");
+  }
+  const compactCbor = asBytes(control[0], "canonical_decode_item.compact");
+  const witnessSetCompactCbor = asBytes(
+    control[1],
+    "canonical_decode_item.witness_set",
+  );
+  const fieldPreimageLengthsCbor = asBytes(
+    control[2],
+    "canonical_decode_item.field_lengths",
+  );
+  const fieldIndex = exactSafeCborInteger(
+    control[4],
+    "canonical_decode_item.field_index",
+  );
+  const itemIndex = exactSafeCborInteger(
+    control[5],
+    "canonical_decode_item.item_index",
+  );
+  const chunkIndex = exactSafeCborInteger(
+    control[6],
+    "canonical_decode_item.chunk_index",
+  );
+  const itemCount = exactSafeCborInteger(
+    control[7],
+    "canonical_decode_item.item_count",
+  );
+  const encodedLength = exactSafeCborInteger(
+    control[8],
+    "canonical_decode_item.encoded_length",
+  );
+  const proofSource = {
+    compactCbor,
+    witnessSetCompactCbor,
+    fieldPreimageLengthsCbor,
+  };
+  const compact = verifyMidgardNativeTxProofSourceV1({
+    transactionId: Buffer.from(
+      preparedResolution.resolution.pre_state.transaction_id,
+      "hex",
+    ),
+    source: proofSource,
+  });
+  const witnessSet = decodeMidgardNativeTxWitnessSetCompactV1(
+    witnessSetCompactCbor,
+  );
+  const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
+    fieldPreimageLengthsCbor,
+  );
+  const fieldCommitments = [
+    compact.transactionBody.spendInputsHash,
+    compact.transactionBody.referenceInputsHash,
+    compact.transactionBody.outputsHash,
+    compact.transactionBody.requiredObserversHash,
+    compact.transactionBody.requiredSignersHash,
+    compact.transactionBody.mintHash,
+    witnessSet.scriptTxWitsHash,
+    witnessSet.addrTxWitsHash,
+    witnessSet.redeemerTxWitsHash,
+  ] as const;
+  const expectedFieldCommitment = fieldCommitments[fieldIndex];
+  const expectedFieldLength = lengths[fieldIndex];
+  if (
+    expectedFieldCommitment === undefined ||
+    expectedFieldLength === undefined
+  ) {
+    throw new Error("Canonical decode item field index is out of range");
+  }
+  const itemBytes = Buffer.from(itemCbor, "hex");
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex,
+    itemIndex,
+    bytes: itemBytes,
+  });
+  const proofItemCount = Number(collectionProof.item_count);
+  const firstItem =
+    itemIndex === 0 &&
+    chunkIndex === 0 &&
+    itemCount === -1 &&
+    encodedLength === 0;
+  const continuingItem =
+    chunkIndex === 0 &&
+    itemCount > 0 &&
+    itemIndex < itemCount &&
+    proofItemCount === itemCount;
+  if (!firstItem && !continuingItem) {
+    throw new Error("Canonical decode item control is not an active item");
+  }
+  const activeItemCount = firstItem ? proofItemCount : itemCount;
+  const itemEncodedLength = canonicalFieldItemEncodedLength({
+    fieldIndex,
+    itemLength: itemBytes.length,
+  });
+  const nextEncodedLength =
+    itemEncodedLength === null
+      ? 0
+      : (firstItem
+          ? canonicalCborArgumentHeaderSize(activeItemCount)
+          : encodedLength) + itemEncodedLength;
+  const authenticated = {
+    version: 1n,
+    base: preparedResolution,
+    transition,
+  };
+  const prepared = {
+    version: 1n,
+    authenticated,
+    source: {
+      expected_field_commitment: Buffer.from(expectedFieldCommitment).toString(
+        "hex",
+      ),
+      expected_field_length: BigInt(expectedFieldLength),
+    },
+  };
+  const observed = {
+    version: 1n,
+    prepared,
+    observation: {
+      collection_proof: collectionProof,
+      item_length: BigInt(itemBytes.length),
+      item_commitment: Buffer.from(item.commitment).toString("hex"),
+    },
+  };
+  const verified = {
+    version: 1n,
+    observed,
+    proof: {
+      active_item_count: BigInt(activeItemCount),
+      item_encoding_is_valid: itemEncodedLength !== null,
+      next_encoded_length: BigInt(nextEncodedLength),
+    },
+  };
+  return { authenticated, prepared, observed, verified };
 };
 
 export const submitValidationDisputeSemanticResolution = async ({
@@ -3192,7 +3914,8 @@ export const submitValidationDisputeSemanticResolution = async ({
   signer,
   threadOutRef,
   oneStepArgument,
-  validityRange = validationDisputeValidityRange(Date.now()),
+  proofItemReferenceOutRef,
+  validityRange,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -3202,16 +3925,19 @@ export const submitValidationDisputeSemanticResolution = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  readonly proofItemReferenceOutRef?: string;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
-  const range = requireValidityRange(validityRange);
-  const { validationTraceDisputeCategory, contracts } =
-    await resolveValidationTraceDisputeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-    });
+  const {
+    deploymentInfo: parsedDeploymentInfo,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+  });
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -3248,15 +3974,158 @@ export const submitValidationDisputeSemanticResolution = async ({
       staged.semanticResolverGlobalIndex
     ];
   if (semanticContract === undefined) {
-    throw new Error(
-      "Validation semantic resolver deployment is incomplete",
-    );
+    throw new Error("Validation semantic resolver deployment is incomplete");
   }
   if (threadUtxo.address !== semanticContract.spendingScriptAddress) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at semantic resolver ${staged.semanticResolverGlobalIndex.toString()}`,
     );
   }
+  const isCompleteCanonicalItem =
+    oneStepArgument.resolverIndex === 0 &&
+    staged.semanticResolverIndex === 1 &&
+    hasValidationAuxiliaryShapeV1(
+      staged.auxiliary,
+      VALIDATION_AUXILIARY_SHAPES_V1.transactionFieldItem,
+    );
+  const completeItemCbor = isCompleteCanonicalItem
+    ? staged.auxiliary.fields[1]
+    : undefined;
+  if (
+    isCompleteCanonicalItem &&
+    (typeof completeItemCbor !== "string" || completeItemCbor.length % 2 !== 0)
+  ) {
+    throw new Error(
+      "Validation complete proof-item auxiliary bytes are malformed",
+    );
+  }
+  const completeCollectionProof = isCompleteCanonicalItem
+    ? Data.from(
+        Data.to(staged.auxiliary.fields[0]!),
+        BoundedCollectionItemProofV1,
+      )
+    : undefined;
+  // The complete-item proof transaction must source the semantic validator
+  // from the published reference script: embedding the validator body would
+  // consume the 16,384-byte envelope the measured complete-item redeemer
+  // needs. Resolve it before publishing anything so a missing deployment
+  // entry fails fast.
+  const semanticReferenceScriptUtxo = isCompleteCanonicalItem
+    ? await requireValidationItemSemanticReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: parsedDeploymentInfo,
+        expectedScriptHash: semanticContract.spendingScriptHash,
+      })
+    : undefined;
+  let resolvedProofItemReferenceOutRef = proofItemReferenceOutRef;
+  let proofItemReferenceUtxo =
+    proofItemReferenceOutRef === undefined
+      ? undefined
+      : await fetchUtxoByOutRef({
+          lucid,
+          outRef: parseOutRef(
+            proofItemReferenceOutRef,
+            "--proof-item-reference-out-ref",
+          ),
+          label: "validation complete proof-item reference UTxO",
+        });
+  let proofItemPublication:
+    | SubmitValidationDisputeSemanticResolutionResult["proofItemPublication"]
+    | undefined;
+  if (
+    proofItemReferenceUtxo === undefined &&
+    isCompleteCanonicalItem &&
+    selectValidationCompleteItemCarriageV1(
+      Buffer.from(completeItemCbor as string, "hex").length,
+    ) === "reference"
+  ) {
+    const publication = deriveValidationProofItemPublicationV1({
+      transactionId: inputDatum.data.resolution.pre_state.transaction_id,
+      transactionCommitment:
+        inputDatum.data.resolution.pre_state.transaction_commitment,
+      collectionProof: completeCollectionProof!,
+      itemCbor: completeItemCbor as string,
+    });
+    signer.selectWallet(lucid);
+    const publicationUnsigned = await Effect.runPromise(
+      buildUnsignedValidationProofItemPublicationV1Program(
+        lucid,
+        contracts,
+        publication,
+      ),
+    );
+    const publicationSigned = await publicationUnsigned.sign
+      .withWallet()
+      .complete();
+    const publicationCbor = publicationSigned.toCBOR();
+    requireL1ProofEnvelope(
+      publicationCbor,
+      "Validation complete proof-item publication",
+    );
+    const publicationOutputIndex = findUniqueInlineDatumOutputIndex({
+      transactionCbor: publicationCbor,
+      address: contracts.validationTraceDispute.proofItem.spendingScriptAddress,
+      datum: publication.datumCbor,
+      label: "Validation complete proof-item publication",
+    });
+    const publicationTxHash = await publicationSigned.submit();
+    // A reference input cannot be consumed until its creating transaction is
+    // visible, even when the caller elects not to await the later resolution.
+    await lucid.awaitTx(publicationTxHash, DEFAULT_CONFIRMATION_POLL_MS);
+    resolvedProofItemReferenceOutRef = `${publicationTxHash}#${publicationOutputIndex.toString()}`;
+    proofItemReferenceUtxo = await fetchUtxoByOutRef({
+      lucid,
+      outRef: {
+        txHash: publicationTxHash,
+        outputIndex: publicationOutputIndex,
+      },
+      label: "published validation complete proof-item reference UTxO",
+    });
+    proofItemPublication = {
+      txHash: publicationTxHash,
+      outRef: resolvedProofItemReferenceOutRef,
+      outputIndex: publicationOutputIndex,
+      completeSignedBytes: publicationCbor.length / 2,
+      lovelace: proofItemReferenceUtxo.assets.lovelace ?? 0n,
+      awaitedConfirmation: true,
+    };
+  }
+  if (proofItemReferenceUtxo !== undefined) {
+    if (!isCompleteCanonicalItem) {
+      throw new Error(
+        "Validation complete proof-item reference is only valid for a CanonicalDecode complete item",
+      );
+    }
+    if (
+      proofItemReferenceUtxo.address !==
+        contracts.validationTraceDispute.proofItem.spendingScriptAddress ||
+      proofItemReferenceUtxo.datum == null ||
+      proofItemReferenceUtxo.scriptRef !== undefined
+    ) {
+      throw new Error(
+        "Validation complete proof-item reference is not locked by the deployed proof-item validator with only an inline datum",
+      );
+    }
+    const expectedDatum = {
+      version: 1n,
+      transaction_id: inputDatum.data.resolution.pre_state.transaction_id,
+      transaction_commitment:
+        inputDatum.data.resolution.pre_state.transaction_commitment,
+      collection_proof: completeCollectionProof!,
+      item_cbor: completeItemCbor as string,
+    };
+    if (
+      Data.to(expectedDatum, ValidationProofItemDatumV1) !==
+      proofItemReferenceUtxo.datum
+    ) {
+      throw new Error(
+        "Validation complete proof-item reference datum does not match the prepared evidence",
+      );
+    }
+  }
+  const range = requireValidityRange(
+    validityRange ?? validationDisputeValidityRange(Date.now()),
+  );
   const outputDatum = Data.to(
     {
       fraud_prover: inputDatum.fraud_prover,
@@ -3264,10 +4133,292 @@ export const submitValidationDisputeSemanticResolution = async ({
     },
     WinningValidationResolutionDatumV1,
   );
+  if (isCompleteCanonicalItem) {
+    const stageData = deriveCanonicalDecodeItemStageDataV1({
+      preparedResolution: inputDatum.data,
+      transition: staged.transition,
+      collectionProof: completeCollectionProof!,
+      itemCbor: completeItemCbor as string,
+    });
+    const authenticatedDatum = Data.to(
+      {
+        fraud_prover: inputDatum.fraud_prover,
+        data: stageData.authenticated,
+      },
+      AuthenticatedCanonicalDecodeItemDatumV1,
+    );
+    const preparedDatum = Data.to(
+      {
+        fraud_prover: inputDatum.fraud_prover,
+        data: stageData.prepared,
+      },
+      PreparedCanonicalDecodeItemDatumV1,
+    );
+    const observedDatum = Data.to(
+      {
+        fraud_prover: inputDatum.fraud_prover,
+        data: stageData.observed,
+      },
+      ObservedCanonicalDecodeItemDatumV1,
+    );
+    const verifiedDatum = Data.to(
+      {
+        fraud_prover: inputDatum.fraud_prover,
+        data: stageData.verified,
+      },
+      VerifiedCanonicalDecodeItemDatumV1,
+    );
+    type StageContract = {
+      readonly spendingScriptAddress: string;
+      readonly spendingScript: Script;
+    };
+    type SubmittedStage = {
+      readonly txHash: string;
+      readonly nextThreadOutRef: string;
+      readonly completeSignedBytes: number;
+      readonly layout: ContinueLayout;
+      readonly nextThreadUtxo?: UTxO;
+    };
+    const submitStage = async ({
+      inputUtxo,
+      inputContract,
+      outputContract,
+      stageOutputDatum,
+      label,
+      proofReference,
+      scriptReference,
+      awaitStage,
+      encode,
+    }: {
+      readonly inputUtxo: UTxO;
+      readonly inputContract: StageContract;
+      readonly outputContract: StageContract;
+      readonly stageOutputDatum: string;
+      readonly label: string;
+      readonly proofReference?: UTxO;
+      readonly scriptReference?: UTxO;
+      readonly awaitStage: boolean;
+      readonly encode: (layout: {
+        readonly inputIndex: bigint;
+        readonly outputIndex: bigint;
+        readonly referenceInputIndex?: bigint;
+      }) => string;
+    }): Promise<SubmittedStage> => {
+      let stageLayout: ContinueLayout | undefined;
+      signer.selectWallet(lucid);
+      const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+      let stageTx = lucid
+        .newTx()
+        .collectFrom([feeInput])
+        .collectFrom(
+          [inputUtxo],
+          makeIndexedValidationStageRedeemer({
+            threadUtxo: inputUtxo,
+            outputAddress: outputContract.spendingScriptAddress,
+            outputDatum: stageOutputDatum,
+            threadUnit: token.unit,
+            proofItemReferenceUtxo: proofReference,
+            label,
+            encode,
+            onLayout: (resolvedLayout) => {
+              stageLayout = resolvedLayout;
+            },
+          }),
+        );
+      if (proofReference !== undefined) {
+        stageTx = stageTx.readFrom([proofReference]);
+      }
+      if (scriptReference !== undefined) {
+        stageTx = stageTx.readFrom([scriptReference]);
+      }
+      const currentLedgerTime = lucid.slotToUnixTime(lucid.currentSlot());
+      const stageRange =
+        validityRange === undefined
+          ? requireValidityRange(
+              validationDisputeValidityRange(currentLedgerTime),
+            )
+          : refreshExpiredValidationDisputeValidityRange({
+              range,
+              currentLedgerTime,
+            });
+      stageTx = stageTx.pay
+        .ToContract(
+          outputContract.spendingScriptAddress,
+          { kind: "inline", value: stageOutputDatum },
+          threadAssets(inputUtxo, token.unit),
+        )
+        .validFrom(stageRange.validFrom)
+        .validTo(stageRange.validTo)
+        .addSignerKey(signer.paymentKeyHash);
+      // The published reference script supplies the spending validator; the
+      // proof transaction must not embed the validator body inside the
+      // 16,384-byte L1 envelope.
+      if (scriptReference === undefined) {
+        stageTx = stageTx.attach.SpendingValidator(
+          inputContract.spendingScript,
+        );
+      }
+      let unsigned: Awaited<ReturnType<typeof stageTx.complete>>;
+      try {
+        unsigned = await stageTx.complete({ localUPLCEval: true });
+      } catch (cause) {
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`${label} local evaluation failed: ${detail}`);
+      }
+      if (stageLayout === undefined) {
+        throw new Error(`BuildTxWithRedeemer did not resolve ${label} layout`);
+      }
+      const resolvedLayout = stageLayout as ContinueLayout;
+      const signed = await unsigned.sign.withWallet().complete();
+      const signedCbor = signed.toCBOR();
+      requireL1ProofEnvelope(signedCbor, label);
+      const txHash = await signed.submit();
+      const nextThreadOutRef = `${txHash}#${resolvedLayout.outputIndex.toString()}`;
+      let nextThreadUtxo: UTxO | undefined;
+      if (awaitStage) {
+        await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+        nextThreadUtxo = await fetchUtxoByOutRef({
+          lucid,
+          outRef: {
+            txHash,
+            outputIndex: Number(resolvedLayout.outputIndex),
+          },
+          label: `${label} output`,
+        });
+      }
+      return {
+        txHash,
+        nextThreadOutRef,
+        completeSignedBytes: signedCbor.length / 2,
+        layout: resolvedLayout,
+        ...(nextThreadUtxo === undefined ? {} : { nextThreadUtxo }),
+      };
+    };
+    const stages = contracts.validationTraceDispute.canonicalDecodeItemStages;
+    const authenticate = await submitStage({
+      inputUtxo: threadUtxo,
+      inputContract: semanticContract,
+      outputContract: stages.source,
+      stageOutputDatum: authenticatedDatum,
+      label: "Validation canonical item authentication",
+      proofReference: proofItemReferenceUtxo,
+      scriptReference: semanticReferenceScriptUtxo,
+      awaitStage: true,
+      encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
+        proofItemReferenceUtxo === undefined
+          ? Data.to(
+              new Constr(1, [
+                new Constr(0, [
+                  inputIndex,
+                  outputIndex,
+                  staged.transitionData,
+                  staged.auxiliary.fields[0]!,
+                  staged.auxiliary.fields[1]!,
+                ]),
+              ]),
+            )
+          : Data.to(
+              new Constr(1, [
+                new Constr(1, [
+                  inputIndex,
+                  outputIndex,
+                  staged.transitionData,
+                  referenceInputIndex!,
+                ]),
+              ]),
+            ),
+    });
+    const source = await submitStage({
+      inputUtxo: authenticate.nextThreadUtxo!,
+      inputContract: stages.source,
+      outputContract: stages.observe,
+      stageOutputDatum: preparedDatum,
+      label: "Validation canonical item source binding",
+      awaitStage: true,
+      encode: ({ inputIndex, outputIndex }) =>
+        Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
+    });
+    const observe = await submitStage({
+      inputUtxo: source.nextThreadUtxo!,
+      inputContract: stages.observe,
+      outputContract: stages.proof,
+      stageOutputDatum: observedDatum,
+      label: "Validation canonical item observation",
+      proofReference: proofItemReferenceUtxo,
+      awaitStage: true,
+      encode: ({ inputIndex, outputIndex, referenceInputIndex }) =>
+        proofItemReferenceUtxo === undefined
+          ? Data.to(
+              new Constr(1, [
+                new Constr(0, [
+                  inputIndex,
+                  outputIndex,
+                  staged.auxiliary.fields[0]!,
+                  staged.auxiliary.fields[1]!,
+                ]),
+              ]),
+            )
+          : Data.to(
+              new Constr(1, [
+                new Constr(1, [inputIndex, outputIndex, referenceInputIndex!]),
+              ]),
+            ),
+    });
+    const proof = await submitStage({
+      inputUtxo: observe.nextThreadUtxo!,
+      inputContract: stages.proof,
+      outputContract: stages.settlement,
+      stageOutputDatum: verifiedDatum,
+      label: "Validation canonical item proof verification",
+      awaitStage: true,
+      encode: ({ inputIndex, outputIndex }) =>
+        Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
+    });
+    const settle = await submitStage({
+      inputUtxo: proof.nextThreadUtxo!,
+      inputContract: stages.settlement,
+      outputContract: contracts.validationTraceDispute.award,
+      stageOutputDatum: outputDatum,
+      label: "Validation canonical item successor settlement",
+      awaitStage: awaitConfirmation,
+      encode: ({ inputIndex, outputIndex }) =>
+        Data.to(new Constr(1, [new Constr(0, [inputIndex, outputIndex])])),
+    });
+    const stageTransactions = [
+      { kind: "authenticate" as const, ...authenticate },
+      { kind: "source" as const, ...source },
+      { kind: "observe" as const, ...observe },
+      { kind: "proof" as const, ...proof },
+      { kind: "settle" as const, ...settle },
+    ].map(({ kind, txHash, nextThreadOutRef, completeSignedBytes }) => ({
+      kind,
+      txHash,
+      nextThreadOutRef,
+      completeSignedBytes,
+    }));
+    return {
+      txHash: settle.txHash,
+      threadOutRef,
+      nextThreadOutRef: settle.nextThreadOutRef,
+      proofItemCarriage:
+        proofItemReferenceUtxo === undefined ? "direct" : "reference",
+      ...(resolvedProofItemReferenceOutRef === undefined
+        ? {}
+        : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),
+      ...(proofItemPublication === undefined ? {} : { proofItemPublication }),
+      resolverIndex,
+      semanticResolverIndex: staged.semanticResolverIndex,
+      semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
+      inputIndex: Number(settle.layout.inputIndex),
+      outputIndex: Number(settle.layout.outputIndex),
+      awaitedConfirmation: awaitConfirmation,
+      stageTransactions,
+    };
+  }
   let layout: ContinueLayout | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
+  let tx = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom(
@@ -3282,12 +4433,17 @@ export const submitValidationDisputeSemanticResolution = async ({
         semanticResolverIndex: staged.semanticResolverIndex,
         transition: staged.transitionData,
         auxiliary: staged.auxiliary,
+        proofItemReferenceUtxo,
         onLayout: (resolvedLayout) => {
           layout = resolvedLayout;
         },
       }),
-    )
-    .pay.ToContract(
+    );
+  if (proofItemReferenceUtxo !== undefined) {
+    tx = tx.readFrom([proofItemReferenceUtxo]);
+  }
+  tx = tx.pay
+    .ToContract(
       contracts.validationTraceDispute.award.spendingScriptAddress,
       { kind: "inline", value: outputDatum },
       threadAssets(threadUtxo, token.unit),
@@ -3303,10 +4459,7 @@ export const submitValidationDisputeSemanticResolution = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
-  requireL1ProofEnvelope(
-    signed.toCBOR(),
-    "Validation semantic resolution",
-  );
+  requireL1ProofEnvelope(signed.toCBOR(), "Validation semantic resolution");
   const txHash = await signed.submit();
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
@@ -3315,18 +4468,22 @@ export const submitValidationDisputeSemanticResolution = async ({
     txHash,
     threadOutRef,
     nextThreadOutRef: `${txHash}#${layout.outputIndex.toString()}`,
+    proofItemCarriage:
+      proofItemReferenceUtxo === undefined ? "direct" : "reference",
+    ...(resolvedProofItemReferenceOutRef === undefined
+      ? {}
+      : { proofItemReferenceOutRef: resolvedProofItemReferenceOutRef }),
+    ...(proofItemPublication === undefined ? {} : { proofItemPublication }),
     resolverIndex,
     semanticResolverIndex: staged.semanticResolverIndex,
-    semanticResolverGlobalIndex:
-      staged.semanticResolverGlobalIndex,
+    semanticResolverGlobalIndex: staged.semanticResolverGlobalIndex,
     inputIndex: Number(layout.inputIndex),
     outputIndex: Number(layout.outputIndex),
     awaitedConfirmation: awaitConfirmation,
   };
 };
 
-export type SubmitValidationDisputeAwardResult =
-  ValidationFinalizationResult;
+export type SubmitValidationDisputeAwardResult = ValidationFinalizationResult;
 
 export const submitValidationDisputeAward = async ({
   lucid,
@@ -3471,43 +4628,32 @@ export const submitValidationDisputeDirectResolution = async ({
       validationDirectResolverDeploymentIndexV1(resolverIndex)
     ];
   if (directContract === undefined) {
-    throw new Error(
-      "Validation direct resolver deployment is incomplete",
-    );
+    throw new Error("Validation direct resolver deployment is incomplete");
   }
   if (threadUtxo.address !== directContract.spendingScriptAddress) {
     throw new Error(
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at direct resolver ${resolverIndex.toString()}`,
     );
   }
-  const finalized =
-    await submitValidationFinalizationTransaction({
-      lucid,
-      contracts,
-      signer,
-      threadUtxo,
-      threadOutRef,
-      token,
-      spendingScript: directContract,
-      spendLabel: "Validation-dispute direct resolution",
-      encodeSpendRedeemer: (layout) =>
-        Data.to(
-          {
-            Continue: [
-              {
-                input_index: layout.inputIndex,
-                output_index: layout.outputIndex,
-                fraud_proof_mint_redeemer_index:
-                  layout.fraudProofMintRedeemerIndex,
-                challenger_evidence: direct.evidence,
-              },
-            ],
-          },
-          ValidationDirectResolveSpendRedeemerV1,
-        ),
-      validityRange: range,
-      awaitConfirmation,
-    });
+  const finalized = await submitValidationFinalizationTransaction({
+    lucid,
+    contracts,
+    signer,
+    threadUtxo,
+    threadOutRef,
+    token,
+    spendingScript: directContract,
+    spendLabel: "Validation-dispute direct resolution",
+    encodeSpendRedeemer: (layout) =>
+      encodeValidationDirectResolveSpendRedeemerV1({
+        input_index: layout.inputIndex,
+        output_index: layout.outputIndex,
+        fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+        challenger_evidence: direct.evidence,
+      }),
+    validityRange: range,
+    awaitConfirmation,
+  });
   return { ...finalized, resolverIndex };
 };
 
