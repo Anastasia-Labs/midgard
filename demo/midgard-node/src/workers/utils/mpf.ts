@@ -1671,6 +1671,31 @@ const eventKeyFingerprint = (
 ): Effect.Effect<string, MpfError> =>
   eventKeyCbor(eventKey).pipe(Effect.map((encoded) => encoded.toString("hex")));
 
+export const indexTransitionTraceMembersByEventKey = (
+  members: readonly RetainedTransitionTraceMember[],
+): Effect.Effect<
+  ReadonlyMap<string, RetainedTransitionTraceMember>,
+  MpfError
+> =>
+  Effect.gen(function* () {
+    const byEventKey = new Map<string, RetainedTransitionTraceMember>();
+    for (const member of members) {
+      const fingerprint = yield* eventKeyFingerprint(member.value.event_key);
+      if (byEventKey.has(fingerprint)) {
+        return yield* Effect.fail(
+          MpfError.rootBuild(
+            "validation trace",
+            new Error(
+              `Transition trace contains duplicate event key ${fingerprint}`,
+            ),
+          ),
+        );
+      }
+      byEventKey.set(fingerprint, member);
+    }
+    return byEventKey;
+  });
+
 export const validateValidationTraceEventKeySet = ({
   expectedEventKeys,
   transitionEventKeyCbors,
