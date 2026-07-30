@@ -112,6 +112,7 @@ import {
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
+const asWireValue = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 const encodeData = Data.to as unknown as (
@@ -1198,7 +1199,7 @@ const contextFromTransaction = (
     },
   });
   return {
-    context: {
+    context: asWireValue({
       schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
       authenticatedProvider,
       l1Observation,
@@ -1214,7 +1215,7 @@ const contextFromTransaction = (
         result: finalityResult,
       },
       rollbackAuthority: null,
-    },
+    }),
     store,
     transactionHash: transaction?.txHash ?? null,
     finalityState: finalityResult.state,
@@ -1914,7 +1915,7 @@ const rollbackBundle = (
     rollbackBootstrapState: rollbackBootstrap,
   };
   return {
-    context: {
+    context: asWireValue({
       schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
       authenticatedProvider: null,
       l1Observation: null,
@@ -1927,7 +1928,7 @@ const rollbackBundle = (
         result: applied,
         context: verificationContext,
       },
-    },
+    }),
     applied,
   };
 };
@@ -2208,6 +2209,62 @@ describe("canonical authenticated user-event indexer", () => {
         },
       ]);
     }
+  });
+
+  it("rejects cyclic, aliased, and cumulatively oversized raw evidence before hashing or replay", () => {
+    const fixture = makeEventFixture("deposit", "ae", 0, 1_000n);
+    const bundle = blockBundle([fixture]);
+    const observation = deriveWatcherUserEventObservationV1(
+      policy,
+      null,
+      bundle.context,
+    )!;
+
+    const cyclicObservation = asWireValue(observation) as Record<string, any>;
+    cyclicObservation.snapshot.activeEvents = cyclicObservation;
+    expect(
+      evaluateWatcherUserEventIndexerV1(
+        policy,
+        null,
+        cyclicObservation,
+        bundle.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_observation"],
+    });
+
+    const aliasedContext = asWireValue(bundle.context) as Record<string, any>;
+    aliasedContext.durableStore = aliasedContext.sourceDurableStore;
+    expect(
+      deriveWatcherUserEventObservationV1(policy, null, aliasedContext),
+    ).toBeNull();
+
+    const oversizedObservation = asWireValue(observation) as Record<
+      string,
+      any
+    >;
+    oversizedObservation.blockHash = "a".repeat(5 * 1_024 * 1_024);
+    oversizedObservation.pointDigest = "b".repeat(5 * 1_024 * 1_024);
+    expect(
+      evaluateWatcherUserEventIndexerV1(
+        policy,
+        null,
+        oversizedObservation,
+        bundle.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_observation"],
+    });
+
+    const state = accepted(null, bundle);
+    const cyclicState = JSON.parse(JSON.stringify(state)) as Record<
+      string,
+      any
+    >;
+    cyclicState.history[0].publicContext.sourceDurableStore = cyclicState;
+    expect(parseWatcherUserEventIndexerStateV1(cyclicState, policy)).toBeNull();
   });
 
   it("requires non-empty forced-order material to close with an authenticated terminal receipt", () => {

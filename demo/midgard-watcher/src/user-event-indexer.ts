@@ -95,6 +95,8 @@ export const WATCHER_USER_EVENT_INDEXER_V1_BOUNDS = Object.freeze({
   terminalEvents: 8_192,
   activeHistoryEntries: 128,
   auditHistoryEntries: 1_024,
+  evidenceGraphNodes: 250_000,
+  evidenceGraphBytes: 8 * 1_024 * 1_024,
   maximumDepositNonNftAssets: 10,
   requiredFinalityDepthMaximum: 2_160,
 });
@@ -306,12 +308,122 @@ export type WatcherUserEventIndexerResultV1 = Readonly<{
 
 type PlainRecord = Record<string, unknown>;
 type EventSchema = Parameters<typeof Data.from>[1];
+type EvidenceGraphBudget = {
+  nodes: number;
+  bytes: number;
+};
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const HEX_BYTES = /^(?:[0-9a-f]{2})*$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+
+const immutableWireValue = <T>(value: T): T => {
+  const clone = JSON.parse(JSON.stringify(value)) as T;
+  const pending: object[] =
+    typeof clone === "object" && clone !== null ? [clone] : [];
+  while (pending.length > 0) {
+    const candidate = pending.pop()!;
+    for (const member of Object.values(candidate)) {
+      if (typeof member === "object" && member !== null) {
+        pending.push(member);
+      }
+    }
+    Object.freeze(candidate);
+  }
+  return clone;
+};
+
+const evidenceWithinBounds = (
+  value: unknown,
+  budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 },
+): boolean => {
+  try {
+    const pending: unknown[] = [value];
+    const seen = new WeakSet<object>();
+    while (pending.length > 0) {
+      const candidate = pending.pop();
+      budget.nodes += 1;
+      if (
+        budget.nodes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphNodes
+      ) {
+        return false;
+      }
+      if (typeof candidate === "string") {
+        budget.bytes += Buffer.byteLength(candidate, "utf8");
+      } else if (
+        typeof candidate === "number" ||
+        typeof candidate === "bigint" ||
+        typeof candidate === "boolean"
+      ) {
+        budget.bytes += 8;
+      } else if (
+        typeof candidate === "symbol" ||
+        typeof candidate === "function"
+      ) {
+        return false;
+      }
+      if (
+        budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
+      ) {
+        return false;
+      }
+      if (typeof candidate !== "object" || candidate === null) {
+        continue;
+      }
+      if (seen.has(candidate)) {
+        return false;
+      }
+      seen.add(candidate);
+      const array = Array.isArray(candidate);
+      if (
+        Object.getPrototypeOf(candidate) !==
+        (array ? Array.prototype : Object.prototype)
+      ) {
+        return false;
+      }
+      const keys = Reflect.ownKeys(candidate);
+      if (
+        keys.some((key) => typeof key !== "string") ||
+        (array &&
+          (keys.length !== candidate.length + 1 ||
+            keys.some(
+              (key) =>
+                key !== "length" &&
+                (!NATURAL.test(key as string) ||
+                  BigInt(key as string) >= BigInt(candidate.length)),
+            )))
+      ) {
+        return false;
+      }
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (
+          descriptor === undefined ||
+          descriptor.get !== undefined ||
+          descriptor.set !== undefined ||
+          (key !== "length" && !descriptor.enumerable)
+        ) {
+          return false;
+        }
+        if (key === "length") {
+          continue;
+        }
+        budget.bytes += Buffer.byteLength(key as string, "utf8");
+        if (
+          budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
+        ) {
+          return false;
+        }
+        pending.push(descriptor.value);
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
@@ -2906,6 +3018,15 @@ export const deriveWatcherUserEventObservationV1 = (
   rawPublicContext: unknown,
   rollbackTargetEntryDigest: string | null = null,
 ): WatcherUserEventObservationV1 | null => {
+  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+  if (
+    !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
+    (rawPreviousState !== null &&
+      !evidenceWithinBounds(rawPreviousState, evidenceBudget)) ||
+    !evidenceWithinBounds(rawPublicContext, evidenceBudget)
+  ) {
+    return null;
+  }
   const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
   if (policy === null) {
     return null;
@@ -3003,7 +3124,7 @@ const applyObservation = (
     history,
     activeEntryDigests: Object.freeze(activeEntryDigests),
   });
-  return Object.freeze({
+  return immutableWireValue({
     ...canonical,
     stateDigest: sha256Canonical(canonical),
   });
@@ -3060,6 +3181,13 @@ export const parseWatcherUserEventIndexerStateV1 = (
   value: unknown,
   rawPolicy: unknown,
 ): WatcherUserEventIndexerStateV1 | null => {
+  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+  if (
+    !evidenceWithinBounds(rawPolicy, evidenceBudget) ||
+    !evidenceWithinBounds(value, evidenceBudget)
+  ) {
+    return null;
+  }
   const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
   const record = exactRecord(value, [
     "schemaVersion",
@@ -3162,7 +3290,7 @@ const result = (
     alertCodes,
     state,
   };
-  return Object.freeze({
+  return immutableWireValue({
     ...canonical,
     resultDigest: sha256Canonical(canonical),
   });
@@ -3180,6 +3308,19 @@ export const evaluateWatcherUserEventIndexerV1 = (
   rawObservation: unknown,
   rawPublicContext: unknown,
 ): WatcherUserEventIndexerResultV1 => {
+  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+  if (!evidenceWithinBounds(rawPolicy, evidenceBudget)) {
+    return reject("malformed_policy");
+  }
+  if (rawState !== null && !evidenceWithinBounds(rawState, evidenceBudget)) {
+    return reject("malformed_state");
+  }
+  if (!evidenceWithinBounds(rawObservation, evidenceBudget)) {
+    return reject("malformed_observation");
+  }
+  if (!evidenceWithinBounds(rawPublicContext, evidenceBudget)) {
+    return reject("malformed_public_context");
+  }
   const policy = parseWatcherUserEventIndexerPolicyV1(rawPolicy);
   if (policy === null) {
     return reject("malformed_policy");
@@ -3278,6 +3419,9 @@ export const parseWatcherUserEventIndexerResultV1 = (
     publicContext: unknown;
   }>,
 ): WatcherUserEventIndexerResultV1 | null => {
+  if (!evidenceWithinBounds(value)) {
+    return null;
+  }
   const expected = evaluateWatcherUserEventIndexerV1(
     context.policy,
     context.previousState,

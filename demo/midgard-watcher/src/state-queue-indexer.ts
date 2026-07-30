@@ -77,6 +77,8 @@ export const WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS = Object.freeze({
   activeOperators: 4_096,
   historyEntries: 256,
   auditEntries: 256,
+  evidenceGraphNodes: 250_000,
+  evidenceGraphBytes: 8 * 1_024 * 1_024,
   maturityDurationMs: 604_800_000n,
   uint64Maximum: 18_446_744_073_709_551_615n,
   withdrawalCount: 10_000n,
@@ -299,6 +301,7 @@ export type WatcherStateQueuePublicContextV1 = Readonly<{
 
 export type WatcherStateQueueHistoryEntryV1 = Readonly<{
   predecessorStateDigest: string | null;
+  priorActiveEntryDigest: string | null;
   chainPointId: string;
   pointDigest: string;
   transactionHash: string | null;
@@ -344,6 +347,10 @@ export type WatcherStateQueueIndexerResultV1 = Readonly<{
 }>;
 
 type PlainRecord = Record<string, unknown>;
+type EvidenceGraphBudget = {
+  nodes: number;
+  bytes: number;
+};
 type CanonicalJson =
   | null
   | boolean
@@ -360,6 +367,113 @@ const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
 const EMPTY_MERKLE_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
+
+const immutableWireValue = <T>(value: T): T => {
+  const clone = JSON.parse(JSON.stringify(value)) as T;
+  const pending: object[] =
+    typeof clone === "object" && clone !== null ? [clone] : [];
+  while (pending.length > 0) {
+    const candidate = pending.pop()!;
+    for (const member of Object.values(candidate)) {
+      if (typeof member === "object" && member !== null) {
+        pending.push(member);
+      }
+    }
+    Object.freeze(candidate);
+  }
+  return clone;
+};
+
+const evidenceWithinBounds = (
+  value: unknown,
+  budget: EvidenceGraphBudget = { nodes: 0, bytes: 0 },
+): boolean => {
+  try {
+    const pending: unknown[] = [value];
+    const seen = new WeakSet<object>();
+    while (pending.length > 0) {
+      const candidate = pending.pop();
+      budget.nodes += 1;
+      if (
+        budget.nodes > WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.evidenceGraphNodes
+      ) {
+        return false;
+      }
+      if (typeof candidate === "string") {
+        budget.bytes += Buffer.byteLength(candidate, "utf8");
+      } else if (
+        typeof candidate === "number" ||
+        typeof candidate === "bigint" ||
+        typeof candidate === "boolean"
+      ) {
+        budget.bytes += 8;
+      } else if (
+        typeof candidate === "symbol" ||
+        typeof candidate === "function"
+      ) {
+        return false;
+      }
+      if (
+        budget.bytes > WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.evidenceGraphBytes
+      ) {
+        return false;
+      }
+      if (typeof candidate !== "object" || candidate === null) {
+        continue;
+      }
+      if (seen.has(candidate)) {
+        return false;
+      }
+      seen.add(candidate);
+      const array = Array.isArray(candidate);
+      if (
+        Object.getPrototypeOf(candidate) !==
+        (array ? Array.prototype : Object.prototype)
+      ) {
+        return false;
+      }
+      const keys = Reflect.ownKeys(candidate);
+      if (
+        keys.some((key) => typeof key !== "string") ||
+        (array &&
+          (keys.length !== candidate.length + 1 ||
+            keys.some(
+              (key) =>
+                key !== "length" &&
+                (!NATURAL.test(key as string) ||
+                  BigInt(key as string) >= BigInt(candidate.length)),
+            )))
+      ) {
+        return false;
+      }
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+        if (
+          descriptor === undefined ||
+          descriptor.get !== undefined ||
+          descriptor.set !== undefined ||
+          (key !== "length" && !descriptor.enumerable)
+        ) {
+          return false;
+        }
+        if (key === "length") {
+          continue;
+        }
+        budget.bytes += Buffer.byteLength(key as string, "utf8");
+        if (
+          budget.bytes >
+          WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS.evidenceGraphBytes
+        ) {
+          return false;
+        }
+        pending.push(descriptor.value);
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const canonicalJson = (value: CanonicalJson): string => {
   if (
@@ -2495,9 +2609,11 @@ const makeEntry = (
   verified: VerifiedContext,
   snapshot: WatcherStateQueueSnapshotV1,
   rollbackResult: WatcherRollbackResultV1 | null,
+  priorActiveEntryDigest: string | null,
 ): WatcherStateQueueHistoryEntryV1 => {
   const canonical = Object.freeze({
     predecessorStateDigest: observation.predecessorStateDigest,
+    priorActiveEntryDigest,
     chainPointId: verified.block.chainPoint.chainPointId,
     pointDigest: observation.pointDigest,
     transactionHash: observation.transactionHash,
@@ -2535,8 +2651,7 @@ const auditGroups = (
       (entry.status === "orphaned" &&
         current.some(({ status }) => status === "rollback")) ||
       (entry.status === "rollback" &&
-        (current.length === 0 ||
-          current.some(({ status }) => status === "rollback")))
+        current.some(({ status }) => status === "rollback"))
     ) {
       return null;
     }
@@ -2595,7 +2710,7 @@ const makeState = (
     history: Object.freeze(history),
     auditHistory: Object.freeze(auditHistory),
   });
-  return Object.freeze({
+  return immutableWireValue({
     ...canonical,
     stateDigest: sha256Canonical(stateWithoutDigest(canonical)),
   });
@@ -2611,10 +2726,23 @@ const makeResult = (
     schemaVersion: WATCHER_STATE_QUEUE_INDEXER_RESULT_V1_SCHEMA_VERSION,
     ...value,
   });
-  return Object.freeze({
+  return immutableWireValue({
     ...canonical,
     resultDigest: sha256Canonical(resultWithoutDigest(canonical)),
   });
+};
+
+const currentStateEntry = (
+  state: WatcherStateQueueIndexerStateV1,
+): WatcherStateQueueHistoryEntryV1 => {
+  const rollback = state.auditHistory.at(-1);
+  return rollback?.status === "rollback" &&
+    rollback.entry.pointDigest === state.pointDigest &&
+    rollback.entry.transactionHash === state.transactionHash &&
+    rollback.entry.publicInputDigest === state.publicInputDigest &&
+    rollback.entry.observation.durableStoreDigest === state.durableStoreDigest
+    ? rollback.entry
+    : state.history.at(-1)!;
 };
 
 const rejected = (
@@ -2672,6 +2800,7 @@ const parseEntryStructural = (
 ): WatcherStateQueueHistoryEntryV1 | null => {
   const record = exactRecord(value, [
     "predecessorStateDigest",
+    "priorActiveEntryDigest",
     "chainPointId",
     "pointDigest",
     "transactionHash",
@@ -2694,6 +2823,10 @@ const parseEntryStructural = (
       record.predecessorStateDigest === null ||
       isHex32(record.predecessorStateDigest)
     ) ||
+    !(
+      record.priorActiveEntryDigest === null ||
+      isHex32(record.priorActiveEntryDigest)
+    ) ||
     !isHex32(record.chainPointId) ||
     !isHex32(record.pointDigest) ||
     !(record.transactionHash === null || isHex32(record.transactionHash)) ||
@@ -2715,6 +2848,7 @@ const parseEntryStructural = (
   }
   const canonical = Object.freeze({
     predecessorStateDigest: record.predecessorStateDigest,
+    priorActiveEntryDigest: record.priorActiveEntryDigest,
     chainPointId: record.chainPointId,
     pointDigest: record.pointDigest,
     transactionHash: record.transactionHash,
@@ -2737,6 +2871,27 @@ const verifyEntries = (
   extraContexts: readonly WatcherStateQueuePublicContextV1[],
 ): ReadonlyMap<string, DecodedTopology> | null => {
   const allEntries = [...history, ...audit.map(({ entry }) => entry)];
+  const groupedAudit = auditGroups(audit);
+  if (groupedAudit === null) {
+    return null;
+  }
+  const rollbackTargets = new Map<string, string>();
+  for (const group of groupedAudit) {
+    const rollback = group.at(-1);
+    const firstOrphan = group[0]?.status === "orphaned" ? group[0].entry : null;
+    const targetDigest =
+      firstOrphan?.priorActiveEntryDigest ??
+      rollback?.entry.priorActiveEntryDigest;
+    if (
+      rollback === undefined ||
+      rollback.status !== "rollback" ||
+      targetDigest === null ||
+      targetDigest === undefined
+    ) {
+      return null;
+    }
+    rollbackTargets.set(rollback.entry.entryDigest, targetDigest);
+  }
   const verified: VerifiedContext[] = [];
   for (const entry of allEntries) {
     const context = parsePublicContext(
@@ -2782,18 +2937,11 @@ const verifyEntries = (
     const entry = allEntries[index]!;
     const context = verified[index]!;
     if (entry.transitionKind === "rollback") {
+      const targetDigest = rollbackTargets.get(entry.entryDigest);
       const targetIndex = allEntries.findIndex(
-        (candidate, candidateIndex) =>
+        (candidate) =>
           candidate.transitionKind !== "rollback" &&
-          same(candidate.snapshot, entry.snapshot) &&
-          same(
-            verified[candidateIndex]?.store.protocolUtxos,
-            context.store.protocolUtxos,
-          ) &&
-          same(
-            verified[candidateIndex]?.store.spentProtocolUtxos,
-            context.store.spentProtocolUtxos,
-          ),
+          candidate.entryDigest === targetDigest,
       );
       const targetContext = targetIndex < 0 ? undefined : verified[targetIndex];
       const target =
@@ -2835,6 +2983,7 @@ const verifyEntries = (
       if (
         entry.transitionKind !== "bootstrap" ||
         entry.predecessorStateDigest !== null ||
+        entry.priorActiveEntryDigest !== null ||
         topology === undefined ||
         context.transaction === null
       ) {
@@ -2847,11 +2996,71 @@ const verifyEntries = (
     const topology = topologies.get(entry.entryDigest);
     const context = verified[index]!;
     if (
+      entry.priorActiveEntryDigest !== prior.entryDigest ||
       priorTopology === undefined ||
       topology === undefined ||
       context.transaction === null ||
       classifyObservedTransition(prior.snapshot, topology.snapshot) !==
         entry.transitionKind
+    ) {
+      return null;
+    }
+  }
+  const nonRollbackByDigest = new Map(
+    [
+      ...history,
+      ...audit
+        .filter(({ status }) => status === "orphaned")
+        .map(({ entry }) => entry),
+    ].map((entry) => [entry.entryDigest, entry] as const),
+  );
+  for (const group of groupedAudit) {
+    const rollback = group.at(-1);
+    const orphaned = group.slice(0, -1);
+    if (
+      rollback === undefined ||
+      rollback.status !== "rollback" ||
+      rollback.entry.transitionKind !== "rollback"
+    ) {
+      return null;
+    }
+    const priorActive =
+      orphaned.at(-1)?.entry ??
+      nonRollbackByDigest.get(rollback.entry.priorActiveEntryDigest ?? "");
+    if (
+      priorActive === undefined ||
+      rollback.entry.priorActiveEntryDigest !== priorActive.entryDigest ||
+      (orphaned.length === 0 &&
+        !same(priorActive.snapshot, rollback.entry.snapshot))
+    ) {
+      return null;
+    }
+    let retainedTarget = nonRollbackByDigest.get(
+      orphaned[0]?.entry.priorActiveEntryDigest ??
+        rollback.entry.priorActiveEntryDigest ??
+        "",
+    );
+    if (retainedTarget === undefined) {
+      return null;
+    }
+    for (const orphan of orphaned) {
+      if (
+        orphan.status !== "orphaned" ||
+        orphan.entry.transitionKind === "rollback" ||
+        orphan.entry.priorActiveEntryDigest !== retainedTarget.entryDigest
+      ) {
+        return null;
+      }
+      retainedTarget = orphan.entry;
+    }
+    const rollbackTarget = nonRollbackByDigest.get(
+      orphaned[0]?.entry.priorActiveEntryDigest ??
+        rollback.entry.priorActiveEntryDigest ??
+        "",
+    );
+    if (
+      rollbackTarget === undefined ||
+      !same(rollbackTarget.snapshot, rollback.entry.snapshot)
     ) {
       return null;
     }
@@ -2974,28 +3183,47 @@ const replayFromRetainedAuditCheckpoint = (
     new Set(auditEntryDigests).size !== auditEntryDigests.length ||
     expected.history.some(({ entryDigest }) =>
       auditEntryDigests.includes(entryDigest),
-    ) ||
+    )
+  ) {
+    return null;
+  }
+  const nonRollbackByDigest = new Map(
+    [
+      ...expected.history,
+      ...expected.auditHistory
+        .filter(({ status }) => status === "orphaned")
+        .map(({ entry }) => entry),
+    ].map((entry) => [entry.entryDigest, entry] as const),
+  );
+  if (
     groups.some((group) => {
       const rollback = group.at(-1);
+      const firstOrphan =
+        group[0]?.status === "orphaned" ? group[0].entry : null;
+      const target = nonRollbackByDigest.get(
+        firstOrphan?.priorActiveEntryDigest ??
+          rollback?.entry.priorActiveEntryDigest ??
+          "",
+      );
       return (
         rollback?.status !== "rollback" ||
         rollback.entry.transitionKind !== "rollback" ||
         rollback.entry.rollbackResult?.action !== "apply_rewind" ||
-        !expected.history.some(({ snapshot }) =>
-          same(snapshot, rollback.entry.snapshot),
-        )
+        target === undefined ||
+        !same(target.snapshot, rollback.entry.snapshot)
       );
     })
   ) {
     return null;
   }
-  let targetIndex = -1;
-  for (let index = expected.history.length - 1; index >= 0; index -= 1) {
-    if (same(expected.history[index]!.snapshot, rollbackAudit.entry.snapshot)) {
-      targetIndex = index;
-      break;
-    }
-  }
+  const firstOrphan =
+    latestGroup[0]?.status === "orphaned" ? latestGroup[0].entry : null;
+  const targetDigest =
+    firstOrphan?.priorActiveEntryDigest ??
+    rollbackAudit.entry.priorActiveEntryDigest;
+  const targetIndex = expected.history.findIndex(
+    ({ entryDigest }) => entryDigest === targetDigest,
+  );
   if (targetIndex < 0) {
     return null;
   }
@@ -3026,6 +3254,14 @@ export const parseWatcherStateQueueIndexerStateV1 = (
   policyInput: unknown,
   restartContexts: readonly WatcherStateQueuePublicContextV1[] = [],
 ): WatcherStateQueueIndexerStateV1 | null => {
+  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+  if (
+    !evidenceWithinBounds(policyInput, evidenceBudget) ||
+    !evidenceWithinBounds(value, evidenceBudget) ||
+    !evidenceWithinBounds(restartContexts, evidenceBudget)
+  ) {
+    return null;
+  }
   const policy = parseWatcherStateQueueIndexerPolicyV1(policyInput);
   const record = exactRecord(value, [
     "schemaVersion",
@@ -3161,6 +3397,22 @@ export const evaluateWatcherStateQueueIndexerV1 = (
   observationInput: unknown,
   publicContextInput: unknown,
 ): WatcherStateQueueIndexerResultV1 => {
+  const evidenceBudget: EvidenceGraphBudget = { nodes: 0, bytes: 0 };
+  if (!evidenceWithinBounds(policyInput, evidenceBudget)) {
+    return rejected("malformed_policy");
+  }
+  if (
+    previousStateInput !== null &&
+    !evidenceWithinBounds(previousStateInput, evidenceBudget)
+  ) {
+    return rejected("malformed_state", "watcher_state_queue_state_rejected");
+  }
+  if (!evidenceWithinBounds(observationInput, evidenceBudget)) {
+    return rejected("malformed_observation");
+  }
+  if (!evidenceWithinBounds(publicContextInput, evidenceBudget)) {
+    return rejected("malformed_public_context");
+  }
   const policy = parseWatcherStateQueueIndexerPolicyV1(policyInput);
   if (policy === null) {
     return rejected("malformed_policy");
@@ -3231,7 +3483,13 @@ export const evaluateWatcherStateQueueIndexerV1 = (
     ) {
       return rejected("public_evidence_mismatch");
     }
-    const entry = makeEntry(observation, verified, nextTopology.snapshot, null);
+    const entry = makeEntry(
+      observation,
+      verified,
+      nextTopology.snapshot,
+      null,
+      null,
+    );
     const state = makeState(policy, observation, [entry], []);
     return makeResult({
       action: "accept",
@@ -3265,28 +3523,28 @@ export const evaluateWatcherStateQueueIndexerV1 = (
   ) {
     return rejected("identity_collision");
   }
-  const lastEntry = previousState.history.at(-1)!;
-  const lastVerified = parsePublicContext(
+  const priorCurrentEntry = currentStateEntry(previousState);
+  const priorCurrentVerified = parsePublicContext(
     policy,
-    lastEntry.publicContext,
-    lastEntry.observation,
+    priorCurrentEntry.publicContext,
+    priorCurrentEntry.observation,
   );
   const previousTopology =
-    lastVerified === null
+    priorCurrentVerified === null
       ? null
-      : reconstructTopology(policy, lastVerified.store, sources);
-  if (lastVerified === null || previousTopology === null) {
+      : reconstructTopology(policy, priorCurrentVerified.store, sources);
+  if (priorCurrentVerified === null || previousTopology === null) {
     return rejected("malformed_state");
   }
   if (
     observation.transitionKind !== "rollback" &&
-    !same(lastVerified.store, verified.sourceStore)
+    !same(priorCurrentVerified.store, verified.sourceStore)
   ) {
     return rejected("public_evidence_mismatch");
   }
   if (
     observation.transitionKind !== "rollback" &&
-    BigInt(observation.blockNo) <= BigInt(lastEntry.observation.blockNo)
+    BigInt(observation.blockNo) <= BigInt(priorCurrentEntry.observation.blockNo)
   ) {
     return rejected("stale_chain_point");
   }
@@ -3304,7 +3562,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       !same(rollbackResult.nextStore, verified.store) ||
       rollbackResult.nextStoreDigest !== observation.durableStoreDigest ||
       rollbackSourceExtends(
-        lastVerified.store,
+        priorCurrentVerified.store,
         authority?.context.sourceStore,
       ) === null
     ) {
@@ -3400,6 +3658,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       verified,
       nextTopology.snapshot,
       rollbackResult,
+      previousState.history.at(-1)!.entryDigest,
     );
     const appendedAudit = [
       ...previousState.auditHistory,
@@ -3442,7 +3701,13 @@ export const evaluateWatcherStateQueueIndexerV1 = (
   if (previousState.history.length >= Number(policy.maximumHistoryEntries)) {
     return rejected("history_limit_exceeded");
   }
-  const entry = makeEntry(observation, verified, nextTopology.snapshot, null);
+  const entry = makeEntry(
+    observation,
+    verified,
+    nextTopology.snapshot,
+    null,
+    previousState.history.at(-1)!.entryDigest,
+  );
   const state = makeState(
     policy,
     observation,
@@ -3477,6 +3742,9 @@ export const parseWatcherStateQueueIndexerResultV1 = (
   value: unknown,
   context: WatcherStateQueueIndexerResultVerificationContextV1,
 ): WatcherStateQueueIndexerResultV1 | null => {
+  if (!evidenceWithinBounds(value)) {
+    return null;
+  }
   const expected = evaluateWatcherStateQueueIndexerV1(
     context.policy,
     context.previousState,
