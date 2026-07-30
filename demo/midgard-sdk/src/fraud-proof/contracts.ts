@@ -60,12 +60,23 @@ export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
 } as const;
 
 export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
+  proofItem: "fraud_proofs/validation_trace/proof_item_v1.main.else",
   dispute: "fraud_proofs/validation_trace/dispute_v1.main.spend",
   source: "fraud_proofs/validation_trace/source_v1.main.spend",
   game: "fraud_proofs/validation_trace/game_v1.main.spend",
   boundary: "fraud_proofs/validation_trace/boundary_v1.main.spend",
   timeout: "fraud_proofs/validation_trace/timeout_v1.main.spend",
   award: "fraud_proofs/validation_trace/award_v1.main.spend",
+  canonicalDecodeItemStages: {
+    source:
+      "fraud_proofs/validation_trace/canonical_decode_item_source_v1.main.spend",
+    observe:
+      "fraud_proofs/validation_trace/canonical_decode_item_observe_v1.main.spend",
+    proof:
+      "fraud_proofs/validation_trace/canonical_decode_item_proof_v1.main.spend",
+    settlement:
+      "fraud_proofs/validation_trace/canonical_decode_item_settlement_v1.main.spend",
+  },
   prepares: {
     canonicalDecode:
       "fraud_proofs/validation_trace/canonical_decode_v1.main.spend",
@@ -79,22 +90,18 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/phase_a_native_scripts_v1.main.spend",
     phaseAScriptPreconditions:
       "fraud_proofs/validation_trace/phase_a_script_preconditions_v1.main.spend",
-    resolveInputs:
-      "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
-    scriptSources:
-      "fraud_proofs/validation_trace/script_sources_v1.main.spend",
-    nativeScripts:
-      "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
+    resolveInputs: "fraud_proofs/validation_trace/resolve_inputs_v1.main.spend",
+    scriptSources: "fraud_proofs/validation_trace/script_sources_v1.main.spend",
+    nativeScripts: "fraud_proofs/validation_trace/native_scripts_v1.main.spend",
     scriptIntegrity:
       "fraud_proofs/validation_trace/script_integrity_v1.main.spend",
-    ledgerDelta:
-      "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
+    ledgerDelta: "fraud_proofs/validation_trace/ledger_delta_v1.main.spend",
   },
   semantics: {
     canonicalDecodeEmpty:
       "fraud_proofs/validation_trace/canonical_decode_empty_semantic_v1.main.spend",
-    canonicalDecodeChunk:
-      "fraud_proofs/validation_trace/canonical_decode_chunk_semantic_v1.main.spend",
+    canonicalDecodeItem:
+      "fraud_proofs/validation_trace/canonical_decode_item_semantic_v1.main.spend",
     compactBinding:
       "fraud_proofs/validation_trace/compact_binding_semantic_v1.main.spend",
     staticLedgerRules:
@@ -334,6 +341,13 @@ export type ValidationTraceDisputeFaultProofContracts = {
     readonly boundary: SpendingValidator;
     readonly timeout: SpendingValidator;
     readonly award: SpendingValidator;
+    readonly proofItem: SpendingValidator;
+    readonly canonicalDecodeItemStages: {
+      readonly source: SpendingValidator;
+      readonly observe: SpendingValidator;
+      readonly proof: SpendingValidator;
+      readonly settlement: SpendingValidator;
+    };
     readonly prepareResolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -425,10 +439,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
     ];
-    readonly directResolvers: readonly [
-      SpendingValidator,
-      SpendingValidator,
-    ];
+    readonly directResolvers: readonly [SpendingValidator, SpendingValidator];
     readonly resolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -1019,6 +1030,93 @@ const buildValidationTraceDisputeChain = ({
     const semanticTitles = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
     );
+    const proofItem = yield* tryBuild(
+      "Failed to build validation-trace proof-item validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          getCompiledScript(
+            blueprint,
+            VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
+          ),
+        ),
+    );
+    const canonicalDecodeItemSettlement = yield* tryBuild(
+      "Failed to build validation-trace canonical item settlement",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .canonicalDecodeItemStages.settlement,
+            ),
+            [award.spendingScriptHash, computationThread.policyId],
+          ),
+        ),
+    );
+    const canonicalDecodeItemProof = yield* tryBuild(
+      "Failed to build validation-trace canonical item proof verifier",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .canonicalDecodeItemStages.proof,
+            ),
+            [
+              canonicalDecodeItemSettlement.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const canonicalDecodeItemObserve = yield* tryBuild(
+      "Failed to build validation-trace canonical item observer",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .canonicalDecodeItemStages.observe,
+            ),
+            [
+              canonicalDecodeItemProof.spendingScriptHash,
+              computationThread.policyId,
+              proofItem.spendingScriptHash,
+            ],
+          ),
+        ),
+    );
+    const canonicalDecodeItemSource = yield* tryBuild(
+      "Failed to build validation-trace canonical item source binder",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .canonicalDecodeItemStages.source,
+            ),
+            [
+              canonicalDecodeItemObserve.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const canonicalDecodeItemStages = {
+      source: canonicalDecodeItemSource,
+      observe: canonicalDecodeItemObserve,
+      proof: canonicalDecodeItemProof,
+      settlement: canonicalDecodeItemSettlement,
+    } as const;
     const builtSemanticResolvers: SpendingValidator[] = [];
     for (const [index, title] of semanticTitles.entries()) {
       builtSemanticResolvers.push(
@@ -1027,10 +1125,16 @@ const buildValidationTraceDisputeChain = ({
           () =>
             makeSpendingValidator(
               network,
-              applyParamsToScript(getCompiledScript(blueprint, title), [
-                award.spendingScriptHash,
-                computationThread.policyId,
-              ]),
+              applyParamsToScript(
+                getCompiledScript(blueprint, title),
+                index === 1
+                  ? [
+                      canonicalDecodeItemSource.spendingScriptHash,
+                      computationThread.policyId,
+                      proofItem.spendingScriptHash,
+                    ]
+                  : [award.spendingScriptHash, computationThread.policyId],
+              ),
             ),
         ),
       );
@@ -1183,11 +1287,7 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[58],
         semanticResolvers[59],
       ],
-      [
-        semanticResolvers[60],
-        semanticResolvers[61],
-        semanticResolvers[62],
-      ],
+      [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
       [
         semanticResolvers[63],
         semanticResolvers[64],
@@ -1418,7 +1518,9 @@ const buildValidationTraceDisputeChain = ({
         boundary,
         timeout,
         award,
+        proofItem,
         ...semanticResolvers,
+        ...Object.values(canonicalDecodeItemStages),
         ...prepareResolvers,
         ...directResolvers,
       ],
@@ -1428,6 +1530,8 @@ const buildValidationTraceDisputeChain = ({
       boundary,
       timeout,
       award,
+      proofItem,
+      canonicalDecodeItemStages,
       prepareResolvers,
       semanticResolvers,
       directResolvers,

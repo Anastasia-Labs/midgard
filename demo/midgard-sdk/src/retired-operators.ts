@@ -14,7 +14,12 @@ import {
 } from "@/common.js";
 import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 
-import { incompleteInitLinkedListTxProgram } from "./linked-list.js";
+import { SlashingArgumentsSchema } from "./active-operators.js";
+import {
+  incompleteInitLinkedListTxProgram,
+  LinkedListDatum,
+  linkedListDatumToNodeView,
+} from "./linked-list.js";
 
 export const RETIRED_OPERATORS_ROOT_ASSET_NAME = fromText(
   "MIDGARD_RETIRED_OPERATORS",
@@ -58,7 +63,7 @@ export const RetiredOperatorMintRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     SlashOperator: Data.Object({
-      slashing_arguments: Data.Any(),
+      slashing_arguments: SlashingArgumentsSchema,
     }),
   }),
 ]);
@@ -100,10 +105,22 @@ export const fetchRetiredOperatorUTxOs = (
         cause: "No UTxOs found in Retired Operators Contract address",
       });
     }
-    return yield* authenticateUTxOs<RetiredOperatorDatum>(
+    const linkedListUTxOs = yield* authenticateUTxOs<LinkedListDatum>(
       allUtxos,
       params.retiredOperatorPolicyId,
-      RetiredOperatorDatum,
+      LinkedListDatum,
+    );
+    return yield* Effect.allSuccesses(
+      linkedListUTxOs.map(({ assetName, utxo, datum }) =>
+        Effect.try(() => ({
+          assetName,
+          utxo,
+          datum: Data.castFrom(
+            linkedListDatumToNodeView(datum, assetName).data as never,
+            RetiredOperatorDatum as never,
+          ) as RetiredOperatorDatum,
+        })),
+      ),
     );
   });
 

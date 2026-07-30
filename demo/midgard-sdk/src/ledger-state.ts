@@ -1,6 +1,7 @@
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_PROTOCOL_V1_VERSION,
+  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
@@ -19,7 +20,11 @@ import {
   PubKeyHashSchema,
   ValueSchema,
 } from "@/common.js";
-import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
+import {
+  EMPTY_MERKLE_TREE_ROOT,
+  GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
+} from "@/ledger-constants.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -56,20 +61,24 @@ export const HeaderV1Schema = Data.Object({
 export type HeaderV1 = Data.Static<typeof HeaderV1Schema>;
 export const HeaderV1 = HeaderV1Schema as unknown as HeaderV1;
 
-export type HeaderTransitionCommitmentsV1 = Pick<
-  HeaderV1,
-  | "forcedTransactionsRoot"
-  | "transitionTraceRoot"
-  | "eventToStepRoot"
-  | "validationTracesRoot"
-  | "withdrawalCount"
-  | "forcedTransactionCount"
-  | "l2TransactionCount"
-  | "depositCount"
-  | "totalEventCount"
-  | "transitionStepCount"
-  | "validationTraceCount"
+export const HeaderTransitionCommitmentsV1Schema = Data.Object({
+  forcedTransactionsRoot: MerkleRootSchema,
+  transitionTraceRoot: MerkleRootSchema,
+  eventToStepRoot: MerkleRootSchema,
+  validationTracesRoot: MerkleRootSchema,
+  withdrawalCount: Data.Integer(),
+  forcedTransactionCount: Data.Integer(),
+  l2TransactionCount: Data.Integer(),
+  depositCount: Data.Integer(),
+  totalEventCount: Data.Integer(),
+  transitionStepCount: Data.Integer(),
+  validationTraceCount: Data.Integer(),
+});
+export type HeaderTransitionCommitmentsV1 = Data.Static<
+  typeof HeaderTransitionCommitmentsV1Schema
 >;
+export const HeaderTransitionCommitmentsV1 =
+  HeaderTransitionCommitmentsV1Schema as unknown as HeaderTransitionCommitmentsV1;
 
 export const EMPTY_HEADER_TRANSITION_COMMITMENTS_V1: HeaderTransitionCommitmentsV1 =
   {
@@ -133,15 +142,43 @@ export const validateHeaderTransitionCommitmentsV1Program = (
 > =>
   Effect.gen(function* () {
     const countEntries = [
-      ["withdrawalCount", commitments.withdrawalCount],
-      ["forcedTransactionCount", commitments.forcedTransactionCount],
-      ["l2TransactionCount", commitments.l2TransactionCount],
-      ["depositCount", commitments.depositCount],
-      ["totalEventCount", commitments.totalEventCount],
-      ["transitionStepCount", commitments.transitionStepCount],
-      ["validationTraceCount", commitments.validationTraceCount],
+      [
+        "withdrawalCount",
+        commitments.withdrawalCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxWithdrawalCount,
+      ],
+      [
+        "forcedTransactionCount",
+        commitments.forcedTransactionCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxForcedTransactionCount,
+      ],
+      [
+        "l2TransactionCount",
+        commitments.l2TransactionCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount,
+      ],
+      [
+        "depositCount",
+        commitments.depositCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxDepositCount,
+      ],
+      [
+        "totalEventCount",
+        commitments.totalEventCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxTotalEventCount,
+      ],
+      [
+        "transitionStepCount",
+        commitments.transitionStepCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxTransitionStepCount,
+      ],
+      [
+        "validationTraceCount",
+        commitments.validationTraceCount,
+        MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount,
+      ],
     ] as const;
-    for (const [field, count] of countEntries) {
+    for (const [field, count, maximum] of countEntries) {
       if (count < 0n) {
         return yield* Effect.fail(
           headerTransitionCommitmentsError(
@@ -150,7 +187,20 @@ export const validateHeaderTransitionCommitmentsV1Program = (
           ),
         );
       }
+      if (count > BigInt(maximum)) {
+        return yield* Effect.fail(
+          headerTransitionCommitmentsError(
+            "Header transition commitment count exceeds the compiled consensus bound",
+            `${field}=${count.toString()},maximum=${maximum.toString()}`,
+          ),
+        );
+      }
     }
+    yield* validateSourceRootCountV1(
+      "forced_transactions",
+      commitments.forcedTransactionsRoot,
+      commitments.forcedTransactionCount,
+    );
 
     const expectedTotal =
       commitments.withdrawalCount +
@@ -211,17 +261,6 @@ export const validateHeaderTransitionCommitmentsV1Program = (
         headerTransitionCommitmentsError(
           "Proof header validation_trace_count must equal forced_transaction_count + l2_transaction_count",
           `expected=${expectedValidationTraceCount.toString()},actual=${commitments.validationTraceCount.toString()}`,
-        ),
-      );
-    }
-    if (
-      commitments.validationTraceCount >
-      BigInt(MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount)
-    ) {
-      return yield* Effect.fail(
-        headerTransitionCommitmentsError(
-          "Proof header validation_trace_count exceeds the compiled consensus bound",
-          `${commitments.validationTraceCount.toString()} > ${MIDGARD_CONSENSUS_LIMITS_V1.maxValidationTraceCount.toString()}`,
         ),
       );
     }
@@ -316,6 +355,60 @@ export const StateQueueNodeV1 =
 export const castStateQueueNodeV1ToData = (node: StateQueueNodeV1): unknown =>
   Data.castTo(node, StateQueueNodeV1);
 
+const assertCanonicalCbor = (
+  bytes: Uint8Array,
+  canonicalHex: string,
+  format: string,
+): void => {
+  if (Buffer.from(bytes).toString("hex") !== canonicalHex) {
+    throw new Error(`${format} CBOR must use its exact canonical encoding`);
+  }
+};
+
+export const encodeHeaderV1Cbor = (header: HeaderV1): Buffer => {
+  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    throw new Error(
+      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+    );
+  }
+  return Buffer.from(Data.to(header, HeaderV1), "hex");
+};
+
+export const decodeHeaderV1Cbor = (bytes: Uint8Array): HeaderV1 => {
+  const header = Data.from(Buffer.from(bytes).toString("hex"), HeaderV1);
+  const canonicalHex = Data.to(header, HeaderV1);
+  assertCanonicalCbor(bytes, canonicalHex, "HeaderV1");
+  if (header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    throw new Error(
+      `HeaderV1 protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+    );
+  }
+  return header;
+};
+
+export const encodeStateQueueNodeV1Cbor = (node: StateQueueNodeV1): Buffer => {
+  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    throw new Error(
+      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+    );
+  }
+  return Buffer.from(Data.to(node, StateQueueNodeV1), "hex");
+};
+
+export const decodeStateQueueNodeV1Cbor = (
+  bytes: Uint8Array,
+): StateQueueNodeV1 => {
+  const node = Data.from(Buffer.from(bytes).toString("hex"), StateQueueNodeV1);
+  const canonicalHex = Data.to(node, StateQueueNodeV1);
+  assertCanonicalCbor(bytes, canonicalHex, "StateQueueNodeV1");
+  if (node.header.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)) {
+    throw new Error(
+      `StateQueueNodeV1 header protocol version must equal ${MIDGARD_PROTOCOL_V1_VERSION.toString()}`,
+    );
+  }
+  return node;
+};
+
 export const getHeaderV1FromStateQueueDatum = (nodeDatum: {
   readonly data: Parameters<typeof Data.castFrom>[0];
 }): Effect.Effect<HeaderV1, DataCoercionError> =>
@@ -359,7 +452,7 @@ export const getStateQueueNodeV1FromStateQueueDatum = (nodeDatum: {
 export const hashBlockHeaderV1 = (
   header: HeaderV1,
 ): Effect.Effect<string, HashingError> =>
-  hashHexWithBlake2b(Data.to(header, HeaderV1), 28);
+  hashHexWithBlake2b(encodeHeaderV1Cbor(header).toString("hex"), 28);
 
 export const ConfirmedStateSchema = Data.Object({
   headerHash: HeaderHashSchema,
@@ -374,6 +467,50 @@ export const ConfirmedState = ConfirmedStateSchema as unknown as ConfirmedState;
 export const castConfirmedStateToData = (
   confirmedState: ConfirmedState,
 ): unknown => Data.castTo(confirmedState, ConfirmedState);
+
+export const makeGenesisConfirmedStateV1 = (
+  genesisTime: bigint,
+): ConfirmedState => {
+  if (genesisTime < 0n) {
+    throw new Error("Genesis confirmed-state time must be non-negative");
+  }
+  return {
+    headerHash: GENESIS_HEADER_HASH,
+    prevHeaderHash: GENESIS_HEADER_HASH,
+    utxoRoot: EMPTY_MERKLE_TREE_ROOT,
+    startTime: genesisTime,
+    endTime: genesisTime,
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
+  };
+};
+
+/**
+ * Authenticates the only two protocol identities a V1 confirmed-state root may
+ * carry. Genesis is a distinct sentinel state; every committed state is V1
+ * and must have left the all-zero genesis header identity.
+ */
+export const confirmedStateNextHeaderProtocolVersionV1 = (
+  confirmedState: ConfirmedState,
+): bigint | null => {
+  const protocolV1 = BigInt(MIDGARD_PROTOCOL_V1_VERSION);
+  const isGenesis =
+    confirmedState.protocolVersion === GENESIS_PROTOCOL_VERSION &&
+    confirmedState.headerHash === GENESIS_HEADER_HASH &&
+    confirmedState.prevHeaderHash === GENESIS_HEADER_HASH &&
+    confirmedState.utxoRoot === EMPTY_MERKLE_TREE_ROOT &&
+    confirmedState.startTime >= 0n &&
+    confirmedState.startTime === confirmedState.endTime;
+  if (isGenesis) {
+    return protocolV1;
+  }
+
+  const isOrdinaryV1 =
+    confirmedState.protocolVersion === protocolV1 &&
+    confirmedState.headerHash !== GENESIS_HEADER_HASH &&
+    confirmedState.startTime >= 0n &&
+    confirmedState.startTime <= confirmedState.endTime;
+  return isOrdinaryV1 ? protocolV1 : null;
+};
 
 export const CardanoDatumSchema = Data.Enum([
   Data.Literal("NoDatum"),
@@ -605,7 +742,11 @@ export type EventToStepValue = Data.Static<typeof EventToStepValueSchema>;
 export const EventToStepValue =
   EventToStepValueSchema as unknown as EventToStepValue;
 
-export const TransitionStepSchema = Data.Object({
+export const TRANSITION_STEP_V1_SCHEMA_VERSION = BigInt(
+  MIDGARD_TRANSITION_STEP_V1_SCHEMA_VERSION,
+);
+
+export const TransitionStepV1Schema = Data.Object({
   schema_version: Data.Integer(),
   step_index: Data.Integer(),
   event_key: EventKeySchema,
@@ -613,8 +754,15 @@ export const TransitionStepSchema = Data.Object({
   pre_utxos_root: MerkleRootSchema,
   post_utxos_root: MerkleRootSchema,
 });
-export type TransitionStep = Data.Static<typeof TransitionStepSchema>;
-export const TransitionStep = TransitionStepSchema as unknown as TransitionStep;
+export type TransitionStepV1 = Data.Static<typeof TransitionStepV1Schema>;
+export const TransitionStepV1 =
+  TransitionStepV1Schema as unknown as TransitionStepV1;
+
+// The unqualified names remain source aliases for consumers of the canonical
+// schema; they do not define a second wire identity.
+export type TransitionStep = TransitionStepV1;
+export const TransitionStepSchema = TransitionStepV1Schema;
+export const TransitionStep = TransitionStepV1;
 
 export const ValidationVerdictV1Schema = Data.Enum([
   // Preserve the exact Aiken constructor indexes. Pending is not a valid

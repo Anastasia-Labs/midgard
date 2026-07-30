@@ -1,8 +1,5 @@
 import { assetsEqual } from "@al-ft/midgard-core/assets";
-import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_PROTOCOL_V1_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import {
@@ -35,6 +32,7 @@ import {
   castConfirmedStateToData,
   castStateQueueNodeV1ToData,
   type ConfirmedState,
+  confirmedStateNextHeaderProtocolVersionV1,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   type HeaderV1,
@@ -984,12 +982,12 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     const { data: confirmedStateData } =
       yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
     if (
-      confirmedStateData.protocolVersion !== BigInt(MIDGARD_PROTOCOL_V1_VERSION)
+      confirmedStateNextHeaderProtocolVersionV1(confirmedStateData) === null
     ) {
       return yield* Effect.fail(
         new StateQueueError({
           message: "Failed to build merge transaction",
-          cause: `unsupported confirmed state protocol version ${confirmedStateData.protocolVersion.toString()}`,
+          cause: `invalid confirmed state protocol identity version=${confirmedStateData.protocolVersion.toString()},header_hash=${confirmedStateData.headerHash}`,
         }),
       );
     }

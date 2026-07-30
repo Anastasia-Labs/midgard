@@ -21,8 +21,10 @@ import {
   EventToStepValueSchema,
   type ForcedInclusionTxV1,
   ForcedInclusionTxV1Schema,
+  TRANSITION_STEP_V1_SCHEMA_VERSION,
   type TransitionStep,
   TransitionStepSchema,
+  TransitionStepV1,
   type WithdrawalInfo,
   WithdrawalInfoSchema,
 } from "@/ledger-state.js";
@@ -103,6 +105,34 @@ export const commitCountedRootProgram = ({
     32,
   );
 };
+
+export const encodeTransitionStepV1Cbor = (step: TransitionStepV1): Buffer => {
+  if (step.schema_version !== TRANSITION_STEP_V1_SCHEMA_VERSION) {
+    throw new Error(
+      `TransitionStepV1 schema_version must equal ${TRANSITION_STEP_V1_SCHEMA_VERSION.toString()}`,
+    );
+  }
+  return Buffer.from(Data.to(step, TransitionStepV1), "hex");
+};
+
+export const decodeTransitionStepV1Cbor = (
+  bytes: Uint8Array,
+): TransitionStepV1 => {
+  const input = Buffer.from(bytes);
+  const step = Data.from(input.toString("hex"), TransitionStepV1);
+  const canonical = encodeTransitionStepV1Cbor(step);
+  if (!canonical.equals(input)) {
+    throw new Error(
+      "TransitionStepV1 CBOR must use its exact canonical encoding",
+    );
+  }
+  return step;
+};
+
+export const hashTransitionStepV1 = (
+  step: TransitionStepV1,
+): Effect.Effect<string, HashingError> =>
+  hashHexWithBlake2b(encodeTransitionStepV1Cbor(step).toString("hex"), 32);
 
 export type RootMembershipProof<K, V> = RootCountProof & {
   readonly key: K;

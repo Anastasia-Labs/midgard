@@ -2,7 +2,7 @@ import {
   buildMidgardValidationTraceTree,
   openMidgardValidationDispute,
 } from "@al-ft/midgard-core";
-import { Constr, Data } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,12 +10,18 @@ import {
   type PreparedValidationResolutionDatumV1 as PreparedValidationResolutionDatumV1Data,
   ValidationAwardSpendRedeemerV1,
   type ValidationAwardSpendRedeemerV1 as ValidationAwardSpendRedeemerV1Data,
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+  type ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 as ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data,
   ValidationDirectResolveSpendRedeemerV1,
   type ValidationDirectResolveSpendRedeemerV1 as ValidationDirectResolveSpendRedeemerV1Data,
   validationDisputeDataFromCore,
+  ValidationDisputeTurnV1Schema,
   ValidationDisputeV1,
   ValidationGameSpendRedeemerV1,
+  ValidationMachinePhaseV1Schema,
+  ValidationMachineSourceKindV1Schema,
   type ValidationMachineStateV1,
+  ValidationMachineVerdictV1Schema,
   ValidationOneStepEvidenceV1,
   type ValidationOneStepEvidenceV1 as ValidationOneStepEvidenceV1Data,
   ValidationOneStepWitnessV1,
@@ -32,6 +38,80 @@ import {
 const hash = (byte: number): Buffer => Buffer.alloc(32, byte);
 
 describe("validation dispute ABI", () => {
+  it("freezes every dispute-turn, phase, verdict, and source-kind tag", () => {
+    const nullaryVectors = [
+      ...[
+        "CanonicalDecode",
+        "CompactBinding",
+        "StaticLedgerRules",
+        "InputSets",
+        "Signatures",
+        "PhaseANativeScripts",
+        "PhaseAScriptPreconditions",
+        "ResolveInputs",
+        "ScriptSources",
+        "NativeScripts",
+        "ScriptIntegrity",
+        "Cek",
+        "ValueAndMint",
+        "LedgerDelta",
+        "Terminal",
+      ].map((value, tag) => ({
+        value,
+        schema: ValidationMachinePhaseV1Schema,
+        expected:
+          tag <= 6
+            ? `d8${(0x79 + tag).toString(16)}80`
+            : `d905${(tag - 7).toString(16).padStart(2, "0")}80`,
+      })),
+      ...["Pending", "Accepted", "Rejected"].map((value, tag) => ({
+        value,
+        schema: ValidationMachineVerdictV1Schema,
+        expected: `d8${(0x79 + tag).toString(16)}80`,
+      })),
+      ...["Normal", "Forced"].map((value, tag) => ({
+        value,
+        schema: ValidationMachineSourceKindV1Schema,
+        expected: `d8${(0x79 + tag).toString(16)}80`,
+      })),
+    ] as const;
+    for (const { value, schema, expected } of nullaryVectors) {
+      expect(Data.to(value as never, schema as never)).toBe(expected);
+    }
+
+    expect(
+      Data.to(
+        { AwaitingOperator: { midpoint: 1n } } as never,
+        ValidationDisputeTurnV1Schema as never,
+      ),
+    ).toBe("d8799f01ff");
+    expect(
+      Data.to(
+        {
+          AwaitingChallenger: {
+            midpoint: 1n,
+            operator_midpoint_hash: "aa".repeat(32),
+          },
+        } as never,
+        ValidationDisputeTurnV1Schema as never,
+      ),
+    ).toBe(`d87a9f015820${"aa".repeat(32)}ff`);
+    expect(
+      Data.to(
+        "ReadyForOneStep" as never,
+        ValidationDisputeTurnV1Schema as never,
+      ),
+    ).toBe("d87b80");
+
+    expect(() => Data.from("d87c80", ValidationDisputeTurnV1Schema)).toThrow();
+    expect(() =>
+      Data.from("d8799f0102ff", ValidationDisputeTurnV1Schema),
+    ).toThrow();
+    expect(() =>
+      Data.from("d9050f80", ValidationMachinePhaseV1Schema),
+    ).toThrow();
+  });
+
   it("round-trips exact descriptors, proofs, disputes, and reveal redeemers", () => {
     const operator = buildMidgardValidationTraceTree(
       [hash(1), hash(2), hash(3)],
@@ -110,7 +190,7 @@ describe("validation dispute ABI", () => {
       work_witness_cbor: "8100",
       claimed_successor: { ...state, program_counter: 1n },
     };
-    const auxiliary = new Constr(0, []);
+    const auxiliary = "NoAuxiliaryWitness" as const;
     const evidence: ValidationOneStepEvidenceV1Data = {
       transition,
       auxiliary,
@@ -149,13 +229,33 @@ describe("validation dispute ABI", () => {
     };
     expect(
       Data.from(
-        Data.to(
-          prepareSelected,
-          ValidationPrepareSelectedSpendRedeemerV1,
-        ),
+        Data.to(prepareSelected, ValidationPrepareSelectedSpendRedeemerV1),
         ValidationPrepareSelectedSpendRedeemerV1,
       ),
     ).toEqual(prepareSelected);
+    const prepareSelectedByHash: ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Data =
+      {
+        Continue: [
+          {
+            PrepareSelectedByEvidenceHash: {
+              input_index: 0n,
+              output_index: 0n,
+              semantic_resolver_index: 0n,
+              transition,
+              evidence_hash: "0b".repeat(32),
+            },
+          },
+        ],
+      };
+    expect(
+      Data.from(
+        Data.to(
+          prepareSelectedByHash,
+          ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+        ),
+        ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1,
+      ),
+    ).toEqual(prepareSelectedByHash);
 
     const direct: ValidationDirectResolveSpendRedeemerV1Data = {
       Continue: [

@@ -53,6 +53,7 @@ import {
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
+  GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
@@ -80,7 +81,9 @@ import {
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
-const realBlueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
+const realBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(repoRoot, "onchain/aiken/plutus.json");
 const alwaysSucceedsBlueprintPath = resolve(
   repoRoot,
   "demo/midgard-node/blueprints/always-succeeds/plutus.json",
@@ -493,7 +496,7 @@ const submitSetupTx = async ({
     utxoRoot: EMPTY_MERKLE_TREE_ROOT,
     startTime: stateQueueGenesisTime,
     endTime: stateQueueGenesisTime,
-    protocolVersion: 1n,
+    protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
   const rootNodeDatum = (data: unknown): string =>
     encodeLinkedListNodeView({
@@ -764,10 +767,11 @@ const submitCommitHeaderTx = async ({
 };
 
 describe("state-queue ABI", () => {
-  it("round-trips only the canonical V1 init and merge variants", () => {
-    expect(
-      roundTrip({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
-    ).toEqual({ InitV1: { output_index: 2n } });
+  it("uses the exact sole L04 InitV1 and MergeToConfirmedStateV1 language", () => {
+    const init = { InitV1: { output_index: 2n } } as const;
+    const initCbor = Data.to(init, StateQueueRedeemer);
+    expect(initCbor).toBe("d8799f02ff");
+    expect(roundTrip(init, StateQueueRedeemer)).toEqual(init);
 
     const proofMerge = {
       MergeToConfirmedStateV1: {
@@ -790,11 +794,26 @@ describe("state-queue ABI", () => {
         merged_block_transition_step_count: 10n,
         merged_block_validation_trace_count: 5n,
       },
-    };
+    } as const;
+    const mergeCbor = Data.to(proofMerge, StateQueueRedeemer);
+    expect(mergeCbor).toBe(
+      "d87d9f581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
+    );
     expect(roundTrip(proofMerge, StateQueueRedeemer)).toEqual(proofMerge);
-    expect(
-      roundTrip({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
-    ).toEqual({ InitV1: { output_index: 2n } });
+    expect(initCbor.startsWith("d8799f")).toBe(true);
+    expect(mergeCbor.startsWith("d87d9f")).toBe(true);
+    expect(() =>
+      Data.to({ InitV2: { output_index: 2n } } as never, StateQueueRedeemer),
+    ).toThrow();
+    expect(() =>
+      Data.to(
+        {
+          MergeToConfirmedStateV2: proofMerge.MergeToConfirmedStateV1,
+        } as never,
+        StateQueueRedeemer,
+      ),
+    ).toThrow();
+    expect(() => Data.from("d87e80", StateQueueRedeemer)).toThrow();
   });
 
   it("round-trips CommitBlockHeader and RemoveFraudulentBlockHeader", () => {

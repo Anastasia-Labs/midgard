@@ -6,4 +6,6 @@ export * from "./invalid-range.js";
 export * from "./native.js";
 export * from "./non-existent-input.js";
 export * from "./tokens.js";
+export * from "./validation-auxiliary-witness-v1.js";
 export * from "./validation-dispute.js";
+export * from "./validation-proof-item-v1.js";

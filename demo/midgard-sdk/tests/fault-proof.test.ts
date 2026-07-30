@@ -438,7 +438,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(81);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(85);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -856,7 +856,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(81);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(85);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );

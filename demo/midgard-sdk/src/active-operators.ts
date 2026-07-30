@@ -17,6 +17,8 @@ import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   incompleteInitLinkedListTxProgram,
+  LinkedListDatum,
+  linkedListDatumToNodeView,
 } from "./linked-list.js";
 
 export const ACTIVE_OPERATORS_ROOT_ASSET_NAME = fromText(
@@ -98,7 +100,7 @@ export const ActiveOperatorSpendRedeemerSchema = Data.Enum([
       active_node_input_index: Data.Integer(),
       active_node_output_index: Data.Integer(),
       operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
-      active_node_link: Data.Any(),
+      active_node_link: Data.Nullable(Data.Bytes()),
       scheduler_input_index: Data.Integer(),
       scheduler_redeemer_index: Data.Integer(),
       hub_oracle_ref_input_index: Data.Integer(),
@@ -194,10 +196,22 @@ export const fetchActiveOperatorUTxOs = (
         cause: "No UTxOs found in Active Operators Contract address",
       });
     }
-    return yield* authenticateUTxOs<ActiveOperatorDatum>(
+    const linkedListUTxOs = yield* authenticateUTxOs<LinkedListDatum>(
       allUtxos,
       params.activeOperatorPolicyId,
-      ActiveOperatorDatum,
+      LinkedListDatum,
+    );
+    return yield* Effect.allSuccesses(
+      linkedListUTxOs.map(({ assetName, utxo, datum }) =>
+        Effect.try(() => ({
+          assetName,
+          utxo,
+          datum: Data.castFrom(
+            linkedListDatumToNodeView(datum, assetName).data as never,
+            ActiveOperatorDatum as never,
+          ) as ActiveOperatorDatum,
+        })),
+      ),
     );
   });
 

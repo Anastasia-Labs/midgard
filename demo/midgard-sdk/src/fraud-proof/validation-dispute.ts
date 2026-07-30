@@ -12,6 +12,7 @@ import {
   PubKeyHashSchema,
 } from "@/common.js";
 import {
+  BoundedCollectionItemProofV1Schema,
   EventKeySchema,
   EventToStepValueSchema,
   ForcedInclusionTxV1Schema,
@@ -21,6 +22,8 @@ import {
   ValidationTraceDescriptorV1Schema,
 } from "@/ledger-state.js";
 import { rootMembershipProofSchema } from "@/transition-trace.js";
+
+import { ValidationAuxiliaryWitnessV1Schema } from "./validation-auxiliary-witness-v1.js";
 
 export const ValidationMachinePhaseV1Schema = Data.Enum([
   Data.Literal("CanonicalDecode"),
@@ -179,6 +182,38 @@ export type PreparedValidationResolutionDatumV1 = Data.Static<
 export const PreparedValidationResolutionDatumV1 =
   PreparedValidationResolutionDatumV1Schema as unknown as PreparedValidationResolutionDatumV1;
 
+export const CanonicalDecodeItemSourceV1Schema = Data.Object({
+  expected_field_commitment: H32Schema,
+  expected_field_length: Data.Integer(),
+});
+export type CanonicalDecodeItemSourceV1 = Data.Static<
+  typeof CanonicalDecodeItemSourceV1Schema
+>;
+export const CanonicalDecodeItemSourceV1 =
+  CanonicalDecodeItemSourceV1Schema as unknown as CanonicalDecodeItemSourceV1;
+
+export const CanonicalDecodeItemObservationV1Schema = Data.Object({
+  collection_proof: BoundedCollectionItemProofV1Schema,
+  item_length: Data.Integer(),
+  item_commitment: H32Schema,
+});
+export type CanonicalDecodeItemObservationV1 = Data.Static<
+  typeof CanonicalDecodeItemObservationV1Schema
+>;
+export const CanonicalDecodeItemObservationV1 =
+  CanonicalDecodeItemObservationV1Schema as unknown as CanonicalDecodeItemObservationV1;
+
+export const CanonicalDecodeItemProofV1Schema = Data.Object({
+  active_item_count: Data.Integer(),
+  item_encoding_is_valid: Data.Boolean(),
+  next_encoded_length: Data.Integer(),
+});
+export type CanonicalDecodeItemProofV1 = Data.Static<
+  typeof CanonicalDecodeItemProofV1Schema
+>;
+export const CanonicalDecodeItemProofV1 =
+  CanonicalDecodeItemProofV1Schema as unknown as CanonicalDecodeItemProofV1;
+
 export const WinningValidationResolutionStateV1Schema = Data.Object({
   version: Data.Integer(),
 });
@@ -208,9 +243,93 @@ export type ValidationOneStepWitnessV1 = Data.Static<
 export const ValidationOneStepWitnessV1 =
   ValidationOneStepWitnessV1Schema as unknown as ValidationOneStepWitnessV1;
 
+export const AuthenticatedCanonicalDecodeItemV1Schema = Data.Object({
+  version: Data.Integer(),
+  base: PreparedValidationResolutionStateV1Schema,
+  transition: ValidationOneStepWitnessV1Schema,
+});
+export type AuthenticatedCanonicalDecodeItemV1 = Data.Static<
+  typeof AuthenticatedCanonicalDecodeItemV1Schema
+>;
+export const AuthenticatedCanonicalDecodeItemV1 =
+  AuthenticatedCanonicalDecodeItemV1Schema as unknown as AuthenticatedCanonicalDecodeItemV1;
+
+export const PreparedCanonicalDecodeItemV1Schema = Data.Object({
+  version: Data.Integer(),
+  authenticated: AuthenticatedCanonicalDecodeItemV1Schema,
+  source: CanonicalDecodeItemSourceV1Schema,
+});
+export type PreparedCanonicalDecodeItemV1 = Data.Static<
+  typeof PreparedCanonicalDecodeItemV1Schema
+>;
+export const PreparedCanonicalDecodeItemV1 =
+  PreparedCanonicalDecodeItemV1Schema as unknown as PreparedCanonicalDecodeItemV1;
+
+export const ObservedCanonicalDecodeItemV1Schema = Data.Object({
+  version: Data.Integer(),
+  prepared: PreparedCanonicalDecodeItemV1Schema,
+  observation: CanonicalDecodeItemObservationV1Schema,
+});
+export type ObservedCanonicalDecodeItemV1 = Data.Static<
+  typeof ObservedCanonicalDecodeItemV1Schema
+>;
+export const ObservedCanonicalDecodeItemV1 =
+  ObservedCanonicalDecodeItemV1Schema as unknown as ObservedCanonicalDecodeItemV1;
+
+export const VerifiedCanonicalDecodeItemV1Schema = Data.Object({
+  version: Data.Integer(),
+  observed: ObservedCanonicalDecodeItemV1Schema,
+  proof: CanonicalDecodeItemProofV1Schema,
+});
+export type VerifiedCanonicalDecodeItemV1 = Data.Static<
+  typeof VerifiedCanonicalDecodeItemV1Schema
+>;
+export const VerifiedCanonicalDecodeItemV1 =
+  VerifiedCanonicalDecodeItemV1Schema as unknown as VerifiedCanonicalDecodeItemV1;
+
+export const AuthenticatedCanonicalDecodeItemDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(AuthenticatedCanonicalDecodeItemV1Schema),
+});
+export type AuthenticatedCanonicalDecodeItemDatumV1 = Data.Static<
+  typeof AuthenticatedCanonicalDecodeItemDatumV1Schema
+>;
+export const AuthenticatedCanonicalDecodeItemDatumV1 =
+  AuthenticatedCanonicalDecodeItemDatumV1Schema as unknown as AuthenticatedCanonicalDecodeItemDatumV1;
+
+export const PreparedCanonicalDecodeItemDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(PreparedCanonicalDecodeItemV1Schema),
+});
+export type PreparedCanonicalDecodeItemDatumV1 = Data.Static<
+  typeof PreparedCanonicalDecodeItemDatumV1Schema
+>;
+export const PreparedCanonicalDecodeItemDatumV1 =
+  PreparedCanonicalDecodeItemDatumV1Schema as unknown as PreparedCanonicalDecodeItemDatumV1;
+
+export const ObservedCanonicalDecodeItemDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(ObservedCanonicalDecodeItemV1Schema),
+});
+export type ObservedCanonicalDecodeItemDatumV1 = Data.Static<
+  typeof ObservedCanonicalDecodeItemDatumV1Schema
+>;
+export const ObservedCanonicalDecodeItemDatumV1 =
+  ObservedCanonicalDecodeItemDatumV1Schema as unknown as ObservedCanonicalDecodeItemDatumV1;
+
+export const VerifiedCanonicalDecodeItemDatumV1Schema = Data.Object({
+  fraud_prover: PubKeyHashSchema,
+  data: Data.Nullable(VerifiedCanonicalDecodeItemV1Schema),
+});
+export type VerifiedCanonicalDecodeItemDatumV1 = Data.Static<
+  typeof VerifiedCanonicalDecodeItemDatumV1Schema
+>;
+export const VerifiedCanonicalDecodeItemDatumV1 =
+  VerifiedCanonicalDecodeItemDatumV1Schema as unknown as VerifiedCanonicalDecodeItemDatumV1;
+
 export const ValidationOneStepEvidenceV1Schema = Data.Object({
   transition: ValidationOneStepWitnessV1Schema,
-  auxiliary: Data.Any(),
+  auxiliary: ValidationAuxiliaryWitnessV1Schema,
 });
 export type ValidationOneStepEvidenceV1 = Data.Static<
   typeof ValidationOneStepEvidenceV1Schema
@@ -426,16 +545,22 @@ export type ValidationBoundarySpendRedeemerV1 = Data.Static<
 export const ValidationBoundarySpendRedeemerV1 =
   ValidationBoundarySpendRedeemerV1Schema as unknown as ValidationBoundarySpendRedeemerV1;
 
-// A one-constructor Aiken type has the same wire shape as this record. Lucid's
-// Data.Enum intentionally unwraps a one-member enum, so model the constructor
-// fields directly to keep both encoding and decoding canonical.
-export const ValidationPrepareSelectedActionV1Schema = Data.Object({
+const ValidationPrepareSelectedFieldsV1Schema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   semantic_resolver_index: Data.Integer(),
   transition: ValidationOneStepWitnessV1Schema,
-  auxiliary: Data.Any(),
+  auxiliary: ValidationAuxiliaryWitnessV1Schema,
 });
+const ValidationPrepareSelectedByEvidenceHashFieldsV1Schema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  semantic_resolver_index: Data.Integer(),
+  transition: ValidationOneStepWitnessV1Schema,
+  evidence_hash: H32Schema,
+});
+export const ValidationPrepareSelectedActionV1Schema =
+  ValidationPrepareSelectedFieldsV1Schema;
 export type ValidationPrepareSelectedActionV1 = Data.Static<
   typeof ValidationPrepareSelectedActionV1Schema
 >;
@@ -453,6 +578,39 @@ export type ValidationPrepareSelectedSpendRedeemerV1 = Data.Static<
 >;
 export const ValidationPrepareSelectedSpendRedeemerV1 =
   ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as ValidationPrepareSelectedSpendRedeemerV1;
+
+export const ValidationCanonicalDecodePrepareSelectedActionV1Schema = Data.Enum(
+  [
+    Data.Object({
+      PrepareSelected: ValidationPrepareSelectedFieldsV1Schema,
+    }),
+    Data.Object({
+      PrepareSelectedByEvidenceHash:
+        ValidationPrepareSelectedByEvidenceHashFieldsV1Schema,
+    }),
+  ],
+);
+export type ValidationCanonicalDecodePrepareSelectedActionV1 = Data.Static<
+  typeof ValidationCanonicalDecodePrepareSelectedActionV1Schema
+>;
+export const ValidationCanonicalDecodePrepareSelectedActionV1 =
+  ValidationCanonicalDecodePrepareSelectedActionV1Schema as unknown as ValidationCanonicalDecodePrepareSelectedActionV1;
+
+export const ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema =
+  Data.Enum([
+    cancelActionSchema,
+    Data.Object({
+      Continue: Data.Tuple([
+        ValidationCanonicalDecodePrepareSelectedActionV1Schema,
+      ]),
+    }),
+  ]);
+export type ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 =
+  Data.Static<
+    typeof ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema
+  >;
+export const ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1 =
+  ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema as unknown as ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1;
 
 export const ValidationDirectResolveActionV1Schema = Data.Object({
   input_index: Data.Integer(),

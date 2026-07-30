@@ -6,6 +6,7 @@ import {
   MIDGARD_MAX_DA_PAYLOAD_BYTES_V1,
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
+import { sha256 } from "@noble/hashes/sha2.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -153,6 +154,29 @@ const replaceFirst = (
 };
 
 describe("DaPayloadV1 canonical codec", () => {
+  it("pins the exact V1 body/count field order and constructor arities", () => {
+    const value = emptyPayload();
+    const encoded = encodeDaPayloadV1(value);
+
+    expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayloadV1), "hex"));
+    expect(encoded).toHaveLength(445);
+    expect(Buffer.from(sha256(encoded)).toString("hex")).toBe(
+      "2f3caa41a48bbf5a5609accecd95ddf8e27af29a2bf9a3043f3394e18e2b334c",
+    );
+
+    for (const trailingBreaks of [1, 2, 3]) {
+      const insertion = encoded.length - trailingBreaks;
+      const extraField = Buffer.concat([
+        encoded.subarray(0, insertion),
+        Buffer.from([0]),
+        encoded.subarray(insertion),
+      ]);
+      expect(() => decodeDaPayloadV1(extraField)).toThrow(
+        /unexpected CBOR framing/u,
+      );
+    }
+  });
+
   it("uses the newest payload shape and is byte-identical to its schema", () => {
     for (let seed = 0; seed < 20; seed += 1) {
       const value = payload(seed);
