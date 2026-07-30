@@ -1,3 +1,4 @@
+use aiken/cbor
 use midgard/validation_trace_v1
 
 const expected_state_cbor =
@@ -50,13 +51,59 @@ fn fixture_descriptor() -> validation_trace_v1.ValidationTraceDescriptorV1 {
 
 test matches_typescript_machine_state_encoding_and_hash() {
   and {
+    validation_trace_v1.machine_state_is_well_formed(fixture_state()),
     validation_trace_v1.encode_machine_state(fixture_state()) == expected_state_cbor,
     validation_trace_v1.hash_machine_state(fixture_state()) == expected_state_hash,
   }
 }
 
 test matches_typescript_descriptor_encoding() {
-  validation_trace_v1.encode_descriptor(fixture_descriptor()) == expected_descriptor_cbor
+  and {
+    validation_trace_v1.descriptor_is_well_formed(fixture_descriptor()),
+    validation_trace_v1.encode_descriptor(fixture_descriptor()) == expected_descriptor_cbor,
+  }
+}
+
+test rejects_wrong_machine_state_version_and_malformed_hash() {
+  and {
+    !validation_trace_v1.machine_state_is_well_formed(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..fixture_state(),
+        machine_version: 2,
+      },
+    ),
+    !validation_trace_v1.machine_state_is_well_formed(
+      validation_trace_v1.ValidationMachineStateV1 {
+        ..fixture_state(),
+        event_key_hash: #"00",
+      },
+    ),
+  }
+}
+
+test validation_phase_verdict_and_source_kind_tags_match_typescript() {
+  and {
+    cbor.serialise(validation_trace_v1.CanonicalDecode) == #"d87980",
+    cbor.serialise(validation_trace_v1.CompactBinding) == #"d87a80",
+    cbor.serialise(validation_trace_v1.StaticLedgerRules) == #"d87b80",
+    cbor.serialise(validation_trace_v1.InputSets) == #"d87c80",
+    cbor.serialise(validation_trace_v1.Signatures) == #"d87d80",
+    cbor.serialise(validation_trace_v1.PhaseANativeScripts) == #"d87e80",
+    cbor.serialise(validation_trace_v1.PhaseAScriptPreconditions) == #"d87f80",
+    cbor.serialise(validation_trace_v1.ResolveInputs) == #"d9050080",
+    cbor.serialise(validation_trace_v1.ScriptSources) == #"d9050180",
+    cbor.serialise(validation_trace_v1.NativeScripts) == #"d9050280",
+    cbor.serialise(validation_trace_v1.ScriptIntegrity) == #"d9050380",
+    cbor.serialise(validation_trace_v1.Cek) == #"d9050480",
+    cbor.serialise(validation_trace_v1.ValueAndMint) == #"d9050580",
+    cbor.serialise(validation_trace_v1.LedgerDelta) == #"d9050680",
+    cbor.serialise(validation_trace_v1.Terminal) == #"d9050780",
+    cbor.serialise(validation_trace_v1.Pending) == #"d87980",
+    cbor.serialise(validation_trace_v1.Accepted) == #"d87a80",
+    cbor.serialise(validation_trace_v1.Rejected) == #"d87b80",
+    cbor.serialise(validation_trace_v1.Normal) == #"d87980",
+    cbor.serialise(validation_trace_v1.Forced) == #"d87a80",
+  }
 }
 
 test verifies_both_members_of_two_state_trace() {

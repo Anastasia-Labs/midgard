@@ -165,7 +165,6 @@ pub fn prepare_semantic_resolution(
   transition: validation_machine_v1.ValidationOneStepWitnessV1,
   auxiliary: Data,
 ) -> PreparedValidationResolutionStateV1 {
-  let transition_data: Data = transition
   expect state_is_well_formed(state)
   expect
     validation_trace_v1.hash_machine_state(transition.claimed_successor) == state.challenger_successor_hash
@@ -174,6 +173,7 @@ pub fn prepare_semantic_resolution(
       state.pre_state,
       transition,
     )
+  let transition_data: Data = transition
   PreparedValidationResolutionStateV1 {
     version: prepared_resolution_version,
     resolution: state,

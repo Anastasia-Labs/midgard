@@ -1,3 +1,5 @@
+use aiken/builtin
+use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
@@ -10,6 +12,34 @@ const value = #"040506"
 
 fn singleton_root() -> ByteArray {
   combine(suffix(blake2b_256(key), 0), blake2b_256(value))
+}
+
+test mpf_proof_v1_matches_the_canonical_typescript_abi_vector() {
+  let proof: mpf.Proof = [
+    mpf.Branch { skip: 0, neighbors: #"aa" },
+    mpf.Fork {
+      skip: 1,
+      neighbor: mpf.Neighbor { nibble: 2, prefix: #"bb", root: #"cc" },
+    },
+    mpf.Leaf { skip: 3, key: #"dd", value: #"ee" },
+  ]
+  cbor.serialise(proof) == #"9fd8799f0041aaffd87a9f01d8799f0241bb41ccffffd87b9f0341dd41eeffff"
+}
+
+test mpf_proof_v1_rejects_the_obsolete_double_wrapped_fork_neighbor() fail {
+  expect Some(data) = cbor.deserialise(
+    #"9fd87a9f01d8799fd8799f0241bb41ccffffffff",
+  )
+  expect [fork_data] = builtin.un_list_data(data)
+  let Pair(fork_tag, fork_fields) = builtin.un_constr_data(fork_data)
+  expect fork_tag == 1
+  expect [_, neighbor_data] = fork_fields
+  let Pair(neighbor_tag, neighbor_fields) = builtin.un_constr_data(
+    neighbor_data,
+  )
+  expect neighbor_tag == 0
+  expect [_, _, _] = neighbor_fields
+  True
 }
 
 test mpf_proof_v1_verifies_empty_proof_membership() {

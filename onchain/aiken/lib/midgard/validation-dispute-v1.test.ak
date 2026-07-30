@@ -1,3 +1,4 @@
+use aiken/cbor
 use midgard/validation_dispute_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -91,6 +92,22 @@ fn fixture_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
     ledger_delta_root: h_a,
+  }
+}
+
+test dispute_turn_and_winner_tags_match_typescript() {
+  and {
+    cbor.serialise(validation_dispute_v1.AwaitingOperator { midpoint: 1 }) == #"d8799f01ff",
+    cbor.serialise(
+      validation_dispute_v1.AwaitingChallenger {
+        midpoint: 1,
+        operator_midpoint_hash: h_a,
+      },
+    ) == #"d87a9f015820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaff",
+    cbor.serialise(validation_dispute_v1.ReadyForOneStep) == #"d87b80",
+    cbor.serialise(validation_dispute_v1.OperatorWins) == #"d87980",
+    cbor.serialise(validation_dispute_v1.ChallengerWins) == #"d87a80",
+    cbor.serialise(validation_dispute_v1.NeitherClaimValid) == #"d87b80",
   }
 }
 

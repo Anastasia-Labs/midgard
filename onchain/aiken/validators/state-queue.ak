@@ -11,11 +11,9 @@ use midgard/da_attestation_types as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
 use midgard/ledger_state.{
-  ConfirmedState, block_maturity_duration_v1, genesis_header_hash,
-  genesis_utxo_root, max_deposit_count_v1, max_forced_transaction_count_v1,
-  max_l2_transaction_count_v1, max_total_event_count_v1,
-  max_transition_step_count_v1, max_validation_trace_count_v1,
-  max_withdrawal_count_v1, protocol_version_v1,
+  ConfirmedState, HeaderV1, block_maturity_duration_v1,
+  confirmed_state_next_header_protocol_version_v1, genesis_confirmed_state_v1,
+  header_v1_is_valid, protocol_version_v1,
 }
 use midgard/operator_directory.{SlashOperatorForBadState}
 use midgard/operator_directory/active_operators
@@ -23,59 +21,67 @@ use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
-  AttachDaAttestation, CommitBlockHeader, Deinit, HeaderView, InitV1,
-  LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
-  OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
-  SlashRetiredOperator, SpendRedeemer, StateQueueNode,
-  confirmed_state_asset_name, decode_header_view, finalize_linked_list,
-  no_da_attestation,
+  AttachDaAttestation, CommitBlockHeader, Deinit, InitV1, LinkedListMutation,
+  MergeToConfirmedStateV1, MintRedeemer, OperatorAlreadySlashed,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, SlashActiveOperator, SlashRetiredOperator,
+  SpendRedeemer, StateQueueNode, confirmed_state_asset_name, decode_header_view,
+  finalize_linked_list, no_da_attestation,
 }
 
-fn root_matches_count(root: ByteArray, count: Int) -> Bool {
-  if count == 0 {
-    root == env.empty_merkle_tree_root
-  } else {
-    root != env.empty_merkle_tree_root
-  }
-}
-
-fn header_view_is_valid(header: HeaderView) -> Bool {
-  let counts_are_valid = and {
-    header.protocol_version == protocol_version_v1,
-    header.withdrawal_count <= max_withdrawal_count_v1,
-    header.forced_transaction_count <= max_forced_transaction_count_v1,
-    header.l2_transaction_count <= max_l2_transaction_count_v1,
-    header.deposit_count <= max_deposit_count_v1,
-    header.total_event_count <= max_total_event_count_v1,
-    header.transition_step_count <= max_transition_step_count_v1,
-    header.validation_trace_count <= max_validation_trace_count_v1,
-    header.validation_trace_count == header.forced_transaction_count + header.l2_transaction_count,
-    root_matches_count(
-      header.validation_traces_root,
-      header.validation_trace_count,
-    ),
-  }
+/// Pure CommitBlockHeader structural seam. The full validator authenticates
+/// the linked-list output before reaching this predicate.
+pub fn commit_block_header_output_is_valid_v1(header: HeaderV1) -> Bool {
   and {
-    header.withdrawal_count >= 0,
-    header.forced_transaction_count >= 0,
-    header.l2_transaction_count >= 0,
-    header.deposit_count >= 0,
-    header.total_event_count >= 0,
-    header.transition_step_count >= 0,
-    header.validation_trace_count >= 0,
-    header.total_event_count == header.withdrawal_count + header.forced_transaction_count + header.l2_transaction_count + header.deposit_count,
-    header.transition_step_count == header.total_event_count,
-    root_matches_count(header.withdrawals_root, header.withdrawal_count),
-    root_matches_count(
-      header.forced_transactions_root,
-      header.forced_transaction_count,
-    ),
-    root_matches_count(header.transactions_root, header.l2_transaction_count),
-    root_matches_count(header.deposits_root, header.deposit_count),
-    root_matches_count(header.transition_trace_root, header.total_event_count),
-    root_matches_count(header.event_to_step_root, header.total_event_count),
-    counts_are_valid,
+    header.start_time < header.end_time,
+    header_v1_is_valid(header),
+  }
+}
+
+/// The scheduler reference and active-operator spend are authenticated by
+/// their respective scripts before their keys reach this pure equality check.
+pub fn commit_block_header_operator_is_legitimate_v1(
+  header_operator: ByteArray,
+  redeemer_operator: ByteArray,
+  scheduler_operator: ByteArray,
+  active_operator: ByteArray,
+) -> Bool {
+  and {
+    header_operator == redeemer_operator,
+    scheduler_operator == redeemer_operator,
+    active_operator == redeemer_operator,
+  }
+}
+
+/// Exact carry-over required when appending after another queued block.
+pub fn commit_block_header_carries_previous_block_v1(
+  output_header: HeaderV1,
+  previous_header_hash: ByteArray,
+  previous_header: HeaderV1,
+) -> Bool {
+  and {
+    output_header.prev_header_hash == previous_header_hash,
+    output_header.prev_utxos_root == previous_header.utxos_root,
+    output_header.start_time == previous_header.end_time,
+    output_header.protocol_version == previous_header.protocol_version,
+  }
+}
+
+/// Exact carry-over required when the linked-list anchor is the confirmed
+/// state. `confirmed_state_next_header_protocol_version_v1` distinguishes the
+/// sole genesis sentinel from authenticated ordinary V1 states.
+pub fn commit_block_header_carries_confirmed_state_v1(
+  output_header: HeaderV1,
+  confirmed_state: ConfirmedState,
+) -> Bool {
+  when confirmed_state_next_header_protocol_version_v1(confirmed_state) is {
+    Some(next_protocol_version) -> and {
+        output_header.prev_header_hash == confirmed_state.header_hash,
+        output_header.prev_utxos_root == confirmed_state.utxo_root,
+        output_header.start_time == confirmed_state.end_time,
+        output_header.protocol_version == next_protocol_version,
+      }
+    None -> False
   }
 }
 
@@ -131,12 +137,14 @@ fn merge_to_confirmed_state(
     )
 
     expect input_header_node_key == header_node_key
-    expect StateQueueNode { header: input_header_data, da_attestation } = input_header_node_data
+    expect
+        StateQueueNode { header: input_header_data, da_attestation }: StateQueueNode
+      = input_header_node_data
     expect da_attestation == da_attestation_policy_id
 
     let input_header = decode_header_view(input_header_data)
     expect input_header.protocol_version == expected_protocol_version
-    expect header_view_is_valid(input_header)
+    expect header_v1_is_valid(input_header)
     expect commitments.withdrawals_root == input_header.withdrawals_root
     expect
       commitments.forced_transactions_root == input_header.forced_transactions_root
@@ -168,11 +176,23 @@ fn merge_to_confirmed_state(
         ConfirmedState {
           start_time: input_confirmed_state_start_time,
           header_hash: input_confirmed_state_header_hash,
+          prev_header_hash: input_confirmed_state_prev_header_hash,
+          utxo_root: input_confirmed_state_utxo_root,
+          end_time: input_confirmed_state_end_time,
           protocol_version: input_confirmed_state_protocol_version,
-          ..
         }
       = input_confirmed_state_data
-    expect input_confirmed_state_protocol_version == expected_protocol_version
+    expect
+      Some(expected_protocol_version) == confirmed_state_next_header_protocol_version_v1(
+        ConfirmedState {
+          header_hash: input_confirmed_state_header_hash,
+          prev_header_hash: input_confirmed_state_prev_header_hash,
+          utxo_root: input_confirmed_state_utxo_root,
+          start_time: input_confirmed_state_start_time,
+          end_time: input_confirmed_state_end_time,
+          protocol_version: input_confirmed_state_protocol_version,
+        },
+      )
     let expected_output_confirmed_state_data: Data = ConfirmedState {
       header_hash: header_node_key,
       prev_header_hash: input_confirmed_state_header_hash,
@@ -272,14 +292,10 @@ validator mint(
           validity_range,
         )
 
-        let expected_root_data: Data = ConfirmedState {
-          header_hash: genesis_header_hash,
-          prev_header_hash: genesis_header_hash,
-          utxo_root: genesis_utxo_root,
-          start_time: current_time_upper,
-          end_time: current_time_upper,
-          protocol_version: protocol_version_v1,
-        }
+        expect Some(expected_genesis_state) = genesis_confirmed_state_v1(
+          current_time_upper,
+        )
+        let expected_root_data: Data = expected_genesis_state
 
         expect
           linked_list.init(
@@ -372,7 +388,9 @@ validator mint(
             tx_mint: mint,
           )
 
-          expect StateQueueNode { header: output_header_data, da_attestation } = output_node_data
+          expect
+              StateQueueNode { header: output_header_data, da_attestation }: StateQueueNode
+            = output_node_data
           expect da_attestation == no_da_attestation
 
           // 4. The new block in state queue must have the hash of the header
@@ -384,18 +402,8 @@ validator mint(
 
           // 5. New element's data must be `HeaderV1` with a valid time range.
           let output_header = decode_header_view(output_header_data)
-          let output_prev_utxos_root = output_header.prev_utxos_root
-          let output_start_time = output_header.start_time
-          let output_end_time = output_header.end_time
-          let output_prev_header_hash = output_header.prev_header_hash
           let output_operator_vkey = output_header.operator_vkey
-          let output_protocol_version = output_header.protocol_version
-          expect output_start_time < output_end_time
-          expect header_view_is_valid(output_header)
-
-          // 6. The operator pub key hash from the redeemer must match the one
-          //    in the new header.
-          expect output_operator_vkey == operator
+          expect commit_block_header_output_is_valid_v1(output_header)
 
           // Verify that it is the operator's turn to commit according to the
           // scheduler:
@@ -406,10 +414,6 @@ validator mint(
             scheduler_policy_id: scheduler_script_hash,
             scheduler_ref_input_index: scheduler_ref_input_index,
           )
-
-          // 8. The `operator` field of `scheduler_state` must match `operator`
-          //    from redeemer.
-          expect operator == scheduler_operator
 
           // Update the operator's timestamp in the active operators set:
           // 9. The transaction must include an input, spent via the
@@ -423,7 +427,16 @@ validator mint(
             inputs,
             redeemers,
           )
-          expect operator == active_operator
+          // 6, 8, 9. The header, authenticated scheduler state, and
+          // authenticated active-operator spend must all name the redeemer
+          // operator.
+          expect
+            commit_block_header_operator_is_legitimate_v1(
+              output_operator_vkey,
+              operator,
+              scheduler_operator,
+              active_operator,
+            )
 
           // To validate the output header, we must take two routes depending on
           // whether the anchor element is the root (i.e. confirmed state), or a
@@ -432,12 +445,16 @@ validator mint(
             Some(header_hash) -> {
               // 10a. New block must properly carry over data from previous
               //      block.
-              expect StateQueueNode { header: anchor_header_data, .. } = anchor_data
+              expect
+                  StateQueueNode { header: anchor_header_data, .. }: StateQueueNode
+                = anchor_data
               let anchor_header = decode_header_view(anchor_header_data)
-              expect output_prev_header_hash == header_hash
-              expect output_prev_utxos_root == anchor_header.utxos_root
-              expect output_start_time == anchor_header.end_time
-              expect output_protocol_version == anchor_header.protocol_version
+              expect
+                commit_block_header_carries_previous_block_v1(
+                  output_header,
+                  header_hash,
+                  anchor_header,
+                )
 
               // Done.
               True
@@ -448,16 +465,25 @@ validator mint(
               expect
                   ConfirmedState {
                     header_hash,
+                    prev_header_hash,
                     utxo_root,
+                    start_time,
                     end_time,
                     protocol_version,
-                    ..
                   }
                 = anchor_data
-              expect output_prev_header_hash == header_hash
-              expect output_prev_utxos_root == utxo_root
-              expect output_start_time == end_time
-              expect output_protocol_version == protocol_version
+              expect
+                commit_block_header_carries_confirmed_state_v1(
+                  output_header,
+                  ConfirmedState {
+                    header_hash,
+                    prev_header_hash,
+                    utxo_root,
+                    start_time,
+                    end_time,
+                    protocol_version,
+                  },
+                )
 
               // Done.
               True
@@ -595,7 +621,9 @@ validator mint(
               )
               expect
                 Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
-              expect StateQueueNode { header: removed_node_header, .. } = removed_node_header_data
+              expect
+                  StateQueueNode { header: removed_node_header, .. }: StateQueueNode
+                = removed_node_header_data
               let removed_header_view = decode_header_view(removed_node_header)
               removed_header_view.operator_vkey == fraudulent_operator
             }
@@ -624,7 +652,9 @@ validator mint(
                 tx_mint: mint,
               )
               expect fraudulent_blocks_header_hash == removed_node_header_hash
-              expect StateQueueNode { header: removed_node_header, .. } = removed_node_header_data
+              expect
+                  StateQueueNode { header: removed_node_header, .. }: StateQueueNode
+                = removed_node_header_data
               let removed_header_view = decode_header_view(removed_node_header)
               expect removed_header_view.operator_vkey == fraudulent_operator
               removed_node_link == None
@@ -700,5 +730,253 @@ validator mint(
 
   else(_) {
     fail
+  }
+}
+
+const q49_header_hash_a =
+  #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+const q49_header_hash_b =
+  #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+const q49_genesis_header_hash =
+  #"00000000000000000000000000000000000000000000000000000000"
+
+const q49_operator = #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+const q49_other_operator =
+  #"dddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+const q49_utxo_root_a =
+  #"1111111111111111111111111111111111111111111111111111111111111111"
+
+const q49_utxo_root_b =
+  #"2222222222222222222222222222222222222222222222222222222222222222"
+
+fn q49_header_fixture() -> HeaderV1 {
+  HeaderV1 {
+    prev_utxos_root: q49_utxo_root_a,
+    utxos_root: q49_utxo_root_b,
+    withdrawals_root: env.empty_merkle_tree_root,
+    forced_transactions_root: env.empty_merkle_tree_root,
+    transactions_root: env.empty_merkle_tree_root,
+    deposits_root: env.empty_merkle_tree_root,
+    transition_trace_root: env.empty_merkle_tree_root,
+    event_to_step_root: env.empty_merkle_tree_root,
+    validation_traces_root: env.empty_merkle_tree_root,
+    withdrawal_count: 0,
+    forced_transaction_count: 0,
+    l2_transaction_count: 0,
+    deposit_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+    validation_trace_count: 0,
+    start_time: 100,
+    end_time: 200,
+    block_slot: 0,
+    expected_network_id: 0,
+    min_fee_a: 0,
+    min_fee_b: 0,
+    prev_header_hash: q49_header_hash_a,
+    operator_vkey: q49_operator,
+    protocol_version: protocol_version_v1,
+  }
+}
+
+test q49_l295_header_shape_control_and_interval_mutations() {
+  let control = q49_header_fixture()
+  and {
+    commit_block_header_output_is_valid_v1(control),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, start_time: control.end_time },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, start_time: control.end_time + 1 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, protocol_version: 0 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, protocol_version: 2 },
+    ),
+  }
+}
+
+test q49_l295_scheduled_operator_control_and_independent_mutations() {
+  and {
+    commit_block_header_operator_is_legitimate_v1(
+      q49_operator,
+      q49_operator,
+      q49_operator,
+      q49_operator,
+    ),
+    !commit_block_header_operator_is_legitimate_v1(
+      q49_other_operator,
+      q49_operator,
+      q49_operator,
+      q49_operator,
+    ),
+    !commit_block_header_operator_is_legitimate_v1(
+      q49_operator,
+      q49_operator,
+      q49_other_operator,
+      q49_operator,
+    ),
+    !commit_block_header_operator_is_legitimate_v1(
+      q49_operator,
+      q49_operator,
+      q49_operator,
+      q49_other_operator,
+    ),
+    !commit_block_header_operator_is_legitimate_v1(
+      q49_operator,
+      q49_other_operator,
+      q49_operator,
+      q49_operator,
+    ),
+  }
+}
+
+test q49_l295_previous_header_control_and_independent_mutations() {
+  let previous = q49_header_fixture()
+  let output = HeaderV1 {
+    ..q49_header_fixture(),
+    prev_header_hash: q49_header_hash_b,
+    prev_utxos_root: previous.utxos_root,
+    start_time: previous.end_time,
+    end_time: previous.end_time + 100,
+  }
+  and {
+    commit_block_header_carries_previous_block_v1(
+      output,
+      q49_header_hash_b,
+      previous,
+    ),
+    !commit_block_header_carries_previous_block_v1(
+      HeaderV1 { ..output, prev_header_hash: q49_header_hash_a },
+      q49_header_hash_b,
+      previous,
+    ),
+    !commit_block_header_carries_previous_block_v1(
+      HeaderV1 { ..output, prev_utxos_root: q49_utxo_root_a },
+      q49_header_hash_b,
+      previous,
+    ),
+    !commit_block_header_carries_previous_block_v1(
+      HeaderV1 { ..output, start_time: previous.end_time - 1 },
+      q49_header_hash_b,
+      previous,
+    ),
+    !commit_block_header_carries_previous_block_v1(
+      HeaderV1 { ..output, start_time: previous.end_time + 1 },
+      q49_header_hash_b,
+      previous,
+    ),
+    !commit_block_header_carries_previous_block_v1(
+      HeaderV1 { ..output, protocol_version: 2 },
+      q49_header_hash_b,
+      previous,
+    ),
+  }
+}
+
+test q49_l295_confirmed_genesis_control_and_independent_mutations() {
+  expect Some(genesis) = genesis_confirmed_state_v1(100)
+  let output = HeaderV1 {
+    ..q49_header_fixture(),
+    prev_header_hash: q49_genesis_header_hash,
+    prev_utxos_root: env.empty_merkle_tree_root,
+  }
+  let malformed_header_hash = ConfirmedState {
+    ..genesis,
+    header_hash: q49_header_hash_a,
+  }
+  let malformed_prev_hash = ConfirmedState {
+    ..genesis,
+    prev_header_hash: q49_header_hash_a,
+  }
+  let malformed_utxo_root = ConfirmedState {
+    ..genesis,
+    utxo_root: q49_utxo_root_a,
+  }
+  let malformed_interval = ConfirmedState {
+    ..genesis,
+    end_time: genesis.start_time + 1,
+  }
+  and {
+    commit_block_header_carries_confirmed_state_v1(output, genesis),
+    !commit_block_header_carries_confirmed_state_v1(
+      HeaderV1 { ..output, prev_header_hash: q49_header_hash_b },
+      genesis,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      HeaderV1 { ..output, prev_utxos_root: q49_utxo_root_b },
+      genesis,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      HeaderV1 { ..output, start_time: genesis.end_time - 1 },
+      genesis,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      HeaderV1 { ..output, start_time: genesis.end_time + 1 },
+      genesis,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      HeaderV1 { ..output, protocol_version: 2 },
+      genesis,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      malformed_header_hash,
+    ),
+    !commit_block_header_carries_confirmed_state_v1(output, malformed_prev_hash),
+    !commit_block_header_carries_confirmed_state_v1(output, malformed_utxo_root),
+    !commit_block_header_carries_confirmed_state_v1(output, malformed_interval),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..genesis, protocol_version: protocol_version_v1 },
+    ),
+  }
+}
+
+test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
+  let ordinary = ConfirmedState {
+    header_hash: q49_header_hash_b,
+    prev_header_hash: q49_header_hash_a,
+    utxo_root: q49_utxo_root_a,
+    start_time: 0,
+    end_time: 100,
+    protocol_version: protocol_version_v1,
+  }
+  let output = HeaderV1 {
+    ..q49_header_fixture(),
+    prev_header_hash: q49_header_hash_b,
+  }
+  and {
+    commit_block_header_carries_confirmed_state_v1(output, ordinary),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, header_hash: q49_header_hash_a },
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, header_hash: q49_genesis_header_hash },
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, start_time: -1 },
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, start_time: ordinary.end_time + 1 },
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, protocol_version: 0 },
+    ),
+    !commit_block_header_carries_confirmed_state_v1(
+      output,
+      ConfirmedState { ..ordinary, protocol_version: 2 },
+    ),
   }
 }

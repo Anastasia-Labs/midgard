@@ -11,6 +11,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardCredential, MidgardTxInput, MidgardTxOutput, PubKeyCredential,
   ScriptCredential,
 }
+use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/script_proof_v1
 use midgard/validation_merkle_v1
@@ -176,6 +177,23 @@ pub fn tx_in_info_summary_v1(
   }
 }
 
+fn tx_in_info_from_output_summary_v1(
+  input_cbor: ByteArray,
+  output: cek_data_v1.DataSummaryV1,
+) -> Option<cek_data_v1.DataSummaryV1> {
+  let input = decode_midgard_tx_input_cbor(input_cbor)
+  if encode_midgard_tx_input(input) != input_cbor {
+    None
+  } else {
+    Some(
+      small_constr_summary(
+        0,
+        [cek_data_v1.semantic_data_summary_v1(tx_out_ref_data(input)), output],
+      ),
+    )
+  }
+}
+
 /// Prepends one authenticated item while walking a committed collection from
 /// its last index to zero. This produces the exact linked-list semantic root
 /// used by `serialiseData`, without revealing the full collection in one L1
@@ -272,6 +290,73 @@ pub fn prepend_resolved_tx_in_info_v1(
   }
 }
 
+/// Converts one authenticated compact ledger descriptor directly into the
+/// exact language-specific `TxInInfo` semantic item. The descriptor is the
+/// value committed by ScriptSources replay, so no complete ledger output is
+/// revealed or decoded during CEK context assembly.
+pub fn prepend_resolved_descriptor_tx_in_info_v1(
+  resolved_count: Int,
+  resolved_peaks: List<validation_merkle_v1.FrontierPeak>,
+  spend_count: Int,
+  source_kind: Int,
+  item_index: Int,
+  input_cbor: ByteArray,
+  descriptor_cbor: ByteArray,
+  siblings: List<ByteArray>,
+  midgard_encoding: Bool,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+) -> Option<cek_data_v1.DataSequenceSummaryV1> {
+  let collection_count = if source_kind == 0 {
+    spend_count
+  } else {
+    resolved_count - spend_count
+  }
+  let collection_offset = if source_kind == 0 {
+    0
+  } else {
+    spend_count
+  }
+  let input = decode_midgard_tx_input_cbor(input_cbor)
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  let output = if midgard_encoding {
+    descriptor.midgard_tx_out
+  } else {
+    descriptor.cardano_tx_out
+  }
+  if and {
+    resolved_count >= 0,
+    spend_count >= 0,
+    spend_count <= resolved_count,
+    or {
+      source_kind == 0,
+      source_kind == 1,
+    },
+    encode_midgard_tx_input(input) == input_cbor,
+    descriptor.output_index == input.output_index,
+    validation_merkle_v1.frontier_is_well_formed(resolved_count, resolved_peaks),
+    item_index == collection_offset + collection_count - tail.length - 1,
+    validation_merkle_v1.verify_membership(
+      resolved_count,
+      resolved_peaks,
+      item_index,
+      script_proof_v1.resolved_context_item_leaf_hash(
+        source_kind,
+        item_index,
+        input_cbor,
+        descriptor_cbor,
+      ),
+      siblings,
+    ),
+  } {
+    when tx_in_info_from_output_summary_v1(input_cbor, output) is {
+      None -> None
+      Some(item) -> Some(cek_data_v1.prepend_data_list_summary_v1(item, tail))
+    }
+  } else {
+    None
+  }
+}
+
 /// Converts one authenticated transaction output into its exact script-context
 /// `TxOut` item and prepends it in reverse output order.
 pub fn prepend_output_v1(
@@ -299,6 +384,46 @@ pub fn prepend_output_v1(
       None -> None
       Some(item) -> Some(cek_data_v1.prepend_data_list_summary_v1(item, tail))
     }
+  } else {
+    None
+  }
+}
+
+/// Prepends the exact language-specific `TxOut` semantic summary from an
+/// authenticated compact output descriptor. Complete output CBOR remains in
+/// DA and is not part of the CEK one-step witness.
+pub fn prepend_output_descriptor_v1(
+  output_count: Int,
+  output_descriptor_peaks: List<validation_merkle_v1.FrontierPeak>,
+  output_index: Int,
+  descriptor_cbor: ByteArray,
+  siblings: List<ByteArray>,
+  midgard_encoding: Bool,
+  tail: cek_data_v1.DataSequenceSummaryV1,
+) -> Option<cek_data_v1.DataSequenceSummaryV1> {
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  let output = if midgard_encoding {
+    descriptor.midgard_tx_out
+  } else {
+    descriptor.cardano_tx_out
+  }
+  if and {
+    output_count >= 0,
+    descriptor.output_index == output_index,
+    validation_merkle_v1.frontier_is_well_formed(
+      output_count,
+      output_descriptor_peaks,
+    ),
+    output_index == output_count - tail.length - 1,
+    validation_merkle_v1.verify_membership(
+      output_count,
+      output_descriptor_peaks,
+      output_index,
+      script_proof_v1.output_descriptor_leaf_hash(output_index, descriptor_cbor),
+      siblings,
+    ),
+  } {
+    Some(cek_data_v1.prepend_data_list_summary_v1(output, tail))
   } else {
     None
   }
@@ -696,6 +821,32 @@ pub fn cardano_script_info_summary_v1(
     None
   } else {
     script_purpose_summary_v1(purpose_kind, script_hash, subject, False)
+  }
+}
+
+/// Builds the exact PlutusV3 spend `ScriptInfo` from the datum summary already
+/// bound into an authenticated compact ledger descriptor.
+pub fn cardano_spend_script_info_from_descriptor_v1(
+  subject: ByteArray,
+  descriptor_cbor: ByteArray,
+) -> Option<cek_data_v1.DataSummaryV1> {
+  let input = decode_midgard_tx_input_cbor(subject)
+  let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+  if and {
+    encode_midgard_tx_input(input) == subject,
+    descriptor.output_index == input.output_index,
+  } {
+    Some(
+      small_constr_summary(
+        1,
+        [
+          cek_data_v1.semantic_data_summary_v1(tx_out_ref_data(input)),
+          descriptor.cardano_spend_datum,
+        ],
+      ),
+    )
+  } else {
+    None
   }
 }
 

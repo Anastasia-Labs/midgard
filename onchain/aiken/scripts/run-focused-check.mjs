@@ -5,26 +5,23 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const usage =
-  "usage: node scripts/run-focused-check.mjs <module> <test-name>";
-const [, , moduleName, testName, ...unexpected] = process.argv;
+  "usage: node scripts/run-focused-check.mjs <module> <test-name> [<test-name> ...]";
+const [, , moduleName, ...testNames] = process.argv;
 const validModule = /^[a-z0-9_/]+$/u;
 const validTest = /^[a-z0-9_]+$/u;
 
 if (
-  unexpected.length > 0 ||
   moduleName === undefined ||
-  testName === undefined ||
+  testNames.length === 0 ||
   !validModule.test(moduleName) ||
-  !validTest.test(testName)
+  testNames.some((testName) => !validTest.test(testName)) ||
+  new Set(testNames).size !== testNames.length
 ) {
   console.error(usage);
   process.exit(2);
 }
 
-const projectDirectory = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+const projectDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const aikenBinary = process.env.MIDGARD_AIKEN_BIN ?? "aiken";
 const environment = process.env.MIDGARD_AIKEN_ENV;
 if (environment !== undefined && !/^[a-z0-9_-]+$/u.test(environment)) {
@@ -34,8 +31,7 @@ if (environment !== undefined && !/^[a-z0-9_-]+$/u.test(environment)) {
 
 const args = [
   "check",
-  "-m",
-  `${moduleName}.{${testName}}`,
+  ...testNames.flatMap((testName) => ["-m", `${moduleName}.{${testName}}`]),
   "-e",
   "--plain-numbers",
 ];
@@ -71,12 +67,12 @@ try {
 
 const summary = report?.summary;
 if (
-  summary?.total !== 1 ||
-  summary?.passed !== 1 ||
+  summary?.total !== testNames.length ||
+  summary?.passed !== testNames.length ||
   summary?.failed !== 0
 ) {
   console.error(
-    `focused Aiken check expected exactly one passing test; collected=${String(summary?.total)}, passed=${String(summary?.passed)}, failed=${String(summary?.failed)}`,
+    `focused Aiken check expected exactly ${String(testNames.length)} passing test(s); collected=${String(summary?.total)}, passed=${String(summary?.passed)}, failed=${String(summary?.failed)}`,
   );
   process.exit(1);
 }

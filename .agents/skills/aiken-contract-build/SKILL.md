@@ -31,8 +31,8 @@ The project and CI compiler version in `aiken.toml` remains authoritative.
 Record the actual local `aiken --version`; a newer diagnostic binary does not
 replace the pinned CI or release check.
 
-Run large Midgard vectors one process at a time. Use the repository guard for
-one exact test:
+Run large Midgard vectors one compiler process at a time. Use the repository
+guard for one exact test:
 
 ```bash
 node scripts/run-focused-check.mjs \
@@ -40,9 +40,20 @@ node scripts/run-focused-check.mjs \
   exact_test_name
 ```
 
-The guard constructs Aiken's module-qualified exact selector and fails unless
-exactly one test is collected and passes. Do not combine a bare test name with
-`aiken check -e`: Aiken can collect zero tests and still exit successfully.
+When several exact tests in the same module are required, pass every unique
+name to one guard invocation rather than recompiling the tree for each:
+
+```bash
+node scripts/run-focused-check.mjs \
+  midgard/validation_machine_v1 \
+  first_exact_test_name \
+  second_exact_test_name
+```
+
+The guard constructs one module-qualified exact selector per name and fails
+unless exactly that many tests are collected and all pass. Do not combine a
+bare test name with `aiken check -e`: Aiken can collect zero tests and still
+exit successfully.
 For a dotted test filename, pass the source module before its first dotted
 test suffix; for example, tests in `cek-data-traverse.max-cardano.test.ak` use
 `midgard/cek_data_traverse` plus the exact test name.
@@ -62,3 +73,18 @@ Evidence must report a nonzero collected total, not only the process exit code.
 - When a node or emulator test must use the freshly built real contracts, set `MIDGARD_REAL_BLUEPRINT_PATH` to the absolute `onchain/aiken/plutus.json` path.
 - If tracing is needed for a script failure, rebuild with `--trace-level verbose --trace-filter all` before rerunning the failing emulator test.
 - Preserve production correctness: do not switch transaction completion to `.complete({ localUPLCEval: false })` to bypass failures.
+
+## Disposable Final-Tree Builds
+
+When building from an isolated copy of `onchain/aiken`, never carry the
+source checkout's ignored `build/` cache or generated `plutus.json` into the
+copy. Aiken can otherwise reuse stale cached schema metadata and emit a
+blueprint that does not describe the copied source, even though compilation
+exits successfully.
+
+Before invoking Aiken, resolve and validate the disposable destination, then
+ensure only that destination has no `build/` directory or `plutus.json`.
+Never clean the shared repository checkout to prepare an isolated build.
+After the build, verify a consequential schema/count/hash from the generated
+blueprint against current source before using it as test or release evidence;
+an exit code alone is insufficient.

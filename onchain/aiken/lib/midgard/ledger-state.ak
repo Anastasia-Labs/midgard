@@ -85,6 +85,20 @@ pub type HeaderV1 {
   protocol_version: Int,
 }
 
+pub type HeaderTransitionCommitmentsV1 {
+  forced_transactions_root: ForcedTransactionsRoot,
+  transition_trace_root: TransitionTraceRoot,
+  event_to_step_root: EventToStepRoot,
+  validation_traces_root: ValidationTracesRoot,
+  withdrawal_count: Int,
+  forced_transaction_count: Int,
+  l2_transaction_count: Int,
+  deposit_count: Int,
+  total_event_count: Int,
+  transition_step_count: Int,
+  validation_trace_count: Int,
+}
+
 /// Midgard block body.
 /// Full representation.
 /// This type is not used in onchain code.
@@ -120,6 +134,60 @@ pub const genesis_protocol_version: Int = 0
 
 pub const protocol_version_v1: Int = 1
 
+pub fn genesis_confirmed_state_v1(genesis_time: Int) -> Option<ConfirmedState> {
+  if genesis_time < 0 {
+    None
+  } else {
+    Some(
+      ConfirmedState {
+        header_hash: genesis_header_hash,
+        prev_header_hash: genesis_header_hash,
+        utxo_root: genesis_utxo_root,
+        start_time: genesis_time,
+        end_time: genesis_time,
+        protocol_version: genesis_protocol_version,
+      },
+    )
+  }
+}
+
+/// Authenticates the only two protocol identities a V1 confirmed-state root
+/// may carry and returns the protocol version for its next ordinary header.
+/// Genesis is a distinct sentinel state; every committed state is V1 and must
+/// have left the all-zero genesis header identity.
+pub fn confirmed_state_next_header_protocol_version_v1(
+  confirmed_state: ConfirmedState,
+) -> Option<Int> {
+  let ConfirmedState {
+    header_hash,
+    prev_header_hash,
+    utxo_root,
+    start_time,
+    end_time,
+    protocol_version,
+  } = confirmed_state
+  let is_genesis = and {
+      protocol_version == genesis_protocol_version,
+      header_hash == genesis_header_hash,
+      prev_header_hash == genesis_header_hash,
+      utxo_root == genesis_utxo_root,
+      start_time >= 0,
+      start_time == end_time,
+    }
+  if is_genesis {
+    Some(protocol_version_v1)
+  } else if and {
+    protocol_version == protocol_version_v1,
+    header_hash != genesis_header_hash,
+    start_time >= 0,
+    start_time <= end_time,
+  } {
+    Some(protocol_version_v1)
+  } else {
+    None
+  }
+}
+
 /// Seven-day maturity for the canonical V1 deployment.
 pub const block_maturity_duration_v1: Int = 7 * 24 * 60 * 60 * 1000
 
@@ -140,6 +208,84 @@ pub const max_total_event_count_v1: Int = 40_000
 pub const max_transition_step_count_v1: Int = 40_000
 
 pub const max_validation_trace_count_v1: Int = 20_000
+
+fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool {
+  if count == 0 {
+    root == env.empty_merkle_tree_root
+  } else {
+    root != env.empty_merkle_tree_root
+  }
+}
+
+pub fn header_transition_commitments_v1(
+  header: HeaderV1,
+) -> HeaderTransitionCommitmentsV1 {
+  HeaderTransitionCommitmentsV1 {
+    forced_transactions_root: header.forced_transactions_root,
+    transition_trace_root: header.transition_trace_root,
+    event_to_step_root: header.event_to_step_root,
+    validation_traces_root: header.validation_traces_root,
+    withdrawal_count: header.withdrawal_count,
+    forced_transaction_count: header.forced_transaction_count,
+    l2_transaction_count: header.l2_transaction_count,
+    deposit_count: header.deposit_count,
+    total_event_count: header.total_event_count,
+    transition_step_count: header.transition_step_count,
+    validation_trace_count: header.validation_trace_count,
+  }
+}
+
+pub fn header_transition_commitments_v1_are_valid(
+  commitments: HeaderTransitionCommitmentsV1,
+) -> Bool {
+  and {
+    commitments.withdrawal_count >= 0,
+    commitments.withdrawal_count <= max_withdrawal_count_v1,
+    commitments.forced_transaction_count >= 0,
+    commitments.forced_transaction_count <= max_forced_transaction_count_v1,
+    commitments.l2_transaction_count >= 0,
+    commitments.l2_transaction_count <= max_l2_transaction_count_v1,
+    commitments.deposit_count >= 0,
+    commitments.deposit_count <= max_deposit_count_v1,
+    commitments.total_event_count >= 0,
+    commitments.total_event_count <= max_total_event_count_v1,
+    commitments.transition_step_count >= 0,
+    commitments.transition_step_count <= max_transition_step_count_v1,
+    commitments.validation_trace_count >= 0,
+    commitments.validation_trace_count <= max_validation_trace_count_v1,
+    commitments.total_event_count == commitments.withdrawal_count + commitments.forced_transaction_count + commitments.l2_transaction_count + commitments.deposit_count,
+    commitments.transition_step_count == commitments.total_event_count,
+    commitments.validation_trace_count == commitments.forced_transaction_count + commitments.l2_transaction_count,
+    root_matches_count_v1(
+      commitments.forced_transactions_root,
+      commitments.forced_transaction_count,
+    ),
+    root_matches_count_v1(
+      commitments.transition_trace_root,
+      commitments.total_event_count,
+    ),
+    root_matches_count_v1(
+      commitments.event_to_step_root,
+      commitments.total_event_count,
+    ),
+    root_matches_count_v1(
+      commitments.validation_traces_root,
+      commitments.validation_trace_count,
+    ),
+  }
+}
+
+pub fn header_v1_is_valid(header: HeaderV1) -> Bool {
+  and {
+    header.protocol_version == protocol_version_v1,
+    root_matches_count_v1(header.withdrawals_root, header.withdrawal_count),
+    root_matches_count_v1(header.transactions_root, header.l2_transaction_count),
+    root_matches_count_v1(header.deposits_root, header.deposit_count),
+    header_transition_commitments_v1_are_valid(
+      header_transition_commitments_v1(header),
+    ),
+  }
+}
 
 // ## User events
 
@@ -375,6 +521,13 @@ pub type TransitionStep {
   post_utxos_root: MidgardLedgerRoot,
 }
 
+pub type TransitionStepV1 =
+  TransitionStep
+
+pub fn transition_step_v1_is_valid(step: TransitionStepV1) -> Bool {
+  step.schema_version == transition_step_schema_version_v1
+}
+
 pub type TransitionTrace =
   Dict<Int, TransitionStep>
 
@@ -509,21 +662,19 @@ pub type MidgardTxWitnessSetCompact {
 }
 
 pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
-  let
-      MidgardTxBody {
-        spend_inputs,
-        reference_inputs,
-        outputs,
-        fee,
-        validity_interval,
-        required_observers,
-        required_signer_hashes,
-        mint,
-        script_integrity_hash,
-        auxiliary_data_hash,
-        network_id,
-      }
-    = body
+  let MidgardTxBody {
+    spend_inputs,
+    reference_inputs,
+    outputs,
+    fee,
+    validity_interval,
+    required_observers,
+    required_signer_hashes,
+    mint,
+    script_integrity_hash,
+    auxiliary_data_hash,
+    network_id,
+  } = body
   MidgardTxBodyCompact {
     spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
     reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
@@ -543,7 +694,8 @@ pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
 pub fn midgard_tx_wits_to_compact(
   wits: MidgardTxWitnessSet,
 ) -> MidgardTxWitnessSetCompact {
-  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } = wits
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
+    wits
   MidgardTxWitnessSetCompact {
     addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
     script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,

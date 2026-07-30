@@ -1240,6 +1240,40 @@ test payout_conclude_rejects_wrong_destination_address() fail {
   )
 }
 
+test payout_conclude_rejects_wrong_destination_datum() fail {
+  let bad_output = Output {
+    ..payout_destination_output(7),
+    datum: InlineDatum(payout_datum_data()),
+  }
+  spend.spend(
+    hub_policy,
+    Some(payout_datum()),
+    payout_conclusion_spend_redeemer(),
+    payout_ref,
+    payout_conclusion_tx(
+      7,
+      bad_output,
+      [],
+      assets.from_asset(payout_policy, payout_asset, -1),
+    ),
+  )
+}
+
+test payout_conclude_rejects_underfunded_target_output() fail {
+  spend.spend(
+    hub_policy,
+    Some(payout_datum()),
+    payout_conclusion_spend_redeemer(),
+    payout_ref,
+    payout_conclusion_tx(
+      7,
+      payout_destination_output(6),
+      [],
+      assets.from_asset(payout_policy, payout_asset, -1),
+    ),
+  )
+}
+
 test payout_conclude_rejects_surplus_accumulator_value() fail {
   spend.spend(
     hub_policy,

@@ -1,6 +1,8 @@
 use aiken/builtin
 use aiken/primitive/bytearray
+use midgard/bounded_item_v1
 use midgard/cek_data_v1
+use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
@@ -20,6 +22,44 @@ const reference_output_cbor =
 
 const input_cbor =
   #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb02"
+
+fn exact_descriptor(output_index: Int, raw_output_cbor: ByteArray) -> ByteArray {
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_summary_v1(
+    raw_output_cbor,
+    True,
+  )
+  expect Some(cardano_spend_datum) = script_context_v1.spend_datum_summary_v1(
+    raw_output_cbor,
+  )
+  ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index,
+      total_length: bytearray.length(raw_output_cbor),
+      item_commitment: bounded_item_v1.from_bytes(
+        2,
+        output_index,
+        raw_output_cbor,
+      ),
+      address: #"68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      lovelace: 1234567,
+      asset_count: 0,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+      cardano_value_size: 0,
+      reference_script_language: -1,
+      reference_script_hash: #"",
+      reference_script_total_length: 0,
+      reference_script_item_commitment: #"",
+      cardano_tx_out,
+      midgard_tx_out,
+      cardano_spend_datum,
+    },
+  )
+}
 
 fn indexed_hashes(cursor: Int, count: Int) -> List<ByteArray> {
   if cursor == count {
@@ -202,6 +242,141 @@ test authenticated_output_is_converted_and_prepended_in_one_bounded_step() {
     sequence.memory == 169,
     item.cbor_length == 135,
     item.memory == 173,
+  }
+}
+
+test authenticated_descriptor_drives_spend_and_reference_context_items() {
+  let descriptor_cbor = exact_descriptor(2, output_cbor)
+  let spend_leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    0,
+    0,
+    input_cbor,
+    descriptor_cbor,
+  )
+  let reference_leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    1,
+    0,
+    input_cbor,
+    descriptor_cbor,
+  )
+  expect Some(spend) = script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: spend_leaf }],
+    1,
+    0,
+    0,
+    input_cbor,
+    descriptor_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  expect Some(reference) = script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: reference_leaf }],
+    0,
+    1,
+    0,
+    input_cbor,
+    descriptor_cbor,
+    [],
+    True,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  and {
+    spend.length == 1,
+    reference.length == 1,
+    spend.root != reference.root,
+    script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+      1,
+      [validation_merkle_v1.FrontierPeak { height: 0, hash: spend_leaf }],
+      1,
+      0,
+      0,
+      input_cbor,
+      exact_descriptor(2, simple_output_cbor),
+      [],
+      False,
+      cek_data_v1.empty_data_list_summary_v1(),
+    ) == None,
+  }
+}
+
+test complete_output_cbor_cannot_substitute_for_a_resolved_descriptor() fail {
+  let leaf = script_proof_v1.resolved_context_item_leaf_hash(
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+  )
+  script_context_v1.prepend_resolved_descriptor_tx_in_info_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    1,
+    0,
+    0,
+    input_cbor,
+    output_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  ) != None
+}
+
+test output_descriptor_membership_selects_exact_maximum_semantic_summary() {
+  let maximum = 16_384
+  let uint64_max = 18_446_744_073_709_551_615
+  let summary = cek_data_v1.DataSummaryV1 {
+    root: #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    cbor_length: maximum,
+    memory: maximum,
+  }
+  let descriptor_cbor = ledger_output_commitment_v1.encode(
+    ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+      version: ledger_output_commitment_v1.version,
+      output_index: 0,
+      total_length: 16_384,
+      item_commitment: #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      address: #"68aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      lovelace: uint64_max,
+      asset_count: 0,
+      asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+      cardano_value_size: 5000,
+      reference_script_language: -1,
+      reference_script_hash: #"",
+      reference_script_total_length: 0,
+      reference_script_item_commitment: #"",
+      cardano_tx_out: summary,
+      midgard_tx_out: cek_data_v1.DataSummaryV1 {
+        ..summary,
+        root: #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      },
+      cardano_spend_datum: cek_data_v1.DataSummaryV1 {
+        ..summary,
+        root: #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      },
+    },
+  )
+  let leaf = script_proof_v1.output_descriptor_leaf_hash(0, descriptor_cbor)
+  expect Some(output) = script_context_v1.prepend_output_descriptor_v1(
+    1,
+    [validation_merkle_v1.FrontierPeak { height: 0, hash: leaf }],
+    0,
+    descriptor_cbor,
+    [],
+    False,
+    cek_data_v1.empty_data_list_summary_v1(),
+  )
+  expect Some(spend) = script_context_v1.cardano_spend_script_info_from_descriptor_v1(
+    #"825820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb00",
+    descriptor_cbor,
+  )
+  and {
+    output.length == 1,
+    output.payload_cbor_length == maximum,
+    output.memory == maximum,
+    bytearray.length(spend.root) == 32,
+    spend.root != summary.root,
   }
 }
 

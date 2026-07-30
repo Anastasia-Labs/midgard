@@ -1,4 +1,6 @@
+use aiken/builtin
 use aiken/collection/dict
+use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/assets.{AssetName, PolicyId}
@@ -15,7 +17,6 @@ use midgard/settlement.{
   AttachResolutionClaim, Datum, DisproveResolutionClaim, MintRedeemer, Remove,
   ResolutionClaim, Resolve, Spawn, SpendRedeemer,
 }
-use midgard/state_queue
 
 validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
   spend(
@@ -127,7 +128,7 @@ validator spend(hub_oracle: ScriptHash, settlement_policy_id: ScriptHash) {
         )
         expect operator == schedulers_operator
 
-        // Done. 
+        // Done.
         True
       }
       DisproveResolutionClaim {
@@ -327,18 +328,39 @@ validator mint(hub_oracle: ScriptHash) {
               state_queue_merge_redeemer_index,
             )
         //
-        expect state_queue_redeemer: state_queue.MintRedeemer = state_queue_redeemer_data
-        expect
-            state_queue.MergeToConfirmedStateV1 {
-              header_node_key,
-              m_settlement_redeemer_index,
-              merged_block_transactions_root,
-              merged_block_deposits_root,
-              merged_block_withdrawals_root,
-              merged_block_forced_transactions_root,
-              ..
-            }
-          = state_queue_redeemer
+        // Cross-script redeemers enter through the raw PlutusData map. Decode
+        // the exact state-queue ABI at that boundary so constructor, arity,
+        // option shape, and each settlement commitment are authenticated
+        // before use.
+        let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields) =
+          builtin.un_constr_data(state_queue_redeemer_data)
+        expect state_queue_redeemer_constructor == 4
+        expect list.length(state_queue_redeemer_fields) == 18
+        expect Some(header_node_key_data) =
+          list.at(state_queue_redeemer_fields, 0)
+        expect Some(settlement_redeemer_index_option_data) =
+          list.at(state_queue_redeemer_fields, 3)
+        expect Some(merged_block_withdrawals_root_data) =
+          list.at(state_queue_redeemer_fields, 4)
+        expect Some(merged_block_forced_transactions_root_data) =
+          list.at(state_queue_redeemer_fields, 5)
+        expect Some(merged_block_transactions_root_data) =
+          list.at(state_queue_redeemer_fields, 6)
+        expect Some(merged_block_deposits_root_data) =
+          list.at(state_queue_redeemer_fields, 7)
+        let header_node_key = builtin.un_b_data(header_node_key_data)
+        let merged_block_withdrawals_root = builtin.un_b_data(
+          merged_block_withdrawals_root_data,
+        )
+        let merged_block_forced_transactions_root = builtin.un_b_data(
+          merged_block_forced_transactions_root_data,
+        )
+        let merged_block_transactions_root = builtin.un_b_data(
+          merged_block_transactions_root_data,
+        )
+        let merged_block_deposits_root = builtin.un_b_data(
+          merged_block_deposits_root_data,
+        )
         // We verify this redeemer argument so that other scripts can use it:
         expect header_node_key == settlement_id
         // Provision of redeemer index in state queue's redeemer shows that at
@@ -347,7 +369,10 @@ validator mint(hub_oracle: ScriptHash) {
         //
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
-        expect Some(_) = m_settlement_redeemer_index
+        expect Pair(0, [settlement_redeemer_index_data]) =
+          builtin.un_constr_data(settlement_redeemer_index_option_data)
+        expect _settlement_redeemer_index =
+          builtin.un_i_data(settlement_redeemer_index_data)
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let

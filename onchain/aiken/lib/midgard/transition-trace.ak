@@ -158,12 +158,8 @@ pub fn verify_root_non_membership_raw(
   proof: Proof,
 ) -> Bool {
   expect phas_root_count_is_consistent(root, count)
-  expect _inserted = mpf.insert(
-    mpf_from_midgard_root(root),
-    key_bytes,
-    env.empty,
-    proof,
-  )
+  expect _inserted =
+    mpf.insert(mpf_from_midgard_root(root), key_bytes, env.empty, proof)
   True
 }
 
@@ -236,7 +232,7 @@ pub fn verify_indexed_trace_proof(
       cbor.serialise(witness.value),
     ),
     witness.key == witness.value.step_index,
-    witness.value.schema_version == ledger_state.transition_step_schema_version_v1,
+    ledger_state.transition_step_v1_is_valid(witness.value),
     witness.key >= 0,
     witness.key < witness.count,
   }
