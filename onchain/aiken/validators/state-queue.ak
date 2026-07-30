@@ -4,7 +4,9 @@ use aiken/crypto
 use aiken_design_patterns/linked_list
 use cardano/address.{Address}
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
-use cardano/transaction.{Input, Mint, OutputReference, Transaction}
+use cardano/transaction.{
+  Input, Mint, OutputReference, Redeemer, ScriptPurpose, Transaction,
+}
 use env
 use midgard/common/utils
 use midgard/da_attestation_types as da_attestation
@@ -80,7 +82,7 @@ fn header_view_is_valid(header: HeaderView) -> Bool {
   }
 }
 
-type MergeCommitments {
+pub type MergeCommitments {
   withdrawals_root: ByteArray,
   forced_transactions_root: ByteArray,
   transactions_root: ByteArray,
@@ -95,6 +97,69 @@ type MergeCommitments {
   total_event_count: Int,
   transition_step_count: Int,
   validation_trace_count: Int,
+}
+
+pub fn merge_commitments_match_header(
+  commitments: MergeCommitments,
+  header: HeaderView,
+) -> Bool {
+  and {
+    commitments.withdrawals_root == header.withdrawals_root,
+    commitments.forced_transactions_root == header.forced_transactions_root,
+    commitments.transactions_root == header.transactions_root,
+    commitments.deposits_root == header.deposits_root,
+    commitments.transition_trace_root == header.transition_trace_root,
+    commitments.event_to_step_root == header.event_to_step_root,
+    commitments.validation_traces_root == header.validation_traces_root,
+    commitments.withdrawal_count == header.withdrawal_count,
+    commitments.forced_transaction_count == header.forced_transaction_count,
+    commitments.l2_transaction_count == header.l2_transaction_count,
+    commitments.deposit_count == header.deposit_count,
+    commitments.total_event_count == header.total_event_count,
+    commitments.transition_step_count == header.transition_step_count,
+    commitments.validation_trace_count == header.validation_trace_count,
+  }
+}
+
+pub fn merge_settlement_binding_matches_header(
+  header: HeaderView,
+  header_node_key: ByteArray,
+  m_settlement_id: Option<ByteArray>,
+) -> Bool {
+  let carries_l2_material = header_carries_l2_material(header)
+  if carries_l2_material {
+    m_settlement_id == Some(header_node_key)
+  } else {
+    m_settlement_id == None
+  }
+}
+
+pub fn merge_settlement_id_at_route(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  settlement_script_hash: PolicyId,
+  m_settlement_redeemer_index: Option<Int>,
+) -> Option<ByteArray> {
+  when m_settlement_redeemer_index is {
+    None -> None
+    Some(settlement_redeemer_index) -> {
+      let settlement_minting_redeemer_data = redeemers
+        |> utils.get_redeemer_at(
+            Mint(settlement_script_hash),
+            settlement_redeemer_index,
+          )
+      expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer = settlement_minting_redeemer_data
+      Some(settlement_id)
+    }
+  }
+}
+
+fn header_carries_l2_material(header: HeaderView) -> Bool {
+  or {
+    header.transactions_root != env.empty_merkle_tree_root,
+    header.deposits_root != env.empty_merkle_tree_root,
+    header.withdrawals_root != env.empty_merkle_tree_root,
+    header.forced_transactions_root != env.empty_merkle_tree_root,
+  }
 }
 
 fn merge_to_confirmed_state(
@@ -138,26 +203,7 @@ fn merge_to_confirmed_state(
     let input_header = decode_header_view(input_header_data)
     expect input_header.protocol_version == expected_protocol_version
     expect header_view_is_valid(input_header)
-    expect commitments.withdrawals_root == input_header.withdrawals_root
-    expect
-      commitments.forced_transactions_root == input_header.forced_transactions_root
-    expect commitments.transactions_root == input_header.transactions_root
-    expect commitments.deposits_root == input_header.deposits_root
-    expect
-      commitments.transition_trace_root == input_header.transition_trace_root
-    expect commitments.event_to_step_root == input_header.event_to_step_root
-    expect
-      commitments.validation_traces_root == input_header.validation_traces_root
-    expect commitments.withdrawal_count == input_header.withdrawal_count
-    expect
-      commitments.forced_transaction_count == input_header.forced_transaction_count
-    expect commitments.l2_transaction_count == input_header.l2_transaction_count
-    expect commitments.deposit_count == input_header.deposit_count
-    expect commitments.total_event_count == input_header.total_event_count
-    expect
-      commitments.transition_step_count == input_header.transition_step_count
-    expect
-      commitments.validation_trace_count == input_header.validation_trace_count
+    expect merge_commitments_match_header(commitments, input_header)
 
     let inclusive_tx_lower_bound = utils.get_inclusive_lower_bound_of_interval(
       validity_range,
@@ -196,24 +242,25 @@ fn merge_to_confirmed_state(
     }
     expect output_confirmed_state_data == expected_output_confirmed_state_data
 
-    if or {
-      input_header.transactions_root != env.empty_merkle_tree_root,
-      input_header.deposits_root != env.empty_merkle_tree_root,
-      input_header.withdrawals_root != env.empty_merkle_tree_root,
-      input_header.forced_transactions_root != env.empty_merkle_tree_root,
-    } {
-      expect Some(settlement_redeemer_index) = m_settlement_redeemer_index
-      let settlement_minting_redeemer_data = redeemers
-        |> utils.get_redeemer_at(
-            Mint(settlement_script_hash),
-            settlement_redeemer_index,
-          )
-      expect settlement.Spawn { settlement_id, .. }: settlement.MintRedeemer = settlement_minting_redeemer_data
-      expect settlement_id == header_node_key
-      True
+    if header_carries_l2_material(input_header) {
+      merge_settlement_binding_matches_header(
+        input_header,
+        header_node_key,
+        merge_settlement_id_at_route(
+          redeemers,
+          settlement_script_hash,
+          m_settlement_redeemer_index,
+        ),
+      )
     } else {
-      expect None == m_settlement_redeemer_index
-      True
+      and {
+        m_settlement_redeemer_index == None,
+        merge_settlement_binding_matches_header(
+          input_header,
+          header_node_key,
+          None,
+        ),
+      }
     }
   }
     |> finalize_linked_list(own_policy_id)

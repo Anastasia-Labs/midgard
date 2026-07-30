@@ -176,3 +176,43 @@ test("rejects a source symbol preserved only in comments", async () => {
     /public_da source symbol decodeDaPayloadV1Strict is not declared by demo\/da-committee-node\/src\/da\/payload\.ts/,
   );
 });
+
+test("rejects a source symbol preserved only in a regex literal", async () => {
+  const owner = "demo/da-committee-node/src/da/payload.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(owner, (source) =>
+        source.replace(
+          "export const decodeDaPayloadV1Strict",
+          "const declarationProbe = /export const decodeDaPayloadV1Strict/;\nexport const decodeDaPayloadV1StrictRemoved",
+        ),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol decodeDaPayloadV1Strict is not declared by demo\/da-committee-node\/src\/da\/payload\.ts/,
+  );
+});
+
+test("rejects a class member preserved only as a nested local function", async () => {
+  const owner = "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(owner, (source) =>
+        source
+          .replace("  async request({", "  async requestRemoved({")
+          .replace(
+            "  isStarted(): boolean {\n    return this.started;\n  }",
+            "  isStarted(): boolean {\n    function request(): void {}\n    void request;\n    return this.started;\n  }",
+          ),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol DaLibp2pNode\.request is not declared by demo\/da-committee-node\/src\/da\/libp2p\/DaLibp2pNode\.ts/,
+  );
+});

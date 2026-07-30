@@ -15,7 +15,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "52e2ce861d8cca8f29267321fb1b7d40ee6681b10e51a891c270fad3b49a0f27"
+    "resultContentTreeSha256": "b4644cf5b1e4800709ec1cc4b08b81cee4efbff03653d2be2fc815c878200a14"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -580,7 +580,7 @@
       "sourceSha256": {
         "demo/midgard-fault-proofs/src/remove-fraudulent-block.ts": "1f4641fc534ea12e1fb3036e44e7ad4276f00f539f1f8b27786832fcebf56b14",
         "demo/midgard-sdk/src/state-queue.ts": "efe8cb15eb847176ed598af5d6923f8e51c34eca95151c0b74bb3e6ebcd94a98",
-        "onchain/aiken/validators/state-queue.ak": "e30d0924c9b97ef69531139e7a3274f3f2be9d7715b88f46500795c2afe164a8",
+        "onchain/aiken/validators/state-queue.ak": "eb90efa51b80078acc5fa71adffcbd2a91a058b714ec1bf53c5240f3baba1987",
         "onchain/aiken/lib/midgard/operator-directory.ak": "746312732f309355b2cca6407420eaa9a3da0dc0a41d4ec603a98b8cd52af74e"
       }
     }

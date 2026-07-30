@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
+import { parse } from "@typescript-eslint/parser";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execGit = (args, encoding = "buffer") => {
@@ -445,105 +446,62 @@ const requiredSymbolBindingsById = new Map([
   ],
 ]);
 
-const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-const codeWithoutCommentsOrLiterals = (source) => {
-  let result = "";
-  let state = "code";
-  let quote = "";
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    const next = source[index + 1];
-    if (state === "code") {
-      if (character === "/" && next === "/") {
-        result += "  ";
-        index += 1;
-        state = "line_comment";
-      } else if (character === "/" && next === "*") {
-        result += "  ";
-        index += 1;
-        state = "block_comment";
-      } else if (character === "'" || character === '"' || character === "`") {
-        result += " ";
-        quote = character;
-        state = "literal";
-      } else {
-        result += character;
-      }
-    } else if (state === "line_comment") {
-      result += character === "\n" ? "\n" : " ";
-      if (character === "\n") {
-        state = "code";
-      }
-    } else if (state === "block_comment") {
-      if (character === "*" && next === "/") {
-        result += "  ";
-        index += 1;
-        state = "code";
-      } else {
-        result += character === "\n" ? "\n" : " ";
-      }
-    } else if (character === "\\") {
-      result += " ";
-      if (next !== undefined) {
-        result += next === "\n" ? "\n" : " ";
-        index += 1;
-      }
-    } else if (character === quote) {
-      result += " ";
-      state = "code";
-    } else {
-      result += character === "\n" ? "\n" : " ";
-    }
-  }
-  return result;
-};
-
-const exportedDeclarationPresent = (source, symbol) =>
-  new RegExp(
-    `\\bexport\\s+(?:(?:declare|async)\\s+)*(?:const|let|function|class|interface|type|enum)\\s+${escapeRegex(symbol)}\\b`,
-    "u",
-  ).test(source);
-
-const exportedClassBody = (source, owner) => {
-  const declaration = new RegExp(
-    `\\bexport\\s+(?:(?:declare|abstract)\\s+)*class\\s+${escapeRegex(owner)}\\b`,
-    "u",
-  ).exec(source);
-  if (declaration === null) {
+const parseTypescriptModule = (source) => {
+  try {
+    return parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    });
+  } catch {
     return null;
   }
-  const open = source.indexOf("{", declaration.index + declaration[0].length);
-  if (open < 0) {
-    return null;
-  }
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    if (source[index] === "{") {
-      depth += 1;
-    } else if (source[index] === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return source.slice(open + 1, index);
-      }
-    }
-  }
-  return null;
 };
 
-const sourceDeclaresBinding = (source, binding) => {
-  const code = codeWithoutCommentsOrLiterals(source);
-  if (binding.owner === undefined || binding.member === undefined) {
-    return exportedDeclarationPresent(code, binding.symbol);
+const declarationHasName = (declaration, symbol) => {
+  if (declaration.type === "VariableDeclaration") {
+    return declaration.declarations.some(
+      ({ id }) => id.type === "Identifier" && id.name === symbol,
+    );
   }
-  const body = exportedClassBody(code, binding.owner);
   return (
-    body !== null &&
-    new RegExp(
-      `\\b(?:(?:public|private|protected|static|readonly|async)\\s+)*${escapeRegex(binding.member)}\\s*\\(`,
-      "u",
-    ).test(body)
+    declaration.id?.type === "Identifier" && declaration.id.name === symbol
   );
+};
+
+const exportedDeclarationPresent = (moduleAst, symbol) =>
+  moduleAst.body.some(
+    (statement) =>
+      statement.type === "ExportNamedDeclaration" &&
+      statement.declaration !== null &&
+      declarationHasName(statement.declaration, symbol),
+  );
+
+const directClassMemberPresent = (moduleAst, owner, member) => {
+  const ownerDeclaration = moduleAst.body.find(
+    (statement) =>
+      statement.type === "ExportNamedDeclaration" &&
+      statement.declaration?.type === "ClassDeclaration" &&
+      statement.declaration.id?.name === owner,
+  )?.declaration;
+  if (ownerDeclaration?.type !== "ClassDeclaration") {
+    return false;
+  }
+  return ownerDeclaration.body.body.some(
+    (element) =>
+      (element.type === "MethodDefinition" ||
+        element.type === "TSAbstractMethodDefinition") &&
+      element.computed === false &&
+      element.kind === "method" &&
+      element.key.type === "Identifier" &&
+      element.key.name === member,
+  );
+};
+
+const sourceDeclaresBinding = (moduleAst, binding) => {
+  if (binding.owner === undefined || binding.member === undefined) {
+    return exportedDeclarationPresent(moduleAst, binding.symbol);
+  }
+  return directClassMemberPresent(moduleAst, binding.owner, binding.member);
 };
 const dependencies = dependencyMap.dependencies;
 if (!Array.isArray(dependencies)) {
@@ -614,6 +572,7 @@ for (const id of requiredIds) {
     fail(`${id} must define the watcher boundary`);
   }
   const sourceTexts = new Map();
+  const sourceModules = new Map();
   for (const sourcePath of entry.sourcePaths) {
     if (
       sourcePath.startsWith("/") ||
@@ -622,11 +581,19 @@ for (const id of requiredIds) {
     ) {
       fail(`${id} source hash is stale for ${sourcePath}`);
     }
-    sourceTexts.set(sourcePath, readIndexedFile(sourcePath, "utf8"));
+    const sourceText = readIndexedFile(sourcePath, "utf8");
+    sourceTexts.set(sourcePath, sourceText);
+    sourceModules.set(sourcePath, parseTypescriptModule(sourceText));
   }
   for (const binding of requiredBindings) {
     const source = sourceTexts.get(binding.path);
-    if (source === undefined || !sourceDeclaresBinding(source, binding)) {
+    const sourceModule = sourceModules.get(binding.path);
+    if (
+      source === undefined ||
+      sourceModule === undefined ||
+      sourceModule === null ||
+      !sourceDeclaresBinding(sourceModule, binding)
+    ) {
       fail(
         `${id} source symbol ${binding.symbol} is not declared by ${binding.path}`,
       );

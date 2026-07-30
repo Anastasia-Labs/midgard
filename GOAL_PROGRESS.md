@@ -1348,3 +1348,90 @@ actionable finding additively and repeat. Keep the PR draft and the overarching
 Goal in progress: 122 registry promotions, formal release journeys, target
 testnet acceptance, remaining §12 criteria, closure manifest, and §15 remain
 open.
+
+## Superseding published-head review-remediation checkpoint
+
+- The exact branch remains
+  `colll78/canonical-v1-watcher-l1-source-checkpoint` at signed published
+  parent `d9d1c793ef93ede98cc36f67003c78d0d0de0096`; remote
+  `tx-validation` remains
+  `8bae9403a13124f647f215999848ff5c82784e37`. Draft PR #471 remains the
+  publication surface and no `codex/` branch is a target.
+- Published-head review found one dependency-verifier evidence flaw: textual
+  declaration matching could be spoofed by a regex literal or a nested local
+  function. The verifier now parses the indexed TypeScript module with the
+  existing direct `@typescript-eslint/parser` dependency, requires an actual
+  top-level named export, and requires a direct method definition on the
+  directly exported owning class. Six independent mutation tests pass,
+  including the two new spoof cases; the final staged verifier resolves all
+  8/8 dependency classes and scoped Prettier passes.
+- Published-head review found that
+  `merge_redeemer_identity_binds_commitments_counts_and_settlement_route`
+  only hashed a locally reconstructed redeemer. That false-positive test and
+  its local helpers are removed. The production state-queue merge now calls
+  narrow exported guards for all seven roots, seven counts, settlement
+  presence/identity, and the exact settlement redeemer route. The separate
+  `state_queue_merge` companion calls those production guards directly:
+  5/5 exact guarded selectors pass, including 14 independent one-field
+  commitment mutations, missing/wrong settlement identity, exact route, and
+  hostile route index.
+- The first attempted state-queue production-handler companion imported a
+  same-named validator module and created a silent compile cycle; after
+  renaming, direct expansion of the full generated handler still exited 1
+  before structured collection. Those attempts are uncredited. Extracting the
+  actual production-called guards removed the cycle and code-generation
+  expansion without duplicating validator semantics. The resulting production
+  behavior is equivalent: material-bearing headers still require a routed
+  `settlement.Spawn` whose `settlement_id` equals the header node key; empty
+  headers still forbid a settlement route.
+- Published-head review also found that the resolver evidence used sequential
+  one-byte hashes and never exercised the production transition. The
+  replacement fixture supplies the exact two-member Phase-A group and
+  28-member ScriptSources group, constructs computation-thread
+  input/output/datum bytes, and calls
+  `validation_resolver_v1.prepare_selected` plus the production semantic
+  handoff. All 8/8 exact guarded selectors pass: both valid groups, wrong
+  semantic index, wrong output script hash, same-cardinality family
+  substitution, exact prepared handoff, auxiliary substitution, and
+  action/transition substitution.
+- The first sandboxed guarded resolver invocation reached dependency
+  compilation but was denied at child-process creation with
+  `spawnSync aiken EPERM`; its host-permitted exact replay passes and the
+  sandbox attempt receives no credit. Resolver selectors invoked while the
+  cyclic state-queue companion existed also exited before collection and
+  receive no credit; all eight were replayed after the cycle was removed.
+- Aiken `v1.1.22+39d6b04` formatting passes for the three changed test files.
+  The pre-existing `validators/state-queue.ak` formatter behavior emits
+  trailing spaces on multiline `let`/`expect` layouts even for the published
+  parent; the source was formatter-normalized and those whitespace-only
+  emissions were removed so the final staged `git diff --check` passes.
+- Final staged source/test SHA-256 identities are state-queue validator
+  `eb90efa51b80078acc5fa71adffcbd2a91a058b714ec1bf53c5240f3baba1987`,
+  production companion
+  `ceb4bab96db0cf45941a4b86ed9627a4e2cbdf60900ad89408eea3ca6051d094`,
+  state-queue library tests
+  `a8172c7225c9206f389eb6031602981f6af32c8090f87b875b4606ce7f147015`,
+  resolver tests
+  `f0a72e9480ab6e3673cf4c07d2b719cd0e1336794a6d0034395ec607e5d0a880`,
+  dependency verifier
+  `c9f4356c48dc82db0313ba573b4a1f45c60f6a5e5c74b637667dd2c1748a9a37`,
+  and mutation tests
+  `ce3a9b97a4bfc6b6acbca390752b819bb56272a092c1dd1b358f1377de202b02`.
+  The reviewed staged content-tree SHA-256, excluding only this ledger and the
+  dependency map itself, is
+  `b4644cf5b1e4800709ec1cc4b08b81cee4efbff03653d2be2fc815c878200a14`.
+- All delegated leases are closed or interrupted and no subagent is editing.
+  The isolated integration tree has only this seven-path remediation plus this
+  ledger; the protected main checkout remains untouched.
+
+## Superseding review-remediation publication action
+
+Replay the final staged scope, unmerged-index, map, formatting, and protected
+checkout gates; create and push one signed additive commit on the same
+`colll78/` branch; refresh draft PR #471 to the exact new head, hashes, and
+content-tree digest. Then review the complete current-head diff, every
+discussion surface, and all applicable workflows to terminal completion. Fix
+any further actionable finding additively and repeat. Keep the PR draft and
+the overarching Goal in progress while the 122 registry promotions, formal
+release journeys, target-testnet acceptance, remaining §12 criteria, closure
+manifest, and §15 remain open.
