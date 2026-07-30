@@ -1,0 +1,33 @@
+{
+  "id": "QNN",
+  "section": "9.3 Independently assignable proof-family closures",
+  "title": "`example-family`",
+  "dependsOnRaw": "Q00–Q03, C41",
+  "dependsOn": ["Q00–Q03", "C41"],
+  "acceptance": "One-sentence acceptance quoted or referenced from GOAL_SPEC.md.",
+  "size": "M",
+  "risk": "medium",
+  "detailStatus": "READY",
+  "writablePaths": [
+    "onchain/aiken/validators/fraud-proofs/example-family/**",
+    "demo/midgard-fault-proofs/src/example-family/**",
+    "demo/midgard-fault-proofs/tests/example-family.test.ts"
+  ],
+  "sourceAnchors": [
+    "GOAL_SPEC.md §9.1 (closure contract), §9.3 row QNN",
+    "onchain/aiken/lib/midgard/fraud-proofs/common.ak pass_native_tx_to_next_step"
+  ],
+  "evidenceOutputs": [
+    "positive + valid-block-negative Aiken selector results",
+    "emulator lifecycle result recorded in GOAL_PROGRESS.md validation ledger"
+  ],
+  "focusedCommands": [
+    "cd onchain/aiken && node scripts/run-focused-check.mjs <module> <tests...>",
+    "pnpm --dir demo/midgard-fault-proofs test -- example-family"
+  ],
+  "expectedNonzeroCounts": "each selector collects its exact requested count",
+  "invalidationTriggers": [
+    "counted-root/codec ABI change",
+    "catalogue order change"
+  ]
+}

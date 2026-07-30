@@ -1,0 +1,126 @@
+{
+  "schema": "midgard.canonical-v1-capability-reconciliation.v1",
+  "generatedAt": "2026-07-29",
+  "sources": {
+    "goalSpec": {
+      "path": "GOAL_SPEC.md",
+      "sha256": "212196660ed5681d556cedbbc8fd59b4858be11df45f3482b6af6c6765588c12"
+    },
+    "p2Matrix": {
+      "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md",
+      "sha256": "d44db93b941378c8b98bf63e68fe9754a1d87ee7ba22c09af277c11cc5d85f0f"
+    },
+    "canonicalTransaction": {
+      "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak",
+      "sha256": "4ec9a07fa8691f9f57b0effd6e0203439ea67b78f661c816d440c82fa80d645f"
+    },
+    "validationMachineTypeScript": {
+      "path": "demo/midgard-validation/src/validation-machine.ts",
+      "sha256": "564f2ec64132f69936e6bc53d169f9cf16265698f961104e992f95da2bf5a14b"
+    },
+    "validationMachineDataTypeScript": {
+      "path": "demo/midgard-validation/src/validation-machine-data.ts",
+      "sha256": "5438c2435c19b294a0c49371c16d0d91c919aa891b2d4ebef5be69d127dadbb3"
+    },
+    "validationAuxiliaryTypeScript": {
+      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+      "sha256": "66536625b5535433905341c845f195145fe0b75a081bd39f44a21c36dd1d9489"
+    },
+    "validationMachineAiken": {
+      "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+      "sha256": "701490c6ab306648a63312e01d036ba528e787c6b945e730609044699288c390"
+    }
+  },
+  "controlPlane": {
+    "C10": "PASS",
+    "C11": "PASS",
+    "C12": "PASS",
+    "C13": "PASS",
+    "CG1": "PASS"
+  },
+  "p2Tasks": {
+    "C20-0": "PASS",
+    "C20-1": "PASS",
+    "C20-2": "PARTIAL",
+    "C20-3": "PASS",
+    "C20-4": "PARTIAL",
+    "C20-5": "PARTIAL",
+    "C20-6": "AUTHORITATIVE_CONFLICT",
+    "C20-7": "AUTHORITATIVE_CONFLICT",
+    "C20-8": "PASS",
+    "C21": "PASS",
+    "C22": "PASS",
+    "C23": "PASS",
+    "C24": "PASS",
+    "C25": "PASS",
+    "C26": "PARTIAL",
+    "C27": "PARTIAL",
+    "C28": "PARTIAL",
+    "C29": "PARTIAL",
+    "C30": "PARTIAL",
+    "C31": "PARTIAL",
+    "C32": "PARTIAL",
+    "C33": "PASS",
+    "CG2": "OPEN"
+  },
+  "p2Summary": {
+    "tasks": 22,
+    "pass": 10,
+    "partial": 10,
+    "open": 0,
+    "authoritativeConflict": 2,
+    "gate": "OPEN"
+  },
+  "authorityConflict": {
+    "tasks": ["C20-6", "C20-7"],
+    "goalSpecOrder": {
+      "6": "native/non-native script witnesses",
+      "7": "vkey witnesses and exact signer identities"
+    },
+    "currentCanonicalSourceOrder": {
+      "6": "address witnesses",
+      "7": "script witnesses"
+    },
+    "disposition": "OPEN",
+    "note": "GOAL_SPEC.md is authoritative. Current source is recorded without reinterpretation or silent remapping; the conflict must be resolved before CG2 can pass."
+  },
+  "wholePreimageFinding": {
+    "status": "RESOLVED_ABI",
+    "constructor": "TransactionFieldPreimageWitness",
+    "removedFrom": [
+      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+      "demo/midgard-validation/src/validation-machine.ts",
+      "demo/midgard-validation/src/validation-machine-data.ts",
+      "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+    ],
+    "affectedAcceptance": ["AC-C21", "C29", "C32", "CG2"],
+    "note": "The whole-field constructor is absent from every active TypeScript/Aiken auxiliary ABI and its former tags 2..41 are canonically shifted to 1..40. AC-C21 remains independently open until the broader active helper/bridge/selector call-graph audit and final-tree ABI selectors pass."
+  },
+  "freshChecks": {
+    "p1Control": "1/1",
+    "aikenRouting": "3/3",
+    "sdkControl": "3/3",
+    "faultProofControl": "5/5",
+    "manifestAndReference": "37/37",
+    "acceptedTraceReplay": "22/22",
+    "maximumBoundaryFiles": "18/18",
+    "retainedDa": "3/3",
+    "aikenReceipt": "11/11",
+    "dataBreadth": "12/12",
+    "inlineDatumAndRedeemer": "3/3",
+    "value": "2/2",
+    "balancedData": "4/4",
+    "validationMachineMaximum": "7/7",
+    "c26UnaryDepth": "PARTIAL: TypeScript 2/2 and Aiken 2/2; exact Cardano maximum traps CML/WASM",
+    "retainedDaExactVerifier": "FAIL: producer 13/14; DA consumer 20/20 and fault-proof consumer 3/3 pass directly",
+    "validityIntervalRegression": "1/1",
+    "wholePreimageAbi": "IN_PROGRESS: TypeScript ABI/control tests 14/14 pass; Aiken selectors and active-helper audit pending",
+    "typechecks": "4/4"
+  },
+  "acceptance": {
+    "F10": "PASS",
+    "CG1": "PASS",
+    "CG2": "OPEN",
+    "note": "F10 passes as a current-tree reconciliation deliverable. No PARTIAL, OPEN, or AUTHORITATIVE_CONFLICT P2 task is promoted."
+  }
+}

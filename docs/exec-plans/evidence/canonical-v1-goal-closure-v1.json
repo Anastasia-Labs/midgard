@@ -1,0 +1,261 @@
+{
+  "schema": "midgard.canonical-v1-goal-closure.v1",
+  "version": 1,
+  "generatedAt": "2026-07-29T00:00:00.000Z",
+  "revision": {
+    "branch": "colll78/canonical-v1-watcher-l1-source-checkpoint",
+    "headCommit": "4acf68215c76bbac72c5a7f35962c611ce3b92da",
+    "releaseCommit": null,
+    "worktree": "IN_PROGRESS"
+  },
+  "dirtyBaseline": {
+    "ledgerPath": "GOAL_PROGRESS.md",
+    "startingRevision": "d5f36df25a9a1696e4df857e01aa81d2f0b6ef96",
+    "protectedPaths": [
+      {
+        "path": "GOAL_SPEC.md",
+        "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
+        "currentExpectedSha256": "212196660ed5681d556cedbbc8fd59b4858be11df45f3482b6af6c6765588c12",
+        "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
+      },
+      {
+        "path": "GOAL_ASSIST.md",
+        "baselineSha256": null,
+        "currentExpectedSha256": "0dfcc19afb26ebba3f4bd0e80a04446ab9835958e0f9d7cc276be0b3afb0215d",
+        "disposition": "PROTECTED_EXTERNAL_UNTRACKED"
+      },
+      {
+        "path": "onchain/aiken/lib/midgard/cek-data-traverse-v1.ak",
+        "baselineSha256": "0788e9de32d5e5353007aa6e95fb47bf3bca729a929d337d1653b0234b20841f",
+        "currentExpectedSha256": "0788e9de32d5e5353007aa6e95fb47bf3bca729a929d337d1653b0234b20841f",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/lib/midgard/redeemer-item-proof-v1.ak",
+        "baselineSha256": "d20490b06e548a0112ecd3d36187fc0de1b6c6c1c0bbb1a9d3ecdc9d984221c3",
+        "currentExpectedSha256": "d20490b06e548a0112ecd3d36187fc0de1b6c6c1c0bbb1a9d3ecdc9d984221c3",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak",
+        "baselineSha256": "afe358b315db698111b0935633888a71a9c962456ba475b8a33da908ea3f4a57",
+        "currentExpectedSha256": "1179a3a702610c2d9e5f616c816943b232734fa028f3ec7711859b67228ddd42",
+        "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
+      },
+      {
+        "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.test.ak",
+        "baselineSha256": "5bec5dbf14b919f08697c9502dbb6b2e9f072332ad4fefde4c19a2565db6fa2b",
+        "currentExpectedSha256": "16af2446a729bbdb992d704677ad986068260261425e43281c246de7b41a7526",
+        "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-envelope-v1.ak",
+        "baselineSha256": "86fb46064d984086429b591c2b2457ee03dd33bb161030e2f4f55392dc134114",
+        "currentExpectedSha256": "86fb46064d984086429b591c2b2457ee03dd33bb161030e2f4f55392dc134114",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-execution-settlement-v1.ak",
+        "baselineSha256": null,
+        "currentExpectedSha256": "d8277ebdb3e6b2691ac98f0ba84faabbaf0631a9f718ecf4caabb2a3b737e9a5",
+        "disposition": "PROTECTED_EXTERNAL_UNTRACKED"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-finalize-frame-executor-v1.ak",
+        "baselineSha256": "ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f",
+        "currentExpectedSha256": "ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-fold-map-executor-v1.ak",
+        "baselineSha256": "10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608",
+        "currentExpectedSha256": "10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-outer-normalizer-v1.ak",
+        "baselineSha256": "581a87203def04a2e998d3fec0df9372745743ebc819c61556a2b9618b967f4b",
+        "currentExpectedSha256": "581a87203def04a2e998d3fec0df9372745743ebc819c61556a2b9618b967f4b",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      },
+      {
+        "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-traversal-normalizer-v1.ak",
+        "baselineSha256": "08781adad00701104ee2ab652e19f5c6540c76ca4268ea29f6d8711152fd99bc",
+        "currentExpectedSha256": "08781adad00701104ee2ab652e19f5c6540c76ca4268ea29f6d8711152fd99bc",
+        "disposition": "PROTECTED_EXACT_BASELINE"
+      }
+    ]
+  },
+  "toolchain": {
+    "node": {
+      "command": "nix develop ./demo --command bash -c 'node --version'",
+      "version": "v22.22.2"
+    },
+    "pnpm": {
+      "command": "nix develop ./demo --command bash -c 'pnpm --version'",
+      "version": "9.15.9"
+    },
+    "aiken": {
+      "command": "aiken --version",
+      "version": "aiken v1.1.22+39d6b04"
+    },
+    "git": {
+      "command": "git --version",
+      "version": "git version 2.43.0"
+    },
+    "nix": {
+      "command": "nix --version",
+      "version": "nix (Nix) 2.32.0"
+    },
+    "make": {
+      "command": "make --version",
+      "version": "GNU Make 4.3"
+    },
+    "docker": {
+      "command": "docker --version",
+      "version": "Docker version 29.2.0"
+    }
+  },
+  "parameterSnapshot": {
+    "path": "docs/exec-plans/evidence/canonical-v1-parameter-snapshot-v1.json",
+    "sha256": null,
+    "status": "OPEN"
+  },
+  "blueprint": {
+    "path": "onchain/aiken/plutus.json",
+    "sha256": null,
+    "status": "OPEN"
+  },
+  "closureArtifacts": [
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.schema.json",
+      "sha256": "17e3c98ebf94a9456087cb130bcc9457f437afc1dacd7e3acbe6efe2e7220adb",
+      "status": "BOUND"
+    },
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-goal-verification-plan-v1.json",
+      "sha256": "d82d7b048b7b6f8aecfd9e74c5c2dff93ec023872ef1f13328d8faefb4e51a2b",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/canonical-v1-goal-closure-v1.mjs",
+      "sha256": "83e7a43cb0ff5fbe1997bd5804a25893c4afc247fa2384fd8c99407e6f674df4",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+      "sha256": "4e10635f582fa7fc15f35a9f117a99b37af7a6b5b5248721d5d87ef134dd010f",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/verify-canonical-v1-goal-verification-plan.mjs",
+      "sha256": "4ff6874239ee9949f335c682c281da18c69b1b6f051612b1c144debf9af32a46",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/verify-canonical-v1-goal-closure-self-test.mjs",
+      "sha256": "af3339c0219d730edfe9cde910b4b72d94b390d2182f492763527edf65aafd66",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/verify-canonical-v1-goal-static-policy.mjs",
+      "sha256": "ebba30a52a1e8f3b89d4c0905baeb179f44f75344557330f3a8eb3a97c509779",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/run-canonical-v1-goal-verification.mjs",
+      "sha256": "d298b3d9b7970aef9826087e1a0d246a4a48ea5c5b0f97af8bd762c105b916f2",
+      "status": "BOUND"
+    },
+    {
+      "path": "demo/scripts/canonical-v1-goal-testnet-acceptance.mjs",
+      "sha256": "ec80cbeba36379407e034225860cb3ee3e8935101d82a68e77a09b4589c002e9",
+      "status": "BOUND"
+    },
+    {
+      "path": "docs/exec-plans/canonical-v1-goal-verification.md",
+      "sha256": "c87ff7976120866cd16463769c68d748a2a2aedcc4ceefabd2f462c99d281520",
+      "status": "BOUND"
+    }
+  ],
+  "validatorSet": {
+    "identity": null,
+    "status": "OPEN",
+    "evidence": []
+  },
+  "deployment": {
+    "network": "preprod",
+    "identity": null,
+    "status": "OPEN",
+    "evidence": []
+  },
+  "fixtureSets": [
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+      "sha256": "8169c567aa27d354385f19bd0c01d7f99f0245130cd60e46177815e55ede7543",
+      "status": "BOUND"
+    },
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json",
+      "sha256": "b363fcb0ab85a7c4c922de5cd4976f61c4c13ba1d06c054c86918647436a5da5",
+      "status": "BOUND"
+    },
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json",
+      "sha256": "e70ce03e803e4de2873f08d4161b0f6374dfde5f01b747a6e5eaca505a6586b9",
+      "status": "BOUND"
+    },
+    {
+      "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+      "sha256": "c43e40585ded1a5c2c81e94ecaddcb028e459f9cb5f13b2d7990f177ba3d132b",
+      "status": "BOUND"
+    }
+  ],
+  "commandResults": [],
+  "acceptanceCriteria": [
+    { "id": "AC-00", "status": "OPEN", "evidence": [] },
+    { "id": "AC-01", "status": "OPEN", "evidence": [] },
+    { "id": "AC-02", "status": "OPEN", "evidence": [] },
+    { "id": "AC-03", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C10", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C20", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C21", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C30", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C31", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C40", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C50", "status": "OPEN", "evidence": [] },
+    { "id": "AC-C60", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q10", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q11", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q12", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q13", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q14", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q15", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q16", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q17", "status": "OPEN", "evidence": [] },
+    { "id": "AC-Q18", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W10", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W11", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W12", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W13", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W14", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W15", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W16", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W17", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W18", "status": "OPEN", "evidence": [] },
+    { "id": "AC-W19", "status": "OPEN", "evidence": [] },
+    { "id": "AC-X10", "status": "OPEN", "evidence": [] },
+    { "id": "AC-X11", "status": "OPEN", "evidence": [] },
+    { "id": "AC-X12", "status": "OPEN", "evidence": [] },
+    { "id": "AC-X13", "status": "OPEN", "evidence": [] }
+  ],
+  "secrets": {
+    "scanStatus": "OPEN",
+    "evidence": []
+  },
+  "release": {
+    "status": "OPEN",
+    "digestAlgorithm": "sha256",
+    "digest": null
+  }
+}

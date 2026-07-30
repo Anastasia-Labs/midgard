@@ -1,0 +1,2642 @@
+{
+  "schema": "midgard.canonical-v1-goal-task-manifest.v1",
+  "version": 1,
+  "generatedAt": "2026-07-29",
+  "goalSpec": {
+    "path": "GOAL_SPEC.md",
+    "sha256": "212196660ed5681d556cedbbc8fd59b4858be11df45f3482b6af6c6765588c12"
+  },
+  "parentOwnedPaths": [
+    "GOAL_SPEC.md",
+    "GOAL_PROGRESS.md",
+    "onchain/aiken/plutus.json",
+    "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
+    "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
+    "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json",
+    "docs/fault-proofs/coverage-matrix.md",
+    "docs/fault-proofs/catalogue-status.md",
+    "demo/package.json",
+    "demo/pnpm-lock.yaml"
+  ],
+  "note": "detailStatus=PENDING_ASSIGNMENT entries must be fully detailed (writable paths, anchors, commands) before that task is assigned (GOAL_SPEC.md §5.1, §7 F05). Sub-assignment decomposition (e.g. Q22a) is recorded by adding child entries referencing the parent id.",
+  "tasks": [
+    {
+      "id": "F00",
+      "section": "7. Foundation work packages",
+      "title": "Current-truth and dirty-state freeze",
+      "dependsOnRaw": "none",
+      "acceptance": "Record final starting revision, dirty ownership, toolchain, current graph staleness, and protected paths; no writes to pre-existing dirty files.",
+      "dependsOn": [],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F01",
+      "section": "7. Foundation work packages",
+      "title": "Canonical feature inventory",
+      "dependsOnRaw": "F00",
+      "acceptance": "One machine-readable list names every enabled canonical V1 transaction, script, event, forced, and correction feature and its current TypeScript/Aiken/DA/proof/watcher surfaces. Unknowns fail closed.",
+      "dependsOn": [
+        "F00"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F02",
+      "section": "7. Foundation work packages",
+      "title": "Final format/ABI registry audit",
+      "dependsOnRaw": "F00",
+      "acceptance": "Every serialized/authenticated format has one V1 schema and exact cross-language tag/arity tests; obsolete pre-launch branches are absent.",
+      "dependsOn": [
+        "F00"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F03",
+      "section": "7. Foundation work packages",
+      "title": "Target-network authority preflight",
+      "dependsOnRaw": "F00",
+      "acceptance": "Select and identify the trusted Cardano L1-source mode/topology, effective/pending parameter query, testnet network, finality policy inputs, and credentials. Local-node mode records the watcher-operated node and aligned query/index services; external-provider mode records every independent provider. Missing external credentials are recorded (secret-safe per §4.1) before P5/P6 but do not block local work. F03 emits exactly one machine-readable L1-source declaration (mode, network, endpoints/identities, finality inputs) that every later task consumes. For this Goal the accepted acceptance-mode selection is `Preprod` + `local_node` + aligned local Kupmios — the only mode current repository tooling supports; selecting `external_providers` instead requires first deliberately building that acceptance path and amending this file.",
+      "dependsOn": [
+        "F00"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F04",
+      "section": "7. Foundation work packages",
+      "title": "Quantitative economics and margin decision record",
+      "dependsOnRaw": "F03",
+      "acceptance": "One approved decision record under `docs/midgard/decisions/` fixes: bond, slashing penalty, inactivity penalty, prover reward, fee/collateral floors, confirmation/finality depths per L1-source mode, retry budget, DA availability deadlines, `da_attestation_timeout` (Q61), governed DA-governor lower bounds (Q63), container resource ceilings (C80), and confirms the §3.3 thresholds. Q53, W04, W12, C74, C80, Q61, and Q63 consume these values; no later task invents its own number. Values may enter as `PROVISIONAL` to unblock local work; owner approval is required before CG5 binds them into the release identity. Testnet deadline/timeout values must keep the complete C83–C87 live sweep executable inside a bounded acceptance window (target ≤ 48 hours) without violating §3.3.",
+      "dependsOn": [
+        "F03"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F05",
+      "section": "7. Foundation work packages",
+      "title": "Machine-readable task manifest",
+      "dependsOnRaw": "F01–F03, F20–F21, F30, F41",
+      "acceptance": "`docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable path lease, parent-owned paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. §5.1 assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own leases and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, a §13.4 evidence binding, and a subagent assignment brief — templates, excluded from evidence aggregation.",
+      "dependsOn": [
+        "F01–F03",
+        "F20–F21",
+        "F30",
+        "F41"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F10",
+      "section": "7. Foundation work packages",
+      "title": "P0/P1/P2 evidence reconciliation",
+      "dependsOnRaw": "F01–F02",
+      "acceptance": "Re-run or invalidate every claimed P0/P1/P2 pass against current source; update the P2 task queue without weakening the matrix definition.",
+      "dependsOn": [
+        "F01–F02"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F20",
+      "section": "7. Foundation work packages",
+      "title": "Fault-proof matrix and catalogue reconciliation",
+      "dependsOnRaw": "F01–F02",
+      "acceptance": "For every coverage row, identify rule, enabled state, proof family, current binding, catalogue reachability, tooling, tests, emulator/preprod evidence, and remaining task ID. F20 also emits the initial concrete §9.1 launch-scope family list.",
+      "dependsOn": [
+        "F01–F02"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F21",
+      "section": "7. Foundation work packages",
+      "title": "Structural/N/A claim audit",
+      "dependsOnRaw": "F20",
+      "acceptance": "Each “unrepresentable”, “L1-enforced”, or “reduces to another proof” row has an executable adversarial test. Unsupported prose-only N/A claims become open tasks.",
+      "dependsOn": [
+        "F20"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F30",
+      "section": "7. Foundation work packages",
+      "title": "Watcher dependency/source map",
+      "dependsOnRaw": "F00–F02",
+      "acceptance": "Resolve current public DA/proof-bundle, validation, proof tooling, manifest, L1-source, state-queue, and removal APIs by source path. No watcher design relies on operator-private DB/admin APIs.",
+      "dependsOn": [
+        "F00–F02"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F40",
+      "section": "7. Foundation work packages",
+      "title": "Goal verification harness",
+      "dependsOnRaw": "F10, F20, F30, F41",
+      "acceptance": "Add exact `demo/package.json` entry points described in §13.1 and deterministic report verifiers consuming the F41 schema. Local verification never silently skips tests; state-changing acceptance is separate. F40 also adds the non-gating `goal:tasks:ready` helper (§13.1) and wires `goal:verify:static` into repository CI for the Goal branch so drift is caught between checkpoints.",
+      "dependsOn": [
+        "F10",
+        "F20",
+        "F30",
+        "F41"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "F41",
+      "section": "7. Foundation work packages",
+      "title": "Evidence manifest schema",
+      "dependsOnRaw": "F00–F03",
+      "acceptance": "Define the canonical machine-readable closure manifest binding revision per §0.2 (`releaseCommit`, branch, worktree state — never the hash of the commit containing the manifest), dirty baseline, compiler/tool versions, both C70 parameter snapshots, blueprint, validator hashes, deployment identity, fixtures, commands, results, tx hashes, timings, evidence bindings per §13.4, §9.5 residual launch blockers, and all `AC-*` statuses. Reconcile the existing v1 schema/verifier to §0.2: drop manifest-head equality and verify descent plus evidence-only diffs instead.",
+      "dependsOn": [
+        "F00–F03"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C10",
+      "section": "8.1 P0/P1 control-plane gate",
+      "title": "P0 freeze/baseline revalidation",
+      "dependsOnRaw": "F10",
+      "acceptance": "Release gate remains unset until P5; no activation/deployment path uses a monolith; current compiled size evidence is reproducible.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C11",
+      "section": "8.1 P0/P1 control-plane gate",
+      "title": "Dispute hub fit",
+      "dependsOnRaw": "C10",
+      "acceptance": "Actual applied/parameterized hub publication transaction fits live `maxTxSize` with margin.",
+      "dependsOn": [
+        "C10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C12",
+      "section": "8.1 P0/P1 control-plane gate",
+      "title": "Resolver routing completeness",
+      "dependsOnRaw": "C10",
+      "acceptance": "Every nonterminal phase routes to exactly one deployment-bound resolver; unknown, duplicate, absent, terminal, or wrong hashes fail closed.",
+      "dependsOn": [
+        "C10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C13",
+      "section": "8.1 P0/P1 control-plane gate",
+      "title": "Control lifecycle ABI",
+      "dependsOnRaw": "C11–C12",
+      "acceptance": "SDK, fault-proof tooling, manifest, catalogue, publication order, Aiken/TS codecs, and accepted-trace replay agree against the freshly built blueprint.",
+      "dependsOn": [
+        "C11–C12"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG1",
+      "section": "8.1 P0/P1 control-plane gate",
+      "title": "P1 gate",
+      "dependsOnRaw": "C11–C13",
+      "acceptance": "Every parameterized hub/control validator fits a real 16,384-byte publication transaction; evidence is bound to final validator hashes.",
+      "dependsOn": [
+        "C11–C13"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-0",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 0 spend inputs, including maximum schedule/replay",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-1",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 1 reference inputs and mixed spend/reference ordering",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-2",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 2 outputs, address/value/datum/reference-script descriptors",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-3",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 3 observers, exact count/order/dedup and terminal summary",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-4",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 4 required signers",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-5",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 5 mint/burn policy and asset entries",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-6",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 6 native/non-native script witnesses",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "high",
+      "writablePaths": [
+        "onchain/aiken/lib/midgard/fraud-proofs/native-tx/compact.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak",
+        "onchain/aiken/lib/midgard/fraud-proofs/native-tx-v1.test.ak",
+        "onchain/aiken/lib/midgard/tx-order-v1.ak",
+        "onchain/aiken/lib/midgard/tx-order-v1.test.ak",
+        "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+        "onchain/aiken/lib/midgard/validation-machine-v1.test.ak"
+      ],
+      "sourceAnchors": [
+        "GOAL_SPEC.md §8.2 C20-6/C20-7",
+        "GOAL_PROGRESS.md task C20-6/C20-7"
+      ],
+      "evidenceOutputs": [
+        "exact guarded Aiken selector results per edited module recorded in GOAL_PROGRESS.md"
+      ],
+      "focusedCommands": [
+        "cd onchain/aiken && node scripts/run-focused-check.mjs <module> <tests...>",
+        "aiken fmt --check",
+        "aiken check --skip-tests"
+      ],
+      "expectedNonzeroCounts": "every guarded selector collects the exact requested count",
+      "invalidationTriggers": [
+        "any edit to leased Aiken modules re-runs all listed selectors",
+        "blueprint regeneration is parent-only (IG1)"
+      ],
+      "detailStatus": "READY"
+    },
+    {
+      "id": "C20-7",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 7 vkey witnesses and exact signer identities",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C20-8",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Field 8 redeemer item descriptor, outer envelope, Data traversal, purpose/index/ex-units",
+      "dependsOnRaw": "F10",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C21",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Complete proof-item carriage",
+      "dependsOnRaw": "F10",
+      "acceptance": "Public tooling accepts the complete canonical item; direct and inline-datum input/reference-input paths are constructed and measured first. Any multi-output, chunked, or incremental fallback has a §3.2 necessity artifact, preserves the ordinary complete-item path, and rejects omission, duplication, reorder, substitution, and trailing data.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "L",
+      "risk": "high",
+      "writablePaths": [
+        "demo/midgard-validation/src/**",
+        "demo/midgard-validation/tests/**",
+        "demo/midgard-sdk/src/fraud-proof/**",
+        "demo/midgard-sdk/tests/**",
+        "docs/exec-plans/evidence/necessity/**"
+      ],
+      "sourceAnchors": [
+        "GOAL_SPEC.md §3.2, §8.2 C21",
+        "docs/exec-plans/templates/necessity-artifact-template.md"
+      ],
+      "evidenceOutputs": [
+        "§3.2 necessity artifacts under docs/exec-plans/evidence/necessity/",
+        "proof-fit measurement results"
+      ],
+      "focusedCommands": [
+        "pnpm --dir demo/midgard-validation test -- <focused>",
+        "pnpm --dir demo/midgard-sdk test -- <focused>"
+      ],
+      "expectedNonzeroCounts": "each focused suite collects a positive exact count",
+      "invalidationTriggers": [
+        "validator hash or parameter digest change invalidates necessity artifacts (§3.2)"
+      ],
+      "detailStatus": "READY"
+    },
+    {
+      "id": "C22",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Nested output Value",
+      "dependsOnRaw": "F10",
+      "acceptance": "Exact policy/asset identity, signed quantities, 5,000/5,001 Cardano Value boundary, terminal equality, and complete-Value input/reference-input proof-fit before any incremental fallback.",
+      "dependsOn": [
+        "F10"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C23",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Plutus Data constructor breadth",
+      "dependsOnRaw": "C20-2, C20-8",
+      "acceptance": "Signed accepted `<= 16,384` and adjacent `> 16,384`; exact constructor children and terminal summary; complete-Data direct/reference proof-fit is tested first.",
+      "dependsOn": [
+        "C20-2",
+        "C20-8"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C24",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Plutus Data list breadth",
+      "dependsOnRaw": "C20-2, C20-8",
+      "acceptance": "Exact child identities/count/order and adjacent boundary; complete-Data direct/reference proof-fit is tested first.",
+      "dependsOn": [
+        "C20-2",
+        "C20-8"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C25",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Plutus Data map breadth",
+      "dependsOnRaw": "C20-2, C20-8",
+      "acceptance": "Exact pair count and key/value identity, no key-only or count-only shortcut, and complete-Data direct/reference proof-fit before any incremental fallback.",
+      "dependsOn": [
+        "C20-2",
+        "C20-8"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C26",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Plutus Data unary depth",
+      "dependsOnRaw": "C20-2, C20-8",
+      "acceptance": "Maximum admitted depth and adjacent rejection derive from Cardano transaction capacity, not an arbitrary recursion cap; any traversal fallback is justified by measured complete-item execution failure.",
+      "dependsOn": [
+        "C20-2",
+        "C20-8"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "writablePaths": [
+        "demo/midgard-validation/tests/**",
+        "docs/exec-plans/evidence/c26-cml-investigation.md"
+      ],
+      "sourceAnchors": [
+        "GOAL_PROGRESS.md task C26 (PARTIAL: CML/WASM memory access out of bounds at depth 4,043; normalization traps at 2,048)"
+      ],
+      "evidenceOutputs": [
+        "root-cause finding, workaround patch proposal or bounded-admission decision memo"
+      ],
+      "focusedCommands": [
+        "pnpm --dir demo/midgard-validation test -- plutus-data-unary-depth"
+      ],
+      "expectedNonzeroCounts": "reproduction case demonstrated",
+      "invalidationTriggers": [
+        "CML dependency version change"
+      ],
+      "detailStatus": "READY"
+    },
+    {
+      "id": "C27",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Script envelope",
+      "dependsOnRaw": "C20-6",
+      "acceptance": "Canonical script kind/language/hash/length; raw Cardano script is never relabelled as a canonical Midgard envelope; complete-script direct/reference proof-fit is attempted first.",
+      "dependsOn": [
+        "C20-6"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C28",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Content-addressed program material",
+      "dependsOnRaw": "C27",
+      "acceptance": "Complete material is retained and accepted directly or through authenticated input/reference-input datums wherever it fits; bounded-node traversal requires a §3.2 necessity artifact; terminal binds the canonical program hash.",
+      "dependsOn": [
+        "C27"
+      ],
+      "size": "XL",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C29",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Canonical-CBOR verification",
+      "dependsOnRaw": "C20-0–C20-8",
+      "acceptance": "Maximum retained source from normal and forced paths reaches the exact terminal through the simplest proof-fit representation; malformed/trailing/noncanonical forms reject; incremental scanning requires §3.2 necessity evidence.",
+      "dependsOn": [
+        "C20-0–C20-8"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C30",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Strict normal retained-DA reconstruction",
+      "dependsOnRaw": "C20-0–C29",
+      "acceptance": "Maximum fixtures enter complete-item or necessity-justified fallback verification only from real production `reconstructDaPayloadV1` output.",
+      "dependsOn": [
+        "C20-0–C29"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C31",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Strict forced retained-DA reconstruction",
+      "dependsOnRaw": "C20-0–C29",
+      "acceptance": "Forced preimage authentication returns the exact canonical source; substitution, count, root, verdict, classification, and representation mismatches reject.",
+      "dependsOn": [
+        "C20-0–C29"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C32",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Maximum-specific TS/Aiken agreement",
+      "dependsOnRaw": "C20-0–C31",
+      "acceptance": "Every maximum task has applied/terminal vectors for its complete-item path and any necessity-justified fallback; focused Aiken selectors collect and pass a nonzero exact test count.",
+      "dependsOn": [
+        "C20-0–C31"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C33",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Genuine Cardano vs schema projection labels",
+      "dependsOnRaw": "C23–C28",
+      "acceptance": "Genuine signed Cardano emulator acceptance remains distinct from canonical Midgard schema projection; collateralized reverse bridge stays fail closed; projected integrity is recomputed rather than emptied.",
+      "dependsOn": [
+        "C23–C28"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG2",
+      "section": "8.2 P2 proof-item capability tasks",
+      "title": "Proof-item capability gate",
+      "dependsOnRaw": "C20-0–C33",
+      "acceptance": "Every required P2 matrix row and every cell is `PASS`; complete-item carriage remains available wherever it fits; every bounded fallback has a measured §3.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.",
+      "dependsOn": [
+        "C20-0–C33"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C40",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Canonical envelope/directory",
+      "dependsOnRaw": "CG2",
+      "acceptance": "Exact transaction identity, field directory, profile/deployment domain, and terminal framing.",
+      "dependsOn": [
+        "CG2"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C41",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Input/reference resolution",
+      "dependsOnRaw": "CG2",
+      "acceptance": "Membership/non-membership, same-block dependencies, disjointness, duplicates, and exact resolution schedule.",
+      "dependsOn": [
+        "CG2"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C42",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Output/address/datum/reference-script",
+      "dependsOnRaw": "C40–C41",
+      "acceptance": "Output well-formedness, credentials, inline datum, protected outputs, real reference scripts, and bounded material.",
+      "dependsOn": [
+        "C40–C41"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C43",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Required signers and vkey authorization",
+      "dependsOnRaw": "C40–C41",
+      "acceptance": "Exact required-set semantics, canonical witness encoding, duplicate behavior, and signature verification.",
+      "dependsOn": [
+        "C40–C41"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C44",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Native-script semantics",
+      "dependsOnRaw": "C43",
+      "acceptance": "Every node kind, ordering, thresholds, timelocks, empty/invalid cases, and bounded maximum path.",
+      "dependsOn": [
+        "C43"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C45",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Script sources, purposes, and redeemers",
+      "dependsOnRaw": "C41–C44",
+      "acceptance": "Every spend/mint/receive/observer purpose has exact source, purpose, retained redeemer, and unused/extraneous rejection.",
+      "dependsOn": [
+        "C41–C44"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C46",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Script integrity and language views",
+      "dependsOnRaw": "C45",
+      "acceptance": "Exact field commitments, language set, cost models/views, and final hash; no empty placeholder for a scripted transaction.",
+      "dependsOn": [
+        "C45"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C47",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Plutus context construction",
+      "dependsOnRaw": "C41–C46",
+      "acceptance": "Exact Cardano/Midgard context semantics and source-derived summaries.",
+      "dependsOn": [
+        "C41–C46"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C48",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "CEK execution and execution units",
+      "dependsOnRaw": "C45–C47",
+      "acceptance": "Deterministic canonical program, data/context, builtin/cost semantics, aggregate budget, failure result, and bounded microsteps.",
+      "dependsOn": [
+        "C45–C47"
+      ],
+      "size": "XL",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C49",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Value, fee, mint, and burn",
+      "dependsOnRaw": "C41–C48",
+      "acceptance": "Exact signed multi-asset conservation, Ada rule, fee, min-Ada, mint/burn authorization, and no arbitrary sub-cap.",
+      "dependsOn": [
+        "C41–C48"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C50",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Observer/protected-output semantics",
+      "dependsOnRaw": "C42, C45–C48",
+      "acceptance": "Required observer and protected receive behavior is fully semantic and independently disputable.",
+      "dependsOn": [
+        "C42",
+        "C45–C48"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C51",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Ledger delta",
+      "dependsOnRaw": "C41–C50",
+      "acceptance": "Exact spent/produced operations, accepted/rejected behavior, roots, receipt, terminal replay, and no extra/missing operation.",
+      "dependsOn": [
+        "C41–C50"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C52",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Aggregate script-execution floor",
+      "dependsOnRaw": "C45–C51",
+      "acceptance": "A Cardano-capable transaction receives at least the target snapshot's aggregate memory/steps across bounded proof transactions.",
+      "dependsOn": [
+        "C45–C51"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C53",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "Resolver proof-fit sweep",
+      "dependsOnRaw": "C40–C52",
+      "acceptance": "Every concrete one-step argument and actual applied resolver transaction fits target-network byte/memory/CPU limits within the §3.3 margin thresholds.",
+      "dependsOn": [
+        "C40–C52"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG3",
+      "section": "8.3 P3 narrow semantic resolvers",
+      "title": "P3 gate",
+      "dependsOnRaw": "C40–C53",
+      "acceptance": "No enabled accepted transition or rejection reason lacks an L1 one-step verifier; TypeScript/Aiken vectors cover every instruction.",
+      "dependsOn": [
+        "C40–C53"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C60",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Normal valid/effectful",
+      "dependsOnRaw": "CG3",
+      "acceptance": "Exact accepted delta.",
+      "dependsOn": [
+        "CG3"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C61",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Forced valid/effectful",
+      "dependsOnRaw": "CG3",
+      "acceptance": "Same validation and delta as equivalent normal source; cannot be skipped/rejected/no-op.",
+      "dependsOn": [
+        "CG3"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C62",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Forced invalid",
+      "dependsOnRaw": "CG3",
+      "acceptance": "Consumes exact forced-order effect and applies no invalid ledger delta.",
+      "dependsOn": [
+        "CG3"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C63",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Forced specified no-op",
+      "dependsOnRaw": "CG3",
+      "acceptance": "Remains exact authenticated no-op.",
+      "dependsOn": [
+        "CG3"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C64",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Normal misclassified as forced",
+      "dependsOnRaw": "C60–C63",
+      "acceptance": "Single deterministic proof/correction path.",
+      "dependsOn": [
+        "C60–C63"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C65",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Forced misclassified as normal",
+      "dependsOnRaw": "C60–C63",
+      "acceptance": "Single deterministic proof/correction path.",
+      "dependsOn": [
+        "C60–C63"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C66",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Accepted source paired with wrong delta",
+      "dependsOnRaw": "C60–C63",
+      "acceptance": "Detected and corrected for normal and forced sources.",
+      "dependsOn": [
+        "C60–C63"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C67",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Single-party proof regression",
+      "dependsOnRaw": "C60–C66",
+      "acceptance": "Existing self-contained families remain direct and pass soundness tests.",
+      "dependsOn": [
+        "C60–C66"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C68",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "Both interactive verdict directions",
+      "dependsOnRaw": "C60–C67",
+      "acceptance": "Operator-valid/challenger-invalid and operator-invalid/challenger-valid lifecycles, including withholding timeout, complete through award/removal.",
+      "dependsOn": [
+        "C60–C67"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG4",
+      "section": "8.4 P4 forced execution and classification",
+      "title": "P4 gate",
+      "dependsOnRaw": "C60–C68, QG1",
+      "acceptance": "No missing or partial fund-safety/classification row for canonical V1.",
+      "dependsOn": [
+        "C60–C68",
+        "QG1"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C70",
+      "section": "8.5 P5 release evidence",
+      "title": "Trusted parameter snapshots",
+      "dependsOnRaw": "F03, CG4",
+      "acceptance": "Two bound snapshots: trusted Cardano mainnet effective/pending parameters as the capability floor, and target-testnet effective/pending deployment parameters; plus configured L1-source identities and chain points, canonical encoding, and one digest per snapshot. Capability parity (C71–C72) derives from the least restrictive applicable value/rule across both (§3.1.10); deployment validation uses the target snapshot.",
+      "dependsOn": [
+        "F03",
+        "CG4"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C71",
+      "section": "8.5 P5 release evidence",
+      "title": "Cardano-to-Midgard constraint map",
+      "dependsOnRaw": "C70",
+      "acceptance": "Every applicable constraint from the §3.1.10 merged capability floor maps to exact Midgard behavior; unknown/new parameters fail closed.",
+      "dependsOn": [
+        "C70"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C72",
+      "section": "8.5 P5 release evidence",
+      "title": "Generated boundary corpus",
+      "dependsOnRaw": "C70–C71",
+      "acceptance": "Accepted maxima and immediately adjacent rejects for all applicable fields/shapes; deterministic byte-for-byte regeneration.",
+      "dependsOn": [
+        "C70–C71"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C73",
+      "section": "8.5 P5 release evidence",
+      "title": "Actual L1 path construction",
+      "dependsOnRaw": "C72",
+      "acceptance": "Use exact applied/parameterized final validators to construct every publication, reveal, resolution, settlement, correction, and removal transaction.",
+      "dependsOn": [
+        "C72"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C74",
+      "section": "8.5 P5 release evidence",
+      "title": "Measurement report",
+      "dependsOnRaw": "C73",
+      "acceptance": "Per path: bytes, memory, CPU, fee, transaction count, wall time, and maturity-window margin. Emulator-only or representative framing is insufficient.",
+      "dependsOn": [
+        "C73"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C75",
+      "section": "8.5 P5 release evidence",
+      "title": "Release-evidence digest",
+      "dependsOnRaw": "C70–C74, QG2, WG1",
+      "acceptance": "Bind both C70 snapshot digests, profile, DA framing, rule/program commitments, blueprint, applied validator hashes, capability report, local proof/watcher closure, and measurements.",
+      "dependsOn": [
+        "C70–C74",
+        "QG2",
+        "WG1"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C76",
+      "section": "8.5 P5 release evidence",
+      "title": "Generated profile/runbook consistency",
+      "dependsOnRaw": "C75",
+      "acceptance": "Documentation is generated/checked from compiled values; stale schema/profile/manifest/hash strings fail CI semantically.",
+      "dependsOn": [
+        "C75"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG5",
+      "section": "8.5 P5 release evidence",
+      "title": "P5 gate",
+      "dependsOnRaw": "C70–C76",
+      "acceptance": "Fail-closed activation opens only for the exact measured release; digest reproduction is deterministic.",
+      "dependsOn": [
+        "C70–C76"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C79",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Acceptance orchestrator and skill readiness",
+      "dependsOnRaw": "CG5, QG2, WG1",
+      "acceptance": "The `goal:accept:testnet` orchestrator and the `midgard-e2e-acceptance` skill/runbook cover the complete C82–C87, Q57, and W45–W46 scope — `demo/midgard-watcher` operation, per-family correction drills, withdrawal/reserve/payout, forced/classification drills, and the crash/rollback matrix — beyond the existing DA-committee/deposit/L2/merge baseline. The missing-orchestrator placeholder is replaced; validation is the runbook validator plus a deterministic non-state-changing local rehearsal.",
+      "dependsOn": [
+        "CG5",
+        "QG2",
+        "WG1"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C80",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Exclusive topology/resource preflight",
+      "dependsOnRaw": "CG5, C79",
+      "acceptance": "Enforced lock; no other Midgard topology; explicit container memory/CPU/PID limits from F04; serialized builds/tests; resource and container-count checks. Verify every operator/prover/DA wallet holds the W31-computed worst-case funding before any state-changing step. Preserve the local Preprod node/Kupo databases across attempts; a fresh chain sync is never required for a fresh Midgard deployment.",
+      "dependsOn": [
+        "CG5",
+        "C79"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C81",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Fresh testnet deployment",
+      "dependsOnRaw": "C80",
+      "acceptance": "Use the C79-validated E2E acceptance skill in `fresh` mode; new on-chain identity, exact manifest, reference scripts, init, and matching clean local state. Never touch unrelated Cardano or L1-source state.",
+      "dependsOn": [
+        "C80"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C82",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Functional lifecycle",
+      "dependsOnRaw": "C81",
+      "acceptance": "Operator registration/activation, deposit, L2 submit, commit, confirmation, merge, withdrawal/reserve/payout, and final DB/chain/API reconciliation.",
+      "dependsOn": [
+        "C81"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C83",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Fault-proof drills",
+      "dependsOnRaw": "C81, QG3, WG2",
+      "acceptance": "At least one target-testnet drill per launch-scope proof family; complete proof token, removal, slashing, prover payment, and corrected queue. Drills may run in parallel where wallets and path leases permit; the Q51 journal makes the sweep resumable mid-run rather than restartable. Share drill instances with Q57 and W45 per the Q57 single-execution rule.",
+      "dependsOn": [
+        "C81",
+        "QG3",
+        "WG2"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C84",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Forced/classification drills",
+      "dependsOnRaw": "C81–C83",
+      "acceptance": "All C60–C68 paths against final deployment artifacts. A C83 drill instance may serve as this evidence where it exercises the identical final path; never spend a live transaction twice to prove the same claim.",
+      "dependsOn": [
+        "C81–C83"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C85",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Restart/rollback/recovery/withholding",
+      "dependsOnRaw": "C81–C84",
+      "acceptance": "Injectable live drills — named crash boundaries, watcher recovery, configured L1-source inconsistency (including external-provider disagreement, induced by stopping or desyncing the aligned query/index services), missing DA, withholding, and stale manifest — fail closed without lost/duplicate state. L1 rollback and finalized-rollback incident paths are proven by the W44 local matrix plus an adapter-level rewind rehearsal against recorded live chain data; a naturally observed Preprod rollback is recorded as bonus evidence and is never a required trigger.",
+      "dependsOn": [
+        "C81–C84"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C86",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Bounded stress",
+      "dependsOnRaw": "C82–C85",
+      "acceptance": "Run only after functional acceptance; respect resource gate; preserve correctness/root/proof evidence.",
+      "dependsOn": [
+        "C82–C85"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "C87",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "Final deployment evidence",
+      "dependsOnRaw": "C81–C86",
+      "acceptance": "Immutable redacted evidence contains manifest, tx hashes, chain points/depths, roots, proof steps, decisions, resource data, and final state; secrets are absent.",
+      "dependsOn": [
+        "C81–C86"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "CG6",
+      "section": "8.6 P6 bounded deployment and acceptance",
+      "title": "P6 gate",
+      "dependsOnRaw": "C80–C87",
+      "acceptance": "Fresh final release passes all functional and adversarial acceptance at `releaseCommit`.",
+      "dependsOn": [
+        "C80–C87"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q00",
+      "section": "9.2 Shared prerequisites",
+      "title": "Native V1 proof binding",
+      "dependsOnRaw": "F20, F02",
+      "acceptance": "Every family binds the exact current counted/typed roots and canonical native codec; legacy PlutusData/root paths and witness-encoding splits are absent.",
+      "dependsOn": [
+        "F20",
+        "F02"
+      ],
+      "size": "L",
+      "risk": "high",
+      "writablePaths": [
+        "onchain/aiken/lib/midgard/fraud-proofs/common.ak",
+        "onchain/aiken/validators/fraud-proofs/**",
+        "onchain/aiken/lib/midgard/fraud-proofs/**.test.ak"
+      ],
+      "sourceAnchors": [
+        "GOAL_SPEC.md §9.2 Q00",
+        "docs/fault-proofs/execution-plan.md W-C13",
+        "onchain/aiken/lib/midgard/fraud-proofs/common.ak verify_tx_in_state_queue_node (legacy) vs verify_native_tx_in_state_queue_node / pass_native_tx_to_next_step (native)"
+      ],
+      "evidenceOutputs": [
+        "per-family binding port results and exact selector counts in the task report"
+      ],
+      "focusedCommands": [
+        "cd onchain/aiken && node scripts/run-focused-check.mjs <module> <tests...>",
+        "aiken check --skip-tests"
+      ],
+      "expectedNonzeroCounts": "positive and valid-block negative selectors per ported family",
+      "invalidationTriggers": [
+        "any counted-root/codec change re-runs every family binding test"
+      ],
+      "detailStatus": "READY"
+    },
+    {
+      "id": "Q01",
+      "section": "9.2 Shared prerequisites",
+      "title": "Common proof-state safety",
+      "dependsOnRaw": "Q00",
+      "acceptance": "Computation-thread init/continue/finalize/cancel, duplicate init, token coupling, catalogue immutability, reference inputs, and valid-block rejection are tested.",
+      "dependsOn": [
+        "Q00"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q02",
+      "section": "9.2 Shared prerequisites",
+      "title": "Family scaffold generator",
+      "dependsOnRaw": "Q00–Q01",
+      "acceptance": "Shared generator may create boilerplate only; generated families retain explicit schemas/tests and no dynamic “accept any” dispatch.",
+      "dependsOn": [
+        "Q00–Q01"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q03",
+      "section": "9.2 Shared prerequisites",
+      "title": "Canonical evidence-source API",
+      "dependsOnRaw": "Q00",
+      "acceptance": "Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1 observations, not operator-private REST/DB/files except labelled diagnostics.",
+      "dependsOn": [
+        "Q00"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q10",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`double-spend`",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q11",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`no-input`",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q12",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`invalid-range`",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q13",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`input-no-idx`",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q14",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`zero-input`",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q15",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`invalid-signature`",
+      "dependsOnRaw": "Q00–Q03, C43",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C43"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q16",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`missing-signature`",
+      "dependsOnRaw": "Q00–Q03, C43",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C43"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q17",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`missing-native-script-tx`",
+      "dependsOnRaw": "Q00–Q03, C44",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C44"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q18",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`no-reference-input`",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q19",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`withdrawn-reference-input`",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q20",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`min-fee`",
+      "dependsOnRaw": "Q00–Q03, C49; replace the zero-return stub with the canonical parameterized formula",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q21",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`transition-trace` all subvariants",
+      "dependsOnRaw": "Q00–Q03, C51",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C51"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q22",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "interactive `validation-trace` dispute",
+      "dependsOnRaw": "Q00–Q03, CG3",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "CG3"
+      ],
+      "size": "XL",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q23",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`value-not-preserved`",
+      "dependsOnRaw": "Q00–Q03, C49",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q24",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`ada-minted`",
+      "dependsOnRaw": "Q00–Q03, C49",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q25",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`negative-output-value`",
+      "dependsOnRaw": "Q00–Q03, C42, C49",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C42",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q26",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`mint-authorization`",
+      "dependsOnRaw": "Q00–Q03, C45, C49",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C45",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q27",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`min-ada`",
+      "dependsOnRaw": "Q00–Q03, C42, C49",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C42",
+        "C49"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q28",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`withdrawn-input`",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q29",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`double-withdraw`",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q30",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`input-set-uniqueness` including intra-tx duplicates and spend/reference overlap",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q31",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`reference-input-no-idx`",
+      "dependsOnRaw": "Q00–Q03, C41",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C41"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q32",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`req-signer-set`",
+      "dependsOnRaw": "Q00–Q03, C43",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C43"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q33",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`missing-native-script-utxo`",
+      "dependsOnRaw": "Q00–Q03, C42, C44",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C42",
+        "C44"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q34",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`native-script-invalid`",
+      "dependsOnRaw": "Q00–Q03, C44",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C44"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q35",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`network-id`",
+      "dependsOnRaw": "Q00–Q03, C42",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C42"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q36",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`output-well-formedness`",
+      "dependsOnRaw": "Q00–Q03, C42",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C42"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q37",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`hash-field-consistency` including auxiliary and script-integrity commitments",
+      "dependsOnRaw": "Q00–Q03, C46",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C46"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q38",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`size-limits`/provability at every maximum",
+      "dependsOnRaw": "Q00–Q03, C53",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C53"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q39",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`fabricated-deposit` existence and content fidelity",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q40",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`fabricated-withdrawal` existence and content fidelity",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q41",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`withdrawal-mistag` in both directions including exact payability",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q42",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`cross-block-duplicate-event` with evidence surviving event-NFT consumption",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q43",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`l2-tx-mistag` valid transaction incorrectly made a no-op",
+      "dependsOnRaw": "Q00–Q03, C60",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C60"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q44",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`da-hash-preimage`",
+      "dependsOnRaw": "Q00–Q03, C30–C31",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C30–C31"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q45",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "`script-failure` for enabled native/PlutusV3/MidgardV1 semantics",
+      "dependsOnRaw": "Q00–Q03, C44–C50",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C44–C50"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q46",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "Forced inclusion, valid/invalid/no-op, and both classification directions",
+      "dependsOnRaw": "Q00–Q03, C60–C68",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C60–C68"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q47",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "Omitted/out-of-window deposit, withdrawal, and forced-event variants",
+      "dependsOnRaw": "Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q48",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "Source-phase mismatch, trace-link/order, event-to-step, and every count-fault variant",
+      "dependsOnRaw": "Q00–Q03, C51",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "Q00–Q03",
+        "C51"
+      ],
+      "size": "XL",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q49",
+      "section": "9.3 Independently assignable proof-family closures",
+      "title": "All structural/N/A rows from F21",
+      "dependsOnRaw": "F21, Q00–Q03",
+      "acceptance": "See section preamble for the family acceptance contract.",
+      "dependsOn": [
+        "F21",
+        "Q00–Q03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q50",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Catalogue/deployment integration",
+      "dependsOnRaw": "Q10–Q49 as applicable",
+      "acceptance": "Every enabled family has stable ID, exact first-step hash, derived root/membership proof, reference scripts, applied hashes, and fail-closed manifest inspection.",
+      "dependsOn": [
+        "Q10–Q49 as applicable"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q51",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Unified resumable CLI/API",
+      "dependsOnRaw": "Q10–Q50",
+      "acceptance": "One command per family and one programmatic API; journal every submitted/confirmed step; safe reconcile after ambiguous submission.",
+      "dependsOn": [
+        "Q10–Q50"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q52",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Descendant/cross-operator removal",
+      "dependsOnRaw": "Q01, Q50–Q51",
+      "acceptance": "Tail/non-tail, same/different/rotated active/retired/already-slashed operators, stale UTxOs, concurrent append/merge, ordered descendant pruning, and event re-inclusion all complete without deadlock.",
+      "dependsOn": [
+        "Q01",
+        "Q50–Q51"
+      ],
+      "size": "L",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q53",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Slashing and prover economics",
+      "dependsOnRaw": "F04, Q01, Q52",
+      "acceptance": "Non-placeholder target-testnet bond, penalty, inactivity penalty, prover reward, exact value routing, and duplicate-token/reward prevention, with every value and its rationale from the F04 decision record.",
+      "dependsOn": [
+        "F04",
+        "Q01",
+        "Q52"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q54",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Retention enforcement",
+      "dependsOnRaw": "Q03, Q44",
+      "acceptance": "DA and proof stores enforce maturity + worst-case proof time + margin; deployment identity binds the window; pruning cannot remove still-challengeable evidence; deadline alerts are executable.",
+      "dependsOn": [
+        "Q03",
+        "Q44"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q55",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Violation-to-family coverage table",
+      "dependsOnRaw": "Q10–Q54, Q58",
+      "acceptance": "Every enabled violation maps deterministically to exactly one primary proof route or an explicitly ordered equivalent; unknown/unprovable maps to `unprovable_gap`, never `verified`.",
+      "dependsOn": [
+        "Q10–Q54",
+        "Q58"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q56",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Emulator family sweep",
+      "dependsOnRaw": "Q50–Q55, Q58–Q63",
+      "acceptance": "Every launch-scope family completes its atomic lifecycle and every valid-block negative rejects.",
+      "dependsOn": [
+        "Q50–Q55",
+        "Q58–Q63"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q57",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Target-testnet family sweep",
+      "dependsOnRaw": "QG2, CG5, C81",
+      "acceptance": "Every launch-scope family completes against the fresh final deployment; evidence binds tx hashes, chain points, blueprint, manifest, parameters, release digest, and final correction. One live execution per family is the intent: a single drill instance may generate the evidence for Q57, C83, and W45 simultaneously when it meets each claim's requirements (Q57 binding, C83 lifecycle completion, W45 autonomous watcher drive); each task claims that evidence once its own dependencies pass, and no family is rerun live solely because a different task ID also claims it.",
+      "dependsOn": [
+        "QG2",
+        "CG5",
+        "C81"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q58",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Bond-backed availability challenge",
+      "dependsOnRaw": "Q01, Q03, Q44, Q53",
+      "acceptance": "Timely challenge blocks merge; complete-item L1 inline-datum publication is preferred, with the fewest necessity-justified ordered multi-output/chunk receipts and an exact terminal accumulator when one publication cannot fit; wrong item/chunk, offset, length, hash, order, header, deployment, or deadline rejects; timeout enables deterministic correction and exact DA-bond slash.",
+      "dependsOn": [
+        "Q01",
+        "Q03",
+        "Q44",
+        "Q53"
+      ],
+      "size": "L",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q59",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Availability tooling and lifecycle",
+      "dependsOnRaw": "Q51, Q54, Q58",
+      "acceptance": "Public evidence builder, challenge/respond/timeout/correct commands, watcher adapter, emulator lifecycle, restart/reconcile tests, retention checks, and maturity-margin measurement; final target-testnet use is part of Q57.",
+      "dependsOn": [
+        "Q51",
+        "Q54",
+        "Q58"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "QG1",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Coverage gate",
+      "dependsOnRaw": "Q10–Q50, Q55, Q58–Q63",
+      "acceptance": "No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires §9.1 `LOCAL_PASS`, never live evidence.",
+      "dependsOn": [
+        "Q10–Q50",
+        "Q55",
+        "Q58–Q63"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "QG2",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Local state-correction gate",
+      "dependsOnRaw": "Q51–Q56, Q58–Q63",
+      "acceptance": "Every family and unavailable-data path completes locally/emulator from public evidence through deterministic correction, exact slash/reward, restart, and due-event preservation.",
+      "dependsOn": [
+        "Q51–Q56",
+        "Q58–Q63"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "QG3",
+      "section": "9.4 Shared correction lifecycle",
+      "title": "Live state-correction gate",
+      "dependsOnRaw": "QG2, Q57",
+      "acceptance": "The same workflows complete against the fresh final target-testnet deployment and reconcile exact final chain/queue/economic state.",
+      "dependsOn": [
+        "QG2",
+        "Q57"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q60",
+      "section": "9.5 Incorporated fault-proof-plan decision rows",
+      "title": "Commit `end_time` bound (D-S12)",
+      "dependsOnRaw": "F20, Q00",
+      "acceptance": "Header commitment anchors `end_time` to the commit transaction's bounded validity window (mirroring `Init`), or an executable proof shows a far-future `end_time` cannot distort event due-ness adjudication or stall queue/merge liveness. Tests cover the adjacent accepted/rejected bounds.",
+      "dependsOn": [
+        "F20",
+        "Q00"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q61",
+      "section": "9.5 Incorporated fault-proof-plan decision rows",
+      "title": "Attestation-timeout removal (D-L1 i)",
+      "dependsOnRaw": "F04, Q00–Q01, Q52",
+      "acceptance": "A non-faulty committed block that never receives the required DA attestation becomes removable after the F04 `da_attestation_timeout` without slashing the operator bond (the D-L1 recommendation), unblocking the head of the state queue. Premature removal, attested-block removal, and post-timeout attestation races reject. Off-chain actuation has a named owner: a resumable permissionless command exists, the operator-node scheduler is the default production driver, and an alert fires when a block nears the timeout unattested; the watcher observes but does not own this liveness action. The wider escape hatch stays out of scope per §2.3.",
+      "dependsOn": [
+        "F04",
+        "Q00–Q01",
+        "Q52"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q62",
+      "section": "9.5 Incorporated fault-proof-plan decision rows",
+      "title": "Non-retroactive DA committee rotation (D-DA4)",
+      "dependsOnRaw": "F20, Q00",
+      "acceptance": "State-queue apply references the current DA-params state and requires the frozen `committee_signers_hash`/`da_threshold` to still match the governed values; `get_da_params` re-derives the committee hash. A quorum gathered under a rotated-out committee cannot apply.",
+      "dependsOn": [
+        "F20",
+        "Q00"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "Q63",
+      "section": "9.5 Incorporated fault-proof-plan decision rows",
+      "title": "DA-governor bounds and attestation rescue (D-DA5)",
+      "dependsOnRaw": "F04, F20, Q00",
+      "acceptance": "Governed lower bounds prevent an owner quorum from dropping `da_threshold`/`update_threshold` below the F04 floor, and the owner set has drain protection; a mid-flight committee change cannot permanently strand a partially signed attestation's ADA — a rescue/refund path exists and is tested.",
+      "dependsOn": [
+        "F04",
+        "F20",
+        "Q00"
+      ],
+      "size": "M",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W00",
+      "section": "10.1 Package and trust-boundary foundation",
+      "title": "Workspace package scaffold",
+      "dependsOnRaw": "F30",
+      "acceptance": "`demo/midgard-watcher` is a real pnpm package with build/typecheck/lint/test/start/replay commands and CI; docs-only status is removed only when implementation exists.",
+      "dependsOn": [
+        "F30"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W01",
+      "section": "10.1 Package and trust-boundary foundation",
+      "title": "Strict configuration",
+      "dependsOnRaw": "W00",
+      "acceptance": "Typed `local_node` or `external_providers` L1-source mode, secret-safe errors, bounded timeouts/concurrency, target network, DA peers, durable DB, wallet source, finality, deadlines, and fail-closed validation. Local-node mode binds chain-sync and query/index services to one watcher-operated node and requires no second provider; external-provider mode requires at least two operationally independent providers.",
+      "dependsOn": [
+        "W00"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W02",
+      "section": "10.1 Package and trust-boundary foundation",
+      "title": "Deployment identity verifier",
+      "dependsOnRaw": "W00–W01, F02",
+      "acceptance": "Verifies network, one-shot, manifest signature/trust root, profile, features, catalogue, applied script hashes/reference scripts, rule/program commitments, DA mode, release evidence, and local durable marker.",
+      "dependsOn": [
+        "W00–W01",
+        "F02"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W03",
+      "section": "10.1 Package and trust-boundary foundation",
+      "title": "Durable schema/migrations",
+      "dependsOnRaw": "W00–W02",
+      "acceptance": "Stores deployment marker, L1 observations/chain points, protocol UTxOs, DA/proof inputs, reconstructed states, decisions, faults, submissions, confirmations, retries, deadlines, and correction result; all caches are reproducible.",
+      "dependsOn": [
+        "W00–W02"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W04",
+      "section": "10.1 Package and trust-boundary foundation",
+      "title": "Deterministic clock/deadline model",
+      "dependsOnRaw": "F04, W01–W03, Q53–Q54, Q58",
+      "acceptance": "Worst-case DA fetch/publication, construction, proof steps, confirmation depth, retry, rollback, and removal fit the §3.3 maturity threshold; unsafe remaining time escalates/fails closed.",
+      "dependsOn": [
+        "F04",
+        "W01–W03",
+        "Q53–Q54",
+        "Q58"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W10",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "Source-neutral L1 adapter",
+      "dependsOnRaw": "W01–W03",
+      "acceptance": "Normalizes the selected source mode into exact chain point, block hash, slot, depth, source identity, and actual tx/UTxO/script/datum/redeemer bytes with deterministic fixtures. It binds data provenance and decoding, not a duplicate implementation of Cardano validator semantics.",
+      "dependsOn": [
+        "W01–W03"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W11",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "L1 source consistency",
+      "dependsOnRaw": "W10",
+      "acceptance": "Local-node mode requires the watcher-operated node's network/chain point, chain-sync, and auxiliary Ogmios/Kupo/Kupmios/db-sync results to agree and propagate rollbacks; no second provider is required. External-provider mode requires at least two operationally independent providers at compatible network/chain point/content, and disagreement quarantines protocol decisions and alerts.",
+      "dependsOn": [
+        "W10"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W12",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "Finality engine",
+      "dependsOnRaw": "W10–W11",
+      "acceptance": "Consumes the valid W11 result for the configured L1-source mode. No irreversible local state from first visibility; confirmation depth is release-bound, before-threshold rollback remains pending, and finalized rollback becomes an incident.",
+      "dependsOn": [
+        "W10–W11"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W13",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "Rollback engine",
+      "dependsOnRaw": "W10–W12",
+      "acceptance": "Rewinds pending observations, decisions, DA associations, reconstructed states, and submissions deterministically; post-finality rollback becomes explicit incident state.",
+      "dependsOn": [
+        "W10–W12"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W14",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "State-queue/scheduler/operator indexer",
+      "dependsOnRaw": "W10–W13",
+      "acceptance": "Consumes actual selected-source L1 transaction/output/datum bytes and deterministically indexes the linked queue, header chain/roots/times, scheduled operator, bond hold, append/merge/removal, and W13-authorized rollbacks. It rejects free-form snapshots and stale/mismatched source data but does not reimplement the on-chain validators.",
+      "dependsOn": [
+        "W10–W13"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W15",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "User-event indexer",
+      "dependsOnRaw": "W10–W13",
+      "acceptance": "Deposits, withdrawals, forced orders, NFT/datum/witness identity, inclusion time, status, content fidelity, and rollback.",
+      "dependsOn": [
+        "W10–W13"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W16",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "Settlement/reserve/payout indexer",
+      "dependsOnRaw": "W10–W13",
+      "acceptance": "Resolution claims and event processing through terminal status, including stuck/invalid states.",
+      "dependsOn": [
+        "W10–W13"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W17",
+      "section": "10.2 Independent L1 and protocol indexing",
+      "title": "Proof/computation-thread indexer",
+      "dependsOnRaw": "W10–W13",
+      "acceptance": "Init/step/success/cancel/token/removal state and tx confirmations reconcile with the local proof journal.",
+      "dependsOn": [
+        "W10–W13"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W20",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Independent libp2p DA client",
+      "dependsOnRaw": "W01–W03, Q03",
+      "acceptance": "Uses retained DA/proof protocols, deployment binding, strict limits/deadlines/hash checks, peer fallback, and no operator node REST/DB as security input.",
+      "dependsOn": [
+        "W01–W03",
+        "Q03"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W21",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Canonical block/proof store",
+      "dependsOnRaw": "W20, Q54",
+      "acceptance": "Persists exact public bytes and metadata before verification/submission; hash-addressed, immutable, retention-aware, restart-safe.",
+      "dependsOn": [
+        "W20",
+        "Q54"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W22",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Header/root reconstruction",
+      "dependsOnRaw": "W14, W20–W21",
+      "acceptance": "Reconstructs header-bound root set/counts from public payload; non-circular binding; every mismatch is deterministic.",
+      "dependsOn": [
+        "W14",
+        "W20–W21"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W23",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Versioned rule bundle",
+      "dependsOnRaw": "W02",
+      "acceptance": "Loads the exact canonical V1 transition order/features/parameters/program commitments from deployment identity; unknown version/feature fails closed.",
+      "dependsOn": [
+        "W02"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W24",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Phase A verifier",
+      "dependsOnRaw": "W21–W23, CG3",
+      "acceptance": "Reuses canonical validation semantics and produces exact deterministic rejection/evidence, not a looser watcher-only implementation.",
+      "dependsOn": [
+        "W21–W23",
+        "CG3"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W25",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Phase B/block replay",
+      "dependsOnRaw": "W14–W16, W21–W24",
+      "acceptance": "Reconstructs prior state, dependencies, spends/references/scripts/value/events, every intermediate root, and exact post-state.",
+      "dependsOn": [
+        "W14–W16",
+        "W21–W24"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W26",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Event/classification verifier",
+      "dependsOnRaw": "W15–W16, W23–W25",
+      "acceptance": "Due/omitted/out-of-window/fabricated/duplicate events, withdrawal validity, and forced classification match canonical semantics.",
+      "dependsOn": [
+        "W15–W16",
+        "W23–W25"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W27",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Proof-bundle materializer",
+      "dependsOnRaw": "W21–W26, Q03",
+      "acceptance": "Produces complete canonical inputs for the selected family and prefers complete direct or inline-datum input/reference-input carriage: roots/roles/counts, membership/non-membership/deletion proofs, complete fields/items, any necessity-justified chunk openings, publication L1 refs, and ABI versions.",
+      "dependsOn": [
+        "W21–W26",
+        "Q03"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W28",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Deterministic violation classifier",
+      "dependsOnRaw": "W22–W27, Q55",
+      "acceptance": "Stable first-fault/priority rule maps to exact family and evidence; unsupported maps to `unprovable_gap`.",
+      "dependsOn": [
+        "W22–W27",
+        "Q55"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W29",
+      "section": "10.3 Public DA and deterministic verification",
+      "title": "Block decision engine",
+      "dependsOnRaw": "W22–W28",
+      "acceptance": "Exactly one of `verified`, `pending_da`, `unprovable_gap`, `fault_detected`, `fault_proven`, `removed_or_resolved`; only complete replay yields `verified`.",
+      "dependsOn": [
+        "W22–W28"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W30",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Proof engine adapters",
+      "dependsOnRaw": "Q50–Q55, Q58–Q59, W27–W29",
+      "acceptance": "Typed adapter per enabled family and availability challenge; no shell-text parsing or operator-local files; exact family/version/hash match.",
+      "dependsOn": [
+        "Q50–Q55",
+        "Q58–Q59",
+        "W27–W29"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W31",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Prover wallet/input manager",
+      "dependsOnRaw": "W01, W04, W30",
+      "acceptance": "Bounded ADA/collateral/reference inputs, explicit fee funding, no secret leakage, deterministic reservation, conflict recovery. Computes the F04-derived worst-case funding requirement (bonds, collateral, fees, min-Ada) for the complete acceptance sweep; C80 verifies wallet balances against it.",
+      "dependsOn": [
+        "W01",
+        "W04",
+        "W30"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W32",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Durable proof state machine",
+      "dependsOnRaw": "W17, W30–W31",
+      "acceptance": "Detect → persist evidence → init → steps → proof token → removal/slashing → terminal verification, with idempotent journal transitions.",
+      "dependsOn": [
+        "W17",
+        "W30–W31"
+      ],
+      "size": "L",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W33",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Submission reconciliation",
+      "dependsOnRaw": "W10–W13, W32",
+      "acceptance": "Handles submitted/not-recorded, configured L1-source timeout, ambiguous confirmation, rollback, stale UTxO, fee bump/rebuild, and restart without duplicate unsafe action.",
+      "dependsOn": [
+        "W10–W13",
+        "W32"
+      ],
+      "size": "L",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W34",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Deadline escalation",
+      "dependsOnRaw": "W04, W29–W33",
+      "acceptance": "Alerts/retries/escalates before maturity; cannot report healthy while proof or DA deadline is unsafe.",
+      "dependsOn": [
+        "W04",
+        "W29–W33"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W35",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Concurrent topology removal",
+      "dependsOnRaw": "Q52, W14, W17, W32–W34",
+      "acceptance": "Refetch after confirmation; handles concurrent append/merge, descendants, rotated operators, stale references, and verifies corrected queue.",
+      "dependsOn": [
+        "Q52",
+        "W14",
+        "W17",
+        "W32–W34"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W36",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Settlement-claim disproof actuation",
+      "dependsOnRaw": "W16–W17, W30–W34",
+      "acceptance": "Detects false claims, completes disproof/slash, and verifies settlement state.",
+      "dependsOn": [
+        "W16–W17",
+        "W30–W34"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W37",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Offline deterministic replay",
+      "dependsOnRaw": "W21–W29",
+      "acceptance": "Given manifest + stored/public bundle + L1 snapshots, reproduces byte-identical decision, roots, violation, family, and proof-input digest without a live node.",
+      "dependsOn": [
+        "W21–W29"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W38",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "API, metrics, and alerts",
+      "dependsOnRaw": "W03–W37",
+      "acceptance": "Read-only status/diagnostics; queued age, verification/DA latency, deadlines, proof steps, events, L1-source freshness; alerts listed in watcher architecture; bounded/paginated and secret-safe.",
+      "dependsOn": [
+        "W03–W37"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W39",
+      "section": "10.4 Autonomous actuation and recovery",
+      "title": "Graceful operations",
+      "dependsOnRaw": "W03–W38",
+      "acceptance": "Readiness differs from liveness; stop admission/actuation safely; close resources; preserve journal; restart resumes; DB deletion is not normal recovery.",
+      "dependsOn": [
+        "W03–W38"
+      ],
+      "size": "S",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W40",
+      "section": "10.5 Watcher acceptance",
+      "title": "Unit/property/fuzz suite",
+      "dependsOnRaw": "W00–W39",
+      "acceptance": "Codec, state machine, classifier totality, configured L1-source inconsistency (including external-provider disagreement), rollback, malformed DA, proof mutation, restart, and valid-block no-proof properties. Property/fuzz runs are seed-recorded and time-bounded so failures reproduce deterministically.",
+      "dependsOn": [
+        "W00–W39"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W41",
+      "section": "10.5 Watcher acceptance",
+      "title": "Multi-process local integration",
+      "dependsOnRaw": "W20–W40",
+      "acceptance": "Exercises the configured L1-source mode, DA peers, watcher, and proof submitter with exact process/network boundaries and no shared private files. Local-node mode uses one watcher-operated node plus its aligned query/index services; external-provider mode uses independent provider fixtures.",
+      "dependsOn": [
+        "W20–W40"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W42",
+      "section": "10.5 Watcher acceptance",
+      "title": "Read-only clean replay corpus",
+      "dependsOnRaw": "W21–W41",
+      "acceptance": "Valid, invalid, forced, event, DA, script, and maximum-capability blocks reproduce expected decisions from public artifacts. Reuse the C72 boundary corpus and Q-family fixtures wherever applicable instead of authoring new blocks.",
+      "dependsOn": [
+        "W21–W41"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W43",
+      "section": "10.5 Watcher acceptance",
+      "title": "Emulator autonomous correction",
+      "dependsOnRaw": "QG2, W30–W42",
+      "acceptance": "Watcher independently detects and completes every launch-scope family and unavailable-data timeout through corrected state without manual proof steps. It may target the same emulator deployment and fixture set as Q56: independence constrains the watcher's inputs (public data only), not the deployment under test.",
+      "dependsOn": [
+        "QG2",
+        "W30–W42"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W44",
+      "section": "10.5 Watcher acceptance",
+      "title": "Crash/rollback matrix",
+      "dependsOnRaw": "W32–W43",
+      "acceptance": "Crash before/after every submit/confirm/journal transition plus L1 rollback/configured-source inconsistency; no double submit, lost evidence, false verified state, or stuck unrecoverable workflow.",
+      "dependsOn": [
+        "W32–W43"
+      ],
+      "size": "XL",
+      "risk": "high",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "WG1",
+      "section": "10.5 Watcher acceptance",
+      "title": "Local watcher gate",
+      "dependsOnRaw": "W40–W44",
+      "acceptance": "Watcher is independent, deterministic, complete for every enabled family locally, restart/rollback safe, observable, and ready for final deployment.",
+      "dependsOn": [
+        "W40–W44"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W45",
+      "section": "10.5 Watcher acceptance",
+      "title": "Target-testnet unattended drill",
+      "dependsOnRaw": "C81, QG3, WG1",
+      "acceptance": "From public L1+DA only, watcher detects invalid committed blocks and unavailable-data timeout, proves/corrects them, observes slash/reward, and resumes verification.",
+      "dependsOn": [
+        "C81",
+        "QG3",
+        "WG1"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "W46",
+      "section": "10.5 Watcher acceptance",
+      "title": "Operational/security documentation",
+      "dependsOnRaw": "W38–W45",
+      "acceptance": "Deployment, keys, funding, recovery, alerts, replay, incident response, supported families, limits, trust assumptions, and exact runbook.",
+      "dependsOn": [
+        "W38–W45"
+      ],
+      "size": "L",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    },
+    {
+      "id": "WG2",
+      "section": "10.5 Watcher acceptance",
+      "title": "Live watcher gate",
+      "dependsOnRaw": "WG1, W45–W46",
+      "acceptance": "Production watcher is independent, deterministic, complete for every enabled family, restart/rollback safe, observable, and proven against the fresh final target-testnet deployment.",
+      "dependsOn": [
+        "WG1",
+        "W45–W46"
+      ],
+      "size": "M",
+      "risk": "medium",
+      "detailStatus": "PENDING_ASSIGNMENT"
+    }
+  ],
+  "summary": {
+    "tasks": 186,
+    "ready": 4,
+    "bySize": {
+      "S": 12,
+      "M": 92,
+      "L": 72,
+      "XL": 10
+    }
+  }
+}
