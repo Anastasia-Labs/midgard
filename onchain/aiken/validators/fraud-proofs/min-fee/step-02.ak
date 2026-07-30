@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/min_fee/step_02.{Args, Datum, SpendRedeemer, State}
-use midgard/ledger_state.{MidgardTxCompact}
+use midgard/fraud_proofs/native_tx/types.{NativeTxCompact}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -74,6 +74,6 @@ validator main(
 }
 
 // TODO: This will need execution traces to calculate it
-fn get_min_transaction_fee(_transaction: MidgardTxCompact) {
+fn get_min_transaction_fee(_transaction: NativeTxCompact) {
   0
 }

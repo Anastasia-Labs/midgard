@@ -2,7 +2,7 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
+use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_signature/step_02.{
@@ -65,10 +65,11 @@ validator main(
             })
           = m_input_state_data
 
-        // 2. Fetch the required signer hash from the verified signer list.
+        // 2. Fetch the required signer hash from the verified signer list. The
+        //    preimage is the canonical native byte-list collection under the
+        //    consensus-ordered required-signers field (4).
         expect
-          required_signers_preimage
-            |> verify_hash_32(verified_required_signers_hash)
+          bounded_collection_v1.from_items(4, required_signers_preimage) == verified_required_signers_hash
         let missing_required_signer_hash = required_signers_preimage
           |> list.expect_at(bad_required_signer_hash_index)
 

@@ -1,9 +1,9 @@
 use cardano/assets.{Lovelace}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardTxCompact}
+use midgard/fraud_proofs/native_tx/types.{NativeTxCompact}
 
 pub type State {
-  bad_tx: MidgardTxCompact,
+  bad_tx: NativeTxCompact,
   bad_tx_body_fee: Lovelace,
 }
 

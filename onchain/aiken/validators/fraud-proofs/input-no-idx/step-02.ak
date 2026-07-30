@@ -2,13 +2,14 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
+use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/input_no_idx/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/input_no_idx/step_03
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
@@ -61,20 +62,24 @@ validator main(
         expect Some(State { verified_tx_inputs_hash }) = m_input_state_data
 
         // 2. Provided inputs preimage must correspond correctly to the passed
-        //    along hash.
-        expect inputs_preimage |> verify_hash_32(verified_tx_inputs_hash)
+        //    along hash. Each item is the node's canonical `TransactionInput`
+        //    CBOR under the consensus-ordered spend-inputs field (0), not
+        //    `cbor.serialise` of an Aiken `OutputReference` list.
+        expect
+          bounded_collection_v1.from_items(
+            0,
+            list.map(inputs_preimage, encode_midgard_tx_input),
+          ) == verified_tx_inputs_hash
 
-        let bad_inputs_outref = inputs_preimage
-          |> list.expect_at(bad_inputs_index)
+        let bad_input = inputs_preimage |> list.expect_at(bad_inputs_index)
 
-        // 3. The fetched inputs tx id and output index must be passed to the
+        // 3. The fetched input's tx id and output index must be passed to the
         //    next step so that its producing transaction can be verified
         //    against the included hash.
         expect output_script_hash == step_03_validator_script_hash
-        let OutputReference { transaction_id, output_index } = bad_inputs_outref
         let expected_output_state: Data = step_03.State {
-          bad_input_tx_id: transaction_id,
-          bad_input_output_index: output_index,
+          bad_input_tx_id: bad_input.tx_id,
+          bad_input_output_index: bad_input.output_index,
         }
         expect output_state_data == expected_output_state
 

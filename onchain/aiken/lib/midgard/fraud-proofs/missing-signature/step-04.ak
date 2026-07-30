@@ -1,6 +1,7 @@
 use aiken/crypto.{VerificationKey}
 use midgard/computation_thread as ct
-use midgard/ledger_state.{AddressWits, AddressWitsHash}
+use midgard/fraud_proofs/native_tx/types.{MidgardAddressWitness}
+use midgard/ledger_state.{AddressWitsHash}
 
 pub type State {
   missing_required_signer_vkey: VerificationKey,
@@ -14,7 +15,8 @@ pub type Args {
   input_index: Int,
   output_index: Int,
   fraud_proof_mint_redeemer_index: Int,
-  addr_tx_wits_preimage: AddressWits,
+  /// Canonical native address-witness collection preimage.
+  addr_tx_wits_preimage: List<MidgardAddressWitness>,
 }
 
 pub type SpendRedeemer =

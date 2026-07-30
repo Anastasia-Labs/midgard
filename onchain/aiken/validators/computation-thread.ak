@@ -1,14 +1,18 @@
 use aiken/builtin
+use aiken/cbor
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Output, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Transaction, placeholder,
+}
 use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
 }
 use midgard/fraud_proof_catalogue as catalogue
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/hub_oracle as hub
 use midgard/state_queue
 
@@ -153,4 +157,374 @@ validator mint(
   else(_) {
     fail
   }
+}
+
+// ## Q01 shared-machinery selectors (thread lifecycle entry/exit)
+
+const test_catalogue_root =
+  #"1212121212121212121212121212121212121212121212121212121212121212"
+
+const test_other_policy =
+  #"99999999999999999999999999999999999999999999999999999999"
+
+fn test_block() -> fixture.NativeBlockFixtureV1 {
+  fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+}
+
+fn membership_attestation(
+  attested_category: ByteArray,
+) -> Pairs<ScriptPurpose, Redeemer> {
+  [
+    fixture.phas_withdraw_redeemer_entry(
+      test_catalogue_root,
+      cbor.serialise(fixture.fraud_category_id),
+      cbor.serialise(attested_category),
+    ),
+  ]
+}
+
+fn standard_init_references(block: fixture.NativeBlockFixtureV1) -> List<Input> {
+  [
+    fixture.catalogue_reference_input(test_catalogue_root),
+    fixture.hub_reference_input(),
+    fixture.state_queue_reference_input(block),
+  ]
+}
+
+fn init_redeemer() -> MintRedeemer {
+  Init {
+    first_step_output_index: 0,
+    fraud_category_id: fixture.fraud_category_id,
+    fraud_category: fixture.step_script_hash,
+    fraud_category_membership_proof: [],
+    fraud_proof_catalogue_ref_input_index: 0,
+    inclusion_proof_script_redeemer_index: 0,
+    hub_oracle_ref_input_index: 1,
+    fraudulent_block_ref_input_index: 2,
+  }
+}
+
+fn run_init(
+  first_step_hash: ByteArray,
+  first_step_datum_data: Data,
+  output_value: assets.Value,
+  minted: assets.Value,
+  signatories: List<ByteArray>,
+  references: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    init_redeemer(),
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      outputs: [
+        Output {
+          address: address.from_script(first_step_hash),
+          value: output_value,
+          datum: InlineDatum(first_step_datum_data),
+          reference_script: None,
+        },
+      ],
+      reference_inputs: references,
+      redeemers,
+      mint: minted,
+      extra_signatories: signatories,
+    },
+  )
+}
+
+fn bare_step_datum_data() -> Data {
+  let step_datum: StepDatum<Data> = StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: None,
+  }
+  let step_datum_data: Data = step_datum
+  step_datum_data
+}
+
+fn happy_init(
+  first_step_hash: ByteArray,
+  first_step_datum_data: Data,
+  minted: assets.Value,
+  signatories: List<ByteArray>,
+  references: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  let block = test_block()
+  let asset_name = fixture.ct_token_asset_name(block)
+  run_init(
+    first_step_hash,
+    first_step_datum_data,
+    fixture.ct_token_value(asset_name),
+    minted,
+    signatories,
+    references,
+    redeemers,
+  )
+}
+
+fn single_thread_mint() -> assets.Value {
+  assets.from_asset(
+    fixture.computation_thread_policy_id,
+    fixture.ct_token_asset_name(test_block()),
+    1,
+  )
+}
+
+/// Lifecycle positive: an init backed by the authentic catalogue, hub oracle,
+/// and registered fraudulent block mints exactly one thread token into a
+/// stateless first-step UTxO at the proven fraud-category script.
+test ct_init_accepts_authentic_catalogue_backed_thread() {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// No-skip negative: the thread cannot start at any script other than the
+/// catalogued first step of the proven fraud category.
+test ct_init_rejects_first_step_not_at_proven_category() fail {
+  happy_init(
+    fixture.next_step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// No-skip negative: a thread cannot be born with pre-loaded step state; the
+/// first-step datum must carry `data: None`.
+test ct_init_rejects_preloaded_step_state() fail {
+  let preloaded_state: Data = "smuggled-mid-thread-state"
+  let step_datum: StepDatum<Data> = StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(preloaded_state),
+  }
+  let step_datum_data: Data = step_datum
+  happy_init(
+    fixture.step_script_hash,
+    step_datum_data,
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Lifecycle negative: the declared fraud prover must sign the init.
+test ct_init_rejects_missing_prover_signature() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Duplicate-init negative: minting the same thread token twice in one
+/// transaction rejects.
+test ct_init_rejects_parallel_thread_mint_in_one_tx() fail {
+  let block = test_block()
+  let asset_name = fixture.ct_token_asset_name(block)
+  run_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    assets.from_lovelace(2_000_000)
+      |> assets.add(fixture.computation_thread_policy_id, asset_name, 2),
+    assets.from_asset(fixture.computation_thread_policy_id, asset_name, 2),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(block),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Duplicate-init negative: piggybacking a second thread token (any other
+/// asset name) onto one init rejects.
+test ct_init_rejects_second_thread_token_in_one_tx() fail {
+  let extra_minted = single_thread_mint()
+    |> assets.add(
+        fixture.computation_thread_policy_id,
+        #"00000002" |> bytearray.concat(test_block().header_hash),
+        1,
+      )
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    extra_minted,
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Catalogue-immutability negative: a catalogue reference authenticated by a
+/// foreign NFT policy (a substituted catalogue) rejects.
+test ct_init_rejects_substituted_catalogue_reference() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    [
+      fixture.catalogue_reference_input_with_nft_policy(
+        test_catalogue_root,
+        test_other_policy,
+      ),
+      fixture.hub_reference_input(),
+      fixture.state_queue_reference_input(test_block()),
+    ],
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Catalogue-immutability negative: a fraud category whose catalogue
+/// attestation names a different first-step hash rejects.
+test ct_init_rejects_uncatalogued_fraud_category() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    membership_attestation(test_other_policy),
+  )
+}
+
+/// Catalogue-immutability negative: an init with no catalogue membership
+/// attestation at all rejects.
+test ct_init_rejects_absent_membership_attestation() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    standard_init_references(test_block()),
+    [],
+  )
+}
+
+/// Reference-input-discipline negative: a hub oracle authenticated by a
+/// foreign NFT policy rejects.
+test ct_init_rejects_substituted_hub_oracle() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    [
+      fixture.catalogue_reference_input(test_catalogue_root),
+      fixture.hub_reference_input_with_nft_policy(test_other_policy),
+      fixture.state_queue_reference_input(test_block()),
+    ],
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Reference-input-discipline negative: a challenged block outside the
+/// hub-registered state queue (foreign node policy) rejects.
+test ct_init_rejects_unregistered_block_reference() fail {
+  happy_init(
+    fixture.step_script_hash,
+    bare_step_datum_data(),
+    single_thread_mint(),
+    [fixture.fraud_prover_key_hash],
+    [
+      fixture.catalogue_reference_input(test_catalogue_root),
+      fixture.hub_reference_input(),
+      fixture.state_queue_reference_input_with_policy(
+        test_block(),
+        test_other_policy,
+      ),
+    ],
+    membership_attestation(fixture.step_script_hash),
+  )
+}
+
+/// Token-coupling positive: `Success` burns the thread token (the fraud-proof
+/// mint in the same transaction carries the terminal record).
+test ct_success_accepts_thread_token_burn() {
+  let asset_name = fixture.ct_token_asset_name(test_block())
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    Success { burning_token_asset_name: asset_name },
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      mint: assets.from_asset(
+        fixture.computation_thread_policy_id,
+        asset_name,
+        -1,
+      )
+        |> assets.add(fixture.fraud_proof_policy_id, asset_name, 1),
+    },
+  )
+}
+
+/// Token-coupling negative: `Success` without actually burning the named
+/// thread token rejects.
+test ct_success_rejects_missing_thread_token_burn() fail {
+  let asset_name = fixture.ct_token_asset_name(test_block())
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    Success { burning_token_asset_name: asset_name },
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      mint: assets.from_asset(fixture.fraud_proof_policy_id, asset_name, 1),
+    },
+  )
+}
+
+/// Token-coupling positive: cancellation burns exactly the thread token and
+/// nothing else.
+test ct_burn_for_cancellation_accepts_exact_burn() {
+  let asset_name = fixture.ct_token_asset_name(test_block())
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    BurnForCancellation { burning_token_asset_name: asset_name },
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      mint: assets.from_asset(
+        fixture.computation_thread_policy_id,
+        asset_name,
+        -1,
+      ),
+    },
+  )
+}
+
+/// Token-coupling negative: cancellation cannot mint or burn anything beyond
+/// the thread token.
+test ct_burn_for_cancellation_rejects_extra_mint() fail {
+  let asset_name = fixture.ct_token_asset_name(test_block())
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    BurnForCancellation { burning_token_asset_name: asset_name },
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      mint: assets.from_asset(
+        fixture.computation_thread_policy_id,
+        asset_name,
+        -1,
+      )
+        |> assets.add(test_other_policy, "extra", 1),
+    },
+  )
 }

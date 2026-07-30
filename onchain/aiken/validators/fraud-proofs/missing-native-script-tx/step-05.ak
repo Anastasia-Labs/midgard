@@ -7,7 +7,10 @@ use midgard/fraud_proofs/missing_native_script_tx/step_05.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/missing_native_script_tx/step_06
-use midgard/ledger_state
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardVersionedScript, NativeCardanoScript,
+}
+use midgard/script_proof_v1
 
 validator main(
   step_06_validator_script_hash: ScriptHash,
@@ -63,10 +66,15 @@ validator main(
             })
           = m_input_state_data
 
-        // 2. The missing script hash must correspond to a native script.
+        // 2. The missing script hash must correspond to a native Cardano
+        //    script under the canonical native versioned-script hash
+        //    (language tag 0 prepended to the script bytes).
         expect
-          expected_missing_script_hash == ledger_state.hash_midgard_script(
-            ledger_state.Timelock { script: missing_native_script_bytes },
+          expected_missing_script_hash == script_proof_v1.versioned_script_hash(
+            MidgardVersionedScript {
+              language: NativeCardanoScript,
+              script_bytes: missing_native_script_bytes,
+            },
           )
 
         // 3. The UTxO must be produced at next step's script hash with a proper

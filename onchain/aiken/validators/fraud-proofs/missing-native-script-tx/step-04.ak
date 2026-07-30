@@ -1,15 +1,16 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
+use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/missing_native_script_tx/step_04.{
   Args, Datum, SpendRedeemer, State,
 }
 use midgard/fraud_proofs/missing_native_script_tx/step_05
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
+use midgard/fraud_proofs/native_tx/types.{ScriptCredential}
 
 validator main(
   step_05_validator_script_hash: ScriptHash,
@@ -62,15 +63,19 @@ validator main(
             })
           = m_input_state_data
 
-        // 2. Provided outputs preimage must match the producing transaction
-        //    outputs hash.
-        expect outputs_preimage |> verify_hash_32(producing_tx_outputs_hash)
+        // 2. Provided outputs preimage must match the producing transaction's
+        //    native outputs hash (consensus field 2, canonical per-item CBOR).
+        expect
+          bounded_collection_v1.from_items(
+            2,
+            list.map(outputs_preimage, encode_midgard_tx_output),
+          ) == producing_tx_outputs_hash
         let output_with_missing_script = outputs_preimage
           |> list.expect_at(bad_input_output_index)
 
         // 3. The spent output must be locked by a script credential. The next
         //    step proves this script hash corresponds to a native script.
-        expect Script(expected_missing_script_hash) = output_with_missing_script.address
+        expect ScriptCredential(expected_missing_script_hash) = output_with_missing_script.address.payment_credential
 
         // 4. The UTxO must be produced at next step's script hash with a proper
         //    state.

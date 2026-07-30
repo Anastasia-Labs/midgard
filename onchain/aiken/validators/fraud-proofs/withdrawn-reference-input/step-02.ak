@@ -2,9 +2,10 @@ use aiken/collection/list
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils
+use midgard/bounded_collection_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/withdrawn_reference_input/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -59,23 +60,31 @@ validator main(
         )
 
         expect
-            Some(State { bad_tx_reference_inputs_hash, blocks_withdrawals_root })
+            Some(State {
+              bad_tx_reference_inputs_hash,
+              blocks_withdrawals_root,
+              blocks_withdrawal_count,
+            })
           = m_input_state_data
 
         // 2. Target reference input must be included in the verified
-        //    transaction reference inputs.
+        //    transaction's native reference-inputs collection (consensus
+        //    field 1, canonical per-item CBOR).
         expect
-          reference_inputs_preimage
-            |> utils.verify_hash_32(bad_tx_reference_inputs_hash)
-        let missing_reference_input_outref = reference_inputs_preimage
+          bounded_collection_v1.from_items(
+            1,
+            list.map(reference_inputs_preimage, encode_midgard_tx_input),
+          ) == bad_tx_reference_inputs_hash
+        let missing_reference_input = reference_inputs_preimage
           |> list.expect_at(bad_reference_input_index)
 
-        // 3. Target reference input, plus the withdrawals root, must be passed
-        //    to the next step.
+        // 3. Target reference input, plus the counted withdrawals commitment,
+        //    must be passed to the next step.
         expect output_script_hash == step_03_validator_script_hash
         let expected_output_state: Data = step_03.State {
-          missing_reference_input_outref,
+          missing_reference_input,
           blocks_withdrawals_root,
+          blocks_withdrawal_count,
         }
         expect output_state_data == expected_output_state
 
