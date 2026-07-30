@@ -12,9 +12,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install evidence-verifier dependencies
+        run: >-
+          pnpm --dir demo install --frozen-lockfile
+          --filter midgard-demo --ignore-scripts
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
       - name: Verify canonical watcher dependency map and staged-tree identity

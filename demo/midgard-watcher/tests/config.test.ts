@@ -142,6 +142,7 @@ describe("strict watcher configuration", () => {
             beforeFinality: "rewind",
             afterFinality: "quarantine",
             maxDepth: 15,
+            postFinalityRecoveryMaxDepth: 2_160,
           },
         },
       },
@@ -271,6 +272,10 @@ describe("strict watcher configuration", () => {
     expect(parseWatcherConfig(maximum).l1.maxConcurrency).toBe(
       WATCHER_CONFIG_BOUNDS.concurrency.max,
     );
+    expect(
+      parseWatcherConfig(maximum).l1.finality.rollback
+        .postFinalityRecoveryMaxDepth,
+    ).toBe(WATCHER_CONFIG_BOUNDS.postFinalityRecoveryDepth.max);
   });
 
   it.each([
@@ -351,6 +356,19 @@ describe("strict watcher configuration", () => {
       "out_of_bounds",
       "$.l1.finality.rollback.maxDepth",
     );
+  });
+
+  it("keeps pending rewind depth distinct from the Cardano-k post-finality recovery cap", () => {
+    const input = validConfig();
+    input.l1.finality.depth = 10;
+    input.l1.finality.rollback.maxDepth = 4;
+
+    expect(parseWatcherConfig(input).l1.finality.rollback).toEqual({
+      beforeFinality: "rewind",
+      afterFinality: "quarantine",
+      maxDepth: 4,
+      postFinalityRecoveryMaxDepth: 2_160,
+    });
   });
 
   it("requires deadlines to cover their corresponding request timeout", () => {

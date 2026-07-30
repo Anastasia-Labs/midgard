@@ -279,6 +279,7 @@ const localAgreement = (
   depth: string,
   options: ObservationOptions = {},
   includeAlignedQuery = false,
+  includeQueryObservation = includeAlignedQuery,
 ) => {
   const normalized = (
     surface: "chain_sync" | "ogmios",
@@ -312,7 +313,7 @@ const localAgreement = (
     },
     [
       normalized("chain_sync"),
-      ...(includeAlignedQuery ? [normalized("ogmios")] : []),
+      ...(includeQueryObservation ? [normalized("ogmios")] : []),
     ],
   );
 };
@@ -371,6 +372,7 @@ describe("canonical release-bound watcher finality", () => {
       ],
       confirmationDepth: "3",
       maximumPreFinalityRollbackDepth: "3",
+      maximumPostFinalityRecoveryDepth: "2160",
       beforeFinalityRollback: "rewind",
       afterFinalityRollback: "quarantine",
       releaseEvidenceDigest: hex32("22"),
@@ -382,6 +384,25 @@ describe("canonical release-bound watcher finality", () => {
     expect(value.policyDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
     expect(Object.isFrozen(value)).toBe(true);
+    expect(
+      parseWatcherFinalityPolicyV1({
+        ...value,
+        maximumPostFinalityRecoveryDepth: "2161",
+      }),
+    ).toBeNull();
+    const { policyDigest: _policyDigest, ...narrowedRecoveryPolicyCanonical } =
+      {
+        ...value,
+        maximumPostFinalityRecoveryDepth: "2159",
+      };
+    expect(
+      parseWatcherFinalityPolicyV1({
+        ...narrowedRecoveryPolicyCanonical,
+        policyDigest: createHash("sha256")
+          .update(JSON.stringify(narrowedRecoveryPolicyCanonical), "utf8")
+          .digest("hex"),
+      }),
+    ).toBeNull();
 
     const changedEndpointConfig = config();
     changedEndpointConfig.l1.source.providers[0]!.endpoint =
@@ -851,7 +872,7 @@ describe("canonical release-bound watcher finality", () => {
     });
   });
 
-  it("turns post-finality depth rollback into a durable quarantine incident", () => {
+  it("holds same-point post-finality depth regression without an incident and resumes on recovered depth", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
     const rolledBack = evaluateWatcherFinalityV1(
@@ -861,26 +882,29 @@ describe("canonical release-bound watcher finality", () => {
     );
 
     expect(rolledBack).toMatchObject({
-      action: "quarantine_incident",
+      action: "reject",
       protocolDecision: "quarantined",
-      reasonCodes: [
-        "post_finality_depth_regression",
-        "post_finality_contradiction",
-      ],
-      alertCodes: ["watcher_finality_post_finality_incident"],
-      state: {
-        phase: "quarantined",
-        pending: null,
-        finalized: finalized.finalized,
-        incident: {
-          reasonCode: "post_finality_depth_regression",
-        },
-      },
+      reasonCodes: ["post_finality_depth_regression"],
+      alertCodes: ["watcher_finality_input_rejected"],
+      state: finalized,
     });
-    expect(rolledBack.state?.finalized).toEqual(finalized.finalized);
+    expect(rolledBack.state?.phase).toBe("finalized");
+    expect(rolledBack.state?.incident).toBeNull();
+    expect(
+      evaluateWatcherFinalityV1(
+        finalityPolicy,
+        rolledBack.state,
+        agreement("4"),
+      ),
+    ).toMatchObject({
+      action: "duplicate",
+      protocolDecision: "hold",
+      reasonCodes: ["already_finalized"],
+      state: finalized,
+    });
   });
 
-  it("quarantines post-finality point/content changes and W11 quasi-rollbacks", () => {
+  it("opens incidents only for agreed point replacement and keeps same-point content or transient disagreement nonterminal", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
     const point = evaluateWatcherFinalityV1(
@@ -915,14 +939,137 @@ describe("canonical release-bound watcher finality", () => {
     );
 
     expect(point.reasonCodes).toContain("post_finality_point_changed");
-    expect(content.reasonCodes).toContain("post_finality_content_changed");
-    expect(quasiRollback.reasonCodes).toEqual([
-      "provider_result_pending",
-      "post_finality_contradiction",
-    ]);
+    expect(content).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["post_finality_content_changed"],
+      alertCodes: ["watcher_finality_input_rejected"],
+      state: finalized,
+    });
+    expect(quasiRollback).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_result_pending"],
+      alertCodes: ["watcher_finality_input_rejected"],
+      state: finalized,
+    });
     expect(point.state?.finalized).toEqual(finalized.finalized);
-    expect(content.state?.finalized).toEqual(finalized.finalized);
-    expect(quasiRollback.state?.finalized).toEqual(finalized.finalized);
+    expect(content.state).toEqual(finalized);
+    expect(quasiRollback.state).toEqual(finalized);
+    expect(
+      evaluateWatcherFinalityV1(
+        finalityPolicy,
+        quasiRollback.state,
+        agreement("4"),
+      ),
+    ).toMatchObject({
+      action: "duplicate",
+      protocolDecision: "hold",
+      reasonCodes: ["already_finalized"],
+      state: finalized,
+    });
+  });
+
+  it("keeps malformed input, bounded external lag, and local query unavailability transient after finality", () => {
+    const finalityPolicy = policy();
+    const finalized = finalizeAtThreshold(finalityPolicy);
+    const boundedLag = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [
+        observation("provider-a", "a1", { depth: "4" }),
+        observation("provider-b", "b2", {
+          blockHash: hex32("bb"),
+          slot: "1001",
+          blockNo: "101",
+          depth: "0",
+        }),
+      ],
+    );
+    expect(boundedLag).toMatchObject({
+      status: "pending",
+      reasonCodes: ["bounded_provider_lag"],
+    });
+    for (const transient of [new Error("malformed"), boundedLag]) {
+      const held = evaluateWatcherFinalityV1(
+        finalityPolicy,
+        finalized,
+        transient,
+      );
+      expect(held).toMatchObject({
+        action: "reject",
+        protocolDecision: "quarantined",
+        state: finalized,
+      });
+      expect(held.state?.phase).toBe("finalized");
+      expect(held.state?.incident).toBeNull();
+      expect(
+        evaluateWatcherFinalityV1(finalityPolicy, held.state, agreement("4")),
+      ).toMatchObject({
+        action: "duplicate",
+        protocolDecision: "hold",
+        state: finalized,
+      });
+    }
+
+    const localBase = localConfig();
+    const localQueryPolicy = makeWatcherFinalityPolicyV1(
+      {
+        ...localBase,
+        l1: {
+          ...localBase.l1,
+          source: {
+            ...localBase.l1.source,
+            queryServices: [
+              {
+                kind: "ogmios",
+                identity: "cardano-node-a-ogmios",
+                endpoint: "ws://127.0.0.1:1337",
+              },
+            ],
+          },
+        },
+      },
+      deploymentIdentity(),
+    ) as WatcherFinalityPolicyV1;
+    expect(localQueryPolicy).not.toBeNull();
+    const localPending = evaluateWatcherFinalityV1(
+      localQueryPolicy,
+      null,
+      localAgreement("2", {}, true),
+    ).state;
+    const localFinalized = evaluateWatcherFinalityV1(
+      localQueryPolicy,
+      localPending,
+      localAgreement("3", {}, true),
+    ).state as WatcherFinalityStateV1;
+    const unavailable = localAgreement("3", {}, true, false);
+    expect(unavailable).toMatchObject({
+      status: "quarantined",
+      reasonCodes: ["missing_local_query_evidence"],
+    });
+    const held = evaluateWatcherFinalityV1(
+      localQueryPolicy,
+      localFinalized,
+      unavailable,
+    );
+    expect(held).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["provider_result_quarantined"],
+      state: localFinalized,
+    });
+    expect(held.state?.incident).toBeNull();
+    expect(
+      evaluateWatcherFinalityV1(
+        localQueryPolicy,
+        held.state,
+        localAgreement("4", {}, true),
+      ),
+    ).toMatchObject({
+      action: "duplicate",
+      protocolDecision: "hold",
+      state: localFinalized,
+    });
   });
 
   it("rejects stale policy state, deployment, and release bindings", () => {

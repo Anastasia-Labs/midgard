@@ -43,13 +43,21 @@ export const WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-result-v1" as const;
 export const WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION =
   "midgard-watcher-rollback-transition-v1" as const;
+export const WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION =
+  "midgard-watcher-post-finality-recovery-state-v1" as const;
+export const WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION =
+  "midgard-watcher-post-finality-recovery-result-v1" as const;
 export const WATCHER_ROLLBACK_V1_BOUNDS = Object.freeze({
   transitionHistory: 128,
+  postFinalityRecoveryDepth: 2_160n,
 });
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const CANONICAL_NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 const NETWORKS = ["Mainnet", "Preprod", "Preview"] as const;
+const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
+  typeof value === "string" &&
+  NETWORKS.includes(value as (typeof NETWORKS)[number]);
 
 export const WATCHER_ROLLBACK_REASON_CODES_V1 = [
   "rewind_applied",
@@ -187,6 +195,100 @@ export type WatcherRollbackResultV1 = Readonly<{
   nextStore: WatcherDurableStoreV1 | null;
   rollbackState: WatcherRollbackStateV1 | null;
   resultDigest: string;
+}>;
+
+export const WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1 = [
+  "recovery_applied",
+  "duplicate_recovery",
+  "malformed_policy",
+  "malformed_store",
+  "malformed_rollback_state",
+  "rollback_state_store_mismatch",
+  "incident_required",
+  "malformed_recovery_state",
+  "recovery_state_mismatch",
+  "canonical_agreement_required",
+  "recovery_path_malformed",
+  "recovery_path_gap",
+  "common_ancestor_mismatch",
+  "finalized_binding_mismatch",
+  "incident_provenance_mismatch",
+  "recovery_depth_exceeded",
+  "unknown_recovery_target",
+] as const;
+
+export type WatcherPostFinalityRecoveryReasonCodeV1 =
+  (typeof WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1)[number];
+
+export type WatcherPostFinalityRecoveryPathV1 = Readonly<{
+  commonAncestorPointDigest: string;
+  commonAncestorBlockHash: string;
+  commonAncestorBlockNo: string;
+  orphanedFinalizedPointDigest: string;
+  orphanedFinalizedBlockHash: string;
+  replacementTipPointDigest: string;
+  replacementTipBlockHash: string;
+  replacementTipBlockNo: string;
+  rollbackDepth: string;
+  previousConsistencyDigests: readonly string[];
+  replacementConsistencyDigests: readonly string[];
+  pathDigest: string;
+}>;
+
+export type WatcherPostFinalityRecoveryIncidentLifecycleV1 = Readonly<{
+  detectedIncidentDigest: string;
+  detectedReasonCode: WatcherFinalityIncidentV1["reasonCode"];
+  detectedTriggerConsistencyDigest: string | null;
+  detectedFinalityStateDigest: string;
+  detectedStoreDigest: string;
+  status: "recovered";
+  recoveryPathDigest: string;
+  recoveredStoreDigest: string;
+  resumableFinalityStateDigest: string;
+  lifecycleDigest: string;
+}>;
+
+export type WatcherPostFinalityRecoveryStateV1 = Readonly<{
+  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION;
+  policyDigest: string;
+  network: (typeof NETWORKS)[number];
+  releaseEvidenceDigest: string;
+  deploymentMarker: DeploymentMarkerV1;
+  sourceRollbackStateDigest: string;
+  sourceStoreDigest: string;
+  nextStoreDigest: string;
+  path: WatcherPostFinalityRecoveryPathV1;
+  removedRecords: WatcherRollbackRemovedRecordsV1;
+  resumableFinalityState: WatcherFinalityStateV1;
+  incidentLifecycle: WatcherPostFinalityRecoveryIncidentLifecycleV1;
+  stateDigest: string;
+}>;
+
+export type WatcherPostFinalityRecoveryResultV1 = Readonly<{
+  schemaVersion: typeof WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION;
+  action: "rewind_and_replay" | "duplicate_recovery" | "reject";
+  protocolDecision: "resume_replay" | "hold" | "quarantined";
+  reasonCodes: readonly WatcherPostFinalityRecoveryReasonCodeV1[];
+  sourceRevision: string | null;
+  nextRevision: string | null;
+  sourceStoreDigest: string | null;
+  nextStoreDigest: string | null;
+  removedRecords: WatcherRollbackRemovedRecordsV1;
+  nextStore: WatcherDurableStoreV1 | null;
+  resumableFinalityState: WatcherFinalityStateV1 | null;
+  recoveryState: WatcherPostFinalityRecoveryStateV1 | null;
+  resultDigest: string;
+}>;
+
+export type WatcherPostFinalityRecoveryInputV1 = Readonly<{
+  policy: unknown;
+  sourceStore: unknown;
+  currentStore: unknown;
+  quarantinedRollbackState: unknown;
+  rollbackBootstrapState: unknown;
+  previousCanonicalPath: unknown;
+  replacementCanonicalPath: unknown;
+  previousRecoveryState: unknown;
 }>;
 
 type PlainRecord = Record<string, unknown>;
@@ -556,9 +658,6 @@ const parseFinalityTransition = (
     "pending_depth_regression",
     "pending_point_changed",
     "pending_content_changed",
-    "provider_result_pending",
-    "provider_result_quarantined",
-    "post_finality_depth_regression",
     "post_finality_point_changed",
     "post_finality_content_changed",
     "post_finality_contradiction",
@@ -902,13 +1001,7 @@ const parseRollbackIncident = (
   if (
     record === null ||
     record.schemaVersion !== WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION ||
-    ![
-      "provider_result_pending",
-      "provider_result_quarantined",
-      "post_finality_depth_regression",
-      "post_finality_point_changed",
-      "post_finality_content_changed",
-    ].includes(record.reasonCode as string)
+    record.reasonCode !== "post_finality_point_changed"
   ) {
     return null;
   }
@@ -1467,8 +1560,20 @@ const sorted = (values: Iterable<string>): readonly string[] =>
 type PersistedConsistencyEvidence = Readonly<{
   observationIds: ReadonlySet<string>;
   chainPointIds: ReadonlySet<string>;
+  observations: readonly WatcherNormalizedL1BlockV1[];
   consistency: WatcherMultiProviderConsistencyV1;
 }>;
+
+type PersistedObservationIndexEntry = Readonly<{
+  durable: WatcherDurableStoreV1["l1Observations"][number];
+  point: WatcherDurableStoreV1["chainPoints"][number] | null;
+  observation: WatcherNormalizedL1BlockV1;
+}>;
+
+type PersistedObservationIndex = ReadonlyMap<
+  string,
+  PersistedObservationIndexEntry | null
+>;
 
 const decodePersistedObservation = (
   cborHex: string,
@@ -1503,11 +1608,54 @@ const decodePersistedObservation = (
   }
 };
 
+const indexPersistedObservations = (
+  store: WatcherDurableStoreV1,
+): PersistedObservationIndex => {
+  const points = new Map(
+    store.chainPoints.map((point) => [point.chainPointId, point] as const),
+  );
+  const index = new Map<string, PersistedObservationIndexEntry | null>();
+  for (const durable of store.l1Observations) {
+    const observation = decodePersistedObservation(durable.payload.cborHex);
+    if (observation === null) {
+      continue;
+    }
+    const digest = observation.observationDigest;
+    if (index.has(digest)) {
+      index.set(digest, null);
+      continue;
+    }
+    index.set(
+      digest,
+      Object.freeze({
+        durable,
+        point: points.get(observation.chainPoint.chainPointId) ?? null,
+        observation,
+      }),
+    );
+  }
+  return index;
+};
+
 const verifyPersistedConsistencyEvidence = (
   policy: WatcherFinalityPolicyV1,
   store: WatcherDurableStoreV1,
   consistency: WatcherMultiProviderConsistencyV1,
+  persistedIndex: PersistedObservationIndex = indexPersistedObservations(store),
 ): PersistedConsistencyEvidence | null => {
+  const structuralVerification = evaluateWatcherFinalityV1(
+    policy,
+    null,
+    consistency,
+  );
+  if (
+    structuralVerification.action !== "observe_pending" ||
+    structuralVerification.state?.pending === null ||
+    structuralVerification.state?.pending?.lastSeenConsistencyDigest !==
+      consistency.consistencyDigest
+  ) {
+    return null;
+  }
   const evidenceDigests = consistency.observationEvidenceDigests;
   if (
     consistency.sourceMode !== policy.sourceMode ||
@@ -1523,44 +1671,37 @@ const verifyPersistedConsistencyEvidence = (
   ) {
     return null;
   }
-  const requiredDigests = new Set(evidenceDigests);
   const decoded: WatcherNormalizedL1BlockV1[] = [];
   const observationIds = new Set<string>();
   const chainPointIds = new Set<string>();
-  const seenDigests = new Set<string>();
-  for (const durable of store.l1Observations) {
-    const observation = decodePersistedObservation(durable.payload.cborHex);
-    if (
-      observation === null ||
-      !requiredDigests.has(observation.observationDigest)
-    ) {
-      continue;
+  for (const evidenceDigest of evidenceDigests) {
+    const indexed = persistedIndex.get(evidenceDigest);
+    if (indexed === undefined || indexed === null) {
+      return null;
     }
-    const point = store.chainPoints.find(
-      (candidate) =>
-        candidate.chainPointId === observation.chainPoint.chainPointId,
-    );
+    const { durable, observation, point } = indexed;
     if (
       durable.providerId !== observation.provider.providerId ||
       durable.chainPointId !== observation.chainPoint.chainPointId ||
-      point === undefined ||
+      point === null ||
       point.providerId !== observation.provider.providerId ||
       point.blockHash !== observation.chainPoint.blockHash ||
       point.slot !== observation.chainPoint.slot ||
       point.blockNo !== observation.chainPoint.blockNo ||
-      point.depth !== observation.chainPoint.depth ||
-      seenDigests.has(observation.observationDigest)
+      point.depth !== observation.chainPoint.depth
     ) {
       return null;
     }
-    seenDigests.add(observation.observationDigest);
     observationIds.add(durable.observationId);
     chainPointIds.add(durable.chainPointId);
     decoded.push(observation);
   }
   if (
     decoded.length !== evidenceDigests.length ||
-    !sameStrings(sorted(seenDigests), evidenceDigests)
+    !sameStrings(
+      sorted(decoded.map(({ observationDigest }) => observationDigest)),
+      evidenceDigests,
+    )
   ) {
     return null;
   }
@@ -1569,7 +1710,12 @@ const verifyPersistedConsistencyEvidence = (
     decoded,
   );
   return JSON.stringify(recomputed) === JSON.stringify(consistency)
-    ? Object.freeze({ observationIds, chainPointIds, consistency: recomputed })
+    ? Object.freeze({
+        observationIds,
+        chainPointIds,
+        observations: Object.freeze(decoded),
+        consistency: recomputed,
+      })
     : null;
 };
 
@@ -1615,7 +1761,6 @@ const planRewind = (
   const kind = transition.instruction.kind;
   const directInvalidPointIds = new Set<string>();
   const removedPointIds = new Set<string>();
-  const invalidBlockHashes = new Set<string>();
   const pivot =
     BigInt(prior.blockNo) < BigInt(replacement.blockNo)
       ? BigInt(prior.blockNo)
@@ -1632,7 +1777,10 @@ const planRewind = (
     let removePoint = false;
     let invalidateDependents = false;
     if (kind === "pending_point_changed") {
-      removePoint = BigInt(point.blockNo) >= pivot && !isReplacement;
+      removePoint =
+        BigInt(point.blockNo) >= pivot &&
+        !isReplacement &&
+        !replacementEvidence.chainPointIds.has(point.chainPointId);
       invalidateDependents = removePoint;
     } else if (kind === "pending_content_changed") {
       invalidateDependents =
@@ -1657,11 +1805,7 @@ const planRewind = (
     }
     if (invalidateDependents) {
       directInvalidPointIds.add(point.chainPointId);
-      invalidBlockHashes.add(point.blockHash);
     }
-  }
-  if (kind === "pending_point_changed" || kind === "pending_content_changed") {
-    invalidBlockHashes.add(prior.blockHash);
   }
 
   const removedObservationIds = new Set(
@@ -1695,12 +1839,12 @@ const planRewind = (
   );
   const removedStateBlockHashes = new Set(
     store.reconstructedStates
-      .filter((entry) => invalidBlockHashes.has(entry.blockHash))
+      .filter((entry) => directInvalidPointIds.has(entry.chainPointId))
       .map((entry) => entry.blockHash),
   );
   const removedDecisionBlockHashes = new Set(
     store.decisions
-      .filter((entry) => invalidBlockHashes.has(entry.blockHash))
+      .filter((entry) => removedStateBlockHashes.has(entry.blockHash))
       .map((entry) => entry.blockHash),
   );
   const removedFaultIds = new Set(
@@ -2284,6 +2428,818 @@ export const parseWatcherRollbackResultV1 = (
       context.rollbackBootstrapState,
     );
     return JSON.stringify(parsed) === JSON.stringify(expected) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+type VerifiedPostFinalityPath = Readonly<{
+  agreements: readonly NonNullable<
+    WatcherMultiProviderConsistencyV1["agreement"]
+  >[];
+  evidence: readonly PersistedConsistencyEvidence[];
+  consistencyDigests: readonly string[];
+  observationIds: ReadonlySet<string>;
+  chainPointIds: ReadonlySet<string>;
+}>;
+
+const makePostFinalityRecoveryResult = (
+  value: Omit<
+    WatcherPostFinalityRecoveryResultV1,
+    "schemaVersion" | "resultDigest"
+  >,
+): WatcherPostFinalityRecoveryResultV1 => {
+  const canonical = {
+    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
+    action: value.action,
+    protocolDecision: value.protocolDecision,
+    reasonCodes: Object.freeze([...value.reasonCodes]),
+    sourceRevision: value.sourceRevision,
+    nextRevision: value.nextRevision,
+    sourceStoreDigest: value.sourceStoreDigest,
+    nextStoreDigest: value.nextStoreDigest,
+    removedRecords: value.removedRecords,
+    nextStore: value.nextStore,
+    resumableFinalityState: value.resumableFinalityState,
+    recoveryState: value.recoveryState,
+  };
+  return Object.freeze({
+    ...canonical,
+    resultDigest: sha256Canonical(canonical),
+  });
+};
+
+const rejectPostFinalityRecovery = (
+  reason: WatcherPostFinalityRecoveryReasonCodeV1,
+): WatcherPostFinalityRecoveryResultV1 =>
+  makePostFinalityRecoveryResult({
+    action: "reject",
+    protocolDecision: "quarantined",
+    reasonCodes: [reason],
+    sourceRevision: null,
+    nextRevision: null,
+    sourceStoreDigest: null,
+    nextStoreDigest: null,
+    removedRecords: emptyRemovedRecords(),
+    nextStore: null,
+    resumableFinalityState: null,
+    recoveryState: null,
+  });
+
+const verifyPostFinalityPath = (
+  policy: WatcherFinalityPolicyV1,
+  store: WatcherDurableStoreV1,
+  value: unknown,
+  persistedIndex: PersistedObservationIndex,
+): VerifiedPostFinalityPath | WatcherPostFinalityRecoveryReasonCodeV1 => {
+  const inputs = exactArray(value);
+  if (inputs === null || inputs.length < 2) {
+    return "recovery_path_malformed";
+  }
+  if (
+    inputs.length >
+    Number(WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth) + 1
+  ) {
+    return "recovery_depth_exceeded";
+  }
+  const evidence: PersistedConsistencyEvidence[] = [];
+  const agreements: NonNullable<
+    WatcherMultiProviderConsistencyV1["agreement"]
+  >[] = [];
+  for (const input of inputs) {
+    if (
+      exactPlainRecord(input, [
+        "schemaVersion",
+        "status",
+        "protocolDecision",
+        "sourceMode",
+        "configuredNetwork",
+        "configuredSourceDigest",
+        "authorityNodeId",
+        "authorityGenesisIdentitySha256",
+        "chainAuthorityObservationDigest",
+        "queryObservationCount",
+        "observationCount",
+        "independentProviderCount",
+        "externalProviderBindings",
+        "localQueryServiceBindings",
+        "reasonCodes",
+        "alertCodes",
+        "observationEvidenceDigests",
+        "rejectedObservationCount",
+        "agreement",
+        "consistencyDigest",
+      ]) === null
+    ) {
+      return "recovery_path_malformed";
+    }
+    const persisted = verifyPersistedConsistencyEvidence(
+      policy,
+      store,
+      input as WatcherMultiProviderConsistencyV1,
+      persistedIndex,
+    );
+    const consistency = persisted?.consistency;
+    if (
+      persisted === null ||
+      consistency === undefined ||
+      consistency.status !== "agreed" ||
+      consistency.protocolDecision !== "allowed" ||
+      consistency.agreement === null ||
+      (policy.sourceMode === "local_node"
+        ? consistency.independentProviderCount !== 1 ||
+          consistency.authorityNodeId !== policy.authorityNodeId ||
+          consistency.chainAuthorityObservationDigest === null ||
+          consistency.localQueryServiceBindings.length !==
+            policy.localQueryServices.length ||
+          consistency.localQueryServiceBindings.some(
+            ({ observationStatus }) => observationStatus !== "aligned",
+          )
+        : consistency.independentProviderCount < 2 ||
+          consistency.externalProviderBindings.length < 2 ||
+          new Set(
+            consistency.externalProviderBindings.map(
+              ({ operatorIdentitySha256 }) => operatorIdentitySha256,
+            ),
+          ).size !== consistency.externalProviderBindings.length)
+    ) {
+      return "canonical_agreement_required";
+    }
+    evidence.push(persisted);
+    agreements.push(consistency.agreement);
+  }
+  for (let index = 1; index < evidence.length; index += 1) {
+    const previous = agreements[index - 1]!;
+    const current = agreements[index]!;
+    if (
+      BigInt(current.blockNo) !== BigInt(previous.blockNo) + 1n ||
+      BigInt(current.slot) <= BigInt(previous.slot) ||
+      evidence[index]!.observations.some(
+        ({ chainPoint }) =>
+          chainPoint.parentBlockHash !== previous.blockHash ||
+          chainPoint.blockHash !== current.blockHash ||
+          chainPoint.blockNo !== current.blockNo ||
+          chainPoint.slot !== current.slot,
+      )
+    ) {
+      return "recovery_path_gap";
+    }
+  }
+  return Object.freeze({
+    agreements: Object.freeze(agreements),
+    evidence: Object.freeze(evidence),
+    consistencyDigests: Object.freeze(
+      evidence.map(({ consistency }) => consistency.consistencyDigest),
+    ),
+    observationIds: new Set(
+      evidence.flatMap(({ observationIds }) => [...observationIds]),
+    ),
+    chainPointIds: new Set(
+      evidence.flatMap(({ chainPointIds }) => [...chainPointIds]),
+    ),
+  });
+};
+
+const sameAgreementPoint = (
+  left: NonNullable<WatcherMultiProviderConsistencyV1["agreement"]>,
+  right: NonNullable<WatcherMultiProviderConsistencyV1["agreement"]>,
+): boolean =>
+  left.pointDigest === right.pointDigest &&
+  left.blockHash === right.blockHash &&
+  left.slot === right.slot &&
+  left.blockNo === right.blockNo &&
+  left.blockContentDigest === right.blockContentDigest;
+
+const makeRecoveryPath = (
+  previous: VerifiedPostFinalityPath,
+  replacement: VerifiedPostFinalityPath,
+): WatcherPostFinalityRecoveryPathV1 => {
+  const commonAncestor = previous.agreements[0]!;
+  const orphanedFinalized = previous.agreements.at(-1)!;
+  const replacementTip = replacement.agreements.at(-1)!;
+  const canonical = {
+    commonAncestorPointDigest: commonAncestor.pointDigest,
+    commonAncestorBlockHash: commonAncestor.blockHash,
+    commonAncestorBlockNo: commonAncestor.blockNo,
+    orphanedFinalizedPointDigest: orphanedFinalized.pointDigest,
+    orphanedFinalizedBlockHash: orphanedFinalized.blockHash,
+    replacementTipPointDigest: replacementTip.pointDigest,
+    replacementTipBlockHash: replacementTip.blockHash,
+    replacementTipBlockNo: replacementTip.blockNo,
+    rollbackDepth: (
+      BigInt(orphanedFinalized.blockNo) - BigInt(commonAncestor.blockNo)
+    ).toString(),
+    previousConsistencyDigests: previous.consistencyDigests,
+    replacementConsistencyDigests: replacement.consistencyDigests,
+  };
+  return Object.freeze({
+    ...canonical,
+    pathDigest: sha256Canonical(canonical),
+  });
+};
+
+const makeResumableFinalityState = (
+  policy: WatcherFinalityPolicyV1,
+): WatcherFinalityStateV1 => {
+  const canonical = {
+    schemaVersion: "midgard-watcher-finality-state-v1" as const,
+    policyDigest: policy.policyDigest,
+    network: policy.network,
+    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    deploymentMarker: policy.deploymentMarker,
+    phase: "unobserved" as const,
+    pending: null,
+    finalized: null,
+    incident: null,
+  };
+  return Object.freeze({
+    ...canonical,
+    stateDigest: sha256Canonical(canonical),
+  });
+};
+
+const makePostFinalityRecoveryState = (
+  policy: WatcherFinalityPolicyV1,
+  sourceRollbackState: WatcherRollbackStateV1,
+  sourceStoreDigest: string,
+  nextStoreDigest: string,
+  path: WatcherPostFinalityRecoveryPathV1,
+  removedRecords: WatcherRollbackRemovedRecordsV1,
+  resumableFinalityState: WatcherFinalityStateV1,
+): WatcherPostFinalityRecoveryStateV1 => {
+  const detectedIncident = sourceRollbackState.incident!;
+  const lifecycleCanonical = {
+    detectedIncidentDigest: detectedIncident.incidentDigest,
+    detectedReasonCode: detectedIncident.reasonCode,
+    detectedTriggerConsistencyDigest: detectedIncident.triggerConsistencyDigest,
+    detectedFinalityStateDigest: detectedIncident.finalityStateDigest,
+    detectedStoreDigest: sourceStoreDigest,
+    status: "recovered" as const,
+    recoveryPathDigest: path.pathDigest,
+    recoveredStoreDigest: nextStoreDigest,
+    resumableFinalityStateDigest: resumableFinalityState.stateDigest,
+  };
+  const incidentLifecycle = Object.freeze({
+    ...lifecycleCanonical,
+    lifecycleDigest: sha256Canonical(lifecycleCanonical),
+  });
+  const canonical = {
+    schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION,
+    policyDigest: policy.policyDigest,
+    network: policy.network,
+    releaseEvidenceDigest: policy.releaseEvidenceDigest,
+    deploymentMarker: policy.deploymentMarker,
+    sourceRollbackStateDigest: sourceRollbackState.stateDigest,
+    sourceStoreDigest,
+    nextStoreDigest,
+    path,
+    removedRecords,
+    resumableFinalityState,
+    incidentLifecycle,
+  };
+  return Object.freeze({
+    ...canonical,
+    stateDigest: sha256Canonical(canonical),
+  });
+};
+
+const parseRecoveryPath = (
+  value: unknown,
+): WatcherPostFinalityRecoveryPathV1 | null => {
+  const path = exactPlainRecord(value, [
+    "commonAncestorPointDigest",
+    "commonAncestorBlockHash",
+    "commonAncestorBlockNo",
+    "orphanedFinalizedPointDigest",
+    "orphanedFinalizedBlockHash",
+    "replacementTipPointDigest",
+    "replacementTipBlockHash",
+    "replacementTipBlockNo",
+    "rollbackDepth",
+    "previousConsistencyDigests",
+    "replacementConsistencyDigests",
+    "pathDigest",
+  ]);
+  if (
+    path === null ||
+    ![
+      path.commonAncestorPointDigest,
+      path.commonAncestorBlockHash,
+      path.orphanedFinalizedPointDigest,
+      path.orphanedFinalizedBlockHash,
+      path.replacementTipPointDigest,
+      path.replacementTipBlockHash,
+      path.pathDigest,
+    ].every((digest) => typeof digest === "string" && HEX_32.test(digest)) ||
+    ![
+      path.commonAncestorBlockNo,
+      path.replacementTipBlockNo,
+      path.rollbackDepth,
+    ].every(
+      (natural) =>
+        typeof natural === "string" && CANONICAL_NATURAL.test(natural),
+    )
+  ) {
+    return null;
+  }
+  const previousConsistencyDigests = exactUnrestrictedStringArray(
+    path.previousConsistencyDigests,
+  );
+  const replacementConsistencyDigests = exactUnrestrictedStringArray(
+    path.replacementConsistencyDigests,
+  );
+  if (
+    previousConsistencyDigests === null ||
+    replacementConsistencyDigests === null ||
+    previousConsistencyDigests.length < 2 ||
+    replacementConsistencyDigests.length < 2 ||
+    [...previousConsistencyDigests, ...replacementConsistencyDigests].some(
+      (digest) => !HEX_32.test(digest),
+    )
+  ) {
+    return null;
+  }
+  const canonical = {
+    commonAncestorPointDigest: path.commonAncestorPointDigest as string,
+    commonAncestorBlockHash: path.commonAncestorBlockHash as string,
+    commonAncestorBlockNo: path.commonAncestorBlockNo as string,
+    orphanedFinalizedPointDigest: path.orphanedFinalizedPointDigest as string,
+    orphanedFinalizedBlockHash: path.orphanedFinalizedBlockHash as string,
+    replacementTipPointDigest: path.replacementTipPointDigest as string,
+    replacementTipBlockHash: path.replacementTipBlockHash as string,
+    replacementTipBlockNo: path.replacementTipBlockNo as string,
+    rollbackDepth: path.rollbackDepth as string,
+    previousConsistencyDigests: Object.freeze([...previousConsistencyDigests]),
+    replacementConsistencyDigests: Object.freeze([
+      ...replacementConsistencyDigests,
+    ]),
+  };
+  return sha256Canonical(canonical) === path.pathDigest
+    ? Object.freeze({ ...canonical, pathDigest: path.pathDigest as string })
+    : null;
+};
+
+const decodePostFinalityRecoveryState = (
+  value: unknown,
+): WatcherPostFinalityRecoveryStateV1 | null => {
+  try {
+    const state = exactPlainRecord(value, [
+      "schemaVersion",
+      "policyDigest",
+      "network",
+      "releaseEvidenceDigest",
+      "deploymentMarker",
+      "sourceRollbackStateDigest",
+      "sourceStoreDigest",
+      "nextStoreDigest",
+      "path",
+      "removedRecords",
+      "resumableFinalityState",
+      "incidentLifecycle",
+      "stateDigest",
+    ]);
+    if (
+      state === null ||
+      state.schemaVersion !==
+        WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION ||
+      !isNetwork(state.network) ||
+      ![
+        state.policyDigest,
+        state.releaseEvidenceDigest,
+        state.sourceRollbackStateDigest,
+        state.sourceStoreDigest,
+        state.nextStoreDigest,
+        state.stateDigest,
+      ].every((digest) => typeof digest === "string" && HEX_32.test(digest))
+    ) {
+      return null;
+    }
+    const deploymentMarker = marker(state.deploymentMarker);
+    const path = parseRecoveryPath(state.path);
+    const removedRecords = parseRemovedRecords(state.removedRecords);
+    const resumableFinalityState = parseWatcherFinalityStateV1(
+      state.resumableFinalityState,
+    );
+    const lifecycle = exactPlainRecord(state.incidentLifecycle, [
+      "detectedIncidentDigest",
+      "detectedReasonCode",
+      "detectedTriggerConsistencyDigest",
+      "detectedFinalityStateDigest",
+      "detectedStoreDigest",
+      "status",
+      "recoveryPathDigest",
+      "recoveredStoreDigest",
+      "resumableFinalityStateDigest",
+      "lifecycleDigest",
+    ]);
+    if (
+      deploymentMarker === null ||
+      path === null ||
+      removedRecords === null ||
+      resumableFinalityState === null ||
+      lifecycle === null ||
+      lifecycle.status !== "recovered" ||
+      lifecycle.detectedReasonCode !== "post_finality_point_changed" ||
+      !(
+        lifecycle.detectedTriggerConsistencyDigest === null ||
+        (typeof lifecycle.detectedTriggerConsistencyDigest === "string" &&
+          HEX_32.test(lifecycle.detectedTriggerConsistencyDigest))
+      ) ||
+      ![
+        lifecycle.detectedIncidentDigest,
+        lifecycle.detectedFinalityStateDigest,
+        lifecycle.detectedStoreDigest,
+        lifecycle.recoveryPathDigest,
+        lifecycle.recoveredStoreDigest,
+        lifecycle.resumableFinalityStateDigest,
+        lifecycle.lifecycleDigest,
+      ].every((digest) => typeof digest === "string" && HEX_32.test(digest))
+    ) {
+      return null;
+    }
+    const lifecycleCanonical = {
+      detectedIncidentDigest: lifecycle.detectedIncidentDigest as string,
+      detectedReasonCode:
+        lifecycle.detectedReasonCode as WatcherFinalityIncidentV1["reasonCode"],
+      detectedTriggerConsistencyDigest:
+        lifecycle.detectedTriggerConsistencyDigest as string | null,
+      detectedFinalityStateDigest:
+        lifecycle.detectedFinalityStateDigest as string,
+      detectedStoreDigest: lifecycle.detectedStoreDigest as string,
+      status: "recovered" as const,
+      recoveryPathDigest: lifecycle.recoveryPathDigest as string,
+      recoveredStoreDigest: lifecycle.recoveredStoreDigest as string,
+      resumableFinalityStateDigest:
+        lifecycle.resumableFinalityStateDigest as string,
+    };
+    if (
+      sha256Canonical(lifecycleCanonical) !== lifecycle.lifecycleDigest ||
+      lifecycleCanonical.detectedStoreDigest !== state.sourceStoreDigest ||
+      lifecycleCanonical.recoveryPathDigest !== path.pathDigest ||
+      lifecycleCanonical.recoveredStoreDigest !== state.nextStoreDigest ||
+      lifecycleCanonical.resumableFinalityStateDigest !==
+        resumableFinalityState.stateDigest
+    ) {
+      return null;
+    }
+    const canonical = {
+      schemaVersion: WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION,
+      policyDigest: state.policyDigest as string,
+      network: state.network as WatcherPostFinalityRecoveryStateV1["network"],
+      releaseEvidenceDigest: state.releaseEvidenceDigest as string,
+      deploymentMarker,
+      sourceRollbackStateDigest: state.sourceRollbackStateDigest as string,
+      sourceStoreDigest: state.sourceStoreDigest as string,
+      nextStoreDigest: state.nextStoreDigest as string,
+      path,
+      removedRecords,
+      resumableFinalityState,
+      incidentLifecycle: Object.freeze({
+        ...lifecycleCanonical,
+        lifecycleDigest: lifecycle.lifecycleDigest as string,
+      }),
+    };
+    return sha256Canonical(canonical) === state.stateDigest
+      ? Object.freeze({
+          ...canonical,
+          stateDigest: state.stateDigest as string,
+        })
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Resolves a durable post-finality incident only after W10 bytes and W11
+ * decisions prove both sides of the exact common ancestor. The recovery is
+ * one W03 revision: every dependent orphan record is removed together while
+ * canonical replacement evidence remains available for deterministic replay.
+ */
+const evaluateWatcherPostFinalityRecoveryInternalV1 = (
+  input: WatcherPostFinalityRecoveryInputV1,
+): WatcherPostFinalityRecoveryResultV1 => {
+  if (
+    exactPlainRecord(input, [
+      "policy",
+      "sourceStore",
+      "currentStore",
+      "quarantinedRollbackState",
+      "rollbackBootstrapState",
+      "previousCanonicalPath",
+      "replacementCanonicalPath",
+      "previousRecoveryState",
+    ]) === null
+  ) {
+    return rejectPostFinalityRecovery("recovery_path_malformed");
+  }
+  const policy = parseWatcherFinalityPolicyV1(input.policy);
+  if (policy === null) {
+    return rejectPostFinalityRecovery("malformed_policy");
+  }
+  if (
+    BigInt(policy.maximumPostFinalityRecoveryDepth) >
+    WATCHER_ROLLBACK_V1_BOUNDS.postFinalityRecoveryDepth
+  ) {
+    return rejectPostFinalityRecovery("malformed_policy");
+  }
+  let sourceStore: WatcherDurableStoreV1;
+  let currentStore: WatcherDurableStoreV1;
+  try {
+    sourceStore = parseWatcherDurableStoreV1(input.sourceStore);
+    currentStore = parseWatcherDurableStoreV1(input.currentStore);
+  } catch {
+    return rejectPostFinalityRecovery("malformed_store");
+  }
+  if (
+    !sameMarker(sourceStore.deploymentMarker, policy.deploymentMarker) ||
+    !sameMarker(currentStore.deploymentMarker, policy.deploymentMarker)
+  ) {
+    return rejectPostFinalityRecovery("malformed_store");
+  }
+  const sourceStoreDigest = storeDigest(sourceStore);
+  const rollbackState = parseWatcherRollbackStateV1(
+    input.quarantinedRollbackState,
+    {
+      policy,
+      rollbackBootstrapState: input.rollbackBootstrapState,
+      currentStore: sourceStore,
+    },
+  );
+  if (rollbackState === null) {
+    return rejectPostFinalityRecovery("malformed_rollback_state");
+  }
+  if (
+    rollbackState.storeDigest !== sourceStoreDigest ||
+    rollbackState.incident === null
+  ) {
+    return rejectPostFinalityRecovery(
+      rollbackState.incident === null
+        ? "incident_required"
+        : "rollback_state_store_mismatch",
+    );
+  }
+  const persistedIndex = indexPersistedObservations(sourceStore);
+  const previousPath = verifyPostFinalityPath(
+    policy,
+    sourceStore,
+    input.previousCanonicalPath,
+    persistedIndex,
+  );
+  if (typeof previousPath === "string") {
+    return rejectPostFinalityRecovery(previousPath);
+  }
+  const replacementPath = verifyPostFinalityPath(
+    policy,
+    sourceStore,
+    input.replacementCanonicalPath,
+    persistedIndex,
+  );
+  if (typeof replacementPath === "string") {
+    return rejectPostFinalityRecovery(replacementPath);
+  }
+  const commonAncestor = previousPath.agreements[0]!;
+  const replacementAncestor = replacementPath.agreements[0]!;
+  const orphanedFinalized = previousPath.agreements.at(-1)!;
+  const finalizedBinding = rollbackState.incident.finalizedBinding;
+  if (
+    !sameAgreementPoint(commonAncestor, replacementAncestor) ||
+    previousPath.agreements
+      .slice(1)
+      .some((oldPoint) =>
+        replacementPath.agreements
+          .slice(1)
+          .some((newPoint) => oldPoint.blockHash === newPoint.blockHash),
+      )
+  ) {
+    return rejectPostFinalityRecovery("common_ancestor_mismatch");
+  }
+  if (
+    orphanedFinalized.pointDigest !== finalizedBinding.pointDigest ||
+    orphanedFinalized.blockHash !== finalizedBinding.blockHash ||
+    orphanedFinalized.slot !== finalizedBinding.slot ||
+    orphanedFinalized.blockNo !== finalizedBinding.blockNo ||
+    orphanedFinalized.blockContentDigest !==
+      finalizedBinding.blockContentDigest ||
+    previousPath.consistencyDigests.at(-1) !==
+      finalizedBinding.lastSeenConsistencyDigest
+  ) {
+    return rejectPostFinalityRecovery("finalized_binding_mismatch");
+  }
+  if (
+    rollbackState.incident.triggerConsistencyDigest === null ||
+    replacementPath.consistencyDigests.at(-1) !==
+      rollbackState.incident.triggerConsistencyDigest
+  ) {
+    return rejectPostFinalityRecovery("incident_provenance_mismatch");
+  }
+  const rollbackDepth =
+    BigInt(orphanedFinalized.blockNo) - BigInt(commonAncestor.blockNo);
+  if (
+    rollbackDepth <= 0n ||
+    rollbackDepth > BigInt(policy.maximumPostFinalityRecoveryDepth) ||
+    BigInt(replacementPath.agreements.at(-1)!.blockNo) -
+      BigInt(commonAncestor.blockNo) >
+      BigInt(policy.maximumPostFinalityRecoveryDepth)
+  ) {
+    return rejectPostFinalityRecovery("recovery_depth_exceeded");
+  }
+  const path = makeRecoveryPath(previousPath, replacementPath);
+  const previousRecoveryState =
+    input.previousRecoveryState === null
+      ? null
+      : decodePostFinalityRecoveryState(input.previousRecoveryState);
+  if (input.previousRecoveryState !== null && previousRecoveryState === null) {
+    return rejectPostFinalityRecovery("malformed_recovery_state");
+  }
+  if (
+    previousRecoveryState === null &&
+    JSON.stringify(currentStore) !== JSON.stringify(sourceStore)
+  ) {
+    return rejectPostFinalityRecovery("recovery_state_mismatch");
+  }
+  const replacementEvidence: PersistedConsistencyEvidence = Object.freeze({
+    consistency: replacementPath.evidence.at(-1)!.consistency,
+    observations: Object.freeze(
+      replacementPath.evidence.flatMap(({ observations }) => observations),
+    ),
+    observationIds: replacementPath.observationIds,
+    chainPointIds: replacementPath.chainPointIds,
+  });
+  const firstReplacement = replacementPath.agreements[1]!;
+  const syntheticTransition = {
+    previous: {
+      pending: {
+        ...finalizedBinding,
+        blockNo: (BigInt(commonAncestor.blockNo) + 1n).toString(),
+      },
+    },
+    next: {
+      pending: {
+        pointDigest: firstReplacement.pointDigest,
+        blockHash: firstReplacement.blockHash,
+        slot: firstReplacement.slot,
+        blockNo: firstReplacement.blockNo,
+        blockContentDigest: firstReplacement.blockContentDigest,
+        firstSeenConsistencyDigest: replacementPath.consistencyDigests[1]!,
+        lastSeenConsistencyDigest: replacementPath.consistencyDigests[1]!,
+        firstSeenDepth: firstReplacement.minimumDepth,
+        currentDepth: firstReplacement.minimumDepth,
+        visibilityCount: "1",
+      },
+    },
+    instruction: { kind: "pending_point_changed" },
+  } as unknown as Extract<
+    ParsedFinalityTransition,
+    { readonly kind: "rewind" }
+  >;
+  const plan = planRewind(
+    sourceStore,
+    syntheticTransition,
+    replacementEvidence,
+  );
+  if (
+    plan.removed.l1ObservationIds.some((id) =>
+      replacementPath.observationIds.has(id),
+    ) ||
+    plan.removed.chainPointIds.some((id) =>
+      replacementPath.chainPointIds.has(id),
+    )
+  ) {
+    return rejectPostFinalityRecovery("canonical_agreement_required");
+  }
+  if (removedRecordCount(plan.removed) === 0) {
+    return rejectPostFinalityRecovery("unknown_recovery_target");
+  }
+  const nextStore = makeWatcherDurableStoreV1({
+    deploymentMarker: sourceStore.deploymentMarker,
+    revision: (BigInt(sourceStore.revision) + 1n).toString(),
+    records: plan.records,
+  });
+  const nextStoreDigest = storeDigest(nextStore);
+  const resumableFinalityState = makeResumableFinalityState(policy);
+  if (parseWatcherFinalityStateV1(resumableFinalityState, policy) === null) {
+    return rejectPostFinalityRecovery("malformed_policy");
+  }
+  const recoveryState = makePostFinalityRecoveryState(
+    policy,
+    rollbackState,
+    sourceStoreDigest,
+    nextStoreDigest,
+    path,
+    plan.removed,
+    resumableFinalityState,
+  );
+  if (previousRecoveryState !== null) {
+    const currentStoreDigest = storeDigest(currentStore);
+    if (
+      currentStoreDigest !== nextStoreDigest ||
+      JSON.stringify(currentStore) !== JSON.stringify(nextStore) ||
+      JSON.stringify(previousRecoveryState) !== JSON.stringify(recoveryState)
+    ) {
+      return rejectPostFinalityRecovery("recovery_state_mismatch");
+    }
+    return makePostFinalityRecoveryResult({
+      action: "duplicate_recovery",
+      protocolDecision: "hold",
+      reasonCodes: ["duplicate_recovery"],
+      sourceRevision: currentStore.revision,
+      nextRevision: currentStore.revision,
+      sourceStoreDigest: currentStoreDigest,
+      nextStoreDigest: currentStoreDigest,
+      removedRecords: emptyRemovedRecords(),
+      nextStore: currentStore,
+      resumableFinalityState,
+      recoveryState,
+    });
+  }
+  return makePostFinalityRecoveryResult({
+    action: "rewind_and_replay",
+    protocolDecision: "resume_replay",
+    reasonCodes: ["recovery_applied"],
+    sourceRevision: sourceStore.revision,
+    nextRevision: nextStore.revision,
+    sourceStoreDigest,
+    nextStoreDigest,
+    removedRecords: plan.removed,
+    nextStore,
+    resumableFinalityState,
+    recoveryState,
+  });
+};
+
+export const evaluateWatcherPostFinalityRecoveryV1 = (
+  input: WatcherPostFinalityRecoveryInputV1,
+): WatcherPostFinalityRecoveryResultV1 => {
+  try {
+    return evaluateWatcherPostFinalityRecoveryInternalV1(input);
+  } catch {
+    return rejectPostFinalityRecovery("recovery_path_malformed");
+  }
+};
+
+const sameCanonicalStructure = (
+  value: unknown,
+  canonical: unknown,
+  visiting: WeakSet<object> = new WeakSet<object>(),
+  depth = 0,
+): boolean => {
+  if (
+    value === null ||
+    canonical === null ||
+    typeof value !== "object" ||
+    typeof canonical !== "object"
+  ) {
+    return value === canonical;
+  }
+  if (depth > 256 || visiting.has(value)) {
+    return false;
+  }
+  visiting.add(value);
+  try {
+    if (Array.isArray(canonical)) {
+      const members = exactArray(value);
+      return (
+        members !== null &&
+        members.length === canonical.length &&
+        canonical.every((expected, index) =>
+          sameCanonicalStructure(members[index], expected, visiting, depth + 1),
+        )
+      );
+    }
+    if (Array.isArray(value)) {
+      return false;
+    }
+    const canonicalRecord = canonical as Record<string, unknown>;
+    const record = exactPlainRecord(value, Object.keys(canonicalRecord));
+    return (
+      record !== null &&
+      Object.keys(canonicalRecord).every((key) =>
+        sameCanonicalStructure(
+          record[key],
+          canonicalRecord[key],
+          visiting,
+          depth + 1,
+        ),
+      )
+    );
+  } finally {
+    visiting.delete(value);
+  }
+};
+
+/**
+ * Shared W13 trust boundary for W14-W17. Candidate self-hashes are not
+ * authority: the exact recovery input is replayed and only a safe,
+ * byte-equivalent canonical result shape is accepted.
+ */
+export const parseWatcherPostFinalityRecoveryResultV1 = (
+  value: unknown,
+  input: WatcherPostFinalityRecoveryInputV1,
+): WatcherPostFinalityRecoveryResultV1 | null => {
+  try {
+    const expected = evaluateWatcherPostFinalityRecoveryV1(input);
+    return sameCanonicalStructure(value, expected) ? expected : null;
   } catch {
     return null;
   }

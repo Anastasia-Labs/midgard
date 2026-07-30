@@ -41,6 +41,7 @@ import {
   parseWatcherDurableStoreV1,
   watcherDurableStoreBytesSha256,
   type WatcherDurableStoreV1,
+  type WatcherProtocolUtxoV1,
 } from "./durable-store.js";
 import {
   evaluateWatcherFinalityV1,
@@ -61,7 +62,10 @@ import {
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
 } from "./multi-provider-consistency.js";
 import {
+  parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
+  type WatcherPostFinalityRecoveryInputV1,
+  type WatcherPostFinalityRecoveryResultV1,
   type WatcherRollbackResultV1,
   type WatcherRollbackVerificationContextV1,
 } from "./rollback-engine.js";
@@ -324,9 +328,15 @@ export type WatcherStateQueuePublicContextV1 = Readonly<{
   originAuthorities: readonly WatcherStateQueueOriginAuthorityV1[];
   rollbackAuthority: Readonly<{
     result: unknown;
-    context: WatcherRollbackVerificationContextV1;
+    context:
+      | WatcherRollbackVerificationContextV1
+      | WatcherPostFinalityRecoveryInputV1;
   }> | null;
 }>;
+
+export type WatcherStateQueueRollbackResultV1 =
+  | WatcherRollbackResultV1
+  | WatcherPostFinalityRecoveryResultV1;
 
 export type WatcherStateQueueHistoryEntryV1 = Readonly<{
   predecessorStateDigest: string | null;
@@ -339,7 +349,7 @@ export type WatcherStateQueueHistoryEntryV1 = Readonly<{
   snapshot: WatcherStateQueueSnapshotV1;
   observation: WatcherStateQueueObservationV1;
   publicContext: WatcherStateQueuePublicContextV1;
-  rollbackResult: WatcherRollbackResultV1 | null;
+  rollbackResult: WatcherStateQueueRollbackResultV1 | null;
   entryDigest: string;
 }>;
 
@@ -1526,6 +1536,111 @@ const nonProtocolRecordsMatch = (
   sameRecordSet(source.deadlines, next.deadlines) &&
   sameRecordSet(source.correctionResults, next.correctionResults);
 
+type StateQueueOwnedRole =
+  | "state_queue"
+  | "operator_directory"
+  | "hub_oracle"
+  | "proof_thread";
+
+type StateQueueRoleClassification = "owned" | "foreign" | "invalid";
+
+const stateQueueOwnedRole = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  durable: WatcherProtocolUtxoV1,
+): StateQueueOwnedRole | null | undefined => {
+  try {
+    const output = CML.TransactionOutput.from_cbor_hex(durable.output.cborHex);
+    if (output.to_canonical_cbor_hex() !== durable.output.cborHex) {
+      return undefined;
+    }
+    const identities = outputAssets(output).filter(
+      ({ policyId, quantity }) =>
+        quantity === 1n &&
+        [
+          policy.stateQueuePolicyId,
+          policy.schedulerPolicyId,
+          policy.activeOperatorsPolicyId,
+          policy.retiredOperatorsPolicyId,
+          policy.fraudProofPolicyId,
+          policy.daAttestationPolicyId,
+          policy.hubOraclePolicyId,
+        ].includes(policyId),
+    );
+    if (identities.length === 0) {
+      return null;
+    }
+    if (identities.length !== 1) {
+      return undefined;
+    }
+    const identity = identities[0]!;
+    if (identity.policyId === policy.stateQueuePolicyId) {
+      return "state_queue";
+    }
+    if (
+      identity.policyId === policy.schedulerPolicyId ||
+      identity.policyId === policy.activeOperatorsPolicyId ||
+      identity.policyId === policy.retiredOperatorsPolicyId
+    ) {
+      return "operator_directory";
+    }
+    if (
+      identity.policyId === policy.fraudProofPolicyId ||
+      identity.policyId === policy.daAttestationPolicyId
+    ) {
+      return "proof_thread";
+    }
+    return "hub_oracle";
+  } catch {
+    return undefined;
+  }
+};
+
+const classifyStateQueueRole = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  durable: WatcherProtocolUtxoV1,
+): StateQueueRoleClassification => {
+  const derived = stateQueueOwnedRole(policy, durable);
+  return derived === undefined
+    ? "invalid"
+    : derived === null
+      ? "foreign"
+      : durable.role === derived
+        ? "owned"
+        : "invalid";
+};
+
+const stateQueueRolesMatchOutputs = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  store: WatcherDurableStoreV1,
+): boolean =>
+  [...store.protocolUtxos, ...store.spentProtocolUtxos].every(
+    (durable) => classifyStateQueueRole(policy, durable) !== "invalid",
+  );
+
+const stateQueueForeignRecordsPreserved = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  source: WatcherDurableStoreV1,
+  next: WatcherDurableStoreV1,
+): boolean => {
+  const foreign = (records: readonly WatcherProtocolUtxoV1[]) =>
+    records.filter(
+      (durable) => classifyStateQueueRole(policy, durable) === "foreign",
+    );
+  return (
+    same(foreign(source.protocolUtxos), foreign(next.protocolUtxos)) &&
+    same(foreign(source.spentProtocolUtxos), foreign(next.spentProtocolUtxos))
+  );
+};
+
+const stateQueueOwnedRecords = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  store: WatcherDurableStoreV1,
+  spent: boolean,
+): readonly WatcherProtocolUtxoV1[] =>
+  (spent ? store.spentProtocolUtxos : store.protocolUtxos).filter(
+    (durable) => classifyStateQueueRole(policy, durable) === "owned",
+  );
+
 const storeTransitionMatches = (
   source: WatcherDurableStoreV1,
   next: WatcherDurableStoreV1,
@@ -2089,6 +2204,9 @@ const parsePublicContext = (
     store.revision !== observation.durableStoreRevision ||
     !sameMarker(sourceStore.deploymentMarker, policy.deploymentMarker) ||
     !sameMarker(store.deploymentMarker, policy.deploymentMarker) ||
+    !stateQueueRolesMatchOutputs(policy, sourceStore) ||
+    !stateQueueRolesMatchOutputs(policy, store) ||
+    !stateQueueForeignRecordsPreserved(policy, sourceStore, store) ||
     durableObservation === undefined ||
     durableObservation.providerId !== block.provider.providerId ||
     durableObservation.chainPointId !== block.chainPoint.chainPointId ||
@@ -2995,7 +3113,7 @@ const makeEntry = (
   observation: WatcherStateQueueObservationV1,
   verified: VerifiedContext,
   snapshot: WatcherStateQueueSnapshotV1,
-  rollbackResult: WatcherRollbackResultV1 | null,
+  rollbackResult: WatcherStateQueueRollbackResultV1 | null,
 ): WatcherStateQueueHistoryEntryV1 => {
   const canonical = Object.freeze({
     predecessorStateDigest: observation.predecessorStateDigest,
@@ -3133,6 +3251,7 @@ const rejected = (
   });
 
 const rollbackSourceExtends = (
+  policy: WatcherStateQueueIndexerPolicyV1,
   prior: WatcherDurableStoreV1,
   sourceInput: unknown,
 ): WatcherDurableStoreV1 | null => {
@@ -3148,9 +3267,38 @@ const rollbackSourceExtends = (
   const points = new Map(
     source.chainPoints.map((entry) => [entry.chainPointId, entry]),
   );
+  const retainsExactRecords = <T>(
+    priorRecords: readonly T[],
+    sourceRecords: readonly T[],
+    keyOf: (record: T) => string,
+  ): boolean => {
+    const byKey = new Map(sourceRecords.map((entry) => [keyOf(entry), entry]));
+    return priorRecords.every((entry) => same(byKey.get(keyOf(entry)), entry));
+  };
+  const classified = (
+    store: WatcherDurableStoreV1,
+    classification: Exclude<StateQueueRoleClassification, "invalid">,
+    spent: boolean,
+  ) =>
+    (spent ? store.spentProtocolUtxos : store.protocolUtxos).filter(
+      (entry) => classifyStateQueueRole(policy, entry) === classification,
+    );
   return sameMarker(source.deploymentMarker, prior.deploymentMarker) &&
-    same(source.protocolUtxos, prior.protocolUtxos) &&
-    same(source.spentProtocolUtxos, prior.spentProtocolUtxos) &&
+    same(
+      classified(source, "owned", false),
+      classified(prior, "owned", false),
+    ) &&
+    same(classified(source, "owned", true), classified(prior, "owned", true)) &&
+    retainsExactRecords(
+      classified(prior, "foreign", false),
+      classified(source, "foreign", false),
+      (entry) => entry.outRef,
+    ) &&
+    retainsExactRecords(
+      classified(prior, "foreign", true),
+      classified(source, "foreign", true),
+      (entry) => entry.outRef,
+    ) &&
     same(source.daProofInputs, prior.daProofInputs) &&
     same(source.reconstructedStates, prior.reconstructedStates) &&
     same(source.decisions, prior.decisions) &&
@@ -3170,26 +3318,79 @@ const rollbackSourceExtends = (
     : null;
 };
 
+const isPostFinalityRecoveryResult = (
+  result: WatcherStateQueueRollbackResultV1,
+): result is WatcherPostFinalityRecoveryResultV1 =>
+  result.action === "rewind_and_replay" ||
+  result.action === "duplicate_recovery";
+
 const verifiedRollbackBinding = (
+  policy: WatcherStateQueueIndexerPolicyV1,
   priorStore: WatcherDurableStoreV1,
   verified: VerifiedContext,
   observation: WatcherStateQueueObservationV1,
   persistedResult: unknown,
-): WatcherRollbackResultV1 | null => {
+): WatcherStateQueueRollbackResultV1 | null => {
   const authority = verified.context.rollbackAuthority;
-  const result =
-    authority === null
-      ? null
-      : parseWatcherRollbackResultV1(authority.result, authority.context);
-  return result !== null &&
-    same(result, persistedResult) &&
-    (result.action === "apply_rewind" ||
-      result.action === "duplicate_rewind") &&
-    result.nextStore !== null &&
-    same(result.nextStore, verified.store) &&
-    result.nextStoreDigest === observation.durableStoreDigest &&
-    rollbackSourceExtends(priorStore, authority?.context.sourceStore) !== null
-    ? result
+  if (authority === null) {
+    return null;
+  }
+  const rollbackResult = parseWatcherRollbackResultV1(
+    authority.result,
+    authority.context as WatcherRollbackVerificationContextV1,
+  );
+  const recoveryResult =
+    rollbackResult === null
+      ? parseWatcherPostFinalityRecoveryResultV1(
+          authority.result,
+          authority.context as WatcherPostFinalityRecoveryInputV1,
+        )
+      : null;
+  const result = rollbackResult ?? recoveryResult;
+  if (
+    result === null ||
+    !same(result, persistedResult) ||
+    result.nextStore === null ||
+    !same(result.nextStore, verified.store) ||
+    result.nextStoreDigest !== observation.durableStoreDigest ||
+    rollbackSourceExtends(policy, priorStore, authority.context.sourceStore) ===
+      null
+  ) {
+    return null;
+  }
+  if (rollbackResult !== null) {
+    return rollbackResult.action === "apply_rewind" ||
+      rollbackResult.action === "duplicate_rewind"
+      ? rollbackResult
+      : null;
+  }
+  const finalityPolicy = parseWatcherFinalityPolicyV1(
+    (authority.context as WatcherPostFinalityRecoveryInputV1).policy,
+  );
+  const recoveryState = recoveryResult?.recoveryState ?? null;
+  const commonAncestor = recoveryState?.path;
+  return recoveryResult !== null &&
+    recoveryResult.action === "rewind_and_replay" &&
+    recoveryResult.protocolDecision === "resume_replay" &&
+    recoveryState !== null &&
+    recoveryResult.resumableFinalityState !== null &&
+    finalityPolicy !== null &&
+    finalityPolicy.network === policy.network &&
+    finalityPolicy.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    sameMarker(finalityPolicy.deploymentMarker, policy.deploymentMarker) &&
+    recoveryState.network === finalityPolicy.network &&
+    recoveryState.releaseEvidenceDigest === policy.releaseEvidenceDigest &&
+    sameMarker(
+      recoveryState.deploymentMarker,
+      verified.store.deploymentMarker,
+    ) &&
+    commonAncestor !== undefined &&
+    observation.pointDigest === commonAncestor.commonAncestorPointDigest &&
+    verified.block.chainPoint.pointDigest ===
+      commonAncestor.commonAncestorPointDigest &&
+    verified.block.chainPoint.blockHash ===
+      commonAncestor.commonAncestorBlockHash
+    ? recoveryResult
     : null;
 };
 
@@ -3378,7 +3579,8 @@ const parseEntryStructural = (
     snapshot,
     observation,
     publicContext: record.publicContext as WatcherStateQueuePublicContextV1,
-    rollbackResult: record.rollbackResult as WatcherRollbackResultV1 | null,
+    rollbackResult:
+      record.rollbackResult as WatcherStateQueueRollbackResultV1 | null,
   });
   return sha256Canonical(entryWithoutDigest(canonical)) === record.entryDigest
     ? Object.freeze({ ...canonical, entryDigest: record.entryDigest })
@@ -3412,6 +3614,7 @@ const verifyEntries = (
       if (
         index === 0 ||
         verifiedRollbackBinding(
+          policy,
           verified[index - 1]!.store,
           context,
           entry.observation,
@@ -3468,10 +3671,13 @@ const verifyEntries = (
           [...restored.outRefs.entries()].sort(),
           [...target.outRefs.entries()].sort(),
         ) ||
-        !same(context.store.protocolUtxos, targetContext.store.protocolUtxos) ||
         !same(
-          context.store.spentProtocolUtxos,
-          targetContext.store.spentProtocolUtxos,
+          stateQueueOwnedRecords(policy, context.store, false),
+          stateQueueOwnedRecords(policy, targetContext.store, false),
+        ) ||
+        !same(
+          stateQueueOwnedRecords(policy, context.store, true),
+          stateQueueOwnedRecords(policy, targetContext.store, true),
         )
       ) {
         return null;
@@ -3636,7 +3842,10 @@ const replayFromRetainedAuditCheckpoint = (
     rollbackAudit === undefined ||
     rollbackAudit.status !== "rollback" ||
     rollbackAudit.entry.transitionKind !== "rollback" ||
-    rollbackAudit.entry.rollbackResult?.action !== "apply_rewind" ||
+    rollbackAudit.entry.rollbackResult === null ||
+    !["apply_rewind", "rewind_and_replay"].includes(
+      rollbackAudit.entry.rollbackResult.action,
+    ) ||
     latestGroup.slice(0, -1).some(({ status }) => status !== "orphaned")
   ) {
     return null;
@@ -3654,7 +3863,10 @@ const replayFromRetainedAuditCheckpoint = (
       return (
         rollback?.status !== "rollback" ||
         rollback.entry.transitionKind !== "rollback" ||
-        rollback.entry.rollbackResult?.action !== "apply_rewind" ||
+        rollback.entry.rollbackResult === null ||
+        !["apply_rewind", "rewind_and_replay"].includes(
+          rollback.entry.rollbackResult.action,
+        ) ||
         !expected.history.some(({ snapshot }) =>
           same(snapshot, rollback.entry.snapshot),
         )
@@ -3974,6 +4186,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
   }
   if (observation.transitionKind === "rollback") {
     const rollbackResult = verifiedRollbackBinding(
+      policy,
       lastVerified.store,
       verified,
       observation,
@@ -3985,7 +4198,8 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         "watcher_state_queue_binding_rejected",
       );
     }
-    if (rollbackResult.action === "duplicate_rewind") {
+    const postFinalityRecovery = isPostFinalityRecoveryResult(rollbackResult);
+    if (!postFinalityRecovery && rollbackResult.action === "duplicate_rewind") {
       if (
         rollbackResult.protocolDecision !== "hold" ||
         !same(verified.store, verified.sourceStore) ||
@@ -4004,7 +4218,12 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         state: previousState,
       });
     }
-    if (rollbackResult.protocolDecision !== "resume_pending") {
+    if (
+      (postFinalityRecovery &&
+        rollbackResult.protocolDecision !== "resume_replay") ||
+      (!postFinalityRecovery &&
+        rollbackResult.protocolDecision !== "resume_pending")
+    ) {
       return rejected(
         "rollback_authority_mismatch",
         "watcher_state_queue_binding_rejected",
@@ -4041,7 +4260,10 @@ export const evaluateWatcherStateQueueIndexerV1 = (
     }
     if (
       retained.length === 0 ||
-      !same(retained.at(-1)!.snapshot, nextTopology.snapshot)
+      !same(retained.at(-1)!.snapshot, nextTopology.snapshot) ||
+      (postFinalityRecovery &&
+        retained.at(-1)!.pointDigest !==
+          rollbackResult.recoveryState?.path.commonAncestorPointDigest)
     ) {
       return rejected("rollback_mismatch");
     }
@@ -4056,11 +4278,27 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         [...nextTopology.outRefs.entries()].sort(),
         [...targetTopology.outRefs.entries()].sort(),
       ) ||
-      !same(verified.store.protocolUtxos, targetVerified.store.protocolUtxos) ||
       !same(
-        verified.store.spentProtocolUtxos,
-        targetVerified.store.spentProtocolUtxos,
+        stateQueueOwnedRecords(policy, verified.store, false),
+        stateQueueOwnedRecords(policy, targetVerified.store, false),
       ) ||
+      !same(
+        stateQueueOwnedRecords(policy, verified.store, true),
+        stateQueueOwnedRecords(policy, targetVerified.store, true),
+      ) ||
+      (postFinalityRecovery &&
+        (rollbackResult.recoveryState === null ||
+          rollbackResult.recoveryState.path.commonAncestorBlockHash !==
+            targetVerified.block.chainPoint.blockHash ||
+          rollbackResult.recoveryState.path.commonAncestorBlockNo !==
+            targetVerified.block.chainPoint.blockNo ||
+          !verified.store.chainPoints.some(
+            ({ blockHash, blockNo }) =>
+              blockHash ===
+                rollbackResult.recoveryState!.path.replacementTipBlockHash &&
+              blockNo ===
+                rollbackResult.recoveryState!.path.replacementTipBlockNo,
+          ))) ||
       verified.store.protocolUtxos.some(({ outRef }) =>
         removedOutRefs.has(outRef),
       )

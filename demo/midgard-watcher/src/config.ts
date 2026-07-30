@@ -3,6 +3,8 @@ import { isAbsolute, normalize } from "node:path";
 export const WATCHER_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-config-v1" as const;
 
+export const WATCHER_CARDANO_SECURITY_PARAMETER_K = 2_160 as const;
+
 export const WATCHER_CONFIG_BOUNDS = {
   configJsonBytes: { min: 2, max: 262_144 },
   externalProviders: { min: 2, max: 4 },
@@ -12,6 +14,10 @@ export const WATCHER_CONFIG_BOUNDS = {
   concurrency: { min: 1, max: 64 },
   finalityDepth: { min: 1, max: 2_160 },
   rollbackDepth: { min: 1, max: 2_160 },
+  postFinalityRecoveryDepth: {
+    min: 1,
+    max: WATCHER_CARDANO_SECURITY_PARAMETER_K,
+  },
   deadlineMs: { min: 1_000, max: 86_400_000 },
 } as const;
 
@@ -63,6 +69,7 @@ export type WatcherL1Config = Readonly<{
       beforeFinality: "rewind";
       afterFinality: "quarantine";
       maxDepth: number;
+      postFinalityRecoveryMaxDepth: typeof WATCHER_CARDANO_SECURITY_PARAMETER_K;
     }>;
   }>;
 }>;
@@ -834,6 +841,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
             ["quarantine"] as const,
           ),
           maxDepth: rollbackMaxDepth,
+          postFinalityRecoveryMaxDepth: WATCHER_CARDANO_SECURITY_PARAMETER_K,
         }),
       }),
     }),

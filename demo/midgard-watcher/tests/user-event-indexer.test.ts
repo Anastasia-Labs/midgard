@@ -96,8 +96,10 @@ import {
 } from "../src/l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
 import {
+  evaluateWatcherPostFinalityRecoveryV1,
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
+  type WatcherPostFinalityRecoveryInputV1,
 } from "../src/rollback-engine.js";
 import {
   deriveWatcherUserEventObservationV1,
@@ -118,6 +120,8 @@ const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
+const sha256Canonical = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 const encodeData = Data.to as unknown as (
   value: unknown,
   schema: unknown,
@@ -2190,6 +2194,231 @@ const rollbackBundle = (
   };
 };
 
+type PostFinalityRecoverySourceMode = "local_node" | "external_providers";
+
+const postFinalityRecoveryEvidence = (
+  sourceMode: PostFinalityRecoverySourceMode,
+  rawObservation: Record<string, any>,
+  depth: string,
+) => {
+  const chainPoint = {
+    ...(structuredClone(rawObservation.chainPoint) as Record<string, unknown>),
+    depth,
+  };
+  const primaryProvider =
+    sourceMode === "local_node" ? localNodeProvider : provider;
+  const primaryRaw = {
+    ...structuredClone(rawObservation),
+    providerId: primaryProvider.providerId,
+    chainPoint,
+  };
+  const observations =
+    sourceMode === "local_node"
+      ? [normalizeWatcherL1BlockV1(primaryProvider, primaryRaw)]
+      : [
+          normalizeWatcherL1BlockV1(provider, primaryRaw),
+          normalizeWatcherL1BlockV1(providerB, {
+            ...structuredClone(primaryRaw),
+            providerId: providerB.providerId,
+          }),
+        ];
+  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+    sourceMode === "local_node" ? localSource : externalSource,
+    observations,
+  );
+  expect(consistency).toMatchObject({
+    status: "agreed",
+    sourceMode,
+    independentProviderCount: sourceMode === "local_node" ? 1 : 2,
+  });
+  return { observations, consistency };
+};
+
+const postFinalityUserEventRecoveryBundle = (
+  sourceMode: PostFinalityRecoverySourceMode,
+  commonBundle: BlockBundle,
+  orphanBundle: BlockBundle,
+) => {
+  const selectedFinalityPolicy =
+    sourceMode === "local_node" ? localFinalityPolicy : finalityPolicy;
+  const commonRaw = commonBundle.context.l1Observation as Record<string, any>;
+  const orphanRaw = orphanBundle.context.l1Observation as Record<string, any>;
+  const common = postFinalityRecoveryEvidence(sourceMode, commonRaw, "0");
+  const orphanPending = postFinalityRecoveryEvidence(
+    sourceMode,
+    orphanRaw,
+    "1",
+  );
+  const orphanFinalized = postFinalityRecoveryEvidence(
+    sourceMode,
+    orphanRaw,
+    "2",
+  );
+  const replacementRaw = {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    network: "Preprod",
+    providerId:
+      sourceMode === "local_node"
+        ? localNodeProvider.providerId
+        : provider.providerId,
+    chainPoint: {
+      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      parentBlockHash: common.observations[0]!.chainPoint.blockHash,
+      slot: (BigInt(common.observations[0]!.chainPoint.slot) + 1n).toString(),
+      blockNo: (
+        BigInt(common.observations[0]!.chainPoint.blockNo) + 1n
+      ).toString(),
+      depth: "0",
+    },
+    transactions: [],
+  };
+  const replacement = postFinalityRecoveryEvidence(
+    sourceMode,
+    replacementRaw,
+    "0",
+  );
+  const pending = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    null,
+    orphanPending.consistency,
+  );
+  expect(pending.action).toBe("observe_pending");
+  const finalized = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    pending.state,
+    orphanFinalized.consistency,
+  );
+  expect(finalized.action).toBe("finalize");
+  const contradiction = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    finalized.state,
+    replacement.consistency,
+  );
+  expect(contradiction.action).toBe("quarantine_incident");
+
+  const baseStore = orphanBundle.store;
+  const persistedObservations = [
+    ...common.observations,
+    ...orphanPending.observations,
+    ...orphanFinalized.observations,
+    ...replacement.observations,
+  ];
+  const sourceStore = makeWatcherDurableStoreV1({
+    deploymentMarker: baseStore.deploymentMarker,
+    revision: (BigInt(baseStore.revision) + 1n).toString(),
+    records: {
+      l1Observations: [
+        ...new Map(
+          [
+            ...baseStore.l1Observations,
+            ...persistedObservations.map((observation) => ({
+              observationId: observation.observationDigest,
+              providerId: observation.provider.providerId,
+              chainPointId: observation.chainPoint.chainPointId,
+              payload: makeWatcherDurablePayloadV1(
+                encodeWatcherNormalizedL1BlockV1(observation).toString("hex"),
+              ),
+            })),
+          ].map((entry) => [entry.observationId, entry]),
+        ).values(),
+      ],
+      chainPoints: [
+        ...new Map(
+          [
+            ...baseStore.chainPoints,
+            ...persistedObservations.map((observation) => ({
+              chainPointId: observation.chainPoint.chainPointId,
+              providerId: observation.provider.providerId,
+              blockHash: observation.chainPoint.blockHash,
+              slot: observation.chainPoint.slot,
+              blockNo: observation.chainPoint.blockNo,
+              depth: observation.chainPoint.depth,
+            })),
+          ].map((entry) => [entry.chainPointId, entry]),
+        ).values(),
+      ],
+      protocolUtxos: baseStore.protocolUtxos,
+      spentProtocolUtxos: baseStore.spentProtocolUtxos,
+      daProofInputs: baseStore.daProofInputs,
+      reconstructedStates: baseStore.reconstructedStates,
+      decisions: baseStore.decisions,
+      faults: baseStore.faults,
+      submissions: baseStore.submissions,
+      confirmations: baseStore.confirmations,
+      retries: baseStore.retries,
+      deadlines: baseStore.deadlines,
+      correctionResults: baseStore.correctionResults,
+    },
+  });
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+    selectedFinalityPolicy,
+    sourceStore,
+    finalized.state,
+  )!;
+  const incident = evaluateWatcherRollbackV1(
+    selectedFinalityPolicy,
+    sourceStore,
+    finalized.state,
+    replacement.consistency,
+    contradiction,
+    rollbackBootstrapState,
+    rollbackBootstrapState,
+  );
+  expect(incident.action).toBe("quarantine_incident");
+  expect(incident.nextStore).not.toBeNull();
+  expect(incident.rollbackState?.incident).not.toBeNull();
+  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+    policy: selectedFinalityPolicy,
+    sourceStore: incident.nextStore,
+    currentStore: incident.nextStore,
+    quarantinedRollbackState: incident.rollbackState,
+    rollbackBootstrapState,
+    previousCanonicalPath: [common.consistency, orphanFinalized.consistency],
+    replacementCanonicalPath: [common.consistency, replacement.consistency],
+    previousRecoveryState: null,
+  };
+  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  expect(recovery).toMatchObject({
+    action: "rewind_and_replay",
+    protocolDecision: "resume_replay",
+    reasonCodes: ["recovery_applied"],
+    recoveryState: {
+      path: {
+        commonAncestorPointDigest:
+          common.observations[0]!.chainPoint.pointDigest,
+        rollbackDepth: "1",
+      },
+      incidentLifecycle: { status: "recovered" },
+    },
+    resumableFinalityState: {
+      phase: "unobserved",
+      incident: null,
+    },
+  });
+  const context: WatcherUserEventPublicContextV1 = {
+    schemaVersion: WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    authenticatedProvider: null,
+    l1Observation: null,
+    sourceDurableStore: incident.nextStore,
+    durableStore: recovery.nextStore,
+    deploymentAuthority,
+    rollbackRestoredEventUtxos: [],
+    finalityAuthority: null,
+    rollbackAuthority: {
+      result: recovery,
+      context: recoveryInput,
+    },
+  };
+  return {
+    context,
+    recovery,
+    recoveryInput,
+    replacementObservationIds: replacement.observations.map(
+      ({ observationDigest }) => observationDigest,
+    ),
+  };
+};
+
 const accepted = (
   previous: WatcherUserEventIndexerStateV1 | null,
   bundle: BlockBundle,
@@ -2959,6 +3188,224 @@ describe("canonical authenticated user-event indexer", () => {
     expect(reincluded.snapshot.activeEvents).toHaveLength(1);
     expect(reincluded.history.length).toBe(restarted!.history.length + 1);
   });
+
+  it.each<PostFinalityRecoverySourceMode>(["local_node", "external_providers"])(
+    "consumes an exact %s W13 post-finality recovery, prunes the orphan lineage, and resumes idempotently",
+    (sourceMode) => {
+      const commonBundle = blockBundle(
+        [],
+        null,
+        1_100,
+        0,
+        "mint",
+        undefined,
+        sourceMode,
+      );
+      const commonState = accepted(null, commonBundle);
+      const fixture = makeEventFixture(
+        "deposit",
+        sourceMode === "local_node" ? "d8" : "d9",
+        0,
+        1_000n,
+      );
+      const orphanBundle = blockBundle(
+        [fixture],
+        commonBundle.store,
+        1_101,
+        1,
+        "mint",
+        undefined,
+        sourceMode,
+      );
+      const orphanState = accepted(commonState, orphanBundle);
+      const recovery = postFinalityUserEventRecoveryBundle(
+        sourceMode,
+        commonBundle,
+        orphanBundle,
+      );
+      const orphan = orphanState.snapshot.activeEvents[0]!;
+      expect(recovery.recovery.removedRecords.protocolUtxoOutRefs).toContain(
+        orphan.outRef,
+      );
+      const targetEntryDigest = commonState.activeEntryDigests.at(-1)!;
+      const observation = deriveWatcherUserEventObservationV1(
+        policy,
+        orphanState,
+        recovery.context,
+        targetEntryDigest,
+      );
+      expect(observation).not.toBeNull();
+      const applied = evaluateWatcherUserEventIndexerV1(
+        policy,
+        orphanState,
+        observation,
+        recovery.context,
+      );
+      expect(applied).toMatchObject({
+        action: "accept",
+        protocolDecision: "indexed",
+        reasonCodes: ["rollback_authenticated"],
+        state: {
+          snapshot: {
+            activeEvents: [],
+            terminalEvents: [],
+            quarantined: false,
+          },
+        },
+      });
+      expect(applied.state?.history).toHaveLength(
+        commonState.history.length + 1,
+      );
+      expect(applied.state?.history).not.toContainEqual(
+        orphanState.history.at(-1),
+      );
+      expect(applied.state?.activeEntryDigests).not.toContain(
+        orphanState.activeEntryDigests.at(-1),
+      );
+      const persistedStore = parseWatcherDurableStoreV1(
+        applied.state?.history.at(-1)?.publicContext.durableStore,
+      );
+      expect(persistedStore.protocolUtxos).not.toContainEqual(
+        expect.objectContaining({ outRef: orphan.outRef }),
+      );
+      for (const observationId of recovery.replacementObservationIds) {
+        expect(persistedStore.l1Observations).toContainEqual(
+          expect.objectContaining({ observationId }),
+        );
+      }
+
+      const serializedState = JSON.parse(JSON.stringify(applied.state));
+      const serializedContext =
+        serializedState.history.at(-1)?.publicContext ?? null;
+      expect(
+        deriveWatcherUserEventObservationV1(
+          policy,
+          commonState,
+          serializedContext,
+          targetEntryDigest,
+        ),
+      ).toEqual(observation);
+      expect(
+        evaluateWatcherUserEventIndexerV1(
+          policy,
+          commonState,
+          observation,
+          serializedContext,
+        ).state,
+      ).toEqual(applied.state);
+      const restarted = parseWatcherUserEventIndexerStateV1(
+        serializedState,
+        policy,
+      );
+      expect(restarted).toEqual(applied.state);
+      expect(
+        evaluateWatcherUserEventIndexerV1(
+          policy,
+          restarted,
+          observation,
+          recovery.context,
+        ),
+      ).toMatchObject({
+        action: "duplicate",
+        protocolDecision: "indexed",
+        state: applied.state,
+      });
+
+      const resumedBundle = blockBundle(
+        [],
+        recovery.recovery.nextStore,
+        1_102,
+        1,
+        "mint",
+        undefined,
+        sourceMode,
+      );
+      const resumed = accepted(restarted, resumedBundle);
+      expect(resumed.snapshot.quarantined).toBe(false);
+      expect(resumed.history).toHaveLength(restarted!.history.length + 1);
+    },
+    30_000,
+  );
+
+  it("rejects forged, mismatched, wrong-target, mode-invalid, and duplicate-only post-finality recovery authorities", () => {
+    const commonBundle = blockBundle([], null, 1_200, 0);
+    const commonState = accepted(null, commonBundle);
+    const orphanBundle = blockBundle(
+      [makeEventFixture("deposit", "da", 0, 1_000n)],
+      commonBundle.store,
+      1_201,
+      1,
+    );
+    const orphanState = accepted(commonState, orphanBundle);
+    const recovery = postFinalityUserEventRecoveryBundle(
+      "external_providers",
+      commonBundle,
+      orphanBundle,
+    );
+    const targetEntryDigest = commonState.activeEntryDigests.at(-1)!;
+    const derive = (context: WatcherUserEventPublicContextV1) =>
+      deriveWatcherUserEventObservationV1(
+        policy,
+        orphanState,
+        context,
+        targetEntryDigest,
+      );
+
+    const forgedContext = structuredClone(
+      recovery.context,
+    ) as WatcherUserEventPublicContextV1;
+    const forgedResult = forgedContext.rollbackAuthority!
+      .result as MutableRecord;
+    forgedResult.nextStoreDigest = h32("ff");
+    const { resultDigest: _resultDigest, ...forgedCanonical } = forgedResult;
+    forgedResult.resultDigest = sha256Canonical(forgedCanonical);
+    expect(derive(forgedContext)).toBeNull();
+
+    const mismatchedContext = structuredClone(
+      recovery.context,
+    ) as WatcherUserEventPublicContextV1;
+    (
+      mismatchedContext.rollbackAuthority!.context as unknown as MutableRecord
+    ).replacementCanonicalPath = recovery.recoveryInput.previousCanonicalPath;
+    expect(derive(mismatchedContext)).toBeNull();
+
+    const modeInvalidContext = structuredClone(
+      recovery.context,
+    ) as WatcherUserEventPublicContextV1;
+    (
+      modeInvalidContext.rollbackAuthority!.context as unknown as MutableRecord
+    ).policy = localFinalityPolicy;
+    expect(derive(modeInvalidContext)).toBeNull();
+
+    expect(
+      deriveWatcherUserEventObservationV1(
+        policy,
+        orphanState,
+        recovery.context,
+        orphanState.activeEntryDigests.at(-1)!,
+      ),
+    ).toBeNull();
+
+    const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
+      ...recovery.recoveryInput,
+      currentStore: recovery.recovery.nextStore,
+      previousRecoveryState: recovery.recovery.recoveryState,
+    });
+    expect(duplicateRecovery.action).toBe("duplicate_recovery");
+    const duplicateOnlyContext = {
+      ...recovery.context,
+      sourceDurableStore: recovery.recovery.nextStore,
+      rollbackAuthority: {
+        result: duplicateRecovery,
+        context: {
+          ...recovery.recoveryInput,
+          currentStore: recovery.recovery.nextStore,
+          previousRecoveryState: recovery.recovery.recoveryState,
+        },
+      },
+    };
+    expect(derive(duplicateOnlyContext)).toBeNull();
+  }, 30_000);
 
   it("retains append-only foreign durable records through an authenticated rewind", () => {
     const olderBlock = blockBundle([], null, 92, 1);

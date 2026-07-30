@@ -1435,3 +1435,140 @@ any further actionable finding additively and repeat. Keep the PR draft and
 the overarching Goal in progress while the 122 registry promotions, formal
 release journeys, target-testnet acceptance, remaining §12 criteria, closure
 manifest, and §15 remain open.
+
+## Superseding finalized-rollback review checkpoint
+
+- The publication branch remains exactly
+  `colll78/canonical-v1-watcher-l1-source-checkpoint`; no `codex/` branch is a
+  publication target. This additive batch starts from signed, already-pushed
+  parent `b81221e18be0c72867f77c9a85100982a30eeed9`, with draft PR #471 still
+  targeting `tx-validation`
+  `8bae9403a13124f647f215999848ff5c82784e37`.
+- The authoritative watcher source-mode clarification is now exact throughout
+  W01 and W10-W17:
+  - `local_node` uses one watcher-operated Cardano full node as chain-consensus
+    authority. Chain-sync supplies roll-forward/rollback, every configured
+    query/index surface must align with that authority, and no two-provider
+    quorum is required or inferred.
+  - `external_providers` requires at least two operationally independent
+    providers on the same network and compatible canonical point; disagreement
+    quarantines only the current protocol decision.
+  - W14 indexes actual canonical W10 transaction/output/datum bytes accepted
+    by Cardano. It does not duplicate or independently re-prove state-queue
+    validator semantics; L2 dishonesty remains adjudicated through fault
+    proofs.
+- Fresh published-head review findings were all remediated:
+  - Evidence Integrity CI now installs the direct TypeScript parser dependency
+    from the locked root workspace before running the verifier.
+  - Dependency-symbol verification rejects type-only, ambient, abstract-method,
+    nested-local, regex/comment, and concrete-member-on-abstract-class spoofs.
+    CI evidence is parsed as active trigger paths and an enabled exact command,
+    not accepted by substring.
+  - Resolver evidence now uses the exact deployed 2-member Phase-A and
+    28-member ScriptSources parameterized hashes, production prepare, and
+    semantic handoff. State-queue fixtures now prove exact valid
+    empty/material-bearing headers and in-bounds route behavior.
+  - W14/W16/W17 derive their owned durable roles from signed deployment
+    identity plus actual output bytes, preserve every foreign active/spent
+    record byte-exact, and reject insertion of ordinary outputs under foreign
+    roles.
+  - W13 automatically verifies and resolves a finalized point replacement
+    within fixed Cardano `k = 2160`; transient source non-agreement,
+    same-point content mismatch, and same-point depth regression preserve the
+    finalized state without opening a terminal incident.
+- Independent W13/W15 review found five additional recovery-integrity gaps,
+  now closed:
+  - previous and replacement canonical-path endpoints bind respectively to the
+    finalized binding's last consistency digest and the incident trigger
+    consistency digest;
+  - same-point content disagreement is nonterminal and cannot synthesize an
+    unrecoverable incident;
+  - every reconstructed L2 state now has required, referentially valid
+    `chainPointId` provenance, and the atomic sweep follows that provenance
+    rather than equating an L2 block hash with an L1 Cardano block hash;
+  - malformed, accessor-backed, and cyclic recovery-path members fail closed
+    behind a nonthrowing public evaluator boundary;
+  - serialized finality policy accepts exactly `2160`, rejecting even a
+    correctly self-rehashed narrower value.
+- W14-W17 consume only the shared strict
+  `parseWatcherPostFinalityRecoveryResultV1` authority and only its
+  `rewind_and_replay`/`resume_replay` result. They bind network, deployment,
+  explicit source mode, source/next stores, exact common ancestor and
+  replacement tip, prune only their owned orphan lineage, preserve foreign
+  roles, replay restart state, reject duplicate-only authority, and resume
+  canonical indexing.
+- Fresh final-tree watcher evidence:
+  - package build, typecheck, lint, and format-check PASS;
+  - all 13 files and 263/263 tests PASS in one serial fork;
+  - exact counts are W12 23/23, W13 24/24, W14 19/19, W15 21/21,
+    W16 27/27, and W17 23/23;
+  - W03 durable-store 11/11, W10 21/21, W11 21/21, W01 config 41/41,
+    W02 deployment identity 18/18, and rule bundle 9/9 pass inside the same
+    aggregate.
+- Fresh cross-language/Aiken evidence:
+  - SDK deployed applied-hash equivalence 1/1 PASS; SDK typecheck, scoped
+    ESLint, and scoped Prettier PASS;
+  - all eight exact resolver guards independently collect 1 and pass 1;
+  - all five exact state-queue production guards independently collect 1 and
+    pass 1;
+  - Aiken formatter check passes both changed files under local compiler
+    `v1.1.22+39d6b04`.
+- Current principal SHA-256 identities:
+  - W03 source/test:
+    `73b3044a48ceb16a46f4b61e89c796adde9159b9c576f2ddbc1aa5c7d76a91c2` /
+    `2944063d1bc631ae59484f8db2ebdffc5520a950905bfe6d223e42e8f56602e5`;
+  - W12 source/test:
+    `5e773488b9469fccb64f9989315fea48801470db0663a1ebc37a8629cb300441` /
+    `3189cadbb1fb468f986888cc57e398b7e27fbfb0d842453984ed835973e103c5`;
+  - W13 source/test:
+    `4bd6302c81cd352b9000056e5b3bfe37058d0190fc0c9089f352d12905d544a6` /
+    `66fd2e2c27706bcde4ada6e596c80300b5e8ce6a5c9b9e9a097d272121d39a8e`;
+  - W14 source/test:
+    `3539be3cdc67b412e33af227fa233abe8d5c3ad2220492387e89a28822c3a44b` /
+    `cd21422129a13c1ea668477017bb8d8032c51fff1c67d7a433d4a46bbad56c60`;
+  - W15 source/test:
+    `670aea1b11760b43ae6107827c2a97772545140d4c17a93292a0487ac5651213` /
+    `c35db700430451fce31cca324f18cdbf1fd5630e9c6727392265e0946e0b464c`;
+  - W16 source/test:
+    `c7c94821684ff7da10b67792b5cb88acf08516a6d054c51b32073a8851e91b5b` /
+    `e9920219c026d83ccb018b7a048199f75d0fd8c334bf403ff2f63cef14edd94c`;
+  - W17 source/test:
+    `b26e19cb27d9663fcc134800b3e83e6ca62131e2ecc9ae5eb8c8fcc144862a68` /
+    `66e7350e51bcfb6a6709e4cc698560cf122fe489f6080b94662d7b76dea29cd4`;
+  - resolver/state-queue Aiken tests:
+    `b09ea7341a63f27cadb18100cf5d65833774fdb4a7e49b69e9f49cff4903e4f6` /
+    `edde1c27ed07cef0e0980449d9ef0ff1a7cc9671b0eea42fcd373f2a6bb2f97b`.
+- The staged reviewed content tree, excluding only this ledger and the
+  self-referential dependency map, is currently
+  `bf66dc40d76ff381e94c537eef4012ae95dfb6de685474f90caeabb8b3ac88da`.
+  One verifier mutation exposed that direct class-member validation still
+  accepted a concrete method on an abstract owner; the validator now rejects
+  that shape. After staging this ledger and the updated map, the complete
+  mutation suite passes 14/14 with exit 0 and the normal verifier passes all
+  eight dependency classes.
+- Superseded diagnostics receive no PASS credit: the concurrent W13 aggregate
+  248/251 run, W14 16/19 and 18/19 iterations, W15's initial two new-case
+  failures, W16 24/27, W17 22/23 and focused label failures, the shared-tree
+  role-test overwrite, the during-lease typecheck, sandbox/pnpm metadata
+  failures, the first stale-map digest print, and the zero-collection
+  `validators/state_queue_merge` selector. Every credited result above is a
+  later exact final-tree replay.
+- All delegated leases are closed. The isolated repository contains only this
+  checkpoint's intended changes. The protected primary checkout was not used
+  as an edit or staging surface by this batch; it currently contains extensive
+  independent dirty work. Its current protected specification SHA-256 is
+  `30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde`.
+  Protected provenance remains external to this isolated commit.
+- This is not Goal completion. The 122 registry promotions, formal release
+  journeys, target-testnet acceptance, remaining §12 criteria, closure
+  manifest, and §15 remain open; draft PR #471 must stay draft.
+
+## Superseding finalized-rollback publication action
+
+Create and push one signed additive commit on the same required `colll78/`
+branch and refresh draft PR #471. Then perform a complete fresh-head
+differential/security review of the full target-to-head diff, inspect every
+GitHub discussion and applicable CI check to terminal completion, fix every
+actionable finding additively, and repeat until the checkpoint is good to
+merge on its stated scope. Do not ready the draft or mark the overarching Goal
+complete.

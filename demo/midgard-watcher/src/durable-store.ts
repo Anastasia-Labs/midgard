@@ -240,6 +240,7 @@ export type WatcherDaProofInputV1 = Readonly<{
 
 export type WatcherReconstructedStateV1 = Readonly<{
   blockHash: string;
+  chainPointId: string;
   priorStateRoot: string;
   postStateRoot: string;
   inputIds: readonly string[];
@@ -546,6 +547,7 @@ const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
 ) => {
   const record = exactRecord(value, path, [
     "blockHash",
+    "chainPointId",
     "priorStateRoot",
     "postStateRoot",
     "inputIds",
@@ -553,6 +555,11 @@ const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
   ]);
   return {
     blockHash: exactString(record.blockHash, `${path}.blockHash`, HEX_32),
+    chainPointId: exactString(
+      record.chainPointId,
+      `${path}.chainPointId`,
+      HEX_32,
+    ),
     priorStateRoot: exactString(
       record.priorStateRoot,
       `${path}.priorStateRoot`,
@@ -993,6 +1000,12 @@ const assertReferences = (records: WatcherDurableRecordsV1): void => {
     }
   }
   for (const state of records.reconstructedStates) {
+    if (!chainPoints.has(state.chainPointId)) {
+      fail(
+        "broken_reference",
+        `$.reconstructedStates.${state.blockHash}.chainPointId`,
+      );
+    }
     for (const inputId of state.inputIds) {
       if (!inputs.has(inputId)) {
         fail(

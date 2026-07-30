@@ -141,7 +141,7 @@ jobs:
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
           node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs demo/midgard-node/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node/devnet/phase4-process/tests/custom-chain-config.test.mjs
-      - name: Verify canonical V1 multi-process DA path
+      - name: Verify canonical V1 retained multi-peer DA paths
         env:
           MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"
           NODE_OPTIONS: --max-old-space-size=4096

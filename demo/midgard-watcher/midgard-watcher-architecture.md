@@ -142,7 +142,15 @@ The L1 follower tracks all protocol UTxOs and relevant transactions.
 It should record chain point, slot, block hash, provider source, observed depth, and finality status for each observation.
 Before an observation is final enough to drive irreversible local state, it should pass the configured finality threshold.
 Rollbacks before threshold should rewind pending local state.
-Rollbacks after local finalization should be treated as an incident.
+A mode-valid, agreed canonical replacement after local finalization should
+create a durable incident. W13 must then automatically verify persisted W10
+bytes and W11 agreement for both branches to their exact common ancestor,
+atomically rewind orphan-dependent state, and resume replay when the rollback
+is within Cardano's fixed `k = 2160` bound. Transient source non-agreement,
+same-point content mismatch, and same-point depth regression quarantine only
+the current decision while
+preserving the finalized binding; neither creates a terminal incident or a
+manual state-repair requirement.
 
 ### 2. State Queue Tracking
 
@@ -166,8 +174,12 @@ For every block header it verifies:
 - The operator's bond hold is extended through the maturity period.
 - Any DA attestation required by the deployed protocol is present and authentic.
 
-Most of these checks are enforced by L1 scripts on valid transactions.
-The watcher still performs them locally because it needs a coherent state model for proof selection, diagnostics, and rollback recovery.
+Cardano consensus and the deployed L1 scripts establish whether these
+transactions are valid. W14 deterministically decodes and indexes the accepted
+transaction/output/datum bytes and maintains the coherent rollback-safe state
+model; it does not reimplement the state-queue validator as a second validity
+authority. Independent reconstruction and verification of the committed L2
+claims belongs to W22–W29, with fault proofs adjudicating dishonest operators.
 
 ### 3. Data Availability Fetch And Root Checking
 

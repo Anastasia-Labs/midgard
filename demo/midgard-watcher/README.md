@@ -97,11 +97,17 @@ absolute and durable. Prover keys are referenced only through a named
 environment variable or an absolute file; an inline key, seed, token, or
 password field is always rejected.
 
-Finality is explicit: pre-finality rollback rewinds pending work, while a
-post-finality rollback quarantines the watcher. Request timeouts, concurrency,
-finality/rollback depth, and DA/proof deadlines use the exported
-`WATCHER_CONFIG_BOUNDS`; deadline values must also cover their corresponding
-request timeout.
+Finality is explicit: pre-finality rollback rewinds pending work. A mode-valid,
+agreed canonical contradiction after finality opens a durable incident, and
+W13 automatically rewinds and resumes replay when exact node-derived W10 bytes
+and W11 agreement prove both branches to a common ancestor within Cardano's
+fixed `k = 2160` recovery bound. Transient pending, unavailable, quarantined,
+or same-point content-mismatched source evidence holds only the current
+protocol decision and preserves the finalized binding without opening an
+incident. Request timeouts,
+concurrency, pre-finality rollback depth, and DA/proof deadlines use the
+exported `WATCHER_CONFIG_BOUNDS`; deadline values must also cover their
+corresponding request timeout.
 
 No operational command consumes the new library surfaces in this checkpoint.
 `start` and `replay` therefore continue to return the W00

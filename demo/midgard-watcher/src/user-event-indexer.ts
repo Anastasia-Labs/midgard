@@ -71,7 +71,10 @@ import {
 } from "./l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistencyV1 } from "./multi-provider-consistency.js";
 import {
+  parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
+  type WatcherPostFinalityRecoveryInputV1,
+  type WatcherPostFinalityRecoveryResultV1,
   type WatcherRollbackResultV1,
   type WatcherRollbackVerificationContextV1,
 } from "./rollback-engine.js";
@@ -252,7 +255,9 @@ export type WatcherUserEventObservationV1 = Readonly<{
 
 export type WatcherUserEventRollbackAuthorityV1 = Readonly<{
   result: unknown;
-  context: WatcherRollbackVerificationContextV1;
+  context:
+    | WatcherRollbackVerificationContextV1
+    | WatcherPostFinalityRecoveryInputV1;
 }>;
 
 export type WatcherUserEventFinalityAuthorityV1 = Readonly<{
@@ -2436,6 +2441,7 @@ const storeTransitionMatches = (
 const rollbackSourceExtends = (
   prior: WatcherDurableStoreV1,
   source: WatcherDurableStoreV1,
+  recoverableEventOutRefs: ReadonlySet<string> | null = null,
 ): boolean => {
   const retainsExactRecords = <T>(
     priorRecords: readonly T[],
@@ -2474,11 +2480,31 @@ const rollbackSourceExtends = (
   const sourceUnrelatedSpentUtxos = source.spentProtocolUtxos.filter(
     ({ role }) => !eventRoles.has(role),
   );
+  const retainsRecoverableEventRecords = <
+    T extends { readonly outRef: string },
+  >(
+    priorRecords: readonly T[],
+    sourceRecords: readonly T[],
+  ): boolean =>
+    retainsExactRecords(priorRecords, sourceRecords, (entry) => entry.outRef) &&
+    sourceRecords.every(
+      (entry) =>
+        priorRecords.some(
+          (priorEntry) =>
+            priorEntry.outRef === entry.outRef && same(priorEntry, entry),
+        ) || recoverableEventOutRefs?.has(entry.outRef) === true,
+    );
   return (
     (BigInt(source.revision) > BigInt(prior.revision) || same(source, prior)) &&
     same(source.deploymentMarker, prior.deploymentMarker) &&
-    same(sourceEventUtxos, priorEventUtxos) &&
-    same(sourceSpentEventUtxos, priorSpentEventUtxos) &&
+    (recoverableEventOutRefs === null
+      ? same(sourceEventUtxos, priorEventUtxos) &&
+        same(sourceSpentEventUtxos, priorSpentEventUtxos)
+      : retainsRecoverableEventRecords(priorEventUtxos, sourceEventUtxos) &&
+        retainsRecoverableEventRecords(
+          priorSpentEventUtxos,
+          sourceSpentEventUtxos,
+        )) &&
     retainsExactRecords(
       priorUnrelatedUtxos,
       sourceUnrelatedUtxos,
@@ -3099,12 +3125,22 @@ const deriveBlockObservation = (
   });
 };
 
-type VerifiedRollbackContext = Readonly<{
-  result: WatcherRollbackResultV1;
+type VerifiedRollbackContextBase = Readonly<{
   sourceStore: WatcherDurableStoreV1;
   store: WatcherDurableStoreV1;
   context: WatcherUserEventPublicContextV1;
 }>;
+type VerifiedRollbackContext =
+  | (VerifiedRollbackContextBase &
+      Readonly<{
+        kind: "pre_finality_rollback";
+        result: WatcherRollbackResultV1;
+      }>)
+  | (VerifiedRollbackContextBase &
+      Readonly<{
+        kind: "post_finality_recovery";
+        result: WatcherPostFinalityRecoveryResultV1;
+      }>);
 
 const verifyRollbackContext = (
   policy: WatcherUserEventIndexerPolicyV1,
@@ -3122,13 +3158,24 @@ const verifyRollbackContext = (
     return null;
   }
   try {
-    const result = parseWatcherRollbackResultV1(
+    const rollbackResult = parseWatcherRollbackResultV1(
       context.rollbackAuthority.result,
-      context.rollbackAuthority.context,
+      context.rollbackAuthority.context as WatcherRollbackVerificationContextV1,
     );
+    const recoveryResult =
+      rollbackResult === null
+        ? parseWatcherPostFinalityRecoveryResultV1(
+            context.rollbackAuthority.result,
+            context.rollbackAuthority
+              .context as WatcherPostFinalityRecoveryInputV1,
+          )
+        : null;
+    const result = rollbackResult ?? recoveryResult;
     if (
       result === null ||
-      !["apply_rewind", "quarantine_incident"].includes(result.action) ||
+      (rollbackResult !== null
+        ? !["apply_rewind", "quarantine_incident"].includes(result.action)
+        : result.action !== "rewind_and_replay") ||
       result.nextStore === null
     ) {
       return null;
@@ -3139,11 +3186,36 @@ const verifyRollbackContext = (
       !same(sourceStore, context.rollbackAuthority.context.sourceStore) ||
       storeDigest(sourceStore) !== result.sourceStoreDigest ||
       !same(store, result.nextStore) ||
-      !same(store.deploymentMarker, policy.deploymentMarker)
+      !same(store.deploymentMarker, policy.deploymentMarker) ||
+      (rollbackResult === null &&
+        (recoveryResult === null ||
+          recoveryResult.recoveryState === null ||
+          recoveryResult.resumableFinalityState === null ||
+          recoveryResult.recoveryState.network !== policy.network ||
+          recoveryResult.recoveryState.releaseEvidenceDigest !==
+            policy.releaseEvidenceDigest ||
+          !same(
+            recoveryResult.recoveryState.deploymentMarker,
+            policy.deploymentMarker,
+          )))
     ) {
       return null;
     }
-    return Object.freeze({ result, sourceStore, store, context });
+    return rollbackResult !== null
+      ? Object.freeze({
+          kind: "pre_finality_rollback" as const,
+          result: rollbackResult,
+          sourceStore,
+          store,
+          context,
+        })
+      : Object.freeze({
+          kind: "post_finality_recovery" as const,
+          result: recoveryResult!,
+          sourceStore,
+          store,
+          context,
+        });
   } catch {
     return null;
   }
@@ -3175,11 +3247,20 @@ const deriveRollbackObservation = (
   }
   if (
     storeDigest(previousStore) !== previous.durableStoreDigest ||
-    !rollbackSourceExtends(previousStore, verified.sourceStore)
+    !rollbackSourceExtends(
+      previousStore,
+      verified.sourceStore,
+      verified.kind === "post_finality_recovery"
+        ? new Set(verified.result.removedRecords.protocolUtxoOutRefs)
+        : null,
+    )
   ) {
     return null;
   }
-  if (verified.result.action === "quarantine_incident") {
+  if (
+    verified.kind === "pre_finality_rollback" &&
+    verified.result.action === "quarantine_incident"
+  ) {
     const snapshot = makeSnapshot(
       previous.snapshot.activeEvents,
       previous.snapshot.terminalEvents,
@@ -3217,6 +3298,14 @@ const deriveRollbackObservation = (
     return null;
   }
   const target = historyEntryForDigest(previous, rollbackTargetEntryDigest);
+  if (
+    verified.kind === "post_finality_recovery" &&
+    (target?.observation.pointDigest === null ||
+      target?.observation.pointDigest !==
+        verified.result.recoveryState?.path.commonAncestorPointDigest)
+  ) {
+    return null;
+  }
   const activeEntries = previous.activeEntryDigests
     .map((digest) => historyEntryForDigest(previous, digest))
     .filter(
@@ -3411,6 +3500,46 @@ const applyObservation = (
     ...canonical,
     stateDigest: sha256Canonical(canonical),
   });
+};
+
+const replayHistoryThroughEntry = (
+  policy: WatcherUserEventIndexerPolicyV1,
+  state: WatcherUserEventIndexerStateV1,
+  targetEntryDigest: string,
+): WatcherUserEventIndexerStateV1 | null => {
+  let replay: WatcherUserEventIndexerStateV1 | null = null;
+  for (const entry of state.history) {
+    const expected =
+      entry.publicContext.rollbackAuthority === null
+        ? deriveBlockObservation(policy, replay, entry.publicContext)
+        : replay === null
+          ? null
+          : deriveRollbackObservation(
+              policy,
+              replay,
+              entry.publicContext,
+              entry.observation.rollbackTargetEntryDigest,
+            );
+    if (expected === null || !same(expected, entry.observation)) {
+      return null;
+    }
+    replay = applyObservation(
+      policy,
+      replay,
+      entry.observation,
+      entry.publicContext,
+    );
+    if (
+      replay === null ||
+      replay.history.at(-1)?.entryDigest !== entry.entryDigest
+    ) {
+      return null;
+    }
+    if (entry.entryDigest === targetEntryDigest) {
+      return replay;
+    }
+  }
+  return null;
 };
 
 const parseObservationStructural = (
@@ -3647,7 +3776,33 @@ export const evaluateWatcherUserEventIndexerV1 = (
       "watcher_user_event_transition_rejected",
     );
   }
-  const next = applyObservation(policy, previous, observation, publicContext);
+  let applicationPrevious = previous;
+  if (
+    previous !== null &&
+    observation.transitionKind === "rollback" &&
+    observation.rollbackTargetEntryDigest !== null
+  ) {
+    const verifiedRollback = verifyRollbackContext(policy, publicContext);
+    if (verifiedRollback?.kind === "post_finality_recovery") {
+      applicationPrevious = replayHistoryThroughEntry(
+        policy,
+        previous,
+        observation.rollbackTargetEntryDigest,
+      );
+      if (applicationPrevious === null) {
+        return reject(
+          "rollback_authority_mismatch",
+          "watcher_user_event_transition_rejected",
+        );
+      }
+    }
+  }
+  const next = applyObservation(
+    policy,
+    applicationPrevious,
+    observation,
+    publicContext,
+  );
   if (next === null) {
     return reject("history_limit_exceeded");
   }

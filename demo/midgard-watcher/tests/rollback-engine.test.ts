@@ -32,10 +32,13 @@ import {
 } from "../src/l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
 import {
+  evaluateWatcherPostFinalityRecoveryV1,
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
+  parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
   parseWatcherRollbackStateV1,
+  WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
   WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
   WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION,
   WATCHER_ROLLBACK_STATE_V1_SCHEMA_VERSION,
@@ -179,6 +182,31 @@ const localPolicy = (): WatcherFinalityPolicyV1 => {
   return value as WatcherFinalityPolicyV1;
 };
 
+const recoveryLocalPolicy = (): WatcherFinalityPolicyV1 => {
+  const base = localConfig();
+  const value = makeWatcherFinalityPolicyV1(
+    {
+      ...base,
+      l1: {
+        ...base.l1,
+        source: {
+          ...base.l1.source,
+          queryServices: [
+            {
+              kind: "ogmios",
+              identity: "cardano-node-a-ogmios",
+              endpoint: "ws://127.0.0.1:1337",
+            },
+          ],
+        },
+      },
+    },
+    deploymentIdentity(),
+  );
+  expect(value).not.toBeNull();
+  return value as WatcherFinalityPolicyV1;
+};
+
 const provider = (providerId: string, identityByte: string) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod" as const,
@@ -193,18 +221,24 @@ const provider = (providerId: string, identityByte: string) => ({
   },
 });
 
-const localNodeProvider = () => ({
+const localNodeProvider = (
+  surface: "chain_sync" | "ogmios" = "chain_sync",
+) => ({
   schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   network: "Preprod" as const,
-  providerId: "cardano-node-a",
+  providerId:
+    surface === "chain_sync" ? "cardano-node-a" : "cardano-node-a-ogmios",
   source: {
     sourceMode: "local_node" as const,
     authorityNodeId: "cardano-node-a",
-    surface: "chain_sync" as const,
+    surface,
   },
   authentication: {
-    kind: "cardano_node_genesis_v1" as const,
-    publicIdentitySha256: hex32("a1"),
+    kind:
+      surface === "chain_sync"
+        ? ("cardano_node_genesis_v1" as const)
+        : ("https_tls_identity_v1" as const),
+    publicIdentitySha256: surface === "chain_sync" ? hex32("a1") : hex32("b1"),
   },
 });
 
@@ -265,11 +299,15 @@ const observation = (
       point.bodyHex === undefined ? [] : [transaction(point.bodyHex)],
   });
 
-const localObservation = (point: Point): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(localNodeProvider(), {
+const localObservation = (
+  point: Point,
+  surface: "chain_sync" | "ogmios" = "chain_sync",
+): WatcherNormalizedL1BlockV1 =>
+  normalizeWatcherL1BlockV1(localNodeProvider(surface), {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
     network: "Preprod",
-    providerId: "cardano-node-a",
+    providerId:
+      surface === "chain_sync" ? "cardano-node-a" : "cardano-node-a-ogmios",
     chainPoint: {
       blockHash: point.blockHash,
       parentBlockHash: point.parentBlockHash ?? null,
@@ -361,7 +399,7 @@ const graph = (idByte: string, point: Point, sharedInputId?: string): Graph => {
     chainPoint: hex32(`${idByte[0]}2`),
     outRef: `${hex32(`${idByte[0]}3`)}#0`,
     input: hex32(`${idByte[0]}4`),
-    blockHash: point.blockHash,
+    blockHash: hex32(`${idByte[0]}0`),
     fault: hex32(`${idByte[0]}5`),
     submission: hex32(`${idByte[0]}6`),
     confirmation: hex32(`${idByte[0]}7`),
@@ -412,7 +450,8 @@ const graph = (idByte: string, point: Point, sharedInputId?: string): Graph => {
       ],
       reconstructedStates: [
         {
-          blockHash: point.blockHash,
+          blockHash: ids.blockHash,
+          chainPointId: ids.chainPoint,
           priorStateRoot: hex32(`${idByte[0]}b`),
           postStateRoot: hex32(`${idByte[0]}c`),
           inputIds,
@@ -421,7 +460,7 @@ const graph = (idByte: string, point: Point, sharedInputId?: string): Graph => {
       ],
       decisions: [
         {
-          blockHash: point.blockHash,
+          blockHash: ids.blockHash,
           decision: "fault_detected",
           reconstructionDigest: hex32(`${idByte[0]}d`),
           evidenceDigest: hex32(`${idByte[0]}e`),
@@ -430,7 +469,7 @@ const graph = (idByte: string, point: Point, sharedInputId?: string): Graph => {
       faults: [
         {
           faultId: ids.fault,
-          blockHash: point.blockHash,
+          blockHash: ids.blockHash,
           familyId: "transition-trace",
           evidence: payload("a10001"),
         },
@@ -585,6 +624,189 @@ const finalizedPoint = {
   depth: "5",
 } as const;
 
+type RecoverySourceMode = "local_node" | "external_providers";
+
+const recoveryAgreement = (sourceMode: RecoverySourceMode, point: Point) => {
+  const observations =
+    sourceMode === "local_node"
+      ? [localObservation(point), localObservation(point, "ogmios")]
+      : agreementObservations(point);
+  return {
+    observations,
+    consistency: evaluateWatcherMultiProviderConsistencyV1(
+      sourceMode === "local_node"
+        ? {
+            sourceMode: "local_node",
+            network: "Preprod",
+            authorityNodeId: "cardano-node-a",
+            genesisIdentitySha256: hex32("a1"),
+            queryServices: [
+              {
+                kind: "ogmios" as const,
+                providerId: "cardano-node-a-ogmios",
+              },
+            ],
+          }
+        : externalSource,
+      observations,
+    ),
+  };
+};
+
+const recoveryPoints = (
+  branch: "old" | "replacement",
+  common: Point,
+  length: number,
+  finalDepth: string,
+): readonly Point[] => {
+  const points: Point[] = [common];
+  for (let index = 1; index <= length; index += 1) {
+    const previous = points.at(-1)!;
+    points.push({
+      blockHash: sha256Canonical({ branch, index }),
+      parentBlockHash: previous.blockHash,
+      blockNo: (BigInt(common.blockNo) + BigInt(index)).toString(),
+      slot: (BigInt(common.slot) + BigInt(index)).toString(),
+      depth: index === length ? finalDepth : "0",
+    });
+  }
+  return points;
+};
+
+const postFinalityRecoveryFixture = (
+  rollbackDepth: number,
+  sourceMode: RecoverySourceMode,
+  options: Readonly<{
+    malformedPreviousEvidenceAt?: number;
+    omitPreviousEvidenceAt?: number;
+  }> = {},
+) => {
+  const finalityPolicy =
+    sourceMode === "local_node" ? recoveryLocalPolicy() : policy();
+  const common: Point = {
+    blockHash: hex32("01"),
+    parentBlockHash: hex32("00"),
+    blockNo: "1000",
+    slot: "1000",
+    depth: "0",
+  };
+  const previousBundles = recoveryPoints("old", common, rollbackDepth, "5").map(
+    (point) => recoveryAgreement(sourceMode, point),
+  );
+  const replacementBundles = recoveryPoints("replacement", common, 2, "0").map(
+    (point) => recoveryAgreement(sourceMode, point),
+  );
+  const orphanedTip = previousBundles.at(-1)!;
+  const replacementTip = replacementBundles.at(-1)!;
+  const alternatePreviousTip = recoveryAgreement(sourceMode, {
+    ...orphanedTip.observations[0]!.chainPoint,
+    depth: (
+      BigInt(orphanedTip.observations[0]!.chainPoint.depth) + 1n
+    ).toString(),
+  });
+  const alternateReplacementTip = recoveryAgreement(sourceMode, {
+    ...replacementTip.observations[0]!.chainPoint,
+    depth: (
+      BigInt(replacementTip.observations[0]!.chainPoint.depth) + 1n
+    ).toString(),
+  });
+  const pendingTip = recoveryAgreement(sourceMode, {
+    ...orphanedTip.observations[0]!.chainPoint,
+    depth: "2",
+  });
+  const pendingState = evaluateWatcherFinalityV1(
+    finalityPolicy,
+    null,
+    pendingTip.consistency,
+  ).state as WatcherFinalityStateV1;
+  const finalizedState = evaluateWatcherFinalityV1(
+    finalityPolicy,
+    pendingState,
+    orphanedTip.consistency,
+  ).state as WatcherFinalityStateV1;
+  expect(finalizedState.phase).toBe("finalized");
+  const contradiction = evaluateWatcherFinalityV1(
+    finalityPolicy,
+    finalizedState,
+    replacementTip.consistency,
+  );
+  expect(contradiction.action).toBe("quarantine_incident");
+  const persistedObservations = [
+    ...new Map(
+      [
+        ...previousBundles,
+        ...replacementBundles,
+        alternatePreviousTip,
+        alternateReplacementTip,
+      ]
+        .flatMap(({ observations }) => observations)
+        .map((observation) => [observation.observationDigest, observation]),
+    ).values(),
+  ];
+  const orphanedGraph = graph("10", orphanedTip.observations[0]!.chainPoint);
+  const commonGraph = graph("40", common);
+  let store = combine(
+    finalityPolicy.deploymentMarker,
+    "11",
+    [orphanedGraph, commonGraph],
+    undefined,
+    persistedObservations,
+  );
+  const malformedDigest =
+    options.malformedPreviousEvidenceAt === undefined
+      ? null
+      : previousBundles[options.malformedPreviousEvidenceAt]?.observations[0]
+          ?.observationDigest;
+  const omittedDigest =
+    options.omitPreviousEvidenceAt === undefined
+      ? null
+      : previousBundles[options.omitPreviousEvidenceAt]?.observations[0]
+          ?.observationDigest;
+  if (malformedDigest !== null || omittedDigest !== null) {
+    store = makeWatcherDurableStoreV1({
+      deploymentMarker: store.deploymentMarker,
+      revision: store.revision,
+      records: {
+        ...store,
+        l1Observations: store.l1Observations
+          .filter(({ observationId }) => observationId !== omittedDigest)
+          .map((entry) =>
+            entry.observationId === malformedDigest
+              ? { ...entry, payload: payload("ff") }
+              : entry,
+          ),
+      },
+    });
+  }
+  const rollbackBootstrapState = bootstrap(
+    finalityPolicy,
+    store,
+    finalizedState,
+  );
+  const incident = evaluateWatcherRollbackV1(
+    finalityPolicy,
+    store,
+    finalizedState,
+    replacementTip.consistency,
+    contradiction,
+    rollbackBootstrapState,
+    rollbackBootstrapState,
+  );
+  expect(incident.action).toBe("quarantine_incident");
+  return {
+    finalityPolicy,
+    sourceStore: incident.nextStore!,
+    rollbackState: incident.rollbackState!,
+    rollbackBootstrapState,
+    previousPath: previousBundles.map(({ consistency }) => consistency),
+    replacementPath: replacementBundles.map(({ consistency }) => consistency),
+    alternatePreviousTip: alternatePreviousTip.consistency,
+    alternateReplacementTip: alternateReplacementTip.consistency,
+    orphanedGraph,
+    commonGraph,
+  };
+};
+
 describe("canonical watcher rollback engine", () => {
   it("applies and replays an exact one-authority local-node rollback", () => {
     const finalityPolicy = localPolicy();
@@ -632,7 +854,7 @@ describe("canonical watcher rollback engine", () => {
       rollbackState: { transitionCount: "1" },
     });
     expect(applied.removedRecords.reconstructedBlockHashes).toContain(
-      oldPoint.blockHash,
+      graph("10", oldPoint).ids.blockHash,
     );
     expect(
       evaluateWatcherRollbackV1(
@@ -919,7 +1141,7 @@ describe("canonical watcher rollback engine", () => {
       oldGraph.ids.observation,
     ]);
     expect(result.removedRecords.reconstructedBlockHashes).toEqual([
-      oldPoint.blockHash,
+      oldGraph.ids.blockHash,
     ]);
     expect(result.nextStore?.chainPoints).toEqual(store.chainPoints);
   });
@@ -1009,7 +1231,8 @@ describe("canonical watcher rollback engine", () => {
     );
     expect(finalizedResult.action).toBe("finalize");
     const finalizedState = finalizedResult.state as WatcherFinalityStateV1;
-    const contradictionConsistency = agreement({ ...oldPoint, depth: "4" });
+    const contradictionPoint = { ...replacementPoint, depth: "0" };
+    const contradictionConsistency = agreement(contradictionPoint);
     const contradiction = evaluateWatcherFinalityV1(
       finalityPolicy,
       finalizedState,
@@ -1020,7 +1243,7 @@ describe("canonical watcher rollback engine", () => {
       "9",
       [graph("10", oldPoint)],
       undefined,
-      agreementObservations({ ...oldPoint, depth: "4" }),
+      agreementObservations(contradictionPoint),
     );
     const bootstrapState = bootstrap(finalityPolicy, store, finalizedState);
     const quarantined = evaluateWatcherRollbackV1(
@@ -1042,7 +1265,7 @@ describe("canonical watcher rollback engine", () => {
       rollbackState: {
         incident: {
           schemaVersion: WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION,
-          reasonCode: "post_finality_depth_regression",
+          reasonCode: "post_finality_point_changed",
           finalizedBinding: finalizedState.finalized,
         },
       },
@@ -1127,7 +1350,555 @@ describe("canonical watcher rollback engine", () => {
     ).toEqual(["rollback_state_store_mismatch"]);
   });
 
-  it("requires exact durable W10 evidence for agreed, pending, and quarantined post-finality incidents", () => {
+  it.each<RecoverySourceMode>(["local_node", "external_providers"])(
+    "automatically recovers an agreed %s replacement, sweeps every dependent record, and is restart-idempotent",
+    (sourceMode) => {
+      const fixture = postFinalityRecoveryFixture(6, sourceMode);
+      const recoveryInput = {
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: null,
+      };
+      const applied = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+
+      expect(applied).toMatchObject({
+        schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
+        action: "rewind_and_replay",
+        protocolDecision: "resume_replay",
+        reasonCodes: ["recovery_applied"],
+        sourceRevision: "12",
+        nextRevision: "13",
+        resumableFinalityState: {
+          phase: "unobserved",
+          pending: null,
+          finalized: null,
+          incident: null,
+        },
+        recoveryState: {
+          path: { rollbackDepth: "6" },
+          incidentLifecycle: { status: "recovered" },
+        },
+      });
+      if (sourceMode === "local_node") {
+        expect(fixture.replacementPath.at(-1)).toMatchObject({
+          status: "agreed",
+          sourceMode: "local_node",
+          independentProviderCount: 1,
+          queryObservationCount: 1,
+          localQueryServiceBindings: [
+            {
+              providerId: "cardano-node-a-ogmios",
+              observationStatus: "aligned",
+            },
+          ],
+        });
+      } else {
+        expect(fixture.replacementPath.at(-1)).toMatchObject({
+          status: "agreed",
+          sourceMode: "external_providers",
+          independentProviderCount: 2,
+        });
+      }
+      expect(applied.removedRecords.reconstructedBlockHashes).toContain(
+        fixture.orphanedGraph.ids.blockHash,
+      );
+      expect(fixture.orphanedGraph.ids.blockHash).not.toBe(
+        fixture.rollbackState.incident?.finalizedBinding.blockHash,
+      );
+      expect(applied.removedRecords.decisionBlockHashes).toContain(
+        fixture.orphanedGraph.ids.blockHash,
+      );
+      expect(applied.removedRecords.protocolUtxoOutRefs).toContain(
+        fixture.orphanedGraph.ids.outRef,
+      );
+      expect(applied.removedRecords.faultIds).toContain(
+        fixture.orphanedGraph.ids.fault,
+      );
+      expect(applied.removedRecords.submissionIds).toContain(
+        fixture.orphanedGraph.ids.submission,
+      );
+      expect(applied.removedRecords.confirmationIds).toContain(
+        fixture.orphanedGraph.ids.confirmation,
+      );
+      expect(applied.removedRecords.retryIds).toContain(
+        fixture.orphanedGraph.ids.retry,
+      );
+      expect(applied.removedRecords.deadlineIds).toContain(
+        fixture.orphanedGraph.ids.deadline,
+      );
+      expect(applied.removedRecords.correctionResultIds).toContain(
+        fixture.orphanedGraph.ids.correction,
+      );
+      expect(applied.nextStore?.reconstructedStates).toContainEqual(
+        fixture.commonGraph.records.reconstructedStates[0],
+      );
+      expect(
+        parseWatcherPostFinalityRecoveryResultV1(
+          JSON.parse(JSON.stringify(applied)),
+          recoveryInput,
+        ),
+      ).toEqual(applied);
+
+      const restarted = evaluateWatcherPostFinalityRecoveryV1({
+        policy: JSON.parse(JSON.stringify(fixture.finalityPolicy)),
+        sourceStore: JSON.parse(JSON.stringify(fixture.sourceStore)),
+        currentStore: JSON.parse(JSON.stringify(applied.nextStore)),
+        quarantinedRollbackState: JSON.parse(
+          JSON.stringify(fixture.rollbackState),
+        ),
+        rollbackBootstrapState: JSON.parse(
+          JSON.stringify(fixture.rollbackBootstrapState),
+        ),
+        previousCanonicalPath: JSON.parse(JSON.stringify(fixture.previousPath)),
+        replacementCanonicalPath: JSON.parse(
+          JSON.stringify(fixture.replacementPath),
+        ),
+        previousRecoveryState: JSON.parse(
+          JSON.stringify(applied.recoveryState),
+        ),
+      });
+      expect(restarted).toMatchObject({
+        action: "duplicate_recovery",
+        protocolDecision: "hold",
+        reasonCodes: ["duplicate_recovery"],
+        sourceRevision: "13",
+        nextRevision: "13",
+        recoveryState: applied.recoveryState,
+      });
+      expect(restarted.nextStore).toEqual(applied.nextStore);
+    },
+    30_000,
+  );
+
+  it("accepts the exact k=2160 recovery boundary and rejects 2161 without mutation", () => {
+    const atBoundary = postFinalityRecoveryFixture(2_160, "local_node");
+    const accepted = evaluateWatcherPostFinalityRecoveryV1({
+      policy: atBoundary.finalityPolicy,
+      sourceStore: atBoundary.sourceStore,
+      currentStore: atBoundary.sourceStore,
+      quarantinedRollbackState: atBoundary.rollbackState,
+      rollbackBootstrapState: atBoundary.rollbackBootstrapState,
+      previousCanonicalPath: atBoundary.previousPath,
+      replacementCanonicalPath: atBoundary.replacementPath,
+      previousRecoveryState: null,
+    });
+    expect(accepted).toMatchObject({
+      action: "rewind_and_replay",
+      recoveryState: { path: { rollbackDepth: "2160" } },
+    });
+
+    const beyondBoundaryPath = [
+      ...atBoundary.previousPath,
+      atBoundary.previousPath.at(-1)!,
+    ];
+    const rejected = evaluateWatcherPostFinalityRecoveryV1({
+      policy: atBoundary.finalityPolicy,
+      sourceStore: atBoundary.sourceStore,
+      currentStore: atBoundary.sourceStore,
+      quarantinedRollbackState: atBoundary.rollbackState,
+      rollbackBootstrapState: atBoundary.rollbackBootstrapState,
+      previousCanonicalPath: beyondBoundaryPath,
+      replacementCanonicalPath: atBoundary.replacementPath,
+      previousRecoveryState: null,
+    });
+    expect(rejected).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["recovery_depth_exceeded"],
+      nextStore: null,
+      recoveryState: null,
+    });
+    expect(
+      Object.values(rejected.removedRecords).every(
+        (records) => records.length === 0,
+      ),
+    ).toBe(true);
+  }, 120_000);
+
+  it("fails closed on a non-agreed replacement, an ancestry gap, and forged recovery state", () => {
+    const fixture = postFinalityRecoveryFixture(6, "external_providers");
+    const wrongPreviousEndpoint = [...fixture.previousPath];
+    wrongPreviousEndpoint[wrongPreviousEndpoint.length - 1] =
+      fixture.alternatePreviousTip;
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: wrongPreviousEndpoint,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["finalized_binding_mismatch"],
+      nextStore: null,
+    });
+
+    const wrongReplacementEndpoint = [...fixture.replacementPath];
+    wrongReplacementEndpoint[wrongReplacementEndpoint.length - 1] =
+      fixture.alternateReplacementTip;
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: wrongReplacementEndpoint,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["incident_provenance_mismatch"],
+      nextStore: null,
+    });
+
+    const malformedMemberPath = [fixture.previousPath[0], null];
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: malformedMemberPath,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["recovery_path_malformed"],
+      nextStore: null,
+    });
+
+    const accessorMember = {
+      ...fixture.replacementPath[1],
+    } as Record<string, unknown>;
+    Object.defineProperty(accessorMember, "status", {
+      enumerable: true,
+      get: () => {
+        throw new Error("must not execute hostile recovery-path accessors");
+      },
+    });
+    const accessorPath = [...fixture.replacementPath];
+    accessorPath[1] = accessorMember as (typeof accessorPath)[number];
+    expect(() =>
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: accessorPath,
+        previousRecoveryState: null,
+      }),
+    ).not.toThrow();
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: accessorPath,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["recovery_path_malformed"],
+      nextStore: null,
+    });
+
+    const cyclicMember = JSON.parse(
+      JSON.stringify(fixture.replacementPath[1]),
+    ) as Record<string, unknown>;
+    cyclicMember.agreement = cyclicMember;
+    const cyclicPath = [...fixture.replacementPath];
+    cyclicPath[1] = cyclicMember as (typeof cyclicPath)[number];
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: cyclicPath,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      nextStore: null,
+    });
+
+    const pendingReplacement = JSON.parse(
+      JSON.stringify(fixture.replacementPath),
+    ) as Array<Record<string, unknown>>;
+    pendingReplacement[1] = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      [],
+    ) as unknown as Record<string, unknown>;
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: pendingReplacement,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["canonical_agreement_required"],
+      nextStore: null,
+    });
+
+    const gap = JSON.parse(JSON.stringify(fixture.replacementPath)) as Array<
+      Record<string, unknown>
+    >;
+    gap.splice(1, 1);
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: gap,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["recovery_path_gap"],
+      nextStore: null,
+    });
+
+    const applied = evaluateWatcherPostFinalityRecoveryV1({
+      policy: fixture.finalityPolicy,
+      sourceStore: fixture.sourceStore,
+      currentStore: fixture.sourceStore,
+      quarantinedRollbackState: fixture.rollbackState,
+      rollbackBootstrapState: fixture.rollbackBootstrapState,
+      previousCanonicalPath: fixture.previousPath,
+      replacementCanonicalPath: fixture.replacementPath,
+      previousRecoveryState: null,
+    });
+    const forged = JSON.parse(JSON.stringify(applied.recoveryState)) as Record<
+      string,
+      unknown
+    >;
+    forged.nextStoreDigest = hex32("ff");
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: applied.nextStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: forged,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_recovery_state"],
+      nextStore: null,
+    });
+
+    const selfRehashed = JSON.parse(
+      JSON.stringify(applied.recoveryState),
+    ) as Record<string, unknown>;
+    const removedRecords = selfRehashed.removedRecords as Record<
+      string,
+      unknown
+    >;
+    removedRecords.faultIds = [];
+    const { stateDigest: _stateDigest, ...canonicalRecoveryState } =
+      selfRehashed;
+    selfRehashed.stateDigest = sha256Canonical(canonicalRecoveryState);
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: applied.nextStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: selfRehashed,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["recovery_state_mismatch"],
+      nextStore: null,
+    });
+
+    const recoveryInput = {
+      policy: fixture.finalityPolicy,
+      sourceStore: fixture.sourceStore,
+      currentStore: fixture.sourceStore,
+      quarantinedRollbackState: fixture.rollbackState,
+      rollbackBootstrapState: fixture.rollbackBootstrapState,
+      previousCanonicalPath: fixture.previousPath,
+      replacementCanonicalPath: fixture.replacementPath,
+      previousRecoveryState: null,
+    };
+    const selfRehashedResult = JSON.parse(JSON.stringify(applied)) as Record<
+      string,
+      unknown
+    >;
+    selfRehashedResult.reasonCodes = ["duplicate_recovery"];
+    const { resultDigest: _resultDigest, ...canonicalResult } =
+      selfRehashedResult;
+    selfRehashedResult.resultDigest = sha256Canonical(canonicalResult);
+    expect(
+      parseWatcherPostFinalityRecoveryResultV1(
+        selfRehashedResult,
+        recoveryInput,
+      ),
+    ).toBeNull();
+
+    const unknownResult = {
+      ...JSON.parse(JSON.stringify(applied)),
+      attacker: true,
+    };
+    expect(
+      parseWatcherPostFinalityRecoveryResultV1(unknownResult, recoveryInput),
+    ).toBeNull();
+    const accessorResult = JSON.parse(JSON.stringify(applied)) as Record<
+      string,
+      unknown
+    >;
+    Object.defineProperty(accessorResult, "action", {
+      enumerable: true,
+      get: () => "rewind_and_replay",
+    });
+    expect(
+      parseWatcherPostFinalityRecoveryResultV1(accessorResult, recoveryInput),
+    ).toBeNull();
+  });
+
+  it("fails closed without mutation on wrong bindings and missing or malformed W10 bytes", () => {
+    const external = postFinalityRecoveryFixture(6, "external_providers");
+    const previewConfig = {
+      ...config(),
+      targetNetwork: "Preview" as const,
+    };
+    const previewPolicy = makeWatcherFinalityPolicyV1(previewConfig, {
+      ...deploymentIdentity(),
+      network: "Preview" as const,
+    });
+    expect(previewPolicy).not.toBeNull();
+    const wrongPolicies = [
+      recoveryLocalPolicy(),
+      previewPolicy,
+      {
+        ...external.finalityPolicy,
+        policyDigest: hex32("ff"),
+      },
+    ];
+    for (const wrongPolicy of wrongPolicies) {
+      const result = evaluateWatcherPostFinalityRecoveryV1({
+        policy: wrongPolicy,
+        sourceStore: external.sourceStore,
+        currentStore: external.sourceStore,
+        quarantinedRollbackState: external.rollbackState,
+        rollbackBootstrapState: external.rollbackBootstrapState,
+        previousCanonicalPath: external.previousPath,
+        replacementCanonicalPath: external.replacementPath,
+        previousRecoveryState: null,
+      });
+      expect(result.action).toBe("reject");
+      expect(result.nextStore).toBeNull();
+      expect(result.recoveryState).toBeNull();
+    }
+
+    const local = postFinalityRecoveryFixture(6, "local_node");
+    const foreignLocalConfig = localConfig();
+    const foreignAuthorityPolicy = makeWatcherFinalityPolicyV1(
+      {
+        ...foreignLocalConfig,
+        l1: {
+          ...foreignLocalConfig.l1,
+          source: {
+            ...foreignLocalConfig.l1.source,
+            authorityNodeId: "cardano-node-b",
+            chainSync: {
+              ...foreignLocalConfig.l1.source.chainSync,
+              genesisIdentitySha256: hex32("b2"),
+            },
+          },
+        },
+      },
+      deploymentIdentity(),
+    );
+    expect(foreignAuthorityPolicy).not.toBeNull();
+    expect(
+      evaluateWatcherPostFinalityRecoveryV1({
+        policy: foreignAuthorityPolicy,
+        sourceStore: local.sourceStore,
+        currentStore: local.sourceStore,
+        quarantinedRollbackState: local.rollbackState,
+        rollbackBootstrapState: local.rollbackBootstrapState,
+        previousCanonicalPath: local.previousPath,
+        replacementCanonicalPath: local.replacementPath,
+        previousRecoveryState: null,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      nextStore: null,
+      recoveryState: null,
+    });
+
+    for (const fixture of [
+      postFinalityRecoveryFixture(6, "local_node", {
+        omitPreviousEvidenceAt: 2,
+      }),
+      postFinalityRecoveryFixture(6, "local_node", {
+        malformedPreviousEvidenceAt: 2,
+      }),
+    ]) {
+      const result = evaluateWatcherPostFinalityRecoveryV1({
+        policy: fixture.finalityPolicy,
+        sourceStore: fixture.sourceStore,
+        currentStore: fixture.sourceStore,
+        quarantinedRollbackState: fixture.rollbackState,
+        rollbackBootstrapState: fixture.rollbackBootstrapState,
+        previousCanonicalPath: fixture.previousPath,
+        replacementCanonicalPath: fixture.replacementPath,
+        previousRecoveryState: null,
+      });
+      expect(result).toMatchObject({
+        action: "reject",
+        protocolDecision: "quarantined",
+        reasonCodes: ["canonical_agreement_required"],
+        nextStore: null,
+        recoveryState: null,
+      });
+      expect(
+        Object.values(result.removedRecords).every(
+          (records) => records.length === 0,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("opens W13 only for an agreed contradiction and never journals transient W11 disagreement", () => {
     const finalityPolicy = policy();
     const first = pending(finalityPolicy, { ...oldPoint, depth: "2" });
     const finalizedState = evaluateWatcherFinalityV1(
@@ -1135,11 +1906,48 @@ describe("canonical watcher rollback engine", () => {
       first,
       agreement({ ...oldPoint, depth: "5" }),
     ).state as WatcherFinalityStateV1;
-    const cases = [
-      {
-        status: "agreed",
-        observations: agreementObservations({ ...oldPoint, depth: "4" }),
-      },
+    const agreedObservations = agreementObservations({
+      ...replacementPoint,
+      depth: "0",
+    });
+    const agreedConsistency = evaluateWatcherMultiProviderConsistencyV1(
+      externalSource,
+      agreedObservations,
+    );
+    const agreedFinalityResult = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      finalizedState,
+      agreedConsistency,
+    );
+    expect(agreedFinalityResult.action).toBe("quarantine_incident");
+    const agreedStore = combine(
+      finalityPolicy.deploymentMarker,
+      "0",
+      [graph("10", oldPoint)],
+      undefined,
+      agreedObservations,
+    );
+    const agreedBootstrap = bootstrap(
+      finalityPolicy,
+      agreedStore,
+      finalizedState,
+    );
+    expect(
+      evaluateWatcherRollbackV1(
+        finalityPolicy,
+        agreedStore,
+        finalizedState,
+        agreedConsistency,
+        agreedFinalityResult,
+        agreedBootstrap,
+        agreedBootstrap,
+      ),
+    ).toMatchObject({
+      action: "quarantine_incident",
+      reasonCodes: ["post_finality_incident"],
+    });
+
+    const transientCases = [
       {
         status: "pending",
         observations: [
@@ -1164,7 +1972,7 @@ describe("canonical watcher rollback engine", () => {
       },
     ] as const;
 
-    for (const value of cases) {
+    for (const value of transientCases) {
       const consistency = evaluateWatcherMultiProviderConsistencyV1(
         externalSource,
         value.observations,
@@ -1175,7 +1983,12 @@ describe("canonical watcher rollback engine", () => {
         finalizedState,
         consistency,
       );
-      expect(finalityResult.action).toBe("quarantine_incident");
+      expect(finalityResult).toMatchObject({
+        action: "reject",
+        protocolDecision: "quarantined",
+        state: finalizedState,
+      });
+      expect(finalityResult.state?.incident).toBeNull();
       const store = combine(
         finalityPolicy.deploymentMarker,
         "0",
@@ -1194,8 +2007,20 @@ describe("canonical watcher rollback engine", () => {
         bootstrapState,
       );
       expect(result).toMatchObject({
-        action: "quarantine_incident",
-        reasonCodes: ["post_finality_incident"],
+        action: "reject",
+        nextStore: null,
+        rollbackState: null,
+      });
+      expect(
+        evaluateWatcherFinalityV1(
+          finalityPolicy,
+          finalityResult.state,
+          agreement({ ...oldPoint, depth: "6" }),
+        ),
+      ).toMatchObject({
+        action: "duplicate",
+        protocolDecision: "hold",
+        state: finalizedState,
       });
     }
   });
@@ -1208,10 +2033,7 @@ describe("canonical watcher rollback engine", () => {
       first,
       agreement({ ...oldPoint, depth: "5" }),
     ).state as WatcherFinalityStateV1;
-    const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      externalSource,
-      [],
-    );
+    const consistency = agreement({ ...replacementPoint, depth: "0" });
     const finalityResult = evaluateWatcherFinalityV1(
       finalityPolicy,
       finalizedState,
@@ -1849,7 +2671,8 @@ describe("canonical watcher rollback engine", () => {
       first,
       agreement({ ...oldPoint, depth: "5" }),
     ).state as WatcherFinalityStateV1;
-    const contradictionConsistency = agreement({ ...oldPoint, depth: "4" });
+    const contradictionPoint = { ...replacementPoint, depth: "0" };
+    const contradictionConsistency = agreement(contradictionPoint);
     const contradiction = evaluateWatcherFinalityV1(
       finalityPolicy,
       finalized,
@@ -1860,7 +2683,7 @@ describe("canonical watcher rollback engine", () => {
       "0",
       [graph("10", oldPoint)],
       undefined,
-      agreementObservations({ ...oldPoint, depth: "4" }),
+      agreementObservations(contradictionPoint),
     );
     const bootstrapState = bootstrap(finalityPolicy, store, finalized);
     const quarantined = evaluateWatcherRollbackV1(

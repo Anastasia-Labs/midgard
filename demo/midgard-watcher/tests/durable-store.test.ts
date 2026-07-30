@@ -71,6 +71,7 @@ const recordsFixture = (): WatcherDurableRecordsV1 => ({
   reconstructedStates: [
     {
       blockHash: hex32("10"),
+      chainPointId: hex32("01"),
       priorStateRoot: hex32("12"),
       postStateRoot: hex32("13"),
       inputIds: [hex32("03")],

@@ -57,7 +57,10 @@ import {
 } from "./l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistencyV1 } from "./multi-provider-consistency.js";
 import {
+  parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
+  type WatcherPostFinalityRecoveryInputV1,
+  type WatcherPostFinalityRecoveryResultV1,
   type WatcherRollbackResultV1,
   type WatcherRollbackVerificationContextV1,
 } from "./rollback-engine.js";
@@ -346,7 +349,7 @@ export type WatcherSettlementHistoryEntryV1 = Readonly<{
 export type WatcherSettlementRollbackEntryV1 = Readonly<{
   observation: WatcherSettlementObservationV1;
   publicContextDigest: string;
-  rollbackResult: WatcherRollbackResultV1;
+  rollbackResult: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1;
   rollbackDigest: string;
 }>;
 
@@ -390,7 +393,9 @@ export type WatcherSettlementIndexerResultV1 = Readonly<{
 
 export type WatcherSettlementRollbackContextBindingV1 = Readonly<{
   resultDigest: string;
-  context: WatcherRollbackVerificationContextV1;
+  context:
+    | WatcherRollbackVerificationContextV1
+    | WatcherPostFinalityRecoveryInputV1;
 }>;
 
 export type WatcherSettlementDeploymentAuthorityV1 = Readonly<{
@@ -439,7 +444,9 @@ export type WatcherSettlementPublicContextV1 = Readonly<{
   finalityAuthority: WatcherSettlementFinalityAuthorityV1 | null;
   rollbackAuthority: Readonly<{
     result: unknown;
-    context: WatcherRollbackVerificationContextV1;
+    context:
+      | WatcherRollbackVerificationContextV1
+      | WatcherPostFinalityRecoveryInputV1;
   }> | null;
   restartContexts: readonly WatcherSettlementRestartContextV1[];
   restartRollbackContexts: readonly WatcherSettlementRollbackContextBindingV1[];
@@ -2324,6 +2331,9 @@ const verifyBaseContext = (
     observation.sourceObservationDigest !== block.observationDigest ||
     observation.durableStoreDigest !== storeDigest ||
     !sameMarker(store.deploymentMarker, policy.deploymentMarker) ||
+    !settlementRolesMatchOutputs(policy, sourceStore) ||
+    !settlementRolesMatchOutputs(policy, store) ||
+    !settlementForeignRecordsPreserved(policy, sourceStore, store) ||
     persistedObservations.length !== 1 ||
     persistedPoints.length !== 1 ||
     (observation.transactionHash !== null &&
@@ -2406,6 +2416,35 @@ const rollbackAnchorMatchesAuthority = (
         consistency.chainAuthorityObservationDigest === block.observationDigest
     : consistency.sourceMode === "external_providers" &&
         block.provider.source.sourceMode === "external_providers";
+};
+
+const postFinalityRecoveryAnchorMatchesAuthority = (
+  block: WatcherNormalizedL1BlockV1,
+  recovery: WatcherPostFinalityRecoveryResultV1,
+  input: WatcherPostFinalityRecoveryInputV1,
+  commonAncestorPointDigest: string,
+): boolean => {
+  const finalityPolicy = parseWatcherFinalityPolicyV1(input.policy);
+  const path = recovery.recoveryState?.path;
+  return (
+    finalityPolicy !== null &&
+    recovery.action === "rewind_and_replay" &&
+    recovery.protocolDecision === "resume_replay" &&
+    recovery.nextStore !== null &&
+    recovery.recoveryState !== null &&
+    recovery.resumableFinalityState !== null &&
+    path !== undefined &&
+    path.commonAncestorPointDigest === commonAncestorPointDigest &&
+    path.replacementTipPointDigest === block.chainPoint.pointDigest &&
+    path.replacementTipBlockHash === block.chainPoint.blockHash &&
+    path.replacementTipBlockNo === block.chainPoint.blockNo &&
+    block.provider.source.sourceMode === finalityPolicy.sourceMode &&
+    (finalityPolicy.sourceMode === "local_node"
+      ? block.provider.source.sourceMode === "local_node" &&
+        block.provider.source.surface === "chain_sync" &&
+        block.provider.source.authorityNodeId === finalityPolicy.authorityNodeId
+      : block.provider.source.sourceMode === "external_providers")
+  );
 };
 
 const verifyPublicContext = (
@@ -2519,7 +2558,9 @@ const verifyPublicContext = (
     }
     restartRollbackContexts.push({
       resultDigest: binding.resultDigest,
-      context: binding.context as WatcherRollbackVerificationContextV1,
+      context: binding.context as
+        | WatcherRollbackVerificationContextV1
+        | WatcherPostFinalityRecoveryInputV1,
     });
   }
   const rollbackAuthority =
@@ -2558,12 +2599,66 @@ const transactionInputs = (
 const storeRetains = <T>(previous: readonly T[], next: readonly T[]): boolean =>
   previous.every((entry) => next.some((candidate) => same(entry, candidate)));
 
+type SettlementRoleClassification = "owned" | "foreign" | "invalid";
+
+const classifySettlementRole = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  durable: WatcherProtocolUtxoV1,
+): SettlementRoleClassification => {
+  try {
+    const output = CML.TransactionOutput.from_cbor_hex(durable.output.cborHex);
+    if (output.to_canonical_cbor_hex() !== durable.output.cborHex) {
+      return "invalid";
+    }
+    const addressHex = output.address().to_hex();
+    const matches = [...TARGET_ROLES].filter(
+      (role) => roleAddress(policy, role).addressHex === addressHex,
+    );
+    if (matches.length === 0) {
+      return "foreign";
+    }
+    return matches.length === 1 &&
+      matches[0] === durable.role &&
+      decodeResource(policy, durable) !== null
+      ? "owned"
+      : "invalid";
+  } catch {
+    return "invalid";
+  }
+};
+
+const settlementRolesMatchOutputs = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  store: WatcherDurableStoreV1,
+): boolean =>
+  [...store.protocolUtxos, ...store.spentProtocolUtxos].every(
+    (durable) => classifySettlementRole(policy, durable) !== "invalid",
+  );
+
+const settlementForeignRecordsPreserved = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  source: WatcherDurableStoreV1,
+  next: WatcherDurableStoreV1,
+): boolean => {
+  const foreign = (records: readonly WatcherProtocolUtxoV1[]) =>
+    records.filter(
+      (durable) => classifySettlementRole(policy, durable) === "foreign",
+    );
+  return (
+    same(foreign(source.protocolUtxos), foreign(next.protocolUtxos)) &&
+    same(foreign(source.spentProtocolUtxos), foreign(next.spentProtocolUtxos))
+  );
+};
+
 const storeIsSettlementOwnershipExtension = (
+  policy: WatcherSettlementIndexerPolicyV1,
   previous: WatcherDurableStoreV1,
   next: WatcherDurableStoreV1,
 ): boolean => {
   if (
     !sameMarker(previous.deploymentMarker, next.deploymentMarker) ||
+    !settlementRolesMatchOutputs(policy, previous) ||
+    !settlementRolesMatchOutputs(policy, next) ||
     BigInt(next.revision) < BigInt(previous.revision) ||
     (next.revision === previous.revision && !same(previous, next))
   ) {
@@ -2572,8 +2667,8 @@ const storeIsSettlementOwnershipExtension = (
   const settlementOwned = (
     entries: readonly WatcherProtocolUtxoV1[],
   ): readonly WatcherProtocolUtxoV1[] =>
-    entries.filter(({ role }) =>
-      TARGET_ROLES.has(role as WatcherSettlementResourceRoleV1),
+    entries.filter(
+      (durable) => classifySettlementRole(policy, durable) === "owned",
     );
   return (
     same(
@@ -2606,7 +2701,10 @@ const normalStoreProgressionMatches = (
   transaction: WatcherL1TransactionV1 | null,
   chainPointId: string,
 ): boolean => {
-  if (BigInt(next.revision) !== BigInt(previous.revision) + 1n) {
+  if (
+    BigInt(next.revision) !== BigInt(previous.revision) + 1n ||
+    !sameMarker(previous.deploymentMarker, next.deploymentMarker)
+  ) {
     return false;
   }
   const inputs =
@@ -2664,8 +2762,10 @@ const normalStoreProgressionMatches = (
 };
 
 const previousStoreFromContext = (
+  policy: WatcherSettlementIndexerPolicyV1,
   state: WatcherSettlementIndexerStateV1,
   context: VerifiedPublicContext,
+  extensionStore: WatcherDurableStoreV1 = context.sourceStore,
 ): WatcherDurableStoreV1 | null => {
   const priorDigest =
     state.transitionHistory.at(-1)?.entry.publicContextDigest ?? null;
@@ -2680,7 +2780,7 @@ const previousStoreFromContext = (
     return watcherDurableStoreBytesSha256(
       encodeWatcherDurableStoreV1(previousStore),
     ) === state.durableStoreDigest &&
-      storeIsSettlementOwnershipExtension(previousStore, context.sourceStore)
+      storeIsSettlementOwnershipExtension(policy, previousStore, extensionStore)
       ? previousStore
       : null;
   } catch {
@@ -4679,7 +4779,7 @@ const historyEntryDigest = (
 const rollbackEntryDigest = (
   observation: WatcherSettlementObservationV1,
   publicContextDigest: string,
-  rollbackResult: WatcherRollbackResultV1,
+  rollbackResult: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1,
 ): string =>
   sha256Canonical({
     observationDigest: observation.observationDigest,
@@ -4757,7 +4857,9 @@ const parseRollbackEntry = (
   const observation = parseWatcherSettlementObservationV1(record.observation);
   const rollbackResult =
     typeof record.rollbackResult === "object" && record.rollbackResult !== null
-      ? (record.rollbackResult as WatcherRollbackResultV1)
+      ? (record.rollbackResult as
+          | WatcherRollbackResultV1
+          | WatcherPostFinalityRecoveryResultV1)
       : null;
   if (
     observation === null ||
@@ -5034,7 +5136,7 @@ const reject = (
 
 const orphanedByRollback = (
   entry: WatcherSettlementHistoryEntryV1,
-  rollback: WatcherRollbackResultV1,
+  rollback: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1,
 ): boolean => {
   const removedPoints = new Set(rollback.removedRecords.chainPointIds);
   const removedObservations = new Set(rollback.removedRecords.l1ObservationIds);
@@ -5136,6 +5238,15 @@ const applyVerifiedSettlementTransition = (
   observation: WatcherSettlementObservationV1,
   context: VerifiedPublicContext,
 ): WatcherSettlementIndexerResultV1 => {
+  const recoveryAuthority =
+    observation.transition.kind === "rollback" &&
+    context.rollbackAuthority !== null
+      ? parseWatcherPostFinalityRecoveryResultV1(
+          context.rollbackAuthority.result,
+          context.rollbackAuthority
+            .context as WatcherPostFinalityRecoveryInputV1,
+        )
+      : null;
   if (
     observation.predecessorStateDigest !== previousState?.stateDigest &&
     !(
@@ -5149,7 +5260,14 @@ const applyVerifiedSettlementTransition = (
   const anchoredPreviousStore =
     previousState === null
       ? null
-      : previousStoreFromContext(previousState, context);
+      : previousStoreFromContext(
+          policy,
+          previousState,
+          context,
+          recoveryAuthority?.action === "rewind_and_replay"
+            ? context.store
+            : context.sourceStore,
+        );
   if (previousState !== null && anchoredPreviousStore === null) {
     return reject("stale_state");
   }
@@ -5215,15 +5333,24 @@ const applyVerifiedSettlementTransition = (
     ) {
       return reject("rollback_mismatch");
     }
-    const authoritative = parseWatcherRollbackResultV1(
+    const rollbackResult = parseWatcherRollbackResultV1(
       context.rollbackAuthority.result,
-      context.rollbackAuthority.context,
+      context.rollbackAuthority.context as WatcherRollbackVerificationContextV1,
     );
+    const recoveryResult =
+      rollbackResult === null
+        ? parseWatcherPostFinalityRecoveryResultV1(
+            context.rollbackAuthority.result,
+            context.rollbackAuthority
+              .context as WatcherPostFinalityRecoveryInputV1,
+          )
+        : null;
+    const authoritative = rollbackResult ?? recoveryResult;
     if (authoritative === null) {
       return reject("rollback_authority_mismatch");
     }
     if (
-      authoritative.action === "quarantine_incident" ||
+      rollbackResult?.action === "quarantine_incident" ||
       authoritative.protocolDecision === "quarantined"
     ) {
       return reject(
@@ -5232,9 +5359,18 @@ const applyVerifiedSettlementTransition = (
       );
     }
     if (
-      authoritative.action !== "apply_rewind" ||
-      authoritative.protocolDecision !== "resume_pending" ||
-      !rollbackAnchorMatchesAuthority(context.block, authoritative) ||
+      (rollbackResult !== null
+        ? rollbackResult.action !== "apply_rewind" ||
+          rollbackResult.protocolDecision !== "resume_pending" ||
+          !rollbackAnchorMatchesAuthority(context.block, rollbackResult)
+        : recoveryResult === null ||
+          !postFinalityRecoveryAnchorMatchesAuthority(
+            context.block,
+            recoveryResult,
+            context.rollbackAuthority
+              .context as WatcherPostFinalityRecoveryInputV1,
+            previousState.activeHistory.at(-1)?.observation.pointDigest ?? "",
+          )) ||
       authoritative.sourceStoreDigest !==
         watcherDurableStoreBytesSha256(
           encodeWatcherDurableStoreV1(context.sourceStore),
@@ -5257,6 +5393,13 @@ const applyVerifiedSettlementTransition = (
     const orphaned =
       firstOrphaned < 0 ? [] : previousState.activeHistory.slice(firstOrphaned);
     if (orphaned.some((entry) => !orphanedByRollback(entry, authoritative))) {
+      return reject("rollback_authority_mismatch");
+    }
+    if (
+      recoveryResult !== null &&
+      previousState.activeHistory.at(-1)?.observation.pointDigest !==
+        recoveryResult.recoveryState?.path.commonAncestorPointDigest
+    ) {
       return reject("rollback_authority_mismatch");
     }
     const expectedSnapshot =
@@ -5525,6 +5668,109 @@ const applyVerifiedSettlementTransition = (
   });
 };
 
+const replaySettlementStateThroughPoint = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  previous: WatcherSettlementIndexerStateV1,
+  context: VerifiedPublicContext,
+  pointDigest: string,
+): WatcherSettlementIndexerStateV1 | null => {
+  const target = previous.activeHistory
+    .filter((entry) => entry.observation.pointDigest === pointDigest)
+    .at(-1);
+  if (target === undefined) {
+    return null;
+  }
+  const targetIndex = previous.transitionHistory.findIndex(
+    (audit) =>
+      audit.kind === "transition" &&
+      audit.entry.stateDigest === target.stateDigest,
+  );
+  if (targetIndex < 0) {
+    return null;
+  }
+  let replayed: WatcherSettlementIndexerStateV1 | null = null;
+  const replayRestartContexts: WatcherSettlementRestartContextV1[] = [];
+  const replayRollbackContexts: WatcherSettlementRollbackContextBindingV1[] =
+    [];
+  for (const auditEntry of previous.transitionHistory.slice(
+    0,
+    targetIndex + 1,
+  )) {
+    const entry = auditEntry.entry;
+    const bindings = context.restartContexts.filter(
+      ({ publicContextDigest }) =>
+        publicContextDigest === entry.publicContextDigest,
+    );
+    if (bindings.length !== 1) {
+      return null;
+    }
+    const binding = bindings[0]!;
+    const verified = verifyBaseContext(
+      policy,
+      entry.observation,
+      binding.authenticatedProvider,
+      binding.l1Observation,
+      binding.sourceDurableStore,
+      binding.durableStore,
+      binding.deploymentAuthority,
+      binding.finalityAuthority,
+    );
+    if (
+      verified === null ||
+      verified.publicContextDigest !== entry.publicContextDigest
+    ) {
+      return null;
+    }
+    const rollbackBindings =
+      auditEntry.kind === "rollback"
+        ? context.restartRollbackContexts.filter(
+            ({ resultDigest }) =>
+              resultDigest === auditEntry.entry.rollbackResult.resultDigest,
+          )
+        : [];
+    if (
+      (auditEntry.kind === "rollback" && rollbackBindings.length !== 1) ||
+      (auditEntry.kind === "transition" &&
+        entry.observation.transition.kind === "rollback")
+    ) {
+      return null;
+    }
+    replayRestartContexts.push(binding);
+    if (auditEntry.kind === "rollback") {
+      replayRollbackContexts.push(rollbackBindings[0]!);
+    }
+    const replayContext: VerifiedPublicContext = Object.freeze({
+      ...verified,
+      rollbackAuthority:
+        auditEntry.kind === "rollback"
+          ? {
+              result: auditEntry.entry.rollbackResult,
+              context: rollbackBindings[0]!.context,
+            }
+          : null,
+      restartContexts: Object.freeze([...replayRestartContexts]),
+      restartRollbackContexts: Object.freeze([...replayRollbackContexts]),
+    });
+    const result = applyVerifiedSettlementTransition(
+      policy,
+      replayed,
+      entry.observation,
+      replayContext,
+    );
+    if (
+      result.action !== "accept" ||
+      result.state === null ||
+      !same(result.state.transitionHistory.at(-1), auditEntry)
+    ) {
+      return null;
+    }
+    replayed = result.state;
+  }
+  return replayed?.activeHistory.at(-1)?.stateDigest === target.stateDigest
+    ? replayed
+    : null;
+};
+
 export const evaluateWatcherSettlementIndexerV1 = (
   policyValue: unknown,
   previousStateValue: unknown,
@@ -5566,9 +5812,60 @@ export const evaluateWatcherSettlementIndexerV1 = (
   if (previousStateValue !== null && previousState === null) {
     return reject("malformed_state", "watcher_settlement_input_rejected");
   }
+  let applicationPrevious = previousState;
+  if (
+    previousState !== null &&
+    observation.transition.kind === "rollback" &&
+    context.rollbackAuthority !== null
+  ) {
+    const rollback = parseWatcherRollbackResultV1(
+      context.rollbackAuthority.result,
+      context.rollbackAuthority.context as WatcherRollbackVerificationContextV1,
+    );
+    const recovery = parseWatcherPostFinalityRecoveryResultV1(
+      context.rollbackAuthority.result,
+      context.rollbackAuthority.context as WatcherPostFinalityRecoveryInputV1,
+    );
+    if (rollback === null && recovery === null) {
+      return reject("rollback_authority_mismatch");
+    }
+    if (recovery !== null) {
+      if (
+        recovery.action !== "rewind_and_replay" ||
+        recovery.protocolDecision !== "resume_replay" ||
+        recovery.recoveryState === null
+      ) {
+        return reject("rollback_authority_mismatch");
+      }
+      const prior = previousState.rollbackHistory.find(
+        (entry) =>
+          entry.observation.observationDigest ===
+            observation.observationDigest &&
+          entry.rollbackResult.resultDigest === recovery.resultDigest,
+      );
+      if (prior !== undefined) {
+        return makeResult({
+          action: "duplicate",
+          protocolDecision: "hold",
+          reasonCodes: ["duplicate_observation"],
+          alertCodes: [],
+          state: previousState,
+        });
+      }
+      applicationPrevious = replaySettlementStateThroughPoint(
+        policy,
+        previousState,
+        context,
+        recovery.recoveryState.path.commonAncestorPointDigest,
+      );
+      if (applicationPrevious === null) {
+        return reject("rollback_authority_mismatch");
+      }
+    }
+  }
   return applyVerifiedSettlementTransition(
     policy,
-    previousState,
+    applicationPrevious,
     observation,
     context,
   );

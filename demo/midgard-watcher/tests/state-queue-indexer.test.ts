@@ -83,8 +83,10 @@ import {
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
 } from "../src/multi-provider-consistency.js";
 import {
+  evaluateWatcherPostFinalityRecoveryV1,
   evaluateWatcherRollbackV1,
   makeWatcherRollbackBootstrapStateV1,
+  type WatcherPostFinalityRecoveryInputV1,
 } from "../src/rollback-engine.js";
 import {
   evaluateWatcherStateQueueIndexerV1,
@@ -1478,6 +1480,542 @@ const bootstrapBundle = () => {
   };
 };
 
+const bootstrapBundleWithForeignRole = () => {
+  const foreignDatum = canonicalDatum("40");
+  const foreignOutputs: readonly OutputFixture[] = [
+    {
+      role: "settlement",
+      datumHex: foreignDatum,
+      outputHex: output(
+        scriptAddress(applied.settlementSpend!),
+        applied.settlementMint!,
+        "4652474e",
+        foreignDatum,
+      ),
+    },
+  ];
+  const foreignBody = bodyFrom(
+    [],
+    [],
+    foreignOutputs,
+    [
+      {
+        policyId: applied.settlementMint!,
+        assetName: "4652474e",
+        quantity: 1n,
+      },
+    ],
+    null,
+    null,
+  );
+  const foreignBlock = l1Block(foreignBody, foreignOutputs, [], null);
+  const foreignSentinel = protocolRecords(foreignBlock, foreignOutputs)[0]!;
+  const foreignStore = storeFor(foreignBlock, [foreignSentinel], null);
+  const fixture = rootFixtures();
+  const body = bodyFrom(
+    [],
+    [],
+    fixture.outputs,
+    [
+      {
+        policyId: policy.stateQueuePolicyId,
+        assetName: policy.stateQueueRootAssetNameHex,
+        quantity: 1n,
+      },
+    ],
+    null,
+    null,
+  );
+  const block = l1Block(
+    body,
+    fixture.outputs,
+    [
+      {
+        purpose: "mint",
+        index: "0",
+        bytesHex: Data.to({ InitV1: { output_index: 0n } }, StateQueueRedeemer),
+      },
+    ],
+    foreignBlock.normalized.chainPoint.blockHash,
+  );
+  const store = storeFor(
+    block,
+    [foreignSentinel, ...protocolRecords(block, fixture.outputs)],
+    foreignStore,
+  );
+  const snapshot = snapshotFor(fixture);
+  const observation = observationFor(
+    block,
+    store,
+    snapshot,
+    "bootstrap",
+    null,
+    null,
+    null,
+  );
+  return {
+    fixture,
+    block,
+    store,
+    snapshot,
+    observation,
+    context: contextFor(block, store),
+    foreignSentinel,
+  };
+};
+
+const localNodeBootstrapBundle = () => {
+  const fixture = rootFixtures();
+  const body = bodyFrom(
+    [],
+    [],
+    fixture.outputs,
+    [
+      {
+        policyId: policy.stateQueuePolicyId,
+        assetName: policy.stateQueueRootAssetNameHex,
+        quantity: 1n,
+      },
+    ],
+    null,
+    null,
+  );
+  const externalBlock = l1Block(body, fixture.outputs, [
+    {
+      purpose: "mint",
+      index: "0",
+      bytesHex: Data.to({ InitV1: { output_index: 0n } }, StateQueueRedeemer),
+    },
+  ]);
+  const block = asLocalNodeBlock(externalBlock);
+  const store = storeFor(block, protocolRecords(block, fixture.outputs), null);
+  const snapshot = snapshotFor(fixture);
+  const observation = observationFor(
+    block,
+    store,
+    snapshot,
+    "bootstrap",
+    null,
+    null,
+    null,
+  );
+  return {
+    fixture,
+    block,
+    store,
+    snapshot,
+    observation,
+    context: localNodeContextFor(block, store),
+  };
+};
+
+const recoveryAppendBundle = (
+  bootBundle: ReturnType<typeof bootstrapBundle>,
+  bootState: NonNullable<
+    ReturnType<typeof evaluateWatcherStateQueueIndexerV1>["state"]
+  >,
+  sourceMode: RecoverySourceMode = "external_providers",
+) => {
+  const header = makeWatcherStateQueueHeaderV1({
+    nextHeaderHash: null,
+    datumSha256: h32("00"),
+    prevUtxosRoot: confirmed.utxoRoot,
+    utxosRoot: h32("81"),
+    withdrawalsRoot: EMPTY_ROOT,
+    forcedTransactionsRoot: EMPTY_ROOT,
+    transactionsRoot: h32("82"),
+    depositsRoot: EMPTY_ROOT,
+    transitionTraceRoot: h32("83"),
+    eventToStepRoot: h32("84"),
+    validationTracesRoot: h32("85"),
+    withdrawalCount: "0",
+    forcedTransactionCount: "0",
+    l2TransactionCount: "1",
+    depositCount: "0",
+    totalEventCount: "1",
+    transitionStepCount: "1",
+    validationTraceCount: "1",
+    startTime: "1000",
+    endTime: "2000",
+    blockSlot: "42",
+    expectedNetworkId: "0",
+    minFeeA: "44",
+    minFeeB: "155381",
+    prevHeaderHash: confirmed.headerHash,
+    operatorVkey: operator,
+    protocolVersion: "1",
+    daAttestationPolicyId: null,
+  })!;
+  const upper = 5_000n;
+  const rootDatum = linkedRoot(confirmed, ConfirmedState, header.headerHash);
+  const nodeDatum = linkedNode(
+    {
+      header: Data.from(header.headerCborHex, HeaderV1),
+      da_attestation: "",
+    },
+    StateQueueNodeV1,
+    null,
+  );
+  const activeDatum = linkedNode(
+    {
+      bond_unlock_time: upper - 1n + maturity,
+      inactivity_strikes: 0n,
+    },
+    ActiveOperatorDatum,
+    null,
+  );
+  const outputs: readonly OutputFixture[] = [
+    {
+      role: "state_queue",
+      datumHex: rootDatum,
+      outputHex: output(
+        policy.stateQueueAddressHex,
+        policy.stateQueuePolicyId,
+        policy.stateQueueRootAssetNameHex,
+        rootDatum,
+      ),
+    },
+    {
+      role: "state_queue",
+      datumHex: nodeDatum,
+      outputHex: output(
+        policy.stateQueueAddressHex,
+        policy.stateQueuePolicyId,
+        `${policy.stateQueueNodeAssetPrefixHex}${header.headerHash}`,
+        nodeDatum,
+      ),
+    },
+    {
+      role: "operator_directory",
+      datumHex: activeDatum,
+      outputHex: output(
+        policy.activeOperatorsAddressHex,
+        policy.activeOperatorsPolicyId,
+        `${policy.activeOperatorAssetPrefixHex}${operator}`,
+        activeDatum,
+      ),
+    },
+  ];
+  const oldRoot = `${bootBundle.block.txHash}#0`;
+  const oldActive = `${bootBundle.block.txHash}#2`;
+  const body = bodyFrom(
+    [oldRoot, oldActive],
+    [`${bootBundle.block.txHash}#4`, `${bootBundle.block.txHash}#5`],
+    outputs,
+    [
+      {
+        policyId: policy.stateQueuePolicyId,
+        assetName: `${policy.stateQueueNodeAssetPrefixHex}${header.headerHash}`,
+        quantity: 1n,
+      },
+    ],
+    4_000n,
+    upper,
+  );
+  const externalBlock = l1Block(body, outputs, [
+    {
+      purpose: "spend",
+      index: "0",
+      bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+    },
+    {
+      purpose: "spend",
+      index: "1",
+      bytesHex: Data.to(
+        {
+          UpdateBondHoldNewState: {
+            active_operator: operator,
+            active_node_input_index: 1n,
+            active_node_output_index: 2n,
+            hub_oracle_ref_input_index: 1n,
+            state_queue_redeemer_index: 2n,
+          },
+        },
+        ActiveOperatorSpendRedeemer,
+      ),
+    },
+    {
+      purpose: "mint",
+      index: "0",
+      bytesHex: Data.to(
+        {
+          CommitBlockHeader: {
+            new_block_output_index: 1n,
+            continued_latest_block_output_index: 0n,
+            operator,
+            scheduler_ref_input_index: 0n,
+            active_operators_input_index: 1n,
+            active_operators_redeemer_index: 1n,
+          },
+        },
+        StateQueueRedeemer,
+      ),
+    },
+  ]);
+  const block =
+    sourceMode === "local_node"
+      ? asLocalNodeBlock(externalBlock)
+      : externalBlock;
+  const protocols = [
+    ...bootBundle.store.protocolUtxos.filter(
+      ({ outRef }) => outRef !== oldRoot && outRef !== oldActive,
+    ),
+    ...protocolRecords(block, outputs),
+  ];
+  const store = storeFor(block, protocols, bootBundle.store);
+  const snapshot = makeWatcherStateQueueSnapshotV1({
+    confirmedState: {
+      ...bootState.snapshot.confirmedState,
+      datumSha256: shaDatum(rootDatum),
+    },
+    queue: [
+      {
+        ...header,
+        datumSha256: shaDatum(nodeDatum),
+        daAttestationPolicyId: null,
+      },
+    ],
+    scheduler: bootState.snapshot.scheduler,
+    activeOperators: [
+      {
+        operatorVkey: operator,
+        nextOperatorVkey: null,
+        bondUnlockTime: (upper - 1n + maturity).toString(),
+        inactivityStrikes: "0",
+        datumSha256: shaDatum(activeDatum),
+      },
+    ],
+    retiredOperators: [],
+    quarantinedFromHeaderHash: null,
+  })!;
+  const observation = observationFor(
+    block,
+    store,
+    snapshot,
+    "append",
+    bootState.stateDigest,
+    "4000",
+    upper.toString(),
+  );
+  const result = evaluateWatcherStateQueueIndexerV1(
+    policy,
+    bootState,
+    observation,
+    sourceMode === "local_node"
+      ? localNodeContextFor(block, store)
+      : contextFor(block, store),
+  );
+  expect(result.action, JSON.stringify(result)).toBe("accept");
+  return { block, store, snapshot, observation, state: result.state! };
+};
+
+type RecoverySourceMode = "local_node" | "external_providers";
+
+const recoveryEvidence = (
+  sourceMode: RecoverySourceMode,
+  rawObservation: Mutable,
+  depth: string,
+) => {
+  const primaryProvider =
+    sourceMode === "local_node" ? localNodeProvider : provider;
+  const primaryRaw = structuredClone(rawObservation);
+  primaryRaw.providerId = primaryProvider.providerId;
+  primaryRaw.chainPoint.depth = depth;
+  const observations =
+    sourceMode === "local_node"
+      ? [normalizeWatcherL1BlockV1(primaryProvider, primaryRaw)]
+      : [
+          normalizeWatcherL1BlockV1(provider, primaryRaw),
+          normalizeWatcherL1BlockV1(providerB, {
+            ...structuredClone(primaryRaw),
+            providerId: providerB.providerId,
+          }),
+        ];
+  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+    sourceMode === "local_node" ? localSource : externalSource,
+    observations,
+  );
+  expect(consistency).toMatchObject({
+    status: "agreed",
+    sourceMode,
+    independentProviderCount: sourceMode === "local_node" ? 1 : 2,
+  });
+  return { primaryProvider, primaryRaw, observations, consistency };
+};
+
+const postFinalityStateQueueRecoveryBundle = (
+  sourceMode: RecoverySourceMode,
+  bootBundle: ReturnType<typeof bootstrapBundle>,
+  orphanBundle: ReturnType<typeof recoveryAppendBundle>,
+) => {
+  const selectedPolicy = finalityPolicyAtDepth(2, sourceMode);
+  const common = recoveryEvidence(
+    sourceMode,
+    bootBundle.block.raw as Mutable,
+    bootBundle.block.normalized.chainPoint.depth,
+  );
+  const orphanPending = recoveryEvidence(
+    sourceMode,
+    orphanBundle.block.raw as Mutable,
+    "1",
+  );
+  const orphanFinalized = recoveryEvidence(
+    sourceMode,
+    orphanBundle.block.raw as Mutable,
+    "2",
+  );
+  const replacementRaw: Mutable = {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    network: "Preprod",
+    providerId: common.primaryProvider.providerId,
+    chainPoint: {
+      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      parentBlockHash: common.observations[0]!.chainPoint.blockHash,
+      slot: (BigInt(common.observations[0]!.chainPoint.slot) + 1n).toString(),
+      blockNo: (
+        BigInt(common.observations[0]!.chainPoint.blockNo) + 1n
+      ).toString(),
+      depth: "0",
+    },
+    transactions: [],
+  };
+  const replacement = recoveryEvidence(sourceMode, replacementRaw, "0");
+  const pending = evaluateWatcherFinalityV1(
+    selectedPolicy,
+    null,
+    orphanPending.consistency,
+  );
+  const finalized = evaluateWatcherFinalityV1(
+    selectedPolicy,
+    pending.state,
+    orphanFinalized.consistency,
+  );
+  const contradiction = evaluateWatcherFinalityV1(
+    selectedPolicy,
+    finalized.state,
+    replacement.consistency,
+  );
+  expect(pending.action).toBe("observe_pending");
+  expect(finalized.action).toBe("finalize");
+  expect(contradiction.action).toBe("quarantine_incident");
+
+  const foreignSentinel = bootBundle.store.protocolUtxos.find(
+    ({ role }) => role === "settlement",
+  );
+  const persisted = [
+    ...common.observations,
+    ...orphanPending.observations,
+    ...orphanFinalized.observations,
+    ...replacement.observations,
+  ];
+  const sourceStore = remakeStore(
+    orphanBundle.store,
+    {
+      l1Observations: [
+        ...new Map(
+          [
+            ...orphanBundle.store.l1Observations,
+            ...persisted.map((observation) => ({
+              observationId: observation.observationDigest,
+              providerId: observation.provider.providerId,
+              chainPointId: observation.chainPoint.chainPointId,
+              payload: makeWatcherDurablePayloadV1(
+                encodeWatcherNormalizedL1BlockV1(observation).toString("hex"),
+              ),
+            })),
+          ].map((entry) => [entry.observationId, entry]),
+        ).values(),
+      ],
+      chainPoints: [
+        ...new Map(
+          [
+            ...orphanBundle.store.chainPoints,
+            ...persisted.map((observation) => ({
+              chainPointId: observation.chainPoint.chainPointId,
+              providerId: observation.provider.providerId,
+              blockHash: observation.chainPoint.blockHash,
+              slot: observation.chainPoint.slot,
+              blockNo: observation.chainPoint.blockNo,
+              depth: observation.chainPoint.depth,
+            })),
+          ].map((entry) => [entry.chainPointId, entry]),
+        ).values(),
+      ],
+      protocolUtxos: orphanBundle.store.protocolUtxos,
+    },
+    (BigInt(orphanBundle.store.revision) + 1n).toString(),
+  );
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+    selectedPolicy,
+    sourceStore,
+    finalized.state,
+  )!;
+  const incident = evaluateWatcherRollbackV1(
+    selectedPolicy,
+    sourceStore,
+    finalized.state,
+    replacement.consistency,
+    contradiction,
+    rollbackBootstrapState,
+    rollbackBootstrapState,
+  );
+  expect(incident.action, JSON.stringify(incident)).toBe("quarantine_incident");
+  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+    policy: selectedPolicy,
+    sourceStore: incident.nextStore,
+    currentStore: incident.nextStore,
+    quarantinedRollbackState: incident.rollbackState,
+    rollbackBootstrapState,
+    previousCanonicalPath: [common.consistency, orphanFinalized.consistency],
+    replacementCanonicalPath: [common.consistency, replacement.consistency],
+    previousRecoveryState: null,
+  };
+  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  expect(recovery).toMatchObject({
+    action: "rewind_and_replay",
+    protocolDecision: "resume_replay",
+    recoveryState: {
+      path: {
+        commonAncestorPointDigest:
+          common.observations[0]!.chainPoint.pointDigest,
+        replacementTipPointDigest:
+          replacement.observations[0]!.chainPoint.pointDigest,
+      },
+    },
+  });
+  if (foreignSentinel !== undefined) {
+    expect(recovery.nextStore?.protocolUtxos).toContainEqual(foreignSentinel);
+  }
+  const contextBlock: ReturnType<typeof l1Block> = {
+    ...bootBundle.block,
+    raw: common.primaryRaw as ReturnType<typeof l1Block>["raw"],
+    normalized: common.observations[0]!,
+  };
+  storeSources.set(recovery.nextStore!, incident.nextStore!);
+  const context: WatcherStateQueuePublicContextV1 = {
+    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
+    authenticatedProvider: common.primaryProvider,
+    l1Observation: common.primaryRaw,
+    sourceDurableStore: incident.nextStore,
+    durableStore: recovery.nextStore,
+    deploymentAuthority,
+    finalityAuthority: null,
+    originAuthorities: [],
+    rollbackAuthority: {
+      result: recovery,
+      context: recoveryInput,
+    },
+  };
+  return {
+    context,
+    contextBlock,
+    foreignSentinel,
+    recovery,
+    recoveryInput,
+    replacement,
+  };
+};
+
 const attachDaBundle = (input: {
   header: NonNullable<ReturnType<typeof makeWatcherStateQueueHeaderV1>>;
   appendBlock: ReturnType<typeof l1Block>;
@@ -2293,6 +2831,34 @@ describe("authenticated state-queue indexer", () => {
     ).toMatchObject({ action: "reject" });
   });
 
+  it("rejects a self-rehashed legitimate state output assigned another indexer's durable role", () => {
+    const bundle = bootstrapBundle();
+    const wrongRoleStore = makeWatcherDurableStoreV1({
+      deploymentMarker: policy.deploymentMarker,
+      revision: bundle.store.revision,
+      records: {
+        ...bundle.store,
+        protocolUtxos: bundle.store.protocolUtxos.map((durable, index) =>
+          index === 0 ? { ...durable, role: "settlement" as const } : durable,
+        ),
+      },
+    });
+    const wrongRoleObservation = remakeObservation(bundle.observation, {
+      durableStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(wrongRoleStore),
+      ),
+    });
+    expect(
+      evaluateWatcherStateQueueIndexerV1(policy, null, wrongRoleObservation, {
+        ...bundle.context,
+        durableStore: wrongRoleStore,
+      }),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+  });
+
   it("rejects self-rehashed W02, W03, W11 and W12 authority substitutions", () => {
     const bundle = bootstrapBundle();
     const forgedDeployment = structuredClone(bundle.context) as Mutable;
@@ -2453,7 +3019,7 @@ describe("authenticated state-queue indexer", () => {
     });
   });
 
-  it("indexes node-accepted append, DA, merge, and rollback output bytes without replaying validators", () => {
+  it("indexes node-accepted append, DA, merge, and rollback bytes while rejecting foreign-role insertion", () => {
     const bootBundle = bootstrapBundle();
     const bootResult = evaluateWatcherStateQueueIndexerV1(
       policy,
@@ -2914,7 +3480,7 @@ describe("authenticated state-queue indexer", () => {
         ...attach.store.protocolUtxos.filter(
           ({ outRef }) => outRef !== mergeOldRoot && outRef !== attachedNode,
         ),
-        ...protocolRecords(mergeBlock, mergeOutputs),
+        protocolRecords(mergeBlock, mergeOutputs)[0]!,
       ],
       attach.store,
     );
@@ -2951,6 +3517,34 @@ describe("authenticated state-queue indexer", () => {
     );
     expect(merged.action, JSON.stringify(merged)).toBe("accept");
     expect(merged.reasonCodes).toEqual(["merge_authenticated"]);
+
+    const wrongRoleMergeStore = remakeStore(mergeStore, {
+      protocolUtxos: [
+        ...mergeStore.protocolUtxos,
+        {
+          outRef: `${mergeBlock.txHash}#1`,
+          role: "proof_thread",
+          chainPointId: mergeBlock.normalized.chainPoint.chainPointId,
+          output: makeWatcherDurablePayloadV1(mergeOutputs[1]!.outputHex),
+        },
+      ],
+    });
+    const wrongRoleMergeObservation = remakeObservation(mergeObservation, {
+      durableStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(wrongRoleMergeStore),
+      ),
+    });
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        attached.state,
+        wrongRoleMergeObservation,
+        contextFor(mergeBlock, wrongRoleMergeStore, attach.store),
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
 
     const rollbackFinalityPolicy = finalityPolicyAtDepth(5);
     const pairedObservations = (selectedBlock: ReturnType<typeof l1Block>) => {
@@ -3842,4 +4436,231 @@ describe("authenticated state-queue indexer", () => {
     forged.stateDigest = canonicalDigest(stateFields);
     expect(parseWatcherStateQueueIndexerStateV1(forged, policy)).toBeNull();
   });
+
+  it.each<RecoverySourceMode>(["local_node", "external_providers"])(
+    "consumes exact %s W13 post-finality recovery and preserves foreign roles across restart",
+    (sourceMode) => {
+      const bootBundle =
+        sourceMode === "local_node"
+          ? localNodeBootstrapBundle()
+          : bootstrapBundleWithForeignRole();
+      const boot = evaluateWatcherStateQueueIndexerV1(
+        policy,
+        null,
+        bootBundle.observation,
+        bootBundle.context,
+      ).state!;
+      const orphan = recoveryAppendBundle(bootBundle, boot, sourceMode);
+      const bundle = postFinalityStateQueueRecoveryBundle(
+        sourceMode,
+        bootBundle,
+        orphan,
+      );
+      const observation = observationFor(
+        bundle.contextBlock,
+        bundle.recovery.nextStore!,
+        boot.snapshot,
+        "rollback",
+        orphan.state.stateDigest,
+        null,
+        null,
+        { transactionHash: null },
+      );
+      const recovered = evaluateWatcherStateQueueIndexerV1(
+        policy,
+        orphan.state,
+        observation,
+        bundle.context,
+      );
+      expect(recovered).toMatchObject({
+        action: "accept",
+        protocolDecision: "indexed",
+        reasonCodes: ["rollback_authenticated"],
+        state: { snapshot: boot.snapshot },
+      });
+      expect(recovered.state?.history).toHaveLength(boot.history.length);
+      expect(recovered.state?.auditHistory.map(({ status }) => status)).toEqual(
+        ["orphaned", "rollback"],
+      );
+      expect(
+        recovered.state?.auditHistory.at(-1)?.entry.rollbackResult,
+      ).toEqual(bundle.recovery);
+      if (bundle.foreignSentinel !== undefined) {
+        expect(
+          (
+            recovered.state?.auditHistory.at(-1)?.entry.publicContext
+              .durableStore as WatcherDurableStoreV1
+          ).protocolUtxos,
+        ).toContainEqual(bundle.foreignSentinel);
+      }
+
+      const serialized = JSON.parse(JSON.stringify(recovered.state));
+      const restarted = parseWatcherStateQueueIndexerStateV1(
+        serialized,
+        policy,
+      );
+      expect(restarted).toEqual(recovered.state);
+      expect(
+        evaluateWatcherStateQueueIndexerV1(
+          policy,
+          orphan.state,
+          observation,
+          JSON.parse(JSON.stringify(bundle.context)),
+        ),
+      ).toEqual(recovered);
+      expect(
+        parseWatcherStateQueueIndexerResultV1(recovered, {
+          policy,
+          previousState: orphan.state,
+          observation,
+          publicContext: bundle.context,
+        }),
+      ).toEqual(recovered);
+    },
+    30_000,
+  );
+
+  it("rejects forged, mismatched, wrong-target, source-mode-invalid, duplicate-only, and self-rehashed recovery evidence", () => {
+    const bootBundle = bootstrapBundleWithForeignRole();
+    const boot = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      null,
+      bootBundle.observation,
+      bootBundle.context,
+    ).state!;
+    const orphan = recoveryAppendBundle(bootBundle, boot);
+    const bundle = postFinalityStateQueueRecoveryBundle(
+      "external_providers",
+      bootBundle,
+      orphan,
+    );
+    const observation = observationFor(
+      bundle.contextBlock,
+      bundle.recovery.nextStore!,
+      boot.snapshot,
+      "rollback",
+      orphan.state.stateDigest,
+      null,
+      null,
+      { transactionHash: null },
+    );
+    const evaluate = (
+      selectedObservation: WatcherStateQueueObservationV1,
+      context: WatcherStateQueuePublicContextV1,
+    ) =>
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        orphan.state,
+        selectedObservation,
+        context,
+      );
+
+    const forged = structuredClone(bundle.context) as Mutable;
+    forged.rollbackAuthority.result.nextStoreDigest = h32("ff");
+    const { resultDigest: _forgedDigest, ...forgedResult } =
+      forged.rollbackAuthority.result;
+    forged.rollbackAuthority.result.resultDigest =
+      canonicalDigest(forgedResult);
+    expect(
+      evaluate(
+        observation,
+        forged as unknown as WatcherStateQueuePublicContextV1,
+      ).action,
+    ).toBe("reject");
+
+    const mismatched = structuredClone(bundle.context) as Mutable;
+    mismatched.rollbackAuthority.context.replacementCanonicalPath =
+      mismatched.rollbackAuthority.context.previousCanonicalPath;
+    expect(
+      evaluate(
+        observation,
+        mismatched as unknown as WatcherStateQueuePublicContextV1,
+      ).action,
+    ).toBe("reject");
+
+    const wrongTargetBlock = {
+      ...orphan.block,
+      raw: structuredClone(orphan.block.raw),
+      normalized: orphan.block.normalized,
+    };
+    storeSources.set(
+      bundle.recovery.nextStore!,
+      bundle.recoveryInput.sourceStore as WatcherDurableStoreV1,
+    );
+    const wrongTargetObservation = observationFor(
+      wrongTargetBlock,
+      bundle.recovery.nextStore!,
+      orphan.snapshot,
+      "rollback",
+      orphan.state.stateDigest,
+      null,
+      null,
+      { transactionHash: null },
+    );
+    expect(
+      evaluate(wrongTargetObservation, {
+        ...bundle.context,
+        authenticatedProvider: provider,
+        l1Observation: orphan.block.raw,
+      }).action,
+    ).toBe("reject");
+
+    const wrongMode = structuredClone(bundle.context) as Mutable;
+    wrongMode.rollbackAuthority.context.policy = finalityPolicyAtDepth(
+      2,
+      "local_node",
+    );
+    expect(
+      evaluate(
+        observation,
+        wrongMode as unknown as WatcherStateQueuePublicContextV1,
+      ).action,
+    ).toBe("reject");
+
+    const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
+      ...bundle.recoveryInput,
+      currentStore: bundle.recovery.nextStore,
+      previousRecoveryState: bundle.recovery.recoveryState,
+    });
+    expect(duplicateRecovery.action).toBe("duplicate_recovery");
+    const duplicateOnly = structuredClone(bundle.context) as Mutable;
+    duplicateOnly.sourceDurableStore = bundle.recovery.nextStore;
+    duplicateOnly.durableStore = bundle.recovery.nextStore;
+    duplicateOnly.rollbackAuthority = {
+      result: duplicateRecovery,
+      context: {
+        ...bundle.recoveryInput,
+        currentStore: bundle.recovery.nextStore,
+        previousRecoveryState: bundle.recovery.recoveryState,
+      },
+    };
+    const duplicateObservation = remakeObservation(observation, {
+      sourceDurableStoreDigest: watcherDurableStoreBytesSha256(
+        encodeWatcherDurableStoreV1(bundle.recovery.nextStore!),
+      ),
+      sourceDurableStoreRevision: bundle.recovery.nextStore!.revision,
+    });
+    expect(
+      evaluate(
+        duplicateObservation,
+        duplicateOnly as unknown as WatcherStateQueuePublicContextV1,
+      ).action,
+    ).toBe("reject");
+
+    const accepted = evaluate(observation, bundle.context);
+    expect(accepted.action).toBe("accept");
+    const selfRehashed = structuredClone(accepted.state) as Mutable;
+    const rollbackAudit = selfRehashed.auditHistory.at(-1);
+    rollbackAudit.entry.rollbackResult.recoveryState.path.replacementTipBlockHash =
+      h32("fe");
+    const { entryDigest: _entryDigest, ...entryFields } = rollbackAudit.entry;
+    rollbackAudit.entry.entryDigest = canonicalDigest(entryFields);
+    const { auditDigest: _auditDigest, ...auditFields } = rollbackAudit;
+    rollbackAudit.auditDigest = canonicalDigest(auditFields);
+    const { stateDigest: _stateDigest, ...stateFields } = selfRehashed;
+    selfRehashed.stateDigest = canonicalDigest(stateFields);
+    expect(
+      parseWatcherStateQueueIndexerStateV1(selfRehashed, policy),
+    ).toBeNull();
+  }, 30_000);
 });

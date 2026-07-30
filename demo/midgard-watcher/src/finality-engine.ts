@@ -4,7 +4,11 @@ import {
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
-import { parseWatcherConfig, type WatcherConfig } from "./config.js";
+import {
+  parseWatcherConfig,
+  WATCHER_CARDANO_SECURITY_PARAMETER_K,
+  type WatcherConfig,
+} from "./config.js";
 import type { VerifiedWatcherDeploymentIdentityV1 } from "./deployment-identity.js";
 import {
   WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
@@ -24,6 +28,7 @@ export const WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION =
 
 export const WATCHER_FINALITY_V1_BOUNDS = Object.freeze({
   confirmationDepth: 2_160n,
+  postFinalityRecoveryDepth: BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K),
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
@@ -114,6 +119,7 @@ export type WatcherFinalityPolicyV1 = Readonly<{
   externalProviders: readonly WatcherFinalityExternalProviderV1[] | null;
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
+  maximumPostFinalityRecoveryDepth: string;
   beforeFinalityRollback: "rewind";
   afterFinalityRollback: "quarantine";
   releaseEvidenceDigest: string;
@@ -135,12 +141,7 @@ export type WatcherFinalityBoundObservationV1 = Readonly<{
 }>;
 
 export type WatcherFinalityIncidentV1 = Readonly<{
-  reasonCode:
-    | "provider_result_pending"
-    | "provider_result_quarantined"
-    | "post_finality_depth_regression"
-    | "post_finality_point_changed"
-    | "post_finality_content_changed";
+  reasonCode: "post_finality_point_changed";
   triggerConsistencyDigest: string | null;
   incidentDigest: string;
 }>;
@@ -479,6 +480,7 @@ const makePolicy = (
     externalProviders,
     confirmationDepth: value.confirmationDepth,
     maximumPreFinalityRollbackDepth: value.maximumPreFinalityRollbackDepth,
+    maximumPostFinalityRecoveryDepth: value.maximumPostFinalityRecoveryDepth,
     beforeFinalityRollback: "rewind" as const,
     afterFinalityRollback: "quarantine" as const,
     releaseEvidenceDigest: value.releaseEvidenceDigest,
@@ -504,6 +506,7 @@ export const parseWatcherFinalityPolicyV1 = (
       "externalProviders",
       "confirmationDepth",
       "maximumPreFinalityRollbackDepth",
+      "maximumPostFinalityRecoveryDepth",
       "beforeFinalityRollback",
       "afterFinalityRollback",
       "releaseEvidenceDigest",
@@ -546,6 +549,9 @@ export const parseWatcherFinalityPolicyV1 = (
       !isPositiveUint64(policy.maximumPreFinalityRollbackDepth) ||
       BigInt(policy.maximumPreFinalityRollbackDepth) >
         BigInt(policy.confirmationDepth) ||
+      !isPositiveUint64(policy.maximumPostFinalityRecoveryDepth) ||
+      BigInt(policy.maximumPostFinalityRecoveryDepth) !==
+        BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K) ||
       policy.beforeFinalityRollback !== "rewind" ||
       policy.afterFinalityRollback !== "quarantine" ||
       !isHex32(policy.releaseEvidenceDigest) ||
@@ -567,6 +573,7 @@ export const parseWatcherFinalityPolicyV1 = (
       externalProviders,
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
+      maximumPostFinalityRecoveryDepth: policy.maximumPostFinalityRecoveryDepth,
       beforeFinalityRollback: "rewind",
       afterFinalityRollback: "quarantine",
       releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -676,6 +683,8 @@ export const makeWatcherFinalityPolicyV1 = (
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
         config.l1.finality.rollback.maxDepth.toString(),
+      maximumPostFinalityRecoveryDepth:
+        config.l1.finality.rollback.postFinalityRecoveryMaxDepth.toString(),
       beforeFinalityRollback: config.l1.finality.rollback.beforeFinality,
       afterFinalityRollback: config.l1.finality.rollback.afterFinality,
       releaseEvidenceDigest: identity.releaseEvidenceDigest,
@@ -730,13 +739,7 @@ const parseBoundObservation = (
   });
 };
 
-const INCIDENT_REASONS = [
-  "provider_result_pending",
-  "provider_result_quarantined",
-  "post_finality_depth_regression",
-  "post_finality_point_changed",
-  "post_finality_content_changed",
-] as const;
+const INCIDENT_REASONS = ["post_finality_point_changed"] as const;
 
 const parseIncident = (value: unknown): WatcherFinalityIncidentV1 | null => {
   const incident = exactPlainRecord(value, [
@@ -1599,9 +1602,6 @@ export const evaluateWatcherFinalityV1 = (
 
   const consistency = parseConsistency(consistencyInput);
   if (consistency === null) {
-    if (state.phase === "finalized") {
-      return quarantineFinalized(state, "provider_result_quarantined", null);
-    }
     return result(
       "reject",
       "quarantined",
@@ -1649,9 +1649,6 @@ export const evaluateWatcherFinalityV1 = (
       consistency.kind === "pending"
         ? "provider_result_pending"
         : "provider_result_quarantined";
-    if (state.phase === "finalized") {
-      return quarantineFinalized(state, reason, consistency.consistencyDigest);
-    }
     return result(
       "reject",
       "quarantined",
@@ -1711,17 +1708,21 @@ export const evaluateWatcherFinalityV1 = (
       );
     }
     if (agreement.blockContentDigest !== finalized.blockContentDigest) {
-      return quarantineFinalized(
+      return result(
+        "reject",
+        "quarantined",
+        ["post_finality_content_changed"],
+        ["watcher_finality_input_rejected"],
         state,
-        "post_finality_content_changed",
-        agreement.consistencyDigest,
       );
     }
     if (BigInt(agreement.minimumDepth) < BigInt(finalized.currentDepth)) {
-      return quarantineFinalized(
+      return result(
+        "reject",
+        "quarantined",
+        ["post_finality_depth_regression"],
+        ["watcher_finality_input_rejected"],
         state,
-        "post_finality_depth_regression",
-        agreement.consistencyDigest,
       );
     }
     return result(

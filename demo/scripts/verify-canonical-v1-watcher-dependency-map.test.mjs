@@ -134,6 +134,71 @@ test("rejects an empty dependency source symbol", async () => {
   );
 });
 
+test("rejects arbitrary dependency capability and task claims", async () => {
+  const result = await runWithMutatedIndexedMap((dependencyMap) => {
+    const dependency = dependencyMap.dependencies.find(
+      ({ id }) => id === "public_da",
+    );
+    assert.ok(dependency);
+    dependency.capability = "PASS";
+    dependency.state = "complete";
+    dependency.remainingTasks = ["PASS"];
+    dependency.watcherBoundary = "x";
+    dependencyMap.f30Conclusion = {
+      status: "pass",
+      reason: "PASS",
+      nextTasks: [],
+    };
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da capability, state, tasks, and boundary must remain exact/,
+  );
+});
+
+test("rejects weakened post-finality recovery and durable-role claims", async () => {
+  const mutations = [
+    {
+      mutate(dependencyMap) {
+        dependencyMap.requiredWatcherPackage.strictConfiguration.finalityPolicy.postFinalityRecoveryMaxDepth =
+          1;
+      },
+      message: /W01 strict watcher configuration evidence is incomplete or stale/,
+    },
+    {
+      mutate(dependencyMap) {
+        dependencyMap.requiredWatcherPackage.rollbackEngine.postFinalityPolicy =
+          "manual";
+      },
+      message: /W13 rollback-engine evidence is incomplete or stale/,
+    },
+    {
+      mutate(dependencyMap) {
+        dependencyMap.requiredWatcherPackage.stateQueueIndexer.durableRolePolicy =
+          "trust caller";
+      },
+      message: /W14 state-queue-indexer evidence is incomplete or stale/,
+    },
+    {
+      mutate(dependencyMap) {
+        const dependency = dependencyMap.dependencies.find(
+          ({ id }) => id === "l1_provider",
+        );
+        assert.ok(dependency);
+        dependency.watcherBoundary = "always require two providers";
+      },
+      message:
+        /l1_provider capability, state, tasks, and boundary must remain exact/,
+    },
+  ];
+  for (const { mutate, message } of mutations) {
+    const result = await runWithMutatedIndexedMap(mutate);
+    assert.notEqual(result.status, 0);
+    assert.match(`${result.stdout}${result.stderr}`, message);
+  }
+});
+
 test("rejects a symbol declaration moved to the wrong allowed source", async () => {
   const owner = "demo/da-committee-node/src/da/payload.ts";
   const other = "demo/midgard-core/src/da-payload-envelope.ts";
@@ -196,6 +261,44 @@ test("rejects a source symbol preserved only in a regex literal", async () => {
   );
 });
 
+test("rejects a runtime source symbol preserved only as a type", async () => {
+  const owner = "demo/da-committee-node/src/da/payload.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(owner, (source) =>
+        source.replace(
+          "export const decodeDaPayloadV1Strict",
+          "export type decodeDaPayloadV1Strict = unknown;\nconst decodeDaPayloadV1StrictRemoved",
+        ),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol decodeDaPayloadV1Strict is not declared by demo\/da-committee-node\/src\/da\/payload\.ts/,
+  );
+});
+
+test("rejects an ambient runtime source declaration", async () => {
+  const owner = "demo/da-committee-node/src/da/payload.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(owner, (source) =>
+        source.replace(
+          "export const decodeDaPayloadV1Strict",
+          "export declare const decodeDaPayloadV1Strict: unknown;\nconst decodeDaPayloadV1StrictRemoved",
+        ),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol decodeDaPayloadV1Strict is not declared by demo\/da-committee-node\/src\/da\/payload\.ts/,
+  );
+});
+
 test("rejects a class member preserved only as a nested local function", async () => {
   const owner = "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts";
   const result = await runWithMutatedIndexedMap(
@@ -214,5 +317,105 @@ test("rejects a class member preserved only as a nested local function", async (
   assert.match(
     `${result.stdout}${result.stderr}`,
     /public_da source symbol DaLibp2pNode\.request is not declared by demo\/da-committee-node\/src\/da\/libp2p\/DaLibp2pNode\.ts/,
+  );
+});
+
+test("rejects a class member preserved only as an abstract method", async () => {
+  const owner = "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(
+        owner,
+        (source) =>
+          `${source.replace(
+            "export class DaLibp2pNode",
+            "export class DaLibp2pNodeRemoved",
+          )}\nexport abstract class DaLibp2pNode {\n  abstract request(): Promise<void>;\n}\n`,
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol DaLibp2pNode\.request is not declared by demo\/da-committee-node\/src\/da\/libp2p\/DaLibp2pNode\.ts/,
+  );
+});
+
+test("rejects a concrete member preserved only on an abstract class", async () => {
+  const owner = "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(owner, (source) =>
+        source.replace(
+          "export class DaLibp2pNode",
+          "export abstract class DaLibp2pNode",
+        ),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /public_da source symbol DaLibp2pNode\.request is not declared by demo\/da-committee-node\/src\/da\/libp2p\/DaLibp2pNode\.ts/,
+  );
+});
+
+test("rejects a dependency command preserved only in a CI comment", async () => {
+  const workflow = ".github/workflows/midgard-node-ci.yml";
+  const command =
+    "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify";
+  const result = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(workflow, (source) =>
+        source.replace(`        run: ${command}`, `        # run: ${command}`),
+      );
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(
+    `${result.stdout}${result.stderr}`,
+    /Midgard node CI must actively run exactly one/,
+  );
+});
+
+test("rejects an inert dependency step and a trigger path moved outside paths", async () => {
+  const workflow = ".github/workflows/midgard-node-ci.yml";
+  const command =
+    "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify";
+  const inert = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(workflow, (source) =>
+        source.replace(
+          `      - name: Verify canonical watcher dependency map\n        run: ${command}`,
+          `      - name: Verify canonical watcher dependency map\n        if: false\n        run: ${command}`,
+        ),
+      );
+    },
+  );
+  assert.notEqual(inert.status, 0);
+  assert.match(
+    `${inert.stdout}${inert.stderr}`,
+    /Midgard node CI must actively run exactly one/,
+  );
+
+  const requiredPath =
+    "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs";
+  const misplaced = await runWithMutatedIndexedMap(
+    (_dependencyMap, { replaceSource }) => {
+      replaceSource(workflow, (source) =>
+        source.replace(
+          `      - "${requiredPath}"`,
+          `      # removed ${requiredPath}`,
+        ).replace(
+          "    env:\n      L1_PROVIDER: Kupmios",
+          `    env:\n      EVIDENCE_PATH: "${requiredPath}"\n      L1_PROVIDER: Kupmios`,
+        ),
+      );
+    },
+  );
+  assert.notEqual(misplaced.status, 0);
+  assert.match(
+    `${misplaced.stdout}${misplaced.stderr}`,
+    /Midgard node CI must actively scope push/,
   );
 });
