@@ -1,0 +1,202 @@
+{
+  "schema": "midgard.canonical-v1-fault-proof-reconciliation.v1",
+  "generatedAt": "2026-07-28",
+  "source": {
+    "path": "docs/fault-proofs/coverage-matrix.md",
+    "sha256": "116839c7440323bbb624df5ed6eb096daaeeaf3c22069fbc45a3bf10b6250124"
+  },
+  "coverageContract": [
+    "rule",
+    "enabledState",
+    "proofFamily",
+    "currentBinding",
+    "catalogueReachability",
+    "tooling",
+    "tests",
+    "emulatorEvidence",
+    "preprodEvidence",
+    "remainingTask"
+  ],
+  "coverageRows": [
+    82, 83, 84, 85, 86, 87, 93, 94, 95, 96, 97, 98, 99, 105, 106, 107, 108, 114,
+    115, 116, 117, 118, 124, 125, 126, 127, 128, 129, 130, 131, 137, 138, 139,
+    140, 141, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 163, 164,
+    165, 166, 167, 173, 174, 175, 176, 182, 183, 184, 185, 186, 187
+  ],
+  "structuralRows": [294, 295, 296, 297, 298, 299, 300, 301, 302],
+  "locallyCompleteRows": [94, 96, 137, 182],
+  "structuralOrNARows": [
+    82, 83, 139, 294, 295, 296, 297, 298, 299, 300, 301, 302
+  ],
+  "openRows": [
+    84, 85, 86, 87, 93, 95, 97, 98, 99, 105, 106, 107, 108, 114, 115, 116, 117,
+    118, 124, 125, 126, 127, 128, 129, 130, 131, 138, 140, 141, 147, 148, 149,
+    150, 151, 152, 153, 154, 155, 156, 157, 163, 164, 165, 166, 167, 173, 174,
+    175, 176, 183, 184, 185, 186, 187
+  ],
+  "summary": {
+    "total": 70,
+    "coverageRows": 61,
+    "structuralRows": 9,
+    "locallyComplete": 4,
+    "structuralOrNA": 12,
+    "open": 54,
+    "preprodComplete": 0,
+    "focusedChecksPassed": 44,
+    "focusedChecksTotal": 45
+  },
+  "bindingInventory": {
+    "compiledStandaloneFamilies": 12,
+    "nativeV1Families": ["double-spend", "no-input", "invalid-range"],
+    "legacyPlutusDataFamilies": [
+      "zero-input",
+      "input-no-idx",
+      "invalid-signature",
+      "missing-signature",
+      "missing-native-script-tx",
+      "no-reference-input",
+      "withdrawn-reference-input",
+      "min-fee"
+    ],
+    "registeredCatalogueCategories": 6,
+    "initializationCliCategories": 5
+  },
+  "criticalFindings": [
+    {
+      "id": "F20-01",
+      "finding": "nonExistentInputNoIndex is registered but inherits an always-succeeds real-contract overlay and is absent from initialization and manifest inspection",
+      "sources": [
+        "demo/midgard-sdk/src/fraud-proof/catalogue.ts",
+        "demo/midgard-node/src/services/midgard-contracts.ts",
+        "demo/midgard-fault-proofs/src/submit-init.ts",
+        "demo/midgard-fault-proofs/src/inspect-contracts.ts"
+      ],
+      "remainingTasks": ["Q13", "Q50", "Q51"]
+    },
+    {
+      "id": "F20-02",
+      "finding": "eight compiled standalone families still bind legacy PlutusData and uncounted roots; only three use canonical native V1",
+      "sources": ["onchain/aiken/lib/midgard/fraud-proofs/common.ak"],
+      "remainingTasks": [
+        "Q00",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20"
+      ]
+    },
+    {
+      "id": "F20-03",
+      "finding": "the min-fee proof step still returns zero instead of the canonical parameterized formula",
+      "sources": [
+        "onchain/aiken/lib/midgard/fraud-proofs/min-fee/step-02.ak",
+        "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+      ],
+      "remainingTasks": ["Q20"]
+    },
+    {
+      "id": "F20-04",
+      "finding": "availability challenge, DA-prune API, unified proof journal/resume API, and tracked preprod proof evidence are absent",
+      "sources": ["docs/fault-proofs/coverage-matrix.md"],
+      "remainingTasks": ["Q51", "Q54", "Q57", "Q58", "Q59"]
+    },
+    {
+      "id": "F20-05",
+      "finding": "cross-operator correction requires the same fraudulent operator identity and slashing economics remain zero-valued",
+      "sources": [
+        "onchain/aiken/lib/midgard/state-queue.ak",
+        "onchain/aiken/env/default.ak"
+      ],
+      "remainingTasks": ["Q52", "Q53"]
+    },
+    {
+      "id": "F20-06",
+      "finding": "submit-init focused coverage has one stale fixture missing referenceScriptAuthPolicy.policyId",
+      "sources": ["demo/midgard-fault-proofs/tests/submit-init.test.ts"],
+      "remainingTasks": ["Q50"]
+    }
+  ],
+  "structuralAudit": {
+    "status": "PASS",
+    "summary": {
+      "rows": 9,
+      "pass": 8,
+      "partial": 1,
+      "open": 0
+    },
+    "rows": {
+      "L294": {
+        "disposition": "PASS",
+        "remainingTask": null
+      },
+      "L295": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/validators/state-queue.ak: q49_l295_header_shape_control_and_interval_mutations",
+          "onchain/aiken/validators/state-queue.ak: q49_l295_scheduled_operator_control_and_independent_mutations",
+          "onchain/aiken/validators/state-queue.ak: q49_l295_previous_header_control_and_independent_mutations",
+          "onchain/aiken/validators/state-queue.ak: q49_l295_confirmed_genesis_control_and_independent_mutations",
+          "onchain/aiken/validators/state-queue.ak: q49_l295_confirmed_ordinary_control_and_independent_mutations",
+          "pinned Aiken v1.1.22 exact module state_queue replay: 5/5 PASS"
+        ]
+      },
+      "L296": {
+        "disposition": "PASS",
+        "remainingTask": null
+      },
+      "L297": {
+        "disposition": "PARTIAL",
+        "remainingTask": "Q49-L297"
+      },
+      "L298": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "demo/midgard-validation/src/phase-b.ts",
+          "demo/midgard-validation/tests/phase-b.test.ts: burns the exact L2 fee in production value accounting and rejects fee redirection"
+        ]
+      },
+      "L299": {
+        "disposition": "PASS",
+        "remainingTask": null
+      },
+      "L300": {
+        "disposition": "PASS",
+        "remainingTask": null
+      },
+      "L301": {
+        "disposition": "PASS",
+        "remainingTask": null
+      },
+      "L302": {
+        "disposition": "PASS",
+        "remainingTask": null,
+        "executableEvidence": [
+          "onchain/aiken/lib/midgard/user-events/deposit.ak: sole exact record spend redeemer",
+          "onchain/aiken/validators/user-events/deposit.ak: mandatory settlement membership, event-NFT burn, reserve output, and no datum",
+          "demo/midgard-sdk/src/user-events/deposit.ts: exact record schema",
+          "onchain/aiken/plutus.json: exact one-constructor seven-field compiled schema"
+        ]
+      }
+    },
+    "adjacentRegression": {
+      "selector": "resolve_inputs_rejects_an_invalid_validity_interval_exactly",
+      "status": "PASS",
+      "note": "The canonical empty ledger-delta frontier fixture preserves rejection-state immutability; the exact guarded selector passes 1/1."
+    },
+    "note": "F21 passes as a complete adversarial inventory. L294, L295, L296, L298, L299, L300, L301, and L302 are executable PASS; L297 remains the sole PARTIAL structural row."
+  },
+  "acceptance": {
+    "F20": "PASS",
+    "F21": "PASS",
+    "QG1": "OPEN",
+    "QG2": "OPEN",
+    "QG3": "OPEN",
+    "note": "F20 is an inventory reconciliation. No open proof-family, structural, emulator, or preprod requirement is promoted by this result."
+  }
+}

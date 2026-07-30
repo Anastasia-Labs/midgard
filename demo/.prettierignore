@@ -1,0 +1,6 @@
+**/coverage/
+**/dist/
+**/.architecture-f-wasm/
+**/deploymentInfo/
+**/logs/
+**/node_modules/

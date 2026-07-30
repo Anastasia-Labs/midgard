@@ -1,0 +1,387 @@
+{
+  "schema": "midgard.canonical-v1-goal-verification-plan.v1",
+  "version": 1,
+  "execution": {
+    "mode": "serial",
+    "stopOnFailure": true,
+    "stateChangingPhase": "accept-testnet",
+    "network": "preprod"
+  },
+  "phases": {
+    "static": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
+        {
+          "id": "static-plan",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-verification-plan.mjs"
+          ]
+        },
+        {
+          "id": "static-closure-schema",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--schema-only"
+          ]
+        },
+        {
+          "id": "static-closure-hostile-self-test",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure-self-test.mjs"
+          ]
+        },
+        {
+          "id": "static-nix-toolchain",
+          "cwd": ".",
+          "argv": [
+            "nix",
+            "develop",
+            "./demo",
+            "--command",
+            "bash",
+            "-c",
+            "node --version && pnpm --version"
+          ]
+        },
+        {
+          "id": "static-git-diff",
+          "cwd": ".",
+          "argv": ["git", "diff", "--check"]
+        },
+        {
+          "id": "static-git-status",
+          "cwd": ".",
+          "argv": ["git", "status", "--short"]
+        },
+        {
+          "id": "static-format-registry",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-format-registry.mjs"
+          ]
+        },
+        {
+          "id": "static-goal-policy",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-static-policy.mjs"
+          ]
+        },
+        {
+          "id": "static-capability-inventory",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs"
+          ]
+        },
+        {
+          "id": "static-fault-proof-inventory",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs"
+          ]
+        },
+        {
+          "id": "static-watcher-map",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+          ]
+        },
+        {
+          "id": "static-generated-consensus-docs",
+          "cwd": ".",
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-core",
+            "run",
+            "docs:consensus-profile-v1:check"
+          ]
+        },
+        {
+          "id": "static-aiken-version",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "--version"]
+        },
+        {
+          "id": "static-aiken-format",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "fmt", "--check"]
+        },
+        {
+          "id": "static-aiken-check-no-tests",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "check", "--skip-tests"]
+        },
+        {
+          "id": "static-aiken-check",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "check"]
+        },
+        {
+          "id": "static-aiken-build-testnet",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "build", "--env", "testnet"]
+        },
+        {
+          "id": "static-demo-format",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo", "run", "format-check"]
+        },
+        {
+          "id": "static-demo-lint",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo", "run", "lint"]
+        },
+        {
+          "id": "static-demo-typecheck",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo", "run", "typecheck"]
+        },
+        {
+          "id": "static-demo-build",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo", "run", "build"]
+        },
+        {
+          "id": "static-repository-criteria",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--group=repository"
+          ]
+        }
+      ]
+    },
+    "capability": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
+        {
+          "id": "capability-inventory",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs"
+          ]
+        },
+        {
+          "id": "capability-core",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-core", "test"]
+        },
+        {
+          "id": "capability-validation",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-validation", "test"]
+        },
+        {
+          "id": "capability-c26-capacity-aiken",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "onchain/aiken/scripts/run-focused-check.mjs",
+            "midgard/fraud_proofs/c26_unary_depth_v1",
+            "maximum_unary_depth_is_bound_by_signed_cardano_capacity"
+          ]
+        },
+        {
+          "id": "capability-c26-terminal-aiken",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "onchain/aiken/scripts/run-focused-check.mjs",
+            "midgard/fraud_proofs/c26_unary_depth_v1",
+            "maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation"
+          ]
+        },
+        {
+          "id": "capability-retained-da",
+          "cwd": ".",
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-fault-proofs",
+            "run",
+            "test:cardano-capability-p2-retained-da"
+          ]
+        },
+        {
+          "id": "capability-data-breadth",
+          "cwd": ".",
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-validation",
+            "run",
+            "test:cardano-capability-p2:data-breadth"
+          ]
+        },
+        {
+          "id": "capability-da",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/da-committee-node", "test"]
+        },
+        {
+          "id": "capability-aiken",
+          "cwd": "onchain/aiken",
+          "argv": ["aiken", "check"]
+        },
+        {
+          "id": "capability-criteria",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--group=capability"
+          ]
+        }
+      ]
+    },
+    "fault-proofs": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
+        {
+          "id": "fault-proof-inventory",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs"
+          ]
+        },
+        {
+          "id": "fault-proof-package",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-fault-proofs", "test"]
+        },
+        {
+          "id": "fault-proof-sdk",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-sdk", "test"]
+        },
+        {
+          "id": "fault-proof-node",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-node", "test"]
+        },
+        {
+          "id": "fault-proof-criteria",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--group=fault-proofs"
+          ]
+        }
+      ]
+    },
+    "watcher": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
+        {
+          "id": "watcher-map",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+          ]
+        },
+        {
+          "id": "watcher-build",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "build"]
+        },
+        {
+          "id": "watcher-typecheck",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "typecheck"]
+        },
+        {
+          "id": "watcher-lint",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "lint"]
+        },
+        {
+          "id": "watcher-format",
+          "cwd": ".",
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-watcher",
+            "run",
+            "format-check"
+          ]
+        },
+        {
+          "id": "watcher-tests",
+          "cwd": ".",
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "test"]
+        },
+        {
+          "id": "watcher-criteria",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--group=watcher"
+          ]
+        }
+      ]
+    },
+    "local": {
+      "dependsOn": ["static", "capability", "fault-proofs", "watcher"],
+      "stateChanging": false,
+      "commands": []
+    },
+    "accept-testnet": {
+      "dependsOn": ["local"],
+      "stateChanging": true,
+      "commands": [
+        {
+          "id": "testnet-preflight",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/canonical-v1-goal-testnet-acceptance.mjs"
+          ]
+        }
+      ]
+    },
+    "evidence": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
+        {
+          "id": "release-evidence",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--release"
+          ]
+        }
+      ]
+    },
+    "all": {
+      "dependsOn": ["local", "evidence"],
+      "stateChanging": false,
+      "commands": []
+    }
+  }
+}
