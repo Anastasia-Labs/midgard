@@ -12,23 +12,23 @@
     },
     "canonicalTransaction": {
       "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak",
-      "sha256": "4ec9a07fa8691f9f57b0effd6e0203439ea67b78f661c816d440c82fa80d645f"
+      "sha256": "b3452fa7a7398dcbb67506234c3b12e9cba7b169c7c51e3f451753f2314123b7"
     },
     "validationMachineTypeScript": {
       "path": "demo/midgard-validation/src/validation-machine.ts",
-      "sha256": "564f2ec64132f69936e6bc53d169f9cf16265698f961104e992f95da2bf5a14b"
+      "sha256": "0c983080cc7b90257cd2d225e980015144e37f6a8630ebf5a2a6f93002eba89c"
     },
     "validationMachineDataTypeScript": {
       "path": "demo/midgard-validation/src/validation-machine-data.ts",
-      "sha256": "5438c2435c19b294a0c49371c16d0d91c919aa891b2d4ebef5be69d127dadbb3"
+      "sha256": "70287a78eaf9b354ba0a5d0a285842ac5adf7c0a37758664f6755532c042ee02"
     },
     "validationAuxiliaryTypeScript": {
       "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
-      "sha256": "66536625b5535433905341c845f195145fe0b75a081bd39f44a21c36dd1d9489"
+      "sha256": "df8454ffd2d998918caed237b9eb9444e1a44399480a7914e5feec43b9162c4e"
     },
     "validationMachineAiken": {
       "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-      "sha256": "701490c6ab306648a63312e01d036ba528e787c6b945e730609044699288c390"
+      "sha256": "03b548811be90c4f3ae5ed10b7b1a553718efb27c418e950480fe6b3a8b9bc20"
     }
   },
   "controlPlane": {
@@ -45,8 +45,8 @@
     "C20-3": "PASS",
     "C20-4": "PARTIAL",
     "C20-5": "PARTIAL",
-    "C20-6": "AUTHORITATIVE_CONFLICT",
-    "C20-7": "AUTHORITATIVE_CONFLICT",
+    "C20-6": "PARTIAL",
+    "C20-7": "PARTIAL",
     "C20-8": "PASS",
     "C21": "PASS",
     "C22": "PASS",
@@ -66,9 +66,9 @@
   "p2Summary": {
     "tasks": 22,
     "pass": 10,
-    "partial": 10,
+    "partial": 12,
     "open": 0,
-    "authoritativeConflict": 2,
+    "authoritativeConflict": 0,
     "gate": "OPEN"
   },
   "authorityConflict": {
@@ -78,11 +78,11 @@
       "7": "vkey witnesses and exact signer identities"
     },
     "currentCanonicalSourceOrder": {
-      "6": "address witnesses",
-      "7": "script witnesses"
+      "6": "script witnesses",
+      "7": "address witnesses"
     },
-    "disposition": "OPEN",
-    "note": "GOAL_SPEC.md is authoritative. Current source is recorded without reinterpretation or silent remapping; the conflict must be resolved before CG2 can pass."
+    "disposition": "RESOLVED",
+    "note": "Resolved 2026-07-29: current source implements the authoritative order (script witnesses at field 6, vkey/address witnesses at field 7), proven by the 56/56 native-tx module replay including cross-substitution, adjacency, and genuine accepted-maximum boundary selectors. Complete-item proof-fit for these fields remains open under C21; C20-6/C20-7 are PARTIAL, not PASS."
   },
   "wholePreimageFinding": {
     "status": "RESOLVED_ABI",
@@ -111,11 +111,12 @@
     "value": "2/2",
     "balancedData": "4/4",
     "validationMachineMaximum": "7/7",
-    "c26UnaryDepth": "PARTIAL: TypeScript 2/2 and Aiken 2/2; exact Cardano maximum traps CML/WASM",
+    "c26UnaryDepth": "PARTIAL narrowed 2026-07-29: maximum retained reconstruction now passes at depth 4,043 on stock CML through the iterative well-formedness gate (13 new midgard-core tests; 6,054-case differential vs Data.from, zero divergence; ~0.5 s default-run); maximum emulator admission still requires the owner-approval-gated CML wasm stack patch (C26 Step 2)",
     "retainedDaExactVerifier": "FAIL: producer 13/14; DA consumer 20/20 and fault-proof consumer 3/3 pass directly",
     "validityIntervalRegression": "1/1",
     "wholePreimageAbi": "IN_PROGRESS: TypeScript ABI/control tests 14/14 pass; Aiken selectors and active-helper audit pending",
-    "typechecks": "4/4"
+    "typechecks": "4/4",
+    "nativeTxFieldOrderModuleReplay": "56/56 (23 pre-existing + 33 Wave-1 cross-substitution/boundary tests; parent independent replay exit 0)"
   },
   "acceptance": {
     "F10": "PASS",

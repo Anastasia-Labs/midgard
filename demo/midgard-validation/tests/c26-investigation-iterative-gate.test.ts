@@ -1,27 +1,27 @@
 /**
  * C26 INVESTIGATION SCAFFOLDING — throwaway, not evidence.
  *
- * Prototypes and validates the recommended primary workaround from
- * `docs/exec-plans/evidence/c26-cml-investigation.md`: replace the
- * `Data.from(hex)` decodability probe inside
- * `demo/midgard-core/src/codec/datum.ts` with an iterative, WASM-free
- * Plutus-Data well-formedness check.
+ * Originally validated a prototype of the recursion-free Plutus Data gate
+ * proposed in `docs/exec-plans/evidence/c26-cml-investigation.md`. That gate
+ * now ships in production as `assertMidgardPlutusDataWellFormedV1`
+ * (`demo/midgard-core/src/plutus-data-cbor.ts`) behind `decodeMidgardDatum`
+ * and the native-redeemer entry validation, so this suite exercises the
+ * production export directly. The permanent, ungated coverage lives in
+ * `demo/midgard-core/tests/plutus-data-wellformed-v1.test.ts`,
+ * `demo/midgard-core/tests/plutus-data-deep-datum-retained-v1.test.ts`, and
+ * `demo/midgard-core/tests/native-redeemer-deep-data-v1.test.ts`; this file
+ * remains only as the investigation's cross-package differential harness.
  *
- * The prototype validator below is the proposed production logic verbatim, so
- * these tests are the semantic-equivalence argument for that change:
- *   - it agrees with CML/lucid `Data.from` on accept/reject wherever CML can
- *     answer at all, once the existing canonicity gate is composed in, and
- *   - it keeps answering above CML's ~1,522-deep ceiling.
- *
- * Skipped unless `MIDGARD_C26_INVESTIGATION=1`, because the differential
- * corpus intentionally drives CML past its limit and a trapped
- * `WebAssembly.Instance` is poisoned for the rest of the process.
+ * Skipped unless `MIDGARD_C26_INVESTIGATION=1`.
  *
  * Run with:
  *   MIDGARD_C26_INVESTIGATION=1 pnpm --dir demo/midgard-validation test -- \
  *     c26-investigation-iterative-gate
  */
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "@al-ft/midgard-core";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  assertMidgardPlutusDataWellFormedV1,
+} from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -31,292 +31,12 @@ const describeInvestigation = investigationEnabled
   ? describe
   : describe.skip;
 
-const MAX_PLUTUS_BYTES_CHUNK = 64;
-
-const isConstrTag = (tag: bigint): boolean =>
-  (tag >= 121n && tag <= 127n) || (tag >= 1_280n && tag <= 1_400n);
-
-type CborHead = {
-  readonly major: number;
-  readonly value: bigint | null;
-  readonly offset: number;
-};
-
-const readHead = (bytes: Buffer, offset: number): CborHead => {
-  const initial = bytes[offset];
-  if (initial === undefined) {
-    throw new Error("Unexpected end of PlutusData CBOR");
-  }
-  const major = initial >> 5;
-  const additional = initial & 0x1f;
-  if (additional < 24) {
-    return { major, value: BigInt(additional), offset: offset + 1 };
-  }
-  if (additional === 24) {
-    const next = bytes[offset + 1];
-    if (next === undefined) {
-      throw new Error("Truncated PlutusData CBOR head");
-    }
-    return { major, value: BigInt(next), offset: offset + 2 };
-  }
-  if (additional === 25) {
-    if (offset + 3 > bytes.length) {
-      throw new Error("Truncated PlutusData CBOR head");
-    }
-    return {
-      major,
-      value: BigInt(bytes.readUInt16BE(offset + 1)),
-      offset: offset + 3,
-    };
-  }
-  if (additional === 26) {
-    if (offset + 5 > bytes.length) {
-      throw new Error("Truncated PlutusData CBOR head");
-    }
-    return {
-      major,
-      value: BigInt(bytes.readUInt32BE(offset + 1)),
-      offset: offset + 5,
-    };
-  }
-  if (additional === 27) {
-    if (offset + 9 > bytes.length) {
-      throw new Error("Truncated PlutusData CBOR head");
-    }
-    return {
-      major,
-      value: bytes.readBigUInt64BE(offset + 1),
-      offset: offset + 9,
-    };
-  }
-  if (additional === 31) {
-    return { major, value: null, offset: offset + 1 };
-  }
-  throw new Error(
-    `Unsupported PlutusData CBOR additional information ${additional.toString()}`,
-  );
-};
-
-type GateFrame =
-  | { readonly kind: "items"; remaining: bigint }
-  | { readonly kind: "itemsIndefinite" }
-  | { readonly kind: "pairs"; remaining: bigint; half: 0 | 1 }
-  | { readonly kind: "pairsIndefinite"; half: 0 | 1 }
-  | { readonly kind: "generalConstr"; stage: 0 | 1 };
-
-/**
- * PROPOSED PRODUCTION LOGIC. Validates that `bytes` is exactly one
- * well-formed Plutus Data value with no trailing content, using a single pass
- * and an explicit frame stack. No CML, no WASM, no host recursion, so depth is
- * bounded only by the transaction size that carries the value.
- */
-const assertPlutusDataWellFormed = (bytes: Buffer): void => {
-  const stack: GateFrame[] = [];
-  let cursor = 0;
-  let valueComplete = false;
-
-  const completeValue = (): void => {
-    for (;;) {
-      const frame = stack.at(-1);
-      if (frame === undefined) {
-        valueComplete = true;
-        return;
-      }
-      if (frame.kind === "generalConstr") {
-        if (frame.stage === 0) {
-          frame.stage = 1;
-          return;
-        }
-        stack.pop();
-        continue;
-      }
-      if (frame.kind === "items") {
-        frame.remaining -= 1n;
-        if (frame.remaining > 0n) {
-          return;
-        }
-        stack.pop();
-        continue;
-      }
-      if (frame.kind === "itemsIndefinite") {
-        return;
-      }
-      if (frame.half === 0) {
-        frame.half = 1;
-        return;
-      }
-      frame.half = 0;
-      if (frame.kind === "pairs") {
-        frame.remaining -= 1n;
-        if (frame.remaining > 0n) {
-          return;
-        }
-        stack.pop();
-        continue;
-      }
-      return;
-    }
-  };
-
-  const pushItems = (count: bigint | null): void => {
-    if (count === null) {
-      stack.push({ kind: "itemsIndefinite" });
-      return;
-    }
-    if (count === 0n) {
-      completeValue();
-      return;
-    }
-    stack.push({ kind: "items", remaining: count });
-  };
-
-  while (!valueComplete) {
-    const frame = stack.at(-1);
-    if (bytes[cursor] === 0xff) {
-      if (frame === undefined) {
-        throw new Error("Unexpected PlutusData break marker");
-      }
-      if (frame.kind === "itemsIndefinite") {
-        stack.pop();
-        cursor += 1;
-        completeValue();
-        continue;
-      }
-      if (frame.kind === "pairsIndefinite") {
-        if (frame.half !== 0) {
-          throw new Error("Indefinite PlutusData map is missing a value");
-        }
-        stack.pop();
-        cursor += 1;
-        completeValue();
-        continue;
-      }
-      throw new Error("Unexpected PlutusData break marker");
-    }
-
-    const head = readHead(bytes, cursor);
-    cursor = head.offset;
-
-    if (head.major === 0 || head.major === 1) {
-      if (head.value === null) {
-        throw new Error("PlutusData integer must use a definite head");
-      }
-      completeValue();
-      continue;
-    }
-
-    if (head.major === 2) {
-      if (head.value === null) {
-        while (bytes[cursor] !== 0xff) {
-          const chunk = readHead(bytes, cursor);
-          if (chunk.major !== 2 || chunk.value === null) {
-            throw new Error(
-              "Indefinite PlutusData bytes must contain only definite chunks",
-            );
-          }
-          if (chunk.value > BigInt(MAX_PLUTUS_BYTES_CHUNK)) {
-            throw new Error("PlutusData byte chunk exceeds 64 bytes");
-          }
-          const end = chunk.offset + Number(chunk.value);
-          if (end > bytes.length) {
-            throw new Error("Truncated PlutusData bytes chunk");
-          }
-          cursor = end;
-        }
-        cursor += 1;
-      } else {
-        if (head.value > BigInt(MAX_PLUTUS_BYTES_CHUNK)) {
-          throw new Error(
-            "Definite PlutusData bytes exceed 64 bytes and must be chunked",
-          );
-        }
-        const end = cursor + Number(head.value);
-        if (end > bytes.length) {
-          throw new Error("Truncated PlutusData bytes");
-        }
-        cursor = end;
-      }
-      completeValue();
-      continue;
-    }
-
-    if (head.major === 4) {
-      pushItems(head.value);
-      continue;
-    }
-
-    if (head.major === 5) {
-      if (head.value === null) {
-        stack.push({ kind: "pairsIndefinite", half: 0 });
-      } else if (head.value === 0n) {
-        completeValue();
-      } else {
-        stack.push({ kind: "pairs", remaining: head.value, half: 0 });
-      }
-      continue;
-    }
-
-    if (head.major === 6) {
-      if (head.value === null) {
-        throw new Error("PlutusData tag must use a definite head");
-      }
-      const tag = head.value;
-      if (isConstrTag(tag)) {
-        const fields = readHead(bytes, cursor);
-        if (fields.major !== 4) {
-          throw new Error("PlutusData constructor fields must be an array");
-        }
-        cursor = fields.offset;
-        pushItems(fields.value);
-        continue;
-      }
-      if (tag === 102n) {
-        const outer = readHead(bytes, cursor);
-        if (outer.major !== 4 || outer.value !== 2n) {
-          throw new Error(
-            "General PlutusData constructor must be a two-item array",
-          );
-        }
-        cursor = outer.offset;
-        stack.push({ kind: "generalConstr", stage: 0 });
-        continue;
-      }
-      if (tag === 2n || tag === 3n) {
-        const payload = readHead(bytes, cursor);
-        if (payload.major !== 2 || payload.value === null) {
-          throw new Error(
-            "PlutusData bignum must wrap a definite byte string",
-          );
-        }
-        const end = payload.offset + Number(payload.value);
-        if (end > bytes.length) {
-          throw new Error("Truncated PlutusData bignum payload");
-        }
-        cursor = end;
-        completeValue();
-        continue;
-      }
-      throw new Error(
-        `Unsupported PlutusData constructor tag ${tag.toString()}`,
-      );
-    }
-
-    throw new Error(
-      `Unsupported PlutusData CBOR major type ${head.major.toString()}`,
-    );
-  }
-
-  if (cursor !== bytes.length) {
-    throw new Error("Trailing bytes after PlutusData value");
-  }
-};
-
 const unaryConstructorDataCborHex = (depth: number): string =>
   "d8799f".repeat(depth) + "00" + "ff".repeat(depth);
 
 const gateAccepts = (hex: string): boolean => {
   try {
-    assertPlutusDataWellFormed(Buffer.from(hex, "hex"));
+    assertMidgardPlutusDataWellFormedV1(Buffer.from(hex, "hex"));
     return true;
   } catch {
     return false;
@@ -391,6 +111,8 @@ const fixedCorpus = [
   "d866839f00ff9f00ff9f00ff",
   "c240",
   "c2f5",
+  "c25f41aaff",
+  "d866824080",
   "d81f80",
   "d87b80",
   "d87f80",
@@ -436,7 +158,7 @@ describeInvestigation("C26 investigation: iterative Plutus Data gate", () => {
   it("accepts the exact C26 maximum and adjacent depths that trap CML", () => {
     for (const depth of [1, 1_024, 1_523, 2_048, 4_043, 4_044, 16_000]) {
       expect(() =>
-        assertPlutusDataWellFormed(
+        assertMidgardPlutusDataWellFormedV1(
           Buffer.from(unaryConstructorDataCborHex(depth), "hex"),
         ),
       ).not.toThrow();
@@ -446,12 +168,12 @@ describeInvestigation("C26 investigation: iterative Plutus Data gate", () => {
   it("stays linear where lucid Data.from is superlinear", () => {
     const start = Date.now();
     for (const depth of [1_024, 2_048, 4_043, 4_044, 16_000]) {
-      assertPlutusDataWellFormed(
+      assertMidgardPlutusDataWellFormedV1(
         Buffer.from(unaryConstructorDataCborHex(depth), "hex"),
       );
     }
     // Measured at well under 50ms total; the bound only has to exclude the
-    // multi-second per-call cost of the recursive CML path it replaces.
+    // multi-second per-call cost of the recursive CML path it replaced.
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
@@ -471,10 +193,9 @@ describeInvestigation("C26 investigation: iterative Plutus Data gate", () => {
       "d879",
       "d8799f",
       "c2f5",
+      "d866824080",
     ];
-    for (const hex of mustReject) {
-      expect(gateAccepts(hex)).toBe(false);
-    }
+    expect(mustReject.filter((hex) => gateAccepts(hex))).toEqual([]);
   });
 
   it("accepts every well-formed canonical Plutus Data shape", () => {
@@ -492,10 +213,11 @@ describeInvestigation("C26 investigation: iterative Plutus Data gate", () => {
       `5f5840${"aa".repeat(64)}41aaff`,
       "d87980",
       "d87a80",
+      "5fff",
+      "c25f41aaff",
+      "d9057880",
     ];
-    for (const hex of mustAccept) {
-      expect(gateAccepts(hex)).toBe(true);
-    }
+    expect(mustAccept.filter((hex) => !gateAccepts(hex))).toEqual([]);
   });
 
   it("matches the current composite verdict on a differential corpus", () => {
@@ -506,10 +228,10 @@ describeInvestigation("C26 investigation: iterative Plutus Data gate", () => {
         return [];
       }
       const canonical = normalizerAcceptsExactly(hex);
-      // Current production gate pair vs proposed gate pair.
-      const current = cml === "accept" && canonical;
+      // Recursive-probe composite pair vs shipped gate composite pair.
+      const previous = cml === "accept" && canonical;
       const proposed = gateAccepts(hex) && canonical;
-      return current === proposed ? [] : [hex];
+      return previous === proposed ? [] : [hex];
     });
     expect(divergences).toEqual([]);
     expect(corpus.length).toBeGreaterThan(4_000);

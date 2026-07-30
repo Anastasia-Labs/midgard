@@ -1,6 +1,9 @@
 import { CML } from "@lucid-evolution/lucid";
 
-import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "../plutus-data-cbor.js";
+import {
+  aikenSerialisedPlutusDataCborPreservingMapOrder,
+  assertMidgardPlutusDataWellFormedV1,
+} from "../plutus-data-cbor.js";
 import {
   asArray,
   asBytes,
@@ -67,14 +70,21 @@ const ensureSupportedCardanoRedeemerTag = (
   return tag;
 };
 
-const canonicalPlutusData = (
+/**
+ * Validates one canonical Plutus Data value without materializing a CML
+ * object. Well-formedness uses the recursion-free
+ * `assertMidgardPlutusDataWellFormedV1` pass instead of the former
+ * `CML.PlutusData.from_cbor_bytes` probe, whose wasm build traps near 1,522
+ * nested nodes, so validation depth is bounded only by the bytes that carry
+ * the value.
+ */
+const validateCanonicalPlutusDataCbor = (
   dataCbor: Uint8Array,
   fieldName: string,
-): { readonly data: CML.PlutusData; readonly cbor: Buffer } => {
+): Buffer => {
   const source = Buffer.from(dataCbor);
-  let data: CML.PlutusData;
   try {
-    data = CML.PlutusData.from_cbor_bytes(source);
+    assertMidgardPlutusDataWellFormedV1(source);
   } catch (error) {
     throw new MidgardTxCodecError(
       MidgardTxCodecErrorCodes.SchemaMismatch,
@@ -103,7 +113,33 @@ const canonicalPlutusData = (
       `${fieldName} must contain canonical Plutus Data CBOR`,
     );
   }
-  return { data, cbor: canonical };
+  return canonical;
+};
+
+/**
+ * Validates like `validateCanonicalPlutusDataCbor` and additionally parses
+ * the value into a `CML.PlutusData` for callers that must hand Cardano a CML
+ * object. The CML parse is unavoidable here and stays subject to CML's own
+ * wasm recursion ceiling (~1,522 nested nodes), so this must only be used
+ * where a CML value is genuinely required — today that is the reverse
+ * Midgard-to-Cardano bridge, never the Cardano-to-Midgard admission path.
+ */
+const canonicalPlutusData = (
+  dataCbor: Uint8Array,
+  fieldName: string,
+): { readonly data: CML.PlutusData; readonly cbor: Buffer } => {
+  const cbor = validateCanonicalPlutusDataCbor(dataCbor, fieldName);
+  let data: CML.PlutusData;
+  try {
+    data = CML.PlutusData.from_cbor_bytes(cbor);
+  } catch (error) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.SchemaMismatch,
+      `${fieldName} must contain one Plutus Data item`,
+      String(error),
+    );
+  }
+  return { data, cbor };
 };
 
 const normalizeCardanoPlutusData = (
@@ -194,7 +230,7 @@ export const midgardRedeemersToCardano = (
       );
       const indexValue = asUnsigned(item[1], `${itemField}.index`);
       const dataCbor = asBytes(item[2], `${itemField}.data_cbor`);
-      const { cbor } = canonicalPlutusData(
+      const cbor = validateCanonicalPlutusDataCbor(
         dataCbor,
         `${itemField}.data_cbor`,
       );
