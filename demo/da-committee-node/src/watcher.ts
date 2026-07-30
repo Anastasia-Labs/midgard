@@ -1,6 +1,22 @@
+import {
+  computeDaSha256Hash,
+  DaGossipTopic,
+  decodeDaConflictEvidenceV1Cbor,
+  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  encodeDaConflictEvidenceV1Cbor,
+  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+
 import type { WatcherConfig } from "./config.js";
 import type { AttestationCoordinator } from "./coordinator/coordinator.js";
 import type { SubmitterReconciler } from "./coordinator/submitter-reconciler.js";
+import type {
+  DaGossipMessageHandler,
+  DaGossipMessageHandlerContext,
+} from "./da/libp2p/DaGossip.js";
+import type { DaLibp2pNode } from "./da/libp2p/DaLibp2pNode.js";
+import type { DaPeerRegistry } from "./da/libp2p/DaPeerRegistry.js";
 import {
   daPayloadSha256,
   DaPayloadValidationError,
@@ -15,14 +31,19 @@ import type {
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
+  DaStoredConflictEvidenceRecordV1,
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import { scanStateQueue, type StateQueueProvider } from "./l1/state-queue-scanner.js";
+import {
+  scanStateQueue,
+  type StateQueueProvider,
+} from "./l1/state-queue-scanner.js";
 import {
   type DaSigner,
   type DaSignerValidation,
   signDaAttestation,
+  verifyDaSignatureWitness,
 } from "./signer.js";
 import { hasPayloadBytes, type WatcherStore } from "./store.js";
 import { hexToBytes } from "./utils/hex.js";
@@ -37,6 +58,8 @@ export type WatcherServiceDeps = {
   readonly coordinator?: AttestationCoordinator;
   readonly submitterReconciler?: Pick<SubmitterReconciler, "reconcileHeader">;
   readonly daChainReader?: DaAttestationChainReader;
+  readonly daLibp2pNode?: Pick<DaLibp2pNode, "setGossipHandler">;
+  readonly daPeerRegistry?: DaPeerRegistry;
 };
 
 export type WatcherTickResult = {
@@ -144,11 +167,29 @@ export class WatcherService {
 
   constructor(deps: WatcherServiceDeps) {
     this.deps = deps;
+    if (
+      (deps.daLibp2pNode === undefined) !==
+      (deps.daPeerRegistry === undefined)
+    ) {
+      throw new Error(
+        "DA conflict evidence gossip requires both node and peer registry",
+      );
+    }
+    if (deps.daLibp2pNode !== undefined && deps.daPeerRegistry !== undefined) {
+      deps.daLibp2pNode.setGossipHandler(
+        DaGossipTopic.conflicts,
+        createDaConflictEvidenceGossipHandler({
+          deploymentFingerprint: deps.config.deploymentFingerprint,
+          registry: deps.daPeerRegistry,
+          store: deps.store,
+        }),
+      );
+    }
   }
 
   async initialize(): Promise<void> {
     await this.deps.store.initDeployment({
-      fingerprint: this.deps.config.deploymentFingerprint,
+      marker: makeDeploymentMarkerV1(this.deps.config.deploymentFingerprint),
       manifestSha256: this.deps.config.deploymentManifestSha256,
       contractDeploymentInfoSha256:
         this.deps.config.contractDeploymentInfoSha256,
@@ -255,10 +296,10 @@ export class WatcherService {
     if (deployment === undefined) {
       reasons.push("store deployment is not initialized");
     } else if (
-      deployment.fingerprint !== this.deps.config.deploymentFingerprint
+      deployment.marker.manifestId !== this.deps.config.deploymentFingerprint
     ) {
       reasons.push(
-        `store deployment fingerprint ${deployment.fingerprint} does not match configured ${this.deps.config.deploymentFingerprint}`,
+        `store deployment manifest ID ${deployment.marker.manifestId} does not match configured ${this.deps.config.deploymentFingerprint}`,
       );
     }
     if (
@@ -304,11 +345,12 @@ export class WatcherService {
       ready: reasons.length === 0,
       deployment: {
         configuredFingerprint: this.deps.config.deploymentFingerprint,
-        ...(deployment?.fingerprint === undefined
+        ...(deployment?.marker.manifestId === undefined
           ? {}
-          : { storeFingerprint: deployment.fingerprint }),
+          : { storeFingerprint: deployment.marker.manifestId }),
         storeMatchesConfigured:
-          deployment?.fingerprint === this.deps.config.deploymentFingerprint,
+          deployment?.marker.manifestId ===
+          this.deps.config.deploymentFingerprint,
         manifestSha256: this.deps.config.deploymentManifestSha256,
         ...(deployment?.manifestSha256 === undefined
           ? {}
@@ -868,6 +910,117 @@ export class WatcherService {
     );
   }
 }
+
+export const createDaConflictEvidenceGossipHandler = (args: {
+  readonly deploymentFingerprint: string;
+  readonly registry: DaPeerRegistry;
+  readonly store: Pick<WatcherStore, "saveDaConflictEvidence">;
+  readonly now?: () => Date;
+}): DaGossipMessageHandler => {
+  const now = args.now ?? (() => new Date());
+  return async (context) => {
+    await ingestDaConflictEvidenceV1({
+      ...args,
+      context,
+      receivedAt: now(),
+    });
+  };
+};
+
+export const ingestDaConflictEvidenceV1 = async (args: {
+  readonly deploymentFingerprint: string;
+  readonly registry: DaPeerRegistry;
+  readonly store: Pick<WatcherStore, "saveDaConflictEvidence">;
+  readonly context: DaGossipMessageHandlerContext;
+  readonly receivedAt: Date;
+}): Promise<boolean> => {
+  if (args.context.topicName !== DaGossipTopic.conflicts) {
+    throw new Error("DA conflict evidence arrived on the wrong gossip topic");
+  }
+  args.registry.requireKnownPeer(args.context.remotePeerId);
+  const conflict = decodeDaConflictEvidenceV1Cbor(args.context.data);
+  if (!encodeDaConflictEvidenceV1Cbor(conflict).equals(args.context.data)) {
+    throw new Error("DA conflict evidence must use canonical CBOR");
+  }
+  const deploymentFingerprint = conflict.deploymentFingerprint.toString("hex");
+  if (deploymentFingerprint !== args.deploymentFingerprint) {
+    throw new Error(
+      "DA conflict evidence deployment does not match configured deployment",
+    );
+  }
+  if (
+    conflict.evidenceKind !== "equivocation" ||
+    conflict.compactEvidence === null
+  ) {
+    throw new Error(
+      "DA conflict evidence must contain canonical signature/header equivocation evidence",
+    );
+  }
+  if (
+    !computeDaSha256Hash(conflict.compactEvidence).equals(conflict.evidenceHash)
+  ) {
+    throw new Error(
+      "DA conflict evidence hash does not match compact evidence",
+    );
+  }
+  const equivocation = decodeDaConflictingSignatureHeaderEvidenceV1Cbor(
+    conflict.compactEvidence,
+  );
+  if (
+    !encodeDaConflictingSignatureHeaderEvidenceV1Cbor(equivocation).equals(
+      conflict.compactEvidence,
+    )
+  ) {
+    throw new Error(
+      "DA conflicting signature/header evidence must use canonical CBOR",
+    );
+  }
+  if (!conflict.headerHash.equals(equivocation.lowerHeaderHash)) {
+    throw new Error(
+      "DA conflict evidence header does not match the lower conflicting header",
+    );
+  }
+  const signerPeer = args.registry.getBySignerIndex(equivocation.signerIndex);
+  if (
+    signerPeer?.daVkey === undefined ||
+    signerPeer.daVkey !== equivocation.daVkey.toString("hex")
+  ) {
+    throw new Error(
+      "DA conflict evidence signer identity does not match the configured committee",
+    );
+  }
+  const lowerHeaderHash = equivocation.lowerHeaderHash.toString("hex");
+  const upperHeaderHash = equivocation.upperHeaderHash.toString("hex");
+  if (
+    !verifyDaSignatureWitness({
+      publicKeyHex: signerPeer.daVkey,
+      headerHash: lowerHeaderHash,
+      witnessHex: equivocation.lowerHeaderWitness.toString("hex"),
+    }) ||
+    !verifyDaSignatureWitness({
+      publicKeyHex: signerPeer.daVkey,
+      headerHash: upperHeaderHash,
+      witnessHex: equivocation.upperHeaderWitness.toString("hex"),
+    })
+  ) {
+    throw new Error(
+      "DA conflict evidence contains an invalid attestation signature",
+    );
+  }
+  const record: DaStoredConflictEvidenceRecordV1 = {
+    conflictSchemaVersion: 1,
+    deploymentFingerprint,
+    headerHash: lowerHeaderHash,
+    conflictingHeaderHash: upperHeaderHash,
+    signerIndex: equivocation.signerIndex,
+    evidenceKind: "equivocation",
+    evidenceHash: conflict.evidenceHash.toString("hex"),
+    compactEvidenceCborHex: conflict.compactEvidence.toString("hex"),
+    reporterPeerId: args.context.remotePeerId,
+    receivedAt: args.receivedAt.toISOString(),
+  };
+  return args.store.saveDaConflictEvidence(record);
+};
 
 const payloadFetchObservation = (
   headerHash: string,

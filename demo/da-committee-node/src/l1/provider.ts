@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import * as SDK from "@al-ft/midgard-sdk";
@@ -10,7 +11,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { WatcherConfig } from "../config.js";
+import type { LoadedWatcherConfig } from "../config.js";
 import type { ChainPoint, ObservedStateQueueNode } from "../domain.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
@@ -97,6 +98,7 @@ export class MultiStateQueueProvider implements StateQueueProvider {
         );
       }
     }
+    assertCompatibleChainPoints(sortedResults);
     return mergeAgreedObservedNodes(sortedResults);
   }
 }
@@ -135,22 +137,31 @@ export const stateQueueUtxosToObservedNodes = async (
 };
 
 export const providerFromConfig = async (
-  config: WatcherConfig,
+  config: LoadedWatcherConfig,
 ): Promise<StateQueueProvider> =>
   providerFromUrls(config.cardanoProviderUrls, config);
 
 export const providerFromUrls = async (
   urls: readonly string[],
   config: Pick<
-    WatcherConfig,
-    "network" | "stateQueueAddress" | "stateQueuePolicyId"
+    LoadedWatcherConfig,
+    "network" | "cardanoL1Source" | "stateQueueAddress" | "stateQueuePolicyId"
   >,
 ): Promise<StateQueueProvider> => {
   if (urls.length === 0) {
     throw new Error("at least one CARDANO_PROVIDER_URLS entry is required");
   }
+  if (
+    config.cardanoL1Source.sourceMode === "external_providers" &&
+    (urls.length < 2 ||
+      config.cardanoL1Source.providerAuthorityIds.length !== urls.length)
+  ) {
+    throw new Error(
+      "external_providers mode requires at least two matched provider authority identities",
+    );
+  }
   const providers = await Promise.all(
-    urls.map((url) => providerFromUrl(url, config)),
+    urls.map((url, index) => providerFromUrl(url, config, index)),
   );
   return providers.length === 1
     ? providers[0]!
@@ -160,9 +171,10 @@ export const providerFromUrls = async (
 export const providerFromUrl = async (
   url: string,
   config: Pick<
-    WatcherConfig,
-    "network" | "stateQueueAddress" | "stateQueuePolicyId"
+    LoadedWatcherConfig,
+    "network" | "cardanoL1Source" | "stateQueueAddress" | "stateQueuePolicyId"
   >,
+  providerIndex = 0,
 ): Promise<StateQueueProvider> => {
   if (url.startsWith("fixture:")) {
     return new FixtureStateQueueProvider(url.slice("fixture:".length));
@@ -180,7 +192,11 @@ export const providerFromUrl = async (
       lucid,
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
-      providerSource: `blockfrost:${apiUrl}`,
+      providerSource: l1AuthorityProviderSource(
+        config,
+        providerIndex,
+        `blockfrost:${apiUrl}`,
+      ),
       chainPointResolver: blockfrostChainPointResolver(
         lucid,
         apiUrl,
@@ -190,6 +206,10 @@ export const providerFromUrl = async (
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
+    await assertOgmiosNetworkMagic(
+      ogmiosUrl,
+      config.cardanoL1Source.networkMagic,
+    );
     const lucid = await Lucid(
       new Kupmios(kupoUrl, ogmiosUrl, headers),
       normalizeNetwork(config.network),
@@ -198,13 +218,48 @@ export const providerFromUrl = async (
       lucid,
       stateQueueAddress: config.stateQueueAddress,
       stateQueuePolicyId: config.stateQueuePolicyId,
-      providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
+      providerSource: l1AuthorityProviderSource(
+        config,
+        providerIndex,
+        `kupmios:${kupoUrl}|${ogmiosUrl}`,
+      ),
       chainPointResolver: kupmiosChainPointResolver(lucid, kupoUrl),
     });
   }
   throw new Error(
     `unsupported CARDANO_PROVIDER_URLS entry ${url}; supported forms are fixture:<path>, file:<path>, blockfrost:<api-url>#<project-id>, and kupmios:<kupo-url>|<ogmios-url>`,
   );
+};
+
+export const l1AuthorityProviderSource = (
+  config: Pick<LoadedWatcherConfig, "cardanoL1Source">,
+  providerIndex: number,
+  surfaceIdentity: string,
+): string => {
+  const authority = config.cardanoL1Source;
+  const surfaceDigest = createHash("sha256")
+    .update(surfaceIdentity)
+    .digest("hex");
+  if (authority.sourceMode === "local_node") {
+    return [
+      "local_node",
+      authority.authorityNodeId,
+      authority.authorityDigest,
+      surfaceDigest,
+    ].join(":");
+  }
+  const providerAuthorityId = authority.providerAuthorityIds[providerIndex];
+  if (providerAuthorityId === undefined) {
+    throw new Error(
+      "external provider is missing its configured authority identity",
+    );
+  }
+  return [
+    "external_providers",
+    providerAuthorityId,
+    authority.authorityDigest,
+    surfaceDigest,
+  ].join(":");
 };
 
 const parseBlockfrostUrl = (
@@ -238,6 +293,87 @@ const parseKupmiosUrl = (
     );
   }
   return { kupoUrl, ogmiosUrl };
+};
+
+export const assertOgmiosNetworkMagic = async (
+  ogmiosUrl: string,
+  expectedNetworkMagic: number,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> => {
+  const endpoint = ogmiosHttpEndpoint(ogmiosUrl);
+  let response: Response;
+  try {
+    response = await fetchFn(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "queryNetwork/genesisConfiguration",
+        params: { era: "shelley" },
+        id: "midgard-network-magic-preflight",
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error("Ogmios network-magic preflight failed");
+  }
+  if (!response.ok) {
+    throw new Error("Ogmios network-magic preflight failed");
+  }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("Ogmios network-magic preflight returned invalid JSON");
+  }
+  const actualNetworkMagic = ogmiosNetworkMagic(body);
+  if (actualNetworkMagic !== expectedNetworkMagic) {
+    throw new Error(
+      "Ogmios network magic does not match configured Cardano network authority",
+    );
+  }
+};
+
+const ogmiosHttpEndpoint = (ogmiosUrl: string): string => {
+  let parsed: URL;
+  try {
+    parsed = new URL(ogmiosUrl);
+  } catch {
+    throw new Error("Kupmios Ogmios URL is invalid");
+  }
+  if (parsed.protocol === "ws:") {
+    parsed.protocol = "http:";
+  } else if (parsed.protocol === "wss:") {
+    parsed.protocol = "https:";
+  } else if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Kupmios Ogmios URL must use http, https, ws, or wss");
+  }
+  return parsed.toString();
+};
+
+const ogmiosNetworkMagic = (body: unknown): number => {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new Error(
+      "Ogmios genesis configuration is missing an unsigned network magic",
+    );
+  }
+  const result = (body as Record<string, unknown>).result;
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    throw new Error(
+      "Ogmios genesis configuration is missing an unsigned network magic",
+    );
+  }
+  const networkMagic = (result as Record<string, unknown>).networkMagic;
+  if (
+    !Number.isSafeInteger(networkMagic) ||
+    (networkMagic as number) < 0 ||
+    (networkMagic as number) > 4_294_967_295
+  ) {
+    throw new Error(
+      "Ogmios genesis configuration is missing an unsigned network magic",
+    );
+  }
+  return networkMagic as number;
 };
 
 export const lucidChainPointResolver = (
@@ -380,6 +516,39 @@ const canonicalArraysEqual = (
 ): boolean =>
   left.length === right.length &&
   left.every((value, index) => value === right[index]);
+
+const assertCompatibleChainPoints = (
+  sortedResults: readonly (readonly ObservedStateQueueNode[])[],
+): void => {
+  const baseline = sortedResults[0] ?? [];
+  for (const [providerIndex, nodes] of sortedResults.entries()) {
+    for (const [nodeIndex, node] of nodes.entries()) {
+      const expected = baseline[nodeIndex]?.chainPoint;
+      if (
+        expected !== undefined &&
+        !compatibleChainPoint(expected, node.chainPoint)
+      ) {
+        throw new Error(
+          `state queue provider chain-point disagreement between provider 0 and provider ${providerIndex.toString()}`,
+        );
+      }
+    }
+  }
+};
+
+const compatibleChainPoint = (left: ChainPoint, right: ChainPoint): boolean =>
+  (
+    [
+      ["slot", left.slot, right.slot],
+      ["blockHash", left.blockHash, right.blockHash],
+      ["blockHeight", left.blockHeight, right.blockHeight],
+    ] as const
+  ).every(
+    ([, leftValue, rightValue]) =>
+      leftValue === undefined ||
+      rightValue === undefined ||
+      leftValue === rightValue,
+  );
 
 const mergeAgreedObservedNodes = (
   sortedResults: readonly (readonly ObservedStateQueueNode[])[],

@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
+
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution } from "@lucid-evolution/lucid";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  assertOgmiosNetworkMagic,
   kupmiosChainPointResolver,
+  l1AuthorityProviderSource,
   lucidChainPointResolver,
   MultiStateQueueProvider,
   providerFromUrl,
@@ -23,6 +27,7 @@ describe("L1 provider adapters", () => {
     const path = await writeJson(dir, "state-queue.json", []);
     const provider = await providerFromUrl(`fixture:${path}`, {
       network: "Preview",
+      cardanoL1Source: localNodeSource,
       stateQueueAddress: "addr_test1statequeue",
       stateQueuePolicyId: "11".repeat(28),
     });
@@ -195,6 +200,83 @@ describe("L1 provider adapters", () => {
     expect(fetchFn).toHaveBeenCalledWith("http://127.0.0.1:1442/health");
   });
 
+  it("checks Custom network magic against the Kupmios Ogmios authority", async () => {
+    const fetchFn = vi.fn(
+      async (..._args: Parameters<typeof fetch>): Promise<Response> =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: "midgard-network-magic-preflight",
+          result: { networkMagic: 424242 },
+        }),
+    );
+    await expect(
+      assertOgmiosNetworkMagic(
+        "ws://127.0.0.1:1337",
+        424242,
+        fetchFn as typeof fetch,
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetchFn).toHaveBeenCalledOnce();
+    expect(fetchFn.mock.calls[0]?.[0]).toBe("http://127.0.0.1:1337/");
+    expect(fetchFn.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+    expect(JSON.parse(String(fetchFn.mock.calls[0]?.[1]?.body))).toMatchObject({
+      method: "queryNetwork/genesisConfiguration",
+      params: { era: "shelley" },
+    });
+  });
+
+  it("fails closed when Ogmios network magic is missing or mismatched", async () => {
+    await expect(
+      assertOgmiosNetworkMagic("http://127.0.0.1:1337", 424242, async () =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: "midgard-network-magic-preflight",
+          result: { networkMagic: 42 },
+        }),
+      ),
+    ).rejects.toThrow(/does not match configured Cardano network authority/);
+    await expect(
+      assertOgmiosNetworkMagic("http://127.0.0.1:1337", 424242, async () =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: "midgard-network-magic-preflight",
+          result: {},
+        }),
+      ),
+    ).rejects.toThrow(/missing an unsigned network magic/);
+  });
+
+  it("binds persisted provider provenance to the selected L1 authority", () => {
+    expect(
+      l1AuthorityProviderSource(
+        { cardanoL1Source: localNodeSource },
+        0,
+        "kupmios:http://kupo|http://ogmios",
+      ),
+    ).toBe(
+      `local_node:phase4-cardano-node:${"aa".repeat(32)}:${sha256("kupmios:http://kupo|http://ogmios")}`,
+    );
+    expect(
+      l1AuthorityProviderSource(
+        {
+          cardanoL1Source: {
+            sourceMode: "external_providers",
+            providerAuthorityIds: ["11".repeat(32), "22".repeat(32)],
+            authorityDigest: "bb".repeat(32),
+            networkMagic: 2,
+          },
+        },
+        1,
+        "blockfrost:https://provider.example",
+      ),
+    ).toBe(
+      `external_providers:${"22".repeat(32)}:${"bb".repeat(32)}:${sha256("blockfrost:https://provider.example")}`,
+    );
+  });
+
   it("fails closed when transaction status is not confirmed", async () => {
     const txHash = "aa".repeat(32);
     const resolve = lucidChainPointResolver({
@@ -233,13 +315,48 @@ describe("L1 provider adapters", () => {
     );
   });
 
+  it("fails closed on provider chain-point disagreement", async () => {
+    const { header, headerHash } = await makePayloadFixture();
+    const node = makeObservedNode({ header, headerHash, depth: 10 });
+    const provider = new MultiStateQueueProvider([
+      { fetchStateQueueNodes: async () => [node] },
+      {
+        fetchStateQueueNodes: async () => [
+          {
+            ...node,
+            chainPoint: {
+              ...node.chainPoint,
+              blockHash: "ef".repeat(32),
+              providerSource: "other-authority",
+            },
+          },
+        ],
+      },
+    ]);
+
+    await expect(provider.fetchStateQueueNodes()).rejects.toThrow(
+      /chain-point disagreement/,
+    );
+  });
+
   it("rejects unsupported provider URL schemes", async () => {
     await expect(
       providerFromUrl("http://plain-url.example", {
         network: "Preview",
+        cardanoL1Source: localNodeSource,
         stateQueueAddress: "addr_test1statequeue",
         stateQueuePolicyId: "11".repeat(28),
       }),
     ).rejects.toThrow(/unsupported CARDANO_PROVIDER_URLS/);
   });
 });
+
+const localNodeSource = {
+  sourceMode: "local_node",
+  authorityNodeId: "phase4-cardano-node",
+  authorityDigest: "aa".repeat(32),
+  networkMagic: 424242,
+} as const;
+
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");

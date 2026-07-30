@@ -1,3 +1,9 @@
+import {
+  assertDeploymentMarkerV1Matches,
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+  parseDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { Pool, type PoolClient } from "pg";
 
 import type {
@@ -8,12 +14,14 @@ import type {
   DaPeerNonceRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecordV1,
   DaStoredPayloadRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import {
   parseDaSignatureRecordV1,
+  parseDaStoredConflictEvidenceRecordV1,
   parseDaStoredPayloadRecordV1,
 } from "../domain.js";
 import {
@@ -26,7 +34,11 @@ import {
 
 type JsonRecordRow = {
   readonly record: unknown;
+  readonly deployment_fingerprint?: unknown;
+  readonly evidence_hash?: unknown;
   readonly header_hash?: unknown;
+  readonly conflicting_header_hash?: unknown;
+  readonly reporter_peer_id?: unknown;
   readonly signer_index?: unknown;
 };
 
@@ -59,38 +71,56 @@ export class PostgresWatcherStore implements WatcherStore {
   }
 
   async initDeployment(args: {
-    readonly fingerprint: string;
+    readonly marker: DeploymentMarkerV1;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
+    const marker = parseDeploymentMarkerV1(args.marker);
     const result = await this.pool.query<{
-      readonly fingerprint: string;
-    }>("SELECT fingerprint FROM watcher_deployment WHERE id = 1");
+      readonly marker_schema_version: string;
+      readonly manifest_id: string;
+    }>(
+      "SELECT marker_schema_version, manifest_id FROM watcher_deployment WHERE id = 1",
+    );
     const existing = result.rows[0];
-    if (existing !== undefined && existing.fingerprint !== args.fingerprint) {
-      throw new Error(
-        `stale_deployment_state_requires_fresh_redeploy: stored_fingerprint=${existing.fingerprint}, canonical_manifest_id=${args.fingerprint}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
-      );
+    if (existing !== undefined) {
+      try {
+        assertDeploymentMarkerV1Matches(
+          marker,
+          {
+            schemaVersion: existing.marker_schema_version,
+            manifestId: existing.manifest_id,
+          },
+          "DA Postgres store",
+        );
+      } catch {
+        throw new Error(
+          `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${existing.manifest_id}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
+        );
+      }
     }
     await this.pool.query(
       `INSERT INTO watcher_deployment (
          id,
-         fingerprint,
+         marker_schema_version,
+         manifest_id,
          manifest_sha256,
          contract_deployment_info_sha256,
          manifest_raw,
          updated_at
        )
-       VALUES (1, $1, $2, $3, $4, NOW())
+       VALUES (1, $1, $2, $3, $4, $5, NOW())
        ON CONFLICT (id) DO UPDATE SET
-         fingerprint = EXCLUDED.fingerprint,
+         marker_schema_version = EXCLUDED.marker_schema_version,
+         manifest_id = EXCLUDED.manifest_id,
          manifest_sha256 = EXCLUDED.manifest_sha256,
          contract_deployment_info_sha256 = EXCLUDED.contract_deployment_info_sha256,
          manifest_raw = EXCLUDED.manifest_raw,
          updated_at = NOW()`,
       [
-        args.fingerprint,
+        marker.schemaVersion,
+        marker.manifestId,
         args.manifestSha256,
         args.contractDeploymentInfoSha256,
         args.manifestRaw,
@@ -100,12 +130,14 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async getDeployment(): Promise<WatcherDeploymentRecord | undefined> {
     const result = await this.pool.query<{
-      readonly fingerprint: string;
+      readonly marker_schema_version: string;
+      readonly manifest_id: string;
       readonly manifest_sha256: string;
-      readonly contract_deployment_info_sha256: string | null;
+      readonly contract_deployment_info_sha256: string;
       readonly manifest_raw: string;
     }>(
-      `SELECT fingerprint,
+      `SELECT marker_schema_version,
+              manifest_id,
               manifest_sha256,
               contract_deployment_info_sha256,
               manifest_raw
@@ -117,13 +149,12 @@ export class PostgresWatcherStore implements WatcherStore {
       return undefined;
     }
     return {
-      fingerprint: row.fingerprint,
+      marker: parseDeploymentMarkerV1({
+        schemaVersion: row.marker_schema_version,
+        manifestId: row.manifest_id,
+      }),
       manifestSha256: row.manifest_sha256,
-      ...(row.contract_deployment_info_sha256 === null
-        ? {}
-        : {
-            contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
-          }),
+      contractDeploymentInfoSha256: row.contract_deployment_info_sha256,
       manifestRaw: row.manifest_raw,
     };
   }
@@ -241,6 +272,58 @@ export class PostgresWatcherStore implements WatcherStore {
       headerHash === undefined ? [] : [headerHash],
       parseDaSignatureRecordV1,
       assertSignatureRowIdentity,
+    );
+  }
+
+  async saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecordV1,
+  ): Promise<boolean> {
+    const canonicalRecord = parseDaStoredConflictEvidenceRecordV1(record);
+    const result = await this.pool.query(
+      `INSERT INTO watcher_da_conflict_evidence (
+         deployment_fingerprint,
+         evidence_hash,
+         header_hash,
+         conflicting_header_hash,
+         signer_index,
+         reporter_peer_id,
+         record,
+         created_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+       ON CONFLICT (deployment_fingerprint, evidence_hash) DO NOTHING`,
+      [
+        canonicalRecord.deploymentFingerprint,
+        canonicalRecord.evidenceHash,
+        canonicalRecord.headerHash,
+        canonicalRecord.conflictingHeaderHash,
+        canonicalRecord.signerIndex,
+        canonicalRecord.reporterPeerId,
+        encodeRecord(canonicalRecord),
+      ],
+    );
+    return result.rowCount === 1;
+  }
+
+  async listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]> {
+    return this.listParsedRecords(
+      headerHash === undefined
+        ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
+                  conflicting_header_hash, signer_index, reporter_peer_id,
+                  record
+           FROM watcher_da_conflict_evidence
+           ORDER BY header_hash, signer_index, evidence_hash`
+        : `SELECT deployment_fingerprint, evidence_hash, header_hash,
+                  conflicting_header_hash, signer_index, reporter_peer_id,
+                  record
+           FROM watcher_da_conflict_evidence
+           WHERE header_hash = $1
+           ORDER BY header_hash, signer_index, evidence_hash`,
+      headerHash === undefined ? [] : [headerHash],
+      parseDaStoredConflictEvidenceRecordV1,
+      assertConflictEvidenceRowIdentity,
     );
   }
 
@@ -394,9 +477,10 @@ export class PostgresWatcherStore implements WatcherStore {
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS watcher_deployment (
         id integer PRIMARY KEY CHECK (id = 1),
-        fingerprint text NOT NULL,
-        manifest_sha256 text NOT NULL,
-        contract_deployment_info_sha256 text,
+        marker_schema_version text NOT NULL CHECK (marker_schema_version = '${MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION}'),
+        manifest_id text NOT NULL CHECK (manifest_id ~ '^[0-9a-f]{64}$'),
+        manifest_sha256 text NOT NULL CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
+        contract_deployment_info_sha256 text NOT NULL CHECK (contract_deployment_info_sha256 ~ '^[0-9a-f]{64}$'),
         manifest_raw text NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -423,6 +507,18 @@ export class PostgresWatcherStore implements WatcherStore {
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW(),
         PRIMARY KEY (header_hash, signer_index)
+      );
+
+      CREATE TABLE IF NOT EXISTS watcher_da_conflict_evidence (
+        deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{64}$'),
+        evidence_hash text NOT NULL CHECK (evidence_hash ~ '^[0-9a-f]{64}$'),
+        header_hash text NOT NULL CHECK (header_hash ~ '^[0-9a-f]{56}$'),
+        conflicting_header_hash text NOT NULL CHECK (conflicting_header_hash ~ '^[0-9a-f]{56}$' AND conflicting_header_hash > header_hash),
+        signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
+        reporter_peer_id text NOT NULL CHECK (length(reporter_peer_id) > 0),
+        record jsonb NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (deployment_fingerprint, evidence_hash)
       );
 
       CREATE TABLE IF NOT EXISTS watcher_da_attestation_candidates (
@@ -621,6 +717,24 @@ const assertSignatureRowIdentity = (
   ) {
     throw new Error(
       "Postgres DA signature row key does not match record identity",
+    );
+  }
+};
+
+const assertConflictEvidenceRowIdentity = (
+  row: JsonRecordRow,
+  record: DaStoredConflictEvidenceRecordV1,
+): void => {
+  if (
+    row.deployment_fingerprint !== record.deploymentFingerprint ||
+    row.evidence_hash !== record.evidenceHash ||
+    row.header_hash !== record.headerHash ||
+    row.conflicting_header_hash !== record.conflictingHeaderHash ||
+    row.signer_index !== record.signerIndex ||
+    row.reporter_peer_id !== record.reporterPeerId
+  ) {
+    throw new Error(
+      "Postgres DA conflict evidence row key does not match record identity",
     );
   }
 };

@@ -1,6 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import {
+  assertDeploymentMarkerV1Matches,
+  type DeploymentMarkerV1,
+  parseDeploymentMarkerV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+
 import type {
   DaAttestationCandidateRecord,
   DaPayloadRecord,
@@ -9,26 +15,24 @@ import type {
   DaPeerNonceRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecordV1,
   DaStoredPayloadRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "./domain.js";
 import {
   parseDaSignatureRecordV1,
+  parseDaStoredConflictEvidenceRecordV1,
   parseDaStoredPayloadRecordV1,
 } from "./domain.js";
 
 type StoreData = {
-  readonly deployment?: {
-    readonly fingerprint: string;
-    readonly manifestSha256: string;
-    readonly contractDeploymentInfoSha256?: string;
-    readonly manifestRaw: string;
-  };
+  readonly deployment?: WatcherDeploymentRecord;
   readonly chainCursor?: Record<string, unknown>;
   readonly stateQueueHeaders: Record<string, StateQueueHeaderRecord>;
   readonly daPayloads: Record<string, DaStoredPayloadRecordV1>;
   readonly daSignatures: Record<string, DaSignatureRecordV1>;
+  readonly daConflictEvidence: Record<string, DaStoredConflictEvidenceRecordV1>;
   readonly daAttestationCandidates: Record<
     string,
     DaAttestationCandidateRecord
@@ -40,16 +44,16 @@ type StoreData = {
 };
 
 export type WatcherDeploymentRecord = {
-  readonly fingerprint: string;
+  readonly marker: DeploymentMarkerV1;
   readonly manifestSha256: string;
-  readonly contractDeploymentInfoSha256?: string;
+  readonly contractDeploymentInfoSha256: string;
   readonly manifestRaw: string;
 };
 
 export interface WatcherStore {
   close?(): Promise<void>;
   initDeployment(args: {
-    readonly fingerprint: string;
+    readonly marker: DeploymentMarkerV1;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
@@ -68,6 +72,12 @@ export interface WatcherStore {
     readonly signerIndex: number;
   }): Promise<DaSignatureRecord | undefined>;
   listDaSignatures(headerHash?: string): Promise<readonly DaSignatureRecord[]>;
+  saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecordV1,
+  ): Promise<boolean>;
+  listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]>;
   saveDaAttestationCandidate(
     record: DaAttestationCandidateRecord,
   ): Promise<void>;
@@ -107,24 +117,30 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 
   async initDeployment(args: {
-    readonly fingerprint: string;
+    readonly marker: DeploymentMarkerV1;
     readonly manifestSha256: string;
     readonly contractDeploymentInfoSha256: string;
     readonly manifestRaw: string;
   }): Promise<void> {
     await this.mutate((data) => {
-      if (
-        data.deployment !== undefined &&
-        data.deployment.fingerprint !== args.fingerprint
-      ) {
-        throw new Error(
-          `stale_deployment_state_requires_fresh_redeploy: stored_fingerprint=${data.deployment.fingerprint}, canonical_manifest_id=${args.fingerprint}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
-        );
+      const marker = parseDeploymentMarkerV1(args.marker);
+      if (data.deployment !== undefined) {
+        try {
+          assertDeploymentMarkerV1Matches(
+            marker,
+            data.deployment.marker,
+            "DA file store",
+          );
+        } catch {
+          throw new Error(
+            `stale_deployment_state_requires_fresh_redeploy: stored_manifest_id=${data.deployment.marker.manifestId}, canonical_manifest_id=${marker.manifestId}, contract_deployment_info_sha256=${args.contractDeploymentInfoSha256}; refusing to reuse stale watcher state; perform an explicit fresh redeploy/reset before deleting local watcher state.`,
+          );
+        }
       }
       return {
         ...data,
         deployment: {
-          fingerprint: args.fingerprint,
+          marker,
           manifestSha256: args.manifestSha256,
           contractDeploymentInfoSha256: args.contractDeploymentInfoSha256,
           manifestRaw: args.manifestRaw,
@@ -221,6 +237,45 @@ export class JsonFileWatcherStore implements WatcherStore {
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
           left.signerIndex - right.signerIndex,
+      );
+  }
+
+  async saveDaConflictEvidence(
+    record: DaStoredConflictEvidenceRecordV1,
+  ): Promise<boolean> {
+    const canonicalRecord = parseDaStoredConflictEvidenceRecordV1(record);
+    let accepted = false;
+    await this.mutate((data) => {
+      const key = conflictEvidenceKey(canonicalRecord);
+      if (data.daConflictEvidence[key] !== undefined) {
+        return data;
+      }
+      accepted = true;
+      return {
+        ...data,
+        daConflictEvidence: {
+          ...data.daConflictEvidence,
+          [key]: canonicalRecord,
+        },
+      };
+    });
+    return accepted;
+  }
+
+  async listDaConflictEvidence(
+    headerHash?: string,
+  ): Promise<readonly DaStoredConflictEvidenceRecordV1[]> {
+    const data = await this.read();
+    return Object.values(data.daConflictEvidence)
+      .filter(
+        (record) =>
+          headerHash === undefined || record.headerHash === headerHash,
+      )
+      .sort(
+        (left, right) =>
+          left.headerHash.localeCompare(right.headerHash) ||
+          left.signerIndex - right.signerIndex ||
+          left.evidenceHash.localeCompare(right.evidenceHash),
       );
   }
 
@@ -386,6 +441,13 @@ export class JsonFileWatcherStore implements WatcherStore {
 const signatureKey = (headerHash: string, signerIndex: number): string =>
   `${headerHash}:${signerIndex.toString()}`;
 
+const conflictEvidenceKey = (
+  record: Pick<
+    DaStoredConflictEvidenceRecordV1,
+    "deploymentFingerprint" | "evidenceHash"
+  >,
+): string => `${record.deploymentFingerprint}:${record.evidenceHash}`;
+
 const peerBroadcastKey = (
   peerId: string,
   headerHash: string,
@@ -480,6 +542,7 @@ const emptyStoreData = (): StoreData => ({
   stateQueueHeaders: {},
   daPayloads: {},
   daSignatures: {},
+  daConflictEvidence: {},
   daAttestationCandidates: {},
   l1Submissions: {},
   peerBroadcasts: {},
@@ -493,7 +556,9 @@ const normalizeStoreData = (value: unknown): StoreData => {
   }
   const record = value as Partial<StoreData>;
   return {
-    deployment: record.deployment,
+    ...(record.deployment === undefined
+      ? {}
+      : { deployment: parseWatcherDeploymentRecord(record.deployment) }),
     chainCursor: record.chainCursor,
     stateQueueHeaders: record.stateQueueHeaders ?? {},
     daPayloads: parseStoredRecordMap(
@@ -508,11 +573,60 @@ const normalizeStoreData = (value: unknown): StoreData => {
       (entry) => signatureKey(entry.headerHash, entry.signerIndex),
       "DA signature records V1",
     ),
+    daConflictEvidence: parseStoredRecordMap(
+      record.daConflictEvidence,
+      parseDaStoredConflictEvidenceRecordV1,
+      conflictEvidenceKey,
+      "DA conflict evidence records V1",
+    ),
     daAttestationCandidates: record.daAttestationCandidates ?? {},
     l1Submissions: record.l1Submissions ?? {},
     peerBroadcasts: record.peerBroadcasts ?? {},
     peerHealth: record.peerHealth ?? {},
     peerNonces: record.peerNonces ?? {},
+  };
+};
+
+const parseWatcherDeploymentRecord = (
+  value: unknown,
+): WatcherDeploymentRecord => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("watcher deployment marker record must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  const expected = [
+    "marker",
+    "manifestSha256",
+    "contractDeploymentInfoSha256",
+    "manifestRaw",
+  ] as const;
+  if (
+    Object.keys(record).length !== expected.length ||
+    expected.some((key) => !Object.prototype.hasOwnProperty.call(record, key))
+  ) {
+    throw new Error(
+      "watcher deployment marker record must contain exactly marker, manifestSha256, contractDeploymentInfoSha256, and manifestRaw",
+    );
+  }
+  const digest = (field: "manifestSha256" | "contractDeploymentInfoSha256") => {
+    const entry = record[field];
+    if (typeof entry !== "string" || !/^[0-9a-f]{64}$/u.test(entry)) {
+      throw new Error(
+        `watcher deployment marker record ${field} must be lowercase SHA-256 hex`,
+      );
+    }
+    return entry;
+  };
+  if (typeof record.manifestRaw !== "string") {
+    throw new Error(
+      "watcher deployment marker record manifestRaw must be a string",
+    );
+  }
+  return {
+    marker: parseDeploymentMarkerV1(record.marker),
+    manifestSha256: digest("manifestSha256"),
+    contractDeploymentInfoSha256: digest("contractDeploymentInfoSha256"),
+    manifestRaw: record.manifestRaw,
   };
 };
 

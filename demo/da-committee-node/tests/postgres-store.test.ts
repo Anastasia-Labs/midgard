@@ -1,3 +1,8 @@
+import {
+  computeDaSha256Hash,
+  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
@@ -6,6 +11,7 @@ import type {
   DaAttestationCandidateRecord,
   DaPayloadRecord,
   DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecordV1,
   L1SubmissionRecord,
   StateQueueHeaderRecord,
 } from "../src/domain.js";
@@ -26,14 +32,14 @@ describe("PostgresWatcherStore", () => {
       );
       try {
         await store.initDeployment({
-          fingerprint: "dep",
+          marker: makeDeploymentMarkerV1("aa".repeat(32)),
           manifestSha256: "aa".repeat(32),
           contractDeploymentInfoSha256: "cc".repeat(32),
           manifestRaw: "{}",
         });
         await expect(
           store.initDeployment({
-            fingerprint: "other-dep",
+            marker: makeDeploymentMarkerV1("bb".repeat(32)),
             manifestSha256: "bb".repeat(32),
             contractDeploymentInfoSha256: "cc".repeat(32),
             manifestRaw: "{}",
@@ -103,6 +109,24 @@ describe("PostgresWatcherStore", () => {
           store.listDaSignatures(signature.headerHash),
         ).resolves.toEqual([signature]);
 
+        const conflictEvidence = daConflictEvidenceRecord();
+        await expect(
+          store.saveDaConflictEvidence(conflictEvidence),
+        ).resolves.toBe(true);
+        await expect(
+          store.saveDaConflictEvidence(conflictEvidence),
+        ).resolves.toBe(false);
+        await expect(
+          store.saveDaConflictEvidence({
+            ...conflictEvidence,
+            reporterPeerId: "later-reporter",
+            receivedAt: "2026-07-27T00:00:03.000Z",
+          }),
+        ).resolves.toBe(false);
+        await expect(
+          store.listDaConflictEvidence(conflictEvidence.headerHash),
+        ).resolves.toEqual([conflictEvidence]);
+
         const { payloadSchemaVersion: _, ...missingPayloadVersion } = payload;
         void _;
         await expect(
@@ -158,6 +182,19 @@ describe("PostgresWatcherStore", () => {
             signerIndex: signature.signerIndex,
           }),
         ).rejects.toThrow(/missing required field source/);
+
+        await admin.query(
+          `UPDATE ${schema}.watcher_da_conflict_evidence
+           SET record = record - 'conflictSchemaVersion'
+           WHERE deployment_fingerprint = $1 AND evidence_hash = $2`,
+          [
+            conflictEvidence.deploymentFingerprint,
+            conflictEvidence.evidenceHash,
+          ],
+        );
+        await expect(store.listDaConflictEvidence()).rejects.toThrow(
+          /missing required field conflictSchemaVersion/u,
+        );
       } finally {
         await store.close();
       }
@@ -257,6 +294,35 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
     },
   },
 });
+
+const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+    signerIndex: 1,
+    daVkey: Buffer.alloc(32, 0x44),
+    lowerHeaderHash: Buffer.alloc(28, 0x11),
+    lowerHeaderWitness: Buffer.concat([
+      Buffer.from([1]),
+      Buffer.alloc(64, 0xaa),
+    ]),
+    upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperHeaderWitness: Buffer.concat([
+      Buffer.from([1]),
+      Buffer.alloc(64, 0xbb),
+    ]),
+  });
+  return {
+    conflictSchemaVersion: 1,
+    deploymentFingerprint: "aa".repeat(32),
+    headerHash: "11".repeat(28),
+    conflictingHeaderHash: "22".repeat(28),
+    signerIndex: 1,
+    evidenceKind: "equivocation",
+    evidenceHash: computeDaSha256Hash(compactEvidence).toString("hex"),
+    compactEvidenceCborHex: compactEvidence.toString("hex"),
+    reporterPeerId: "fixture-peer",
+    receivedAt: "2026-07-27T00:00:02.000Z",
+  };
+};
 
 const daCandidateRecord = (): DaAttestationCandidateRecord => ({
   deploymentFingerprint: "dep",

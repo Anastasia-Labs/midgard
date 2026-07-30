@@ -104,6 +104,13 @@ const main = async (): Promise<void> => {
     registry: daPeerRegistry,
     privateKeySource: config.libp2pPrivateKeySource,
     requestHandlers,
+    onGossipMessageError: (error) => {
+      process.stderr.write(
+        `rejected DA conflict evidence gossip: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
+    },
   });
   const payloadSource = new DaLibp2pPayloadSource({
     deploymentFingerprint: config.deploymentFingerprint,
@@ -196,6 +203,8 @@ const main = async (): Promise<void> => {
     coordinator,
     submitterReconciler,
     daChainReader,
+    daLibp2pNode,
+    daPeerRegistry,
   });
   await service.initialize();
   await daLibp2pNode.start();

@@ -1,9 +1,11 @@
+import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import { SubmitterReconciler } from "../src/coordinator/submitter-reconciler.js";
+import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
 import { daPayloadSha256 } from "../src/da/payload.js";
 import type { DaPayloadCandidate, DaPayloadSource } from "../src/da/source.js";
 import type {
@@ -55,6 +57,40 @@ const countSummaryFromHeader = (
 });
 
 describe("WatcherService", () => {
+  it("registers the store-backed conflict handler before libp2p startup", async () => {
+    const dir = await tempDir();
+    const seed = "00".repeat(31) + "01";
+    const signer = await loadDaSigner(`hex:${seed}`);
+    const config = minimalConfig({
+      dir,
+      manifestPath: `${dir}/manifest.json`,
+      deploymentInfoPath: `${dir}/deployment.json`,
+      signerSeed: seed,
+      signerPublicKey: signer.publicKeyHex,
+    });
+    const registry = DaPeerRegistry.fromConfig(config.daTransport);
+    const setGossipHandler = vi.fn();
+
+    new WatcherService({
+      config,
+      store: await JsonFileWatcherStore.open(dir),
+      stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+      payloadSource: {
+        fetchPayloadCandidates: async () => ({
+          ok: false,
+          attempts: [],
+        }),
+      },
+      daLibp2pNode: { setGossipHandler },
+      daPeerRegistry: registry,
+    });
+
+    expect(setGossipHandler).toHaveBeenCalledWith(
+      DaGossipTopic.conflicts,
+      expect.any(Function),
+    );
+  });
+
   it("fetches, verifies, signs, and persists one finalized unattested header", async () => {
     const dir = await tempDir();
     const { header, headerHash, payloadCbor } = await makePayloadFixture();

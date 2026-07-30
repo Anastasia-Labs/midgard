@@ -269,6 +269,119 @@ describe("loadWatcherConfig", () => {
     );
   });
 
+  it("requires and binds an explicit network magic for Custom local-node authority", async () => {
+    const dir = await tempDir();
+    const deployment = await readDaDeploymentFixture();
+    const customDeployment = withRecomputedDeploymentManifestId({
+      ...deployment,
+      network: "Custom",
+    });
+    const manifest = libp2pManifest(
+      "01".repeat(32),
+      ["committee", "retrieval"],
+      String(customDeployment.manifestId),
+    );
+    manifest.network = "Custom";
+    const manifestPath = join(dir, "manifest.json");
+    const deploymentInfoPath = join(dir, "deployment.json");
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    await writeFile(deploymentInfoPath, JSON.stringify(customDeployment));
+    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+
+    await expect(loadWatcherConfig(baseEnv)).rejects.toThrow(
+      /CARDANO_NETWORK_MAGIC is required for Custom/,
+    );
+    for (const invalid of ["-1", "01", "1.5", "4294967296"]) {
+      await expect(
+        loadWatcherConfig({ ...baseEnv, CARDANO_NETWORK_MAGIC: invalid }),
+      ).rejects.toThrow(/CARDANO_NETWORK_MAGIC/);
+    }
+
+    const config = await loadWatcherConfig({
+      ...baseEnv,
+      CARDANO_NETWORK_MAGIC: "424242",
+    });
+    expect(config.cardanoL1Source).toMatchObject({
+      sourceMode: "local_node",
+      authorityNodeId: "test-cardano-node",
+      networkMagic: 424242,
+    });
+    expect(config.cardanoL1Source.authorityDigest).toMatch(/^[0-9a-f]{64}$/u);
+
+    const otherAuthority = await loadWatcherConfig({
+      ...baseEnv,
+      CARDANO_NETWORK_MAGIC: "424242",
+      CARDANO_LOCAL_NODE_AUTHORITY_ID: "other-cardano-node",
+    });
+    expect(otherAuthority.cardanoL1Source.authorityDigest).not.toBe(
+      config.cardanoL1Source.authorityDigest,
+    );
+    const otherMagic = await loadWatcherConfig({
+      ...baseEnv,
+      CARDANO_NETWORK_MAGIC: "424243",
+    });
+    expect(otherMagic.cardanoL1Source.authorityDigest).not.toBe(
+      config.cardanoL1Source.authorityDigest,
+    );
+  });
+
+  it("rejects explicit network magic for named networks", async () => {
+    const dir = await tempDir();
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      libp2pManifest("01".repeat(32)),
+    );
+    await expect(
+      loadWatcherConfig({
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        CARDANO_NETWORK_MAGIC: "2",
+      }),
+    ).rejects.toThrow(/must be omitted for named Cardano networks/);
+  });
+
+  it("enforces disjoint local-node and external-provider authority identities", async () => {
+    const dir = await tempDir();
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      libp2pManifest("01".repeat(32)),
+    );
+    const baseEnv = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+    await expect(
+      loadWatcherConfig({
+        ...baseEnv,
+        CARDANO_PROVIDER_URLS:
+          "blockfrost:https://preview-a.example/api#project",
+      }),
+    ).rejects.toThrow(/local_node mode permits only same-node kupmios/);
+
+    const external = await loadWatcherConfig({
+      ...baseEnv,
+      ...externalProviderConfigEnv(),
+    });
+    expect(external.cardanoL1Source).toMatchObject({
+      sourceMode: "external_providers",
+      providerAuthorityIds: ["11".repeat(32), "22".repeat(32)],
+      networkMagic: 2,
+    });
+
+    await expect(
+      loadWatcherConfig({
+        ...baseEnv,
+        ...externalProviderConfigEnv(),
+        CARDANO_PROVIDER_AUTHORITY_IDS: `${"11".repeat(32)},${"11".repeat(32)}`,
+      }),
+    ).rejects.toThrow(/operationally independent/);
+    await expect(
+      loadWatcherConfig({
+        ...baseEnv,
+        ...externalProviderConfigEnv(),
+        CARDANO_PROVIDER_URLS:
+          "blockfrost:https://preview-a.example/api#project",
+        CARDANO_PROVIDER_AUTHORITY_IDS: "11".repeat(32),
+      }),
+    ).rejects.toThrow(/at least two/);
+  });
+
   it("fails closed for invalid libp2p DA manifest security fields", async () => {
     const cases: readonly {
       readonly mutate: (manifest: Record<string, unknown>) => void;
@@ -504,8 +617,7 @@ describe("loadWatcherConfig", () => {
     await expect(
       loadWatcherConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-        CARDANO_PROVIDER_URLS:
-          "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
+        ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -532,8 +644,7 @@ describe("loadWatcherConfig", () => {
     await expect(
       loadWatcherConfig({
         ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-        CARDANO_PROVIDER_URLS:
-          "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
+        ...externalProviderConfigEnv(),
         DA_SIGNER_INDEX: "0",
         DA_SIGNER_KEY_SOURCE: "hex:" + "00".repeat(32),
         L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
@@ -575,8 +686,7 @@ describe("loadWatcherConfig", () => {
 
     const config = await loadWatcherConfig({
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      CARDANO_PROVIDER_URLS:
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
+      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
       DA_L1_MIN_PLAIN_ADA_LOVELACE: "75000000",
@@ -617,8 +727,7 @@ describe("loadWatcherConfig", () => {
     );
     const baseEnv = {
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      CARDANO_PROVIDER_URLS:
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
+      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
@@ -672,8 +781,7 @@ describe("loadWatcherConfig", () => {
     );
     const baseEnv = {
       ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
-      CARDANO_PROVIDER_URLS:
-        "blockfrost:https://cardano-preview.blockfrost.io/api/v0#project",
+      ...externalProviderConfigEnv(),
       L1_SUBMITTER_KEY_SOURCE: "private-key:ed25519_sk_test",
       DA_L1_SUBMISSION_ENABLED: "true",
     };
@@ -866,10 +974,20 @@ const libp2pConfigEnv = (
 ): Record<string, string> => ({
   MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
   MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
+  CARDANO_L1_SOURCE_MODE: "local_node",
+  CARDANO_LOCAL_NODE_AUTHORITY_ID: "test-cardano-node",
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
   CARDANO_FINALITY_DEPTH: "2",
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
   WATCHER_DB_PATH: join(dir, "db"),
+});
+
+const externalProviderConfigEnv = (): Record<string, string | undefined> => ({
+  CARDANO_L1_SOURCE_MODE: "external_providers",
+  CARDANO_LOCAL_NODE_AUTHORITY_ID: undefined,
+  CARDANO_PROVIDER_URLS:
+    "blockfrost:https://preview-a.example/api#project-a,blockfrost:https://preview-b.example/api#project-b",
+  CARDANO_PROVIDER_AUTHORITY_IDS: `${"11".repeat(32)},${"22".repeat(32)}`,
 });
 
 const expectLibp2pManifestRejects = async (

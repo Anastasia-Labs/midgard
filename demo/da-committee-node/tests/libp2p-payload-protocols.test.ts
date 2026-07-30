@@ -1,11 +1,14 @@
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
+  decodeDaAttestationsByHeaderResponseV1Cbor,
   decodeDaCapabilitiesResponseV1Cbor,
   decodeDaMetadataByHeaderResponseV1Cbor,
   decodeDaPayloadByHeaderResponseV1Cbor,
   decodeDaPayloadChunkResponseV1Cbor,
   decodeDaPayloadSubmitResponseV1Cbor,
+  encodeDaAttestationsByHeaderRequestV1Cbor,
+  encodeDaAttestationsByHeaderResponseV1Cbor,
   encodeDaCapabilitiesRequestV1Cbor,
   encodeDaPayloadByHeaderRequestV1Cbor,
   encodeDaPayloadChunkRequestV1Cbor,
@@ -14,14 +17,16 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  DaLibp2pAttestationExchange,
+  StoreBackedDaAttestationProtocol,
+} from "../src/da/libp2p/attestations.js";
+import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
+import {
   DaLibp2pPayloadProtocolError,
   DaLibp2pPayloadProtocolHandlers,
 } from "../src/da/libp2p/payload-protocols.js";
 import { DaPayloadSubmitAdmission } from "../src/da/libp2p/payload-source.js";
-import type {
-  DaStoredPayloadRootSetV1,
-  HeaderV1,
-} from "../src/domain.js";
+import type { DaStoredPayloadRootSetV1, HeaderV1 } from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
@@ -84,12 +89,14 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       ),
     );
     expect(submit).toMatchObject({ status: "accepted", reasonCode: null });
-    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject({
-      payloadSchemaVersion: 1,
-      payloadCborHex: fixture.payloadCbor.toString("hex"),
-      payloadSha256: payloadHash.toString("hex"),
-      validationStatus: "fetched",
-    });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadSchemaVersion: 1,
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        payloadSha256: payloadHash.toString("hex"),
+        validationStatus: "fetched",
+      },
+    );
 
     const byHeader = decodeDaPayloadByHeaderResponseV1Cbor(
       await handlers.handlePayloadByHeader(
@@ -157,9 +164,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     );
     expect(chunk.status).toBe("found");
     expect(chunk.chunkBytes).toHaveLength(128);
-    expect(chunk.chunkHash?.equals(computeDaSha256Hash(chunk.chunkBytes!))).toBe(
-      true,
-    );
+    expect(
+      chunk.chunkHash?.equals(computeDaSha256Hash(chunk.chunkBytes!)),
+    ).toBe(true);
   });
 
   it("treats identical submits as duplicates and valid divergent envelopes as conflicts", async () => {
@@ -260,6 +267,121 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       reasonCode: "payload_hash_mismatch",
     });
   });
+
+  it("honors an exact zero attestation result limit", async () => {
+    const protocol = new StoreBackedDaAttestationProtocol({
+      deploymentFingerprint,
+      localPeerId: "committee-peer",
+      committeeValidation: {
+        committeeKeys: [],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 0,
+      },
+      store: {
+        getDaPayload: async () => undefined,
+        saveDaSignature: async () => undefined,
+        listDaSignatures: async () => [{} as never],
+      },
+    });
+
+    const response = decodeDaAttestationsByHeaderResponseV1Cbor(
+      await protocol.handleAttestationsByHeaderRequest(
+        encodeDaAttestationsByHeaderRequestV1Cbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.alloc(28, 0x02),
+          acceptedSignerIndexes: null,
+          maxAttestations: 0,
+        }),
+      ),
+    );
+
+    expect(response).toMatchObject({
+      status: "not_found",
+      attestations: [],
+      reasonCode: null,
+    });
+  });
+
+  it("rejects an attestation whose announced peer differs from the remote peer", async () => {
+    let touchedPayloadContext = false;
+    const daVkey = Buffer.alloc(32, 0x0c);
+    const protocolStore = {
+      getDaPayload: async () => undefined,
+      saveDaSignature: async () => undefined,
+      listDaSignatures: async () => [],
+    };
+    const protocol = new StoreBackedDaAttestationProtocol({
+      deploymentFingerprint,
+      localPeerId: "local-peer",
+      committeeValidation: {
+        committeeKeys: [daVkey.toString("hex")],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 1,
+      },
+      store: protocolStore,
+    });
+    const exchange = new DaLibp2pAttestationExchange({
+      deploymentFingerprint,
+      localPeerId: "local-peer",
+      node: {
+        request: async () =>
+          encodeDaAttestationsByHeaderResponseV1Cbor({
+            status: "found",
+            headerHash: Buffer.alloc(28, 0x02),
+            attestations: [
+              {
+                deploymentFingerprint: deploymentFingerprintBytes,
+                headerHash: Buffer.alloc(28, 0x02),
+                payloadHash: Buffer.alloc(32, 0x03),
+                signerIndex: 0,
+                daVkey,
+                onChainWitness: Buffer.alloc(65, 0x04),
+                retentionUntilSlot: 42,
+                announcedByPeerId: "forged-peer",
+              },
+            ],
+            reasonCode: null,
+          }),
+        publishGossip: async () => undefined,
+      },
+      registry: new DaPeerRegistry([
+        {
+          peerId: "remote-peer",
+          signerIndex: 0,
+          daVkey: daVkey.toString("hex"),
+          roles: ["committee"],
+          multiaddrs: [],
+          bootstrap: false,
+        },
+      ]),
+      protocol,
+      committeeValidation: {
+        committeeKeys: [daVkey.toString("hex")],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 1,
+      },
+      store: {
+        getDaPayload: async () => {
+          touchedPayloadContext = true;
+          return undefined;
+        },
+        getStateQueueHeader: async () => {
+          touchedPayloadContext = true;
+          return undefined;
+        },
+      },
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(
+      exchange.attestationsByHeader({
+        peer: { peerId: "remote-peer", signerIndex: 0 },
+        deploymentFingerprint,
+        headerHash: "02".repeat(28),
+      }),
+    ).resolves.toEqual([]);
+    expect(touchedPayloadContext).toBe(false);
+  });
 });
 
 const encodeSubmit = (headerHash: string, payloadBytes: Buffer): Buffer =>
@@ -297,9 +419,7 @@ const makeHandlers = async (
   };
 };
 
-const rootSummaryFromHeader = (
-  header: HeaderV1,
-): DaStoredPayloadRootSetV1 => ({
+const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,

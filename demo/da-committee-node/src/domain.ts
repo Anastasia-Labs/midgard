@@ -1,3 +1,8 @@
+import {
+  computeDaSha256Hash,
+  decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
 import type * as SDK from "@al-ft/midgard-sdk";
 
 export type ChainPoint = {
@@ -152,6 +157,19 @@ export type DaSignatureRecordV1 = Omit<
   readonly validation: DaStoredValidationSummaryV1;
 };
 
+export type DaStoredConflictEvidenceRecordV1 = {
+  readonly conflictSchemaVersion: 1;
+  readonly deploymentFingerprint: string;
+  readonly headerHash: string;
+  readonly conflictingHeaderHash: string;
+  readonly signerIndex: number;
+  readonly evidenceKind: "equivocation";
+  readonly evidenceHash: string;
+  readonly compactEvidenceCborHex: string;
+  readonly reporterPeerId: string;
+  readonly receivedAt: string;
+};
+
 export type DaAttestationCandidateRecord = {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
@@ -301,6 +319,19 @@ const signatureRecordOptionalKeys = [
   "sourcePeer",
   "receivedAt",
   "verifiedAt",
+] as const;
+
+const conflictEvidenceRecordKeys = [
+  "conflictSchemaVersion",
+  "deploymentFingerprint",
+  "headerHash",
+  "conflictingHeaderHash",
+  "signerIndex",
+  "evidenceKind",
+  "evidenceHash",
+  "compactEvidenceCborHex",
+  "reporterPeerId",
+  "receivedAt",
 ] as const;
 
 const payloadFetchStatuses = [
@@ -467,6 +498,105 @@ export const parseDaSignatureRecordV1 = (
     ),
     l1ChainPoint: parseChainPoint(record.l1ChainPoint),
     validation,
+  };
+};
+
+export const parseDaStoredConflictEvidenceRecordV1 = (
+  value: unknown,
+): DaStoredConflictEvidenceRecordV1 => {
+  const record = requireExactObject(
+    value,
+    conflictEvidenceRecordKeys,
+    [],
+    "DA stored conflict evidence record V1",
+  );
+  if (record.conflictSchemaVersion !== 1) {
+    throw new Error(
+      "DA stored conflict evidence record V1.conflictSchemaVersion must be exactly 1",
+    );
+  }
+  if (record.evidenceKind !== "equivocation") {
+    throw new Error(
+      "DA stored conflict evidence record V1.evidenceKind must be equivocation",
+    );
+  }
+  const deploymentFingerprint = requireLowerHex(
+    record.deploymentFingerprint,
+    32,
+    "DA stored conflict evidence record V1.deploymentFingerprint",
+  );
+  const headerHash = requireLowerHex(
+    record.headerHash,
+    28,
+    "DA stored conflict evidence record V1.headerHash",
+  );
+  const conflictingHeaderHash = requireLowerHex(
+    record.conflictingHeaderHash,
+    28,
+    "DA stored conflict evidence record V1.conflictingHeaderHash",
+  );
+  const signerIndex = requireUint8(
+    record.signerIndex,
+    "DA stored conflict evidence record V1.signerIndex",
+  );
+  const evidenceHash = requireLowerHex(
+    record.evidenceHash,
+    32,
+    "DA stored conflict evidence record V1.evidenceHash",
+  );
+  const compactEvidenceCborHex = requireLowerHex(
+    record.compactEvidenceCborHex,
+    undefined,
+    "DA stored conflict evidence record V1.compactEvidenceCborHex",
+  );
+  if (compactEvidenceCborHex.length === 0) {
+    throw new Error(
+      "DA stored conflict evidence record V1.compactEvidenceCborHex must not be empty",
+    );
+  }
+  const compactEvidence = Buffer.from(compactEvidenceCborHex, "hex");
+  const decoded =
+    decodeDaConflictingSignatureHeaderEvidenceV1Cbor(compactEvidence);
+  if (
+    !encodeDaConflictingSignatureHeaderEvidenceV1Cbor(decoded).equals(
+      compactEvidence,
+    )
+  ) {
+    throw new Error(
+      "DA stored conflict evidence record V1.compactEvidenceCborHex must be canonical CBOR",
+    );
+  }
+  if (
+    decoded.lowerHeaderHash.toString("hex") !== headerHash ||
+    decoded.upperHeaderHash.toString("hex") !== conflictingHeaderHash ||
+    decoded.signerIndex !== signerIndex
+  ) {
+    throw new Error(
+      "DA stored conflict evidence record V1 derived conflict identity does not match compact evidence",
+    );
+  }
+  if (computeDaSha256Hash(compactEvidence).toString("hex") !== evidenceHash) {
+    throw new Error(
+      "DA stored conflict evidence record V1.evidenceHash does not match compact evidence",
+    );
+  }
+  return {
+    conflictSchemaVersion: 1,
+    deploymentFingerprint,
+    headerHash,
+    conflictingHeaderHash,
+    signerIndex,
+    evidenceKind: "equivocation",
+    evidenceHash,
+    compactEvidenceCborHex,
+    reporterPeerId: requireNonEmptyString(
+      record.reporterPeerId,
+      "DA stored conflict evidence record V1.reporterPeerId",
+    ),
+    receivedAt: requireCanonicalIsoTimestamp(
+      record.receivedAt,
+      "DA stored conflict evidence record V1.receivedAt",
+    ),
   };
 };
 
@@ -666,6 +796,52 @@ const requireString = (value: unknown, label: string): string => {
     throw new Error(`${label} must be a string`);
   }
   return value;
+};
+
+const requireNonEmptyString = (value: unknown, label: string): string => {
+  const result = requireString(value, label);
+  if (result.length === 0) {
+    throw new Error(`${label} must not be empty`);
+  }
+  return result;
+};
+
+const requireLowerHex = (
+  value: unknown,
+  byteLength: number | undefined,
+  label: string,
+): string => {
+  const result = requireString(value, label);
+  const exactLength = byteLength === undefined ? result.length : byteLength * 2;
+  if (
+    result.length !== exactLength ||
+    result.length % 2 !== 0 ||
+    !/^[0-9a-f]*$/u.test(result)
+  ) {
+    throw new Error(
+      byteLength === undefined
+        ? `${label} must be lowercase even-length hex`
+        : `${label} must be ${byteLength.toString()} bytes of lowercase hex`,
+    );
+  }
+  return result;
+};
+
+const requireCanonicalIsoTimestamp = (
+  value: unknown,
+  label: string,
+): string => {
+  const result = requireString(value, label);
+  let canonical: string;
+  try {
+    canonical = new Date(result).toISOString();
+  } catch {
+    throw new Error(`${label} must be a canonical ISO timestamp`);
+  }
+  if (canonical !== result) {
+    throw new Error(`${label} must be a canonical ISO timestamp`);
+  }
+  return result;
 };
 
 const requireBoolean = (value: unknown, label: string): boolean => {

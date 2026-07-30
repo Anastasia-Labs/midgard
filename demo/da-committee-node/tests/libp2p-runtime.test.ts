@@ -443,6 +443,79 @@ describe("DA libp2p runtime service lifecycle", () => {
     expect(runtime.stop).toHaveBeenCalledOnce();
     expect(service.isStarted()).toBe(false);
   });
+
+  it("dispatches conflicts only from strictly signed authenticated gossip messages", async () => {
+    const config = libp2pConfig();
+    const conflictHandler = vi.fn();
+    const gossipErrors: unknown[] = [];
+    let messageListener: ((event: Event) => void) | undefined;
+    const removeEventListener = vi.fn();
+    const runtime: DaLibp2pRuntimeNode = {
+      services: {
+        pubsub: {
+          publish: vi.fn(),
+          subscribe: vi.fn(),
+          unsubscribe: vi.fn(),
+          addEventListener: vi.fn((_type, listener) => {
+            messageListener = listener;
+          }),
+          removeEventListener,
+        },
+      },
+      start: vi.fn(),
+      stop: vi.fn(),
+      handle: vi.fn(),
+      unhandle: vi.fn(),
+    };
+    const service = new DaLibp2pNode({
+      config,
+      gossipHandlers: new Map([[DaGossipTopic.conflicts, conflictHandler]]),
+      onGossipMessageError: (error) => gossipErrors.push(error),
+      libp2pFactory: async () => runtime,
+    });
+    await service.start();
+    if (messageListener === undefined) {
+      throw new Error("missing gossip message listener");
+    }
+    const topicId = daGossipTopic(
+      DEPLOYMENT_FINGERPRINT,
+      DaGossipTopic.conflicts,
+    );
+    messageListener({
+      detail: {
+        type: "signed",
+        from: peerId(PEER_ID_A),
+        topic: topicId,
+        data: Buffer.from("conflict"),
+      },
+    } as CustomEvent);
+    await vi.waitFor(() => {
+      expect(conflictHandler).toHaveBeenCalledWith({
+        topicId,
+        topicName: DaGossipTopic.conflicts,
+        data: Buffer.from("conflict"),
+        remotePeerId: PEER_ID_A,
+      });
+    });
+
+    messageListener({
+      detail: {
+        type: "unsigned",
+        topic: topicId,
+        data: Buffer.from("forged"),
+      },
+    } as CustomEvent);
+    await vi.waitFor(() => {
+      expect(gossipErrors).toHaveLength(1);
+    });
+    expect(conflictHandler).toHaveBeenCalledOnce();
+
+    await service.stop();
+    expect(removeEventListener).toHaveBeenCalledWith(
+      "message",
+      expect.any(Function),
+    );
+  });
 });
 
 const collect = async (

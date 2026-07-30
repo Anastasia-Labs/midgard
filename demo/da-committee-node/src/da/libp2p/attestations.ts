@@ -137,6 +137,12 @@ export class StoreBackedDaAttestationProtocol {
     const attestations: DaAttestationGossipV1[] = [];
     for (const record of records) {
       if (
+        request.maxAttestations !== null &&
+        attestations.length >= request.maxAttestations
+      ) {
+        break;
+      }
+      if (
         acceptedSignerIndexes !== undefined &&
         !acceptedSignerIndexes.has(record.signerIndex)
       ) {
@@ -146,12 +152,6 @@ export class StoreBackedDaAttestationProtocol {
         attestations.push(this.gossipMessageFor(record));
       } catch {
         continue;
-      }
-      if (
-        request.maxAttestations !== null &&
-        attestations.length >= request.maxAttestations
-      ) {
-        break;
       }
     }
     return encodeDaAttestationsByHeaderResponseV1Cbor({
@@ -301,7 +301,8 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
     const headerHash = attestation.headerHash.toString("hex");
     if (
       attestation.deploymentFingerprint.toString("hex") !==
-      this.options.deploymentFingerprint
+        this.options.deploymentFingerprint ||
+      attestation.announcedByPeerId !== peer.peerId
     ) {
       return undefined;
     }

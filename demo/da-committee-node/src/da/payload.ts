@@ -283,6 +283,12 @@ export const verifyDaPayloadV1AgainstHeader = async (
   header: SDK.HeaderV1,
   options: PayloadVerificationOptions,
 ): Promise<VerifiedDaPayloadV1> => {
+  if (options.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
+    throw new DaPayloadValidationError(
+      "wrong_version",
+      `expected DA payload schema version ${SDK.DA_PAYLOAD_V1_VERSION.toString()}, got ${String(options.payloadSchemaVersion)}`,
+    );
+  }
   const storedPayloadBuffer = Buffer.from(storedPayloadCbor);
   const hashStartedAt = readMonotonicNow(options.timing);
   const payloadSha256 = bytesToHex(sha256(storedPayloadBuffer));

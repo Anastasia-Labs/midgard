@@ -32,6 +32,20 @@ export type LocalStateConfig =
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "database"; readonly url: string };
 
+export type CardanoL1SourceConfig =
+  | {
+      readonly sourceMode: "local_node";
+      readonly authorityNodeId: string;
+      readonly authorityDigest: string;
+      readonly networkMagic: number;
+    }
+  | {
+      readonly sourceMode: "external_providers";
+      readonly providerAuthorityIds: readonly string[];
+      readonly authorityDigest: string;
+      readonly networkMagic: number;
+    };
+
 export type WatcherConfig = {
   readonly network: string;
   readonly deploymentManifestPath: string;
@@ -77,6 +91,10 @@ export type WatcherConfig = {
   readonly apiHost: string;
   readonly apiPort: number;
   readonly pollIntervalMs: number;
+};
+
+export type LoadedWatcherConfig = WatcherConfig & {
+  readonly cardanoL1Source: CardanoL1SourceConfig;
 };
 
 export type Libp2pDaRole =
@@ -158,7 +176,7 @@ export const LIBP2P_DA_GOSSIP_MAX_MESSAGE_BYTES = 65_536;
 export const LIBP2P_DA_MIN_RETENTION_DAYS = 15;
 export const loadWatcherConfig = async (
   env: Env = process.env,
-): Promise<WatcherConfig> => {
+): Promise<LoadedWatcherConfig> => {
   const deploymentManifestPath = requireEnv(
     env,
     "MIDGARD_DEPLOYMENT_MANIFEST_PATH",
@@ -248,6 +266,11 @@ export const loadWatcherConfig = async (
   const cardanoProviderUrls = splitList(
     requireEnv(env, "CARDANO_PROVIDER_URLS"),
   );
+  const cardanoL1Source = cardanoL1SourceConfig({
+    env,
+    network,
+    cardanoProviderUrls,
+  });
   const daCommitteeMembers = libp2pDaTransport.peers.map((member) => ({
     index: member.signerIndex,
     vkey: member.daVkey,
@@ -284,6 +307,7 @@ export const loadWatcherConfig = async (
 
   return {
     network,
+    cardanoL1Source,
     deploymentManifestPath,
     contractDeploymentInfoPath,
     deploymentFingerprint,
@@ -434,6 +458,186 @@ const optionalSplitList = (value: string | undefined): readonly string[] => {
 
 const isLiveLucidProviderUrl = (value: string): boolean =>
   value.startsWith("blockfrost:") || value.startsWith("kupmios:");
+
+const CARDANO_NAMED_NETWORK_MAGIC = {
+  Mainnet: 764_824_073,
+  Preprod: 1,
+  Preview: 2,
+} as const;
+const CARDANO_NETWORK_MAGIC_MAX = 4_294_967_295;
+const CARDANO_AUTHORITY_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u;
+const LOWER_HEX_32 = /^[0-9a-f]{64}$/u;
+
+const cardanoL1SourceConfig = ({
+  env,
+  network,
+  cardanoProviderUrls,
+}: {
+  readonly env: Env;
+  readonly network: string;
+  readonly cardanoProviderUrls: readonly string[];
+}): CardanoL1SourceConfig => {
+  const sourceMode = requireEnv(env, "CARDANO_L1_SOURCE_MODE");
+  if (sourceMode !== "local_node" && sourceMode !== "external_providers") {
+    throw new Error(
+      "CARDANO_L1_SOURCE_MODE must be local_node or external_providers",
+    );
+  }
+  const networkMagic = cardanoNetworkMagic(env, network);
+  if (sourceMode === "local_node") {
+    if (
+      cardanoProviderUrls.some(
+        (url) =>
+          !url.startsWith("kupmios:") &&
+          !url.startsWith("fixture:") &&
+          !url.startsWith("file:"),
+      )
+    ) {
+      throw new Error(
+        "local_node mode permits only same-node kupmios query surfaces or deterministic fixtures",
+      );
+    }
+    const authorityNodeId = requireEnv(env, "CARDANO_LOCAL_NODE_AUTHORITY_ID");
+    if (!CARDANO_AUTHORITY_ID.test(authorityNodeId)) {
+      throw new Error(
+        "CARDANO_LOCAL_NODE_AUTHORITY_ID must be a stable public identifier",
+      );
+    }
+    if (optionalNonEmpty(env.CARDANO_PROVIDER_AUTHORITY_IDS) !== undefined) {
+      throw new Error(
+        "CARDANO_PROVIDER_AUTHORITY_IDS must be omitted in local_node mode",
+      );
+    }
+    const authorityDigest = cardanoAuthorityDigest({
+      sourceMode,
+      network,
+      networkMagic,
+      authorityNodeId,
+      querySurfaces: cardanoProviderUrls.map(providerPublicIdentity).sort(),
+    });
+    return {
+      sourceMode,
+      authorityNodeId,
+      authorityDigest,
+      networkMagic,
+    };
+  }
+
+  if (optionalNonEmpty(env.CARDANO_LOCAL_NODE_AUTHORITY_ID) !== undefined) {
+    throw new Error(
+      "CARDANO_LOCAL_NODE_AUTHORITY_ID must be omitted in external_providers mode",
+    );
+  }
+  if (cardanoProviderUrls.length < 2) {
+    throw new Error(
+      "external_providers mode requires at least two Cardano provider URLs",
+    );
+  }
+  if (cardanoProviderUrls.some((url) => !isLiveLucidProviderUrl(url))) {
+    throw new Error(
+      "external_providers mode requires live blockfrost or kupmios providers",
+    );
+  }
+  const providerAuthorityIds = splitList(
+    requireEnv(env, "CARDANO_PROVIDER_AUTHORITY_IDS"),
+  );
+  if (providerAuthorityIds.length !== cardanoProviderUrls.length) {
+    throw new Error(
+      "CARDANO_PROVIDER_AUTHORITY_IDS must contain exactly one identity per CARDANO_PROVIDER_URLS entry",
+    );
+  }
+  if (providerAuthorityIds.some((identity) => !LOWER_HEX_32.test(identity))) {
+    throw new Error(
+      "CARDANO_PROVIDER_AUTHORITY_IDS entries must be lowercase SHA-256 identities",
+    );
+  }
+  if (
+    new Set(providerAuthorityIds).size !== providerAuthorityIds.length ||
+    new Set(cardanoProviderUrls.map(providerPublicIdentity)).size !==
+      cardanoProviderUrls.length
+  ) {
+    throw new Error(
+      "external_providers mode requires operationally independent provider authorities and endpoints",
+    );
+  }
+  const providers = cardanoProviderUrls
+    .map((url, index) => ({
+      authorityId: providerAuthorityIds[index]!,
+      endpoint: providerPublicIdentity(url),
+    }))
+    .sort((left, right) => left.authorityId.localeCompare(right.authorityId));
+  const authorityDigest = cardanoAuthorityDigest({
+    sourceMode,
+    network,
+    networkMagic,
+    providers,
+  });
+  return {
+    sourceMode,
+    providerAuthorityIds,
+    authorityDigest,
+    networkMagic,
+  };
+};
+
+const cardanoNetworkMagic = (env: Env, network: string): number => {
+  const configured = optionalNonEmpty(env.CARDANO_NETWORK_MAGIC);
+  if (network === "Custom") {
+    if (configured === undefined) {
+      throw new Error("CARDANO_NETWORK_MAGIC is required for Custom network");
+    }
+    return networkMagicInteger(configured);
+  }
+  if (network === "Mainnet" || network === "Preprod" || network === "Preview") {
+    if (configured !== undefined) {
+      throw new Error(
+        "CARDANO_NETWORK_MAGIC must be omitted for named Cardano networks",
+      );
+    }
+    return CARDANO_NAMED_NETWORK_MAGIC[network];
+  }
+  throw new Error(
+    "Cardano network must be Mainnet, Preprod, Preview, or Custom",
+  );
+};
+
+const networkMagicInteger = (value: string): number => {
+  if (!/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    throw new Error(
+      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+    );
+  }
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 0 ||
+    parsed > CARDANO_NETWORK_MAGIC_MAX
+  ) {
+    throw new Error(
+      "CARDANO_NETWORK_MAGIC must be a canonical unsigned 32-bit integer",
+    );
+  }
+  return parsed;
+};
+
+const cardanoAuthorityDigest = (identity: object): string =>
+  createHash("sha256")
+    .update(
+      JSON.stringify({
+        schemaVersion: "midgard-da-cardano-l1-authority-v1",
+        ...identity,
+      }),
+    )
+    .digest("hex");
+
+const providerPublicIdentity = (url: string): string => {
+  if (url.startsWith("blockfrost:")) {
+    const raw = url.slice("blockfrost:".length);
+    const projectSeparator = raw.lastIndexOf("#");
+    return `blockfrost:${projectSeparator < 0 ? raw : raw.slice(0, projectSeparator)}`;
+  }
+  return url;
+};
 
 const booleanEnv = (
   value: string | undefined,

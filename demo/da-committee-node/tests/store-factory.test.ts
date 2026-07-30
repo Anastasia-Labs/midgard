@@ -1,12 +1,18 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  computeDaSha256Hash,
+  encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
 import type {
   DaPayloadRecord,
   DaSignatureRecord,
   DaSignatureRecordV1,
+  DaStoredConflictEvidenceRecordV1,
 } from "../src/domain.js";
 import { JsonFileWatcherStore, jsonReplacer } from "../src/store.js";
 import { openWatcherStore } from "../src/store/factory.js";
@@ -28,6 +34,43 @@ describe("openWatcherStore", () => {
         url: "sqlite:///tmp/watcher.db",
       }),
     ).rejects.toThrow(/postgres/);
+  });
+
+  it("persists only the exact final DeploymentMarkerV1", async () => {
+    const dir = await tempDir();
+    const store = await JsonFileWatcherStore.open(dir);
+    const marker = makeDeploymentMarkerV1("11".repeat(32));
+    await store.initDeployment({
+      marker,
+      manifestSha256: "22".repeat(32),
+      contractDeploymentInfoSha256: "33".repeat(32),
+      manifestRaw: "{}",
+    });
+    await expect(store.getDeployment()).resolves.toMatchObject({ marker });
+    await expect(
+      store.initDeployment({
+        marker: makeDeploymentMarkerV1("44".repeat(32)),
+        manifestSha256: "55".repeat(32),
+        contractDeploymentInfoSha256: "66".repeat(32),
+        manifestRaw: "{}",
+      }),
+    ).rejects.toThrow(/stale_deployment_state_requires_fresh_redeploy/u);
+
+    const legacyDir = await tempDir();
+    await writeFile(
+      join(legacyDir, "watcher.json"),
+      JSON.stringify({
+        deployment: {
+          fingerprint: "11".repeat(32),
+          manifestSha256: "22".repeat(32),
+          contractDeploymentInfoSha256: "33".repeat(32),
+          manifestRaw: "{}",
+        },
+      }),
+    );
+    await expect(JsonFileWatcherStore.open(legacyDir)).rejects.toThrow(
+      /must contain exactly marker/u,
+    );
   });
 
   it("accepts only exact explicit-V1 DA payload records on JSON writes", async () => {
@@ -84,6 +127,43 @@ describe("openWatcherStore", () => {
       await expect(
         store.saveDaSignature(record as DaSignatureRecord),
       ).rejects.toThrow(/DA /);
+    }
+  });
+
+  it("deduplicates and reloads only exact explicit-V1 conflict evidence records", async () => {
+    const directory = await tempDir();
+    const store = await JsonFileWatcherStore.open(directory);
+    const evidence = daConflictEvidenceRecord();
+    await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(true);
+    await expect(store.saveDaConflictEvidence(evidence)).resolves.toBe(false);
+    await expect(
+      store.saveDaConflictEvidence({
+        ...evidence,
+        reporterPeerId: "later-reporter",
+        receivedAt: "2026-07-27T00:00:03.000Z",
+      }),
+    ).resolves.toBe(false);
+    await expect(store.listDaConflictEvidence()).resolves.toEqual([evidence]);
+    await expect(
+      (await JsonFileWatcherStore.open(directory)).listDaConflictEvidence(),
+    ).resolves.toEqual([evidence]);
+
+    const { conflictSchemaVersion: _, ...missingVersion } = evidence;
+    void _;
+    const invalidRecords: readonly unknown[] = [
+      missingVersion,
+      { ...evidence, conflictSchemaVersion: 2 },
+      { ...evidence, legacyConflictVersion: 1 },
+      { ...evidence, evidenceHash: "ff".repeat(32) },
+      { ...evidence, conflictingHeaderHash: "33".repeat(28) },
+      { ...evidence, reporterPeerId: "" },
+    ];
+    for (const record of invalidRecords) {
+      await expect(
+        store.saveDaConflictEvidence(
+          record as DaStoredConflictEvidenceRecordV1,
+        ),
+      ).rejects.toThrow(/DA stored conflict evidence record V1/u);
     }
   });
 
@@ -212,3 +292,32 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
     },
   },
 });
+
+const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
+  const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
+    signerIndex: 0,
+    daVkey: Buffer.alloc(32, 0x44),
+    lowerHeaderHash: Buffer.alloc(28, 0x11),
+    lowerHeaderWitness: Buffer.concat([
+      Buffer.from([0]),
+      Buffer.alloc(64, 0xaa),
+    ]),
+    upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperHeaderWitness: Buffer.concat([
+      Buffer.from([0]),
+      Buffer.alloc(64, 0xbb),
+    ]),
+  });
+  return {
+    conflictSchemaVersion: 1,
+    deploymentFingerprint: "11".repeat(32),
+    headerHash: "11".repeat(28),
+    conflictingHeaderHash: "22".repeat(28),
+    signerIndex: 0,
+    evidenceKind: "equivocation",
+    evidenceHash: computeDaSha256Hash(compactEvidence).toString("hex"),
+    compactEvidenceCborHex: compactEvidence.toString("hex"),
+    reporterPeerId: "fixture-peer",
+    receivedAt: "2026-07-27T00:00:02.000Z",
+  };
+};

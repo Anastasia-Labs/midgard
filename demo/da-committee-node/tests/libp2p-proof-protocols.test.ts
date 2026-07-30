@@ -166,6 +166,50 @@ describe("DA libp2p proof protocol handlers", () => {
     });
   });
 
+  it("rejects malformed event keys and enforces the exact inline proof-bundle limit", async () => {
+    const { handlers, store } = await makeHandlers();
+    const { payloadCbor, header, headerHash } = await makePayloadFixture();
+    await saveVerifiedPayload({
+      store,
+      payloadCbor,
+      payloadHash: computeDaSha256Hash(payloadCbor),
+      header,
+      headerHash,
+    });
+
+    const malformedEvent = decodeDaEventToStepByEventResponseV1Cbor(
+      await handlers.handleEventToStepByEvent(
+        encodeDaEventToStepByEventRequestV1Cbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(headerHash, "hex"),
+          eventKey: Buffer.from([0xff]),
+        }),
+      ),
+    );
+    expect(malformedEvent).toMatchObject({
+      status: "rejected",
+      eventToStepEntryBytes: null,
+      membershipOrNonmembershipProofBytes: null,
+    });
+
+    const zeroInline = decodeDaProofBundleByHeaderResponseV1Cbor(
+      await handlers.handleProofBundleByHeader(
+        encodeDaProofBundleByHeaderRequestV1Cbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(headerHash, "hex"),
+          maxInlineBytes: 0,
+        }),
+      ),
+    );
+    expect(zeroInline).toMatchObject({
+      status: "rejected",
+      proofBundleBytes: null,
+      chunkManifest: null,
+      reasonCode: "proof_bundle_too_large_for_inline_response",
+    });
+    expect(zeroInline.proofBundleHash).toHaveLength(32);
+  });
+
   it("fails closed for unverified payloads, root mismatches, and deployment mismatches", async () => {
     const { handlers, store } = await makeHandlers();
     const { payloadCbor, header, headerHash } = await makePayloadFixture();
@@ -459,9 +503,7 @@ const stateQueueHeaderRecord = ({
   updatedAt: "2026-06-21T00:00:02.000Z",
 });
 
-const rootSummaryFromHeader = (
-  header: HeaderV1,
-): DaStoredPayloadRootSetV1 => ({
+const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
