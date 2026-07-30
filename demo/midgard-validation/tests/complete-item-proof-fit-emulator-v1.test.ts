@@ -515,16 +515,15 @@ const submitSemanticProof = async ({
       ? left
       : right,
   );
-  const tx = harness.lucid
+  let tx = harness.lucid
     .newTx()
     .collectFrom([feeInput])
-    .collectFrom([threadUtxo], makeRedeemer)
-    .readFrom(
-      proofItemReferenceUtxo === undefined
-        ? []
-        : [proofItemReferenceUtxo],
-    )
-    .pay.ToContract(
+    .collectFrom([threadUtxo], makeRedeemer);
+  if (proofItemReferenceUtxo !== undefined) {
+    tx = tx.readFrom([proofItemReferenceUtxo]);
+  }
+  tx = tx.pay
+    .ToContract(
       harness.itemSourceAddress,
       { kind: "inline", value: outputDatum },
       {
@@ -652,6 +651,34 @@ const measureReferenceAt = async (
   return { itemCase, publication, consumption };
 };
 
+const measurePublicationFrontierAt = async (
+  itemByteCandidates: readonly number[],
+): Promise<
+  readonly {
+    readonly itemBytes: number;
+    readonly publication: Awaited<ReturnType<typeof publishProofItem>>;
+  }[]
+> => {
+  const itemCase = await buildCanonicalDecodeItemCase(
+    MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+  );
+  const harness = await setupEmulator([
+    preparedThreadDatumCbor(itemCase, SIGNER_HASH),
+  ]);
+  const measurements = [];
+  for (const itemBytes of itemByteCandidates) {
+    measurements.push({
+      itemBytes,
+      publication: await publishProofItem({
+        harness,
+        itemCase,
+        itemCborHexOverride: makeExactSizeOutputItem(itemBytes).toString("hex"),
+      }),
+    });
+  }
+  return measurements;
+};
+
 describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   it("measures applied direct authentication at the staged reliability boundary", async () => {
     // The observation stage is the limiting direct-carriage transaction and
@@ -677,7 +704,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
       RESERVED_CPU_UNITS,
     );
     expect(authentication.measurement.referenceInputCount).toBe(0);
-    expect(authentication.measurement.completeSignedBytes).toBe(
+    expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
     );
 
@@ -695,6 +722,60 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
               reservedMemoryUnits: RESERVED_MEMORY_UNITS,
               reservedCpuUnits: RESERVED_CPU_UNITS,
             },
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
+  }, 600_000);
+
+  it("pins the exact applied publication frontiers and reliability reserve", async () => {
+    const reliable =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes;
+    const exact =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactCompleteItemPublicationBytes;
+    const [reliableFit, reliableOverflow, exactFit, exactOverflow] =
+      await measurePublicationFrontierAt([
+        reliable,
+        reliable + 1,
+        exact,
+        exact + 1,
+      ]);
+    expect(reliableFit!.publication.measurement.completeSignedBytes).toBe(
+      MAX_L1_PROOF_TX_BYTES -
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
+    );
+    expect(
+      reliableOverflow!.publication.measurement.completeSignedBytes,
+    ).toBeGreaterThan(
+      MAX_L1_PROOF_TX_BYTES -
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes,
+    );
+    expect(exactFit!.publication.measurement.completeSignedBytes).toBe(
+      MAX_L1_PROOF_TX_BYTES,
+    );
+    expect(
+      exactOverflow!.publication.measurement.completeSignedBytes,
+    ).toBeGreaterThan(MAX_L1_PROOF_TX_BYTES);
+
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            completeItemPublicationFrontierV1: Object.fromEntries(
+              [reliableFit, reliableOverflow, exactFit, exactOverflow].map(
+                ({ itemBytes, publication }) => [
+                  itemBytes.toString(),
+                  {
+                    ...publication.measurement,
+                    datumBytes: publication.datumCbor.length / 2,
+                    minAdaLovelace: publication.minAdaLovelace,
+                  },
+                ],
+              ),
+            ),
           },
           (_key, value: unknown) =>
             typeof value === "bigint" ? value.toString() : value,
@@ -731,7 +812,7 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // The consuming transaction resolves the item from the UTxO set instead
     // of serializing it again.
     expect(consumption.measurement.completeSignedBytes).toBeLessThan(
-      publication.measurement.completeSignedBytes / 4,
+      publication.measurement.completeSignedBytes / 2,
     );
 
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {

@@ -13,16 +13,14 @@ import {
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
 describe("canonical V1 coupled signer/witness Cardano boundary", () => {
-  it("derives and reveals fields 4 and 6 from one exact signed transaction", async () => {
+  it("derives and reveals fields 4 and 7 from one exact signed transaction", async () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
     const funder = {
       seedPhrase: "",
       privateKey: spendingKey.to_bech32(),
       address: CML.EnterpriseAddress.new(
         0,
-        CML.Credential.new_pub_key(
-          spendingKey.to_public().hash(),
-        ),
+        CML.Credential.new_pub_key(spendingKey.to_public().hash()),
       )
         .to_address()
         .to_bech32(),
@@ -42,10 +40,8 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
           inputLovelace: funder.assets.lovelace,
           recipientAddress: funder.address,
           requestedSignerCount,
-          minFeeA:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
           minFeeRefScriptCostPerByte:
             PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
         }),
@@ -62,7 +58,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     });
     const witnessField = exerciseMidgardOrderedCollectionBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
-      fieldIndex: 6,
+      fieldIndex: 7,
     });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
@@ -118,18 +114,12 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
       boundary.adjacent.requestedItemCount,
     );
     expect(adjacentCardano.outputCount).toBe(1);
-    expect(signerField.itemCount).toBe(
-      acceptedCardano.requiredSignerCount,
-    );
+    expect(signerField.itemCount).toBe(acceptedCardano.requiredSignerCount);
     expect(signerField.revealStepCount).toBe(
       acceptedCardano.requiredSignerCount,
     );
-    expect(witnessField.itemCount).toBe(
-      acceptedCardano.vkeyWitnessCount,
-    );
-    expect(witnessField.revealStepCount).toBe(
-      acceptedCardano.vkeyWitnessCount,
-    );
+    expect(witnessField.itemCount).toBe(acceptedCardano.vkeyWitnessCount);
+    expect(witnessField.revealStepCount).toBe(acceptedCardano.vkeyWitnessCount);
     expect(signerField.completeFoldStepCount).toBe(
       witnessField.completeFoldStepCount,
     );
@@ -148,28 +138,19 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
         JSON.stringify(
           {
             coupledSignerWitnessBoundaryV1: {
-              fieldIndexes: [4, 6],
-              fieldNames: [
-                "required_signers",
-                "address_witnesses",
-              ],
-              maxTxSize:
-                emulator.protocolParameters.maxTxSize,
-              maxValueSize:
-                emulator.protocolParameters.maxValSize,
-              requestedSignerCount:
-                boundary.accepted.requestedItemCount,
-              actualRequiredSignerCount:
-                acceptedCardano.requiredSignerCount,
-              actualVkeyWitnessCount:
-                acceptedCardano.vkeyWitnessCount,
+              fieldIndexes: [4, 7],
+              fieldNames: ["required_signers", "address_witnesses"],
+              maxTxSize: emulator.protocolParameters.maxTxSize,
+              maxValueSize: emulator.protocolParameters.maxValSize,
+              requestedSignerCount: boundary.accepted.requestedItemCount,
+              actualRequiredSignerCount: acceptedCardano.requiredSignerCount,
+              actualVkeyWitnessCount: acceptedCardano.vkeyWitnessCount,
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.accepted.signedBytes,
               fee: boundary.accepted.fee.toString(),
-              nativeCanonicalBytes:
-                signerField.nativeCanonicalBytes,
+              nativeCanonicalBytes: signerField.nativeCanonicalBytes,
               requiredSignersField: {
                 bytes: signerField.fieldBytes,
                 revealSteps: signerField.revealStepCount,
@@ -182,16 +163,12 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
                 maxChunkBytes: witnessField.maxChunkBytes,
                 maxRevealBytes: witnessField.maxRevealBytes,
               },
-              completeFoldSteps:
-                signerField.completeFoldStepCount,
+              completeFoldSteps: signerField.completeFoldStepCount,
               adjacentRequestedSignerCount:
                 boundary.adjacent.requestedItemCount,
-              adjacentRequiredSignerCount:
-                adjacentCardano.requiredSignerCount,
-              adjacentVkeyWitnessCount:
-                adjacentCardano.vkeyWitnessCount,
-              adjacentSignedCardanoBytes:
-                boundary.adjacent.signedBytes,
+              adjacentRequiredSignerCount: adjacentCardano.requiredSignerCount,
+              adjacentVkeyWitnessCount: adjacentCardano.vkeyWitnessCount,
+              adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
               adjacentByteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.adjacent.signedBytes,

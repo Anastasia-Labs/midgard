@@ -5,12 +5,7 @@ import {
   hashMidgardCekTermNodeV1,
 } from "@al-ft/midgard-core/cek-proof";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
-import {
-  Lambda,
-  UPLCEncoder,
-  UPLCProgram,
-  UPLCVar,
-} from "@harmoniclabs/uplc";
+import { Lambda, UPLCEncoder, UPLCProgram, UPLCVar } from "@harmoniclabs/uplc";
 import { Constr } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
@@ -225,6 +220,35 @@ describe("phase B validation", () => {
     expectSinglePhaseBRejection(result, RejectCodes.ValueNotPreserved);
   });
 
+  it("burns the exact L2 fee in production value accounting and rejects fee redirection", async () => {
+    const spent = outRefFromByte(0x7c);
+    const state = preState([[spent, makeOutput(10n)]]);
+    const exactBurn = makePhaseBCandidate({
+      spent: [spent],
+      fee: 1n,
+      outputLovelace: 9n,
+    });
+
+    const accepted = await runPhaseB([exactBurn], state);
+    expect(accepted.rejected).toHaveLength(0);
+    expect(accepted.accepted).toHaveLength(1);
+
+    const redirected = makePhaseBCandidate({
+      spent: [spent],
+      fee: 1n,
+      outputLovelace: 10n,
+    });
+    const rejected = await runPhaseB([redirected], state);
+    const rejection = expectSinglePhaseBRejection(
+      rejected,
+      RejectCodes.ValueNotPreserved,
+    );
+    expect(rejection.consensusPhase).toBe("valueAndMint");
+    expect(rejection.detail).toBe(
+      "equation mismatch: inputs - fee + mint - outputs = lovelace=-1 assets=none",
+    );
+  });
+
   it("rejects candidates outside the current Cardano slot interval", async () => {
     const spent = outRefFromByte(0x26);
     const candidate = makePhaseBCandidate({
@@ -308,8 +332,9 @@ describe("phase B validation", () => {
           spent: [spent],
           referenceInputs: [reference],
           outputLovelace: 10n,
-          programMaterialSidecarCbor:
-            encodeMidgardCekProgramMaterialSidecarV1([]),
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+            [],
+          ),
         }),
       ],
       preState([
@@ -317,10 +342,7 @@ describe("phase B validation", () => {
         [reference, referenceOutput],
       ]),
     );
-    expectSinglePhaseBRejection(
-      missing,
-      RejectCodes.CekProgramMaterial,
-    );
+    expectSinglePhaseBRejection(missing, RejectCodes.CekProgramMaterial);
 
     const covered = await runPhaseB(
       [
@@ -328,8 +350,9 @@ describe("phase B validation", () => {
           spent: [spent],
           referenceInputs: [reference],
           outputLovelace: 10n,
-          programMaterialSidecarCbor:
-            encodeMidgardCekProgramMaterialSidecarV1([material]),
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+            material,
+          ]),
         }),
       ],
       preState([
@@ -531,10 +554,9 @@ describe("phase B validation", () => {
         { tag: MidgardRedeemerTag.Spend, index: 0n },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor:
-        encodeMidgardCekProgramMaterialSidecarV1(
-          [...program.material.values()],
-        ),
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        ...program.material.values(),
+      ]),
     });
     const result = await runPhaseB(
       [candidate],

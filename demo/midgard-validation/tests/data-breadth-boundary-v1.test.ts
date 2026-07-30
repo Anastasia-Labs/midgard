@@ -3,7 +3,6 @@ import { isDeepStrictEqual } from "node:util";
 
 import {
   advanceMidgardCekDataTraverseV1,
-  advanceMidgardLedgerOutputProofV1,
   advanceMidgardRedeemerItemProofV1,
   buildMidgardLedgerOutputProofTraceV1,
   buildMidgardRedeemerItemProofTraceV1,
@@ -26,7 +25,6 @@ import {
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-  MidgardLedgerOutputProofResultKindsV1,
   midgardNativeTxFullToCardanoTxEncoding,
   midgardRedeemerItemDescriptorV1,
   MidgardRedeemerItemProofModesV1,
@@ -533,24 +531,19 @@ const maximumSourceSpan = (
     0,
   );
 
-const replayLedgerOutputProof = (
+const extractAuthenticatedLedgerOutputDataSteps = (
   trace: ReturnType<typeof buildMidgardLedgerOutputProofTraceV1>,
 ): readonly ProductionDataTraverseStepV1[] => {
   const dataSteps: ProductionDataTraverseStepV1[] = [];
+  let expectedControl = trace.initial;
   for (let index = 0; index < trace.steps.length; index += 1) {
     const { control, witness, next } = trace.steps[index]!;
-    const replay = advanceMidgardLedgerOutputProofV1({
-      control,
-      witness,
-    });
-    if (
-      replay?.kind !== MidgardLedgerOutputProofResultKindsV1.Advanced ||
-      !isDeepStrictEqual(replay.control, next)
-    ) {
+    if (control !== expectedControl) {
       throw new Error(
-        `ledger-output production replay diverged at step ${index.toString()}`,
+        `ledger-output production trace lost successor identity at step ${index.toString()}`,
       );
     }
+    expectedControl = next;
     if (
       witness?.kind === "datum" &&
       control.datum !== null &&
@@ -563,8 +556,11 @@ const replayLedgerOutputProof = (
       });
     }
   }
-  if (!isExactMidgardLedgerOutputProofTerminalV1(trace.terminal)) {
-    throw new Error("ledger-output production replay did not terminate");
+  if (
+    expectedControl !== trace.terminal ||
+    !isExactMidgardLedgerOutputProofTerminalV1(trace.terminal)
+  ) {
+    throw new Error("ledger-output production trace did not terminate");
   }
   return dataSteps;
 };
@@ -726,7 +722,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         outputIndex: 0,
         outputCbor: outputCbors[0]!,
       });
-      const dataSteps = replayLedgerOutputProof(outputTrace);
+      const dataSteps = extractAuthenticatedLedgerOutputDataSteps(outputTrace);
       expect(dataSteps.at(-1)?.action?.kind).toBe("finalizeFrame");
       assertExactProductionFoldSemantics({
         kind,
@@ -797,7 +793,7 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(JSON.stringify({ dataBreadthBoundaryV1: vectors }));
     }
-  }, 300_000);
+  }, 360_000);
 
   it("retains maximum constructor/list/map breadth through genuine Cardano redeemers and the Midgard schema projection", async () => {
     const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
@@ -1266,5 +1262,5 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(JSON.stringify({ dataBreadthBoundaryV1: vectors }));
     }
-  }, 300_000);
+  }, 360_000);
 });

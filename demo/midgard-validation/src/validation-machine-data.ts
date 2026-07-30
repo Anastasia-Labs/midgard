@@ -24,7 +24,6 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   midgardRedeemerItemDescriptorV1,
 } from "@al-ft/midgard-core";
-import type { MidgardVersionedScript } from "@al-ft/midgard-core/codec";
 import {
   asArray,
   asBigInt,
@@ -57,13 +56,11 @@ import type {
 type PlutusData = unknown;
 type ConstructorData = Constr<PlutusData>;
 
-const bytes = (value: Uint8Array): string =>
-  Buffer.from(value).toString("hex");
+const bytes = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 const int = (value: number | bigint): bigint => BigInt(value);
 const record = (fields: readonly PlutusData[]): ConstructorData =>
   new Constr(0, [...fields]);
-const bool = (value: boolean): ConstructorData =>
-  new Constr(value ? 1 : 0, []);
+const bool = (value: boolean): ConstructorData => new Constr(value ? 1 : 0, []);
 const option = <T>(
   value: T | null,
   encode: (exact: T) => PlutusData,
@@ -80,9 +77,7 @@ const frontierPeaksData = (
 ): readonly ConstructorData[] =>
   frontier.peaks.map((peak) => record([int(peak.height), bytes(peak.hash)]));
 
-const mpfProofStepData = (
-  step: MidgardMpfProofStepV1,
-): ConstructorData => {
+const mpfProofStepData = (step: MidgardMpfProofStepV1): ConstructorData => {
   if (step.kind === "branch") {
     return new Constr(0, [int(step.skip), bytes(step.neighbors)]);
   }
@@ -96,16 +91,10 @@ const mpfProofStepData = (
       ]),
     ]);
   }
-  return new Constr(2, [
-    int(step.skip),
-    bytes(step.key),
-    bytes(step.value),
-  ]);
+  return new Constr(2, [int(step.skip), bytes(step.key), bytes(step.value)]);
 };
 
-const mpfProofFrameData = (
-  frame: MidgardMpfProofFrameV1,
-): ConstructorData =>
+const mpfProofFrameData = (frame: MidgardMpfProofFrameV1): ConstructorData =>
   record([
     int(frame.version),
     int(frame.frameIndex),
@@ -202,25 +191,8 @@ const signerProofData = (
   }
 };
 
-const scriptData = (script: MidgardVersionedScript): ConstructorData => {
-  const language =
-    script.language === "NativeCardano"
-      ? 0
-      : script.language === "PlutusV3"
-        ? 1
-        : 2;
-  return record([
-    new Constr(language, []),
-    bytes(script.scriptBytes),
-  ]);
-};
-
 const summaryData = (summary: MidgardCekDataSummaryV1): ConstructorData =>
-  record([
-    bytes(summary.root),
-    summary.cborLength,
-    summary.memory,
-  ]);
+  record([bytes(summary.root), summary.cborLength, summary.memory]);
 
 const sequenceSummaryData = (
   summary: MidgardCekDataSequenceSummaryV1,
@@ -243,20 +215,13 @@ const dataTraverseFrameData = (
         : frame.kind === "list"
           ? 2
           : 3;
-  const constructor =
-    frame.kind === "constrSmall" ? frame.constructor : 0n;
+  const constructor = frame.kind === "constrSmall" ? frame.constructor : 0n;
   const constructorCborRoot =
-    frame.kind === "constrLarge"
-      ? frame.constructorCborRoot
-      : Buffer.alloc(0);
+    frame.kind === "constrLarge" ? frame.constructorCborRoot : Buffer.alloc(0);
   const constructorCborLength =
-    frame.kind === "constrLarge"
-      ? frame.constructorCborLength
-      : 0n;
+    frame.kind === "constrLarge" ? frame.constructorCborLength : 0n;
   const constructorMemory =
-    frame.kind === "constrLarge"
-      ? frame.constructorMemory
-      : 0n;
+    frame.kind === "constrLarge" ? frame.constructorMemory : 0n;
   return record([
     int(kind),
     constructor,
@@ -292,9 +257,7 @@ const dataTraverseActionData = (
         int(action.expectedChildren),
       ]);
     case "attachScalar":
-      return new Constr(5, [
-        option(action.parent, dataTraverseFrameData),
-      ]);
+      return new Constr(5, [option(action.parent, dataTraverseFrameData)]);
     case "foldList":
       return new Constr(6, [
         dataTraverseFrameData(action.frame),
@@ -424,11 +387,7 @@ const redeemerItemControlData = (
         int(blob.frontier.count),
         blob.frontier.byteLength,
         blob.frontier.peaks.map((peak) =>
-          record([
-            int(peak.height),
-            bytes(peak.root),
-            peak.byteLength,
-          ])
+          record([int(peak.height), bytes(peak.root), peak.byteLength]),
         ),
       ]),
       option(blob.activeHash, blake2b256ControlData),
@@ -499,9 +458,7 @@ const redeemerItemProofWitnessData = (
       : witness.action.kind === "openTail"
         ? new Constr(1, [])
         : witness.action.kind === "traverseData"
-          ? new Constr(2, [
-              dataTraverseActionData(witness.action.action),
-            ])
+          ? new Constr(2, [dataTraverseActionData(witness.action.action)])
           : new Constr(3, []);
   return record([
     action,
@@ -514,10 +471,7 @@ const valueMutationData = (
   mutation: Extract<
     NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
     {
-      readonly kind:
-        | "valueInputAsset"
-        | "valueOutputAsset"
-        | "valueMintAsset";
+      readonly kind: "valueInputAsset" | "valueOutputAsset" | "valueMintAsset";
     }
   >["mutationStep"],
 ): ConstructorData =>
@@ -532,9 +486,7 @@ const sourceKind = (kind: "spend" | "reference"): bigint =>
 const originKind = (kind: "inline" | "reference"): bigint =>
   kind === "inline" ? 0n : 1n;
 
-const resolverPhaseIndex = (
-  phase: MidgardValidationPhaseName,
-): number => {
+const resolverPhaseIndex = (phase: MidgardValidationPhaseName): number => {
   const index = {
     canonicalDecode: 0,
     compactBinding: 1,
@@ -574,11 +526,7 @@ const scanStage = (
       `${label}.binding_${index.toString()}`,
     ).nextOffset;
   }
-  const stage = readCborInteger(
-    witness.cbor,
-    offset,
-    `${label}.stage`,
-  ).value;
+  const stage = readCborInteger(witness.cbor, offset, `${label}.stage`).value;
   const exact = Number(stage);
   if (!Number.isSafeInteger(exact) || exact < 0) {
     throw new Error(`${label} stage is invalid`);
@@ -599,9 +547,7 @@ const scriptSourcesControlStatus = (
   if (control.length !== 30 && control.length !== 31) {
     throw new Error("script_sources_control has an invalid field count");
   }
-  const stage = Number(
-    asBigInt(control[9], "script_sources_control.stage"),
-  );
+  const stage = Number(asBigInt(control[9], "script_sources_control.stage"));
   if (!Number.isSafeInteger(stage) || stage < 0) {
     throw new Error("script_sources_control stage is invalid");
   }
@@ -672,22 +618,14 @@ const scriptSourcesDiscoveryCurrentScriptHash = (
     throw new Error("script_sources_control is not at discovery stage 9");
   }
   const discovery = asArray(
-    decodeSingleCbor(
-      asBytes(
-        control[30],
-        "script_sources_control.discovery",
-      ),
-    ),
+    decodeSingleCbor(asBytes(control[30], "script_sources_control.discovery")),
     "script_sources_discovery",
   );
   if (discovery.length !== 15) {
     throw new Error("script_sources discovery has an invalid field count");
   }
   const scriptHash = Buffer.from(
-    asBytes(
-      discovery[5],
-      "script_sources_discovery.current_script_hash",
-    ),
+    asBytes(discovery[5], "script_sources_discovery.current_script_hash"),
   );
   if (scriptHash.length !== 28) {
     throw new Error(
@@ -714,22 +652,14 @@ const scriptSourcesDiscoveryCurrentPurpose = (
     throw new Error("script_sources_control is not at discovery stage 10");
   }
   const discovery = asArray(
-    decodeSingleCbor(
-      asBytes(
-        control[30],
-        "script_sources_control.discovery",
-      ),
-    ),
+    decodeSingleCbor(asBytes(control[30], "script_sources_control.discovery")),
     "script_sources_discovery",
   );
   if (discovery.length !== 15) {
     throw new Error("script_sources discovery has an invalid field count");
   }
   const purposeKind = Number(
-    asBigInt(
-      discovery[3],
-      "script_sources_discovery.current_purpose_kind",
-    ),
+    asBigInt(discovery[3], "script_sources_discovery.current_purpose_kind"),
   );
   if (
     purposeKind !== 0 &&
@@ -737,9 +667,7 @@ const scriptSourcesDiscoveryCurrentPurpose = (
     purposeKind !== 2 &&
     purposeKind !== 3
   ) {
-    throw new Error(
-      "script_sources discovery current purpose kind is invalid",
-    );
+    throw new Error("script_sources discovery current purpose kind is invalid");
   }
   return {
     purposeKind,
@@ -760,9 +688,7 @@ const scriptIntegrityStage = (
   if (control.length !== 2 && control.length !== 4) {
     throw new Error("script_integrity_control has an invalid field count");
   }
-  const stage = Number(
-    asBigInt(control[1], "script_integrity_control.stage"),
-  );
+  const stage = Number(asBigInt(control[1], "script_integrity_control.stage"));
   if (
     !Number.isSafeInteger(stage) ||
     stage < 0 ||
@@ -775,9 +701,7 @@ const scriptIntegrityStage = (
   return stage;
 };
 
-const resolveInputsCursor = (
-  witness: ValidationMachineWorkWitness,
-): number => {
+const resolveInputsCursor = (witness: ValidationMachineWorkWitness): number => {
   const control = asArray(
     decodeSingleCbor(witness.cbor),
     "resolve_inputs_control",
@@ -785,9 +709,7 @@ const resolveInputsCursor = (
   if (control.length !== 11) {
     throw new Error("resolve_inputs_control has an invalid field count");
   }
-  const cursor = Number(
-    asBigInt(control[4], "resolve_inputs_control.cursor"),
-  );
+  const cursor = Number(asBigInt(control[4], "resolve_inputs_control.cursor"));
   if (!Number.isSafeInteger(cursor) || cursor < 0) {
     throw new Error("resolve_inputs_control cursor is invalid");
   }
@@ -808,11 +730,7 @@ const ledgerDeltaControlStatus = (
     throw new Error("ledger_delta_control has an invalid field count");
   }
   const stage = Number(asBigInt(control[4], "ledger_delta_control.stage"));
-  if (
-    !Number.isSafeInteger(stage) ||
-    stage < 0 ||
-    stage > 2
-  ) {
+  if (!Number.isSafeInteger(stage) || stage < 0 || stage > 2) {
     throw new Error("ledger_delta_control stage is invalid");
   }
   const pendingCbor = asBytes(
@@ -896,8 +814,7 @@ const nativePayloadChildCount = ({
     witness.nextChunkProof?.chunk ?? Buffer.alloc(0),
   ]);
   let offset =
-    cursor -
-    expectedChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    cursor - expectedChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
   if (stage === 6) {
     offset = readCborUnsigned(
       window,
@@ -920,7 +837,12 @@ export const validationSemanticResolverIndexV1 = (
   switch (witness.phase) {
     case "canonicalDecode":
       if (auxiliary === null) return 0;
-      if (auxiliary.kind === "transactionFieldChunk") return 1;
+      if (
+        auxiliary.kind === "transactionFieldChunk" ||
+        auxiliary.kind === "transactionFieldItem"
+      ) {
+        return 1;
+      }
       break;
     case "compactBinding":
     case "staticLedgerRules":
@@ -983,17 +905,14 @@ export const validationSemanticResolverIndexV1 = (
       if (auxiliary === null) {
         return resolveInputsCursor(witness) === 0 ? 0 : 1;
       }
-      if (
-        auxiliary.kind === "scheduledLedgerLookup"
-      ) {
+      if (auxiliary.kind === "scheduledLedgerLookup") {
         return auxiliary.value === null ? 5 : 2;
       }
       if (auxiliary.kind === "ledgerOutputProofStep") return 3;
       if (auxiliary.kind === "ledgerOutputProofFinalize") return 4;
       break;
     case "scriptSources": {
-      const { stage, pendingHashStage } =
-        scriptSourcesControlStatus(witness);
+      const { stage, pendingHashStage } = scriptSourcesControlStatus(witness);
       if (stage === 0) {
         if (pendingHashStage === null) {
           if (auxiliary?.kind === "transactionFieldChunk") return 5;
@@ -1071,14 +990,10 @@ export const validationSemanticResolverIndexV1 = (
             witness: auxiliary.witness,
           });
           const descriptor =
-            next === null
-              ? null
-              : midgardRedeemerItemDescriptorV1(next);
+            next === null ? null : midgardRedeemerItemDescriptorV1(next);
           if (descriptor === null) return 21;
-          const purpose =
-            scriptSourcesDiscoveryCurrentPurpose(witness);
-          return descriptor.purposeTag ===
-              [0, 1, 3, 6][purpose.purposeKind] &&
+          const purpose = scriptSourcesDiscoveryCurrentPurpose(witness);
+          return descriptor.purposeTag === [0, 1, 3, 6][purpose.purposeKind] &&
             BigInt(descriptor.pointerIndex) === purpose.purposeIndex
             ? 22
             : 21;
@@ -1182,11 +1097,7 @@ export const validationMachineStateDataV1 = (
     state.executionCpu,
     state.executionMemory,
     new Constr(
-      state.verdict === "pending"
-        ? 0
-        : state.verdict === "accepted"
-          ? 1
-          : 2,
+      state.verdict === "pending" ? 0 : state.verdict === "accepted" ? 1 : 2,
       [],
     ),
     bytes(state.rejectionCodeHash),
@@ -1200,37 +1111,32 @@ export const validationOneStepWitnessDataV1 = ({
   readonly witness: ValidationMachineWorkWitness;
   readonly claimedSuccessor: MidgardValidationMachineStateV1;
 }): ConstructorData =>
-  record([
-    bytes(witness.cbor),
-    validationMachineStateDataV1(claimedSuccessor),
-  ]);
+  record([bytes(witness.cbor), validationMachineStateDataV1(claimedSuccessor)]);
 
 export const validationAuxiliaryWitnessDataV1 = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
 ): PlutusData => {
   if (auxiliary === null) return new Constr(0, []);
   switch (auxiliary.kind) {
-    case "transactionFieldPreimage":
-      return new Constr(1, [bytes(auxiliary.preimageCbor)]);
     case "transactionFieldChunk":
-      return new Constr(2, [
+      return new Constr(1, [
         collectionProofData(auxiliary.collectionProof),
         chunkProofData(auxiliary.chunkProof),
       ]);
     case "requiredSignerItem":
-      return new Constr(3, [
+      return new Constr(2, [
         collectionProofData(auxiliary.collectionProof),
         chunkProofData(auxiliary.chunkProof),
         signerProofData(auxiliary.signerProof),
       ]);
     case "nativeScriptToken":
-      return new Constr(4, [
+      return new Constr(3, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
         signerProofData(auxiliary.signerProof),
       ]);
     case "nativeScriptFrame":
-      return new Constr(5, [
+      return new Constr(4, [
         record([
           bytes(auxiliary.frame.tail),
           int(auxiliary.frame.kind),
@@ -1247,11 +1153,8 @@ export const validationAuxiliaryWitnessDataV1 = (
         bytes(auxiliary.nextScheduleHash),
       ];
       return auxiliary.value === null
-        ? new Constr(9, [
-            ...fields,
-            proofData(auxiliary.proofCbor),
-          ])
-        : new Constr(8, [
+        ? new Constr(6, [...fields, proofData(auxiliary.proofCbor)])
+        : new Constr(5, [
             ...fields,
             bytes(auxiliary.value),
             proofData(auxiliary.proofCbor),
@@ -1259,21 +1162,14 @@ export const validationAuxiliaryWitnessDataV1 = (
           ]);
     }
     case "resolvedInputReplay":
-      return new Constr(10, [
+      return new Constr(7, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
       ]);
-    case "outputReplay":
-      return new Constr(11, [
-        int(auxiliary.outputIndex),
-        bytes(auxiliary.outputCbor),
-        byteList(auxiliary.siblings),
-        signerProofData(auxiliary.signerProof),
-      ]);
     case "scriptPurposeScan":
-      return new Constr(12, [
+      return new Constr(8, [
         int(auxiliary.purposeKind),
         auxiliary.purposeIndex,
         bytes(auxiliary.scriptHash),
@@ -1281,7 +1177,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "scriptSourceScan":
-      return new Constr(13, [
+      return new Constr(9, [
         int(auxiliary.sourceIndex),
         originKind(auxiliary.originKind),
         bytes(auxiliary.sourceKey),
@@ -1292,7 +1188,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "redeemerScanBegin":
-      return new Constr(14, [
+      return new Constr(10, [
         int(auxiliary.itemIndex),
         int(auxiliary.itemCount),
         int(auxiliary.totalLength),
@@ -1300,7 +1196,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "nativeExecutionScan":
-      return new Constr(15, [
+      return new Constr(11, [
         int(auxiliary.executionIndex),
         int(auxiliary.languageTag),
         int(auxiliary.purpose.purposeKind),
@@ -1311,37 +1207,38 @@ export const validationAuxiliaryWitnessDataV1 = (
         int(auxiliary.source.sourceIndex),
         originKind(auxiliary.source.originKind),
         bytes(auxiliary.source.sourceKey),
-        scriptData(auxiliary.source.script),
+        int(auxiliary.source.scriptTotalLength),
+        bytes(auxiliary.source.scriptItemCommitment),
         byteList(auxiliary.source.siblings),
         bytes(auxiliary.redeemerLeaf),
         byteList(auxiliary.executionSiblings),
-        byteList(auxiliary.signerHashes),
+        chunkProofData(auxiliary.firstChunkProof),
       ]);
     case "cekCoreStep":
-      return new Constr(16, [midgardCekCoreStepDataV1(auxiliary.step)]);
+      return new Constr(12, [midgardCekCoreStepDataV1(auxiliary.step)]);
     case "cekResolvedContextItem":
-      return new Constr(17, [
+      return new Constr(13, [
         sourceKind(auxiliary.sourceKind),
         int(auxiliary.itemIndex),
         bytes(auxiliary.key),
-        bytes(auxiliary.value),
+        bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "cekOutputContextItem":
-      return new Constr(18, [
+      return new Constr(14, [
         int(auxiliary.outputIndex),
-        bytes(auxiliary.outputCbor),
+        bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "cekSignerContextItem":
-      return new Constr(19, [
+      return new Constr(15, [
         frontierPeaksData(auxiliary.frontier),
         int(auxiliary.signerIndex),
         bytes(auxiliary.signerHash),
         byteList(auxiliary.siblings),
       ]);
     case "cekMintContextItem":
-      return new Constr(20, [
+      return new Constr(16, [
         int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
@@ -1349,7 +1246,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.siblings),
       ]);
     case "cekRedeemerContextSelect":
-      return new Constr(21, [
+      return new Constr(17, [
         redeemerControlData(auxiliary.control),
         int(auxiliary.itemIndex),
         int(auxiliary.itemCount),
@@ -1364,37 +1261,29 @@ export const validationAuxiliaryWitnessDataV1 = (
         byteList(auxiliary.purpose.siblings),
       ]);
     case "redeemerItemStep":
-      return new Constr(22, [
+      return new Constr(18, [
         option(auxiliary.redeemerControl, redeemerControlData),
         redeemerItemControlData(auxiliary.control),
         redeemerItemProofWitnessData(auxiliary.witness),
       ]);
     case "cekContextFinalize":
-      return new Constr(23, [
-        redeemerControlData(auxiliary.redeemerControl),
-      ]);
+      return new Constr(19, [redeemerControlData(auxiliary.redeemerControl)]);
     case "cekContextFinalizeSpend":
-      return new Constr(24, [
+      return new Constr(20, [
         redeemerControlData(auxiliary.redeemerControl),
         int(auxiliary.itemIndex),
         bytes(auxiliary.key),
-        bytes(auxiliary.value),
+        bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "cekContextAssemble":
-      return new Constr(25, [
-        contextPartsControlData(auxiliary.control),
-      ]);
+      return new Constr(21, [contextPartsControlData(auxiliary.control)]);
     case "cekTxInfoFinalize":
-      return new Constr(26, [
-        txInfoAssemblyControlData(auxiliary.control),
-      ]);
+      return new Constr(22, [txInfoAssemblyControlData(auxiliary.control)]);
     case "cekContextSeed":
-      return new Constr(27, [
-        finalContextControlData(auxiliary.control),
-      ]);
+      return new Constr(23, [finalContextControlData(auxiliary.control)]);
     case "valueInputAsset":
-      return new Constr(28, [
+      return new Constr(24, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
@@ -1408,13 +1297,13 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueOutputDescriptor":
-      return new Constr(42, [
+      return new Constr(38, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "valueOutputAsset":
-      return new Constr(29, [
+      return new Constr(25, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         int(auxiliary.assetIndex),
@@ -1426,7 +1315,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "valueMintAsset":
-      return new Constr(30, [
+      return new Constr(26, [
         int(auxiliary.mintIndex),
         bytes(auxiliary.policyId),
         bytes(auxiliary.assetName),
@@ -1435,7 +1324,7 @@ export const validationAuxiliaryWitnessDataV1 = (
         valueMutationData(auxiliary.mutationStep),
       ]);
     case "ledgerDeltaOperation":
-      return new Constr(39, [
+      return new Constr(35, [
         int(auxiliary.operationKind === "delete" ? 0 : 1),
         bytes(auxiliary.key),
         bytes(auxiliary.value),
@@ -1445,59 +1334,56 @@ export const validationAuxiliaryWitnessDataV1 = (
         ),
       ]);
     case "ledgerDeltaReplay":
-      return new Constr(31, [
+      return new Constr(27, [
         sourceKind(auxiliary.sourceKind),
         bytes(auxiliary.key),
         bytes(auxiliary.nextScheduleHash),
         bytes(auxiliary.value),
       ]);
     case "ledgerDeltaOutput":
-      return new Constr(32, [
+      return new Constr(28, [
         int(auxiliary.outputIndex),
         bytes(auxiliary.descriptorCbor),
         byteList(auxiliary.siblings),
       ]);
     case "ledgerDeltaProofFrame":
-      return new Constr(38, [
+      return new Constr(34, [
         mpfProofFrameData(auxiliary.frame),
         byteList(auxiliary.siblings),
       ]);
     case "transactionRedeemerItemBegin":
-      return new Constr(33, [
-        collectionProofData(auxiliary.collectionProof),
-      ]);
+      return new Constr(29, [collectionProofData(auxiliary.collectionProof)]);
     case "transactionFieldItem":
-      return new Constr(34, [
+      return new Constr(30, [
         collectionProofData(auxiliary.collectionProof),
+        bytes(auxiliary.itemCbor),
       ]);
     case "ledgerOutputProofBegin":
-      return new Constr(35, [
+      return new Constr(31, [
         int(auxiliary.outputIndex),
         int(auxiliary.totalLength),
         bytes(auxiliary.itemCommitment),
         byteList(auxiliary.siblings),
       ]);
     case "ledgerOutputProofStep":
-      return new Constr(36, [
-        ledgerOutputProofWitnessData(auxiliary.witness),
-      ]);
+      return new Constr(32, [ledgerOutputProofWitnessData(auxiliary.witness)]);
     case "ledgerOutputProofFinalize":
-      return new Constr(37, [
+      return new Constr(33, [
         bytes(auxiliary.descriptorCbor),
         signerProofData(auxiliary.signerProof),
       ]);
     case "scriptSourceHashBlock":
-      return new Constr(40, [
+      return new Constr(36, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "mintFoldAsset":
-      return new Constr(43, [
+      return new Constr(39, [
         chunkProofData(auxiliary.chunkProof),
         option(auxiliary.nextChunkProof, chunkProofData),
       ]);
     case "nativeExecutionDescriptor":
-      return new Constr(41, [
+      return new Constr(37, [
         int(auxiliary.executionIndex),
         int(auxiliary.languageTag),
         int(auxiliary.purpose.purposeKind),
@@ -1523,10 +1409,7 @@ export const encodeValidationOneStepWitnessCborV1 = (input: {
   readonly witness: ValidationMachineWorkWitness;
   readonly claimedSuccessor: MidgardValidationMachineStateV1;
 }): Buffer =>
-  Buffer.from(
-    Data.to(validationOneStepWitnessDataV1(input) as never),
-    "hex",
-  );
+  Buffer.from(Data.to(validationOneStepWitnessDataV1(input) as never), "hex");
 
 export const encodeValidationAuxiliaryWitnessCborV1 = (
   auxiliary: ValidationMachineWorkWitness["auxiliary"],
@@ -1573,23 +1456,14 @@ export const buildValidationOneStepArgumentV1 = ({
     witness,
     claimedSuccessor,
   });
-  const auxiliaryData = validationAuxiliaryWitnessDataV1(
-    witness.auxiliary,
-  );
-  const transitionCbor = Buffer.from(
-    Data.to(transitionData as never),
-    "hex",
-  );
-  const auxiliaryCbor = Buffer.from(
-    Data.to(auxiliaryData as never),
-    "hex",
-  );
+  const auxiliaryData = validationAuxiliaryWitnessDataV1(witness.auxiliary);
+  const transitionCbor = Buffer.from(Data.to(transitionData as never), "hex");
+  const auxiliaryCbor = Buffer.from(Data.to(auxiliaryData as never), "hex");
   const evidenceCbor = Buffer.from(
     Data.to(record([transitionData, auxiliaryData]) as never),
     "hex",
   );
-  const maximum =
-    MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+  const maximum = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
   if (
     transitionCbor.length >= maximum ||
     auxiliaryCbor.length >= maximum ||
@@ -1601,8 +1475,7 @@ export const buildValidationOneStepArgumentV1 = ({
   }
   return {
     resolverIndex: resolverPhaseIndex(pre.phase),
-    semanticResolverIndex:
-      validationSemanticResolverIndexV1(witness),
+    semanticResolverIndex: validationSemanticResolverIndexV1(witness),
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,

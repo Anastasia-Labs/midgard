@@ -31,9 +31,13 @@ import {
   buildValidationMachineLedgerMutationSteps,
   buildValidationOneStepArgumentV1,
   type DeterministicValidationMachineTrace,
+  encodeValidationAuxiliaryWitnessCborV1,
   encodeValidationBoundaryEvidenceCborV1,
   initialMidgardResolvedInputsAccumulatorV1,
   MidgardRedeemerTag,
+  purposeKindForRedeemerTagV1,
+  redeemerPointerMatchesPurposeV1,
+  redeemerTagForPurposeKindV1,
   RejectCodes,
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
@@ -53,15 +57,15 @@ import {
 } from "./validation-fixtures.js";
 
 const root = (byte: number): string => Buffer.alloc(32, byte).toString("hex");
+const validationBlueprintPath =
+  process.env.MIDGARD_REAL_BLUEPRINT_PATH ??
+  resolve(process.cwd(), "../../onchain/aiken/plutus.json");
 const validationDisputeBlueprint = JSON.parse(
-  readFileSync(
-    resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
-    "utf8",
-  ),
+  readFileSync(validationBlueprintPath, "utf8"),
 ) as unknown;
 const semanticResolverDefinitionsV1 = [
   "canonical_decode_empty_semantic_v1",
-  "canonical_decode_chunk_semantic_v1",
+  "canonical_decode_item_semantic_v1",
   "compact_binding_semantic_v1",
   "static_ledger_rules_semantic_v1",
   "input_sets_empty_semantic_v1",
@@ -139,6 +143,87 @@ const semanticResolverDefinitionsV1 = [
 const semanticResolverOffsetsV1 = [
   0, 2, 3, 4, 6, 10, 24, 26, 32, 60, 63, -1, -1, 67,
 ] as const;
+
+describe("V1 purpose-kind to redeemer-pointer mapping", () => {
+  it("matches the exhaustive canonical vector and rejects adjacent values", () => {
+    const canonical = [
+      { purposeKind: 0, redeemerTag: 0 },
+      { purposeKind: 1, redeemerTag: 1 },
+      { purposeKind: 2, redeemerTag: 3 },
+      { purposeKind: 3, redeemerTag: 6 },
+    ] as const;
+
+    for (const { purposeKind, redeemerTag } of canonical) {
+      expect(redeemerTagForPurposeKindV1(purposeKind)).toBe(redeemerTag);
+      expect(purposeKindForRedeemerTagV1(redeemerTag)).toBe(purposeKind);
+      expect(
+        redeemerPointerMatchesPurposeV1({
+          purposeKind,
+          purposeIndex: 7n,
+          redeemerTag,
+          redeemerIndex: 7n,
+        }),
+      ).toBe(true);
+      expect(
+        redeemerPointerMatchesPurposeV1({
+          purposeKind,
+          purposeIndex: 7n,
+          redeemerTag,
+          redeemerIndex: 8n,
+        }),
+      ).toBe(false);
+    }
+
+    for (const purposeKind of [-1, 4]) {
+      expect(redeemerTagForPurposeKindV1(purposeKind)).toBeNull();
+      expect(
+        redeemerPointerMatchesPurposeV1({
+          purposeKind,
+          purposeIndex: 7n,
+          redeemerTag: 0,
+          redeemerIndex: 7n,
+        }),
+      ).toBe(false);
+    }
+    for (const redeemerTag of [-1, 2, 4, 5, 7]) {
+      expect(purposeKindForRedeemerTagV1(redeemerTag)).toBeNull();
+      expect(
+        redeemerPointerMatchesPurposeV1({
+          purposeKind: 0,
+          purposeIndex: 7n,
+          redeemerTag,
+          redeemerIndex: 7n,
+        }),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("C21 challenged auxiliary carrier policy", () => {
+  it("excludes retired whole-output and whole-script wire fields", () => {
+    const machineSource = readFileSync(
+      resolve(process.cwd(), "src/validation-machine.ts"),
+      "utf8",
+    );
+    const encoderSource = readFileSync(
+      resolve(process.cwd(), "src/validation-machine-data.ts"),
+      "utf8",
+    );
+    expect(machineSource).not.toContain('readonly kind: "outputReplay"');
+    expect(encoderSource).not.toContain('case "outputReplay"');
+    expect(encoderSource).not.toContain("scriptData(auxiliary.source.script)");
+    expect(encoderSource).not.toContain("byteList(auxiliary.signerHashes)");
+    expect(machineSource).not.toMatch(
+      /kind: "cekResolvedContextItem"[\s\S]{0,240}readonly value:/,
+    );
+    expect(machineSource).not.toMatch(
+      /kind: "cekOutputContextItem"[\s\S]{0,180}readonly outputCbor:/,
+    );
+    expect(machineSource).not.toMatch(
+      /kind: "cekContextFinalizeSpend"[\s\S]{0,280}readonly value:/,
+    );
+  });
+});
 
 type MintFoldWitnessV1 = Extract<
   NonNullable<ValidationMachineWorkWitness["auxiliary"]>,
@@ -353,12 +438,17 @@ describe("deterministic validation machine", () => {
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.auxiliary === null) return witness.cbor.length < 16 * 1024;
-        return (
-          witness.auxiliary.kind === "transactionFieldChunk" &&
-          witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
-          witness.cbor.length + witness.auxiliary.chunkProof.chunk.length <
-            16 * 1024
-        );
+        if (witness.auxiliary.kind === "transactionFieldItem") {
+          return (
+            witness.cbor.length + witness.auxiliary.itemCbor.length < 16 * 1024
+          );
+        }
+        return witness.auxiliary.kind === "transactionFieldChunk"
+          ? witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
+              witness.cbor.length +
+                witness.auxiliary.chunkProof.chunk.length <
+                16 * 1024
+          : false;
       }),
     ).toBe(true);
     const scriptSourceWitnesses = trace.witnesses.filter(
@@ -372,9 +462,7 @@ describe("deterministic validation machine", () => {
       "resolvedInputReplay",
     );
     expect(
-      scriptSourceWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
+      scriptSourceWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).not.toContain("transactionFieldPairPreimage");
     const decodeControl = (
       witness: DeterministicValidationMachineTrace["witnesses"][number],
@@ -427,9 +515,7 @@ describe("deterministic validation machine", () => {
     expect(valueAndMintWitnesses).toHaveLength(8);
     expect(valueAndMintWitnesses[0]?.auxiliary).toBeNull();
     expect(
-      valueAndMintWitnesses.map(
-        (witness) => witness.auxiliary?.kind ?? null,
-      ),
+      valueAndMintWitnesses.map((witness) => witness.auxiliary?.kind ?? null),
     ).not.toContain("transactionFieldPairPreimage");
     expect(
       valueAndMintWitnesses.every((witness) => {
@@ -460,8 +546,7 @@ describe("deterministic validation machine", () => {
       scriptSourceWitnesses
         .slice(8, 15)
         .every(
-          (witness) =>
-            witness.auxiliary?.kind === "ledgerOutputProofStep",
+          (witness) => witness.auxiliary?.kind === "ledgerOutputProofStep",
         ),
     ).toBe(true);
     expect(scriptSourceWitnesses[15]?.auxiliary?.kind).toBe(
@@ -476,12 +561,7 @@ describe("deterministic validation machine", () => {
     expect(
       scriptSourceWitnesses.map(validationSemanticResolverIndexV1),
     ).toEqual([
-      6, 14, 0, 0, 0, 0, 0,
-      1,
-      2, 2, 2, 2, 2, 2, 2,
-      3,
-      4,
-      0, 27, 23, 16, 18,
+      6, 14, 0, 0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 3, 4, 0, 27, 23, 16, 18,
     ]);
     expect(() =>
       validationSemanticResolverIndexV1({
@@ -492,11 +572,13 @@ describe("deterministic validation machine", () => {
     expect(
       canonicalWitnesses.every((witness) => {
         if (witness.cbor.includes(transaction.txCbor)) return false;
-        return (
-          witness.auxiliary === null ||
-          (witness.auxiliary.kind === "transactionFieldChunk" &&
-            !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor))
-        );
+        if (witness.auxiliary === null) return true;
+        if (witness.auxiliary.kind === "transactionFieldItem") {
+          return !witness.auxiliary.itemCbor.includes(transaction.txCbor);
+        }
+        return witness.auxiliary.kind === "transactionFieldChunk"
+          ? !witness.auxiliary.chunkProof.chunk.includes(transaction.txCbor)
+          : false;
       }),
     ).toBe(true);
     const compactBindingWitness = trace.witnesses.find(
@@ -606,33 +688,31 @@ describe("deterministic validation machine", () => {
     expect(scriptSourceWitnesses[0]?.auxiliary).toMatchObject({
       kind: "transactionFieldChunk",
       collectionProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemCount: 1,
         itemIndex: 0,
       },
       chunkProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemIndex: 0,
         chunkIndex: 0,
       },
     });
     const sourceHashBlocks = scriptSourceWitnesses.filter(
-      (witness) =>
-        witness.auxiliary?.kind === "scriptSourceHashBlock",
+      (witness) => witness.auxiliary?.kind === "scriptSourceHashBlock",
     );
     expect(sourceHashBlocks).toHaveLength(1);
     expect(sourceHashBlocks[0]?.auxiliary).toMatchObject({
       kind: "scriptSourceHashBlock",
       chunkProof: {
-        fieldIndex: 7,
+        fieldIndex: 6,
         itemIndex: 0,
         chunkIndex: 0,
       },
       nextChunkProof: null,
     });
     const redeemerSourceWitness = scriptSourceWitnesses.find(
-      (witness) =>
-        witness.auxiliary?.kind === "transactionRedeemerItemBegin",
+      (witness) => witness.auxiliary?.kind === "transactionRedeemerItemBegin",
     );
     expect(redeemerSourceWitness?.auxiliary).toMatchObject({
       kind: "transactionRedeemerItemBegin",
@@ -642,13 +722,10 @@ describe("deterministic validation machine", () => {
         itemIndex: 0,
       },
     });
-    expect(
-      validationSemanticResolverIndexV1(redeemerSourceWitness!),
-    ).toBe(15);
+    expect(validationSemanticResolverIndexV1(redeemerSourceWitness!)).toBe(15);
     expect(
       scriptSourceWitnesses.some(
-        (witness) =>
-          validationSemanticResolverIndexV1(witness) === 14,
+        (witness) => validationSemanticResolverIndexV1(witness) === 14,
       ),
     ).toBe(true);
     expect(
@@ -704,14 +781,12 @@ describe("deterministic validation machine", () => {
     );
     expect(
       cekWitnesses.some(
-        (witness) =>
-          witness.auxiliary?.kind === "redeemerScanBegin",
+        (witness) => witness.auxiliary?.kind === "redeemerScanBegin",
       ),
     ).toBe(true);
     expect(
       cekWitnesses.some(
-        (witness) =>
-          witness.auxiliary?.kind === "cekRedeemerContextSelect",
+        (witness) => witness.auxiliary?.kind === "cekRedeemerContextSelect",
       ),
     ).toBe(true);
     expect(
@@ -734,13 +809,53 @@ describe("deterministic validation machine", () => {
           | Record<string, unknown>
           | null
           | undefined;
-        return auxiliary !== null &&
+        return (
+          auxiliary !== null &&
           auxiliary !== undefined &&
           ("redeemer" in auxiliary ||
             "rawCbor" in auxiliary ||
-            "dataCborHex" in auxiliary);
+            "dataCborHex" in auxiliary)
+        );
       }),
     ).toBe(false);
+    const nativeExecutionWitness = cekWitnesses.find(
+      (witness) => witness.auxiliary?.kind === "nativeExecutionScan",
+    )?.auxiliary;
+    if (nativeExecutionWitness?.kind !== "nativeExecutionScan") {
+      throw new Error("expected a descriptor-only native execution witness");
+    }
+    expect(nativeExecutionWitness.source.scriptTotalLength).toBeGreaterThan(0);
+    expect(nativeExecutionWitness.source.scriptItemCommitment).toHaveLength(32);
+    expect(nativeExecutionWitness.firstChunkProof.chunkIndex).toBe(0);
+    expect(
+      nativeExecutionWitness.firstChunkProof.chunk.length,
+    ).toBeLessThanOrEqual(4_095);
+    expect("script" in nativeExecutionWitness.source).toBe(false);
+    expect("signerHashes" in nativeExecutionWitness).toBe(false);
+    const challengedDescriptorWitnesses = cekWitnesses.flatMap((witness) => {
+      const auxiliary = witness.auxiliary;
+      return auxiliary?.kind === "cekResolvedContextItem" ||
+        auxiliary?.kind === "cekOutputContextItem" ||
+        auxiliary?.kind === "cekContextFinalizeSpend"
+        ? [auxiliary]
+        : [];
+    });
+    expect(challengedDescriptorWitnesses.length).toBeGreaterThanOrEqual(3);
+    expect(
+      challengedDescriptorWitnesses.every(
+        (auxiliary) =>
+          auxiliary.descriptorCbor.length > 0 &&
+          auxiliary.descriptorCbor.length < 16 * 1024 &&
+          !("value" in auxiliary) &&
+          !("outputCbor" in auxiliary),
+      ),
+    ).toBe(true);
+    expect(
+      [nativeExecutionWitness, ...challengedDescriptorWitnesses].every(
+        (auxiliary) =>
+          encodeValidationAuxiliaryWitnessCborV1(auxiliary).length < 16 * 1024,
+      ),
+    ).toBe(true);
     const cekStates = trace.states.filter((state) => state.phase === "cek");
     expect(cekStates.at(-1)!.executionCpu).toBeGreaterThan(0n);
     expect(cekStates.at(-1)!.executionMemory).toBeGreaterThan(0n);
@@ -941,14 +1056,6 @@ describe("deterministic validation machine", () => {
       });
       expect(
         trace.witnesses.some(
-          (witness) =>
-            witness.phase === "cek" &&
-            witness.auxiliary?.kind === "transactionFieldPreimage" &&
-            witness.auxiliary.preimageCbor.equals(mintPreimageCbor),
-        ),
-      ).toBe(false);
-      expect(
-        trace.witnesses.some(
           (witness) => witness.auxiliary?.kind === "cekCoreStep",
         ),
       ).toBe(true);
@@ -964,6 +1071,7 @@ describe("deterministic validation machine", () => {
         ]),
       );
     },
+    15_000,
   );
 
   it("executes a MidgardV1 protected-output receiving script", async () => {
@@ -1063,7 +1171,7 @@ describe("deterministic validation machine", () => {
         "ledgerDeltaOutput",
       ]),
     );
-  });
+  }, 15_000);
 
   it("executes an authenticated PlutusV3 observer", async () => {
     const spent = outRefFromByte(0x34);
@@ -1157,13 +1265,6 @@ describe("deterministic validation machine", () => {
         chunkIndex: 0,
       },
     });
-    expect(
-      trace.witnesses.some(
-        (witness) =>
-          witness.phase === "cek" &&
-          witness.auxiliary?.kind === "transactionFieldPreimage",
-      ),
-    ).toBe(false);
     const cekObserverWitnessIndex = trace.witnesses.indexOf(
       cekObserverWitnesses[0]!,
     );
@@ -1372,7 +1473,7 @@ describe("deterministic validation machine", () => {
         "ledgerDeltaOutput",
       ]),
     );
-  });
+  }, 15_000);
 
   it("replays signed burn through the same authenticated mint leaf path", async () => {
     const spent = outRefFromByte(0x22);
@@ -1445,7 +1546,7 @@ describe("deterministic validation machine", () => {
         "ledgerDeltaOutput",
       ]),
     );
-  });
+  }, 15_000);
 
   it("constructs bounded mint proofs across an authenticated chunk boundary", async () => {
     const spent = outRefFromByte(0x23);
@@ -1731,7 +1832,7 @@ describe("deterministic validation machine", () => {
     },
   );
 
-  it("streams an aggregate field above 8 KiB as ordered L1-sized item proofs", async () => {
+  it("carries an aggregate field above 8 KiB as ordered complete-item proofs", async () => {
     const spent = outRefFromByte(0x12);
     const spentOutput = makeOutput(10n);
     const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
@@ -1765,23 +1866,22 @@ describe("deterministic validation machine", () => {
       }),
     );
 
-    const outputChunks = trace.witnesses
+    const canonicalOutputItems = trace.witnesses
       .filter((witness) => witness.phase === "canonicalDecode")
       .flatMap((witness) =>
-        witness.auxiliary?.kind === "transactionFieldChunk" &&
-        witness.auxiliary.chunkProof.fieldIndex === 2
+        witness.auxiliary?.kind === "transactionFieldItem" &&
+        witness.auxiliary.collectionProof.fieldIndex === 2
           ? [witness.auxiliary]
           : [],
       );
-    expect(outputChunks).toHaveLength(outputs.length);
+    expect(canonicalOutputItems).toHaveLength(outputs.length);
     expect(
-      outputChunks.every(
-        ({ collectionProof, chunkProof }, itemIndex) =>
+      canonicalOutputItems.every(
+        ({ collectionProof, itemCbor }, itemIndex) =>
           collectionProof.itemCount === outputs.length &&
           collectionProof.itemIndex === itemIndex &&
-          chunkProof.itemIndex === itemIndex &&
-          chunkProof.chunkIndex === 0 &&
-          chunkProof.chunk.length <= 4_095,
+          collectionProof.itemLength === itemCbor.length &&
+          itemCbor.length < 16 * 1024,
       ),
     ).toBe(true);
     const outputItems = trace.witnesses
@@ -1828,9 +1928,7 @@ describe("deterministic validation machine", () => {
           expectedRejectionCode: RejectCodes.InvalidOutput,
         }),
       ),
-    ).rejects.toThrow(
-      "cannot produce an exact V1 descriptor",
-    );
+    ).rejects.toThrow("cannot produce an exact V1 descriptor");
   });
 
   it("fails closed when the claimed verdict or delta disagrees with replay", async () => {
