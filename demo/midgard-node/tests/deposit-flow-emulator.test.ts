@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -2453,6 +2454,10 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     activeRuntimePaths = makeRuntimePaths();
     await cleanupRuntimePaths(activeRuntimePaths);
     await initializeNodeRuntime();
+    // The local-finalization recovery path seeds the libp2p DA publication
+    // outbox, which requires the deployment runtime manifest since canonical
+    // V1 made libp2p DA mandatory for block finalization.
+    await configureEmulatorDaRuntimeManifest();
 
     const fixture = await makeFixture();
     await initializeProtocol(fixture);
@@ -2670,9 +2675,13 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       throw new Error("Expected a DA payload row for the finalized block");
     }
     const daPayloadRow = daPayloadAfterRecovery.value;
-    const daPayload = SDK.decodeDaPayloadV1(
+    // The persisted payload bytes are the canonical V1 transport envelope;
+    // unwrap it before decoding the inner payload body.
+    const unwrappedDaPayload = await unwrapDaPayloadV1(
       daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_CBOR],
+      { maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
     );
+    const daPayload = SDK.decodeDaPayloadV1(unwrappedDaPayload.innerBytes);
     expect(daPayload.block_body.header_hash).toEqual(latestHeaderHash);
     expect(
       daPayloadRow[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex"),
@@ -2840,6 +2849,11 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       const queued: QueuedTx[] = built.map((tx, index) => ({
         txId: tx.txId,
         txCbor: tx.txCbor,
+        // Canonical V1 admission requires the program-material sidecar even
+        // for pure transfers; an empty program list is the canonical encoding.
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+          [],
+        ),
         arrivalSeq: BigInt(index),
         createdAt: new Date(Date.now() - 10_000 + index),
       }));
@@ -2868,12 +2882,43 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       );
       expect(phaseB.rejected).toEqual([]);
       const processed = phaseB.accepted.map(processedTxFromValidatedTx);
-      const timestamps = processed.map(
-        (_tx, index) => new Date(Date.now() - 8_000 + index * 1_000),
+      const latestBlock = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
       );
+      // The commit worker anchors the block's semantic end time to the max
+      // included mempool timestamp and refuses non-monotonic end times, so
+      // the seeded backlog must arrive strictly after the confirmed tip's
+      // semantic end time.
+      const tipEndTimeMs = await getStateQueueDatumEndTime(latestBlock.datum);
+      const timestampBaseMs = Math.max(Date.now(), tipEndTimeMs) + 1_000;
+      const timestamps = processed.map(
+        (_tx, index) => new Date(timestampBaseMs + index * 1_000),
+      );
+      // Advance the emulator clock past the newest seeded arrival so the
+      // worker's mempool retrieval window covers the whole backlog.
+      await advanceEmulatorPastUnixTime(
+        fixture,
+        timestampBaseMs + processed.length * 1_000,
+      );
+      vi.setSystemTime(new Date(fixture.emulator.now()));
       await runNodeDatabaseEffect(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
+          // The commit worker's canonical V1 revalidation requires a durable
+          // program-material sidecar in tx_admission_payloads for every
+          // mempool transaction, so mirror the production admission write.
+          yield* Effect.forEach(
+            queued,
+            (tx) =>
+              TxAdmissionsDB.tryInsert({
+                txId: tx.txId,
+                txCanonicalCbor: tx.txCbor,
+                programMaterialSidecarCbor: tx.programMaterialSidecarCbor!,
+                submitSource: "native",
+              }),
+            { concurrency: 1 },
+          );
           yield* MempoolLedgerDB.insert(sourceLedger);
           yield* sql.withTransaction(MempoolDB.insertMultipleCore(processed));
           for (let index = 0; index < processed.length; index += 1) {
@@ -2884,10 +2929,6 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         }),
       );
 
-      const latestBlock = await fetchLatestCommittedBlock(
-        fixture.operatorLucid,
-        fixture.contracts,
-      );
       const cacheHitsBefore = await Effect.runPromise(
         Metric.value(commitTxDeltaCacheHitCounter),
       );
