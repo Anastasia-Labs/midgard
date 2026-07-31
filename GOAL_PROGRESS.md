@@ -792,6 +792,24 @@
 | Rehearsal merge of origin `b81221e1` (2026-07-30 early morning)                                                                                                                                                                                                        | Isolated scratch worktree detached at `8b98f05f`; agent-G resolution of all 48 conflicts per the quiesce-merge-plan; rehearsal merge commit `52597a4e` (parents `8b98f05f` + `b81221e1`), protected as local branch `rehearsal/merge-b81221e1` and pushed to `colll78/canonical-v1-merge-rehearsal`                                                                                                | PASS as rehearsal evidence only — the real merge replays these resolutions. Headlines: both zero-input native ports converged (lib module byte-identical; step-02 adopted theirs' empty-hash-constant shape with our fixture selectors preserved); the merged auxiliary ABI is exactly ours' 40-constructor ordering with theirs' four legacy constructors deleted; state-queue keeps both sides' protections including theirs' L1-bound commit end-time check (D-S12-relevant) alongside our Q49 controls; dispute-submit keeps ours' named-shape encoder over theirs' stale-index literals; empirical blueprint pins corrected (steps 100, unique hashes 120, zero-input category `00000006`); legacy-symbol grep zero. | In-rehearsal validation: compile clean; zero-input 4/4; invalid-signature/min-fee step-01 2/2 each; computation-thread 15/15; dispute-submit 11/11; da-committee 230 passed/1 skipped; complete-item 17/17; sdk validation-proof-item 5/5 and fault-proof 17/17; submit-init 14/14; staged whitespace clean. Deferred to the parent battery: node package suite, full validation-machine module with proper capture, IG1 blueprint regeneration (three merged pins are blueprint-shape-dependent), and fresh resolution of the three agent-F-lane files. |
 | Acceleration Wave-1 parent integration replays (2026-07-29 evening)                                                                                                                                                                                                    | HEAD `3f608db7` plus active-lease worktree; pinned Aiken `v1.1.22+39d6b04`; host Node v24.13.1 with pinned-Node cross-checks by the returning agents                                                                                                                    | PASS for every replayed surface. C20-6/7: full `midgard/fraud_proofs/native_tx_v1` module 56/56 (23 pre-existing + 33 Wave-1) exit 0. Q00: all 14 focused-runner module batches pass with exact counts — 25/25 ported-binding selectors, zero retry-once invocations consumed. C21: validation complete-item suites 16/16 across 4 files plus SDK validation-proof-item 5/5. C26-FIX: new midgard-core suites 6/6, 4/4, 3/3 plus untouched boundary 2/2; single midgard-core failure (`deployment-manifest-identity-v1` full-manifest identity 1/5) reproduced on the untouched baseline and recorded as pre-existing worktree drift. Evidence verifiers after integration: capability reconciliation PASS (10 PASS/12 PARTIAL/0 conflict), closure `current-tree-valid`, self-test 7/7. | Q00/C20-6/7 source commits deferred until the Q01 lane releases the shared fraud-proofs lease and the validation-machine module replay completes; C26-FIX committed `3f608db7`; C21 evidence committed `929e3231`. |
 
+## Delivery checkpoints
+
+- **2026-07-30, checkpoint pushed to PR #471 at `7f74981f`** (draft, base
+  `tx-validation`, never force-pushed; backup branch
+  `colll78/canonical-v1-acceleration-wave1` refreshed to the same revision).
+  Contents: the two-stream merge `baa7e937` plus a second merge `7f74981f` of
+  the companion lane's recovery hardening; both canonical-V1 validation-machine
+  production defects fixed with seven controls; Q00/Q01/C20-6/7/C21/C26 work;
+  F04/F05 planning artifacts; the goal verification harness; and the spec
+  amendments. Verification recorded in the rows above: validation-machine
+  110/126 (first-ever full run), node 689/694, watcher 13/13 files 282/282,
+  da-committee 230, blueprint regenerated with every dependent pin holding,
+  all three evidence verifiers green. The PR description carries the full
+  disclosure: both production defects with closure impact, the three upstream
+  aiken reports, the 16 open latent failures, and seven owner decisions.
+  Open per §15: this is a checkpoint, not completion — CG2/AC-C20/AC-C30/
+  AC-C31/CG3 remain open.
+
 ## Current next action
 
 Acceleration Wave 0 completed 2026-07-29: evidence artifacts rebound to the
