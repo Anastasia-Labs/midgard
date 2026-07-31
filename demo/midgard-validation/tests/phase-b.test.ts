@@ -368,6 +368,30 @@ describe("phase B validation", () => {
     );
     expect(covered.rejected).toHaveLength(0);
     expect(covered.accepted).toHaveLength(1);
+
+    const extraNode = { kind: "variable" as const, index: 0n };
+    const extra = await runPhaseB(
+      [
+        makePhaseBCandidate({
+          spent: [spent],
+          referenceInputs: [reference],
+          outputLovelace: 10n,
+          programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+            material,
+            {
+              kind: "term",
+              root: hashMidgardCekTermNodeV1(extraNode),
+              preimage: encodeMidgardCekTermNodeV1(extraNode),
+            },
+          ]),
+        }),
+      ],
+      preState([
+        [spent, makeOutput(10n)],
+        [reference, referenceOutput],
+      ]),
+    );
+    expectSinglePhaseBRejection(extra, RejectCodes.CekProgramMaterial);
   });
 
   it("rejects a later reference input after an earlier component member spends it", async () => {
@@ -601,10 +625,9 @@ describe("phase B validation", () => {
         },
       ]),
       scriptLanguages: ["PlutusV3"],
-      programMaterialSidecarCbor:
-        encodeMidgardCekProgramMaterialSidecarV1(
-          [...program.material.values()],
-        ),
+      programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
+        ...program.material.values(),
+      ]),
     });
 
     const result = await runPhaseB(

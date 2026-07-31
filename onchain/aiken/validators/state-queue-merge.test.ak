@@ -20,6 +20,9 @@ const substituted_header_key =
 const settlement_policy =
   #"11111111111111111111111111111111111111111111111111111111"
 
+const other_mint_policy =
+  #"22222222222222222222222222222222222222222222222222222222"
+
 fn canonical_header() -> state_queue.HeaderView {
   ledger_state.HeaderV1 {
     prev_utxos_root: canonical_root,
@@ -47,6 +50,78 @@ fn canonical_header() -> state_queue.HeaderView {
     prev_header_hash: canonical_header_key,
     operator_vkey: canonical_header_key,
     protocol_version: ledger_state.protocol_version_v1,
+  }
+}
+
+fn empty_material_header() -> state_queue.HeaderView {
+  ledger_state.HeaderV1 {
+    ..canonical_header(),
+    withdrawals_root: env.empty_merkle_tree_root,
+    forced_transactions_root: env.empty_merkle_tree_root,
+    transactions_root: env.empty_merkle_tree_root,
+    deposits_root: env.empty_merkle_tree_root,
+    transition_trace_root: env.empty_merkle_tree_root,
+    event_to_step_root: env.empty_merkle_tree_root,
+    validation_traces_root: env.empty_merkle_tree_root,
+    withdrawal_count: 0,
+    forced_transaction_count: 0,
+    l2_transaction_count: 0,
+    deposit_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+    validation_trace_count: 0,
+  }
+}
+
+fn single_withdrawal_header() -> state_queue.HeaderView {
+  ledger_state.HeaderV1 {
+    ..empty_material_header(),
+    withdrawals_root: canonical_root,
+    transition_trace_root: canonical_root,
+    event_to_step_root: canonical_root,
+    withdrawal_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+  }
+}
+
+fn single_forced_transaction_header() -> state_queue.HeaderView {
+  ledger_state.HeaderV1 {
+    ..empty_material_header(),
+    forced_transactions_root: canonical_root,
+    transition_trace_root: canonical_root,
+    event_to_step_root: canonical_root,
+    validation_traces_root: canonical_root,
+    forced_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_trace_count: 1,
+  }
+}
+
+fn single_l2_transaction_header() -> state_queue.HeaderView {
+  ledger_state.HeaderV1 {
+    ..empty_material_header(),
+    transactions_root: canonical_root,
+    transition_trace_root: canonical_root,
+    event_to_step_root: canonical_root,
+    validation_traces_root: canonical_root,
+    l2_transaction_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
+    validation_trace_count: 1,
+  }
+}
+
+fn single_deposit_header() -> state_queue.HeaderView {
+  ledger_state.HeaderV1 {
+    ..empty_material_header(),
+    deposits_root: canonical_root,
+    transition_trace_root: canonical_root,
+    event_to_step_root: canonical_root,
+    deposit_count: 1,
+    total_event_count: 1,
+    transition_step_count: 1,
   }
 }
 
@@ -184,13 +259,11 @@ test merge_commitments_production_guard_rejects_each_independent_field_substitut
 
 test merge_settlement_production_guard_binds_presence_and_identity() {
   let header = canonical_header()
-  let empty_material_header = ledger_state.HeaderV1 {
-    ..header,
-    withdrawals_root: env.empty_merkle_tree_root,
-    forced_transactions_root: env.empty_merkle_tree_root,
-    transactions_root: env.empty_merkle_tree_root,
-    deposits_root: env.empty_merkle_tree_root,
-  }
+  let empty_header = empty_material_header()
+  let withdrawal_header = single_withdrawal_header()
+  let forced_transaction_header = single_forced_transaction_header()
+  let l2_transaction_header = single_l2_transaction_header()
+  let deposit_header = single_deposit_header()
   and {
     state_queue_validator.merge_settlement_binding_matches_header(
       header,
@@ -208,14 +281,54 @@ test merge_settlement_production_guard_binds_presence_and_identity() {
       Some(substituted_header_key),
     ),
     state_queue_validator.merge_settlement_binding_matches_header(
-      empty_material_header,
+      empty_header,
       canonical_header_key,
       None,
     ),
     !state_queue_validator.merge_settlement_binding_matches_header(
-      empty_material_header,
+      empty_header,
       canonical_header_key,
       Some(canonical_header_key),
+    ),
+    state_queue_validator.merge_settlement_binding_matches_header(
+      withdrawal_header,
+      canonical_header_key,
+      Some(canonical_header_key),
+    ),
+    !state_queue_validator.merge_settlement_binding_matches_header(
+      withdrawal_header,
+      canonical_header_key,
+      None,
+    ),
+    state_queue_validator.merge_settlement_binding_matches_header(
+      forced_transaction_header,
+      canonical_header_key,
+      Some(canonical_header_key),
+    ),
+    !state_queue_validator.merge_settlement_binding_matches_header(
+      forced_transaction_header,
+      canonical_header_key,
+      None,
+    ),
+    state_queue_validator.merge_settlement_binding_matches_header(
+      l2_transaction_header,
+      canonical_header_key,
+      Some(canonical_header_key),
+    ),
+    !state_queue_validator.merge_settlement_binding_matches_header(
+      l2_transaction_header,
+      canonical_header_key,
+      None,
+    ),
+    state_queue_validator.merge_settlement_binding_matches_header(
+      deposit_header,
+      canonical_header_key,
+      Some(canonical_header_key),
+    ),
+    !state_queue_validator.merge_settlement_binding_matches_header(
+      deposit_header,
+      canonical_header_key,
+      None,
     ),
   }
 }
@@ -252,7 +365,10 @@ test merge_settlement_production_guard_rejects_the_wrong_redeemer_route() fail {
   }
   let spawn_redeemer_data: Data = spawn_redeemer
   state_queue_validator.merge_settlement_id_at_route(
-    [Pair(Mint(settlement_policy), spawn_redeemer_data)],
+    [
+      Pair(Mint(settlement_policy), spawn_redeemer_data),
+      Pair(Mint(other_mint_policy), spawn_redeemer_data),
+    ],
     settlement_policy,
     Some(1),
   ) == Some(canonical_header_key)

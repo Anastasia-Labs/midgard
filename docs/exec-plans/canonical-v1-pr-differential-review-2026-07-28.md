@@ -400,6 +400,94 @@ and rejected operator-private surfaces. W23's completed rule-bundle state is
 consistent across the map, and the final tree digest is regenerated only
 after staging.
 
+## Fresh PR-head review and remediation cycle
+
+The published checkpoint at
+`da65efebf556ed9998604fd5b03c458c11111b4f` was reviewed again against
+`8bae9403a13124f647f215999848ff5c82784e37`. Four non-overlapping lanes
+covered W13 recovery authority, W14-W17 downstream projections, evidence/CI
+and Aiken/SDK equivalence, and cross-cutting public admission/resource
+boundaries. The parent re-read every finding, reviewed the remediations,
+integrated shared surfaces, and owns the final evidence binding.
+
+The review found four high-severity and four medium-severity issues. Every
+finding below is fixed in the reviewed result tree:
+
+- **High — sparse projection recovery required a domain event at the W13
+  common ancestor.** W14-W17 now cut history at the latest domain transition
+  whose block number is at or before W13's authenticated common ancestor.
+  Every later projection entry must be covered by W13's exact removed sets.
+  A projection with no owned change can still append its recovery audit.
+  W15 derives its target internally rather than accepting a caller-selected
+  post-finality entry.
+- **High — W16/W17 advanced directly to the replacement tip and could skip a
+  relevant non-tip transaction.** Their recovery cursor remains at the common
+  ancestor. Replacement blocks replay in canonical order before an eventual
+  tip/successor advance. Three-block replacement-path tests place relevant
+  settlement and proof activity in a non-tip block, restart, replay, and then
+  accept the next successor.
+- **High — W13 exhausted its 128-entry journal and rejected transition 129.**
+  W13 now rotates a bounded epoch checkpoint at the limit. The checkpoint
+  binds the root bootstrap, prior terminal state and lineage, store, W12
+  finality state, incident, and any recovered-incident lifecycle. Rotation
+  and recovery return the active bootstrap and checkpoint digest for atomic
+  persistence.
+- **High — public submission durably retained unclaimed CEK material.** HTTP
+  admission and Phase A are strict when no reference inputs exist. When
+  reference-script outputs are not yet resolvable, attached programs must be
+  complete and only residual exactness is deferred. Phase B unions attached,
+  newly created, and resolved historical reference-script envelopes and
+  verifies exact material coverage. The DA committee is strict. The CEK store
+  persists only the verified reachable union and strict-rechecks retrieval.
+  Rejected admissions replace the retained sidecar with canonical empty bytes
+  while preserving its original digest for duplicate identity. A PostgreSQL
+  transaction advisory lock serializes an aggregate queued/validating sidecar
+  byte quota across direct and microbatch writers; the default is one full
+  64 MiB V1 DA envelope, invalid limits fail configuration, and duplicates do
+  not consume new capacity.
+- **Medium — a pull-request branch filter could bypass Midgard Node CI.** The
+  verifier rejects `branches` and `branches-ignore` filters, including quoted
+  and spaced YAML keys, under `pull_request`. Both push and pull-request path
+  scopes include every verifier surface.
+- **Medium — required class capabilities could become private, protected,
+  static, or optional.** AST verification now accepts only a concrete public
+  instance method with a body. Mutation coverage exercises every rejected
+  shape.
+- **Medium — focused test counts were duplicated literals rather than runner
+  evidence.** The map now declares expected collection counts. A dedicated
+  verifier runs all 13 watcher files serially with Vitest JSON, requires
+  nonzero exact collection and all-pass status per file, and matches the
+  declared total. Midgard Node CI and Evidence Integrity CI both execute it;
+  Evidence Integrity also executes the mutation suite.
+- **Medium — the resolver applied-hash fixture used dummy parameters without
+  crossing production construction.** The SDK check now invokes
+  `buildFaultProofContracts` over the freshly generated, compiler-pinned
+  testnet blueprint, compares the exact
+  75 production-builder semantic identities to the Aiken fixture groups, and
+  independently reapplies the Phase-A and ScriptSources prepare validators.
+  The evidence is accurately labeled a deterministic production-builder
+  fixture, not a live-deployment identity.
+
+During the W13 fix review, a residual authentication flaw was found before
+integration: an unkeyed prior-checkpoint digest was not an authority when the
+caller controlled both the compacted state and replacement bootstrap. Epochs
+above zero now require the separately persisted trusted checkpoint-state
+digest. A hostile test self-hashes a forged epoch-one bootstrap and supplies
+it as both state inputs; parsing returns `null` and evaluation rejects it.
+Genesis remains the explicit installation trust anchor.
+
+These fixes preserve the authoritative L1-source discriminator. `local_node`
+uses one watcher-operated chain-sync authority plus aligned same-node query
+surfaces without provider quorum. `external_providers` requires at least two
+independent authorities. W14 consumes the canonical W10-W13 observation and
+rollback pipeline and does not reimplement Cardano validator semantics.
+However, this library-only checkpoint does not yet own a Cardano/provider wire
+decoder: its live capability authenticates the configured socket/endpoint,
+while the normalization call still receives in-process observation values.
+Consequently this checkpoint does not claim that W10/W14 inputs were actually
+read from that connection. Operational `start` and `replay` remain disabled
+until a watcher-owned adapter closes that provenance boundary.
+
 ## Final-tree evidence
 
 - Aiken `v1.1.22+39d6b04` build and blueprint generation: PASS.
@@ -409,10 +497,11 @@ after staging.
 - Canonical native V1 cross-language selectors: 7/7 PASS. The newly covered
   maximum-profile terminal proof chunk selector passes 1/1.
 - Watcher build, typecheck, lint, and format check: PASS.
-- Watcher suite: 199/199 PASS.
+- Watcher suite: all 13 files and 267/267 tests PASS in one serial,
+  machine-counted run.
 - Canonical watcher dependency-map verifier: 8/8 dependency classes PASS.
 - Core package: 36 files and 273/273 tests PASS; production build PASS.
-- Validation package: 37 files and 174/174 tests PASS; build/typecheck PASS.
+- Validation package: 37 files and 175/175 tests PASS; build/typecheck PASS.
 - Lucid SDK: 148/148 tests PASS; typecheck PASS under Node `22.22.2`.
 - Node material-chain focused suite: 3/3 PASS; Phase-4 isolation/verifier:
   27/27 PASS; native transaction integration: 79/79 PASS; SDK ABI fixtures:
@@ -430,6 +519,22 @@ after staging.
   PostgreSQL instance.
 - DA source-mode typecheck, production build, and no-HTTP transport guard:
   PASS.
+- Fresh CC-01 focused evidence: Phase A/B 50/50, retained DA corpus 20/20,
+  Node writer/pipeline 15/15, database HTTP/material/quota 4/4 with 93
+  unrelated tests skipped by exact selection, terminal scrub/duplicate 1/1,
+  and quota configuration 5/5 PASS. The concurrency case admits exactly four
+  empty-sidecar submissions at a four-sidecar cap, rejects 28/32 with the
+  byte-quota response, proves the SQL byte/count cap, and still accepts an
+  exact duplicate while full.
+- Fresh W13 evidence: 25/25 PASS, including automatic 128-to-129 rotation,
+  serialized restart, incident recovery, external checkpoint anchoring, and
+  forged compacted-bootstrap rejection.
+- Fresh W14-W17 evidence: 93/93 PASS (20 W14, 22 W15, 28 W16, 23 W17);
+  watcher build, typecheck, ESLint, and Prettier PASS.
+- SDK production-builder/Aiken applied-hash equivalence: 1/1 PASS; SDK
+  typecheck, scoped ESLint, and scoped Prettier PASS. All eight affected Aiken
+  guards independently collected one test and passed one test; Aiken formatter
+  check PASS.
 - Fault-proof typecheck, ESLint, and scoped Prettier: PASS.
 - Documentation facts (10 groups), links (190 Markdown/MDX files), and voice
   (83 pages): PASS under pinned Node 22.
@@ -445,3 +550,107 @@ The checkpoint commit and publication/PR review result are recorded in
   sandbox; sandbox `listen EPERM` is not treated as product evidence.
 - Formal §4.4 journey, target-testnet acceptance, and all still-open §12
   criteria remain explicitly unpromoted.
+
+## Superseding second complete-PR review cycle
+
+The next additive review started from published PR head
+`ac0e8aa48af5a5ce27860d14ae5600cc1f6fc243`. Four bounded review lanes covered
+exact L1 transport/configuration binding, W03/W13 persistence authority, CEK
+verification resource bounds, and Node admission/storage lifecycle. The
+parent reviewed each result, integrated the non-overlapping remediations, and
+replayed the affected final-tree gates.
+
+### Fixed: configured L1 identities did not bind the exact live endpoint
+
+W01, W10, W11, and W12 now carry the exact configured URL or node socket path.
+External transports accept an HTTPS URL rather than independently supplied
+host/port/SNI fields. Local query transports use the exact configured
+HTTP(S), WebSocket, or PostgreSQL endpoint. Endpoint aliases, path changes,
+wrong sockets, wrong peer identities, source-mode substitutions, and
+policy/transport disagreement fail closed. The test-only loopback transports
+are explicit `development` configurations; acceptance configuration continues
+to require public HTTPS external-provider endpoints. Local-node execution
+still counts the full node as exactly one chain authority and never counts its
+query surfaces as independent providers.
+
+W01 also requires a separately sourced rollback-authority key. Inline
+secrets, reuse of the prover key's environment variable, and reuse of its file
+path are rejected.
+
+### Fixed: authenticated rollback snapshots lacked independent freshness
+
+A valid older W03/W13 HMAC snapshot could previously be restored after restart
+because the snapshot backend testified only to integrity, not recency. The
+durable authority now requires an independently protected monotonic trusted
+head binding deployment, policy, key identity, revision, snapshot digest, and
+authority digest. The head has its own domain-separated HMAC. Loading an old,
+tampered, missing, divergent, or mismatched head/snapshot pair fails closed.
+
+Snapshot CAS precedes external-head publication, so the public reconciliation
+API covers the crash window without exposing an authority or protocol
+decision. It proposes only authenticated epoch zero or exactly one direct
+successor of the externally protected head. The operator must perform an
+expected-prior external CAS, read the head back, and then load; aligned reruns
+are idempotent. Skipped revisions, restored older snapshots, divergent
+successors, and head-MAC mutation are refused.
+
+Concurrent W13 CAS losers now receive only `{persistence: "conflict"}`.
+They no longer receive a stale authority, recovery result, or actionable
+decision that a caller could accidentally apply.
+
+### Fixed: canonical CEK material amplified heap and repeated bundle work
+
+The verifier previously concatenated complete child buffers at every blob
+branch, retained every subtree, enforced the 9,215-byte constant limit only
+after reconstruction, recursively decoded type tags, and repeated
+materialization across distinct envelopes. A canonical sub-64 MiB payload
+could therefore cause superlinear copying/retention or a JavaScript stack
+failure before rejection.
+
+Blob validation now stores only length/leaf metadata. It materializes bounded
+final roots once, rejects an authenticated constant payload declaration above
+9,215 bytes before semantic traversal, enforces the exact 64-byte L1 type-CBOR
+bound with an iterative parser, shares root/constant caches across the bundle,
+and imposes aggregate unique-envelope byte-work/result bounds before material
+iteration. DA exact-coverage verification uses a result-free form and does not
+retain unused per-envelope constant buffers. Hostile tests cover zero
+materialization on oversized input, exact/adjacent type bounds, shared-root
+cache reuse, aggregate rejection before a trap iterator, and the same cases
+through strict DA decoding.
+
+### Fixed: Node admission resources and CEK ownership were not globally bounded
+
+The submit route now acquires process-global count and byte-weighted permits
+before reading the body, reserves a full V1 envelope for an unknown length,
+enforces the 64 MiB read cap, and rejects conflicting or oversized
+`Content-Length`. Validation performs one strict bundle traversal.
+
+Pre-accept HTTP requests no longer populate a global CEK cache. Accepted
+transactions atomically promote only their exact verified attached and
+Phase-B-resolved reference envelopes, scrub the admission sidecar, and record
+ownership. Finalization and commit-stage rejection release ownership and
+collect only unpinned, unowned memberships and orphan entries inside their
+existing SQL transactions. L1 material remains durably pinned; shared material
+survives until its final owner releases. Rollback tests prove that a later SQL
+failure restores mempool, ownership, and material together.
+
+One parent-review residual was fixed before publication: the configurable
+store minimum originally allowed 64 MiB even though the enforced SQL quota
+also counts entry roots/framing, membership rows, and admission-owner rows.
+The minimum now conservatively adds 199 bytes for every maximum reachable
+node to the maximum authenticated preimage total. Thus one protocol-valid
+maximum envelope cannot be rejected solely because quota bookkeeping was
+omitted from the configuration floor.
+
+### Honest remaining provenance boundary
+
+No fake wire receipt was introduced. Exact endpoint possession proves which
+transport is live, but it does not prove that arbitrary JavaScript observation
+values supplied to the normalizer were decoded from that socket. A
+watcher-owned Cardano node/provider protocol adapter remains required before
+W10/W14 can receive Goal acceptance credit. `start` and `replay` stay
+fail-closed, and the dependency map, README, architecture, ledger, and PR
+description must describe this limitation rather than claiming actual
+node-derived byte provenance. W14 continues to decode and index canonical
+transaction/output/datum bytes and deliberately does not duplicate Cardano
+validator semantics.

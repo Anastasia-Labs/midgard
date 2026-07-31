@@ -1,4 +1,12 @@
 import { createHash } from "node:crypto";
+import { readFile, stat } from "node:fs/promises";
+import { createConnection as createNetConnection, type Socket } from "node:net";
+import { isAbsolute, normalize as normalizePath } from "node:path";
+import {
+  connect as connectTls,
+  type ConnectionOptions,
+  type TLSSocket,
+} from "node:tls";
 
 import { CML } from "@lucid-evolution/lucid";
 
@@ -12,6 +20,8 @@ export const WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION =
   "midgard-watcher-normalized-l1-block-v1" as const;
 export const WATCHER_L1_NORMALIZATION_SESSION_V1_SCHEMA_VERSION =
   "midgard-watcher-l1-normalization-session-v1" as const;
+export const WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION =
+  "midgard-watcher-l1-transport-attestation-context-v1" as const;
 
 export const WATCHER_L1_ADAPTER_V1_BOUNDS = Object.freeze({
   arrayMembers: 4_096,
@@ -53,6 +63,7 @@ export const WATCHER_LOCAL_NODE_SURFACES_V1 = [
 const AUTHENTICATION_KINDS = [
   "https_tls_identity_v1",
   "cardano_node_genesis_v1",
+  "local_endpoint_identity_v1",
 ] as const;
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
@@ -97,6 +108,70 @@ export type WatcherAuthenticatedL1ProviderV1 = Readonly<
     source: WatcherL1SourceIdentityV1;
   }
 >;
+
+/**
+ * Opaque authority created only after the watcher transport boundary has
+ * verified its configured node socket or an external provider TLS peer.
+ *
+ * The public fields are diagnostic only. Authenticity is established by
+ * module-private WeakMap membership, so a parsed or deserialized object cannot
+ * be used to normalize protocol evidence.
+ */
+export type WatcherL1TransportAttestationContextV1 = Readonly<{
+  schemaVersion: typeof WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION;
+  attestationDigest: string;
+}>;
+
+export type WatcherLocalNodeAuthorityTransportV1 = Readonly<{
+  network: WatcherL1NetworkV1;
+  authorityNodeId: string;
+  providerId: string;
+  nodeSocketPath: string;
+  genesisFilePath: string;
+  expectedGenesisIdentitySha256: string;
+  connectTimeoutMs: number;
+}>;
+
+export type WatcherLocalNodeQueryTransportV1 =
+  | Readonly<{
+      transportKind: "tcp";
+      providerId: string;
+      surface: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+      /** Exact W01 HTTP, WS, or PostgreSQL endpoint. */
+      endpoint: string;
+      connectTimeoutMs: number;
+    }>
+  | Readonly<{
+      transportKind: "https_tls";
+      providerId: string;
+      surface: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+      /** Exact W01 HTTPS or WSS endpoint; host, port and SNI are derived. */
+      endpoint: string;
+      caPem: string;
+      expectedTlsPublicIdentitySha256: string;
+      connectTimeoutMs: number;
+    }>;
+
+export type WatcherExternalProviderTransportV1 = Readonly<{
+  network: WatcherL1NetworkV1;
+  providerId: string;
+  operatorIdentitySha256: string;
+  /** Exact W01 HTTPS endpoint; host, port and SNI are derived from it. */
+  endpoint: string;
+  caPem: string;
+  expectedTlsPublicIdentitySha256: string;
+  connectTimeoutMs: number;
+}>;
+
+export type WatcherL1TransportAttestationDetailsV1 = Readonly<{
+  provider: WatcherNormalizedAuthenticatedL1ProviderV1;
+  authorityBindingSha256: string | null;
+  /**
+   * Exact configured W01 transport location used to establish the live
+   * capability. W11 compares this byte-for-byte with its configured source.
+   */
+  transportEndpoint: string;
+}>;
 
 export type WatcherNormalizedAuthenticatedL1ProviderV1 = Readonly<
   WatcherAuthenticatedL1ProviderBaseV1 & {
@@ -206,7 +281,20 @@ const normalizationSessionStates = new WeakMap<
   WatcherL1NormalizationSessionV1,
   WatcherL1NormalizationSessionStateV1
 >();
-const normalizedBlockProvenance = new WeakSet<object>();
+type WatcherL1TransportAttestationStateV1 = Readonly<{
+  details: WatcherL1TransportAttestationDetailsV1;
+  transports: readonly (Socket | TLSSocket)[];
+  ownedTransports: readonly (Socket | TLSSocket)[];
+}>;
+
+const transportAttestationStates = new WeakMap<
+  WatcherL1TransportAttestationContextV1,
+  WatcherL1TransportAttestationStateV1
+>();
+const normalizedBlockProvenance = new WeakMap<
+  object,
+  WatcherL1TransportAttestationContextV1
+>();
 
 export const makeWatcherL1NormalizationSessionV1 =
   (): WatcherL1NormalizationSessionV1 => {
@@ -237,10 +325,62 @@ export const watcherL1NormalizationSessionStatsV1 = (
 
 export const isWatcherL1AdapterNormalizedBlockV1 = (
   value: unknown,
-): value is WatcherNormalizedL1BlockV1 =>
-  typeof value === "object" &&
-  value !== null &&
-  normalizedBlockProvenance.has(value);
+): value is WatcherNormalizedL1BlockV1 => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const context = normalizedBlockProvenance.get(value);
+  return (
+    context !== undefined &&
+    watcherL1TransportAttestationDetailsV1(context) !== null
+  );
+};
+
+export const watcherL1TransportAttestationDetailsV1 = (
+  context: unknown,
+): WatcherL1TransportAttestationDetailsV1 | null => {
+  if (typeof context !== "object" || context === null) {
+    return null;
+  }
+  const state = transportAttestationStates.get(
+    context as WatcherL1TransportAttestationContextV1,
+  );
+  return state !== undefined &&
+    state.transports.length > 0 &&
+    state.transports.every(
+      (transport) =>
+        !transport.destroyed &&
+        transport.readable &&
+        transport.writable &&
+        transport.readyState === "open",
+    )
+    ? state.details
+    : null;
+};
+
+export const isWatcherL1BlockAttestedByV1 = (
+  block: unknown,
+  context: unknown,
+): boolean =>
+  typeof block === "object" &&
+  block !== null &&
+  typeof context === "object" &&
+  context !== null &&
+  normalizedBlockProvenance.get(block) === context &&
+  watcherL1TransportAttestationDetailsV1(context) !== null;
+
+export const closeWatcherL1TransportAttestationContextV1 = (
+  context: WatcherL1TransportAttestationContextV1,
+): void => {
+  const state = transportAttestationStates.get(context);
+  if (state === undefined) {
+    fail("invalid_field", "$.transportAttestationContext");
+  }
+  for (const transport of (state as WatcherL1TransportAttestationStateV1)
+    .ownedTransports) {
+    transport.destroy();
+  }
+};
 
 export type WatcherL1AdapterErrorCode =
   | "content_digest_mismatch"
@@ -1305,6 +1445,593 @@ const parseAuthenticatedProvider = (
   });
 };
 
+const makeTransportAttestationContext = (
+  details: WatcherL1TransportAttestationDetailsV1,
+  transports: readonly (Socket | TLSSocket)[],
+  ownedTransports: readonly (Socket | TLSSocket)[] = transports,
+): WatcherL1TransportAttestationContextV1 => {
+  const attestationDigest = digestCanonicalJson({
+    provider: providerJson(details.provider),
+    authorityBindingSha256: details.authorityBindingSha256,
+    transportEndpoint: details.transportEndpoint,
+  });
+  const context = Object.freeze({
+    schemaVersion: WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION,
+    attestationDigest,
+  });
+  transportAttestationStates.set(context, {
+    details: Object.freeze(details),
+    transports: Object.freeze([...transports]),
+    ownedTransports: Object.freeze([...ownedTransports]),
+  });
+  return context;
+};
+
+const exactConnectionTimeout = (value: unknown, path: string): number => {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > 60_000
+  ) {
+    fail("invalid_field", path);
+  }
+  return value as number;
+};
+
+const exactAbsolutePath = (value: unknown, path: string): string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 4_096 ||
+    value.includes("\0") ||
+    !isAbsolute(value)
+  ) {
+    fail("invalid_field", path);
+  }
+  return normalizePath(value as string);
+};
+
+type ExactTlsEndpoint = Readonly<{
+  endpoint: string;
+  host: string;
+  port: number;
+  servername: string;
+  caPem: string;
+  expectedTlsPublicIdentitySha256: string;
+  connectTimeoutMs: number;
+}>;
+
+const exactTlsEndpoint = (
+  record: JsonRecord,
+  path: string,
+  allowedProtocols: readonly string[] = ["https:"],
+): ExactTlsEndpoint => {
+  const endpoint = exactString(
+    record.endpoint,
+    `${path}.endpoint`,
+    /^(?:https|wss):\/\/.{1,2039}$/u,
+  );
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  if (parsed === null) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  const trustedEndpoint = parsed as URL;
+  if (
+    !allowedProtocols.includes(trustedEndpoint.protocol) ||
+    trustedEndpoint.hostname.length === 0 ||
+    trustedEndpoint.username.length > 0 ||
+    trustedEndpoint.password.length > 0 ||
+    trustedEndpoint.search.length > 0 ||
+    trustedEndpoint.hash.length > 0
+  ) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  const port =
+    trustedEndpoint.port.length === 0 ? 443 : Number(trustedEndpoint.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  if (
+    typeof record.caPem !== "string" ||
+    record.caPem.length === 0 ||
+    record.caPem.length > 1_048_576 ||
+    !record.caPem.includes("-----BEGIN CERTIFICATE-----")
+  ) {
+    fail("invalid_field", `${path}.caPem`);
+  }
+  return Object.freeze({
+    endpoint,
+    host: trustedEndpoint.hostname,
+    port,
+    servername: trustedEndpoint.hostname,
+    caPem: record.caPem as string,
+    expectedTlsPublicIdentitySha256: exactString(
+      record.expectedTlsPublicIdentitySha256,
+      `${path}.expectedTlsPublicIdentitySha256`,
+      HEX_32,
+    ),
+    connectTimeoutMs: exactConnectionTimeout(
+      record.connectTimeoutMs,
+      `${path}.connectTimeoutMs`,
+    ),
+  });
+};
+
+type ExactTcpEndpoint = Readonly<{
+  endpoint: string;
+  host: string;
+  port: number;
+  connectTimeoutMs: number;
+}>;
+
+const exactTcpEndpoint = (
+  record: JsonRecord,
+  path: string,
+  allowedProtocols: readonly string[],
+): ExactTcpEndpoint => {
+  const endpoint = exactString(
+    record.endpoint,
+    `${path}.endpoint`,
+    /^(?:http|ws|postgresql):\/\/.{1,2039}$/u,
+  );
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  if (parsed === null) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  const trustedEndpoint = parsed as URL;
+  if (
+    !allowedProtocols.includes(trustedEndpoint.protocol) ||
+    trustedEndpoint.hostname.length === 0 ||
+    trustedEndpoint.username.length > 0 ||
+    trustedEndpoint.password.length > 0 ||
+    trustedEndpoint.search.length > 0 ||
+    trustedEndpoint.hash.length > 0
+  ) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  const defaultPort = trustedEndpoint.protocol === "postgresql:" ? 5_432 : 80;
+  const port =
+    trustedEndpoint.port.length === 0
+      ? defaultPort
+      : Number(trustedEndpoint.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    fail("invalid_field", `${path}.endpoint`);
+  }
+  return Object.freeze({
+    endpoint,
+    host: trustedEndpoint.hostname,
+    port,
+    connectTimeoutMs: exactConnectionTimeout(
+      record.connectTimeoutMs,
+      `${path}.connectTimeoutMs`,
+    ),
+  });
+};
+
+const awaitConnectedSocket = async <T extends Socket | TLSSocket>(
+  socket: T,
+  readyEvent: "connect" | "secureConnect",
+  timeoutMs: number,
+): Promise<T> =>
+  await new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.off(readyEvent, onReady);
+      socket.off("error", onError);
+      if (error === undefined) resolve(socket);
+      else {
+        socket.destroy();
+        reject(error);
+      }
+    };
+    const onReady = (): void => finish();
+    const onError = (): void =>
+      finish(new Error("transport connection failed"));
+    const timer = setTimeout(
+      () => finish(new Error("transport connection timed out")),
+      timeoutMs,
+    );
+    timer.unref();
+    socket.once(readyEvent, onReady);
+    socket.once("error", onError);
+  });
+
+const establishUnixSocket = async (
+  socketPath: string,
+  timeoutMs: number,
+  diagnosticPath: string,
+): Promise<Readonly<{ socket: Socket; identitySha256: string }>> => {
+  let metadata: Awaited<ReturnType<typeof stat>> | null = null;
+  try {
+    metadata = await stat(socketPath);
+  } catch {
+    fail("invalid_field", diagnosticPath);
+  }
+  if (metadata === null || !metadata.isSocket()) {
+    fail("identity_mismatch", diagnosticPath);
+  }
+  let socket: Socket | null = null;
+  try {
+    socket = await awaitConnectedSocket(
+      createNetConnection({ path: socketPath }),
+      "connect",
+      timeoutMs,
+    );
+  } catch {
+    fail("identity_mismatch", diagnosticPath);
+  }
+  if (socket === null) {
+    fail("identity_mismatch", diagnosticPath);
+  }
+  const trustedSocket = socket as Socket;
+  trustedSocket.on("error", () => trustedSocket.destroy());
+  const socketMetadata = metadata as Awaited<ReturnType<typeof stat>>;
+  return Object.freeze({
+    socket: trustedSocket,
+    identitySha256: digestCanonicalJson({
+      socketPath,
+      device: socketMetadata.dev.toString(),
+      inode: socketMetadata.ino.toString(),
+    }),
+  });
+};
+
+const establishTcpSocket = async (
+  endpoint: ExactTcpEndpoint,
+  path: string,
+): Promise<Readonly<{ socket: Socket; identitySha256: string }>> => {
+  let socket: Socket | null = null;
+  try {
+    socket = await awaitConnectedSocket(
+      createNetConnection({ host: endpoint.host, port: endpoint.port }),
+      "connect",
+      endpoint.connectTimeoutMs,
+    );
+  } catch {
+    fail("identity_mismatch", `${path}.endpoint`);
+  }
+  if (socket === null) {
+    fail("identity_mismatch", `${path}.endpoint`);
+  }
+  const trustedSocket = socket as Socket;
+  trustedSocket.on("error", () => trustedSocket.destroy());
+  return Object.freeze({
+    socket: trustedSocket,
+    identitySha256: digestCanonicalJson({
+      endpoint: endpoint.endpoint,
+      remoteAddress: trustedSocket.remoteAddress ?? null,
+      remotePort: trustedSocket.remotePort?.toString() ?? null,
+    }),
+  });
+};
+
+const establishTlsSocket = async (
+  endpoint: ExactTlsEndpoint,
+  path: string,
+): Promise<Readonly<{ socket: TLSSocket; identitySha256: string }>> => {
+  const options: ConnectionOptions = {
+    host: endpoint.host,
+    port: endpoint.port,
+    servername: endpoint.servername,
+    ca: endpoint.caPem,
+    rejectUnauthorized: true,
+  };
+  let socket: TLSSocket | null = null;
+  try {
+    socket = await awaitConnectedSocket(
+      connectTls(options),
+      "secureConnect",
+      endpoint.connectTimeoutMs,
+    );
+  } catch {
+    fail("identity_mismatch", `${path}.tlsPeer`);
+  }
+  if (socket === null) {
+    fail("identity_mismatch", `${path}.tlsPeer`);
+  }
+  const trustedSocket = socket as TLSSocket;
+  trustedSocket.on("error", () => trustedSocket.destroy());
+  const peer = trustedSocket.getPeerCertificate();
+  if (
+    !trustedSocket.authorized ||
+    peer.raw === undefined ||
+    peer.raw.length === 0
+  ) {
+    trustedSocket.destroy();
+    fail("identity_mismatch", `${path}.tlsPeer`);
+  }
+  const identitySha256 = createHash("sha256").update(peer.raw).digest("hex");
+  if (identitySha256 !== endpoint.expectedTlsPublicIdentitySha256) {
+    trustedSocket.destroy();
+    fail("identity_mismatch", `${path}.expectedTlsPublicIdentitySha256`);
+  }
+  return Object.freeze({ socket: trustedSocket, identitySha256 });
+};
+
+export const establishWatcherLocalNodeAuthorityTransportV1 = async (
+  input: WatcherLocalNodeAuthorityTransportV1,
+): Promise<WatcherL1TransportAttestationContextV1> => {
+  const record = exactRecord(input, "$.localNodeTransport", [
+    "network",
+    "authorityNodeId",
+    "providerId",
+    "nodeSocketPath",
+    "genesisFilePath",
+    "expectedGenesisIdentitySha256",
+    "connectTimeoutMs",
+  ]);
+  const network = exactLiteral(
+    record.network,
+    "$.localNodeTransport.network",
+    NETWORKS,
+  );
+  const authorityNodeId = exactString(
+    record.authorityNodeId,
+    "$.localNodeTransport.authorityNodeId",
+    PROVIDER_ID,
+  );
+  const providerId = exactString(
+    record.providerId,
+    "$.localNodeTransport.providerId",
+    PROVIDER_ID,
+  );
+  const expectedGenesisIdentitySha256 = exactString(
+    record.expectedGenesisIdentitySha256,
+    "$.localNodeTransport.expectedGenesisIdentitySha256",
+    HEX_32,
+  );
+  const nodeSocketPath = exactAbsolutePath(
+    record.nodeSocketPath,
+    "$.localNodeTransport.nodeSocketPath",
+  );
+  const genesisFilePath = exactAbsolutePath(
+    record.genesisFilePath,
+    "$.localNodeTransport.genesisFilePath",
+  );
+  let genesisBytes: Buffer | null = null;
+  try {
+    genesisBytes = await readFile(genesisFilePath);
+  } catch {
+    fail("invalid_field", "$.localNodeTransport.genesisFilePath");
+  }
+  if (genesisBytes === null) {
+    fail("invalid_field", "$.localNodeTransport.genesisFilePath");
+  }
+  const genesisIdentitySha256 = createHash("sha256")
+    .update(genesisBytes as Buffer)
+    .digest("hex");
+  if (genesisIdentitySha256 !== expectedGenesisIdentitySha256) {
+    fail(
+      "identity_mismatch",
+      "$.localNodeTransport.expectedGenesisIdentitySha256",
+    );
+  }
+  const established = await establishUnixSocket(
+    nodeSocketPath,
+    exactConnectionTimeout(
+      record.connectTimeoutMs,
+      "$.localNodeTransport.connectTimeoutMs",
+    ),
+    "$.localNodeTransport.nodeSocketPath",
+  );
+  const authorityBindingSha256 = digestCanonicalJson({
+    sourceMode: "local_node",
+    network,
+    authorityNodeId,
+    nodeSocketPath,
+    socketIdentitySha256: established.identitySha256,
+    genesisIdentitySha256,
+  });
+  const provider = parseAuthenticatedProvider({
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    network,
+    providerId,
+    source: {
+      sourceMode: "local_node",
+      authorityNodeId,
+      surface: "chain_sync",
+    },
+    authentication: {
+      kind: "cardano_node_genesis_v1",
+      publicIdentitySha256: genesisIdentitySha256,
+    },
+  });
+  return makeTransportAttestationContext(
+    {
+      provider,
+      authorityBindingSha256,
+      transportEndpoint: nodeSocketPath,
+    },
+    [established.socket],
+  );
+};
+
+export const establishWatcherLocalNodeQueryTransportV1 = async (
+  authorityContext: WatcherL1TransportAttestationContextV1,
+  input: WatcherLocalNodeQueryTransportV1,
+): Promise<WatcherL1TransportAttestationContextV1> => {
+  const authority = watcherL1TransportAttestationDetailsV1(authorityContext);
+  const authorityState = transportAttestationStates.get(authorityContext);
+  if (
+    authority === null ||
+    authorityState === undefined ||
+    authority.authorityBindingSha256 === null ||
+    authority.provider.source.sourceMode !== "local_node" ||
+    authority.provider.source.surface !== "chain_sync"
+  ) {
+    fail("invalid_field", "$.localNodeAuthorityContext");
+  }
+  const trustedAuthority =
+    authority as WatcherL1TransportAttestationDetailsV1 & {
+      readonly authorityBindingSha256: string;
+      readonly provider: WatcherNormalizedAuthenticatedL1ProviderV1 & {
+        readonly source: Extract<
+          WatcherL1SourceIdentityV1,
+          { readonly sourceMode: "local_node" }
+        >;
+      };
+    };
+  const trustedAuthorityState =
+    authorityState as WatcherL1TransportAttestationStateV1;
+  const base = plainRecord(input, "$.localNodeQueryTransport");
+  const transportKind = exactLiteral(
+    base.transportKind,
+    "$.localNodeQueryTransport.transportKind",
+    ["tcp", "https_tls"] as const,
+  );
+  const record = exactRecord(
+    base,
+    "$.localNodeQueryTransport",
+    transportKind === "tcp"
+      ? [
+          "transportKind",
+          "providerId",
+          "surface",
+          "endpoint",
+          "connectTimeoutMs",
+        ]
+      : [
+          "transportKind",
+          "providerId",
+          "surface",
+          "endpoint",
+          "caPem",
+          "expectedTlsPublicIdentitySha256",
+          "connectTimeoutMs",
+        ],
+  );
+  const providerId = exactString(
+    record.providerId,
+    "$.localNodeQueryTransport.providerId",
+    PROVIDER_ID,
+  );
+  const surface = exactLiteral(
+    record.surface,
+    "$.localNodeQueryTransport.surface",
+    WATCHER_LOCAL_NODE_SURFACES_V1.filter(
+      (candidate) => candidate !== "chain_sync",
+    ),
+  ) as Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
+  const plainProtocols =
+    surface === "db_sync"
+      ? ["postgresql:"]
+      : surface === "kupo"
+        ? ["http:"]
+        : ["http:", "ws:"];
+  const tlsProtocols =
+    surface === "db_sync"
+      ? []
+      : surface === "kupo"
+        ? ["https:"]
+        : ["https:", "wss:"];
+  const tcpEndpoint =
+    transportKind === "tcp"
+      ? exactTcpEndpoint(record, "$.localNodeQueryTransport", plainProtocols)
+      : null;
+  const tlsEndpoint =
+    transportKind === "https_tls"
+      ? exactTlsEndpoint(record, "$.localNodeQueryTransport", tlsProtocols)
+      : null;
+  const transportEndpoint =
+    transportKind === "tcp" ? tcpEndpoint!.endpoint : tlsEndpoint!.endpoint;
+  const established =
+    transportKind === "tcp"
+      ? await establishTcpSocket(tcpEndpoint!, "$.localNodeQueryTransport")
+      : await establishTlsSocket(tlsEndpoint!, "$.localNodeQueryTransport");
+  const provider = parseAuthenticatedProvider({
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    network: trustedAuthority.provider.network,
+    providerId,
+    source: {
+      sourceMode: "local_node",
+      authorityNodeId: trustedAuthority.provider.source.authorityNodeId,
+      surface,
+    },
+    authentication: {
+      kind:
+        transportKind === "tcp"
+          ? "local_endpoint_identity_v1"
+          : "https_tls_identity_v1",
+      publicIdentitySha256: established.identitySha256,
+    },
+  });
+  return makeTransportAttestationContext(
+    {
+      provider,
+      authorityBindingSha256: trustedAuthority.authorityBindingSha256,
+      transportEndpoint,
+    },
+    [...trustedAuthorityState.transports, established.socket],
+    [established.socket],
+  );
+};
+
+export const establishWatcherExternalProviderTransportV1 = async (
+  input: WatcherExternalProviderTransportV1,
+): Promise<WatcherL1TransportAttestationContextV1> => {
+  const record = exactRecord(input, "$.externalProviderTransport", [
+    "network",
+    "providerId",
+    "operatorIdentitySha256",
+    "endpoint",
+    "caPem",
+    "expectedTlsPublicIdentitySha256",
+    "connectTimeoutMs",
+  ]);
+  const endpoint = exactTlsEndpoint(record, "$.externalProviderTransport");
+  const established = await establishTlsSocket(
+    endpoint,
+    "$.externalProviderTransport",
+  );
+  const provider = parseAuthenticatedProvider({
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    network: exactLiteral(
+      record.network,
+      "$.externalProviderTransport.network",
+      NETWORKS,
+    ),
+    providerId: exactString(
+      record.providerId,
+      "$.externalProviderTransport.providerId",
+      PROVIDER_ID,
+    ),
+    source: {
+      sourceMode: "external_providers",
+      operatorIdentitySha256: exactString(
+        record.operatorIdentitySha256,
+        "$.externalProviderTransport.operatorIdentitySha256",
+        HEX_32,
+      ),
+    },
+    authentication: {
+      kind: "https_tls_identity_v1",
+      publicIdentitySha256: established.identitySha256,
+    },
+  });
+  return makeTransportAttestationContext(
+    {
+      provider,
+      authorityBindingSha256: null,
+      transportEndpoint: endpoint.endpoint,
+    },
+    [established.socket],
+  );
+};
+
 const transactionJson = (
   transaction: WatcherL1TransactionV1,
 ): CanonicalJson => ({
@@ -1367,16 +2094,34 @@ export const encodeWatcherNormalizedL1BlockV1 = (
   );
 
 export const normalizeWatcherL1BlockV1 = (
-  authenticatedProviderInput: unknown,
+  transportAttestationContext: WatcherL1TransportAttestationContextV1,
   observationInput: unknown,
   normalizationSession?: WatcherL1NormalizationSessionV1,
 ): WatcherNormalizedL1BlockV1 => {
+  /*
+   * Trust boundary: the opaque context proves the configured live transport
+   * location and peer identity; it does not claim that this arbitrary JS value
+   * was itself read from the socket. The watcher-owned transport adapter must
+   * call this function only with bytes it decoded from that connection. This is
+   * an in-process capability boundary, not a remotely callable receipt API:
+   * untrusted serialized callers cannot construct the WeakMap-backed context,
+   * and detached/closed contexts fail below. A future wire adapter may issue
+   * per-frame receipts once its framing protocol is fixed, but manufacturing a
+   * receipt here would falsely attest provenance that this layer cannot see.
+   */
   const session =
     normalizationSession === undefined
       ? undefined
       : (normalizationSessionStates.get(normalizationSession) ??
         fail("invalid_field", "$.normalizationSession"));
-  const provider = parseAuthenticatedProvider(authenticatedProviderInput);
+  const attestation = watcherL1TransportAttestationDetailsV1(
+    transportAttestationContext,
+  );
+  if (attestation === null) {
+    fail("invalid_field", "$.transportAttestationContext");
+  }
+  const provider = (attestation as WatcherL1TransportAttestationDetailsV1)
+    .provider;
   const observation = exactRecord(observationInput, "$", [
     "schemaVersion",
     "network",
@@ -1502,6 +2247,9 @@ export const normalizeWatcherL1BlockV1 = (
     blockContentDigest,
     observationDigest,
   });
-  normalizedBlockProvenance.add(normalized);
+  normalizedBlockProvenance.set(
+    normalized,
+    transportAttestationContext as WatcherL1TransportAttestationContextV1,
+  );
   return normalized;
 };

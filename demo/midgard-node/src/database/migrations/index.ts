@@ -36,6 +36,7 @@ export const MIGRATION_MANIFEST_HASH = sha256Hex(
 export const APPLICATION_TABLE_NAMES = [
   "address_history",
   "blocks",
+  "cek_program_material_admission_owners",
   "cek_program_material_entries",
   "cek_program_material_memberships",
   "confirmed_ledger",

@@ -1,9 +1,18 @@
-use aiken/crypto.{ScriptHash, blake2b_224}
+use aiken/crypto.{ScriptHash}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
+use midgard/fraud_proofs/native_tx/compact.{
+  encode_native_tx_body_compact, native_tx_id_for_version,
+}
+use midgard/fraud_proofs/native_tx/transaction as native_transaction
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
+  MidgardTxInput, TxIsValid, native_tx_version_v1,
+}
 use midgard/validation_machine_v1
+use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 use midgard/validation_resolver_v1
 use midgard/validation_semantic_v1
@@ -37,118 +46,56 @@ const own_out_ref =
     output_index: 0,
   }
 
-fn semantic_script_hash_fixture(title: ByteArray) -> ScriptHash {
-  blake2b_224(title)
-}
+const validation_context_cbor =
+  #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
 
+// Bound by the SDK cross-language test to buildFaultProofContracts over a
+// freshly generated, compiler-pinned testnet plutus.json and deterministic
+// fixture policy IDs. The same test independently applies the Phase-A and
+// ScriptSources prepare validators to these exact semantic groups. These are
+// parameterized production-builder fixture identities, not a claim about a
+// live deployment.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
-    semantic_script_hash_fixture(
-      #"70686173655f615f7363726970745f707265636f6e646974696f6e735f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"70686173655f615f7363726970745f707265636f6e646974696f6e735f6974656d5f73656d616e7469635f7631",
-    ),
+    #"1d0bc85899aad32247d1b16fc7c871aa525632e5e1d366b58c52f562",
+    #"f62ab6bcc90f1d36dd9d0a74cf26e33fd86e4eacfa379e59ae27466c",
   ]
 }
 
 fn input_sets_resolvers() -> List<ScriptHash> {
-  [
-    semantic_script_hash_fixture(
-      #"696e7075745f736574735f656d7074795f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"696e7075745f736574735f6974656d5f73656d616e7469635f7631",
-    ),
-  ]
+  [prepare_script_hash, award_script_hash]
 }
 
 fn script_source_resolvers() -> List<ScriptHash> {
   [
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f6e6f6e5f6f75747075745f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f6f75747075745f70726f6f665f626567696e5f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f6f75747075745f70726f6f665f737465705f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f6f75747075745f70726f6f665f66696e616c697a655f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f6f75747075745f70726f6f665f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7a65726f5f626567696e5f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7a65726f5f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7a65726f5f686173685f626c6f636b5f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7a65726f5f686173685f616476616e63655f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7a65726f5f686173685f7465726d696e616c5f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6e696e655f6d69736d617463685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6e696e655f6e61746976655f6d617463685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6e696e655f65666665637466756c5f6d617463685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6e696e655f6d697373696e675f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6f6e655f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f6f6e655f72656465656d65725f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f656c6576656e5f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f656c6576656e5f736f757263655f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7477656c76655f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f7477656c76655f72656465656d65725f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f74656e5f6d697373696e675f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f74656e5f6d69736d617463685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f74656e5f6d617463685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f65696768745f66696e6973685f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f65696768745f707572706f73655f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f736576656e5f6f627365727665725f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f736576656e5f726563656976655f73656d616e7469635f7631",
-    ),
-    semantic_script_hash_fixture(
-      #"7363726970745f736f75726365735f73746167655f736576656e5f66696e6973685f73656d616e7469635f7631",
-    ),
+    #"61abff4d19b3e9e3bd9a417db31ab0f14cd3ef201eccbc52ce34e0cf",
+    #"70ecb2539a96a31611dceb2669cb7910b7b3afaa8c109d57af313b07",
+    #"a996ab6c689f6ce114073615d1583e481d8769f597f094f603e40cca",
+    #"15be6c38c2b5959f4233eed6b1474ec5f831a27361bb57d361c2a355",
+    #"f890e913e3085154ffe503397f2e8520ffc872650626df4436ebc2db",
+    #"e38b0ebfa3939edef9f2b011059128582127f639b6b3283b124ea3ef",
+    #"37618d1d07d266924ac5f0631a1791c27d9bd76d3bacad893466f6ca",
+    #"9ad7b6418d9b3cca582f7c12377a3f7f09c6ab5203ea23898288160b",
+    #"8cc9c85b11695228483e63d0a59684a989d8236ca2ec654f8e8ec0c1",
+    #"be5e382cd992ec856b427e1dac37aad24d07765a09aefb7f8509fae7",
+    #"61efe809cedf54f469a9b02fa2cbfee21dca57686825d4a3477aa679",
+    #"806c8367c3169be5ced8e87b3b291ff8c75eecc5488bc3df164ef9a0",
+    #"d502771cb641ff4f137289cd3ad841a7b6d2035423876dc47ecf248d",
+    #"275bb6afa2ffb3f03b266b2e94f0e445949fef640a192964c5957c7f",
+    #"9ee873433cb7262b6a9581f544eefb79cb30a09cd4e5e9d6f5bb8c1e",
+    #"83d473f8520f154caa44bfa3d8261e0689c29789597752f650994449",
+    #"83fdc76a2fd08bbe98de3cfc9c4887fdacc9569471732537a466d2f4",
+    #"be1eabdee771be8d91498be46ecc5b282c7a03dbc219a46756ca6749",
+    #"0258383a99b515a2eca2574a3d25a97d6f5006ffca02792393a8f582",
+    #"d1a963174faeddbc89a58b25e64f08e119397d621d4f9a6762a115e8",
+    #"3004afd94cfd2305aefaadde3f82de62203f7bb078957561768ed538",
+    #"633f19360f4b8d381813eebd16e75cad367ab59d2c5c011f88da745e",
+    #"633f19360f4b8d381813eebd16e75cad367ab59d2c5c011f88da745e",
+    #"d7ee04abf30408af3d7c5193414036d0f158d6eb3e4068a0a0c3c9d7",
+    #"c28239858c3738dd502d1a4ac748c47b668ea470e39bba56979ee5d3",
+    #"0827340edd4b28e7a12b1bcb8cc6629def58dbbee7522111a922f503",
+    #"857eff92f1c3fc36bbdc38f2d0a24257c93eac54382de083973866d8",
+    #"30ad51c0ef8b272d79aa2b0797c6e1a9d1198e3da84de89b79d2bac6",
   ]
 }
 
@@ -157,6 +104,120 @@ fn script_address(script_hash: ScriptHash) -> Address {
     payment_credential: address.Script(script_hash),
     stake_credential: None,
   }
+}
+
+fn empty_v1_transaction() -> MidgardTransaction {
+  let empty_mint: Data = []
+  MidgardTransaction {
+    version: native_tx_version_v1,
+    validity: TxIsValid,
+    body: MidgardTransactionBody {
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+      reference_inputs: [],
+      outputs: [],
+      fee: 0,
+      validity_interval_start: -1,
+      validity_interval_end: -1,
+      required_observers: [],
+      required_signers: [],
+      mint: empty_mint,
+      script_integrity_hash: zero,
+      auxiliary_data_hash: zero,
+      network_id: 255,
+    },
+    witness_set: MidgardTransactionWitnessSet {
+      addr_tx_wits: [],
+      script_tx_wits: [],
+      redeemer_tx_wits: [],
+    },
+  }
+}
+
+fn phase_a_semantic_fixture() -> Pair<
+  validation_trace_v1.ValidationMachineStateV1,
+  validation_machine_v1.ValidationOneStepWitnessV1,
+> {
+  let tx = empty_v1_transaction()
+  let compact = native_transaction.midgard_transaction_to_compact(tx)
+  let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
+  let schedule_hash = validation_machine_v1.transaction_resolution_schedule_hash(
+    tx.body.inputs,
+    tx.body.reference_inputs,
+  )
+  let signer_frontier_commitment = validation_merkle_v1.frontier_commitment(
+    0,
+    [],
+  )
+  let work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    schedule_hash,
+    0,
+    signer_frontier_commitment,
+    False,
+    0,
+    0,
+    #"",
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: h_a,
+    transaction_id: native_tx_id_for_version(
+      native_tx_version_v1,
+      encode_native_tx_body_compact(compact.body),
+    ),
+    transaction_commitment: native_transaction.midgard_transaction_proof_commitment_v1(
+      tx,
+    ),
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: h_b,
+    phase: validation_trace_v1.PhaseAScriptPreconditions,
+    program_counter: 6,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      6,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: h_c,
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    phase: validation_trace_v1.ResolveInputs,
+    program_counter: 7,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ResolveInputs,
+      7,
+      validation_machine_v1.encode_resolve_inputs_witness(
+        proof_source.compact_cbor,
+        proof_source.witness_set_compact_cbor,
+        proof_source.field_preimage_lengths_cbor,
+        validation_context_cbor,
+        0,
+        validation_machine_v1.initial_resolution_accumulator(),
+        schedule_hash,
+        0,
+        signer_frontier_commitment,
+        None,
+        schedule_hash,
+      ),
+    ),
+  }
+  Pair(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: post,
+    },
+  )
 }
 
 fn pre_state(
@@ -222,16 +283,18 @@ fn no_auxiliary_data() -> Data {
   auxiliary_data
 }
 
-fn script_sources_auxiliary_data() -> Data {
-  let auxiliary_data: Data = validation_machine_v1.ScriptPurposeScanWitness {
+fn script_sources_auxiliary() -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
+  validation_machine_v1.ScriptPurposeScanWitness {
     purpose_kind: 0,
     purpose_index: 0,
-    script_hash: semantic_script_hash_fixture(
-      #"7363726970745f736f757263655f617578696c69617279",
-    ),
+    script_hash: prepare_script_hash,
     subject: #"80",
     siblings: [],
   }
+}
+
+fn script_sources_auxiliary_data() -> Data {
+  let auxiliary_data: Data = script_sources_auxiliary()
   auxiliary_data
 }
 
@@ -359,6 +422,43 @@ fn resolver_at(group: List<ScriptHash>, count: Int, index: Int) -> ScriptHash {
   script_hash
 }
 
+fn every_route_uses_the_deployed_hash(
+  expected_phase: validation_trace_v1.ValidationPhase,
+  group: List<ScriptHash>,
+  count: Int,
+  state: validation_resolution_v1.ValidationResolutionStateV1,
+  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  auxiliary: Data,
+  index: Int,
+) -> Bool {
+  if index == count {
+    True
+  } else {
+    let output_script_hash = resolver_at(group, count, index)
+    and {
+      validation_resolver_v1.prepare_selected(
+        expected_phase,
+        group,
+        count,
+        computation_thread_policy,
+        Some(step_datum(state)),
+        prepare_redeemer(index, transition, auxiliary),
+        own_out_ref,
+        prepare_transaction(state, transition, auxiliary, output_script_hash),
+      ),
+      every_route_uses_the_deployed_hash(
+        expected_phase,
+        group,
+        count,
+        state,
+        transition,
+        auxiliary,
+        index + 1,
+      ),
+    }
+  }
+}
+
 test phase_a_applied_group_routes_through_the_production_prepare_path() {
   let work_witness_cbor = #"80"
   let pre = pre_state(
@@ -372,20 +472,14 @@ test phase_a_applied_group_routes_through_the_production_prepare_path() {
   let state = resolution_state(pre, transition)
   let auxiliary = no_auxiliary_data()
   let group = phase_a_script_precondition_resolvers()
-  let output_script_hash = resolver_at(
-    group,
-    validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
-    1,
-  )
-  validation_resolver_v1.prepare_selected(
+  every_route_uses_the_deployed_hash(
     validation_trace_v1.PhaseAScriptPreconditions,
     group,
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
-    computation_thread_policy,
-    Some(step_datum(state)),
-    prepare_redeemer(1, transition, auxiliary),
-    own_out_ref,
-    prepare_transaction(state, transition, auxiliary, output_script_hash),
+    state,
+    transition,
+    auxiliary,
+    0,
   )
 }
 
@@ -399,20 +493,14 @@ test script_sources_applied_group_routes_through_the_production_prepare_path() {
   let state = resolution_state(pre, transition)
   let auxiliary = script_sources_auxiliary_data()
   let group = script_source_resolvers()
-  let output_script_hash = resolver_at(
-    group,
-    validation_resolver_v1.script_sources_semantic_resolver_count,
-    27,
-  )
-  validation_resolver_v1.prepare_selected(
+  every_route_uses_the_deployed_hash(
     validation_trace_v1.ScriptSources,
     group,
     validation_resolver_v1.script_sources_semantic_resolver_count,
-    computation_thread_policy,
-    Some(step_datum(state)),
-    prepare_redeemer(27, transition, auxiliary),
-    own_out_ref,
-    prepare_transaction(state, transition, auxiliary, output_script_hash),
+    state,
+    transition,
+    auxiliary,
+    0,
   )
 }
 
@@ -506,21 +594,14 @@ test production_prepare_rejects_same_cardinality_group_substitution() {
 }
 
 test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
-  let work_witness_cbor = #"80"
-  let pre = pre_state(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    work_witness_cbor,
-  )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor,
-    claimed_successor: successor_state(pre, h_b),
-  }
+  let Pair(pre, transition) = phase_a_semantic_fixture()
   let state = resolution_state(pre, transition)
-  let auxiliary = no_auxiliary_data()
+  let auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let auxiliary_data: Data = auxiliary
   let prepared_state = validation_resolution_v1.prepare_semantic_resolution(
     state,
     transition,
-    auxiliary,
+    auxiliary_data,
   )
   let group = phase_a_script_precondition_resolvers()
   let input_script_hash = resolver_at(
@@ -528,96 +609,137 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  validation_semantic_v1.continue_winning(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    award_script_hash,
-    computation_thread_policy,
-    Some(prepared_step_datum(prepared_state)),
-    0,
-    0,
+  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition,
     auxiliary,
-    True,
-    own_out_ref,
-    semantic_transaction(prepared_state, input_script_hash),
-  )
+  }
+  and {
+    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      pre,
+      evidence,
+    ),
+    validation_semantic_v1.continue_winning(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      award_script_hash,
+      computation_thread_policy,
+      Some(prepared_step_datum(prepared_state)),
+      0,
+      0,
+      transition,
+      auxiliary_data,
+      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+        pre,
+        evidence,
+      ),
+      own_out_ref,
+      semantic_transaction(prepared_state, input_script_hash),
+    ),
+  }
 }
 
 test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
-  let work_witness_cbor = #"80"
-  let pre = pre_state(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    work_witness_cbor,
-  )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor,
-    claimed_successor: successor_state(pre, h_b),
-  }
+  let Pair(pre, transition) = phase_a_semantic_fixture()
   let state = resolution_state(pre, transition)
-  let committed_auxiliary = no_auxiliary_data()
-  let substituted_auxiliary = script_sources_auxiliary_data()
+  let committed_auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let committed_auxiliary_data: Data = committed_auxiliary
   let prepared_state = validation_resolution_v1.prepare_semantic_resolution(
     state,
     transition,
-    committed_auxiliary,
+    committed_auxiliary_data,
   )
   let input_script_hash = resolver_at(
     phase_a_script_precondition_resolvers(),
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  !validation_semantic_v1.continue_winning(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    award_script_hash,
-    computation_thread_policy,
-    Some(prepared_step_datum(prepared_state)),
-    0,
-    0,
+  let committed_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition,
-    substituted_auxiliary,
-    True,
-    own_out_ref,
-    semantic_transaction(prepared_state, input_script_hash),
-  )
+    auxiliary: committed_auxiliary,
+  }
+  let cross_family_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition,
+    auxiliary: script_sources_auxiliary(),
+  }
+  and {
+    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      pre,
+      committed_evidence,
+    ),
+    !validation_semantic_v1.continue_winning(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      award_script_hash,
+      computation_thread_policy,
+      Some(prepared_step_datum(prepared_state)),
+      0,
+      0,
+      transition,
+      committed_auxiliary_data,
+      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+        pre,
+        cross_family_evidence,
+      ),
+      own_out_ref,
+      semantic_transaction(prepared_state, input_script_hash),
+    ),
+  }
 }
 
 test semantic_handoff_rejects_cross_family_action_substitution() {
-  let work_witness_cbor = #"80"
-  let pre = pre_state(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    work_witness_cbor,
-  )
-  let committed_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor,
-    claimed_successor: successor_state(pre, h_b),
+  let Pair(pre, committed_transition) = phase_a_semantic_fixture()
+  let committed_auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let committed_auxiliary_data: Data = committed_auxiliary
+  let cross_family_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..committed_transition.claimed_successor,
+    phase: validation_trace_v1.ScriptSources,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.ScriptSources,
+      committed_transition.claimed_successor.program_counter,
+      committed_transition.work_witness_cbor,
+    ),
   }
-  let substituted_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
-    work_witness_cbor,
-    claimed_successor: successor_state(pre, h_c),
+  let cross_family_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    ..committed_transition,
+    claimed_successor: cross_family_post,
   }
   let state = resolution_state(pre, committed_transition)
-  let auxiliary = no_auxiliary_data()
   let prepared_state = validation_resolution_v1.prepare_semantic_resolution(
     state,
     committed_transition,
-    auxiliary,
+    committed_auxiliary_data,
   )
   let input_script_hash = resolver_at(
     phase_a_script_precondition_resolvers(),
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  !validation_semantic_v1.continue_winning(
-    validation_trace_v1.PhaseAScriptPreconditions,
-    award_script_hash,
-    computation_thread_policy,
-    Some(prepared_step_datum(prepared_state)),
-    0,
-    0,
-    substituted_transition,
-    auxiliary,
-    True,
-    own_out_ref,
-    semantic_transaction(prepared_state, input_script_hash),
-  )
+  let committed_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: committed_transition,
+    auxiliary: committed_auxiliary,
+  }
+  let cross_family_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+    transition: cross_family_transition,
+    auxiliary: committed_auxiliary,
+  }
+  and {
+    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      pre,
+      committed_evidence,
+    ),
+    !validation_semantic_v1.continue_winning(
+      validation_trace_v1.PhaseAScriptPreconditions,
+      award_script_hash,
+      computation_thread_policy,
+      Some(prepared_step_datum(prepared_state)),
+      0,
+      0,
+      committed_transition,
+      committed_auxiliary_data,
+      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+        pre,
+        cross_family_evidence,
+      ),
+      own_out_ref,
+      semantic_transaction(prepared_state, input_script_hash),
+    ),
+  }
 }

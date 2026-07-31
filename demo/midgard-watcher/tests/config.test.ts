@@ -55,6 +55,10 @@ const validConfig = () => ({
   storage: {
     driver: "sqlite",
     path: "/var/lib/midgard-watcher/watcher.sqlite",
+    rollbackAuthorityKeySource: {
+      kind: "environment",
+      variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+    },
   },
   proverWallet: {
     keySource: {
@@ -142,12 +146,17 @@ describe("strict watcher configuration", () => {
             beforeFinality: "rewind",
             afterFinality: "quarantine",
             maxDepth: 15,
+            postFinalityRecoveryMaxDepth: 2_160,
           },
         },
       },
       storage: {
         driver: "sqlite",
         path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+        },
       },
     });
     expect(parsed.l1.source.sourceMode).toBe("external_providers");
@@ -162,6 +171,9 @@ describe("strict watcher configuration", () => {
     expect(Object.isFrozen(parsed.l1.source)).toBe(true);
     expect(Object.isFrozen(parsed.l1.source.providers)).toBe(true);
     expect(Object.isFrozen(parsed.proverWallet.keySource)).toBe(true);
+    expect(Object.isFrozen(parsed.storage.rollbackAuthorityKeySource)).toBe(
+      true,
+    );
   });
 
   it("parses the exact JSON language and an indirect file key source", () => {
@@ -179,6 +191,51 @@ describe("strict watcher configuration", () => {
     });
   });
 
+  it("requires a separate durable rollback-authority key source", () => {
+    const missing = validConfig();
+    delete (missing.storage as Record<string, unknown>)
+      .rollbackAuthorityKeySource;
+    rejected(
+      () => parseWatcherConfig(missing),
+      "missing_required_field",
+      "$.storage.rollbackAuthorityKeySource",
+    );
+
+    const inline = validConfig();
+    inline.storage.rollbackAuthorityKeySource =
+      "inline-secret" as unknown as typeof inline.storage.rollbackAuthorityKeySource;
+    rejected(
+      () => parseWatcherConfig(inline),
+      "inline_secret_forbidden",
+      "$.storage.rollbackAuthorityKeySource",
+    );
+
+    const reusedEnvironment = validConfig();
+    reusedEnvironment.storage.rollbackAuthorityKeySource = {
+      ...reusedEnvironment.proverWallet.keySource,
+    };
+    rejected(
+      () => parseWatcherConfig(reusedEnvironment),
+      "secret_source_alias",
+      "$.storage.rollbackAuthorityKeySource",
+    );
+
+    const reusedFile = validConfig();
+    reusedFile.storage.rollbackAuthorityKeySource = {
+      kind: "file",
+      path: "/run/secrets/shared.skey",
+    } as unknown as typeof reusedFile.storage.rollbackAuthorityKeySource;
+    reusedFile.proverWallet.keySource = {
+      kind: "file",
+      path: "/run/secrets/shared.skey",
+    } as unknown as typeof reusedFile.proverWallet.keySource;
+    rejected(
+      () => parseWatcherConfig(reusedFile),
+      "secret_source_alias",
+      "$.storage.rollbackAuthorityKeySource",
+    );
+  });
+
   it("requires two independent external providers in every watcher mode", () => {
     const input = validConfig();
     input.mode = "development";
@@ -194,6 +251,18 @@ describe("strict watcher configuration", () => {
       () => parseWatcherConfig(input),
       "out_of_bounds",
       "$.l1.source.providers",
+    );
+  });
+
+  it("requires HTTPS transport binding for development external providers", () => {
+    const input = validConfig();
+    input.mode = "development";
+    input.l1.source.providers[0]!.endpoint = "http://127.0.0.1:1442";
+
+    rejected(
+      () => parseWatcherConfig(input),
+      "invalid_endpoint",
+      "$.l1.source.providers[0].endpoint",
     );
   });
 
@@ -271,6 +340,10 @@ describe("strict watcher configuration", () => {
     expect(parseWatcherConfig(maximum).l1.maxConcurrency).toBe(
       WATCHER_CONFIG_BOUNDS.concurrency.max,
     );
+    expect(
+      parseWatcherConfig(maximum).l1.finality.rollback
+        .postFinalityRecoveryMaxDepth,
+    ).toBe(WATCHER_CONFIG_BOUNDS.postFinalityRecoveryDepth.max);
   });
 
   it.each([
@@ -351,6 +424,19 @@ describe("strict watcher configuration", () => {
       "out_of_bounds",
       "$.l1.finality.rollback.maxDepth",
     );
+  });
+
+  it("keeps pending rewind depth distinct from the Cardano-k post-finality recovery cap", () => {
+    const input = validConfig();
+    input.l1.finality.depth = 10;
+    input.l1.finality.rollback.maxDepth = 4;
+
+    expect(parseWatcherConfig(input).l1.finality.rollback).toEqual({
+      beforeFinality: "rewind",
+      afterFinality: "quarantine",
+      maxDepth: 4,
+      postFinalityRecoveryMaxDepth: 2_160,
+    });
   });
 
   it("requires deadlines to cover their corresponding request timeout", () => {

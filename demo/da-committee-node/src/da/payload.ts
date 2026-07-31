@@ -1,8 +1,9 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  assertMidgardCekProgramMaterialBundleV1,
   decodeMidgardCekProgramMaterialDaEntryV1,
+  encodeMidgardCekProgramEnvelopeV1,
   type MidgardCekProgramEnvelopeV1,
-  verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
@@ -503,17 +504,23 @@ const validateDaPayloadCountsV1 = (counts: SDK.DaPayloadCountsV1): void => {
 const collectProofProgramEnvelopes = (
   tx: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>,
   fieldName: string,
-  target: MidgardCekProgramEnvelopeV1[],
+  target: Map<string, MidgardCekProgramEnvelopeV1>,
   resolvedOutputsByOutRef?: ReadonlyMap<string, Uint8Array>,
 ): void => {
   try {
-    target.push(...collectMidgardV1AttachedProgramEnvelopes(tx));
+    const envelopes = [...collectMidgardV1AttachedProgramEnvelopes(tx)];
     if (resolvedOutputsByOutRef !== undefined) {
-      target.push(
+      envelopes.push(
         ...collectMidgardV1ReferencedProgramEnvelopes(
           tx,
           resolvedOutputsByOutRef,
         ),
+      );
+    }
+    for (const envelope of envelopes) {
+      target.set(
+        encodeMidgardCekProgramEnvelopeV1(envelope).toString("hex"),
+        envelope,
       );
     }
   } catch (cause) {
@@ -601,7 +608,7 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
 
   let canonicalTransactionBytes = 0;
   let ledgerOperationCount = body.deposits.length;
-  const programEnvelopes: MidgardCekProgramEnvelopeV1[] = [];
+  const programEnvelopes = new Map<string, MidgardCekProgramEnvelopeV1>();
   const validateFullTransaction = (
     txCbor: Buffer,
     fieldName: string,
@@ -788,9 +795,10 @@ const validateDaPayloadConsensusV1 = (body: SDK.DaPayloadBodyV1): void => {
         hexToBytes(valueHex, "cek_program_material.value"),
       ),
     );
-    verifyMidgardCekProgramMaterialBundleV1(programEnvelopes, material, {
-      allowUnreachable: true,
-    });
+    assertMidgardCekProgramMaterialBundleV1(
+      [...programEnvelopes.values()],
+      material,
+    );
   } catch (cause) {
     throw new DaPayloadValidationError(
       "coverage_mismatch",

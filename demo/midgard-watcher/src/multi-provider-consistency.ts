@@ -1,14 +1,17 @@
 import { createHash } from "node:crypto";
+import { isAbsolute, normalize as normalizePath } from "node:path";
 
 import {
   encodeWatcherNormalizedL1BlockV1,
-  isWatcherL1AdapterNormalizedBlockV1,
+  isWatcherL1BlockAttestedByV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   WATCHER_NORMALIZED_L1_BLOCK_V1_SCHEMA_VERSION,
   type WatcherL1NetworkV1,
   type WatcherL1SourceModeV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
   type WatcherLocalNodeSurfaceV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
@@ -85,6 +88,7 @@ export type WatcherL1SourceConsistencyConfigV1 =
       network: WatcherL1NetworkV1;
       authorityNodeId: string;
       genesisIdentitySha256: string;
+      chainSyncSocketPath: string;
       queryServices: readonly WatcherConfiguredLocalQueryServiceV1[];
     }>
   | Readonly<{
@@ -96,11 +100,13 @@ export type WatcherL1SourceConsistencyConfigV1 =
 export type WatcherConfiguredLocalQueryServiceV1 = Readonly<{
   kind: Exclude<WatcherLocalNodeSurfaceV1, "chain_sync">;
   providerId: string;
+  endpoint: string;
 }>;
 
 export type WatcherConfiguredExternalProviderV1 = Readonly<{
   providerId: string;
   operatorIdentitySha256: string;
+  endpoint: string;
 }>;
 
 export type WatcherMultiProviderAgreementV1 = Readonly<{
@@ -117,11 +123,13 @@ export type WatcherExternalProviderBindingV1 = Readonly<{
   operatorIdentitySha256: string;
   authenticationKind: "https_tls_identity_v1";
   publicIdentitySha256: string;
+  endpoint: string;
 }>;
 
 export type WatcherLocalQueryServiceBindingV1 = Readonly<{
   kind: WatcherConfiguredLocalQueryServiceV1["kind"];
   providerId: string;
+  endpoint: string;
   observationStatus:
     | "aligned"
     | "unavailable"
@@ -141,6 +149,7 @@ export type WatcherMultiProviderConsistencyV1 = Readonly<{
   configuredSourceDigest: string | null;
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
+  authorityChainSyncSocketPath: string | null;
   chainAuthorityObservationDigest: string | null;
   queryObservationCount: number;
   observationCount: number;
@@ -237,6 +246,46 @@ const isHex32 = (value: unknown): value is string =>
 const isNatural = (value: unknown): value is string =>
   typeof value === "string" && CANONICAL_NATURAL.test(value);
 
+const isExactEndpoint = (
+  value: unknown,
+  protocols: readonly string[],
+): value is string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 2_048 ||
+    value !== value.trim()
+  ) {
+    return false;
+  }
+  try {
+    const endpoint = new URL(value);
+    return (
+      protocols.includes(endpoint.protocol) &&
+      endpoint.username.length === 0 &&
+      endpoint.password.length === 0 &&
+      endpoint.search.length === 0 &&
+      endpoint.hash.length === 0
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isExactAbsoluteSocketPath = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 4_096 &&
+  !value.includes("\0") &&
+  isAbsolute(value) &&
+  normalizePath(value) === value;
+
+const endpointAlias = (value: string): string => {
+  const endpoint = new URL(value);
+  endpoint.hostname = endpoint.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${endpoint.protocol}//${endpoint.host.toLowerCase()}${endpoint.pathname.replace(/\/+$/u, "")}`;
+};
+
 const sameBytes = (left: Buffer, right: Buffer): boolean =>
   left.length === right.length && left.equals(right);
 
@@ -303,9 +352,12 @@ const rawTransactionsFromNormalized = (
  */
 const parseNormalizedObservation = (
   value: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherNormalizedL1BlockV1 | null => {
-  if (isWatcherL1AdapterNormalizedBlockV1(value)) {
-    return value;
+  for (const attestation of transportAttestations) {
+    if (isWatcherL1BlockAttestedByV1(value, attestation)) {
+      return value as WatcherNormalizedL1BlockV1;
+    }
   }
   const block = exactPlainRecord(value, [
     "schemaVersion",
@@ -365,34 +417,44 @@ const parseNormalizedObservation = (
     return null;
   }
 
-  const normalized = normalizeWatcherL1BlockV1(block.provider, {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-    network: block.network,
-    providerId: provider.providerId,
-    chainPoint: {
-      blockHash: point.blockHash,
-      parentBlockHash: point.parentBlockHash,
-      slot: point.slot,
-      blockNo: point.blockNo,
-      depth: point.depth,
-    },
-    transactions: rawTransactions,
-  });
-  if (
-    normalized.chainPoint.chainPointId !== point.chainPointId ||
-    normalized.chainPoint.pointDigest !== point.pointDigest ||
-    normalized.blockContentDigest !== block.blockContentDigest ||
-    normalized.observationDigest !== block.observationDigest ||
-    !sameBytes(
-      encodeWatcherNormalizedL1BlockV1(normalized),
-      encodeWatcherNormalizedL1BlockV1(
-        block as unknown as WatcherNormalizedL1BlockV1,
-      ),
-    )
-  ) {
-    return null;
+  for (const attestation of transportAttestations) {
+    const details = watcherL1TransportAttestationDetailsV1(attestation);
+    if (
+      details === null ||
+      details.provider.providerId !== provider.providerId ||
+      details.provider.network !== block.network
+    ) {
+      continue;
+    }
+    const normalized = normalizeWatcherL1BlockV1(attestation, {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      network: block.network,
+      providerId: provider.providerId,
+      chainPoint: {
+        blockHash: point.blockHash,
+        parentBlockHash: point.parentBlockHash,
+        slot: point.slot,
+        blockNo: point.blockNo,
+        depth: point.depth,
+      },
+      transactions: rawTransactions,
+    });
+    if (
+      normalized.chainPoint.chainPointId === point.chainPointId &&
+      normalized.chainPoint.pointDigest === point.pointDigest &&
+      normalized.blockContentDigest === block.blockContentDigest &&
+      normalized.observationDigest === block.observationDigest &&
+      sameBytes(
+        encodeWatcherNormalizedL1BlockV1(normalized),
+        encodeWatcherNormalizedL1BlockV1(
+          block as unknown as WatcherNormalizedL1BlockV1,
+        ),
+      )
+    ) {
+      return normalized;
+    }
   }
-  return normalized;
+  return null;
 };
 
 const sha256Canonical = (value: unknown): string =>
@@ -421,6 +483,7 @@ const compareExternalProviderBindings = (
     "operatorIdentitySha256",
     "authenticationKind",
     "publicIdentitySha256",
+    "endpoint",
   ] as const) {
     if (left[key] < right[key]) {
       return -1;
@@ -471,6 +534,10 @@ const rejectedBoundaryResult = (
     authorityGenesisIdentitySha256:
       configuredSource?.sourceMode === "local_node"
         ? configuredSource.genesisIdentitySha256
+        : null,
+    authorityChainSyncSocketPath:
+      configuredSource?.sourceMode === "local_node"
+        ? configuredSource.chainSyncSocketPath
         : null,
     chainAuthorityObservationDigest: null,
     queryObservationCount: 0,
@@ -530,12 +597,14 @@ const parseConfiguredSource = (
       const provider = exactPlainRecord(input, [
         "providerId",
         "operatorIdentitySha256",
+        "endpoint",
       ]);
       if (
         provider === null ||
         typeof provider.providerId !== "string" ||
         !/^[a-z][a-z0-9-]{0,62}$/u.test(provider.providerId) ||
-        !isHex32(provider.operatorIdentitySha256)
+        !isHex32(provider.operatorIdentitySha256) ||
+        !isExactEndpoint(provider.endpoint, ["https:"])
       ) {
         return null;
       }
@@ -543,6 +612,7 @@ const parseConfiguredSource = (
         Object.freeze({
           providerId: provider.providerId,
           operatorIdentitySha256: provider.operatorIdentitySha256,
+          endpoint: provider.endpoint,
         }),
       );
     }
@@ -550,7 +620,8 @@ const parseConfiguredSource = (
       duplicateValues(providers.map(({ providerId }) => providerId)) ||
       duplicateValues(
         providers.map(({ operatorIdentitySha256 }) => operatorIdentitySha256),
-      )
+      ) ||
+      duplicateValues(providers.map(({ endpoint }) => endpointAlias(endpoint)))
     ) {
       return null;
     }
@@ -569,6 +640,7 @@ const parseConfiguredSource = (
     "network",
     "authorityNodeId",
     "genesisIdentitySha256",
+    "chainSyncSocketPath",
     "queryServices",
   ]);
   const queryInputs =
@@ -580,6 +652,7 @@ const parseConfiguredSource = (
     typeof local.authorityNodeId !== "string" ||
     !/^[a-z][a-z0-9-]{0,62}$/u.test(local.authorityNodeId) ||
     !isHex32(local.genesisIdentitySha256) ||
+    !isExactAbsoluteSocketPath(local.chainSyncSocketPath) ||
     queryInputs === null ||
     queryInputs.length > 8
   ) {
@@ -587,14 +660,24 @@ const parseConfiguredSource = (
   }
   const queryServices: WatcherConfiguredLocalQueryServiceV1[] = [];
   for (const input of queryInputs) {
-    const query = exactPlainRecord(input, ["kind", "providerId"]);
+    const query = exactPlainRecord(input, ["kind", "providerId", "endpoint"]);
     if (
       query === null ||
       !["ogmios", "kupo", "kupmios", "db_sync"].includes(
         query.kind as string,
       ) ||
       typeof query.providerId !== "string" ||
-      !/^[a-z][a-z0-9-]{0,62}$/u.test(query.providerId)
+      !/^[a-z][a-z0-9-]{0,62}$/u.test(query.providerId) ||
+      !isExactEndpoint(
+        query.endpoint,
+        query.kind === "ogmios"
+          ? ["http:", "https:", "ws:", "wss:"]
+          : query.kind === "kupo"
+            ? ["http:", "https:"]
+            : query.kind === "kupmios"
+              ? ["http:", "https:", "ws:", "wss:"]
+              : ["postgresql:"],
+      )
     ) {
       return null;
     }
@@ -602,6 +685,7 @@ const parseConfiguredSource = (
       Object.freeze({
         kind: query.kind as WatcherConfiguredLocalQueryServiceV1["kind"],
         providerId: query.providerId,
+        endpoint: query.endpoint,
       }),
     );
   }
@@ -609,6 +693,11 @@ const parseConfiguredSource = (
     duplicateValues(queryServices.map(({ providerId }) => providerId)) ||
     duplicateValues(
       queryServices.map(({ kind, providerId }) => `${kind}:${providerId}`),
+    ) ||
+    duplicateValues(
+      queryServices.map(({ endpoint }) => {
+        return endpointAlias(endpoint);
+      }),
     )
   ) {
     return null;
@@ -618,6 +707,7 @@ const parseConfiguredSource = (
     network: local.network,
     authorityNodeId: local.authorityNodeId,
     genesisIdentitySha256: local.genesisIdentitySha256,
+    chainSyncSocketPath: local.chainSyncSocketPath,
     queryServices: Object.freeze(
       queryServices.sort((left, right) =>
         left.providerId.localeCompare(right.providerId),
@@ -634,6 +724,7 @@ const parseConfiguredSource = (
 export const evaluateWatcherMultiProviderConsistencyV1 = (
   configuredSourceInput: unknown,
   observationsInput: unknown,
+  transportAttestationsInput: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherMultiProviderConsistencyV1 => {
   const sourceMode = recognizedConfiguredSourceMode(configuredSourceInput);
   let configuredSource: WatcherL1SourceConsistencyConfigV1 | null;
@@ -654,6 +745,26 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     );
   }
   const configuredNetwork = configuredSource.network;
+
+  let transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+  try {
+    const parsed = exactObservationArray(transportAttestationsInput);
+    if (
+      parsed === null ||
+      parsed.length >
+        WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS.observations ||
+      parsed.some(
+        (candidate) =>
+          watcherL1TransportAttestationDetailsV1(candidate) === null,
+      )
+    ) {
+      return rejectedBoundaryResult(configuredSource, "malformed_observation");
+    }
+    transportAttestations =
+      parsed as readonly WatcherL1TransportAttestationContextV1[];
+  } catch {
+    return rejectedBoundaryResult(configuredSource, "malformed_observation");
+  }
 
   let inputs: readonly unknown[];
   try {
@@ -678,7 +789,10 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
   let rejectedObservationCount = 0;
   for (const input of inputs) {
     try {
-      const observation = parseNormalizedObservation(input);
+      const observation = parseNormalizedObservation(
+        input,
+        transportAttestations,
+      );
       if (observation === null) {
         rejectedObservationCount += 1;
       } else {
@@ -779,13 +893,82 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       alerts.add("watcher_provider_identity_collision");
     }
     const authority = chainAuthorities[0] ?? null;
+    const authorityTransport =
+      authority === null
+        ? null
+        : (transportAttestations.find((attestation) =>
+            isWatcherL1BlockAttestedByV1(authority, attestation),
+          ) ?? null);
+    const authorityBinding =
+      authorityTransport === null
+        ? null
+        : (watcherL1TransportAttestationDetailsV1(authorityTransport)
+            ?.authorityBindingSha256 ?? null);
+    const authorityTransportEndpoint =
+      authorityTransport === null
+        ? null
+        : (watcherL1TransportAttestationDetailsV1(authorityTransport)
+            ?.transportEndpoint ?? null);
+    if (
+      authorityTransportEndpoint !== null &&
+      authorityTransportEndpoint !== configuredSource.chainSyncSocketPath
+    ) {
+      reasons.add("provider_transport_mismatch");
+      alerts.add("watcher_provider_transport_mismatch");
+    }
     const queries = boundToAuthority.filter(
       (observation) => observation.provider.source.surface !== "chain_sync",
     );
+    const queryTransportMismatch = queries.some((observation) => {
+      const configured = configuredSource.queryServices.find(
+        ({ providerId }) => providerId === observation.provider.providerId,
+      );
+      const transport = transportAttestations.find((attestation) =>
+        isWatcherL1BlockAttestedByV1(observation, attestation),
+      );
+      const endpoint =
+        transport === undefined
+          ? null
+          : (watcherL1TransportAttestationDetailsV1(transport)
+              ?.transportEndpoint ?? null);
+      return configured !== undefined && endpoint !== configured.endpoint;
+    });
+    if (queryTransportMismatch) {
+      reasons.add("provider_transport_mismatch");
+      alerts.add("watcher_provider_transport_mismatch");
+    }
+    const queriesBoundToAuthority = queries.filter((observation) => {
+      const transport = transportAttestations.find((attestation) =>
+        isWatcherL1BlockAttestedByV1(observation, attestation),
+      );
+      const binding =
+        transport === undefined
+          ? null
+          : (watcherL1TransportAttestationDetailsV1(transport)
+              ?.authorityBindingSha256 ?? null);
+      const configured = configuredSource.queryServices.find(
+        ({ providerId }) => providerId === observation.provider.providerId,
+      );
+      const transportEndpoint =
+        transport === undefined
+          ? null
+          : (watcherL1TransportAttestationDetailsV1(transport)
+              ?.transportEndpoint ?? null);
+      return (
+        authorityBinding !== null &&
+        binding === authorityBinding &&
+        configured !== undefined &&
+        transportEndpoint === configured.endpoint
+      );
+    });
+    if (queriesBoundToAuthority.length !== queries.length) {
+      reasons.add("local_node_authority_mismatch");
+      alerts.add("watcher_local_node_authority_mismatch");
+    }
     const configuredQueries = new Map(
       configuredSource.queryServices.map((query) => [query.providerId, query]),
     );
-    const unconfiguredQueries = queries.filter((query) => {
+    const unconfiguredQueries = queriesBoundToAuthority.filter((query) => {
       const configured = configuredQueries.get(query.provider.providerId);
       return (
         configured === undefined ||
@@ -796,10 +979,12 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
       reasons.add("unconfigured_local_query_service");
       alerts.add("watcher_local_node_query_evidence_missing");
     }
-    const configuredQueryObservations = queries.filter((query) => {
-      const configured = configuredQueries.get(query.provider.providerId);
-      return configured?.kind === query.provider.source.surface;
-    });
+    const configuredQueryObservations = queriesBoundToAuthority.filter(
+      (query) => {
+        const configured = configuredQueries.get(query.provider.providerId);
+        return configured?.kind === query.provider.source.surface;
+      },
+    );
     queryObservationCount = configuredQueryObservations.length;
     if (authority !== null) {
       independentProviderCount = 1;
@@ -846,6 +1031,7 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
           return Object.freeze({
             kind: configured.kind,
             providerId: configured.providerId,
+            endpoint: configured.endpoint,
             observationStatus,
             observationDigest: query?.observationDigest ?? null,
           });
@@ -864,17 +1050,51 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     const configuredProviders = new Map(
       configuredSource.providers.map((provider) => [
         provider.providerId,
-        provider.operatorIdentitySha256,
+        provider,
       ]),
     );
     const configuredEligible = eligible.filter((observation) => {
       const source = observation.provider.source;
+      const configured = configuredProviders.get(
+        observation.provider.providerId,
+      );
+      const transport = transportAttestations.find((attestation) =>
+        isWatcherL1BlockAttestedByV1(observation, attestation),
+      );
+      const transportEndpoint =
+        transport === undefined
+          ? null
+          : (watcherL1TransportAttestationDetailsV1(transport)
+              ?.transportEndpoint ?? null);
       return (
         source.sourceMode === "external_providers" &&
-        configuredProviders.get(observation.provider.providerId) ===
-          source.operatorIdentitySha256
+        configured?.operatorIdentitySha256 === source.operatorIdentitySha256 &&
+        configured.endpoint === transportEndpoint
       );
     });
+    const configuredIdentityButWrongEndpoint = eligible.some((observation) => {
+      const source = observation.provider.source;
+      const configured = configuredProviders.get(
+        observation.provider.providerId,
+      );
+      if (
+        source.sourceMode !== "external_providers" ||
+        configured?.operatorIdentitySha256 !== source.operatorIdentitySha256
+      ) {
+        return false;
+      }
+      const transport = transportAttestations.find((attestation) =>
+        isWatcherL1BlockAttestedByV1(observation, attestation),
+      );
+      return (
+        watcherL1TransportAttestationDetailsV1(transport)?.transportEndpoint !==
+        configured.endpoint
+      );
+    });
+    if (configuredIdentityButWrongEndpoint) {
+      reasons.add("provider_transport_mismatch");
+      alerts.add("watcher_provider_transport_mismatch");
+    }
     if (configuredEligible.length !== eligible.length) {
       reasons.add("unconfigured_provider");
       alerts.add("watcher_provider_not_configured");
@@ -908,6 +1128,8 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
             authenticationKind: "https_tls_identity_v1" as const,
             publicIdentitySha256:
               observation.provider.authentication.publicIdentitySha256,
+            endpoint: configuredProviders.get(observation.provider.providerId)!
+              .endpoint,
           });
         })
         .sort(compareExternalProviderBindings),
@@ -1111,6 +1333,10 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
     authorityGenesisIdentitySha256:
       configuredSource.sourceMode === "local_node"
         ? configuredSource.genesisIdentitySha256
+        : null,
+    authorityChainSyncSocketPath:
+      configuredSource.sourceMode === "local_node"
+        ? configuredSource.chainSyncSocketPath
         : null,
     chainAuthorityObservationDigest,
     queryObservationCount,

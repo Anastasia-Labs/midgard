@@ -36,8 +36,13 @@ mutually exclusive modes:
   agree on network and a compatible chain point.
 
 Both modes fail closed on mismatched or stale evidence and propagate
-rollbacks. W14 consumes canonical node-derived bytes and indexes accepted
-state; it does not duplicate Cardano state-queue validator semantics.
+rollbacks. Transient non-agreement and same-point content mismatch preserve
+finalized state while quarantining the current decision. An agreed canonical replacement opens a
+durable incident, and W13 automatically proves and rewinds the exact branch
+within Cardano's fixed `k = 2160` bound before replay resumes; it never
+requires manual database surgery. W14 consumes canonical node-derived bytes
+and indexes accepted state, including W13-authorized recovery; it does not
+duplicate Cardano state-queue validator semantics.
 
 ## Verdict
 
@@ -99,7 +104,9 @@ Recommendation:
   consensus authority and requires aligned same-node query/index surfaces plus
   rollback propagation. `external_providers` requires at least two
   operationally independent providers to agree on network and compatible chain
-  point. Both modes require explicit finality and rollback quarantine.
+  point. Both modes require explicit finality, non-terminal quarantine for
+  transient evidence, and automated W13 recovery from an agreed finalized
+  rollback within Cardano `k = 2160`.
 
 Disposition:
 

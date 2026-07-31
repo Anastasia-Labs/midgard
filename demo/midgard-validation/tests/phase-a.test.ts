@@ -1,4 +1,8 @@
-import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import {
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekTermNodeV1,
+  hashMidgardCekTermNodeV1,
+} from "@al-ft/midgard-core/cek-proof";
 import { computeHash32 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { CML } from "@lucid-evolution/lucid";
@@ -366,10 +370,7 @@ describe("phase A validation", () => {
         }),
       ],
     });
-    await expectSinglePhaseARejection(
-      fixture,
-      RejectCodes.NativeScriptInvalid,
-    );
+    await expectSinglePhaseARejection(fixture, RejectCodes.NativeScriptInvalid);
   });
 
   it("rejects malformed redeemer witness preimages as invalid field data", async () => {
@@ -411,18 +412,49 @@ describe("phase A validation", () => {
       expect(accepted.submission.programMaterialSidecarCbor).toEqual(sidecar);
     }
 
-    const unsupportedProfile = validatePhaseASingle(
-      queued,
-      {
-        ...phaseAConfig,
-        consensusProfile: {
-          ...MIDGARD_CONSENSUS_PROFILE_V1,
-          protocolVersion: 2,
-        } as unknown as typeof MIDGARD_CONSENSUS_PROFILE_V1,
-      },
-    );
+    const unsupportedProfile = validatePhaseASingle(queued, {
+      ...phaseAConfig,
+      consensusProfile: {
+        ...MIDGARD_CONSENSUS_PROFILE_V1,
+        protocolVersion: 2,
+      } as unknown as typeof MIDGARD_CONSENSUS_PROFILE_V1,
+    });
     expect(unsupportedProfile).toMatchObject({
       code: RejectCodes.TxVersion,
     });
+  });
+
+  it("rejects unclaimed material unless reference programs remain unresolved", () => {
+    const node = { kind: "error" as const };
+    const materialSidecar = encodeMidgardCekProgramMaterialSidecarV1([
+      {
+        kind: "term",
+        root: hashMidgardCekTermNodeV1(node),
+        preimage: encodeMidgardCekTermNodeV1(node),
+      },
+    ]);
+    const withoutReferences = makeNativeTx();
+    const rejected = validatePhaseASingle(
+      {
+        ...makeQueued(withoutReferences.txId, withoutReferences.txCbor),
+        programMaterialSidecarCbor: materialSidecar,
+      },
+      phaseAConfig,
+    );
+    expect(rejected).toMatchObject({
+      code: RejectCodes.CekProgramMaterial,
+    });
+
+    const unresolvedReference = makeNativeTx({
+      referenceInputs: [outRefFromByte(0x72)],
+    });
+    const deferred = validatePhaseASingle(
+      {
+        ...makeQueued(unresolvedReference.txId, unresolvedReference.txCbor),
+        programMaterialSidecarCbor: materialSidecar,
+      },
+      phaseAConfig,
+    );
+    expect("ledgerTx" in deferred).toBe(true);
   });
 });

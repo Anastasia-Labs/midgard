@@ -12,6 +12,7 @@ import { Duration, Effect, Metric, Option, Schedule } from "effect";
 import { seedDaPayloadPublicationOutboxFromEnv } from "@/da/libp2p-producer.js";
 import {
   BlocksDB,
+  CekProgramMaterialDB,
   DaPayloadsDB,
   DepositsDB,
   ForcedTransactionsDB,
@@ -228,6 +229,9 @@ export const finalizeCommittedBlockLocally = (
       processedMempoolTxs,
       Math.floor(BATCH_SIZE / 2),
     );
+    const finalizedTxHashes = uniqueBuffersByHex(
+      batches.flatMap((batch) => batch.blockTxHashes),
+    );
     const filteredBatches = yield* filterAlreadyCommittedTxs(batches);
     const daPayloadBuildStartedAt = Date.now();
     const persistedDaPayload =
@@ -293,6 +297,9 @@ export const finalizeCommittedBlockLocally = (
           if (persistedDaPayload !== undefined) {
             yield* DaPayloadsDB.upsertAvailable(persistedDaPayload);
           }
+          yield* CekProgramMaterialDB.releaseAdmissionOwnership(
+            finalizedTxHashes,
+          );
           return deletedOutRefHexes;
         }),
       )

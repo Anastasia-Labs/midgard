@@ -1,4 +1,8 @@
+import type { MidgardCekProgramEnvelopeV1 } from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec";
+import { collectMidgardV1ReferencedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import {
+  LedgerColumns,
   type PhaseAResult,
   processedTxFromValidatedTx,
   QueuedTx,
@@ -291,6 +295,51 @@ const admissionToQueuedTx = (
   createdAt: admission.first_seen_at,
 });
 
+type AcceptedReferenceProgramCandidate = {
+  readonly ledgerTx: { readonly txId: Uint8Array };
+  readonly submission: { readonly txCbor: Uint8Array };
+  readonly graph: {
+    readonly produced: readonly {
+      readonly [LedgerColumns.OUTREF]: Uint8Array;
+      readonly [LedgerColumns.OUTPUT]: Uint8Array;
+    }[];
+  };
+};
+
+/**
+ * Reconstructs only the reference-input program envelopes already resolved by
+ * successful Phase B. This is persistence metadata, not a second validation
+ * decision: missing or malformed state fails the acceptance transaction.
+ */
+export const collectAcceptedReferenceProgramEnvelopes = (
+  accepted: readonly AcceptedReferenceProgramCandidate[],
+  preState: ReadonlyMap<string, Buffer>,
+): ReadonlyMap<string, readonly MidgardCekProgramEnvelopeV1[]> => {
+  const resolvedOutputs = new Map<string, Uint8Array>(preState);
+  for (const candidate of accepted) {
+    for (const produced of candidate.graph.produced) {
+      resolvedOutputs.set(
+        Buffer.from(produced[LedgerColumns.OUTREF]).toString("hex"),
+        produced[LedgerColumns.OUTPUT],
+      );
+    }
+  }
+  return new Map(
+    accepted.map((candidate) => {
+      const canonicalTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        candidate.submission.txCbor,
+      );
+      return [
+        Buffer.from(candidate.ledgerTx.txId).toString("hex"),
+        collectMidgardV1ReferencedProgramEnvelopes(
+          canonicalTx,
+          resolvedOutputs,
+        ),
+      ] as const;
+    }),
+  );
+};
+
 /**
  * Clamps a numeric value into an inclusive range.
  */
@@ -567,39 +616,49 @@ const txQueueProcessorAction = (
               Effect.succeed(Duration.millis(Date.now() - phaseAStart)),
             );
 
-            const { phaseB, allRejected } = yield* phaseBSequence.runDecision(
-              Effect.gen(function* () {
-                const cachedState = yield* ledgerCache.currentState;
-                const phaseBStart = Date.now();
-                const phaseB = yield* runPhaseBValidationWithPatch(
-                  phaseA.accepted,
-                  cachedState,
-                  {
-                    nowCardanoSlotNo: BigInt(lucid.currentSlot()),
-                    bucketConcurrency:
-                      nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-                    enforceScriptBudget: true,
-                    ...(nodeConfig.VALIDATION_UPLC_IN_WORKERS &&
-                    validationPool.poolSize > 0
-                      ? { evaluateScript: validationPool.evaluateScript }
-                      : {}),
-                  },
-                );
-                yield* validationPhaseBLatencyGauge(
-                  Effect.succeed(Date.now() - phaseBStart),
-                );
-                yield* validationPhaseBDurationTimer(
-                  Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
-                );
+            const { phaseB, allRejected, referenceProgramEnvelopesByTxId } =
+              yield* phaseBSequence.runDecision(
+                Effect.gen(function* () {
+                  const cachedState = yield* ledgerCache.currentState;
+                  const phaseBStart = Date.now();
+                  const phaseB = yield* runPhaseBValidationWithPatch(
+                    phaseA.accepted,
+                    cachedState,
+                    {
+                      nowCardanoSlotNo: BigInt(lucid.currentSlot()),
+                      bucketConcurrency:
+                        nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+                      enforceScriptBudget: true,
+                      ...(nodeConfig.VALIDATION_UPLC_IN_WORKERS &&
+                      validationPool.poolSize > 0
+                        ? { evaluateScript: validationPool.evaluateScript }
+                        : {}),
+                    },
+                  );
+                  yield* validationPhaseBLatencyGauge(
+                    Effect.succeed(Date.now() - phaseBStart),
+                  );
+                  yield* validationPhaseBDurationTimer(
+                    Effect.succeed(Duration.millis(Date.now() - phaseBStart)),
+                  );
 
-                const allRejected = [...phaseA.rejected, ...phaseB.rejected];
-                yield* ledgerCache.applySpeculativePatch(
-                  phaseBSequence.sequence,
-                  phaseB.statePatch,
-                );
-                return { phaseB, allRejected };
-              }),
-            );
+                  const allRejected = [...phaseA.rejected, ...phaseB.rejected];
+                  const referenceProgramEnvelopesByTxId =
+                    collectAcceptedReferenceProgramEnvelopes(
+                      phaseB.accepted,
+                      cachedState,
+                    );
+                  yield* ledgerCache.applySpeculativePatch(
+                    phaseBSequence.sequence,
+                    phaseB.statePatch,
+                  );
+                  return {
+                    phaseB,
+                    allRejected,
+                    referenceProgramEnvelopesByTxId,
+                  };
+                }),
+              );
 
             yield* phaseBSequence.runPersistence(
               Effect.gen(function* () {
@@ -629,6 +688,7 @@ const txQueueProcessorAction = (
                     processedTxs: phaseB.accepted.map(
                       processedTxFromValidatedTx,
                     ),
+                    referenceProgramEnvelopesByTxId,
                   });
                   yield* validationMempoolInsertDurationTimer(
                     Effect.succeed(

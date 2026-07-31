@@ -53,11 +53,16 @@ import {
   normalizeWatcherL1BlockV1,
   type WatcherL1RedeemerV1,
   type WatcherL1TransactionV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
 import { evaluateWatcherMultiProviderConsistencyV1 } from "./multi-provider-consistency.js";
 import {
+  parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
+  type WatcherPostFinalityRecoveryInputV1,
+  type WatcherPostFinalityRecoveryResultV1,
   type WatcherRollbackResultV1,
   type WatcherRollbackVerificationContextV1,
 } from "./rollback-engine.js";
@@ -346,7 +351,7 @@ export type WatcherSettlementHistoryEntryV1 = Readonly<{
 export type WatcherSettlementRollbackEntryV1 = Readonly<{
   observation: WatcherSettlementObservationV1;
   publicContextDigest: string;
-  rollbackResult: WatcherRollbackResultV1;
+  rollbackResult: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1;
   rollbackDigest: string;
 }>;
 
@@ -390,7 +395,9 @@ export type WatcherSettlementIndexerResultV1 = Readonly<{
 
 export type WatcherSettlementRollbackContextBindingV1 = Readonly<{
   resultDigest: string;
-  context: WatcherRollbackVerificationContextV1;
+  context:
+    | WatcherRollbackVerificationContextV1
+    | WatcherPostFinalityRecoveryInputV1;
 }>;
 
 export type WatcherSettlementDeploymentAuthorityV1 = Readonly<{
@@ -439,7 +446,9 @@ export type WatcherSettlementPublicContextV1 = Readonly<{
   finalityAuthority: WatcherSettlementFinalityAuthorityV1 | null;
   rollbackAuthority: Readonly<{
     result: unknown;
-    context: WatcherRollbackVerificationContextV1;
+    context:
+      | WatcherRollbackVerificationContextV1
+      | WatcherPostFinalityRecoveryInputV1;
   }> | null;
   restartContexts: readonly WatcherSettlementRestartContextV1[];
   restartRollbackContexts: readonly WatcherSettlementRollbackContextBindingV1[];
@@ -450,6 +459,7 @@ export type WatcherSettlementResultVerificationContextV1 = Readonly<{
   previousState: unknown;
   observation: unknown;
   publicContext: unknown;
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
 }>;
 
 type PlainRecord = Record<string, unknown>;
@@ -1861,6 +1871,7 @@ type VerifiedPublicContext = Readonly<{
   rollbackAuthority: WatcherSettlementPublicContextV1["rollbackAuthority"];
   restartContexts: WatcherSettlementPublicContextV1["restartContexts"];
   restartRollbackContexts: WatcherSettlementPublicContextV1["restartRollbackContexts"];
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
 }>;
 
 const parseDeploymentAuthority = (
@@ -2130,6 +2141,7 @@ const verifyFinalityAuthority = (
   policy: WatcherSettlementIndexerPolicyV1,
   block: WatcherNormalizedL1BlockV1,
   authority: WatcherSettlementFinalityAuthorityV1,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): Readonly<{
   policy: WatcherFinalityPolicyV1;
   result: WatcherFinalityResultV1;
@@ -2157,13 +2169,26 @@ const verifyFinalityAuthority = (
     const lineageBlocks: WatcherNormalizedL1BlockV1[] = [];
     for (const step of authority.lineage) {
       const normalizedStep = step.observations.map(
-        ({ authenticatedProvider, l1Observation }) =>
-          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+        ({ authenticatedProvider, l1Observation }) => {
+          const matching = transportAttestations.filter((attestation) => {
+            const details = watcherL1TransportAttestationDetailsV1(attestation);
+            return (
+              details !== null && same(details.provider, authenticatedProvider)
+            );
+          });
+          if (matching.length !== 1) {
+            throw new Error(
+              "missing or ambiguous live W10 transport attestation",
+            );
+          }
+          return normalizeWatcherL1BlockV1(matching[0]!, l1Observation);
+        },
       );
       lineageBlocks.push(...normalizedStep);
       const stepConsistency = evaluateWatcherMultiProviderConsistencyV1(
         watcherFinalityConfiguredSourceV1(finalityPolicy),
         normalizedStep,
+        transportAttestations,
       );
       const stepResult = evaluateWatcherFinalityV1(
         finalityPolicy,
@@ -2183,12 +2208,25 @@ const verifyFinalityAuthority = (
       return null;
     }
     const normalized = authority.observations.map(
-      ({ authenticatedProvider, l1Observation }) =>
-        normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
+      ({ authenticatedProvider, l1Observation }) => {
+        const matching = transportAttestations.filter((attestation) => {
+          const details = watcherL1TransportAttestationDetailsV1(attestation);
+          return (
+            details !== null && same(details.provider, authenticatedProvider)
+          );
+        });
+        if (matching.length !== 1) {
+          throw new Error(
+            "missing or ambiguous live W10 transport attestation",
+          );
+        }
+        return normalizeWatcherL1BlockV1(matching[0]!, l1Observation);
+      },
     );
     const consistency = evaluateWatcherMultiProviderConsistencyV1(
       watcherFinalityConfiguredSourceV1(finalityPolicy),
       normalized,
+      transportAttestations,
     );
     const result = evaluateWatcherFinalityV1(
       finalityPolicy,
@@ -2249,15 +2287,26 @@ const verifyBaseContext = (
   rawStore: unknown,
   deploymentAuthority: WatcherSettlementDeploymentAuthorityV1,
   finalityAuthority: WatcherSettlementFinalityAuthorityV1 | null,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): Omit<
   VerifiedPublicContext,
-  "rollbackAuthority" | "restartContexts" | "restartRollbackContexts"
+  | "rollbackAuthority"
+  | "restartContexts"
+  | "restartRollbackContexts"
+  | "transportAttestations"
 > | null => {
   let block: WatcherNormalizedL1BlockV1;
   let sourceStore: WatcherDurableStoreV1;
   let store: WatcherDurableStoreV1;
   try {
-    block = normalizeWatcherL1BlockV1(rawProvider, rawL1Observation);
+    const matching = transportAttestations.filter((attestation) => {
+      const details = watcherL1TransportAttestationDetailsV1(attestation);
+      return details !== null && same(details.provider, rawProvider);
+    });
+    if (matching.length !== 1) {
+      return null;
+    }
+    block = normalizeWatcherL1BlockV1(matching[0]!, rawL1Observation);
     sourceStore = parseWatcherDurableStoreV1(rawSourceStore);
     store = parseWatcherDurableStoreV1(rawStore);
   } catch {
@@ -2271,7 +2320,12 @@ const verifyBaseContext = (
   const verifiedFinality =
     finalityAuthority === null
       ? null
-      : verifyFinalityAuthority(policy, block, finalityAuthority);
+      : verifyFinalityAuthority(
+          policy,
+          block,
+          finalityAuthority,
+          transportAttestations,
+        );
   if (
     deploymentIdentity === null ||
     !sameMarker(sourceStore.deploymentMarker, policy.deploymentMarker) ||
@@ -2324,6 +2378,9 @@ const verifyBaseContext = (
     observation.sourceObservationDigest !== block.observationDigest ||
     observation.durableStoreDigest !== storeDigest ||
     !sameMarker(store.deploymentMarker, policy.deploymentMarker) ||
+    !settlementRolesMatchOutputs(policy, sourceStore) ||
+    !settlementRolesMatchOutputs(policy, store) ||
+    !settlementForeignRecordsPreserved(policy, sourceStore, store) ||
     persistedObservations.length !== 1 ||
     persistedPoints.length !== 1 ||
     (observation.transactionHash !== null &&
@@ -2408,10 +2465,38 @@ const rollbackAnchorMatchesAuthority = (
         block.provider.source.sourceMode === "external_providers";
 };
 
+const postFinalityRecoveryAnchorMatchesAuthority = (
+  block: WatcherNormalizedL1BlockV1,
+  recovery: WatcherPostFinalityRecoveryResultV1,
+  input: WatcherPostFinalityRecoveryInputV1,
+): boolean => {
+  const finalityPolicy = parseWatcherFinalityPolicyV1(input.policy);
+  const path = recovery.recoveryState?.path;
+  return (
+    finalityPolicy !== null &&
+    recovery.action === "rewind_and_replay" &&
+    recovery.protocolDecision === "resume_replay" &&
+    recovery.nextStore !== null &&
+    recovery.recoveryState !== null &&
+    recovery.resumableFinalityState !== null &&
+    path !== undefined &&
+    path.commonAncestorPointDigest === block.chainPoint.pointDigest &&
+    path.commonAncestorBlockHash === block.chainPoint.blockHash &&
+    path.commonAncestorBlockNo === block.chainPoint.blockNo &&
+    block.provider.source.sourceMode === finalityPolicy.sourceMode &&
+    (finalityPolicy.sourceMode === "local_node"
+      ? block.provider.source.sourceMode === "local_node" &&
+        block.provider.source.surface === "chain_sync" &&
+        block.provider.source.authorityNodeId === finalityPolicy.authorityNodeId
+      : block.provider.source.sourceMode === "external_providers")
+  );
+};
+
 const verifyPublicContext = (
   policy: WatcherSettlementIndexerPolicyV1,
   observation: WatcherSettlementObservationV1,
   rawContext: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): VerifiedPublicContext | null => {
   if (!evidenceWithinBounds(rawContext)) {
     return null;
@@ -2456,6 +2541,7 @@ const verifyPublicContext = (
     record.durableStore,
     deploymentAuthority,
     finalityAuthority,
+    transportAttestations,
   );
   const rawRestartContexts = exactArray(
     record.restartContexts,
@@ -2519,7 +2605,9 @@ const verifyPublicContext = (
     }
     restartRollbackContexts.push({
       resultDigest: binding.resultDigest,
-      context: binding.context as WatcherRollbackVerificationContextV1,
+      context: binding.context as
+        | WatcherRollbackVerificationContextV1
+        | WatcherPostFinalityRecoveryInputV1,
     });
   }
   const rollbackAuthority =
@@ -2538,6 +2626,7 @@ const verifyPublicContext = (
     rollbackAuthority,
     restartContexts: Object.freeze(restartContexts),
     restartRollbackContexts: Object.freeze(restartRollbackContexts),
+    transportAttestations,
   });
 };
 
@@ -2558,12 +2647,67 @@ const transactionInputs = (
 const storeRetains = <T>(previous: readonly T[], next: readonly T[]): boolean =>
   previous.every((entry) => next.some((candidate) => same(entry, candidate)));
 
+type SettlementRoleClassification = "owned" | "foreign" | "invalid";
+
+const classifySettlementRole = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  durable: WatcherProtocolUtxoV1,
+): SettlementRoleClassification => {
+  try {
+    const output = CML.TransactionOutput.from_cbor_hex(durable.output.cborHex);
+    if (output.to_canonical_cbor_hex() !== durable.output.cborHex) {
+      return "invalid";
+    }
+    const addressHex = output.address().to_hex();
+    const matches = [...TARGET_ROLES].filter(
+      (role) => roleAddress(policy, role).addressHex === addressHex,
+    );
+    if (matches.length === 0) {
+      return "foreign";
+    }
+    return matches.length === 1 &&
+      matches[0] === durable.role &&
+      decodeResource(policy, durable) !== null
+      ? "owned"
+      : "invalid";
+  } catch {
+    return "invalid";
+  }
+};
+
+const settlementRolesMatchOutputs = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  store: WatcherDurableStoreV1,
+): boolean =>
+  [...store.protocolUtxos, ...store.spentProtocolUtxos].every(
+    (durable) => classifySettlementRole(policy, durable) !== "invalid",
+  );
+
+const settlementForeignRecordsPreserved = (
+  policy: WatcherSettlementIndexerPolicyV1,
+  source: WatcherDurableStoreV1,
+  next: WatcherDurableStoreV1,
+): boolean => {
+  const foreign = (records: readonly WatcherProtocolUtxoV1[]) =>
+    records.filter(
+      (durable) => classifySettlementRole(policy, durable) === "foreign",
+    );
+  return (
+    same(foreign(source.protocolUtxos), foreign(next.protocolUtxos)) &&
+    same(foreign(source.spentProtocolUtxos), foreign(next.spentProtocolUtxos))
+  );
+};
+
 const storeIsSettlementOwnershipExtension = (
+  policy: WatcherSettlementIndexerPolicyV1,
   previous: WatcherDurableStoreV1,
   next: WatcherDurableStoreV1,
+  recoverableOwnedOutRefs: ReadonlySet<string> | null = null,
 ): boolean => {
   if (
     !sameMarker(previous.deploymentMarker, next.deploymentMarker) ||
+    !settlementRolesMatchOutputs(policy, previous) ||
+    !settlementRolesMatchOutputs(policy, next) ||
     BigInt(next.revision) < BigInt(previous.revision) ||
     (next.revision === previous.revision && !same(previous, next))
   ) {
@@ -2572,18 +2716,22 @@ const storeIsSettlementOwnershipExtension = (
   const settlementOwned = (
     entries: readonly WatcherProtocolUtxoV1[],
   ): readonly WatcherProtocolUtxoV1[] =>
-    entries.filter(({ role }) =>
-      TARGET_ROLES.has(role as WatcherSettlementResourceRoleV1),
+    entries.filter(
+      (durable) => classifySettlementRole(policy, durable) === "owned",
     );
+  const nextOwned = (entries: readonly WatcherProtocolUtxoV1[]) =>
+    settlementOwned(entries).filter(
+      ({ outRef }) => !recoverableOwnedOutRefs?.has(outRef),
+    );
+  const ownedMatches = (
+    previousEntries: readonly WatcherProtocolUtxoV1[],
+    nextEntries: readonly WatcherProtocolUtxoV1[],
+  ) =>
+    same(settlementOwned(previousEntries), settlementOwned(nextEntries)) ||
+    same(settlementOwned(previousEntries), nextOwned(nextEntries));
   return (
-    same(
-      settlementOwned(previous.protocolUtxos),
-      settlementOwned(next.protocolUtxos),
-    ) &&
-    same(
-      settlementOwned(previous.spentProtocolUtxos),
-      settlementOwned(next.spentProtocolUtxos),
-    ) &&
+    ownedMatches(previous.protocolUtxos, next.protocolUtxos) &&
+    ownedMatches(previous.spentProtocolUtxos, next.spentProtocolUtxos) &&
     storeRetains(previous.l1Observations, next.l1Observations) &&
     storeRetains(previous.chainPoints, next.chainPoints) &&
     storeRetains(previous.protocolUtxos, next.protocolUtxos) &&
@@ -2606,7 +2754,10 @@ const normalStoreProgressionMatches = (
   transaction: WatcherL1TransactionV1 | null,
   chainPointId: string,
 ): boolean => {
-  if (BigInt(next.revision) !== BigInt(previous.revision) + 1n) {
+  if (
+    BigInt(next.revision) !== BigInt(previous.revision) + 1n ||
+    !sameMarker(previous.deploymentMarker, next.deploymentMarker)
+  ) {
     return false;
   }
   const inputs =
@@ -2664,8 +2815,11 @@ const normalStoreProgressionMatches = (
 };
 
 const previousStoreFromContext = (
+  policy: WatcherSettlementIndexerPolicyV1,
   state: WatcherSettlementIndexerStateV1,
   context: VerifiedPublicContext,
+  extensionStore: WatcherDurableStoreV1 = context.sourceStore,
+  recoverableOwnedOutRefs: ReadonlySet<string> | null = null,
 ): WatcherDurableStoreV1 | null => {
   const priorDigest =
     state.transitionHistory.at(-1)?.entry.publicContextDigest ?? null;
@@ -2680,7 +2834,12 @@ const previousStoreFromContext = (
     return watcherDurableStoreBytesSha256(
       encodeWatcherDurableStoreV1(previousStore),
     ) === state.durableStoreDigest &&
-      storeIsSettlementOwnershipExtension(previousStore, context.sourceStore)
+      storeIsSettlementOwnershipExtension(
+        policy,
+        previousStore,
+        extensionStore,
+        recoverableOwnedOutRefs,
+      )
       ? previousStore
       : null;
   } catch {
@@ -4679,7 +4838,7 @@ const historyEntryDigest = (
 const rollbackEntryDigest = (
   observation: WatcherSettlementObservationV1,
   publicContextDigest: string,
-  rollbackResult: WatcherRollbackResultV1,
+  rollbackResult: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1,
 ): string =>
   sha256Canonical({
     observationDigest: observation.observationDigest,
@@ -4757,7 +4916,9 @@ const parseRollbackEntry = (
   const observation = parseWatcherSettlementObservationV1(record.observation);
   const rollbackResult =
     typeof record.rollbackResult === "object" && record.rollbackResult !== null
-      ? (record.rollbackResult as WatcherRollbackResultV1)
+      ? (record.rollbackResult as
+          | WatcherRollbackResultV1
+          | WatcherPostFinalityRecoveryResultV1)
       : null;
   if (
     observation === null ||
@@ -4798,6 +4959,7 @@ const parseTransitionAuditEntry = (
 export const parseWatcherSettlementIndexerStateV1 = (
   value: unknown,
   policyValue: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
   restartContextValues: readonly WatcherSettlementPublicContextV1["restartContexts"][number][] = [],
   restartRollbackContextValues: readonly WatcherSettlementRollbackContextBindingV1[] = [],
 ): WatcherSettlementIndexerStateV1 | null => {
@@ -4937,6 +5099,7 @@ export const parseWatcherSettlementIndexerStateV1 = (
       binding.durableStore,
       binding.deploymentAuthority,
       binding.finalityAuthority,
+      transportAttestations,
     );
     if (
       verified === null ||
@@ -4975,6 +5138,7 @@ export const parseWatcherSettlementIndexerStateV1 = (
           : null,
       restartContexts: Object.freeze([...replayRestartContexts]),
       restartRollbackContexts: Object.freeze([...replayRollbackContexts]),
+      transportAttestations,
     });
     const result = applyVerifiedSettlementTransition(
       policy,
@@ -5034,7 +5198,7 @@ const reject = (
 
 const orphanedByRollback = (
   entry: WatcherSettlementHistoryEntryV1,
-  rollback: WatcherRollbackResultV1,
+  rollback: WatcherRollbackResultV1 | WatcherPostFinalityRecoveryResultV1,
 ): boolean => {
   const removedPoints = new Set(rollback.removedRecords.chainPointIds);
   const removedObservations = new Set(rollback.removedRecords.l1ObservationIds);
@@ -5136,6 +5300,22 @@ const applyVerifiedSettlementTransition = (
   observation: WatcherSettlementObservationV1,
   context: VerifiedPublicContext,
 ): WatcherSettlementIndexerResultV1 => {
+  const recoveryAuthority =
+    observation.transition.kind === "rollback" &&
+    context.rollbackAuthority !== null
+      ? parseWatcherPostFinalityRecoveryResultV1(
+          context.rollbackAuthority.result,
+          {
+            ...(context.rollbackAuthority
+              .context as WatcherPostFinalityRecoveryInputV1),
+            transportAttestations: context.transportAttestations,
+          },
+        )
+      : null;
+  const recoverableOwnedOutRefs =
+    recoveryAuthority?.action === "rewind_and_replay"
+      ? new Set(recoveryAuthority.removedRecords.protocolUtxoOutRefs)
+      : null;
   if (
     observation.predecessorStateDigest !== previousState?.stateDigest &&
     !(
@@ -5149,7 +5329,13 @@ const applyVerifiedSettlementTransition = (
   const anchoredPreviousStore =
     previousState === null
       ? null
-      : previousStoreFromContext(previousState, context);
+      : previousStoreFromContext(
+          policy,
+          previousState,
+          context,
+          context.sourceStore,
+          recoverableOwnedOutRefs,
+        );
   if (previousState !== null && anchoredPreviousStore === null) {
     return reject("stale_state");
   }
@@ -5215,15 +5401,31 @@ const applyVerifiedSettlementTransition = (
     ) {
       return reject("rollback_mismatch");
     }
-    const authoritative = parseWatcherRollbackResultV1(
+    const rollbackResult = parseWatcherRollbackResultV1(
       context.rollbackAuthority.result,
-      context.rollbackAuthority.context,
+      {
+        ...(context.rollbackAuthority
+          .context as WatcherRollbackVerificationContextV1),
+        transportAttestations: context.transportAttestations,
+      },
     );
+    const recoveryResult =
+      rollbackResult === null
+        ? parseWatcherPostFinalityRecoveryResultV1(
+            context.rollbackAuthority.result,
+            {
+              ...(context.rollbackAuthority
+                .context as WatcherPostFinalityRecoveryInputV1),
+              transportAttestations: context.transportAttestations,
+            },
+          )
+        : null;
+    const authoritative = rollbackResult ?? recoveryResult;
     if (authoritative === null) {
       return reject("rollback_authority_mismatch");
     }
     if (
-      authoritative.action === "quarantine_incident" ||
+      rollbackResult?.action === "quarantine_incident" ||
       authoritative.protocolDecision === "quarantined"
     ) {
       return reject(
@@ -5232,9 +5434,17 @@ const applyVerifiedSettlementTransition = (
       );
     }
     if (
-      authoritative.action !== "apply_rewind" ||
-      authoritative.protocolDecision !== "resume_pending" ||
-      !rollbackAnchorMatchesAuthority(context.block, authoritative) ||
+      (rollbackResult !== null
+        ? rollbackResult.action !== "apply_rewind" ||
+          rollbackResult.protocolDecision !== "resume_pending" ||
+          !rollbackAnchorMatchesAuthority(context.block, rollbackResult)
+        : recoveryResult === null ||
+          !postFinalityRecoveryAnchorMatchesAuthority(
+            context.block,
+            recoveryResult,
+            context.rollbackAuthority
+              .context as WatcherPostFinalityRecoveryInputV1,
+          )) ||
       authoritative.sourceStoreDigest !==
         watcherDurableStoreBytesSha256(
           encodeWatcherDurableStoreV1(context.sourceStore),
@@ -5247,16 +5457,34 @@ const applyVerifiedSettlementTransition = (
     ) {
       return reject("rollback_authority_mismatch");
     }
-    const firstOrphaned = previousState.activeHistory.findIndex((entry) =>
-      orphanedByRollback(entry, authoritative),
-    );
+    const commonAncestorBlockNo =
+      recoveryResult?.recoveryState?.path.commonAncestorBlockNo ?? null;
+    const firstOrphaned =
+      recoveryResult === null
+        ? previousState.activeHistory.findIndex((entry) =>
+            orphanedByRollback(entry, authoritative),
+          )
+        : previousState.activeHistory.findIndex(
+            (entry) =>
+              commonAncestorBlockNo !== null &&
+              BigInt(entry.observation.blockNo) > BigInt(commonAncestorBlockNo),
+          );
     const retained =
       firstOrphaned < 0
         ? [...previousState.activeHistory]
         : previousState.activeHistory.slice(0, firstOrphaned);
     const orphaned =
       firstOrphaned < 0 ? [] : previousState.activeHistory.slice(firstOrphaned);
-    if (orphaned.some((entry) => !orphanedByRollback(entry, authoritative))) {
+    if (
+      orphaned.some((entry) => !orphanedByRollback(entry, authoritative)) ||
+      (recoveryResult !== null &&
+        (commonAncestorBlockNo === null ||
+          retained.some(
+            (entry) =>
+              BigInt(entry.observation.blockNo) > BigInt(commonAncestorBlockNo),
+          ) ||
+          retained.some((entry) => orphanedByRollback(entry, authoritative))))
+    ) {
       return reject("rollback_authority_mismatch");
     }
     const expectedSnapshot =
@@ -5530,6 +5758,7 @@ export const evaluateWatcherSettlementIndexerV1 = (
   previousStateValue: unknown,
   observationValue: unknown,
   publicContextValue: unknown,
+  transportAttestations: readonly WatcherL1TransportAttestationContextV1[],
 ): WatcherSettlementIndexerResultV1 => {
   const policy = parseWatcherSettlementIndexerPolicyV1(policyValue);
   if (policy === null) {
@@ -5547,7 +5776,12 @@ export const evaluateWatcherSettlementIndexerV1 = (
   ) {
     return reject("binding_mismatch", "watcher_settlement_binding_rejected");
   }
-  const context = verifyPublicContext(policy, observation, publicContextValue);
+  const context = verifyPublicContext(
+    policy,
+    observation,
+    publicContextValue,
+    transportAttestations,
+  );
   if (context === null) {
     return reject(
       "malformed_public_context",
@@ -5560,11 +5794,61 @@ export const evaluateWatcherSettlementIndexerV1 = (
       : parseWatcherSettlementIndexerStateV1(
           previousStateValue,
           policy,
+          transportAttestations,
           context.restartContexts,
           context.restartRollbackContexts,
         );
   if (previousStateValue !== null && previousState === null) {
     return reject("malformed_state", "watcher_settlement_input_rejected");
+  }
+  if (
+    previousState !== null &&
+    observation.transition.kind === "rollback" &&
+    context.rollbackAuthority !== null
+  ) {
+    const rollback = parseWatcherRollbackResultV1(
+      context.rollbackAuthority.result,
+      {
+        ...(context.rollbackAuthority
+          .context as WatcherRollbackVerificationContextV1),
+        transportAttestations: context.transportAttestations,
+      },
+    );
+    const recovery = parseWatcherPostFinalityRecoveryResultV1(
+      context.rollbackAuthority.result,
+      {
+        ...(context.rollbackAuthority
+          .context as WatcherPostFinalityRecoveryInputV1),
+        transportAttestations: context.transportAttestations,
+      },
+    );
+    if (rollback === null && recovery === null) {
+      return reject("rollback_authority_mismatch");
+    }
+    if (recovery !== null) {
+      if (
+        recovery.action !== "rewind_and_replay" ||
+        recovery.protocolDecision !== "resume_replay" ||
+        recovery.recoveryState === null
+      ) {
+        return reject("rollback_authority_mismatch");
+      }
+      const prior = previousState.rollbackHistory.find(
+        (entry) =>
+          entry.observation.observationDigest ===
+            observation.observationDigest &&
+          entry.rollbackResult.resultDigest === recovery.resultDigest,
+      );
+      if (prior !== undefined) {
+        return makeResult({
+          action: "duplicate",
+          protocolDecision: "hold",
+          reasonCodes: ["duplicate_observation"],
+          alertCodes: [],
+          state: previousState,
+        });
+      }
+    }
   }
   return applyVerifiedSettlementTransition(
     policy,
@@ -5600,6 +5884,7 @@ export const parseWatcherSettlementIndexerResultV1 = (
     context.previousState,
     context.observation,
     context.publicContext,
+    context.transportAttestations,
   );
   return same(authoritative, value) ? authoritative : null;
 };

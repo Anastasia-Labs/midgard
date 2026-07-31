@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { parse } from "@typescript-eslint/parser";
+import { parseDocument } from "yaml";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const execGit = (args, encoding = "buffer") => {
@@ -68,6 +69,111 @@ const requiredTrustById = new Map([
   ["l1_provider", "authenticated_cardano_l1"],
   ["state_queue", "authenticated_cardano_l1"],
   ["correction_removal", "public_l1_with_prohibited_optional_dependency"],
+]);
+const requiredMetadataById = new Map([
+  [
+    "public_da",
+    {
+      capability:
+        "Deployment-bound payload retrieval with exact V1 framing, limits, hashes, and strict decoding",
+      state: "server_and_wire_ready_client_missing_for_watcher",
+      remainingTasks: ["Q03", "Q54", "W20", "W21"],
+      watcherBoundary:
+        "Implement a client in demo/midgard-watcher that dials configured public peers, verifies deployment fingerprint/header/payload hashes and strict envelope/body bytes, and persists bytes before verification.",
+    },
+  ],
+  [
+    "proof_bundle",
+    {
+      capability:
+        "Deployment-bound proof-bundle, indexed trace-step, and event-to-step retrieval",
+      state: "public_protocol_and_existing_challenger_client_ready",
+      remainingTasks: ["Q03", "W20", "W21", "W27"],
+      watcherBoundary:
+        "Reuse the exact transport codecs and public challenger request path; never read the committee store directly. Verify returned deployment/header/index/event identities before persistence.",
+    },
+  ],
+  [
+    "validation",
+    {
+      capability:
+        "Canonical native transaction decoding, Phase A/B validation, CEK/script execution, evidence, and one-step semantics",
+      state: "shared_library_and_rule_bundle_ready_total_replay_open",
+      remainingTasks: ["CG3", "Q00", "W23", "W24", "W25", "W26"],
+      watcherBoundary:
+        "Import shared production semantics and the deployment-bound rule/profile identity; a watcher-specific folklore validator is forbidden.",
+    },
+  ],
+  [
+    "proof_tooling",
+    {
+      capability:
+        "Prepare, inspect, submit, reconcile, and remove fault proofs",
+      state:
+        "selected_families_and_public_transition_trace_ready_total_resumable_api_missing",
+      remainingTasks: [
+        "F20",
+        "Q03",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q21",
+        "Q22",
+        "Q51",
+        "W30",
+        "W32",
+      ],
+      watcherBoundary:
+        "Call typed programmatic APIs with persisted authenticated public evidence. Node URL and arbitrary local file modes are diagnostic/import boundaries, not watcher security inputs.",
+    },
+  ],
+  [
+    "deployment_manifest",
+    {
+      capability:
+        "Strict V1 manifest identity, script/reference identities, consensus profile, and DA transport binding",
+      state: "strict_signed_release_identity_and_durable_marker_verifier_ready",
+      remainingTasks: ["C70", "C75", "F41"],
+      watcherBoundary:
+        "Use the strict signed-identity verifier and persist its exact durable marker through W03 before accepting observations; C70/C75/F41 must replace placeholder release and deployment inputs with final-tree/live evidence.",
+    },
+  ],
+  [
+    "l1_provider",
+    {
+      capability:
+        "Mode-discriminated local-node chain authority or independent external-provider observations with canonical chain-point agreement",
+      state:
+        "strict_source_mode_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_operational_wire_open",
+      remainingTasks: ["C70", "W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"],
+      watcherBoundary:
+        "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W10 proves exact configured transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
+    },
+  ],
+  [
+    "state_queue",
+    {
+      capability:
+        "Decode, sort, authenticate, and traverse canonical state-queue nodes and headers",
+      state:
+        "read_helpers_strict_durable_schema_finality_automated_rollback_recovery_and_protocol_index_library_ready_live_provenance_open",
+      remainingTasks: ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE", "W20"],
+      watcherBoundary:
+        "Reuse canonical SDK datum/header decoding, persist supplied W10 observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14's library state machine consumes the canonical observation and automated rollback/replay pipeline, derives durable roles from deployed policy and actual output bytes, and does not reimplement the on-chain state-queue validator. Actual node-accepted transaction/output/datum provenance remains open until the operational W10 adapter supplies every observation directly from the configured live transport.",
+    },
+  ],
+  [
+    "correction_removal",
+    {
+      capability:
+        "Construct and submit tail/non-tail fraudulent-header removal with operator slashing and refetch",
+      state:
+        "public_l1_builder_ready_non_tail_coordination_depends_on_prohibited_admin_api",
+      remainingTasks: ["Q52", "W35"],
+      watcherBoundary:
+        "The watcher may reuse public L1 topology/refetch and transaction construction only after Q52/W35 replace operator-admin coordination with a protocol-safe public concurrency strategy.",
+    },
+  ],
 ]);
 const requiredSourcesById = new Map([
   [
@@ -457,23 +563,52 @@ const parseTypescriptModule = (source) => {
   }
 };
 
-const declarationHasName = (declaration, symbol) => {
-  if (declaration.type === "VariableDeclaration") {
-    return declaration.declarations.some(
-      ({ id }) => id.type === "Identifier" && id.name === symbol,
+const classBindingKeys = new Set([
+  "demo/da-committee-node/src/da/libp2p/payload-protocols.ts#DaLibp2pPayloadProtocolHandlers",
+  "demo/da-committee-node/src/da/proof-artifacts.ts#DaProofArtifactDeriver",
+  "demo/da-committee-node/src/da/libp2p/proof-protocols.ts#DaLibp2pProofProtocolHandlers",
+  "demo/midgard-fault-proofs/src/transition-trace/fetch.ts#DaLibp2pRetainedDaSource",
+  "demo/da-committee-node/src/l1/provider.ts#LucidStateQueueProvider",
+  "demo/da-committee-node/src/l1/provider.ts#MultiStateQueueProvider",
+]);
+const interfaceBindingKeys = new Set([
+  "demo/da-committee-node/src/l1/state-queue-scanner.ts#StateQueueProvider",
+]);
+
+const declarationImplementsBinding = (declaration, binding) => {
+  const bindingKey = `${binding.path}#${binding.symbol}`;
+  if (interfaceBindingKeys.has(bindingKey)) {
+    return (
+      declaration.type === "TSInterfaceDeclaration" &&
+      declaration.declare !== true &&
+      declaration.id.name === binding.symbol
+    );
+  }
+  if (classBindingKeys.has(bindingKey)) {
+    return (
+      declaration.type === "ClassDeclaration" &&
+      declaration.declare !== true &&
+      declaration.abstract !== true &&
+      declaration.id?.name === binding.symbol &&
+      declaration.body.type === "ClassBody"
     );
   }
   return (
-    declaration.id?.type === "Identifier" && declaration.id.name === symbol
+    declaration.type === "VariableDeclaration" &&
+    declaration.declare !== true &&
+    declaration.declarations.some(
+      ({ id, init }) =>
+        id.type === "Identifier" && id.name === binding.symbol && init !== null,
+    )
   );
 };
 
-const exportedDeclarationPresent = (moduleAst, symbol) =>
+const exportedDeclarationPresent = (moduleAst, binding) =>
   moduleAst.body.some(
     (statement) =>
       statement.type === "ExportNamedDeclaration" &&
       statement.declaration !== null &&
-      declarationHasName(statement.declaration, symbol),
+      declarationImplementsBinding(statement.declaration, binding),
   );
 
 const directClassMemberPresent = (moduleAst, owner, member) => {
@@ -481,25 +616,33 @@ const directClassMemberPresent = (moduleAst, owner, member) => {
     (statement) =>
       statement.type === "ExportNamedDeclaration" &&
       statement.declaration?.type === "ClassDeclaration" &&
+      statement.declaration.declare !== true &&
       statement.declaration.id?.name === owner,
   )?.declaration;
-  if (ownerDeclaration?.type !== "ClassDeclaration") {
+  if (
+    ownerDeclaration?.type !== "ClassDeclaration" ||
+    ownerDeclaration.abstract === true
+  ) {
     return false;
   }
   return ownerDeclaration.body.body.some(
     (element) =>
-      (element.type === "MethodDefinition" ||
-        element.type === "TSAbstractMethodDefinition") &&
+      element.type === "MethodDefinition" &&
       element.computed === false &&
       element.kind === "method" &&
+      element.static !== true &&
+      element.optional !== true &&
+      (element.accessibility === undefined ||
+        element.accessibility === "public") &&
       element.key.type === "Identifier" &&
-      element.key.name === member,
+      element.key.name === member &&
+      element.value.body?.type === "BlockStatement",
   );
 };
 
 const sourceDeclaresBinding = (moduleAst, binding) => {
   if (binding.owner === undefined || binding.member === undefined) {
-    return exportedDeclarationPresent(moduleAst, binding.symbol);
+    return exportedDeclarationPresent(moduleAst, binding);
   }
   return directClassMemberPresent(moduleAst, binding.owner, binding.member);
 };
@@ -524,6 +667,17 @@ for (const id of requiredIds) {
   }
   if (entry.trust !== requiredTrustById.get(id)) {
     fail(`${id} has an invalid trust classification`);
+  }
+  const requiredMetadata = requiredMetadataById.get(id);
+  if (
+    requiredMetadata === undefined ||
+    entry.capability !== requiredMetadata.capability ||
+    entry.state !== requiredMetadata.state ||
+    JSON.stringify(entry.remainingTasks) !==
+      JSON.stringify(requiredMetadata.remainingTasks) ||
+    entry.watcherBoundary !== requiredMetadata.watcherBoundary
+  ) {
+    fail(`${id} capability, state, tasks, and boundary must remain exact`);
   }
   const requiredSources = requiredSourcesById.get(id);
   if (
@@ -559,18 +713,6 @@ for (const id of requiredIds) {
   ) {
     fail(`${id} symbol bindings must match exact owning source paths`);
   }
-  if (
-    !Array.isArray(entry.remainingTasks) ||
-    entry.remainingTasks.length === 0
-  ) {
-    fail(`${id} must map remaining tasks`);
-  }
-  if (
-    typeof entry.watcherBoundary !== "string" ||
-    entry.watcherBoundary === ""
-  ) {
-    fail(`${id} must define the watcher boundary`);
-  }
   const sourceTexts = new Map();
   const sourceModules = new Map();
   for (const sourcePath of entry.sourcePaths) {
@@ -599,6 +741,18 @@ for (const id of requiredIds) {
       );
     }
   }
+}
+
+if (
+  JSON.stringify(dependencyMap.f30Conclusion) !==
+  JSON.stringify({
+    status: "pass",
+    reason:
+      "Every required dependency class is resolved to current source, each permitted watcher boundary is explicit, and operator-private surfaces are rejected and mapped to concrete replacement tasks.",
+    nextTasks: ["W04", "W20", "Q03", "Q52"],
+  })
+) {
+  fail("F30 conclusion and next tasks must remain exact");
 }
 
 const removal = byId.get("correction_removal");
@@ -708,21 +862,268 @@ if (
   workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
     "node scripts/verify-canonical-v1-watcher-dependency-map.mjs" ||
   workspaceManifest.scripts?.["watcher:dependency-map:test"] !==
-    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
+    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs" ||
+  workspaceManifest.scripts?.["watcher:focused-tests:verify"] !==
+    "node scripts/verify-canonical-v1-watcher-focused-tests.mjs"
 ) {
   fail(
-    "workspace must expose the canonical watcher dependency-map verifier and mutation tests",
+    "workspace must expose the canonical watcher dependency-map verifier, mutation tests, and focused-test verifier",
   );
 }
 const nodeCi = readIndexedFile(".github/workflows/midgard-node-ci.yml", "utf8");
-for (const requiredCiText of [
+const activeYamlLines = (source) => {
+  const active = [];
+  let blockScalarIndent = null;
+  for (const line of source.split(/\r?\n/u)) {
+    const indent = line.match(/^[ \t]*/u)?.[0].length ?? 0;
+    const trimmed = line.trim();
+    if (
+      blockScalarIndent !== null &&
+      (trimmed === "" || indent > blockScalarIndent)
+    ) {
+      continue;
+    }
+    blockScalarIndent = null;
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      continue;
+    }
+    active.push({ indent, trimmed });
+    if (/:\s*[>|][-+0-9]*\s*$/u.test(trimmed)) {
+      blockScalarIndent = indent;
+    }
+  }
+  return active;
+};
+const decodeYamlScalar = (value) => {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return JSON.parse(value);
+  }
+  if (value.startsWith("'") && value.endsWith("'")) {
+    return value.slice(1, -1).replaceAll("''", "'");
+  }
+  return value;
+};
+const nodeCiActiveLines = activeYamlLines(nodeCi);
+const activeRunCommands = nodeCiActiveLines.flatMap(({ trimmed }) => {
+  const match = trimmed.match(/^run:\s*(.+)$/u);
+  return match === null ? [] : [decodeYamlScalar(match[1].trim())];
+});
+const exactActiveStepCount = (lines, name, command) => {
+  let count = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (
+      lines[index]?.indent !== 6 ||
+      lines[index]?.trimmed !== `- name: ${name}`
+    ) {
+      continue;
+    }
+    let end = index + 1;
+    while (
+      end < lines.length &&
+      !(lines[end]?.indent === 6 && lines[end]?.trimmed.startsWith("- "))
+    ) {
+      end += 1;
+    }
+    const step = lines.slice(index, end);
+    if (
+      step.length === 2 &&
+      step[1]?.indent === 8 &&
+      step[1]?.trimmed === `run: ${command}`
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+};
+const isYamlRecord = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const parseWorkflow = (source, path) => {
+  const document = parseDocument(source, {
+    maxAliasCount: 0,
+    uniqueKeys: true,
+  });
+  if (document.errors.length !== 0) {
+    fail(`${path} must be valid unique-key YAML`);
+  }
+  const workflow = document.toJS({ maxAliasCount: 0 });
+  if (!isYamlRecord(workflow) || !isYamlRecord(workflow.on)) {
+    fail(`${path} must declare event triggers as a YAML mapping`);
+  }
+  return workflow;
+};
+const workflowEvent = (workflow, eventName, path) => {
+  if (!Object.hasOwn(workflow.on, eventName)) {
+    fail(`${path} must declare ${eventName}`);
+  }
+  const event = workflow.on[eventName];
+  if (event === null) {
+    return {};
+  }
+  if (!isYamlRecord(event)) {
+    fail(`${path} ${eventName} configuration must be a YAML mapping or null`);
+  }
+  return event;
+};
+const nodeCiWorkflow = parseWorkflow(
+  nodeCi,
+  ".github/workflows/midgard-node-ci.yml",
+);
+const nodeCiEvents = new Map(
+  ["push", "pull_request"].map((eventName) => [
+    eventName,
+    workflowEvent(
+      nodeCiWorkflow,
+      eventName,
+      ".github/workflows/midgard-node-ci.yml",
+    ),
+  ]),
+);
+const pullRequestEvent = nodeCiEvents.get("pull_request");
+if (
+  Object.hasOwn(pullRequestEvent, "branches") ||
+  Object.hasOwn(pullRequestEvent, "branches-ignore")
+) {
+  fail("Midgard node CI pull_request must not be restricted by branch filters");
+}
+for (const requiredCiPath of [
+  ".github/workflows/evidence-integrity-ci.yml",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+  "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-  "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify",
 ]) {
-  if (!nodeCi.includes(requiredCiText)) {
-    fail(`Midgard node CI is missing ${requiredCiText}`);
+  for (const triggerName of ["push", "pull_request"]) {
+    const paths = nodeCiEvents.get(triggerName).paths;
+    if (
+      !Array.isArray(paths) ||
+      paths.filter((entry) => entry === requiredCiPath).length !== 1
+    ) {
+      fail(
+        `Midgard node CI must actively scope ${triggerName} to ${requiredCiPath}`,
+      );
+    }
+  }
+}
+const requiredDependencyCommand =
+  "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify";
+const dependencyCommandIndex = nodeCiActiveLines.findIndex(
+  ({ trimmed }) => trimmed === `run: ${requiredDependencyCommand}`,
+);
+let dependencyStepStart = dependencyCommandIndex;
+while (
+  dependencyStepStart >= 0 &&
+  !(
+    nodeCiActiveLines[dependencyStepStart].indent === 6 &&
+    nodeCiActiveLines[dependencyStepStart].trimmed.startsWith("- ")
+  )
+) {
+  dependencyStepStart -= 1;
+}
+let dependencyStepEnd = dependencyCommandIndex + 1;
+while (
+  dependencyStepEnd < nodeCiActiveLines.length &&
+  !(
+    nodeCiActiveLines[dependencyStepEnd].indent === 6 &&
+    nodeCiActiveLines[dependencyStepEnd].trimmed.startsWith("- ")
+  )
+) {
+  dependencyStepEnd += 1;
+}
+const dependencyStep =
+  dependencyStepStart < 0
+    ? []
+    : nodeCiActiveLines.slice(dependencyStepStart, dependencyStepEnd);
+if (
+  activeRunCommands.filter((command) => command === requiredDependencyCommand)
+    .length !== 1 ||
+  dependencyStep.length !== 2 ||
+  dependencyStep[0]?.trimmed !==
+    "- name: Verify canonical watcher dependency map" ||
+  dependencyStep[1]?.indent !== 8 ||
+  dependencyStep[1]?.trimmed !== `run: ${requiredDependencyCommand}` ||
+  nodeCiActiveLines.some(
+    ({ indent, trimmed }) => indent === 4 && /^if\s*:/u.test(trimmed),
+  )
+) {
+  fail(
+    `Midgard node CI must actively run exactly one ${requiredDependencyCommand}`,
+  );
+}
+const requiredFocusedTestCommand =
+  "pnpm --dir demo run watcher:focused-tests:verify";
+const requiredWatcherGateCommand =
+  "pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo run watcher:focused-tests:verify";
+if (
+  activeRunCommands.filter((command) => command === requiredWatcherGateCommand)
+    .length !== 1 ||
+  exactActiveStepCount(
+    nodeCiActiveLines,
+    "Build, typecheck, lint, format-check, and test Midgard watcher scaffold",
+    requiredWatcherGateCommand,
+  ) !== 1
+) {
+  fail(
+    `Midgard node CI must actively run exactly one ${requiredFocusedTestCommand}`,
+  );
+}
+const evidenceCi = readIndexedFile(
+  ".github/workflows/evidence-integrity-ci.yml",
+  "utf8",
+);
+const evidenceCiWorkflow = parseWorkflow(
+  evidenceCi,
+  ".github/workflows/evidence-integrity-ci.yml",
+);
+const evidencePullRequestEvent = workflowEvent(
+  evidenceCiWorkflow,
+  "pull_request",
+  ".github/workflows/evidence-integrity-ci.yml",
+);
+if (
+  evidenceCiWorkflow.on.pull_request !== null ||
+  Object.hasOwn(evidencePullRequestEvent, "branches") ||
+  Object.hasOwn(evidencePullRequestEvent, "branches-ignore")
+) {
+  fail(
+    "Evidence Integrity CI pull_request must be unrestricted by branch, path, or type filters",
+  );
+}
+if (
+  !isYamlRecord(evidenceCiWorkflow.jobs) ||
+  !isYamlRecord(evidenceCiWorkflow.jobs.verify) ||
+  Object.hasOwn(evidenceCiWorkflow.jobs.verify, "if") ||
+  Object.hasOwn(evidenceCiWorkflow.jobs.verify, "continue-on-error")
+) {
+  fail("Evidence Integrity CI verify job must be unconditional and strict");
+}
+const evidenceCiActiveLines = activeYamlLines(evidenceCi);
+for (const [name, requiredEvidenceCommand] of [
+  [
+    "Verify canonical watcher dependency-map mutation coverage",
+    "node --test demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+  ],
+  [
+    "Verify canonical watcher dependency map and staged-tree identity",
+    "node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
+  ],
+  [
+    "Verify canonical watcher focused-test evidence",
+    "node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+  ],
+]) {
+  if (
+    evidenceCiActiveLines.filter(
+      ({ trimmed }) => trimmed === `run: ${requiredEvidenceCommand}`,
+    ).length !== 1 ||
+    exactActiveStepCount(
+      evidenceCiActiveLines,
+      name,
+      requiredEvidenceCommand,
+    ) !== 1
+  ) {
+    fail(
+      `Evidence Integrity CI must actively run exactly one ${requiredEvidenceCommand}`,
+    );
   }
 }
 const watcherArchitecture = readIndexedFile(
@@ -749,11 +1150,22 @@ const watcherSource = readIndexedFile(
   "demo/midgard-watcher/src/scaffold.ts",
   "utf8",
 );
+const watcherScaffoldTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/scaffold.test.ts",
+);
 if (
   !watcherSource.includes('state: "foundation_incomplete"') ||
   !watcherSource.includes("productionReady: false")
 ) {
   fail("W00 watcher commands must remain explicitly fail closed");
+}
+const scaffold = dependencyMap.requiredWatcherPackage?.scaffold;
+if (
+  scaffold?.sourceSha256 !== sha256(Buffer.from(watcherSource, "utf8")) ||
+  scaffold.testSha256 !== sha256(watcherScaffoldTestBytes) ||
+  scaffold.expectedFocusedTestCount !== 5
+) {
+  fail("W00 watcher scaffold evidence is incomplete or stale");
 }
 const strictConfiguration =
   dependencyMap.requiredWatcherPackage?.strictConfiguration;
@@ -919,10 +1331,20 @@ if (
     "one_chain_sync_authority_zero_to_eight_aligned_query_surfaces_no_provider_quorum" ||
   strictConfiguration.externalProviderPolicy !==
     "two_to_four_operationally_independent_provider_operator_endpoint_identities" ||
+  strictConfiguration.endpointBindingPolicy !==
+    "exact_configured_https_provider_endpoints_and_local_socket_query_endpoints" ||
+  strictConfiguration.rollbackAuthorityKeyPolicy !==
+    "separate_required_key_source_not_inline_and_not_reused_from_prover_credentials" ||
   strictConfiguration.finalityPolicy?.beforeFinality !== "rewind" ||
   strictConfiguration.finalityPolicy?.afterFinality !== "quarantine" ||
+  strictConfiguration.finalityPolicy?.postFinalityRecoveryMaxDepth !== 2160 ||
+  strictConfiguration.finalityPolicy?.postFinalityRecoveryPolicy !==
+    "automatic_mode_valid_agreed_rewind_and_replay_at_fixed_cardano_k" ||
+  strictConfiguration.finalityPolicy?.transientSourceEvidencePolicy !==
+    "per_decision_quarantine_preserving_exact_finalized_state_without_incident" ||
   strictConfiguration.unknownBehavior !== "fail_closed" ||
-  strictConfiguration.diagnostics !== "code_and_schema_path_only"
+  strictConfiguration.diagnostics !== "code_and_schema_path_only" ||
+  strictConfiguration.expectedFocusedTestCount !== 43
 ) {
   fail("W01 strict watcher configuration evidence is incomplete or stale");
 }
@@ -930,9 +1352,11 @@ const configSource = configBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_CONFIG_SCHEMA_VERSION",
   "WATCHER_CONFIG_BOUNDS",
+  "WATCHER_CARDANO_SECURITY_PARAMETER_K",
   "WatcherL1SourceMode",
   '"local_node"',
   '"external_providers"',
+  "rollbackAuthorityKeySource",
   "parseWatcherConfig",
   "parseWatcherConfigJson",
   "watcherConfigDiagnostic",
@@ -966,7 +1390,7 @@ if (
     "exact_category_id_order_and_deployed_script_hash" ||
   deploymentIdentity.unknownBehavior !== "fail_closed" ||
   deploymentIdentity.diagnostics !== "code_and_schema_path_only" ||
-  deploymentIdentity.node22FocusedTestsPassed !== 18
+  deploymentIdentity.expectedFocusedTestCount !== 18
 ) {
   fail("W02 deployment-identity evidence is incomplete or stale");
 }
@@ -1033,10 +1457,12 @@ if (
   durableStore.migrationVersion !== 1 ||
   durableStore.sourceSha256 !== sha256(durableStoreBytes) ||
   durableStore.testSha256 !== sha256(durableStoreTestBytes) ||
+  durableStore.reconstructedStateOriginPolicy !==
+    "required_exact_L1_chain_point_provenance_with_reference_integrity" ||
   durableStore.cachePolicy !== "deterministic_rebuild_from_canonical_records" ||
   durableStore.migrationPolicy !== "fresh_install_atomic_compare_and_swap" ||
   durableStore.unknownBehavior !== "fail_closed" ||
-  durableStore.node22FocusedTestsPassed !== 11 ||
+  durableStore.expectedFocusedTestCount !== 12 ||
   !Array.isArray(durableStore.recordClasses) ||
   durableStore.recordClasses.length !== requiredRecordClasses.length ||
   requiredRecordClasses.some(
@@ -1046,6 +1472,13 @@ if (
   fail("W03 durable-store evidence is incomplete or stale");
 }
 const durableStoreSource = durableStoreBytes.toString("utf8");
+if (
+  !durableStoreSource.includes(
+    "$.reconstructedStates.${state.blockHash}.chainPointId",
+  )
+) {
+  fail("W03 reconstructed state must bind an existing L1 chain point");
+}
 for (const requiredSymbol of [
   "WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION",
   "parseWatcherDurableStoreV1",
@@ -1063,7 +1496,8 @@ for (const requiredSymbol of [
 }
 const l1Adapter = dependencyMap.requiredWatcherPackage?.l1Adapter;
 if (
-  l1Adapter?.providerSchemaVersion !==
+  l1Adapter?.status !== "LIBRARY_PASS_OPERATIONAL_WIRE_OPEN" ||
+  l1Adapter.providerSchemaVersion !==
     "midgard-watcher-authenticated-l1-provider-v1" ||
   l1Adapter.observationSchemaVersion !==
     "midgard-watcher-l1-block-observation-v1" ||
@@ -1077,11 +1511,12 @@ if (
     JSON.stringify(["local_node", "external_providers"]) ||
   l1Adapter.identityPolicy !==
     "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content" ||
-  l1Adapter.inputPolicy !== "authenticated_node_derived_l1_only" ||
+  l1Adapter.inputPolicy !==
+    "exact_configured_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required" ||
   l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
-  l1Adapter.node22FocusedTestsPassed !== 21
+  l1Adapter.expectedFocusedTestCount !== 23
 ) {
   fail("W10 L1-adapter evidence is incomplete or stale");
 }
@@ -1130,7 +1565,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.node22FocusedTestsPassed !== 21
+  multiProviderConsistency.expectedFocusedTestCount !== 24
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -1166,14 +1601,14 @@ if (
   finalityEngine.preFinalityRollbackPolicy !==
     "deterministic_release_bound_rewind" ||
   finalityEngine.postFinalityRollbackPolicy !==
-    "durable_quarantine_incident_preserving_finalized_binding" ||
+    "mode_valid_agreed_point_replacement_opens_recoverable_incident_while_transient_same_point_content_mismatch_or_depth_regression_preserves_finalized_binding" ||
   finalityEngine.consistencyPolicy !==
     "exact_source_mode_bound_W11_agreement_required" ||
   finalityEngine.externalProviderPolicy !==
     "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.node22FocusedTestsPassed !== 22
+  finalityEngine.expectedFocusedTestCount !== 23
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -1204,6 +1639,16 @@ if (
   rollbackEngine.incidentSchemaVersion !==
     "midgard-watcher-rollback-incident-v1" ||
   rollbackEngine.resultSchemaVersion !== "midgard-watcher-rollback-result-v1" ||
+  rollbackEngine.postFinalityRecoveryStateSchemaVersion !==
+    "midgard-watcher-post-finality-recovery-state-v1" ||
+  rollbackEngine.postFinalityRecoveryResultSchemaVersion !==
+    "midgard-watcher-post-finality-recovery-result-v1" ||
+  rollbackEngine.epochCheckpointSchemaVersion !==
+    "midgard-watcher-rollback-epoch-checkpoint-v1" ||
+  rollbackEngine.durableTrustedHeadSchemaVersion !==
+    "midgard-watcher-rollback-durable-trusted-head-v1" ||
+  rollbackEngine.maximumPostFinalityRecoveryDepth !== 2160 ||
+  rollbackEngine.transitionHistoryPerEpoch !== 128 ||
   rollbackEngine.sourceSha256 !== sha256(rollbackEngineBytes) ||
   rollbackEngine.testSha256 !== sha256(rollbackEngineTestBytes) ||
   rollbackEngine.status !== "PASS" ||
@@ -1212,14 +1657,16 @@ if (
   rollbackEngine.rewindPolicy !==
     "deterministic_dependency_cascade_with_shared_input_retention_and_orphan_consumption_restoration" ||
   rollbackEngine.restartPolicy !==
-    "externally_bootstrapped_bounded_exact_transition_replay" ||
+    "externally_bootstrapped_bounded_exact_transition_and_recovery_replay_with_HMAC_bound_snapshot_and_monotonic_trusted_head" ||
   rollbackEngine.postFinalityPolicy !==
-    "durable_quarantine_incident_preserving_finalized_binding_and_store" ||
+    "durable_incident_then_automatic_exact_common_ancestor_rewind_and_replay_within_fixed_cardano_k_and_recovery_lifecycle_bound_epoch_rotation" ||
+  rollbackEngine.checkpointAuthorityPolicy !==
+    "genesis_installation_anchor_then_HMAC_bound_monotonic_trusted_head_atomic_CAS_and_direct_successor_reconciliation" ||
   rollbackEngine.inputPolicy !==
-    "exact_source_mode_bound_W10_evidence_W11_result_W12_transition_W03_store_and_external_bootstrap" ||
+    "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.node22FocusedTestsPassed !== 19
+  rollbackEngine.expectedFocusedTestCount !== 26
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -1229,13 +1676,20 @@ for (const requiredSymbol of [
   "WATCHER_ROLLBACK_INCIDENT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_TRANSITION_V1_SCHEMA_VERSION",
+  "WATCHER_ROLLBACK_EPOCH_CHECKPOINT_V1_SCHEMA_VERSION",
+  "WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION",
+  "WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION",
+  "WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION",
   "WATCHER_ROLLBACK_V1_BOUNDS",
   "WATCHER_ROLLBACK_REASON_CODES_V1",
   "WATCHER_ROLLBACK_ALERT_CODES_V1",
   "makeWatcherRollbackBootstrapStateV1",
   "parseWatcherRollbackStateV1",
   "parseWatcherRollbackResultV1",
+  "parseWatcherPostFinalityRecoveryResultV1",
+  "evaluateWatcherPostFinalityRecoveryV1",
   "evaluateWatcherRollbackV1",
+  "prepareWatcherRollbackDurableTrustedHeadReconciliationV1",
 ]) {
   if (
     !rollbackEngineSource.includes(requiredSymbol) ||
@@ -1244,15 +1698,21 @@ for (const requiredSymbol of [
     fail(`W13 rollback-engine symbol ${requiredSymbol} is not public`);
   }
 }
+if (
+  !rollbackEngineSource.includes("trustedCheckpointStateDigest") ||
+  !rollbackEngineSource.includes("resumableTrustedCheckpointStateDigest")
+) {
+  fail("W13 rollback epoch checkpoint authority is not implemented");
+}
 if (!rollbackEngineSource.includes("externalProviderBindings")) {
   fail("W13 rollback provenance must retain W11 external provider bindings");
 }
 const stateQueueIndexer =
   dependencyMap.requiredWatcherPackage?.stateQueueIndexer;
 if (
-  stateQueueIndexer?.status !== "PASS" ||
+  stateQueueIndexer?.status !== "LIBRARY_PASS_CANONICAL_WIRE_PROVENANCE_OPEN" ||
   stateQueueIndexer.independentAudit !==
-    "PASS_remediated_original_and_spent_journal_hostile_probes" ||
+    "PASS_library_remediated_original_and_spent_journal_hostile_probes" ||
   stateQueueIndexer.policySchemaVersion !==
     "midgard-watcher-state-queue-indexer-policy-v1" ||
   stateQueueIndexer.snapshotSchemaVersion !==
@@ -1266,14 +1726,16 @@ if (
   stateQueueIndexer.sourceSha256 !== sha256(stateQueueIndexerBytes) ||
   stateQueueIndexer.testSha256 !== sha256(stateQueueIndexerTestBytes) ||
   stateQueueIndexer.inputPolicy !==
-    "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_recomputed_W11_consistency_and_W12_finality_plus_W13_rollback" ||
+    "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_operational_W10_wire_provenance_open_and_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery" ||
   stateQueueIndexer.queuePolicy !==
-    "decode_and_index_node_accepted_canonical_transaction_output_and_datum_bytes_without_replaying_Cardano_validator_semantics" ||
+    "decode_and_index_canonical_transaction_output_and_datum_bytes_from_W10_without_replaying_Cardano_validator_semantics_operational_node_acceptance_provenance_open" ||
+  stateQueueIndexer.durableRolePolicy !==
+    "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly" ||
   stateQueueIndexer.rollbackPolicy !==
-    "exact_W13_active_and_spent_journal_rewind_restart_replay_and_duplicate_hold" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.node22FocusedTestsPassed !== 15
+  stateQueueIndexer.expectedFocusedTestCount !== 21
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -1317,16 +1779,16 @@ if (
   userEventIndexer.sourceSha256 !== sha256(userEventIndexerBytes) ||
   userEventIndexer.testSha256 !== sha256(userEventIndexerTestBytes) ||
   userEventIndexer.inputPolicy !==
-    "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_and_W12_finality_plus_W02_W03_W13" ||
+    "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   userEventIndexer.eventPolicy !==
     "exact_deposit_withdrawal_forced_order_NFT_datum_witness_time_content_and_terminal_semantics" ||
   userEventIndexer.finalityPolicy !==
     "independent_active_and_terminal_pending_to_final_transitions" ||
   userEventIndexer.rollbackPolicy !==
-    "exact_W13_journal_restoration_suffix_rewind_restart_and_reinclusion" ||
+    "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.node22FocusedTestsPassed !== 18
+  userEventIndexer.expectedFocusedTestCount !== 23
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -1371,16 +1833,18 @@ if (
   settlementIndexer.sourceSha256 !== sha256(settlementIndexerBytes) ||
   settlementIndexer.testSha256 !== sha256(settlementIndexerTestBytes) ||
   settlementIndexer.inputPolicy !==
-    "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_W13_replacement_anchor_plus_W02_W03" ||
+    "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   settlementIndexer.settlementPolicy !==
     "exact_claim_disproof_resolution_reserve_payout_refund_value_and_terminal_semantics" ||
   settlementIndexer.retryPolicy !==
     "bounded_retry_stuck_invalid_identity_and_full_transition_history_restart_replay" ||
+  settlementIndexer.durableRolePolicy !==
+    "derive_owned_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_foreign_roles_exactly" ||
   settlementIndexer.rollbackPolicy !==
-    "exact_W13_journal_restoration_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.node22FocusedTestsPassed !== 23
+  settlementIndexer.expectedFocusedTestCount !== 29
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -1427,14 +1891,16 @@ if (
   proofThreadIndexer.sourceSha256 !== sha256(proofThreadIndexerBytes) ||
   proofThreadIndexer.testSha256 !== sha256(proofThreadIndexerTestBytes) ||
   proofThreadIndexer.inputPolicy !==
-    "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_canonical_W13_replacement_anchor_plus_W02_W03" ||
+    "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   proofThreadIndexer.threadPolicy !==
     "deterministic_step_success_proof_token_removal_and_cancellation_lifecycles" ||
+  proofThreadIndexer.durableRolePolicy !==
+    "derive_proof_computation_and_shared_DA_roles_from_signed_deployment_and_actual_output_bytes_while_preserving_other_roles_exactly" ||
   proofThreadIndexer.rollbackPolicy !==
-    "exact_W13_journal_rewind_full_transition_history_restart_replay_revision_monotonicity_and_reinclusion" ||
+    "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  proofThreadIndexer.node22FocusedTestsPassed !== 18
+  proofThreadIndexer.expectedFocusedTestCount !== 24
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }
@@ -1481,7 +1947,7 @@ if (
   ruleBundle.programPolicy !== "exact_W02_program_commitment_map" ||
   ruleBundle.unknownBehavior !== "fail_closed" ||
   ruleBundle.diagnostics !== "deterministic_code_and_path_only" ||
-  ruleBundle.node22FocusedTestsPassed !== 9
+  ruleBundle.expectedFocusedTestCount !== 9
 ) {
   fail("W23 rule-bundle evidence is incomplete or stale");
 }
@@ -1510,22 +1976,26 @@ for (const requiredSymbol of [
 }
 if (
   dependencyMap.requiredWatcherPackage.foundationStatus !==
-    "W13_through_W17_and_W23_pass_source_modes_exact" ||
+    "W01_W03_and_W11_W17_library_surfaces_pass_operational_W10_wire_binding_open" ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W01") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W02") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W03") ||
-  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W10") ||
+  !dependencyMap.requiredWatcherPackage.remainingTasks.includes(
+    "W10-OPERATIONAL-WIRE",
+  ) ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W11") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W12") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W13") ||
-  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W14") ||
+  !dependencyMap.requiredWatcherPackage.remainingTasks.includes(
+    "W14-LIVE-PROVENANCE",
+  ) ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W15") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W16") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W17") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W23")
 ) {
   fail(
-    "W01-W03, W10-W17, and W23 must be complete without promoting watcher readiness",
+    "W01-W03, W11-W17 library surfaces, and W23 must be complete while W10 operational wire provenance remains explicitly open",
   );
 }
 if (dependencyMap.f30Conclusion?.status !== "pass") {

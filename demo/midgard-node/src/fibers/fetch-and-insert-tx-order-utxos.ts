@@ -50,6 +50,7 @@ import {
   Globals,
   Lucid,
   MidgardContracts,
+  NodeConfig,
 } from "@/services/index.js";
 
 const rawDatum = (
@@ -559,7 +560,7 @@ const txOrderUTxOToEntry = (
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
   SDK.LucidError | DatabaseError,
-  Database
+  Database | NodeConfig
 > =>
   Effect.gen(function* () {
     const inclusionTime = txOrderUTxO.inclusionTime;
@@ -695,7 +696,7 @@ export const reconcileVisibleTxOrderUTxOs = (
 ): Effect.Effect<
   UserEventReconcileResult,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | ContractDeploymentIdentity | Lucid | Database
+  MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > =>
   Effect.gen(function* () {
     const { api: lucid } = yield* Lucid;
@@ -755,7 +756,7 @@ export const reconcileVisibleTxOrderUTxOs = (
 export const fetchAndInsertTxOrderUTxOs: Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | ContractDeploymentIdentity | Lucid | Database
+  MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > = Effect.gen(function* () {
   yield* Effect.logDebug("fetching TxOrderUTxOs...");
   const { reconciledCount } = yield* reconcileVisibleTxOrderUTxOs();
@@ -771,7 +772,7 @@ export const fetchAndInsertTxOrderUTxOsForCommitBarrier = (
 ): Effect.Effect<
   Date,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | ContractDeploymentIdentity | Lucid | Database
+  MidgardContracts | ContractDeploymentIdentity | Lucid | Database | NodeConfig
 > =>
   runCommitTimeUserEventIngestionBarrier({
     inclusionTimeUpperBound,
@@ -792,7 +793,12 @@ export const fetchAndInsertTxOrderUTxOsFiber = (
 ): Effect.Effect<
   void,
   SDK.LucidError | DatabaseError,
-  MidgardContracts | ContractDeploymentIdentity | Lucid | Database | Globals
+  | MidgardContracts
+  | ContractDeploymentIdentity
+  | Lucid
+  | Database
+  | NodeConfig
+  | Globals
 > =>
   repeatVisibleUserEventIngestionFiber({
     schedule,

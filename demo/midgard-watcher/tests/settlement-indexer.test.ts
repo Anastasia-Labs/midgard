@@ -1,4 +1,15 @@
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { execFile } from "node:child_process";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign,
+  X509Certificate,
+} from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer, type Server } from "node:net";
+import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 import {
   ActiveOperatorMintRedeemer,
@@ -25,7 +36,7 @@ import {
   Data,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
@@ -68,28 +79,36 @@ import {
   makeWatcherFinalityPolicyV1,
 } from "../src/finality-engine.js";
 import {
+  closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
+  establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
+  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1,
+  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
   type WatcherAuthenticatedL1ProviderV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
   type WatcherNormalizedL1BlockV1,
 } from "../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 } from "../src/multi-provider-consistency.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../src/multi-provider-consistency.js";
 import {
-  evaluateWatcherRollbackV1,
+  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
+  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
   makeWatcherRollbackBootstrapStateV1,
+  type WatcherPostFinalityRecoveryInputV1,
 } from "../src/rollback-engine.js";
 import {
-  evaluateWatcherSettlementIndexerV1,
+  evaluateWatcherSettlementIndexerV1 as evaluateWatcherSettlementIndexerV1Raw,
   makeWatcherSettlementIndexerPolicyV1,
   makeWatcherSettlementObservationV1,
   makeWatcherSettlementResourceFromProtocolUtxoV1,
   makeWatcherSettlementSnapshotV1,
   makeWatcherSettlementSubjectV1,
-  parseWatcherSettlementIndexerResultV1,
-  parseWatcherSettlementIndexerStateV1,
+  parseWatcherSettlementIndexerResultV1 as parseWatcherSettlementIndexerResultV1Raw,
+  parseWatcherSettlementIndexerStateV1 as parseWatcherSettlementIndexerStateV1Raw,
   WATCHER_SETTLEMENT_INDEXER_V1_BOUNDS,
   WATCHER_SETTLEMENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   type WatcherSettlementIndexerPolicyV1,
@@ -104,6 +123,176 @@ import {
 import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
 type Mutable = Record<string, any>;
+const execFileAsync = promisify(execFile);
+const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
+const tlsServers: Server[] = [];
+const tlsIdentityByProviderId = new Map<string, string>();
+const transportEndpointByProviderId = new Map<string, string>();
+let transportFixtureDirectory = "";
+let localNodeServer: Server;
+
+const listen = async (server: Server, target: string | number): Promise<void> =>
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    const onListen = () => {
+      server.off("error", reject);
+      resolve();
+    };
+    if (typeof target === "string") {
+      server.listen(target, onListen);
+    } else {
+      server.listen(target, "127.0.0.1", onListen);
+    }
+  });
+
+const makeTlsTransportFixture = async (providerId: string) => {
+  const keyPath = join(transportFixtureDirectory, `${providerId}.key`);
+  const certificatePath = join(transportFixtureDirectory, `${providerId}.crt`);
+  await execFileAsync("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-keyout",
+    keyPath,
+    "-out",
+    certificatePath,
+    "-days",
+    "1",
+    "-subj",
+    "/CN=localhost",
+    "-addext",
+    "subjectAltName=DNS:localhost",
+  ]);
+  const [key, certificate] = await Promise.all([
+    readFile(keyPath, "utf8"),
+    readFile(certificatePath, "utf8"),
+  ]);
+  const server = createTlsServer({ key, cert: certificate });
+  await listen(server, 0);
+  tlsServers.push(server);
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("TLS fixture did not bind a TCP port");
+  }
+  return {
+    certificate,
+    identitySha256: createHash("sha256")
+      .update(new X509Certificate(certificate).raw)
+      .digest("hex"),
+    port: address.port,
+  };
+};
+
+const transportFor = (
+  authenticatedProvider: unknown,
+): WatcherL1TransportAttestationContextV1 => {
+  const matching = transportContexts.filter((context) => {
+    const details = watcherL1TransportAttestationDetailsV1(context);
+    return (
+      details !== null &&
+      isDeepStrictEqual(details.provider, authenticatedProvider)
+    );
+  });
+  if (matching.length !== 1) {
+    throw new Error("test provider has no unique live transport attestation");
+  }
+  return matching[0]!;
+};
+
+const normalizeWatcherL1BlockV1 = (
+  authenticatedProvider: unknown,
+  observation: unknown,
+  session?: Parameters<typeof normalizeWatcherL1BlockV1Raw>[2],
+) =>
+  normalizeWatcherL1BlockV1Raw(
+    transportFor(authenticatedProvider),
+    observation,
+    session,
+  );
+
+const evaluateWatcherMultiProviderConsistencyV1 = (
+  configuredSource: unknown,
+  observations: unknown,
+) =>
+  evaluateWatcherMultiProviderConsistencyV1Raw(
+    configuredSource,
+    observations,
+    transportContexts,
+  );
+
+const parseWatcherSettlementIndexerStateV1 = (
+  value: unknown,
+  policyValue: unknown,
+  restartContexts: readonly WatcherSettlementPublicContextV1["restartContexts"][number][] = [],
+  restartRollbackContexts: Parameters<
+    typeof parseWatcherSettlementIndexerStateV1Raw
+  >[4] = [],
+) =>
+  parseWatcherSettlementIndexerStateV1Raw(
+    value,
+    policyValue,
+    transportContexts,
+    restartContexts,
+    restartRollbackContexts,
+  );
+
+const evaluateWatcherSettlementIndexerV1 = (
+  policyValue: unknown,
+  previousStateValue: unknown,
+  observationValue: unknown,
+  publicContextValue: unknown,
+) =>
+  evaluateWatcherSettlementIndexerV1Raw(
+    policyValue,
+    previousStateValue,
+    observationValue,
+    publicContextValue,
+    transportContexts,
+  );
+
+const evaluateWatcherRollbackV1 = (
+  policyInput: unknown,
+  storeInput: unknown,
+  previousFinalityStateInput: unknown,
+  consistencyInput: unknown,
+  finalityResultInput: unknown,
+  previousRollbackStateInput: unknown,
+  rollbackBootstrapStateInput: unknown,
+  trustedCheckpointAuthorityInput?: unknown,
+) =>
+  evaluateWatcherRollbackV1Raw(
+    policyInput,
+    storeInput,
+    previousFinalityStateInput,
+    consistencyInput,
+    finalityResultInput,
+    previousRollbackStateInput,
+    rollbackBootstrapStateInput,
+    trustedCheckpointAuthorityInput,
+    transportContexts,
+  );
+
+const evaluateWatcherPostFinalityRecoveryV1 = (
+  input: WatcherPostFinalityRecoveryInputV1,
+) =>
+  evaluateWatcherPostFinalityRecoveryV1Raw({
+    ...input,
+    transportAttestations: transportContexts,
+  });
+
+const parseWatcherSettlementIndexerResultV1 = (
+  value: unknown,
+  context: Omit<
+    Parameters<typeof parseWatcherSettlementIndexerResultV1Raw>[1],
+    "transportAttestations"
+  >,
+) =>
+  parseWatcherSettlementIndexerResultV1Raw(value, {
+    ...context,
+    transportAttestations: transportContexts,
+  });
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
@@ -468,79 +657,91 @@ const policy = makeWatcherSettlementIndexerPolicyV1({
   maximumRetryAttempts: "2",
 }) as WatcherSettlementIndexerPolicyV1;
 
-const finalityPolicy = makeWatcherFinalityPolicyV1(
-  {
-    schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-    mode: "acceptance",
-    targetNetwork: "Preprod",
-    l1: {
-      source: {
-        sourceMode: "external_providers",
-        providers: [
-          {
-            identity: "provider-a",
-            operatorIdentitySha256: h32("97"),
-            endpoint: "https://cardano-a.example",
+const makeExternalFinalityPolicy = () =>
+  makeWatcherFinalityPolicyV1(
+    {
+      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
+      mode: "development",
+      targetNetwork: "Preprod",
+      l1: {
+        source: {
+          sourceMode: "external_providers",
+          providers: [
+            {
+              identity: "provider-a",
+              operatorIdentitySha256: h32("97"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-a") ??
+                "https://cardano-a.example",
+            },
+            {
+              identity: "provider-b",
+              operatorIdentitySha256: h32("98"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-b") ??
+                "https://cardano-b.example",
+            },
+          ],
+        },
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
+        finality: {
+          depth: Number(policy.requiredFinalityDepth),
+          rollback: {
+            beforeFinality: "rewind",
+            afterFinality: "quarantine",
+            maxDepth: Number(policy.requiredFinalityDepth),
           },
+        },
+      },
+      da: {
+        peers: [
           {
-            identity: "provider-b",
-            operatorIdentitySha256: h32("98"),
-            endpoint: "https://cardano-b.example",
+            identity: "da-peer-a",
+            multiaddr:
+              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
           },
         ],
+        requestTimeoutMs: 10_000,
+        maxConcurrency: 4,
       },
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-      finality: {
-        depth: Number(policy.requiredFinalityDepth),
-        rollback: {
-          beforeFinality: "rewind",
-          afterFinality: "quarantine",
-          maxDepth: Number(policy.requiredFinalityDepth),
+      storage: {
+        driver: "sqlite",
+        path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
         },
       },
-    },
-    da: {
-      peers: [
-        {
-          identity: "da-peer-a",
-          multiaddr:
-            "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+      proverWallet: {
+        keySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_PROVER_KEY",
         },
-      ],
-      requestTimeoutMs: 10_000,
-      maxConcurrency: 4,
-    },
-    storage: {
-      driver: "sqlite",
-      path: "/var/lib/midgard-watcher/watcher.sqlite",
-    },
-    proverWallet: {
-      keySource: {
-        kind: "environment",
-        variable: "MIDGARD_WATCHER_PROVER_KEY",
+      },
+      deadlines: {
+        daFetchMs: 60_000,
+        daPublishMs: 60_000,
+        proofConstructMs: 300_000,
+        proofSubmitMs: 120_000,
       },
     },
-    deadlines: {
-      daFetchMs: 60_000,
-      daPublishMs: 60_000,
-      proofConstructMs: 300_000,
-      proofSubmitMs: 120_000,
+    {
+      manifestId: policy.deploymentMarker.manifestId,
+      network: policy.network,
+      trustRootId: policy.deploymentTrustRootId,
+      releaseEvidenceDigest: policy.releaseEvidenceDigest,
+      ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
+      programCommitments: { validation: h32("55") },
+      durableMarker: policy.deploymentMarker,
     },
-  },
-  {
-    manifestId: policy.deploymentMarker.manifestId,
-    network: policy.network,
-    trustRootId: policy.deploymentTrustRootId,
-    releaseEvidenceDigest: policy.releaseEvidenceDigest,
-    ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-    programCommitments: { validation: h32("55") },
-    durableMarker: policy.deploymentMarker,
-  },
-)!;
+  )!;
 
 const LOCAL_NODE_ID = "watcher-node-a";
-const LOCAL_GENESIS_IDENTITY = h32("76");
+const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
+const LOCAL_GENESIS_IDENTITY = createHash("sha256")
+  .update(LOCAL_GENESIS_BYTES)
+  .digest("hex");
 const makeLocalFinalityPolicy = (
   queryServices: readonly Readonly<{
     kind: "ogmios";
@@ -551,7 +752,7 @@ const makeLocalFinalityPolicy = (
   makeWatcherFinalityPolicyV1(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "acceptance",
+      mode: "development",
       targetNetwork: "Preprod",
       l1: {
         source: {
@@ -559,7 +760,7 @@ const makeLocalFinalityPolicy = (
           authorityNodeId: LOCAL_NODE_ID,
           chainSync: {
             kind: "cardano_node_socket",
-            socketPath: "/ipc/node.socket",
+            socketPath: localSource.chainSyncSocketPath,
             genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
           },
           queryServices,
@@ -589,6 +790,10 @@ const makeLocalFinalityPolicy = (
       storage: {
         driver: "sqlite",
         path: "/var/lib/midgard-watcher/watcher.sqlite",
+        rollbackAuthorityKeySource: {
+          kind: "environment",
+          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+        },
       },
       proverWallet: {
         keySource: {
@@ -613,14 +818,13 @@ const makeLocalFinalityPolicy = (
       durableMarker: policy.deploymentMarker,
     },
   )!;
-const localFinalityPolicy = makeLocalFinalityPolicy([]);
-const localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
-  {
-    kind: "ogmios",
-    identity: "local-ogmios",
-    endpoint: "http://127.0.0.1:1337",
-  },
-]);
+let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
+let localFinalityPolicy: NonNullable<
+  ReturnType<typeof makeWatcherFinalityPolicyV1>
+>;
+let localOgmiosFinalityPolicy: NonNullable<
+  ReturnType<typeof makeWatcherFinalityPolicyV1>
+>;
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -847,10 +1051,12 @@ const externalSource = {
     {
       providerId: "provider-a",
       operatorIdentitySha256: h32("97"),
+      endpoint: "https://cardano-a.example",
     },
     {
       providerId: "provider-b",
       operatorIdentitySha256: h32("98"),
+      endpoint: "https://cardano-b.example",
     },
   ],
 } as const;
@@ -860,6 +1066,7 @@ const localSource = {
   network: "Preprod",
   authorityNodeId: LOCAL_NODE_ID,
   genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+  chainSyncSocketPath: "/ipc/node.socket",
   queryServices: [],
 } as const;
 const localChainSyncProvider = {
@@ -896,6 +1103,7 @@ const localSourceWithOgmios = {
     {
       kind: "ogmios",
       providerId: localOgmiosProvider.providerId,
+      endpoint: "http://127.0.0.1:1337",
     },
   ],
 } as const;
@@ -913,8 +1121,103 @@ const rollbackProvider = (
   },
   authentication: {
     kind: "https_tls_identity_v1",
-    publicIdentitySha256: h32(identityByte),
+    publicIdentitySha256:
+      tlsIdentityByProviderId.get(providerId) ?? h32(identityByte),
   },
+});
+
+beforeAll(async () => {
+  transportFixtureDirectory = await mkdtemp(
+    join("/dev/shm", "midgard-w15-settlement-"),
+  );
+  const socketPath = join(transportFixtureDirectory, "node.socket");
+  (localSource as Mutable).chainSyncSocketPath = socketPath;
+  (localSourceWithOgmios as Mutable).chainSyncSocketPath = socketPath;
+  const genesisPath = join(transportFixtureDirectory, "genesis.json");
+  await writeFile(genesisPath, LOCAL_GENESIS_BYTES);
+  localNodeServer = createNetServer();
+  await listen(localNodeServer, socketPath);
+  const localAuthority = await establishWatcherLocalNodeAuthorityTransportV1({
+    network: "Preprod",
+    authorityNodeId: LOCAL_NODE_ID,
+    providerId: localChainSyncProvider.providerId,
+    nodeSocketPath: socketPath,
+    genesisFilePath: genesisPath,
+    expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
+    connectTimeoutMs: 2_000,
+  });
+  transportContexts.push(localAuthority);
+
+  const ogmiosFixture = await makeTlsTransportFixture(
+    localOgmiosProvider.providerId,
+  );
+  const ogmiosEndpoint = `https://localhost:${ogmiosFixture.port}`;
+  (localSourceWithOgmios.queryServices[0] as Mutable).endpoint = ogmiosEndpoint;
+  (localOgmiosProvider.authentication as Mutable).publicIdentitySha256 =
+    ogmiosFixture.identitySha256;
+  transportContexts.push(
+    await establishWatcherLocalNodeQueryTransportV1(localAuthority, {
+      transportKind: "https_tls",
+      providerId: localOgmiosProvider.providerId,
+      surface: "ogmios",
+      endpoint: ogmiosEndpoint,
+      caPem: ogmiosFixture.certificate,
+      expectedTlsPublicIdentitySha256: ogmiosFixture.identitySha256,
+      connectTimeoutMs: 2_000,
+    }),
+  );
+
+  for (const [providerId, operatorIdentitySha256] of [
+    ["provider-a", h32("97")],
+    ["provider-b", h32("98")],
+  ] as const) {
+    const fixture = await makeTlsTransportFixture(providerId);
+    const endpoint = `https://localhost:${fixture.port}`;
+    tlsIdentityByProviderId.set(providerId, fixture.identitySha256);
+    transportEndpointByProviderId.set(providerId, endpoint);
+    const configuredProvider = externalSource.providers.find(
+      ({ providerId: configuredProviderId }) =>
+        configuredProviderId === providerId,
+    );
+    if (configuredProvider === undefined) {
+      throw new Error("missing external-provider fixture policy");
+    }
+    (configuredProvider as Mutable).endpoint = endpoint;
+    if (providerId === provider.providerId) {
+      (provider.authentication as Mutable).publicIdentitySha256 =
+        fixture.identitySha256;
+    }
+    transportContexts.push(
+      await establishWatcherExternalProviderTransportV1({
+        network: "Preprod",
+        providerId,
+        operatorIdentitySha256,
+        endpoint,
+        caPem: fixture.certificate,
+        expectedTlsPublicIdentitySha256: fixture.identitySha256,
+        connectTimeoutMs: 2_000,
+      }),
+    );
+  }
+  finalityPolicy = makeExternalFinalityPolicy();
+  localFinalityPolicy = makeLocalFinalityPolicy([]);
+  localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
+    {
+      kind: "ogmios",
+      identity: "local-ogmios",
+      endpoint: ogmiosEndpoint,
+    },
+  ]);
+});
+
+afterAll(async () => {
+  for (const context of transportContexts) {
+    closeWatcherL1TransportAttestationContextV1(context);
+  }
+  for (const server of [...tlsServers, localNodeServer]) {
+    server.close();
+  }
+  await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
 type RollbackPoint = Readonly<{
@@ -1019,6 +1322,7 @@ const bundle = (input: {
   durableStore?: WatcherDurableStoreV1;
   previousFinalityState?: unknown;
   rollbackAuthority?: WatcherSettlementPublicContextV1["rollbackAuthority"];
+  predecessorStateDigest?: string;
   chainPointOffset?: bigint;
   parentBlockHash?: string | null;
   transactionIsValid?: boolean;
@@ -1254,7 +1558,8 @@ const bundle = (input: {
     durableStoreDigest: watcherDurableStoreBytesSha256(
       encodeWatcherDurableStoreV1(store),
     ),
-    predecessorStateDigest: input.previousState?.stateDigest ?? null,
+    predecessorStateDigest:
+      input.predecessorStateDigest ?? input.previousState?.stateDigest ?? null,
     transition,
     snapshot: input.snapshot,
   });
@@ -1601,10 +1906,255 @@ const spawnSequence = (
   const spawnState = accepted(bootstrapState, spawnEvidence);
   return {
     bootstrapEvidence,
+    bootstrapState,
+    gapEvidence,
     spawnEvidence,
     spawnState,
     outRef,
     durable,
+  };
+};
+
+type PostFinalityRecoverySourceMode = "local_node" | "external_providers";
+
+const postFinalitySettlementEvidence = (
+  sourceMode: PostFinalityRecoverySourceMode,
+  rawObservation: Mutable,
+  depth: string,
+) => {
+  const primaryProvider =
+    sourceMode === "local_node" ? localChainSyncProvider : provider;
+  const primaryRaw = {
+    ...structuredClone(rawObservation),
+    providerId: primaryProvider.providerId,
+    chainPoint: {
+      ...(structuredClone(rawObservation.chainPoint) as Mutable),
+      depth,
+    },
+  };
+  const observations =
+    sourceMode === "local_node"
+      ? [normalizeWatcherL1BlockV1(primaryProvider, primaryRaw)]
+      : [
+          normalizeWatcherL1BlockV1(provider, primaryRaw),
+          normalizeWatcherL1BlockV1(rollbackProvider("provider-b", "78"), {
+            ...structuredClone(primaryRaw),
+            providerId: "provider-b",
+          }),
+        ];
+  const consistency = evaluateWatcherMultiProviderConsistencyV1(
+    sourceMode === "local_node" ? localSource : externalSource,
+    observations,
+  );
+  expect(consistency).toMatchObject({
+    status: "agreed",
+    sourceMode,
+    independentProviderCount: sourceMode === "local_node" ? 1 : 2,
+  });
+  return { primaryRaw, observations, consistency };
+};
+
+const postFinalitySettlementRecoveryBundle = (
+  sourceMode: PostFinalityRecoverySourceMode,
+  sequence: ReturnType<typeof spawnSequence>,
+) => {
+  const selectedFinalityPolicy =
+    sourceMode === "local_node" ? localFinalityPolicy : finalityPolicy;
+  const commonRaw = (sequence.gapEvidence?.context.l1Observation ??
+    sequence.bootstrapEvidence.context.l1Observation) as Mutable;
+  const orphanRaw = sequence.spawnEvidence.context.l1Observation as Mutable;
+  const common = postFinalitySettlementEvidence(sourceMode, commonRaw, "0");
+  const orphanPending = postFinalitySettlementEvidence(
+    sourceMode,
+    orphanRaw,
+    "1",
+  );
+  const orphanFinalized = postFinalitySettlementEvidence(
+    sourceMode,
+    orphanRaw,
+    selectedFinalityPolicy.confirmationDepth,
+  );
+  const replacementProvider =
+    sourceMode === "local_node" ? localChainSyncProvider : provider;
+  const replacementRaw: Mutable = {
+    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+    network: "Preprod",
+    providerId: replacementProvider.providerId,
+    chainPoint: {
+      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      parentBlockHash: common.observations[0]!.chainPoint.blockHash,
+      slot: (BigInt(common.observations[0]!.chainPoint.slot) + 2n).toString(),
+      blockNo: (
+        BigInt(common.observations[0]!.chainPoint.blockNo) + 1n
+      ).toString(),
+      depth: "0",
+    },
+    transactions: structuredClone(
+      (sequence.spawnEvidence.context.l1Observation as Mutable).transactions,
+    ),
+  };
+  const replacement = postFinalitySettlementEvidence(
+    sourceMode,
+    replacementRaw,
+    "0",
+  );
+  const replacementTail = [2, 3].map((offset) => {
+    const prior = offset === 2 ? replacement.observations[0]! : undefined;
+    const raw: Mutable = {
+      ...structuredClone(replacementRaw),
+      chainPoint: {
+        blockHash: h32(
+          `${sourceMode === "local_node" ? "d" : "c"}${offset.toString()}`,
+        ),
+        parentBlockHash:
+          prior?.chainPoint.blockHash ??
+          h32(`${sourceMode === "local_node" ? "d" : "c"}2`),
+        slot: (
+          BigInt(common.observations[0]!.chainPoint.slot) + BigInt(offset + 1)
+        ).toString(),
+        blockNo: (
+          BigInt(common.observations[0]!.chainPoint.blockNo) + BigInt(offset)
+        ).toString(),
+        depth: "0",
+      },
+      transactions: [],
+    };
+    return {
+      raw,
+      evidence: postFinalitySettlementEvidence(sourceMode, raw, "0"),
+    };
+  });
+  const pending = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    null,
+    orphanPending.consistency,
+  );
+  expect(pending.action).toBe("observe_pending");
+  const finalized = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    pending.state,
+    orphanFinalized.consistency,
+  );
+  expect(finalized.action).toBe("finalize");
+  const contradiction = evaluateWatcherFinalityV1(
+    selectedFinalityPolicy,
+    finalized.state,
+    replacementTail.at(-1)!.evidence.consistency,
+  );
+  expect(contradiction.action).toBe("quarantine_incident");
+
+  const baseStore = sequence.spawnEvidence.store;
+  const persisted = [
+    ...common.observations,
+    ...orphanPending.observations,
+    ...orphanFinalized.observations,
+    ...replacement.observations,
+    ...replacementTail.flatMap(({ evidence }) => evidence.observations),
+  ];
+  const sourceStore = makeWatcherDurableStoreV1({
+    deploymentMarker: baseStore.deploymentMarker,
+    revision: (BigInt(baseStore.revision) + 1n).toString(),
+    records: {
+      ...baseStore,
+      l1Observations: [
+        ...new Map(
+          [
+            ...baseStore.l1Observations,
+            ...persisted.map(persistedObservation),
+          ].map((entry) => [entry.observationId, entry]),
+        ).values(),
+      ],
+      chainPoints: [
+        ...new Map(
+          [
+            ...baseStore.chainPoints,
+            ...persistedChainPoints(
+              persisted,
+              sourceMode === "local_node"
+                ? localChainSyncProvider.providerId
+                : provider.providerId,
+            ),
+          ].map((entry) => [entry.chainPointId, entry]),
+        ).values(),
+      ],
+    },
+  });
+  const rollbackBootstrapState = makeWatcherRollbackBootstrapStateV1(
+    selectedFinalityPolicy,
+    sourceStore,
+    finalized.state,
+  )!;
+  const incident = evaluateWatcherRollbackV1(
+    selectedFinalityPolicy,
+    sourceStore,
+    finalized.state,
+    replacementTail.at(-1)!.evidence.consistency,
+    contradiction,
+    rollbackBootstrapState,
+    rollbackBootstrapState,
+  );
+  expect(incident).toMatchObject({
+    action: "quarantine_incident",
+    protocolDecision: "quarantined",
+  });
+  const recoveryInput: WatcherPostFinalityRecoveryInputV1 = {
+    policy: selectedFinalityPolicy,
+    sourceStore: incident.nextStore,
+    currentStore: incident.nextStore,
+    quarantinedRollbackState: incident.rollbackState,
+    rollbackBootstrapState,
+    previousCanonicalPath: [common.consistency, orphanFinalized.consistency],
+    replacementCanonicalPath: [
+      common.consistency,
+      replacement.consistency,
+      ...replacementTail.map(({ evidence }) => evidence.consistency),
+    ],
+    previousRecoveryState: null,
+  };
+  const recovery = evaluateWatcherPostFinalityRecoveryV1(recoveryInput);
+  expect(recovery).toMatchObject({
+    action: "rewind_and_replay",
+    protocolDecision: "resume_replay",
+    reasonCodes: ["recovery_applied"],
+    recoveryState: {
+      path: {
+        commonAncestorPointDigest:
+          common.observations[0]!.chainPoint.pointDigest,
+        replacementTipPointDigest:
+          replacementTail.at(-1)!.evidence.observations[0]!.chainPoint
+            .pointDigest,
+      },
+    },
+  });
+  expect(recovery.nextStore).not.toBeNull();
+  const recoveryEvidence = bundle({
+    kind: "rollback",
+    previousState: sequence.spawnState,
+    predecessorStateDigest: sequence.spawnState.stateDigest,
+    snapshot: emptySnapshot(),
+    restartBindings: [
+      sequence.bootstrapEvidence.restartBinding,
+      sequence.spawnEvidence.restartBinding,
+    ],
+    authenticatedProvider: replacementProvider,
+    l1Observation: common.primaryRaw,
+    sourceDurableStore: incident.nextStore!,
+    durableStore: recovery.nextStore!,
+    rollbackAuthority: {
+      result: recovery,
+      context: recoveryInput,
+    },
+  });
+  return {
+    common,
+    replacement,
+    replacementRaw,
+    replacementProvider,
+    sourceStore,
+    incident,
+    recoveryInput,
+    recovery,
+    recoveryEvidence,
   };
 };
 
@@ -1618,6 +2168,57 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const state = accepted(null, evidence);
     expect(state.activeHistory).toHaveLength(1);
     expect(state.snapshot.resources).toEqual([]);
+  });
+
+  it("preserves an existing foreign role but rejects inserting an ordinary output under it", () => {
+    const outputHex = stateQueueOutput();
+    const retainedForeign: WatcherProtocolUtxoV1 = {
+      outRef: `${h32("7e")}#0`,
+      role: "state_queue",
+      chainPointId: h32("00"),
+      output: makeWatcherDurablePayloadV1(outputHex),
+    };
+    const scenario = scenarioBootstrap([retainedForeign]);
+    const retained = bundle({
+      policyOverride: scenario.policy,
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+      sourceDurableStore: scenario.store,
+      protocolUtxos: [retainedForeign],
+    });
+    expect(
+      accepted(null, retained, scenario.policy).snapshot.resources,
+    ).toEqual([]);
+
+    const bodyHex = transactionBody([h32("81") + "#0"], [outputHex], []);
+    const transactionHash = computeHash32(Buffer.from(bodyHex, "hex")).toString(
+      "hex",
+    );
+    const wrongRole: WatcherProtocolUtxoV1 = {
+      outRef: `${transactionHash}#0`,
+      role: "state_queue",
+      chainPointId: h32("00"),
+      output: makeWatcherDurablePayloadV1(outputHex),
+    };
+    const evidence = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+      outputHexes: [outputHex],
+      protocolUtxos: [wrongRole],
+    });
+    expect(
+      evaluateWatcherSettlementIndexerV1(
+        policy,
+        null,
+        evidence.observation,
+        evidence.context,
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
   });
 
   it("accepts one local-node authority with aligned queries and rejects source or query substitution", () => {
@@ -2586,7 +3187,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         ],
       },
       restartBindings: [initial.restartBinding],
-      protocolUtxos: [reserveDurable],
+      protocolUtxos: [depositDurable, reserveDurable],
     });
     expect(accepted(initialState, absorbed, scenario.policy).snapshot).toEqual(
       snapshot,
@@ -3667,9 +4268,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       subjects: [payoutSubject],
     })!;
     const unrelatedSpentProtocolUtxo = {
-      ...payoutDurable,
       outRef: `${h32("b4")}#1`,
-      role: "reserve" as const,
+      role: "state_queue" as const,
+      chainPointId: h32("00"),
+      output: makeWatcherDurablePayloadV1(stateQueueOutput()),
       spentAtChainPointId: h32("00"),
     };
     const scenario = scenarioBootstrap(
@@ -3999,7 +4601,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toMatchObject({
       action: "reject",
-      reasonCodes: ["durable_evidence_mismatch"],
+      reasonCodes: ["malformed_public_context"],
     });
     const substitutedArchiveEntry = {
       ...terminalJournal.spentProtocolUtxos[0]!,
@@ -4053,7 +4655,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       ),
     ).toMatchObject({
       action: "reject",
-      reasonCodes: ["durable_evidence_mismatch"],
+      reasonCodes: ["malformed_public_context"],
     });
     const priorFinalityState = terminalForRollback.finalityState!;
     const replacementConsistency = evaluateWatcherMultiProviderConsistencyV1(
@@ -4909,6 +5511,291 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
   });
 
+  it.each<PostFinalityRecoverySourceMode>(["local_node", "external_providers"])(
+    "consumes an exact %s W13 post-finality recovery, prunes W16 orphan state, restarts, and resumes",
+    (sourceMode) => {
+      const sparseSequence = spawnSequence({
+        sourceMode,
+        emptyBlockGap: true,
+      });
+      const recovery = postFinalitySettlementRecoveryBundle(
+        sourceMode,
+        sparseSequence,
+      );
+      expect(recovery.recovery.removedRecords.protocolUtxoOutRefs).toContain(
+        sparseSequence.outRef,
+      );
+      const result = evaluateWatcherSettlementIndexerV1(
+        policy,
+        sparseSequence.spawnState,
+        recovery.recoveryEvidence.observation,
+        recovery.recoveryEvidence.context,
+      );
+      expect(result).toMatchObject({
+        action: "accept",
+        protocolDecision: "indexed",
+        reasonCodes: ["rollback_authenticated"],
+        state: {
+          snapshot: { resources: [], subjects: [] },
+        },
+      });
+      expect(result.state?.activeHistory).toEqual(
+        sparseSequence.bootstrapState.activeHistory,
+      );
+      expect(result.state?.transitionHistory).toHaveLength(
+        sparseSequence.spawnState.transitionHistory.length + 1,
+      );
+      expect(result.state?.transitionHistory).toContainEqual(
+        sparseSequence.spawnState.transitionHistory.at(-1),
+      );
+      expect(result.state?.rollbackHistory).toHaveLength(1);
+      expect(result.state?.durableStoreDigest).toBe(
+        watcherDurableStoreBytesSha256(
+          encodeWatcherDurableStoreV1(recovery.recovery.nextStore!),
+        ),
+      );
+      const w16Roles = new Set([
+        "settlement",
+        "reserve",
+        "payout",
+        "withdrawal",
+      ]);
+      for (const collection of [
+        "protocolUtxos",
+        "spentProtocolUtxos",
+      ] as const) {
+        expect(
+          recovery.recovery.nextStore![collection].filter(
+            ({ role }) => !w16Roles.has(role),
+          ),
+        ).toEqual(
+          recovery.incident.nextStore![collection].filter(
+            ({ role }) => !w16Roles.has(role),
+          ),
+        );
+      }
+      const recoveryBinding = {
+        resultDigest: recovery.recovery.resultDigest,
+        context: recovery.recoveryInput,
+      };
+      const restartBindings = [
+        sparseSequence.bootstrapEvidence.restartBinding,
+        sparseSequence.spawnEvidence.restartBinding,
+        recovery.recoveryEvidence.restartBinding,
+      ];
+      const restarted = parseWatcherSettlementIndexerStateV1(
+        JSON.parse(JSON.stringify(result.state)),
+        policy,
+        restartBindings,
+        [recoveryBinding],
+      );
+      expect(restarted).toEqual(result.state);
+
+      const duplicateContext: WatcherSettlementPublicContextV1 = {
+        ...recovery.recoveryEvidence.context,
+        restartContexts: restartBindings,
+        restartRollbackContexts: [recoveryBinding],
+      };
+      expect(
+        evaluateWatcherSettlementIndexerV1(
+          policy,
+          restarted,
+          recovery.recoveryEvidence.observation,
+          duplicateContext,
+        ),
+      ).toMatchObject({
+        action: "duplicate",
+        protocolDecision: "hold",
+        reasonCodes: ["duplicate_observation"],
+        state: result.state,
+      });
+
+      const reIncludedRaw = structuredClone(recovery.replacementRaw) as Mutable;
+      reIncludedRaw.providerId = recovery.replacementProvider.providerId;
+      reIncludedRaw.chainPoint.depth = "1";
+      const resumed = bundle({
+        kind: "spawn_settlement",
+        previousState: restarted,
+        snapshot: sparseSequence.spawnEvidence.observation.snapshot,
+        transition: sparseSequence.spawnEvidence.observation.transition,
+        restartBindings,
+        restartRollbackBindings: [recoveryBinding],
+        authenticatedProvider: recovery.replacementProvider,
+        l1Observation: reIncludedRaw,
+        sourceDurableStore: recovery.recovery.nextStore!,
+        protocolUtxos: [sparseSequence.durable],
+      });
+      expect(accepted(restarted, resumed).snapshot).toEqual(
+        sparseSequence.spawnEvidence.observation.snapshot,
+      );
+    },
+    30_000,
+  );
+
+  it("records an authenticated W16 recovery when W13 removed no indexed settlement change", () => {
+    const sequence = spawnSequence({
+      sourceMode: "external_providers",
+      emptyBlockGap: true,
+    });
+    const recovery = postFinalitySettlementRecoveryBundle(
+      "external_providers",
+      sequence,
+    );
+    const evidence = bundle({
+      kind: "rollback",
+      previousState: sequence.bootstrapState,
+      predecessorStateDigest: sequence.bootstrapState.stateDigest,
+      snapshot: emptySnapshot(),
+      restartBindings: [sequence.bootstrapEvidence.restartBinding],
+      authenticatedProvider: recovery.replacementProvider,
+      l1Observation: recovery.recoveryEvidence.context.l1Observation as Mutable,
+      sourceDurableStore: recovery.incident.nextStore!,
+      durableStore: recovery.recovery.nextStore!,
+      rollbackAuthority: {
+        result: recovery.recovery,
+        context: recovery.recoveryInput,
+      },
+    });
+    const result = evaluateWatcherSettlementIndexerV1(
+      policy,
+      sequence.bootstrapState,
+      evidence.observation,
+      evidence.context,
+    );
+    expect(result).toMatchObject({
+      action: "accept",
+      reasonCodes: ["rollback_authenticated"],
+      state: {
+        pointDigest: recovery.common.observations[0]!.chainPoint.pointDigest,
+        activeHistory: sequence.bootstrapState.activeHistory,
+        rollbackHistory: [expect.any(Object)],
+      },
+    });
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        structuredClone(result.state),
+        policy,
+        [sequence.bootstrapEvidence.restartBinding, evidence.restartBinding],
+        [
+          {
+            resultDigest: recovery.recovery.resultDigest,
+            context: recovery.recoveryInput,
+          },
+        ],
+      ),
+    ).toEqual(result.state);
+  }, 30_000);
+
+  it("rejects forged, mismatched, wrong-target, wrong-mode, and duplicate-only W13 recovery evidence", () => {
+    const sequence = spawnSequence();
+    const recovery = postFinalitySettlementRecoveryBundle(
+      "external_providers",
+      sequence,
+    );
+    const evaluate = (
+      observation: WatcherSettlementObservationV1,
+      context: WatcherSettlementPublicContextV1,
+    ) =>
+      evaluateWatcherSettlementIndexerV1(
+        policy,
+        sequence.spawnState,
+        observation,
+        context,
+      );
+
+    const forgedContext = structuredClone(
+      recovery.recoveryEvidence.context,
+    ) as WatcherSettlementPublicContextV1;
+    const forgedResult = forgedContext.rollbackAuthority!.result as Mutable;
+    forgedResult.nextStoreDigest = h32("ff");
+    delete forgedResult.resultDigest;
+    forgedResult.resultDigest = sha256CanonicalForTest(forgedResult);
+    expect(
+      evaluate(recovery.recoveryEvidence.observation, forgedContext),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["rollback_authority_mismatch"],
+    });
+
+    const mismatchedContext = structuredClone(
+      recovery.recoveryEvidence.context,
+    ) as WatcherSettlementPublicContextV1;
+    (
+      mismatchedContext.rollbackAuthority!.context as unknown as Mutable
+    ).replacementCanonicalPath = recovery.recoveryInput.previousCanonicalPath;
+    expect(
+      evaluate(recovery.recoveryEvidence.observation, mismatchedContext),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["rollback_authority_mismatch"],
+    });
+
+    const wrongModeContext = structuredClone(
+      recovery.recoveryEvidence.context,
+    ) as WatcherSettlementPublicContextV1;
+    (wrongModeContext.rollbackAuthority!.context as unknown as Mutable).policy =
+      localFinalityPolicy;
+    expect(
+      evaluate(recovery.recoveryEvidence.observation, wrongModeContext),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["rollback_authority_mismatch"],
+    });
+
+    const wrongTarget = makeWatcherSettlementObservationV1({
+      ...recovery.recoveryEvidence.observation,
+      predecessorStateDigest: sequence.bootstrapState.stateDigest,
+    })!;
+    expect(
+      evaluate(wrongTarget, recovery.recoveryEvidence.context),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["stale_state"],
+    });
+
+    const duplicateRecovery = evaluateWatcherPostFinalityRecoveryV1({
+      ...recovery.recoveryInput,
+      currentStore: recovery.recovery.nextStore,
+      previousRecoveryState: recovery.recovery.recoveryState,
+    });
+    expect(duplicateRecovery.action).toBe("duplicate_recovery");
+    const duplicateOnlyContext: WatcherSettlementPublicContextV1 = {
+      ...recovery.recoveryEvidence.context,
+      sourceDurableStore: recovery.recovery.nextStore,
+      rollbackAuthority: {
+        result: duplicateRecovery,
+        context: {
+          ...recovery.recoveryInput,
+          currentStore: recovery.recovery.nextStore,
+          previousRecoveryState: recovery.recovery.recoveryState,
+        },
+      },
+    };
+    expect(
+      evaluate(recovery.recoveryEvidence.observation, duplicateOnlyContext),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["rollback_authority_mismatch"],
+    });
+
+    const acceptedRecovery = evaluate(
+      recovery.recoveryEvidence.observation,
+      recovery.recoveryEvidence.context,
+    );
+    expect(acceptedRecovery.action).toBe("accept");
+    expect(
+      parseWatcherSettlementIndexerStateV1(
+        acceptedRecovery.state,
+        policy,
+        [
+          sequence.bootstrapEvidence.restartBinding,
+          recovery.recoveryEvidence.restartBinding,
+        ],
+        [],
+      ),
+    ).toBeNull();
+  }, 30_000);
+
   it("applies an authoritative W13 rewind, replays it after restart, and safely re-includes the orphaned transaction", () => {
     const bootstrapEvidence = bundle({
       kind: "bootstrap",
@@ -5169,7 +6056,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const rollbackFinalityPolicy = makeWatcherFinalityPolicyV1(
       {
         schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-        mode: "acceptance",
+        mode: "development",
         targetNetwork: "Preprod",
         l1: {
           source: {
@@ -5178,12 +6065,12 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
               {
                 identity: "provider-a",
                 operatorIdentitySha256: h32("97"),
-                endpoint: "https://cardano-a.example",
+                endpoint: transportEndpointByProviderId.get("provider-a")!,
               },
               {
                 identity: "provider-b",
                 operatorIdentitySha256: h32("98"),
-                endpoint: "https://cardano-b.example",
+                endpoint: transportEndpointByProviderId.get("provider-b")!,
               },
             ],
           },
@@ -5212,6 +6099,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         storage: {
           driver: "sqlite",
           path: "/var/lib/midgard-watcher/watcher.sqlite",
+          rollbackAuthorityKeySource: {
+            kind: "environment",
+            variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
+          },
         },
         proverWallet: {
           keySource: {
@@ -5738,7 +6629,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         allRollbackBindings,
       ),
     ).toBeNull();
-  });
+  }, 30_000);
 
   it("fails closed on a fabricated rollback without an exact W13 apply_rewind result", () => {
     const initial = bundle({
@@ -5827,5 +6718,52 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         [],
       ),
     ).toBeNull();
+  });
+
+  it("fails closed when W15 receives missing, detached, mismatched, or closed transport capabilities", () => {
+    const initial = bundle({
+      kind: "bootstrap",
+      previousState: null,
+      snapshot: emptySnapshot(),
+    });
+    const providerATransport = transportFor(provider);
+    const providerBTransport = transportFor(
+      rollbackProvider("provider-b", "78"),
+    );
+    const evaluateRaw = (
+      attestations: readonly WatcherL1TransportAttestationContextV1[],
+    ) =>
+      evaluateWatcherSettlementIndexerV1Raw(
+        policy,
+        null,
+        initial.observation,
+        initial.context,
+        attestations,
+      );
+
+    expect(evaluateRaw([])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(
+      evaluateRaw(
+        structuredClone(
+          transportContexts,
+        ) as WatcherL1TransportAttestationContextV1[],
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+    expect(evaluateRaw([providerBTransport])).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
+
+    closeWatcherL1TransportAttestationContextV1(providerATransport);
+    expect(evaluateRaw(transportContexts)).toMatchObject({
+      action: "reject",
+      reasonCodes: ["malformed_public_context"],
+    });
   });
 });

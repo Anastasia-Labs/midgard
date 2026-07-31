@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
+import { isAbsolute, normalize as normalizePath } from "node:path";
 
 import {
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
-import { parseWatcherConfig, type WatcherConfig } from "./config.js";
+import {
+  parseWatcherConfig,
+  WATCHER_CARDANO_SECURITY_PARAMETER_K,
+  type WatcherConfig,
+} from "./config.js";
 import type { VerifiedWatcherDeploymentIdentityV1 } from "./deployment-identity.js";
 import {
   WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
@@ -24,6 +29,7 @@ export const WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION =
 
 export const WATCHER_FINALITY_V1_BOUNDS = Object.freeze({
   confirmationDepth: 2_160n,
+  postFinalityRecoveryDepth: BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K),
   uint64Maximum: 18_446_744_073_709_551_615n,
 });
 
@@ -42,6 +48,7 @@ export type WatcherFinalityExternalProviderV1 = Readonly<{
 export type WatcherFinalityLocalQueryServiceV1 = Readonly<{
   kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
   providerId: string;
+  endpoint: string;
 }>;
 
 export const WATCHER_FINALITY_REASON_CODES_V1 = [
@@ -110,10 +117,12 @@ export type WatcherFinalityPolicyV1 = Readonly<{
   sourceMode: "local_node" | "external_providers";
   authorityNodeId: string | null;
   authorityGenesisIdentitySha256: string | null;
+  authorityChainSyncSocketPath: string | null;
   localQueryServices: readonly WatcherFinalityLocalQueryServiceV1[];
   externalProviders: readonly WatcherFinalityExternalProviderV1[] | null;
   confirmationDepth: string;
   maximumPreFinalityRollbackDepth: string;
+  maximumPostFinalityRecoveryDepth: string;
   beforeFinalityRollback: "rewind";
   afterFinalityRollback: "quarantine";
   releaseEvidenceDigest: string;
@@ -135,12 +144,7 @@ export type WatcherFinalityBoundObservationV1 = Readonly<{
 }>;
 
 export type WatcherFinalityIncidentV1 = Readonly<{
-  reasonCode:
-    | "provider_result_pending"
-    | "provider_result_quarantined"
-    | "post_finality_depth_regression"
-    | "post_finality_point_changed"
-    | "post_finality_content_changed";
+  reasonCode: "post_finality_point_changed";
   triggerConsistencyDigest: string | null;
   incidentDigest: string;
 }>;
@@ -206,6 +210,7 @@ type ParsedConsistency =
       configuredSourceDigest: string;
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
+      authorityChainSyncSocketPath: string | null;
       externalProviderBindings: readonly ExternalProviderBinding[];
       localQueryServiceBindings: readonly LocalQueryServiceBinding[];
       agreement: Agreement;
@@ -216,6 +221,7 @@ type ParsedConsistency =
       configuredSourceDigest: string;
       authorityNodeId: string | null;
       authorityGenesisIdentitySha256: string | null;
+      authorityChainSyncSocketPath: string | null;
       externalProviderBindings: readonly ExternalProviderBinding[];
       localQueryServiceBindings: readonly LocalQueryServiceBinding[];
       consistencyDigest: string;
@@ -226,11 +232,13 @@ type ExternalProviderBinding = Readonly<{
   operatorIdentitySha256: string;
   authenticationKind: "https_tls_identity_v1";
   publicIdentitySha256: string;
+  endpoint: string;
 }>;
 
 type LocalQueryServiceBinding = Readonly<{
   kind: WatcherFinalityLocalQueryServiceV1["kind"];
   providerId: string;
+  endpoint: string;
   observationStatus:
     | "aligned"
     | "unavailable"
@@ -302,6 +310,46 @@ const isNetwork = (value: unknown): value is (typeof NETWORKS)[number] =>
 const isHex32 = (value: unknown): value is string =>
   typeof value === "string" && HEX_32.test(value);
 
+const isExactEndpoint = (
+  value: unknown,
+  protocols: readonly string[],
+): value is string => {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > 2_048 ||
+    value !== value.trim()
+  ) {
+    return false;
+  }
+  try {
+    const endpoint = new URL(value);
+    return (
+      protocols.includes(endpoint.protocol) &&
+      endpoint.username.length === 0 &&
+      endpoint.password.length === 0 &&
+      endpoint.search.length === 0 &&
+      endpoint.hash.length === 0
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isExactAbsoluteSocketPath = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 4_096 &&
+  !value.includes("\0") &&
+  isAbsolute(value) &&
+  normalizePath(value) === value;
+
+const endpointAlias = (value: string): string => {
+  const endpoint = new URL(value);
+  endpoint.hostname = endpoint.hostname.toLowerCase().replace(/\.$/u, "");
+  return `${endpoint.protocol}//${endpoint.host.toLowerCase()}${endpoint.pathname.replace(/\/+$/u, "")}`;
+};
+
 const isUint64 = (value: unknown): value is string =>
   typeof value === "string" &&
   CANONICAL_NATURAL.test(value) &&
@@ -362,35 +410,22 @@ const cloneExternalProviders = (
       typeof provider.providerId !== "string" ||
       !SOURCE_AUTHORITY_ID.test(provider.providerId) ||
       !isHex32(provider.operatorIdentitySha256) ||
-      typeof provider.endpoint !== "string" ||
-      provider.endpoint.length === 0 ||
-      provider.endpoint.length > 2_048 ||
-      provider.endpoint !== provider.endpoint.trim() ||
+      !isExactEndpoint(provider.endpoint, ["https:"]) ||
       provider.authenticationKind !== "https_tls_identity_v1"
     ) {
       return null;
     }
-    let endpoint: URL;
-    try {
-      endpoint = new URL(provider.endpoint);
-    } catch {
-      return null;
-    }
+    const alias = endpointAlias(provider.endpoint);
     if (
-      endpoint.protocol !== "https:" ||
-      endpoint.username.length > 0 ||
-      endpoint.password.length > 0 ||
-      endpoint.search.length > 0 ||
-      endpoint.hash.length > 0 ||
       providerIds.has(provider.providerId) ||
       operatorIdentities.has(provider.operatorIdentitySha256) ||
-      endpoints.has(provider.endpoint)
+      endpoints.has(alias)
     ) {
       return null;
     }
     providerIds.add(provider.providerId);
     operatorIdentities.add(provider.operatorIdentitySha256);
-    endpoints.add(provider.endpoint);
+    endpoints.add(alias);
     normalized.push(
       Object.freeze({
         providerId: provider.providerId,
@@ -420,8 +455,9 @@ const cloneLocalQueryServices = (
   }
   const services: WatcherFinalityLocalQueryServiceV1[] = [];
   const providerIds = new Set<string>();
+  const endpoints = new Set<string>();
   for (const input of inputs) {
-    const service = exactPlainRecord(input, ["kind", "providerId"]);
+    const service = exactPlainRecord(input, ["kind", "providerId", "endpoint"]);
     if (
       service === null ||
       !["ogmios", "kupo", "kupmios", "db_sync"].includes(
@@ -429,15 +465,31 @@ const cloneLocalQueryServices = (
       ) ||
       typeof service.providerId !== "string" ||
       !SOURCE_AUTHORITY_ID.test(service.providerId) ||
+      !isExactEndpoint(
+        service.endpoint,
+        service.kind === "ogmios"
+          ? ["http:", "https:", "ws:", "wss:"]
+          : service.kind === "kupo"
+            ? ["http:", "https:"]
+            : service.kind === "kupmios"
+              ? ["http:", "https:", "ws:", "wss:"]
+              : ["postgresql:"],
+      ) ||
       providerIds.has(service.providerId)
     ) {
       return null;
     }
+    const alias = endpointAlias(service.endpoint);
+    if (endpoints.has(alias)) {
+      return null;
+    }
     providerIds.add(service.providerId);
+    endpoints.add(alias);
     services.push(
       Object.freeze({
         kind: service.kind as WatcherFinalityLocalQueryServiceV1["kind"],
         providerId: service.providerId,
+        endpoint: service.endpoint,
       }),
     );
   }
@@ -475,10 +527,12 @@ const makePolicy = (
     sourceMode: value.sourceMode,
     authorityNodeId: value.authorityNodeId,
     authorityGenesisIdentitySha256: value.authorityGenesisIdentitySha256,
+    authorityChainSyncSocketPath: value.authorityChainSyncSocketPath,
     localQueryServices,
     externalProviders,
     confirmationDepth: value.confirmationDepth,
     maximumPreFinalityRollbackDepth: value.maximumPreFinalityRollbackDepth,
+    maximumPostFinalityRecoveryDepth: value.maximumPostFinalityRecoveryDepth,
     beforeFinalityRollback: "rewind" as const,
     afterFinalityRollback: "quarantine" as const,
     releaseEvidenceDigest: value.releaseEvidenceDigest,
@@ -500,10 +554,12 @@ export const parseWatcherFinalityPolicyV1 = (
       "sourceMode",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
+      "authorityChainSyncSocketPath",
       "localQueryServices",
       "externalProviders",
       "confirmationDepth",
       "maximumPreFinalityRollbackDepth",
+      "maximumPostFinalityRecoveryDepth",
       "beforeFinalityRollback",
       "afterFinalityRollback",
       "releaseEvidenceDigest",
@@ -532,11 +588,13 @@ export const parseWatcherFinalityPolicyV1 = (
           typeof policy.authorityNodeId === "string" &&
           SOURCE_AUTHORITY_ID.test(policy.authorityNodeId) &&
           isHex32(policy.authorityGenesisIdentitySha256) &&
+          isExactAbsoluteSocketPath(policy.authorityChainSyncSocketPath) &&
           localQueryServices !== null &&
           policy.externalProviders === null) ||
         (policy.sourceMode === "external_providers" &&
           policy.authorityNodeId === null &&
           policy.authorityGenesisIdentitySha256 === null &&
+          policy.authorityChainSyncSocketPath === null &&
           localQueryServices?.length === 0 &&
           externalProviders !== null)
       ) ||
@@ -546,6 +604,9 @@ export const parseWatcherFinalityPolicyV1 = (
       !isPositiveUint64(policy.maximumPreFinalityRollbackDepth) ||
       BigInt(policy.maximumPreFinalityRollbackDepth) >
         BigInt(policy.confirmationDepth) ||
+      !isPositiveUint64(policy.maximumPostFinalityRecoveryDepth) ||
+      BigInt(policy.maximumPostFinalityRecoveryDepth) !==
+        BigInt(WATCHER_CARDANO_SECURITY_PARAMETER_K) ||
       policy.beforeFinalityRollback !== "rewind" ||
       policy.afterFinalityRollback !== "quarantine" ||
       !isHex32(policy.releaseEvidenceDigest) ||
@@ -562,11 +623,15 @@ export const parseWatcherFinalityPolicyV1 = (
       authorityGenesisIdentitySha256: policy.authorityGenesisIdentitySha256 as
         | string
         | null,
+      authorityChainSyncSocketPath: policy.authorityChainSyncSocketPath as
+        | string
+        | null,
       localQueryServices:
         localQueryServices as WatcherFinalityPolicyV1["localQueryServices"],
       externalProviders,
       confirmationDepth: policy.confirmationDepth,
       maximumPreFinalityRollbackDepth: policy.maximumPreFinalityRollbackDepth,
+      maximumPostFinalityRecoveryDepth: policy.maximumPostFinalityRecoveryDepth,
       beforeFinalityRollback: "rewind",
       afterFinalityRollback: "quarantine",
       releaseEvidenceDigest: policy.releaseEvidenceDigest,
@@ -651,12 +716,17 @@ export const makeWatcherFinalityPolicyV1 = (
         config.l1.source.sourceMode === "local_node"
           ? config.l1.source.chainSync.genesisIdentitySha256
           : null,
+      authorityChainSyncSocketPath:
+        config.l1.source.sourceMode === "local_node"
+          ? config.l1.source.chainSync.socketPath
+          : null,
       localQueryServices:
         config.l1.source.sourceMode === "local_node"
           ? config.l1.source.queryServices.map((service) =>
               Object.freeze({
                 kind: service.kind,
                 providerId: service.identity,
+                endpoint: service.endpoint,
               }),
             )
           : [],
@@ -676,6 +746,8 @@ export const makeWatcherFinalityPolicyV1 = (
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
         config.l1.finality.rollback.maxDepth.toString(),
+      maximumPostFinalityRecoveryDepth:
+        config.l1.finality.rollback.postFinalityRecoveryMaxDepth.toString(),
       beforeFinalityRollback: config.l1.finality.rollback.beforeFinality,
       afterFinalityRollback: config.l1.finality.rollback.afterFinality,
       releaseEvidenceDigest: identity.releaseEvidenceDigest,
@@ -730,13 +802,7 @@ const parseBoundObservation = (
   });
 };
 
-const INCIDENT_REASONS = [
-  "provider_result_pending",
-  "provider_result_quarantined",
-  "post_finality_depth_regression",
-  "post_finality_point_changed",
-  "post_finality_content_changed",
-] as const;
+const INCIDENT_REASONS = ["post_finality_point_changed"] as const;
 
 const parseIncident = (value: unknown): WatcherFinalityIncidentV1 | null => {
   const incident = exactPlainRecord(value, [
@@ -969,6 +1035,7 @@ const parseExternalProviderBindings = (
       "operatorIdentitySha256",
       "authenticationKind",
       "publicIdentitySha256",
+      "endpoint",
     ]);
     if (
       binding === null ||
@@ -976,7 +1043,8 @@ const parseExternalProviderBindings = (
       !/^[a-z][a-z0-9-]{0,62}$/u.test(binding.providerId) ||
       !isHex32(binding.operatorIdentitySha256) ||
       binding.authenticationKind !== "https_tls_identity_v1" ||
-      !isHex32(binding.publicIdentitySha256)
+      !isHex32(binding.publicIdentitySha256) ||
+      !isExactEndpoint(binding.endpoint, ["https:"])
     ) {
       return null;
     }
@@ -986,6 +1054,7 @@ const parseExternalProviderBindings = (
         operatorIdentitySha256: binding.operatorIdentitySha256,
         authenticationKind: "https_tls_identity_v1",
         publicIdentitySha256: binding.publicIdentitySha256,
+        endpoint: binding.endpoint,
       }),
     );
   }
@@ -1014,6 +1083,7 @@ const parseLocalQueryServiceBindings = (
     const binding = exactPlainRecord(input, [
       "kind",
       "providerId",
+      "endpoint",
       "observationStatus",
       "observationDigest",
     ]);
@@ -1024,6 +1094,16 @@ const parseLocalQueryServiceBindings = (
       ) ||
       typeof binding.providerId !== "string" ||
       !SOURCE_AUTHORITY_ID.test(binding.providerId) ||
+      !isExactEndpoint(
+        binding.endpoint,
+        binding.kind === "ogmios"
+          ? ["http:", "https:", "ws:", "wss:"]
+          : binding.kind === "kupo"
+            ? ["http:", "https:"]
+            : binding.kind === "kupmios"
+              ? ["http:", "https:", "ws:", "wss:"]
+              : ["postgresql:"],
+      ) ||
       ![
         "aligned",
         "unavailable",
@@ -1044,6 +1124,7 @@ const parseLocalQueryServiceBindings = (
       Object.freeze({
         kind: binding.kind as LocalQueryServiceBinding["kind"],
         providerId: binding.providerId,
+        endpoint: binding.endpoint,
         observationStatus:
           binding.observationStatus as LocalQueryServiceBinding["observationStatus"],
         observationDigest: binding.observationDigest as string | null,
@@ -1074,6 +1155,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       "configuredSourceDigest",
       "authorityNodeId",
       "authorityGenesisIdentitySha256",
+      "authorityChainSyncSocketPath",
       "chainAuthorityObservationDigest",
       "queryObservationCount",
       "observationCount",
@@ -1169,6 +1251,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
         ? typeof result.authorityNodeId === "string" &&
           SOURCE_AUTHORITY_ID.test(result.authorityNodeId) &&
           isHex32(result.authorityGenesisIdentitySha256) &&
+          isExactAbsoluteSocketPath(result.authorityChainSyncSocketPath) &&
           ((result.chainAuthorityObservationDigest === null &&
             result.status !== "agreed") ||
             (isHex32(result.chainAuthorityObservationDigest) &&
@@ -1183,6 +1266,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
           localQueryServiceBindings.length <= 8
         : result.authorityNodeId === null &&
           result.authorityGenesisIdentitySha256 === null &&
+          result.authorityChainSyncSocketPath === null &&
           result.chainAuthorityObservationDigest === null &&
           result.queryObservationCount === 0 &&
           localQueryServiceBindings.length === 0 &&
@@ -1238,6 +1322,7 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       configuredSourceDigest: result.configuredSourceDigest,
       authorityNodeId: result.authorityNodeId,
       authorityGenesisIdentitySha256: result.authorityGenesisIdentitySha256,
+      authorityChainSyncSocketPath: result.authorityChainSyncSocketPath,
       chainAuthorityObservationDigest: result.chainAuthorityObservationDigest,
       queryObservationCount: result.queryObservationCount,
       observationCount: result.observationCount,
@@ -1284,6 +1369,9 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
         authorityNodeId: result.authorityNodeId as string | null,
         authorityGenesisIdentitySha256:
           result.authorityGenesisIdentitySha256 as string | null,
+        authorityChainSyncSocketPath: result.authorityChainSyncSocketPath as
+          | string
+          | null,
         externalProviderBindings,
         localQueryServiceBindings,
         agreement,
@@ -1301,6 +1389,9 @@ const parseConsistency = (value: unknown): ParsedConsistency | null => {
       configuredSourceDigest: result.configuredSourceDigest,
       authorityNodeId: result.authorityNodeId as string | null,
       authorityGenesisIdentitySha256: result.authorityGenesisIdentitySha256 as
+        | string
+        | null,
+      authorityChainSyncSocketPath: result.authorityChainSyncSocketPath as
         | string
         | null,
       externalProviderBindings,
@@ -1466,7 +1557,8 @@ const externalProviderBindingsMatchPolicy = (
     return (
       provider !== undefined &&
       binding.operatorIdentitySha256 === provider.operatorIdentitySha256 &&
-      binding.authenticationKind === provider.authenticationKind
+      binding.authenticationKind === provider.authenticationKind &&
+      binding.endpoint === provider.endpoint
     );
   });
 };
@@ -1482,7 +1574,8 @@ const localQueryServiceBindingsMatchPolicy = (
         return (
           configured !== undefined &&
           binding.providerId === configured.providerId &&
-          binding.kind === configured.kind
+          binding.kind === configured.kind &&
+          binding.endpoint === configured.endpoint
         );
       })
     : bindings.length === 0;
@@ -1495,6 +1588,7 @@ const configuredSourceForPolicy = (
       network: WatcherFinalityPolicyV1["network"];
       authorityNodeId: string;
       genesisIdentitySha256: string;
+      chainSyncSocketPath: string;
       queryServices: readonly WatcherFinalityLocalQueryServiceV1[];
     }>
   | Readonly<{
@@ -1503,6 +1597,7 @@ const configuredSourceForPolicy = (
       providers: readonly Readonly<{
         providerId: string;
         operatorIdentitySha256: string;
+        endpoint: string;
       }>[];
     }> =>
   policy.sourceMode === "local_node"
@@ -1511,6 +1606,7 @@ const configuredSourceForPolicy = (
         network: policy.network,
         authorityNodeId: policy.authorityNodeId!,
         genesisIdentitySha256: policy.authorityGenesisIdentitySha256!,
+        chainSyncSocketPath: policy.authorityChainSyncSocketPath!,
         queryServices: policy.localQueryServices,
       })
     : Object.freeze({
@@ -1518,8 +1614,12 @@ const configuredSourceForPolicy = (
         network: policy.network,
         providers: Object.freeze(
           policy.externalProviders!.map(
-            ({ providerId, operatorIdentitySha256 }) =>
-              Object.freeze({ providerId, operatorIdentitySha256 }),
+            ({ providerId, operatorIdentitySha256, endpoint }) =>
+              Object.freeze({
+                providerId,
+                operatorIdentitySha256,
+                endpoint,
+              }),
           ),
         ),
       });
@@ -1599,9 +1699,6 @@ export const evaluateWatcherFinalityV1 = (
 
   const consistency = parseConsistency(consistencyInput);
   if (consistency === null) {
-    if (state.phase === "finalized") {
-      return quarantineFinalized(state, "provider_result_quarantined", null);
-    }
     return result(
       "reject",
       "quarantined",
@@ -1649,9 +1746,6 @@ export const evaluateWatcherFinalityV1 = (
       consistency.kind === "pending"
         ? "provider_result_pending"
         : "provider_result_quarantined";
-    if (state.phase === "finalized") {
-      return quarantineFinalized(state, reason, consistency.consistencyDigest);
-    }
     return result(
       "reject",
       "quarantined",
@@ -1711,17 +1805,21 @@ export const evaluateWatcherFinalityV1 = (
       );
     }
     if (agreement.blockContentDigest !== finalized.blockContentDigest) {
-      return quarantineFinalized(
+      return result(
+        "reject",
+        "quarantined",
+        ["post_finality_content_changed"],
+        ["watcher_finality_input_rejected"],
         state,
-        "post_finality_content_changed",
-        agreement.consistencyDigest,
       );
     }
     if (BigInt(agreement.minimumDepth) < BigInt(finalized.currentDepth)) {
-      return quarantineFinalized(
+      return result(
+        "reject",
+        "quarantined",
+        ["post_finality_depth_regression"],
+        ["watcher_finality_input_rejected"],
         state,
-        "post_finality_depth_regression",
-        agreement.consistencyDigest,
       );
     }
     return result(

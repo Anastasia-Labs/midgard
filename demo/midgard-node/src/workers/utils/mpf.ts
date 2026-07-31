@@ -977,6 +977,36 @@ export type NativeMpfReplayBuild = {
   readonly eventCount: number;
 };
 
+/**
+ * Applies a commit-stage rejection as one database mutation. CEK admission
+ * ownership is released only if both the mempool removal and durable rejection
+ * record commit successfully.
+ */
+export const persistCommitStageRejectedTransactions = ({
+  rejectedTxHashes,
+  rejectionEntries,
+}: {
+  readonly rejectedTxHashes: readonly Buffer[];
+  readonly rejectionEntries: readonly TxRejectionsDB.EntryNoTimestamp[];
+}): Effect.Effect<void, DatabaseError, Database> => {
+  if (rejectedTxHashes.length === 0) return Effect.void;
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* MempoolDB.clearTxs([...rejectedTxHashes]);
+        yield* TxRejectionsDB.insertMany(rejectionEntries);
+        yield* CekProgramMaterialDB.releaseAdmissionOwnership(rejectedTxHashes);
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      MempoolDB.tableName,
+      "Failed to persist commit-stage transaction rejections",
+    ),
+  );
+};
+
 type CorpusHexEntry = { readonly key: string; readonly value: string };
 type CorpusLedgerOp =
   | { readonly type: "insert"; readonly key: string; readonly value: string }
@@ -4074,13 +4104,10 @@ export const processMpfs = (
       yield* Effect.logWarning(
         `Dropping ${rejectedTxHashes.length} transaction(s) from MempoolDB`,
       );
-      yield* Effect.all(
-        [
-          MempoolDB.clearTxs(rejectedTxHashes),
-          TxRejectionsDB.insertMany(rejectionEntries),
-        ],
-        { concurrency: "unbounded" },
-      );
+      yield* persistCommitStageRejectedTransactions({
+        rejectedTxHashes,
+        rejectionEntries,
+      });
     }
 
     const transactionRootBeforeApply = yield* transactionsMpf.root();

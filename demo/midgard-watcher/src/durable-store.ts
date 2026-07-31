@@ -240,6 +240,7 @@ export type WatcherDaProofInputV1 = Readonly<{
 
 export type WatcherReconstructedStateV1 = Readonly<{
   blockHash: string;
+  chainPointId: string;
   priorStateRoot: string;
   postStateRoot: string;
   inputIds: readonly string[];
@@ -546,6 +547,7 @@ const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
 ) => {
   const record = exactRecord(value, path, [
     "blockHash",
+    "chainPointId",
     "priorStateRoot",
     "postStateRoot",
     "inputIds",
@@ -553,6 +555,11 @@ const parseReconstructedState: RecordParser<WatcherReconstructedStateV1> = (
   ]);
   return {
     blockHash: exactString(record.blockHash, `${path}.blockHash`, HEX_32),
+    chainPointId: exactString(
+      record.chainPointId,
+      `${path}.chainPointId`,
+      HEX_32,
+    ),
     priorStateRoot: exactString(
       record.priorStateRoot,
       `${path}.priorStateRoot`,
@@ -993,6 +1000,12 @@ const assertReferences = (records: WatcherDurableRecordsV1): void => {
     }
   }
   for (const state of records.reconstructedStates) {
+    if (!chainPoints.has(state.chainPointId)) {
+      fail(
+        "broken_reference",
+        `$.reconstructedStates.${state.blockHash}.chainPointId`,
+      );
+    }
     for (const inputId of state.inputIds) {
       if (!inputs.has(inputId)) {
         fail(
@@ -1483,6 +1496,67 @@ export type WatcherDurableAtomicBackend = Readonly<{
     next: Uint8Array,
   ) => Promise<boolean>;
 }>;
+
+export type WatcherDurableAtomicSnapshotV1 = Readonly<{
+  bytes: Uint8Array;
+  sha256: string;
+}>;
+
+export type WatcherDurableAtomicCommitV1 =
+  | Readonly<{
+      committed: true;
+      sha256: string;
+    }>
+  | Readonly<{
+      committed: false;
+    }>;
+
+/**
+ * Reads one complete immutable backend snapshot. The returned bytes are copied
+ * so a backend cannot mutate the value after the digest has been established.
+ */
+export const readWatcherDurableAtomicSnapshotV1 = async (
+  backend: WatcherDurableAtomicBackend,
+): Promise<WatcherDurableAtomicSnapshotV1 | null> => {
+  const bytes = await readBackend(backend);
+  if (bytes === null) {
+    return null;
+  }
+  const copy = Uint8Array.from(bytes);
+  return Object.freeze({
+    bytes: copy,
+    sha256: watcherDurableStoreBytesSha256(copy),
+  });
+};
+
+/**
+ * Durably replaces one complete backend snapshot iff its exact prior digest is
+ * still current. A false result is an ordinary stale/concurrent-writer
+ * conflict; backend failures remain explicit persistence failures.
+ */
+export const compareAndSwapWatcherDurableAtomicSnapshotV1 = async (input: {
+  readonly backend: WatcherDurableAtomicBackend;
+  readonly expectedSha256: string | null;
+  readonly next: Uint8Array;
+}): Promise<WatcherDurableAtomicCommitV1> => {
+  if (input.expectedSha256 !== null && !HEX_32.test(input.expectedSha256)) {
+    return fail("invalid_field", "$.expectedSha256");
+  }
+  if (!(input.next instanceof Uint8Array) || input.next.byteLength === 0) {
+    return fail("invalid_field", "$.next");
+  }
+  const next = Uint8Array.from(input.next);
+  const sha256 = watcherDurableStoreBytesSha256(next);
+  let committed: boolean;
+  try {
+    committed = await input.backend.compareAndSwap(input.expectedSha256, next);
+  } catch {
+    return fail("persistence_failure", "$.backend.compareAndSwap");
+  }
+  return committed
+    ? Object.freeze({ committed: true, sha256 })
+    : Object.freeze({ committed: false });
+};
 
 export type WatcherDurableMigrationResult = Readonly<{
   initialized: boolean;

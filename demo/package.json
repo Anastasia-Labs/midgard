@@ -15,6 +15,7 @@
     "test:tx-prep:local": "pnpm run test:tx-prep:sdk && pnpm run test:tx-prep:node && pnpm run test:tx-prep:emulator",
     "watcher:dependency-map:verify": "node scripts/verify-canonical-v1-watcher-dependency-map.mjs",
     "watcher:dependency-map:test": "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
+    "watcher:focused-tests:verify": "node scripts/verify-canonical-v1-watcher-focused-tests.mjs",
     "test": "pnpm run typecheck && pnpm -r --if-present --workspace-concurrency=1 run test",
     "goal:verify:static": "node scripts/run-canonical-v1-goal-verification.mjs static",
     "goal:verify:capability": "node scripts/run-canonical-v1-goal-verification.mjs capability",
@@ -33,7 +34,8 @@
     "eslint": "^9.21.0",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "prettier": "^3.5.2",
-    "vitest": "^1.3.1"
+    "vitest": "^1.3.1",
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": ">=22.16.0"

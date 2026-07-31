@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
+  compareAndSwapWatcherDurableAtomicSnapshotV1,
   decodeWatcherDurableStoreV1,
   encodeWatcherDurableStoreV1,
   journalWatcherProtocolUtxoTransitionV1,
@@ -10,6 +11,7 @@ import {
   makeWatcherDurableStoreV1,
   migrateWatcherDurableStoreV1,
   parseWatcherDurableStoreV1,
+  readWatcherDurableAtomicSnapshotV1,
   rebuildWatcherDurableCachesV1,
   WATCHER_DURABLE_MIGRATION_MANIFEST_SHA256,
   WATCHER_DURABLE_STORE_V1_SCHEMA_VERSION,
@@ -71,6 +73,7 @@ const recordsFixture = (): WatcherDurableRecordsV1 => ({
   reconstructedStates: [
     {
       blockHash: hex32("10"),
+      chainPointId: hex32("01"),
       priorStateRoot: hex32("12"),
       postStateRoot: hex32("13"),
       inputIds: [hex32("03")],
@@ -543,5 +546,51 @@ describe("watcher durable store V1", () => {
         maxConflicts: 2,
       }),
     ).rejects.toMatchObject({ code: "migration_conflict" });
+  });
+
+  it("exposes exact expected-prior atomic snapshots to higher-level journals", async () => {
+    const backend = new MemoryAtomicBackend();
+    const firstBytes = new TextEncoder().encode('{"revision":"0"}');
+    const initialized = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+      backend,
+      expectedSha256: null,
+      next: firstBytes,
+    });
+    expect(initialized.committed).toBe(true);
+    if (!initialized.committed) {
+      throw new Error("expected initial atomic commit");
+    }
+
+    const snapshot = await readWatcherDurableAtomicSnapshotV1(backend);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.sha256).toBe(initialized.sha256);
+    firstBytes.fill(0);
+    expect(new TextDecoder().decode(snapshot?.bytes)).toBe('{"revision":"0"}');
+
+    const stale = await compareAndSwapWatcherDurableAtomicSnapshotV1({
+      backend,
+      expectedSha256: hex32("ff"),
+      next: new TextEncoder().encode('{"revision":"1"}'),
+    });
+    expect(stale).toEqual({ committed: false });
+    expect(stale).not.toHaveProperty("sha256");
+
+    const contenders = await Promise.all([
+      compareAndSwapWatcherDurableAtomicSnapshotV1({
+        backend,
+        expectedSha256: snapshot!.sha256,
+        next: new TextEncoder().encode('{"writer":"a"}'),
+      }),
+      compareAndSwapWatcherDurableAtomicSnapshotV1({
+        backend,
+        expectedSha256: snapshot!.sha256,
+        next: new TextEncoder().encode('{"writer":"b"}'),
+      }),
+    ]);
+    expect(contenders.filter(({ committed }) => committed)).toHaveLength(1);
+    expect(contenders.find(({ committed }) => !committed)).toEqual({
+      committed: false,
+    });
+    expect(backend.writes).toBe(2);
   });
 });

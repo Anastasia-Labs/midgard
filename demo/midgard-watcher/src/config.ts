@@ -3,6 +3,8 @@ import { isAbsolute, normalize } from "node:path";
 export const WATCHER_CONFIG_SCHEMA_VERSION =
   "midgard-watcher-config-v1" as const;
 
+export const WATCHER_CARDANO_SECURITY_PARAMETER_K = 2_160 as const;
+
 export const WATCHER_CONFIG_BOUNDS = {
   configJsonBytes: { min: 2, max: 262_144 },
   externalProviders: { min: 2, max: 4 },
@@ -12,6 +14,10 @@ export const WATCHER_CONFIG_BOUNDS = {
   concurrency: { min: 1, max: 64 },
   finalityDepth: { min: 1, max: 2_160 },
   rollbackDepth: { min: 1, max: 2_160 },
+  postFinalityRecoveryDepth: {
+    min: 1,
+    max: WATCHER_CARDANO_SECURITY_PARAMETER_K,
+  },
   deadlineMs: { min: 1_000, max: 86_400_000 },
 } as const;
 
@@ -63,6 +69,7 @@ export type WatcherL1Config = Readonly<{
       beforeFinality: "rewind";
       afterFinality: "quarantine";
       maxDepth: number;
+      postFinalityRecoveryMaxDepth: typeof WATCHER_CARDANO_SECURITY_PARAMETER_K;
     }>;
   }>;
 }>;
@@ -75,6 +82,8 @@ export type WatcherDaPeerConfig = Readonly<{
 export type WatcherWalletKeySource =
   | Readonly<{ kind: "environment"; variable: string }>
   | Readonly<{ kind: "file"; path: string }>;
+
+export type WatcherRollbackAuthorityKeySource = WatcherWalletKeySource;
 
 export type WatcherConfig = Readonly<{
   schemaVersion: typeof WATCHER_CONFIG_SCHEMA_VERSION;
@@ -89,6 +98,7 @@ export type WatcherConfig = Readonly<{
   storage: Readonly<{
     driver: "sqlite";
     path: string;
+    rollbackAuthorityKeySource: WatcherRollbackAuthorityKeySource;
   }>;
   proverWallet: Readonly<{
     keySource: WatcherWalletKeySource;
@@ -112,6 +122,7 @@ export type WatcherConfigErrorCode =
   | "non_string_key"
   | "out_of_bounds"
   | "provider_alias"
+  | "secret_source_alias"
   | "unsafe_path"
   | "unsafe_value"
   | "unknown_field";
@@ -344,14 +355,8 @@ const parseExternalProviderEndpoint = (
   } catch {
     fail("invalid_endpoint", path);
   }
-  const isDevelopmentLoopback =
-    mode === "development" &&
-    url.protocol === "http:" &&
-    (url.hostname === "localhost" ||
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "::1");
   if (
-    (url.protocol !== "https:" && !isDevelopmentLoopback) ||
+    url.protocol !== "https:" ||
     url.username.length > 0 ||
     url.password.length > 0 ||
     url.search.length > 0 ||
@@ -593,44 +598,33 @@ const requireAbsoluteFilePath = (
   return filePath;
 };
 
-const parseWalletKeySource = (value: unknown): WatcherWalletKeySource => {
+const parseKeySource = (
+  value: unknown,
+  path: string,
+): WatcherWalletKeySource => {
   if (typeof value === "string") {
-    fail("inline_secret_forbidden", "$.proverWallet.keySource");
+    fail("inline_secret_forbidden", path);
   }
-  const preliminary = plainRecord(value, "$.proverWallet.keySource");
+  const preliminary = plainRecord(value, path);
   const kind = preliminary.kind;
   if (kind === "environment") {
-    const record = exactRecord(value, "$.proverWallet.keySource", [
-      "kind",
-      "variable",
-    ]);
+    const record = exactRecord(value, path, ["kind", "variable"]);
     return Object.freeze({
       kind,
-      variable: exactString(
-        record.variable,
-        "$.proverWallet.keySource.variable",
-        {
-          maxLength: 128,
-          pattern: ENVIRONMENT_VARIABLE_PATTERN,
-        },
-      ),
+      variable: exactString(record.variable, `${path}.variable`, {
+        maxLength: 128,
+        pattern: ENVIRONMENT_VARIABLE_PATTERN,
+      }),
     });
   }
   if (kind === "file") {
-    const record = exactRecord(value, "$.proverWallet.keySource", [
-      "kind",
-      "path",
-    ]);
+    const record = exactRecord(value, path, ["kind", "path"]);
     return Object.freeze({
       kind,
-      path: requireAbsoluteFilePath(
-        record.path,
-        "$.proverWallet.keySource.path",
-        false,
-      ),
+      path: requireAbsoluteFilePath(record.path, `${path}.path`, false),
     });
   }
-  fail("invalid_value", "$.proverWallet.keySource.kind");
+  fail("invalid_value", `${path}.kind`);
 };
 
 const parseL1Source = (
@@ -763,7 +757,11 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     WATCHER_CONFIG_BOUNDS.requestTimeoutMs,
   );
 
-  const storage = exactRecord(root.storage, "$.storage", ["driver", "path"]);
+  const storage = exactRecord(root.storage, "$.storage", [
+    "driver",
+    "path",
+    "rollbackAuthorityKeySource",
+  ]);
   if (storage.driver !== "sqlite") {
     fail("invalid_value", "$.storage.driver");
   }
@@ -807,6 +805,34 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
   if (proofSubmitMs < l1RequestTimeoutMs) {
     fail("out_of_bounds", "$.deadlines.proofSubmitMs");
   }
+  const rollbackAuthorityKeySource = parseKeySource(
+    storage.rollbackAuthorityKeySource,
+    "$.storage.rollbackAuthorityKeySource",
+  );
+  const proverWalletKeySource = parseKeySource(
+    proverWallet.keySource,
+    "$.proverWallet.keySource",
+  );
+  if (
+    rollbackAuthorityKeySource.kind === proverWalletKeySource.kind &&
+    (rollbackAuthorityKeySource.kind === "environment"
+      ? rollbackAuthorityKeySource.variable ===
+        (
+          proverWalletKeySource as Extract<
+            WatcherWalletKeySource,
+            { readonly kind: "environment" }
+          >
+        ).variable
+      : rollbackAuthorityKeySource.path ===
+        (
+          proverWalletKeySource as Extract<
+            WatcherWalletKeySource,
+            { readonly kind: "file" }
+          >
+        ).path)
+  ) {
+    fail("secret_source_alias", "$.storage.rollbackAuthorityKeySource");
+  }
 
   return Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -834,6 +860,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
             ["quarantine"] as const,
           ),
           maxDepth: rollbackMaxDepth,
+          postFinalityRecoveryMaxDepth: WATCHER_CARDANO_SECURITY_PARAMETER_K,
         }),
       }),
     }),
@@ -849,9 +876,10 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     storage: Object.freeze({
       driver: "sqlite",
       path: requireAbsoluteFilePath(storage.path, "$.storage.path", true),
+      rollbackAuthorityKeySource,
     }),
     proverWallet: Object.freeze({
-      keySource: parseWalletKeySource(proverWallet.keySource),
+      keySource: proverWalletKeySource,
     }),
     deadlines: Object.freeze({
       daFetchMs,

@@ -669,11 +669,29 @@ CREATE TABLE public.cek_program_material_entries (
 CREATE TABLE public.cek_program_material_memberships (
     program_envelope_hash bytea NOT NULL,
     material_root bytea NOT NULL,
+    durable_pin boolean DEFAULT true NOT NULL,
     first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
     PRIMARY KEY (program_envelope_hash, material_root),
     CONSTRAINT cek_program_material_memberships_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
     CONSTRAINT cek_program_material_memberships_root_check CHECK ((octet_length(material_root) = 32)),
     CONSTRAINT cek_program_material_memberships_root_fkey FOREIGN KEY (material_root) REFERENCES public.cek_program_material_entries(material_root) ON DELETE RESTRICT
+);
+
+
+--
+-- Name: cek_program_material_admission_owners; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cek_program_material_admission_owners (
+    tx_id bytea NOT NULL,
+    program_envelope_hash bytea NOT NULL,
+    material_root bytea NOT NULL,
+    first_seen_at timestamp with time zone DEFAULT now() NOT NULL,
+    PRIMARY KEY (tx_id, program_envelope_hash, material_root),
+    CONSTRAINT cek_program_material_admission_owners_tx_id_check CHECK ((octet_length(tx_id) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_envelope_check CHECK ((octet_length(program_envelope_hash) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_root_check CHECK ((octet_length(material_root) = 32)),
+    CONSTRAINT cek_program_material_admission_owners_membership_fkey FOREIGN KEY (program_envelope_hash, material_root) REFERENCES public.cek_program_material_memberships(program_envelope_hash, material_root) ON DELETE CASCADE
 );
 
 
