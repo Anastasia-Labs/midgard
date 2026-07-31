@@ -347,6 +347,44 @@
 
 ## Decisions
 
+- 2026-07-31, **PROCESS VIOLATION — parent leased a protected pre-Goal path
+  to an agent.** Recorded in full because §3 invariant 14 and §0.1 forbid it
+  and the record must show it.
+  WHAT HAPPENED: the VM-DEFECT-6 fix brief granted an agent an edit lease on
+  `onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak`
+  and its `.test.ak`. Both are listed in the Baseline starting dirty state
+  and in the closure manifest `dirtyBaseline.protectedPaths` with disposition
+  `PROTECTED_ACCEPTED_EXTERNAL_DRIFT`. The parent did not check the protected
+  list before writing the brief. The agent then died mid-stream (API stall)
+  having already applied a substantive edit, so no agent report exists.
+  STATE NOW: `.ak` moved `1179a3a7…` → `07cde51a…`; `.test.ak` moved
+  `16af2446…` → `adfdbff4…`. The edit is coherent — it removes the
+  `serialiseData` reconstruction, imports `encode_definite_array_header`, and
+  documents the canonical target in the established comment style — and the
+  workspace compiles clean. It is NOT verified (no test run, no report) and
+  is NOT committed.
+  RECOVERY: **the original bytes are unrecoverable locally.** The files are
+  untracked, so Git holds nothing; a filesystem sweep found only copies of
+  the modified state (the `aiken-probe` corpus is dated after the edit); the
+  pre-commit stash patches do not contain them. Current state preserved at
+  `scratchpad/protected-path-incident/` so it is not lost either way.
+  AMBIGUITY, STATED RATHER THAN RESOLVED CONVENIENTLY: the Baseline section
+  characterizes the non-GOAL_SPEC dirty paths as "existing Goal
+  implementation bytes pending exact source review", which would make these
+  this Goal's own earlier work; the closure manifest characterizes their
+  drift as external. The record does not settle which, and the parent should
+  not pick the reading that excuses the lease. Either way the path was
+  designated protected and should not have been leased without checking.
+  OWNER DECISION REQUIRED: keep the edit (it is a real fix for a confirmed
+  production defect, on a file that had zero test coverage), or supply the
+  original bytes so it can be reverted and the fix re-applied under a proper
+  lease.
+  PROCESS FIX ADOPTED: every future agent brief must have its lease checked
+  against `dirtyBaseline.protectedPaths` before dispatch, and the prohibition
+  list must name the protected paths explicitly rather than relying on a
+  general instruction.
+
+
 - 2026-07-30 (resumed session), VM-DEFECT-6 — THIRD instance of the
   serialiseData-vs-canonical defect class, and the most absolute one.
   `onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak`,
