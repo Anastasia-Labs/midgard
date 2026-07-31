@@ -6,10 +6,19 @@ import { fileURLToPath } from "node:url";
 import { formatUnknownError } from "@al-ft/midgard-core";
 
 import {
+  diagnosticEvidenceBannerV1,
+  LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1,
+  MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1,
+} from "./evidence/diagnostic-evidence-v1.js";
+import {
+  generateFraudProofFamilyScaffoldV1,
+  writeFraudProofFamilyScaffoldV1,
+} from "./family-scaffold/generate-v1.js";
+import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
-import { stringifyJson } from "./json-file.js";
+import { readJsonFile, stringifyJson } from "./json-file.js";
 import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
@@ -113,6 +122,9 @@ export type ParsedArgs = {
   readonly validationResolverIndex: string | undefined;
   readonly validationSemanticResolverIndex: string | undefined;
   readonly validationDisputeRole: "operator" | "challenger" | undefined;
+  readonly scaffoldSpecPath: string | undefined;
+  readonly repoRoot: string | undefined;
+  readonly dryRun: boolean;
 };
 
 const usage = `Usage:
@@ -120,6 +132,7 @@ const usage = `Usage:
   midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
+  midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -228,6 +241,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let validationResolverIndex: string | undefined;
   let validationSemanticResolverIndex: string | undefined;
   let validationDisputeRole: "operator" | "challenger" | undefined;
+  let scaffoldSpecPath: string | undefined;
+  let repoRoot: string | undefined;
+  let dryRun = false;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -402,6 +418,15 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
+      case "--scaffold-spec":
+        scaffoldSpecPath = rest[++index];
+        break;
+      case "--repo-root":
+        repoRoot = rest[++index];
+        break;
+      case "--dry-run":
+        dryRun = true;
+        break;
       case "--help":
       case "-h":
         console.log(usage);
@@ -465,6 +490,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     validationResolverIndex,
     validationSemanticResolverIndex,
     validationDisputeRole,
+    scaffoldSpecPath,
+    repoRoot,
+    dryRun,
   };
 };
 
@@ -580,6 +608,34 @@ export const isCliEntrypoint = ({
 
 export const main = async (): Promise<void> => {
   const args = parseArgs(process.argv);
+
+  // Q02: the family scaffold generator writes source skeletons, so it takes no
+  // network, wallet, or evidence input and is handled before every chain path.
+  if (args.command === "scaffold-family") {
+    if (args.scaffoldSpecPath === undefined) {
+      throw new Error(`Missing required --scaffold-spec <path>.\n${usage}`);
+    }
+    const plan = generateFraudProofFamilyScaffoldV1({
+      spec: await readJsonFile(args.scaffoldSpecPath),
+    });
+    const result = await writeFraudProofFamilyScaffoldV1({
+      plan,
+      repoRoot: args.repoRoot ?? process.cwd(),
+      dryRun: args.dryRun,
+    });
+    console.log(
+      stringifyJson({
+        generator: plan.generator,
+        family: plan.spec.family,
+        taskId: plan.spec.taskId,
+        dryRun: result.dryRun,
+        repoRoot: result.repoRoot,
+        written: result.written,
+      }),
+    );
+    return;
+  }
+
   if (
     args.command !== "prepare-double-spend" &&
     args.command !== "prepare-invalid-range" &&
@@ -615,6 +671,22 @@ export const main = async (): Promise<void> => {
     throw new Error(
       `Expected a supported prepare, inspect, submit, validation-dispute, or removal command.\n${usage}`,
     );
+  }
+
+  // Q03: operator REST/file evidence imports are permitted only as labelled
+  // diagnostics, so every prepare run driven by one announces it before doing
+  // any work. Canonical runs consume verified DA payloads plus authenticated L1
+  // observations through `src/evidence/**` instead.
+  if (args.command.startsWith("prepare-")) {
+    if (args.midgardNodeUrl !== undefined) {
+      process.stderr.write(
+        `${diagnosticEvidenceBannerV1(MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1)}\n`,
+      );
+    } else if (args.transactionsPath !== undefined) {
+      process.stderr.write(
+        `${diagnosticEvidenceBannerV1(LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1)}\n`,
+      );
+    }
   }
 
   if (args.command === "prepare-double-spend") {

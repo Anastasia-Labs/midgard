@@ -1,0 +1,299 @@
+/**
+ * Deterministic canonical-block fixture for the `Q03` evidence-source tests.
+ *
+ * It builds a `DaPayloadV1` exactly the way the production node does: the
+ * header's `transactions_root` is the counted root over
+ * `(tx_id -> Data(L2TransactionSourceV1))` leaves, which is what
+ * `encodeTransactionRootValue` (demo/midgard-node/src/workers/utils/mpf.ts)
+ * commits and what `reconstructDaPayloadV1` re-derives.
+ */
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  encodeCbor,
+  encodeMidgardNativeTxCanonicalV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+  type MidgardNativeTxCanonicalV1,
+} from "@al-ft/midgard-core/codec";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import * as SDK from "@al-ft/midgard-sdk";
+import { CML, Data } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
+
+import { buildCountedRoot } from "../../src/transition-trace/phas.js";
+import { encodeData } from "../../src/transition-trace/reconstruct.js";
+
+export const h32 = (byte: number): string =>
+  byte.toString(16).padStart(2, "0").repeat(32);
+export const h28 = (byte: number): string =>
+  byte.toString(16).padStart(2, "0").repeat(28);
+
+export const outRefCbor = (txIdByte: number, index: bigint): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(h32(txIdByte)),
+      index,
+    ).to_cbor_bytes(),
+  );
+
+export type FixtureTransactionInputV1 = {
+  readonly spendInputs: readonly Buffer[];
+  readonly fee: bigint;
+  readonly validityIntervalStart?: bigint;
+  readonly validityIntervalEnd?: bigint;
+};
+
+export type FixtureTransactionV1 = {
+  readonly txId: string;
+  readonly canonicalCbor: Buffer;
+  readonly source: SDK.L2TransactionSourceV1;
+  readonly sourceValueBytes: Buffer;
+};
+
+export const buildFixtureTransactionV1 = ({
+  spendInputs,
+  fee,
+  validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
+  validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
+}: FixtureTransactionInputV1): FixtureTransactionV1 => {
+  const canonical: MidgardNativeTxCanonicalV1 = {
+    version: MIDGARD_NATIVE_TX_V1_VERSION,
+    validity: "TxIsValid",
+    body: {
+      spendInputsPreimageCbor: encodeCbor([...spendInputs]),
+      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
+      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      fee,
+      validityIntervalStart,
+      validityIntervalEnd,
+      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: EMPTY_CBOR_LIST,
+      scriptIntegrityHash: EMPTY_NULL_ROOT,
+      auxiliaryDataHash: EMPTY_NULL_ROOT,
+      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+    },
+    witnessSet: {
+      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+    },
+  };
+  const full = materializeMidgardNativeTxFromCanonicalV1(canonical);
+  const canonicalCbor = encodeMidgardNativeTxCanonicalV1(full);
+  const proofSource =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
+  const source: SDK.L2TransactionSourceV1 = {
+    tx_id: computeMidgardNativeTxIdV1(full).toString("hex"),
+    transaction_commitment:
+      computeMidgardNativeTxProofCommitmentV1(proofSource).toString("hex"),
+    source: {
+      compact_cbor: proofSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        proofSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        proofSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+  return {
+    txId: source.tx_id,
+    canonicalCbor,
+    source,
+    sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
+  };
+};
+
+const sortEntries = (
+  entries: readonly SDK.DaPayloadEntry[],
+): SDK.DaPayloadEntry[] =>
+  [...entries].sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+
+export type CanonicalBlockFixtureV1 = {
+  readonly payload: SDK.DaPayloadV1;
+  readonly payloadEnvelopeCbor: Buffer;
+  readonly header: SDK.HeaderV1;
+  readonly headerHash: string;
+  readonly transactions: readonly FixtureTransactionV1[];
+};
+
+export const buildCanonicalBlockFixtureV1 = async ({
+  transactions,
+  startTime = 10n,
+  endTime = 20n,
+}: {
+  readonly transactions: readonly FixtureTransactionV1[];
+  readonly startTime?: bigint;
+  readonly endTime?: bigint;
+}): Promise<CanonicalBlockFixtureV1> => {
+  const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
+    tx.txId,
+    tx.sourceValueBytes.toString("hex"),
+  ]);
+  const preimageEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
+    tx.txId,
+    tx.canonicalCbor.toString("hex"),
+  ]);
+  const eventToStepEntries: SDK.DaPayloadEntry[] = transactions.map(
+    (tx, index) => [
+      encodeData(
+        { L2TransactionEventKey: { tx_id: tx.txId } } satisfies SDK.EventKey,
+        SDK.EventKeySchema,
+      ).toString("hex"),
+      encodeData(
+        {
+          step_index: BigInt(index),
+          phase: "L2Transaction",
+        } satisfies SDK.EventToStepValue,
+        SDK.EventToStepValueSchema,
+      ).toString("hex"),
+    ],
+  );
+  const validationTraceEntries: SDK.DaPayloadEntry[] = transactions.map(
+    (tx, index) => [
+      encodeData(
+        { L2TransactionEventKey: { tx_id: tx.txId } } satisfies SDK.EventKey,
+        SDK.EventKeySchema,
+      ).toString("hex"),
+      encodeData(
+        {
+          schema_version: 1n,
+          machine_version: 1n,
+          trace_root: h32(140 + index),
+          step_count: 1n,
+          initial_state_hash: h32(150 + index),
+          terminal_state_hash: h32(160 + index),
+          verdict: "Accepted",
+          rejection_code_hash: h32(170 + index),
+        } satisfies SDK.ValidationTraceDescriptorV1,
+        SDK.ValidationTraceDescriptorV1Schema,
+      ).toString("hex"),
+    ],
+  );
+
+  const bufferEntries = (
+    entries: readonly SDK.DaPayloadEntry[],
+  ): readonly { readonly key: Buffer; readonly value: Buffer }[] =>
+    entries.map(([key, value]) => ({
+      key: Buffer.from(key, "hex"),
+      value: Buffer.from(value, "hex"),
+    }));
+
+  const transactionsRoot = await buildCountedRoot(
+    SDK.ROOT_DOMAINS.transactionsV1,
+    bufferEntries(transactionEntries),
+  );
+  const emptyRoot = async (domain: SDK.RootDomain) =>
+    await buildCountedRoot(domain, []);
+  const withdrawalsRoot = await emptyRoot(SDK.ROOT_DOMAINS.withdrawals);
+  const forcedTransactionsRoot = await emptyRoot(
+    SDK.ROOT_DOMAINS.forcedTransactionsV1,
+  );
+  const depositsRoot = await emptyRoot(SDK.ROOT_DOMAINS.deposits);
+  const transitionTraceRoot = await emptyRoot(SDK.ROOT_DOMAINS.transitionTrace);
+  const eventToStepRoot = await buildCountedRoot(
+    SDK.ROOT_DOMAINS.eventToStep,
+    bufferEntries(eventToStepEntries),
+  );
+  const validationTracesRoot = await buildCountedRoot(
+    SDK.ROOT_DOMAINS.validationTraces,
+    bufferEntries(validationTraceEntries),
+  );
+
+  const counts = {
+    withdrawalCount: 0n,
+    forcedTransactionCount: 0n,
+    l2TransactionCount: BigInt(transactions.length),
+    depositCount: 0n,
+    totalEventCount: BigInt(transactions.length),
+    transitionStepCount: 0n,
+    validationTraceCount: BigInt(transactions.length),
+  };
+
+  const header: SDK.HeaderV1 = {
+    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    withdrawalsRoot: withdrawalsRoot.root,
+    forcedTransactionsRoot: forcedTransactionsRoot.root,
+    transactionsRoot: transactionsRoot.root,
+    depositsRoot: depositsRoot.root,
+    transitionTraceRoot: transitionTraceRoot.root,
+    eventToStepRoot: eventToStepRoot.root,
+    validationTracesRoot: validationTracesRoot.root,
+    ...counts,
+    startTime,
+    endTime,
+    blockSlot: 0n,
+    expectedNetworkId: 0n,
+    minFeeA: 0n,
+    minFeeB: 0n,
+    prevHeaderHash: h28(90),
+    operatorVkey: h28(91),
+    protocolVersion: 1n,
+  };
+  const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
+  const payload: SDK.DaPayloadV1 = {
+    version: SDK.DA_PAYLOAD_V1_VERSION,
+    block_body: {
+      header_hash: headerHash,
+      header,
+      utxos: [],
+      withdrawals: [],
+      forced_transactions: [],
+      transactions: sortEntries(transactionEntries),
+      deposits: [],
+      transition_trace: [],
+      event_to_step: sortEntries(eventToStepEntries),
+      transaction_preimages: sortEntries(preimageEntries),
+      forced_transaction_preimages: [],
+      cek_program_material: [],
+      validation_traces: sortEntries(validationTraceEntries),
+      counts,
+    },
+  };
+  return {
+    payload,
+    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+      mode: "identity",
+    }),
+    header,
+    headerHash,
+    transactions,
+  };
+};
+
+export const authenticatedHeaderObservationV1 = (
+  fixture: CanonicalBlockFixtureV1,
+  overrides: Partial<SDK.AuthenticatedStateQueueHeaderObservationV1> = {},
+): SDK.AuthenticatedStateQueueHeaderObservationV1 => ({
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  sourceMode: "local_node",
+  provenance: {
+    trustClass: "authenticated_cardano_l1",
+    sourceId: "watcher-local-node",
+    grade: "security",
+  },
+  chainPoint: { slot: 4242n, blockHash: h32(7) },
+  confirmationDepth: 12,
+  headerHash: fixture.headerHash,
+  header: fixture.header,
+  ...overrides,
+});
+
+/** Re-encodes the fixture payload after an arbitrary block-body mutation. */
+export const reencodeFixturePayloadV1 = async (
+  payload: SDK.DaPayloadV1,
+): Promise<Buffer> =>
+  await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), { mode: "identity" });
+
+export const dataToHex = <A>(
+  value: A,
+  schema: Parameters<typeof Data.Nullable>[0],
+): string => encodeData(value, schema).toString("hex");

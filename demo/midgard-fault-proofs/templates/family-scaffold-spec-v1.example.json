@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "midgard-fraud-proof-family-scaffold-v1",
+  "family": "network-id",
+  "taskId": "Q35",
+  "violationId": "network-id-mismatch",
+  "catalogueCategory": "networkId",
+  "summary": "Proves a transaction in the block declares a network id other than the protocol network id.",
+  "steps": [
+    {
+      "index": 1,
+      "rule": "The bad transaction is committed under the header's counted transactions_root.",
+      "inputState": null,
+      "outputState": [
+        {
+          "name": "bad_tx_network_id",
+          "type": "int",
+          "doc": "Network id declared by the bad transaction body."
+        }
+      ],
+      "argsFields": null
+    },
+    {
+      "index": 2,
+      "rule": "The declared network id differs from the protocol network id, so the block is invalid.",
+      "inputState": [
+        {
+          "name": "bad_tx_network_id",
+          "type": "int",
+          "doc": "Network id declared by the bad transaction body."
+        }
+      ],
+      "outputState": null,
+      "argsFields": []
+    }
+  ],
+  "tests": {
+    "positive": ["network_id_step_01_binds_native_v1_block_fixture"],
+    "validBlockNegative": ["network_id_step_01_rejects_forged_transactions_root"],
+    "mutation": ["network_id_step_02_rejects_mutated_network_id"],
+    "maximumFit": ["network_id_maximum_fit_native_tx"]
+  }
+}
