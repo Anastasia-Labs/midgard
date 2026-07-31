@@ -197,7 +197,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json",
-      "sha256": "40cbc9b15b6b10a6f42d860fee0f4f60117914a7c77921dcdcab18f4f745fbb8",
+      "sha256": "c06a5144ed27621b9b56715dda7135809193a2948d314a5a9ee465401fbede7b",
       "status": "BOUND"
     },
     {
@@ -207,7 +207,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-      "sha256": "c43e40585ded1a5c2c81e94ecaddcb028e459f9cb5f13b2d7990f177ba3d132b",
+      "sha256": "7b1e4eaf8c381326c661dab0f44dc4b5621bed9b06315782247e00479f2a2400",
       "status": "BOUND"
     }
   ],

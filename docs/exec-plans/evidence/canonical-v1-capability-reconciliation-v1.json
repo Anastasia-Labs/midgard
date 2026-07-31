@@ -16,7 +16,7 @@
     },
     "validationMachineTypeScript": {
       "path": "demo/midgard-validation/src/validation-machine.ts",
-      "sha256": "0c983080cc7b90257cd2d225e980015144e37f6a8630ebf5a2a6f93002eba89c"
+      "sha256": "426ba765e78772fb00c4ccefa951317d31cbf1970e948f96aaeba4b189252fdf"
     },
     "validationMachineDataTypeScript": {
       "path": "demo/midgard-validation/src/validation-machine-data.ts",
@@ -28,7 +28,7 @@
     },
     "validationMachineAiken": {
       "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-      "sha256": "03b548811be90c4f3ae5ed10b7b1a553718efb27c418e950480fe6b3a8b9bc20"
+      "sha256": "95aa6f121f2c7b6a752373d606771b82be10ea6333ef7191d180c91ba3485046"
     }
   },
   "controlPlane": {
