@@ -160,6 +160,12 @@ describe("contract deployment info", () => {
                   .spendingScriptHash,
               membershipProofCbor: "80",
             },
+            invalidSignature: {
+              categoryId: "00000008",
+              scriptHash:
+                contracts.fraudProofs.invalidSignature.spendingScriptHash,
+              membershipProofCbor: "80",
+            },
           },
         },
       );

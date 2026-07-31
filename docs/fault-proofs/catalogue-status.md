@@ -32,6 +32,21 @@
 > and emulator-proven end-to-end through faulty-block removal. It becomes row 13
 > in §1 and is removed from the §6 missing list.
 
+> **Update 2026-07-30 (branch `fp/invalid-signature`):** `invalid-signature` is
+> ported from the legacy binding to the native counted-root path and registered as
+> `invalidSignature` (`00000008`, appended — all existing IDs preserved). The port
+> is not mechanical: the native encoding collapses the witness set into a single
+> `witness_set_hash`, so step 02 now takes **two** preimages
+> (`NativeTxWitnessSetCompact`, then the address-witness list) instead of the
+> legacy structured witness set, and selects the offending witness by **index**
+> rather than by verification key — which retires the duplicate-vkey TODO, since
+> the length-prefixed `encode_address_witness_preimage` fixes both count and
+> position. It stays a 2-step chain: only one MPF inclusion proof is needed, so
+> both preimages fit in the concluding redeemer. CLI-complete
+> (`prepare-invalid-signature` + `submit-invalid-signature-step-01..02`) and
+> emulator-proven end-to-end through faulty-block removal. Row 7 moves from 🔶 to
+> ✅, and the §1a binding-blocker list drops from five proofs to four.
+
 ## 1. The twelve compiled proof types (`onchain/aiken/validators/fraud-proofs/`)
 
 "Registered" = present in the deployment catalogue
@@ -47,7 +62,7 @@ types compile but **cannot `Init` a computation thread** against a deployed inst
 | 4   | `transition-trace` (single proof, 9 fault families) | Wrong state-transition trace: boundary, link, event-to-step, source-membership (3 sub-variants incl. phase mismatch), invalid one-step transition (6 sub-variants), omitted due L1 event, duplicate trace event, out-of-window source event, count faults (5 sub-variants). Dispatch: `lib/midgard/fraud-proofs/transition-trace/proof.ak:1618-1657`. | REAL except one branch            | ✅ `transitionTrace`         | 🟠 library-complete (`transition-trace/{detect,reconstruct,witnesses,fetch,submit}.ts`), **no CLI wiring** (`bin.ts` never imports it)     | ✅ through removal                                        | 🟠 Partial — see §2                                                                         |
 | 5   | `input-no-idx` (4 steps)                            | Spent input's outref index ≥ its producing tx's output count. Binds both the bad tx (step-01) and its in-block producing tx (step-03) via native counted-root inclusion; step-04 checks `bad_input_output_index >= list.length(outputs_preimage)` against the producing tx's raw outputs preimage.                                                      | REAL; native counted-root binding | ✅ `nonExistentInputNoIndex` | ✅ `prepare-input-no-idx` + `submit-input-no-idx-step-01..04` (`inx-submit-step-01..04.ts`)                                                 | ✅ through removal (`tests/submit-init-emulator.test.ts`) | ✅ Complete & verified (emulator only; not preprod)                                         |
 | 6   | `zero-input` (2 steps)                              | Tx spends zero inputs; native `spend_inputs_hash == blake2b_256(encode_native_byte_list([]))` (`step-02.ak`).                                                                                                                                                                                                                                         | REAL; native counted-root binding | ✅ `zeroInput`               | ✅ `prepare-zero-input` + `submit-zero-input-step-01..02` (4 manual CLI steps); preparation requires the authoritative counted header root | ✅ through removal (`tests/submit-init-emulator.test.ts`) | ✅ Complete & verified (emulator; author-supplied preprod evidence not independently rerun) |
-| 7   | `invalid-signature` (2 steps)                       | An ed25519 signature fails verification (`step-02.ak:82-87`). Open TODO: duplicate-vkey manipulation (`:75-76`). Also parses witnesses as a `Pairs` map vs the codec's list-of-arrays (matrix §11 #11).                                                                                                                                               | REAL logic; **legacy binding** ⚠️ | ❌                           | ❌ none                                                                                                                                    | ❌                                                        | 🔶 Implemented, not fully verified — **binding blocker (§1a)**                              |
+| 7   | `invalid-signature` (2 steps)                       | An ed25519 signature fails verification against the tx id (`step-02.ak`). Step-01 carries the tx id (which *is* `blake2b_256(compact_body_cbor)`, so it is the signed message) plus `witness_set_hash`; step-02 unwraps both preimages and checks `verify_ed25519_signature(...) == False` at the accused index.                                       | REAL; native counted-root binding | ✅ `invalidSignature`        | ✅ `prepare-invalid-signature` + `submit-invalid-signature-step-01..02`                                                                     | ✅ through removal (`tests/submit-init-emulator.test.ts`) | ✅ Complete & verified (emulator only; not preprod)                                         |
 | 8   | `missing-signature` (4 steps)                       | Required signer's witness absent (`step-04.ak:76-78`).                                                                                                                                                                                                                                                                                                | REAL logic; **legacy binding** ⚠️ | ❌                           | ❌ none                                                                                                                                    | ❌                                                        | 🔶 Implemented, not fully verified — **binding blocker (§1a)**                              |
 | 9   | `missing-native-script-tx` (6 steps)                | Native-script-locked input spent without the script in tx witnesses (`step-05.ak:66-69`, `step-06.ak:77-79`).                                                                                                                                                                                                                                         | REAL logic; **legacy binding** ⚠️ | ❌                           | ❌ none                                                                                                                                    | ❌                                                        | 🔶 Implemented, not fully verified — **binding blocker (§1a)**                              |
 | 10  | `no-reference-input` (4 steps)                      | Referenced input absent from pre-state and not produced in-block (`step-03.ak:70-76`, `step-04.ak:72-79`). MPF non-membership ×2 over raw native CBOR; native counted-root binding via `pass_native_tx_to_next_step`.                                                                                                                                  | REAL; native counted-root binding | ✅ `noReferenceInput`        | ✅ `prepare-no-reference-input` + `submit-no-reference-input-step-01..04` (`nri-submit-step-01..04.ts`; 5 manual CLI steps)                 | ✅ through removal (`tests/submit-init-emulator.test.ts:4282`) | ✅ Complete & verified (emulator only; not preprod)                                        |
@@ -56,17 +71,17 @@ types compile but **cannot `Init` a computation thread** against a deployed inst
 
 | 13  | `reference-input-no-idx` (4 steps)                  | Referenced input's outref index ≥ its producing tx's output count — the reference-input mirror of row 5. Step-01 commits `reference_inputs_hash`; steps 02-04 are the same scripts as `input-no-idx`.                                                                                                                                  | REAL; native counted-root binding | ✅ `noReferenceInputNoIndex` | ✅ `prepare-reference-input-no-idx` + `submit-reference-input-no-idx-step-01..04` (`rinx-submit-step-01..04.ts`)                            | ✅ through removal (`tests/submit-init-emulator.test.ts`) | ✅ Complete & verified (emulator only; not preprod)                                         |
 
-### 1a. Binding blocker — five compiled proofs cannot bind to current counted-root native-v1 blocks
+### 1a. Binding blocker — four compiled proofs cannot bind to current counted-root native-v1 blocks
 
-`double-spend`, `no-input`, `invalid-range`, `zero-input`, `no-reference-input`, `input-no-idx`, and
-`reference-input-no-idx` use the native binding path
+`double-spend`, `no-input`, `invalid-range`, `zero-input`, `no-reference-input`, `input-no-idx`,
+`reference-input-no-idx`, and `invalid-signature` use the native binding path
 `verify_native_tx_in_state_queue_node` (`common.ak:575-634`), which authenticates a raw
 MPF root against the header's **counted** `transactions_root`
 (`commit_counted_root(TransactionsRootDomain, raw_root, l2_transaction_count) ==
 transactions_root`, `:615-620`) and then does `plutarch_phas_raw` over **raw native-tx
 CBOR** (`:623-631`).
 
-The other five step-1 validators (types 7–9, 11–12 above) still call the legacy
+The other four step-1 validators (types 8–9, 11–12 above) still call the legacy
 `verify_tx_in_state_queue_node` (`common.ak:518-573`), which (a) passes
 `state_queue_datum.transactions_root` **directly** into `plutarch_phas` as the Merkle
 root — with no counted-root unwrapping — and (b) matches over a **PlutusData
@@ -124,7 +139,7 @@ becomes one the moment valid forced transactions are enabled.
 | MPF primitives (`validators/phas.ak`, `pexcludes.ak`; Plutarch legacy in `onchain/plutarch/`) | ✅     | Aiken-native scripts are the deployed ones (env hashes match `plutus.json`); Plutarch package is legacy/parallel (`onchain/plutarch/README.md:1-8`). `plutarch_pdelete` unusable — env hash empty (`env/default.ak:68`) |
 | Counted/domain-tagged roots (`lib/midgard/transition-trace.ak:64-80`)                         | ✅     | Landed via PR #458 (commit `5169b7f7`); consumed by settlement + no-input proof                                                                                                                                         |
 | Native-tx CBOR codec (`lib/midgard/fraud-proofs/native-tx/`)                                  | ✅     | Real byte-offset decoders, hash-checked; vkey+timelock witnesses only (no Plutus)                                                                                                                                       |
-| SDK catalogue deployment (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`)                    | 🟠     | 8 of 13 categories; `zeroInput` (`00000005`), `noReferenceInput` (`00000006`), then `noReferenceInputNoIndex` (`00000007`) appended, preserving all existing IDs; single first-step hash per category; TODO for multi-step design (`common.ts`)                  |
+| SDK catalogue deployment (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`)                    | 🟠     | 9 of 13 categories; `zeroInput` (`00000005`), `noReferenceInput` (`00000006`), `noReferenceInputNoIndex` (`00000007`), then `invalidSignature` (`00000008`) appended, preserving all existing IDs; single first-step hash per category; TODO for multi-step design (`common.ts`)                  |
 
 ## 4. Ledger-rule helpers (on-chain)
 
@@ -142,10 +157,11 @@ becomes one the moment valid forced transactions are enabled.
 ## 5. Delivery buckets (summary)
 
 - **Delivered & functional (emulator-proven)**: generic machinery; double-spend, no-input,
-  invalid-range, zero-input, no-reference-input, input-no-idx, and reference-input-no-idx
+  invalid-range, zero-input, no-reference-input, input-no-idx, reference-input-no-idx,
+  and invalid-signature
   full chains;
   transition-trace engine + library tooling.
-- **Delivered, functional on-chain, but unreachable in deployment**: invalid-signature,
+- **Delivered, functional on-chain, but unreachable in deployment**:
   missing-signature, missing-native-script-tx,
   withdrawn-reference-input (real logic, not catalogue-registered, no tooling).
 - **Delivered but inert**: min-fee (stub), slashing economics (zeroed),

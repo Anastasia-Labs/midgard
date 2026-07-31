@@ -206,6 +206,7 @@ export type FraudProofs = {
   zeroInput: SpendingValidator;
   noReferenceInput: SpendingValidator;
   noReferenceInputNoIndex: SpendingValidator;
+  invalidSignature: SpendingValidator;
 };
 
 export type MidgardValidators = {

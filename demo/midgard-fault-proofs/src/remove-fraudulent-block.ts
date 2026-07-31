@@ -7,6 +7,7 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
@@ -25,6 +26,7 @@ import {
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
+  type InvalidSignatureFaultProofContracts,
   type LinkedListNodeView,
   type NonExistentInputFaultProofContracts,
   type NoReferenceInputFaultProofContracts,
@@ -283,6 +285,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "zeroInput"
   | "noReferenceInput"
   | "noReferenceInputNoIndex"
+  | "invalidSignature"
 >;
 
 export type StateQueueMutationLease = {
@@ -563,13 +566,15 @@ const buildRemovalContracts = async ({
     | ZeroInputFaultProofContracts
     | NoReferenceInputFaultProofContracts
     | InputNoIdxFaultProofContracts
-    | ReferenceInputNoIdxFaultProofContracts;
+    | ReferenceInputNoIdxFaultProofContracts
+    | InvalidSignatureFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofNonExistentInputNoIndex"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
+    | "fraudProofInvalidSignature"
     | "fraudProofZeroInput"
     | "fraudProofNoReferenceInput"
     | "fraudProofNoReferenceInputNoIndex";
@@ -665,6 +670,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofNonExistentInputNoIndex";
     derivedCategoryFirstStepHash =
       inputNoIdxContracts.inputNoIdx.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "invalidSignature") {
+    const invalidSignatureContracts = await Effect.runPromise(
+      buildInvalidSignatureFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = invalidSignatureContracts;
+    expectedCategoryDeploymentEntry = "fraudProofInvalidSignature";
+    derivedCategoryFirstStepHash =
+      invalidSignatureContracts.invalidSignature.firstStep.spendingScriptHash;
   } else {
     const referenceInputNoIdxContracts = await Effect.runPromise(
       buildReferenceInputNoIdxFaultProofContracts({

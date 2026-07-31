@@ -46,16 +46,21 @@ L1 connection:
     through `-04` for the `no-reference-input` category, and
     `submit-input-no-idx-step-01` through `-04` for the `input-no-idx` category.
     The non-existent-input steps consume the `ne-*.json` artifacts in order: tx
-    inclusion, inputs preimage, ledger non-membership, then txs non-membership on
-    the concluding step. The no-reference-input steps mirror that order with the
-    `nri-*.json` artifacts, taking `--reference-inputs-preimage` and
+    inclusion, inputs preimage, ledger non-membership, then txs non-membership
+    on the concluding step. The no-reference-input steps mirror that order with
+    the `nri-*.json` artifacts, taking `--reference-inputs-preimage` and
     `--bad-reference-input-index` on step 02. The input-no-idx steps take the
     `input-no-idx-*.json` artifacts and need no ledger proofs: bad-tx inclusion,
-    inputs preimage, then the producing transaction's inclusion on step 03 and its
-    `--outputs-preimage` on the concluding step.
+    inputs preimage, then the producing transaction's inclusion on step 03 and
+    its `--outputs-preimage` on the concluding step.
     `submit-reference-input-no-idx-step-01` through `-04` mirror that chain over
     the reference-input list, taking `--reference-inputs-preimage` and
-    `--bad-reference-input-index` on step 02.
+    `--bad-reference-input-index` on step 02. `submit-invalid-signature-step-01`
+    and `-02` prove a failing address-witness signature in two steps: step 01
+    carries the transaction id and its `witness_set_hash`, and step 02 takes
+    `--witness-set-preimage`, `--addr-tx-wits-preimage`, and
+    `--bad-address-witness-index`. Both preimages ride in the concluding
+    redeemer because this category needs only one transaction-inclusion proof.
   </Step>
 </Steps>
 

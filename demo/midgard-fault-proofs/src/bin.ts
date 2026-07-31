@@ -36,6 +36,10 @@ import {
   prepareInvalidRangeFromNode,
 } from "./prepare-invalid-range.js";
 import {
+  prepareInvalidSignatureFromFile,
+  prepareInvalidSignatureFromNode,
+} from "./prepare-invalid-signature.js";
+import {
   prepareNoReferenceInputFromFile,
   prepareNoReferenceInputFromNode,
 } from "./prepare-no-reference-input.js";
@@ -63,6 +67,8 @@ import {
 } from "./submit-init.js";
 import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.js";
 import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.js";
+import { submitInvalidSignatureStep01FromFiles } from "./submit-invalid-signature-step-01.js";
+import { submitInvalidSignatureStep02FromFiles } from "./submit-invalid-signature-step-02.js";
 import { submitStep01FromFiles } from "./submit-step-01.js";
 import { submitStep02FromFiles } from "./submit-step-02.js";
 import { submitStep03FromFiles } from "./submit-step-03.js";
@@ -119,6 +125,9 @@ export type ParsedArgs = {
   readonly ledgerNonMembershipProofPath: string | undefined;
   readonly txsNonMembershipProofPath: string | undefined;
   readonly outputsPreimagePath: string | undefined;
+  readonly witnessSetPreimagePath: string | undefined;
+  readonly addrTxWitsPreimagePath: string | undefined;
+  readonly badAddressWitnessIndex: string | undefined;
 };
 
 const usage = `Usage:
@@ -130,7 +139,8 @@ const usage = `Usage:
   midgard-fault-proofs prepare-reference-input-no-idx (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-reference-input-index <n>] [--expected-transactions-root <hex>] [--output-dir <path>]
   midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs prepare-invalid-signature (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex|invalidSignature>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -153,9 +163,11 @@ const usage = `Usage:
   midgard-fault-proofs submit-reference-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --reference-inputs-preimage <path> --bad-reference-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-reference-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producingTxInclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-reference-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --witness-set-preimage <path> --addr-tx-wits-preimage <path> --bad-address-witness-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|noReferenceInput|noReferenceInputNoIndex|invalidSignature>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -172,12 +184,13 @@ export const parseFraudCategory = (
     value === "nonExistentInputNoIndex" ||
     value === "zeroInput" ||
     value === "noReferenceInput" ||
-    value === "noReferenceInputNoIndex"
+    value === "noReferenceInputNoIndex" ||
+    value === "invalidSignature"
   ) {
     return value;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "noReferenceInput", or "noReferenceInputNoIndex".',
+    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "noReferenceInput", "noReferenceInputNoIndex", or "invalidSignature".',
   );
 };
 
@@ -233,6 +246,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let ledgerNonMembershipProofPath: string | undefined;
   let txsNonMembershipProofPath: string | undefined;
   let outputsPreimagePath: string | undefined;
+  let witnessSetPreimagePath: string | undefined;
+  let addrTxWitsPreimagePath: string | undefined;
+  let badAddressWitnessIndex: string | undefined;
   let badReferenceInputIndex: string | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
@@ -362,6 +378,15 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--bad-reference-input-index":
         badReferenceInputIndex = rest[++index];
         break;
+      case "--witness-set-preimage":
+        witnessSetPreimagePath = rest[++index];
+        break;
+      case "--addr-tx-wits-preimage":
+        addrTxWitsPreimagePath = rest[++index];
+        break;
+      case "--bad-address-witness-index":
+        badAddressWitnessIndex = rest[++index];
+        break;
       case "--prev-utxos-root":
         prevUtxosRoot = rest[++index];
         break;
@@ -437,6 +462,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     badTxId,
     badInputIndex,
     badReferenceInputIndex,
+    witnessSetPreimagePath,
+    addrTxWitsPreimagePath,
+    badAddressWitnessIndex,
     prevUtxosRoot,
     prevBlockPayloadPath,
     inputsPreimagePath,
@@ -516,6 +544,7 @@ export const main = async (): Promise<void> => {
     args.command !== "prepare-input-no-idx" &&
     args.command !== "prepare-reference-input-no-idx" &&
     args.command !== "prepare-zero-input" &&
+    args.command !== "prepare-invalid-signature" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
     args.command !== "submit-step-01" &&
@@ -540,12 +569,14 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-reference-input-no-idx-step-02" &&
     args.command !== "submit-reference-input-no-idx-step-03" &&
     args.command !== "submit-reference-input-no-idx-step-04" &&
+    args.command !== "submit-invalid-signature-step-01" &&
+    args.command !== "submit-invalid-signature-step-02" &&
     args.command !== "submit-zero-input-step-01" &&
     args.command !== "submit-zero-input-step-02" &&
     args.command !== "remove-fraudulent-block"
   ) {
     throw new Error(
-      `Expected command "prepare-double-spend", "prepare-invalid-range", "prepare-non-existent-input", "prepare-no-reference-input", "prepare-input-no-idx", "prepare-reference-input-no-idx", "prepare-zero-input", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", "submit-non-existent-input-step-01", "submit-non-existent-input-step-02", "submit-non-existent-input-step-03", "submit-non-existent-input-step-04", "submit-no-reference-input-step-01", "submit-no-reference-input-step-02", "submit-no-reference-input-step-03", "submit-no-reference-input-step-04", "submit-input-no-idx-step-01", "submit-input-no-idx-step-02", "submit-input-no-idx-step-03", "submit-input-no-idx-step-04", "submit-reference-input-no-idx-step-01", "submit-reference-input-no-idx-step-02", "submit-reference-input-no-idx-step-03", "submit-reference-input-no-idx-step-04", "submit-zero-input-step-01", "submit-zero-input-step-02", or "remove-fraudulent-block".\n${usage}`,
+      `Expected command "prepare-double-spend", "prepare-invalid-range", "prepare-non-existent-input", "prepare-no-reference-input", "prepare-input-no-idx", "prepare-reference-input-no-idx", "prepare-zero-input", "prepare-invalid-signature", "inspect-contracts", "submit-init", "submit-step-01", "submit-step-02", "submit-step-03", "submit-step-04", "submit-invalid-range-step-01", "submit-invalid-range-step-02", "submit-non-existent-input-step-01", "submit-non-existent-input-step-02", "submit-non-existent-input-step-03", "submit-non-existent-input-step-04", "submit-no-reference-input-step-01", "submit-no-reference-input-step-02", "submit-no-reference-input-step-03", "submit-no-reference-input-step-04", "submit-input-no-idx-step-01", "submit-input-no-idx-step-02", "submit-input-no-idx-step-03", "submit-input-no-idx-step-04", "submit-reference-input-no-idx-step-01", "submit-reference-input-no-idx-step-02", "submit-reference-input-no-idx-step-03", "submit-reference-input-no-idx-step-04", "submit-invalid-signature-step-01", "submit-invalid-signature-step-02", "submit-zero-input-step-01", "submit-zero-input-step-02", or "remove-fraudulent-block".\n${usage}`,
     );
   }
 
@@ -828,6 +859,45 @@ export const main = async (): Promise<void> => {
     return;
   }
 
+  if (args.command === "prepare-invalid-signature") {
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
+    }
+    const inputModes = [
+      args.midgardNodeUrl !== undefined,
+      args.transactionsPath !== undefined,
+    ].filter(Boolean).length;
+    if (inputModes !== 1) {
+      throw new Error(
+        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
+      );
+    }
+    if (args.expectedTransactionsRoot === undefined) {
+      throw new Error(
+        `Missing required --expected-transactions-root <hex>.\n${usage}`,
+      );
+    }
+    const expectedTransactionsRoot = args.expectedTransactionsRoot;
+    const output =
+      args.midgardNodeUrl !== undefined
+        ? await prepareInvalidSignatureFromNode({
+            midgardNodeUrl: args.midgardNodeUrl,
+            headerHash: args.headerHash,
+            expectedTransactionsRoot,
+            txId: args.txId,
+            outputDir: args.outputDir,
+          })
+        : await prepareInvalidSignatureFromFile({
+            transactionsPath: args.transactionsPath!,
+            headerHash: args.headerHash,
+            expectedTransactionsRoot,
+            txId: args.txId,
+            outputDir: args.outputDir,
+          });
+    writeJson(output);
+    return;
+  }
+
   if (args.blueprintPath === undefined) {
     throw new Error(`Missing required --blueprint <path>.\n${usage}`);
   }
@@ -921,6 +991,88 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-invalid-signature-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitInvalidSignatureStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-invalid-signature-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.witnessSetPreimagePath === undefined) {
+      throw new Error(
+        `Missing required --witness-set-preimage <path>.\n${usage}`,
+      );
+    }
+    if (args.addrTxWitsPreimagePath === undefined) {
+      throw new Error(
+        `Missing required --addr-tx-wits-preimage <path>.\n${usage}`,
+      );
+    }
+    if (args.badAddressWitnessIndex === undefined) {
+      throw new Error(
+        `Missing required --bad-address-witness-index <n>.\n${usage}`,
+      );
+    }
+    const output = await submitInvalidSignatureStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      witnessSetPreimagePath: args.witnessSetPreimagePath,
+      addrTxWitsPreimagePath: args.addrTxWitsPreimagePath,
+      badAddressWitnessIndex: args.badAddressWitnessIndex,
       awaitConfirmation: args.awaitConfirmation,
     });
 

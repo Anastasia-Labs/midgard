@@ -10,6 +10,7 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
@@ -20,6 +21,7 @@ import {
   type FraudProofCatalogueCategoryName,
   type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
+  type InvalidSignatureFaultProofContracts,
   MerkleRoot,
   type NonExistentInputFaultProofContracts,
   type NoReferenceInputFaultProofContracts,
@@ -353,6 +355,15 @@ export type ResolvedZeroInputDeploymentContracts = {
   readonly contracts: ZeroInputFaultProofContracts;
 };
 
+export type ResolvedInvalidSignatureDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly invalidSignatureCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: InvalidSignatureFaultProofContracts;
+};
+
 export type ResolvedNoReferenceInputDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly noReferenceInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
@@ -390,6 +401,7 @@ type SupportedFaultProofCategoryName = Extract<
   | "zeroInput"
   | "noReferenceInput"
   | "noReferenceInputNoIndex"
+  | "invalidSignature"
 >;
 
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
@@ -401,6 +413,7 @@ const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   zeroInput: "fraudProofZeroInput",
   noReferenceInput: "fraudProofNoReferenceInput",
   noReferenceInputNoIndex: "fraudProofNoReferenceInputNoIndex",
+  invalidSignature: "fraudProofInvalidSignature",
 } as const satisfies Record<SupportedFaultProofCategoryName, string>;
 
 const categoryLabel = (
@@ -423,6 +436,8 @@ const categoryLabel = (
       return "no-reference-input";
     case "noReferenceInputNoIndex":
       return "reference-input-no-idx";
+    case "invalidSignature":
+      return "invalid-signature";
   }
 };
 
@@ -454,7 +469,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | NoReferenceInputFaultProofContracts
-    | ReferenceInputNoIdxFaultProofContracts;
+    | ReferenceInputNoIdxFaultProofContracts
+    | InvalidSignatureFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -503,7 +519,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | NoReferenceInputFaultProofContracts
-    | ReferenceInputNoIdxFaultProofContracts;
+    | ReferenceInputNoIdxFaultProofContracts
+    | InvalidSignatureFaultProofContracts;
   let derivedFirstStepHash: string;
   if (categoryName === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -577,6 +594,18 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = zeroInputContracts;
     derivedFirstStepHash =
       zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
+  } else if (categoryName === "invalidSignature") {
+    const invalidSignatureContracts = await Effect.runPromise(
+      buildInvalidSignatureFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = invalidSignatureContracts;
+    derivedFirstStepHash =
+      invalidSignatureContracts.invalidSignature.firstStep.spendingScriptHash;
   } else if (categoryName === "noReferenceInput") {
     const noReferenceInputContracts = await Effect.runPromise(
       buildNoReferenceInputFaultProofContracts({
@@ -760,6 +789,27 @@ export const resolveZeroInputDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as ZeroInputFaultProofContracts,
+  };
+};
+
+export const resolveInvalidSignatureDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedInvalidSignatureDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "invalidSignature",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    invalidSignatureCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as InvalidSignatureFaultProofContracts,
   };
 };
 

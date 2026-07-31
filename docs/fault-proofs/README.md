@@ -70,7 +70,7 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 **1. Delivered _and_ functional** (real logic, compiles, emulator-proven where noted):
 
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
-- 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
+- 11 of 13 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `reference-input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
 - Offchain tooling for 7 families (double-spend, invalid-range, non-existent-input, input-no-idx,
   transition-trace, zero-input, no-reference-input); all seven are **emulator-proven

@@ -41,6 +41,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveInputNoIdxDeploymentContracts,
   resolveInvalidRangeDeploymentContracts,
+  resolveInvalidSignatureDeploymentContracts,
   resolveNonExistentInputDeploymentContracts,
   resolveNoReferenceInputDeploymentContracts,
   resolveProverSigner,
@@ -73,7 +74,8 @@ export type SubmitInitFraudCategory =
   | "transitionTrace"
   | "zeroInput"
   | "noReferenceInput"
-  | "noReferenceInputNoIndex";
+  | "noReferenceInputNoIndex"
+  | "invalidSignature";
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -122,6 +124,8 @@ const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
       return "no-reference-input";
     case "noReferenceInputNoIndex":
       return "reference-input-no-idx";
+    case "invalidSignature":
+      return "invalid-signature";
   }
 };
 
@@ -309,6 +313,27 @@ export const submitInit = async ({
       resolvedDeployment.contracts.inputNoIdx.firstStep.spendingScriptAddress;
     firstStepHash =
       resolvedDeployment.contracts.inputNoIdx.firstStep.spendingScriptHash;
+  } else if (fraudCategory === "invalidSignature") {
+    const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts(
+      {
+        blueprint,
+        deploymentInfo,
+        network,
+        requireStateQueueMint: true,
+      },
+    );
+    category = resolvedDeployment.invalidSignatureCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.invalidSignature.firstStep
+        .spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.invalidSignature.firstStep
+        .spendingScriptHash;
   } else {
     const resolvedDeployment =
       await resolveReferenceInputNoIdxDeploymentContracts({

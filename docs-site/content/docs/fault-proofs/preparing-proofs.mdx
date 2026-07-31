@@ -163,7 +163,7 @@ diagnostics-only material.
 ## `prepare-no-reference-input`
 
 The reference-input mirror of `prepare-non-existent-input`: it targets a
-transaction that *reads* a reference input which is absent from the previous
+transaction that _reads_ a reference input which is absent from the previous
 ledger state and is not produced by any transaction in the same block. Source:
 `demo/midgard-fault-proofs/src/prepare-no-reference-input.ts`.
 
@@ -191,20 +191,20 @@ producing tx id in the block's transactions trie.
 
 ### Files written with `--output-dir`
 
-| File                                    | Consumed by                                                                                                                 |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `nri-tx-inclusion.json`                 | `submit-no-reference-input-step-01` `--tx-inclusion`                                                                        |
-| `nri-reference-inputs-preimage.json`    | `submit-no-reference-input-step-02` `--reference-inputs-preimage`                                                           |
-| `nri-ledger-non-membership.json`        | `submit-no-reference-input-step-03` `--ledger-non-membership-proof`                                                         |
-| `nri-txs-non-membership.json`           | `submit-no-reference-input-step-04` `--txs-non-membership-proof`                                                            |
-| `nri-plan.json`                         | Summary: header hash, bad tx id and reference-input index, the missing reference input, and the transactions and previous-UTxO roots. |
+| File                                 | Consumed by                                                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `nri-tx-inclusion.json`              | `submit-no-reference-input-step-01` `--tx-inclusion`                                                                                  |
+| `nri-reference-inputs-preimage.json` | `submit-no-reference-input-step-02` `--reference-inputs-preimage`                                                                     |
+| `nri-ledger-non-membership.json`     | `submit-no-reference-input-step-03` `--ledger-non-membership-proof`                                                                   |
+| `nri-txs-non-membership.json`        | `submit-no-reference-input-step-04` `--txs-non-membership-proof`                                                                      |
+| `nri-plan.json`                      | Summary: header hash, bad tx id and reference-input index, the missing reference input, and the transactions and previous-UTxO roots. |
 
 As with non-existent-input, there is no compatibility override: a root mismatch
 fails the command.
 
 ## `prepare-input-no-idx`
 
-Targets a transaction that spends an input whose producing transaction *is*
+Targets a transaction that spends an input whose producing transaction _is_
 present in the block, but whose output index is out of range of that
 transaction's outputs. Source:
 `demo/midgard-fault-proofs/src/prepare-input-no-idx.ts`.
@@ -228,22 +228,22 @@ the output count, which is what makes the out-of-range check sound.
 
 Pinning `--bad-input-index` at an input that is not actually faulty is rejected
 with the reason: an input whose producing transaction is missing from the block
-is a *non-existent-input* fault, and an index within range is no fault at all.
+is a _non-existent-input_ fault, and an index within range is no fault at all.
 
 ### Files written with `--output-dir`
 
-| File                                       | Consumed by                                                                                                                       |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `input-no-idx-bad-tx-inclusion.json`       | `submit-input-no-idx-step-01` `--tx-inclusion`                                                                                    |
-| `input-no-idx-inputs-preimage.json`        | `submit-input-no-idx-step-02` `--inputs-preimage`                                                                                 |
-| `input-no-idx-producing-tx-inclusion.json` | `submit-input-no-idx-step-03` `--tx-inclusion`                                                                                    |
-| `input-no-idx-outputs-preimage.json`       | `submit-input-no-idx-step-04` `--outputs-preimage`                                                                                |
+| File                                       | Consumed by                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `input-no-idx-bad-tx-inclusion.json`       | `submit-input-no-idx-step-01` `--tx-inclusion`                                                                                        |
+| `input-no-idx-inputs-preimage.json`        | `submit-input-no-idx-step-02` `--inputs-preimage`                                                                                     |
+| `input-no-idx-producing-tx-inclusion.json` | `submit-input-no-idx-step-03` `--tx-inclusion`                                                                                        |
+| `input-no-idx-outputs-preimage.json`       | `submit-input-no-idx-step-04` `--outputs-preimage`                                                                                    |
 | `input-no-idx-plan.json`                   | Summary: header hash, bad tx id and input index, the bad input, the producing tx id and its output count, and the transactions roots. |
 
 ## `prepare-reference-input-no-idx`
 
 The reference-input mirror of `prepare-input-no-idx`: it targets a transaction
-that *reads* a reference input whose producing transaction is present in the
+that _reads_ a reference input whose producing transaction is present in the
 block, but whose output index is out of range of that transaction's outputs.
 Source: `demo/midgard-fault-proofs/src/prepare-reference-input-no-idx.ts`.
 
@@ -262,18 +262,18 @@ The flags carry the same meaning as the input-no-idx ones, with
 inputs is claimed out of range. Like input-no-idx it needs no ledger proofs: two
 membership proofs against the block's transactions trie plus the producing
 transaction's raw outputs preimage. A pinned reference input whose producing
-transaction is missing from the block is rejected as a *no-reference-input*
+transaction is missing from the block is rejected as a _no-reference-input_
 fault, and one whose index is in range is rejected as no fault at all.
 
 ### Files written with `--output-dir`
 
-| File                                                     | Consumed by                                                                                                                                 |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `reference-input-no-idx-bad-tx-inclusion.json`           | `submit-reference-input-no-idx-step-01` `--tx-inclusion`                                                                                     |
-| `reference-input-no-idx-reference-inputs-preimage.json`  | `submit-reference-input-no-idx-step-02` `--reference-inputs-preimage`                                                                        |
-| `reference-input-no-idx-producing-tx-inclusion.json`     | `submit-reference-input-no-idx-step-03` `--tx-inclusion`                                                                                     |
-| `reference-input-no-idx-outputs-preimage.json`           | `submit-reference-input-no-idx-step-04` `--outputs-preimage`                                                                                 |
-| `reference-input-no-idx-plan.json`                       | Summary: header hash, bad tx id and reference-input index, the bad reference input, the producing tx id and its output count, and the roots. |
+| File                                                    | Consumed by                                                                                                                                  |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reference-input-no-idx-bad-tx-inclusion.json`          | `submit-reference-input-no-idx-step-01` `--tx-inclusion`                                                                                     |
+| `reference-input-no-idx-reference-inputs-preimage.json` | `submit-reference-input-no-idx-step-02` `--reference-inputs-preimage`                                                                        |
+| `reference-input-no-idx-producing-tx-inclusion.json`    | `submit-reference-input-no-idx-step-03` `--tx-inclusion`                                                                                     |
+| `reference-input-no-idx-outputs-preimage.json`          | `submit-reference-input-no-idx-step-04` `--outputs-preimage`                                                                                 |
+| `reference-input-no-idx-plan.json`                      | Summary: header hash, bad tx id and reference-input index, the bad reference input, the producing tx id and its output count, and the roots. |
 
 ## `prepare-zero-input`
 
@@ -316,6 +316,55 @@ submit-step files are written.
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tx-inclusion.json` | `submit-zero-input-step-01` `--tx-inclusion`                                                                                                        |
 | `plan.json`         | Summary: header hash, zero-input tx id, spend-inputs hash, raw transactions PHAS root, counted header commitment, and required expected-root check. |
+
+## `prepare-invalid-signature`
+
+Finds a transaction carrying an address witness whose Ed25519 signature does not
+verify, and produces the inclusion proof plus the two witness preimages the
+concluding step needs. Source:
+`demo/midgard-fault-proofs/src/prepare-invalid-signature.ts`.
+
+```sh
+midgard-fault-proofs prepare-invalid-signature \
+  (--midgard-node-url <url> | --transactions-file <path>) \
+  --header-hash <hex> \
+  --expected-transactions-root <hex> \
+  [--tx-id <hex>] \
+  [--output-dir <path>]
+```
+
+The signed message is the native transaction id, which is
+`blake2b_256(compact_body_cbor)`. Because the compact body does not cover the
+witness set, adding or altering witnesses never moves the id they sign.
+
+Reaching one signature takes two preimages, because the native compact encoding
+commits the whole witness set as a single `witness_set_hash`. The preparer
+derives both and checks each against what the block committed before writing
+anything:
+
+1. the `NativeTxWitnessSetCompact` triple, which re-encodes to `witness_set_hash`
+   and exposes `addr_tx_wits_hash`; and
+2. the address-witness list, which re-encodes to that `addr_tx_wits_hash`.
+
+- `--tx-id` optionally pins the exact transaction. Without it, the first
+  transaction with a failing witness is selected. A pinned transaction whose
+  witnesses all verify is rejected.
+- `--expected-transactions-root` is required, with the same counted-root
+  semantics as the other preparers.
+
+### Files written with `--output-dir`
+
+| File                                           | Consumed by                                                                                                                                         |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-signature-tx-inclusion.json`          | `submit-invalid-signature-step-01` `--tx-inclusion`                                                                                                 |
+| `invalid-signature-witness-set-preimage.json`  | `submit-invalid-signature-step-02` `--witness-set-preimage`                                                                                         |
+| `invalid-signature-addr-tx-wits-preimage.json` | `submit-invalid-signature-step-02` `--addr-tx-wits-preimage`                                                                                        |
+| `invalid-signature-plan.json`                  | Summary: header hash, bad tx id, witness-set hash, accused witness index and verification key, witness count, and the required expected-root check. |
+
+The accused witness is identified by **index**, not by verification key. The
+address-witness preimage encoding is length prefixed, so a preimage that matches
+the committed hash also fixes the witness count and every witness's position,
+which makes the index unambiguous even when a key appears more than once.
 
 ## From artifacts to a proof
 
