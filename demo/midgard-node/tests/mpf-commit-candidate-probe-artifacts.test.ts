@@ -254,6 +254,19 @@ const ownerDiagnostics = (durableRoot: string) => ({
 
 const candidateProbeResult = () => {
   const input = candidateInput();
+  const candidateWatermarks = structuredClone(
+    input.workerInput.data.speculativeBuild.watermarks,
+  );
+  const candidateEndTimeMs = 2_000;
+  // The commit worker derives the invalidation key from the candidate end time
+  // and the minimum of the three barrier watermarks
+  // (`minimumBarrierWatermarkMs`), so the fixture must derive it the same way
+  // instead of pinning a literal that silently drifts from the watermarks.
+  const candidateInvalidationKey = `${input.workerInput.data.speculativeBuild.base.headerHash}:${candidateEndTimeMs.toString()}:${Math.min(
+    candidateWatermarks.depositMs,
+    candidateWatermarks.withdrawalMs,
+    candidateWatermarks.txOrderMs,
+  ).toString()}`;
   return {
     schemaVersion: "midgard-architecture-g-commit-candidate-probe-v1",
     probePath: "/probes/mpf-commit-candidate-probe.js",
@@ -289,13 +302,11 @@ const candidateProbeResult = () => {
     candidate: {
       candidateId: "123e4567-e89b-42d3-a456-426614174000",
       baseHeaderHash: input.workerInput.data.speculativeBuild.base.headerHash,
-      endTimeMs: 2_000,
+      endTimeMs: candidateEndTimeMs,
       builtAtMs: 2_001,
       buildDurationMs: 9,
-      invalidationKey: `${input.workerInput.data.speculativeBuild.base.headerHash}:2000:1001`,
-      watermarks: structuredClone(
-        input.workerInput.data.speculativeBuild.watermarks,
-      ),
+      invalidationKey: candidateInvalidationKey,
+      watermarks: candidateWatermarks,
       expectedUserEventCounts: {
         deposits: 0,
         forcedTransactions: 0,
@@ -620,6 +631,10 @@ describe("Architecture G commit-candidate probe V1 artifacts", () => {
         void (value.candidate.baseHeaderHash = hash(81).slice(0, 56)),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.candidate.watermarks.withdrawalMs = 1_001),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.candidate.invalidationKey = `${value.candidate.baseHeaderHash}:2000:1001`),
+      (value: ReturnType<typeof candidateProbeResult>) =>
+        void (value.candidate.endTimeMs = 2_001),
       (value: ReturnType<typeof candidateProbeResult>) =>
         void (value.candidate.roots.utxos = "bad"),
       (value: ReturnType<typeof candidateProbeResult>) =>
