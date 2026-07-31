@@ -351,29 +351,33 @@
   a complete break of the dispute system). Found by the VM-SCRIPT-SOURCES-CEK
   diagnosis of the 16-failure cluster; 11 of the 16 script-sources failures
   reduce to these three causes rather than being independent bugs:
-  - **VM-DEFECT-3 (SEVERITY: TOTAL — no fraud proof can be completed for any
-    transaction).** Stage 7 of the script-sources phase is unsatisfiable on
-    BOTH proof paths. Minimal probes on the most trivial possible stage-7
-    state (`empty_v1_transaction()`, no inputs/outputs/observers/mints, all
-    frontiers empty, `output_cursor = 0`, `purpose_count = 0`) are rejected by
-    the generic route (`verify_one_step_evidence` →
-    `verify_script_sources_non_output_semantics_v1` `:12448` →
-    `script_sources_stage_seven` → `script_sources_receive_scan_finish:9743`)
-    AND the deployed route
-    (`verify_script_sources_stage_seven_finish_semantics_v1:10330`, used by
-    `validators/fraud-proofs/validation-trace/script-sources-stage-seven-finish-semantic-v1.ak:55`).
-    The same fixtures produce accepted states at every other stage; the only
-    variable is `stage = 7`. Consequence: the script-sources phase can never
-    advance past stage 7, the one-step machine can never reach CEK, and
-    therefore **no fraud proof can be completed for any transaction** —
-    invalid blocks are unchallengeable. Unsatisfiability is proven; the
-    offending conjunct is NOT yet localized (aiken emits no `assertion` field
-    when a test body is a helper call, and each probe round costs 20-40 min
-    under the aiken#1389 pathology). Residue is in
-    `script_sources_control_is_bound:12079` or
-    `script_sources_stage_seven_control_is_bound:9927`. NO production edit
-    until one more probe round localizes it.
-  - **VM-DEFECT-4 (proven contributor to defect 3).** The two implementations
+  - **VM-DEFECT-3: WITHDRAWN 2026-07-30 — NOT a production defect.** This
+    entry originally recorded a TOTAL-severity claim that script-sources
+    stage 7 was unsatisfiable on BOTH proof paths, hence that no fraud proof
+    could complete for any transaction. Localization refuted that
+    attribution and it is withdrawn; the entry is corrected in place rather
+    than deleted so the record shows what was claimed and why it was wrong.
+    Truth: the failing conjunct is `mint_fold.policy_count >= 0` (`:12072`
+    evidence path via `mint_fold_control_is_well_formed`, `:10005` deployed).
+    `empty_mint_fold_control()` carries the `policy_count = -1` "not yet
+    begun" sentinel, which is legal only through stage 6; `script_sources_
+    stage_six` always exits with `policy_count >= 0` (`:9548`, `:9553`), so
+    **no real trace can reach the state the probe built**. The defect was in
+    the test fixture `script_sources_output_step_fixture_with_resolved_items`,
+    which hard-coded the sentinel at every stage — while its sibling stage-8
+    fixture already worked around it with an explicit `policy_count: 0`. That
+    asymmetry is precisely why only stage 7 appeared to fail. The
+    generic/evidence path was NEVER broken. The deployed stage-7 path WAS
+    genuinely unpassable, but through VM-DEFECT-4 below, not a separate
+    defect — so the severe consequence held for the deployed route only and
+    is resolved by the defect-4 fix. Probes `probe4`/`probe5` from the
+    diagnosis lane carry no information about production. **Corrected running
+    total: FOUR canonical-V1 production defects (1, 2, 4, 5).** Method note
+    for future lanes: the earlier lane could not localize because aiken emits
+    no `assertion` field when a test body is a helper call; the fix is to
+    inline the conjuncts as an explicit `and { … }` in a probe so the false
+    one is named, which is how this was resolved statically.
+  - **VM-DEFECT-4 (the real cause of the deployed stage-7 unpassability).** The two implementations
     of every stage-7 transition demand mutually exclusive successor
     encodings. `script_sources_stage_seven_successor_items_are_exact`
     (`:10054-10063`) requires the Plutus `serialiseData` form
@@ -406,6 +410,13 @@
   Anti-pattern scope is bounded: `cbor.serialise(<…_data>)` and
   `list_data |> cbor.serialise` occur at exactly lines 8474-8482 and 10062 in
   the 18k-line module, and both already have failing tests.
+  CORRECTION DISCIPLINE NOTE: the VM-DEFECT-3 episode is the clearest
+  argument for the standing rule that a diagnosis lane must be told to stop
+  and report if its evidence contradicts its brief. That lane was briefed on
+  a TOTAL-severity production defect and returned with the brief refuted —
+  which is the outcome that prevented an unnecessary edit to an 18k-line
+  consensus validator on a wrong hypothesis. Keep that instruction in every
+  future diagnosis brief.
   SYSTEMIC LESSON (recommended, not yet implemented): every
   `verify_script_sources_stage_*_semantics_v1` has an evidence-path twin and
   only a handful of stages assert both agree. A per-stage differential test
