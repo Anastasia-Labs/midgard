@@ -8429,9 +8429,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
   expect
       [
         compact_cbor_data, witness_set_compact_cbor_data,
-        field_preimage_lengths_cbor_data, context_cbor_data,
-        resolved_input_count_data, resolved_inputs_accumulator_data,
-        signer_count_data, signer_frontier_commitment_data,
+        field_preimage_lengths_cbor_data, _, _, _, _, _,
         resolved_item_peaks_data, stage_data, source_count_data, _,
         redeemer_count_data, redeemer_peaks_data, replay_cursor_data, _, _,
         spend_index_data, purpose_count_data, _, output_cursor_data,
@@ -8439,6 +8437,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
         redeemer_total_count_data, _, _, resolution_schedule_hash_data,
       ]
     = builtin.un_list_data(control_data)
+  let control = script_sources_control_from_witness(witness.work_witness_cbor)
   let compact_cbor = builtin.un_b_data(compact_cbor_data)
   let witness_set_compact_cbor = builtin.un_b_data(
     witness_set_compact_cbor_data,
@@ -8470,16 +8469,14 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
       ),
     }
   }
-  let stage_prefix = encode_definite_array_header(30)
-    |> bytearray.concat(cbor.serialise(compact_cbor_data))
-    |> bytearray.concat(cbor.serialise(witness_set_compact_cbor_data))
-    |> bytearray.concat(cbor.serialise(field_preimage_lengths_cbor_data))
-    |> bytearray.concat(cbor.serialise(context_cbor_data))
-    |> bytearray.concat(cbor.serialise(resolved_input_count_data))
-    |> bytearray.concat(cbor.serialise(resolved_inputs_accumulator_data))
-    |> bytearray.concat(cbor.serialise(signer_count_data))
-    |> bytearray.concat(cbor.serialise(signer_frontier_commitment_data))
-    |> bytearray.concat(cbor.serialise(resolved_item_peaks_data))
+  // The witness slice this prefix is compared against is the *canonical*
+  // ScriptSources encoding (`encode_script_sources_witness:1062`), which uses
+  // definite-length headers throughout. `cbor.serialise` on the decoded `Data`
+  // items is Plutus `serialiseData`, which chunks any bytestring longer than 64
+  // bytes into an indefinite `5f..ff` run and would never match. Rebuild the
+  // prefix from the canonical encoder instead; the control is proven canonical
+  // by the `exact_script_sources_control` conjunct below.
+  let stage_prefix = script_sources_stage_zero_prefix_before_stage(control, 30)
   let stage_offset = bytearray.length(stage_prefix)
   let next_work_witness_cbor = stage_prefix
     |> bytearray.concat(#"02")
@@ -8491,9 +8488,7 @@ pub fn verify_script_sources_stage_one_finish_raw_semantics_v1(
         ),
       )
   and {
-    exact_script_sources_control(
-      script_sources_control_from_witness(witness.work_witness_cbor),
-    ) == witness.work_witness_cbor,
+    exact_script_sources_control(control) == witness.work_witness_cbor,
     builtin.un_i_data(stage_data) == 1,
     native_tx_proof_commitment_v1(
       compact_cbor,
@@ -10034,35 +10029,18 @@ fn script_sources_stage_seven_observer_scan_is_complete(
   }
 }
 
-fn replace_script_sources_data_item(
-  items: List<Data>,
-  index: Int,
-  replacement: Data,
-) -> List<Data> {
-  expect index >= 0
-  when items is {
-    [] -> fail
-    [item, ..rest] ->
-      if index == 0 {
-        [replacement, ..rest]
-      } else {
-        [item, ..replace_script_sources_data_item(rest, index - 1, replacement)]
-      }
-  }
-}
-
-fn script_sources_stage_seven_successor_items_are_exact(
-  pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: ValidationOneStepWitnessV1,
-  next_items: List<Data>,
-) -> Bool {
-  script_sources_stage_zero_successor_work_is_exact(
-    pre,
-    witness,
-    next_items |> builtin.list_data |> cbor.serialise,
-  )
-}
-
+// The stage-7 successor checks below must commit to the *canonical* successor
+// witness encoding produced by `exact_script_sources_control` (definite-length
+// headers, `encode_definite_bytes` for every bytestring). They previously
+// spliced replacement items into the decoded `Data` list and re-serialised with
+// `builtin.list_data |> cbor.serialise`, i.e. Plutus `serialiseData`, which
+// emits an indefinite `9f..ff` array and chunks bytestrings over 64 bytes as
+// `5f..ff`. That form is rejected by every other check of the same rule -- by
+// the binding the next step applies (`script_sources_stage_seven_control_is_bound`
+// / `script_sources_control_is_bound`), by the stage-0 shape gate, and by the
+// evidence path's `script_sources_control_successor_is_exact` -- so no stage-7
+// step committed through the deployed wrappers could ever be continued.
+// Build the successor control and reuse the single canonical encoder instead.
 fn script_sources_stage_seven_observer_successor_is_exact(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,
@@ -10070,38 +10048,29 @@ fn script_sources_stage_seven_observer_successor_is_exact(
   observer_hash: ByteArray,
   active_count: Int,
 ) -> Bool {
-  let next_purpose_peaks = validation_merkle_v1.append_leaf(
-    control.purpose_count,
-    control.purpose_peaks,
-    script_proof_v1.purpose_leaf_hash(
-      2,
-      control.observer_scan.seen,
-      observer_hash,
-      observer_hash,
-    ),
-  )
-  expect Some(next_purpose_peaks_data) = cbor.deserialise(
-    validation_merkle_v1.encode_frontier(next_purpose_peaks),
-  )
-  expect Some(next_observer_scan_data) = cbor.deserialise(
-    encode_observer_purpose_scan_control(
-      ObserverPurposeScanControlV1 {
+  script_sources_control_successor_is_exact(
+    pre,
+    witness,
+    ScriptSourcesControlV1 {
+      ..control,
+      purpose_count: control.purpose_count + 1,
+      purpose_peaks: validation_merkle_v1.append_leaf(
+        control.purpose_count,
+        control.purpose_peaks,
+        script_proof_v1.purpose_leaf_hash(
+          2,
+          control.observer_scan.seen,
+          observer_hash,
+          observer_hash,
+        ),
+      ),
+      observer_scan: ObserverPurposeScanControlV1 {
         total_count: active_count,
         seen: control.observer_scan.seen + 1,
         previous_hash: observer_hash,
       },
-    ),
+    },
   )
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  let items = builtin.un_list_data(control_data)
-  let next_items = replace_script_sources_data_item(
-    items,
-    18,
-    builtin.i_data(control.purpose_count + 1),
-  )
-    |> replace_script_sources_data_item(19, next_purpose_peaks_data)
-    |> replace_script_sources_data_item(27, next_observer_scan_data)
-  script_sources_stage_seven_successor_items_are_exact(pre, witness, next_items)
 }
 
 fn script_sources_stage_seven_receive_successor_is_exact(
@@ -10110,22 +10079,18 @@ fn script_sources_stage_seven_receive_successor_is_exact(
   control: ScriptSourcesControlV1,
   candidate_hash: ByteArray,
 ) -> Bool {
-  let next_receive_scan = ReceivePurposeScanControlV1 {
-    ..control.receive_scan,
-    candidate_hash,
-  }
-  expect Some(next_receive_scan_data) = cbor.deserialise(
-    encode_receive_purpose_scan_control(next_receive_scan),
+  script_sources_control_successor_is_exact(
+    pre,
+    witness,
+    ScriptSourcesControlV1 {
+      ..control,
+      output_cursor: control.output_cursor + 1,
+      receive_scan: ReceivePurposeScanControlV1 {
+        ..control.receive_scan,
+        candidate_hash,
+      },
+    },
   )
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  let next_items = control_data
-    |> builtin.un_list_data
-    |> replace_script_sources_data_item(
-        20,
-        builtin.i_data(control.output_cursor + 1),
-      )
-    |> replace_script_sources_data_item(24, next_receive_scan_data)
-  script_sources_stage_seven_successor_items_are_exact(pre, witness, next_items)
 }
 
 fn script_sources_stage_seven_finish_successor_is_exact(
@@ -10134,80 +10099,50 @@ fn script_sources_stage_seven_finish_successor_is_exact(
   control: ScriptSourcesControlV1,
 ) -> Bool {
   let scan = control.receive_scan
-  expect Some(control_data) = cbor.deserialise(witness.work_witness_cbor)
-  let items = builtin.un_list_data(control_data)
   if scan.candidate_hash == #"" {
-    let next_receive_scan = ReceivePurposeScanControlV1 {
-      ..empty_receive_purpose_scan_control(),
-      descriptor_peaks: scan.descriptor_peaks,
-    }
-    expect Some(next_receive_scan_data) = cbor.deserialise(
-      encode_receive_purpose_scan_control(next_receive_scan),
-    )
-    expect Some(next_observer_scan_data) = cbor.deserialise(
-      encode_observer_purpose_scan_control(
-        empty_observer_purpose_scan_control(),
-      ),
-    )
-    let next_base_items = items
-      |> replace_script_sources_data_item(9, builtin.i_data(8))
-      |> replace_script_sources_data_item(
-          20,
-          builtin.i_data(control.output_count),
-        )
-      |> replace_script_sources_data_item(24, next_receive_scan_data)
-      |> replace_script_sources_data_item(27, next_observer_scan_data)
-    let next_items = list.concat(
-      next_base_items,
-      [
-        builtin.b_data(
-          encode_script_discovery_control(empty_script_discovery_control()),
-        ),
-      ],
-    )
-    script_sources_stage_seven_successor_items_are_exact(
+    script_sources_control_successor_is_exact(
       pre,
       witness,
-      next_items,
+      ScriptSourcesControlV1 {
+        ..control,
+        stage: 8,
+        output_cursor: control.output_count,
+        receive_scan: ReceivePurposeScanControlV1 {
+          ..empty_receive_purpose_scan_control(),
+          descriptor_peaks: scan.descriptor_peaks,
+        },
+        observer_scan: empty_observer_purpose_scan_control(),
+        discovery: empty_script_discovery_control(),
+      },
     )
   } else {
     let script_hash = scan.candidate_hash
-    let next_purpose_peaks = validation_merkle_v1.append_leaf(
-      control.purpose_count,
-      control.purpose_peaks,
-      script_proof_v1.purpose_leaf_hash(
-        3,
-        scan.receive_count,
-        script_hash,
-        script_hash,
-      ),
-    )
-    let next_receive_scan = ReceivePurposeScanControlV1 {
-      source_count: scan.source_count,
-      source_peaks: scan.source_peaks,
-      receive_count: scan.receive_count + 1,
-      previous_hash: script_hash,
-      candidate_hash: #"",
-      descriptor_peaks: scan.descriptor_peaks,
-    }
-    expect Some(next_purpose_peaks_data) = cbor.deserialise(
-      validation_merkle_v1.encode_frontier(next_purpose_peaks),
-    )
-    expect Some(next_receive_scan_data) = cbor.deserialise(
-      encode_receive_purpose_scan_control(next_receive_scan),
-    )
-    let next_items = items
-      |> replace_script_sources_data_item(
-          18,
-          builtin.i_data(control.purpose_count + 1),
-        )
-      |> replace_script_sources_data_item(19, next_purpose_peaks_data)
-      |> replace_script_sources_data_item(20, builtin.i_data(0))
-      |> replace_script_sources_data_item(24, next_receive_scan_data)
-    script_sources_stage_seven_successor_items_are_exact(
+    script_sources_control_successor_is_exact(
       pre,
       witness,
-      next_items,
+      ScriptSourcesControlV1 {
+        ..control,
+        output_cursor: 0,
+        purpose_count: control.purpose_count + 1,
+        purpose_peaks: validation_merkle_v1.append_leaf(
+          control.purpose_count,
+          control.purpose_peaks,
+          script_proof_v1.purpose_leaf_hash(
+            3,
+            scan.receive_count,
+            script_hash,
+            script_hash,
+          ),
+        ),
+        receive_scan: ReceivePurposeScanControlV1 {
+          source_count: scan.source_count,
+          source_peaks: scan.source_peaks,
+          receive_count: scan.receive_count + 1,
+          previous_hash: script_hash,
+          candidate_hash: #"",
+          descriptor_peaks: scan.descriptor_peaks,
+        },
+      },
     )
   }
 }
