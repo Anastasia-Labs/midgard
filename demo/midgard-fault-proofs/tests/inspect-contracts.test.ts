@@ -147,6 +147,7 @@ const buildInspectionFixtureUncached = async () => {
       contracts.referenceInputNoIdx.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
+    invalidSignature: contracts.invalidSignature.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
   });
   return { blueprintJson, contracts, fraudProofCatalogue };
@@ -169,6 +170,8 @@ const deploymentInfoFor = (
   nonExistentInputNoIndexScriptHash = contracts.inputNoIdx.firstStep
     .spendingScriptHash,
   noReferenceInputNoIndexScriptHash = contracts.referenceInputNoIdx.firstStep
+    .spendingScriptHash,
+  invalidSignatureScriptHash = contracts.invalidSignature.firstStep
     .spendingScriptHash,
 ) => ({
   referenceScriptAuthPolicy: {},
@@ -197,13 +200,14 @@ const deploymentInfoFor = (
     },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
+    fraudProofInvalidSignature: { scriptHash: invalidSignatureScriptHash },
     fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
   },
 });
 
 describe("inspect-contracts", () => {
   // Warm the shared fixture outside any test's timeout budget: building all
-  // eight fault-proof chains from the real blueprint takes seconds.
+  // nine fault-proof chains from the real blueprint takes seconds.
   beforeAll(async () => {
     await buildInspectionFixture();
   }, 120_000);

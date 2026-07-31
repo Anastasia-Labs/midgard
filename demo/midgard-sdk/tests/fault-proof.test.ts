@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { computeHash32, encodeCbor } from "@al-ft/midgard-core";
 import {
   applyParamsToScript,
+  CML,
   Data,
   type SpendingValidator as LucidSpendingValidator,
   validatorToAddress,
@@ -19,10 +21,13 @@ import {
   buildFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  computeWitnessSetHash,
+  decodeAddressWitnessPreimage,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -35,6 +40,7 @@ import {
   EMPTY_SPEND_INPUTS_HASH,
   FAULT_PROOF_SHARED_TITLES,
   type FaultProofBlueprint,
+  findInvalidAddressWitnessIndex,
   FraudProofComputationThreadRedeemer,
   FraudProofTokenMintRedeemer,
   INPUT_NO_IDX_FAULT_PROOF_TITLES,
@@ -46,11 +52,16 @@ import {
   InputNoIdxStep04Datum,
   InputNoIdxStep04SpendRedeemer,
   INVALID_RANGE_FAULT_PROOF_TITLES,
+  INVALID_SIGNATURE_FAULT_PROOF_TITLES,
   InvalidRangeStep01Datum,
   InvalidRangeStep01SpendRedeemer,
   InvalidRangeStep02Datum,
   InvalidRangeStep02SpendRedeemer,
   invalidRangeViolationReason,
+  InvalidSignatureStep01Datum,
+  InvalidSignatureStep01SpendRedeemer,
+  InvalidSignatureStep02Datum,
+  InvalidSignatureStep02SpendRedeemer,
   MidgardTxInputList,
   NativeTxBodyCompact,
   nativeTxBodyHasZeroInputViolation,
@@ -333,6 +344,129 @@ describe("fault-proof ABI", () => {
     ).toMatchObject({
       Continue: [{ fraud_proof_mint_redeemer_index: 1n }],
     });
+  });
+
+  it("detects an invalid address witness and leaves valid ones alone", () => {
+    const txId = "ab".repeat(32);
+    const signingKey = CML.PrivateKey.generate_ed25519();
+    const verificationKey = signingKey
+      .to_public()
+      .to_raw_bytes()
+      .reduce((hex, byte) => hex + byte.toString(16).padStart(2, "0"), "");
+    const goodSignature = signingKey
+      .sign(Buffer.from(txId, "hex"))
+      .to_raw_bytes()
+      .reduce((hex, byte) => hex + byte.toString(16).padStart(2, "0"), "");
+
+    const goodWitness = {
+      verification_key: verificationKey,
+      signature: goodSignature,
+    };
+    // Flip the leading byte of the signature: still structurally a 64-byte
+    // Ed25519 signature, but it no longer verifies against the tx id.
+    const badWitness = {
+      verification_key: verificationKey,
+      signature:
+        (goodSignature.startsWith("00") ? "11" : "00") + goodSignature.slice(2),
+    };
+
+    expect(
+      findInvalidAddressWitnessIndex({ txId, addrTxWits: [goodWitness] }),
+    ).toBeNull();
+    expect(
+      findInvalidAddressWitnessIndex({
+        txId,
+        addrTxWits: [goodWitness, badWitness],
+      }),
+    ).toBe(1);
+    // A witness that verifies against a *different* message is still invalid
+    // for this transaction.
+    expect(
+      findInvalidAddressWitnessIndex({
+        txId: "cd".repeat(32),
+        addrTxWits: [goodWitness],
+      }),
+    ).toBe(0);
+  });
+
+  it("decodes the address witness preimage the node commits to", () => {
+    const witnesses = [
+      { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
+      { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
+    ];
+    // Rebuild the preimage exactly as the node does: a CBOR array whose
+    // elements are the raw per-witness `[vkey, signature]` encodings.
+    const preimageCbor = encodeCbor(
+      witnesses.map((witness) =>
+        encodeCbor([
+          Buffer.from(witness.verification_key, "hex"),
+          Buffer.from(witness.signature, "hex"),
+        ]),
+      ),
+    );
+
+    expect(decodeAddressWitnessPreimage(preimageCbor)).toEqual(witnesses);
+  });
+
+  it("recomputes the witness set hash the step-01 datum carries", () => {
+    const witnessSet = {
+      addr_tx_wits_hash: h32,
+      script_tx_wits_hash: h32b,
+      redeemer_tx_wits_hash: "77".repeat(32),
+    };
+    // Mirrors the on-chain `encode_native_tx_witness_set_compact |> blake2b_256`
+    // over the three category hashes, in positional order.
+    expect(computeWitnessSetHash(witnessSet)).toBe(
+      computeHash32(
+        encodeCbor([
+          Buffer.from(witnessSet.addr_tx_wits_hash, "hex"),
+          Buffer.from(witnessSet.script_tx_wits_hash, "hex"),
+          Buffer.from(witnessSet.redeemer_tx_wits_hash, "hex"),
+        ]),
+      ).toString("hex"),
+    );
+  });
+
+  it("round-trips invalid-signature step datums and redeemers", () => {
+    expect(
+      roundTrip({ fraud_prover: h28, data: null }, InvalidSignatureStep01Datum),
+    ).toEqual({ fraud_prover: h28, data: null });
+    expect(
+      roundTrip(
+        { Continue: [txInclusionArgs] },
+        InvalidSignatureStep01SpendRedeemer,
+      ),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step02Datum = {
+      fraud_prover: h28,
+      data: { bad_tx_id: h32, bad_tx_wits_hash: h32b },
+    };
+    expect(roundTrip(step02Datum, InvalidSignatureStep02Datum)).toEqual(
+      step02Datum,
+    );
+
+    const step02Args = {
+      input_index: 0n,
+      output_index: 0n,
+      fraud_proof_mint_redeemer_index: 1n,
+      witness_set_preimage: {
+        addr_tx_wits_hash: h32,
+        script_tx_wits_hash: h32b,
+        redeemer_tx_wits_hash: "77".repeat(32),
+      },
+      addr_tx_wits_preimage: [
+        { verification_key: "aa".repeat(32), signature: "bb".repeat(64) },
+        { verification_key: "cc".repeat(32), signature: "dd".repeat(64) },
+      ],
+      bad_address_witness_index: 1n,
+    };
+    expect(
+      roundTrip(
+        { Continue: [step02Args] },
+        InvalidSignatureStep02SpendRedeemer,
+      ),
+    ).toEqual({ Continue: [step02Args] });
   });
 
   it("round-trips zero-input step datums and redeemers", () => {
@@ -797,6 +931,10 @@ describe("fault-proof contract builder", () => {
       contracts.invalidRange.steps[0],
     );
     expect(contracts.invalidRange.steps).toHaveLength(2);
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
     expect(contracts.zeroInput.firstStep).toBe(contracts.zeroInput.steps[0]);
     expect(contracts.zeroInput.steps).toHaveLength(2);
     expect(contracts.transitionTrace.firstStep).toBe(
@@ -850,11 +988,12 @@ describe("fault-proof contract builder", () => {
           ...contracts.inputNoIdx.steps,
           ...contracts.referenceInputNoIdx.steps,
           ...contracts.invalidRange.steps,
+          ...contracts.invalidSignature.steps,
           ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(19);
+    ).toBe(21);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -995,6 +1134,88 @@ describe("fault-proof contract builder", () => {
     expect(contracts.zeroInput.steps[0].spendingScriptAddress).toBe(
       validatorToAddress("Preprod", spendingScript(expectedStep01Cbor)),
     );
+  });
+
+  it("builds invalid-signature with the validator parameter order from the blueprint", async () => {
+    const blueprint = loadBlueprint();
+
+    const contracts = await Effect.runPromise(
+      buildInvalidSignatureFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
+    expect(
+      new Set(
+        contracts.invalidSignature.steps.map((step) => step.spendingScriptHash),
+      ).size,
+    ).toBe(2);
+
+    const fraudProofTokenAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    // Note the parameter order differs from zero-input/invalid-range: this
+    // chain's final step takes the computation-thread policy first, matching
+    // the aiken `validator main(...)` signature.
+    const expectedStep02Cbor = applyParamsToScript(
+      compiledScript(blueprint, INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02),
+      [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+    );
+    const expectedStep01Cbor = applyParamsToScript(
+      compiledScript(blueprint, INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01),
+      [
+        spendingScriptHash(expectedStep02Cbor),
+        contracts.computationThread.policyId,
+        h28b,
+      ],
+    );
+
+    expect(contracts.invalidSignature.steps[1].spendingScriptCBOR).toBe(
+      expectedStep02Cbor,
+    );
+    expect(contracts.invalidSignature.steps[0].spendingScriptCBOR).toBe(
+      expectedStep01Cbor,
+    );
+    expect(contracts.invalidSignature.steps[0].spendingScriptAddress).toBe(
+      validatorToAddress("Preprod", spendingScript(expectedStep01Cbor)),
+    );
+  });
+
+  it("builds invalid-signature without requiring unrelated category validators", async () => {
+    const blueprint = filterBlueprint(loadBlueprint(), [
+      ...Object.values(FAULT_PROOF_SHARED_TITLES),
+      ...Object.values(INVALID_SIGNATURE_FAULT_PROOF_TITLES),
+    ]);
+
+    const contracts = await Effect.runPromise(
+      buildInvalidSignatureFaultProofContracts({
+        blueprint,
+        network: "Preprod",
+        hubOraclePolicyId: h28b,
+        fraudProofCataloguePolicyId: h28c,
+      }),
+    );
+
+    expect(contracts.invalidSignature.firstStep).toBe(
+      contracts.invalidSignature.steps[0],
+    );
+    expect(contracts.invalidSignature.steps).toHaveLength(2);
   });
 
   it("builds zero-input without requiring unrelated category validators", async () => {

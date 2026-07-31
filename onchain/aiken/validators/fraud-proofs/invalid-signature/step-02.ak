@@ -1,13 +1,17 @@
-use aiken/collection/pairs
-use aiken/crypto.{verify_ed25519_signature}
+use aiken/collection/list
+use aiken/crypto.{blake2b_256, verify_ed25519_signature}
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/common/utils.{verify_hash_32}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_signature/step_02.{
   Args, Datum, SpendRedeemer, State,
+}
+use midgard/fraud_proofs/native_tx/compact
+use midgard/fraud_proofs/native_tx/preimages
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardAddressWitness, NativeTxWitnessSetCompact,
 }
 
 validator main(
@@ -34,9 +38,10 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
-        addr_tx_wits_preimage,
-        bad_addr_tx_wit_verification_key,
         fraud_proof_mint_redeemer_index,
+        witness_set_preimage,
+        addr_tx_wits_preimage,
+        bad_address_witness_index,
       }) -> {
         let Transaction { inputs, outputs, redeemers, .. } = tx
 
@@ -64,27 +69,33 @@ validator main(
             redeemers,
           )
 
-        expect Some(State { bad_tx_id, bad_addr_tx_wits_hash }) =
-          m_input_state_data
+        expect Some(State { bad_tx_id, bad_tx_wits_hash }) = m_input_state_data
 
-        // 2. Provided address witnesses preimage must match the hash carried
-        //    from the previous step.
-        expect addr_tx_wits_preimage |> verify_hash_32(bad_addr_tx_wits_hash)
-
-        // 3. The provided vkey must map to the invalid signature.
-        //    TODO: We are relying on the correctness of the witness set. We
-        //          might need a fraud proof to prevent e.g. duplicate vkeys.
-        let bad_addr_tx_wit_signature =
-          addr_tx_wits_preimage
-            |> pairs.expect_get_first(bad_addr_tx_wit_verification_key)
-
-        // 4. The signature must be invalid.
+        // 2. Provided witness set preimage must reproduce the witness set hash
+        //    carried from the previous step, which in turn exposes the
+        //    authentic address witnesses hash.
         expect
-          verify_ed25519_signature(
-            bad_addr_tx_wit_verification_key,
-            bad_tx_id,
-            bad_addr_tx_wit_signature,
-          ) == False
+          blake2b_256(
+            compact.encode_native_tx_witness_set_compact(witness_set_preimage),
+          ) == bad_tx_wits_hash
+        let NativeTxWitnessSetCompact { addr_tx_wits_hash, .. } =
+          witness_set_preimage
+
+        // 3. Provided address witnesses preimage must in turn reproduce that
+        //    hash. `encode_address_witness_preimage` is length prefixed, so a
+        //    matching preimage fixes the witness count and every witness's
+        //    position, making the accused index unambiguous.
+        expect
+          blake2b_256(
+            preimages.encode_address_witness_preimage(addr_tx_wits_preimage),
+          ) == addr_tx_wits_hash
+
+        // 4. The witness at the accused index must carry a signature that does
+        //    not verify against the bad transaction's ID.
+        let MidgardAddressWitness { verification_key, signature } =
+          addr_tx_wits_preimage |> list.expect_at(bad_address_witness_index)
+        expect
+          verify_ed25519_signature(verification_key, bad_tx_id, signature) == False
 
         // Done.
         True

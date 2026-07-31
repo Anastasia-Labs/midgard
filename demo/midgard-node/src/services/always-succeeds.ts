@@ -248,6 +248,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const zeroInput = yield* mkFP("zero_input");
     const noReferenceInput = yield* mkFP("no_reference_input");
     const noReferenceInputNoIndex = yield* mkFP("reference_input_no_idx");
+    const invalidSignature = yield* mkFP("invalid_signature");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
@@ -258,6 +259,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       zeroInput,
       noReferenceInput,
       noReferenceInputNoIndex,
+      invalidSignature,
     };
 
     return {

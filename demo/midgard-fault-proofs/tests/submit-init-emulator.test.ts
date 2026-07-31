@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   compareOutRefs,
+  computeHash32,
   computeMidgardNativeTxId,
   decodeMidgardNativeByteListPreimage,
   EMPTY_CBOR_LIST,
@@ -30,6 +31,7 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
+  buildInvalidSignatureFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
@@ -37,6 +39,8 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
   commitCountedRootProgram,
+  computeAddressWitnessesHash,
+  computeWitnessSetHash,
   ConfirmedState,
   DA_PAYLOAD_V2_VERSION,
   DoubleSpendStep02Datum,
@@ -49,6 +53,7 @@ import {
   encodeLinkedListNodeView,
   EventKeySchema,
   EventToStepValueSchema,
+  findInvalidAddressWitnessIndex,
   ForcedInclusionTxSchema,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -70,10 +75,13 @@ import {
   invalidOneStepTransitionFault,
   InvalidRangeStep02Datum,
   invalidRangeViolationReason,
+  InvalidSignatureStep02Datum,
   makeHubOracleDatum,
+  type MidgardAddressWitness,
   type MidgardValidators,
   type MintingValidator,
   nativeTxBodyHasZeroInputViolation,
+  type NativeTxWitnessSetCompact,
   normalizeNativeTxValidityRange,
   OutputReference,
   outputReferenceFromUTxO,
@@ -165,6 +173,8 @@ import {
   submitInit,
   submitInvalidRangeStep01,
   submitInvalidRangeStep02,
+  submitInvalidSignatureStep01,
+  submitInvalidSignatureStep02,
   submitRemoveFraudulentBlock,
   submitStep01,
   submitStep02,
@@ -342,6 +352,9 @@ const makeAlwaysSucceedsContracts = (
     noReferenceInput: makeSpendingValidator(
       alwaysScript(blueprint, "fraud_proofs", "no_reference_input", "spend"),
     ),
+    invalidSignature: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "invalid_signature", "spend"),
+    ),
   };
 
   return {
@@ -391,6 +404,7 @@ const buildMinimalFaultProofContracts = async (
     realZeroInput = false,
     realNoReferenceInput = false,
     realReferenceInputNoIdx = false,
+    realInvalidSignature = false,
     alwaysFraudProofCatalogue = false,
   }: {
     readonly realNonExistentInput?: boolean;
@@ -400,6 +414,7 @@ const buildMinimalFaultProofContracts = async (
     readonly realZeroInput?: boolean;
     readonly realNoReferenceInput?: boolean;
     readonly realReferenceInputNoIdx?: boolean;
+    readonly realInvalidSignature?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
 ): Promise<MidgardValidators> => {
@@ -591,6 +606,21 @@ const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const invalidSignatureContracts = realInvalidSignature
+    ? await Effect.runPromise(
+        buildInvalidSignatureFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (invalidSignatureContracts !== undefined) {
+    expect(invalidSignatureContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -680,6 +710,9 @@ const buildMinimalFaultProofContracts = async (
       noReferenceInputNoIndex:
         referenceInputNoIdxContracts?.referenceInputNoIdx.firstStep ??
         withActiveOperators.fraudProofs.noReferenceInputNoIndex,
+      invalidSignature:
+        invalidSignatureContracts?.invalidSignature.firstStep ??
+        withActiveOperators.fraudProofs.invalidSignature,
     },
   };
 };
@@ -886,6 +919,7 @@ const makeNativeTx = ({
   witnessByte,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
+  addrTxWitCbors,
 }: {
   readonly spendInputCbors: readonly Buffer[];
   // When provided, each entry is a Cardano `TransactionInput` CBOR (as produced
@@ -899,6 +933,11 @@ const makeNativeTx = ({
   readonly witnessByte: string;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  // When provided, each entry is the raw CBOR of one `[vkey, signature]`
+  // address witness, matching the on-chain `encode_midgard_address_witness`.
+  // Defaults to the opaque single-item placeholder used by fixtures that never
+  // inspect the witness set.
+  readonly addrTxWitCbors?: readonly Buffer[];
 }): MidgardNativeTxFull =>
   materializeMidgardNativeTxFromCanonical({
     version: MIDGARD_NATIVE_TX_VERSION,
@@ -920,9 +959,9 @@ const makeNativeTx = ({
       networkId: 0n,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: encodeCbor([
-        Buffer.from(h32(witnessByte), "hex"),
-      ]),
+      addrTxWitsPreimageCbor: encodeCbor(
+        addrTxWitCbors ?? [Buffer.from(h32(witnessByte), "hex")],
+      ),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -1559,6 +1598,112 @@ const buildReferenceInputNoIdxFixture = async (): Promise<{
     producingTxId: producingTx.nativeTxId,
     badTxNativeId: badTx.nativeTxId,
     badReferenceInputOutputIndex,
+  };
+};
+
+// Invalid-signature fixture: a bad L2 tx carries two address witnesses, the
+// first genuinely signed over the transaction id and the second corrupted. The
+// tx id is the blake2b-256 of the *compact body*, which does not cover the
+// witness set, so the witnesses can be signed after the body is fixed without
+// perturbing the id the signature commits to.
+const buildInvalidSignatureFixture = async (): Promise<{
+  readonly transactionsRoot: string;
+  readonly l2TransactionCount: bigint;
+  readonly inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  readonly witnessSetPreimage: NativeTxWitnessSetCompact;
+  readonly addrTxWitsPreimage: readonly MidgardAddressWitness[];
+  readonly badAddressWitnessIndex: bigint;
+  readonly nativeTxId: string;
+  readonly badTxWitsHash: string;
+}> => {
+  const spendInputCbors = tx1InputsPreimage.map(outputReferenceCbor);
+  const makeTx = (addrTxWitCbors?: readonly Buffer[]) =>
+    makeNativeTx({
+      spendInputCbors,
+      fee: 7n,
+      referenceByte: "61",
+      outputByte: "62",
+      witnessByte: "63",
+      addrTxWitCbors,
+    });
+
+  // Fix the body first so the id the witnesses sign is final.
+  const nativeTxId = computeMidgardNativeTxId(makeTx()).toString("hex");
+
+  const signingKey = CML.PrivateKey.generate_ed25519();
+  const verificationKey = Buffer.from(
+    signingKey.to_public().to_raw_bytes(),
+  ).toString("hex");
+  const validSignature = Buffer.from(
+    signingKey.sign(Buffer.from(nativeTxId, "hex")).to_raw_bytes(),
+  ).toString("hex");
+  const validWitness: MidgardAddressWitness = {
+    verification_key: verificationKey,
+    signature: validSignature,
+  };
+  // Flip the leading byte: still a structurally well-formed 64-byte Ed25519
+  // signature, but it no longer verifies against the transaction id.
+  const invalidWitness: MidgardAddressWitness = {
+    verification_key: verificationKey,
+    signature:
+      (validSignature.startsWith("00") ? "11" : "00") + validSignature.slice(2),
+  };
+  const addrTxWitsPreimage = [validWitness, invalidWitness] as const;
+
+  const badNativeTx = makeTx(
+    addrTxWitsPreimage.map((witness) =>
+      encodeCbor([
+        Buffer.from(witness.verification_key, "hex"),
+        Buffer.from(witness.signature, "hex"),
+      ]),
+    ),
+  );
+  const badTx = compactTxEntry(badNativeTx);
+  // Adding real witnesses must not have moved the transaction id.
+  expect(badTx.nativeTxId).toBe(nativeTxId);
+
+  const witnessSetPreimage: NativeTxWitnessSetCompact = {
+    addr_tx_wits_hash: computeAddressWitnessesHash(addrTxWitsPreimage),
+    script_tx_wits_hash: computeHash32(EMPTY_CBOR_LIST).toString("hex"),
+    redeemer_tx_wits_hash: computeHash32(EMPTY_CBOR_LIST).toString("hex"),
+  };
+  const badTxWitsHash = badTx.nativeTx.witness_set_hash;
+  // The witness-set preimage the prover will supply must reproduce exactly the
+  // hash the block committed to, otherwise step 02 could never conclude.
+  expect(computeWitnessSetHash(witnessSetPreimage)).toBe(badTxWitsHash);
+  expect(
+    findInvalidAddressWitnessIndex({
+      txId: nativeTxId,
+      addrTxWits: addrTxWitsPreimage,
+    }),
+  ).toBe(1);
+
+  const store = new Store(undefined);
+  await store.ready();
+  const trie = new Trie(store);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(encodeMidgardNativeTxCompact(badNativeTx.compact)),
+  );
+  const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
+
+  return {
+    transactionsRoot: trieRootHex(trie),
+    l2TransactionCount: 1n,
+    inclusion: parseSubmitStep01TxInclusion({
+      nativeTxId,
+      nativeTx: badTx.nativeTx,
+      nativeTxCompactCbor: encodeMidgardNativeTxCompact(
+        badNativeTx.compact,
+      ).toString("hex"),
+      transactionsPhasRoot: trieRootHex(trie),
+      txMembershipProofCbor: proof.toCBOR().toString("hex"),
+    }),
+    witnessSetPreimage,
+    addrTxWitsPreimage,
+    badAddressWitnessIndex: 1n,
+    nativeTxId,
+    badTxWitsHash,
   };
 };
 
@@ -2617,6 +2762,9 @@ const buildRemovalDeploymentInfo = (
     fraudProofNoReferenceInputNoIndex: {
       scriptHash:
         contracts.fraudProofs.noReferenceInputNoIndex.spendingScriptHash,
+    },
+    fraudProofInvalidSignature: {
+      scriptHash: contracts.fraudProofs.invalidSignature.spendingScriptHash,
     },
     stateQueueMint: deploymentEntry(
       contracts.stateQueue.policyId,
@@ -5142,6 +5290,215 @@ describe("fault-proof emulator integration", () => {
       step04Result.fraudProofUnit,
     );
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
+  }, 180_000);
+
+  it("proves and removes a tail invalid-signature block end to end", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
+    const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
+    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const emulator = new Emulator(
+      [funder, prover],
+      EMULATOR_PROTOCOL_PARAMETERS,
+    );
+    const funderLucid = await Lucid(emulator, "Custom");
+    const proverLucid = await Lucid(emulator, "Custom");
+    funderLucid.selectWallet.fromSeed(funder.seedPhrase);
+    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
+    const proverSigner = resolveProverSigner({
+      network,
+      walletSeedPhrase: prover.seedPhrase,
+    });
+
+    await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
+    const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
+    if (nonceUtxo === undefined) {
+      throw new Error("Expected funder wallet to expose a nonce UTxO");
+    }
+
+    const contracts = await buildMinimalFaultProofContracts(
+      realBlueprint,
+      alwaysBlueprint,
+      nonceUtxo,
+      { realInvalidSignature: true, alwaysFraudProofCatalogue: true },
+    );
+    const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    const fixture = await buildInvalidSignatureFixture();
+
+    const funderPaymentCredential = getAddressDetails(
+      await funderLucid.wallet().address(),
+    ).paymentCredential;
+    if (
+      funderPaymentCredential === undefined ||
+      funderPaymentCredential.type !== "Key"
+    ) {
+      throw new Error("Expected funder wallet to expose a payment key hash");
+    }
+    const headerStartTime =
+      alignUnixTimeToEmulatorSlotBoundary(
+        funderLucid,
+        emulator.now() + 120_000,
+      ) - 1;
+    const fraudulentHeader = makeHeader(
+      funderPaymentCredential.hash,
+      headerStartTime,
+      await countedTransactionsRoot(
+        fixture.transactionsRoot,
+        fixture.l2TransactionCount,
+      ),
+      fixture.l2TransactionCount,
+    );
+    const setup = await submitSetupTx({
+      lucid: funderLucid,
+      contracts,
+      nonceUtxo,
+      catalogue,
+      header: fraudulentHeader,
+    });
+    const { headerHash } = setup;
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [headerHash],
+    });
+
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const initResult = await submitInit({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "invalidSignature",
+      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      awaitConfirmation: true,
+    });
+
+    expect(initResult.txHash).toHaveLength(64);
+    expect(initResult.fraudulentHeaderHash).toBe(headerHash);
+    expect(initResult.fraudCategoryName).toBe("invalidSignature");
+    expect(initResult.fraudCategoryId).toBe(
+      catalogue.categories.invalidSignature.categoryId,
+    );
+    expect(initResult.computationThreadAssetName).toBe(
+      `${catalogue.categories.invalidSignature.categoryId}${headerHash}`,
+    );
+
+    const firstStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      initResult.firstStepAddress,
+      initResult.computationThreadUnit,
+    );
+    const proverPaymentCredential = getAddressDetails(
+      await proverLucid.wallet().address(),
+    ).paymentCredential;
+    expect(proverPaymentCredential?.type).toBe("Key");
+    const proverPaymentKeyHash = proverPaymentCredential!.hash;
+
+    const step01Result = await submitInvalidSignatureStep01({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(firstStepUtxo),
+      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+      txInclusion: fixture.inclusion,
+      awaitConfirmation: true,
+    });
+
+    expect(step01Result.txHash).toHaveLength(64);
+    expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step01Result.nativeTxId).toBe(fixture.nativeTxId);
+    expect(step01Result.badTxWitsHash).toBe(fixture.badTxWitsHash);
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        initResult.firstStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const secondStepUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step01Result.secondStepAddress,
+      initResult.computationThreadUnit,
+    );
+    expect(
+      Data.from(secondStepUtxo.datum!, InvalidSignatureStep02Datum),
+    ).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+      data: {
+        bad_tx_id: fixture.nativeTxId,
+        bad_tx_wits_hash: fixture.badTxWitsHash,
+      },
+    });
+
+    const step02Result = await submitInvalidSignatureStep02({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      threadOutRef: outRefLabel(secondStepUtxo),
+      witnessSetPreimage: fixture.witnessSetPreimage,
+      addrTxWitsPreimage: fixture.addrTxWitsPreimage,
+      badAddressWitnessIndex: fixture.badAddressWitnessIndex,
+      awaitConfirmation: true,
+    });
+
+    expect(step02Result.txHash).toHaveLength(64);
+    expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
+    expect(step02Result.badTxId).toBe(fixture.nativeTxId);
+    expect(step02Result.badAddressWitnessIndex).toBe(1);
+    expect(step02Result.fraudProofAssetName).toBe(
+      initResult.computationThreadAssetName,
+    );
+    expect(step02Result.fraudProofUnit).toBe(
+      toUnit(
+        contracts.fraudProof.policyId,
+        initResult.computationThreadAssetName,
+      ),
+    );
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        step01Result.secondStepAddress,
+        initResult.computationThreadUnit,
+      ),
+    ).resolves.toHaveLength(0);
+
+    const fraudProofUtxo = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step02Result.fraudProofAddress,
+      step02Result.fraudProofUnit,
+    );
+    expect(Data.from(fraudProofUtxo.datum!, FraudProofTokenDatum)).toEqual({
+      fraud_prover: proverPaymentKeyHash,
+    });
+
+    const removeNow = BigInt(emulator.now());
+    const removeResult = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "invalidSignature",
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: false,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+
+    expect(removeResult.fraudCategory).toBe("invalidSignature");
+    expect(removeResult.transactions.map((tx) => tx.removedHeaderHash)).toEqual(
+      [headerHash],
+    );
+    await expectStateQueueHeaderOrder({
+      lucid: funderLucid,
+      contracts,
+      expectedHeaderHashes: [],
+    });
   }, 180_000);
 
   it("submits and removes a tail transition-trace fraud proof end to end", async () => {

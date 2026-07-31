@@ -68,6 +68,11 @@ export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
 } as const;
 
+export const INVALID_SIGNATURE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/invalid_signature/step_01.main.spend",
+  step02: "fraud_proofs/invalid_signature/step_02.main.spend",
+} as const;
+
 export const ZERO_INPUT_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/zero_input/step_01.main.spend",
   step02: "fraud_proofs/zero_input/step_02.main.spend",
@@ -161,6 +166,14 @@ export type InvalidRangeFaultProofContracts = {
   };
 };
 
+export type InvalidSignatureFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly invalidSignature: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
 export type ZeroInputFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -186,6 +199,7 @@ export type FaultProofContracts = {
   readonly inputNoIdx: InputNoIdxFaultProofContracts["inputNoIdx"];
   readonly referenceInputNoIdx: ReferenceInputNoIdxFaultProofContracts["referenceInputNoIdx"];
   readonly invalidRange: InvalidRangeFaultProofContracts["invalidRange"];
+  readonly invalidSignature: InvalidSignatureFaultProofContracts["invalidSignature"];
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
 };
@@ -219,6 +233,9 @@ export type BuildReferenceInputNoIdxFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildInvalidSignatureFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildZeroInputFaultProofContractsParams =
@@ -887,6 +904,69 @@ const buildInvalidRangeChain = ({
     };
   });
 
+const buildInvalidSignatureChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  InvalidSignatureFaultProofContracts["invalidSignature"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const invalidSignatureStep02 = yield* tryBuild(
+      "Failed to build invalid-signature step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              INVALID_SIGNATURE_FAULT_PROOF_TITLES.step02,
+            ),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+            ],
+          ),
+        ),
+    );
+
+    const invalidSignatureStep01 = yield* tryBuild(
+      "Failed to build invalid-signature step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              INVALID_SIGNATURE_FAULT_PROOF_TITLES.step01,
+            ),
+            [
+              invalidSignatureStep02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: invalidSignatureStep01,
+      steps: [invalidSignatureStep01, invalidSignatureStep02],
+    };
+  });
+
 const buildZeroInputChain = ({
   blueprint,
   network,
@@ -1015,6 +1095,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const invalidSignature = yield* buildInvalidSignatureChain({
+      ...params,
+      ...shared,
+    });
     const zeroInput = yield* buildZeroInputChain({
       ...params,
       ...shared,
@@ -1033,6 +1117,7 @@ export const buildFaultProofContracts = (
       inputNoIdx,
       referenceInputNoIdx,
       invalidRange,
+      invalidSignature,
       zeroInput,
       transitionTrace,
     };
@@ -1131,6 +1216,22 @@ export const buildInvalidRangeFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       invalidRange,
+    };
+  });
+
+export const buildInvalidSignatureFaultProofContracts = (
+  params: BuildInvalidSignatureFaultProofContractsParams,
+): Effect.Effect<InvalidSignatureFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const invalidSignature = yield* buildInvalidSignatureChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      invalidSignature,
     };
   });
 
