@@ -554,6 +554,13 @@ fn input_sets_pre(
   }
 }
 
+// The canonical exact-rejection successor. It deliberately CARRIES FORWARD
+// `pre.ledger_delta_root` (via `..pre`) rather than clearing it: the claimed
+// delta commitment is immutable context, and clearing it here is what made
+// every rejection one-step unprovable from a realistic (non-empty) pre-state.
+// The rejecting terminal's no-op obligation lives in
+// `encode_terminal_rejection_witness` (empty operation list, post root = prior
+// root) and in the claim layer, not in this field.
 fn exact_rejection_post(
   pre: validation_trace_v1.ValidationMachineStateV1,
   rejection_code: ByteArray,
@@ -572,8 +579,33 @@ fn exact_rejection_post(
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
+}
+
+// A realistic NON-EMPTY claimed ledger delta root: the frontier commitment over
+// one authenticated deletion and one authenticated insertion. This is the shape
+// every real transaction carries (it spends inputs and creates outputs), and it
+// is therefore the shape the rejection machinery must work against. Using
+// `frontier_commitment(0, [])` for rejection fixtures was the workaround that
+// hid the `rejected_successor_is_exact` / `immutable_context_matches`
+// contradiction, because it is the one pre-state in which the contradiction is
+// invisible.
+fn non_empty_claimed_delta_root() -> ByteArray {
+  let descriptor = empty_mpf_proof_descriptor()
+  let deletion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+    0,
+    #"010203",
+    #"",
+    descriptor,
+  )
+  let insertion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+    1,
+    #"0405",
+    #"060708",
+    descriptor,
+  )
+  let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
+  validation_merkle_v1.frontier_commitment(frontier.count, frontier.peaks)
 }
 
 fn phase_a_script_preconditions_fixture(
@@ -835,7 +867,9 @@ fn resolve_inputs_step_fixture(
       execution_memory: 0,
       verdict: validation_trace_v1.Pending,
       rejection_code_hash: zero,
-      ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
+      // Re-based off `frontier_commitment(0, [])`: this fixture backs rejection
+      // proofs, so it must carry the realistic non-empty claimed delta.
+      ledger_delta_root: non_empty_claimed_delta_root(),
     },
     work_witness_cbor,
   )
@@ -2503,20 +2537,22 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+    // Deliberately a realistic NON-EMPTY claimed delta root. This test was RED
+    // on a production defect: `rejected_successor_is_exact` demanded
+    // `post.ledger_delta_root == frontier_commitment(0, [])` while
+    // `immutable_context_matches` (reached via `structural_transition_is_valid`,
+    // which the `verify_one_step` entry point applies) demands
+    // `pre.ledger_delta_root == post.ledger_delta_root`. Those were jointly
+    // unsatisfiable for any `pre` whose delta root was not already the empty
+    // commitment -- i.e. for every real transaction. The clearing clause has
+    // been deleted from production. Do NOT make any rejection test green by
+    // setting `pre.ledger_delta_root` to `frontier_commitment(0, [])`: that is
+    // the workaround that hid the defect, and it exercises the one pre-state in
+    // which the defect is invisible.
+    ledger_delta_root: non_empty_claimed_delta_root(),
   }
-  // An exact rejection clears the ledger delta to the empty frontier
-  // commitment; `exact_rejection_post` is the canonical successor shape.
-  //
-  // NOTE: this test is currently RED on a production defect, not a stale
-  // expectation. `rejected_successor_is_exact` demands
-  // `post.ledger_delta_root == frontier_commitment(0, [])` while
-  // `immutable_context_matches` (reached via `structural_transition_is_valid`,
-  // which the `verify_one_step` entry point applies) demands
-  // `pre.ledger_delta_root == post.ledger_delta_root`. Those are jointly
-  // unsatisfiable for any `pre` whose delta root is not already the empty
-  // commitment. Do NOT make this green by setting `pre.ledger_delta_root` to
-  // `frontier_commitment(0, [])` -- that is the workaround that hid the defect.
+  // An exact rejection carries the claimed ledger delta forward unchanged;
+  // `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step(
     pre,
@@ -2525,6 +2561,187 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
       claimed_successor: terminal,
     },
   )
+}
+
+// Shared StaticLedgerRules fixture for the delta-root controls below. `valid`
+// selects between a network-conformant transaction (whose true one-step is an
+// advance) and a network-mismatched one (whose true one-step is a rejection).
+// `claimed_delta_root` is the operator's immutable claimed delta commitment.
+fn static_rules_delta_root_fixture(
+  valid: Bool,
+  claimed_delta_root: ByteArray,
+) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
+  let base = empty_v1_transaction()
+  let tx = if valid {
+    base
+  } else {
+    MidgardTransaction {
+      ..base,
+      body: MidgardTransactionBody { ..base.body, network_id: 1 },
+    }
+  }
+  let compact = midgard_transaction_to_compact(tx)
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let tx_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(compact.body),
+  )
+  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+  )
+  Pair(
+    validation_trace_v1.ValidationMachineStateV1 {
+      machine_version: validation_trace_v1.machine_version,
+      event_key_hash: h_a,
+      transaction_id: tx_id,
+      transaction_commitment: midgard_transaction_proof_commitment_v1(tx),
+      validation_context_hash: validation_trace_v1.hash_validation_context(
+        validation_context_cbor,
+      ),
+      source_kind: validation_trace_v1.Forced,
+      prior_ledger_root: h_c,
+      phase: validation_trace_v1.StaticLedgerRules,
+      program_counter: 2,
+      work_root: validation_trace_v1.hash_work_witness(
+        validation_trace_v1.StaticLedgerRules,
+        2,
+        work_witness_cbor,
+      ),
+      execution_cpu: 0,
+      execution_memory: 0,
+      verdict: validation_trace_v1.Pending,
+      rejection_code_hash: zero,
+      ledger_delta_root: claimed_delta_root,
+    },
+    work_witness_cbor,
+  )
+}
+
+const network_mismatch_rejection_code: ByteArray =
+  #"455f4e4554574f524b5f49445f4d49534d41544348"
+
+// POSITIVE CONTROL for the restored capability (GOAL_SPEC §3 invariant 9).
+// This is the governing adversarial case: an operator commits an `Accepted`
+// descriptor -- mandatory for every normal L2 source -- over a transaction that
+// truly rejects, and therefore carries a real, NON-EMPTY claimed delta root.
+// Before the fix no challenger could construct any winning rejection successor
+// from such a pre-state, so a dishonest operator won every dispute by default.
+// The test also pins that the claim is carried forward, not cleared.
+test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
+  let claimed = non_empty_claimed_delta_root()
+  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
+    False,
+    claimed,
+  )
+  let terminal = exact_rejection_post(pre, network_mismatch_rejection_code)
+  and {
+    claimed != validation_merkle_v1.frontier_commitment(0, []),
+    terminal.ledger_delta_root == claimed,
+    validation_machine_v1.verify_one_step(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: terminal,
+      },
+    ),
+  }
+}
+
+// NEGATIVE CONTROL -- mutation (clearing). The old, deleted production clause
+// demanded exactly this successor shape. It must now be REJECTED, because the
+// claimed delta root is immutable context. This is the control that stops
+// anyone "restoring" the clearing clause, or exempting the field from
+// `immutable_context_matches`, without turning a test red.
+test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
+    False,
+    non_empty_claimed_delta_root(),
+  )
+  let cleared_terminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, network_mismatch_rejection_code),
+    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
+  }
+  !validation_machine_v1.verify_one_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: cleared_terminal,
+    },
+  )
+}
+
+// NEGATIVE CONTROL -- mutation (rewriting). Immutability holds in both
+// directions: the successor may not substitute any other delta root either.
+test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
+    False,
+    non_empty_claimed_delta_root(),
+  )
+  let rewritten_terminal = validation_trace_v1.ValidationMachineStateV1 {
+    ..exact_rejection_post(pre, network_mismatch_rejection_code),
+    ledger_delta_root: h_b,
+  }
+  !validation_machine_v1.verify_one_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: rewritten_terminal,
+    },
+  )
+}
+
+// NEGATIVE CONTROL -- valid-block rejection (GOAL_SPEC §3 invariant 9). THE
+// critical control for the delta-root fix: deleting the clearing clause must
+// not have made honest blocks challengeable. Here the transaction satisfies the
+// static ledger rules, so its true one-step is an advance to `InputSets`; a
+// claimed rejection terminal -- otherwise perfectly well-formed, and carrying
+// the claimed delta forward exactly as the now-passing rejection tests do --
+// must still be unprovable.
+test a_valid_static_rules_transition_cannot_be_proven_rejected() {
+  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
+    True,
+    non_empty_claimed_delta_root(),
+  )
+  !validation_machine_v1.verify_one_step(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(
+        pre,
+        network_mismatch_rejection_code,
+      ),
+    },
+  )
+}
+
+// The ONE deliberately-empty claimed-delta case. An honest, self-consistent
+// forced-invalid trace built by the TypeScript reference carries
+// `hashMidgardValidationLedgerDeltaV1([]) == frontier_commitment(0, [])` on
+// every state, so an empty claim is spec-legal in exactly this scenario. It is
+// kept as a single labelled case rather than as the framing for the whole
+// rejection surface: as the only framing it hid the defect, because it is the
+// one pre-state in which the deleted clause was satisfiable.
+test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
+  let empty_claim = validation_merkle_v1.frontier_commitment(0, [])
+  let Pair(pre, work_witness_cbor) = static_rules_delta_root_fixture(
+    False,
+    empty_claim,
+  )
+  let terminal = exact_rejection_post(pre, network_mismatch_rejection_code)
+  and {
+    pre.source_kind == validation_trace_v1.Forced,
+    terminal.ledger_delta_root == empty_claim,
+    validation_machine_v1.verify_one_step(
+      pre,
+      validation_machine_v1.ValidationOneStepWitnessV1 {
+        work_witness_cbor,
+        claimed_successor: terminal,
+      },
+    ),
+  }
 }
 
 test input_sets_rejects_a_successor_in_the_wrong_phase() {
@@ -2865,8 +3082,12 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     // A stage-0 phase-A native scan control MUST carry `result == -1`:
     // `phase_a_native_control_is_bound` rejects any other value at stage 0, and
     // `reset_phase_a_native_control` produces -1. Production
-    // `verify_signatures_handoff` currently emits 0 here, which is a defect --
-    // see the write-up; do NOT "fix" this expectation to 0.
+    // `verify_signatures_handoff` used to emit 0 here, which was a defect --
+    // `result == 0` at a completed stage MEANS "native script evaluated false
+    // -> reject", so the handoff asserted a verdict the machine had not
+    // computed and produced an unusable successor. The emitter has been fixed;
+    // do NOT "fix" this expectation to 0. See
+    // `signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict`.
     -1,
     signer_frontier.count,
     signer_frontier.peaks,
@@ -2905,6 +3126,105 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       },
     ),
   }
+}
+
+// Builds the Signatures->PhaseANativeScripts handoff, claiming a successor
+// whose stage-0 phase-A native scan control carries the supplied `result`.
+fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody {
+      ..base.body,
+      inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
+    },
+  }
+  let Pair(pre, _work_witness_cbor) = signatures_step_fixture(tx, h_a)
+  let proof_source = midgard_transaction_proof_source_v1(tx)
+  let signer_frontier = validation_merkle_v1.build_frontier([])
+  let handoff_witness_cbor = signatures_scan_witness(
+    tx,
+    2,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    #"",
+    signer_frontier,
+    0,
+  )
+  let handoff_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 6,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Signatures,
+      6,
+      handoff_witness_cbor,
+    ),
+  }
+  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+    proof_source.compact_cbor,
+    proof_source.witness_set_compact_cbor,
+    proof_source.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    validation_machine_v1.transaction_resolution_schedule_hash(
+      tx.body.inputs,
+      tx.body.reference_inputs,
+    ),
+    0,
+    0,
+    0,
+    0,
+    0,
+    #"",
+    0,
+    #"",
+    0,
+    0,
+    result,
+    signer_frontier.count,
+    signer_frontier.peaks,
+    #"",
+  )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..handoff_pre,
+    phase: validation_trace_v1.PhaseANativeScripts,
+    program_counter: 7,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.PhaseANativeScripts,
+      7,
+      next_work_witness_cbor,
+    ),
+  }
+  validation_machine_v1.verify_signatures_handoff_semantics_v1(
+    handoff_pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor: handoff_witness_cbor,
+      claimed_successor: post,
+    },
+  )
+}
+
+// NEGATIVE CONTROL -- mutation (GOAL_SPEC §3 invariant 9) for the sentinel fix.
+// `result == 0` at a completed stage MEANS "this native script evaluated false
+// -> reject" (`rejected_successor_is_exact` is invoked on it), and `result == 1`
+// means "evaluated true". Neither is a legal stage-0 value: nothing has been
+// evaluated yet. Both must be REJECTED. This is the control proving the defect
+// was fixed at the EMITTER (`verify_signatures_handoff` now emits -1) and not
+// by relaxing `phase_a_native_control_is_bound` to accept 0 -- a relaxation
+// would diverge from the TypeScript reference (invariant 8) and make two
+// encodings of the same semantic state both bindable.
+test signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict() {
+  and {
+    !signatures_handoff_with_claimed_result(0),
+    !signatures_handoff_with_claimed_result(1),
+  }
+}
+
+// POSITIVE pair for the control above: the sentinel is what production emits.
+test signatures_handoff_emits_the_not_yet_evaluated_sentinel() {
+  signatures_handoff_with_claimed_result(-1)
 }
 
 test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
@@ -3690,12 +4010,11 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
   }
   let Pair(pre, work_witness_cbor) = phase_a_script_preconditions_fixture(
     tx,
-    validation_trace_v1.hash_ledger_delta(#"80"),
+    non_empty_claimed_delta_root(),
   )
   let rejection_code = #"455f494e56414c49445f4649454c445f54595045"
-  // Canonical exact-rejection successor (clears the ledger delta). Currently
-  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
-  // contradiction -- see the note on
+  // Canonical exact-rejection successor: it carries the non-empty claimed delta
+  // forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
@@ -4025,9 +4344,8 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     8,
   )
   let rejection_code = #"455f494e5055545f4e4f545f464f554e44"
-  // Canonical exact-rejection successor (clears the ledger delta). Currently
-  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
-  // contradiction -- see the note on
+  // Canonical exact-rejection successor: it carries the non-empty claimed delta
+  // (supplied by `resolve_inputs_step_fixture`) forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let terminal = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
@@ -4080,7 +4398,6 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
   validation_machine_v1.verify_one_step_evidence(
     pre,
@@ -6964,7 +7281,6 @@ test script_sources_proves_a_missing_script_source_exactly() {
     ),
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
   validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
     pre,
@@ -7218,7 +7534,9 @@ test script_integrity_is_recomputed_before_cek() {
     execution_memory: 0,
     verdict: validation_trace_v1.Pending,
     rejection_code_hash: zero,
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
+    // Re-based off `frontier_commitment(0, [])`: this fixture backs rejection
+    // proofs, so it must carry the realistic non-empty claimed delta.
+    ledger_delta_root: non_empty_claimed_delta_root(),
   }
   let compact_witness_cbor = validation_machine_v1.encode_script_integrity_compact_witness_v1(
     valid_control,
@@ -7895,9 +8213,8 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
   let rejection_code = #"455f504c555455535f5343524950545f494e56414c4944"
-  // Canonical exact-rejection successor (clears the ledger delta). Currently
-  // RED on the `immutable_context_matches` / `rejected_successor_is_exact`
-  // contradiction -- see the note on
+  // Canonical exact-rejection successor: it carries the pre-state's non-empty
+  // claimed delta forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let post = exact_rejection_post(pre, rejection_code)
   validation_machine_v1.verify_one_step_evidence(
@@ -10686,7 +11003,9 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
       42,
       invalid_work_witness_cbor,
     ),
-    ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
+    // Re-based off `frontier_commitment(0, [])`: this pre-state backs a
+    // rejection proof, so it must carry the realistic non-empty claimed delta.
+    ledger_delta_root: non_empty_claimed_delta_root(),
   }
   let rejection_code = #"455f56414c55455f4e4f545f505245534552564544"
   let terminal = validation_trace_v1.ValidationMachineStateV1 {

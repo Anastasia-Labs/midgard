@@ -410,8 +410,33 @@
   claim `Accepted` (`validation-claim-v1.ak:288-296`), so a genuinely invalid
   transaction always carries a non-empty claimed delta and the challenger can
   never win — the dishonest operator prevails by default. Affects all 80 call
-  sites of `rejected_successor_is_exact`. Fix implementation assigned with
-  mandatory valid-block negative controls. Fix 1 is likewise decisive from
+  sites of `rejected_successor_is_exact`. FIXES IMPLEMENTED 2026-07-30 in an
+  isolated worktree and parent-reviewed before transfer: the production diff
+  is exactly two minimal changes with inline rationale — the
+  `post.ledger_delta_root` clearing clause deleted from
+  `rejected_successor_is_exact` (replaced by a comment recording where the
+  no-op duty actually lives and forbidding re-introduction), and the handoff
+  emitter's 16th positional argument `0` → `-1` with the bare positionals
+  annotated. Seven new controls accompany them, including the two that matter
+  most: `a_valid_static_rules_transition_cannot_be_proven_rejected` (an
+  honest transition carrying a non-empty claimed delta still cannot be proven
+  rejected — evidence fix 2 did not over-weaken) and
+  `signatures_handoff_rejects_a_stage_zero_control_claiming_a_verdict`
+  (`result` 0 and 1 both rejected at stage 0 — evidence the emitter was
+  fixed, not the checker). The six masking sites were re-based onto a
+  non-empty claimed delta, retaining exactly one labelled empty-delta case
+  for the honest forced-invalid trace the memo shows is spec-legal. All 126
+  original test declarations preserved verbatim (133 after additions); agent
+  regression subset 25/25 spanning every phase. Residual items for owner
+  review: the memo's secondary trace-endpoint clause in
+  `validation-claim-v1.ak:396-400` was deliberately NOT added (Aiken's
+  accepted set stays strictly larger than the TS-producible set, inert for
+  soundness but weakening §3 invariant 8 parity); no dispute-level regression
+  yet exists in `demo/midgard-fault-proofs`/`demo/midgard-sdk` where a
+  challenger wins against an operator-claimed `Accepted` descriptor with a
+  non-empty delta — its absence is what let this ship, so
+  `catalogue-status.md` was held at 🔶 rather than restored to ✅; and the
+  cross-language vectors for both boundaries remain unwritten. Fix 1 is likewise decisive from
   cross-language parity (TS `validation-machine.ts:1933` emits `result: -1`,
   type `-1 | 0 | 1`) — an Aiken transcription slip, not a semantic
   disagreement. Overstated status rows to correct: `catalogue-status.md:63`

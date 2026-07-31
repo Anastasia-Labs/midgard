@@ -190,9 +190,21 @@ Version 9 additionally pins work-witness hashing to Aiken's exact
 ambiguity for witnesses longer than 64 bytes.
 
 Every state commits the phase, program counter, immutable transaction/source
-commitment, prior ledger root, work-stack roots, accumulated execution units,
-and current verdict. A terminal state is absorbing, which makes Merkle padding
-unambiguous.
+commitment, prior ledger root, the operator's claimed ledger delta root,
+work-stack roots, accumulated execution units, and current verdict. A terminal
+state is absorbing, which makes Merkle padding unambiguous.
+
+The claimed ledger delta root is part of the state's immutable context: it is
+supplied once with the initial state and is carried unchanged by every
+transition (`validation-machine-v1.ak` `immutable_context_matches`) and across
+the committed claim endpoints (`validation-claim-v1.ak`). No instruction writes
+it; the accepting terminal reconstructs the operation frontier independently and
+compares it against the claim. This enumeration previously omitted the field
+even though `encode_machine_state` commits it; the omission is corrected here.
+The correction was prompted by a production defect in which the *rejecting*
+terminal rule required the successor to clear this field, contradicting its
+immutability and making rejection one-steps unprovable from every pre-state
+carrying a real (non-empty) claimed delta. See §8.
 
 The same initial-state constructor and machine apply to normal and forced
 transactions. Source authentication differs; transaction semantics do not.
@@ -269,6 +281,29 @@ An accepting terminal state derives the exact ordered delete/insert ledger
 operations. The transition-trace one-step proof checks those operations
 against the prior root. A rejecting terminal state derives no operations and
 requires `pre_utxos_root == post_utxos_root`.
+
+The rejecting terminal's no-op obligation is discharged **at this
+transition-binding layer only**, and never by mutating a validation-machine
+state field. Concretely it is enforced three ways: the rejection work witness
+itself commits `post root = prior root` with an empty operation list
+(`encode_terminal_rejection_witness`); the committed claim requires
+`pre_utxos_root == post_utxos_root` for a `Rejected` descriptor
+(`validation-claim-v1.ak`); and any actual ledger movement on an invalid
+forced transaction is a unilateral fault
+(`fraud-proofs/transition-trace/proof.ak`). The machine state's claimed ledger
+delta root is immutable context (§5) and is carried forward unchanged by a
+rejecting terminal.
+
+This was previously implemented incorrectly: `rejected_successor_is_exact`
+additionally required the rejecting successor to *write* the empty frontier
+commitment into `ledger_delta_root`. Because the same transition must satisfy
+`immutable_context_matches` (pre == post on that field), the two clauses were
+jointly unsatisfiable for every pre-state with a non-empty claimed delta —
+i.e. for every real transaction, and in particular for the governing
+adversarial case in which an operator commits an `Accepted` descriptor over a
+transaction that truly rejects. No challenger could construct a winning
+rejection successor, so the dishonest operator won by default. The clearing
+clause has been deleted; the obligation lives here, where it always belonged.
 
 V1 requires the same accepted-transaction transition witness for valid forced
 transactions as for normal L2 transactions, with forced-source membership and
@@ -574,3 +609,14 @@ Profile digest: `e81d6fdc21527a875099951e70a0634d8b16e1efa9bec89a2ab04d826ee4aae
 ```
 
 <!-- END MIDGARD_CONSENSUS_PROFILE_V1_GENERATED -->
+
+Note on `requiredProofFamilies`. `validation-machine-one-step` and
+`forced-transaction-verdict-mismatch` are listed as required and are, after the
+`rejected_successor_is_exact` fix described in §8, provable in both directions.
+Before that fix the rejecting half of `validation-machine-one-step` was
+unprovable whenever the operator's claimed delta root was non-empty, and
+`forced-transaction-verdict-mismatch` was provable only in the
+operator-says-invalid direction — a direct contradiction of the specification's
+"a fault in either direction". No profile *value* changed as a result of the
+fix, so the digest above is unaffected; only the executable status of the
+listed families did.

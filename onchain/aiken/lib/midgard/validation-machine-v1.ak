@@ -2049,7 +2049,22 @@ fn rejected_successor_is_exact(
     post.rejection_code_hash == validation_trace_v1.hash_rejection_code(
       rejection_code,
     ),
-    post.ledger_delta_root == validation_merkle_v1.frontier_commitment(0, []),
+    // NOTE: there is deliberately NO clause clearing `post.ledger_delta_root`
+    // here, and one must not be re-introduced. `ledger_delta_root` is the
+    // operator's immutable claimed delta commitment for the transaction under
+    // adjudication: it is written by no transition, is read only at
+    // `ledger_delta_operation` membership and at the accepting terminal, and is
+    // pinned pre == post by `immutable_context_matches`. Requiring the
+    // rejecting terminal to *write* the empty commitment contradicted that
+    // immutability, which made every rejection one-step unprovable from any
+    // pre-state whose claimed delta is non-empty -- i.e. from every adversarial
+    // pre-state that matters, since a real transaction always claims a
+    // non-empty delta. The "a rejecting terminal derives no operations" duty is
+    // discharged elsewhere, per `docs/consensus-profile-v1.md` section 8: by
+    // `encode_terminal_rejection_witness` (post root = prior root, empty
+    // operation list), by the `pre_utxos_root == post_utxos_root` clause in
+    // `validation-claim-v1.ak`, and by the unilateral no-op faults in
+    // `fraud-proofs/transition-trace/proof.ak`.
     post.work_root == validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
@@ -3122,10 +3137,20 @@ fn verify_signatures_handoff(
         0,
         #"",
         0,
+        // stack_root
         #"",
+        // stack_depth
         0,
+        // node_count
         0,
-        0,
+        // result: the "not yet evaluated" sentinel. A stage-0 phase-A native
+        // scan control MUST carry -1; `phase_a_native_control_is_bound` pins
+        // -1 at every stage except 2, and `result == 0` at a completed stage
+        // MEANS "this native script evaluated false -> reject". Emitting 0 here
+        // asserted a verdict the machine had not computed and made the handoff
+        // successor unusable. Matches the TypeScript reference builder
+        // `resetPhaseANativeScriptsScanControl` (`result: -1`).
+        -1,
         control.signer_count,
         control.signer_peaks,
         #"",

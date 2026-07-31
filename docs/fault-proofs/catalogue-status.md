@@ -60,11 +60,28 @@ mechanical; `double-spend` is the reference pattern.
 | `TraceLinkFault` (`:47`, impl `:542-554`)           | Adjacent steps don't chain                                                                                                                                                                                                                                                           | REAL | ✅ pair                                                                       |
 | `EventToStepMismatch` (`:48-51`, impl `:569-598`)   | Step's event binding/phase wrong                                                                                                                                                                                                                                                     | REAL | ✅ pair                                                                       |
 | `SourceMembershipMismatch` (`:52`, impl `:600-643`) | Sub-variants `MappedEventMissingFromSource`, `SourceEventMissingTrace`, `SourcePhaseMismatch` (`:108-127`)                                                                                                                                                                           | REAL | ✅ includes both phase-mismatch directions                                    |
-| `InvalidOneStepTransition`                          | Withdrawal/deposit and invalid-forced direct transition faults remain unilateral. Accepted normal and valid-forced deltas are bound through the canonical V1 validation claim and terminal accepted-transition witness; source-phase mismatch covers both classification directions. | REAL | ✅ canonical V1 Aiken/TypeScript paths; concrete release measurements pending |
+| `InvalidOneStepTransition`                          | Withdrawal/deposit and invalid-forced direct transition faults remain unilateral. Accepted normal and valid-forced deltas are bound through the canonical V1 validation claim and terminal accepted-transition witness; source-phase mismatch covers both classification directions. | REAL | 🔶 canonical V1 Aiken/TypeScript paths, restored after a soundness defect (see note below); concrete release measurements and a dispute-level challenger-wins regression pending |
 | `OmittedDueL1Event` (`:54`, impl `:1347-1431`)      | Due L1 event wrongly omitted from source root                                                                                                                                                                                                                                        | REAL | 🟠 deposit sub-variant only                                                   |
 | `DuplicateTraceEvent` (`:55-58`, impl `:1527-1546`) | Two steps reference same event key                                                                                                                                                                                                                                                   | REAL | ✅ pair                                                                       |
 | `OutOfWindowSourceEvent` (`:59`, impl `:1433-1525`) | Not-yet-due L1 event wrongly included                                                                                                                                                                                                                                                | REAL | 🟠 deposit sub-variant only                                                   |
 | `CountFault` (`:60`, impl `:1548-1616`)             | Header/root count bookkeeping wrong (5 sub-variants)                                                                                                                                                                                                                                 | REAL | 🟠 1 of 5 sub-variants tested                                                 |
+
+**`InvalidOneStepTransition` — soundness defect found and fixed.** The ✅ this row
+previously carried was not earned. `rejected_successor_is_exact`
+(`validation-machine-v1.ak`) required the rejecting successor to write the empty
+frontier commitment into `ledger_delta_root`, while `immutable_context_matches`
+required that field to be equal across pre and post. The two were jointly
+unsatisfiable for any pre-state whose claimed delta was non-empty — i.e. for every
+real transaction — so **the entire one-step rejection surface (every rejection code
+in every phase, all ~80 call sites) was unprovable against an adversarial operator**,
+and the operator won every such dispute by default. The clearing clause has been
+deleted; the no-op obligation is discharged at the transition-binding/claim layer
+per `docs/consensus-profile-v1.md` §8. The status is held at 🔶 rather than restored
+to ✅ until the dispute-level regression (challenger wins a one-step resolution
+against an operator-claimed `Accepted` descriptor carrying a non-empty delta root)
+exists in `demo/midgard-fault-proofs` / `demo/midgard-sdk`; the machine-level
+positive proof and its mutation/valid-block negative controls are green in
+`validation-machine-v1.test.ak`.
 
 **Scope limits of the one-step L2 verifier** (`validate_l2_transaction_transition`,
 `proof.ak:1117-1157`): it authenticates preimage hashes and MPF-replays the delete/insert
