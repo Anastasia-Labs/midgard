@@ -347,6 +347,72 @@
 
 ## Decisions
 
+- 2026-07-30, THREE FURTHER CANONICAL-V1 PRODUCTION DEFECTS (blocking; one is
+  a complete break of the dispute system). Found by the VM-SCRIPT-SOURCES-CEK
+  diagnosis of the 16-failure cluster; 11 of the 16 script-sources failures
+  reduce to these three causes rather than being independent bugs:
+  - **VM-DEFECT-3 (SEVERITY: TOTAL — no fraud proof can be completed for any
+    transaction).** Stage 7 of the script-sources phase is unsatisfiable on
+    BOTH proof paths. Minimal probes on the most trivial possible stage-7
+    state (`empty_v1_transaction()`, no inputs/outputs/observers/mints, all
+    frontiers empty, `output_cursor = 0`, `purpose_count = 0`) are rejected by
+    the generic route (`verify_one_step_evidence` →
+    `verify_script_sources_non_output_semantics_v1` `:12448` →
+    `script_sources_stage_seven` → `script_sources_receive_scan_finish:9743`)
+    AND the deployed route
+    (`verify_script_sources_stage_seven_finish_semantics_v1:10330`, used by
+    `validators/fraud-proofs/validation-trace/script-sources-stage-seven-finish-semantic-v1.ak:55`).
+    The same fixtures produce accepted states at every other stage; the only
+    variable is `stage = 7`. Consequence: the script-sources phase can never
+    advance past stage 7, the one-step machine can never reach CEK, and
+    therefore **no fraud proof can be completed for any transaction** —
+    invalid blocks are unchallengeable. Unsatisfiability is proven; the
+    offending conjunct is NOT yet localized (aiken emits no `assertion` field
+    when a test body is a helper call, and each probe round costs 20-40 min
+    under the aiken#1389 pathology). Residue is in
+    `script_sources_control_is_bound:12079` or
+    `script_sources_stage_seven_control_is_bound:9927`. NO production edit
+    until one more probe round localizes it.
+  - **VM-DEFECT-4 (proven contributor to defect 3).** The two implementations
+    of every stage-7 transition demand mutually exclusive successor
+    encodings. `script_sources_stage_seven_successor_items_are_exact`
+    (`:10054-10063`) requires the Plutus `serialiseData` form
+    (`next_items |> builtin.list_data |> cbor.serialise`, always `9f…`, with
+    >64-byte bytestrings chunked `5f…ff`), while everywhere else — including
+    the binding the NEXT step applies (`script_sources_stage_seven_control_is_bound:9928`),
+    the shape gate `:7586`, and the evidence path's
+    `script_sources_control_successor_is_exact` — requires the canonical
+    definite-length encoding from `encode_script_sources_witness:1063`
+    (`98 1e`). Isolation evidence (both probes green): the re-encoding starts
+    `9f` where the canonical starts `981e` and differs byte-wise; and
+    production's `next_items` re-encoding is byte-identical to the
+    re-encoding of the successor the tests build, proving the tests'
+    semantics are right and only the encoding rule diverges. Fix direction
+    needs no owner call (two implementations of one rule cannot both be
+    authoritative; §1 forbids source silently narrowing capability): build
+    the successor control and use `exact_script_sources_control`, deleting
+    the raw item-splice optimization.
+  - **VM-DEFECT-5 (same anti-pattern).**
+    `verify_script_sources_stage_one_finish_raw_semantics_v1`
+    (`:8473-8482`) rebuilds the witness prefix with
+    `cbor.serialise(<Data item>)` and compares against the canonical witness
+    slice; `serialiseData` chunks >64-byte bytestrings while the canonical
+    witness stores one definite bytestring, so it is unsatisfiable for any
+    real transaction. Isolation probe green on the exact fixture used by
+    `script_sources_commits_unique_supported_redeemers`. Deployed at
+    `validators/fraud-proofs/validation-trace/script-sources-stage-one-finish-semantic-v1.ak:55`.
+    The function already proves the witness canonical at `:8493`, so the fix
+    is to splice from `exact_script_sources_control`.
+  Anti-pattern scope is bounded: `cbor.serialise(<…_data>)` and
+  `list_data |> cbor.serialise` occur at exactly lines 8474-8482 and 10062 in
+  the 18k-line module, and both already have failing tests.
+  SYSTEMIC LESSON (recommended, not yet implemented): every
+  `verify_script_sources_stage_*_semantics_v1` has an evidence-path twin and
+  only a handful of stages assert both agree. A per-stage differential test
+  (`verify_one_step_evidence(pre, e)` vs the stage-specific semantics
+  function on one shared fixture) would have caught defects 4 and 5 the day
+  they were written; scheduled as VM-STAGE-DIFFERENTIAL.
+
 - 2026-07-30, TWO CANONICAL-V1 PRODUCTION DEFECTS FOUND IN THE DEPLOYED
   VALIDATION MACHINE (blocking; protocol decision required from the owner /
   normative specification). Both are *unsatisfiable constraint pairs* — no

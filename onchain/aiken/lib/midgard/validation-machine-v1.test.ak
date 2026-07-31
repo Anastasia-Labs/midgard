@@ -5181,6 +5181,68 @@ test maximum_reference_input_schedule_terminal_matches_typescript() {
   )
 }
 
+/// Replay values are compact ledger-output descriptors, not raw output CBOR:
+/// `script_sources_replay_item` decodes the value with
+/// `ledger_output_commitment_v1.decode` and reads the resolved address and the
+/// reference-script fields out of it.
+fn replay_output_descriptor_fixture(
+  output_index: Int,
+  output_cbor: ByteArray,
+  address: ByteArray,
+  reference_script: Option<MidgardVersionedScript>,
+) -> ByteArray {
+  expect Some(cardano_tx_out) = script_context_v1.tx_out_summary_v1(
+    output_cbor,
+    False,
+  )
+  expect Some(midgard_tx_out) = script_context_v1.tx_out_summary_v1(
+    output_cbor,
+    True,
+  )
+  expect Some(cardano_spend_datum) = script_context_v1.spend_datum_summary_v1(
+    output_cbor,
+  )
+  let base = ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+    version: ledger_output_commitment_v1.version,
+    output_index,
+    total_length: bytearray.length(output_cbor),
+    item_commitment: bounded_item_v1.from_bytes(2, output_index, output_cbor),
+    address,
+    lovelace: 0,
+    asset_count: 0,
+    asset_frontier_commitment: validation_merkle_v1.frontier_commitment(0, []),
+    cardano_value_size: 0,
+    reference_script_language: -1,
+    reference_script_hash: #"",
+    reference_script_total_length: 0,
+    reference_script_item_commitment: #"",
+    cardano_tx_out,
+    midgard_tx_out,
+    cardano_spend_datum,
+  }
+  let descriptor =
+    when reference_script is {
+      None -> base
+      Some(script) -> {
+        let script_cbor = encode_midgard_versioned_script(script)
+        ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+          ..base,
+          reference_script_language: script_proof_v1.language_tag(
+            script.language,
+          ),
+          reference_script_hash: script_proof_v1.versioned_script_hash(script),
+          reference_script_total_length: bytearray.length(script_cbor),
+          reference_script_item_commitment: bounded_item_v1.from_bytes(
+            2,
+            output_index,
+            script_cbor,
+          ),
+        }
+      }
+    }
+  ledger_output_commitment_v1.encode(descriptor)
+}
+
 test script_sources_replay_appends_reference_scripts() {
   let input = MidgardTxInput { tx_id: h_a, output_index: 0 }
   let key = encode_midgard_tx_input(input)
@@ -5199,7 +5261,12 @@ test script_sources_replay_appends_reference_scripts() {
     datum_cbor: None,
     script_ref: Some(script),
   }
-  let value = encode_midgard_tx_output(output)
+  let value = replay_output_descriptor_fixture(
+    0,
+    encode_midgard_tx_output(output),
+    #"70" |> bytearray.concat(h_28_a),
+    Some(script),
+  )
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
@@ -5283,7 +5350,12 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
     datum_cbor: None,
     script_ref: None,
   }
-  let value = encode_midgard_tx_output(output)
+  let value = replay_output_descriptor_fixture(
+    0,
+    encode_midgard_tx_output(output),
+    #"70" |> bytearray.concat(h_28_a),
+    None,
+  )
   let base = empty_v1_transaction()
   let tx = MidgardTransaction {
     ..base,
