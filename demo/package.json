@@ -2,6 +2,10 @@
   "name": "midgard-demo",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/patch-cml-wasm-stack.mjs",
+    "patch:cml-wasm": "node scripts/patch-cml-wasm-stack.mjs",
+    "patch:cml-wasm:check": "node scripts/patch-cml-wasm-stack.mjs --check",
+    "patch:cml-wasm:revert": "node scripts/patch-cml-wasm-stack.mjs --revert",
     "build": "pnpm -r --if-present --workspace-concurrency=1 run build",
     "bench:aiken:native-tx-decoders": "node ../onchain/aiken/scripts/native-tx-decoder-benchmark-report.mjs",
     "lint": "eslint . --max-warnings=0",

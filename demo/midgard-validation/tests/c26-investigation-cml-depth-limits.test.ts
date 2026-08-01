@@ -5,6 +5,14 @@
  * status and pins the depths measured in
  * `docs/exec-plans/evidence/c26-cml-investigation.md`.
  *
+ * NOTE (C26 Step 2): the installed CML wasm is now patched at install time by
+ * `demo/scripts/patch-cml-wasm-stack.mjs`, so these probes target the *stock*
+ * binary explicitly — materialised on demand by `--emit-stock-package`, which
+ * reverts the installed artifact and hash-checks it against the stock pin.
+ * That keeps this file describing the pre-patch ceiling it was written to
+ * document. The post-patch behaviour is covered, ungated, by
+ * `cml-wasm-stack-patch-v1.test.ts`.
+ *
  * Every case is skipped unless `MIDGARD_C26_INVESTIGATION=1` so the default
  * suite stays green: the deep cases deliberately trap CML/WASM, and a trapped
  * `WebAssembly.Instance` is poisoned for the rest of the process, which would
@@ -20,7 +28,8 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -29,6 +38,29 @@ const investigationEnabled =
 const describeInvestigation = investigationEnabled
   ? describe
   : describe.skip;
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Reverts the installed (patched) CML wasm into a throwaway package directory
+ * and returns its entry point. The patcher refuses unless the reverted bytes
+ * hash to the stock pin, so this is the original binary, not an approximation.
+ */
+const stockCmlMainPath = (): string => {
+  const scratch = mkdtempSync(join(tmpdir(), "c26-stock-cml-"));
+  const emitted = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [
+        join(HERE, "..", "..", "scripts", "patch-cml-wasm-stack.mjs"),
+        "--emit-stock-package",
+        scratch,
+      ],
+      { encoding: "utf8", timeout: 120_000 },
+    ),
+  ) as { readonly mainPath: string };
+  return emitted.mainPath;
+};
 
 const unaryConstructorDataCborHex = (depth: number): string =>
   "d8799f".repeat(depth) + "00" + "ff".repeat(depth);
@@ -53,9 +85,7 @@ const probeInChildProcess = (
   const scriptPath = join(scratch, "probe.cjs");
   writeFileSync(
     scriptPath,
-    `const { CML } = require(${JSON.stringify(
-      require.resolve("@lucid-evolution/lucid"),
-    )});
+    `const CML = require(${JSON.stringify(stockCmlMainPath())});
 const depth = ${depth.toString()};
 const unary = "d8799f".repeat(depth) + "00" + "ff".repeat(depth);
 const encodeHead = (major, value) => {
@@ -148,9 +178,7 @@ describeInvestigation("C26 investigation: CML/WASM unary-depth limits", () => {
     const scriptPath = join(scratch, "poison.cjs");
     writeFileSync(
       scriptPath,
-      `const { CML } = require(${JSON.stringify(
-        require.resolve("@lucid-evolution/lucid"),
-      )});
+      `const CML = require(${JSON.stringify(stockCmlMainPath())});
 const deep = "d8799f".repeat(4043) + "00" + "ff".repeat(4043);
 let firstTrap = null;
 try { CML.PlutusData.from_cbor_hex(deep); } catch (cause) { firstTrap = String(cause.message).slice(0, 60); }
