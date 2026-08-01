@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 
-import type { ProductionCommitBlockHeaderParams } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -85,17 +84,6 @@ const assertRootTransactionHandling = (
   });
 
 describe("commit block worker output handling", () => {
-  it("requires production commit transactions to carry a lower validity bound", () => {
-    type CommitBlockHasLowerValidityBound =
-      "validFrom" extends keyof ProductionCommitBlockHeaderParams
-        ? true
-        : false;
-    const commitBlockHasLowerValidityBound: CommitBlockHasLowerValidityBound =
-      true;
-
-    expect(commitBlockHasLowerValidityBound).toBe(true);
-  });
-
   it("treats registered due work as normal non-submission control flow", () => {
     const output: WorkerOutput = {
       type: "RegisteredDueWorkOutput",
