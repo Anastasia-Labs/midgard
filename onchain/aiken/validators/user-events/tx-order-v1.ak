@@ -146,14 +146,15 @@ validator mint(
     expect tx_order_payload: ledger_state.TxOrderPayloadV1 = tx_order_payload_data
     expect user_events.AuthenticateEvent { nonce_input_index, .. } = redeemer
     expect Some(nonce_input) = tx.inputs |> list.at(nonce_input_index)
-    expect _verified = verify_order_receipts(
-      tx.reference_inputs,
-      receipt_script_hash,
-      field_receipt_policy_id,
-      own_policy,
-      nonce_input.output_reference,
-      tx_order_payload,
-    )
+    expect
+      verify_order_receipts(
+        tx.reference_inputs,
+        receipt_script_hash,
+        field_receipt_policy_id,
+        own_policy,
+        nonce_input.output_reference,
+        tx_order_payload,
+      )
 
     True
   }
