@@ -12,6 +12,7 @@ import {
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
+  Proof,
   ValidationAwardSpendRedeemerV1,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
   type ValidationMachineStateV1,
@@ -819,6 +820,117 @@ describe("validation-dispute transaction validity", () => {
         maxBytes: 16 * 1024 - 1,
       }),
     ).toBeInstanceOf(Constr);
+  });
+
+  it("encodes resolver-7 non-membership evidence into the exact semantic ABI", () => {
+    const state: ValidationMachineStateV1 = {
+      machine_version: 1n,
+      event_key_hash: "01".repeat(32),
+      transaction_id: "02".repeat(32),
+      transaction_commitment: "03".repeat(32),
+      validation_context_hash: "04".repeat(32),
+      source_kind: "Forced",
+      prior_ledger_root: "05".repeat(32),
+      phase: "CanonicalDecode",
+      program_counter: 0n,
+      work_root: "06".repeat(32),
+      execution_cpu: 0n,
+      execution_memory: 0n,
+      verdict: "Pending",
+      rejection_code_hash: "00".repeat(32),
+      ledger_delta_root: "07".repeat(32),
+    };
+    const transitionCbor = Buffer.from(
+      Data.to(
+        {
+          work_witness_cbor: "8100",
+          claimed_successor: { ...state, program_counter: 1n },
+        },
+        ValidationOneStepWitnessV1,
+      ),
+      "hex",
+    );
+
+    // Canonical divergent-leaf fixture from transition-trace.test.ak; unlike
+    // an empty proof, it remains valid when RF-002's terminal-key check is applied.
+    const nonMembershipProof: Proof = [
+      {
+        Leaf: {
+          skip: 0n,
+          key: "ee155ace9c40292074cb6aff8c9ccdd273c81648ff1149ef36bcea6ebb8a3e25",
+          value:
+            "55951e629cad560ea5f8be280c35d8788ee84324b842fee1b41c546efb62d2d5",
+        },
+      },
+    ];
+    const proofData = Data.from(Data.to(nonMembershipProof, Proof));
+    const sourceKind = 0n;
+    const key = "02";
+    const nextScheduleHash = "11".repeat(32);
+    const auxiliaryCbor = Buffer.from(
+      Data.to(
+        new Constr(6, [sourceKind, key, nextScheduleHash, proofData]) as never,
+      ),
+      "hex",
+    );
+
+    const redeemer = encodeValidationSemanticResolutionRedeemerV1({
+      oneStepArgument: {
+        resolverIndex: 7,
+        semanticResolverIndex: 5,
+        transitionCbor,
+        auxiliaryCbor,
+      },
+      inputIndex: 5n,
+      outputIndex: 7n,
+    });
+    const decoded = Data.from(redeemer.toString("hex"));
+    expect(decoded).toBeInstanceOf(Constr);
+    const outer = decoded as Constr<unknown>;
+    expect(outer.index).toBe(1);
+    expect(outer.fields).toHaveLength(1);
+    const action = outer.fields[0];
+    expect(action).toBeInstanceOf(Constr);
+    const actionData = action as Constr<unknown>;
+    expect(actionData.index).toBe(0);
+    expect(actionData.fields).toHaveLength(7);
+    expect(actionData.fields[0]).toBe(5n);
+    expect(actionData.fields[1]).toBe(7n);
+    expect(actionData.fields[2]).toEqual(
+      Data.from(transitionCbor.toString("hex")),
+    );
+    expect(actionData.fields[3]).toBe(sourceKind);
+    expect(actionData.fields[4]).toBe(key);
+    expect(actionData.fields[5]).toBe(nextScheduleHash);
+    expect(actionData.fields[6]).toEqual(proofData);
+    expect(
+      parseExactAikenDataCbor({
+        blueprint,
+        definitionName:
+          "fraud_proofs/validation_trace/resolve_inputs_non_membership_semantic_v1/SpendRedeemer",
+        cbor: redeemer.toString("hex"),
+        maxBytes: 16 * 1024 - 1,
+      }),
+    ).toBeInstanceOf(Constr);
+
+    const replayAuxiliaryCbor = Buffer.from(
+      Data.to(
+        new Constr(7, [sourceKind, key, nextScheduleHash, "00"]) as never,
+      ),
+      "hex",
+    );
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 7,
+          semanticResolverIndex: 5,
+          transitionCbor,
+          auxiliaryCbor: replayAuxiliaryCbor,
+        },
+        inputIndex: 5n,
+        outputIndex: 7n,
+      }),
+    ).toThrow(/ResolveInputs auxiliary witness/u);
   });
 
   it("reads exact lowercase CBOR files and rejects ambiguous wrappers", async () => {

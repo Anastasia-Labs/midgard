@@ -582,6 +582,7 @@ const VALIDATION_AUXILIARY_SHAPES_V1 = {
   nativeScriptToken: [3, 3],
   nativeScriptFrame: [4, 1],
   scheduledLedgerMembership: [5, 6],
+  scheduledLedgerNonMembership: [6, 4],
   resolvedInputReplay: [7, 4],
   scriptPurposeScan: [8, 5],
   scriptSourceScan: [9, 8],
@@ -671,7 +672,9 @@ const auxiliaryShapeV1 = ({
             ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofStep
             : semanticResolverIndex === 4
               ? VALIDATION_AUXILIARY_SHAPES_V1.ledgerOutputProofFinalize
-              : VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay;
+              : semanticResolverIndex === 5
+                ? VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerNonMembership
+                : VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay;
     return requireConstr({
       value: auxiliary,
       index: expected[0],
@@ -2773,7 +2776,7 @@ const semanticActionFieldsV1 = ({
       (semanticResolverIndex === 5 &&
         hasValidationAuxiliaryShapeV1(
           auxiliary,
-          VALIDATION_AUXILIARY_SHAPES_V1.resolvedInputReplay,
+          VALIDATION_AUXILIARY_SHAPES_V1.scheduledLedgerNonMembership,
         ))
     ) {
       return [...base, ...auxiliary.fields];
