@@ -557,8 +557,9 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
       }),
     ).toBe(true);
     expect(scriptSourceWitnesses[4]?.auxiliary).toBeNull();
+    // C21-STAGE4 Option A: the stage-4 fold witness is proof-only.
     expect(scriptSourceWitnesses[5]?.auxiliary?.kind).toBe(
-      "transactionFieldItem",
+      "transactionRedeemerItemBegin",
     );
     expect(scriptSourceWitnesses[6]?.auxiliary).toBeNull();
     expect(scriptSourceWitnesses[7]?.auxiliary?.kind).toBe(
@@ -2003,7 +2004,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     const outputItems = trace.witnesses
       .filter((witness) => witness.phase === "scriptSources")
       .flatMap((witness) =>
-        witness.auxiliary?.kind === "transactionFieldItem"
+        // C21-STAGE4 Option A: stage-4 emits the proof-only witness. The
+        // stage-2 redeemer begin shares the kind, so pin the outputs field.
+        witness.auxiliary?.kind === "transactionRedeemerItemBegin" &&
+        witness.auxiliary.collectionProof.fieldIndex === 2
           ? [witness.auxiliary.collectionProof]
           : [],
       );
