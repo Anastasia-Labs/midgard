@@ -114,13 +114,26 @@ Missing and extraneous language views are both hash mismatches.
 
 ## Reference Scripts
 
-Reference script resolution depends on reference inputs existing in Phase B
-state. The builder may attach reference inputs, but it cannot guarantee node
-state has not changed before validation. Builders must refuse script
-finalization if a required reference-script language cannot be known locally
-with canonical script bytes and material. Trusted metadata can declare the
-language/hash branch, but cannot replace non-native executable bytes or CEK
-material. Local Phase B simulation should catch snapshot-level errors only.
+Before a `CompleteTx` or `PartiallySignedTx` is created from raw native bytes,
+every body reference input must have an exact `resolvedReferenceInputs` UTxO.
+This requirement applies to native reference inputs as well as reference
+scripts: native inputs have empty CEK material, but their script presence is
+otherwise unknowable. Missing, extra, duplicate, non-canonical, or mismatched
+resolutions fail closed; node Phase B discovery and provider lookup do not
+substitute for this prelaunch context.
+
+Completion combines programs attached by the transaction with programs reached
+through that exact reference-output map, then strictly verifies the canonical
+CEK material bundle before the transaction becomes trusted. The canonical map
+is carried immutably through signing, partial assembly, chaining, and trusted
+re-import.
+
+Ledger validation still resolves reference inputs from Phase B state, which
+may have changed since construction. Builders must refuse finalization if a
+required reference-script language cannot be known locally with canonical
+script bytes and material. Trusted metadata can declare the language/hash
+branch, but cannot replace non-native executable bytes or CEK material. Local
+Phase B simulation catches snapshot-level errors only.
 
 Trusted metadata is keyed by the reference outref and declares the exact script
 language branch plus the hash in that branch. If local output CBOR contains a
@@ -128,6 +141,6 @@ script ref, the builder must verify the declaration against the decoded bytes
 and reject mismatches. A CML PlutusV3 reference script is treated as PlutusV3 by
 default; using the same bytes in the MidgardV1 hash/domain requires explicit
 trusted `MidgardV1` metadata. Metadata without local script bytes is accepted
-only for `NativeCardano`; metadata-only non-native references are rejected
-because they cannot carry the canonical envelope and exact CEK material
-required by V1.
+only for `NativeCardano` and cannot replace exact reference-input resolution on
+raw imports. Metadata-only non-native references are rejected because they
+cannot carry the canonical envelope and exact CEK material required by V1.

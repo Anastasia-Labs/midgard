@@ -47,6 +47,8 @@ export type CompleteTxMetadata = {
   readonly utxoOverrideGeneration?: number;
 };
 
+export type ReferenceOutputsByOutRef = ReadonlyMap<string, Uint8Array>;
+
 export type CompleteTxContext = {
   readonly provider?: MidgardProvider;
   readonly wallet?: () => MidgardWallet | undefined;
@@ -54,7 +56,29 @@ export type CompleteTxContext = {
   readonly maxSubmitTxCborBytes?: number;
   readonly consensusProfile?: MidgardConsensusProfileV1;
   readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly resolvedReferenceOutputsByOutRef?: ReferenceOutputsByOutRef;
 };
+
+export const cloneReferenceOutputsByOutRef = (
+  outputs: ReferenceOutputsByOutRef | undefined,
+): ReferenceOutputsByOutRef | undefined =>
+  outputs === undefined
+    ? undefined
+    : new Map(
+        [...outputs.entries()].map(([key, value]) => [key, Buffer.from(value)]),
+      );
+
+export const cloneCompleteTxContext = (
+  context: CompleteTxContext | undefined,
+): CompleteTxContext | undefined =>
+  context === undefined
+    ? undefined
+    : {
+        ...context,
+        resolvedReferenceOutputsByOutRef: cloneReferenceOutputsByOutRef(
+          context.resolvedReferenceOutputsByOutRef,
+        ),
+      };
 
 export const cloneLocalValidationReport = (
   report: LocalValidationReport | undefined,

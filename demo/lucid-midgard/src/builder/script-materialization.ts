@@ -9,6 +9,7 @@ import {
 import {
   computeHash32,
   computeScriptIntegrityHashForLanguages,
+  decodeMidgardNativeByteListPreimage,
   deriveMidgardNativeFieldCollectionV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
@@ -16,10 +17,15 @@ import {
   encodeMidgardVersionedScript,
   encodeMidgardVersionedScriptListPreimage,
   hashMidgardVersionedScript,
+  type MidgardNativeTxFullV1,
   type MidgardVersionedScript,
   type ScriptLanguageName,
 } from "@al-ft/midgard-core/codec";
 import { hexToBytes, normalizeHex } from "@al-ft/midgard-core/hex";
+import {
+  collectMidgardV1AttachedProgramEnvelopes,
+  collectMidgardV1ReferencedProgramEnvelopes,
+} from "@al-ft/midgard-core/script-proof";
 import { buildMidgardCanonicalCekProgramV1 } from "@al-ft/midgard-validation/cek-program";
 import { CML } from "@lucid-evolution/lucid";
 
@@ -296,6 +302,40 @@ const knownScriptSource = (
 export type PreparedProofBuilderState = {
   readonly state: BuilderState;
   readonly programMaterial: readonly MidgardCekProgramMaterialEntryV1[];
+};
+
+export const assertCompleteTxProgramMaterial = (
+  tx: MidgardNativeTxFullV1,
+  resolvedOutputsByOutRef: ReadonlyMap<string, Uint8Array> | undefined,
+  programMaterial: readonly MidgardCekProgramMaterialEntryV1[],
+): void => {
+  try {
+    const resolved = resolvedOutputsByOutRef ?? new Map<string, Uint8Array>();
+    const referenceInputs = decodeMidgardNativeByteListPreimage(
+      tx.body.referenceInputsPreimageCbor,
+      "reference_inputs_preimage",
+    );
+    const expected = new Set(
+      referenceInputs.map((outRef) => Buffer.from(outRef).toString("hex")),
+    );
+    for (const key of resolved.keys()) {
+      if (!expected.has(key)) {
+        throw new Error(
+          `resolved reference output map contains unexpected outref ${key}`,
+        );
+      }
+    }
+    const envelopes = [
+      ...collectMidgardV1AttachedProgramEnvelopes(tx),
+      ...collectMidgardV1ReferencedProgramEnvelopes(tx, resolved),
+    ];
+    verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial);
+  } catch (cause) {
+    throw new BuilderInvariantError(
+      "Incomplete or mismatched CEK program material",
+      cause instanceof Error ? cause.message : String(cause),
+    );
+  }
 };
 
 const insertProgramMaterial = (

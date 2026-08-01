@@ -65,10 +65,14 @@ import {
   localUtxoAt,
   localUtxosFromTx,
   nativeInputOutRefs,
+  referenceOutputsByOutRef,
+  resolveImportedReferenceInputs,
 } from "./builder/imported-tx.js";
 import {
   attachProviderMetadata,
+  cloneCompleteTxContext,
   cloneCompleteTxMetadata,
+  cloneReferenceOutputsByOutRef,
   type CompleteTxContext,
   type CompleteTxMetadata,
   expectedAddrWitnessKeyHashes,
@@ -79,6 +83,7 @@ import {
   normalizeNonNegativeBigInt,
 } from "./builder/normalizers.js";
 import {
+  assertCompleteTxProgramMaterial,
   deriveScriptMaterialization,
   mergeCanonicalProofProgramMaterial,
   normalizeMintAssetsForNormalizedPolicy,
@@ -533,7 +538,7 @@ export class CompleteTx {
     this.#txId = computeMidgardNativeTxIdV1(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
-    this.#context = context;
+    this.#context = cloneCompleteTxContext(context);
     this.partialSign = this.makePartialSignApi();
     this.sign = Object.assign(
       (wallet?: MidgardWallet): Promise<CompleteTx> =>
@@ -564,6 +569,14 @@ export class CompleteTx {
       root: Buffer.from(entry.root) as MidgardCekProgramMaterialEntryV1["root"],
       preimage: Buffer.from(entry.preimage),
     }));
+  }
+
+  get resolvedReferenceOutputsByOutRef():
+    | ReadonlyMap<string, Uint8Array>
+    | undefined {
+    return cloneReferenceOutputsByOutRef(
+      this.#context?.resolvedReferenceOutputsByOutRef,
+    );
   }
 
   toCBOR(): string {
@@ -841,11 +854,30 @@ const assertTrustedCompleteTx = (tx: CompleteTx, action: string): void => {
   }
 };
 
+const referenceOutputMapsEqual = (
+  left: ReadonlyMap<string, Uint8Array>,
+  right: ReadonlyMap<string, Uint8Array>,
+): boolean => {
+  if (left.size !== right.size) return false;
+  for (const [key, value] of left) {
+    const other = right.get(key);
+    if (other === undefined || !Buffer.from(value).equals(Buffer.from(other))) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const makeCompleteTx = (
   tx: MidgardNativeTxFullV1,
   metadata: CompleteTxMetadata,
   context?: CompleteTxContext,
 ): CompleteTx => {
+  assertCompleteTxProgramMaterial(
+    tx,
+    context?.resolvedReferenceOutputsByOutRef,
+    context?.programMaterial ?? [],
+  );
   const completed = new CompleteTx(tx, metadata, context);
   trustedCompleteTxs.add(completed);
   return completed;
@@ -949,7 +981,7 @@ export class PartiallySignedTx {
     this.#txId = computeMidgardNativeTxIdV1(tx);
     this.txIdHex = this.#txId.toString("hex");
     this.#metadata = cloneCompleteTxMetadata(metadata);
-    this.#context = context;
+    this.#context = cloneCompleteTxContext(context);
   }
 
   get tx(): MidgardNativeTxFullV1 {
@@ -2416,6 +2448,10 @@ export class TxBuilder {
     metadata: Omit<CompleteTxMetadata, "localValidation">,
     options: CompleteOptions,
     programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    resolvedReferenceOutputsByOutRef: ReadonlyMap<
+      string,
+      Uint8Array
+    > = new Map(),
   ): Promise<CompleteTx> {
     const context: CompleteTxContext = {
       provider: this.context.provider.provider,
@@ -2425,6 +2461,7 @@ export class TxBuilder {
         this.context.config.submissionLimits.maxSubmitTxCborBytes,
       consensusProfile: this.context.config.consensusProfile,
       programMaterial,
+      resolvedReferenceOutputsByOutRef,
     };
     const enrichedMetadata = attachProviderMetadata(
       metadata,
@@ -2504,6 +2541,10 @@ export class TxBuilder {
     options: CompleteOptions,
     resolved?: BalancedCompletionInputs,
     programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    resolvedReferenceOutputsByOutRef: ReadonlyMap<
+      string,
+      Uint8Array
+    > = new Map(),
   ): Promise<CompleteTx> {
     let completionInputs = resolved;
     if (completionInputs === undefined) {
@@ -2531,6 +2572,7 @@ export class TxBuilder {
       balanced.metadata,
       options,
       programMaterial,
+      resolvedReferenceOutputsByOutRef,
     );
   }
 
@@ -2557,6 +2599,7 @@ export class TxBuilder {
         options,
         undefined,
         prepared.programMaterial,
+        referenceOutputsByOutRef(state.referenceInputs),
       );
     }
 
@@ -2602,6 +2645,7 @@ export class TxBuilder {
       },
       options,
       prepared.programMaterial,
+      referenceOutputsByOutRef(state.referenceInputs),
     );
   }
 
@@ -2709,6 +2753,7 @@ export class TxBuilder {
             options,
             balancedInputs,
             prepared.programMaterial,
+            referenceOutputsByOutRef(state.referenceInputs),
           );
     const baseWalletInputs =
       balancedInputs?.walletInputs.inputs ??
@@ -3091,6 +3136,10 @@ export class LucidMidgard {
 
   private completeTxContext(
     programMaterial: readonly MidgardCekProgramMaterialEntryV1[] = [],
+    resolvedReferenceOutputsByOutRef: ReadonlyMap<
+      string,
+      Uint8Array
+    > = new Map(),
   ): CompleteTxContext {
     return {
       provider: this.#providerSnapshot.provider,
@@ -3099,6 +3148,7 @@ export class LucidMidgard {
       maxSubmitTxCborBytes: this.#config.submissionLimits.maxSubmitTxCborBytes,
       consensusProfile: this.#config.consensusProfile,
       programMaterial,
+      resolvedReferenceOutputsByOutRef,
     };
   }
 
@@ -3131,6 +3181,41 @@ export class LucidMidgard {
     const expectedBodyNetworkId = configNetworkId(this.#config);
     const tx =
       input instanceof CompleteTx ? input.tx : decodeFromTxInput(input);
+    const carriedReferenceOutputsByOutRef =
+      input instanceof CompleteTx && trustedCompleteTxs.has(input)
+        ? input.resolvedReferenceOutputsByOutRef
+        : undefined;
+    const explicitReferenceInputs =
+      options.resolvedReferenceInputs === undefined
+        ? undefined
+        : resolveImportedReferenceInputs(
+            tx,
+            options,
+            normalizeUtxo,
+            this.#config.networkId,
+          );
+    if (
+      explicitReferenceInputs !== undefined &&
+      carriedReferenceOutputsByOutRef !== undefined &&
+      !referenceOutputMapsEqual(
+        explicitReferenceInputs.outputsByOutRef,
+        carriedReferenceOutputsByOutRef,
+      )
+    ) {
+      throw new BuilderInvariantError(
+        "Conflicting resolved reference inputs",
+        "explicit resolution does not match carried canonical reference outputs",
+      );
+    }
+    const resolvedReferenceOutputsByOutRef =
+      explicitReferenceInputs?.outputsByOutRef ??
+      carriedReferenceOutputsByOutRef ??
+      resolveImportedReferenceInputs(
+        tx,
+        options,
+        normalizeUtxo,
+        this.#config.networkId,
+      ).outputsByOutRef;
     const programMaterial = mergeCanonicalProofProgramMaterial(
       input instanceof CompleteTx ? input.programMaterial : [],
       options.programMaterial ?? [],
@@ -3148,9 +3233,19 @@ export class LucidMidgard {
       ? makePartiallySignedTx(
           tx,
           metadata,
-          this.completeTxContext(programMaterial),
+          this.completeTxContext(
+            programMaterial,
+            resolvedReferenceOutputsByOutRef,
+          ),
         )
-      : makeCompleteTx(tx, metadata, this.completeTxContext(programMaterial));
+      : makeCompleteTx(
+          tx,
+          metadata,
+          this.completeTxContext(
+            programMaterial,
+            resolvedReferenceOutputsByOutRef,
+          ),
+        );
   }
 
   async walletAddress(): Promise<Address> {

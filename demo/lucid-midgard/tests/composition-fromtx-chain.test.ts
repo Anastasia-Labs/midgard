@@ -173,6 +173,12 @@ describe("fromTx, compose, and local chaining", () => {
       });
 
     const importedComplete = midgard.fromTx(completed);
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [input],
+      }),
+    ).toThrow(/Incomplete or mismatched CEK program material/u);
+
     const importedRaw = midgard.fromTx(completed.txHex, {
       resolvedSpendInputs: [input],
       programMaterial: completed.programMaterial,

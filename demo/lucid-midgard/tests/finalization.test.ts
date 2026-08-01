@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BuilderInvariantError,
+  CompleteTx,
   decodeMidgardUtxo,
   encodeMidgardTxOutput,
   LucidMidgard,
@@ -115,11 +116,12 @@ const enterpriseAddressFor = (privateKey: CML.PrivateKey): string =>
 const makeUtxo = (
   ref: OutRef,
   assets: Readonly<Record<string, bigint>>,
+  outputAddress = address,
 ): MidgardUtxo =>
   decodeMidgardUtxo({
     outRef: ref,
     outRefCbor: outRefToCbor(ref),
-    outputCbor: encodeMidgardTxOutput(address, assets),
+    outputCbor: encodeMidgardTxOutput(outputAddress, assets),
   });
 
 const makeReferenceUtxo = (ref: OutRef, script: Uint8Array): MidgardUtxo =>
@@ -245,6 +247,136 @@ describe("TxBuilder finalization", () => {
     ).rejects.toThrow(
       /V1 reference script must contain a canonical CEK program envelope/u,
     );
+    const importedRaw = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+      programMaterial: material,
+    });
+    expect(importedRaw.txHex).toBe(completed.txHex);
+    const detached = new CompleteTx(completed.tx, completed.metadata, {
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+      networkId: 0n,
+      programMaterial: material,
+      resolvedReferenceOutputsByOutRef: new Map([
+        [
+          Buffer.from(outRefToCbor(reference)).toString("hex"),
+          Buffer.from(reference.cbor!.output!),
+        ],
+      ]),
+    });
+    expect(() => midgard.fromTx(detached)).toThrow(
+      /Missing resolved reference input/u,
+    );
+    expect(
+      midgard.fromTx(detached, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [reference],
+      }).txHex,
+    ).toBe(completed.txHex);
+    expect(midgard.fromTx(completed).txHex).toBe(completed.txHex);
+    const conflictingReference = makeUtxo(makeOutRef(0x32), {
+      lovelace: 4_000_000n,
+    });
+    expect(() =>
+      midgard.fromTx(completed, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [conflictingReference],
+      }),
+    ).toThrow(/Conflicting resolved reference inputs/u);
+
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        programMaterial: material,
+      }),
+    ).toThrow(/Missing resolved reference input/u);
+
+    const wrongReference = makeReferenceUtxo(
+      makeOutRef(0x34),
+      canonical.envelopeCbor,
+    );
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [wrongReference],
+        programMaterial: material,
+      }),
+    ).toThrow(/Unexpected resolved reference input/u);
+
+    const corruptedRawMaterial = material.map((entry, index) =>
+      index === 0
+        ? { ...entry, preimage: Buffer.concat([entry.preimage, Buffer.of(0)]) }
+        : entry,
+    );
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        resolvedSpendInputs: [spend],
+        resolvedReferenceInputs: [reference],
+        programMaterial: corruptedRawMaterial,
+      }),
+    ).toThrow(/Invalid canonical CEK program material/u);
+
+    const signer = CML.PrivateKey.generate_ed25519();
+    const signerAddress = enterpriseAddressFor(signer);
+    const signerSpend = makeUtxo(
+      makeOutRef(0x37),
+      { lovelace: 2_000_000n },
+      signerAddress,
+    );
+    const signable = await midgard
+      .newTx()
+      .collectFrom([signerSpend])
+      .readFrom([reference])
+      .addSigner(signer.to_public().hash().to_hex())
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n, programMaterial: material });
+    const assembled = signable.assemble(
+      await signable.sign.withPrivateKey(signer).partial(),
+    );
+    expect(assembled).toBeInstanceOf(CompleteTx);
+    if (assembled instanceof CompleteTx) {
+      expect(
+        midgard.fromTx(assembled, { resolvedSpendInputs: [signerSpend] }).txHex,
+      ).toBe(assembled.txHex);
+    }
+  });
+
+  it("requires exact resolution for native reference inputs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x35), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x36), { lovelace: 3_000_000n });
+    const completed = await midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference])
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n });
+
+    expect(completed.programMaterial).toEqual([]);
+    expect(() =>
+      midgard.fromTx(completed.txHex, { resolvedSpendInputs: [spend] }),
+    ).toThrow(/Missing resolved reference input/u);
+    expect(() =>
+      midgard.fromTx(completed.txHex, {
+        partial: true,
+        resolvedSpendInputs: [spend],
+      }),
+    ).toThrow(/Missing resolved reference input/u);
+
+    const imported = midgard.fromTx(completed.txHex, {
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+    });
+    expect(imported.programMaterial).toEqual([]);
+    const partial = midgard.fromTx(completed.txHex, {
+      partial: true,
+      resolvedSpendInputs: [spend],
+      resolvedReferenceInputs: [reference],
+    });
+    expect("submit" in partial).toBe(false);
   });
 
   it("rejects metadata-only non-native references from both metadata ingress APIs", async () => {

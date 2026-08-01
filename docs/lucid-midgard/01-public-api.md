@@ -46,6 +46,11 @@ native hex, `{ txCbor }`, `{ txHex }`, and existing `CompleteTx` instances.
 Cardano transaction/body/witness bytes are rejected rather than converted.
 Signed raw imports require resolved spend-input pre-state unless every expected
 address witness can be derived from the body alone.
+When the native body has reference inputs, raw imports must also supply
+`resolvedReferenceInputs` containing exactly every referenced UTxO, including
+native reference inputs. The canonical reference-output bytes are retained
+through partial signing, assembly, and trusted re-import; provider lookup and
+deferred node resolution do not satisfy this prelaunch contract.
 
 ## Fluent Surface
 
