@@ -141,6 +141,7 @@ import {
   decodeConfirmedLedgerDelta,
   materializeConfirmedLedgerSnapshot,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { finalizeConfirmedMergeTransaction } from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 import { breakDownTx, ProcessedTx } from "../src/utils.js";
 import { revalidateAndPersistSpeculativeCandidateSources } from "../src/workers/commit-block-header.js";
 import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
@@ -7650,7 +7651,7 @@ describe("Phase 3 MPF durable state", () => {
   );
 
   it.effect(
-    "replays a depth-three ledger delta chain from confirmed state",
+    "replays a depth-three ledger delta chain from confirmed state in a parent-plus-child confirmed merge transaction",
     () =>
       isolatedDb(
         Effect.gen(function* () {
@@ -7948,6 +7949,145 @@ describe("Phase 3 MPF durable state", () => {
           expect(
             yield* computeLedgerMpfRootFromLedgerEntries(confirmedAfter),
           ).toBe(roots[3]);
+
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
+          const parentChildJournal =
+            yield* PendingBlockFinalizationsDB.retrieveByHeaderHash(
+              headers[1]!,
+            );
+          if (parentChildJournal._tag === "None") {
+            throw new Error("missing parent-child journal");
+          }
+          const parentChildSnapshot = yield* materializeConfirmedLedgerSnapshot(
+            parentChildJournal.value,
+          );
+          expect(parentChildSnapshot.deltaChain).toHaveLength(2);
+
+          const utxoSet = (entries: readonly LedgerUtils.Entry[]) =>
+            entries
+              .map(
+                (item) =>
+                  `${item[LedgerUtils.Columns.OUTREF].toString("hex")}:${item[
+                    LedgerUtils.Columns.OUTPUT
+                  ].toString("hex")}`,
+              )
+              .sort();
+          const mergeHeaderHash = headers[1]!;
+          const successTxHash = Buffer.alloc(32, 0x61);
+          const successDeposit = makeDepositEntry({
+            [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
+            [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+          });
+          yield* BlocksDB.insert(mergeHeaderHash, [successTxHash]);
+          yield* DepositsDB.insertEntries([successDeposit]);
+          yield* finalizeConfirmedMergeTransaction({
+            headerHash: mergeHeaderHash,
+            snapshot: parentChildSnapshot,
+            projectedDepositEventIds: [successDeposit[DepositsDB.Columns.ID]],
+            projectedWithdrawalEventIds: [],
+            projectedForcedTransactionEventIds: [],
+          });
+          const mergedConfirmed = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(mergedConfirmed)).toEqual(utxoSet(states[2]!));
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(mergedConfirmed),
+          ).toBe(roots[2]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([]);
+          const consumedDeposit = yield* DepositsDB.retrieveByEventId(
+            successDeposit[DepositsDB.Columns.ID],
+          );
+          expect(consumedDeposit._tag).toBe("Some");
+          if (consumedDeposit._tag === "Some") {
+            expect(consumedDeposit.value[DepositsDB.Columns.STATUS]).toBe(
+              DepositsDB.Status.Consumed,
+            );
+          }
+
+          yield* ConfirmedLedgerDB.clear;
+          yield* ConfirmedLedgerDB.insertMultiple([...states[0]!]);
+          const failureTxHash = Buffer.alloc(32, 0x62);
+          const failureDeposit = makeDepositEntry({
+            [DepositsDB.Columns.PROJECTED_HEADER_HASH]: mergeHeaderHash,
+            [DepositsDB.Columns.STATUS]: DepositsDB.Status.Projected,
+          });
+          yield* BlocksDB.insert(mergeHeaderHash, [failureTxHash]);
+          yield* DepositsDB.insertEntries([failureDeposit]);
+          const wrongBaseFinalization = yield* Effect.either(
+            finalizeConfirmedMergeTransaction({
+              headerHash: mergeHeaderHash,
+              snapshot: {
+                ...parentChildSnapshot,
+                baseRoot: roots[1]!,
+              },
+              projectedDepositEventIds: [failureDeposit[DepositsDB.Columns.ID]],
+              projectedWithdrawalEventIds: [],
+              projectedForcedTransactionEventIds: [],
+            }),
+          );
+          expect(wrongBaseFinalization._tag).toBe("Left");
+          const confirmedAfterWrongBase = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(confirmedAfterWrongBase)).toEqual(utxoSet(states[0]!));
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              confirmedAfterWrongBase,
+            ),
+          ).toBe(roots[0]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([failureTxHash.toString("hex")]);
+          const projectedAfterWrongBase = yield* DepositsDB.retrieveByEventId(
+            failureDeposit[DepositsDB.Columns.ID],
+          );
+          expect(projectedAfterWrongBase._tag).toBe("Some");
+          if (projectedAfterWrongBase._tag === "Some") {
+            expect(
+              projectedAfterWrongBase.value[DepositsDB.Columns.STATUS],
+            ).toBe(DepositsDB.Status.Projected);
+          }
+
+          const wrongFinalRootFinalization = yield* Effect.either(
+            finalizeConfirmedMergeTransaction({
+              headerHash: mergeHeaderHash,
+              snapshot: {
+                ...parentChildSnapshot,
+                root: roots[1]!,
+              },
+              projectedDepositEventIds: [failureDeposit[DepositsDB.Columns.ID]],
+              projectedWithdrawalEventIds: [],
+              projectedForcedTransactionEventIds: [],
+            }),
+          );
+          expect(wrongFinalRootFinalization._tag).toBe("Left");
+          const confirmedAfterWrongFinal = yield* ConfirmedLedgerDB.retrieve;
+          expect(utxoSet(confirmedAfterWrongFinal)).toEqual(
+            utxoSet(states[0]!),
+          );
+          expect(
+            yield* computeLedgerMpfRootFromLedgerEntries(
+              confirmedAfterWrongFinal,
+            ),
+          ).toBe(roots[0]);
+          expect(
+            (yield* BlocksDB.retrieveTxHashesByHeaderHash(mergeHeaderHash)).map(
+              (hash) => hash.toString("hex"),
+            ),
+          ).toEqual([failureTxHash.toString("hex")]);
+          const projectedAfterWrongFinal = yield* DepositsDB.retrieveByEventId(
+            failureDeposit[DepositsDB.Columns.ID],
+          );
+          expect(projectedAfterWrongFinal._tag).toBe("Some");
+          if (projectedAfterWrongFinal._tag === "Some") {
+            expect(
+              projectedAfterWrongFinal.value[DepositsDB.Columns.STATUS],
+            ).toBe(DepositsDB.Status.Projected);
+          }
         }),
       ),
   );

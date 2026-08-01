@@ -82,7 +82,8 @@ import { breakDownTx } from "@/utils.js";
 import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/mpf.js";
 
 import {
-  applyConfirmedLedgerDelta,
+  applyConfirmedLedgerDeltaChainTransaction,
+  type ConfirmedLedgerSnapshot,
   materializeConfirmedLedgerSnapshot,
 } from "./confirmed-ledger-snapshot.js";
 import {
@@ -119,6 +120,51 @@ export type ConfirmedMergeMpfSynchronization =
       readonly durableLedgerRoot: string;
       readonly activeGenerations: number;
     };
+
+export const finalizeConfirmedMergeTransaction = ({
+  headerHash,
+  snapshot,
+  projectedDepositEventIds,
+  projectedWithdrawalEventIds,
+  projectedForcedTransactionEventIds,
+}: {
+  readonly headerHash: Buffer;
+  readonly snapshot: ConfirmedLedgerSnapshot;
+  readonly projectedDepositEventIds: readonly Buffer[];
+  readonly projectedWithdrawalEventIds: readonly Buffer[];
+  readonly projectedForcedTransactionEventIds: readonly Buffer[];
+}): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* Effect.logInfo(
+          `🔸 Apply finalized confirmed-ledger V1 delta chain (deltas=${snapshot.deltaChain.length.toString()},root=${snapshot.root})...`,
+        );
+        yield* applyConfirmedLedgerDeltaChainTransaction(snapshot);
+        yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
+        yield* BlocksDB.clearBlock(headerHash).pipe(
+          Effect.withSpan("clear-block-from-BlocksDB"),
+        );
+        yield* DepositsDB.markConsumedByEventIds(projectedDepositEventIds).pipe(
+          Effect.withSpan("mark-merged-deposits-consumed"),
+        );
+        yield* WithdrawalsDB.markFinalizedByEventIds(
+          projectedWithdrawalEventIds,
+          headerHash,
+        ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
+        yield* ForcedTransactionsDB.markFinalizedByEventIds(
+          projectedForcedTransactionEventIds,
+          headerHash,
+        ).pipe(Effect.withSpan("mark-merged-forced-transactions-finalized"));
+      }),
+    );
+  }).pipe(
+    sqlErrorToDatabaseError(
+      "confirmed_merge_finalization",
+      "Failed to finalize confirmed-state merge locally",
+    ),
+  );
 
 /**
  * A confirmed-state merge advances the L1 queue head but does not change the
@@ -1232,41 +1278,13 @@ export const buildAndSubmitMergeTx = (
               confirmedLedgerSnapshot.delta.produced.length,
           },
         });
-        const sql = yield* SqlClient.SqlClient;
-        // - Apply the canonical finalized V1 ledger delta
-        // - Remove all the tx hashes of the merged block from BlocksDB
-        yield* sql
-          .withTransaction(
-            Effect.gen(function* () {
-              yield* Effect.logInfo(
-                `🔸 Apply finalized confirmed-ledger V1 delta (spent=${confirmedLedgerSnapshot.delta.spent.length.toString()},produced=${confirmedLedgerSnapshot.delta.produced.length.toString()},root=${confirmedLedgerSnapshotRoot})...`,
-              );
-              yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);
-              yield* Effect.logInfo("🔸 Clear block from BlocksDB...");
-              yield* BlocksDB.clearBlock(headerHash).pipe(
-                Effect.withSpan("clear-block-from-BlocksDB"),
-              );
-              yield* DepositsDB.markConsumedByEventIds(
-                projectedDepositEventIds,
-              ).pipe(Effect.withSpan("mark-merged-deposits-consumed"));
-              yield* WithdrawalsDB.markFinalizedByEventIds(
-                projectedWithdrawalEventIds,
-                headerHash,
-              ).pipe(Effect.withSpan("mark-merged-withdrawals-finalized"));
-              yield* ForcedTransactionsDB.markFinalizedByEventIds(
-                projectedForcedTransactionEventIds,
-                headerHash,
-              ).pipe(
-                Effect.withSpan("mark-merged-forced-transactions-finalized"),
-              );
-            }),
-          )
-          .pipe(
-            sqlErrorToDatabaseError(
-              "confirmed_merge_finalization",
-              "Failed to finalize confirmed-state merge locally",
-            ),
-          );
+        yield* finalizeConfirmedMergeTransaction({
+          headerHash,
+          snapshot: confirmedLedgerSnapshot,
+          projectedDepositEventIds,
+          projectedWithdrawalEventIds,
+          projectedForcedTransactionEventIds,
+        });
         const syncResult = yield* synchronizeCommitMpfAfterConfirmedMerge({
           mpfEngine: nodeConfig.MPF_ENGINE,
           nativeMpfOwner: yield* Ref.get(globals.NATIVE_MPF_OWNER),
