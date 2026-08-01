@@ -5,8 +5,8 @@ import {
   sign,
   X509Certificate,
 } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { isDeepStrictEqual, promisify } from "node:util";
@@ -82,8 +82,6 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -129,7 +127,6 @@ const tlsServers: Server[] = [];
 const tlsIdentityByProviderId = new Map<string, string>();
 const transportEndpointByProviderId = new Map<string, string>();
 let transportFixtureDirectory = "";
-let localNodeServer: Server;
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
   await new Promise((resolve, reject) => {
@@ -737,94 +734,7 @@ const makeExternalFinalityPolicy = () =>
     },
   )!;
 
-const LOCAL_NODE_ID = "watcher-node-a";
-const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
-const LOCAL_GENESIS_IDENTITY = createHash("sha256")
-  .update(LOCAL_GENESIS_BYTES)
-  .digest("hex");
-const makeLocalFinalityPolicy = (
-  queryServices: readonly Readonly<{
-    kind: "ogmios";
-    identity: string;
-    endpoint: string;
-  }>[],
-) =>
-  makeWatcherFinalityPolicyV1(
-    {
-      schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
-      mode: "development",
-      targetNetwork: "Preprod",
-      l1: {
-        source: {
-          sourceMode: "local_node",
-          authorityNodeId: LOCAL_NODE_ID,
-          chainSync: {
-            kind: "cardano_node_socket",
-            socketPath: localSource.chainSyncSocketPath,
-            genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-          },
-          queryServices,
-        },
-        requestTimeoutMs: 10_000,
-        maxConcurrency: 4,
-        finality: {
-          depth: Number(policy.requiredFinalityDepth),
-          rollback: {
-            beforeFinality: "rewind",
-            afterFinality: "quarantine",
-            maxDepth: Number(policy.requiredFinalityDepth),
-          },
-        },
-      },
-      da: {
-        peers: [
-          {
-            identity: "da-peer-a",
-            multiaddr:
-              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
-          },
-        ],
-        requestTimeoutMs: 10_000,
-        maxConcurrency: 4,
-      },
-      storage: {
-        driver: "sqlite",
-        path: "/var/lib/midgard-watcher/watcher.sqlite",
-        rollbackAuthorityKeySource: {
-          kind: "environment",
-          variable: "MIDGARD_WATCHER_ROLLBACK_AUTHORITY_KEY",
-        },
-      },
-      proverWallet: {
-        keySource: {
-          kind: "environment",
-          variable: "MIDGARD_WATCHER_PROVER_KEY",
-        },
-      },
-      deadlines: {
-        daFetchMs: 60_000,
-        daPublishMs: 60_000,
-        proofConstructMs: 300_000,
-        proofSubmitMs: 120_000,
-      },
-    },
-    {
-      manifestId: policy.deploymentMarker.manifestId,
-      network: policy.network,
-      trustRootId: policy.deploymentTrustRootId,
-      releaseEvidenceDigest: policy.releaseEvidenceDigest,
-      ruleBundleCommitment: RULE_BUNDLE_COMMITMENT,
-      programCommitments: { validation: h32("55") },
-      durableMarker: policy.deploymentMarker,
-    },
-  )!;
 let finalityPolicy: NonNullable<ReturnType<typeof makeWatcherFinalityPolicyV1>>;
-let localFinalityPolicy: NonNullable<
-  ReturnType<typeof makeWatcherFinalityPolicyV1>
->;
-let localOgmiosFinalityPolicy: NonNullable<
-  ReturnType<typeof makeWatcherFinalityPolicyV1>
->;
 
 const settlementDatum = (
   claim: { resolution_time: bigint; operator: string } | null = null,
@@ -1061,53 +971,6 @@ const externalSource = {
   ],
 } as const;
 
-const localSource = {
-  sourceMode: "local_node",
-  network: "Preprod",
-  authorityNodeId: LOCAL_NODE_ID,
-  genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-  chainSyncSocketPath: "/ipc/node.socket",
-  queryServices: [],
-} as const;
-const localChainSyncProvider = {
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  network: "Preprod",
-  providerId: "local-chain-sync",
-  source: {
-    sourceMode: "local_node",
-    authorityNodeId: LOCAL_NODE_ID,
-    surface: "chain_sync",
-  },
-  authentication: {
-    kind: "cardano_node_genesis_v1",
-    publicIdentitySha256: LOCAL_GENESIS_IDENTITY,
-  },
-} as const;
-const localOgmiosProvider = {
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  network: "Preprod",
-  providerId: "local-ogmios",
-  source: {
-    sourceMode: "local_node",
-    authorityNodeId: LOCAL_NODE_ID,
-    surface: "ogmios",
-  },
-  authentication: {
-    kind: "https_tls_identity_v1",
-    publicIdentitySha256: h32("75"),
-  },
-} as const;
-const localSourceWithOgmios = {
-  ...localSource,
-  queryServices: [
-    {
-      kind: "ogmios",
-      providerId: localOgmiosProvider.providerId,
-      endpoint: "http://127.0.0.1:1337",
-    },
-  ],
-} as const;
-
 const rollbackProvider = (
   providerId: string,
   identityByte: string,
@@ -1130,43 +993,6 @@ beforeAll(async () => {
   transportFixtureDirectory = await mkdtemp(
     join("/dev/shm", "midgard-w15-settlement-"),
   );
-  const socketPath = join(transportFixtureDirectory, "node.socket");
-  (localSource as Mutable).chainSyncSocketPath = socketPath;
-  (localSourceWithOgmios as Mutable).chainSyncSocketPath = socketPath;
-  const genesisPath = join(transportFixtureDirectory, "genesis.json");
-  await writeFile(genesisPath, LOCAL_GENESIS_BYTES);
-  localNodeServer = createNetServer();
-  await listen(localNodeServer, socketPath);
-  const localAuthority = await establishWatcherLocalNodeAuthorityTransportV1({
-    network: "Preprod",
-    authorityNodeId: LOCAL_NODE_ID,
-    providerId: localChainSyncProvider.providerId,
-    nodeSocketPath: socketPath,
-    genesisFilePath: genesisPath,
-    expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-    connectTimeoutMs: 2_000,
-  });
-  transportContexts.push(localAuthority);
-
-  const ogmiosFixture = await makeTlsTransportFixture(
-    localOgmiosProvider.providerId,
-  );
-  const ogmiosEndpoint = `https://localhost:${ogmiosFixture.port}`;
-  (localSourceWithOgmios.queryServices[0] as Mutable).endpoint = ogmiosEndpoint;
-  (localOgmiosProvider.authentication as Mutable).publicIdentitySha256 =
-    ogmiosFixture.identitySha256;
-  transportContexts.push(
-    await establishWatcherLocalNodeQueryTransportV1(localAuthority, {
-      transportKind: "https_tls",
-      providerId: localOgmiosProvider.providerId,
-      surface: "ogmios",
-      endpoint: ogmiosEndpoint,
-      caPem: ogmiosFixture.certificate,
-      expectedTlsPublicIdentitySha256: ogmiosFixture.identitySha256,
-      connectTimeoutMs: 2_000,
-    }),
-  );
-
   for (const [providerId, operatorIdentitySha256] of [
     ["provider-a", h32("97")],
     ["provider-b", h32("98")],
@@ -1200,23 +1026,13 @@ beforeAll(async () => {
     );
   }
   finalityPolicy = makeExternalFinalityPolicy();
-  localFinalityPolicy = makeLocalFinalityPolicy([]);
-  localOgmiosFinalityPolicy = makeLocalFinalityPolicy([
-    {
-      kind: "ogmios",
-      identity: "local-ogmios",
-      endpoint: ogmiosEndpoint,
-    },
-  ]);
 });
 
 afterAll(async () => {
   for (const context of transportContexts) {
     closeWatcherL1TransportAttestationContextV1(context);
   }
-  for (const server of [...tlsServers, localNodeServer]) {
-    server.close();
-  }
+  for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
@@ -1566,26 +1382,18 @@ const bundle = (input: {
     snapshot: input.snapshot,
   });
   expect(observation).not.toBeNull();
-  const source = normalized.provider.source;
-  const finalityObservations =
-    source.sourceMode === "local_node"
-      ? [{ authenticatedProvider, l1Observation }]
-      : (() => {
-          const otherProvider = rollbackProvider("provider-b", "78");
-          const otherL1Observation = structuredClone(l1Observation);
-          otherL1Observation.providerId = otherProvider.providerId;
-          return [
-            { authenticatedProvider, l1Observation },
-            {
-              authenticatedProvider: otherProvider,
-              l1Observation: otherL1Observation,
-            },
-          ];
-        })();
-  const configuredSource =
-    source.sourceMode === "local_node" ? localSource : externalSource;
-  const activeFinalityPolicy =
-    source.sourceMode === "local_node" ? localFinalityPolicy : finalityPolicy;
+  const otherProvider = rollbackProvider("provider-b", "78");
+  const otherL1Observation = structuredClone(l1Observation);
+  otherL1Observation.providerId = otherProvider.providerId;
+  const finalityObservations = [
+    { authenticatedProvider, l1Observation },
+    {
+      authenticatedProvider: otherProvider,
+      l1Observation: otherL1Observation,
+    },
+  ];
+  const configuredSource = externalSource;
+  const activeFinalityPolicy = finalityPolicy;
   const consistency = evaluateWatcherMultiProviderConsistencyV1(
     configuredSource,
     finalityObservations.map(({ authenticatedProvider, l1Observation }) =>
@@ -1780,12 +1588,10 @@ const scenarioBootstrap = (
 
 const spawnSequence = (
   options: Readonly<{
-    sourceMode?: "local_node" | "external_providers";
     emptyBlockGap?: boolean;
   }> = {},
 ) => {
-  const authenticatedProvider =
-    options.sourceMode === "local_node" ? localChainSyncProvider : provider;
+  const authenticatedProvider = provider;
   const bootstrapEvidence = bundle({
     kind: "bootstrap",
     previousState: null,
@@ -1917,15 +1723,11 @@ const spawnSequence = (
   };
 };
 
-type PostFinalityRecoverySourceMode = "local_node" | "external_providers";
-
 const postFinalitySettlementEvidence = (
-  sourceMode: PostFinalityRecoverySourceMode,
   rawObservation: Mutable,
   depth: string,
 ) => {
-  const primaryProvider =
-    sourceMode === "local_node" ? localChainSyncProvider : provider;
+  const primaryProvider = provider;
   const primaryRaw = {
     ...structuredClone(rawObservation),
     providerId: primaryProvider.providerId,
@@ -1934,56 +1736,48 @@ const postFinalitySettlementEvidence = (
       depth,
     },
   };
-  const observations =
-    sourceMode === "local_node"
-      ? [normalizeWatcherL1BlockV1(primaryProvider, primaryRaw)]
-      : [
-          normalizeWatcherL1BlockV1(provider, primaryRaw),
-          normalizeWatcherL1BlockV1(rollbackProvider("provider-b", "78"), {
-            ...structuredClone(primaryRaw),
-            providerId: "provider-b",
-          }),
-        ];
+  const observations = [
+    normalizeWatcherL1BlockV1(primaryProvider, primaryRaw),
+    normalizeWatcherL1BlockV1(rollbackProvider("provider-b", "78"), {
+      ...structuredClone(primaryRaw),
+      providerId: "provider-b",
+    }),
+  ];
   const consistency = evaluateWatcherMultiProviderConsistencyV1(
-    sourceMode === "local_node" ? localSource : externalSource,
+    externalSource,
     observations,
   );
   expect(consistency).toMatchObject({
     status: "agreed",
-    sourceMode,
-    independentProviderCount: sourceMode === "local_node" ? 1 : 2,
+    sourceMode: "external_providers",
+    independentProviderCount: 2,
   });
   return { primaryRaw, observations, consistency };
 };
 
 const postFinalitySettlementRecoveryBundle = (
-  sourceMode: PostFinalityRecoverySourceMode,
   sequence: ReturnType<typeof spawnSequence>,
 ) => {
-  const selectedFinalityPolicy =
-    sourceMode === "local_node" ? localFinalityPolicy : finalityPolicy;
+  const selectedFinalityPolicy = finalityPolicy;
   const commonRaw = (sequence.gapEvidence?.context.l1Observation ??
     sequence.bootstrapEvidence.context.l1Observation) as Mutable;
   const orphanRaw = sequence.spawnEvidence.context.l1Observation as Mutable;
-  const common = postFinalitySettlementEvidence(sourceMode, commonRaw, "0");
+  const common = postFinalitySettlementEvidence(commonRaw, "0");
   const orphanPending = postFinalitySettlementEvidence(
-    sourceMode,
     orphanRaw,
     "1",
   );
   const orphanFinalized = postFinalitySettlementEvidence(
-    sourceMode,
     orphanRaw,
     selectedFinalityPolicy.confirmationDepth,
   );
-  const replacementProvider =
-    sourceMode === "local_node" ? localChainSyncProvider : provider;
+  const replacementProvider = provider;
   const replacementRaw: Mutable = {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
     network: "Preprod",
     providerId: replacementProvider.providerId,
     chainPoint: {
-      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      blockHash: h32("e9"),
       parentBlockHash: common.observations[0]!.chainPoint.blockHash,
       slot: (BigInt(common.observations[0]!.chainPoint.slot) + 2n).toString(),
       blockNo: (
@@ -1996,7 +1790,6 @@ const postFinalitySettlementRecoveryBundle = (
     ),
   };
   const replacement = postFinalitySettlementEvidence(
-    sourceMode,
     replacementRaw,
     "0",
   );
@@ -2006,11 +1799,11 @@ const postFinalitySettlementRecoveryBundle = (
       ...structuredClone(replacementRaw),
       chainPoint: {
         blockHash: h32(
-          `${sourceMode === "local_node" ? "d" : "c"}${offset.toString()}`,
+          `c${offset.toString()}`,
         ),
         parentBlockHash:
           prior?.chainPoint.blockHash ??
-          h32(`${sourceMode === "local_node" ? "d" : "c"}2`),
+          h32("c2"),
         slot: (
           BigInt(common.observations[0]!.chainPoint.slot) + BigInt(offset + 1)
         ).toString(),
@@ -2023,7 +1816,7 @@ const postFinalitySettlementRecoveryBundle = (
     };
     return {
       raw,
-      evidence: postFinalitySettlementEvidence(sourceMode, raw, "0"),
+      evidence: postFinalitySettlementEvidence(raw, "0"),
     };
   });
   const pending = evaluateWatcherFinalityV1(
@@ -2072,9 +1865,7 @@ const postFinalitySettlementRecoveryBundle = (
             ...baseStore.chainPoints,
             ...persistedChainPoints(
               persisted,
-              sourceMode === "local_node"
-                ? localChainSyncProvider.providerId
-                : provider.providerId,
+              provider.providerId,
             ),
           ].map((entry) => [entry.chainPointId, entry]),
         ).values(),
@@ -2225,140 +2016,15 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
   });
 
-  it("accepts one local-node authority with aligned queries and rejects source or query substitution", () => {
-    const local = bundle({
-      kind: "bootstrap",
-      previousState: null,
-      snapshot: emptySnapshot(),
-      authenticatedProvider: localChainSyncProvider,
-    });
-    expect(local.context.finalityAuthority?.consistency).toMatchObject({
-      status: "agreed",
-      sourceMode: "local_node",
-      authorityNodeId: LOCAL_NODE_ID,
-      independentProviderCount: 1,
-      queryObservationCount: 0,
-    });
-    expect(accepted(null, local).snapshot).toEqual(emptySnapshot());
-
-    const contextWithQuery = (
-      mutateQuery?: (query: Mutable) => void,
-    ): Mutable => {
-      const context = structuredClone(local.context) as Mutable;
-      const query = structuredClone(context.l1Observation) as Mutable;
-      query.providerId = localOgmiosProvider.providerId;
-      mutateQuery?.(query);
-      const observations = [
-        {
-          authenticatedProvider: localChainSyncProvider,
-          l1Observation: context.l1Observation,
-        },
-        {
-          authenticatedProvider: localOgmiosProvider,
-          l1Observation: query,
-        },
-      ];
-      const consistency = evaluateWatcherMultiProviderConsistencyV1(
-        localSourceWithOgmios,
-        observations.map(({ authenticatedProvider, l1Observation }) =>
-          normalizeWatcherL1BlockV1(authenticatedProvider, l1Observation),
-        ),
-      );
-      context.finalityAuthority = {
-        policy: localOgmiosFinalityPolicy,
-        lineage: [],
-        previousState: null,
-        observations,
-        consistency,
-        result: evaluateWatcherFinalityV1(
-          localOgmiosFinalityPolicy,
-          null,
-          consistency,
-        ),
-      };
-      return context;
-    };
-    const aligned = contextWithQuery();
-    expect(aligned.finalityAuthority.consistency).toMatchObject({
-      status: "agreed",
-      sourceMode: "local_node",
-      independentProviderCount: 1,
-      queryObservationCount: 1,
-      reasonCodes: ["local_node_consistent"],
-    });
-    expect(
-      accepted(null, {
-        ...local,
-        context: aligned as WatcherSettlementPublicContextV1,
-      }).snapshot,
-    ).toEqual(emptySnapshot());
-
-    const queryOnly = bundle({
-      kind: "bootstrap",
-      previousState: null,
-      snapshot: emptySnapshot(),
-      authenticatedProvider: localOgmiosProvider,
-    });
-    expect(queryOnly.context.finalityAuthority?.consistency).toMatchObject({
-      status: "quarantined",
-      reasonCodes: expect.arrayContaining(["missing_chain_sync_authority"]),
-    });
-    expect(
-      evaluateWatcherSettlementIndexerV1(
-        policy,
-        null,
-        queryOnly.observation,
-        queryOnly.context,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-
-    const mismatchedQuery = contextWithQuery((query) => {
-      query.transactions = [];
-    });
-    expect(mismatchedQuery.finalityAuthority.consistency).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["block_content_mismatch"],
-    });
-    expect(
-      evaluateWatcherSettlementIndexerV1(
-        policy,
-        null,
-        local.observation,
-        mismatchedQuery,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-
-    const substitutedMode = structuredClone(aligned) as Mutable;
-    substitutedMode.finalityAuthority.policy = finalityPolicy;
-    expect(
-      evaluateWatcherSettlementIndexerV1(
-        policy,
-        null,
-        local.observation,
-        substitutedMode,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-  });
-
-  it.each(["local_node", "external_providers"] as const)(
-    "rejects %s two-step competing forks and oversized W12 evidence before indexing",
-    (sourceMode) => {
-      const authenticatedProvider =
-        sourceMode === "local_node" ? localChainSyncProvider : provider;
+  it(
+    "rejects external-provider two-step competing forks and oversized W12 evidence before indexing",
+    () => {
+      const authenticatedProvider = provider;
       const initial = bundle({
         kind: "bootstrap",
         previousState: null,
         snapshot: emptySnapshot(),
-        inputs: [h32(sourceMode === "local_node" ? "c1" : "c2") + "#0"],
+        inputs: [h32("c2") + "#0"],
         authenticatedProvider,
       });
       const oversized = structuredClone(initial.context) as Mutable;
@@ -2432,7 +2098,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         kind: "bootstrap",
         previousState: null,
         snapshot: emptySnapshot(),
-        inputs: [h32(sourceMode === "local_node" ? "c5" : "c6") + "#0"],
+        inputs: [h32("c6") + "#0"],
         outputHexes: [settlementOutput()],
         mint: [
           {
@@ -2467,7 +2133,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         kind: "bootstrap",
         previousState: state,
         snapshot: emptySnapshot(),
-        inputs: [h32(sourceMode === "local_node" ? "c3" : "c4") + "#0"],
+        inputs: [h32("c4") + "#0"],
         restartBindings: [initial.restartBinding],
         authenticatedProvider,
         chainPointOffset: 2n,
@@ -2486,10 +2152,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     },
   );
 
-  it.each(["local_node", "external_providers"] as const)(
-    "authenticates %s settlement ancestry across an empty intermediate block",
-    (sourceMode) => {
-      const sequence = spawnSequence({ sourceMode, emptyBlockGap: true });
+  it("authenticates external-provider settlement ancestry across an empty intermediate block", () => {
+      const sequence = spawnSequence({ emptyBlockGap: true });
       expect(sequence.spawnState.snapshot).toMatchObject({
         resources: [{ role: "settlement" }],
         subjects: [{ status: "open" }],
@@ -5515,15 +5179,13 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     });
   });
 
-  it.each<PostFinalityRecoverySourceMode>(["local_node", "external_providers"])(
-    "consumes an exact %s W13 post-finality recovery, prunes W16 orphan state, restarts, and resumes",
-    (sourceMode) => {
+  it(
+    "consumes an exact external-provider W13 post-finality recovery, prunes W16 orphan state, restarts, and resumes",
+    () => {
       const sparseSequence = spawnSequence({
-        sourceMode,
         emptyBlockGap: true,
       });
       const recovery = postFinalitySettlementRecoveryBundle(
-        sourceMode,
         sparseSequence,
       );
       expect(recovery.recovery.removedRecords.protocolUtxoOutRefs).toContain(
@@ -5638,13 +5300,9 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
   it("records an authenticated W16 recovery when W13 removed no indexed settlement change", () => {
     const sequence = spawnSequence({
-      sourceMode: "external_providers",
       emptyBlockGap: true,
     });
-    const recovery = postFinalitySettlementRecoveryBundle(
-      "external_providers",
-      sequence,
-    );
+    const recovery = postFinalitySettlementRecoveryBundle(sequence);
     const evidence = bundle({
       kind: "rollback",
       previousState: sequence.bootstrapState,
@@ -5694,10 +5352,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
 
   it("rejects forged, mismatched, wrong-target, wrong-mode, and duplicate-only W13 recovery evidence", () => {
     const sequence = spawnSequence();
-    const recovery = postFinalitySettlementRecoveryBundle(
-      "external_providers",
-      sequence,
-    );
+    const recovery = postFinalitySettlementRecoveryBundle(sequence);
     const evaluate = (
       observation: WatcherSettlementObservationV1,
       context: WatcherSettlementPublicContextV1,
@@ -5739,8 +5394,10 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
     const wrongModeContext = structuredClone(
       recovery.recoveryEvidence.context,
     ) as WatcherSettlementPublicContextV1;
-    (wrongModeContext.rollbackAuthority!.context as unknown as Mutable).policy =
-      localFinalityPolicy;
+    (wrongModeContext.rollbackAuthority!.context as unknown as Mutable).policy = {
+      ...finalityPolicy,
+      sourceMode: "local_node",
+    };
     expect(
       evaluate(recovery.recoveryEvidence.observation, wrongModeContext),
     ).toMatchObject({

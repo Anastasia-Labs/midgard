@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer as createNetServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +15,6 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
   establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
@@ -44,8 +43,6 @@ const transportContexts = new Map<
 >();
 const tlsIdentities = new Map<string, string>();
 let transportFixtureDirectory = "";
-let localServer: Server;
-let localQueryServer: Server;
 const tlsServers: Server[] = [];
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
@@ -106,40 +103,6 @@ beforeAll(async () => {
   transportFixtureDirectory = await mkdtemp(
     join(tmpdir(), "midgard-w10-l1-adapter-"),
   );
-  const socketPath = join(transportFixtureDirectory, "node.socket");
-  const genesisPath = join(transportFixtureDirectory, "genesis.json");
-  const genesisBytes = Buffer.from('{"networkMagic":1}', "utf8");
-  await writeFile(genesisPath, genesisBytes);
-  localServer = createNetServer();
-  await listen(localServer, socketPath);
-  localQueryServer = createNetServer();
-  await listen(localQueryServer, 0);
-  const queryAddress = localQueryServer.address();
-  if (queryAddress === null || typeof queryAddress === "string") {
-    throw new Error("query fixture did not bind a TCP port");
-  }
-  const authority = await establishWatcherLocalNodeAuthorityTransportV1({
-    network: "Preprod",
-    authorityNodeId: "watcher-node-a",
-    providerId: "chain-sync",
-    nodeSocketPath: socketPath,
-    genesisFilePath: genesisPath,
-    expectedGenesisIdentitySha256: createHash("sha256")
-      .update(genesisBytes)
-      .digest("hex"),
-    connectTimeoutMs: 2_000,
-  });
-  transportContexts.set("local:chain_sync:chain-sync", authority);
-  transportContexts.set(
-    "local:ogmios:ogmios",
-    await establishWatcherLocalNodeQueryTransportV1(authority, {
-      transportKind: "tcp",
-      providerId: "ogmios",
-      surface: "ogmios",
-      endpoint: `http://127.0.0.1:${queryAddress.port.toString()}/ogmios`,
-      connectTimeoutMs: 2_000,
-    }),
-  );
   for (const [providerId, identityByte, fixtureName] of [
     ["provider-a", "aa", "provider-a"],
     ["provider-b", "bb", "provider-b"],
@@ -165,7 +128,7 @@ afterAll(async () => {
   for (const context of transportContexts.values()) {
     closeWatcherL1TransportAttestationContextV1(context);
   }
-  for (const server of [...tlsServers, localServer, localQueryServer]) {
+  for (const server of tlsServers) {
     server.close();
   }
   await rm(transportFixtureDirectory, { recursive: true, force: true });
@@ -193,15 +156,6 @@ const providerMetadata = (
 
 const provider = (providerId = "provider-a", identityByte = "aa") =>
   transportContexts.get(`external:${providerId}:${identityByte}`)!;
-
-const localProvider = (
-  surface: "chain_sync" | "ogmios" | "kupo" | "kupmios" | "db_sync",
-  providerId = surface.replace("_", "-"),
-  identityByte = surface === "chain_sync" ? "cc" : "dd",
-) => {
-  void identityByte;
-  return transportContexts.get(`local:${surface}:${providerId}`)!;
-};
 
 const publicBytes = (bytesHex: string): MutableRecord => ({
   ...makeWatcherL1PublicBytesV1(bytesHex),
@@ -412,11 +366,6 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(details?.transportEndpoint).toMatch(
       /^https:\/\/localhost:[0-9]+\/provider-a$/u,
     );
-    expect(
-      watcherL1TransportAttestationDetailsV1(
-        transportContexts.get("local:chain_sync:chain-sync"),
-      )?.transportEndpoint,
-    ).toMatch(/\/node\.socket$/u);
 
     expect(normalizeWatcherL1BlockV1(context, observation()).provider).toEqual({
       schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
@@ -629,29 +578,50 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(second.observationDigest).not.toBe(first.observationDigest);
   });
 
-  it("binds a local chain-sync authority and aligned query surfaces without changing actual Cardano bytes", () => {
-    const chainSync = normalizeWatcherL1BlockV1(localProvider("chain_sync"), {
-      ...observation(),
-      providerId: "chain-sync",
-    });
-    const ogmios = normalizeWatcherL1BlockV1(localProvider("ogmios"), {
-      ...observation(),
-      providerId: "ogmios",
-    });
+  it("retires the pathname authority from both public module surfaces", async () => {
+    const publicModule = await import("../src/index.js");
+    const adapterModule = await import("../src/l1-adapter.js");
 
-    expect(chainSync.provider.source).toEqual({
-      sourceMode: "local_node",
-      authorityNodeId: "watcher-node-a",
-      surface: "chain_sync",
+    expect(
+      "establishWatcherLocalNodeAuthorityTransportV1" in publicModule,
+    ).toBe(false);
+    expect(
+      "establishWatcherLocalNodeAuthorityTransportV1" in adapterModule,
+    ).toBe(false);
+  });
+
+  it("rejects forged local query authority before opening a socket", async () => {
+    let connectionCount = 0;
+    const server = createNetServer(() => {
+      connectionCount += 1;
     });
-    expect(ogmios.provider.source).toEqual({
-      sourceMode: "local_node",
-      authorityNodeId: "watcher-node-a",
-      surface: "ogmios",
+    await listen(server, 0);
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("query guard fixture did not bind a TCP port");
+    }
+    const forgedContext = {
+      schemaVersion:
+        "midgard-watcher-l1-transport-attestation-context-v1" as const,
+      attestationDigest: "00".repeat(32),
+    };
+
+    await expect(
+      establishWatcherLocalNodeQueryTransportV1(forgedContext, {
+        transportKind: "tcp",
+        providerId: "ogmios",
+        surface: "ogmios",
+        endpoint: `http://127.0.0.1:${address.port.toString()}/ogmios`,
+        connectTimeoutMs: 2_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_field",
+      path: "$.localNodeAuthorityContext",
     });
-    expect(ogmios.blockContentDigest).toBe(chainSync.blockContentDigest);
-    expect(ogmios.transactions).toEqual(chainSync.transactions);
-    expect(ogmios.observationDigest).not.toBe(chainSync.observationDigest);
+    expect(connectionCount).toBe(0);
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
   });
 
   it("rejects mismatched network and provider claims", () => {
@@ -820,40 +790,28 @@ describe("provider-neutral authenticated L1 adapter", () => {
     );
   });
 
-  it.each([
-    {
-      mode: "external_providers",
-      authenticatedProvider: () => provider(),
-      providerId: "provider-a",
-    },
-    {
-      mode: "local_node",
-      authenticatedProvider: () => localProvider("chain_sync"),
-      providerId: "chain-sync",
-    },
-  ])(
-    "rejects detached script and redeemer views in $mode mode while transaction identity stays unchanged",
-    ({ authenticatedProvider, providerId }) => {
-      const alteredScript = observation();
-      alteredScript.providerId = providerId;
-      alteredScript.transactions[0].scripts[0].bytes = publicBytes("00");
-      rejected(
-        () => normalizeWatcherL1BlockV1(authenticatedProvider(), alteredScript),
-        "identity_mismatch",
-        "$.transactions[0].scripts",
-      );
+  it("rejects detached script and redeemer views while transaction identity stays unchanged", () => {
+    const authenticatedProvider = () => provider();
+    const providerId = "provider-a";
+    const alteredScript = observation();
+    alteredScript.providerId = providerId;
+    alteredScript.transactions[0].scripts[0].bytes = publicBytes("00");
+    rejected(
+      () => normalizeWatcherL1BlockV1(authenticatedProvider(), alteredScript),
+      "identity_mismatch",
+      "$.transactions[0].scripts",
+    );
 
-      const alteredRedeemer = observation();
-      alteredRedeemer.providerId = providerId;
-      alteredRedeemer.transactions[0].redeemers[0].bytes = publicBytes("00");
-      rejected(
-        () =>
-          normalizeWatcherL1BlockV1(authenticatedProvider(), alteredRedeemer),
-        "identity_mismatch",
-        "$.transactions[0].redeemers",
-      );
-    },
-  );
+    const alteredRedeemer = observation();
+    alteredRedeemer.providerId = providerId;
+    alteredRedeemer.transactions[0].redeemers[0].bytes = publicBytes("00");
+    rejected(
+      () =>
+        normalizeWatcherL1BlockV1(authenticatedProvider(), alteredRedeemer),
+      "identity_mismatch",
+      "$.transactions[0].redeemers",
+    );
+  });
 
   it("rejects a detached witness-set snapshot under an unchanged full transaction", () => {
     const alteredWitnessSet = observation();

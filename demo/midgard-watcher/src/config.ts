@@ -43,6 +43,11 @@ export type WatcherLocalNodeQueryServiceConfig = Readonly<{
   endpoint: string;
 }>;
 
+/**
+ * Local-node is retained as a pure source-mode vocabulary for the future
+ * peer-authenticated adapter and state machines. The current wire parser
+ * rejects it before inspecting any socket-path fields.
+ */
 export type WatcherL1SourceConfig =
   | Readonly<{
       sourceMode: "local_node";
@@ -370,43 +375,6 @@ const parseExternalProviderEndpoint = (
   return { endpoint, aliasKey };
 };
 
-const parseLocalQueryEndpoint = (
-  value: unknown,
-  path: string,
-  kind: WatcherLocalNodeQueryServiceKind,
-): Readonly<{ endpoint: string; aliasKey: string }> => {
-  const endpoint = exactString(value, path, { maxLength: 2_048 });
-  let url: URL;
-  try {
-    url = new URL(endpoint);
-  } catch {
-    fail("invalid_endpoint", path);
-  }
-  const allowedProtocols: Readonly<
-    Record<WatcherLocalNodeQueryServiceKind, readonly string[]>
-  > = {
-    ogmios: ["http:", "https:", "ws:", "wss:"],
-    kupo: ["http:", "https:"],
-    kupmios: ["http:", "https:", "ws:", "wss:"],
-    db_sync: ["postgresql:"],
-  };
-  const privateTransport = ["http:", "ws:", "postgresql:"].includes(
-    url.protocol,
-  );
-  if (
-    !allowedProtocols[kind].includes(url.protocol) ||
-    url.username.length > 0 ||
-    url.password.length > 0 ||
-    url.search.length > 0 ||
-    url.hash.length > 0 ||
-    (privateTransport && isPublicHostname(url.hostname))
-  ) {
-    fail("invalid_endpoint", path);
-  }
-  const aliasKey = `${url.protocol}//${url.host.toLowerCase()}${url.pathname.replace(/\/+$/u, "")}`;
-  return { endpoint, aliasKey };
-};
-
 const DA_MULTIADDR_PATTERN =
   /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})(?:\/tls)?(?:\/ws)?\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
 
@@ -486,49 +454,6 @@ const parseProviders = (
       return Object.freeze({
         identity,
         operatorIdentitySha256,
-        endpoint: endpoint.endpoint,
-      });
-    }),
-  );
-};
-
-const parseLocalQueryServices = (
-  value: unknown,
-): readonly WatcherLocalNodeQueryServiceConfig[] => {
-  const values = boundedArray(
-    value,
-    "$.l1.source.queryServices",
-    WATCHER_CONFIG_BOUNDS.queryServices,
-  );
-  const identities = new Set<string>();
-  const endpoints = new Set<string>();
-  return Object.freeze(
-    values.map((entry, index) => {
-      const path = `$.l1.source.queryServices[${index.toString()}]`;
-      const record = exactRecord(entry, path, ["kind", "identity", "endpoint"]);
-      const kind = enumValue(record.kind, `${path}.kind`, [
-        "ogmios",
-        "kupo",
-        "kupmios",
-        "db_sync",
-      ] as const);
-      const identity = exactString(record.identity, `${path}.identity`, {
-        maxLength: 32,
-        pattern: IDENTITY_PATTERN,
-      });
-      const endpoint = parseLocalQueryEndpoint(
-        record.endpoint,
-        `${path}.endpoint`,
-        kind,
-      );
-      if (identities.has(identity) || endpoints.has(endpoint.aliasKey)) {
-        fail("provider_alias", path);
-      }
-      identities.add(identity);
-      endpoints.add(endpoint.aliasKey);
-      return Object.freeze({
-        kind,
-        identity,
         endpoint: endpoint.endpoint,
       });
     }),
@@ -633,47 +558,7 @@ const parseL1Source = (
 ): WatcherL1SourceConfig => {
   const preliminary = plainRecord(value, "$.l1.source");
   if (preliminary.sourceMode === "local_node") {
-    const source = exactRecord(value, "$.l1.source", [
-      "sourceMode",
-      "authorityNodeId",
-      "chainSync",
-      "queryServices",
-    ]);
-    const chainSync = exactRecord(source.chainSync, "$.l1.source.chainSync", [
-      "kind",
-      "socketPath",
-      "genesisIdentitySha256",
-    ]);
-    return Object.freeze({
-      sourceMode: "local_node",
-      authorityNodeId: exactString(
-        source.authorityNodeId,
-        "$.l1.source.authorityNodeId",
-        {
-          maxLength: 32,
-          pattern: IDENTITY_PATTERN,
-        },
-      ),
-      chainSync: Object.freeze({
-        kind: enumValue(chainSync.kind, "$.l1.source.chainSync.kind", [
-          "cardano_node_socket",
-        ] as const),
-        socketPath: requireAbsoluteFilePath(
-          chainSync.socketPath,
-          "$.l1.source.chainSync.socketPath",
-          false,
-        ),
-        genesisIdentitySha256: exactString(
-          chainSync.genesisIdentitySha256,
-          "$.l1.source.chainSync.genesisIdentitySha256",
-          {
-            maxLength: 64,
-            pattern: HEX_32_PATTERN,
-          },
-        ),
-      }),
-      queryServices: parseLocalQueryServices(source.queryServices),
-    });
+    fail("invalid_value", "$.l1.source.sourceMode");
   }
   if (preliminary.sourceMode === "external_providers") {
     const source = exactRecord(value, "$.l1.source", [

@@ -1,6 +1,6 @@
 import { createHash, X509Certificate } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 
@@ -31,8 +31,6 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -268,11 +266,6 @@ let watcherTransportFixtureDirectory: string | null = null;
 const watcherTransportFixtureServers: Server[] = [];
 let externalProviderATransport: WatcherL1TransportAttestationContextV1;
 let externalProviderBTransport: WatcherL1TransportAttestationContextV1;
-let localNodeAuthorityTransport: WatcherL1TransportAttestationContextV1;
-let localNodeQueryTransport: WatcherL1TransportAttestationContextV1;
-let localGenesisIdentitySha256 = hex32("a1");
-let localNodeSocketPath = "/tmp/midgard-w13-uninitialized-node.socket";
-let localQueryEndpoint = "ws://127.0.0.1:1/ogmios";
 let externalProviderEndpoints: readonly [string, string] = [
   "https://localhost:1/provider-a",
   "https://localhost:1/provider-b",
@@ -483,26 +476,6 @@ const config = (depth = 5) => ({
   },
 });
 
-const localConfig = (depth = 5) => {
-  const base = config(depth);
-  return {
-    ...base,
-    l1: {
-      ...base.l1,
-      source: {
-        sourceMode: "local_node" as const,
-        authorityNodeId: "cardano-node-a",
-        chainSync: {
-          kind: "cardano_node_socket" as const,
-          socketPath: localNodeSocketPath,
-          genesisIdentitySha256: localGenesisIdentitySha256,
-        },
-        queryServices: [],
-      },
-    },
-  };
-};
-
 const deploymentIdentity = (manifestByte = "11", releaseByte = "22") => ({
   manifestId: hex32(manifestByte),
   network: "Preprod" as const,
@@ -520,40 +493,6 @@ const policy = (
   const value = makeWatcherFinalityPolicyV1(
     config(),
     deploymentIdentity(manifestByte, releaseByte),
-  );
-  expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
-};
-
-const localPolicy = (): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(
-    localConfig(),
-    deploymentIdentity(),
-  );
-  expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
-};
-
-const recoveryLocalPolicy = (): WatcherFinalityPolicyV1 => {
-  const base = localConfig();
-  const value = makeWatcherFinalityPolicyV1(
-    {
-      ...base,
-      l1: {
-        ...base.l1,
-        source: {
-          ...base.l1.source,
-          queryServices: [
-            {
-              kind: "ogmios",
-              identity: "cardano-node-a-ogmios",
-              endpoint: localQueryEndpoint,
-            },
-          ],
-        },
-      },
-    },
-    deploymentIdentity(),
   );
   expect(value).not.toBeNull();
   return value as WatcherFinalityPolicyV1;
@@ -619,45 +558,6 @@ const observation = (
       transactions:
         point.bodyHex === undefined ? [] : [transaction(point.bodyHex)],
     },
-  );
-
-const localObservation = (
-  point: Point,
-  surface: "chain_sync" | "ogmios" = "chain_sync",
-): WatcherNormalizedL1BlockV1 =>
-  normalizeWatcherL1BlockV1(
-    surface === "chain_sync"
-      ? localNodeAuthorityTransport
-      : localNodeQueryTransport,
-    {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-      network: "Preprod",
-      providerId:
-        surface === "chain_sync" ? "cardano-node-a" : "cardano-node-a-ogmios",
-      chainPoint: {
-        blockHash: point.blockHash,
-        parentBlockHash: point.parentBlockHash ?? null,
-        slot: point.slot,
-        blockNo: point.blockNo,
-        depth: point.depth,
-      },
-      transactions:
-        point.bodyHex === undefined ? [] : [transaction(point.bodyHex)],
-    },
-  );
-
-const localAgreement = (point: Point) =>
-  evaluateWatcherMultiProviderConsistencyV1(
-    {
-      sourceMode: "local_node",
-      network: "Preprod",
-      authorityNodeId: "cardano-node-a",
-      genesisIdentitySha256: localGenesisIdentitySha256,
-      chainSyncSocketPath: localNodeSocketPath,
-      queryServices: [],
-    },
-    [localObservation(point)],
-    watcherTransportAttestations,
   );
 
 const agreement = (point: Point) =>
@@ -955,33 +855,16 @@ const finalizedPoint = {
   depth: "5",
 } as const;
 
-type RecoverySourceMode = "local_node" | "external_providers";
+type RecoverySourceMode = "external_providers";
 
-const recoveryAgreement = (sourceMode: RecoverySourceMode, point: Point) => {
-  const observations =
-    sourceMode === "local_node"
-      ? [localObservation(point), localObservation(point, "ogmios")]
-      : agreementObservations(point);
+const recoveryAgreement = (_sourceMode: RecoverySourceMode, point: Point) => {
+  const observations = agreementObservations(point);
   return {
     observations,
     consistency: evaluateWatcherMultiProviderConsistencyV1(
-      sourceMode === "local_node"
-        ? {
-            sourceMode: "local_node",
-            network: "Preprod",
-            authorityNodeId: "cardano-node-a",
-            genesisIdentitySha256: localGenesisIdentitySha256,
-            chainSyncSocketPath: localNodeSocketPath,
-            queryServices: [
-              {
-                kind: "ogmios" as const,
-                providerId: "cardano-node-a-ogmios",
-                endpoint: localQueryEndpoint,
-              },
-            ],
-          }
-        : externalSource(),
+      externalSource(),
       observations,
+      watcherTransportAttestations,
     ),
   };
 };
@@ -1014,8 +897,7 @@ const postFinalityRecoveryFixture = (
     omitPreviousEvidenceAt?: number;
   }> = {},
 ) => {
-  const finalityPolicy =
-    sourceMode === "local_node" ? recoveryLocalPolicy() : policy();
+  const finalityPolicy = policy();
   const common: Point = {
     blockHash: hex32("01"),
     parentBlockHash: hex32("00"),
@@ -1149,58 +1031,6 @@ describe("canonical watcher rollback engine", () => {
     watcherTransportFixtureDirectory = await mkdtemp(
       join("/dev/shm", "midgard-w13-transports-"),
     );
-    const nodeSocketPath = join(
-      watcherTransportFixtureDirectory,
-      "cardano-node.socket",
-    );
-    localNodeSocketPath = nodeSocketPath;
-    const genesisFilePath = join(
-      watcherTransportFixtureDirectory,
-      "preprod-genesis.json",
-    );
-    const genesisBytes = Buffer.from('{"network":"Preprod"}\n', "utf8");
-    await writeFile(genesisFilePath, genesisBytes);
-    localGenesisIdentitySha256 = createHash("sha256")
-      .update(genesisBytes)
-      .digest("hex");
-
-    const localServer = createNetServer((socket) => {
-      socket.on("error", () => undefined);
-    });
-    await listen(localServer, nodeSocketPath);
-    watcherTransportFixtureServers.push(localServer);
-
-    localNodeAuthorityTransport =
-      await establishWatcherLocalNodeAuthorityTransportV1({
-        network: "Preprod",
-        authorityNodeId: "cardano-node-a",
-        providerId: "cardano-node-a",
-        nodeSocketPath,
-        genesisFilePath,
-        expectedGenesisIdentitySha256: localGenesisIdentitySha256,
-        connectTimeoutMs: 5_000,
-      });
-    const localQueryServer = createNetServer((socket) => {
-      socket.on("error", () => undefined);
-    });
-    await listen(localQueryServer, 0, "127.0.0.1");
-    watcherTransportFixtureServers.push(localQueryServer);
-    const localQueryAddress = localQueryServer.address();
-    if (localQueryAddress === null || typeof localQueryAddress === "string") {
-      throw new Error("missing W13 local query fixture address");
-    }
-    localQueryEndpoint = `ws://127.0.0.1:${localQueryAddress.port.toString()}/ogmios`;
-    localNodeQueryTransport = await establishWatcherLocalNodeQueryTransportV1(
-      localNodeAuthorityTransport,
-      {
-        transportKind: "tcp",
-        providerId: "cardano-node-a-ogmios",
-        surface: "ogmios",
-        endpoint: localQueryEndpoint,
-        connectTimeoutMs: 5_000,
-      },
-    );
-
     const externalContexts = await Promise.all(
       testTlsIdentities.map(async ({ cert, key }, index) => {
         const server = createTlsServer({ cert, key }, (socket) => {
@@ -1234,8 +1064,6 @@ describe("canonical watcher rollback engine", () => {
     externalProviderATransport = await externalContexts[0]!.established;
     externalProviderBTransport = await externalContexts[1]!.established;
     watcherTransportAttestations = Object.freeze([
-      localNodeAuthorityTransport,
-      localNodeQueryTransport,
       externalProviderATransport,
       externalProviderBTransport,
     ]);
@@ -1258,115 +1086,14 @@ describe("canonical watcher rollback engine", () => {
     watcherTransportAttestations = [];
   });
 
-  it("applies and replays an exact one-authority local-node rollback", () => {
-    const finalityPolicy = localPolicy();
-    const prior = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      null,
-      localAgreement(oldPoint),
-    ).state as WatcherFinalityStateV1;
-    const consistency = localAgreement(replacementPoint);
-    const finalityResult = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      prior,
-      consistency,
-    );
-    expect(finalityResult.action).toBe("rewind_pending");
-    const replacementObservation = localObservation(replacementPoint);
-    const store = combine(
-      finalityPolicy.deploymentMarker,
-      "0",
-      [graph("10", oldPoint), graph("20", replacementPoint)],
-      undefined,
-      [replacementObservation],
-    );
-    const bootstrapState = bootstrap(finalityPolicy, store, prior);
-    expect(
-      evaluateWatcherRollbackBoundaryV1(
-        finalityPolicy,
-        store,
-        prior,
-        consistency,
-        finalityResult,
-        bootstrapState,
-        bootstrapState,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["replacement_evidence_missing"],
-    });
-    const applied = evaluateWatcherRollbackV1(
-      finalityPolicy,
-      store,
-      prior,
-      consistency,
-      finalityResult,
-      bootstrapState,
-      bootstrapState,
-    );
-
-    expect(consistency).toMatchObject({
-      status: "agreed",
-      sourceMode: "local_node",
-      observationCount: 1,
-      independentProviderCount: 1,
-      chainAuthorityObservationDigest: replacementObservation.observationDigest,
-    });
-    expect(applied).toMatchObject({
-      action: "apply_rewind",
-      protocolDecision: "resume_pending",
-      rollbackState: { transitionCount: "1" },
-    });
-    expect(applied.removedRecords.reconstructedBlockHashes).toContain(
-      graph("10", oldPoint).ids.blockHash,
-    );
-    expect(
-      evaluateWatcherRollbackV1(
-        finalityPolicy,
-        applied.nextStore,
-        prior,
-        consistency,
-        finalityResult,
-        JSON.parse(JSON.stringify(applied.rollbackState)),
-        bootstrapState,
-      ),
-    ).toMatchObject({
-      action: "duplicate_rewind",
-      rollbackState: applied.rollbackState,
-    });
-
-    const substitutedConsistency = agreement(replacementPoint);
-    const substitutedFinality = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      prior,
-      substitutedConsistency,
-    );
-    expect(
-      evaluateWatcherRollbackV1(
-        finalityPolicy,
-        store,
-        prior,
-        substitutedConsistency,
-        substitutedFinality,
-        bootstrapState,
-        bootstrapState,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_finality_result"],
-      nextStore: null,
-      rollbackState: null,
-    });
-  });
-
   it("recovers authority initialization crashes and rejects stale concurrent rollback writers", async () => {
-    const finalityPolicy = localPolicy();
+    const finalityPolicy = policy();
     const prior = evaluateWatcherFinalityV1(
       finalityPolicy,
       null,
-      localAgreement(oldPoint),
+      agreement(oldPoint),
     ).state as WatcherFinalityStateV1;
-    const consistency = localAgreement(replacementPoint);
+    const consistency = agreement(replacementPoint);
     const finalityResult = evaluateWatcherFinalityV1(
       finalityPolicy,
       prior,
@@ -1377,7 +1104,7 @@ describe("canonical watcher rollback engine", () => {
       "0",
       [graph("10", oldPoint), graph("20", replacementPoint)],
       undefined,
-      [localObservation(replacementPoint)],
+      agreementObservations(replacementPoint),
     );
 
     const beforeCommit = new MemoryRollbackAuthorityBackend();
@@ -2068,7 +1795,7 @@ describe("canonical watcher rollback engine", () => {
     ).toEqual(["rollback_state_store_mismatch"]);
   });
 
-  it.each<RecoverySourceMode>(["local_node", "external_providers"])(
+  it.each<RecoverySourceMode>(["external_providers"])(
     "automatically recovers an agreed %s replacement, sweeps every dependent record, and is restart-idempotent",
     async (sourceMode) => {
       const fixture = postFinalityRecoveryFixture(6, sourceMode);
@@ -2107,54 +1834,7 @@ describe("canonical watcher rollback engine", () => {
         throw new Error("expected committed rollback incident");
       }
       const incidentSnapshot = Uint8Array.from(backend.bytes!);
-      if (sourceMode === "local_node") {
-        backend.failAfterCommit = true;
-        await expect(
-          evaluateAndPersistWatcherPostFinalityRecoveryV1({
-            authority: incident.authority,
-            previousCanonicalPath: fixture.previousPath,
-            replacementCanonicalPath: fixture.replacementPath,
-          }),
-        ).rejects.toMatchObject({ code: "persistence_failure" });
-        await expect(
-          loadWatcherRollbackDurableAuthorityV1({
-            backend,
-            policy: fixture.finalityPolicy,
-            authenticationKey: rollbackAuthorityKey,
-            trustedHead: incident.trustedHead,
-          }),
-        ).rejects.toThrow("watcher rollback durable trusted head mismatch");
-        const recoveryReconciliation =
-          await prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
-            backend,
-            policy: fixture.finalityPolicy,
-            authenticationKey: rollbackAuthorityKey,
-            trustedHead: incident.trustedHead,
-          });
-        expect(recoveryReconciliation).toMatchObject({
-          action: "publish_direct_successor",
-          expectedTrustedHead: { revision: "1" },
-          nextTrustedHead: { revision: "2" },
-        });
-        if (recoveryReconciliation.action !== "publish_direct_successor") {
-          throw new Error("expected recovery head reconciliation");
-        }
-        expect(
-          watcherRollbackDurableAuthorityStatusV1(
-            await loadWatcherRollbackDurableAuthorityV1({
-              backend,
-              policy: fixture.finalityPolicy,
-              authenticationKey: rollbackAuthorityKey,
-              trustedHead: recoveryReconciliation.nextTrustedHead,
-            }),
-          ),
-        ).toMatchObject({
-          revision: "2",
-          epoch: "1",
-          incidentDigest: null,
-        });
-      } else {
-        const recoveryContender = await loadWatcherRollbackDurableAuthorityV1({
+      const recoveryContender = await loadWatcherRollbackDurableAuthorityV1({
           backend,
           policy: fixture.finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
@@ -2221,8 +1901,7 @@ describe("canonical watcher rollback engine", () => {
         ).rejects.toThrow(
           "watcher rollback durable trusted head reconciliation refused",
         );
-        backend.bytes = latestSnapshot;
-      }
+      backend.bytes = latestSnapshot;
 
       expect(applied).toMatchObject({
         schemaVersion: WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
@@ -2242,26 +1921,11 @@ describe("canonical watcher rollback engine", () => {
           incidentLifecycle: { status: "recovered" },
         },
       });
-      if (sourceMode === "local_node") {
-        expect(fixture.replacementPath.at(-1)).toMatchObject({
-          status: "agreed",
-          sourceMode: "local_node",
-          independentProviderCount: 1,
-          queryObservationCount: 1,
-          localQueryServiceBindings: [
-            {
-              providerId: "cardano-node-a-ogmios",
-              observationStatus: "aligned",
-            },
-          ],
-        });
-      } else {
-        expect(fixture.replacementPath.at(-1)).toMatchObject({
-          status: "agreed",
-          sourceMode: "external_providers",
-          independentProviderCount: 2,
-        });
-      }
+      expect(fixture.replacementPath.at(-1)).toMatchObject({
+        status: "agreed",
+        sourceMode: "external_providers",
+        independentProviderCount: 2,
+      });
       expect(applied.removedRecords.reconstructedBlockHashes).toContain(
         fixture.orphanedGraph.ids.blockHash,
       );
@@ -2407,7 +2071,10 @@ describe("canonical watcher rollback engine", () => {
   );
 
   it("accepts the exact k=2160 recovery boundary and rejects 2161 without mutation", () => {
-    const atBoundary = postFinalityRecoveryFixture(2_160, "local_node");
+    const atBoundary = postFinalityRecoveryFixture(
+      2_160,
+      "external_providers",
+    );
     const accepted = evaluateWatcherPostFinalityRecoveryV1({
       policy: atBoundary.finalityPolicy,
       sourceStore: atBoundary.sourceStore,
@@ -2736,7 +2403,10 @@ describe("canonical watcher rollback engine", () => {
     });
     expect(previewPolicy).not.toBeNull();
     const wrongPolicies = [
-      recoveryLocalPolicy(),
+      {
+        ...external.finalityPolicy,
+        sourceMode: "local_node",
+      } as WatcherFinalityPolicyV1,
       previewPolicy,
       {
         ...external.finalityPolicy,
@@ -2759,48 +2429,11 @@ describe("canonical watcher rollback engine", () => {
       expect(result.recoveryState).toBeNull();
     }
 
-    const local = postFinalityRecoveryFixture(6, "local_node");
-    const foreignLocalConfig = localConfig();
-    const foreignAuthorityPolicy = makeWatcherFinalityPolicyV1(
-      {
-        ...foreignLocalConfig,
-        l1: {
-          ...foreignLocalConfig.l1,
-          source: {
-            ...foreignLocalConfig.l1.source,
-            authorityNodeId: "cardano-node-b",
-            chainSync: {
-              ...foreignLocalConfig.l1.source.chainSync,
-              genesisIdentitySha256: hex32("b2"),
-            },
-          },
-        },
-      },
-      deploymentIdentity(),
-    );
-    expect(foreignAuthorityPolicy).not.toBeNull();
-    expect(
-      evaluateWatcherPostFinalityRecoveryV1({
-        policy: foreignAuthorityPolicy,
-        sourceStore: local.sourceStore,
-        currentStore: local.sourceStore,
-        quarantinedRollbackState: local.rollbackState,
-        rollbackBootstrapState: local.rollbackBootstrapState,
-        previousCanonicalPath: local.previousPath,
-        replacementCanonicalPath: local.replacementPath,
-        previousRecoveryState: null,
-      }),
-    ).toMatchObject({
-      action: "reject",
-      nextStore: null,
-      recoveryState: null,
-    });
-
     for (const fixture of [
-      postFinalityRecoveryFixture(6, "local_node", {
+      postFinalityRecoveryFixture(6, "external_providers", {
         omitPreviousEvidenceAt: 2,
       }),
-      postFinalityRecoveryFixture(6, "local_node", {
+      postFinalityRecoveryFixture(6, "external_providers", {
         malformedPreviousEvidenceAt: 2,
       }),
     ]) {
@@ -3509,7 +3142,7 @@ describe("canonical watcher rollback engine", () => {
 
   it("rotates an atomically authenticated checkpoint at transition 129 and rejects a forged matching anchor", async () => {
     const value = makeWatcherFinalityPolicyV1(
-      localConfig(256),
+      config(256),
       deploymentIdentity(),
     );
     expect(value).not.toBeNull();
@@ -3518,7 +3151,9 @@ describe("canonical watcher rollback engine", () => {
       ...oldPoint,
       depth: depth.toString(),
     }));
-    const observations = points.map((point) => localObservation(point));
+    const observations = points.flatMap((point) =>
+      agreementObservations(point),
+    );
     let currentStore = combine(
       finalityPolicy.deploymentMarker,
       "0",
@@ -3529,7 +3164,7 @@ describe("canonical watcher rollback engine", () => {
     let previousFinalityState = evaluateWatcherFinalityV1(
       finalityPolicy,
       null,
-      localAgreement(points[129]!),
+      agreement(points[129]!),
     ).state as WatcherFinalityStateV1;
     const rootBootstrapState = bootstrap(
       finalityPolicy,
@@ -3551,7 +3186,7 @@ describe("canonical watcher rollback engine", () => {
     let currentRollbackBootstrapState = rootBootstrapState;
 
     for (let depth = 128; depth >= 1; depth -= 1) {
-      const consistency = localAgreement(points[depth]!);
+      const consistency = agreement(points[depth]!);
       const finalityResult = evaluateWatcherFinalityV1(
         finalityPolicy,
         previousFinalityState,
@@ -3589,7 +3224,7 @@ describe("canonical watcher rollback engine", () => {
     const priorRollbackState = currentRollbackState;
     const priorRollbackBootstrapState = currentRollbackBootstrapState;
     const priorFinalityState = previousFinalityState;
-    const consistency = localAgreement(points[0]!);
+    const consistency = agreement(points[0]!);
     const finalityResult = evaluateWatcherFinalityV1(
       finalityPolicy,
       priorFinalityState,

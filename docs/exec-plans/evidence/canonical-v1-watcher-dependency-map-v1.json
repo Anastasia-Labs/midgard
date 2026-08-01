@@ -83,10 +83,16 @@
         "local_node",
         "external_providers"
       ],
+      "selectableL1SourceModes": [
+        "external_providers"
+      ],
+      "deferredL1SourceModes": [
+        "local_node"
+      ],
       "discriminatorPolicy": "explicit_source_mode_required_without_compatibility_inference",
-      "localNodePolicy": "one_chain_sync_authority_zero_to_eight_aligned_query_surfaces_no_provider_quorum",
+      "localNodePolicy": "deferred_until_peer_authenticated_native_adapter_no_pathname_authority",
       "externalProviderPolicy": "two_to_four_operationally_independent_provider_operator_endpoint_identities",
-      "endpointBindingPolicy": "exact_configured_https_provider_endpoints_and_local_socket_query_endpoints",
+      "endpointBindingPolicy": "exact_configured_https_provider_endpoints_only_local_node_wire_rejected_before_socket_processing",
       "rollbackAuthorityKeyPolicy": "separate_required_key_source_not_inline_and_not_reused_from_prover_credentials",
       "secretSources": [
         "environment",
@@ -101,7 +107,7 @@
       },
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
-      "expectedFocusedTestCount": 43
+      "expectedFocusedTestCount": 42
     },
     "deploymentIdentity": {
       "schemaVersion": "midgard-watcher-signed-deployment-identity-v1",
@@ -162,16 +168,18 @@
       "expectedFocusedTestCount": 12
     },
     "l1Adapter": {
-      "status": "LIBRARY_PASS_OPERATIONAL_WIRE_OPEN",
+      "status": "LIBRARY_PASS_EXTERNAL_TLS_ONLY_LOCAL_NODE_DEFERRED_OPERATIONAL_WIRE_OPEN",
       "providerSchemaVersion": "midgard-watcher-authenticated-l1-provider-v1",
       "observationSchemaVersion": "midgard-watcher-l1-block-observation-v1",
       "normalizedSchemaVersion": "midgard-watcher-normalized-l1-block-v1",
       "sourceModes": [
-        "local_node",
         "external_providers"
       ],
-      "identityPolicy": "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content",
-      "inputPolicy": "exact_configured_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required",
+      "deferredSourceModes": [
+        "local_node"
+      ],
+      "identityPolicy": "external_provider_tls_bound_observation_with_provider_neutral_block_content_local_node_deferred_until_native_peer_binding",
+      "inputPolicy": "exact_configured_tls_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required_local_node_rejected_before_socket_processing",
       "totalCollectionMembers": 65536,
       "unknownBehavior": "fail_closed",
       "diagnostics": "code_and_schema_path_only",
@@ -195,7 +203,7 @@
       "disagreementPolicy": "fork_content_identity_network_or_shape_quarantined",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 24
+      "expectedFocusedTestCount": 18
     },
     "finalityEngine": {
       "policySchemaVersion": "midgard-watcher-finality-policy-v1",
@@ -209,7 +217,7 @@
       "externalProviderPolicy": "exact_W01_policy_match_for_every_W11_external_provider_binding",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 23
+      "expectedFocusedTestCount": 22
     },
     "rollbackEngine": {
       "status": "PASS",
@@ -230,7 +238,7 @@
       "inputPolicy": "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 26
+      "expectedFocusedTestCount": 25
     },
     "stateQueueIndexer": {
       "status": "LIBRARY_PASS_CANONICAL_WIRE_PROVENANCE_OPEN",
@@ -246,7 +254,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 22
+      "expectedFocusedTestCount": 19
     },
     "userEventIndexer": {
       "status": "PASS",
@@ -262,7 +270,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 24
+      "expectedFocusedTestCount": 22
     },
     "settlementIndexer": {
       "status": "PASS",
@@ -279,7 +287,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 29
+      "expectedFocusedTestCount": 25
     },
     "proofThreadIndexer": {
       "status": "PASS",
@@ -296,7 +304,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 24
+      "expectedFocusedTestCount": 17
     },
     "ruleBundle": {
       "status": "PASS",
@@ -490,8 +498,8 @@
     },
     {
       "id": "l1_provider",
-      "capability": "Mode-discriminated local-node chain authority or independent external-provider observations with canonical chain-point agreement",
-      "state": "strict_source_mode_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_operational_wire_open",
+      "capability": "Current external-provider observations with canonical chain-point agreement; local-node vocabulary deferred until native peer authentication",
+      "state": "strict_external_source_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_local_node_deferred_operational_wire_open",
       "trust": "authenticated_cardano_l1",
       "sourcePaths": [
         "demo/da-committee-node/src/l1/provider.ts",
@@ -514,7 +522,7 @@
         "evaluateWatcherRollbackV1",
         "evaluateWatcherStateQueueIndexerV1"
       ],
-      "watcherBoundary": "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W10 proves exact configured transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
+      "watcherBoundary": "The current wire path selects external_providers and requires at least two operationally independent provider/operator/endpoint identities; disagreement is quarantined. local_node remains pure state vocabulary but is deferred until a native adapter binds peer identity to the connected socket, and the wire parser rejects it before socket-path processing. W10 proves exact configured TLS transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
       "remainingTasks": [
         "C70",
         "W10-OPERATIONAL-WIRE",

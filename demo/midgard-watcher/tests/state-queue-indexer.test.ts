@@ -5,8 +5,8 @@ import {
   sign,
   X509Certificate,
 } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
@@ -84,7 +84,6 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
   makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
@@ -164,7 +163,6 @@ const transportContexts: WatcherL1TransportAttestationContextV1[] = [];
 const tlsServers: Server[] = [];
 const transportEndpointByProviderId = new Map<string, string>();
 let transportFixtureDirectory = "";
-let localNodeServer: Server;
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
   await new Promise((resolve, reject) => {
@@ -669,54 +667,9 @@ const externalSource = {
   ],
 } as const;
 
-const LOCAL_NODE_ID = "watcher-node-a";
-const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
-const LOCAL_GENESIS_IDENTITY = createHash("sha256")
-  .update(LOCAL_GENESIS_BYTES)
-  .digest("hex");
-const localNodeProvider = {
-  schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  network: "Preprod",
-  providerId: "local-chain-sync",
-  source: {
-    sourceMode: "local_node",
-    authorityNodeId: LOCAL_NODE_ID,
-    surface: "chain_sync",
-  },
-  authentication: {
-    kind: "cardano_node_genesis_v1",
-    publicIdentitySha256: LOCAL_GENESIS_IDENTITY,
-  },
-} as const;
-const localSource = {
-  sourceMode: "local_node",
-  network: "Preprod",
-  authorityNodeId: LOCAL_NODE_ID,
-  genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-  chainSyncSocketPath: "/ipc/node.socket",
-  queryServices: [],
-} as const;
-
 beforeAll(async () => {
   transportFixtureDirectory = await mkdtemp(
     join("/dev/shm", "midgard-w14-state-queue-"),
-  );
-  const socketPath = join(transportFixtureDirectory, "node.socket");
-  (localSource as Mutable).chainSyncSocketPath = socketPath;
-  const genesisPath = join(transportFixtureDirectory, "genesis.json");
-  await writeFile(genesisPath, LOCAL_GENESIS_BYTES);
-  localNodeServer = createNetServer();
-  await listen(localNodeServer, socketPath);
-  transportContexts.push(
-    await establishWatcherLocalNodeAuthorityTransportV1({
-      network: "Preprod",
-      authorityNodeId: LOCAL_NODE_ID,
-      providerId: localNodeProvider.providerId,
-      nodeSocketPath: socketPath,
-      genesisFilePath: genesisPath,
-      expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-      connectTimeoutMs: 2_000,
-    }),
   );
   for (const [metadata, operatorIdentitySha256] of [
     [provider, provider.source.operatorIdentitySha256],
@@ -753,15 +706,12 @@ afterAll(async () => {
   for (const context of transportContexts) {
     closeWatcherL1TransportAttestationContextV1(context);
   }
-  for (const server of [...tlsServers, localNodeServer]) {
-    server.close();
-  }
+  for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
 const finalityPolicyAtDepth = (
   depth: number,
-  sourceMode: "external_providers" | "local_node" = "external_providers",
 ) =>
   makeWatcherFinalityPolicyV1(
     {
@@ -769,37 +719,25 @@ const finalityPolicyAtDepth = (
       mode: "development",
       targetNetwork: "Preprod",
       l1: {
-        source:
-          sourceMode === "local_node"
-            ? {
-                sourceMode: "local_node",
-                authorityNodeId: LOCAL_NODE_ID,
-                chainSync: {
-                  kind: "cardano_node_socket",
-                  socketPath: localSource.chainSyncSocketPath,
-                  genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-                },
-                queryServices: [],
-              }
-            : {
-                sourceMode: "external_providers",
-                providers: [
-                  {
-                    identity: "provider-a",
-                    operatorIdentitySha256: h32("97"),
-                    endpoint:
-                      transportEndpointByProviderId.get("provider-a") ??
-                      "https://cardano-a.example",
-                  },
-                  {
-                    identity: "provider-b",
-                    operatorIdentitySha256: h32("98"),
-                    endpoint:
-                      transportEndpointByProviderId.get("provider-b") ??
-                      "https://cardano-b.example",
-                  },
-                ],
-              },
+        source: {
+          sourceMode: "external_providers",
+          providers: [
+            {
+              identity: "provider-a",
+              operatorIdentitySha256: h32("97"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-a") ??
+                "https://cardano-a.example",
+            },
+            {
+              identity: "provider-b",
+              operatorIdentitySha256: h32("98"),
+              endpoint:
+                transportEndpointByProviderId.get("provider-b") ??
+                "https://cardano-b.example",
+            },
+          ],
+        },
         requestTimeoutMs: 10_000,
         maxConcurrency: 4,
         finality: {
@@ -1375,80 +1313,6 @@ const contextFor = (
     rollbackAuthority: null,
   });
 
-const asLocalNodeBlock = (
-  block: ReturnType<typeof l1Block>,
-): ReturnType<typeof l1Block> => {
-  const raw = structuredClone(block.raw);
-  raw.providerId = localNodeProvider.providerId;
-  return {
-    ...block,
-    raw,
-    normalized: normalizeWatcherL1BlockV1(localNodeProvider, raw),
-  };
-};
-
-const localNodeContextFor = (
-  block: ReturnType<typeof l1Block>,
-  store: WatcherDurableStoreV1,
-  sourceStore: WatcherDurableStoreV1 = storeSources.get(store) ?? emptyStore(),
-): WatcherStateQueuePublicContextV1 => {
-  const consistency = evaluateWatcherMultiProviderConsistencyV1(localSource, [
-    block.normalized,
-  ]);
-  const priorRaw = structuredClone(block.raw);
-  priorRaw.chainPoint.depth = "1";
-  const priorConsistency = evaluateWatcherMultiProviderConsistencyV1(
-    localSource,
-    [normalizeWatcherL1BlockV1(localNodeProvider, priorRaw)],
-  );
-  const policyAtDepth = finalityPolicyAtDepth(2, "local_node");
-  const previousResult = evaluateWatcherFinalityV1(
-    policyAtDepth,
-    null,
-    priorConsistency,
-  );
-  const previousState = previousResult.state;
-  const result = evaluateWatcherFinalityV1(
-    policyAtDepth,
-    previousState,
-    consistency,
-  );
-  return asWireValue({
-    schemaVersion: WATCHER_STATE_QUEUE_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
-    authenticatedProvider: localNodeProvider,
-    l1Observation: block.raw,
-    sourceDurableStore: sourceStore,
-    durableStore: store,
-    deploymentAuthority,
-    finalityAuthority: {
-      policy: policyAtDepth,
-      lineage: [
-        {
-          observations: [
-            {
-              authenticatedProvider: localNodeProvider,
-              l1Observation: priorRaw,
-            },
-          ],
-          consistency: priorConsistency,
-          result: previousResult,
-        },
-      ],
-      previousState,
-      observations: [
-        {
-          authenticatedProvider: localNodeProvider,
-          l1Observation: block.raw,
-        },
-      ],
-      consistency,
-      result,
-    },
-    originAuthorities: [],
-    rollbackAuthority: null,
-  });
-};
-
 const observationFor = (
   block: ReturnType<typeof l1Block>,
   store: WatcherDurableStoreV1,
@@ -1823,57 +1687,11 @@ const bootstrapBundleWithForeignRole = () => {
   };
 };
 
-const localNodeBootstrapBundle = () => {
-  const fixture = rootFixtures();
-  const body = bodyFrom(
-    [],
-    [],
-    fixture.outputs,
-    [
-      {
-        policyId: policy.stateQueuePolicyId,
-        assetName: policy.stateQueueRootAssetNameHex,
-        quantity: 1n,
-      },
-    ],
-    null,
-    null,
-  );
-  const externalBlock = l1Block(body, fixture.outputs, [
-    {
-      purpose: "mint",
-      index: "0",
-      bytesHex: Data.to({ InitV1: { output_index: 0n } }, StateQueueRedeemer),
-    },
-  ]);
-  const block = asLocalNodeBlock(externalBlock);
-  const store = storeFor(block, protocolRecords(block, fixture.outputs), null);
-  const snapshot = snapshotFor(fixture);
-  const observation = observationFor(
-    block,
-    store,
-    snapshot,
-    "bootstrap",
-    null,
-    null,
-    null,
-  );
-  return {
-    fixture,
-    block,
-    store,
-    snapshot,
-    observation,
-    context: localNodeContextFor(block, store),
-  };
-};
-
 const recoveryAppendBundle = (
   bootBundle: ReturnType<typeof bootstrapBundle>,
   bootState: NonNullable<
     ReturnType<typeof evaluateWatcherStateQueueIndexerV1>["state"]
   >,
-  sourceMode: RecoverySourceMode = "external_providers",
   parentBlockHash?: string,
 ) => {
   const header = makeWatcherStateQueueHeaderV1({
@@ -2017,10 +1835,7 @@ const recoveryAppendBundle = (
     ],
     parentBlockHash,
   );
-  const block =
-    sourceMode === "local_node"
-      ? asLocalNodeBlock(externalBlock)
-      : externalBlock;
+  const block = externalBlock;
   const protocols = [
     ...bootBundle.store.protocolUtxos.filter(
       ({ outRef }) => outRef !== oldRoot && outRef !== oldActive,
@@ -2066,68 +1881,55 @@ const recoveryAppendBundle = (
     policy,
     bootState,
     observation,
-    sourceMode === "local_node"
-      ? localNodeContextFor(block, store)
-      : contextFor(block, store),
+    contextFor(block, store),
   );
   expect(result.action, JSON.stringify(result)).toBe("accept");
   return { block, store, snapshot, observation, state: result.state! };
 };
 
-type RecoverySourceMode = "local_node" | "external_providers";
-
 const recoveryEvidence = (
-  sourceMode: RecoverySourceMode,
   rawObservation: Mutable,
   depth: string,
 ) => {
-  const primaryProvider =
-    sourceMode === "local_node" ? localNodeProvider : provider;
+  const primaryProvider = provider;
   const primaryRaw = structuredClone(rawObservation);
   primaryRaw.providerId = primaryProvider.providerId;
   primaryRaw.chainPoint.depth = depth;
-  const observations =
-    sourceMode === "local_node"
-      ? [normalizeWatcherL1BlockV1(primaryProvider, primaryRaw)]
-      : [
-          normalizeWatcherL1BlockV1(provider, primaryRaw),
-          normalizeWatcherL1BlockV1(providerB, {
-            ...structuredClone(primaryRaw),
-            providerId: providerB.providerId,
-          }),
-        ];
+  const observations = [
+    normalizeWatcherL1BlockV1(provider, primaryRaw),
+    normalizeWatcherL1BlockV1(providerB, {
+      ...structuredClone(primaryRaw),
+      providerId: providerB.providerId,
+    }),
+  ];
   const consistency = evaluateWatcherMultiProviderConsistencyV1(
-    sourceMode === "local_node" ? localSource : externalSource,
+    externalSource,
     observations,
   );
   expect(consistency).toMatchObject({
     status: "agreed",
-    sourceMode,
-    independentProviderCount: sourceMode === "local_node" ? 1 : 2,
+    sourceMode: "external_providers",
+    independentProviderCount: 2,
   });
   return { primaryProvider, primaryRaw, observations, consistency };
 };
 
 const postFinalityStateQueueRecoveryBundle = (
-  sourceMode: RecoverySourceMode,
   bootBundle: ReturnType<typeof bootstrapBundle>,
   orphanBundle: ReturnType<typeof recoveryAppendBundle>,
   commonBlock: ReturnType<typeof l1Block> = bootBundle.block,
   includeOrphanProtocolUtxos = true,
 ) => {
-  const selectedPolicy = finalityPolicyAtDepth(2, sourceMode);
+  const selectedPolicy = finalityPolicyAtDepth(2);
   const common = recoveryEvidence(
-    sourceMode,
     commonBlock.raw as Mutable,
     commonBlock.normalized.chainPoint.depth,
   );
   const orphanPending = recoveryEvidence(
-    sourceMode,
     orphanBundle.block.raw as Mutable,
     "1",
   );
   const orphanFinalized = recoveryEvidence(
-    sourceMode,
     orphanBundle.block.raw as Mutable,
     "2",
   );
@@ -2136,7 +1938,7 @@ const postFinalityStateQueueRecoveryBundle = (
     network: "Preprod",
     providerId: common.primaryProvider.providerId,
     chainPoint: {
-      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      blockHash: h32("e9"),
       parentBlockHash: common.observations[0]!.chainPoint.blockHash,
       slot: (BigInt(common.observations[0]!.chainPoint.slot) + 1n).toString(),
       blockNo: (
@@ -2146,7 +1948,7 @@ const postFinalityStateQueueRecoveryBundle = (
     },
     transactions: [],
   };
-  const replacement = recoveryEvidence(sourceMode, replacementRaw, "0");
+  const replacement = recoveryEvidence(replacementRaw, "0");
   const pending = evaluateWatcherFinalityV1(
     selectedPolicy,
     null,
@@ -3079,49 +2881,6 @@ describe("authenticated state-queue indexer", () => {
     });
   }, 30_000);
 
-  it("accepts one authoritative local-node chain-sync source without a provider quorum", () => {
-    const external = bootstrapBundle();
-    const block = asLocalNodeBlock(external.block);
-    const store = storeFor(
-      block,
-      protocolRecords(block, external.fixture.outputs),
-      null,
-    );
-    const observation = observationFor(
-      block,
-      store,
-      external.snapshot,
-      "bootstrap",
-      null,
-      null,
-      null,
-    );
-    const context = localNodeContextFor(block, store);
-    expect(context.finalityAuthority?.consistency).toMatchObject({
-      status: "agreed",
-      sourceMode: "local_node",
-      authorityNodeId: LOCAL_NODE_ID,
-      independentProviderCount: 1,
-      queryObservationCount: 0,
-    });
-    expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, observation, context),
-    ).toMatchObject({
-      action: "accept",
-      protocolDecision: "indexed",
-      reasonCodes: ["bootstrap_authenticated"],
-    });
-    expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, observation, {
-        ...context,
-        finalityAuthority: external.context.finalityAuthority,
-      }),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-  });
-
   it("rejects a caller-supplied snapshot even when the extra object is self-rehashed", () => {
     const bundle = bootstrapBundle();
     const { observationDigest: _digest, ...fields } = bundle.observation;
@@ -3295,30 +3054,6 @@ describe("authenticated state-queue indexer", () => {
         bundle.observation,
         hostile,
       ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-  });
-
-  it("rejects a fully recomputed external-to-local source-mode downgrade", () => {
-    const bundle = bootstrapBundle();
-    const localBlock = asLocalNodeBlock(bundle.block);
-    const localAuthority = localNodeContextFor(
-      localBlock,
-      bundle.store,
-    ).finalityAuthority;
-    expect(localAuthority?.policy).toMatchObject({
-      sourceMode: "local_node",
-    });
-    expect(localAuthority?.result).toMatchObject({
-      protocolDecision: "finality_granted",
-    });
-    expect(
-      evaluateWatcherStateQueueIndexerV1(policy, null, bundle.observation, {
-        ...bundle.context,
-        finalityAuthority: localAuthority,
-      }),
     ).toMatchObject({
       action: "reject",
       reasonCodes: ["malformed_public_context"],
@@ -4966,22 +4701,18 @@ describe("authenticated state-queue indexer", () => {
     expect(parseWatcherStateQueueIndexerStateV1(forged, policy)).toBeNull();
   });
 
-  it.each<RecoverySourceMode>(["local_node", "external_providers"])(
-    "consumes exact %s W13 post-finality recovery and preserves foreign roles across restart",
-    (sourceMode) => {
-      const bootBundle =
-        sourceMode === "local_node"
-          ? localNodeBootstrapBundle()
-          : bootstrapBundleWithForeignRole();
+  it(
+    "consumes exact external-provider W13 post-finality recovery and preserves foreign roles across restart",
+    () => {
+      const bootBundle = bootstrapBundleWithForeignRole();
       const boot = evaluateWatcherStateQueueIndexerV1(
         policy,
         null,
         bootBundle.observation,
         bootBundle.context,
       ).state!;
-      const orphan = recoveryAppendBundle(bootBundle, boot, sourceMode);
+      const orphan = recoveryAppendBundle(bootBundle, boot);
       const bundle = postFinalityStateQueueRecoveryBundle(
-        sourceMode,
         bootBundle,
         orphan,
       );
@@ -5059,7 +4790,6 @@ describe("authenticated state-queue indexer", () => {
     ).state!;
     const orphan = recoveryAppendBundle(bootBundle, boot);
     const bundle = postFinalityStateQueueRecoveryBundle(
-      "external_providers",
       bootBundle,
       orphan,
       bootBundle.block,
@@ -5109,7 +4839,6 @@ describe("authenticated state-queue indexer", () => {
     ).state!;
     const orphan = recoveryAppendBundle(bootBundle, boot);
     const bundle = postFinalityStateQueueRecoveryBundle(
-      "external_providers",
       bootBundle,
       orphan,
     );
@@ -5185,10 +4914,10 @@ describe("authenticated state-queue indexer", () => {
     ).toBe("reject");
 
     const wrongMode = structuredClone(bundle.context) as Mutable;
-    wrongMode.rollbackAuthority.context.policy = finalityPolicyAtDepth(
-      2,
-      "local_node",
-    );
+    wrongMode.rollbackAuthority.context.policy = {
+      ...finalityPolicyAtDepth(2),
+      sourceMode: "local_node",
+    };
     expect(
       evaluate(
         observation,

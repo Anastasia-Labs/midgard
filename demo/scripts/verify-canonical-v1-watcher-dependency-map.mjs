@@ -140,12 +140,12 @@ const requiredMetadataById = new Map([
     "l1_provider",
     {
       capability:
-        "Mode-discriminated local-node chain authority or independent external-provider observations with canonical chain-point agreement",
+        "Current external-provider observations with canonical chain-point agreement; local-node vocabulary deferred until native peer authentication",
       state:
-        "strict_source_mode_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_operational_wire_open",
+        "strict_external_source_library_normalizer_consistency_finality_automated_rollback_recovery_and_indexing_ready_local_node_deferred_operational_wire_open",
       remainingTasks: ["C70", "W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"],
       watcherBoundary:
-        "The explicit local_node mode treats watcher-operated chain-sync as the sole consensus authority and accepts only network- and chain-point-aligned query surfaces without counting them as independent providers. The external_providers mode requires at least two operationally independent provider/operator/endpoint identities and quarantines disagreement. W10 proves exact configured transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
+        "The current wire path selects external_providers and requires at least two operationally independent provider/operator/endpoint identities; disagreement is quarantined. local_node remains pure state vocabulary but is deferred until a native adapter binds peer identity to the connected socket, and the wire parser rejects it before socket-path processing. W10 proves exact configured TLS transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
     },
   ],
   [
@@ -1124,9 +1124,12 @@ for (const sourceModeDocument of [
   if (
     !sourceModeDocument.includes("`local_node`") ||
     !sourceModeDocument.includes("`external_providers`") ||
-    !sourceModeDocument.includes("watcher-operated")
+    !sourceModeDocument.includes("deferred") ||
+    !sourceModeDocument.includes("peer-authenticated")
   ) {
-    fail("shipped watcher documents must define both L1-source modes");
+    fail(
+      "shipped watcher documents must define both L1-source vocabulary modes and defer local_node pending peer authentication",
+    );
   }
 }
 const watcherSource = readIndexedFile(
@@ -1254,12 +1257,16 @@ if (
     JSON.stringify(["local_node", "external_providers"]) ||
   strictConfiguration.discriminatorPolicy !==
     "explicit_source_mode_required_without_compatibility_inference" ||
+  strictConfiguration.selectableL1SourceModes?.length !== 1 ||
+  strictConfiguration.selectableL1SourceModes[0] !== "external_providers" ||
+  JSON.stringify(strictConfiguration.deferredL1SourceModes) !==
+    JSON.stringify(["local_node"]) ||
   strictConfiguration.localNodePolicy !==
-    "one_chain_sync_authority_zero_to_eight_aligned_query_surfaces_no_provider_quorum" ||
+    "deferred_until_peer_authenticated_native_adapter_no_pathname_authority" ||
   strictConfiguration.externalProviderPolicy !==
     "two_to_four_operationally_independent_provider_operator_endpoint_identities" ||
   strictConfiguration.endpointBindingPolicy !==
-    "exact_configured_https_provider_endpoints_and_local_socket_query_endpoints" ||
+    "exact_configured_https_provider_endpoints_only_local_node_wire_rejected_before_socket_processing" ||
   strictConfiguration.rollbackAuthorityKeyPolicy !==
     "separate_required_key_source_not_inline_and_not_reused_from_prover_credentials" ||
   strictConfiguration.finalityPolicy?.beforeFinality !== "rewind" ||
@@ -1271,7 +1278,7 @@ if (
     "per_decision_quarantine_preserving_exact_finalized_state_without_incident" ||
   strictConfiguration.unknownBehavior !== "fail_closed" ||
   strictConfiguration.diagnostics !== "code_and_schema_path_only" ||
-  strictConfiguration.expectedFocusedTestCount !== 43
+  strictConfiguration.expectedFocusedTestCount !== 42
 ) {
   fail("W01 strict watcher configuration evidence is incomplete or stale");
 }
@@ -1291,6 +1298,15 @@ for (const requiredSymbol of [
   if (!configSource.includes(requiredSymbol)) {
     fail(`W01 configuration symbol ${requiredSymbol} is absent`);
   }
+}
+if (
+  !/if \(preliminary\.sourceMode === "local_node"\) \{\s*fail\("invalid_value", "\$\.l1\.source\.sourceMode"\);\s*\}/u.test(
+    configSource,
+  ) ||
+  configSource.includes("parseLocalQueryEndpoint") ||
+  configSource.includes("parseLocalQueryServices")
+) {
+  fail("W01 local_node must be rejected before socket-path processing");
 }
 const deploymentIdentity =
   dependencyMap.requiredWatcherPackage?.deploymentIdentity;
@@ -1419,7 +1435,8 @@ for (const requiredSymbol of [
 }
 const l1Adapter = dependencyMap.requiredWatcherPackage?.l1Adapter;
 if (
-  l1Adapter?.status !== "LIBRARY_PASS_OPERATIONAL_WIRE_OPEN" ||
+  l1Adapter?.status !==
+    "LIBRARY_PASS_EXTERNAL_TLS_ONLY_LOCAL_NODE_DEFERRED_OPERATIONAL_WIRE_OPEN" ||
   l1Adapter.providerSchemaVersion !==
     "midgard-watcher-authenticated-l1-provider-v1" ||
   l1Adapter.observationSchemaVersion !==
@@ -1427,11 +1444,13 @@ if (
   l1Adapter.normalizedSchemaVersion !==
     "midgard-watcher-normalized-l1-block-v1" ||
   JSON.stringify(l1Adapter.sourceModes) !==
-    JSON.stringify(["local_node", "external_providers"]) ||
+    JSON.stringify(["external_providers"]) ||
+  JSON.stringify(l1Adapter.deferredSourceModes) !==
+    JSON.stringify(["local_node"]) ||
   l1Adapter.identityPolicy !==
-    "local_chain_authority_or_external_provider_bound_observation_with_provider_neutral_block_content" ||
+    "external_provider_tls_bound_observation_with_provider_neutral_block_content_local_node_deferred_until_native_peer_binding" ||
   l1Adapter.inputPolicy !==
-    "exact_configured_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required" ||
+    "exact_configured_tls_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required_local_node_rejected_before_socket_processing" ||
   l1Adapter.totalCollectionMembers !== 65_536 ||
   l1Adapter.unknownBehavior !== "fail_closed" ||
   l1Adapter.diagnostics !== "code_and_schema_path_only" ||
@@ -1457,6 +1476,21 @@ for (const requiredSymbol of [
     fail(`W10 L1-adapter symbol ${requiredSymbol} is not public`);
   }
 }
+for (const retiredSymbol of [
+  "establishWatcherLocalNodeAuthorityTransportV1",
+  "WatcherLocalNodeAuthorityTransportV1",
+  "establishUnixSocket",
+  "createNetConnection({ path",
+]) {
+  if (
+    l1AdapterSource.includes(retiredSymbol) ||
+    watcherIndexSource.includes(retiredSymbol)
+  ) {
+    fail(
+      `retired pathname local-node authority symbol remains public: ${retiredSymbol}`,
+    );
+  }
+}
 const multiProviderConsistency =
   dependencyMap.requiredWatcherPackage?.multiProviderConsistency;
 if (
@@ -1480,7 +1514,7 @@ if (
     "fork_content_identity_network_or_shape_quarantined" ||
   multiProviderConsistency.unknownBehavior !== "fail_closed" ||
   multiProviderConsistency.diagnostics !== "deterministic_value_free_codes" ||
-  multiProviderConsistency.expectedFocusedTestCount !== 24
+  multiProviderConsistency.expectedFocusedTestCount !== 18
 ) {
   fail("W11 multi-provider consistency evidence is incomplete or stale");
 }
@@ -1521,7 +1555,7 @@ if (
     "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.expectedFocusedTestCount !== 23
+  finalityEngine.expectedFocusedTestCount !== 22
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
@@ -1577,7 +1611,7 @@ if (
     "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.expectedFocusedTestCount !== 26
+  rollbackEngine.expectedFocusedTestCount !== 25
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -1644,7 +1678,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.expectedFocusedTestCount !== 22
+  stateQueueIndexer.expectedFocusedTestCount !== 19
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -1695,7 +1729,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 24
+  userEventIndexer.expectedFocusedTestCount !== 22
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
@@ -1749,7 +1783,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_replacement_path_replay_unrelated_archive_preservation_restart_reinclusion_and_same_point_transaction_order" ||
   settlementIndexer.unknownBehavior !== "fail_closed" ||
   settlementIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  settlementIndexer.expectedFocusedTestCount !== 29
+  settlementIndexer.expectedFocusedTestCount !== 25
 ) {
   fail("W16 settlement-indexer evidence is incomplete or stale");
 }
@@ -1803,7 +1837,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_common_ancestor_cursor_journal_rewind_full_transition_history_restart_replacement_path_replay_revision_monotonicity_and_reinclusion" ||
   proofThreadIndexer.unknownBehavior !== "fail_closed" ||
   proofThreadIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  proofThreadIndexer.expectedFocusedTestCount !== 24
+  proofThreadIndexer.expectedFocusedTestCount !== 17
 ) {
   fail("W17 proof-thread-indexer evidence is incomplete or stale");
 }

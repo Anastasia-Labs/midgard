@@ -5,8 +5,8 @@ import {
   sign,
   X509Certificate,
 } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
@@ -70,8 +70,6 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -537,32 +535,9 @@ const externalSource = {
   ],
 } as const;
 
-const LOCAL_GENESIS_BYTES = Buffer.from('{"networkMagic":1}', "utf8");
-const LOCAL_GENESIS_IDENTITY = createHash("sha256")
-  .update(LOCAL_GENESIS_BYTES)
-  .digest("hex");
-const localSource = {
-  sourceMode: "local_node",
-  authorityNodeId: "watcher-node-a",
-  chainSync: {
-    kind: "cardano_node_socket",
-    socketPath: "/var/lib/cardano/node.socket",
-    genesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-  },
-  queryServices: [
-    {
-      kind: "ogmios",
-      identity: "watcher-node-a-ogmios",
-      endpoint: "http://127.0.0.1:1337",
-    },
-  ],
-} as const;
-
 let finalityPolicy: WatcherFinalityPolicyV1;
-let localFinalityPolicy: WatcherFinalityPolicyV1;
 
 let providers: readonly WatcherAuthenticatedL1ProviderV1[];
-let localProviders: readonly WatcherAuthenticatedL1ProviderV1[];
 
 const execFileAsync = promisify(execFile);
 const watcherTransportContexts: WatcherL1TransportAttestationContextV1[] = [];
@@ -572,8 +547,6 @@ const normalizedTransportContexts = new WeakMap<
 >();
 const watcherTransportServers: Server[] = [];
 let watcherTransportFixtureDirectory = "";
-let watcherLocalSocketPath = "";
-let watcherGenesisPath = "";
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
   await new Promise((resolve, reject) => {
@@ -633,41 +606,6 @@ beforeAll(async () => {
   watcherTransportFixtureDirectory = await mkdtemp(
     join("/dev/shm", "midgard-w16-transports-"),
   );
-  watcherLocalSocketPath = join(
-    watcherTransportFixtureDirectory,
-    "node.socket",
-  );
-  watcherGenesisPath = join(watcherTransportFixtureDirectory, "genesis.json");
-  (localSource.chainSync as Mutable).socketPath = watcherLocalSocketPath;
-  await writeFile(watcherGenesisPath, LOCAL_GENESIS_BYTES);
-  const localServer = createNetServer();
-  await listen(localServer, watcherLocalSocketPath);
-  watcherTransportServers.push(localServer);
-
-  const localAuthority = await establishWatcherLocalNodeAuthorityTransportV1({
-    network: "Preprod",
-    authorityNodeId: "watcher-node-a",
-    providerId: "watcher-node-a",
-    nodeSocketPath: watcherLocalSocketPath,
-    genesisFilePath: watcherGenesisPath,
-    expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-    connectTimeoutMs: 2_000,
-  });
-  const localQueryFixture = await makeTlsTransportFixture("local-ogmios");
-  const localQueryEndpoint = `https://localhost:${localQueryFixture.port}`;
-  (localSource.queryServices[0] as Mutable).endpoint = localQueryEndpoint;
-  const localQuery = await establishWatcherLocalNodeQueryTransportV1(
-    localAuthority,
-    {
-      transportKind: "https_tls",
-      providerId: "watcher-node-a-ogmios",
-      surface: "ogmios",
-      endpoint: localQueryEndpoint,
-      caPem: localQueryFixture.certificate,
-      expectedTlsPublicIdentitySha256: localQueryFixture.identitySha256,
-      connectTimeoutMs: 2_000,
-    },
-  );
   const externalTransports = await Promise.all(
     [
       ["provider-a", h32("a1")],
@@ -693,17 +631,9 @@ beforeAll(async () => {
       });
     }),
   );
-  watcherTransportContexts.push(
-    ...externalTransports,
-    localAuthority,
-    localQuery,
-  );
+  watcherTransportContexts.push(...externalTransports);
   finalityPolicy = makeFinalityPolicy(externalSource);
-  localFinalityPolicy = makeFinalityPolicy(localSource);
   providers = externalTransports.map(
-    (context) => watcherL1TransportAttestationDetailsV1(context)!.provider,
-  );
-  localProviders = [localAuthority, localQuery].map(
     (context) => watcherL1TransportAttestationDetailsV1(context)!.provider,
   );
 });
@@ -829,52 +759,32 @@ const evaluateWatcherPostFinalityRecoveryV1 = (
     transportAttestations: watcherTransportContexts,
   });
 
-type FixtureSourceMode = "local_node" | "external_providers";
+type FixtureSourceMode = "external_providers";
 
 const sourceFixture = (
-  sourceMode: FixtureSourceMode,
+  _sourceMode: FixtureSourceMode,
 ): Readonly<{
   policy: WatcherFinalityPolicyV1;
   providers: readonly WatcherAuthenticatedL1ProviderV1[];
   consistencyConfig: unknown;
-}> =>
-  sourceMode === "local_node"
-    ? {
-        policy: localFinalityPolicy,
-        providers: localProviders,
-        consistencyConfig: {
-          sourceMode: "local_node",
-          network: "Preprod",
-          authorityNodeId: localSource.authorityNodeId,
-          genesisIdentitySha256: localSource.chainSync.genesisIdentitySha256,
-          chainSyncSocketPath: localSource.chainSync.socketPath,
-          queryServices: [
-            {
-              kind: "ogmios",
-              providerId: localProviders[1].providerId,
-              endpoint: localSource.queryServices[0].endpoint,
-            },
-          ],
-        },
-      }
-    : {
-        policy: finalityPolicy,
-        providers,
-        consistencyConfig: {
-          sourceMode: "external_providers",
-          network: "Preprod",
-          providers: providers.map((provider) => ({
-            providerId: provider.providerId,
-            operatorIdentitySha256:
-              provider.source.sourceMode === "external_providers"
-                ? provider.source.operatorIdentitySha256
-                : "",
-            endpoint: finalityPolicy.externalProviders!.find(
-              ({ providerId }) => providerId === provider.providerId,
-            )!.endpoint,
-          })),
-        },
-      };
+}> => ({
+  policy: finalityPolicy,
+  providers,
+  consistencyConfig: {
+    sourceMode: "external_providers",
+    network: "Preprod",
+    providers: providers.map((provider) => ({
+      providerId: provider.providerId,
+      operatorIdentitySha256:
+        provider.source.sourceMode === "external_providers"
+          ? provider.source.operatorIdentitySha256
+          : "",
+      endpoint: finalityPolicy.externalProviders!.find(
+        ({ providerId }) => providerId === provider.providerId,
+      )!.endpoint,
+    })),
+  },
+});
 
 const input = (outRef: string): CML.TransactionInput => {
   const [txHash, index] = outRef.split("#");
@@ -2308,7 +2218,7 @@ const postFinalityProofRecoveryBundle = (
     network: "Preprod",
     providerId: provider.providerId,
     chainPoint: {
-      blockHash: h32(sourceMode === "local_node" ? "e8" : "e9"),
+      blockHash: h32("e9"),
       parentBlockHash: commonBlocks[0]!.chainPoint.blockHash,
       slot: (BigInt(commonBlocks[0]!.chainPoint.slot) + 1n).toString(),
       blockNo: (BigInt(commonBlocks[0]!.chainPoint.blockNo) + 1n).toString(),
@@ -2691,36 +2601,6 @@ describe("W17 public proof/computation-thread indexer", () => {
       });
     }
 
-    const local = initStage({
-      phase: "pending",
-      previousState: null,
-      previousFinalityState: null,
-      sourceMode: "local_node",
-    });
-    const closedAuthority = await establishWatcherLocalNodeAuthorityTransportV1(
-      {
-        network: "Preprod",
-        authorityNodeId: "watcher-node-a",
-        providerId: "watcher-node-a",
-        nodeSocketPath: watcherLocalSocketPath,
-        genesisFilePath: watcherGenesisPath,
-        expectedGenesisIdentitySha256: LOCAL_GENESIS_IDENTITY,
-        connectTimeoutMs: 2_000,
-      },
-    );
-    closeWatcherL1TransportAttestationContextV1(closedAuthority);
-    expect(
-      evaluateWatcherProofThreadIndexerV1Raw(
-        policy,
-        null,
-        local.observation,
-        local.context,
-        [closedAuthority],
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
   });
 
   it("binds the proof lifecycle catalogue and computation policy to signed W02 commitments", () => {
@@ -3056,143 +2936,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     ).toThrow(/transactionIndex/u);
   });
 
-  it("indexes through one local chain-sync authority with an aligned query surface and no provider quorum", () => {
-    const pending = initStage({
-      phase: "pending",
-      previousState: null,
-      previousFinalityState: null,
-      sourceMode: "local_node",
-    });
-    expect(pending.context.finalityAuthority?.consistency).toMatchObject({
-      status: "agreed",
-      protocolDecision: "allowed",
-      sourceMode: "local_node",
-      authorityNodeId: localSource.authorityNodeId,
-      authorityGenesisIdentitySha256:
-        localSource.chainSync.genesisIdentitySha256,
-      observationCount: 2,
-      independentProviderCount: 1,
-      queryObservationCount: 1,
-      reasonCodes: ["local_node_consistent"],
-    });
-    expect(
-      (
-        pending.context.finalityAuthority?.consistency as {
-          reasonCodes: readonly string[];
-        }
-      ).reasonCodes,
-    ).not.toContain("insufficient_independent_providers");
-    expect(
-      evaluateWatcherProofThreadIndexerV1(policy, null, pending.observation, {
-        ...pending.context,
-        finalityAuthority: {
-          ...pending.context.finalityAuthority!,
-          policy: finalityPolicy,
-        },
-      }),
-    ).toMatchObject({
-      action: "reject",
-      protocolDecision: "hold",
-      reasonCodes: ["malformed_public_context"],
-    });
-    const pendingResult = evaluateWatcherProofThreadIndexerV1(
-      policy,
-      null,
-      pending.observation,
-      pending.context,
-    );
-    expect(pendingResult).toMatchObject({
-      action: "accept",
-      protocolDecision: "hold",
-      reasonCodes: ["init_pending"],
-    });
-
-    const final = initStage({
-      phase: "final",
-      previousState: pendingResult.state!,
-      previousFinalityState: pending.finalityState,
-      sourceStore: pending.store,
-      sourceMode: "local_node",
-    });
-    expect(
-      evaluateWatcherProofThreadIndexerV1(
-        policy,
-        pendingResult.state,
-        final.observation,
-        final.context,
-      ),
-    ).toMatchObject({
-      action: "accept",
-      protocolDecision: "indexed",
-      reasonCodes: ["init_confirmed"],
-    });
-
-    const modeSubstitution: WatcherProofThreadPublicContextV1 = {
-      ...pending.context,
-      finalityAuthority: {
-        ...pending.context.finalityAuthority!,
-        policy: finalityPolicy,
-      },
-    };
-    expect(
-      evaluateWatcherProofThreadIndexerV1(
-        policy,
-        null,
-        pending.observation,
-        modeSubstitution,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-
-    const observations = structuredClone(
-      pending.context.finalityAuthority!.observations,
-    ) as Mutable[];
-    (
-      (observations[1]!.l1Observation as Mutable).chainPoint as Mutable
-    ).blockHash = h32("de");
-    const consistency = evaluateWatcherMultiProviderConsistencyV1(
-      sourceFixture("local_node").consistencyConfig,
-      observations.map((candidate) =>
-        normalizeWatcherL1BlockV1(
-          candidate.authenticatedProvider,
-          candidate.l1Observation,
-        ),
-      ),
-    );
-    const finalityResult = evaluateWatcherFinalityV1(
-      localFinalityPolicy,
-      null,
-      consistency,
-    );
-    expect(consistency).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["fork_disagreement"],
-    });
-    const misalignedQuery: WatcherProofThreadPublicContextV1 = {
-      ...pending.context,
-      finalityAuthority: {
-        ...pending.context.finalityAuthority!,
-        observations,
-        consistency,
-        result: finalityResult,
-      },
-    };
-    expect(
-      evaluateWatcherProofThreadIndexerV1(
-        policy,
-        null,
-        pending.observation,
-        misalignedQuery,
-      ),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["malformed_public_context"],
-    });
-  });
-
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "traverses authenticated empty-block ancestry in %s mode",
     (sourceMode) => {
       const initPending = initStage({
@@ -3304,7 +3048,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     },
   );
 
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "ignores a phase-2-invalid phantom proof transaction in %s mode",
     (sourceMode) => {
       const phantom = initStage({
@@ -3339,7 +3083,6 @@ describe("W17 public proof/computation-thread indexer", () => {
       phase: "pending",
       previousState: null,
       previousFinalityState: null,
-      sourceMode: "local_node",
     });
     const initPendingResult = evaluateWatcherProofThreadIndexerV1(
       policy,
@@ -3353,7 +3096,6 @@ describe("W17 public proof/computation-thread indexer", () => {
       previousState: initPendingResult.state!,
       previousFinalityState: initPending.finalityState,
       sourceStore: initPending.store,
-      sourceMode: "local_node",
     });
     const initFinalResult = evaluateWatcherProofThreadIndexerV1(
       policy,
@@ -3464,7 +3206,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     ).toBe(false);
   });
 
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "accepts only an exact %s W13 rewind, binds every replacement anchor, and restores the prior local journal",
     (sourceMode) => {
       const initPending = initStage({
@@ -3547,12 +3289,8 @@ describe("W17 public proof/computation-thread indexer", () => {
         sourceMode,
         protocolDecision: "allowed",
       });
-      expect(consistency.independentProviderCount).toBe(
-        sourceMode === "local_node" ? 1 : 2,
-      );
-      expect(consistency.queryObservationCount).toBe(
-        sourceMode === "local_node" ? 1 : 0,
-      );
+      expect(consistency.independentProviderCount).toBe(2);
+      expect(consistency.queryObservationCount).toBe(0);
       const finalityResult = evaluateWatcherFinalityV1(
         replacementL1.policy,
         stepPending.finalityState,
@@ -3935,7 +3673,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     30_000,
   );
 
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "fully rewinds %s history, restarts from the rollback anchor, and retains unrelated durable updates",
     (sourceMode) => {
       const pending = initStage({
@@ -4134,7 +3872,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     },
   );
 
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "rejects %s two-step competing forks and oversized W12 evidence before indexing",
     (sourceMode) => {
       const initial = initStage({
@@ -4330,7 +4068,7 @@ describe("W17 public proof/computation-thread indexer", () => {
     ).toBe("reject");
   });
 
-  it.each<FixtureSourceMode>(["local_node", "external_providers"])(
+  it.each<FixtureSourceMode>(["external_providers"])(
     "consumes exact %s W13 recovery, prunes only the orphan W17 lineage, and restarts idempotently",
     (sourceMode) => {
       const scenario = postFinalityProofThreadScenario(sourceMode);
@@ -4472,8 +4210,10 @@ describe("W17 public proof/computation-thread indexer", () => {
     const wrongMode = structuredClone(
       scenario.context,
     ) as WatcherProofThreadPublicContextV1;
-    (wrongMode.rollbackAuthority!.context as Mutable).policy =
-      localFinalityPolicy;
+    (wrongMode.rollbackAuthority!.context as Mutable).policy = {
+      ...finalityPolicy,
+      sourceMode: "local_node",
+    };
     expect(evaluate(scenario.observation, wrongMode)).toMatchObject({
       action: "reject",
       reasonCodes: ["rollback_authority_mismatch"],

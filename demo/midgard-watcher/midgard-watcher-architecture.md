@@ -13,17 +13,20 @@ used as evidence that independent challenges are production-ready.
 ## Cardano L1 Source Modes
 
 The watcher has one explicit, mutually exclusive L1-source discriminator:
-`local_node` or `external_providers`.
+`local_node` or `external_providers`; only `external_providers` is currently
+accepted by the wire configuration parser.
 
-- In `local_node`, a watcher-operated Cardano full node is the sole
-  chain-consensus authority. Chain sync supplies roll-forward and rollback
-  events. Ogmios, Kupo/Kupmios, or db-sync may query the same node, but they are
-  aligned index surfaces—not independent providers. A stale, wrong-network, or
-  incompatible-chain-point query result fails closed.
+- `local_node` remains a pure state-machine vocabulary for a deferred native
+  adapter. The retired pathname authority route cannot be instantiated; any
+  future local adapter must authenticate the peer on the connected socket.
 - In `external_providers`, the watcher has no local chain authority and
   requires at least two operationally independent configured providers.
   Same-network and compatible-chain-point agreement is mandatory; disagreement
   quarantines protocol decisions.
+
+Under the prelaunch no-compatibility rule, the retired local pathname
+constructor/type/export has no alias. The unwired `start` and `replay`
+scaffolds still exit `78` without opening a configured transport.
 
 W14 must consume canonical node-derived transaction, output, datum, and
 rollback observations. Cardano consensus and the deployed validators
@@ -106,10 +109,10 @@ The operator bond deters fraud only if a watcher can reliably convert an invalid
 
 A production watcher needs these inputs:
 
-- Exactly one Cardano L1 source mode: either a watcher-operated `local_node`
-  chain authority with aligned query/index surfaces, or at least two
-  operationally independent `external_providers`, with explicit finality and
-  rollback policy in either mode.
+- Exactly one Cardano L1 source mode: the current wire path accepts at least
+  two operationally independent `external_providers`, with explicit finality
+  and rollback policy. `local_node` remains deferred until a peer-authenticated
+  native adapter exists.
 - The Midgard deployment manifest or enough data to derive and verify it: network id, hub oracle, script hashes, reference-script UTxOs, protocol parameters, fraud-proof catalogue root, compiler/artifact hashes, and genesis/one-shot identity.
 - The hub oracle UTxO and all protocol addresses/policy IDs it authenticates.
 - State queue, scheduler, operator-directory, settlement, deposit, withdrawal, transaction-order, reserve, payout, fraud-proof catalogue, computation-thread, and fraud-proof UTxOs.
@@ -457,13 +460,11 @@ Only `verified` should be considered healthy.
 A production watcher should:
 
 - Run continuously and start before blocks are close to maturity.
-- Select exactly one L1 source mode. In `local_node`, use one watcher-operated
-  Cardano full node and its chain-sync stream as the consensus authority, and
-  require every same-node query/index surface to match its network and
-  canonical chain point. In `external_providers`, require at least two
+- Select exactly one L1 source mode. The current selectable mode is
+  `external_providers`, requiring at least two
   operationally independent providers to agree on network and compatible
-  chain point. Never count Ogmios, Kupo, or db-sync surfaces backed by one
-  local node as independent authorities.
+  chain point. `local_node` is deferred until a native adapter authenticates
+  the connected peer; pathname checks are not an authority.
 - Persist every proof-critical input before submitting proof transactions.
 - Alert on DA fetch failure, root mismatch, proof submission failure, maturity deadline risk, provider disagreement, chain rollback, deployment fingerprint mismatch, and proof-family coverage gaps.
 - Keep enough ADA and collateral inputs available for proof steps.

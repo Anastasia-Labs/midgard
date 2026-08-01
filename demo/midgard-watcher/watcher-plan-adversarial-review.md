@@ -26,14 +26,19 @@ Additional context consulted by reviewer:
 ## Authoritative L1-Source Clarification
 
 The original finding below is superseded where it treated two providers as an
-unconditional acceptance requirement. The watcher now has two explicit,
-mutually exclusive modes:
+unconditional acceptance requirement. The watcher retains two explicit,
+mutually exclusive vocabulary modes, but the current wire configuration
+selects only `external_providers`:
 
-- `local_node`: one watcher-operated Cardano full node is the chain-consensus
-  authority. Ogmios, Kupo/Kupmios, and db-sync are only aligned query surfaces
-  for that node and do not count as independent providers.
+- `local_node`: deferred until a peer-authenticated native adapter exists.
+  The retired pathname-based authority constructor and route are not
+  selectable; pure local-mode state vocabulary remains for that future adapter.
 - `external_providers`: at least two operationally independent providers must
   agree on network and a compatible chain point.
+
+The prelaunch retirement has no compatibility alias. `start` and `replay`
+remain unwired, transport-free scaffolds that exit `78`; W10 operational wire
+binding and W14 live provenance remain open.
 
 Both modes fail closed on mismatched or stale evidence and propagate
 rollbacks. Transient non-agreement and same-point content mismatch preserve
@@ -100,13 +105,13 @@ externally operated providers.
 Recommendation:
 
 - Require an explicit `local_node | external_providers` source discriminator.
-  `local_node` uses the watcher's own full-node chain-sync stream as the sole
-  consensus authority and requires aligned same-node query/index surfaces plus
-  rollback propagation. `external_providers` requires at least two
+  The prelaunch wire parser currently accepts only `external_providers`, which
+  requires at least two
   operationally independent providers to agree on network and compatible chain
-  point. Both modes require explicit finality, non-terminal quarantine for
-  transient evidence, and automated W13 recovery from an agreed finalized
-  rollback within Cardano `k = 2160`.
+  point. `local_node` remains deferred: a native adapter must authenticate the
+  connected peer before that route can be selected. Both modes retain explicit
+  finality, non-terminal quarantine for transient evidence, and automated W13
+  recovery from an agreed finalized rollback within Cardano `k = 2160`.
 
 Disposition:
 

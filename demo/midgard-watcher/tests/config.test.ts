@@ -266,42 +266,23 @@ describe("strict watcher configuration", () => {
     );
   });
 
-  it("accepts one local node in acceptance mode with shared-backend query surfaces", () => {
-    const parsed = parseWatcherConfig(validLocalNodeConfig());
-
-    expect(parsed.mode).toBe("acceptance");
-    expect(parsed.l1.source).toMatchObject({
-      sourceMode: "local_node",
-      authorityNodeId: "watcher-node",
-      chainSync: {
-        kind: "cardano_node_socket",
-        socketPath: "/run/cardano/node.socket",
-        genesisIdentitySha256: GENESIS_ID,
+  it("rejects local-node configuration before inspecting socket-path fields", () => {
+    const input = validLocalNodeConfig();
+    let socketPathRead = false;
+    Object.defineProperty(input.l1.source.chainSync, "socketPath", {
+      enumerable: true,
+      get: () => {
+        socketPathRead = true;
+        throw new Error("local-node socket path must not be inspected");
       },
-      queryServices: [
-        {
-          kind: "ogmios",
-          identity: "local-ogmios",
-          endpoint: "ws://127.0.0.1:1337",
-        },
-        {
-          kind: "kupo",
-          identity: "local-kupo",
-          endpoint: "http://127.0.0.1:1442",
-        },
-        {
-          kind: "db_sync",
-          identity: "local-db-sync",
-          endpoint: "postgresql://127.0.0.1:5432/cexplorer",
-        },
-      ],
     });
-    expect(Object.isFrozen(parsed.l1.source)).toBe(true);
-    if (parsed.l1.source.sourceMode !== "local_node") {
-      throw new Error("Expected local node configuration");
-    }
-    expect(Object.isFrozen(parsed.l1.source.chainSync)).toBe(true);
-    expect(Object.isFrozen(parsed.l1.source.queryServices)).toBe(true);
+
+    rejected(
+      () => parseWatcherConfig(input),
+      "invalid_value",
+      "$.l1.source.sourceMode",
+    );
+    expect(socketPathRead).toBe(false);
   });
 
   it("accepts every adjacent numeric boundary", () => {
@@ -605,108 +586,36 @@ describe("strict watcher configuration", () => {
     });
     rejected(
       () => parseWatcherConfig(mixedLocal),
-      "unknown_field",
-      "$.l1.source",
+      "invalid_value",
+      "$.l1.source.sourceMode",
     );
 
     const missingChainSync = validLocalNodeConfig();
     delete (missingChainSync.l1.source as Record<string, unknown>).chainSync;
     rejected(
       () => parseWatcherConfig(missingChainSync),
-      "missing_required_field",
-      "$.l1.source.chainSync",
+      "invalid_value",
+      "$.l1.source.sourceMode",
     );
   });
 
-  it("rejects malformed local-node authority, chain-sync, and query-service fields", () => {
-    const wrongAuthority = validLocalNodeConfig();
-    wrongAuthority.l1.source.authorityNodeId = "Watcher Node";
-    rejected(
-      () => parseWatcherConfig(wrongAuthority),
-      "invalid_value",
-      "$.l1.source.authorityNodeId",
-    );
-
-    const wrongChainSync = validLocalNodeConfig();
-    wrongChainSync.l1.source.chainSync.kind = "ogmios";
-    rejected(
-      () => parseWatcherConfig(wrongChainSync),
-      "invalid_value",
-      "$.l1.source.chainSync.kind",
-    );
-
-    const unsafeSocket = validLocalNodeConfig();
-    unsafeSocket.l1.source.chainSync.socketPath = "/tmp/node.socket";
-    rejected(
-      () => parseWatcherConfig(unsafeSocket),
-      "unsafe_path",
-      "$.l1.source.chainSync.socketPath",
-    );
-
-    const wrongGenesis = validLocalNodeConfig();
-    wrongGenesis.l1.source.chainSync.genesisIdentitySha256 = "33".repeat(31);
-    rejected(
-      () => parseWatcherConfig(wrongGenesis),
-      "invalid_value",
-      "$.l1.source.chainSync.genesisIdentitySha256",
-    );
-
-    const wrongQueryKind = validLocalNodeConfig();
-    wrongQueryKind.l1.source.queryServices[0]!.kind = "blockfrost";
-    rejected(
-      () => parseWatcherConfig(wrongQueryKind),
-      "invalid_value",
-      "$.l1.source.queryServices[0].kind",
-    );
-
-    const unsafeQueryEndpoint = validLocalNodeConfig();
-    unsafeQueryEndpoint.l1.source.queryServices[0]!.endpoint =
+  it("rejects every local-node field mutation before socket-path validation", () => {
+    const inputs = [
+      validLocalNodeConfig(),
+      validLocalNodeConfig(),
+      validLocalNodeConfig(),
+    ];
+    inputs[0]!.l1.source.authorityNodeId = "Watcher Node";
+    inputs[1]!.l1.source.chainSync.socketPath = "/tmp/node.socket";
+    inputs[2]!.l1.source.queryServices[0]!.endpoint =
       "http://ogmios.example";
-    rejected(
-      () => parseWatcherConfig(unsafeQueryEndpoint),
-      "invalid_endpoint",
-      "$.l1.source.queryServices[0].endpoint",
-    );
-
-    const inlineQuerySecret = validLocalNodeConfig();
-    Object.assign(inlineQuerySecret.l1.source.queryServices[0]!, {
-      apiKey: "must-not-be-inline",
-    });
-    rejected(
-      () => parseWatcherConfig(inlineQuerySecret),
-      "inline_secret_forbidden",
-      "$.l1.source.queryServices[0]",
-    );
-  });
-
-  it("bounds and de-aliases local query surfaces without treating them as providers", () => {
-    const empty = validLocalNodeConfig();
-    empty.l1.source.queryServices = [];
-    const parsed = parseWatcherConfig(empty);
-    expect(parsed.l1.source.sourceMode).toBe("local_node");
-
-    const tooMany = validLocalNodeConfig();
-    tooMany.l1.source.queryServices = Array.from(
-      { length: WATCHER_CONFIG_BOUNDS.queryServices.max + 1 },
-      (_, index) => ({
-        kind: "ogmios",
-        identity: `query-${index.toString().padStart(2, "0")}`,
-        endpoint: `http://127.0.0.1:${(2_000 + index).toString()}`,
-      }),
-    );
-    rejected(
-      () => parseWatcherConfig(tooMany),
-      "out_of_bounds",
-      "$.l1.source.queryServices",
-    );
-
-    const alias = validLocalNodeConfig();
-    alias.l1.source.queryServices[1]!.identity = "local-ogmios";
-    rejected(
-      () => parseWatcherConfig(alias),
-      "provider_alias",
-      "$.l1.source.queryServices[1]",
-    );
+    for (const input of inputs) {
+      rejected(
+        () => parseWatcherConfig(input),
+        "invalid_value",
+        "$.l1.source.sourceMode",
+      );
+    }
   });
 
   it("requires bounded, distinct public DA peer multiaddresses", () => {

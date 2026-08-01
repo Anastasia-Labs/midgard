@@ -1,7 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
 import { createConnection as createNetConnection, type Socket } from "node:net";
-import { isAbsolute, normalize as normalizePath } from "node:path";
 import {
   connect as connectTls,
   type ConnectionOptions,
@@ -90,8 +88,8 @@ export type WatcherL1SourceIdentityV1 =
 
 /**
  * Public identity metadata established by the transport boundary. This value
- * must come from the configured TLS trust identity or Cardano node genesis,
- * never from the provider response being normalized.
+ * must come from the configured TLS trust identity or a future native local
+ * adapter, never from the provider response being normalized.
  */
 type WatcherAuthenticatedL1ProviderBaseV1 = Readonly<{
   schemaVersion: typeof WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION;
@@ -111,7 +109,9 @@ export type WatcherAuthenticatedL1ProviderV1 = Readonly<
 
 /**
  * Opaque authority created only after the watcher transport boundary has
- * verified its configured node socket or an external provider TLS peer.
+ * verified an external provider TLS peer. A future local-node adapter may
+ * create a local authority only after it binds peer identity to the connected
+ * socket; pathname checks are intentionally not a supported authority.
  *
  * The public fields are diagnostic only. Authenticity is established by
  * module-private WeakMap membership, so a parsed or deserialized object cannot
@@ -120,16 +120,6 @@ export type WatcherAuthenticatedL1ProviderV1 = Readonly<
 export type WatcherL1TransportAttestationContextV1 = Readonly<{
   schemaVersion: typeof WATCHER_L1_TRANSPORT_ATTESTATION_CONTEXT_V1_SCHEMA_VERSION;
   attestationDigest: string;
-}>;
-
-export type WatcherLocalNodeAuthorityTransportV1 = Readonly<{
-  network: WatcherL1NetworkV1;
-  authorityNodeId: string;
-  providerId: string;
-  nodeSocketPath: string;
-  genesisFilePath: string;
-  expectedGenesisIdentitySha256: string;
-  connectTimeoutMs: number;
 }>;
 
 export type WatcherLocalNodeQueryTransportV1 =
@@ -1479,19 +1469,6 @@ const exactConnectionTimeout = (value: unknown, path: string): number => {
   return value as number;
 };
 
-const exactAbsolutePath = (value: unknown, path: string): string => {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > 4_096 ||
-    value.includes("\0") ||
-    !isAbsolute(value)
-  ) {
-    fail("invalid_field", path);
-  }
-  return normalizePath(value as string);
-};
-
 type ExactTlsEndpoint = Readonly<{
   endpoint: string;
   host: string;
@@ -1650,46 +1627,6 @@ const awaitConnectedSocket = async <T extends Socket | TLSSocket>(
     socket.once("error", onError);
   });
 
-const establishUnixSocket = async (
-  socketPath: string,
-  timeoutMs: number,
-  diagnosticPath: string,
-): Promise<Readonly<{ socket: Socket; identitySha256: string }>> => {
-  let metadata: Awaited<ReturnType<typeof stat>> | null = null;
-  try {
-    metadata = await stat(socketPath);
-  } catch {
-    fail("invalid_field", diagnosticPath);
-  }
-  if (metadata === null || !metadata.isSocket()) {
-    fail("identity_mismatch", diagnosticPath);
-  }
-  let socket: Socket | null = null;
-  try {
-    socket = await awaitConnectedSocket(
-      createNetConnection({ path: socketPath }),
-      "connect",
-      timeoutMs,
-    );
-  } catch {
-    fail("identity_mismatch", diagnosticPath);
-  }
-  if (socket === null) {
-    fail("identity_mismatch", diagnosticPath);
-  }
-  const trustedSocket = socket as Socket;
-  trustedSocket.on("error", () => trustedSocket.destroy());
-  const socketMetadata = metadata as Awaited<ReturnType<typeof stat>>;
-  return Object.freeze({
-    socket: trustedSocket,
-    identitySha256: digestCanonicalJson({
-      socketPath,
-      device: socketMetadata.dev.toString(),
-      inode: socketMetadata.ino.toString(),
-    }),
-  });
-};
-
 const establishTcpSocket = async (
   endpoint: ExactTcpEndpoint,
   path: string,
@@ -1760,104 +1697,6 @@ const establishTlsSocket = async (
     fail("identity_mismatch", `${path}.expectedTlsPublicIdentitySha256`);
   }
   return Object.freeze({ socket: trustedSocket, identitySha256 });
-};
-
-export const establishWatcherLocalNodeAuthorityTransportV1 = async (
-  input: WatcherLocalNodeAuthorityTransportV1,
-): Promise<WatcherL1TransportAttestationContextV1> => {
-  const record = exactRecord(input, "$.localNodeTransport", [
-    "network",
-    "authorityNodeId",
-    "providerId",
-    "nodeSocketPath",
-    "genesisFilePath",
-    "expectedGenesisIdentitySha256",
-    "connectTimeoutMs",
-  ]);
-  const network = exactLiteral(
-    record.network,
-    "$.localNodeTransport.network",
-    NETWORKS,
-  );
-  const authorityNodeId = exactString(
-    record.authorityNodeId,
-    "$.localNodeTransport.authorityNodeId",
-    PROVIDER_ID,
-  );
-  const providerId = exactString(
-    record.providerId,
-    "$.localNodeTransport.providerId",
-    PROVIDER_ID,
-  );
-  const expectedGenesisIdentitySha256 = exactString(
-    record.expectedGenesisIdentitySha256,
-    "$.localNodeTransport.expectedGenesisIdentitySha256",
-    HEX_32,
-  );
-  const nodeSocketPath = exactAbsolutePath(
-    record.nodeSocketPath,
-    "$.localNodeTransport.nodeSocketPath",
-  );
-  const genesisFilePath = exactAbsolutePath(
-    record.genesisFilePath,
-    "$.localNodeTransport.genesisFilePath",
-  );
-  let genesisBytes: Buffer | null = null;
-  try {
-    genesisBytes = await readFile(genesisFilePath);
-  } catch {
-    fail("invalid_field", "$.localNodeTransport.genesisFilePath");
-  }
-  if (genesisBytes === null) {
-    fail("invalid_field", "$.localNodeTransport.genesisFilePath");
-  }
-  const genesisIdentitySha256 = createHash("sha256")
-    .update(genesisBytes as Buffer)
-    .digest("hex");
-  if (genesisIdentitySha256 !== expectedGenesisIdentitySha256) {
-    fail(
-      "identity_mismatch",
-      "$.localNodeTransport.expectedGenesisIdentitySha256",
-    );
-  }
-  const established = await establishUnixSocket(
-    nodeSocketPath,
-    exactConnectionTimeout(
-      record.connectTimeoutMs,
-      "$.localNodeTransport.connectTimeoutMs",
-    ),
-    "$.localNodeTransport.nodeSocketPath",
-  );
-  const authorityBindingSha256 = digestCanonicalJson({
-    sourceMode: "local_node",
-    network,
-    authorityNodeId,
-    nodeSocketPath,
-    socketIdentitySha256: established.identitySha256,
-    genesisIdentitySha256,
-  });
-  const provider = parseAuthenticatedProvider({
-    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-    network,
-    providerId,
-    source: {
-      sourceMode: "local_node",
-      authorityNodeId,
-      surface: "chain_sync",
-    },
-    authentication: {
-      kind: "cardano_node_genesis_v1",
-      publicIdentitySha256: genesisIdentitySha256,
-    },
-  });
-  return makeTransportAttestationContext(
-    {
-      provider,
-      authorityBindingSha256,
-      transportEndpoint: nodeSocketPath,
-    },
-    [established.socket],
-  );
 };
 
 export const establishWatcherLocalNodeQueryTransportV1 = async (

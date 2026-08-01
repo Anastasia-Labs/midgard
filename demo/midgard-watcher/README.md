@@ -84,17 +84,23 @@ include rejected values.
 }
 ```
 
-The L1 source is an exact disjoint union:
+The L1 source vocabulary is an exact disjoint union, but only the external
+provider branch is currently selectable on the wire:
 
-- `local_node` uses one watcher-operated Cardano full node and its chain-sync
-  stream as the consensus authority. Its `chainSync` record binds an absolute
-  node socket and genesis identity. Zero to eight Ogmios, Kupo, Kupmios, or
-  db-sync query surfaces may share that node; they do not count as independent
-  providers and must remain aligned with its network and canonical chain point.
+- `local_node` is retained as pure state vocabulary for the deferred,
+  peer-authenticated native adapter. The current parser rejects it before
+  reading any socket-path or query fields; no pathname-based authority can be
+  instantiated. A future adapter must bind peer identity to the connected
+  socket, not to a pathname.
 - `external_providers` requires at least two independently operated providers
   with distinct identities, operator identity hashes, and canonical public
   HTTPS endpoints. Their same-network, compatible-chain-point evidence must
   agree before a protocol decision is authorized.
+
+This is a prelaunch API retirement: the former local pathname-authority
+constructor, type, and exports have no compatibility alias. `start` and
+`replay` remain transport-free scaffolds and exit with code `78`; neither can
+turn a rejected local configuration into a connection attempt.
 
 DA peers must be public DNS libp2p multiaddresses. The SQLite path must be
 absolute and durable. The rollback-authority key and prover key are separate
@@ -132,9 +138,9 @@ head or one exact direct successor, returns no protocol decision, and requires
 external CAS plus read-back before load. Startup rejects any older, skipped,
 divergent, tampered, or deployment-mismatched head/snapshot pair.
 
-The live W10 transport capability proves the configured node socket or
-provider endpoint and peer identity. Its current normalization call is an
-in-process boundary: the future watcher-owned Cardano/provider wire adapter
+The live W10 transport capability proves the configured provider endpoint and
+TLS peer identity. Its current normalization call is an in-process boundary:
+the future watcher-owned Cardano/provider wire adapter
 must pass only bytes it decoded from that exact live connection. This
 checkpoint does not include that wire adapter and therefore does not claim
 that an arbitrary caller-supplied observation was read from the socket. W10

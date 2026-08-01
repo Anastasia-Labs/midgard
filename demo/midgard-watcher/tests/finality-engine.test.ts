@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
@@ -29,8 +29,6 @@ import {
 import {
   closeWatcherL1TransportAttestationContextV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -50,12 +48,7 @@ const transportContexts = new Map<
   WatcherL1TransportAttestationContextV1
 >();
 let transportFixtureDirectory = "";
-let localTransportServer: Server | undefined;
-let localQueryTransportServer: Server | undefined;
 const tlsTransportServers: Server[] = [];
-let localGenesisIdentitySha256 = "";
-let localNodeSocketPath = "";
-let localQueryEndpoint = "";
 const externalEndpoints = new Map<string, string>();
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
@@ -132,16 +125,8 @@ const cleanupTransportFixtures = async (): Promise<void> => {
     closeWatcherL1TransportAttestationContextV1(context);
   }
   transportContexts.clear();
-  const servers = [
-    ...tlsTransportServers,
-    ...(localTransportServer === undefined ? [] : [localTransportServer]),
-    ...(localQueryTransportServer === undefined
-      ? []
-      : [localQueryTransportServer]),
-  ];
+  const servers = [...tlsTransportServers];
   tlsTransportServers.length = 0;
-  localTransportServer = undefined;
-  localQueryTransportServer = undefined;
   externalEndpoints.clear();
   await Promise.all(servers.map(closeServer));
   if (transportFixtureDirectory !== "") {
@@ -155,44 +140,6 @@ beforeAll(async () => {
     transportFixtureDirectory = await mkdtemp(
       join("/dev/shm", "midgard-w12-finality-"),
     );
-    const nodeSocketPath = join(transportFixtureDirectory, "node.socket");
-    localNodeSocketPath = nodeSocketPath;
-    const genesisFilePath = join(transportFixtureDirectory, "genesis.json");
-    const genesisBytes = Buffer.from('{"networkMagic":1}', "utf8");
-    await writeFile(genesisFilePath, genesisBytes);
-    localGenesisIdentitySha256 = createHash("sha256")
-      .update(genesisBytes)
-      .digest("hex");
-    localTransportServer = createNetServer();
-    await listen(localTransportServer, nodeSocketPath);
-    const authority = await establishWatcherLocalNodeAuthorityTransportV1({
-      network: "Preprod",
-      authorityNodeId: "cardano-node-a",
-      providerId: "cardano-node-a",
-      nodeSocketPath,
-      genesisFilePath,
-      expectedGenesisIdentitySha256: localGenesisIdentitySha256,
-      connectTimeoutMs: 2_000,
-    });
-    transportContexts.set("local:chain_sync", authority);
-    localQueryTransportServer = createNetServer();
-    await listen(localQueryTransportServer, 0);
-    const queryAddress = localQueryTransportServer.address();
-    if (queryAddress === null || typeof queryAddress === "string") {
-      throw new Error("local query fixture did not bind a TCP port");
-    }
-    localQueryEndpoint = `http://127.0.0.1:${queryAddress.port.toString()}/ogmios`;
-    transportContexts.set(
-      "local:ogmios",
-      await establishWatcherLocalNodeQueryTransportV1(authority, {
-        transportKind: "tcp",
-        providerId: "cardano-node-a-ogmios",
-        surface: "ogmios",
-        endpoint: localQueryEndpoint,
-        connectTimeoutMs: 2_000,
-      }),
-    );
-
     const fixtures = new Map<
       string,
       Awaited<ReturnType<typeof makeTlsTransport>>
@@ -321,26 +268,6 @@ const config = (depth = 3, rollbackDepth = depth) => ({
   },
 });
 
-const localConfig = (depth = 3, rollbackDepth = depth) => {
-  const base = config(depth, rollbackDepth);
-  return {
-    ...base,
-    l1: {
-      ...base.l1,
-      source: {
-        sourceMode: "local_node" as const,
-        authorityNodeId: "cardano-node-a",
-        chainSync: {
-          kind: "cardano_node_socket" as const,
-          socketPath: localNodeSocketPath,
-          genesisIdentitySha256: localGenesisIdentitySha256,
-        },
-        queryServices: [],
-      },
-    },
-  };
-};
-
 const deploymentIdentity = (
   manifestByte = "11",
   releaseByte = "22",
@@ -369,15 +296,6 @@ const policy = (
   return value as WatcherFinalityPolicyV1;
 };
 
-const localPolicy = (depth = 3): WatcherFinalityPolicyV1 => {
-  const value = makeWatcherFinalityPolicyV1(
-    localConfig(depth),
-    deploymentIdentity(),
-  );
-  expect(value).not.toBeNull();
-  return value as WatcherFinalityPolicyV1;
-};
-
 const provider = (
   providerId: string,
   identityByte: string,
@@ -386,9 +304,6 @@ const provider = (
   transportContexts.get(
     `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
   )!;
-
-const localNodeProvider = (surface: "chain_sync" | "ogmios" = "chain_sync") =>
-  transportContexts.get(`local:${surface}`)!;
 
 const transaction = (bodySeedHex: string) => {
   const body = CML.TransactionBody.new(
@@ -487,60 +402,6 @@ const agreement = (
   return evaluateWatcherMultiProviderConsistencyV1(
     externalSource(),
     reverse ? observations.reverse() : observations,
-  );
-};
-
-const localAgreement = (
-  depth: string,
-  options: ObservationOptions = {},
-  includeAlignedQuery = false,
-  includeQueryObservation = includeAlignedQuery,
-) => {
-  const normalized = (
-    surface: "chain_sync" | "ogmios",
-  ): WatcherNormalizedL1BlockV1 => {
-    const attestation = localNodeProvider(surface);
-    const value = normalizeWatcherL1BlockV1(attestation, {
-      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-      network: "Preprod",
-      providerId:
-        surface === "chain_sync"
-          ? "cardano-node-a"
-          : `cardano-node-a-${surface}`,
-      chainPoint: {
-        blockHash: options.blockHash ?? hex32("aa"),
-        parentBlockHash: options.parentBlockHash ?? null,
-        slot: options.slot ?? "1000",
-        blockNo: options.blockNo ?? "100",
-        depth,
-      },
-      transactions:
-        options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
-    });
-    observationAttestations.set(value, attestation);
-    return value;
-  };
-  return evaluateWatcherMultiProviderConsistencyV1(
-    {
-      sourceMode: "local_node",
-      network: "Preprod",
-      authorityNodeId: "cardano-node-a",
-      genesisIdentitySha256: localGenesisIdentitySha256,
-      chainSyncSocketPath: localNodeSocketPath,
-      queryServices: includeAlignedQuery
-        ? [
-            {
-              kind: "ogmios" as const,
-              providerId: "cardano-node-a-ogmios",
-              endpoint: localQueryEndpoint,
-            },
-          ]
-        : [],
-    },
-    [
-      normalized("chain_sync"),
-      ...(includeQueryObservation ? [normalized("ogmios")] : []),
-    ],
   );
 };
 
@@ -657,12 +518,6 @@ describe("canonical release-bound watcher finality", () => {
       ),
     ).toBeNull();
 
-    expect(localPolicy()).toMatchObject({
-      sourceMode: "local_node",
-      authorityNodeId: "cardano-node-a",
-      authorityGenesisIdentitySha256: localGenesisIdentitySha256,
-      authorityChainSyncSocketPath: localNodeSocketPath,
-    });
   });
 
   it("rejects configuration/deployment mismatches without emitting values", () => {
@@ -677,78 +532,6 @@ describe("canonical release-bound watcher finality", () => {
 
     expect(wrongNetwork).toBeNull();
     expect(makeWatcherFinalityPolicyV1(config(), malformedMarker)).toBeNull();
-  });
-
-  it("accepts one authoritative local-node observation and rejects source substitution", () => {
-    const finalityPolicy = localPolicy();
-    const firstConsistency = localAgreement("2");
-    const first = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      null,
-      firstConsistency,
-    );
-    const finalized = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      first.state,
-      localAgreement("3"),
-    );
-    const externalSubstitution = evaluateWatcherFinalityV1(
-      finalityPolicy,
-      first.state,
-      agreement("3"),
-    );
-    const foreignConfig = localConfig();
-    const foreignPolicy = makeWatcherFinalityPolicyV1(
-      {
-        ...foreignConfig,
-        l1: {
-          ...foreignConfig.l1,
-          source: {
-            ...foreignConfig.l1.source,
-            authorityNodeId: "cardano-node-b",
-            chainSync: {
-              ...foreignConfig.l1.source.chainSync,
-              genesisIdentitySha256: hex32("c3"),
-            },
-          },
-        },
-      },
-      deploymentIdentity(),
-    );
-
-    expect(firstConsistency).toMatchObject({
-      status: "agreed",
-      protocolDecision: "allowed",
-      sourceMode: "local_node",
-      authorityNodeId: "cardano-node-a",
-      authorityGenesisIdentitySha256: localGenesisIdentitySha256,
-      authorityChainSyncSocketPath: localNodeSocketPath,
-      observationCount: 1,
-      independentProviderCount: 1,
-      queryObservationCount: 0,
-      reasonCodes: ["local_node_consistent"],
-    });
-    expect(first).toMatchObject({
-      action: "observe_pending",
-      protocolDecision: "hold",
-    });
-    expect(finalized).toMatchObject({
-      action: "finalize",
-      protocolDecision: "finality_granted",
-      state: { phase: "finalized" },
-    });
-    expect(externalSubstitution).toMatchObject({
-      action: "reject",
-      protocolDecision: "quarantined",
-      reasonCodes: ["source_mode_mismatch"],
-      state: first.state,
-    });
-    expect(
-      evaluateWatcherFinalityV1(foreignPolicy, null, firstConsistency),
-    ).toMatchObject({
-      action: "reject",
-      reasonCodes: ["source_authority_mismatch"],
-    });
   });
 
   it("rejects agreement from two distinct providers outside the W01 allowlist", () => {
@@ -1207,7 +990,7 @@ describe("canonical release-bound watcher finality", () => {
     });
   });
 
-  it("keeps malformed input, bounded external lag, and local query unavailability transient after finality", () => {
+  it("keeps malformed input and bounded external lag transient after finality", () => {
     const finalityPolicy = policy();
     const finalized = finalizeAtThreshold(finalityPolicy);
     const boundedLag = evaluateWatcherMultiProviderConsistencyV1(
@@ -1248,65 +1031,6 @@ describe("canonical release-bound watcher finality", () => {
       });
     }
 
-    const localBase = localConfig();
-    const localQueryPolicy = makeWatcherFinalityPolicyV1(
-      {
-        ...localBase,
-        l1: {
-          ...localBase.l1,
-          source: {
-            ...localBase.l1.source,
-            queryServices: [
-              {
-                kind: "ogmios",
-                identity: "cardano-node-a-ogmios",
-                endpoint: localQueryEndpoint,
-              },
-            ],
-          },
-        },
-      },
-      deploymentIdentity(),
-    ) as WatcherFinalityPolicyV1;
-    expect(localQueryPolicy).not.toBeNull();
-    const localPending = evaluateWatcherFinalityV1(
-      localQueryPolicy,
-      null,
-      localAgreement("2", {}, true),
-    ).state;
-    const localFinalized = evaluateWatcherFinalityV1(
-      localQueryPolicy,
-      localPending,
-      localAgreement("3", {}, true),
-    ).state as WatcherFinalityStateV1;
-    const unavailable = localAgreement("3", {}, true, false);
-    expect(unavailable).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["missing_local_query_evidence"],
-    });
-    const held = evaluateWatcherFinalityV1(
-      localQueryPolicy,
-      localFinalized,
-      unavailable,
-    );
-    expect(held).toMatchObject({
-      action: "reject",
-      protocolDecision: "quarantined",
-      reasonCodes: ["provider_result_quarantined"],
-      state: localFinalized,
-    });
-    expect(held.state?.incident).toBeNull();
-    expect(
-      evaluateWatcherFinalityV1(
-        localQueryPolicy,
-        held.state,
-        localAgreement("4", {}, true),
-      ),
-    ).toMatchObject({
-      action: "duplicate",
-      protocolDecision: "hold",
-      state: localFinalized,
-    });
   });
 
   it("rejects stale policy state, deployment, and release bindings", () => {

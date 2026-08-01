@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer as createNetServer, type Server } from "node:net";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
@@ -14,8 +14,6 @@ import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
   closeWatcherL1TransportAttestationContextV1,
   establishWatcherExternalProviderTransportV1,
-  establishWatcherLocalNodeAuthorityTransportV1,
-  establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1PublicBytesV1,
   normalizeWatcherL1BlockV1,
   WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
@@ -38,13 +36,7 @@ const transportContexts = new Map<
 >();
 const tlsIdentities = new Map<string, string>();
 let transportFixtureDirectory = "";
-let localServer: Server;
-let localQueryServer: Server;
 const tlsServers: Server[] = [];
-let localGenesisIdentitySha256 = "";
-let foreignGenesisIdentitySha256 = "";
-let localNodeSocketPath = "";
-let localQueryPort = 0;
 const externalEndpoints = new Map<string, string>();
 
 const listen = async (server: Server, target: string | number): Promise<void> =>
@@ -100,77 +92,6 @@ beforeAll(async () => {
   transportFixtureDirectory = await mkdtemp(
     join(tmpdir(), "midgard-w10-consistency-"),
   );
-  const socketPath = join(transportFixtureDirectory, "node.socket");
-  localNodeSocketPath = socketPath;
-  const genesisPath = join(transportFixtureDirectory, "genesis.json");
-  const foreignGenesisPath = join(
-    transportFixtureDirectory,
-    "foreign-genesis.json",
-  );
-  const genesisBytes = Buffer.from('{"networkMagic":1}', "utf8");
-  const foreignGenesisBytes = Buffer.from('{"networkMagic":2}', "utf8");
-  await Promise.all([
-    writeFile(genesisPath, genesisBytes),
-    writeFile(foreignGenesisPath, foreignGenesisBytes),
-  ]);
-  localGenesisIdentitySha256 = createHash("sha256")
-    .update(genesisBytes)
-    .digest("hex");
-  foreignGenesisIdentitySha256 = createHash("sha256")
-    .update(foreignGenesisBytes)
-    .digest("hex");
-  localServer = createNetServer();
-  await listen(localServer, socketPath);
-  localQueryServer = createNetServer();
-  await listen(localQueryServer, 0);
-  const queryAddress = localQueryServer.address();
-  if (queryAddress === null || typeof queryAddress === "string") {
-    throw new Error("query fixture did not bind a TCP port");
-  }
-  localQueryPort = queryAddress.port;
-
-  for (const [authorityNodeId, identityByte, selectedGenesisPath, digest] of [
-    ["watcher-node-a", "cc", genesisPath, localGenesisIdentitySha256],
-    ["watcher-node-b", "cc", genesisPath, localGenesisIdentitySha256],
-    ["watcher-node-a", "aa", foreignGenesisPath, foreignGenesisIdentitySha256],
-  ] as const) {
-    const context = await establishWatcherLocalNodeAuthorityTransportV1({
-      network: "Preprod",
-      authorityNodeId,
-      providerId: "chain-sync",
-      nodeSocketPath: socketPath,
-      genesisFilePath: selectedGenesisPath,
-      expectedGenesisIdentitySha256: digest,
-      connectTimeoutMs: 2_000,
-    });
-    transportContexts.set(
-      `local:${authorityNodeId}:chain_sync:chain-sync:${identityByte}`,
-      context,
-    );
-  }
-  const authority = transportContexts.get(
-    "local:watcher-node-a:chain_sync:chain-sync:cc",
-  )!;
-  for (const [surface, providerId] of [
-    ["ogmios", "ogmios"],
-    ["ogmios", "ogmios-a"],
-    ["ogmios", "ogmios-b"],
-    ["kupo", "kupo"],
-    ["db_sync", "db-sync"],
-    ["kupmios", "kupmios"],
-  ] as const) {
-    transportContexts.set(
-      `local:watcher-node-a:${surface}:${providerId}:cc`,
-      await establishWatcherLocalNodeQueryTransportV1(authority, {
-        transportKind: "tcp",
-        providerId,
-        surface,
-        endpoint: localQueryEndpoint(surface, providerId),
-        connectTimeoutMs: 2_000,
-      }),
-    );
-  }
-
   const fixtures = new Map<
     string,
     Awaited<ReturnType<typeof makeTlsFixture>>
@@ -212,8 +133,7 @@ afterAll(async () => {
   for (const context of transportContexts.values()) {
     closeWatcherL1TransportAttestationContextV1(context);
   }
-  for (const server of [...tlsServers, localServer, localQueryServer])
-    server.close();
+  for (const server of tlsServers) server.close();
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
@@ -225,21 +145,6 @@ const provider = (
   transportContexts.get(
     `external:${providerId}:${identityByte}:${operatorIdentityByte}`,
   )!;
-
-const localProvider = (
-  surface: "chain_sync" | "ogmios" | "kupo" | "kupmios" | "db_sync",
-  identityByte: string,
-  authorityNodeId = "watcher-node-a",
-  providerId = surface.replace("_", "-"),
-) => {
-  const authorityIdentity = surface === "chain_sync" ? identityByte : "cc";
-  return transportContexts.get(
-    `local:${authorityNodeId}:${surface}:${providerId}:${authorityIdentity}`,
-  )!;
-};
-
-const localQueryEndpoint = (surface: string, providerId: string): string =>
-  `${surface === "db_sync" ? "postgresql" : "http"}://127.0.0.1:${localQueryPort.toString()}/${providerId}`;
 
 const externalConfig = (network = "Preprod") => ({
   sourceMode: "external_providers",
@@ -270,21 +175,13 @@ const threeProviderExternalConfig = () => ({
   ],
 });
 
-const localConfig = (
-  queryServices: readonly Readonly<{
-    kind: "ogmios" | "kupo" | "kupmios" | "db_sync";
-    providerId: string;
-  }>[] = [],
-) => ({
+const localConfig = () => ({
   sourceMode: "local_node",
   network: "Preprod",
   authorityNodeId: "watcher-node-a",
-  genesisIdentitySha256: localGenesisIdentitySha256,
-  chainSyncSocketPath: localNodeSocketPath,
-  queryServices: queryServices.map((query) => ({
-    ...query,
-    endpoint: localQueryEndpoint(query.kind, query.providerId),
-  })),
+  genesisIdentitySha256: "aa".repeat(32),
+  chainSyncSocketPath: "/run/cardano/node.socket",
+  queryServices: [],
 });
 
 const transaction = (bodySeedHex: string) => {
@@ -351,43 +248,6 @@ const observation = (
   return normalized;
 };
 
-const localObservation = (
-  surface: "chain_sync" | "ogmios" | "kupo" | "kupmios" | "db_sync",
-  identityByte: string,
-  options: {
-    authorityNodeId?: string;
-    blockHash?: string;
-    parentBlockHash?: string | null;
-    slot?: string;
-    blockNo?: string;
-    depth?: string;
-    bodyHex?: string;
-    providerId?: string;
-  } = {},
-): WatcherNormalizedL1BlockV1 => {
-  const attestation = localProvider(
-    surface,
-    identityByte,
-    options.authorityNodeId,
-    options.providerId,
-  );
-  const normalized = normalizeWatcherL1BlockV1(attestation, {
-    schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-    network: "Preprod",
-    providerId: options.providerId ?? surface.replace("_", "-"),
-    chainPoint: {
-      blockHash: options.blockHash ?? "11".repeat(32),
-      parentBlockHash: options.parentBlockHash ?? null,
-      slot: options.slot ?? "1000",
-      blockNo: options.blockNo ?? "100",
-      depth: options.depth ?? "15",
-    },
-    transactions:
-      options.bodyHex === undefined ? [] : [transaction(options.bodyHex)],
-  });
-  observationAttestations.set(normalized, attestation);
-  return normalized;
-};
 
 const evaluateWatcherMultiProviderConsistencyV1 = (
   configuredSource: unknown,
@@ -504,35 +364,6 @@ describe("fail-closed multi-provider consistency", () => {
       status: "quarantined",
       protocolDecision: "quarantined",
     });
-    expect(mismatch.reasonCodes).toContain("provider_transport_mismatch");
-  });
-
-  it("quarantines local authority and query observations from wrong configured locations", () => {
-    const authority = localObservation("chain_sync", "cc");
-    const wrongSocket = evaluateWatcherMultiProviderConsistencyV1(
-      {
-        ...localConfig(),
-        chainSyncSocketPath: "/var/run/cardano/another-node.socket",
-      },
-      [authority],
-    );
-    expect(wrongSocket.reasonCodes).toContain("provider_transport_mismatch");
-
-    const query = localObservation("ogmios", "cc");
-    const configured = localConfig([{ kind: "ogmios", providerId: "ogmios" }]);
-    const wrongQueryEndpoint = {
-      ...configured,
-      queryServices: [
-        {
-          ...configured.queryServices[0]!,
-          endpoint: "http://127.0.0.1:65500/not-ogmios",
-        },
-      ],
-    };
-    const mismatch = evaluateWatcherMultiProviderConsistencyV1(
-      wrongQueryEndpoint,
-      [authority, query],
-    );
     expect(mismatch.reasonCodes).toContain("provider_transport_mismatch");
   });
 
@@ -853,250 +684,6 @@ describe("fail-closed multi-provider consistency", () => {
     });
   });
 
-  it("allows one watcher-operated chain-sync authority without a provider quorum", () => {
-    const chainSync = localObservation("chain_sync", "cc", { depth: "19" });
-    const result = evaluateWatcherMultiProviderConsistencyV1(localConfig(), [
-      chainSync,
-    ]);
-
-    expect(result).toMatchObject({
-      status: "agreed",
-      protocolDecision: "allowed",
-      sourceMode: "local_node",
-      configuredNetwork: "Preprod",
-      authorityNodeId: "watcher-node-a",
-      authorityGenesisIdentitySha256: localGenesisIdentitySha256,
-      authorityChainSyncSocketPath: localNodeSocketPath,
-      chainAuthorityObservationDigest: chainSync.observationDigest,
-      queryObservationCount: 0,
-      observationCount: 1,
-      independentProviderCount: 1,
-      reasonCodes: ["local_node_consistent"],
-      alertCodes: [],
-      agreement: {
-        pointDigest: chainSync.chainPoint.pointDigest,
-        minimumDepth: "19",
-        blockContentDigest: chainSync.blockContentDigest,
-      },
-    });
-    expect(result.reasonCodes).not.toContain(
-      "insufficient_independent_providers",
-    );
-  });
-
-  it("accepts aligned query surfaces sharing the local node and ignores transport identity duplication for independence", () => {
-    const chainSync = localObservation("chain_sync", "cc");
-    const ogmios = localObservation("ogmios", "dd");
-    const kupo = localObservation("kupo", "dd");
-    const configured = localConfig([
-      { kind: "ogmios", providerId: "ogmios" },
-      { kind: "kupo", providerId: "kupo" },
-    ]);
-    const forward = evaluateWatcherMultiProviderConsistencyV1(configured, [
-      chainSync,
-      ogmios,
-      kupo,
-    ]);
-    const reverse = evaluateWatcherMultiProviderConsistencyV1(configured, [
-      kupo,
-      ogmios,
-      chainSync,
-    ]);
-
-    expect(forward).toMatchObject({
-      status: "agreed",
-      protocolDecision: "allowed",
-      independentProviderCount: 1,
-      queryObservationCount: 2,
-      localQueryServiceBindings: [
-        {
-          kind: "kupo",
-          providerId: "kupo",
-          endpoint: localQueryEndpoint("kupo", "kupo"),
-          observationStatus: "aligned",
-        },
-        {
-          kind: "ogmios",
-          providerId: "ogmios",
-          endpoint: localQueryEndpoint("ogmios", "ogmios"),
-          observationStatus: "aligned",
-        },
-      ],
-      reasonCodes: ["local_node_consistent"],
-      alertCodes: [],
-    });
-    expect(reverse).toEqual(forward);
-  });
-
-  it("accepts distinct aligned query services of the same local surface kind", () => {
-    const chainSync = localObservation("chain_sync", "cc");
-    const ogmiosA = localObservation("ogmios", "dd", {
-      providerId: "ogmios-a",
-    });
-    const ogmiosB = localObservation("ogmios", "ee", {
-      providerId: "ogmios-b",
-    });
-
-    const result = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([
-        { kind: "ogmios", providerId: "ogmios-a" },
-        { kind: "ogmios", providerId: "ogmios-b" },
-      ]),
-      [chainSync, ogmiosA, ogmiosB],
-    );
-
-    expect(result).toMatchObject({
-      status: "agreed",
-      protocolDecision: "allowed",
-      independentProviderCount: 1,
-      queryObservationCount: 2,
-      reasonCodes: ["local_node_consistent"],
-      alertCodes: [],
-    });
-  });
-
-  it("enumerates every configured local query and quarantines omitted evidence", () => {
-    const result = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([
-        { kind: "ogmios", providerId: "ogmios" },
-        { kind: "kupo", providerId: "kupo" },
-      ]),
-      [localObservation("chain_sync", "cc"), localObservation("ogmios", "dd")],
-    );
-
-    expect(result).toMatchObject({
-      status: "quarantined",
-      protocolDecision: "quarantined",
-      queryObservationCount: 1,
-      reasonCodes: ["missing_local_query_evidence"],
-      alertCodes: ["watcher_local_node_query_evidence_missing"],
-      localQueryServiceBindings: [
-        {
-          kind: "kupo",
-          providerId: "kupo",
-          observationStatus: "unavailable",
-          observationDigest: null,
-        },
-        {
-          kind: "ogmios",
-          providerId: "ogmios",
-          observationStatus: "aligned",
-        },
-      ],
-    });
-  });
-
-  it("fails closed when local query data is stale, forked, content-mismatched, or has not propagated a rollback", () => {
-    const chainSync = localObservation("chain_sync", "cc");
-    const stale = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([{ kind: "ogmios", providerId: "ogmios" }]),
-      [
-        chainSync,
-        localObservation("ogmios", "dd", {
-          blockHash: "22".repeat(32),
-          slot: "999",
-          blockNo: "99",
-        }),
-      ],
-    );
-    const fork = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([{ kind: "kupo", providerId: "kupo" }]),
-      [
-        chainSync,
-        localObservation("kupo", "ee", {
-          blockHash: "22".repeat(32),
-        }),
-      ],
-    );
-    const mismatchedBytes = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([{ kind: "db_sync", providerId: "db-sync" }]),
-      [
-        localObservation("chain_sync", "cc", { bodyHex: "a100" }),
-        localObservation("db_sync", "ff", { bodyHex: "a101" }),
-      ],
-    );
-    const rollbackNotPropagated = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig([{ kind: "kupmios", providerId: "kupmios" }]),
-      [
-        chainSync,
-        localObservation("kupmios", "11", {
-          blockHash: "22".repeat(32),
-          slot: "1001",
-          blockNo: "101",
-        }),
-      ],
-    );
-
-    expect(stale).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["stale_provider_observation"],
-      alertCodes: ["watcher_provider_stale"],
-    });
-    expect(fork).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["fork_disagreement"],
-      alertCodes: ["watcher_provider_fork"],
-    });
-    expect(mismatchedBytes).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["block_content_mismatch"],
-      alertCodes: ["watcher_provider_content_disagreement"],
-    });
-    expect(rollbackNotPropagated).toMatchObject({
-      status: "quarantined",
-      reasonCodes: ["rollback_not_propagated"],
-      alertCodes: ["watcher_local_node_rollback_not_propagated"],
-    });
-  });
-
-  it("rejects local authority, genesis, source-mode, and missing chain-sync substitutions", () => {
-    const wrongAuthority = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
-      [
-        localObservation("chain_sync", "cc", {
-          authorityNodeId: "watcher-node-b",
-        }),
-      ],
-    );
-    const wrongGenesis = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
-      [localObservation("chain_sync", "aa")],
-    );
-    const missingChainSync = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
-      [localObservation("ogmios", "dd")],
-    );
-    const externalSubstitution = evaluateWatcherMultiProviderConsistencyV1(
-      localConfig(),
-      [observation("provider-a", "aa"), observation("provider-b", "bb")],
-    );
-
-    expect(wrongAuthority.reasonCodes).toEqual([
-      "local_node_authority_mismatch",
-      "missing_chain_sync_authority",
-    ]);
-    expect(wrongGenesis.reasonCodes).toEqual([
-      "local_node_genesis_mismatch",
-      "missing_chain_sync_authority",
-    ]);
-    expect(missingChainSync.reasonCodes).toEqual([
-      "local_node_authority_mismatch",
-      "missing_chain_sync_authority",
-    ]);
-    expect(externalSubstitution.reasonCodes).toEqual([
-      "source_mode_mismatch",
-      "missing_chain_sync_authority",
-    ]);
-    expect(
-      [
-        wrongAuthority,
-        wrongGenesis,
-        missingChainSync,
-        externalSubstitution,
-      ].every(({ protocolDecision }) => protocolDecision === "quarantined"),
-    ).toBe(true);
-  });
-
   it("rejects a normalized transaction whose derived validity is spoofed", () => {
     const canonical = observation("provider-a", "aa", { bodyHex: "01" });
     const transaction = canonical.transactions[0]!;
@@ -1215,6 +802,29 @@ describe("fail-closed multi-provider consistency", () => {
     expect(result.alertCodes).not.toContain(
       "watcher_provider_quorum_unavailable",
     );
+  });
+
+  it("retains fail-closed local-mode semantics without manufacturing a live authority", () => {
+    const noAuthority = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig(),
+      [],
+    );
+    const externalSubstitution = evaluateWatcherMultiProviderConsistencyV1(
+      localConfig(),
+      [observation("provider-a", "aa"), observation("provider-b", "bb")],
+    );
+
+    expect(noAuthority).toMatchObject({
+      status: "quarantined",
+      sourceMode: "local_node",
+      authorityNodeId: "watcher-node-a",
+      reasonCodes: ["missing_chain_sync_authority"],
+    });
+    expect(externalSubstitution).toMatchObject({
+      status: "quarantined",
+      sourceMode: "local_node",
+      reasonCodes: ["source_mode_mismatch", "missing_chain_sync_authority"],
+    });
   });
 
   it("quarantines a hostile configured-source proxy without exposing its error", () => {
