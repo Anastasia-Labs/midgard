@@ -269,6 +269,15 @@ export const admitAuthenticatedL1ObservationV1 = ({
   observation,
   minimumConfirmationDepth = 1,
 }: AdmitAuthenticatedL1ObservationOptionsV1): AuthenticatedL1ObservationV1 => {
+  if (
+    !Number.isSafeInteger(minimumConfirmationDepth) ||
+    minimumConfirmationDepth < 1
+  ) {
+    reject(
+      "insufficient_confirmation_depth",
+      `minimumConfirmationDepth=${String(minimumConfirmationDepth)}`,
+    );
+  }
   if (observation.schemaVersion !== CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION) {
     reject(
       "evidence_grade_mismatch",

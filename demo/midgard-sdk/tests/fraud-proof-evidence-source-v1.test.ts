@@ -249,6 +249,33 @@ describe("authenticated L1 observations", () => {
     ).toBe("insufficient_confirmation_depth");
   });
 
+  it("rejects invalid minimum confirmation depths", async () => {
+    for (const minimumConfirmationDepth of [
+      -1,
+      0,
+      Number.NaN,
+      1.5,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(
+        await code(async () =>
+          admitAuthenticatedL1ObservationV1({
+            observation: await observation({ confirmationDepth: 2 }),
+            minimumConfirmationDepth,
+          }),
+        ),
+      ).toBe("insufficient_confirmation_depth");
+    }
+  });
+
+  it("accepts an observation at the exact minimum confirmation depth", async () => {
+    const admitted = admitAuthenticatedL1ObservationV1({
+      observation: await observation({ confirmationDepth: 1 }),
+      minimumConfirmationDepth: 1,
+    });
+    expect(admitted.confirmationDepth).toBe(1);
+  });
+
   it("rejects a header hash that the canonical hasher does not reproduce", async () => {
     expect(
       await code(async () =>
