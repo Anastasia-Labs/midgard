@@ -166,6 +166,7 @@ export const assertDeclaredSurfaceIsExplicitV1 = ({
   for (const step of spec.steps) {
     for (const field of [
       ...(step.inputState ?? []),
+      ...(step.outputState ?? []),
       ...(step.argsFields ?? []),
     ]) {
       if (!aikenText.includes(field.name)) {

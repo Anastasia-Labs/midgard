@@ -61,6 +61,28 @@ const aikenRecordBody = (fields: readonly ScaffoldFieldV1[]): string =>
     .map((field) => `  ${field.name}: ${FIELD_BINDINGS[field.type].aikenType},`)
     .join("\n");
 
+/**
+ * Every non-first step consumes the state declared by the preceding step's
+ * output contract. The parser proves this is also the step's inputState, but
+ * the emitter intentionally reads the preceding output so that this contract
+ * cannot be silently dropped by a future schema change.
+ */
+const precedingOutputState = (
+  spec: FraudProofFamilyScaffoldSpecV1,
+  step: ScaffoldStepV1,
+): readonly ScaffoldFieldV1[] => {
+  if (step.index === 1) {
+    return [];
+  }
+  const previous = spec.steps[step.index - 2];
+  if (previous === undefined || previous.outputState === null) {
+    throw new Error(
+      `missing preceding output state for ${spec.family} step ${step.index.toString()}`,
+    );
+  }
+  return previous.outputState;
+};
+
 const moduleHeader = (
   spec: FraudProofFamilyScaffoldSpecV1,
   title: string,
@@ -117,7 +139,7 @@ export const emitAikenStepTypesModuleV1 = ({
     blocks.push("pub type Datum =\n  ct.StepDatum<Data>");
     blocks.push("pub type Args =\n  NativeTxInclusionArgs");
   } else {
-    const state = step.inputState ?? [];
+    const state = precedingOutputState(spec, step);
     for (const field of state) {
       const binding = FIELD_BINDINGS[field.type].aikenImport;
       if (binding !== null) {
@@ -177,7 +199,7 @@ const firstStepValidatorBody = (
             _fraud_prover,
             _m_input_state_data,
             output_script_hash,
-            _output_state_data,
+            output_state_data,
             _header,
             _bad_tx_id,
             _bad_tx_view
@@ -194,10 +216,10 @@ const firstStepValidatorBody = (
         expect output_script_hash == ${nextModule}_validator_script_hash
 
         // 3. Rule: ${step.rule}
-        //    TODO(${spec.taskId}): drop the leading underscores from
-        //    \`_bad_tx_view\` and \`_output_state_data\`, build the exact
-        //    ${nextModule} input state from the verified native transaction, and
-        //    \`expect _output_state_data == expected_output_state\`.
+        //    TODO(${spec.taskId}): drop the leading underscore from
+        //    \`_bad_tx_view\`, build the exact ${nextModule} input state from
+        //    the verified native transaction, and keep the following equality as
+        //    an executable check: \`expect output_state_data == expected_output_state\`.
         todo @"${spec.taskId} ${names.aikenModule} ${stepModuleNameV1(step.index)}: rule check unimplemented"
       }`;
 };
@@ -208,7 +230,7 @@ const intermediateStepValidatorBody = (
 ): string => {
   const names = familyScaffoldNamesV1(spec.family);
   const nextModule = stepModuleNameV1(step.index + 1);
-  const stateFields = (step.inputState ?? [])
+  const stateFields = precedingOutputState(spec, step)
     .map((field) => `              ${field.name},`)
     .join("\n");
   const argsFields = terminalArgsFields(step, false)
@@ -229,7 +251,7 @@ ${argsFields}
             _fraud_prover,
             m_input_state_data,
             output_script_hash,
-            _output_state_data
+            output_state_data
           <- continue(
           computation_thread_token_policy_id,
           step_datum,
@@ -249,8 +271,9 @@ ${stateFields}
         expect output_script_hash == ${nextModule}_validator_script_hash
 
         // 2. Rule: ${step.rule}
-        //    TODO(${spec.taskId}): advance the carried state and
-        //    \`expect _output_state_data == expected_output_state\`.
+        //    TODO(${spec.taskId}): advance the carried state and keep the
+        //    following equality as an executable check:
+        //    \`expect output_state_data == expected_output_state\`.
         todo @"${spec.taskId} ${names.aikenModule} ${stepModuleNameV1(step.index)}: rule check unimplemented"
       }`;
 };
@@ -260,7 +283,7 @@ const terminalStepValidatorBody = (
   step: ScaffoldStepV1,
 ): string => {
   const names = familyScaffoldNamesV1(spec.family);
-  const stateFields = (step.inputState ?? [])
+  const stateFields = precedingOutputState(spec, step)
     .map((field) => `              ${field.name},`)
     .join("\n");
   const argsFields = terminalArgsFields(step, true)
@@ -560,7 +583,7 @@ export const emitSdkFamilyModuleV1 = (
 ): ScaffoldArtifactV1 => {
   const names = familyScaffoldNamesV1(spec.family);
   const usesCommonSchema = spec.steps.some((step) =>
-    [...(step.inputState ?? []), ...(step.argsFields ?? [])].some(
+    [...precedingOutputState(spec, step), ...(step.argsFields ?? [])].some(
       (field) => FIELD_BINDINGS[field.type].tsImport === "common",
     ),
   );
@@ -582,10 +605,11 @@ export const emitSdkFamilyModuleV1 = (
       );
       continue;
     }
+    const state = precedingOutputState(spec, step);
     blocks.push(
       tsAlias(
         `${stepName}State`,
-        `Data.Object({\n${tsSchemaFields(step.inputState ?? [])}\n})`,
+        `Data.Object({\n${tsSchemaFields(state)}\n})`,
       ),
     );
     blocks.push(

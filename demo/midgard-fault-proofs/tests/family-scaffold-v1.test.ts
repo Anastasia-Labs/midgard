@@ -41,6 +41,7 @@ import {
   PERMISSIVE_DISPATCH_RULES_V1,
   PermissiveDispatchRejectionV1,
   type ScaffoldArtifactLanguageV1,
+  type ScaffoldFieldV1,
   ScaffoldGuardRejectionV1,
   ScaffoldWriteRejectionV1,
   scanForPermissiveDispatchV1,
@@ -114,6 +115,30 @@ const mutatedSpec = (
   return spec;
 };
 
+const threeStepSpec = (): Record<string, unknown> =>
+  mutatedSpec((spec) => {
+    const steps = spec.steps as Record<string, unknown>[];
+    const nextField: ScaffoldFieldV1 = {
+      name: "next_state_bytes",
+      type: "bytes",
+      doc: "State produced by the intermediate step.",
+    };
+    steps[1] = {
+      ...steps[1],
+      index: 2,
+      rule: "the intermediate state is advanced",
+      outputState: [nextField],
+      argsFields: [],
+    };
+    steps.push({
+      index: 3,
+      rule: "the final state proves the violation",
+      inputState: [nextField],
+      outputState: null,
+      argsFields: [],
+    });
+  });
+
 const rejectionCode = (spec: unknown): string => {
   try {
     parseFraudProofFamilyScaffoldSpecV1(spec);
@@ -142,6 +167,11 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
     expect(spec.taskId).toBe("Q35");
     expect(spec.steps).toHaveLength(2);
     expect(spec.tests.validBlockNegative).toHaveLength(1);
+    expect(
+      spec.steps[0]?.outputState?.map(({ name, type }) => ({ name, type })),
+    ).toEqual(
+      spec.steps[1]?.inputState?.map(({ name, type }) => ({ name, type })),
+    );
   });
 
   it("derives every name form from the kebab-case family id", () => {
@@ -226,6 +256,51 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
         }),
       ),
     ).toBe("invalid_step_sequence");
+  });
+
+  it("rejects output state name, type, and order mismatches", () => {
+    const mismatches: readonly ((spec: Record<string, unknown>) => void)[] = [
+      (spec) => {
+        const output = (spec.steps as Record<string, unknown>[])[0]
+          .outputState as Record<string, unknown>[];
+        output[0].name = "different_state_name";
+      },
+      (spec) => {
+        const output = (spec.steps as Record<string, unknown>[])[0]
+          .outputState as Record<string, unknown>[];
+        output[0].type = "bytes";
+      },
+      (spec) => {
+        const steps = spec.steps as Record<string, unknown>[];
+        const first = {
+          name: "first_state_field",
+          type: "int",
+          doc: "First state field.",
+        };
+        const second = {
+          name: "second_state_field",
+          type: "bytes",
+          doc: "Second state field.",
+        };
+        steps[0].outputState = [first, second];
+        steps[1].inputState = [second, first];
+      },
+    ];
+
+    for (const mutate of mismatches) {
+      expect(rejectionCode(mutatedSpec(mutate))).toBe("invalid_state_shape");
+    }
+  });
+
+  it("accepts matching ordered state declarations despite doc wording", () => {
+    const spec = mutatedSpec((value) => {
+      const steps = value.steps as Record<string, unknown>[];
+      const output = steps[0].outputState as Record<string, unknown>[];
+      const input = steps[1].inputState as Record<string, unknown>[];
+      output[0].doc = "Producer-side description.";
+      input[0].doc = "Consumer-side description.";
+    });
+    expect(parseFraudProofFamilyScaffoldSpecV1(spec).steps).toHaveLength(2);
   });
 
   it("rejects a terminal-shaped one-step specification", () => {
@@ -397,6 +472,60 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
     expect(sdk).toContain("bad_tx_network_id: Data.Integer(),");
     // The positional redeemer args every step carries are explicit too.
     expect(sdk).toContain("fraud_proof_mint_redeemer_index: Data.Integer(),");
+  });
+
+  it("sources next-state declarations from the preceding output contract", () => {
+    const parsed = parseFraudProofFamilyScaffoldSpecV1(validSpec());
+    const outputField: ScaffoldFieldV1 = {
+      name: "declared_output_bytes",
+      type: "bytes",
+      doc: "The preceding step's declared output.",
+    };
+    const inputField: ScaffoldFieldV1 = {
+      name: "declared_input_integer",
+      type: "int",
+      doc: "An intentionally inconsistent direct-emitter input.",
+    };
+    const directSpec: FraudProofFamilyScaffoldSpecV1 = {
+      ...parsed,
+      steps: [
+        { ...parsed.steps[0], outputState: [outputField] },
+        { ...parsed.steps[1], inputState: [inputField] },
+      ],
+    };
+    const generatedTypes = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepTypesModule(
+      {
+        spec: directSpec,
+        step: directSpec.steps[1],
+      },
+    ).contents;
+    const generatedSdk =
+      FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyModule(directSpec).contents;
+
+    expect(generatedTypes).toContain("declared_output_bytes: ByteArray,");
+    expect(generatedTypes).not.toContain("declared_input_integer: Int,");
+    expect(generatedSdk).toContain("declared_output_bytes: Data.Bytes(),");
+    expect(generatedSdk).not.toContain(
+      "declared_input_integer: Data.Integer(),",
+    );
+  });
+
+  it("binds output state visibly while keeping validators fail-loud", () => {
+    const plan = generateFraudProofFamilyScaffoldV1({
+      spec: threeStepSpec(),
+    });
+    for (const step of ["step-01", "step-02"]) {
+      const validator = artifact(
+        plan,
+        `onchain/aiken/validators/fraud-proofs/network-id/${step}.ak`,
+      ).contents;
+      expect(validator).toMatch(/^\s+output_state_data,?\s*$/mu);
+      expect(validator).not.toContain("_output_state_data");
+      expect(validator).toContain(
+        "`expect output_state_data == expected_output_state`",
+      );
+      expect(validator).toMatch(/todo\s+@"Q35 network_id/u);
+    }
   });
 
   it("resolves step schemas through an exhaustive union with no fallback", () => {

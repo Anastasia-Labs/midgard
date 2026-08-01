@@ -185,6 +185,25 @@ const parseFields = (
   return fields;
 };
 
+/**
+ * State documentation is descriptive; the serialized contract is the ordered
+ * field name/type sequence. Keep the order because it is part of the record
+ * encoding, but do not make harmless documentation wording changes invalid.
+ */
+const hasSameStateShape = (
+  left: readonly ScaffoldFieldV1[],
+  right: readonly ScaffoldFieldV1[],
+): boolean =>
+  left.length === right.length &&
+  left.every((field, index) => {
+    const other = right[index];
+    return (
+      other !== undefined &&
+      field.name === other.name &&
+      field.type === other.type
+    );
+  });
+
 const parseStep = (
   value: unknown,
   position: number,
@@ -322,6 +341,22 @@ export const parseFraudProofFamilyScaffoldSpecV1 = (
   const steps = (rawSteps as readonly unknown[]).map((step, position) =>
     parseStep(step, position, (rawSteps as readonly unknown[]).length),
   );
+  for (const [position, step] of steps.entries()) {
+    if (step.outputState === null) {
+      continue;
+    }
+    const next = steps[position + 1];
+    if (
+      next === undefined ||
+      next.inputState === null ||
+      !hasSameStateShape(step.outputState, next.inputState)
+    ) {
+      reject(
+        "invalid_state_shape",
+        `steps[${position.toString()}].outputState`,
+      );
+    }
+  }
   return {
     schemaVersion: FRAUD_PROOF_FAMILY_SCAFFOLD_SPEC_V1_SCHEMA_VERSION,
     family,
