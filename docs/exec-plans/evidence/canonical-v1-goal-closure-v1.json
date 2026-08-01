@@ -15,7 +15,7 @@
       {
         "path": "GOAL_SPEC.md",
         "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4",
+        "currentExpectedSha256": "99ae2e374febf80f0c458a78c0b4a1eca9e595536f48f3e16c563cc405d0bd1c",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -207,7 +207,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-      "sha256": "76ed21ea56b31147aacb68947edbf6bf339ce35b723aa80404f8eeee00c62efe",
+      "sha256": "b1beb2b2f6a9c9a98f961af43c30940c3e8b7f6dcee5f5bcc65854bc5dfee6d9",
       "status": "BOUND"
     }
   ],

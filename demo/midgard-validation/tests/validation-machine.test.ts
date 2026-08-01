@@ -1267,7 +1267,10 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         "ledgerDeltaOutput",
       ]),
     );
-  }, 15_000);
+    // Measured 15.0 s for the burn case on a 2-core CI runner against this
+    // 15 s budget, while its siblings in the same file legitimately take
+    // 14.3-16.1 s there; the budget was calibrated on 32 cores.
+  }, 60_000);
 
   it("executes an authenticated PlutusV3 observer", async () => {
     const spent = outRefFromByte(0x34);

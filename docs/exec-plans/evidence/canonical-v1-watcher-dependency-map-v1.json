@@ -16,7 +16,7 @@
       "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "9ccd2e94dd7a21bb289fa09b7b82a29e3f733e74ebef64b2eabbecfb7cce449f"
+    "resultContentTreeSha256": "9a1e42c56be88120113445e913ec599f4c4cb7329d6119b8ddc401a584eb0ea1"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -247,7 +247,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 21
+      "expectedFocusedTestCount": 22
     },
     "userEventIndexer": {
       "status": "PASS",
@@ -265,7 +265,7 @@
       "rollbackPolicy": "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 23
+      "expectedFocusedTestCount": 24
     },
     "settlementIndexer": {
       "status": "PASS",

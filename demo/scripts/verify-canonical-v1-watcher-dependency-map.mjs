@@ -1742,7 +1742,7 @@ if (
     "exact_W13_pre_and_post_finality_sparse_block_cut_active_and_spent_journal_rewind_restart_replacement_path_replay_and_duplicate_hold" ||
   stateQueueIndexer.unknownBehavior !== "fail_closed" ||
   stateQueueIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  stateQueueIndexer.expectedFocusedTestCount !== 21
+  stateQueueIndexer.expectedFocusedTestCount !== 22
 ) {
   fail("W14 state-queue-indexer evidence is incomplete or stale");
 }
@@ -1795,7 +1795,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 23
+  userEventIndexer.expectedFocusedTestCount !== 24
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }
