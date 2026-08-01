@@ -857,6 +857,39 @@ test q49_l295_header_shape_control_and_interval_mutations() {
   }
 }
 
+test q49_l295_validation_context_scalar_control_and_mutations() {
+  let control = q49_header_fixture()
+  let supported_network_and_runtime_values = HeaderV1 {
+    ..control,
+    block_slot: 1,
+    expected_network_id: 1,
+    min_fee_a: 44,
+    min_fee_b: 155_381,
+  }
+  and {
+    commit_block_header_output_is_valid_v1(control),
+    commit_block_header_output_is_valid_v1(supported_network_and_runtime_values),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, block_slot: -1 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, expected_network_id: -1 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, expected_network_id: 2 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, expected_network_id: 255 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, min_fee_a: -1 },
+    ),
+    !commit_block_header_output_is_valid_v1(
+      HeaderV1 { ..control, min_fee_b: -1 },
+    ),
+  }
+}
+
 test q49_l295_scheduled_operator_control_and_independent_mutations() {
   and {
     commit_block_header_operator_is_legitimate_v1(

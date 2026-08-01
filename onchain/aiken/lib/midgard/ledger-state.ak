@@ -279,9 +279,19 @@ pub fn header_transition_commitments_v1_are_valid(
   }
 }
 
+fn header_validation_context_scalars_v1_are_valid(header: HeaderV1) -> Bool {
+  and {
+    header.expected_network_id == 0 || header.expected_network_id == 1,
+    header.min_fee_a >= 0,
+    header.min_fee_b >= 0,
+    header.block_slot >= 0,
+  }
+}
+
 pub fn header_v1_is_valid(header: HeaderV1) -> Bool {
   and {
     header.protocol_version == protocol_version_v1,
+    header_validation_context_scalars_v1_are_valid(header),
     root_matches_count_v1(header.withdrawals_root, header.withdrawal_count),
     root_matches_count_v1(header.transactions_root, header.l2_transaction_count),
     root_matches_count_v1(header.deposits_root, header.deposit_count),
