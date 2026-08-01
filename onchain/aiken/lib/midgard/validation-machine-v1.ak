@@ -12591,6 +12591,155 @@ pub fn verify_script_sources_stage_twelve_semantics_v1(
   )
 }
 
+fn script_sources_stage_one_redeemer_auxiliary_is_family(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  when auxiliary is {
+    TransactionRedeemerItemBeginWitness { .. } -> True
+    RedeemerItemStepWitness { redeemer_control, .. } ->
+      when redeemer_control is {
+        None -> True
+        Some(_) -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn verify_script_sources_stage_one_redeemer_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  if script_sources_stage_one_redeemer_auxiliary_is_family(auxiliary) {
+    verify_script_sources_stage_one_semantics_v1(pre, witness, auxiliary)
+  } else {
+    False
+  }
+}
+
+fn script_sources_stage_ten_item_matches_current_purpose(
+  control: ScriptSourcesControlV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  when auxiliary is {
+    RedeemerItemStepWitness {
+      redeemer_control,
+      control: item_control,
+      witness: item_witness,
+    } ->
+      when redeemer_control is {
+        Some(_) -> False
+        None ->
+          when redeemer_item_proof_v1.step_v1(item_control, item_witness) is {
+            Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+              control: next,
+            }) ->
+              if next.stage == redeemer_item_proof_v1.stage_terminal {
+                when redeemer_item_proof_v1.descriptor_v1(next) is {
+                  Some(descriptor) ->
+                    redeemer_descriptor_matches_current_purpose(
+                      descriptor,
+                      control.discovery,
+                    )
+                  None -> False
+                }
+              } else {
+                False
+              }
+            _ -> False
+          }
+      }
+    _ -> False
+  }
+}
+
+fn script_sources_stage_ten_mismatch_auxiliary_is_family(
+  control: ScriptSourcesControlV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  if control.discovery.redeemer_cursor == control.redeemer_count {
+    False
+  } else if control.discovery.redeemer_item_control_hash == #"" {
+    when auxiliary is {
+      RedeemerScanBeginWitness { .. } -> True
+      _ -> False
+    }
+  } else {
+    when auxiliary is {
+      RedeemerItemStepWitness { redeemer_control, .. } ->
+        when redeemer_control is {
+          None ->
+            !script_sources_stage_ten_item_matches_current_purpose(
+              control,
+              auxiliary,
+            )
+          Some(_) -> False
+        }
+      _ -> False
+    }
+  }
+}
+
+pub fn verify_script_sources_stage_ten_match_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_ten_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  if and {
+    control.discovery.redeemer_cursor < control.redeemer_count,
+    control.discovery.redeemer_item_control_hash != #"",
+    script_sources_stage_ten_item_matches_current_purpose(control, auxiliary),
+  } {
+    verify_script_sources_stage_ten_semantics_v1(pre, witness, auxiliary)
+  } else {
+    False
+  }
+}
+
+pub fn verify_script_sources_stage_ten_mismatch_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  let control = script_sources_stage_ten_control_from_witness(
+    witness.work_witness_cbor,
+  )
+  if script_sources_stage_ten_mismatch_auxiliary_is_family(control, auxiliary) {
+    verify_script_sources_stage_ten_semantics_v1(pre, witness, auxiliary)
+  } else {
+    False
+  }
+}
+
+fn script_sources_stage_twelve_redeemer_auxiliary_is_family(
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  when auxiliary is {
+    RedeemerScanBeginWitness { .. } -> True
+    RedeemerItemStepWitness { redeemer_control, .. } ->
+      when redeemer_control is {
+        None -> True
+        Some(_) -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn verify_script_sources_stage_twelve_redeemer_semantics_v1(
+  pre: validation_trace_v1.ValidationMachineStateV1,
+  witness: ValidationOneStepWitnessV1,
+  auxiliary: ValidationAuxiliaryWitnessV1,
+) -> Bool {
+  if script_sources_stage_twelve_redeemer_auxiliary_is_family(auxiliary) {
+    verify_script_sources_stage_twelve_semantics_v1(pre, witness, auxiliary)
+  } else {
+    False
+  }
+}
+
 fn verify_script_sources(
   pre: validation_trace_v1.ValidationMachineStateV1,
   witness: ValidationOneStepWitnessV1,

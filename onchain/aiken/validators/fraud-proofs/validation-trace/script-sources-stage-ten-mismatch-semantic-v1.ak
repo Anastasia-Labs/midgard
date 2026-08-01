@@ -5,7 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/validation_machine_v1.{
   ValidationAuxiliaryWitnessV1, ValidationOneStepWitnessV1,
-  verify_script_sources_stage_ten_semantics_v1,
+  verify_script_sources_stage_ten_mismatch_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{ScriptSources}
@@ -58,7 +58,7 @@ validator main(
           output_index,
           transition,
           auxiliary_data,
-          verify_script_sources_stage_ten_semantics_v1(
+          verify_script_sources_stage_ten_mismatch_semantics_v1(
             datum |> semantic_pre_state,
             transition,
             auxiliary,

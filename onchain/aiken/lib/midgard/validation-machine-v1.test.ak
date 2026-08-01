@@ -4805,6 +4805,27 @@ test script_sources_commits_unique_supported_redeemers() {
       item_post,
       final_transition,
     ),
+    validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+      pre,
+      begin_transition,
+      validation_machine_v1.TransactionRedeemerItemBeginWitness {
+        collection_proof,
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+      begin_post,
+      header_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: header_witness,
+      },
+    ),
+    !validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+      item_post,
+      final_transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
     validation_machine_v1.verify_one_step_evidence(
       pre,
       validation_machine_v1.ValidationOneStepEvidenceV1 {
@@ -7376,6 +7397,14 @@ test script_sources_discovers_an_exact_non_native_execution() {
     work_witness_cbor: stage_ten_cbor,
     claimed_successor: stage_ten_item,
   }
+  let stage_ten_item_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_ten_item_cbor,
+    claimed_successor: stage_ten_tail,
+  }
+  let stage_ten_tail_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: stage_ten_tail_cbor,
+    claimed_successor: stage_eight_done,
+  }
   and {
     validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
       stage_eight,
@@ -7403,6 +7432,64 @@ test script_sources_discovers_an_exact_non_native_execution() {
       bytearray.length(script_cbor),
       script_item_commitment,
       [],
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+      stage_ten,
+      stage_ten_transition,
+      validation_machine_v1.RedeemerScanBeginWitness {
+        item_index: 0,
+        item_count: 1,
+        total_length: bytearray.length(redeemer_cbor),
+        item_commitment: redeemer_item_commitment,
+        siblings: [],
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+      stage_ten_item,
+      stage_ten_item_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: header_witness,
+      },
+    ),
+    !validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+      stage_ten_tail,
+      stage_ten_tail_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: tail_control,
+        witness: tail_witness,
+      },
+    ),
+    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+      stage_ten,
+      stage_ten_transition,
+      validation_machine_v1.RedeemerScanBeginWitness {
+        item_index: 0,
+        item_count: 1,
+        total_length: bytearray.length(redeemer_cbor),
+        item_commitment: redeemer_item_commitment,
+        siblings: [],
+      },
+    ),
+    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+      stage_ten_item,
+      stage_ten_item_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: header_witness,
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+      stage_ten_tail,
+      stage_ten_tail_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: tail_control,
+        witness: tail_witness,
+      },
     ),
     validation_machine_v1.verify_one_step_evidence(
       stage_ten,
@@ -7978,6 +8065,152 @@ test script_sources_stage_twelve_audits_redeemers_exactly() {
     used_post.program_counter == 41,
     unused_pre.program_counter == 40,
     unused_work_witness_cbor != #"",
+  }
+}
+
+test script_sources_stage_twelve_redeemer_family_guard() {
+  let redeemer = MidgardRedeemerWitness {
+    purpose: SpendRedeemer,
+    index: 0,
+    redeemer_cbor: #"d87980",
+    execution_units: MidgardExecutionUnits { memory: 3, steps: 4 },
+  }
+  let script = MidgardVersionedScript {
+    language: PlutusV3Script,
+    script_bytes: v1_program_envelope(),
+  }
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    witness_set: MidgardTransactionWitnessSet {
+      ..base.witness_set,
+      script_tx_wits: [script],
+      redeemer_tx_wits: [redeemer],
+    },
+  }
+  let script_hash = script_proof_v1.versioned_script_hash(script)
+  let source_leaf = script_proof_v1.source_leaf_hash(0, #"00", script)
+  let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let purpose_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"0102")],
+  )
+  let redeemer_cbor = encode_midgard_redeemer_witness(redeemer)
+  let redeemer_item_commitment = bounded_item_v1.from_bytes(8, 0, redeemer_cbor)
+  let redeemer_leaf = script_proof_v1.redeemer_item_leaf_hash(
+    0,
+    redeemer_item_commitment,
+  )
+  let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
+  let execution_frontier = validation_merkle_v1.build_frontier([source_leaf])
+  let empty_discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    purpose_cursor: 1,
+    source_cursor: 1,
+    used_inline_bitmap: 1,
+    execution_count: 1,
+    execution_peaks: execution_frontier.peaks,
+  }
+  let item_control = redeemer_item_proof_v1.initial_control_v1(
+    redeemer_item_proof_v1.mode_descriptor,
+    0,
+    1,
+    bytearray.length(redeemer_cbor),
+    redeemer_item_commitment,
+    -1,
+    -1,
+  )
+  let Pair(_, redeemer_chunk_proof) = singleton_field_item_proofs(
+    8,
+    redeemer_cbor,
+  )
+  let header_witness = redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+    action: redeemer_item_proof_v1.RedeemerItemOpenHeader,
+    chunk_proof: Some(redeemer_chunk_proof),
+    next_chunk_proof: None,
+  }
+  expect
+      Some(redeemer_item_proof_v1.RedeemerItemProofAdvanced {
+        control: tail_control,
+      })
+    = redeemer_item_proof_v1.step_v1(item_control, header_witness)
+  let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    12,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    empty_discovery,
+    32,
+  )
+  let Pair(begin_post, begin_work_witness_cbor) = script_discovery_step_fixture(
+    tx,
+    12,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..empty_discovery,
+      redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+        item_control,
+      ),
+    },
+    33,
+  )
+  let Pair(item_post, _) = script_discovery_step_fixture(
+    tx,
+    12,
+    source_frontier,
+    redeemer_frontier,
+    purpose_frontier,
+    validation_machine_v1.ScriptDiscoveryControlV1 {
+      ..empty_discovery,
+      redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
+        tail_control,
+      ),
+    },
+    34,
+  )
+  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: begin_post,
+  }
+  let item_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: begin_work_witness_cbor,
+    claimed_successor: item_post,
+  }
+  let Pair(finish_pre, Pair(finish_work_witness_cbor, Pair(finish_post, _))) = stage_twelve_finish_fixture(
+    #"",
+  )
+  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: finish_work_witness_cbor,
+    claimed_successor: finish_post,
+  }
+  and {
+    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+      pre,
+      begin_transition,
+      validation_machine_v1.RedeemerScanBeginWitness {
+        item_index: 0,
+        item_count: 1,
+        total_length: bytearray.length(redeemer_cbor),
+        item_commitment: redeemer_item_commitment,
+        siblings: [],
+      },
+    ),
+    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+      begin_post,
+      item_transition,
+      validation_machine_v1.RedeemerItemStepWitness {
+        redeemer_control: None,
+        control: item_control,
+        witness: header_witness,
+      },
+    ),
+    !validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+      finish_pre,
+      finish_transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
   }
 }
 
@@ -14037,6 +14270,16 @@ test stage_differential_ten_missing_routes_agree() {
     ),
   }
   and {
+    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+      pre,
+      accepting,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
+    !validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+      pre,
+      accepting,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
         pre,
