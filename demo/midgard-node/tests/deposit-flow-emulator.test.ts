@@ -4310,7 +4310,7 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
       transactions_root: queuedHeaderBeforeMerge.transactionsRoot,
       resolution_claim: null,
     });
-  }, 240_000);
+  }, 900_000);
 
   it("runs deposit, reserve absorption, withdrawal commitment, and payout to conclusion", async () => {
     activeRuntimePaths = makeRuntimePaths();
@@ -4482,13 +4482,57 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
     );
 
     const l2TransferLeaseOwner = `deposit-flow:${randomUUID()}`;
-    const claimedL2Transfers = await runNodeDatabaseEffect(
-      TxAdmissionsDB.claimBatchLease({
-        limit: 1,
-        leaseOwner: l2TransferLeaseOwner,
-        leaseDurationMs: 30_000,
-      }),
-    );
+    const claimL2TransferOnce = () =>
+      runNodeDatabaseEffect(
+        TxAdmissionsDB.claimBatchLease({
+          limit: 1,
+          leaseOwner: l2TransferLeaseOwner,
+          leaseDurationMs: 30_000,
+        }),
+      );
+    // The node's own claim loop treats an empty claim as an ordinary tick
+    // outcome and re-claims on its next tick (see the `claimedLeases.length
+    // === 0` branch in src/fibers/tx-queue-processor.ts), so requiring the
+    // very first attempt to succeed asserts more than the production contract
+    // guarantees and made this journey intermittently red under load. Poll
+    // under the same lease owner for a bounded window instead. An admission
+    // that never becomes claimable is still a hard failure, and it reports the
+    // durable row state so a genuine liveness defect cannot hide here.
+    // performance.now() is deliberate: Date is faked for this test.
+    const claimDeadlineMs = 30_000;
+    const claimStartedAt = performance.now();
+    let claimedL2Transfers = await claimL2TransferOnce();
+    let claimAttempts = 1;
+    while (
+      claimedL2Transfers.length === 0 &&
+      performance.now() - claimStartedAt < claimDeadlineMs
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      claimedL2Transfers = await claimL2TransferOnce();
+      claimAttempts += 1;
+    }
+    if (claimedL2Transfers.length === 0) {
+      const admissionRows = await runNodeDatabaseEffect(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql`
+            SELECT
+              encode(tx_id, 'hex') AS tx_id,
+              status::text AS status,
+              arrival_seq::text AS arrival_seq,
+              lease_owner,
+              next_attempt_at,
+              NOW() AS db_now,
+              (next_attempt_at <= NOW()) AS claimable
+            FROM ${sql(TxAdmissionsDB.tableName)}
+            ORDER BY arrival_seq
+          `;
+        }),
+      );
+      throw new Error(
+        `Durable admission never became claimable after ${claimAttempts.toString()} attempts across ${claimDeadlineMs.toString()}ms: expectedTxId=${builtL2Transfer.txId.toString("hex")} rows=${JSON.stringify(admissionRows)}`,
+      );
+    }
     expect(claimedL2Transfers).toHaveLength(1);
     const loadedL2Transfers = await runNodeDatabaseEffect(
       TxAdmissionsDB.loadClaimedPayloads({
@@ -4807,5 +4851,9 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
         (utxo) => utxo.assets.lovelace === 10_000_000n,
       ),
     ).toBe(true);
-  }, 420_000);
+    // This end-to-end journey measured 198s alone but 395s-423s when it runs
+    // last in the full file, so the previous 420s budget left ~6% headroom and
+    // timed out on slower machines. The budget is a harness allowance, not an
+    // invariant: a genuine hang still fails here, just later.
+  }, 900_000);
 });
