@@ -128,11 +128,12 @@ export const makeStaticMidgardProvider = ({
       throw new Error("Unsupported consensus profile");
     }
     if (
-      maxSubmitTxCborBytes !==
-      MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
+      !Number.isSafeInteger(maxSubmitTxCborBytes) ||
+      maxSubmitTxCborBytes <= 0 ||
+      maxSubmitTxCborBytes > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
     ) {
       throw new Error(
-        "maxSubmitTxCborBytes must equal the canonical V1 transaction bound",
+        `maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
       );
     }
     return {
@@ -145,8 +146,7 @@ export const makeStaticMidgardProvider = ({
       codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
       protocolFeeParameters: { minFeeA, minFeeB },
       submissionLimits: {
-        maxSubmitTxCborBytes:
-          MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes,
+        maxSubmitTxCborBytes,
       },
       validation: {
         strictnessProfile: "production",

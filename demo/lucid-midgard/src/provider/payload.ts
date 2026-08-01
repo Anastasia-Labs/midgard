@@ -391,13 +391,10 @@ export const parseProtocolInfo = (
     "submissionLimits.maxSubmitTxCborBytes",
     endpoint,
   );
-  if (
-    !Number.isSafeInteger(maxSubmitTxCborBytes) ||
-    maxSubmitTxCborBytes !== profileTxLimit
-  ) {
+  if (maxSubmitTxCborBytes > profileTxLimit) {
     throw new ProviderPayloadError(
       endpoint,
-      `submissionLimits.maxSubmitTxCborBytes must equal ${profileTxLimit.toString()}`,
+      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${profileTxLimit.toString()}`,
     );
   }
   const common = {

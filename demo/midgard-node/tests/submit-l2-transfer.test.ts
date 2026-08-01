@@ -40,6 +40,7 @@ import {
   buildTransferTx,
   buildTransferTxWithMinFee,
   FANOUT_NATIVE_TRANSFER_SUBMIT_RETRY_POLICY,
+  makeStaticMidgardProvider,
   parseSubmitL2TransferConfig,
   prepareL2TransferProgram,
   selectTransferInputs,
@@ -147,6 +148,24 @@ const unusedSqlClient = new Proxy(
 ) as SqlClient.SqlClient;
 
 describe("submit-l2-transfer config helpers", () => {
+  it("preserves a bounded lower submit cap in the static provider", async () => {
+    const maxSubmitTxCborBytes =
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+    const provider = makeStaticMidgardProvider({
+      address: "addr_test1static",
+      utxos: [],
+      network: "Preprod",
+      networkId: 0n,
+      minFeeA: 0n,
+      minFeeB: 0n,
+      maxSubmitTxCborBytes,
+    });
+
+    await expect(provider.getProtocolInfo()).resolves.toMatchObject({
+      submissionLimits: { maxSubmitTxCborBytes },
+    });
+  });
+
   it("parses a valid config and derives a normalized endpoint", () => {
     const wallet = walletFromSeed(TEST_SEED, { network: "Preprod" });
     const config = parseSubmitL2TransferConfig({

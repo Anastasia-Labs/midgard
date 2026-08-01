@@ -123,6 +123,28 @@ describe("LucidMidgard builder fluent API", () => {
     }
   });
 
+  it("accepts a bounded lower submit cap from a direct provider", async () => {
+    const canonicalInfo = await fakeProvider.getProtocolInfo();
+    const maxSubmitTxCborBytes =
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+    const directProvider: MidgardProvider = {
+      ...fakeProvider,
+      getProtocolInfo: async () => ({
+        ...canonicalInfo,
+        submissionLimits: { maxSubmitTxCborBytes },
+      }),
+    };
+
+    const midgard = await LucidMidgard.new(directProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+
+    expect(midgard.newTx().rawConfig().submissionLimits).toEqual({
+      maxSubmitTxCborBytes,
+    });
+  });
+
   it("records fluent builder state deterministically", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",

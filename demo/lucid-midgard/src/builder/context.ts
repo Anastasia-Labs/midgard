@@ -389,12 +389,13 @@ export const validateProtocolInfo = (
     typeof info.submissionLimits !== "object" ||
     info.submissionLimits === null ||
     !Number.isSafeInteger(info.submissionLimits.maxSubmitTxCborBytes) ||
-    info.submissionLimits.maxSubmitTxCborBytes !==
+    info.submissionLimits.maxSubmitTxCborBytes <= 0 ||
+    info.submissionLimits.maxSubmitTxCborBytes >
       MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes
   ) {
     throw new ProviderPayloadError(
       "/protocol-info",
-      "submissionLimits.maxSubmitTxCborBytes must equal the exact consensus profile",
+      `submissionLimits.maxSubmitTxCborBytes must be between 1 and ${MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes.toString()}`,
     );
   }
   if (

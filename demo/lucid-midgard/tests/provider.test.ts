@@ -429,6 +429,23 @@ describe("MidgardNodeProvider", () => {
     );
   });
 
+  it("accepts a lower bounded submit cap from protocol-info", async () => {
+    const maxSubmitTxCborBytes =
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1;
+    const provider = await MidgardNodeProvider.create({
+      endpoint: "http://127.0.0.1:3000",
+      fetch: async () =>
+        jsonResponse({
+          ...protocolInfoJson,
+          submissionLimits: { maxSubmitTxCborBytes },
+        }),
+    });
+
+    await expect(provider.getProtocolInfo()).resolves.toMatchObject({
+      submissionLimits: { maxSubmitTxCborBytes },
+    });
+  });
+
   it("fails closed on incompatible V1 profiles and feature matrices", async () => {
     const malformedProtocolInfos = [
       { ...protocolInfoJson, apiVersion: 99 },
@@ -444,8 +461,12 @@ describe("MidgardNodeProvider", () => {
         ...protocolInfoJson,
         submissionLimits: {
           maxSubmitTxCborBytes:
-            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1,
+            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes + 1,
         },
+      },
+      {
+        ...protocolInfoJson,
+        submissionLimits: { maxSubmitTxCborBytes: 0 },
       },
       { ...protocolInfoJson, supportedScriptLanguages: undefined },
       {

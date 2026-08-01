@@ -97,9 +97,9 @@ export const encodeProtocolInfo = ({
     nodeConfig.MAX_SUBMIT_TX_CBOR_BYTES,
     "MAX_SUBMIT_TX_CBOR_BYTES",
   );
-  if (configuredMax !== MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes) {
+  if (configuredMax > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes) {
     throw new Error(
-      "MAX_SUBMIT_TX_CBOR_BYTES must equal the canonical V1 transaction bound",
+      "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
     );
   }
   const common: ProtocolInfoCommon = {

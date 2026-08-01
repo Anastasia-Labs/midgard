@@ -72,6 +72,36 @@ describe("encodeProtocolInfo", () => {
     ).toThrow("MAX_SUBMIT_TX_CBOR_BYTES must be a positive safe integer");
   });
 
+  it("accepts a lower submit cap before the compiled release gate", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig: {
+          ...nodeConfig,
+          MAX_SUBMIT_TX_CBOR_BYTES:
+            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes - 1,
+        },
+        currentSlot: 1,
+        deploymentMarker,
+      }),
+    ).toThrow(/not activated/u);
+  });
+
+  it("rejects a submit cap above the compiled V1 maximum", () => {
+    expect(() =>
+      encodeProtocolInfo({
+        nodeConfig: {
+          ...nodeConfig,
+          MAX_SUBMIT_TX_CBOR_BYTES:
+            MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes + 1,
+        },
+        currentSlot: 1,
+        deploymentMarker,
+      }),
+    ).toThrow(
+      "MAX_SUBMIT_TX_CBOR_BYTES must not exceed the canonical V1 transaction bound",
+    );
+  });
+
   it("rejects a non-exact SDK deployment marker before advertising V1", () => {
     expect(() =>
       encodeProtocolInfo({
