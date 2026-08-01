@@ -123,56 +123,65 @@ export const readDaDeploymentFixture = async (): Promise<
     string,
     unknown
   >;
-  const fixtureContracts = fixture.contracts as Record<
-    string,
-    Record<string, unknown>
-  >;
-  const templateContract = fixtureContracts.stateQueueSpend!;
-  const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
-  const referenceScriptAuthPolicyId = validatorToScriptHash({
-    type: "Native",
-    script: nativeScriptCbor,
-  });
+  return buildDaDeploymentFixture(fixture);
+};
+
+export const buildDaDeploymentFixture = async (
+  fixture: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  const fixtureContracts = requireFixtureContracts(fixture);
   const referenceScriptContractNames = new Set<string>(
     Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
   );
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
-      if (contractName === "referenceScriptAuthMint") {
-        return [
-          contractName,
-          {
-            refScriptUTxO: {
-              txHash: (index + 10).toString(16).padStart(2, "0").repeat(32),
-              outputIndex: 0,
-            },
-            contract: {
-              type: "Native",
-              cborHex: nativeScriptCbor,
-            },
-            scriptHash: referenceScriptAuthPolicyId,
-          },
-        ];
+    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => {
+      const source = requireFixtureContract(
+        fixtureContracts[contractName],
+        contractName,
+      );
+      const sourceContract = requireFixtureScript(
+        source.contract,
+        contractName,
+      );
+      const sourceScriptHash = requireFixtureScriptHash(
+        source.scriptHash,
+        contractName,
+      );
+      const derivedScriptHash = validatorToScriptHash({
+        type: sourceContract.type,
+        script: sourceContract.cborHex,
+      });
+      if (derivedScriptHash !== sourceScriptHash) {
+        throw new Error(
+          `DA deployment fixture contracts.${contractName}.scriptHash mismatch: expected ${derivedScriptHash}`,
+        );
       }
-      const existing = fixtureContracts[contractName];
-      const source = existing ?? templateContract;
+      const refScriptUTxO = referenceScriptContractNames.has(contractName)
+        ? requireFixtureOutRef(source.refScriptUTxO, contractName)
+        : requireNullRefScriptUTxO(source.refScriptUTxO, contractName);
       return [
         contractName,
         {
-          ...source,
-          refScriptUTxO: referenceScriptContractNames.has(contractName)
-            ? (existing?.refScriptUTxO ?? {
-                txHash: (index + 10).toString(16).padStart(2, "0").repeat(32),
-                outputIndex: 0,
-              })
-            : null,
-          contract: {
-            ...(source.contract as Record<string, unknown>),
-          },
+          refScriptUTxO,
+          contract: sourceContract,
+          scriptHash: sourceScriptHash,
         },
       ];
     }),
   ) as Record<string, Record<string, unknown>>;
+  const referenceScriptAuthContract = contracts.referenceScriptAuthMint!;
+  const referenceScriptAuthScript = referenceScriptAuthContract.contract as {
+    readonly type: string;
+    readonly cborHex: string;
+  };
+  if (referenceScriptAuthScript.type !== "Native") {
+    throw new Error(
+      "DA deployment fixture contracts.referenceScriptAuthMint.contract.type must be Native",
+    );
+  }
+  const referenceScriptAuthPolicyId =
+    referenceScriptAuthContract.scriptHash as string;
+  const nativeScriptCbor = referenceScriptAuthScript.cborHex;
   contracts.fraudProofCatalogueMint = {
     ...contracts.fraudProofCatalogueMint,
     fraudProofCatalogue: await buildCanonicalFraudProofCatalogueFixture({
@@ -305,6 +314,167 @@ export const readDaDeploymentFixture = async (): Promise<
     manifestId: computeDeploymentManifestV1Id(identityInput),
   };
 };
+
+const requireFixtureContracts = (
+  fixture: Record<string, unknown>,
+): Record<string, Record<string, unknown>> => {
+  const value = fixture.contracts;
+  if (!isRecord(value)) {
+    throw new Error("DA deployment fixture contracts must be an object");
+  }
+  const expected = new Set<string>(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES);
+  const missing = DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.filter(
+    (contractName) => !Object.hasOwn(value, contractName),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `DA deployment fixture is missing contract records: ${missing.join(", ")}`,
+    );
+  }
+  const unexpected = Object.keys(value).filter((key) => !expected.has(key));
+  if (unexpected.length > 0) {
+    throw new Error(
+      `DA deployment fixture has unexpected contract records: ${unexpected.join(", ")}`,
+    );
+  }
+  return value as Record<string, Record<string, unknown>>;
+};
+
+const requireFixtureContract = (
+  value: unknown,
+  contractName: string,
+): Record<string, unknown> => {
+  if (!isRecord(value)) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName} must be an object`,
+    );
+  }
+  requireExactKeys(
+    value,
+    ["refScriptUTxO", "contract", "scriptHash"],
+    `DA deployment fixture contracts.${contractName}`,
+  );
+  return value;
+};
+
+const requireFixtureScript = (
+  value: unknown,
+  contractName: string,
+): {
+  readonly type: "Native" | "PlutusV1" | "PlutusV2" | "PlutusV3";
+  readonly cborHex: string;
+} => {
+  if (!isRecord(value)) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.contract must be an object`,
+    );
+  }
+  requireExactKeys(
+    value,
+    ["type", "cborHex"],
+    `DA deployment fixture contracts.${contractName}.contract`,
+  );
+  if (
+    value.type !== "Native" &&
+    value.type !== "PlutusV1" &&
+    value.type !== "PlutusV2" &&
+    value.type !== "PlutusV3"
+  ) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.contract.type is unsupported`,
+    );
+  }
+  if (
+    typeof value.cborHex !== "string" ||
+    value.cborHex.length === 0 ||
+    value.cborHex.length % 2 !== 0 ||
+    !/^[0-9a-f]+$/u.test(value.cborHex)
+  ) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.contract.cborHex must be lowercase hex`,
+    );
+  }
+  return { type: value.type, cborHex: value.cborHex };
+};
+
+const requireFixtureScriptHash = (
+  value: unknown,
+  contractName: string,
+): string => {
+  if (typeof value !== "string" || !/^[0-9a-f]{56}$/u.test(value)) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.scriptHash must be 28-byte lowercase hex`,
+    );
+  }
+  return value;
+};
+
+const requireFixtureOutRef = (
+  value: unknown,
+  contractName: string,
+): { readonly txHash: string; readonly outputIndex: number } => {
+  if (!isRecord(value)) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.refScriptUTxO must be an object`,
+    );
+  }
+  requireExactKeys(
+    value,
+    ["txHash", "outputIndex"],
+    `DA deployment fixture contracts.${contractName}.refScriptUTxO`,
+  );
+  if (
+    typeof value.txHash !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(value.txHash)
+  ) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.refScriptUTxO.txHash must be 32-byte lowercase hex`,
+    );
+  }
+  if (
+    typeof value.outputIndex !== "number" ||
+    !Number.isSafeInteger(value.outputIndex) ||
+    value.outputIndex < 0
+  ) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.refScriptUTxO.outputIndex must be a non-negative integer`,
+    );
+  }
+  return { txHash: value.txHash, outputIndex: value.outputIndex };
+};
+
+const requireNullRefScriptUTxO = (
+  value: unknown,
+  contractName: string,
+): null => {
+  if (value !== null) {
+    throw new Error(
+      `DA deployment fixture contracts.${contractName}.refScriptUTxO must be null because the contract has no reference-script role`,
+    );
+  }
+  return null;
+};
+
+const requireExactKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  fieldName: string,
+): void => {
+  const expected = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!expected.has(key)) {
+      throw new Error(`${fieldName}.${key} is unexpected`);
+    }
+  }
+  for (const key of keys) {
+    if (!Object.hasOwn(value, key)) {
+      throw new Error(`${fieldName}.${key} is required`);
+    }
+  }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const loadDaDeploymentFixture = async (
   network: string,
