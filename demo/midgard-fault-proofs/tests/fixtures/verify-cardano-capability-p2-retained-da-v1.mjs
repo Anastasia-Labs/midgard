@@ -188,7 +188,7 @@ try {
       "tests/nested-data-boundary-v1.test.ts": 1,
       "tests/nested-redeemer-data-boundary-v1.test.ts": 1,
       "tests/retained-da-boundary-v1.test.ts": 1,
-      "tests/data-breadth-boundary-v1.test.ts": 2,
+      "tests/data-breadth-boundary-v1.test.ts": 4,
     },
     extraArguments: ["--testTimeout=360000", "--hookTimeout=60000"],
     timeout: 1_800_000,

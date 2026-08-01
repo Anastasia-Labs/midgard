@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_TEST_COUNT = 2;
+const EXPECTED_TEST_COUNT = 4;
 const REQUIRED_SUITE = "tests/data-breadth-boundary-v1.test.ts";
 const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
 const reportDirectory = mkdtempSync(
