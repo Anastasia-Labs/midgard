@@ -383,7 +383,7 @@ pub fn encode_mint_preimage(mint: Data) -> ByteArray {
 
 pub fn decode_midgard_tx_mint_preimage_cbor(preimage_cbor: ByteArray) -> Data {
   let decoded = expect_deserialise(preimage_cbor)
-  expect _ = canonical_mint_policy_pairs(decoded)
+  let _canonical_pairs = canonical_mint_policy_pairs(decoded)
   decoded
 }
 
