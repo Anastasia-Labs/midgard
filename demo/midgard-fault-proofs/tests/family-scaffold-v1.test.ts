@@ -228,6 +228,17 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
     ).toBe("invalid_step_sequence");
   });
 
+  it("rejects a terminal-shaped one-step specification", () => {
+    expect(
+      rejectionCode(
+        mutatedSpec((spec) => {
+          const steps = spec.steps as Record<string, unknown>[];
+          spec.steps = [{ ...steps[0], outputState: null }];
+        }),
+      ),
+    ).toBe("invalid_step_sequence");
+  });
+
   it("rejects every implicit state shape", () => {
     // Step one carries no input state and takes `NativeTxInclusionArgs`.
     expect(

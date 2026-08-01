@@ -316,7 +316,7 @@ export const parseFraudProofFamilyScaffoldSpecV1 = (
     reject("invalid_identifier", "spec.catalogueCategory");
   }
   const rawSteps = record.steps;
-  if (!Array.isArray(rawSteps) || rawSteps.length === 0) {
+  if (!Array.isArray(rawSteps) || rawSteps.length < 2) {
     reject("invalid_step_sequence", "spec.steps");
   }
   const steps = (rawSteps as readonly unknown[]).map((step, position) =>
