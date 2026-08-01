@@ -266,8 +266,12 @@ describe("DeploymentManifestV1 shared identity", () => {
       ...identity,
       manifestId: computeDeploymentManifestV1Id(identity),
     };
+    // Rebound 2026-08-01: the identity input embeds
+    // MIDGARD_CONSENSUS_PROFILE_V1, whose committed constants changed in
+    // 4a4bc660 (five-stage envelope measurement block); the old pin
+    // predated that commit.
     expect(manifest.manifestId).toBe(
-      "55247a9e51dc3588485ec8d431fd67e725f55d79bbc2af055b4b444b2d2ed8a5",
+      "f081db0f2852f2fc04136919d4e83b10e7d5066e59f88759187eed54bc87bc9e",
     );
     expect(verifyDeploymentManifestV1Identity(manifest)).toEqual(manifest);
   });
