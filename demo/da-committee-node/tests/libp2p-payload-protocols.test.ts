@@ -1,6 +1,10 @@
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { DaRequestTimeoutError } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
+  DA_TRANSPORT_LIMITS_V1,
+  DaRequestResponseProtocol,
+  daRequestResponseProtocolId,
   decodeDaAttestationsByHeaderResponseV1Cbor,
   decodeDaCapabilitiesResponseV1Cbor,
   decodeDaMetadataByHeaderResponseV1Cbor,
@@ -20,18 +24,34 @@ import {
   DaLibp2pAttestationExchange,
   StoreBackedDaAttestationProtocol,
 } from "../src/da/libp2p/attestations.js";
+import type {
+  DaLibp2pStream,
+  DaLibp2pStreamHandler,
+} from "../src/da/libp2p/DaLibp2pNode.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
+import {
+  encodeDaStreamFrame,
+  readSingleDaStreamFrame,
+} from "../src/da/libp2p/DaStreamCodec.js";
 import {
   DaLibp2pPayloadProtocolError,
   DaLibp2pPayloadProtocolHandlers,
 } from "../src/da/libp2p/payload-protocols.js";
-import { DaPayloadSubmitAdmission } from "../src/da/libp2p/payload-source.js";
+import {
+  createDaLibp2pPayloadRequestHandlers,
+  DaPayloadSubmitAdmission,
+  processWideDaPayloadSubmitAdmission,
+} from "../src/da/libp2p/payload-source.js";
 import type { DaStoredPayloadRootSetV1, HeaderV1 } from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
 const deploymentFingerprint = "01".repeat(32);
 const deploymentFingerprintBytes = Buffer.from(deploymentFingerprint, "hex");
+const payloadSubmitProtocolId = daRequestResponseProtocolId(
+  deploymentFingerprint,
+  DaRequestResponseProtocol.payloadSubmit,
+);
 
 describe("canonical V1 DA libp2p payload protocols", () => {
   it("advertises only the exact V1 payload and envelope capabilities", async () => {
@@ -75,6 +95,235 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     );
 
     expect(peak).toBe(1);
+    expect(admission.active).toBe(0);
+  });
+
+  it("shares process admission and times out a queued submit before frame read", async () => {
+    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
+    const fixture = await makePayloadFixture();
+    const frame = encodeDaStreamFrame(
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+      { maxFrameBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
+    );
+    const firstStore = await JsonFileWatcherStore.open(await tempDir());
+    const secondStore = await JsonFileWatcherStore.open(await tempDir());
+    const firstLimits = {
+      ...DA_TRANSPORT_LIMITS_V1,
+      requestTimeoutMs: 1_000,
+    };
+    const queuedLimits = {
+      ...DA_TRANSPORT_LIMITS_V1,
+      requestTimeoutMs: 25,
+    };
+    const firstHandler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store: firstStore,
+      limits: firstLimits,
+    }).get(payloadSubmitProtocolId)!;
+    const queuedHandler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store: secondStore,
+      limits: queuedLimits,
+    }).get(payloadSubmitProtocolId)!;
+    const reads: string[] = [];
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const firstMock = makeMockStream(
+      (async function* () {
+        reads.push("first");
+        await firstGate;
+        yield frame;
+      })(),
+    );
+    const queuedMock = makeMockStream(
+      (async function* () {
+        reads.push("queued");
+        yield frame;
+      })(),
+    );
+    let firstRequest: Promise<void> | undefined;
+    let queuedRequest: Promise<void> | undefined;
+    try {
+      firstRequest = invokePayloadSubmitHandler(firstHandler, firstMock.stream);
+      await waitFor(
+        () =>
+          processWideDaPayloadSubmitAdmission.active === 1 &&
+          reads.includes("first"),
+        "first payload-submit admission",
+      );
+      queuedRequest = invokePayloadSubmitHandler(
+        queuedHandler,
+        queuedMock.stream,
+      );
+
+      await expect(queuedRequest).rejects.toBeInstanceOf(DaRequestTimeoutError);
+      expect(reads).toEqual(["first"]);
+      expect(queuedMock.state.aborted).toBeInstanceOf(DaRequestTimeoutError);
+      expect(queuedMock.state.sent).toHaveLength(0);
+      expect(queuedMock.state.closed).toBe(false);
+      await expect(
+        secondStore.getDaPayload(fixture.headerHash),
+      ).resolves.toBeUndefined();
+      expect(processWideDaPayloadSubmitAdmission.active).toBe(1);
+    } finally {
+      releaseFirst();
+      await firstRequest?.catch(() => undefined);
+      await queuedRequest?.catch(() => undefined);
+    }
+
+    expect(firstMock.state.aborted).toBeUndefined();
+    expect(firstMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseV1Cbor(
+      await readSingleDaStreamFrame(firstMock.state.sent, {
+        maxFrameBytes: firstLimits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(
+      firstStore.getDaPayload(fixture.headerHash),
+    ).resolves.toMatchObject({
+      payloadCborHex: fixture.payloadCbor.toString("hex"),
+      validationStatus: "fetched",
+    });
+    expect(processWideDaPayloadSubmitAdmission.active).toBe(0);
+  });
+
+  it("aborts a stalled inbound submit, releases admission, and recovers", async () => {
+    const store = await JsonFileWatcherStore.open(await tempDir());
+    const admission = new DaPayloadSubmitAdmission(1);
+    const limits = {
+      ...DA_TRANSPORT_LIMITS_V1,
+      requestTimeoutMs: 30,
+    };
+    const handler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store,
+      limits,
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
+    let rejectRead!: (error: Error) => void;
+    const stalledRead = new Promise<never>((_resolve, reject) => {
+      rejectRead = reject;
+    });
+    const stalledMock = makeMockStream(
+      (async function* () {
+        await stalledRead;
+      })(),
+      rejectRead,
+    );
+
+    await expect(
+      invokePayloadSubmitHandler(handler, stalledMock.stream),
+    ).rejects.toBeInstanceOf(DaRequestTimeoutError);
+    expect(stalledMock.state.aborted).toBeInstanceOf(DaRequestTimeoutError);
+    expect(stalledMock.state.sent).toHaveLength(0);
+    expect(stalledMock.state.closed).toBe(false);
+    await waitFor(
+      () => admission.active === 0,
+      "stalled payload-submit admission release",
+    );
+    expect(admission.active).toBe(0);
+
+    const recoveryLimits = {
+      ...DA_TRANSPORT_LIMITS_V1,
+      requestTimeoutMs: 1_000,
+    };
+    const recoveryHandler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store,
+      limits: recoveryLimits,
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
+    const fixture = await makePayloadFixture();
+    const healthyMock = makeMockStream(
+      (async function* () {
+        yield encodeDaStreamFrame(
+          encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+          { maxFrameBytes: recoveryLimits.maxPayloadBytes },
+        );
+      })(),
+    );
+    await invokePayloadSubmitHandler(recoveryHandler, healthyMock.stream);
+    expect(healthyMock.state.aborted).toBeUndefined();
+    expect(healthyMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseV1Cbor(
+      await readSingleDaStreamFrame(healthyMock.state.sent, {
+        maxFrameBytes: recoveryLimits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        validationStatus: "fetched",
+      },
+    );
+    expect(admission.active).toBe(0);
+  });
+
+  it("rejects an incomplete frame without response or persistence and recovers", async () => {
+    const fixture = await makePayloadFixture();
+    const store = await JsonFileWatcherStore.open(await tempDir());
+    const admission = new DaPayloadSubmitAdmission(1);
+    const limits = {
+      ...DA_TRANSPORT_LIMITS_V1,
+      requestTimeoutMs: 1_000,
+    };
+    const handler = createDaLibp2pPayloadRequestHandlers({
+      deploymentFingerprint,
+      store,
+      limits,
+      payloadSubmitAdmission: admission,
+    }).get(payloadSubmitProtocolId)!;
+    const requestCbor = encodeSubmit(fixture.headerHash, fixture.payloadCbor);
+    const incompleteFrame = Buffer.alloc(4 + requestCbor.length);
+    incompleteFrame.writeUInt32BE(requestCbor.length + 1, 0);
+    requestCbor.copy(incompleteFrame, 4);
+    const malformedMock = makeMockStream(
+      (async function* () {
+        yield incompleteFrame;
+      })(),
+    );
+
+    await expect(
+      invokePayloadSubmitHandler(handler, malformedMock.stream),
+    ).rejects.toThrow(/incomplete DA libp2p stream frame/);
+    expect(malformedMock.state.aborted).toBeUndefined();
+    expect(malformedMock.state.sent).toHaveLength(0);
+    expect(malformedMock.state.closed).toBe(false);
+    await expect(
+      store.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+    await waitFor(
+      () => admission.active === 0,
+      "malformed payload-submit admission release",
+    );
+    expect(admission.active).toBe(0);
+
+    const healthyMock = makeMockStream(
+      (async function* () {
+        yield encodeDaStreamFrame(requestCbor, {
+          maxFrameBytes: limits.maxPayloadBytes,
+        });
+      })(),
+    );
+    await invokePayloadSubmitHandler(handler, healthyMock.stream);
+    expect(healthyMock.state.aborted).toBeUndefined();
+    expect(healthyMock.state.closed).toBe(true);
+    const response = decodeDaPayloadSubmitResponseV1Cbor(
+      await readSingleDaStreamFrame(healthyMock.state.sent, {
+        maxFrameBytes: limits.maxPayloadBytes,
+      }),
+    );
+    expect(response).toMatchObject({ status: "accepted", reasonCode: null });
+    await expect(store.getDaPayload(fixture.headerHash)).resolves.toMatchObject(
+      {
+        payloadCborHex: fixture.payloadCbor.toString("hex"),
+        validationStatus: "fetched",
+      },
+    );
     expect(admission.active).toBe(0);
   });
 
@@ -419,6 +668,64 @@ const makeHandlers = async (
       now: () => new Date("2026-07-24T00:00:00.000Z"),
     }),
   };
+};
+
+type MockDaStreamState = {
+  readonly sent: Buffer[];
+  closed: boolean;
+  aborted?: Error;
+};
+
+const makeMockStream = (
+  chunks: AsyncIterable<Buffer>,
+  onAbort?: (error: Error) => void,
+): { readonly stream: DaLibp2pStream; readonly state: MockDaStreamState } => {
+  const state: MockDaStreamState = { sent: [], closed: false };
+  return {
+    state,
+    stream: {
+      async *[Symbol.asyncIterator](): AsyncGenerator<Buffer> {
+        yield* chunks;
+      },
+      send(data: Uint8Array): boolean {
+        state.sent.push(Buffer.from(data));
+        return true;
+      },
+      close(): void {
+        state.closed = true;
+      },
+      abort(error: Error): void {
+        state.aborted = error;
+        onAbort?.(error);
+      },
+    },
+  };
+};
+
+const invokePayloadSubmitHandler = (
+  handler: DaLibp2pStreamHandler,
+  stream: DaLibp2pStream,
+): Promise<void> =>
+  Promise.resolve(
+    handler({
+      protocolId: payloadSubmitProtocolId,
+      protocolName: DaRequestResponseProtocol.payloadSubmit,
+      stream,
+      connection: {},
+    }),
+  );
+
+const waitFor = async (
+  predicate: () => boolean,
+  label: string,
+): Promise<void> => {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
 };
 
 const rootSummaryFromHeader = (header: HeaderV1): DaStoredPayloadRootSetV1 => ({
