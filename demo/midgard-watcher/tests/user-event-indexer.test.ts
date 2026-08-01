@@ -2336,6 +2336,13 @@ const rollbackBundle = (
   sourceStoreTransform: (
     sourceStore: WatcherDurableStoreV1,
   ) => WatcherDurableStoreV1 = (sourceStore) => sourceStore,
+  replacementPointOverride?: Readonly<{
+    blockHash: string;
+    parentBlockHash: string | null;
+    slot: string;
+    blockNo: string;
+    depth: string;
+  }>,
 ): Readonly<{
   context: WatcherUserEventPublicContextV1;
   applied: ReturnType<typeof evaluateWatcherRollbackV1>;
@@ -2356,7 +2363,7 @@ const rollbackBundle = (
     null,
     oldConsistency,
   ).state!;
-  const replacementPoint = {
+  const replacementPoint = replacementPointOverride ?? {
     blockHash: h32("ee"),
     parentBlockHash: oldA.chainPoint.blockHash,
     slot: (BigInt(oldA.chainPoint.slot) + 1n).toString(),
@@ -3549,6 +3556,96 @@ describe("canonical authenticated user-event indexer", () => {
     expect(reprocessed.snapshot.terminalEvents).toMatchObject([
       { terminalStatus: "absorbed" },
     ]);
+  });
+
+  it("routes same-point content replacement through authenticated rollback before replay", () => {
+    const olderBlock = blockBundle([], null, 89, 1);
+    const olderState = accepted(null, olderBlock);
+    const created = blockBundle(
+      [makeEventFixture("deposit", "b2", 0, 1_000n)],
+      olderBlock.store,
+      90,
+      1,
+    );
+    const active = accepted(olderState, created);
+    const oldPoint = (created.context.l1Observation as MutableRecord)
+      .chainPoint as {
+      blockHash: string;
+      parentBlockHash: string | null;
+      slot: string;
+      blockNo: string;
+      depth: string;
+    };
+    const replacement = contextFromTransaction(
+      null,
+      created.store,
+      created.store.protocolUtxos,
+      Number(oldPoint.blockNo),
+      Number(oldPoint.depth),
+      created.finalityState,
+      oldPoint,
+    );
+    expect(replacement.context.finalityAuthority?.result).toMatchObject({
+      action: "rewind_pending",
+      protocolDecision: "rewind_required",
+      reasonCodes: ["pending_content_changed"],
+    });
+    expect(
+      deriveWatcherUserEventObservationV1(policy, active, replacement.context),
+    ).toBeNull();
+
+    const rollback = rollbackBundle(
+      created,
+      [],
+      (sourceStore) => sourceStore,
+      oldPoint,
+    );
+    expect(rollback.applied.action).toBe("apply_rewind");
+    const rollbackObservation = deriveWatcherUserEventObservationV1(
+      policy,
+      active,
+      rollback.context,
+      olderState.activeEntryDigests.at(-1)!,
+    );
+    expect(rollbackObservation?.transitionKind).toBe("rollback");
+    const rewound = evaluateWatcherUserEventIndexerV1(
+      policy,
+      active,
+      rollbackObservation,
+      rollback.context,
+    );
+    expect(rewound).toMatchObject({
+      action: "accept",
+      reasonCodes: ["rollback_authenticated"],
+      state: { snapshot: { activeEvents: [] } },
+    });
+
+    const replay = contextFromTransaction(
+      null,
+      rollback.applied.nextStore,
+      rollback.applied.nextStore!.protocolUtxos,
+      Number(oldPoint.blockNo),
+      Number(oldPoint.depth),
+      replacement.finalityState,
+      oldPoint,
+    );
+    const replayObservation = deriveWatcherUserEventObservationV1(
+      policy,
+      rewound.state,
+      replay.context,
+    );
+    expect(replayObservation?.transitionKind).toBe("apply_block");
+    const replayed = evaluateWatcherUserEventIndexerV1(
+      policy,
+      rewound.state,
+      replayObservation,
+      replay.context,
+    );
+    expect(replayed).toMatchObject({
+      action: "accept",
+      reasonCodes: ["block_authenticated"],
+      state: { snapshot: { activeEvents: [] } },
+    });
   });
 
   it("applies an exact W13 rewind, survives serialized restart, deactivates the orphan, and permits re-inclusion", () => {

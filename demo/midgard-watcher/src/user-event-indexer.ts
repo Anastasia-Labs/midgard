@@ -2954,19 +2954,22 @@ const verifyBlockContext = (
         : consistency.observationEvidenceDigests.includes(
             block.observationDigest,
           ));
+    const normalFinalityDecision =
+      (finalityResult.protocolDecision === "hold" &&
+        ["observe_pending", "advance_pending", "duplicate"].includes(
+          finalityResult.action,
+        )) ||
+      (finalityResult.protocolDecision === "finality_granted" &&
+        finalityResult.action === "finalize") ||
+      // A point-only rewind can be the existing skipped-block ancestry path;
+      // same-point content and depth rewinds remain rollback-only.
+      (finalityResult.protocolDecision === "rewind_required" &&
+        finalityResult.action === "rewind_pending" &&
+        finalityResult.rewindInstruction?.kind === "pending_point_changed");
     if (
       !same(consistency, context.finalityAuthority.consistency) ||
       !same(finalityResult, context.finalityAuthority.result) ||
-      !["hold", "finality_granted", "rewind_required"].includes(
-        finalityResult.protocolDecision,
-      ) ||
-      ![
-        "observe_pending",
-        "advance_pending",
-        "finalize",
-        "duplicate",
-        "rewind_pending",
-      ].includes(finalityResult.action) ||
+      !normalFinalityDecision ||
       !sourceMatchesFinality ||
       !normalized.some(
         (candidate) => candidate.observationDigest === block.observationDigest,
