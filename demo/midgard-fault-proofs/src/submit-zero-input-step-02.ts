@@ -21,6 +21,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -398,6 +399,9 @@ export const submitZeroInputStep02 = async ({
 export const submitZeroInputStep02FromFiles = async (
   config: SubmitZeroInputStep02CliConfig,
 ): Promise<SubmitZeroInputStep02Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-zero-input-step-02",
+  });
   const [blueprint, deploymentInfo, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),

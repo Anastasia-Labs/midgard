@@ -19,6 +19,7 @@ import {
   parseNetwork,
 } from "./inspect-contracts.js";
 import { readJsonFile, stringifyJson } from "./json-file.js";
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
@@ -672,6 +673,14 @@ export const main = async (): Promise<void> => {
       `Expected a supported prepare, inspect, submit, validation-dispute, or removal command.\n${usage}`,
     );
   }
+
+  // RF-043: reject every legacy diagnostic submission route before any
+  // blueprint/deployment read or provider/wallet construction.  Only
+  // canonical evidence submitters may cross this boundary in the future.
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: args.command,
+    fraudCategory: args.fraudCategory,
+  });
 
   // Q03: operator REST/file evidence imports are permitted only as labelled
   // diagnostics, so every prepare run driven by one announces it before doing

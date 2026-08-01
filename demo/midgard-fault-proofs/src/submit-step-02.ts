@@ -21,6 +21,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -356,6 +357,9 @@ export const submitStep02 = async ({
 export const submitStep02FromFiles = async (
   config: SubmitStep02CliConfig,
 ): Promise<SubmitStep02Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-step-02",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

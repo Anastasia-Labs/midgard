@@ -22,6 +22,7 @@ import {
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import { parseHex } from "./json-file.js";
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -342,6 +343,9 @@ export const submitStep03 = async ({
 export const submitStep03FromFiles = async (
   config: SubmitStep03CliConfig,
 ): Promise<SubmitStep03Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-step-03",
+  });
   const [blueprint, deploymentInfo, tx1InputsJson, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),

@@ -39,6 +39,7 @@ import {
   parseSignedInteger,
   requireRecord,
 } from "./json-file.js";
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   compareUtxoOutRefs,
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -613,6 +614,9 @@ export const submitStep01 = async ({
 export const submitStep01FromFiles = async (
   config: SubmitStep01CliConfig,
 ): Promise<SubmitStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

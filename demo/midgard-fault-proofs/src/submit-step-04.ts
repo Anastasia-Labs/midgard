@@ -24,6 +24,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -487,6 +488,9 @@ export const submitStep04 = async ({
 export const submitStep04FromFiles = async (
   config: SubmitStep04CliConfig,
 ): Promise<SubmitStep04Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-step-04",
+  });
   const [blueprint, deploymentInfo, tx2InputsJson, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),

@@ -27,6 +27,7 @@ import {
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
@@ -567,6 +568,10 @@ export const submitInit = async ({
 export const submitInitFromFiles = async (
   config: SubmitInitCliConfig,
 ): Promise<SubmitInitResult> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-init",
+    fraudCategory: config.fraudCategory,
+  });
   const [blueprint, deploymentInfo, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),

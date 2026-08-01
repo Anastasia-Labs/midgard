@@ -22,6 +22,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "./ne-submit-step-03.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -344,6 +345,9 @@ export const neSubmitStep04 = async ({
 export const neSubmitStep04FromFiles = async (
   config: NeSubmitStep04CliConfig,
 ): Promise<NeSubmitStep04Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-non-existent-input-step-04",
+  });
   const [blueprint, deploymentInfo, proofJson, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),

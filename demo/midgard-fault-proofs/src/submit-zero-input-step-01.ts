@@ -20,6 +20,7 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -323,6 +324,9 @@ export const submitZeroInputStep01 = async ({
 export const submitZeroInputStep01FromFiles = async (
   config: SubmitZeroInputStep01CliConfig,
 ): Promise<SubmitZeroInputStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-zero-input-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

@@ -2,24 +2,14 @@ export * from "./aiken-blueprint-data.js";
 export * from "./evidence/index.js";
 export * from "./family-scaffold/index.js";
 export * from "./inspect-contracts.js";
-export * from "./ne-submit-step-01.js";
-export * from "./ne-submit-step-02.js";
-export * from "./ne-submit-step-03.js";
-export * from "./ne-submit-step-04.js";
+// RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
+// part of the production package surface.  The CLI and file entrypoints retain
+// the same retirement guard until an authenticated canonical submitter exists.
 export * from "./prepare-double-spend.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-non-existent-input.js";
 export * from "./prepare-zero-input.js";
 export * from "./remove-fraudulent-block.js";
 export * from "./runtime.js";
-export * from "./submit-init.js";
-export * from "./submit-invalid-range-step-01.js";
-export * from "./submit-invalid-range-step-02.js";
-export * from "./submit-step-01.js";
-export * from "./submit-step-02.js";
-export * from "./submit-step-03.js";
-export * from "./submit-step-04.js";
-export * from "./submit-zero-input-step-01.js";
-export * from "./submit-zero-input-step-02.js";
 export * from "./transition-trace/index.js";
 export * from "./validation-dispute/index.js";

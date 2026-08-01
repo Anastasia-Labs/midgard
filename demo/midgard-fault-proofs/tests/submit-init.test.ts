@@ -37,12 +37,12 @@ import {
   resolveDoubleSpendDeploymentContracts,
   resolveFraudulentHeaderHash,
   resolveInvalidRangeDeploymentContracts,
-  resolveNonExistentInputNoIndexInit,
   resolveProverSigner,
   resolveTransitionTraceDeploymentContracts,
   resolveValidationTraceDisputeDeploymentContracts,
-  submitInit,
 } from "../src/index.js";
+import { resolveNonExistentInputNoIndexInit } from "../src/submit-init.js";
+import { submitInit } from "./support/legacy-submit-emulator.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";

@@ -25,6 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -353,6 +354,9 @@ export const submitInvalidRangeStep01 = async ({
 export const submitInvalidRangeStep01FromFiles = async (
   config: SubmitInvalidRangeStep01CliConfig,
 ): Promise<SubmitInvalidRangeStep01Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-invalid-range-step-01",
+  });
   const [blueprint, deploymentInfo, txInclusionJson, lucid] = await Promise.all(
     [
       readJsonFile(config.blueprintPath),

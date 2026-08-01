@@ -22,6 +22,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -409,6 +410,9 @@ export const submitInvalidRangeStep02 = async ({
 export const submitInvalidRangeStep02FromFiles = async (
   config: SubmitInvalidRangeStep02CliConfig,
 ): Promise<SubmitInvalidRangeStep02Result> => {
+  rejectRetiredUnauthenticatedSubmissionRouteV1({
+    command: "submit-invalid-range-step-02",
+  });
   const [blueprint, deploymentInfo, lucid] = await Promise.all([
     readJsonFile(config.blueprintPath),
     readJsonFile(config.deploymentInfoPath),
