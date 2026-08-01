@@ -383,6 +383,19 @@ const proofProgramEnvelope = (
   }
 };
 
+const assertMetadataOnlyReferenceScriptMaterial = (
+  metadata: TrustedReferenceScriptMetadata | undefined,
+  sourceId: string,
+): void => {
+  if (metadata === undefined || metadata.language === "NativeCardano") {
+    return;
+  }
+  throw new BuilderInvariantError(
+    "Metadata-only non-native reference scripts require a canonical local reference script envelope and exact CEK program material",
+    `${sourceId} ${metadata.language}`,
+  );
+};
+
 /**
  * Replaces proof-profile raw UPLC authoring inputs with their compact
  * consensus envelopes and retains the exact content-addressed graph sidecar.
@@ -470,10 +483,18 @@ export const prepareProofBuilderState = (
     if (envelope !== undefined) envelopes.push(envelope);
   }
   for (const input of state.referenceInputs) {
+    const label = outRefLabel(input);
     const scriptRef = decodeMidgardTxOutput(utxoOutputCbor(input)).txOutput
       .scriptRef;
-    if (scriptRef === undefined || scriptRef === null) continue;
-    const label = outRefLabel(input);
+    if (scriptRef === undefined || scriptRef === null) {
+      assertMetadataOnlyReferenceScriptMaterial(
+        state.scripts.referenceScriptMetadata.find(
+          (metadata) => outRefLabel(metadata) === label,
+        ),
+        `reference:${label}`,
+      );
+      continue;
+    }
     const envelope = proofProgramEnvelope(
       normalizeScriptRef(scriptRef),
       `reference:${label}`,
@@ -580,6 +601,7 @@ const collectKnownScriptSources = (
       consumedMetadata.add(label);
     }
     if (scriptRef === undefined || scriptRef === null) {
+      assertMetadataOnlyReferenceScriptMaterial(metadata, `reference:${label}`);
       return metadata === undefined
         ? []
         : [

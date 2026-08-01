@@ -117,9 +117,10 @@ Missing and extraneous language views are both hash mismatches.
 Reference script resolution depends on reference inputs existing in Phase B
 state. The builder may attach reference inputs, but it cannot guarantee node
 state has not changed before validation. Builders must refuse script
-finalization if a required reference-script language cannot be known locally,
-unless the caller supplies explicit trusted script metadata. Local Phase B
-simulation should catch snapshot-level errors only.
+finalization if a required reference-script language cannot be known locally
+with canonical script bytes and material. Trusted metadata can declare the
+language/hash branch, but cannot replace non-native executable bytes or CEK
+material. Local Phase B simulation should catch snapshot-level errors only.
 
 Trusted metadata is keyed by the reference outref and declares the exact script
 language branch plus the hash in that branch. If local output CBOR contains a
@@ -127,4 +128,6 @@ script ref, the builder must verify the declaration against the decoded bytes
 and reject mismatches. A CML PlutusV3 reference script is treated as PlutusV3 by
 default; using the same bytes in the MidgardV1 hash/domain requires explicit
 trusted `MidgardV1` metadata. Metadata without local script bytes is accepted
-only as caller-trusted input and remains subject to node Phase B recomputation.
+only for `NativeCardano`; metadata-only non-native references are rejected
+because they cannot carry the canonical envelope and exact CEK material
+required by V1.

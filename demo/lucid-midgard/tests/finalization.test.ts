@@ -247,6 +247,77 @@ describe("TxBuilder finalization", () => {
     );
   });
 
+  it("rejects metadata-only non-native references from both metadata ingress APIs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x34), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x35), { lovelace: 3_000_000n });
+    const metadata = {
+      ...makeOutRef(0x35),
+      language: "MidgardV1" as const,
+      scriptHash: "44".repeat(28),
+    };
+    const makeBuilder = () =>
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([reference])
+        .observe(metadata.scriptHash, {
+          data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+        })
+        .pay.ToAddress(address, { lovelace: 2_000_000n });
+
+    const builders = [
+      midgard
+        .newTx()
+        .collectFrom([spend])
+        .readFrom([reference], { trustedReferenceScripts: [metadata] })
+        .observe(metadata.scriptHash, {
+          data: CML.PlutusData.new_integer(CML.BigInteger.from_str("0")),
+        })
+        .pay.ToAddress(address, { lovelace: 2_000_000n }),
+      makeBuilder().attach.ReferenceScriptMetadata(metadata),
+    ];
+
+    for (const builder of builders) {
+      await expect(builder.complete({ fee: 0n })).rejects.toMatchObject({
+        name: "BuilderInvariantError",
+        message: expect.stringContaining(
+          "Metadata-only non-native reference scripts require",
+        ),
+        detail: expect.stringContaining(
+          `reference:${metadata.txHash}#${metadata.outputIndex}`,
+        ),
+      });
+    }
+  });
+
+  it("preserves metadata-only NativeCardano reference inputs", async () => {
+    const midgard = await LucidMidgard.new(zeroFeeProvider, {
+      network: "Preview",
+      networkId: 0,
+    });
+    const spend = makeUtxo(makeOutRef(0x36), { lovelace: 2_000_000n });
+    const reference = makeUtxo(makeOutRef(0x37), { lovelace: 3_000_000n });
+    const metadata = {
+      ...makeOutRef(0x37),
+      language: "NativeCardano" as const,
+      scriptHash: "55".repeat(28),
+    };
+
+    const completed = await midgard
+      .newTx()
+      .collectFrom([spend])
+      .readFrom([reference], { trustedReferenceScripts: [metadata] })
+      .pay.ToAddress(address, { lovelace: 2_000_000n })
+      .complete({ fee: 0n });
+
+    expect(completed.metadata.referenceInputCount).toBe(1);
+    expect(completed.programMaterial).toEqual([]);
+  });
+
   it("materializes canonical hashes, empty buckets, and default sentinels", async () => {
     const midgard = await LucidMidgard.new(fakeProvider, {
       network: "Preview",

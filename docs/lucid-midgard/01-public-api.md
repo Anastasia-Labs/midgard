@@ -175,9 +175,10 @@ Supported observer validator languages are only `PlutusV3` and `MidgardV1`.
 ## Reference Script Metadata
 
 Reference inputs are resolved from local output CBOR when the referenced output
-contains a script ref. When local bytes do not expose the required language
-branch, callers must provide explicit trusted metadata keyed by the reference
-outref:
+contains a script ref. For non-native references, the local output must expose
+the canonical script envelope and the transaction must carry its exact CEK
+program material. Trusted metadata keyed by the reference outref can declare
+and verify the language/hash branch when local script bytes are present:
 
 ```ts
 tx.readFrom([referenceUtxo], {
@@ -196,8 +197,10 @@ tx.readFrom([referenceUtxo], {
 `attach.ReferenceScriptMetadata(...)` supplies the same metadata separately.
 When a local script ref is present, the builder verifies the declared language,
 script hash, and optional script CBOR hash against the decoded bytes. Without
-local script bytes, the metadata is treated as trusted caller input and Phase B
-will still recompute against node state.
+local script bytes, metadata-only non-native references are rejected because
+metadata cannot provide executable bytes or CEK material. Metadata-only
+`NativeCardano` references remain supported, and Phase B still recomputes all
+reference inputs against node state.
 
 ## Submission API
 
