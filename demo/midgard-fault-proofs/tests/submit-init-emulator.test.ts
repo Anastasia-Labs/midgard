@@ -7016,11 +7016,13 @@ const runForcedValidationDisputeScenario = async (
   }) => Promise<ForcedValidationDisputeFixture>,
   {
     stopAfter,
+    onRemovalReferenceScriptPublicationAttempt,
   }: {
     readonly stopAfter?:
       | "prepare-resolution"
       | "prepare-selected"
       | "semantic-resolution";
+    readonly onRemovalReferenceScriptPublicationAttempt?: () => void;
   } = {},
 ) => {
   const realBlueprint = readBlueprint(realBlueprintPath);
@@ -7141,34 +7143,10 @@ const runForcedValidationDisputeScenario = async (
       }
     },
   );
-  // Block removal needs the state-queue, operator-directory and scheduler
-  // validators. Publishing them as reference-script UTxOs is what the deployed
-  // node does; `publishPlainReferenceScriptUtxo` refuses any publication that
-  // does not itself fit the literal 16,384-byte L1 envelope, so this also
-  // proves each of these validators is publishable on L1.
-  const removalReferenceScriptPublications = await runEmulatorLifecycleStage(
-    "reference-script.publish-removal",
-    async () => {
-      emulator.protocolParameters = {
-        ...setupProtocolParameters,
-        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-      };
-      try {
-        return await publishRemovalReferenceScripts({
-          lucid: referenceScriptPublisherLucid,
-          contracts,
-        });
-      } finally {
-        emulator.protocolParameters = setupProtocolParameters;
-      }
-    },
-  );
   const deploymentInfo = buildRemovalDeploymentInfo(
     contracts,
     catalogue,
     validationDisputePublication,
-    undefined,
-    removalReferenceScriptPublications.published,
   );
   const initResult = await runEmulatorLifecycleStage("init", () =>
     submitInit({
@@ -7347,6 +7325,39 @@ const runForcedValidationDisputeScenario = async (
       awaitConfirmation: true,
     }),
   );
+  // Block removal needs the state-queue, operator-directory and scheduler
+  // validators. Publishing them as reference-script UTxOs is what the deployed
+  // node does; `publishPlainReferenceScriptUtxo` refuses any publication that
+  // does not itself fit the literal 16,384-byte L1 envelope, so this also
+  // proves each of these validators is publishable on L1. Defer the seven
+  // submissions until the route has actually reached removal so validation-only
+  // and negative scenarios do not mutate the emulator first.
+  const removalReferenceScriptPublications = await runEmulatorLifecycleStage(
+    "reference-script.publish-removal",
+    async () => {
+      onRemovalReferenceScriptPublicationAttempt?.();
+      const prePublicationProtocolParameters = emulator.protocolParameters;
+      emulator.protocolParameters = {
+        ...prePublicationProtocolParameters,
+        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      };
+      try {
+        return await publishRemovalReferenceScripts({
+          lucid: referenceScriptPublisherLucid,
+          contracts,
+        });
+      } finally {
+        emulator.protocolParameters = prePublicationProtocolParameters;
+      }
+    },
+  );
+  const removalDeploymentInfo = buildRemovalDeploymentInfo(
+    contracts,
+    catalogue,
+    validationDisputePublication,
+    undefined,
+    removalReferenceScriptPublications.published,
+  );
   const removeNow = BigInt(emulator.now());
   // Block removal runs under the same literal 16,384-byte L1 envelope as every
   // dispute transaction above: `targetChallengerLucid` was constructed with
@@ -7359,7 +7370,7 @@ const runForcedValidationDisputeScenario = async (
       submitRemoveFraudulentBlock({
         lucid: targetChallengerLucid,
         blueprint: realBlueprint,
-        deploymentInfo,
+        deploymentInfo: removalDeploymentInfo,
         network,
         signer: challengerSigner,
         fraudCategory: "validationTraceDispute",
@@ -7409,6 +7420,7 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
       claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
     ).toBe(false);
 
+    let removalReferenceScriptPublicationAttempts = 0;
     const result = await runForcedValidationDisputeScenario(
       ({ operatorVkey, now }) =>
         buildAcceptedClaimOverRejectingTransactionFixture({
@@ -7416,7 +7428,13 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
           now,
           claimedLedgerDeltaRoot,
         }),
+      {
+        onRemovalReferenceScriptPublicationAttempt: () => {
+          removalReferenceScriptPublicationAttempts += 1;
+        },
+      },
     );
+    expect(removalReferenceScriptPublicationAttempts).toBe(1);
     const { fixture, lowIndex, highIndex } = result;
 
     // The disputed boundary is the rejecting terminal itself, which is the
@@ -7500,6 +7518,7 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
       claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
     ).toBe(false);
 
+    let removalReferenceScriptPublicationAttempts = 0;
     await expect(
       runForcedValidationDisputeScenario(
         ({ operatorVkey, now }) =>
@@ -7509,9 +7528,15 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
             claimedLedgerDeltaRoot,
             clearChallengerTerminalDelta: true,
           }),
-        { stopAfter: "semantic-resolution" },
+        {
+          stopAfter: "semantic-resolution",
+          onRemovalReferenceScriptPublicationAttempt: () => {
+            removalReferenceScriptPublicationAttempts += 1;
+          },
+        },
       ),
     ).rejects.toThrow(/emulator lifecycle stage prepare-selected failed/u);
+    expect(removalReferenceScriptPublicationAttempts).toBe(0);
   }, 600_000);
 
   it("cannot be defeated when the operator honestly accepted a valid transaction carrying a non-empty ledger delta", async () => {
