@@ -8,6 +8,7 @@ import {
 import {
   DataB,
   DataConstr,
+  dataFromCbor,
   DataList,
 } from "@harmoniclabs/plutus-data";
 import {
@@ -26,6 +27,7 @@ import {
 import {
   decodeMidgardCekConstantTypeCborV1,
   decodeMidgardCekConstantWitnessV1,
+  encodeMidgardCekCanonicalConstantV1,
   hashMidgardCekConstantWitnessV1,
   hashMidgardCekSemanticConstantWitnessV1,
   MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
@@ -42,6 +44,7 @@ import {
   type MidgardCekBuiltinBudgetV1,
   normalizeMidgardCekBitwiseCostSizesV1,
 } from "./cek-cost.js";
+import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
 
 type Bytes = Uint8Array;
 
@@ -721,15 +724,71 @@ const directConstantToReferenceValue = (
   return uncompressed;
 };
 
+const semanticConstantFromCanonical = (
+  canonical: ReturnType<typeof encodeMidgardCekCanonicalConstantV1>,
+): MidgardCekDirectValueWitnessV1 => {
+  const payload = dataFromCbor(canonical.payloadCbor);
+  const tree = commitMidgardCekDataTreeV1(payload);
+  return Object.freeze({
+    kind: "semanticConstant" as const,
+    witness: Object.freeze({
+      typeCbor: canonical.typeCbor,
+      payload: Object.freeze({
+        root: tree.root,
+        cborLength: tree.cborLength,
+        memory: tree.memory,
+      }),
+      memory: midgardCekConstantMemorySizeV1(canonical.type, payload),
+    }),
+  });
+};
+
+const semanticizeDirectConstant = (
+  value: MidgardCekDirectValueWitnessV1,
+): MidgardCekDirectValueWitnessV1 => {
+  if (value.kind !== "constant") return value;
+  const decoded = decodeMidgardCekConstantWitnessV1(value.witness);
+  const tree = commitMidgardCekDataTreeV1(decoded.payload);
+  return Object.freeze({
+    kind: "semanticConstant" as const,
+    witness: Object.freeze({
+      typeCbor: value.witness.typeCbor,
+      payload: Object.freeze({
+        root: tree.root,
+        cborLength: tree.cborLength,
+        memory: tree.memory,
+      }),
+      memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
+    }),
+  });
+};
+
 const referenceConstantToDirectWitness = (
   result: CEKConst,
-): MidgardCekConstantWitnessV1 => {
+  allowSemantic: boolean = false,
+): MidgardCekDirectValueWitnessV1 => {
   const tag = result.type[0];
   if (
     tag !== ConstTyTag.bls12_381_G1_element &&
     tag !== ConstTyTag.bls12_381_G2_element
   ) {
-    return midgardCekConstantWitnessFromUplcV1(result);
+    const canonical = encodeMidgardCekCanonicalConstantV1(
+      new UPLCConst(result.type, result.value as never),
+    );
+    const witness = Object.freeze({
+      typeCbor: canonical.typeCbor,
+      payloadCbor: canonical.payloadCbor,
+    });
+    if (
+      canonical.payloadCbor.length >
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
+    ) {
+      if (allowSemantic) {
+        return semanticConstantFromCanonical(canonical);
+      }
+    }
+    decodeMidgardCekConstantWitnessV1(witness);
+    return { kind: "constant", witness };
   }
   const compressed = runPinnedReferenceBuiltin(
     tag === ConstTyTag.bls12_381_G1_element ? 59 : 66,
@@ -747,7 +806,7 @@ const referenceConstantToDirectWitness = (
     payloadCbor: bytesWitness.payloadCbor,
   });
   decodeMidgardCekConstantWitnessV1(witness);
-  return witness;
+  return { kind: "constant", witness };
 };
 
 const evaluateReferenceBuiltin = (
@@ -834,10 +893,7 @@ const evaluateReferenceBuiltin = (
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
   }
-  return {
-    kind: "constant",
-    witness: referenceConstantToDirectWitness(result),
-  };
+  return referenceConstantToDirectWitness(result, tag === 51n);
 };
 
 const directFailureIsCharged = (
@@ -890,11 +946,22 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
     directWitnessPayloadBytes([...arguments_, result]) >
     BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
   ) {
-    throw new Error(
-      "V1 builtin result exceeds the aggregate direct payload bound",
-    );
+    if (tag !== 51n) {
+      throw new Error(
+        "V1 builtin result exceeds aggregate direct payload bound",
+      );
+    }
+    return Object.freeze({
+      kind: "success",
+      result: semanticizeDirectConstant(result),
+      budget,
+    });
   }
-  return Object.freeze({ kind: "success", result, budget });
+  return Object.freeze({
+    kind: "success",
+    result,
+    budget,
+  });
 };
 
 export const verifyMidgardCekDirectBuiltinV1 = (
@@ -1083,10 +1150,7 @@ export const evaluateMidgardCekBlsFinalV1 = (
   return Object.freeze({
     leftRoot: left.root,
     rightRoot: right.root,
-    result: {
-      kind: "constant",
-      witness: referenceConstantToDirectWitness(result),
-    },
+    result: referenceConstantToDirectWitness(result, false),
     budget: midgardCekDirectBuiltinBudgetV1(70n, arguments_),
   });
 };

@@ -2445,8 +2445,15 @@ class StructuralExecutorV1 {
       return;
     }
     if (
+      builtin.tag === 51n &&
+      directArguments[0]?.kind === "semanticConstant"
+    ) {
+      this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
+      return;
+    }
+    if (
       builtin.tag >= 29n &&
-      builtin.tag <= 51n &&
+      builtin.tag <= 50n &&
       builtin.tag !== 38n &&
       builtin.tag !== 43n
     ) {
@@ -2524,6 +2531,10 @@ class StructuralExecutorV1 {
           memoryDelta: evaluated.budget.memory,
         }),
       );
+      return;
+    }
+    if (builtin.tag === 51n && evaluated.result.kind === "semanticConstant") {
+      this.executeSemanticBuiltin(pre, builtin.tag, directArguments);
       return;
     }
     const resultRoot = this.addDirectResult(evaluated.result);

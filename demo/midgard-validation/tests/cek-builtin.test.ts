@@ -5,7 +5,7 @@ import {
   MIDGARD_CEK_EMPTY_ENVIRONMENT_ROOT_V1,
   MIDGARD_CEK_EMPTY_SEQUENCE_ROOT_V1,
 } from "@al-ft/midgard-core";
-import { DataB, DataConstr } from "@harmoniclabs/plutus-data";
+import { DataB, DataConstr, DataI, DataList } from "@harmoniclabs/plutus-data";
 import { UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
@@ -152,6 +152,13 @@ const direct = (constant: UPLCConst): MidgardCekDirectValueWitnessV1 => ({
 
 const directByteString = (byteLength: number): MidgardCekDirectValueWitnessV1 =>
   direct(UPLCConst.byteString(new DataB(Buffer.alloc(byteLength)).bytes));
+
+const directDataList = (count: number): MidgardCekDirectValueWitnessV1 =>
+  direct(
+    UPLCConst.data(
+      new DataList(Array.from({ length: count }, () => new DataI(0n))),
+    ),
+  );
 
 const runtimeByteString = (
   byteLength: number,
@@ -370,7 +377,7 @@ describe("V1 direct builtin execution", () => {
     ).toBe(false);
   });
 
-  it("rejects an over-cap direct success witness", () => {
+  it("rejects a non-51 oversized direct result", () => {
     const arguments_ = [
       direct(UPLCConst.bool(true)),
       directByteString(4_608),
@@ -485,6 +492,59 @@ describe("V1 direct builtin execution", () => {
         directBuiltinRoot(26n, semanticArguments),
         semanticArguments,
         semanticBranch,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps tag-51 direct results under the aggregate boundary", () => {
+    const arguments_ = [directDataList(0)];
+    const input = arguments_[0]!;
+    if (input.kind !== "constant") throw new Error("expected direct input");
+    expect(input.witness.payloadCbor.length).toBeLessThanOrEqual(
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+    );
+    const evaluated = evaluateMidgardCekDirectBuiltinV1(51n, arguments_);
+    expect(evaluated.kind).toBe("success");
+    if (evaluated.kind !== "success") return;
+    expect(evaluated.result.kind).toBe("constant");
+    expect(
+      verifyMidgardCekDirectBuiltinV1(
+        51n,
+        directBuiltinRoot(51n, arguments_),
+        arguments_,
+        evaluated.result,
+      ),
+    ).toBe(true);
+  });
+
+  it("semanticizes an oversized tag-51 result without weakening argument admission", () => {
+    const arguments_ = [directDataList(9_000)];
+    const input = arguments_[0]!;
+    if (input.kind !== "constant") throw new Error("expected direct input");
+    expect(input.witness.payloadCbor.length).toBe(9_002);
+    expect(input.witness.payloadCbor.length).toBeLessThanOrEqual(
+      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+    );
+
+    const evaluated = evaluateMidgardCekDirectBuiltinV1(51n, arguments_);
+    expect(evaluated.kind).toBe("success");
+    if (evaluated.kind !== "success") return;
+    expect(evaluated.result.kind).toBe("semanticConstant");
+    if (evaluated.result.kind !== "semanticConstant") return;
+    expect(evaluated.result.witness.typeCbor).toEqual(
+      Buffer.from("9f01ff", "hex"),
+    );
+    expect(evaluated.result.witness.payload.cborLength).toBe(9_286n);
+    expect(evaluated.budget).toEqual({
+      cpu: 9_600_848_754n,
+      memory: 90_008n,
+    });
+    expect(
+      verifyMidgardCekDirectBuiltinV1(
+        51n,
+        directBuiltinRoot(51n, arguments_),
+        arguments_,
+        evaluated.result,
       ),
     ).toBe(true);
   });

@@ -4,6 +4,7 @@ import {
   DataB,
   DataConstr,
   DataI,
+  DataList,
   DataMap,
   DataPair,
 } from "@harmoniclabs/plutus-data";
@@ -318,6 +319,137 @@ describe("V1 CEK trace generator", () => {
     expect(failed.steps.at(-1)?.witness.kind).toBe(
       "executeBuiltinFailure",
     );
+  });
+
+  it("routes tag-51 direct results to semantic witnesses only past the boundary", () => {
+    const emptyDirectProgram = buildMidgardCanonicalCekProgramV1(
+      compile(
+        new Application(
+          Builtin.serialiseData,
+          UPLCConst.data(new DataList([])),
+        ),
+      ),
+    );
+    const emptyDirect = executeMidgardCekStructuralProgramV1({
+      root: emptyDirectProgram.envelope.termRoot,
+      material: emptyDirectProgram.material.values(),
+      constantWitnesses: emptyDirectProgram.constantWitnesses,
+      maxSteps: 32,
+    });
+    const emptyDirectStep = emptyDirect.steps.find(
+      (step) => step.witness.kind === "executeBuiltinDirect",
+    );
+    expect(emptyDirectStep?.witness.kind).toBe("executeBuiltinDirect");
+    if (emptyDirectStep?.witness.kind === "executeBuiltinDirect") {
+      expect(emptyDirectStep.witness.tag).toBe(51n);
+      expect(emptyDirectStep.witness.result.kind).toBe("constant");
+      if (emptyDirectStep.witness.result.kind === "constant") {
+        const decoded = decodeMidgardCekConstantWitnessV1(
+          emptyDirectStep.witness.result.witness,
+        );
+        expect(decoded.payload).toMatchObject({ bytes: expect.anything() });
+        if (decoded.payload instanceof DataB) {
+          expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
+        }
+      }
+    }
+    expect(emptyDirect.terminalState.mode).toBe("haltSuccess");
+
+    const largeData = new DataList(
+      Array.from({ length: 9_000 }, () => new DataI(0n)),
+    );
+    const largeProgram = buildMidgardCanonicalCekProgramV1(
+      compile(
+        new Application(Builtin.serialiseData, UPLCConst.data(largeData)),
+      ),
+    );
+    const large = executeMidgardCekStructuralProgramV1({
+      root: largeProgram.envelope.termRoot,
+      material: largeProgram.material.values(),
+      constantWitnesses: largeProgram.constantWitnesses,
+      maxSteps: 32,
+    });
+    const largeSemanticStep = large.steps.find(
+      (step) => step.witness.kind === "executeBuiltinSemantic",
+    );
+    expect(largeSemanticStep?.witness.kind).toBe("executeBuiltinSemantic");
+    if (largeSemanticStep?.witness.kind === "executeBuiltinSemantic") {
+      expect(largeSemanticStep.witness.tag).toBe(51n);
+      expect(largeSemanticStep.witness.result.kind).toBe("semanticConstant");
+      expect(largeSemanticStep.witness.material.dataNodes).toHaveLength(0);
+      expect(largeSemanticStep.witness.material.listNodes).toHaveLength(0);
+      expect(largeSemanticStep.witness.material.pairNodes).toHaveLength(0);
+      expect(
+        largeSemanticStep.witness.material.scalarPreimages[0]?.length,
+      ).toBe(9_002);
+      expect(largeSemanticStep.post.cpu - largeSemanticStep.pre.cpu).toBe(
+        9_600_848_754n,
+      );
+      expect(largeSemanticStep.post.memory - largeSemanticStep.pre.memory).toBe(
+        90_008n,
+      );
+      if (largeSemanticStep.witness.result.kind === "semanticConstant") {
+        expect(
+          largeSemanticStep.witness.result.witness.payload.cborLength,
+        ).toBe(9_286n);
+      }
+    }
+    expect(large.terminalState.mode).toBe("haltSuccess");
+    expect(
+      large.steps.every((step) =>
+        verifyMidgardCekCoreStepV1(step.pre, step.post, step.witness),
+      ),
+    ).toBe(true);
+  });
+
+  it("proves semantic tag-51 zero-count control with its exact result and budget", () => {
+    const program = buildMidgardCanonicalCekProgramV1(
+      compile(
+        new Lambda(new Application(Builtin.serialiseData, new UPLCVar(0))),
+      ),
+    );
+    const graph = buildMidgardCekExecutionGraphV1(
+      program.envelope,
+      program.material.values(),
+      encodeMidgardCekPlutusDataV1(new DataList([])),
+    );
+    const execution = executeMidgardCekStructuralProgramV1({
+      root: graph.root,
+      material: graph.material.values(),
+      constantWitnesses: graph.constantWitnesses,
+      maxSteps: 64,
+    });
+    const semantic = execution.steps.find(
+      (step) => step.witness.kind === "executeBuiltinSemantic",
+    );
+    expect(semantic?.witness.kind).toBe("executeBuiltinSemantic");
+    if (semantic?.witness.kind === "executeBuiltinSemantic") {
+      expect(semantic.witness.tag).toBe(51n);
+      expect(semantic.witness.material.dataNodes).toHaveLength(0);
+      expect(semantic.witness.material.listNodes).toHaveLength(0);
+      expect(semantic.witness.material.pairNodes).toHaveLength(0);
+      expect(semantic.witness.material.scalarPreimages).toEqual([
+        Buffer.from([0x80]),
+      ]);
+      expect(semantic.witness.result.kind).toBe("constant");
+      if (semantic.witness.result.kind === "constant") {
+        const decoded = decodeMidgardCekConstantWitnessV1(
+          semantic.witness.result.witness,
+        );
+        expect(decoded.payload).toMatchObject({ bytes: expect.anything() });
+        if (decoded.payload instanceof DataB) {
+          expect(decoded.payload.bytes.toBuffer()).toEqual(Buffer.from([0x80]));
+        }
+      }
+      expect(semantic.post.cpu - semantic.pre.cpu).toBe(1_808_754n);
+      expect(semantic.post.memory - semantic.pre.memory).toBe(8n);
+    }
+    expect(execution.terminalState.mode).toBe("haltSuccess");
+    expect(
+      execution.steps.every((step) =>
+        verifyMidgardCekCoreStepV1(step.pre, step.post, step.witness),
+      ),
+    ).toBe(true);
   });
 
   it("proves nested list memory from the exact bounded source constant", () => {
