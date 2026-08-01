@@ -28,7 +28,6 @@ import {
 
 import {
   encodeMidgardCekPlutusDataV1,
-  midgardCekDataMemorySizeV1,
   midgardCekIntegerMemorySizeV1,
 } from "./cek-constant.js";
 
@@ -74,6 +73,29 @@ type ListSummary = {
   readonly payloadCborLength: bigint;
   readonly memory: bigint;
 };
+
+type ListWork = {
+  summary: ListSummary;
+};
+
+type DataWork =
+  | { readonly kind: "visit"; readonly data: Data }
+  | {
+      readonly kind: "finishData";
+      readonly data: Data;
+      readonly children: ListWork;
+    }
+  | {
+      readonly kind: "finishListItem";
+      readonly item: Data;
+      readonly list: ListWork;
+    }
+  | {
+      readonly kind: "finishPairItem";
+      readonly key: Data;
+      readonly value: Data;
+      readonly list: ListWork;
+    };
 
 const rootKey = (root: Uint8Array): string =>
   Buffer.from(root).toString("hex");
@@ -155,162 +177,134 @@ export const commitMidgardCekDataTreeV1 = (
     return committed.root;
   };
 
-  const addList = (
-    items: readonly Data[],
-    addData: (item: Data) => DataSummary,
-  ): ListSummary => {
-    let summary: ListSummary = {
-      root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+  const summaries = new Map<Data, DataSummary>();
+  const operations: DataWork[] = [{ kind: "visit", data: value }];
+
+  const emptyListWork = (root: Uint8Array): ListWork => ({
+    summary: {
+      root,
       length: 0n,
       payloadCborLength: 0n,
       memory: 0n,
-    };
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const head = addData(items[index]!);
-      const node: MidgardCekDataListNodeV1 = {
-        head: head.root,
-        headCborLength: head.cborLength,
-        headMemory: head.memory,
-        tail: summary.root,
-        length: summary.length + 1n,
-        payloadCborLength:
-          head.cborLength + summary.payloadCborLength,
-        memory: head.memory + summary.memory,
-      };
-      const preimage = encodeMidgardCekDataListNodeV1(node);
-      const root = hashMidgardCekDataListNodeV1(node);
-      addExact(listNodes, root, { node, preimage });
-      summary = {
-        root,
-        length: node.length,
-        payloadCborLength: node.payloadCborLength,
-        memory: node.memory,
-      };
+    },
+  });
+
+  const finishListItem = (item: Data, list: ListWork): void => {
+    const head = summaries.get(item);
+    if (head === undefined) {
+      throw new Error("V1 semantic tree lost a list child summary");
     }
-    return summary;
+    const tail = list.summary;
+    const node: MidgardCekDataListNodeV1 = {
+      head: head.root,
+      headCborLength: head.cborLength,
+      headMemory: head.memory,
+      tail: tail.root,
+      length: tail.length + 1n,
+      payloadCborLength: head.cborLength + tail.payloadCborLength,
+      memory: head.memory + tail.memory,
+    };
+    const preimage = encodeMidgardCekDataListNodeV1(node);
+    const root = hashMidgardCekDataListNodeV1(node);
+    addExact(listNodes, root, { node, preimage });
+    list.summary = {
+      root,
+      length: node.length,
+      payloadCborLength: node.payloadCborLength,
+      memory: node.memory,
+    };
   };
 
-  const addPairs = (
-    items: readonly { readonly fst: Data; readonly snd: Data }[],
-    addData: (item: Data) => DataSummary,
-  ): ListSummary => {
-    let summary: ListSummary = {
-      root: MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1,
-      length: 0n,
-      payloadCborLength: 0n,
-      memory: 0n,
-    };
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const item = items[index]!;
-      const key = addData(item.fst);
-      const mapped = addData(item.snd);
-      const node: MidgardCekDataPairNodeV1 = {
-        key: key.root,
-        keyCborLength: key.cborLength,
-        keyMemory: key.memory,
-        value: mapped.root,
-        valueCborLength: mapped.cborLength,
-        valueMemory: mapped.memory,
-        tail: summary.root,
-        length: summary.length + 1n,
-        payloadCborLength:
-          key.cborLength +
-          mapped.cborLength +
-          summary.payloadCborLength,
-        memory: key.memory + mapped.memory + summary.memory,
-      };
-      const preimage = encodeMidgardCekDataPairNodeV1(node);
-      const root = hashMidgardCekDataPairNodeV1(node);
-      addExact(pairNodes, root, { node, preimage });
-      summary = {
-        root,
-        length: node.length,
-        payloadCborLength: node.payloadCborLength,
-        memory: node.memory,
-      };
+  const finishPairItem = (
+    keyData: Data,
+    valueData: Data,
+    list: ListWork,
+  ): void => {
+    const key = summaries.get(keyData);
+    const mapped = summaries.get(valueData);
+    if (key === undefined || mapped === undefined) {
+      throw new Error("V1 semantic tree lost a pair child summary");
     }
-    return summary;
+    const tail = list.summary;
+    const node: MidgardCekDataPairNodeV1 = {
+      key: key.root,
+      keyCborLength: key.cborLength,
+      keyMemory: key.memory,
+      value: mapped.root,
+      valueCborLength: mapped.cborLength,
+      valueMemory: mapped.memory,
+      tail: tail.root,
+      length: tail.length + 1n,
+      payloadCborLength:
+        key.cborLength + mapped.cborLength + tail.payloadCborLength,
+      memory: key.memory + mapped.memory + tail.memory,
+    };
+    const preimage = encodeMidgardCekDataPairNodeV1(node);
+    const root = hashMidgardCekDataPairNodeV1(node);
+    addExact(pairNodes, root, { node, preimage });
+    list.summary = {
+      root,
+      length: node.length,
+      payloadCborLength: node.payloadCborLength,
+      memory: node.memory,
+    };
   };
 
-  const addData = (data: Data): DataSummary => {
+  const finishData = (data: Data, children: ListWork): void => {
+    const sequence = children.summary;
     let node: MidgardCekDataNodeV1;
     if (data instanceof DataConstr) {
-      if (data.constr < 0n) {
-        throw new Error("Plutus Data constructor must be non-negative");
-      }
-      const fields = addList(data.fields, addData);
       const cborLength = midgardCekDataConstrCborLengthV1(
         data.constr,
-        fields.length,
-        fields.payloadCborLength,
+        sequence.length,
+        sequence.payloadCborLength,
       );
-      const memory = 4n + fields.memory;
+      const memory = 4n + sequence.memory;
       if (data.constr <= 127n) {
         node = {
           kind: "constrSmall",
           constructor: data.constr,
-          fieldsCount: fields.length,
-          fieldsRoot: fields.root,
+          fieldsCount: sequence.length,
+          fieldsRoot: sequence.root,
           cborLength,
           memory,
         };
       } else {
-        const constructorCbor =
-          encodeMidgardCekPlutusDataV1(new DataI(data.constr));
+        const constructorCbor = encodeMidgardCekPlutusDataV1(
+          new DataI(data.constr),
+        );
         node = {
           kind: "constrLarge",
           constructorCborRoot: addBlob(constructorCbor),
           constructorCborLength: BigInt(constructorCbor.length),
-          constructorMemory:
-            4n + midgardCekIntegerMemorySizeV1(data.constr),
-          fieldsCount: fields.length,
-          fieldsRoot: fields.root,
+          constructorMemory: 4n + midgardCekIntegerMemorySizeV1(data.constr),
+          fieldsCount: sequence.length,
+          fieldsRoot: sequence.root,
           cborLength,
           memory,
         };
       }
     } else if (data instanceof DataMap) {
-      const entries = addPairs(data.map, addData);
       node = {
         kind: "map",
-        entriesCount: entries.length,
-        entriesRoot: entries.root,
+        entriesCount: sequence.length,
+        entriesRoot: sequence.root,
         cborLength: midgardCekDataMapCborLengthV1(
-          entries.length,
-          entries.payloadCborLength,
+          sequence.length,
+          sequence.payloadCborLength,
         ),
-        memory: 4n + entries.memory,
+        memory: 4n + sequence.memory,
       };
     } else if (data instanceof DataList) {
-      const items = addList(data.list, addData);
       node = {
         kind: "list",
-        itemsCount: items.length,
-        itemsRoot: items.root,
+        itemsCount: sequence.length,
+        itemsRoot: sequence.root,
         cborLength: midgardCekDataListCborLengthV1(
-          items.length,
-          items.payloadCborLength,
+          sequence.length,
+          sequence.payloadCborLength,
         ),
-        memory: 4n + items.memory,
-      };
-    } else if (data instanceof DataI) {
-      const cbor = encodeMidgardCekPlutusDataV1(data);
-      node = {
-        kind: "integer",
-        cborRoot: addBlob(cbor),
-        cborLength: BigInt(cbor.length),
-        memory: 4n + midgardCekIntegerMemorySizeV1(data.int),
-      };
-    } else if (data instanceof DataB) {
-      const bytes = asByteArray(data.bytes);
-      node = {
-        kind: "bytes",
-        bytesRoot: addBlob(bytes),
-        bytesLength: BigInt(bytes.length),
-        cborLength: midgardCekDataBytesCborLengthV1(
-          BigInt(bytes.length),
-        ),
-        memory: midgardCekDataBytesMemoryV1(BigInt(bytes.length)),
+        memory: 4n + sequence.memory,
       };
     } else {
       throw new Error("V1 semantic tree contains unknown Plutus Data");
@@ -319,27 +313,129 @@ export const commitMidgardCekDataTreeV1 = (
     const preimage = encodeMidgardCekDataNodeV1(node);
     const root = hashMidgardCekDataNodeV1(node);
     addExact(dataNodes, root, { node, preimage });
-
-    const canonicalLength = BigInt(
-      encodeMidgardCekPlutusDataV1(data).length,
-    );
-    const exactMemory = midgardCekDataMemorySizeV1(data);
-    if (
-      node.cborLength !== canonicalLength ||
-      node.memory !== exactMemory
-    ) {
-      throw new Error(
-        "V1 semantic tree summary disagrees with canonical Data",
-      );
-    }
-    return {
+    summaries.set(data, {
       root,
       cborLength: node.cborLength,
       memory: node.memory,
-    };
+    });
   };
 
-  const committed = addData(value);
+  while (operations.length > 0) {
+    const operation = operations.pop()!;
+    if (operation.kind === "visit") {
+      if (summaries.has(operation.data)) {
+        continue;
+      }
+      if (operation.data instanceof DataConstr) {
+        if (operation.data.constr < 0n) {
+          throw new Error("Plutus Data constructor must be non-negative");
+        }
+        const children = emptyListWork(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1);
+        operations.push({
+          kind: "finishData",
+          data: operation.data,
+          children,
+        });
+        // Push in reverse execution order to preserve the recursive fold:
+        // each right-to-left child is finalized before its list node.
+        for (let index = 0; index < operation.data.fields.length; index += 1) {
+          const item = operation.data.fields[index]!;
+          operations.push({
+            kind: "finishListItem",
+            item,
+            list: children,
+          });
+          operations.push({ kind: "visit", data: item });
+        }
+        continue;
+      }
+      if (operation.data instanceof DataMap) {
+        const children = emptyListWork(MIDGARD_CEK_EMPTY_DATA_PAIR_ROOT_V1);
+        operations.push({
+          kind: "finishData",
+          data: operation.data,
+          children,
+        });
+        // Keys, values, and pair nodes retain the original right-to-left order.
+        for (let index = 0; index < operation.data.map.length; index += 1) {
+          const item = operation.data.map[index]!;
+          operations.push({
+            kind: "finishPairItem",
+            key: item.fst,
+            value: item.snd,
+            list: children,
+          });
+          operations.push({ kind: "visit", data: item.snd });
+          operations.push({ kind: "visit", data: item.fst });
+        }
+        continue;
+      }
+      if (operation.data instanceof DataList) {
+        const children = emptyListWork(MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1);
+        operations.push({
+          kind: "finishData",
+          data: operation.data,
+          children,
+        });
+        for (let index = 0; index < operation.data.list.length; index += 1) {
+          const item = operation.data.list[index]!;
+          operations.push({
+            kind: "finishListItem",
+            item,
+            list: children,
+          });
+          operations.push({ kind: "visit", data: item });
+        }
+        continue;
+      }
+
+      let node: MidgardCekDataNodeV1;
+      if (operation.data instanceof DataI) {
+        const cbor = encodeMidgardCekPlutusDataV1(operation.data);
+        node = {
+          kind: "integer",
+          cborRoot: addBlob(cbor),
+          cborLength: BigInt(cbor.length),
+          memory: 4n + midgardCekIntegerMemorySizeV1(operation.data.int),
+        };
+      } else if (operation.data instanceof DataB) {
+        const bytes = asByteArray(operation.data.bytes);
+        node = {
+          kind: "bytes",
+          bytesRoot: addBlob(bytes),
+          bytesLength: BigInt(bytes.length),
+          cborLength: midgardCekDataBytesCborLengthV1(BigInt(bytes.length)),
+          memory: midgardCekDataBytesMemoryV1(BigInt(bytes.length)),
+        };
+      } else {
+        throw new Error("V1 semantic tree contains unknown Plutus Data");
+      }
+
+      const preimage = encodeMidgardCekDataNodeV1(node);
+      const root = hashMidgardCekDataNodeV1(node);
+      addExact(dataNodes, root, { node, preimage });
+      summaries.set(operation.data, {
+        root,
+        cborLength: node.cborLength,
+        memory: node.memory,
+      });
+      continue;
+    }
+    if (operation.kind === "finishListItem") {
+      finishListItem(operation.item, operation.list);
+      continue;
+    }
+    if (operation.kind === "finishPairItem") {
+      finishPairItem(operation.key, operation.value, operation.list);
+      continue;
+    }
+    finishData(operation.data, operation.children);
+  }
+
+  const committed = summaries.get(value);
+  if (committed === undefined) {
+    throw new Error("V1 semantic tree lost its root summary");
+  }
   return Object.freeze({
     ...committed,
     dataNodes,

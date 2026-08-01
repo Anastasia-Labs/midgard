@@ -3,6 +3,7 @@ import {
   MIDGARD_CEK_BLOB_CHUNK_BYTES,
 } from "@al-ft/midgard-core";
 import {
+  type Data,
   DataB,
   DataConstr,
   dataFromCbor,
@@ -105,6 +106,20 @@ describe("V1 semantic Data commitment", () => {
       Buffer.from(committed.root).toString("hex"),
     );
     expect(rootNode?.node.kind).toBe("constrLarge");
+  });
+
+  it("commits the maximum accepted unary depth without using the JS call stack", () => {
+    let value: Data = new DataI(0);
+    for (let depth = 0; depth < 4_043; depth += 1) {
+      value = new DataConstr(0, [value]);
+    }
+
+    const committed = commitMidgardCekDataTreeV1(value);
+
+    expect(committed.cborLength).toBe(16_173n);
+    expect(committed.memory).toBe(16_177n);
+    expect(committed.dataNodes.size).toBe(4_044);
+    expect(committed.listNodes.size).toBe(4_043);
   });
 
   it("pins the TypeScript/Aiken semantic-root vector", () => {
