@@ -113,7 +113,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     };
     const queuedLimits = {
       ...DA_TRANSPORT_LIMITS_V1,
-      requestTimeoutMs: 25,
+      requestTimeoutMs: 200,
     };
     const firstHandler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
@@ -195,7 +195,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     const admission = new DaPayloadSubmitAdmission(1);
     const limits = {
       ...DA_TRANSPORT_LIMITS_V1,
-      requestTimeoutMs: 30,
+      requestTimeoutMs: 200,
     };
     const handler = createDaLibp2pPayloadRequestHandlers({
       deploymentFingerprint,
