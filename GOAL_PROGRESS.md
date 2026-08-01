@@ -349,6 +349,55 @@
 
 ## Decisions
 
+- 2026-07-31, REMOVAL-TX-OVERSIZE RESOLVED as hypothesis (a) — inefficient
+  build, NOT a capability gap — and adversarially confirmed. Attribution of
+  the 36,934-byte failure: five attached PlutusV3 script bodies = 35,634 B
+  (95.6%); everything else 1,621 B with zero inline evidence. The reference
+  path already existed and is the deployed shape (SDK attaches only when the
+  `referenceScripts` entry is absent; `remove-fraudulent-block` defaults
+  `requireReferenceScripts=true` and the CLI passes true; all seven removal
+  validators are production reference-script publication targets) — only the
+  emulator harness passed `false`. Fixed by publishing all seven as reference
+  UTxOs through a publisher that itself refuses any publication over 16,384
+  (so each validator is also proven L1-publishable), flipping the flag, and
+  DELETING the `maxTxSize` override. **1,868 bytes, 0 attached scripts, 10
+  reference inputs, 14,516 B margin (94.9% reduction)**; all three
+  dispute-soundness tests pass, parent-verified, and the reviewer reproduced
+  the 1,868-byte result byte-for-byte. Correction to the earlier entry: the
+  harness relaxation was INERT (Lucid caches protocol parameters at
+  construction), so the oversize was always measured against the real 16,384
+  — the finding stands, the "hidden by an inflated ceiling" framing does not.
+- 2026-07-31, INFLATED-LIMIT AUDIT (invariant 6) — six sites, adversarially
+  reviewed; the exhaustiveness of the raised-site inventory was CONFIRMED
+  while several individual classifications were REFUTED and are recorded here
+  as corrected:
+  - **V1** `submit-init-emulator.test.ts:371` `maxTxSize: 65_536` — site
+    confirmed; its impact claim refuted against the current tree (the
+    override is inert per the caching finding above). Still to be removed.
+  - **V2** `operator-lifecycle-emulator.test.ts:31`, **V3**
+    `midgard-sdk/tests/state-queue.test.ts:98` — confirmed 4x raises with no
+    byte assertions; benign today but they would mask exactly this class.
+  - **V4** `spend-input-witness.test.ts:20` — confirmed site, correctly
+    self-flagged UNRESOLVED: a 180-input high-cardinality witness test
+    asserting success under a 4x ceiling is the highest-risk remaining
+    instance.
+  - **V5** `deposit-flow-emulator.test.ts:186-189` — env-var channel
+    (`MIDGARD_EMULATOR_MAX_TX_SIZE`), currently unset so correct; a latent
+    override path.
+  - **V6** Phase-4 devnet `maxTxExUnits.memory = 140,000,000` — numbers
+    confirmed, classification refuted by review; found only via a
+    `--no-ignore` sweep of 22 devnet run directories.
+  METHOD NOTE worth keeping: a plain `rg` honours `.gitignore` and silently
+  skipped 155,972 files; the audit ran the sweep twice and diffed the file
+  lists, and the 115-file gap is where V6 lived. Any future "exhaustive"
+  claim in this repo must state whether it used `--no-ignore`.
+  REMAINING EXPOSURE (separate lane, not a limit-raise): six other removal
+  call sites in `submit-init-emulator.test.ts` (4501, 5061, 5358, 5590, 5918,
+  6086) still pass `requireReferenceScripts: false` and would build ~37 KB
+  removals without complaint; only the challenger-wins path currently
+  measures envelope fit.
+
+
 - 2026-07-31, **REMOVAL-TX-OVERSIZE — candidate capability defect, found by the
   owner-authorized challenger-wins regression.** The new dispute-soundness
   suite in `demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`
