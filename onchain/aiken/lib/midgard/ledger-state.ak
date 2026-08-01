@@ -666,19 +666,21 @@ pub type MidgardTxWitnessSetCompact {
 }
 
 pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
-  let MidgardTxBody {
-    spend_inputs,
-    reference_inputs,
-    outputs,
-    fee,
-    validity_interval,
-    required_observers,
-    required_signer_hashes,
-    mint,
-    script_integrity_hash,
-    auxiliary_data_hash,
-    network_id,
-  } = body
+  let
+      MidgardTxBody {
+        spend_inputs,
+        reference_inputs,
+        outputs,
+        fee,
+        validity_interval,
+        required_observers,
+        required_signer_hashes,
+        mint,
+        script_integrity_hash,
+        auxiliary_data_hash,
+        network_id,
+      }
+    = body
   MidgardTxBodyCompact {
     spend_inputs: spend_inputs |> utils.serialise_and_hash_32,
     reference_inputs: reference_inputs |> utils.serialise_and_hash_32,
@@ -698,8 +700,7 @@ pub fn midgard_tx_body_to_compact(body: MidgardTxBody) -> MidgardTxBodyCompact {
 pub fn midgard_tx_wits_to_compact(
   wits: MidgardTxWitnessSet,
 ) -> MidgardTxWitnessSetCompact {
-  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } =
-    wits
+  let MidgardTxWitnessSet { addr_tx_wits, script_tx_wits, redeemer_tx_wits } = wits
   MidgardTxWitnessSetCompact {
     addr_tx_wits: addr_tx_wits |> utils.serialise_and_hash_32,
     script_tx_wits: script_tx_wits |> utils.serialise_and_hash_32,

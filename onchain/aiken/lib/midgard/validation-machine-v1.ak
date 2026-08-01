@@ -1643,20 +1643,12 @@ pub fn verify_canonical_decode_item_from_source_v1(
     item_cbor,
   )
   and {
-    canonical_decode_item_observation_is_authentic(
-      witness,
-      source,
-      observation,
-    ),
+    canonical_decode_item_observation_is_authentic(witness, source, observation),
     verify_canonical_decode_item_successor_v1(
       pre,
       witness,
       source,
-      verify_canonical_decode_item_observation_v1(
-        witness,
-        source,
-        observation,
-      ),
+      verify_canonical_decode_item_observation_v1(witness, source, observation),
     ),
   }
 }
@@ -1760,11 +1752,8 @@ pub fn verify_canonical_decode_item_observation_v1(
   } else {
     control.encoded_length
   }
-  expect canonical_decode_item_observation_is_authentic(
-    witness,
-    source,
-    observation,
-  )
+  expect
+    canonical_decode_item_observation_is_authentic(witness, source, observation)
   when
     transaction_field_item_encoded_length(
       control.field_index,
@@ -1849,11 +1838,7 @@ fn canonical_item_source_field_v1(
     field_preimage_lengths_cbor,
   )
   Pair(
-    transaction_field_commitment(
-      verified.tx_compact,
-      witness_set,
-      field_index,
-    ),
+    transaction_field_commitment(verified.tx_compact, witness_set, field_index),
     transaction_field_preimage_length(field_lengths, field_index),
   )
 }

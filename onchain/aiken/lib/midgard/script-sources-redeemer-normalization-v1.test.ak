@@ -35,8 +35,7 @@ const script_f = #"ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 const script_g = #"12121212121212121212121212121212121212121212121212121212"
 
-const zero =
-  #"0000000000000000000000000000000000000000000000000000000000000000"
+const zero = #"0000000000000000000000000000000000000000000000000000000000000000"
 
 fn fold_control() -> cek_data_traverse_v1.DataTraverseControlV1 {
   cek_data_traverse_v1.DataTraverseControlV1 {
@@ -167,19 +166,11 @@ fn finalize_frame_action() -> cek_data_traverse_v1.DataTraverseActionV1 {
 }
 
 fn map_key_summary() -> cek_data_v1.DataSummaryV1 {
-  cek_data_v1.DataSummaryV1 {
-    root: hash_a,
-    cbor_length: 1,
-    memory: 4,
-  }
+  cek_data_v1.DataSummaryV1 { root: hash_a, cbor_length: 1, memory: 4 }
 }
 
 fn map_value_summary() -> cek_data_v1.DataSummaryV1 {
-  cek_data_v1.DataSummaryV1 {
-    root: hash_b,
-    cbor_length: 2,
-    memory: 5,
-  }
+  cek_data_v1.DataSummaryV1 { root: hash_b, cbor_length: 2, memory: 5 }
 }
 
 fn nontrivial_map_frame() -> cek_data_frame_v1.DataFrameV1 {
@@ -391,20 +382,20 @@ fn assemble_finalize_transition_cbor(
   state: normalization.OuterNormalizedScriptSourcesRedeemerActionV1,
   transition: cek_data_traverse_v1.FinalizeFrameTransitionV1,
 ) -> ByteArray {
-  expect normalization.FinalizeFrameTemplate {
-    prefix_before_stage_cbor,
-    source_fields_before_frame_root_cbor,
-    suffix_before_result_cbor,
-  } = state.traversal_serialization_template
+  expect
+      normalization.FinalizeFrameTemplate {
+        prefix_before_stage_cbor,
+        source_fields_before_frame_root_cbor,
+        suffix_before_result_cbor,
+      }
+    = state.traversal_serialization_template
   prefix_before_stage_cbor
     |> bytearray.concat(cbor.serialise(transition.next_stage))
     |> bytearray.concat(source_fields_before_frame_root_cbor)
     |> bytearray.concat(encode_definite_bytes(transition.next_frame_root))
     |> bytearray.concat(suffix_before_result_cbor)
     |> bytearray.concat(
-        cek_data_traverse_v1.encode_optional_summary_v1(
-          transition.next_result,
-        ),
+        cek_data_traverse_v1.encode_optional_summary_v1(transition.next_result),
       )
 }
 
@@ -491,13 +482,12 @@ fn settlement_attestation(
   state: normalization.OuterNormalizedScriptSourcesRedeemerActionV1,
 ) -> normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
   let envelope = settlement_envelope(state)
-  let bound_state =
-    normalization.OuterNormalizedScriptSourcesRedeemerActionV1 {
-      ..state,
-      base_provenance_identity: normalization.base_provenance_identity_v1(
-        envelope,
-      ),
-    }
+  let bound_state = normalization.OuterNormalizedScriptSourcesRedeemerActionV1 {
+    ..state,
+    base_provenance_identity: normalization.base_provenance_identity_v1(
+      envelope,
+    ),
+  }
   normalization.execution_attested_state_v1(
     bound_state,
     bound_state.expected_next_item_control_hash,
@@ -744,14 +734,16 @@ test narrow_action_commitment_rejects_wrong_family_and_preimage() {
 test fold_map_action_only_identity_rejects_field_sibling_family_and_hash_mutations() {
   let action = fold_map_action()
   let action_identity = normalization.traversal_action_identity_v1(action)
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   let wrong_index = cek_data_traverse_v1.FoldMap {
     frame,
     pair_index: pair_index + 1,
@@ -901,10 +893,11 @@ test predecessor_deployment_and_route_mutations_reject() {
 test family_templates_are_exact_and_corruption_changes_encoding() {
   let traversal = fold_control()
   let checked = cek_data_traverse_v1.encode_control_v1(traversal)
-  expect normalization.FoldMapFrameRootTemplate {
-    prefix_before_frame_root_cbor,
-    suffix_after_frame_root_cbor,
-  }
+  expect
+      normalization.FoldMapFrameRootTemplate {
+        prefix_before_frame_root_cbor,
+        suffix_after_frame_root_cbor,
+      }
     = normalization.traversal_serialization_template_v1(
     traversal,
     normalization.fold_map_family,
@@ -916,11 +909,12 @@ test family_templates_are_exact_and_corruption_changes_encoding() {
   let finalize_checked = cek_data_traverse_v1.encode_control_v1(
     finalize_traversal,
   )
-  expect normalization.FinalizeFrameTemplate {
-    prefix_before_stage_cbor,
-    source_fields_before_frame_root_cbor,
-    suffix_before_result_cbor,
-  }
+  expect
+      normalization.FinalizeFrameTemplate {
+        prefix_before_stage_cbor,
+        source_fields_before_frame_root_cbor,
+        suffix_before_result_cbor,
+      }
     = normalization.traversal_serialization_template_v1(
     finalize_traversal,
     normalization.finalize_frame_family,
@@ -942,14 +936,16 @@ test family_templates_are_exact_and_corruption_changes_encoding() {
 test fold_map_shared_core_matches_generic_step_with_nontrivial_membership() {
   let control = nontrivial_fold_map_control()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   expect Some(next_frame_root) = cek_data_traverse_v1.prevalidated_fold_map_next_frame_root_v1(
     control.frame_root,
     frame,
@@ -967,11 +963,10 @@ test fold_map_shared_core_matches_generic_step_with_nontrivial_membership() {
   and {
     key_siblings != [],
     value_siblings != [],
-    generic_next
-      == cek_data_traverse_v1.DataTraverseControlV1 {
-          ..control,
-          frame_root: next_frame_root,
-        },
+    generic_next == cek_data_traverse_v1.DataTraverseControlV1 {
+      ..control,
+      frame_root: next_frame_root,
+    },
     generic_next.frame_root == next_frame_root,
   }
 }
@@ -979,14 +974,16 @@ test fold_map_shared_core_matches_generic_step_with_nontrivial_membership() {
 test fold_map_authenticated_template_equals_checked_generic_next_encoding() {
   let state = outer_normalized_fold_map_state()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   expect Some(next_frame_root) = cek_data_traverse_v1.prevalidated_fold_map_next_frame_root_v1(
     state.validated_traversal_control.frame_root,
     frame,
@@ -996,10 +993,12 @@ test fold_map_authenticated_template_equals_checked_generic_next_encoding() {
     key_siblings,
     value_siblings,
   )
-  expect normalization.FoldMapFrameRootTemplate {
-    prefix_before_frame_root_cbor,
-    suffix_after_frame_root_cbor,
-  } = state.traversal_serialization_template
+  expect
+      normalization.FoldMapFrameRootTemplate {
+        prefix_before_frame_root_cbor,
+        suffix_after_frame_root_cbor,
+      }
+    = state.traversal_serialization_template
   let assembled = prefix_before_frame_root_cbor
     |> bytearray.concat(encode_definite_bytes(next_frame_root))
     |> bytearray.concat(suffix_after_frame_root_cbor)
@@ -1014,14 +1013,16 @@ test fold_map_authenticated_template_equals_checked_generic_next_encoding() {
 test fold_map_authenticated_prefix_hash_equals_generic_outer_and_expected_hash() {
   let state = outer_normalized_fold_map_state()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   expect Some(next_frame_root) = cek_data_traverse_v1.prevalidated_fold_map_next_frame_root_v1(
     state.validated_traversal_control.frame_root,
     frame,
@@ -1031,10 +1032,12 @@ test fold_map_authenticated_prefix_hash_equals_generic_outer_and_expected_hash()
     key_siblings,
     value_siblings,
   )
-  expect normalization.FoldMapFrameRootTemplate {
-    prefix_before_frame_root_cbor,
-    suffix_after_frame_root_cbor,
-  } = state.traversal_serialization_template
+  expect
+      normalization.FoldMapFrameRootTemplate {
+        prefix_before_frame_root_cbor,
+        suffix_after_frame_root_cbor,
+      }
+    = state.traversal_serialization_template
   let assembled = prefix_before_frame_root_cbor
     |> bytearray.concat(encode_definite_bytes(next_frame_root))
     |> bytearray.concat(suffix_after_frame_root_cbor)
@@ -1061,14 +1064,16 @@ test fold_map_authenticated_prefix_hash_equals_generic_outer_and_expected_hash()
 test fold_map_shared_core_rejects_stage_frame_hash_index_key_and_value_mutations() {
   let control = nontrivial_fold_map_control()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   let wrong_key = cek_data_v1.DataSummaryV1 { ..key, root: hash_b }
   let wrong_value = cek_data_v1.DataSummaryV1 { ..value, root: hash_a }
   and {
@@ -1141,14 +1146,16 @@ test fold_map_shared_core_rejects_stage_frame_hash_index_key_and_value_mutations
 test fold_map_shared_core_rejects_each_membership_sibling_path_mutation() {
   let control = nontrivial_fold_map_control()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   and {
     key_siblings != [],
     value_siblings != [],
@@ -1176,14 +1183,16 @@ test fold_map_shared_core_rejects_each_membership_sibling_path_mutation() {
 test fold_map_executor_rebind_rejects_wrong_family_identity_and_action() {
   let state = outer_normalized_fold_map_state()
   let action = nontrivial_fold_map_action()
-  expect cek_data_traverse_v1.FoldMap {
-    frame,
-    pair_index,
-    key,
-    value,
-    key_siblings,
-    value_siblings,
-  } = action
+  expect
+      cek_data_traverse_v1.FoldMap {
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      }
+    = action
   let wrong_action = cek_data_traverse_v1.FoldMap {
     frame,
     pair_index: pair_index + 1,
@@ -1337,10 +1346,12 @@ test fold_map_hash_boundary_rejects_expected_prefix_and_template_mutations() {
     bytearray.concat(state.next_item_control_hash_prefix_cbor, #"00"),
     checked_next,
   )
-  expect normalization.FoldMapFrameRootTemplate {
-    prefix_before_frame_root_cbor,
-    suffix_after_frame_root_cbor,
-  } = state.traversal_serialization_template
+  expect
+      normalization.FoldMapFrameRootTemplate {
+        prefix_before_frame_root_cbor,
+        suffix_after_frame_root_cbor,
+      }
+    = state.traversal_serialization_template
   let wrong_template_state = normalization.OuterNormalizedScriptSourcesRedeemerActionV1 {
     ..state,
     traversal_serialization_template: normalization.FoldMapFrameRootTemplate {
@@ -1390,8 +1401,7 @@ test common_execution_attested_output_is_exact_and_minimal_for_fold_map() {
     expected.deployment_id == state.deployment_id,
     expected.base_provenance_identity == state.base_provenance_identity,
     expected.action_family == normalization.fold_map_family,
-    expected.actual_next_item_control_hash
-      == expected.expected_next_item_control_hash,
+    expected.actual_next_item_control_hash == expected.expected_next_item_control_hash,
     expected_data != wrong_data,
   }
 }
@@ -1416,16 +1426,15 @@ test finalize_shared_core_matches_generic_terminal_completion() {
     transition.next_stage == cek_data_traverse_v1.stage_terminal,
     transition.next_frame_root == #"",
     transition.next_result != None,
-    generic_next
-      == cek_data_traverse_v1.DataTraverseControlV1 {
-          ..control,
-          stage: transition.next_stage,
-          frame_root: transition.next_frame_root,
-          pending_large_expected_children: None,
-          integer: None,
-          bytes: None,
-          result: transition.next_result,
-        },
+    generic_next == cek_data_traverse_v1.DataTraverseControlV1 {
+      ..control,
+      stage: transition.next_stage,
+      frame_root: transition.next_frame_root,
+      pending_large_expected_children: None,
+      integer: None,
+      bytes: None,
+      result: transition.next_result,
+    },
   }
 }
 
@@ -1456,19 +1465,17 @@ test finalize_shared_core_matches_generic_authenticated_parent_append() {
     parent_frame.child_count == 0,
     next_parent.child_count == 1,
     transition.next_stage == cek_data_traverse_v1.stage_head,
-    transition.next_frame_root
-      == cek_data_frame_v1.hash_frame_v1(next_parent),
+    transition.next_frame_root == cek_data_frame_v1.hash_frame_v1(next_parent),
     transition.next_result == None,
-    generic_next
-      == cek_data_traverse_v1.DataTraverseControlV1 {
-          ..control,
-          stage: transition.next_stage,
-          frame_root: transition.next_frame_root,
-          pending_large_expected_children: None,
-          integer: None,
-          bytes: None,
-          result: transition.next_result,
-        },
+    generic_next == cek_data_traverse_v1.DataTraverseControlV1 {
+      ..control,
+      stage: transition.next_stage,
+      frame_root: transition.next_frame_root,
+      pending_large_expected_children: None,
+      integer: None,
+      bytes: None,
+      result: transition.next_result,
+    },
   }
 }
 
@@ -1488,8 +1495,9 @@ test finalize_terminal_template_equals_checked_generic_next_encoding() {
     None,
     action,
   )
-  assemble_finalize_transition_cbor(state, transition)
-    == cek_data_traverse_v1.encode_control_v1(generic_next)
+  assemble_finalize_transition_cbor(state, transition) == cek_data_traverse_v1.encode_control_v1(
+    generic_next,
+  )
 }
 
 test finalize_parent_append_template_equals_checked_generic_next_encoding() {
@@ -1508,8 +1516,9 @@ test finalize_parent_append_template_equals_checked_generic_next_encoding() {
     None,
     action,
   )
-  assemble_finalize_transition_cbor(state, transition)
-    == cek_data_traverse_v1.encode_control_v1(generic_next)
+  assemble_finalize_transition_cbor(state, transition) == cek_data_traverse_v1.encode_control_v1(
+    generic_next,
+  )
 }
 
 test finalize_terminal_authenticated_prefix_hash_equals_generic_and_expected() {
@@ -1868,11 +1877,13 @@ test finalize_hash_boundary_rejects_expected_prefix_template_and_result_mutation
   let wrong_result_cbor = cek_data_traverse_v1.encode_optional_summary_v1(
     Some(cek_data_v1.DataSummaryV1 { ..exact_summary, root: hash_a }),
   )
-  expect normalization.FinalizeFrameTemplate {
-    prefix_before_stage_cbor,
-    source_fields_before_frame_root_cbor,
-    suffix_before_result_cbor,
-  } = state.traversal_serialization_template
+  expect
+      normalization.FinalizeFrameTemplate {
+        prefix_before_stage_cbor,
+        source_fields_before_frame_root_cbor,
+        suffix_before_result_cbor,
+      }
+    = state.traversal_serialization_template
   let wrong_result_assembled = prefix_before_stage_cbor
     |> bytearray.concat(cbor.serialise(transition.next_stage))
     |> bytearray.concat(source_fields_before_frame_root_cbor)
@@ -1882,7 +1893,10 @@ test finalize_hash_boundary_rejects_expected_prefix_template_and_result_mutation
   let wrong_template_state = normalization.OuterNormalizedScriptSourcesRedeemerActionV1 {
     ..state,
     traversal_serialization_template: normalization.FinalizeFrameTemplate {
-      prefix_before_stage_cbor: bytearray.concat(prefix_before_stage_cbor, #"00"),
+      prefix_before_stage_cbor: bytearray.concat(
+        prefix_before_stage_cbor,
+        #"00",
+      ),
       source_fields_before_frame_root_cbor,
       suffix_before_result_cbor,
     },
@@ -1946,8 +1960,7 @@ test common_execution_attested_output_is_exact_for_finalize_and_shared_with_fold
     fold_map_output.action_family == normalization.fold_map_family,
     finalize_output.semantic_executor_script_hash == script_f,
     fold_map_output.semantic_executor_script_hash == script_d,
-    finalize_output.actual_next_item_control_hash
-      == finalize_output.expected_next_item_control_hash,
+    finalize_output.actual_next_item_control_hash == finalize_output.expected_next_item_control_hash,
     finalize_output_data != wrong_domain_data,
     finalize_output_data != wrong_family_data,
     finalize_output_data != wrong_actual_data,
@@ -1969,12 +1982,7 @@ test execution_attestation_settlement_accepts_both_bound_families() {
     validation_resolution_v1.prepared_resolution_is_well_formed(
       finalize_envelope.base,
     ),
-    settlement_is_exact(
-      fold_state,
-      fold_envelope,
-      script_g,
-      winning_output,
-    ),
+    settlement_is_exact(fold_state, fold_envelope, script_g, winning_output),
     settlement_is_exact(
       finalize_state,
       finalize_envelope,
@@ -1988,29 +1996,25 @@ test execution_attestation_settlement_rejects_envelope_provenance_and_domain_mut
   let outer = outer_normalized_fold_map_state()
   let envelope = settlement_envelope(outer)
   let state = settlement_attestation(outer)
-  let wrong_envelope =
-    normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
-      ..envelope,
-      canonical_auxiliary_hash: hash_a,
-    }
-  let wrong_base =
-    normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
-      ..envelope,
-      base: validation_resolution_v1.PreparedValidationResolutionStateV1 {
-        ..envelope.base,
-        evidence_hash: hash_b,
-      },
-    }
-  let wrong_provenance =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      base_provenance_identity: hash_a,
-    }
-  let wrong_domain =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      domain: normalization.outer_normalized_domain,
-    }
+  let wrong_envelope = normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
+    ..envelope,
+    canonical_auxiliary_hash: hash_a,
+  }
+  let wrong_base = normalization.PreparedScriptSourcesRedeemerEnvelopeV1 {
+    ..envelope,
+    base: validation_resolution_v1.PreparedValidationResolutionStateV1 {
+      ..envelope.base,
+      evidence_hash: hash_b,
+    },
+  }
+  let wrong_provenance = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    base_provenance_identity: hash_a,
+  }
+  let wrong_domain = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    domain: normalization.outer_normalized_domain,
+  }
   and {
     normalization.execution_attestation_is_bound_to_envelope_v1(
       state,
@@ -2074,16 +2078,14 @@ test execution_attestation_settlement_rejects_deployment_family_and_route_mutati
   let outer = outer_normalized_fold_map_state()
   let envelope = settlement_envelope(outer)
   let state = settlement_attestation(outer)
-  let wrong_family =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      action_family: normalization.finalize_frame_family,
-    }
-  let wrong_executor =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      semantic_executor_script_hash: script_f,
-    }
+  let wrong_family = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    action_family: normalization.finalize_frame_family,
+  }
+  let wrong_executor = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    semantic_executor_script_hash: script_f,
+  }
   and {
     !normalization.execution_attestation_is_bound_to_envelope_v1(
       state,
@@ -2180,87 +2182,46 @@ test execution_attestation_settlement_rejects_copied_hash_count_and_output_mutat
   let outer = terminal_finalize_state()
   let envelope = settlement_envelope(outer)
   let state = settlement_attestation(outer)
-  let wrong_action =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      canonical_action_hash: hash_b,
-    }
-  let wrong_identity =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      authenticated_traversal_action_identity: #"",
-    }
-  let wrong_current =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      current_pending_item_control_hash: #"",
-    }
-  let wrong_expected =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      expected_next_item_control_hash: #"",
-    }
-  let wrong_actual =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      actual_next_item_control_hash: #"",
-    }
-  let wrong_count =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      redeemer_count: state.redeemer_count + 1,
-    }
-  let wrong_total =
-    normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
-      ..state,
-      redeemer_total_count: state.redeemer_total_count + 1,
-    }
+  let wrong_action = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    canonical_action_hash: hash_b,
+  }
+  let wrong_identity = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    authenticated_traversal_action_identity: #"",
+  }
+  let wrong_current = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    current_pending_item_control_hash: #"",
+  }
+  let wrong_expected = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    expected_next_item_control_hash: #"",
+  }
+  let wrong_actual = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    actual_next_item_control_hash: #"",
+  }
+  let wrong_count = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    redeemer_count: state.redeemer_count + 1,
+  }
+  let wrong_total = normalization.ScriptSourcesRedeemerExecutionAttestedStateV1 {
+    ..state,
+    redeemer_total_count: state.redeemer_total_count + 1,
+  }
   let winning_output: Data = validation_resolution_v1.winning_resolution()
-  let wrong_output: Data =
-    validation_resolution_v1.WinningValidationResolutionStateV1 { version: 2 }
+  let wrong_output: Data = validation_resolution_v1.WinningValidationResolutionStateV1 {
+    version: 2,
+  }
   and {
-    !settlement_is_exact(
-      wrong_action,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_identity,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_current,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_expected,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_actual,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_count,
-      envelope,
-      script_g,
-      winning_output,
-    ),
-    !settlement_is_exact(
-      wrong_total,
-      envelope,
-      script_g,
-      winning_output,
-    ),
+    !settlement_is_exact(wrong_action, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_identity, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_current, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_expected, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_actual, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_count, envelope, script_g, winning_output),
+    !settlement_is_exact(wrong_total, envelope, script_g, winning_output),
     !settlement_is_exact(state, envelope, script_f, winning_output),
     !settlement_is_exact(state, envelope, script_g, wrong_output),
   }
@@ -2344,8 +2305,9 @@ fn raw_envelope_witness_cbor(pending_item_control_hash: ByteArray) -> ByteArray 
 fn raw_envelope_serialise_data_witness_cbor(
   pending_item_control_hash: ByteArray,
 ) -> ByteArray {
-  expect Some(control_data) =
-    cbor.deserialise(raw_envelope_witness_cbor(pending_item_control_hash))
+  expect Some(control_data) = cbor.deserialise(
+    raw_envelope_witness_cbor(pending_item_control_hash),
+  )
   cbor.serialise(control_data)
 }
 
@@ -2410,23 +2372,23 @@ fn raw_envelope_item_control() -> redeemer_item_proof_v1.RedeemerItemProofContro
 fn raw_envelope_auxiliary(
   action: cek_data_traverse_v1.DataTraverseActionV1,
 ) -> Data {
-  let auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 =
-    validation_machine_v1.RedeemerItemStepWitness {
-      redeemer_control: None,
-      control: raw_envelope_item_control(),
-      witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
-        action: redeemer_item_proof_v1.RedeemerItemTraverseData { action },
-        chunk_proof: None,
-        next_chunk_proof: None,
-      },
-    }
+  let auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 = validation_machine_v1.RedeemerItemStepWitness {
+    redeemer_control: None,
+    control: raw_envelope_item_control(),
+    witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
+      action: redeemer_item_proof_v1.RedeemerItemTraverseData { action },
+      chunk_proof: None,
+      next_chunk_proof: None,
+    },
+  }
   let auxiliary_data: Data = auxiliary
   auxiliary_data
 }
 
 test raw_envelope_auxiliary_constructor_index_is_the_machine_witness() {
-  let Pair(index, fields) =
-    builtin.un_constr_data(raw_envelope_auxiliary(fold_map_action()))
+  let Pair(index, fields) = builtin.un_constr_data(
+    raw_envelope_auxiliary(fold_map_action()),
+  )
   and {
     index == 18,
     list.length(fields) == 3,
@@ -2437,14 +2399,13 @@ test raw_envelope_accepts_canonical_stage_one_pending_witness() {
   let witness_cbor = raw_envelope_witness_cbor(hash_a)
   let canonical_successor_cbor = raw_envelope_witness_cbor(hash_b)
   let auxiliary = raw_envelope_auxiliary(fold_map_action())
-  let facts =
-    normalization.verify_raw_envelope_v1(
-      raw_envelope_pre_state(),
-      raw_envelope_transition(witness_cbor, canonical_successor_cbor),
-      auxiliary,
-      hash_b,
-      normalization.fold_map_family,
-    )
+  let facts = normalization.verify_raw_envelope_v1(
+    raw_envelope_pre_state(),
+    raw_envelope_transition(witness_cbor, canonical_successor_cbor),
+    auxiliary,
+    hash_b,
+    normalization.fold_map_family,
+  )
   expect Some(observed) = facts
   and {
     // The canonical witness really is definite-length framed, so the shape the
@@ -2476,40 +2437,42 @@ test raw_envelope_rejects_serialise_data_witness_and_mutated_successor() {
   let canonical_successor_cbor = raw_envelope_witness_cbor(hash_b)
   let serialise_data_cbor = raw_envelope_serialise_data_witness_cbor(hash_a)
   let auxiliary = raw_envelope_auxiliary(fold_map_action())
-  let verify =
-    fn(
-      transition: validation_machine_v1.ValidationOneStepWitnessV1,
-      expected_next_item_control_hash: ByteArray,
-    ) {
-      normalization.verify_raw_envelope_v1(
-        raw_envelope_pre_state(),
-        transition,
-        auxiliary,
-        expected_next_item_control_hash,
-        normalization.fold_map_family,
-      )
-    }
+  let verify = fn(
+    transition: validation_machine_v1.ValidationOneStepWitnessV1,
+    expected_next_item_control_hash: ByteArray,
+  ) {
+    normalization.verify_raw_envelope_v1(
+      raw_envelope_pre_state(),
+      transition,
+      auxiliary,
+      expected_next_item_control_hash,
+      normalization.fold_map_family,
+    )
+  }
   // Same control, `serialiseData` framing: still deserialises to the same
   // thirty-one items, so the module reaches its framing checks and must reject.
   expect Some(serialise_data_items) = cbor.deserialise(serialise_data_cbor)
-  let serialise_data_successor_cbor =
-    raw_envelope_serialise_data_witness_cbor(hash_b)
+  let serialise_data_successor_cbor = raw_envelope_serialise_data_witness_cbor(
+    hash_b,
+  )
   // A successor commitment over anything other than the canonical prefix with
   // the expected next hash spliced in.
-  let mutated_successor_cbor =
-    bytearray.concat(
-      bytearray.take(
-        canonical_successor_cbor,
-        bytearray.length(canonical_successor_cbor) - 32,
-      ),
-      hash_a,
-    )
+  let mutated_successor_cbor = bytearray.concat(
+    bytearray.take(
+      canonical_successor_cbor,
+      bytearray.length(canonical_successor_cbor) - 32,
+    ),
+    hash_a,
+  )
   and {
     list.length(builtin.un_list_data(serialise_data_items)) == 31,
     serialise_data_cbor != witness_cbor,
     bytearray.take(serialise_data_cbor, 1) == #"9f",
     verify(
-      raw_envelope_transition(serialise_data_cbor, serialise_data_successor_cbor),
+      raw_envelope_transition(
+        serialise_data_cbor,
+        serialise_data_successor_cbor,
+      ),
       hash_b,
     ) == None,
     verify(

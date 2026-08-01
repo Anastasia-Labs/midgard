@@ -279,10 +279,7 @@ test encode_native_tx_compact_matches_node_cbor_shape() {
     |> bytearray.concat(
         #"5820090909090909090909090909090909090909090909090909090909090909090900",
       )
-  let tx_id = native_tx_id_for_version(
-    native_tx_version_v1,
-    body_cbor,
-  )
+  let tx_id = native_tx_id_for_version(native_tx_version_v1, body_cbor)
   let view = verify_native_tx_compact_v1(tx_id, compact, compact_cbor)
   and {
     encode_native_tx_body_compact(body) == body_cbor,

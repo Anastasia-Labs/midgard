@@ -5390,26 +5390,23 @@ fn replay_output_descriptor_fixture(
     midgard_tx_out,
     cardano_spend_datum,
   }
-  let descriptor =
-    when reference_script is {
-      None -> base
-      Some(script) -> {
-        let script_cbor = encode_midgard_versioned_script(script)
-        ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
-          ..base,
-          reference_script_language: script_proof_v1.language_tag(
-            script.language,
-          ),
-          reference_script_hash: script_proof_v1.versioned_script_hash(script),
-          reference_script_total_length: bytearray.length(script_cbor),
-          reference_script_item_commitment: bounded_item_v1.from_bytes(
-            2,
-            output_index,
-            script_cbor,
-          ),
-        }
+  let descriptor = when reference_script is {
+    None -> base
+    Some(script) -> {
+      let script_cbor = encode_midgard_versioned_script(script)
+      ledger_output_commitment_v1.LedgerOutputCommitmentV1 {
+        ..base,
+        reference_script_language: script_proof_v1.language_tag(script.language),
+        reference_script_hash: script_proof_v1.versioned_script_hash(script),
+        reference_script_total_length: bytearray.length(script_cbor),
+        reference_script_item_commitment: bounded_item_v1.from_bytes(
+          2,
+          output_index,
+          script_cbor,
+        ),
       }
     }
+  }
   ledger_output_commitment_v1.encode(descriptor)
 }
 
@@ -7025,9 +7022,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
   and {
     // The witness carries a bytestring past the 64-byte `serialiseData`
     // chunking threshold, which is what made the rebuilt prefix unmatchable.
-    bytearray.length(
-      midgard_transaction_proof_source_v1(tx).compact_cbor,
-    ) > 64,
+    bytearray.length(midgard_transaction_proof_source_v1(tx).compact_cbor) > 64,
     validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
       validation_machine_v1.ValidationOneStepWitnessV1 {
@@ -9011,8 +9006,9 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     8,
     redeemer_item_cbor,
   )
-  expect Some(redeemer_tag) =
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(0)
+  expect Some(redeemer_tag) = validation_machine_v1.redeemer_tag_for_purpose_kind_v1(
+    0,
+  )
   let item_control = redeemer_item_proof_v1.initial_control_v1(
     redeemer_item_proof_v1.mode_descriptor,
     0,
@@ -10271,8 +10267,9 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     0,
     redeemer_item_cbor,
   )
-  expect Some(redeemer_tag) =
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(0)
+  expect Some(redeemer_tag) = validation_machine_v1.redeemer_tag_for_purpose_kind_v1(
+    0,
+  )
   let item_control = redeemer_item_proof_v1.initial_control_v1(
     redeemer_item_proof_v1.mode_data,
     0,
@@ -13361,11 +13358,10 @@ test stage_differential_zero_begin_routes_agree() {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary =
-    validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof,
-      chunk_proof,
-    }
+  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+    collection_proof,
+    chunk_proof,
+  }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
@@ -13504,12 +13500,11 @@ test stage_differential_seven_observer_routes_agree() {
     empty_frontier,
     18,
   )
-  let observer_scan =
-    validation_machine_v1.ObserverPurposeScanControlV1 {
-      total_count: 1,
-      seen: 1,
-      previous_hash: h_28_a,
-    }
+  let observer_scan = validation_machine_v1.ObserverPurposeScanControlV1 {
+    total_count: 1,
+    seen: 1,
+    previous_hash: h_28_a,
+  }
   let Pair(post, _) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
@@ -13564,11 +13559,10 @@ test stage_differential_seven_observer_routes_agree() {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary =
-    validation_machine_v1.TransactionFieldChunkWitness {
-      collection_proof,
-      chunk_proof,
-    }
+  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+    collection_proof,
+    chunk_proof,
+  }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
@@ -13630,20 +13624,18 @@ test stage_differential_seven_receive_routes_agree() {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let empty_receive_scan =
-    validation_machine_v1.ReceivePurposeScanControlV1 {
-      source_count: receive_source_frontier.count,
-      source_peaks: receive_source_frontier.peaks,
-      receive_count: 0,
-      previous_hash: #"",
-      candidate_hash: #"",
-      descriptor_peaks: output_descriptor_frontier.peaks,
-    }
-  let selected_receive_scan =
-    validation_machine_v1.ReceivePurposeScanControlV1 {
-      ..empty_receive_scan,
-      candidate_hash: h_28_a,
-    }
+  let empty_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+    source_count: receive_source_frontier.count,
+    source_peaks: receive_source_frontier.peaks,
+    receive_count: 0,
+    previous_hash: #"",
+    candidate_hash: #"",
+    descriptor_peaks: output_descriptor_frontier.peaks,
+  }
+  let selected_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+    ..empty_receive_scan,
+    candidate_hash: h_28_a,
+  }
   let Pair(pre, work_witness_cbor) = script_sources_receive_scan_step_fixture(
     tx,
     empty_frontier,
@@ -13677,14 +13669,13 @@ test stage_differential_seven_receive_routes_agree() {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary =
-    validation_machine_v1.ScriptPurposeScanWitness {
-      purpose_kind: 3,
-      purpose_index: 0,
-      script_hash: h_28_a,
-      subject: h_28_a,
-      siblings: [],
-    }
+  let auxiliary = validation_machine_v1.ScriptPurposeScanWitness {
+    purpose_kind: 3,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: h_28_a,
+    siblings: [],
+  }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
@@ -13741,14 +13732,13 @@ test stage_differential_eight_purpose_routes_agree() {
     empty_discovery,
     19,
   )
-  let selected =
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..empty_discovery,
-      current_purpose_kind: 0,
-      current_purpose_index: 0,
-      current_script_hash: h_28_a,
-      current_subject: #"0102",
-    }
+  let selected = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..empty_discovery,
+    current_purpose_kind: 0,
+    current_purpose_index: 0,
+    current_script_hash: h_28_a,
+    current_subject: #"0102",
+  }
   let Pair(post, _) = script_discovery_step_fixture(
     tx,
     9,
@@ -13780,14 +13770,13 @@ test stage_differential_eight_purpose_routes_agree() {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary =
-    validation_machine_v1.ScriptPurposeScanWitness {
-      purpose_kind: 0,
-      purpose_index: 0,
-      script_hash: h_28_a,
-      subject: #"0102",
-      siblings: [],
-    }
+  let auxiliary = validation_machine_v1.ScriptPurposeScanWitness {
+    purpose_kind: 0,
+    purpose_index: 0,
+    script_hash: h_28_a,
+    subject: #"0102",
+    siblings: [],
+  }
   and {
     stage_routes_agree(
       validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
@@ -13902,14 +13891,13 @@ test stage_differential_nine_missing_routes_agree() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
-  let discovery =
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..validation_machine_v1.empty_script_discovery_control(),
-      current_purpose_kind: 3,
-      current_purpose_index: 0,
-      current_script_hash: h_28_a,
-      current_subject: h_28_a,
-    }
+  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+    ..validation_machine_v1.empty_script_discovery_control(),
+    current_purpose_kind: 3,
+    current_purpose_index: 0,
+    current_script_hash: h_28_a,
+    current_subject: h_28_a,
+  }
   let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
     tx,
     9,
@@ -14223,8 +14211,9 @@ fn stage_twelve_finish_fixture(
 }
 
 test stage_differential_twelve_finish_routes_agree() {
-  let Pair(pre, Pair(work_witness_cbor, Pair(post, mutated_post))) =
-    stage_twelve_finish_fixture(#"")
+  let Pair(pre, Pair(work_witness_cbor, Pair(post, mutated_post))) = stage_twelve_finish_fixture(
+    #"",
+  )
   let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
@@ -14418,8 +14407,9 @@ test stage_ten_missing_pending_redeemer_hash_divergence_is_unreachable() {
 /// only door into stage 12 -- may not carry a pending hash at all.
 /// See the section note above.
 test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
-  let Pair(pre, Pair(work_witness_cbor, Pair(post, _))) =
-    stage_twelve_finish_fixture(h_a)
+  let Pair(pre, Pair(work_witness_cbor, Pair(post, _))) = stage_twelve_finish_fixture(
+    h_a,
+  )
   let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,

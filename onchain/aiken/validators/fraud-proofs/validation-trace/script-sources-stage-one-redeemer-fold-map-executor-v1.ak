@@ -47,21 +47,19 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(ExecuteFoldMap {
-        input_index,
-        output_index,
-        traversal_action,
-      }) -> {
+      ct.Continue(ExecuteFoldMap { input_index, output_index, traversal_action }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        expect cek_data_traverse_v1.FoldMap {
-          frame,
-          pair_index,
-          key,
-          value,
-          key_siblings,
-          value_siblings,
-        } = traversal_action
+        expect
+            cek_data_traverse_v1.FoldMap {
+              frame,
+              pair_index,
+              key,
+              value,
+              key_siblings,
+              value_siblings,
+            }
+          = traversal_action
         continue(
           computation_thread_policy_id,
           step_datum,
@@ -92,14 +90,14 @@ validator main(
             is {
               None -> False
               Some(next_frame_root) -> {
-                expect normalization.FoldMapFrameRootTemplate {
-                  prefix_before_frame_root_cbor,
-                  suffix_after_frame_root_cbor,
-                } = state.traversal_serialization_template
+                expect
+                    normalization.FoldMapFrameRootTemplate {
+                      prefix_before_frame_root_cbor,
+                      suffix_after_frame_root_cbor,
+                    }
+                  = state.traversal_serialization_template
                 let checked_next_traversal_control_cbor = prefix_before_frame_root_cbor
-                  |> bytearray.concat(
-                      encode_definite_bytes(next_frame_root),
-                    )
+                  |> bytearray.concat(encode_definite_bytes(next_frame_root))
                   |> bytearray.concat(suffix_after_frame_root_cbor)
                 let actual_next_item_control_hash = redeemer_item_proof_v1.hash_stage_data_from_authenticated_prefix_v1(
                   state.next_item_control_hash_prefix_cbor,

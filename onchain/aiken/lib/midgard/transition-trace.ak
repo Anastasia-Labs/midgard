@@ -158,8 +158,12 @@ pub fn verify_root_non_membership_raw(
   proof: Proof,
 ) -> Bool {
   expect phas_root_count_is_consistent(root, count)
-  expect _inserted =
-    mpf.insert(mpf_from_midgard_root(root), key_bytes, env.empty, proof)
+  expect _inserted = mpf.insert(
+    mpf_from_midgard_root(root),
+    key_bytes,
+    env.empty,
+    proof,
+  )
   True
 }
 

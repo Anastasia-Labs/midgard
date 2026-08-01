@@ -192,7 +192,8 @@ fn raw_common_control_is_initial(
   receive_scan_data: Data,
   source_total_count_data: Data,
 ) -> Bool {
-  expect [
+  expect
+      [
         receive_source_count_data, receive_source_peaks_data, receive_count_data,
         receive_previous_hash_data, receive_candidate_hash_data,
         receive_descriptor_peaks_data,
@@ -339,7 +340,8 @@ pub fn verify_raw_envelope_v1(
   action_family: Int,
 ) -> Option<ScriptSourcesRedeemerEnvelopeFactsV1> {
   expect Some(control_data) = cbor.deserialise(transition.work_witness_cbor)
-  expect [
+  expect
+      [
         compact_cbor_data, witness_set_compact_cbor_data,
         field_preimage_lengths_cbor_data, context_cbor_data,
         resolved_input_count_data, resolved_inputs_accumulator_data,
@@ -393,12 +395,11 @@ pub fn verify_raw_envelope_v1(
   // `transition.work_witness_cbor` to `pre.work_root`, and the tail/head checks
   // in `valid` below pin the canonical framing that `serialiseData` cannot
   // produce.
-  let pending_prefix =
-    builtin.slice_bytearray(
-      0,
-      bytearray.length(work_witness_cbor) - 34,
-      work_witness_cbor,
-    )
+  let pending_prefix = builtin.slice_bytearray(
+    0,
+    bytearray.length(work_witness_cbor) - 34,
+    work_witness_cbor,
+  )
   // Rebuilt exactly as `encode_script_sources_witness` builds its first eight
   // items (validation-machine-v1.ak:1062-1078), only with the 31-item header
   // that `encode_script_sources_redeemer_item_witness` substitutes. These eight
@@ -734,24 +735,19 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
   expected_finalize_frame_executor_script_hash: ScriptHash,
   observed_settlement_script_hash: ScriptHash,
 ) -> Bool {
-  let selected_executor_is_exact =
-    if state.action_family == fold_map_family {
-      and {
-        state.semantic_executor_script_hash
-          == expected_fold_map_executor_script_hash,
-        envelope.semantic_executor_script_hash
-          == expected_fold_map_executor_script_hash,
-      }
-    } else if state.action_family == finalize_frame_family {
-      and {
-        state.semantic_executor_script_hash
-          == expected_finalize_frame_executor_script_hash,
-        envelope.semantic_executor_script_hash
-          == expected_finalize_frame_executor_script_hash,
-      }
-    } else {
-      False
+  let selected_executor_is_exact = if state.action_family == fold_map_family {
+    and {
+      state.semantic_executor_script_hash == expected_fold_map_executor_script_hash,
+      envelope.semantic_executor_script_hash == expected_fold_map_executor_script_hash,
     }
+  } else if state.action_family == finalize_frame_family {
+    and {
+      state.semantic_executor_script_hash == expected_finalize_frame_executor_script_hash,
+      envelope.semantic_executor_script_hash == expected_finalize_frame_executor_script_hash,
+    }
+  } else {
+    False
+  }
   and {
     state.version == version,
     state.domain == execution_attested_domain,
@@ -767,20 +763,14 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
     bytearray.length(state.base_provenance_identity) == 32,
     state.base_provenance_identity == base_provenance_identity_v1(envelope),
     bytearray.length(state.envelope_binder_script_hash) == 28,
-    state.envelope_binder_script_hash
-      == expected_envelope_binder_script_hash,
-    envelope.envelope_binder_script_hash
-      == expected_envelope_binder_script_hash,
+    state.envelope_binder_script_hash == expected_envelope_binder_script_hash,
+    envelope.envelope_binder_script_hash == expected_envelope_binder_script_hash,
     bytearray.length(state.traversal_normalizer_script_hash) == 28,
-    state.traversal_normalizer_script_hash
-      == expected_traversal_normalizer_script_hash,
-    envelope.traversal_normalizer_script_hash
-      == expected_traversal_normalizer_script_hash,
+    state.traversal_normalizer_script_hash == expected_traversal_normalizer_script_hash,
+    envelope.traversal_normalizer_script_hash == expected_traversal_normalizer_script_hash,
     bytearray.length(state.outer_normalizer_script_hash) == 28,
-    state.outer_normalizer_script_hash
-      == expected_outer_normalizer_script_hash,
-    envelope.outer_normalizer_script_hash
-      == expected_outer_normalizer_script_hash,
+    state.outer_normalizer_script_hash == expected_outer_normalizer_script_hash,
+    envelope.outer_normalizer_script_hash == expected_outer_normalizer_script_hash,
     bytearray.length(state.semantic_executor_script_hash) == 28,
     selected_executor_is_exact,
     bytearray.length(state.settlement_script_hash) == 28,
@@ -791,14 +781,11 @@ pub fn execution_attestation_is_bound_to_envelope_v1(
     state.canonical_action_hash == envelope.canonical_action_hash,
     bytearray.length(state.authenticated_traversal_action_identity) == 32,
     bytearray.length(state.current_pending_item_control_hash) == 32,
-    state.current_pending_item_control_hash
-      == envelope.current_pending_item_control_hash,
+    state.current_pending_item_control_hash == envelope.current_pending_item_control_hash,
     bytearray.length(state.expected_next_item_control_hash) == 32,
-    state.expected_next_item_control_hash
-      == envelope.expected_next_item_control_hash,
+    state.expected_next_item_control_hash == envelope.expected_next_item_control_hash,
     bytearray.length(state.actual_next_item_control_hash) == 32,
-    state.actual_next_item_control_hash
-      == state.expected_next_item_control_hash,
+    state.actual_next_item_control_hash == state.expected_next_item_control_hash,
     state.redeemer_count == envelope.redeemer_count,
     state.redeemer_total_count == envelope.redeemer_total_count,
   }
@@ -818,8 +805,7 @@ pub fn execution_attestation_settlement_is_exact_v1(
   observed_output_script_hash: ScriptHash,
   output_state: Data,
 ) -> Bool {
-  let expected_output_state: Data =
-    validation_resolution_v1.winning_resolution()
+  let expected_output_state: Data = validation_resolution_v1.winning_resolution()
   and {
     bytearray.length(expected_award_script_hash) == 28,
     execution_attestation_is_bound_to_envelope_v1(

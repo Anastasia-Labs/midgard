@@ -72,8 +72,7 @@ validator main(
               bytearray.length(expected_traversal_normalizer_script_hash) == 28,
               bytearray.length(expected_outer_normalizer_script_hash) == 28,
               bytearray.length(expected_fold_map_executor_script_hash) == 28,
-              bytearray.length(expected_finalize_frame_executor_script_hash)
-                == 28,
+              bytearray.length(expected_finalize_frame_executor_script_hash) == 28,
               normalization.execution_attestation_settlement_is_exact_v1(
                 state,
                 envelope,

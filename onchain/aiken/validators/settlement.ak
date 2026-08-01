@@ -368,22 +368,34 @@ validator mint(hub_oracle: ScriptHash) {
         // the exact state-queue ABI at that boundary so constructor, arity,
         // option shape, and each settlement commitment are authenticated
         // before use.
-        let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields) =
-          builtin.un_constr_data(state_queue_redeemer_data)
+        let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields)
+          = builtin.un_constr_data(state_queue_redeemer_data)
         expect state_queue_redeemer_constructor == 4
         expect list.length(state_queue_redeemer_fields) == 18
-        expect Some(header_node_key_data) =
-          list.at(state_queue_redeemer_fields, 0)
-        expect Some(settlement_redeemer_index_option_data) =
-          list.at(state_queue_redeemer_fields, 3)
-        expect Some(merged_block_withdrawals_root_data) =
-          list.at(state_queue_redeemer_fields, 4)
-        expect Some(merged_block_forced_transactions_root_data) =
-          list.at(state_queue_redeemer_fields, 5)
-        expect Some(merged_block_transactions_root_data) =
-          list.at(state_queue_redeemer_fields, 6)
-        expect Some(merged_block_deposits_root_data) =
-          list.at(state_queue_redeemer_fields, 7)
+        expect Some(header_node_key_data) = list.at(
+          state_queue_redeemer_fields,
+          0,
+        )
+        expect Some(settlement_redeemer_index_option_data) = list.at(
+          state_queue_redeemer_fields,
+          3,
+        )
+        expect Some(merged_block_withdrawals_root_data) = list.at(
+          state_queue_redeemer_fields,
+          4,
+        )
+        expect Some(merged_block_forced_transactions_root_data) = list.at(
+          state_queue_redeemer_fields,
+          5,
+        )
+        expect Some(merged_block_transactions_root_data) = list.at(
+          state_queue_redeemer_fields,
+          6,
+        )
+        expect Some(merged_block_deposits_root_data) = list.at(
+          state_queue_redeemer_fields,
+          7,
+        )
         let header_node_key = builtin.un_b_data(header_node_key_data)
         let merged_block_withdrawals_root = builtin.un_b_data(
           merged_block_withdrawals_root_data,
@@ -405,10 +417,12 @@ validator mint(hub_oracle: ScriptHash) {
         //
         // Another solution would be checking the absence of settlement minting
         // by the state queue policy, which would be more expensive.
-        expect Pair(0, [settlement_redeemer_index_data]) =
-          builtin.un_constr_data(settlement_redeemer_index_option_data)
-        expect _settlement_redeemer_index =
-          builtin.un_i_data(settlement_redeemer_index_data)
+        expect Pair(0, [settlement_redeemer_index_data]) = builtin.un_constr_data(
+          settlement_redeemer_index_option_data,
+        )
+        expect _settlement_redeemer_index = builtin.un_i_data(
+          settlement_redeemer_index_data,
+        )
 
         // 4. The transaction must produce an authentic settlement utxo with an
         //    NFT which its asset name matches `header_hash`. Let

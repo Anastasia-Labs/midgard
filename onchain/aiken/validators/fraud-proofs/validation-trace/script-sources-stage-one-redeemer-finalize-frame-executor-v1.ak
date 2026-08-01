@@ -55,8 +55,7 @@ validator main(
       }) -> {
         let Transaction { inputs, outputs, .. } = tx
         expect Some(step_datum) = datum
-        expect cek_data_traverse_v1.FinalizeFrame { frame, parent } =
-          traversal_action
+        expect cek_data_traverse_v1.FinalizeFrame { frame, parent } = traversal_action
         continue(
           computation_thread_policy_id,
           step_datum,
@@ -85,11 +84,13 @@ validator main(
             is {
               None -> False
               Some(transition) -> {
-                expect normalization.FinalizeFrameTemplate {
-                  prefix_before_stage_cbor,
-                  source_fields_before_frame_root_cbor,
-                  suffix_before_result_cbor,
-                } = state.traversal_serialization_template
+                expect
+                    normalization.FinalizeFrameTemplate {
+                      prefix_before_stage_cbor,
+                      source_fields_before_frame_root_cbor,
+                      suffix_before_result_cbor,
+                    }
+                  = state.traversal_serialization_template
                 let checked_next_traversal_control_cbor = prefix_before_stage_cbor
                   |> bytearray.concat(cbor.serialise(transition.next_stage))
                   |> bytearray.concat(source_fields_before_frame_root_cbor)
@@ -113,8 +114,7 @@ validator main(
                 and {
                   bytearray.length(deployment_id) == 32,
                   bytearray.length(expected_envelope_binder_script_hash) == 28,
-                  bytearray.length(expected_traversal_normalizer_script_hash)
-                    == 28,
+                  bytearray.length(expected_traversal_normalizer_script_hash) == 28,
                   bytearray.length(expected_outer_normalizer_script_hash) == 28,
                   bytearray.length(expected_settlement_script_hash) == 28,
                   normalization.outer_normalized_state_is_bound_v1(
@@ -139,10 +139,8 @@ validator main(
                     normalization.finalize_frame_family,
                     state.authenticated_traversal_action_identity,
                   ),
-                  state.validated_traversal_control.stage
-                    == cek_data_traverse_v1.stage_fold,
-                  actual_next_item_control_hash
-                    == state.expected_next_item_control_hash,
+                  state.validated_traversal_control.stage == cek_data_traverse_v1.stage_fold,
+                  actual_next_item_control_hash == state.expected_next_item_control_hash,
                   output_state == expected_output_state,
                 }
               }
