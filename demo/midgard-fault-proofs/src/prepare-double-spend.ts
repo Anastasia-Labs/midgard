@@ -18,11 +18,14 @@ import {
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
 import {
+  commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
+  ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import {
   parseHex,
@@ -564,19 +567,28 @@ const prepareTx = ({
   doubleSpentInputIndex,
 });
 
-export const requireTransactionsRootMatchV1 = ({
+export const requireTransactionsRootMatchV1 = async ({
   nativeRoot,
   expectedTransactionsRoot,
+  count,
 }: {
   readonly nativeRoot: string;
   readonly expectedTransactionsRoot?: string;
-}): void => {
-  if (
-    expectedTransactionsRoot !== undefined &&
-    expectedTransactionsRoot !== nativeRoot
-  ) {
+  readonly count: bigint;
+}): Promise<void> => {
+  if (expectedTransactionsRoot === undefined) {
+    return;
+  }
+  const committedRoot = await Effect.runPromise(
+    commitCountedRootProgram({
+      domain: ROOT_DOMAINS.transactionsV1,
+      phasRoot: nativeRoot,
+      count,
+    }),
+  );
+  if (expectedTransactionsRoot !== committedRoot) {
     throw new Error(
-      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the native node transaction root ${nativeRoot}.`,
+      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the counted native node transaction root ${committedRoot} derived from raw PHAS root ${nativeRoot} at count ${count.toString()}.`,
     );
   }
 };
@@ -665,9 +677,10 @@ export const prepareDoubleSpendFromTransactions = async ({
     nativeTrieItem(pair.tx2).key,
     "tx2",
   );
-  requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatchV1({
     nativeRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
+    count: BigInt(decoded.length),
   });
   const baseOutput: PreparedDoubleSpendOutput = {
     headerHash: normalizedHeaderHash,

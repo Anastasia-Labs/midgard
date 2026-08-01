@@ -12,7 +12,9 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
+import { commitCountedRootProgram, ROOT_DOMAINS } from "@al-ft/midgard-sdk";
 import { CML } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -142,6 +144,44 @@ describe("prepare-double-spend", () => {
     expect(output.tx1.nodeTxId).toBe(tx1Payload.nodeTxId);
     expect(output.tx2.nodeTxId).toBe(tx2Payload.nodeTxId);
     expect(output.tx2.doubleSpentInputIndex).toBe(1);
+  });
+
+  it("accepts the counted V1 transactions root committed by the block header", async () => {
+    const sharedInput = inputCbor(h32("53"), 1n);
+    const transactions = [
+      payloadFromInputs([sharedInput], 1n),
+      payloadFromInputs([sharedInput], 2n),
+    ];
+    const prepared = await prepareDoubleSpendFromTransactions({
+      headerHash: h28("bd"),
+      transactions,
+    });
+    const committedRoot = await Effect.runPromise(
+      commitCountedRootProgram({
+        domain: ROOT_DOMAINS.transactionsV1,
+        phasRoot: prepared.commitmentEncodings.nativeNode.transactionsRoot,
+        count: BigInt(prepared.txCount),
+      }),
+    );
+
+    const verified = await prepareDoubleSpendFromTransactions({
+      headerHash: h28("bd"),
+      transactions,
+      expectedTransactionsRoot: committedRoot,
+    });
+
+    expect(verified.commitmentEncodings.expectedTransactionsRoot).toEqual({
+      value: committedRoot,
+    });
+    expect(verified.commitmentEncodings.nativeNode.transactionsRoot).not.toBe(
+      committedRoot,
+    );
+    expect(verified.tx1.txInclusion.transactionsPhasRoot).toBe(
+      verified.commitmentEncodings.nativeNode.transactionsRoot,
+    );
+    expect(
+      verified.tx1.txInclusion.txMembershipProofCbor.length,
+    ).toBeGreaterThan(0);
   });
 
   it("fails closed when the expected V1 transactions root differs", async () => {

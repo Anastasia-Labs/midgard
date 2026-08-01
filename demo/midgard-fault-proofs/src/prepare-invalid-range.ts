@@ -202,9 +202,10 @@ export const prepareInvalidRangeFromTransactions = async ({
     nativeTrieItem(selected.tx).key,
     "invalid-range tx",
   );
-  requireTransactionsRootMatchV1({
+  await requireTransactionsRootMatchV1({
     nativeRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
+    count: BigInt(decoded.length),
   });
   const baseOutput: PreparedInvalidRangeOutput = {
     headerHash: normalizedHeaderHash,
