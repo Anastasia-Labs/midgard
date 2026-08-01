@@ -8844,7 +8844,7 @@ fn script_sources_replay_item(
       control.output_peaks,
       control.output_total_count,
       control.receive_scan,
-      control.source_total_count,
+      next_sources.count,
       control.redeemer_total_count,
       control.observer_scan,
       control.mint_fold,
