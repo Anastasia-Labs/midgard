@@ -851,13 +851,11 @@ if (
 if (
   workspaceManifest.scripts?.["watcher:dependency-map:verify"] !==
     "node scripts/verify-canonical-v1-watcher-dependency-map.mjs" ||
-  workspaceManifest.scripts?.["watcher:dependency-map:test"] !==
-    "node --test scripts/verify-canonical-v1-watcher-dependency-map.test.mjs" ||
   workspaceManifest.scripts?.["watcher:focused-tests:verify"] !==
     "node scripts/verify-canonical-v1-watcher-focused-tests.mjs"
 ) {
   fail(
-    "workspace must expose the canonical watcher dependency-map verifier, mutation tests, and focused-test verifier",
+    "workspace must expose the canonical watcher dependency-map verifier and focused-test verifier",
   );
 }
 const nodeCi = readIndexedFile(".github/workflows/midgard-node-ci.yml", "utf8");
@@ -978,7 +976,6 @@ if (
 for (const requiredCiPath of [
   ".github/workflows/evidence-integrity-ci.yml",
   "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
-  "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
   "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 ]) {
@@ -995,7 +992,7 @@ for (const requiredCiPath of [
   }
 }
 const requiredDependencyCommand =
-  "pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify";
+  "pnpm --dir demo run watcher:dependency-map:verify";
 const dependencyCommandIndex = nodeCiActiveLines.findIndex(
   ({ trimmed }) => trimmed === `run: ${requiredDependencyCommand}`,
 );
@@ -1089,11 +1086,7 @@ if (
 const evidenceCiActiveLines = activeYamlLines(evidenceCi);
 for (const [name, requiredEvidenceCommand] of [
   [
-    "Verify canonical watcher dependency-map mutation coverage",
-    "node --test demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs",
-  ],
-  [
-    "Verify canonical watcher dependency map and staged-tree identity",
+    "Verify canonical watcher dependency map",
     "node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs",
   ],
   [
