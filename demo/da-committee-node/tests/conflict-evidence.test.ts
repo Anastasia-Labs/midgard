@@ -29,22 +29,30 @@ describe("DA conflict evidence V1 lifecycle", () => {
     const fixture = await conflictFixture();
     const directory = await tempDir();
     const store = await JsonFileWatcherStore.open(directory);
-    const gossip = conflictGossip(fixture.registry, store);
+    try {
+      const gossip = conflictGossip(fixture.registry, store);
 
-    await expect(
-      gossip.handleInboundMessage(signedMessage(fixture.encoded)),
-    ).resolves.toBe(true);
-    await expect(
-      gossip.handleInboundMessage(signedMessage(fixture.encoded)),
-    ).resolves.toBe(true);
-    await expect(store.listDaConflictEvidence()).resolves.toEqual([
-      fixture.record,
-    ]);
+      await expect(
+        gossip.handleInboundMessage(signedMessage(fixture.encoded)),
+      ).resolves.toBe(true);
+      await expect(
+        gossip.handleInboundMessage(signedMessage(fixture.encoded)),
+      ).resolves.toBe(true);
+      await expect(store.listDaConflictEvidence()).resolves.toEqual([
+        fixture.record,
+      ]);
+    } finally {
+      await store.close();
+    }
 
     const reopened = await JsonFileWatcherStore.open(directory);
-    await expect(reopened.listDaConflictEvidence()).resolves.toEqual([
-      fixture.record,
-    ]);
+    try {
+      await expect(reopened.listDaConflictEvidence()).resolves.toEqual([
+        fixture.record,
+      ]);
+    } finally {
+      await reopened.close();
+    }
   });
 
   it("rejects forged, malformed, and wrong-deployment evidence before persistence", async () => {
