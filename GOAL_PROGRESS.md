@@ -349,6 +349,39 @@
 
 ## Decisions
 
+- 2026-07-31, **REMOVAL-TX-OVERSIZE — candidate capability defect, found by the
+  owner-authorized challenger-wins regression.** The new dispute-soundness
+  suite in `demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`
+  proved the challenger's full winning path on-chain (open → verify-source →
+  8 bisection reveals → enter-resolution → prepare → prepare-selected →
+  semantic-resolution → award) against an operator claiming `Accepted` over a
+  non-empty claimed ledger delta. Two of its three tests PASS, including the
+  mirror control (an honest operator with a non-empty delta cannot be
+  defeated) and the direct VM-DEFECT-2 guard (the cleared-delta successor the
+  deleted clause demanded is rejected by the live validator).
+  THE THIRD FAILS at the `remove-fraudulent-block` stage:
+  **36,934 bytes against Cardano's real 16,384-byte `maxTxSize`** — 2.25×
+  over. Winning the dispute is therefore proven, but *executing the
+  correction* is not.
+  COMPOUNDING FINDING: the emulator harness at
+  `submit-init-emulator.test.ts:371` runs with `maxTxSize: 65_536`, four
+  times the real protocol limit. That is precisely what GOAL_SPEC §3
+  invariant 6 forbids ("No placeholder semantics … do not use … emulator
+  limit increases to claim closure") and it is what kept this oversize
+  invisible: every prior removal exercise passed under an inflated ceiling.
+  TWO HYPOTHESES, not yet distinguished: (a) the harness builds removal
+  inefficiently — the same attach-instead-of-reference pattern already found
+  and fixed in C21-DISPUTE-SUBMIT, where a ~27.7 KiB validator was embedded
+  rather than referenced; or (b) removal genuinely does not fit in one
+  Cardano transaction, which would make the correction path unexecutable on
+  L1 and is a capability defect of the same severity class as VM-DEFECT-2.
+  Note `remove-fraudulent-block.ts` does already carry a
+  `requireDeploymentReferenceScript` helper, which makes (a) plausible but
+  unproven. Investigation assigned; the 65,536 setting must be audited
+  repo-wide regardless of the outcome, since any acceptance evidence produced
+  under it is invalid per invariant 6.
+
+
 - 2026-07-31, OWNER DECISIONS (five, recorded verbatim as authorization):
   1. **The five validator fixes are APPROVED AS-IS.** VM-DEFECT-1, -2, -4, -5
      (commits `d012905b`, `363078b8`) and VM-DEFECT-6 (`c89041f6`) are
