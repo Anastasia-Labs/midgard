@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -42,31 +40,6 @@ describe("commit source completeness", () => {
       `withdrawal:${blockEndTimeMs.toString()}`,
       `tx-order:${blockEndTimeMs.toString()}`,
     ]);
-  });
-
-  it("runs the final-end refresh before journal preparation in both submission paths", async () => {
-    const source = await readFile(
-      new URL(
-        "../src/workers/commit-block-header/submission.ts",
-        import.meta.url,
-      ),
-      "utf8",
-    );
-    const refreshCalls = [
-      ...source.matchAll(
-        /yield\* refreshCommitUserEventSourcesThroughBlockEnd\(\s*blockEndTimeMs,\s*\);/gu,
-      ),
-    ].map((match) => match.index);
-    const journalPreparations = [
-      ...source.matchAll(
-        /PendingBlockFinalizationsDB\.preparePendingSubmission\(/gu,
-      ),
-    ].map((match) => match.index);
-
-    expect(refreshCalls).toHaveLength(2);
-    expect(journalPreparations).toHaveLength(2);
-    expect(refreshCalls[0]).toBeLessThan(journalPreparations[0]!);
-    expect(refreshCalls[1]).toBeLessThan(journalPreparations[1]!);
   });
 
   it("accepts the exact due source sets independent of ordering", () => {

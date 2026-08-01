@@ -1,11 +1,27 @@
-import { readFile } from "node:fs/promises";
-
-import { describe, expect, it } from "vitest";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { Effect } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   type CanonicalDaAttestationObservation,
   classifyCanonicalDaAttestation,
+  reconcileDaAttestedProgram,
 } from "@/commands/reconcile.js";
+import { Lucid, MidgardContracts } from "@/services/index.js";
+
+vi.mock("@al-ft/midgard-sdk", async () => {
+  const actual =
+    await vi.importActual<typeof import("@al-ft/midgard-sdk")>(
+      "@al-ft/midgard-sdk",
+    );
+  return {
+    ...actual,
+    fetchSortedStateQueueUTxOsProgram: vi.fn(),
+    getStateQueueNodeV1FromStateQueueDatum: vi.fn(),
+    hashBlockHeaderV1: vi.fn(),
+  };
+});
 
 const HEADER_HASH = "11".repeat(28);
 const DA_ATTESTATION_POLICY_ID = "22".repeat(28);
@@ -130,13 +146,75 @@ describe("DA-attested reconciliation", () => {
     });
   });
 
-  it("contains no watcher per-header HTTP reconciliation route", async () => {
-    const source = await readFile(
-      new URL("../src/commands/reconcile.ts", import.meta.url),
-      "utf8",
+  it("uses configured Cardano state-queue evidence even when a watcher URL is supplied", async () => {
+    const fetchSorted = vi.mocked(SDK.fetchSortedStateQueueUTxOsProgram);
+    const getNode = vi.mocked(SDK.getStateQueueNodeV1FromStateQueueDatum);
+    const hashHeader = vi.mocked(SDK.hashBlockHeaderV1);
+    const watcherFetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("watcher access is not part of reconciliation"),
+      );
+    const contracts = {
+      stateQueue: {
+        spendingScriptAddress: "addr_test1statequeue",
+        policyId: "aa".repeat(28),
+      },
+      daAttestation: { policyId: DA_ATTESTATION_POLICY_ID },
+    } as unknown as MidgardContracts;
+    const canonicalDatum = {
+      key: { Key: { key: HEADER_HASH } },
+      data: "canonical-node",
+    };
+    fetchSorted.mockReturnValue(
+      Effect.succeed([
+        {
+          utxo: {
+            txHash: "33".repeat(32),
+            outputIndex: 0,
+            address: contracts.stateQueue.spendingScriptAddress,
+            assets: {},
+            datum: "canonical-datum",
+          },
+          datum: canonicalDatum,
+        },
+      ] as never),
     );
-    expect(source).not.toContain("/v1/deployments/");
-    expect(source).not.toContain("watcher_header_status");
-    expect(source).not.toMatch(/\bfetch\s*\(/u);
+    getNode.mockReturnValue(
+      Effect.succeed({
+        header: { canonical: true },
+        da_attestation: DA_ATTESTATION_POLICY_ID,
+      } as never),
+    );
+    hashHeader.mockReturnValue(Effect.succeed(HEADER_HASH) as never);
+
+    const sql = ((..._args: readonly unknown[]) =>
+      Effect.succeed([])) as unknown as SqlClient.SqlClient;
+    const lucid = { api: {} } as unknown as Lucid;
+    const result = await Effect.runPromise(
+      reconcileDaAttestedProgram({
+        headerHash: Buffer.from(HEADER_HASH, "hex"),
+        watcherUrl: "https://watcher.example.invalid",
+        deploymentFingerprint: "deployment-fingerprint",
+        repair: false,
+      }).pipe(
+        Effect.provideService(Lucid, lucid),
+        Effect.provideService(MidgardContracts, contracts),
+        Effect.provideService(SqlClient.SqlClient, sql),
+      ),
+    );
+
+    expect(result.status).toBe("satisfied");
+    expect(result.evidence).toContainEqual(
+      expect.objectContaining({
+        kind: "canonical_l1_da_attestation",
+        detail: expect.objectContaining({
+          source: "configured_cardano_l1_query",
+          decisionReason: "attestation_applied",
+        }),
+      }),
+    );
+    expect(watcherFetch).not.toHaveBeenCalled();
+    watcherFetch.mockRestore();
   });
 });

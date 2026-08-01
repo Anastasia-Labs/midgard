@@ -1,282 +1,446 @@
-import { readFile } from "node:fs/promises";
+import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import * as SDK from "@al-ft/midgard-sdk";
+import { SqlClient } from "@effect/sql";
+import { Effect, Option } from "effect";
+import { describe, expect, it, vi } from "vitest";
 
-import { describe, expect, it } from "vitest";
+import { TxAdmissionsDB, TxUtils as TxTable } from "@/database/index.js";
+import {
+  ContractDeploymentIdentity,
+  Lucid,
+  NodeConfig,
+} from "@/services/index.js";
+import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
+import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
+import {
+  submitDepositOnlyCommit,
+  submitTxBackedCommit,
+} from "@/workers/commit-block-header/submission.js";
+import type { WorkerInput } from "@/workers/utils/commit-block-header.js";
+import { processMpfs } from "@/workers/utils/mpf.js";
 
-type CommitSources = {
-  readonly worker: string;
-  readonly submission: string;
-};
-
-const readCommitSources = async (): Promise<CommitSources> => ({
-  worker: await readFile(
-    new URL("../src/workers/commit-block-header.ts", import.meta.url),
-    "utf8",
-  ),
-  submission: await readFile(
-    new URL(
-      "../src/workers/commit-block-header/submission.ts",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
+vi.mock("@/database/index.js", async () => {
+  const actual = await vi.importActual<typeof import("@/database/index.js")>(
+    "@/database/index.js",
+  );
+  const workerTx = {
+    [actual.TxUtils.Columns.TX_ID]: Buffer.from("02", "hex"),
+    [actual.TxUtils.Columns.TX]: Buffer.from("tx"),
+    [actual.TxUtils.Columns.TIMESTAMPTZ]: new Date("2026-01-01T00:07:00.999Z"),
+  };
+  return {
+    ...actual,
+    DepositsDB: {
+      ...actual.DepositsDB,
+      retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
+    },
+    ForcedTransactionsDB: {
+      ...actual.ForcedTransactionsDB,
+      retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
+    },
+    MempoolDB: {
+      ...actual.MempoolDB,
+      retrievePage: vi.fn(() =>
+        Effect.succeed({ entries: [], nextCursor: null }),
+      ),
+    },
+    MpfEngineStateDB: {
+      ...actual.MpfEngineStateDB,
+      assertLedgerAuditHealthy: Effect.void,
+      revalidateLedgerStoreLease: vi.fn(() => Effect.void),
+      stampLedgerPayloadAggregate: vi.fn(() => Effect.void),
+      tryWithLedgerStoreLease: vi.fn(
+        (
+          owner: string,
+          program: (activeOwner: string) => Effect.Effect<unknown>,
+        ) =>
+          program(owner).pipe(
+            Effect.map((value) => ({ _tag: "Ran" as const, value })),
+          ),
+      ),
+    },
+    PendingBlockFinalizationsDB: {
+      ...actual.PendingBlockFinalizationsDB,
+      preparePendingSubmission: vi.fn(),
+      retrieveByHeaderHash: vi.fn(() =>
+        Effect.succeed(
+          Option.some({
+            [actual.PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT]:
+              "33".repeat(32),
+            utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
+          }),
+        ),
+      ),
+    },
+    ProcessedMempoolDB: {
+      ...actual.ProcessedMempoolDB,
+      retrieve: Effect.succeed([workerTx]),
+    },
+    TxAdmissionsDB: {
+      ...actual.TxAdmissionsDB,
+      retrieveProgramMaterialSidecars: vi.fn((txIds: readonly Buffer[]) =>
+        Effect.succeed(
+          txIds.map((txId) => ({
+            txId,
+            sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+          })),
+        ),
+      ),
+    },
+    WithdrawalsDB: {
+      ...actual.WithdrawalsDB,
+      retrievePendingHeaderEntriesUpTo: vi.fn(() => Effect.succeed([])),
+    },
+  };
 });
 
-const section = (
-  source: string,
-  startMarker: string,
-  endMarker?: string,
-): string => {
-  const start = source.indexOf(startMarker);
-  if (start < 0) return "";
-  if (endMarker === undefined) return source.slice(start);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  return end < 0 ? source.slice(start) : source.slice(start, end);
-};
+vi.mock("@/fibers/fetch-and-insert-deposit-utxos.js", () => ({
+  fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
+    Effect.succeed(end),
+  ),
+}));
+vi.mock("@/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
+  fetchAndInsertWithdrawalUTxOsForCommitBarrier: vi.fn((end: Date) =>
+    Effect.succeed(end),
+  ),
+}));
+vi.mock("@/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
+  fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>
+    Effect.succeed(end),
+  ),
+}));
+vi.mock("@/e2e/pipelined-commit-crash-checkpoint.js", () => ({
+  reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
+}));
+vi.mock("@/operator-wallet-view.js", () => ({
+  fetchOperatorWalletView: vi.fn(),
+  isPotentiallyStaleOperatorWalletViewError: vi.fn(() => false),
+}));
+vi.mock("@/workers/commit-block-header/build-unsigned-tx.js", () => ({
+  buildUnsignedCommitTx: vi.fn(),
+}));
+vi.mock("@/workers/commit-block-header/event-roots.js", () => ({
+  resolveDepositsRoot: vi.fn(() => Effect.succeed(Option.none())),
+  resolveForcedTransactionsRoot: vi.fn(() =>
+    Effect.succeed(Option.some("forced-root")),
+  ),
+  resolveWithdrawalsRoot: vi.fn(() => Effect.succeed(Option.none())),
+}));
+vi.mock("@/workers/commit-block-header/pending-journal.js", () => ({
+  assertLiveTailCommitBase: vi.fn(() => Effect.void),
+  assertPendingJournalCompleteness: vi.fn(() => Effect.void),
+  buildPendingJournalMetadata: vi.fn(() => Effect.succeed({})),
+  resolveLiveTailCommitBase: vi.fn((_contracts: unknown, latest: unknown) =>
+    Effect.succeed(latest),
+  ),
+  resolvePendingJournalLedgerState: vi.fn(() =>
+    Effect.succeed({ ledgerDelta: { spent: [], produced: [] } }),
+  ),
+  revalidateStateQueueLease: vi.fn(() => Effect.void),
+}));
+vi.mock("@/workers/commit-block-header/transition-commitments.js", () => ({
+  makeEventCommitments: vi.fn(() =>
+    Effect.succeed({
+      transitionTraceRoot: "transition-root",
+      eventToStepRoot: "event-root",
+      validationTracesRoot: "validation-root",
+      withdrawalCount: 0n,
+      forcedTransactionCount: 1n,
+      l2TransactionCount: 1n,
+      depositCount: 0n,
+      totalEventCount: 1n,
+      transitionStepCount: 0n,
+      validationTraceCount: 0n,
+    }),
+  ),
+}));
 
-const canonicalV1CommitViolations = ({
-  worker,
-  submission,
-}: CommitSources): readonly string[] => {
-  const violations: string[] = [];
-  const mpfProcessing = section(
-    worker,
-    "const mpfProcessingStartedAtMs",
-    "const {",
+vi.mock("@/workers/utils/mpf.js", async () => {
+  const actual = await vi.importActual<typeof import("@/workers/utils/mpf.js")>(
+    "@/workers/utils/mpf.js",
   );
-  const depositOnly = section(
-    submission,
-    "export const submitDepositOnlyCommit",
-    "export const submitTxBackedCommit",
-  );
-  const txBacked = section(
-    submission,
-    "export const submitTxBackedCommit",
-    "export const deferProcessedCommitPayloadUntilConfirmation",
-  );
-  const recovery = section(
-    submission,
-    "export const recoverLocalFinalizationAgainstConfirmedBlock",
-  );
+  const fakeMpf = {
+    close: vi.fn(() => Effect.void),
+    rootHex: vi.fn(() => Effect.succeed("33".repeat(32))),
+    rootIsEmpty: vi.fn(() => Effect.succeed(true)),
+    resetToEmpty: vi.fn(() => Effect.void),
+  };
+  return {
+    ...actual,
+    configureCommitMpfRuntime: vi.fn(() => Effect.void),
+    makeMpfs: Effect.succeed({ ledgerMpf: fakeMpf, transactionsMpf: fakeMpf }),
+    processMpfs: vi.fn(() =>
+      Effect.fail(new Error("stop at processMpfs observation point")),
+    ),
+    withMpfRootTransactions: vi.fn(
+      (
+        _mpfs: readonly unknown[],
+        effect: Effect.Effect<unknown, unknown, unknown>,
+      ) => effect,
+    ),
+  };
+});
 
-  const proofValidationSetup = section(
-    mpfProcessing,
-    "const proofValidationSlotConfig",
-    "const processed = yield* processMpfs(",
-  );
+const HEADER_HASH = "11".repeat(28);
+const forcedValidationSlotConfig = {
+  zeroTime: Date.parse("2026-01-01T00:06:50.999Z"),
+  zeroSlot: 100,
+  slotLength: 1_000,
+} as const;
+const latestBlock = {
+  utxo: {
+    txHash: "22".repeat(32),
+    outputIndex: 0,
+    address: "addr_test1statequeue",
+    assets: {},
+    datum: "datum",
+  },
+  datum: { key: "Empty" },
+} as never;
+const workerInput = {
+  data: {
+    availableConfirmedBlock: "",
+    availableLocalFinalizationBlock: "",
+    currentBlockStartTimeMs: Date.parse("2026-01-01T00:00:00.000Z"),
+    forcedValidationSlotConfig,
+    ledgerStoreLeaseOwner: "commit:12345678-1234-4123-8123-123456789abc",
+    localFinalizationPending: false,
+    mempoolTxsCountSoFar: 0,
+    sizeOfProcessedTxsSoFar: 0,
+    baseSnapshotId: "test",
+    stateQueueHasUnmergedTail: false,
+  },
+} as unknown as WorkerInput;
+const contracts = {
+  stateQueue: {
+    spendingScriptAddress: "addr_test1statequeue",
+    policyId: "aa".repeat(28),
+  },
+} as never;
+const deploymentMarker = {
+  schemaVersion: "midgard-deployment-marker-v1",
+  manifestId: "test-manifest",
+} as never;
+const fakeLucid = {
+  api: {},
+  switchToOperatorsMainWallet: Effect.void,
+} as never;
+const fakeSql = Object.assign(
+  ((..._args: readonly unknown[]) =>
+    Effect.succeed([])) as unknown as SqlClient.SqlClient,
+  { array: vi.fn((values: readonly unknown[]) => values) },
+) as unknown as SqlClient.SqlClient;
 
-  if (worker.includes("isMidgardConsensusProfileV1")) {
-    violations.push("worker_profile_selector");
-  }
-  // Forced proof validation must run for every commit build. The property is:
-  // the slot mapping is read straight from provider-free worker input with no
-  // selector of any kind in front of it, an absent mapping fails the build
-  // closed, and the MPF-processing phase acquires no provider handle. The
-  // last clause is why this check no longer demands an unconditional
-  // `proofValidationLucid`: acquiring Lucid before CandidateReady breaks the
-  // provider-free-candidate invariant, so unconditional proof validation has
-  // to be reached without it.
-  if (
-    !/^const proofValidationSlotConfig =\s*workerInput\.data\.forcedValidationSlotConfig;/.test(
-      proofValidationSetup,
-    ) ||
-    proofValidationSetup.includes("?") ||
-    !/if \(proofValidationSlotConfig === undefined\) \{\s*return yield\* Effect\.fail\(/.test(
-      proofValidationSetup,
-    ) ||
-    mpfProcessing.includes("proofValidationLucid") ||
-    mpfProcessing.includes("acquireCommitLucidOnce")
-  ) {
-    violations.push("proof_validation_lucid_not_unconditional");
-  }
-  if (
-    !/forcedValidation:\s*\{[\s\S]*?slotForUnixTime:[\s\S]*?unixTimeToSlotForConfig\(\s*unixTimeMs,\s*proofValidationSlotConfig,?\s*\)/.test(
-      mpfProcessing,
-    )
-  ) {
-    violations.push("forced_validation_not_unconditional");
-  }
+const runEffect = <A>(effect: Effect.Effect<A, unknown, unknown>) =>
+  Effect.runPromise(effect as Effect.Effect<A, unknown, never>);
 
-  if (submission.includes("isMidgardConsensusProfileV1")) {
-    violations.push("submission_profile_selector");
-  }
-  if (!/const cekProgramMaterial = yield\* Effect\.try\(\{/.test(depositOnly)) {
-    violations.push("forced_program_material_not_unconditional");
-  }
-  if (
-    !depositOnly.includes(
-      "Cannot build V1 DA from missing or conflicting forced-transaction program material",
-    )
-  ) {
-    violations.push("forced_program_material_failure_missing");
-  }
-  if (
-    !/yield\* TxAdmissionsDB\.retrieveProgramMaterialSidecars\(\s*processedMempoolTxs\.map/.test(
-      txBacked,
-    )
-  ) {
-    violations.push("normal_program_material_not_unconditional");
-  }
-  if (
-    !txBacked.includes(
-      "Cannot build V1 block without one durable program-material sidecar per normal transaction",
-    )
-  ) {
-    violations.push("normal_program_material_failure_missing");
-  }
+const forcedEntryMissingMaterial = {
+  tx_order_id: Buffer.from("01", "hex"),
+  cek_program_material_sidecar_cbor: Buffer.alloc(0),
+} as never;
 
-  if (
-    !/const confirmedHeader =\s*yield\* getHeaderV1FromStateQueueDatumLocal\(\s*latestBlock\.datum,\s*\);/.test(
-      recovery,
-    ) ||
-    !/const confirmedHeaderHash = yield\* hashBlockHeaderV1Local\(confirmedHeader\);/.test(
-      recovery,
-    )
-  ) {
-    violations.push("header_v1_recovery_not_unconditional");
-  }
-  if (recovery.includes("proofProfile") || recovery.includes("!proofProfile")) {
-    violations.push("recovery_profile_selector");
-  }
-  if (
-    !recovery.includes(
-      "PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT",
-    ) ||
-    !recovery.includes("confirmedHeader.validationTracesRoot")
-  ) {
-    violations.push("recovery_validation_root_missing");
-  }
-  if (
-    !recovery.includes(
-      "PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT",
-    ) ||
-    !recovery.includes("confirmedHeader.validationTraceCount")
-  ) {
-    violations.push("recovery_validation_count_missing");
-  }
-
-  return violations;
-};
+const baseCommitArgs = {
+  contracts,
+  consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+  deploymentMarker,
+  latestBlock,
+  endTime: new Date("2026-01-01T00:07:00.999Z"),
+  includedDepositEntries: [],
+  includedDepositEventIds: [],
+  includedForcedTransactionEntries: [],
+  includedForcedTransactionEventIds: [Buffer.from("01", "hex")],
+  includedWithdrawalEntries: [],
+  includedWithdrawalEventIds: [],
+  workerInput,
+  blockEndTimeCapMs: undefined,
+  utxoRoot: "33".repeat(32),
+  txRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+  transitionTraceRoot: "44".repeat(32),
+  eventToStepRoot: "55".repeat(32),
+  validationTracesRoot: "66".repeat(32),
+  transitionTraceMembers: [],
+  eventToStepMembers: [],
+  validationTraceMembers: [],
+  transitionStepCount: 0,
+  validationTraceCount: 0,
+  utxoPayloadEntries: [],
+  ledgerDelta: { spent: [], produced: [] },
+  utxoPayloadAggregate: { entryCount: 0, encodedTupleBytes: 0 },
+  selectedBaseUtxosRoot: "33".repeat(32),
+  implicitGenesisEntries: [],
+  beforePendingJournalInsert: () => Effect.void,
+  nativeMpfReplay: undefined,
+} as const;
 
 describe("canonical V1 commit profile", () => {
-  it("has no launch-profile alternate for proof validation, DA material, or header recovery", async () => {
-    expect(canonicalV1CommitViolations(await readCommitSources())).toEqual([]);
-  });
+  it("fails closed on missing forced program material before journal preparation", async () => {
+    vi.mocked(buildUnsignedCommitTx).mockReturnValue(
+      Effect.succeed({
+        newHeaderHash: HEADER_HASH,
+        newHeader: {} as never,
+        newHeaderCbor: Buffer.from("header"),
+        blockEndTimeMs: baseCommitArgs.endTime.getTime(),
+        txValidFromMs: 0,
+        txValidToMs: 1,
+        signAndSubmitProgram: Effect.succeed("22".repeat(32)),
+        txSize: 1,
+      }),
+    );
 
-  it("detects launch-profile and empty-program-material fallback mutations", async () => {
-    const sources = await readCommitSources();
-    const workerProfileMutation = {
-      ...sources,
-      worker: sources.worker.replace(
-        /const proofValidationSlotConfig =\s*workerInput\.data\.forcedValidationSlotConfig;/,
-        "const proofValidationSlotConfig = isMidgardConsensusProfileV1(profile)\n      ? workerInput.data.forcedValidationSlotConfig\n      : undefined;",
-      ),
-    };
-    const workerProviderMutation = {
-      ...sources,
-      worker: sources.worker.replace(
-        "const processed = yield* processMpfs(",
-        "const proofValidationLucid = (yield* acquireCommitLucidOnce).api;\n    const processed = yield* processMpfs(",
-      ),
-    };
-    const workerForcedValidationMutation = {
-      ...sources,
-      worker: sources.worker.replace(
-        "forcedValidation: {",
-        "forcedValidation:\n          proofValidationSlotConfig === undefined\n            ? undefined\n            : {",
-      ),
-    };
-    const forcedMaterialMutation = {
-      ...sources,
-      submission: sources.submission.replace(
-        "const cekProgramMaterial = yield* Effect.try({",
-        "const cekProgramMaterial = isMidgardConsensusProfileV1(profile) ? yield* Effect.try({",
-      ),
-    };
-    const normalMaterialMutation = {
-      ...sources,
-      submission: sources.submission.replace(
-        "yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(",
-        "isMidgardConsensusProfileV1(profile) ? yield* TxAdmissionsDB.retrieveProgramMaterialSidecars(",
-      ),
-    };
+    const outcome = await runEffect(
+      Effect.either(
+        submitDepositOnlyCommit({
+          ...baseCommitArgs,
+          includedForcedTransactionEntries: [forcedEntryMissingMaterial],
+        } as unknown as Parameters<typeof submitDepositOnlyCommit>[0]),
+      ).pipe(Effect.provideService(Lucid, fakeLucid)),
+    );
 
-    expect(canonicalV1CommitViolations(workerProfileMutation)).toContain(
-      "worker_profile_selector",
-    );
-    expect(canonicalV1CommitViolations(workerProfileMutation)).toContain(
-      "proof_validation_lucid_not_unconditional",
-    );
-    expect(canonicalV1CommitViolations(workerProviderMutation)).toContain(
-      "proof_validation_lucid_not_unconditional",
-    );
-    expect(
-      canonicalV1CommitViolations(workerForcedValidationMutation),
-    ).toContain("forced_validation_not_unconditional");
-    expect(canonicalV1CommitViolations(forcedMaterialMutation)).toContain(
-      "submission_profile_selector",
-    );
-    expect(canonicalV1CommitViolations(normalMaterialMutation)).toContain(
-      "submission_profile_selector",
-    );
-  });
-
-  it("detects removal of either missing-program-material failure", async () => {
-    const sources = await readCommitSources();
-    const missingForcedFailure = {
-      ...sources,
-      submission: sources.submission.replace(
+    expect(outcome._tag).toBe("Left");
+    if (outcome._tag !== "Left") return;
+    expect(outcome.left).toMatchObject({
+      message:
         "Cannot build V1 DA from missing or conflicting forced-transaction program material",
-        "program material ignored",
-      ),
-    };
-    const missingNormalFailure = {
-      ...sources,
-      submission: sources.submission.replace(
-        "Cannot build V1 block without one durable program-material sidecar per normal transaction",
-        "program material ignored",
-      ),
-    };
-
-    expect(canonicalV1CommitViolations(missingForcedFailure)).toContain(
-      "forced_program_material_failure_missing",
-    );
-    expect(canonicalV1CommitViolations(missingNormalFailure)).toContain(
-      "normal_program_material_failure_missing",
-    );
+    });
   });
 
-  it("detects profile-gated or incomplete validation-root recovery mutations", async () => {
-    const sources = await readCommitSources();
-    const profileGatedRecovery = {
-      ...sources,
-      submission: sources.submission.replace(
-        "const confirmedHeader =",
-        "const proofProfile = isMidgardConsensusProfileV1(profile);\n    const confirmedHeader =",
-      ),
-    };
-    const missingValidationRoot = {
-      ...sources,
-      submission: sources.submission.replace(
-        "PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACES_ROOT",
-        "PendingBlockFinalizationsDB.Columns.EXPECTED_EVENT_TO_STEP_ROOT",
-      ),
-    };
-    const missingValidationCount = {
-      ...sources,
-      submission: sources.submission.replace(
-        "PendingBlockFinalizationsDB.Columns.EXPECTED_VALIDATION_TRACE_COUNT",
-        "PendingBlockFinalizationsDB.Columns.EXPECTED_TRANSITION_STEP_COUNT",
-      ),
-    };
+  it("fails closed when a normal transaction has no durable material sidecar", async () => {
+    vi.mocked(TxAdmissionsDB.retrieveProgramMaterialSidecars).mockReturnValue(
+      Effect.succeed([]),
+    );
+    vi.mocked(buildUnsignedCommitTx).mockReturnValue(
+      Effect.succeed({
+        newHeaderHash: HEADER_HASH,
+        newHeader: {} as never,
+        newHeaderCbor: Buffer.from("header"),
+        blockEndTimeMs: baseCommitArgs.endTime.getTime(),
+        txValidFromMs: 0,
+        txValidToMs: 1,
+        signAndSubmitProgram: Effect.succeed("22".repeat(32)),
+        txSize: 1,
+      }),
+    );
+    const txId = Buffer.from("02", "hex");
+    const processedMempoolTxs = [
+      {
+        [TxTable.Columns.TX_ID]: txId,
+        [TxTable.Columns.TX]: Buffer.from("tx"),
+        [TxTable.Columns.TIMESTAMPTZ]: baseCommitArgs.endTime,
+      },
+    ] as never;
 
-    expect(canonicalV1CommitViolations(profileGatedRecovery)).toContain(
-      "recovery_profile_selector",
+    const outcome = await runEffect(
+      Effect.either(
+        submitTxBackedCommit({
+          ...baseCommitArgs,
+          includedForcedTransactionEntries: [],
+          includedForcedTransactionEventIds: [],
+          transactionsMpf: {} as never,
+          processedMempoolTxs,
+          mempoolTxHashes: [txId],
+          mempoolTxSourceTable: "mempool",
+          sizeOfProcessedTxs: 2,
+        } as unknown as Parameters<typeof submitTxBackedCommit>[0]),
+      ).pipe(
+        Effect.provideService(Lucid, fakeLucid),
+        Effect.provideService(SqlClient.SqlClient, fakeSql),
+      ),
     );
-    expect(canonicalV1CommitViolations(missingValidationRoot)).toContain(
-      "recovery_validation_root_missing",
-    );
-    expect(canonicalV1CommitViolations(missingValidationCount)).toContain(
-      "recovery_validation_count_missing",
-    );
+
+    expect(outcome._tag).toBe("Left");
+    if (outcome._tag !== "Left") return;
+    expect(outcome.left).toMatchObject({
+      message:
+        "Cannot build V1 block without one durable program-material sidecar per normal transaction",
+    });
+  });
+
+  it("fails closed without worker slot mapping and passes the node mapping to processMpfs", async () => {
+    const nodeConfig = {
+      MPF_ENGINE: "legacy",
+      MPF_PAYLOAD_ROOT_CHECK: "off",
+      MPF_RECORD_CORPUS: "",
+      MEMPOOL_RETRIEVE_PAGE_SIZE: 100,
+      COMMIT_BUILD_COST_MODEL: "static",
+      COMMIT_MAX_L2_TX_COUNT: 100,
+      COMMIT_MAX_LEDGER_OP_COUNT: 100,
+      COMMIT_MAX_TRANSITION_STEP_COUNT: 100,
+      NETWORK: "Testnet",
+      MIN_FEE_A: 0n,
+      MIN_FEE_B: 0n,
+      VALIDATION_G4_BUCKET_CONCURRENCY: 1,
+    } as never;
+    const deploymentIdentity = ContractDeploymentIdentity.make({
+      kind: "derived",
+      deploymentMarker,
+      consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+    });
+    const speculativeBuild = {
+      base: {
+        headerHash: "aa".repeat(28),
+        utxosRoot: "33".repeat(32),
+        blockEndTimeMs: Date.parse("2026-01-01T00:06:00.000Z"),
+        submittedTxHash: "bb".repeat(32),
+      },
+      watermarks: {
+        depositMs: Date.parse("2026-01-01T00:07:00.999Z"),
+        withdrawalMs: Date.parse("2026-01-01T00:07:00.999Z"),
+        txOrderMs: Date.parse("2026-01-01T00:07:00.999Z"),
+        refreshedAtMs: Date.parse("2026-01-01T00:07:00.999Z"),
+      },
+      excludedMempoolTxIds: [],
+      excludedDepositEventIds: [],
+      excludedForcedTransactionEventIds: [],
+      excludedWithdrawalEventIds: [],
+    } as const;
+    const runWorker = (input: typeof workerInput) =>
+      runEffect(
+        Effect.either(
+          runCommitBlockHeaderWorkerProgram(input, () =>
+            Effect.succeed({
+              type: "InvalidateSpeculativeCandidate",
+              reason: "T1",
+            }),
+          ),
+        ).pipe(
+          Effect.provideService(NodeConfig, nodeConfig),
+          Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
+        ),
+      );
+
+    vi.mocked(processMpfs).mockClear();
+    const missingConfigOutcome = await runWorker({
+      data: {
+        ...workerInput.data,
+        speculativeBuild,
+        forcedValidationSlotConfig: undefined,
+      },
+    } as never);
+    expect(missingConfigOutcome._tag).toBe("Left");
+    expect(processMpfs).not.toHaveBeenCalled();
+    if (missingConfigOutcome._tag === "Left") {
+      expect(String(missingConfigOutcome.left)).toContain(
+        "missing its node-selected slot configuration",
+      );
+    }
+
+    vi.mocked(processMpfs).mockClear();
+    const suppliedConfigOutcome = await runWorker({
+      data: { ...workerInput.data, speculativeBuild },
+    } as never);
+    expect(suppliedConfigOutcome._tag).toBe("Left");
+    expect(processMpfs).toHaveBeenCalledTimes(1);
+    const processConfig = vi.mocked(processMpfs).mock.calls[0]?.[3] as {
+      readonly forcedValidation?: {
+        readonly slotForUnixTime: (unixTimeMs: number) => bigint;
+      };
+    };
+    expect(processConfig.forcedValidation).toBeDefined();
+    expect(
+      processConfig.forcedValidation?.slotForUnixTime(
+        Date.parse("2026-01-01T00:07:00.999Z"),
+      ),
+    ).toBe(110n);
   });
 });
