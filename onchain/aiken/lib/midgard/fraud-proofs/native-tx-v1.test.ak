@@ -884,6 +884,23 @@ test v1_c20_6_c20_7_bundle_reveals_all_nine_fields_exactly() {
   )
 }
 
+test v1_mint_empty_map_raw_preimage_rejects() fail {
+  let (tx_id, commitment, compact_cbor, witness_set_cbor, lengths_cbor) = c20_witness_proof_source(
+    [],
+    [],
+    1,
+    1,
+  )
+  transaction.verify_midgard_transaction_mint_preimage_commitment_v1(
+    tx_id,
+    commitment,
+    compact_cbor,
+    witness_set_cbor,
+    lengths_cbor,
+    #"a0",
+  )
+}
+
 test v1_c20_6_c20_7_bundle_with_swapped_witness_fields_rejects() fail {
   let witnesses = [c20_addr_witness_1(), c20_addr_witness_2()]
   let scripts = [c20_script_native(), c20_script_plutus()]

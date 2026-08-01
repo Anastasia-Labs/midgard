@@ -355,29 +355,36 @@ pub fn encode_mint_policy_item(
       )
 }
 
-pub fn mint_policy_items(mint: Data) -> List<ByteArray> {
+fn canonical_mint_policy_pairs(mint: Data) -> List<Pair<Data, Data>> {
   let empty_mint: Data = []
   if mint == empty_mint {
     []
   } else {
-    builtin.un_map_data(mint)
-      |> list.map(fn(pair) { encode_mint_policy_item(pair.1st, pair.2nd) })
+    let policy_pairs = builtin.un_map_data(mint)
+    expect list.length(policy_pairs) > 0
+    policy_pairs
   }
 }
 
+pub fn mint_policy_items(mint: Data) -> List<ByteArray> {
+  canonical_mint_policy_pairs(mint)
+    |> list.map(fn(pair) { encode_mint_policy_item(pair.1st, pair.2nd) })
+}
+
 pub fn encode_mint_preimage(mint: Data) -> ByteArray {
-  let empty_mint: Data = []
-  if mint == empty_mint {
+  let policy_pairs = canonical_mint_policy_pairs(mint)
+  if list.is_empty(policy_pairs) {
     encode_definite_array_header(0)
   } else {
-    let policy_pairs = builtin.un_map_data(mint)
     encode_definite_map_header(list.length(policy_pairs))
       |> bytearray.concat(encode_mint_policy_assets(policy_pairs))
   }
 }
 
 pub fn decode_midgard_tx_mint_preimage_cbor(preimage_cbor: ByteArray) -> Data {
-  expect_deserialise(preimage_cbor)
+  let decoded = expect_deserialise(preimage_cbor)
+  expect _ = canonical_mint_policy_pairs(decoded)
+  decoded
 }
 
 pub fn decode_canonical_bytes_at(
@@ -542,18 +549,24 @@ pub fn verify_canonical_mint_preimage_cbor(
   preimage_cbor: ByteArray,
   expected_hash: ByteArray,
 ) -> Bool {
-  expect
-    bounded_collection_v1.from_items(
-      5,
-      mint_policy_items(expect_deserialise(preimage_cbor)),
-    ) == expected_hash
   if preimage_cbor == #"80" {
+    expect
+      bounded_collection_v1.from_items(
+        5,
+        mint_policy_items(expect_deserialise(preimage_cbor)),
+      ) == expected_hash
     True
   } else {
     let Pair(offset, policy_count) = decode_canonical_map_header_at(
       preimage_cbor,
       0,
     )
+    expect policy_count > 0
+    expect
+      bounded_collection_v1.from_items(
+        5,
+        mint_policy_items(expect_deserialise(preimage_cbor)),
+      ) == expected_hash
     verify_canonical_mint_policies_at(preimage_cbor, offset, policy_count, None) == bytearray.length(
       preimage_cbor,
     )

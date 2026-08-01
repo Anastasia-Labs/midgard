@@ -645,3 +645,7 @@ test encode_native_byte_list_matches_node_preimage_shape() {
     spend_input_cbor_at(spend_input_cbors, 1) == input_1,
   }
 }
+
+test empty_mint_map_data_rejects_canonical_preimage_encoding() fail {
+  encode_mint_preimage(builtin.map_data([])) == #"a0"
+}
