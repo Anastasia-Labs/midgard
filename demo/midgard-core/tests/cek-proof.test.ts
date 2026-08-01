@@ -211,13 +211,13 @@ const makeBytesConstantProgramMaterial = (
 
 const makeNestedListConstantProgramMaterial = (
   listDepth: number,
-): ReturnType<typeof makeBytesConstantProgramMaterial> => {
-  const typeCbor = Buffer.from([
+  typeCbor = Buffer.from([
     0x9f,
     ...Array.from({ length: listDepth }, () => 5),
     0,
     0xff,
-  ]);
+  ]),
+): ReturnType<typeof makeBytesConstantProgramMaterial> => {
   const typeBlob = commitMidgardCekBlobV1(typeCbor);
   const integerBlob = commitMidgardCekBlobV1(Buffer.from([0]));
   let semanticRoot = hashMidgardCekDataNodeV1({
@@ -2112,6 +2112,28 @@ describe("V1 CEK commitments", () => {
       ),
     ).toThrow(/source constant payload exceeds the 9215-byte/u);
     expect(materializedRoots).toBe(0);
+  });
+
+  it("requires canonical indefinite semantic constant type lists", () => {
+    const canonical = makeNestedListConstantProgramMaterial(0);
+    const verified = verifyMidgardCekProgramMaterialV1(
+      canonical.envelope,
+      canonical.material,
+    );
+    expect(verified.constants[0]?.typeCbor).toEqual(
+      Buffer.from("9f00ff", "hex"),
+    );
+
+    const nonCanonical = makeNestedListConstantProgramMaterial(
+      0,
+      Buffer.from("8100", "hex"),
+    );
+    expect(() =>
+      verifyMidgardCekProgramMaterialV1(
+        nonCanonical.envelope,
+        nonCanonical.material,
+      ),
+    ).toThrow(/CEK constant type.*canonical/u);
   });
 
   it("parses the exact bounded semantic type iteratively and rejects one byte over deterministically", () => {

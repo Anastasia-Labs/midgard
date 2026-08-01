@@ -2139,6 +2139,10 @@ const decodeSemanticConstantTypeV1 = (
     );
   }
   const decoded = LucidData.from(Buffer.from(typeCbor).toString("hex"));
+  const canonical = encodeSemanticDataV1(decoded as SemanticDataValueV1);
+  if (!canonical.equals(Buffer.from(typeCbor))) {
+    throw new Error("CEK constant type CBOR is not canonical");
+  }
   if (
     !Array.isArray(decoded) ||
     !decoded.every((tag) => typeof tag === "bigint")
