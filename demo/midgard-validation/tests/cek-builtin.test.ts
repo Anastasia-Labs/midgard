@@ -24,6 +24,7 @@ import {
 } from "../src/cek-builtin.js";
 import {
   decodeMidgardCekConstantWitnessV1,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
   midgardCekConstantWitnessFromUplcV1,
 } from "../src/cek-constant.js";
 
@@ -148,6 +149,17 @@ const direct = (constant: UPLCConst): MidgardCekDirectValueWitnessV1 => ({
   kind: "constant",
   witness: midgardCekConstantWitnessFromUplcV1(constant),
 });
+
+const directByteString = (byteLength: number): MidgardCekDirectValueWitnessV1 =>
+  direct(UPLCConst.byteString(new DataB(Buffer.alloc(byteLength)).bytes));
+
+const runtimeByteString = (
+  byteLength: number,
+): MidgardCekRuntimeValueWitnessV1 => {
+  const value = directByteString(byteLength);
+  if (value.kind !== "constant") throw new Error("expected a direct constant");
+  return { kind: "constant", witness: value.witness };
+};
 
 const directBuiltinRoot = (
   tag: bigint,
@@ -334,5 +346,146 @@ describe("V1 direct builtin execution", () => {
         leaf,
       ),
     ).toThrow(/ten-leaf L1 proof reserve/);
+  });
+
+  it("rejects an over-cap runtime type-failure witness", () => {
+    const arguments_ = [
+      runtimeByteString(4_608),
+      runtimeByteString(4_608),
+    ] as const;
+    expect(
+      arguments_.every(
+        (argument) =>
+          argument.kind === "constant" &&
+          argument.witness.payloadCbor.length <=
+            MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
+      ),
+    ).toBe(true);
+    expect(
+      verifyMidgardCekBuiltinTypeFailureV1(
+        0n,
+        builtinRoot(0n, arguments_),
+        arguments_,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects an over-cap direct success witness", () => {
+    const arguments_ = [
+      direct(UPLCConst.bool(true)),
+      directByteString(4_608),
+      directByteString(1),
+    ] as const;
+    expect(() => evaluateMidgardCekDirectBuiltinV1(26n, arguments_)).toThrow(
+      /aggregate direct payload bound/,
+    );
+    expect(
+      verifyMidgardCekDirectBuiltinV1(
+        26n,
+        directBuiltinRoot(26n, arguments_),
+        arguments_,
+        directByteString(4_608),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects an over-cap direct failure witness", () => {
+    const arguments_ = [
+      directByteString(3_200),
+      directByteString(3_200),
+      directByteString(3_200),
+    ] as const;
+    expect(() => evaluateMidgardCekDirectBuiltinV1(52n, arguments_)).toThrow(
+      /aggregate direct payload bound/,
+    );
+    expect(
+      verifyMidgardCekDirectBuiltinFailureV1(
+        52n,
+        directBuiltinRoot(52n, arguments_),
+        arguments_,
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts under-cap aggregates and does not count semantic constants", () => {
+    const runtimeArguments = [
+      runtimeByteString(4_400),
+      runtimeByteString(4_400),
+    ] as const;
+    expect(
+      verifyMidgardCekBuiltinTypeFailureV1(
+        0n,
+        builtinRoot(0n, runtimeArguments),
+        runtimeArguments,
+      ),
+    ).toBe(true);
+
+    const directSuccessArguments = [
+      direct(UPLCConst.bool(true)),
+      directByteString(4_400),
+      directByteString(1),
+    ] as const;
+    const directSuccess = evaluateMidgardCekDirectBuiltinV1(
+      26n,
+      directSuccessArguments,
+    );
+    expect(directSuccess.kind).toBe("success");
+    if (directSuccess.kind !== "success") return;
+    expect(
+      verifyMidgardCekDirectBuiltinV1(
+        26n,
+        directBuiltinRoot(26n, directSuccessArguments),
+        directSuccessArguments,
+        directSuccess.result,
+      ),
+    ).toBe(true);
+
+    const directFailureArguments = [
+      directByteString(2_800),
+      directByteString(2_800),
+      directByteString(2_800),
+    ] as const;
+    expect(
+      verifyMidgardCekDirectBuiltinFailureV1(
+        52n,
+        directBuiltinRoot(52n, directFailureArguments),
+        directFailureArguments,
+      ),
+    ).toBe(true);
+
+    const semanticBranch = {
+      kind: "semanticConstant",
+      witness: {
+        typeCbor: Buffer.from("9f01ff", "hex"),
+        payload: {
+          root: hash(12),
+          cborLength: BigInt(
+            MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1 + 1,
+          ),
+          memory: 1n,
+        },
+        memory: 1n,
+      },
+    } as const;
+    const semanticArguments = [
+      direct(UPLCConst.bool(true)),
+      semanticBranch,
+      semanticBranch,
+    ] as const;
+    const semanticResult = evaluateMidgardCekDirectBuiltinV1(
+      26n,
+      semanticArguments,
+    );
+    expect(semanticResult.kind).toBe("success");
+    if (semanticResult.kind !== "success") return;
+    expect(semanticResult.result).toEqual(semanticBranch);
+    expect(
+      verifyMidgardCekDirectBuiltinV1(
+        26n,
+        directBuiltinRoot(26n, semanticArguments),
+        semanticArguments,
+        semanticBranch,
+      ),
+    ).toBe(true);
   });
 });

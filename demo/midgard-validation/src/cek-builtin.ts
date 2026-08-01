@@ -28,6 +28,7 @@ import {
   decodeMidgardCekConstantWitnessV1,
   hashMidgardCekConstantWitnessV1,
   hashMidgardCekSemanticConstantWitnessV1,
+  MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1,
   midgardCekConstantMemorySizeV1,
   type MidgardCekConstantTypeV1,
   midgardCekConstantWitnessFromUplcV1,
@@ -318,6 +319,12 @@ export const verifyMidgardCekBuiltinTypeFailureV1 = (
     const numericTag = Number(tag);
     const kinds = argumentKinds(numericTag);
     if (arguments_.length !== kinds.length) return false;
+    if (
+      directWitnessPayloadBytes(arguments_) >
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+    ) {
+      return false;
+    }
     const { root, count } =
       hashMidgardCekRuntimeArgumentsV1(arguments_);
     if (
@@ -405,6 +412,21 @@ export const hashMidgardCekDirectArgumentsV1 = (
   }
   return Object.freeze({ root, count });
 };
+
+const directWitnessPayloadBytes = (
+  values: readonly (
+    | MidgardCekRuntimeValueWitnessV1
+    | MidgardCekDirectValueWitnessV1
+  )[],
+): bigint =>
+  values.reduce(
+    (total, value) =>
+      total +
+      (value.kind === "constant"
+        ? BigInt(value.witness.payloadCbor.length)
+        : 0n),
+    0n,
+  );
 
 const decodedDirectConstant = (
   value: MidgardCekDirectValueWitnessV1,
@@ -846,6 +868,14 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
   ) {
     throw new Error("V1 builtin has an invalid tag or arity");
   }
+  if (
+    directWitnessPayloadBytes(arguments_) >
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+  ) {
+    throw new Error(
+      "V1 builtin arguments exceed the aggregate direct payload bound",
+    );
+  }
   const budget = midgardCekDirectBuiltinBudgetV1(tag, arguments_);
   const result = evaluateReferenceBuiltin(tag, arguments_);
   if (result === "failure") {
@@ -855,6 +885,14 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
         ? budget
         : Object.freeze({ cpu: 0n, memory: 0n }),
     });
+  }
+  if (
+    directWitnessPayloadBytes([...arguments_, result]) >
+    BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+  ) {
+    throw new Error(
+      "V1 builtin result exceeds the aggregate direct payload bound",
+    );
   }
   return Object.freeze({ kind: "success", result, budget });
 };
@@ -866,6 +904,12 @@ export const verifyMidgardCekDirectBuiltinV1 = (
   result: MidgardCekDirectValueWitnessV1,
 ): boolean => {
   try {
+    if (
+      directWitnessPayloadBytes([...arguments_, result]) >
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+    ) {
+      return false;
+    }
     const committed = hashMidgardCekDirectArgumentsV1(arguments_);
     if (
       !sameBytes(
@@ -900,6 +944,12 @@ export const verifyMidgardCekDirectBuiltinFailureV1 = (
   arguments_: readonly MidgardCekDirectValueWitnessV1[],
 ): boolean => {
   try {
+    if (
+      directWitnessPayloadBytes(arguments_) >
+      BigInt(MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1)
+    ) {
+      return false;
+    }
     const committed = hashMidgardCekDirectArgumentsV1(arguments_);
     if (
       !sameBytes(
