@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@al-ft/midgard-core": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@lucid-evolution/lucid": "0.6.0"
   },

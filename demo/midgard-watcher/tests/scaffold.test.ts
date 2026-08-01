@@ -30,6 +30,7 @@ describe("W00 watcher package identity", () => {
       "midgard-watcher": "./dist/cli.js",
     });
     expect(watcherPackage.dependencies).toEqual({
+      "@al-ft/midgard-core": "workspace:*",
       "@al-ft/midgard-sdk": "workspace:*",
       "@lucid-evolution/lucid": "0.6.0",
     });
