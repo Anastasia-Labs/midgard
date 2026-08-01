@@ -5,6 +5,7 @@ import {
   hashMidgardCekProgramEnvelopeV1,
   type MidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
+  MidgardCekProgramMaterialMissingRootError,
   verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
@@ -82,7 +83,11 @@ export const persistVerifiedBundles = (
     | { readonly kind: "admission"; readonly txId: Buffer } = {
     kind: "durable",
   },
-): Effect.Effect<void, DatabaseError, Database | NodeConfig> =>
+): Effect.Effect<
+  void,
+  DatabaseError | MidgardCekProgramMaterialMissingRootError,
+  Database | NodeConfig
+> =>
   Effect.try({
     try: () => {
       if (ownership.kind === "admission" && ownership.txId.length !== 32) {
@@ -139,11 +144,13 @@ export const persistVerifiedBundles = (
       };
     },
     catch: (cause) =>
-      new DatabaseError({
-        table: entryTableName,
-        message: "Failed to canonicalize CEK program material bundles",
-        cause,
-      }),
+      cause instanceof MidgardCekProgramMaterialMissingRootError
+        ? cause
+        : new DatabaseError({
+            table: entryTableName,
+            message: "Failed to canonicalize CEK program material bundles",
+            cause,
+          }),
   }).pipe(
     Effect.flatMap(({ material, memberships }) =>
       Effect.gen(function* () {
@@ -379,7 +386,18 @@ export const persistVerifiedAdmissionBundle = ({
             : persistVerifiedBundles(envelopes, material, {
                 kind: "admission",
                 txId,
-              }),
+              }).pipe(
+                Effect.mapError((cause) =>
+                  cause instanceof MidgardCekProgramMaterialMissingRootError
+                    ? new DatabaseError({
+                        table: entryTableName,
+                        message:
+                          "Accepted admission contains incomplete CEK program material",
+                        cause,
+                      })
+                    : cause,
+                ),
+              ),
         ),
       ),
     ),

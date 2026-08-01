@@ -13,6 +13,7 @@ import {
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
+  MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core";
 import { deriveMidgardTxFieldReceiptAssetNameV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -26,7 +27,9 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  isDeferrablePublishedProgramMaterialError,
   publishedProgramMaterialEntries,
+  publishedProgramMaterialSnapshotError,
   reconstructTxOrderMaterialV1,
 } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 
@@ -410,6 +413,7 @@ describe("V1 CEK program-material publication ingestion", () => {
 
     const exact = publishedProgramMaterialEntries([materialUtxo(datumCbor)]);
     expect(exact.malformedCount).toBe(0);
+    expect(exact.sourceStatus).toBe("clean");
     expect(exact.entries).toEqual([{ kind: "blobChunk", root, preimage }]);
 
     const wrongRoot = Data.to(
@@ -437,5 +441,54 @@ describe("V1 CEK program-material publication ingestion", () => {
     ]);
     expect(hostile.entries).toEqual([]);
     expect(hostile.malformedCount).toBe(4);
+    expect(hostile.sourceStatus).toBe("malformed");
+  });
+
+  it("defers only a typed missing root from a clean publication snapshot", () => {
+    const missing = new MidgardCekProgramMaterialMissingRootError(
+      Buffer.alloc(32, 0x44),
+    );
+    const clean = {
+      entries: [],
+      malformedCount: 0,
+      sourceStatus: "clean" as const,
+    };
+    const malformed = {
+      entries: [],
+      malformedCount: 1,
+      sourceStatus: "malformed" as const,
+    };
+
+    expect(isDeferrablePublishedProgramMaterialError(clean, missing)).toBe(
+      true,
+    );
+    expect(isDeferrablePublishedProgramMaterialError(malformed, missing)).toBe(
+      false,
+    );
+    expect(
+      isDeferrablePublishedProgramMaterialError(
+        { ...clean, malformedCount: 1 },
+        missing,
+      ),
+    ).toBe(false);
+    expect(
+      isDeferrablePublishedProgramMaterialError(clean, new Error("mismatch")),
+    ).toBe(false);
+    expect(
+      publishedProgramMaterialSnapshotError(malformed, "addr_test1source"),
+    ).toMatchObject({
+      _tag: "LucidError",
+      cause: {
+        sourceAddress: "addr_test1source",
+        sourceStatus: "malformed",
+        malformedCount: 1,
+      },
+    });
+    expect(
+      publishedProgramMaterialSnapshotError(
+        { ...clean, malformedCount: 1 },
+        "addr_test1source",
+      ),
+    ).toBeInstanceOf(SDK.LucidError);
   });
 });

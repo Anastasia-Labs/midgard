@@ -45,6 +45,7 @@ import {
   type MidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
   type MidgardCekProgramMaterialKindV1,
+  MidgardCekProgramMaterialMissingRootError,
   verifyMidgardCekProgramMaterialBundleV1,
   verifyMidgardCekProgramMaterialV1,
 } from "../src/cek-proof.js";
@@ -1977,6 +1978,50 @@ describe("V1 CEK commitments", () => {
     expect(() => verifyMidgardCekProgramMaterialV1(envelope, material)).toThrow(
       /payload root must equal its canonical semantic root/u,
     );
+  });
+
+  it("classifies only an absent root and does not mask later bundle mismatches", () => {
+    const missingNode = { kind: "error" } as const;
+    const missingRoot = hashMidgardCekTermNodeV1(missingNode);
+    const missingEnvelope = {
+      uplcVersion: [1n, 1n, 0n] as const,
+      termRoot: missingRoot,
+      nodeCount: 1n,
+      materialByteLength: BigInt(
+        encodeMidgardCekTermNodeV1(missingNode).length,
+      ),
+    };
+    let missingError: unknown;
+    try {
+      verifyMidgardCekProgramMaterialV1(missingEnvelope, []);
+    } catch (cause) {
+      missingError = cause;
+    }
+    expect(missingError).toBeInstanceOf(
+      MidgardCekProgramMaterialMissingRootError,
+    );
+    expect(
+      (missingError as MidgardCekProgramMaterialMissingRootError).rootHex,
+    ).toBe(Buffer.from(missingRoot).toString("hex"));
+
+    const presentNode = { kind: "builtin", tag: 0n } as const;
+    const present = {
+      kind: "term" as const,
+      root: hashMidgardCekTermNodeV1(presentNode),
+      preimage: encodeMidgardCekTermNodeV1(presentNode),
+    };
+    const laterMismatchEnvelope = {
+      uplcVersion: [1n, 1n, 0n] as const,
+      termRoot: present.root,
+      nodeCount: 2n,
+      materialByteLength: BigInt(present.preimage.length),
+    };
+    expect(() =>
+      verifyMidgardCekProgramMaterialBundleV1(
+        [missingEnvelope, laterMismatchEnvelope],
+        [present],
+      ),
+    ).toThrow(/envelope declares 2/u);
   });
 
   it("fails closed on incomplete, duplicate, unreachable, and malformed material", () => {

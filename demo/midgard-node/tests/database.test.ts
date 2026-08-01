@@ -11,6 +11,7 @@ import {
   encodeMidgardProofSubmissionV1,
   hashMidgardCekProgramEnvelopeV1,
   hashMidgardCekTermNodeV1,
+  MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
@@ -871,6 +872,40 @@ describe("TxAdmissionsDB", () => {
             ],
           ).toHaveLength(32);
         }).pipe(Effect.provide(Globals.Default)),
+      ),
+  );
+
+  it.effect(
+    "keeps missing publication roots typed for durable storage but hard-fails admissions",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const attempt = makeMaterialProofSubmitTx(300);
+          const durable = yield* Effect.either(
+            CekProgramMaterialDB.persistVerifiedBundles([attempt.envelope], []),
+          );
+          expect(durable._tag).toBe("Left");
+          if (durable._tag === "Left") {
+            expect(durable.left).toBeInstanceOf(
+              MidgardCekProgramMaterialMissingRootError,
+            );
+          }
+
+          const admission = yield* Effect.either(
+            CekProgramMaterialDB.persistVerifiedAdmissionBundle({
+              txId: attempt.txId,
+              txCanonicalCbor: attempt.txCanonicalCbor,
+              sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+            }),
+          );
+          expect(admission._tag).toBe("Left");
+          if (admission._tag === "Left") {
+            expect(admission.left).toBeInstanceOf(DatabaseError);
+            expect(admission.left.message).toContain(
+              "incomplete CEK program material",
+            );
+          }
+        }),
       ),
   );
 

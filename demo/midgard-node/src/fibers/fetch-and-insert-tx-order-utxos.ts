@@ -7,6 +7,7 @@ import {
   encodeMidgardCekProgramMaterialSidecarV1,
   type MidgardCekProgramMaterialEntryV1,
   midgardCekProgramMaterialKindFromTagV1,
+  MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -103,6 +104,36 @@ const fetchTxOrderUTxOs = (
   });
 
 type TxOrderPayloadV1 = SDK.TxOrderUTxOV1["datum"]["event"]["tx"];
+
+export type PublishedProgramMaterialSnapshot = {
+  readonly entries: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly malformedCount: number;
+  readonly sourceStatus: "clean" | "malformed";
+};
+
+export const isDeferrablePublishedProgramMaterialError = (
+  snapshot: PublishedProgramMaterialSnapshot,
+  cause: unknown,
+): cause is MidgardCekProgramMaterialMissingRootError =>
+  snapshot.malformedCount === 0 &&
+  snapshot.sourceStatus === "clean" &&
+  cause instanceof MidgardCekProgramMaterialMissingRootError;
+
+export const publishedProgramMaterialSnapshotError = (
+  snapshot: PublishedProgramMaterialSnapshot,
+  sourceAddress: string,
+): SDK.LucidError | undefined =>
+  snapshot.malformedCount !== 0 || snapshot.sourceStatus === "malformed"
+    ? new SDK.LucidError({
+        message:
+          "V1 L1 CEK program-material publication contains malformed UTxOs",
+        cause: {
+          sourceAddress,
+          sourceStatus: snapshot.sourceStatus,
+          malformedCount: snapshot.malformedCount,
+        },
+      })
+    : undefined;
 
 const outRefKeyV1 = (reference: SDK.OutputReference): string =>
   `${reference.transactionId}#${reference.outputIndex.toString()}`;
@@ -556,7 +587,7 @@ const txOrderUTxOToEntry = (
   fieldPreimageAddress: string,
   fieldReceiptPolicyId: string,
   fieldReceiptAddress: string,
-  publishedProgramMaterial: readonly MidgardCekProgramMaterialEntryV1[],
+  publishedProgramMaterial: PublishedProgramMaterialSnapshot,
 ): Effect.Effect<
   ForcedTransactionsDB.Entry,
   SDK.LucidError | DatabaseError,
@@ -585,22 +616,39 @@ const txOrderUTxOToEntry = (
       fieldReceiptAddress,
     });
     const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeTxCbor);
-    const attachedProgramEnvelopes = (() => {
-      try {
-        return collectMidgardV1AttachedProgramEnvelopes(decoded);
-      } catch {
-        return Object.freeze([]);
-      }
-    })();
+    const attachedProgramEnvelopes = yield* Effect.try({
+      try: () => collectMidgardV1AttachedProgramEnvelopes(decoded),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to collect V1 attached CEK program envelopes",
+          cause,
+        }),
+    });
     if (attachedProgramEnvelopes.length > 0) {
       yield* CekProgramMaterialDB.persistVerifiedBundles(
         attachedProgramEnvelopes,
-        publishedProgramMaterial,
+        publishedProgramMaterial.entries,
       ).pipe(
-        Effect.catchAll((cause) =>
-          Effect.logWarning(
-            `V1 tx-order ${payload.tx_id} is visible before its complete L1 CEK material bundle: ${String(cause)}`,
-          ),
+        Effect.catchIf(
+          (cause): cause is MidgardCekProgramMaterialMissingRootError =>
+            isDeferrablePublishedProgramMaterialError(
+              publishedProgramMaterial,
+              cause,
+            ),
+          () =>
+            Effect.logWarning(
+              `V1 tx-order ${payload.tx_id} is visible before its complete L1 CEK material bundle`,
+            ),
+        ),
+        Effect.mapError((cause) =>
+          cause instanceof MidgardCekProgramMaterialMissingRootError
+            ? new DatabaseError({
+                table: CekProgramMaterialDB.entryTableName,
+                message:
+                  "Unexpected missing CEK material root outside a clean publication snapshot",
+                cause,
+              })
+            : cause,
         ),
       );
     }
@@ -658,10 +706,7 @@ const txOrderUTxOToEntry = (
 
 export const publishedProgramMaterialEntries = (
   utxos: readonly UTxO[],
-): {
-  readonly entries: readonly MidgardCekProgramMaterialEntryV1[];
-  readonly malformedCount: number;
-} => {
+): PublishedProgramMaterialSnapshot => {
   const entries: MidgardCekProgramMaterialEntryV1[] = [];
   let malformedCount = 0;
   for (const utxo of utxos) {
@@ -688,7 +733,11 @@ export const publishedProgramMaterialEntries = (
       malformedCount += 1;
     }
   }
-  return { entries: Object.freeze(entries), malformedCount };
+  return {
+    entries: Object.freeze(entries),
+    malformedCount,
+    sourceStatus: malformedCount === 0 ? "clean" : "malformed",
+  };
 };
 
 export const reconcileVisibleTxOrderUTxOs = (
@@ -718,7 +767,7 @@ export const reconcileVisibleTxOrderUTxOs = (
       txOrderFieldReceipt,
       cekProgramMaterial,
     } = yield* MidgardContracts;
-    const material = yield* Effect.tryPromise({
+    const materialEntries = yield* Effect.tryPromise({
       try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
       catch: (cause) =>
         new SDK.LucidError({
@@ -726,13 +775,33 @@ export const reconcileVisibleTxOrderUTxOs = (
           cause,
         }),
     }).pipe(Effect.map(publishedProgramMaterialEntries));
-    if (material.malformedCount > 0) {
-      yield* Effect.logWarning(
-        `Ignored ${material.malformedCount.toString()} malformed UTxO(s) at the permissionless V1 CEK material address.`,
-      );
+    const material = {
+      ...materialEntries,
+      sourceAddress: cekProgramMaterial.spendingScriptAddress,
+    };
+    const malformedMaterialError = publishedProgramMaterialSnapshotError(
+      material,
+      material.sourceAddress,
+    );
+    if (malformedMaterialError !== undefined) {
+      return yield* Effect.fail(malformedMaterialError);
     }
     if (material.entries.length > 0) {
-      yield* CekProgramMaterialDB.persistVerifiedBundles([], material.entries);
+      yield* CekProgramMaterialDB.persistVerifiedBundles(
+        [],
+        material.entries,
+      ).pipe(
+        Effect.mapError((cause) =>
+          cause instanceof MidgardCekProgramMaterialMissingRootError
+            ? new DatabaseError({
+                table: CekProgramMaterialDB.entryTableName,
+                message:
+                  "Unexpected missing CEK material root in an empty-envelope publication snapshot",
+                cause,
+              })
+            : cause,
+        ),
+      );
     }
     return yield* persistVisibleUserEventUTxOs({
       visibleUtxos: txOrderUTxOs,
@@ -745,7 +814,7 @@ export const reconcileVisibleTxOrderUTxOs = (
           txOrderFieldPreimage.spendingScriptAddress,
           txOrderFieldReceipt.policyId,
           txOrderFieldReceipt.spendingScriptAddress,
-          material.entries,
+          material,
         ),
       insertEntries: ForcedTransactionsDB.insertEntries,
       emptyLogMessage: "No tx-order UTxOs found.",

@@ -2004,6 +2004,23 @@ type ProgramMaterialTaskV1 =
       readonly length: bigint;
     };
 
+/**
+ * A content-addressed CEK node was not present in the supplied material
+ * snapshot. Callers may classify this as publication lag only when the source
+ * snapshot itself was authenticated and clean; all other verifier failures
+ * remain ordinary errors.
+ */
+export class MidgardCekProgramMaterialMissingRootError extends Error {
+  readonly rootHex: string;
+
+  constructor(root: Uint8Array) {
+    const rootHex = Buffer.from(root).toString("hex");
+    super(`CEK program material is missing root ${rootHex}`);
+    this.name = "MidgardCekProgramMaterialMissingRootError";
+    this.rootHex = rootHex;
+  }
+}
+
 export type MidgardCekProgramConstantMaterialV1 = {
   readonly valueRoot: Hash32;
   readonly typeRoot: Hash32;
@@ -2635,7 +2652,7 @@ const verifyOneProgramMaterialV1 = (
     const key = rootKey(task.root);
     const entry = material.get(key);
     if (entry === undefined) {
-      throw new Error(`CEK program material is missing root ${key}`);
+      throw new MidgardCekProgramMaterialMissingRootError(task.root);
     }
     const expectedKinds =
       task.kind === "blob"
@@ -3634,12 +3651,23 @@ const verifyProgramMaterialBundleV1 = (
     materializedBlobs: new Map(),
     validatedConstants: new Map(),
   };
+  let missingRoot: MidgardCekProgramMaterialMissingRootError | undefined;
   for (const [identity, envelope] of uniqueEnvelopes) {
-    const result = verifyOneProgramMaterialV1(envelope, material, cache, {
-      includeConstants: includeResults,
-      onBlobMaterialized: options.onBlobMaterialized,
-      onConstantMaterialized: options.onConstantMaterialized,
-    });
+    let result: MidgardCekProgramMaterialVerificationV1 | undefined;
+    try {
+      result = verifyOneProgramMaterialV1(envelope, material, cache, {
+        includeConstants: includeResults,
+        onBlobMaterialized: options.onBlobMaterialized,
+        onConstantMaterialized: options.onConstantMaterialized,
+      });
+    } catch (cause) {
+      if (cause instanceof MidgardCekProgramMaterialMissingRootError) {
+        missingRoot ??= cause;
+        continue;
+      }
+      throw cause;
+    }
+    if (result === undefined) continue;
     for (const key of result.reachableRoots) reached.add(key);
     if (includeResults) verifiedByIdentity.set(identity, result);
   }
@@ -3647,6 +3675,9 @@ const verifyProgramMaterialBundleV1 = (
     throw new Error(
       "CEK program material bundle contains nodes unreachable from every envelope",
     );
+  }
+  if (missingRoot !== undefined) {
+    throw missingRoot;
   }
   return includeResults
     ? Object.freeze(
