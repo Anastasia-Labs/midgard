@@ -349,6 +349,45 @@
 
 ## Decisions
 
+- 2026-07-31, OWNER DECISIONS (five, recorded verbatim as authorization):
+  1. **The five validator fixes are APPROVED AS-IS.** VM-DEFECT-1, -2, -4, -5
+     (commits `d012905b`, `363078b8`) and VM-DEFECT-6 (`c89041f6`) are
+     owner-approved deployed-validator semantics changes. The parent's
+     suggestion of an extra independent review pass on the constraint
+     DELETION in VM-DEFECT-2 was considered and declined; no further review
+     gate stands between these fixes and the release path. VM-DEFECT-3
+     remains withdrawn (test-fixture artifact, not a defect).
+  2. **Build the dispute-level challenger-wins regression NOW**, ahead of
+     further family work. Its absence is what allowed VM-DEFECT-2 to ship, so
+     it is the highest-value single test in the program: a challenger must be
+     shown to WIN against an operator-claimed `Accepted` descriptor carrying a
+     non-empty ledger delta. Until it passes, `catalogue-status.md`
+     `InvalidOneStepTransition` stays at 🔶 and is not restored to ✅.
+  3. **NODE-GUARD-CONTRADICTION resolves via option (a)**: make the commit
+     worker unconditional — remove the `isMidgardConsensusProfileV1` branch
+     and require `forcedValidationSlotConfig` unconditionally, per §3
+     invariant 13 (no dormant protocol surface) — AND re-encode the stale
+     guard check so it asserts the PROPERTY (proof validation runs
+     unconditionally) rather than the specific defective implementation it
+     currently demands. Neither guard's intent may be weakened; the profile
+     guard is not to be deleted.
+  4. **C26 Step-2 is APPROVED**: patch the CML WebAssembly library to close
+     exact-maximum emulator admission. Authorized to modify
+     `demo/package.json` and add an install-time patch step. Required
+     conditions: the patch is hash-pinned to the exact vendored artifact, and
+     byte-identical output versus the stock library must be demonstrated
+     before it is relied upon for any acceptance claim.
+  5. **The watcher evidence-graph budget stays at the merged higher value**
+     (aligned to remote's 134 MiB cumulative budget). The companion lane's
+     8 MiB per-graph figure is confirmed NOT a product limit, so the merge
+     resolution stands and no revert is needed.
+  Still open (deferred to the release gate, not blocking current work): the
+  un-added trace-endpoint clause in `validation-claim-v1.ak:396-400`,
+  cross-language vectors for both fixed boundaries, and the remaining
+  PROVISIONAL sections of `decisions/0002` (§2.2 scaled drill profile, §3
+  retry/deadline rows, §4 DA-governor floors, §5.1 container ceilings).
+
+
 - 2026-07-31, **PROCESS VIOLATION — parent leased a protected pre-Goal path
   to an agent.** Recorded in full because §3 invariant 14 and §0.1 forbid it
   and the record must show it.
