@@ -1249,8 +1249,15 @@ const readTrackedBytes = ({ mode, objectId }) => {
   }
   return execGit(["cat-file", "blob", objectId]);
 };
+// Evidence artifacts that describe this tree cannot be members of it: each
+// binds a digest of the tree (or of a file that does), so including them makes
+// the fixpoint unsatisfiable. The closure manifest joins the ledger and this
+// map for that exact reason — it binds this file's sha256 in `fixtureSets`,
+// while this file binds the tree containing it. Both remain fully verified,
+// each by its own gate (verify-canonical-v1-goal-closure.mjs and this script).
 const contentTreeExclusions = [
   "GOAL_PROGRESS.md",
+  "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
   "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
 ];
 if (

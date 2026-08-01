@@ -13,9 +13,10 @@
     "baseRevision": "8bae9403a13124f647f215999848ff5c82784e37",
     "contentTreeExclusions": [
       "GOAL_PROGRESS.md",
+      "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "18274df1c02d9a232d263d0b51d99c0ac63dff188cad42547c611102c44d1fec"
+    "resultContentTreeSha256": "9ccd2e94dd7a21bb289fa09b7b82a29e3f733e74ebef64b2eabbecfb7cce449f"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
