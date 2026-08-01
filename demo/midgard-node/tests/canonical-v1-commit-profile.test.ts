@@ -95,6 +95,24 @@ vi.mock("@/database/index.js", async () => {
   };
 });
 
+vi.mock("@/transactions/state-queue/confirmed-ledger-snapshot.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/transactions/state-queue/confirmed-ledger-snapshot.js")
+  >("@/transactions/state-queue/confirmed-ledger-snapshot.js");
+  return {
+    ...actual,
+    materializeConfirmedLedgerSnapshot: vi.fn(() =>
+      Effect.succeed({
+        entries: [],
+        baseRoot: "33".repeat(32),
+        root: "33".repeat(32),
+        deltaChain: [],
+        delta: { spent: [], produced: [] },
+      }),
+    ),
+  };
+});
+
 vi.mock("@/fibers/fetch-and-insert-deposit-utxos.js", () => ({
   fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
     Effect.succeed(end),
@@ -406,6 +424,7 @@ describe("canonical V1 commit profile", () => {
         ).pipe(
           Effect.provideService(NodeConfig, nodeConfig),
           Effect.provideService(ContractDeploymentIdentity, deploymentIdentity),
+          Effect.provideService(SqlClient.SqlClient, fakeSql),
         ),
       );
 
