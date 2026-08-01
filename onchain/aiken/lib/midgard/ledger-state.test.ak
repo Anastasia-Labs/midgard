@@ -229,3 +229,43 @@ test genesis_protocol_sentinel_and_first_ordinary_v1_are_distinct() {
     ) == None,
   }
 }
+
+test l05_header_v1_counted_roots_require_canonical_hash_length() {
+  let valid_header = sample_header_v1()
+  let zero_header = ledger_state.HeaderV1 {
+    ..valid_header,
+    transactions_root: ledger_state.genesis_utxo_root,
+    transition_trace_root: ledger_state.genesis_utxo_root,
+    event_to_step_root: ledger_state.genesis_utxo_root,
+    validation_traces_root: ledger_state.genesis_utxo_root,
+    l2_transaction_count: 0,
+    total_event_count: 0,
+    transition_step_count: 0,
+    validation_trace_count: 0,
+  }
+  and {
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 { ..valid_header, validation_traces_root: #"aa" },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 {
+        ..valid_header,
+        validation_traces_root: #"0808080808080808080808080808080808080808080808080808080808080808aa",
+      },
+    ),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 {
+        ..valid_header,
+        validation_traces_root: ledger_state.genesis_utxo_root,
+      },
+    ),
+    ledger_state.header_v1_is_valid(valid_header),
+    ledger_state.header_v1_is_valid(zero_header),
+    !ledger_state.header_v1_is_valid(
+      ledger_state.HeaderV1 {
+        ..zero_header,
+        validation_traces_root: valid_header.validation_traces_root,
+      },
+    ),
+  }
+}

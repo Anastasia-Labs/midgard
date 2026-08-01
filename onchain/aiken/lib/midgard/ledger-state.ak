@@ -217,7 +217,11 @@ fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool {
   if count == 0 {
     root == env.empty_merkle_tree_root
   } else {
-    root != env.empty_merkle_tree_root
+    and {
+      count > 0,
+      root != env.empty_merkle_tree_root,
+      bytearray.length(root) == 32,
+    }
   }
 }
 
