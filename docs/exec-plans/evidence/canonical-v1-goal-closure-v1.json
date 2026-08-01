@@ -15,7 +15,7 @@
       {
         "path": "GOAL_SPEC.md",
         "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde",
+        "currentExpectedSha256": "a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -39,13 +39,13 @@
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak",
         "baselineSha256": "afe358b315db698111b0935633888a71a9c962456ba475b8a33da908ea3f4a57",
-        "currentExpectedSha256": "1179a3a702610c2d9e5f616c816943b232734fa028f3ec7711859b67228ddd42",
+        "currentExpectedSha256": "07cde51ac1dd5dec24b16ace58cc616d8d9a40f7896527dc9c43eabbd1474e9a",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.test.ak",
         "baselineSha256": "5bec5dbf14b919f08697c9502dbb6b2e9f072332ad4fefde4c19a2565db6fa2b",
-        "currentExpectedSha256": "16af2446a729bbdb992d704677ad986068260261425e43281c246de7b41a7526",
+        "currentExpectedSha256": "adfdbff41bcfe1f5c9fcae89ab027fdd5bc8edd4e9d077c3a7a1a64c5cd7edd4",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -207,7 +207,7 @@
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-      "sha256": "7b1e4eaf8c381326c661dab0f44dc4b5621bed9b06315782247e00479f2a2400",
+      "sha256": "9910e9b071493417d57cc9ba561871b1f7b09fefed863cb4cfbd73622acfdc88",
       "status": "BOUND"
     }
   ],
