@@ -5592,9 +5592,10 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
   )
 }
 
-fn canonical_output_commitment_step_with_item(
+fn canonical_output_commitment_step_with_proof(
   step_to_verify: Int,
-  supplied_item_cbor: ByteArray,
+  forge_proof: fn(bounded_collection_v1.ItemProofV1) ->
+    bounded_collection_v1.ItemProofV1,
 ) -> Bool {
   let output = MidgardTxOutput {
     address: MidgardAddress {
@@ -5664,7 +5665,8 @@ fn canonical_output_commitment_step_with_item(
     output_frontier,
     16,
   )
-  let Pair(collection_proof, _) = singleton_field_item_proofs(2, output_cbor)
+  let Pair(honest_proof, _) = singleton_field_item_proofs(2, output_cbor)
+  let collection_proof = forge_proof(honest_proof)
   if step_to_verify == 0 {
     validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
       pre,
@@ -5672,9 +5674,8 @@ fn canonical_output_commitment_step_with_item(
         work_witness_cbor,
         claimed_successor: after_item,
       },
-      validation_machine_v1.TransactionFieldItemWitness {
+      validation_machine_v1.TransactionRedeemerItemBeginWitness {
         collection_proof,
-        item_cbor: supplied_item_cbor,
       },
     )
   } else {
@@ -5693,20 +5694,9 @@ fn canonical_output_commitment_step_with_item(
 }
 
 fn canonical_output_commitment_step(step_to_verify: Int) -> Bool {
-  let output = MidgardTxOutput {
-    address: MidgardAddress {
-      protected: False,
-      network_id: 0,
-      payment_credential: ScriptCredential(h_28_a),
-      stake_credential: None,
-    },
-    value: MidgardValue { lovelace: 0, assets: [] },
-    datum_cbor: None,
-    script_ref: None,
-  }
-  canonical_output_commitment_step_with_item(
+  canonical_output_commitment_step_with_proof(
     step_to_verify,
-    encode_midgard_tx_output(output),
+    fn(honest_proof) { honest_proof },
   )
 }
 
@@ -5714,8 +5704,37 @@ test script_sources_commits_an_authenticated_output_item() {
   canonical_output_commitment_step(0)
 }
 
-test script_sources_rejects_a_substituted_complete_output_item() {
-  !canonical_output_commitment_step_with_item(0, #"80")
+/// Supersedes script_sources_rejects_a_substituted_complete_output_item:
+/// stage 4 no longer reveals item bytes, so substitution now attacks the
+/// authenticated tuple itself. A forged item_commitment must be rejected
+/// by bounded_collection_v1.verify_item against the outputs_hash alone —
+/// the claimed successor is also honest-forged here, so this pins the
+/// C21-STAGE4 Option A soundness claim.
+test script_sources_rejects_a_forged_output_item_commitment() {
+  !canonical_output_commitment_step_with_proof(
+    0,
+    fn(honest_proof) {
+      bounded_collection_v1.ItemProofV1 {
+        ..honest_proof,
+        item_commitment: #"00000000000000000000000000000000000000000000000000000000000000ff",
+      }
+    },
+  )
+}
+
+/// The forged item_length changes only the membership leaf hash, so the
+/// sole failing conjunct is verify_item — the successor built from the
+/// honest commitment still matches. Isolates the verify_item binding.
+test script_sources_rejects_a_forged_output_item_length() {
+  !canonical_output_commitment_step_with_proof(
+    0,
+    fn(honest_proof) {
+      bounded_collection_v1.ItemProofV1 {
+        ..honest_proof,
+        item_length: honest_proof.item_length + 1,
+      }
+    },
+  )
 }
 
 test script_sources_finishes_authenticated_output_commitment() {

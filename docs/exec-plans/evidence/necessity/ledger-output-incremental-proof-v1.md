@@ -56,21 +56,35 @@ flat variant would duplicate the chunk machinery without removing any step.
 Every output at or below `maxSinglePublicationCompleteItemBytes` (14,396)
 keeps its complete-item carriage: the canonical-decode producer emits
 `TransactionFieldItemWitness` for it (guard pinned by
-`complete-item-carriage-policy-v1.test.ts`), and the scriptSources output
-fold always authenticates the complete output item. Both representations
-bind the same bounded-item commitment; equivalence and
+`complete-item-carriage-policy-v1.test.ts`). Both representations bind the
+same bounded-item commitment; equivalence and
 omission/duplication/reorder/substitution/trailing rejection are exercised
 by `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts` and
 the deployed-route rejection tests in
 `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
 
-Measured residual gap recorded for the ledger (not a fallback
-justification): the scriptSources stage-4 fold carries the complete output
-item with no bounded fallback, and its one-step evidence crosses the
-16,384-byte envelope at a measured 14,774-byte output
-(`largestProvableCompleteOutputBytes`, pinned by
-`complete-item-proof-fit-v1.test.ts`). Outputs in (14,774, 16,384] are legal
-canonical content whose stage-4 one-step argument cannot currently be
-constructed; closing that gap requires either a bounded fallback with its
-own §3.2 artifact on that route or a reference-carried item variant of the
-stage-4 semantic validator.
+Residual gap: CLOSED (2026-08-01, owner decision C21-STAGE4 Option A —
+see `docs/exec-plans/evidence/c21-stage4-analysis.md` and the GOAL_PROGRESS
+Decisions entry). Historical record with corrections: this paragraph
+previously recorded the gap as "(14,774, 16,384]", which understated it on
+two axes. First, 14,774 was a single-output best case — the collection
+proof's frontier/siblings grow ~73 bytes per Merkle level of the outputs
+collection, so the frontier fell as output count rose. Second, the deployed
+carriage was the binding bound, not the producer envelope: stage 4 routes
+through semantic resolver 0, whose prepare and resolution transactions
+carried the auxiliary inline only, bounding the practical gap near
+(8,769, 16,384]. The gap was a SOUNDNESS break (one-step resolution is
+challenger-only and a `ReadyForOneStep` timeout awards nobody, so an
+unbuildable argument finalized the challenged block). Neither closure this
+paragraph proposed was adopted: instead the stage-4 fold stopped revealing
+item bytes entirely — it now folds the authenticated
+`(field_index, item_index, item_length, item_commitment)` tuple through
+`bounded_collection_v1.verify_item` via the proof-only tag-29 witness,
+making stage-4 evidence O(1) in output size with no bounded fallback and no
+new carriage. Byte authentication remains where it already occurred:
+canonical decode (chunk and complete carriage) and this artifact's stage-5
+`LedgerOutputProof` traversal. Evidence:
+`script_sources_rejects_a_forged_output_item_commitment` /
+`_length` (forged-tuple rejection via `verify_item` alone) and the
+"builds output-size-independent stage-4 one-step evidence up to the
+16,384-byte ledger maximum" case in `complete-item-proof-fit-v1.test.ts`.

@@ -166,10 +166,16 @@ const findFieldItemStep = (
 } => {
   for (let index = 0; index < trace.witnesses.length; index += 1) {
     const witness = trace.witnesses[index]!;
+    // canonicalDecode carries the complete item bytes; the scriptSources
+    // stage-4 fold carries only the authenticated collection-proof tuple
+    // (C21-STAGE4 Option A), so the item size lives on the proof there.
     if (
       witness.phase === phase &&
-      witness.auxiliary?.kind === "transactionFieldItem" &&
-      witness.auxiliary.itemCbor.length === itemBytes
+      ((witness.auxiliary?.kind === "transactionFieldItem" &&
+        witness.auxiliary.itemCbor.length === itemBytes) ||
+        (phase === "scriptSources" &&
+          witness.auxiliary?.kind === "transactionRedeemerItemBegin" &&
+          witness.auxiliary.collectionProof.itemLength === itemBytes))
     ) {
       return { stateIndex: index, witness };
     }
@@ -253,90 +259,74 @@ describe("complete-item proof fit V1", () => {
         witness.auxiliary.itemCbor.length === threshold + 1,
     );
     expect(oversizedCanonicalDecodeComplete).toBe(false);
-    // The scriptSources stage-4 fold intentionally has no bounded fallback:
-    // it always authenticates the complete output item, so its maximum
-    // provable shape is measured separately below.
+    // The scriptSources stage-4 fold needs no bounded fallback at any size:
+    // it folds the authenticated collection-proof tuple without a byte
+    // reveal (C21-STAGE4 Option A), so even the above-threshold output has
+    // a proof-only stage-4 witness.
     const stageFourComplete = findFieldItemStep(
       chunkedTrace,
       threshold + 1,
       "scriptSources",
     );
     expect(stageFourComplete.witness.phase).toBe("scriptSources");
+    expect(stageFourComplete.witness.auxiliary?.kind).toBe(
+      "transactionRedeemerItemBegin",
+    );
   }, 120_000);
 
-  it("measures the exact one-step evidence frontier of the fallback-free scriptSources output fold", async () => {
-    // A maximum 16,384-byte ledger output is legal transaction content, but
-    // its complete-item one-step argument must stay strictly below the
-    // 16,384-byte L1 envelope. Measure the exact frontier.
+  it("builds output-size-independent stage-4 one-step evidence up to the 16,384-byte ledger maximum", async () => {
+    // C21-STAGE4-GAP closure (Option A). Before the fix, the stage-4 fold
+    // revealed the complete output bytes, its evidence crossed the
+    // 16,384-byte L1 envelope at a measured 14,774-byte single-output best
+    // case (frontier falling with output count), and the deployed
+    // direct-only carriage bounded it near 8,769 bytes — so a dishonest
+    // operator could finalize an invalid block by forging exactly that fold
+    // step for a legal large output. Now the fold consumes only the
+    // authenticated collection-proof tuple, so the one-step argument must
+    // build at every admissible output size with O(1) evidence.
     const maxOutput = MIDGARD_CONSENSUS_LIMITS_V1.maxLedgerOutputPreimageBytes;
-    const maxTrace = await buildTraceWithOutputs([
-      makeExactSizeOutputItem(maxOutput),
-    ]);
-    const maxStep = findFieldItemStep(maxTrace, maxOutput, "scriptSources");
-    expect(() =>
-      buildValidationOneStepArgumentV1({
-        trace: maxTrace,
-        stateIndex: maxStep.stateIndex,
-      }),
-    ).toThrow(/exceeds the strict L1 preimage envelope/u);
 
     const probeArgumentBytes = async (
       itemBytes: number,
     ): Promise<{
       readonly auxiliaryBytes: number;
       readonly evidenceBytes: number;
-    } | null> => {
+    }> => {
       const trace = await buildTraceWithOutputs([
         makeExactSizeOutputItem(itemBytes),
       ]);
       const step = findFieldItemStep(trace, itemBytes, "scriptSources");
-      try {
-        const argument = buildValidationOneStepArgumentV1({
-          trace,
-          stateIndex: step.stateIndex,
-        });
-        return {
-          auxiliaryBytes: argument.auxiliaryCbor.length,
-          evidenceBytes: argument.evidenceCbor.length,
-        };
-      } catch {
-        return null;
-      }
+      expect(step.witness.auxiliary?.kind).toBe("transactionRedeemerItemBegin");
+      const argument = buildValidationOneStepArgumentV1({
+        trace,
+        stateIndex: step.stateIndex,
+      });
+      return {
+        auxiliaryBytes: argument.auxiliaryCbor.length,
+        evidenceBytes: argument.evidenceCbor.length,
+      };
     };
 
-    // The auxiliary carries the item as Plutus-data bytes (64-byte chunk
-    // framing), so evidence overhead grows with the item. Locate the exact
-    // largest provable output by bisection between a measured fit and a
-    // measured failure.
-    let low = 14_000;
-    let lowMeasurement = await probeArgumentBytes(low);
-    expect(lowMeasurement).not.toBeNull();
-    let high = 14_900;
-    expect(await probeArgumentBytes(high)).toBeNull();
-    while (high - low > 1) {
-      const middle = Math.floor((low + high) / 2);
-      const measurement = await probeArgumentBytes(middle);
-      if (measurement === null) {
-        high = middle;
-      } else {
-        low = middle;
-        lowMeasurement = measurement;
-      }
-    }
-    const largestProvable = low;
-    expect(await probeArgumentBytes(largestProvable + 1)).toBeNull();
-    expect(lowMeasurement!.evidenceBytes).toBeLessThan(16 * 1024);
-    expect(largestProvable).toBeLessThan(maxOutput);
-    // Pin the measured frontier so silent producer changes re-open this row.
-    expect(largestProvable).toBe(14_774);
+    // The exact maximum admissible output — previously unprovable — must
+    // now build, and the old 14,774 frontier as well as a small output must
+    // produce byte-identical auxiliary sizes up to the CBOR integer-width
+    // difference of item_length (<= 8 bytes).
+    const atMaximum = await probeArgumentBytes(maxOutput);
+    const atOldFrontier = await probeArgumentBytes(14_774);
+    const small = await probeArgumentBytes(256);
+    expect(atMaximum.evidenceBytes).toBeLessThan(2_048);
+    expect(Math.abs(atMaximum.auxiliaryBytes - small.auxiliaryBytes)).toBeLessThanOrEqual(8);
+    expect(
+      Math.abs(atMaximum.auxiliaryBytes - atOldFrontier.auxiliaryBytes),
+    ).toBeLessThanOrEqual(8);
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
         JSON.stringify({
-          scriptSourcesStageFourCompleteOutputFrontierV1: {
+          scriptSourcesStageFourProofOnlyEvidenceV1: {
             maxLedgerOutputPreimageBytes: maxOutput,
-            largestProvableCompleteOutputBytes: largestProvable,
-            largestProvableAuxiliaryBytes: lowMeasurement!.auxiliaryBytes,
-            largestProvableEvidenceBytes: lowMeasurement!.evidenceBytes,
+            maximumOutputAuxiliaryBytes: atMaximum.auxiliaryBytes,
+            maximumOutputEvidenceBytes: atMaximum.evidenceBytes,
+            smallOutputAuxiliaryBytes: small.auxiliaryBytes,
             evidenceEnvelopeBytes: 16 * 1024 - 1,
           },
         }),

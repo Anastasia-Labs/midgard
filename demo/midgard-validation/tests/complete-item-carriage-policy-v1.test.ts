@@ -78,8 +78,12 @@ describe("C21 complete-item carriage production searches", () => {
     expect(
       countOccurrences(machineSource, "maxSinglePublicationCompleteItemBytes"),
     ).toBe(1);
-    // The scriptSources output fold carries the complete output item.
-    expect(machineSource).toContain("itemCbor: Buffer.from(outputCbor)");
+    // The scriptSources output fold carries only the authenticated
+    // collection-proof tuple (C21-STAGE4 Option A): stage-4 evidence is
+    // O(1) in output size, and the byte reveal lives solely in
+    // canonicalDecode plus the stage-5 output traversal.
+    expect(machineSource).toContain('kind: "transactionRedeemerItemBegin"');
+    expect(machineSource).not.toContain("itemCbor: Buffer.from(outputCbor)");
   });
 
   it("pins the exact bounded-witness emitter inventory so new chunked producers reopen this row", () => {
@@ -89,11 +93,12 @@ describe("C21 complete-item carriage production searches", () => {
     expect(
       countOccurrences(machineSource, 'kind: "transactionFieldChunk"'),
     ).toBe(10);
-    // 1 type declaration + canonicalDecode threshold route + scriptSources
-    // complete output fold.
+    // 1 type declaration + canonicalDecode threshold route. The scriptSources
+    // output fold emits the proof-only transactionRedeemerItemBegin witness
+    // since C21-STAGE4 Option A dropped its byte reveal.
     expect(
       countOccurrences(machineSource, 'kind: "transactionFieldItem"'),
-    ).toBe(3);
+    ).toBe(2);
     expect(encoderSource).toContain('case "transactionFieldItem":');
     expect(encoderSource).toContain('case "transactionFieldChunk":');
   });

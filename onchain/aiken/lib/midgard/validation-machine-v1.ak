@@ -8958,7 +8958,19 @@ fn script_sources_stage_four(
       ),
     }
   } else {
-    expect TransactionFieldItemWitness { collection_proof, item_cbor } = auxiliary
+    // The fold consumes only the authenticated
+    // (field_index, item_index, item_length, item_commitment) tuple:
+    // verify_item binds that exact tuple (plus version) into the
+    // outputs_hash established by verify_native_tx_proof_source_v1, and the
+    // three pins below leave exactly one admissible tuple. Revealing the
+    // item bytes here re-proved only that an authenticated commitment has a
+    // preimage — which canonicalDecode (chunk and complete carriage) and
+    // the stage-5 LedgerOutputProof traversal already establish for every
+    // output — while making stage-4 evidence grow with output size and
+    // unbuildable above the L1 envelope for legal 16,384-byte outputs
+    // (C21-STAGE4-GAP). The proof-only tag-29 witness keeps stage-4
+    // evidence O(1) in output size.
+    expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary
     let active_total_count = if control.output_total_count == 0 {
       collection_proof.item_count
     } else {
@@ -8973,12 +8985,6 @@ fn script_sources_stage_four(
       collection_proof.item_count == active_total_count,
       collection_proof.item_index == control.output_count,
       collection_proof.item_length <= max_serialized_output_preimage_bytes,
-      collection_proof.item_length == bytearray.length(item_cbor),
-      bounded_item_v1.from_bytes(
-        collection_proof.field_index,
-        collection_proof.item_index,
-        item_cbor,
-      ) == collection_proof.item_commitment,
       bounded_collection_v1.verify_item(output_commitment, collection_proof),
       script_sources_control_successor_is_exact(
         pre,

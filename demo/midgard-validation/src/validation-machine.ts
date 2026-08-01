@@ -3799,13 +3799,18 @@ export const buildDeterministicValidationMachineTrace = (
                   ),
                 );
               }
+              // Stage 4 folds only the authenticated collection-proof tuple;
+              // the item bytes are established by canonicalDecode and the
+              // stage-5 output traversal, so revealing them here would make
+              // the one-step evidence grow with output size and exceed the
+              // L1 envelope for legal 16,384-byte outputs (C21-STAGE4-GAP,
+              // Option A).
               pushWitness("scriptSources", currentOutputCommitmentWitness(), {
-                kind: "transactionFieldItem",
+                kind: "transactionRedeemerItemBegin",
                 collectionProof: buildMidgardBoundedCollectionItemProofV1(
                   outputsCollection,
                   item.itemIndex,
                 ),
-                itemCbor: Buffer.from(outputCbor),
               });
               if (outputTotalCount === 0) {
                 outputTotalCount = outputsCollection.items.length;
