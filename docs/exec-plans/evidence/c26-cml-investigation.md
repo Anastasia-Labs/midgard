@@ -5,17 +5,12 @@ Authority:
 - `GOAL_SPEC.md` §8.2 row C26;
 - `GOAL_PROGRESS.md` row C26 (`PARTIAL`), read-heavy investigation lease.
 
-Scope: investigation only. No production `src/**` change, no
+Scope: investigation record. No production `src/**` change, no
 `package.json`/lockfile change, no `GOAL_SPEC.md`/`GOAL_PROGRESS.md` change
-was made. Deliverables are this memo plus two skipped-by-default scaffolding
-suites:
-
-- `demo/midgard-validation/tests/c26-investigation-cml-depth-limits.test.ts`
-- `demo/midgard-validation/tests/c26-investigation-iterative-gate.test.ts`
-
-Both are gated behind `MIDGARD_C26_INVESTIGATION=1`. The existing suite
-`demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts`
-was not modified and still passes 2/2 (Node v24.13.1 and pinned v22.22.2).
+was made for the investigation itself. The temporary probing suites used to
+collect the measurements were deliberately non-evidence scaffolding and have
+been removed. The permanent evidence surfaces are the validation boundary,
+CML patch, and midgard-core well-formedness/retained-data suites.
 
 ## 1. Summary
 
@@ -90,7 +85,7 @@ Consequence for test design: after a trap the `WebAssembly.Instance` is
 unrecoverable. Verified — a subsequent `CML.PlutusData.from_cbor_hex("d87980")`
 (depth 1, needs no recursion budget) also throws `memory access out of
 bounds`. Any in-process probing of this limit corrupts every later assertion
-in the same worker, which is why the scaffolding forks per probe.
+in the same worker, which is why the historical probes forked per probe.
 
 ### A second, distinct limit hides behind the first
 
@@ -171,8 +166,8 @@ normalizer alone accepts inputs CML rejects — out-of-range constructor tags
 normalizer, so the canonicity gate passes them. The probe must be *replaced*
 by an equivalent iterative Plutus-Data well-formedness check, not removed.
 
-Prototype (`c26-investigation-iterative-gate.test.ts`, the proposed production
-logic verbatim) validates: constructor tags in `121..127 ∪ 1280..1400 ∪ {102}`
+The investigation prototype (the proposed production logic verbatim) validates:
+constructor tags in `121..127 ∪ 1280..1400 ∪ {102}`
 with correct array framing, bignum tags 2/3 wrapping definite byte strings,
 byte chunks ≤ 64 bytes, no major type 7, exactly one value, no trailing bytes.
 
@@ -318,7 +313,7 @@ Effort: **~4–6 hours** including tests.
 
 - `demo/midgard-core/src/plutus-data-cbor.ts` — add
   `assertMidgardPlutusDataWellFormedV1(bytes: Buffer): void`, the iterative
-  validator prototyped in `c26-investigation-iterative-gate.test.ts`. One
+  validator prototyped during the investigation. One
   correction to carry over: allow a zero-chunk indefinite byte string (`5fff`)
   so the gate mirrors CML exactly and the canonicity gate stays the only
   rejecter. Export it from the package index.
@@ -331,10 +326,10 @@ Effort: **~4–6 hours** including tests.
   `CML.PlutusData.from_cbor_bytes` at line 77; audit and convert for redeemer
   Data (C20-8 shares this ceiling, so this is likely a prerequisite for the
   redeemer-side maximum too).
-- Tests: promote the differential corpus from
-  `c26-investigation-iterative-gate.test.ts` into a real midgard-core suite
-  (it is the semantic-equivalence evidence), and add the depth-1,024 sha256
-  equality check as a regression guard.
+- Tests: retain the differential corpus in
+  `demo/midgard-core/tests/plutus-data-wellformed-v1.test.ts` as the
+  semantic-equivalence evidence, together with the depth-1,024 sha256
+  equality regression guard.
 - Then extend `plutus-data-unary-depth-boundary-v1.test.ts` to run retained
   reconstruction at depth 4,043 rather than 1,024.
 
@@ -382,27 +377,24 @@ unnecessary and is not recommended in either case.
 ## 6. Reproduction
 
 ```bash
-# scaffolding suites (skipped unless the env var is set)
-MIDGARD_C26_INVESTIGATION=1 pnpm --dir demo/midgard-validation test -- c26-investigation
-
-# untouched existing suite, still 2/2
+# permanent validation boundary and CML patch suites
 pnpm --dir demo/midgard-validation test -- plutus-data-unary-depth
+pnpm --dir demo/midgard-validation test -- cml-wasm-stack-patch-v1
 
-# pinned toolchain
-nix develop ./demo --command bash -c \
-  'cd demo/midgard-validation && MIDGARD_C26_INVESTIGATION=1 pnpm test -- c26-investigation'
+# permanent midgard-core gate, retained datum, and redeemer suites
+pnpm --dir demo/midgard-core test -- plutus-data-wellformed-v1 plutus-data-deep-datum-retained-v1 native-redeemer-deep-data-v1
 ```
 
-Verified on Node v24.13.1 and pinned Node v22.22.2 / pnpm 9.15.9:
-existing suite **2/2 passing**, scaffolding **9/9 passing** when enabled and
-**9/9 skipped** by default. `tsc --noEmit` clean for
-`demo/midgard-validation`. Note: `pnpm --dir demo/midgard-validation lint`
+The measurements were verified on Node v24.13.1 and pinned Node v22.22.2 /
+pnpm 9.15.9. The permanent suites above are the active evidence surfaces;
+there are no investigation suites in the default validation glob.
+`tsc --noEmit` was clean for `demo/midgard-validation`. Note:
+`pnpm --dir demo/midgard-validation lint`
 fails in this environment before reading any file (`Cannot find module
 '/home/home/.../eslint/bin/eslint.js'`); `eslint --version` fails identically,
 so the breakage is pre-existing and unrelated to these files.
 
 The one-off harnesses used for the numbers above (wasm patcher, differential
 smoke test, staged timing probes, emulator admission runner) were written to a
-session scratchpad rather than the repo, since the lease covers only this memo
-and the two `c26-investigation-*` suites. The wasm patcher is the only one
+session scratchpad rather than the repo. The wasm patcher is the only one
 Step 2 needs, and §4(c) specifies it completely.
