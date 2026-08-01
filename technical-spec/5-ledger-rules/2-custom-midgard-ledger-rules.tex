@@ -22,13 +22,31 @@ challengeable on L1 (see \cref{h:transaction-order-event}).
 
 \subsection{Rule: No auxiliary data}
 
-% TODO: hash is still allowed, right?
+Canonical V1 carries no auxiliary-data preimage or metadata.  Its
+\code{auxiliary\_data\_hash} MUST equal the empty-null root, defined as
+the \code{blake2b\_256} hash of the canonical CBOR encoding of \code{null}.
+Any other hash is invalid and MUST fail closed, because no authenticated
+auxiliary-data preimage is carried by the native transaction (see
+\cref{h:midgard-simplified-transaction-types}).
 
 \subsection{Rule: Certificates empty}
 
-% TODO: clarify
+Certificates are not fields in the canonical V1 native transaction wire
+format (see \cref{h:midgard-simplified-transaction-types}).  An empty Cardano
+certificate collection is therefore acceptable at the conversion boundary,
+but a transaction containing any certificate is not convertible to the native
+format without loss and MUST be rejected.
 
 \subsection{Rule: Only zero withdrawals}
+
+Withdrawals are not fields in the canonical V1 native transaction wire format.
+The native \code{required\_observers} field is the observer representation and
+MUST NOT be interpreted as a withdrawal map.  At the Cardano conversion
+boundary, every represented withdrawal MUST have amount zero and a script
+reward-account credential; its credential is converted to a required observer.
+Conversely, conversion from native V1 emits only zero-amount withdrawals for
+the required observers.  A non-zero withdrawal or a non-script reward account
+MUST be rejected as non-convertible.
 
 \subsection{Rule: Mint and burn authorization}
 
