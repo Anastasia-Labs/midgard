@@ -2638,6 +2638,143 @@ const measureCompleteSignedTransaction = (
   };
 };
 
+// Byte attribution for a complete signed transaction: splits the envelope
+// into body/witness-set contributors and names every attached script by hash
+// so an oversize transaction can be attributed to specific contributors
+// rather than guessed at.
+const midgardScriptHashNames = (
+  contracts: MidgardValidators,
+): ReadonlyMap<string, string> =>
+  new Map<string, string>([
+    [contracts.stateQueue.policyId, "stateQueueMint"],
+    [contracts.stateQueue.spendingScriptHash, "stateQueueSpend"],
+    [contracts.activeOperators.policyId, "activeOperatorsMint"],
+    [contracts.activeOperators.spendingScriptHash, "activeOperatorsSpend"],
+    [contracts.retiredOperators.policyId, "retiredOperatorsMint"],
+    [contracts.retiredOperators.spendingScriptHash, "retiredOperatorsSpend"],
+    [contracts.registeredOperators.policyId, "registeredOperatorsMint"],
+    [
+      contracts.registeredOperators.spendingScriptHash,
+      "registeredOperatorsSpend",
+    ],
+    [contracts.scheduler.policyId, "schedulerMint"],
+    [contracts.scheduler.spendingScriptHash, "schedulerSpend"],
+    [contracts.hubOracle.policyId, "hubOracleMint"],
+    [contracts.hubOracle.spendingScriptHash, "hubOracleSpend"],
+    [contracts.fraudProof.policyId, "fraudProofMint"],
+    [contracts.fraudProof.spendingScriptHash, "fraudProofSpend"],
+    [contracts.fraudProofCatalogue.policyId, "fraudProofCatalogueMint"],
+    [
+      contracts.fraudProofCatalogue.spendingScriptHash,
+      "fraudProofCatalogueSpend",
+    ],
+    [
+      contracts.fraudProofs.validationTraceDispute.spendingScriptHash,
+      "validationTraceDispute",
+    ],
+  ]);
+
+const attributeTransactionBytes = (
+  label: string,
+  transactionCbor: string,
+  scriptNames: ReadonlyMap<string, string>,
+): void => {
+  const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
+  const body = transaction.body();
+  const witnessSet = transaction.witness_set();
+  const total = transactionCbor.length / 2;
+  const lines: string[] = [
+    `[tx-attribution] ${label}`,
+    `  total signed bytes = ${total.toString()} (L1 limit ${PROTOCOL_PARAMETERS_DEFAULT.maxTxSize.toString()})`,
+    `  body bytes         = ${body.to_cbor_bytes().length.toString()}`,
+    `  witness set bytes  = ${witnessSet.to_cbor_bytes().length.toString()}`,
+  ];
+  // CML list wrappers expose no `to_cbor_bytes`, so list contributions are the
+  // sum of their element encodings (the enclosing array header is a few bytes).
+  const listBytes = <T extends { to_cbor_bytes: () => Uint8Array }>(list: {
+    len: () => number;
+    get: (index: number) => T;
+  }): number => {
+    let bytes = 0;
+    for (let index = 0; index < list.len(); index += 1) {
+      bytes += list.get(index).to_cbor_bytes().length;
+    }
+    return bytes;
+  };
+  const inputs = body.inputs();
+  lines.push(
+    `  body.inputs           n=${inputs.len().toString()} bytes=${listBytes(inputs).toString()}`,
+  );
+  const referenceInputs = body.reference_inputs();
+  lines.push(
+    `  body.reference_inputs n=${(referenceInputs?.len() ?? 0).toString()} bytes=${(referenceInputs === undefined ? 0 : listBytes(referenceInputs)).toString()}`,
+  );
+  const outputs = body.outputs();
+  lines.push(
+    `  body.outputs          n=${outputs.len().toString()} bytes=${listBytes(outputs).toString()}`,
+  );
+  for (let index = 0; index < outputs.len(); index += 1) {
+    const output = outputs.get(index);
+    const datum = output.datum();
+    const scriptRef = output.script_ref();
+    lines.push(
+      `    output[${index.toString()}] bytes=${output.to_cbor_bytes().length.toString()} datum=${(datum?.to_cbor_bytes().length ?? 0).toString()} scriptRef=${(scriptRef?.to_cbor_bytes().length ?? 0).toString()}`,
+    );
+  }
+  const mint = body.mint();
+  lines.push(
+    `  body.mint             policies=${(mint?.policy_count() ?? 0).toString()}`,
+  );
+  const vkeyWitnesses = witnessSet.vkeywitnesses();
+  lines.push(
+    `  witness.vkeys         n=${(vkeyWitnesses?.len() ?? 0).toString()} bytes=${(vkeyWitnesses === undefined ? 0 : listBytes(vkeyWitnesses)).toString()}`,
+  );
+  const redeemers = witnessSet.redeemers();
+  lines.push(
+    `  witness.redeemers     bytes=${(redeemers?.to_cbor_bytes().length ?? 0).toString()}`,
+  );
+  const flatRedeemers = redeemers?.to_flat_format();
+  for (let index = 0; index < (flatRedeemers?.len() ?? 0); index += 1) {
+    const redeemer = flatRedeemers!.get(index);
+    lines.push(
+      `    redeemer[${index.toString()}] tag=${redeemer.tag().toString()} index=${redeemer.index().toString()} dataBytes=${redeemer.data().to_cbor_bytes().length.toString()}`,
+    );
+  }
+  const datums = witnessSet.plutus_datums();
+  lines.push(
+    `  witness.datums        n=${(datums?.len() ?? 0).toString()} bytes=${(datums === undefined ? 0 : listBytes(datums)).toString()}`,
+  );
+  const nativeScripts = witnessSet.native_scripts();
+  lines.push(
+    `  witness.nativeScripts n=${(nativeScripts?.len() ?? 0).toString()} bytes=${(nativeScripts === undefined ? 0 : listBytes(nativeScripts)).toString()}`,
+  );
+  let attachedScriptBytes = 0;
+  const v3Scripts = witnessSet.plutus_v3_scripts();
+  for (let index = 0; index < (v3Scripts?.len() ?? 0); index += 1) {
+    const script = v3Scripts!.get(index);
+    const hash = script.hash().to_hex();
+    const bytes = script.to_cbor_bytes().length;
+    attachedScriptBytes += bytes;
+    lines.push(
+      `    plutusV3[${index.toString()}] ${scriptNames.get(hash) ?? "unknown"} hash=${hash} bytes=${bytes.toString()}`,
+    );
+  }
+  const v2Scripts = witnessSet.plutus_v2_scripts();
+  for (let index = 0; index < (v2Scripts?.len() ?? 0); index += 1) {
+    const script = v2Scripts!.get(index);
+    const bytes = script.to_cbor_bytes().length;
+    attachedScriptBytes += bytes;
+    lines.push(
+      `    plutusV2[${index.toString()}] hash=${script.hash().to_hex()} bytes=${bytes.toString()}`,
+    );
+  }
+  lines.push(
+    `  attached script bytes total = ${attachedScriptBytes.toString()}`,
+    `  non-script bytes            = ${(total - attachedScriptBytes).toString()}`,
+  );
+  console.info(lines.join("\n"));
+};
+
 const captureEmulatorSubmission = async <T>(
   emulator: Emulator,
   operation: () => Promise<T>,
@@ -3598,6 +3735,96 @@ const publishPlainReferenceScriptUtxo = async ({
   return { utxo: published[0]!, publicationMeasurement };
 };
 
+// The validators `remove-fraudulent-block` needs, in the same roster order as
+// `REFERENCE_SCRIPT_NAMES` in `src/remove-fraudulent-block.ts`. Every one of
+// these is also a production reference-script publication target (see
+// `midgard-node/src/transactions/reference-scripts.ts`), so sourcing them from
+// reference inputs is the deployed shape, not a test-only shortcut.
+type RemovalReferenceScriptName =
+  | "stateQueueSpend"
+  | "stateQueueMint"
+  | "activeOperatorsSpend"
+  | "activeOperatorsMint"
+  | "retiredOperatorsSpend"
+  | "retiredOperatorsMint"
+  | "schedulerSpend";
+
+type RemovalReferenceScriptPublications = Readonly<
+  Record<RemovalReferenceScriptName, UTxO>
+>;
+
+type RemovalReferenceScriptMeasurements = Readonly<
+  Record<RemovalReferenceScriptName, CompleteSignedTransactionMeasurement>
+>;
+
+const publishRemovalReferenceScripts = async ({
+  lucid,
+  contracts,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+}): Promise<{
+  readonly published: RemovalReferenceScriptPublications;
+  readonly measurements: RemovalReferenceScriptMeasurements;
+}> => {
+  // Sequential: each publication consumes wallet UTxOs the next one selects
+  // from.
+  const publish = (name: RemovalReferenceScriptName, script: Script) =>
+    publishPlainReferenceScriptUtxo({
+      lucid,
+      script,
+      label: `state-queue removal ${name}`,
+    });
+  const stateQueueSpend = await publish(
+    "stateQueueSpend",
+    contracts.stateQueue.spendingScript,
+  );
+  const stateQueueMint = await publish(
+    "stateQueueMint",
+    contracts.stateQueue.mintingScript,
+  );
+  const activeOperatorsSpend = await publish(
+    "activeOperatorsSpend",
+    contracts.activeOperators.spendingScript,
+  );
+  const activeOperatorsMint = await publish(
+    "activeOperatorsMint",
+    contracts.activeOperators.mintingScript,
+  );
+  const retiredOperatorsSpend = await publish(
+    "retiredOperatorsSpend",
+    contracts.retiredOperators.spendingScript,
+  );
+  const retiredOperatorsMint = await publish(
+    "retiredOperatorsMint",
+    contracts.retiredOperators.mintingScript,
+  );
+  const schedulerSpend = await publish(
+    "schedulerSpend",
+    contracts.scheduler.spendingScript,
+  );
+  return {
+    published: {
+      stateQueueSpend: stateQueueSpend.utxo,
+      stateQueueMint: stateQueueMint.utxo,
+      activeOperatorsSpend: activeOperatorsSpend.utxo,
+      activeOperatorsMint: activeOperatorsMint.utxo,
+      retiredOperatorsSpend: retiredOperatorsSpend.utxo,
+      retiredOperatorsMint: retiredOperatorsMint.utxo,
+      schedulerSpend: schedulerSpend.utxo,
+    },
+    measurements: {
+      stateQueueSpend: stateQueueSpend.publicationMeasurement,
+      stateQueueMint: stateQueueMint.publicationMeasurement,
+      activeOperatorsSpend: activeOperatorsSpend.publicationMeasurement,
+      activeOperatorsMint: activeOperatorsMint.publicationMeasurement,
+      retiredOperatorsSpend: retiredOperatorsSpend.publicationMeasurement,
+      retiredOperatorsMint: retiredOperatorsMint.publicationMeasurement,
+      schedulerSpend: schedulerSpend.publicationMeasurement,
+    },
+  };
+};
+
 const buildRemovalDeploymentInfo = (
   contracts: MidgardValidators,
   catalogue: FraudProofCatalogueDeploymentInfo,
@@ -3608,15 +3835,32 @@ const buildRemovalDeploymentInfo = (
     readonly scriptHash: string;
     readonly utxo: UTxO;
   },
+  removalReferenceScripts?: RemovalReferenceScriptPublications,
 ) => {
-  const deploymentEntry = (scriptHash: string, script: Script) => ({
-    scriptHash,
-    refScriptUTxO: null,
-    contract: {
-      type: script.type,
-      cborHex: script.script,
-    },
-  });
+  const deploymentEntry = (
+    scriptHash: string,
+    script: Script,
+    referenceName?: RemovalReferenceScriptName,
+  ) => {
+    const published =
+      referenceName === undefined
+        ? undefined
+        : removalReferenceScripts?.[referenceName];
+    return {
+      scriptHash,
+      refScriptUTxO:
+        published === undefined
+          ? null
+          : {
+              txHash: published.txHash,
+              outputIndex: published.outputIndex,
+            },
+      contract: {
+        type: script.type,
+        cborHex: script.script,
+      },
+    };
+  };
   return deploymentManifest(
     {
       ...(validationItemSemanticReference === undefined
@@ -3677,18 +3921,22 @@ const buildRemovalDeploymentInfo = (
       stateQueueMint: deploymentEntry(
         contracts.stateQueue.policyId,
         contracts.stateQueue.mintingScript,
+        "stateQueueMint",
       ),
       stateQueueSpend: deploymentEntry(
         contracts.stateQueue.spendingScriptHash,
         contracts.stateQueue.spendingScript,
+        "stateQueueSpend",
       ),
       retiredOperatorsMint: deploymentEntry(
         contracts.retiredOperators.policyId,
         contracts.retiredOperators.mintingScript,
+        "retiredOperatorsMint",
       ),
       retiredOperatorsSpend: deploymentEntry(
         contracts.retiredOperators.spendingScriptHash,
         contracts.retiredOperators.spendingScript,
+        "retiredOperatorsSpend",
       ),
       registeredOperatorsMint: {
         scriptHash: contracts.registeredOperators.policyId,
@@ -3700,15 +3948,18 @@ const buildRemovalDeploymentInfo = (
       activeOperatorsMint: deploymentEntry(
         contracts.activeOperators.policyId,
         contracts.activeOperators.mintingScript,
+        "activeOperatorsMint",
       ),
       activeOperatorsSpend: deploymentEntry(
         contracts.activeOperators.spendingScriptHash,
         contracts.activeOperators.spendingScript,
+        "activeOperatorsSpend",
       ),
       schedulerMint: { scriptHash: contracts.scheduler.policyId },
       schedulerSpend: deploymentEntry(
         contracts.scheduler.spendingScriptHash,
         contracts.scheduler.spendingScript,
+        "schedulerSpend",
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
     },
@@ -6777,10 +7028,34 @@ const runForcedValidationDisputeScenario = async (
       }
     },
   );
+  // Block removal needs the state-queue, operator-directory and scheduler
+  // validators. Publishing them as reference-script UTxOs is what the deployed
+  // node does; `publishPlainReferenceScriptUtxo` refuses any publication that
+  // does not itself fit the literal 16,384-byte L1 envelope, so this also
+  // proves each of these validators is publishable on L1.
+  const removalReferenceScriptPublications = await runEmulatorLifecycleStage(
+    "reference-script.publish-removal",
+    async () => {
+      emulator.protocolParameters = {
+        ...setupProtocolParameters,
+        maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      };
+      try {
+        return await publishRemovalReferenceScripts({
+          lucid: referenceScriptPublisherLucid,
+          contracts,
+        });
+      } finally {
+        emulator.protocolParameters = setupProtocolParameters;
+      }
+    },
+  );
   const deploymentInfo = buildRemovalDeploymentInfo(
     contracts,
     catalogue,
     validationDisputePublication,
+    undefined,
+    removalReferenceScriptPublications.published,
   );
   const initResult = await runEmulatorLifecycleStage("init", () =>
     submitInit({
@@ -6960,17 +7235,14 @@ const runForcedValidationDisputeScenario = async (
     }),
   );
   const removeNow = BigInt(emulator.now());
-  // Every dispute transaction above is built under the literal 16,384-byte L1
-  // envelope. Block removal is a different family whose envelope fit is not
-  // what this test measures, and it inlines its validators, so it runs under
-  // the same relaxed emulator cap the other removal tests in this file use.
-  emulator.protocolParameters = {
-    ...emulator.protocolParameters,
-    maxTxSize: EMULATOR_PROTOCOL_PARAMETERS.maxTxSize,
-  };
-  const removal = await runEmulatorLifecycleStage(
-    "remove-fraudulent-block",
-    () =>
+  // Block removal runs under the same literal 16,384-byte L1 envelope as every
+  // dispute transaction above: `targetChallengerLucid` was constructed with
+  // `maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize`, and every validator the
+  // correction needs is sourced from a published reference-script UTxO instead
+  // of being attached inline. Attaching them instead costs 35,634 bytes of
+  // witness set and puts the correction 2.3x over the limit.
+  const removalCapture = await captureEmulatorSubmission(emulator, () =>
+    runEmulatorLifecycleStage("remove-fraudulent-block", () =>
       submitRemoveFraudulentBlock({
         lucid: targetChallengerLucid,
         blueprint: realBlueprint,
@@ -6980,11 +7252,23 @@ const runForcedValidationDisputeScenario = async (
         fraudCategory: "validationTraceDispute",
         fraudulentHeaderHash: setup.headerHash,
         awaitConfirmation: true,
-        requireReferenceScripts: false,
+        requireReferenceScripts: true,
         validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
         validTo: removeNow + 300_000n,
       }),
+    ),
   );
+  const removal = removalCapture.result;
+  if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+    const removalScriptNames = midgardScriptHashNames(contracts);
+    removalCapture.transactionCbors.forEach((cbor, index) => {
+      attributeTransactionBytes(
+        `remove-fraudulent-block tx[${index.toString()}]`,
+        cbor,
+        removalScriptNames,
+      );
+    });
+  }
   return {
     fixture,
     contracts,
@@ -6993,6 +7277,9 @@ const runForcedValidationDisputeScenario = async (
     highIndex,
     awardResult,
     removal,
+    removalMeasurements: removalCapture.measurements,
+    removalReferenceScriptMeasurements:
+      removalReferenceScriptPublications.measurements,
     challengerLucid: targetChallengerLucid,
     setup,
   };
@@ -7064,6 +7351,32 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
       ),
     ).resolves.toHaveLength(1);
     expect(result.removal?.transactions.length).toBeGreaterThan(0);
+
+    // Winning the dispute is worthless if the correction cannot be executed on
+    // L1. Every removal transaction must fit the literal 16,384-byte envelope
+    // with zero attached validator bodies -- each script is reference-sourced.
+    const removalMeasurements = result.removalMeasurements ?? [];
+    expect(removalMeasurements.length).toBeGreaterThan(0);
+    for (const measurement of removalMeasurements) {
+      expect(measurement.completeSignedBytes).toBeLessThanOrEqual(
+        PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+      );
+      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
+      expect(measurement.plutusV1ScriptCount).toBe(0);
+      expect(measurement.plutusV2ScriptCount).toBe(0);
+      expect(measurement.plutusV3ScriptCount).toBe(0);
+      expect(measurement.nativeScriptCount).toBe(0);
+      // The scripts have to come from somewhere: reference inputs carry them.
+      expect(measurement.referenceInputCount).toBeGreaterThanOrEqual(7);
+    }
+    // And every validator the correction needs is itself publishable on L1.
+    const referenceScriptMeasurements = Object.values(
+      result.removalReferenceScriptMeasurements ?? {},
+    );
+    expect(referenceScriptMeasurements).toHaveLength(7);
+    for (const measurement of referenceScriptMeasurements) {
+      expect(measurement.l1ByteMargin).toBeGreaterThan(0);
+    }
   }, 600_000);
 
   it("rejects the cleared-delta rejection successor the deleted VM-DEFECT-2 clause required", async () => {
