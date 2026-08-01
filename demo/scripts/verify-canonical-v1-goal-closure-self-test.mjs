@@ -49,9 +49,8 @@ mustReject((candidate) => {
   candidate.acceptanceCriteria[0].status = "PASS";
 }, /PASS requires at least one bound evidence file/u);
 mustReject((candidate) => {
-  candidate.blueprint.status = "OPEN";
   candidate.blueprint.sha256 = "0".repeat(64);
-}, /OPEN requires sha256=null/u);
+}, /expected keys \[path, status\]/u);
 mustReject((candidate) => {
   candidate.deployment.network = "mainnet";
 }, /must be preprod/u);

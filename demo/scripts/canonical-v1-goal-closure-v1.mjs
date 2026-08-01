@@ -134,32 +134,18 @@ const assertEnum = (value, path, allowed) => {
   return value;
 };
 
+// GOAL_SPEC §13.4 (owner amendment 2026-08-01): repository evidence binds a
+// path, not a byte hash — Git already content-addresses tracked files.
 const decodeFileBinding = (value, path) => {
-  const object = assertExactKeys(value, path, ["path", "sha256", "status"]);
+  const object = assertExactKeys(value, path, ["path", "status"]);
   assertString(object.path, `${path}.path`);
   assertEnum(object.status, `${path}.status`, BINDING_STATUSES);
-  assertSha256(object.sha256, `${path}.sha256`, { nullable: true });
-  if (
-    (object.status === "BOUND" && object.sha256 === null) ||
-    (object.status === "OPEN" && object.sha256 !== null)
-  ) {
-    fail(path, "BOUND requires sha256 and OPEN requires sha256=null");
-  }
   return object;
 };
 
 const decodeProtectedPath = (value, path) => {
-  const object = assertExactKeys(value, path, [
-    "baselineSha256",
-    "currentExpectedSha256",
-    "disposition",
-    "path",
-  ]);
+  const object = assertExactKeys(value, path, ["disposition", "path"]);
   assertString(object.path, `${path}.path`);
-  assertSha256(object.baselineSha256, `${path}.baselineSha256`, {
-    nullable: true,
-  });
-  assertSha256(object.currentExpectedSha256, `${path}.currentExpectedSha256`);
   assertEnum(
     object.disposition,
     `${path}.disposition`,
@@ -432,8 +418,7 @@ export const canonicalClosureDigest = (manifest) => {
     .digest("hex");
 };
 
-export const isBoundFile = (binding) =>
-  binding.status === "BOUND" && SHA256_PATTERN.test(binding.sha256 ?? "");
+export const isBoundFile = (binding) => binding.status === "BOUND";
 
 export const isReleaseReady = (manifest) =>
   manifest.revision.worktree === "BASELINE_RELATIVE_CLEAN" &&

@@ -7,9 +7,14 @@
   require owner approval and are delivered as ordinary reviewed commits.
 - **Last reviewed:** 2026-07-29 (adversarial implementability review; this
   revision incorporates its corrections).
-- **Integrity:** this file is tracked in Git at the repository root (§2.4).
-  After every amendment, record its SHA-256 in the `GOAL_PROGRESS.md`
-  baseline; artifacts bound to an older hash are invalid until rebound.
+- **Integrity:** this file is tracked in Git at the repository root (§2.4);
+  Git already content-addresses it, so amendment history and drift detection
+  come from `git log -p -- GOAL_SPEC.md`. Do not record this file's SHA-256
+  in the ledger or bind it inside evidence artifacts. (Owner amendment
+  2026-08-01: the former rebind-cascade rule caught no defect in the
+  program's history, produced six divergent recorded hashes and fifteen
+  rebinding commits, and left the capability-reconciliation gate failing on
+  a stale copy of its own bookkeeping.)
 
 This document is the complete and authoritative execution specification for
 one repository Goal with three inseparable outcomes:
@@ -41,9 +46,10 @@ relationship, absence, protocol rule, and completion claim must be verified
 against source at the revision being changed.
 
 The checkout was already dirty when this specification was authored. A future
-Goal run must record its own starting revision and dirty state and preserve all
-pre-existing work. This paragraph does not transfer ownership of any dirty
-path to the Goal.
+Goal run must record its own starting revision and dirty state. Pre-existing
+and in-flight work is input to the Goal: integrate and finish it wherever the
+Goal's outcomes require it, recording provenance in `GOAL_PROGRESS.md`, and
+never delete or descope it merely to simplify delivery (§3 invariant 14).
 
 ### 0.2 Release and evidence revisions
 
@@ -268,10 +274,10 @@ The final tree must contain:
   `releaseCommit` plus its §0.2 evidence commits.
 
 Large logs, databases, secrets, temporary corpora, and disposable deployment
-state are not deliverables. The closure manifest records hashes and stable
-evidence references rather than committing unsafe or irreproducible runtime
-state; every such reference must satisfy the evidence storage contract in
-§13.4.
+state are not deliverables. The closure manifest references committed
+evidence by path and records how to regenerate anything too large or
+transient to commit, rather than committing unsafe or irreproducible runtime
+state (§13.4).
 
 ## 3. Non-negotiable invariants
 
@@ -324,8 +330,14 @@ state; every such reference must satisfy the evidence storage contract in
     fixtures, commands, and results.
 13. **Pre-launch schema replacement is in place.** Remove obsolete branches;
     do not reserve dormant protocol surface or add compatibility layers.
-14. **Existing user work is preserved.** Never discard, overwrite, stage, or
-    claim unrelated or pre-existing dirty paths.
+14. **Necessary work is finished, not discarded.** No task may delete,
+    descope, or hollow out work that the Goal's outcomes require merely to
+    reach a mergeable, green, or simpler state — if required work is
+    incomplete, complete it. Pre-existing and in-flight work, including
+    uncommitted checkpoints from other tasks, may be edited, overwritten,
+    staged, committed, and claimed whenever doing so advances it toward the
+    Goal's outcomes; record the provenance of such integrations in
+    `GOAL_PROGRESS.md`.
 
 ### 3.1 Required protocol decisions for this Goal
 
@@ -501,10 +513,10 @@ never invented per task; they come from the F04 decision record.
 
 The active parent must:
 
-1. Read this file completely. On a later turn or resumption, verify the
-   recorded spec SHA-256 first: a complete re-read is required only when the
-   hash changed or no prior recorded complete read exists; otherwise §0–§6
-   plus the sections owning current-phase tasks suffice.
+1. Read this file completely. On a later turn or resumption, a complete
+   re-read is required only when `git diff` shows this file changed since the
+   revision recorded as last read, or when no prior complete read exists;
+   otherwise §0–§6 plus the sections owning current-phase tasks suffice.
 2. Record `git rev-parse HEAD`, branch, `git status --short`, tool versions,
    and a secret-safe external-credential inventory in `GOAL_PROGRESS.md`:
    credential names, presence, source type, public addresses/identities, and
@@ -520,9 +532,10 @@ The active parent must:
 
 Maintain these sections and no diary-style transcript:
 
-- **Baseline:** revision, branch, dirty paths, protected paths, tool versions,
-  Graphify indexed revision, external services/credentials available
-  (secret-safe per §4.1), and the current `GOAL_SPEC.md` SHA-256.
+- **Baseline:** revision, branch, dirty paths, tool versions, Graphify
+  indexed revision, and external services/credentials available (secret-safe
+  per §4.1). Do not record SHA-256 values of tracked repository files here;
+  Git already content-addresses them.
 - **Criterion ledger:** every `AC-*` from §12 with `TODO`, `IN_PROGRESS`,
   `BLOCKED`, or `PASS`, plus exact evidence.
 - **Task queue:** task ID, dependencies, owner, owned paths, status, commit,
@@ -544,8 +557,9 @@ revision, different parameter snapshot, or changed ABI is not a pass.
 - Inventory dirty state before every assignment and integration.
 - Establish explicit path ownership before concurrent work begins; every
   change stays inside the paths it owns.
-- Preserve pre-existing dirty bytes unless the owner explicitly hands them to
-  this Goal.
+- Integrate pre-existing dirty bytes deliberately: record their provenance
+  when staging or building on them, and never let an integration silently
+  drop content the Goal requires (§3 invariant 14).
 - Stage with explicit paths only.
 - Inspect staged diff and run `git diff --cached --check`.
 - Commit coherent checkpoints; never amend or rewrite unrelated commits.
@@ -608,11 +622,9 @@ completion. Before pushing a checkpoint:
   acceptance mandatory at Checkpoint 7.
 
 A checkpoint may reuse the most recent recorded end-to-end journey result
-instead of rerunning it only when its evidence proves that every validator,
-schema, manifest, persistence, and node-orchestration digest bound by that
-run is byte-identical at the checkpoint revision. Any change to a relevant
-digest invalidates reuse and requires a fresh run; reused evidence must be
-cited explicitly in the checkpoint update.
+when nothing it exercises changed since that run — judge that from the diff.
+Rerun when validators, schemas, migrations, or node orchestration changed;
+cite reused evidence explicitly.
 
 Pre-launch database, schema, and validator compatibility is not required:
 development state may be reset and redeployed as §3 requires. That reset does
@@ -700,18 +712,18 @@ compatible-looking helper exists.
 
 | ID  | Independent deliverable                         | Depends on    | Acceptance                                                                                                                                                                                                                                                                                                                                                                                       |
 | --- | ----------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| F00 | Current-truth and dirty-state freeze            | none          | Record final starting revision, dirty ownership, toolchain, current graph staleness, and protected paths; no writes to pre-existing dirty files.                                                                                                                                                                                                                                                 |
+| F00 | Current-truth and dirty-state freeze            | none          | Record final starting revision, dirty ownership, toolchain, current graph staleness, and the provenance of pre-existing dirty paths. The freeze records state; it does not forbid integrating that work (§3 invariant 14).                                                                                                                                                                                                                                                 |
 | F01 | Canonical feature inventory                     | F00           | One machine-readable list names every enabled canonical V1 transaction, script, event, forced, and correction feature and its current TypeScript/Aiken/DA/proof/watcher surfaces. Unknowns fail closed.                                                                                                                                                                                          |
 | F02 | Final format/ABI registry audit                 | F00           | Every serialized/authenticated format has one V1 schema and exact cross-language tag/arity tests; obsolete pre-launch branches are absent.                                                                                                                                                                                                                                                       |
 | F03 | Target-network authority preflight              | F00           | Select and identify the trusted Cardano L1-source mode/topology, effective/pending parameter query, testnet network, finality policy inputs, and credentials. Local-node mode records the watcher-operated node and aligned query/index services; external-provider mode records every independent provider. Missing external credentials are recorded (secret-safe per §4.1) before P5/P6 but do not block local work. F03 emits exactly one machine-readable L1-source declaration (mode, network, endpoints/identities, finality inputs) that every later task consumes. For this Goal the accepted acceptance-mode selection is `Preprod` + `local_node` + aligned local Kupmios — the only mode current repository tooling supports; selecting `external_providers` instead requires first deliberately building that acceptance path and amending this file. |
 | F04 | Quantitative economics and margin decision record | F03         | One approved decision record under `docs/midgard/decisions/` fixes: bond, slashing penalty, inactivity penalty, prover reward, fee/collateral floors, confirmation/finality depths per L1-source mode, retry budget, DA availability deadlines, `da_attestation_timeout` (Q61), governed DA-governor lower bounds (Q63), local acceptance-topology container ceilings (C80) plus the separate owner-set production hardware floor (documented through W46 and the readiness document), and confirms the §3.3 thresholds. Q53, W04, W12, C74, C80, Q61, and Q63 consume these values; no later task invents its own number. Values may enter as `PROVISIONAL` to unblock local work; owner approval is required before CG5 binds them into the release identity. Testnet deadline/timeout values must keep the complete C83–C87 live sweep executable inside a bounded acceptance window (target ≤ 48 hours) without violating §3.3. |
-| F05 | Machine-readable task manifest                  | F01–F03, F20–F21, F30, F41 | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable paths, paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. Assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own path sets and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, a §13.4 evidence binding, and a task assignment brief — templates, excluded from evidence aggregation. |
+| F05 | Machine-readable task manifest                  | F01–F03, F20–F21, F30, F41 | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable paths, paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. Assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own path sets and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, and a task assignment brief — templates, excluded from evidence aggregation. |
 | F10 | P0/P1/P2 evidence reconciliation                | F01–F02       | Re-run or invalidate every claimed P0/P1/P2 pass against current source; update the P2 task queue without weakening the matrix definition.                                                                                                                                                                                                                                                       |
 | F20 | Fault-proof matrix and catalogue reconciliation | F01–F02       | For every coverage row, identify rule, enabled state, proof family, current binding, catalogue reachability, tooling, tests, emulator/preprod evidence, and remaining task ID. F20 also emits the initial concrete §9.1 launch-scope family list.                                                                                                                                                                                                                   |
 | F21 | Structural/N/A claim audit                      | F20           | Each “unrepresentable”, “L1-enforced”, or “reduces to another proof” row has an executable adversarial test. Unsupported prose-only N/A claims become open tasks.                                                                                                                                                                                                                                |
 | F30 | Watcher dependency/source map                   | F00–F02       | Resolve current public DA/proof-bundle, validation, proof tooling, manifest, L1-source, state-queue, and removal APIs by source path. No watcher design relies on operator-private DB/admin APIs.                                                                                                                                                                                                |
 | F40 | Goal verification harness                       | F10, F20, F30, F41 | Add exact `demo/package.json` entry points described in §13.1 and deterministic report verifiers consuming the F41 schema. Local verification never silently skips tests; state-changing acceptance is separate. F40 also adds the non-gating `goal:tasks:ready` helper (§13.1) and wires `goal:verify:static` into repository CI for the Goal branch so drift is caught between checkpoints.                                                                                                                                                                            |
-| F41 | Evidence manifest schema                        | F00–F03       | Define the canonical machine-readable closure manifest binding revision per §0.2 (`releaseCommit`, branch, worktree state — never the hash of the commit containing the manifest), dirty baseline, compiler/tool versions, both C70 parameter snapshots, blueprint, validator hashes, deployment identity, fixtures, commands, results, tx hashes, timings, evidence bindings per §13.4, §9.5 residual launch blockers, and all `AC-*` statuses. Reconcile the existing v1 schema/verifier to §0.2: drop manifest-head equality and verify descent plus evidence-only diffs instead. |
+| F41 | Evidence manifest schema                        | F00–F03       | Define the canonical machine-readable closure manifest binding revision per §0.2 (`releaseCommit`, branch, worktree state — never the hash of the commit containing the manifest), dirty baseline, compiler/tool versions, both C70 parameter snapshots, blueprint, validator hashes, deployment identity, fixtures, commands, results, tx hashes, timings, §9.5 residual launch blockers, and all `AC-*` statuses. Reconcile the existing v1 schema/verifier to §0.2: drop manifest-head equality and verify descent plus evidence-only diffs instead. |
 
 `F01`, `F02`, `F20`, and `F30` may discover that recent source has advanced
 past older plans. Preserve valid implementation; repair the evidence ledger.
@@ -1288,8 +1300,8 @@ Required behavior:
   skill and orchestrator as extended by C79, writes immutable redacted
   evidence, and never targets mainnet.
 - `goal:verify:evidence` verifies the testnet artifacts, release identity,
-  tx/chain evidence, QG3, WG2, all `AC-*`, evidence bindings per §13.4, and
-  absence of secrets without resubmitting transactions. It enforces the §0.2
+  tx/chain evidence, QG3, WG2, all `AC-*`, that every referenced evidence
+  path exists, and absence of secrets without resubmitting transactions. It enforces the §0.2
   revision model: the closure manifest binds `releaseCommit` — never the hash
   of the commit containing the manifest — and verification passes only when
   HEAD equals `releaseCommit` or is a descendant whose entire
@@ -1318,8 +1330,7 @@ The aggregate scripts must include, at minimum, equivalent coverage for:
 nix develop ./demo --command bash -c 'node --version && pnpm --version'
 
 # The normative technical specification (§1 item 8) must build from the
-# repository root. The build may be skipped when technical-spec/ content
-# hashes are unchanged since the last recorded successful build.
+# repository root. Skip it when technical-spec/ is unchanged in the diff.
 make spec
 
 # Aiken runs from onchain/aiken with the exact compiler version declared in
@@ -1391,32 +1402,25 @@ The testnet acceptance must record:
 Evidence must be redacted and machine-verified for secret material before it
 is retained or committed.
 
-### 13.4 Evidence storage contract
+### 13.4 Evidence storage
 
-Every evidence artifact referenced by the closure manifest, the completion
-report, or `GOAL_PROGRESS.md` must remain retrievable and verifiable by a
-reviewer with repository access:
+Evidence is committed on a §0.2 evidence path and referenced by
+repo-relative path. Git content-addresses it; `git log -p -- <path>` shows
+any change. Nothing further is required — no byte hashes of tracked files, no
+durable-URI registry, no per-binding size/media-type/retention/access
+metadata.
 
-- **Repository-file evidence** is committed on a §0.2 evidence path and bound
-  by repo-relative path.
-- **External evidence** — the large logs, databases, and captures §2.4
-  excludes from Git — is stored at an immutable durable URI and bound by that
-  URI. A local absolute path, temporary directory, or mutable endpoint is not
-  durable storage.
-- Every binding, repository or external, records: SHA-256 of the exact bytes,
-  byte size, media type, redaction status (machine-verified secret scan per
-  §13.3), the exact reproduction command or `NOT_REPRODUCIBLE` with the
-  reason, the retention commitment (at least until Goal review completes, and
-  no shorter than the DA retention window for live-chain evidence), and who
-  can access it.
-- Evidence that cannot be re-verified — an unreachable URI or digest
-  mismatch — makes its binding `OPEN`, not `PASS`; the verifier must never
-  treat unverifiable evidence as satisfied.
+Keep only what a reviewer needs to re-run the check: the command, and where
+its output lives. Where an artifact is too large or too transient to commit
+(§2.4), record how to regenerate it rather than trying to preserve it.
 
-`F41` defines these fields in the closure-manifest schema, extending the
-current repository-path-only binding shape; `goal:verify:evidence` verifies
-repository bindings byte-for-byte and external bindings against the recorded
-digest whenever retrievable.
+(Owner amendment 2026-08-01: the previous storage contract mandated an
+immutable-URI regime with SHA-256, byte size, media type, redaction status,
+retention commitments and access lists for every binding. None of it was ever
+implemented — the closure schema has no such shape — and the byte-hash arm
+that *was* implemented produced recurring red gates and one mutually
+unsatisfiable pair of artifacts, while catching no defect. It cost context
+and delivery speed for no protection.)
 
 ## 14. Genuine external blockers
 

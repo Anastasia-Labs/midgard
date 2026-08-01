@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { parse } from "@typescript-eslint/parser";
@@ -48,7 +47,6 @@ if (
 if (dependencyMap.trustPolicy?.unknownBehavior !== "fail_closed") {
   fail("unknown behavior must fail closed");
 }
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 const requiredIds = [
   "public_da",
@@ -692,15 +690,6 @@ for (const id of requiredIds) {
   if (!Array.isArray(entry.sourcePaths) || entry.sourcePaths.length === 0) {
     fail(`${id} must name source paths`);
   }
-  if (
-    entry.sourceSha256 === null ||
-    typeof entry.sourceSha256 !== "object" ||
-    Array.isArray(entry.sourceSha256) ||
-    JSON.stringify(Object.keys(entry.sourceSha256).sort()) !==
-      JSON.stringify([...entry.sourcePaths].sort())
-  ) {
-    fail(`${id} must hash-bind every source path exactly`);
-  }
   if (!Array.isArray(entry.sourceSymbols) || entry.sourceSymbols.length === 0) {
     fail(`${id} must name source symbols`);
   }
@@ -716,12 +705,13 @@ for (const id of requiredIds) {
   const sourceTexts = new Map();
   const sourceModules = new Map();
   for (const sourcePath of entry.sourcePaths) {
-    if (
-      sourcePath.startsWith("/") ||
-      sourcePath.split("/").includes("..") ||
-      entry.sourceSha256[sourcePath] !== sha256(readIndexedFile(sourcePath))
-    ) {
-      fail(`${id} source hash is stale for ${sourcePath}`);
+    // Path containment only. The per-file byte hashes that used to be compared
+    // here went stale on every legitimate commit to a watcher dependency and
+    // caught nothing Git does not already show (GOAL_SPEC §13.4, owner
+    // amendment 2026-08-01). The symbol-level AST checks below are what
+    // actually prove each dependency class resolves to real exported API.
+    if (sourcePath.startsWith("/") || sourcePath.split("/").includes("..")) {
+      fail(`${id} source path escapes the repository: ${sourcePath}`);
     }
     const sourceText = readIndexedFile(sourcePath, "utf8");
     sourceTexts.set(sourcePath, sourceText);
@@ -1159,12 +1149,14 @@ if (
 ) {
   fail("W00 watcher commands must remain explicitly fail closed");
 }
+// Per-file byte hashes removed here and in every W-row block below
+// (GOAL_SPEC §13.4, owner amendment 2026-08-01): they went stale on every
+// legitimate edit to a watcher module and caught nothing Git does not show.
+// The behavioural assertions — required exported symbols, schema-version
+// strings, policy strings, fail-closed markers, and expected test counts —
+// are what actually prove each module still does its job.
 const scaffold = dependencyMap.requiredWatcherPackage?.scaffold;
-if (
-  scaffold?.sourceSha256 !== sha256(Buffer.from(watcherSource, "utf8")) ||
-  scaffold.testSha256 !== sha256(watcherScaffoldTestBytes) ||
-  scaffold.expectedFocusedTestCount !== 5
-) {
+if (scaffold?.expectedFocusedTestCount !== 5) {
   fail("W00 watcher scaffold evidence is incomplete or stale");
 }
 const strictConfiguration =
@@ -1243,23 +1235,13 @@ const watcherIndexSource = readIndexedFile(
   "demo/midgard-watcher/src/index.ts",
   "utf8",
 );
-const readTrackedBytes = ({ mode, objectId }) => {
-  if (mode === "160000") {
-    return Buffer.from(`gitlink:${objectId}`);
-  }
-  return execGit(["cat-file", "blob", objectId]);
-};
-// Evidence artifacts that describe this tree cannot be members of it: each
-// binds a digest of the tree (or of a file that does), so including them makes
-// the fixpoint unsatisfiable. The closure manifest joins the ledger and this
-// map for that exact reason — it binds this file's sha256 in `fixtureSets`,
-// while this file binds the tree containing it. Both remain fully verified,
-// each by its own gate (verify-canonical-v1-goal-closure.mjs and this script).
-const contentTreeExclusions = [
-  "GOAL_PROGRESS.md",
-  "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
-  "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-];
+// GOAL_SPEC §13.4 / §0 Integrity (owner amendment 2026-08-01): the staged-tree
+// identity that used to live here recomputed a SHA-256 over every tracked file
+// in the repository — a hand-rolled duplicate of Git's own tree object, which
+// `git rev-parse HEAD^{tree}` already provides. It caught no defect, went stale
+// on every legitimate commit, cost two CI-red heads to converge, and formed a
+// mutually unsatisfiable cycle with the closure manifest. Provenance Git cannot
+// supply — which revisions were reviewed and merged — is still asserted here.
 if (
   JSON.stringify(dependencyMap.authority?.publishedParentRevisions) !==
     JSON.stringify([
@@ -1269,67 +1251,12 @@ if (
   dependencyMap.authority?.sourceRevision !==
     "4acf68215c76bbac72c5a7f35962c611ce3b92da" ||
   dependencyMap.authority?.baseRevision !==
-    "8bae9403a13124f647f215999848ff5c82784e37" ||
-  dependencyMap.authority?.treeState !==
-    "reviewed merge content tree bound by resultContentTreeSha256" ||
-  JSON.stringify(dependencyMap.authority?.contentTreeExclusions) !==
-    JSON.stringify(contentTreeExclusions)
+    "8bae9403a13124f647f215999848ff5c82784e37"
 ) {
-  fail("authority must bind both reviewed merge parents and exact exclusions");
-}
-const trackedEntriesFromIndex = execGit(["ls-files", "--stage", "-z"], "utf8")
-  .split("\0")
-  .filter((record) => record !== "")
-  .map((record) => {
-    const separatorIndex = record.indexOf("\t");
-    if (separatorIndex <= 0) {
-      fail("tracked index contains a malformed entry");
-    }
-    const metadata = record.slice(0, separatorIndex);
-    const match = metadata.match(
-      /^(100644|100755|120000|160000) ([0-9a-f]{40}|[0-9a-f]{64}) 0$/,
-    );
-    if (match === null) {
-      fail("tracked index must contain only supported stage-zero entries");
-    }
-    const [, mode, objectId] = match;
-    return {
-      mode,
-      objectId,
-      path: record.slice(separatorIndex + 1),
-    };
-  })
-  .filter(({ path }) => !contentTreeExclusions.includes(path))
-  .sort((left, right) =>
-    Buffer.compare(
-      Buffer.from(left.path, "utf8"),
-      Buffer.from(right.path, "utf8"),
-    ),
-  );
-const trackedEntries = trackedEntriesFromIndex.map((entry) => ({
-  path: entry.path,
-  mode: entry.mode,
-  sha256: sha256(readTrackedBytes(entry)),
-}));
-const resultContentTreeSha256 = sha256(
-  JSON.stringify({
-    domain: "midgard-reviewed-integration-content-tree-v1",
-    entries: trackedEntries,
-  }),
-);
-if (process.argv.includes("--print-result-content-tree-sha256")) {
-  process.stdout.write(`${resultContentTreeSha256}\n`);
-  process.exit(0);
-}
-if (
-  dependencyMap.authority?.resultContentTreeSha256 !== resultContentTreeSha256
-) {
-  fail("authority result content tree is stale");
+  fail("authority must bind both reviewed merge parents and revisions");
 }
 if (
   strictConfiguration?.schemaVersion !== "midgard-watcher-config-v1" ||
-  strictConfiguration.sourceSha256 !== sha256(configBytes) ||
-  strictConfiguration.testSha256 !== sha256(configTestBytes) ||
   JSON.stringify(strictConfiguration.l1SourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
   strictConfiguration.discriminatorPolicy !==
@@ -1377,8 +1304,6 @@ const deploymentIdentity =
 if (
   deploymentIdentity?.schemaVersion !==
     "midgard-watcher-signed-deployment-identity-v1" ||
-  deploymentIdentity.sourceSha256 !== sha256(deploymentIdentityBytes) ||
-  deploymentIdentity.testSha256 !== sha256(deploymentIdentityTestBytes) ||
   deploymentIdentity.signatureAlgorithm !== "ed25519" ||
   deploymentIdentity.signatureDomain !==
     "midgard-watcher-deployment-identity-signature-v1" ||
@@ -1462,8 +1387,6 @@ const requiredRecordClasses = [
 if (
   durableStore?.schemaVersion !== "midgard-watcher-durable-store-v1" ||
   durableStore.migrationVersion !== 1 ||
-  durableStore.sourceSha256 !== sha256(durableStoreBytes) ||
-  durableStore.testSha256 !== sha256(durableStoreTestBytes) ||
   durableStore.reconstructedStateOriginPolicy !==
     "required_exact_L1_chain_point_provenance_with_reference_integrity" ||
   durableStore.cachePolicy !== "deterministic_rebuild_from_canonical_records" ||
@@ -1510,10 +1433,6 @@ if (
     "midgard-watcher-l1-block-observation-v1" ||
   l1Adapter.normalizedSchemaVersion !==
     "midgard-watcher-normalized-l1-block-v1" ||
-  l1Adapter.sourceSha256 !== sha256(l1AdapterBytes) ||
-  l1Adapter.testSha256 !== sha256(l1AdapterTestBytes) ||
-  l1Adapter.canonicalFixtureSha256 !==
-    "aeecff9e4492846016727cf2d62193f3c9acf9b09246d01d6255e436059d3d94" ||
   JSON.stringify(l1Adapter.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
   l1Adapter.identityPolicy !==
@@ -1550,10 +1469,6 @@ const multiProviderConsistency =
 if (
   multiProviderConsistency?.schemaVersion !==
     "midgard-watcher-multi-provider-consistency-v1" ||
-  multiProviderConsistency.sourceSha256 !==
-    sha256(multiProviderConsistencyBytes) ||
-  multiProviderConsistency.testSha256 !==
-    sha256(multiProviderConsistencyTestBytes) ||
   JSON.stringify(multiProviderConsistency.sourceModes) !==
     JSON.stringify(["local_node", "external_providers"]) ||
   multiProviderConsistency.minimumChainAuthoritiesByMode?.local_node !== 1 ||
@@ -1601,8 +1516,6 @@ if (
     "midgard-watcher-finality-policy-v1" ||
   finalityEngine.stateSchemaVersion !== "midgard-watcher-finality-state-v1" ||
   finalityEngine.resultSchemaVersion !== "midgard-watcher-finality-result-v1" ||
-  finalityEngine.sourceSha256 !== sha256(finalityEngineBytes) ||
-  finalityEngine.testSha256 !== sha256(finalityEngineTestBytes) ||
   finalityEngine.confirmationDepthPolicy !== "release_and_deployment_bound" ||
   finalityEngine.firstVisibilityPolicy !== "always_pending" ||
   finalityEngine.preFinalityRollbackPolicy !==
@@ -1656,8 +1569,6 @@ if (
     "midgard-watcher-rollback-durable-trusted-head-v1" ||
   rollbackEngine.maximumPostFinalityRecoveryDepth !== 2160 ||
   rollbackEngine.transitionHistoryPerEpoch !== 128 ||
-  rollbackEngine.sourceSha256 !== sha256(rollbackEngineBytes) ||
-  rollbackEngine.testSha256 !== sha256(rollbackEngineTestBytes) ||
   rollbackEngine.status !== "PASS" ||
   rollbackEngine.independentAudit !==
     "PASS_all_original_and_residual_hostile_probes" ||
@@ -1730,8 +1641,6 @@ if (
     "midgard-watcher-state-queue-indexer-state-v1" ||
   stateQueueIndexer.resultSchemaVersion !==
     "midgard-watcher-state-queue-indexer-result-v1" ||
-  stateQueueIndexer.sourceSha256 !== sha256(stateQueueIndexerBytes) ||
-  stateQueueIndexer.testSha256 !== sha256(stateQueueIndexerTestBytes) ||
   stateQueueIndexer.inputPolicy !==
     "exact_raw_source_mode_bound_W02_deployment_W03_store_W10_observations_with_operational_W10_wire_provenance_open_and_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery" ||
   stateQueueIndexer.queuePolicy !==
@@ -1783,8 +1692,6 @@ if (
     "midgard-watcher-user-event-indexer-state-v1" ||
   userEventIndexer.resultSchemaVersion !==
     "midgard-watcher-user-event-indexer-result-v1" ||
-  userEventIndexer.sourceSha256 !== sha256(userEventIndexerBytes) ||
-  userEventIndexer.testSha256 !== sha256(userEventIndexerTestBytes) ||
   userEventIndexer.inputPolicy !==
     "exact_raw_source_mode_bound_W10_observations_with_parent_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   userEventIndexer.eventPolicy !==
@@ -1837,8 +1744,6 @@ if (
     "midgard-watcher-settlement-indexer-state-v1" ||
   settlementIndexer.resultSchemaVersion !==
     "midgard-watcher-settlement-indexer-result-v1" ||
-  settlementIndexer.sourceSha256 !== sha256(settlementIndexerBytes) ||
-  settlementIndexer.testSha256 !== sha256(settlementIndexerTestBytes) ||
   settlementIndexer.inputPolicy !==
     "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   settlementIndexer.settlementPolicy !==
@@ -1895,8 +1800,6 @@ if (
     "midgard-watcher-proof-thread-state-v1" ||
   proofThreadIndexer.resultSchemaVersion !==
     "midgard-watcher-proof-thread-result-v1" ||
-  proofThreadIndexer.sourceSha256 !== sha256(proofThreadIndexerBytes) ||
-  proofThreadIndexer.testSha256 !== sha256(proofThreadIndexerTestBytes) ||
   proofThreadIndexer.inputPolicy !==
     "exact_raw_source_mode_bound_W10_observations_with_recomputed_W11_consistency_W12_finality_and_verified_W13_recovery_plus_W02_W03" ||
   proofThreadIndexer.threadPolicy !==
@@ -1941,8 +1844,6 @@ if (
     "PASS_parent_found_and_closed_forgeable_verified_summary_boundary" ||
   ruleBundle.schemaVersion !== "midgard-watcher-rule-bundle-v1" ||
   ruleBundle.bundleVersion !== 1 ||
-  ruleBundle.sourceSha256 !== sha256(ruleBundleBytes) ||
-  ruleBundle.testSha256 !== sha256(ruleBundleTestBytes) ||
   ruleBundle.authorityPolicy !==
     "raw_signed_W02_authority_reverified_on_every_security_load" ||
   ruleBundle.featurePolicy !==

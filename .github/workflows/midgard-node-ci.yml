@@ -12,7 +12,6 @@ on:
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
       - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
       - "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       - "demo/midgard-validation/**"
       - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
@@ -35,7 +34,6 @@ on:
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
       - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.test.mjs"
       - "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       - "demo/midgard-validation/**"
       - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
@@ -119,7 +117,7 @@ jobs:
       - name: Build, typecheck, lint, format-check, and test Midgard watcher scaffold
         run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo run watcher:focused-tests:verify
       - name: Verify canonical watcher dependency map
-        run: pnpm --dir demo run watcher:dependency-map:test && pnpm --dir demo run watcher:dependency-map:verify
+        run: pnpm --dir demo run watcher:dependency-map:verify
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard

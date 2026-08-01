@@ -10,7 +10,5 @@ shape, never the values.
   artifact.
 - `structural-na-template.md` — an executable structural `N/A` claim (§9.1,
   Q49/F21).
-- `evidence-binding-template.json` — a §13.4 evidence binding (repository and
-  external forms).
 - `subagent-assignment-brief.md` — the §5.1 assignment brief quoting a
   manifest row.

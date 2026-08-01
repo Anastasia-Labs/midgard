@@ -160,12 +160,9 @@
     "fileBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256", "status"],
+      "required": ["path", "status"],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
-        "sha256": {
-          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
-        },
         "status": { "enum": ["OPEN", "BOUND"] }
       }
     },
@@ -187,18 +184,9 @@
     "protectedPath": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "path",
-        "baselineSha256",
-        "currentExpectedSha256",
-        "disposition"
-      ],
+      "required": ["path", "disposition"],
       "properties": {
         "path": { "type": "string", "minLength": 1 },
-        "baselineSha256": {
-          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
-        },
-        "currentExpectedSha256": { "$ref": "#/$defs/sha256" },
         "disposition": {
           "enum": [
             "PROTECTED_EXACT_BASELINE",

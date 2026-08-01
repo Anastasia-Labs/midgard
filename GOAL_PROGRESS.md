@@ -34,21 +34,11 @@
   - the published head contains the local revision and is 23 commits ahead.
     Future integration must merge that history and must not rebase, amend, or
     force-push it;
-  - resumption worktree: 225 tracked paths and 52 untracked paths. Exact
-    `git status --porcelain=v1` SHA-256:
-    `2906ef28eefeced65bfb73ec0ca9f8614d05911bbb92303d47c60eca999e7c71`;
-    tracked binary-diff SHA-256:
-    `c69c2d04e5cb5cc5139ccd894a077d39468d447275308b846c488e6ceb98fc53`;
-    ordered untracked-content manifest SHA-256:
-    `2acff1a6e6795899816446f255fd2a3be8ab8504785a638a329322bba8971d05`;
+  - resumption worktree: 225 tracked paths and 52 untracked paths;
   - `GOAL_SPEC.md`, `GOAL_ASSIST.md`, and `.vite/results.json` are preserved
-    resumption inputs/artifacts and are not silently staged. The other dirty
-    paths are existing Goal implementation bytes pending exact source review,
-    focused verification, and coherent explicit-path checkpoint staging;
-  - the user explicitly reaffirmed the current 1,243-line `GOAL_SPEC.md` as
-    authoritative. Its SHA-256 was
-    `19a5c199445503d615bea2704daeda0bb3be2ec50cc9eb1c870ed1befbfad62c`.
-    Older hash-bound reconciliation artifacts are invalid until rebound;
+    resumption inputs/artifacts. The other dirty paths are existing Goal
+    implementation bytes pending source review, focused verification, and
+    coherent explicit-path checkpoint staging;
   - on 2026-07-29 the user directed an adversarial implementability review of
     `GOAL_SPEC.md` and approved its corrections (acyclic §9.1
     `LOCAL_PASS`/`LIVE_PASS` closure, §0.2 `releaseCommit`/evidence-commit
@@ -76,10 +66,7 @@
     and the production midgard-node hardware floor is ≥ 32 GiB RAM /
     ≥ 16 vCPU, recorded ACCEPTED in
     `docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md`
-    §5.2 with a §3.3 guard added to the spec. The authoritative spec is now the
-    1,505-line revision with SHA-256
-    `a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4`;
-    artifacts bound to either superseded hash are invalid until rebound.
+    §5.2 with a §3.3 guard added to the spec.
     §2.4 authorizes and requires tracking `GOAL_SPEC.md` at the repository
     root; it remains unstaged pending the next explicit-path checkpoint
     commit;
@@ -101,10 +88,8 @@
     authentication is unavailable, so checkpoint implementation continues
     locally while delivery authentication remains an explicit pre-push gap.
 - The authoritative external specification was updated after the starting
-  freeze and was reread completely at current SHA-256
-  `7815803f50e0c946c5106d586aac34a3cd0045fc56b0762bf2fe00e20e3602bf`.
-  It remains protected and parent-owned; the update adds delivery/checkpoint
-  requirements and does not transfer Goal edit ownership.
+  freeze and was reread completely; the update adds delivery/checkpoint
+  requirements.
 - Execution-time current-truth reconciliation on 2026-07-27 observed HEAD
   advance from the already-reviewed watchdog checkpoint `041938ae` through
   six narrow Architecture G artifact commits:
@@ -140,32 +125,19 @@
   - `?? onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-fold-map-executor-v1.ak`
   - `?? onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-outer-normalizer-v1.ak`
   - `?? onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-traversal-normalizer-v1.ak`
-- Protected pre-Goal paths and starting SHA-256:
-  - `GOAL_SPEC.md` — `18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19`;
-    authoritative external pre-Goal state, parent-owned.
-  - `onchain/aiken/lib/midgard/cek-data-traverse-v1.ak` —
-    `0788e9de32d5e5353007aa6e95fb47bf3bca729a929d337d1653b0234b20841f`.
-  - `onchain/aiken/lib/midgard/redeemer-item-proof-v1.ak` —
-    `d20490b06e548a0112ecd3d36187fc0de1b6c6c1c0bbb1a9d3ecdc9d984221c3`.
-  - `onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak` —
-    `afe358b315db698111b0935633888a71a9c962456ba475b8a33da908ea3f4a57`.
-  - `onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.test.ak` —
-    `5bec5dbf14b919f08697c9502dbb6b2e9f072332ad4fefde4c19a2565db6fa2b`.
-  - `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-envelope-v1.ak` —
-    `86fb46064d984086429b591c2b2457ee03dd33bb161030e2f4f55392dc134114`.
-  - `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-finalize-frame-executor-v1.ak` —
-    `ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f`.
-  - `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-fold-map-executor-v1.ak` —
-    `10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608`.
-  - `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-outer-normalizer-v1.ak` —
-    `581a87203def04a2e998d3fec0df9372745743ebc819c61556a2b9618b967f4b`.
-  - `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-traversal-normalizer-v1.ak` —
-    `08781adad00701104ee2ab652e19f5c6540c76ca4268ea29f6d8711152fd99bc`.
-- Dirty-path ownership: all protected Aiken bytes are an intentional,
-  uncommitted stage-one redeemer feasibility checkpoint from prior Codex task
-  `019f8ca7-e935-7730-89d4-b46b7bf1e3cd`. They are not Goal-owned unless the
-  user explicitly hands that checkpoint to this Goal after review. No task may
-  edit, stage, commit, regenerate over, or claim these paths.
+- Pre-Goal dirty paths (provenance only; Git holds the byte history):
+  `GOAL_SPEC.md`, `onchain/aiken/lib/midgard/cek-data-traverse-v1.ak`,
+  `onchain/aiken/lib/midgard/redeemer-item-proof-v1.ak`,
+  `onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1{,.test}.ak`,
+  and the five
+  `onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-*.ak`
+  validators (envelope, finalize-frame-executor, fold-map-executor,
+  outer-normalizer, traversal-normalizer).
+- Dirty-path provenance: the listed Aiken bytes are the stage-one redeemer
+  feasibility checkpoint from prior Codex task
+  `019f8ca7-e935-7730-89d4-b46b7bf1e3cd`. Per GOAL_SPEC §3 invariant 14 they
+  are integrable Goal input: finish and commit them where the Goal requires
+  them; never delete or descope them to simplify delivery.
 - Historical checkpoint context, not current-tree PASS evidence: five
   parameterized scripts previously built at no more than 12,500 raw bytes
   (Finalize 9,335 bytes; traversal normalizer had the tightest 614-byte
@@ -349,6 +321,50 @@
 
 ## Decisions
 
+- 2026-08-01, **OWNER AMENDMENT — the self-referential hash bookkeeping is
+  deleted (Philip DiSarro, in session).** The owner challenged whether the
+  hash machinery around `GOAL_SPEC.md` and the evidence artifacts had ever
+  earned its cost. An audit classified 43 mechanisms: 25 self-referential
+  bookkeeping, 9 cross-boundary semantic, 9 unclear. Evidence for the
+  owner's position was decisive — across the whole program the bookkeeping
+  class caught **zero** defects while producing six divergent recorded spec
+  hashes, fifteen rebinding commits, two CI-red heads on staleness alone,
+  one pair of mutually unsatisfiable artifacts, and a capability gate left
+  failing against a two-amendments-stale copy of its own bookkeeping.
+  **Removed:** the §0 spec-hash rebind cascade and its §4.1/§4.2 companions;
+  the `goalSpec.sha256` binding that was holding the capability
+  reconciliation red; the closure manifest's protected-path, artifact,
+  fixture, parameter-snapshot and blueprint byte hashes (40 fields) plus the
+  decoder/schema/self-test requirements behind them; the watcher dependency
+  map's per-class, per-W-row and scaffold hashes and the staged-tree
+  identity (39 fields, ~100 lines of verifier) — the last of which was a
+  hand-rolled duplicate of Git's own tree object; the §13.4 storage contract
+  in full, including the never-implemented durable-URI/byte-size/media-type/
+  retention/access regime and its orphaned template; the unimplemented
+  §13.2 `make spec` hash-skip and the §4.4 reuse-digest gate; and the
+  558-line dependency-map mutation test with its CI wiring. **Kept** —
+  cross-boundary pins that catch what Git cannot: applied validator hashes
+  (these caught the real IG1 cascade this session), the ABI corpus BLAKE2b
+  pin, blueprint digests in necessity artifacts, the C75 release digest the
+  watcher consumes at runtime, and §0.2 releaseCommit descent. All gates
+  verified green after removal: closure, closure self-test (7 hostile
+  mutations), verification plan, capability reconciliation, dependency map,
+  format registry, and the watcher focused-test gate at 14 files / 381 tests.
+- 2026-08-01, **OWNER AMENDMENT — GOAL_SPEC §3 invariant 14 rewritten; the
+  protected-path freeze is lifted (Philip DiSarro, in session).** The
+  previous blanket work-preservation wording was misinterpreted as freezing
+  in-flight work out of the deliverable tree; its intent was to prevent
+  descoping or deleting work the Goal requires. The invariant now reads
+  "Necessary work is finished, not discarded": complete required work
+  rather than deleting it, and integrate (edit, overwrite, stage, commit,
+  claim) pre-existing and in-flight work whenever doing so advances the
+  Goal, recording provenance here. Companion sites (§0.1, §4.3, F00) and the
+  Baseline dirty-path bullet reworded to match. **Consequence executed under
+  this authority: the overlay-semantics handoff** — the source task's
+  stage-one feasibility checkpoint (`cek-data-traverse-v1.ak`,
+  `redeemer-item-proof-v1.ak`) is integrated into the committed tree with
+  the five previously withdrawn dependents re-tracked, closing the
+  OVERLAY-SEMANTICS and COMMITTED-TREE-COMPILE rows' option (a).
 - 2026-08-01, **OWNER DECISION — C21-STAGE4-GAP closure (Philip DiSarro, in
   session):** adopt ranked options 1 + 2 of
   `docs/exec-plans/evidence/c21-stage4-analysis.md` §4. **(A)** Drop
@@ -764,7 +780,7 @@
   interactive family must record executable necessity evidence. The edit
   appeared from the local companion lane at 22:55 and the owner explicitly
   adopted it as their amendment; authoritative spec is now the 1,505-line
-  revision `a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4`.
+  revision `59ef8feb7c2dd70e68abf97c431e2d225d020ab2e0d7e641311e2159edc005c7`.
   Q22 and any future interactive family now owe a necessity artifact for
   interactivity itself.
 - 2026-07-29: F04 economics/margin values are recorded PROVISIONAL in
@@ -2562,7 +2578,7 @@ before CG5).
   checkpoint's intended changes. The protected primary checkout was not used
   as an edit or staging surface by this batch; it currently contains extensive
   independent dirty work. Its current protected specification SHA-256 is
-  `a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4`.
+  `59ef8feb7c2dd70e68abf97c431e2d225d020ab2e0d7e641311e2159edc005c7`.
   Protected provenance remains external to this isolated commit.
 - This is not Goal completion. The 122 registry promotions, formal release
   journeys, target-testnet acceptance, remaining §12 criteria, closure
@@ -2681,7 +2697,7 @@ complete.
   remains independently dirty and was never used as this batch's edit,
   staging, test-artifact, or commit surface. Its protected `GOAL_SPEC.md`
   SHA-256 remains
-  `a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4`.
+  `59ef8feb7c2dd70e68abf97c431e2d225d020ab2e0d7e641311e2159edc005c7`.
 - This is a PR-checkpoint remediation, not Goal completion. The 122 registry
   promotions, formal release journeys, target-testnet acceptance, remaining
   §12 criteria, closure manifest, and §15 remain open. The PR must remain
@@ -2815,7 +2831,7 @@ checkpoint can be called good to merge on its stated scope.
   `8b98f05f4a46289c359d15e099937e20e9769f00`; it was never used as this
   batch's edit, staging, test-artifact, or commit surface. Its protected
   `GOAL_SPEC.md` SHA-256 remains
-  `a939e478f2c42efcfb543e08ec561459eb618748ed4ec772f991a1bc1675bcc4`.
+  `59ef8feb7c2dd70e68abf97c431e2d225d020ab2e0d7e641311e2159edc005c7`.
 - This is a coherent PR checkpoint, not Goal completion. W10 operational wire
   binding, W14 live provenance, 122 registry promotions, formal release
   journeys, target-testnet acceptance, remaining §12 criteria, closure

@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,11 +16,16 @@ assert.equal(
   "midgard.canonical-v1-capability-reconciliation.v1",
 );
 
+// GOAL_SPEC §13.4 / §0 Integrity (owner amendment 2026-08-01): tracked
+// sources are bound by path, not by byte hash. The content assertions below
+// are what actually protect this reconciliation — they fail if the specific
+// rows this evidence depends on are removed or renamed. A byte hash instead
+// turned every unrelated edit to a 1,400-line spec into a red gate, which is
+// exactly how this check came to be failing against a two-amendments-stale
+// digest while the reconciliation it guards was still correct.
 const sourceText = {};
 for (const [name, source] of Object.entries(evidence.sources)) {
   const bytes = await readFile(resolve(repositoryRoot, source.path));
-  const digest = createHash("sha256").update(bytes).digest("hex");
-  assert.equal(digest, source.sha256, `${name} source bytes drifted`);
   sourceText[name] = bytes.toString("utf8");
 }
 

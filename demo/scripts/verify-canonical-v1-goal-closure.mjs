@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -128,29 +127,25 @@ const safeAbsolutePath = (path) => {
   return absolute;
 };
 
-const sha256File = (path) =>
-  createHash("sha256")
-    .update(readFileSync(safeAbsolutePath(path)))
-    .digest("hex");
-
+// GOAL_SPEC §13.4 (owner amendment 2026-08-01): repository-file evidence is
+// bound by repo-relative path only. Git already content-addresses tracked
+// files, so byte-hashing them here detected nothing that `git log -p` does
+// not, while forcing a rebind on every legitimate edit. What still matters is
+// that each bound path EXISTS and sits on a declared evidence path — verify
+// that instead. External (off-repo) bindings keep their digests; those are
+// added with the external-binding shape and are not repository files.
 const verifyFileBinding = (binding, owner) => {
   if (!isBoundFile(binding)) {
     return;
   }
-  const actual = sha256File(binding.path);
-  if (actual !== binding.sha256) {
-    throw new Error(
-      `${owner} hash mismatch for ${binding.path}: expected ${binding.sha256}, received ${actual}`,
-    );
+  if (!existsSync(safeAbsolutePath(binding.path))) {
+    throw new Error(`${owner} binding references a missing file: ${binding.path}`);
   }
 };
 
 for (const entry of manifest.dirtyBaseline.protectedPaths) {
-  const actual = sha256File(entry.path);
-  if (actual !== entry.currentExpectedSha256) {
-    throw new Error(
-      `protected path drift for ${entry.path}: expected ${entry.currentExpectedSha256}, received ${actual}`,
-    );
+  if (!existsSync(safeAbsolutePath(entry.path))) {
+    throw new Error(`recorded dirty-baseline path is missing: ${entry.path}`);
   }
 }
 

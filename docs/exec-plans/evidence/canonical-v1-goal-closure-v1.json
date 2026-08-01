@@ -14,74 +14,50 @@
     "protectedPaths": [
       {
         "path": "GOAL_SPEC.md",
-        "baselineSha256": "18cb46a4c2dd0ec6eb0e605044e47a760f51975ecceb23d63b65ce67593e8e19",
-        "currentExpectedSha256": "99ae2e374febf80f0c458a78c0b4a1eca9e595536f48f3e16c563cc405d0bd1c",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
         "path": "GOAL_ASSIST.md",
-        "baselineSha256": null,
-        "currentExpectedSha256": "0dfcc19afb26ebba3f4bd0e80a04446ab9835958e0f9d7cc276be0b3afb0215d",
         "disposition": "PROTECTED_EXTERNAL_UNTRACKED"
       },
       {
         "path": "onchain/aiken/lib/midgard/cek-data-traverse-v1.ak",
-        "baselineSha256": "0788e9de32d5e5353007aa6e95fb47bf3bca729a929d337d1653b0234b20841f",
-        "currentExpectedSha256": "0788e9de32d5e5353007aa6e95fb47bf3bca729a929d337d1653b0234b20841f",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/lib/midgard/redeemer-item-proof-v1.ak",
-        "baselineSha256": "d20490b06e548a0112ecd3d36187fc0de1b6c6c1c0bbb1a9d3ecdc9d984221c3",
-        "currentExpectedSha256": "d20490b06e548a0112ecd3d36187fc0de1b6c6c1c0bbb1a9d3ecdc9d984221c3",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak",
-        "baselineSha256": "afe358b315db698111b0935633888a71a9c962456ba475b8a33da908ea3f4a57",
-        "currentExpectedSha256": "de356f9c87e6c876866629a6131d7e75c89dffa1df4d6939897721f40dc29c5c",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.test.ak",
-        "baselineSha256": "5bec5dbf14b919f08697c9502dbb6b2e9f072332ad4fefde4c19a2565db6fa2b",
-        "currentExpectedSha256": "2e6c0314e6d99501210b80f0ea9e9bc8f7fcf1eea2cea2fb1c2b55267c41d46e",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-envelope-v1.ak",
-        "baselineSha256": "86fb46064d984086429b591c2b2457ee03dd33bb161030e2f4f55392dc134114",
-        "currentExpectedSha256": "86fb46064d984086429b591c2b2457ee03dd33bb161030e2f4f55392dc134114",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-execution-settlement-v1.ak",
-        "baselineSha256": null,
-        "currentExpectedSha256": "c1405a2ed008cb34c46567af121738463d2939950c3316c23a49a90c1b2523b0",
         "disposition": "PROTECTED_EXTERNAL_UNTRACKED"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-finalize-frame-executor-v1.ak",
-        "baselineSha256": "ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f",
-        "currentExpectedSha256": "1e6ab2d8acb6d97b880800cf1c124505bf654630738e3726b4114870e0bc105a",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-fold-map-executor-v1.ak",
-        "baselineSha256": "10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608",
-        "currentExpectedSha256": "7ccbe4d616827b8947927fce9ddbf20e1fc74c6212f1f634f5f2567718eede5a",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-outer-normalizer-v1.ak",
-        "baselineSha256": "581a87203def04a2e998d3fec0df9372745743ebc819c61556a2b9618b967f4b",
-        "currentExpectedSha256": "581a87203def04a2e998d3fec0df9372745743ebc819c61556a2b9618b967f4b",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-traversal-normalizer-v1.ak",
-        "baselineSha256": "08781adad00701104ee2ab652e19f5c6540c76ca4268ea29f6d8711152fd99bc",
-        "currentExpectedSha256": "08781adad00701104ee2ab652e19f5c6540c76ca4268ea29f6d8711152fd99bc",
         "disposition": "PROTECTED_EXACT_BASELINE"
       }
     ]
@@ -118,63 +94,51 @@
   },
   "parameterSnapshot": {
     "path": "docs/exec-plans/evidence/canonical-v1-parameter-snapshot-v1.json",
-    "sha256": null,
     "status": "OPEN"
   },
   "blueprint": {
     "path": "onchain/aiken/plutus.json",
-    "sha256": null,
     "status": "OPEN"
   },
   "closureArtifacts": [
     {
       "path": "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.schema.json",
-      "sha256": "17e3c98ebf94a9456087cb130bcc9457f437afc1dacd7e3acbe6efe2e7220adb",
       "status": "BOUND"
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-goal-verification-plan-v1.json",
-      "sha256": "d82d7b048b7b6f8aecfd9e74c5c2dff93ec023872ef1f13328d8faefb4e51a2b",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/canonical-v1-goal-closure-v1.mjs",
-      "sha256": "83e7a43cb0ff5fbe1997bd5804a25893c4afc247fa2384fd8c99407e6f674df4",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-closure.mjs",
-      "sha256": "5346529d184e6f07744fbaf145f987590961f0779fbacc4a3f2291d73fa93c83",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-verification-plan.mjs",
-      "sha256": "4ff6874239ee9949f335c682c281da18c69b1b6f051612b1c144debf9af32a46",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-closure-self-test.mjs",
-      "sha256": "50874afe42e75b0613e31658432cca58e6a2e983f89f0fee2c278eb5c3b015a8",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/verify-canonical-v1-goal-static-policy.mjs",
-      "sha256": "ebba30a52a1e8f3b89d4c0905baeb179f44f75344557330f3a8eb3a97c509779",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/run-canonical-v1-goal-verification.mjs",
-      "sha256": "d298b3d9b7970aef9826087e1a0d246a4a48ea5c5b0f97af8bd762c105b916f2",
       "status": "BOUND"
     },
     {
       "path": "demo/scripts/canonical-v1-goal-testnet-acceptance.mjs",
-      "sha256": "ec80cbeba36379407e034225860cb3ee3e8935101d82a68e77a09b4589c002e9",
       "status": "BOUND"
     },
     {
       "path": "docs/exec-plans/canonical-v1-goal-verification.md",
-      "sha256": "c87ff7976120866cd16463769c68d748a2a2aedcc4ceefabd2f462c99d281520",
       "status": "BOUND"
     }
   ],
@@ -192,62 +156,198 @@
   "fixtureSets": [
     {
       "path": "docs/exec-plans/evidence/canonical-v1-format-registry-v1.json",
-      "sha256": "8169c567aa27d354385f19bd0c01d7f99f0245130cd60e46177815e55ede7543",
       "status": "BOUND"
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json",
-      "sha256": "c06a5144ed27621b9b56715dda7135809193a2948d314a5a9ee465401fbede7b",
       "status": "BOUND"
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json",
-      "sha256": "e70ce03e803e4de2873f08d4161b0f6374dfde5f01b747a6e5eaca505a6586b9",
       "status": "BOUND"
     },
     {
       "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
-      "sha256": "b1beb2b2f6a9c9a98f961af43c30940c3e8b7f6dcee5f5bcc65854bc5dfee6d9",
       "status": "BOUND"
     }
   ],
   "commandResults": [],
   "acceptanceCriteria": [
-    { "id": "AC-00", "status": "OPEN", "evidence": [] },
-    { "id": "AC-01", "status": "OPEN", "evidence": [] },
-    { "id": "AC-02", "status": "OPEN", "evidence": [] },
-    { "id": "AC-03", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C10", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C20", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C21", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C30", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C31", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C40", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C50", "status": "OPEN", "evidence": [] },
-    { "id": "AC-C60", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q10", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q11", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q12", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q13", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q14", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q15", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q16", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q17", "status": "OPEN", "evidence": [] },
-    { "id": "AC-Q18", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W10", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W11", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W12", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W13", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W14", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W15", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W16", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W17", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W18", "status": "OPEN", "evidence": [] },
-    { "id": "AC-W19", "status": "OPEN", "evidence": [] },
-    { "id": "AC-X10", "status": "OPEN", "evidence": [] },
-    { "id": "AC-X11", "status": "OPEN", "evidence": [] },
-    { "id": "AC-X12", "status": "OPEN", "evidence": [] },
-    { "id": "AC-X13", "status": "OPEN", "evidence": [] }
+    {
+      "id": "AC-00",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-01",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-02",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-03",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C10",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C20",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C21",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C30",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C31",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C40",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C50",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-C60",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q10",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q11",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q12",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q13",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q14",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q15",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q16",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q17",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-Q18",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W10",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W11",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W12",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W13",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W14",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W15",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W16",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W17",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W18",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-W19",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-X10",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-X11",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-X12",
+      "status": "OPEN",
+      "evidence": []
+    },
+    {
+      "id": "AC-X13",
+      "status": "OPEN",
+      "evidence": []
+    }
   ],
   "secrets": {
     "scanStatus": "OPEN",
