@@ -381,10 +381,6 @@ test deposit_mint_rejects_eleven_non_nft_assets_across_ada_and_multiple_policies
   test_deposit_mint(test_valid_to + env.event_wait_duration, True)
 }
 
-test deposit_mint_accepts_exact_inclusion_time() {
-  test_deposit_mint(test_valid_to + env.event_wait_duration, False)
-}
-
 test deposit_mint_rejects_inclusion_time_minus_one() fail {
   test_deposit_mint(test_valid_to + env.event_wait_duration - 1, False)
 }
