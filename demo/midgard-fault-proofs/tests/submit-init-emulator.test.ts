@@ -4136,6 +4136,18 @@ const buildProvedDoubleSpendFixture = async ({
   );
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   const transactionInclusion = await buildTransactionInclusionFixture();
+  // Removal needs the state-queue, operator-directory and scheduler validators.
+  // Publishing them as reference-script UTxOs is what the deployed node does and
+  // is what keeps the removal transaction inside the literal 16,384-byte L1
+  // envelope; `publishPlainReferenceScriptUtxo` refuses any publication that
+  // does not itself fit that envelope. Published from the prover wallet before
+  // the header clock is sampled so the funder's nonce UTxO survives and the
+  // whole fixture timeline shifts uniformly.
+  const removalReferenceScriptPublications =
+    await publishRemovalReferenceScripts({
+      lucid: proverLucid,
+      contracts,
+    });
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
@@ -4206,7 +4218,13 @@ const buildProvedDoubleSpendFixture = async ({
     ],
   });
 
-  const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+  const deploymentInfo = buildRemovalDeploymentInfo(
+    contracts,
+    catalogue,
+    undefined,
+    undefined,
+    removalReferenceScriptPublications.published,
+  );
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
 
@@ -4498,7 +4516,7 @@ const submitRemovalForFixture = async (
     signer: fixture.proverSigner,
     fraudulentHeaderHash: fixture.headerHash,
     awaitConfirmation: true,
-    requireReferenceScripts: false,
+    requireReferenceScripts: true,
     validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
     validTo: removeNow + 300_000n,
     ...(options.stateQueueMutationLeaseCoordinator === undefined
@@ -4682,6 +4700,14 @@ describe("fault-proof emulator integration", () => {
     );
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
     const transactionInclusion = await buildTransactionInclusionFixture();
+    // See `publishRemovalReferenceScripts`: removal must source these seven
+    // validators from reference inputs to stay inside the 16,384-byte L1
+    // envelope.
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
     const headerStartTime =
       alignUnixTimeToEmulatorSlotBoundary(
         funderLucid,
@@ -4736,14 +4762,30 @@ describe("fault-proof emulator integration", () => {
       expectedHeaderHashes: [headerHash, successor.successorHeaderHash],
     });
     const fraudulentBlockOutRef = successor.continuedAnchorOutRef;
-    const deploymentEntry = (scriptHash: string, script: Script) => ({
-      scriptHash,
-      refScriptUTxO: null,
-      contract: {
-        type: script.type,
-        cborHex: script.script,
-      },
-    });
+    const deploymentEntry = (
+      scriptHash: string,
+      script: Script,
+      referenceName?: RemovalReferenceScriptName,
+    ) => {
+      const published =
+        referenceName === undefined
+          ? undefined
+          : removalReferenceScriptPublications.published[referenceName];
+      return {
+        scriptHash,
+        refScriptUTxO:
+          published === undefined
+            ? null
+            : {
+                txHash: published.txHash,
+                outputIndex: published.outputIndex,
+              },
+        contract: {
+          type: script.type,
+          cborHex: script.script,
+        },
+      };
+    };
     const deploymentInfo = deploymentManifest({
       hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
       fraudProofCatalogueMint: {
@@ -4763,18 +4805,22 @@ describe("fault-proof emulator integration", () => {
       stateQueueMint: deploymentEntry(
         contracts.stateQueue.policyId,
         contracts.stateQueue.mintingScript,
+        "stateQueueMint",
       ),
       stateQueueSpend: deploymentEntry(
         contracts.stateQueue.spendingScriptHash,
         contracts.stateQueue.spendingScript,
+        "stateQueueSpend",
       ),
       retiredOperatorsMint: deploymentEntry(
         contracts.retiredOperators.policyId,
         contracts.retiredOperators.mintingScript,
+        "retiredOperatorsMint",
       ),
       retiredOperatorsSpend: deploymentEntry(
         contracts.retiredOperators.spendingScriptHash,
         contracts.retiredOperators.spendingScript,
+        "retiredOperatorsSpend",
       ),
       registeredOperatorsMint: {
         scriptHash: contracts.registeredOperators.policyId,
@@ -4786,15 +4832,18 @@ describe("fault-proof emulator integration", () => {
       activeOperatorsMint: deploymentEntry(
         contracts.activeOperators.policyId,
         contracts.activeOperators.mintingScript,
+        "activeOperatorsMint",
       ),
       activeOperatorsSpend: deploymentEntry(
         contracts.activeOperators.spendingScriptHash,
         contracts.activeOperators.spendingScript,
+        "activeOperatorsSpend",
       ),
       schedulerMint: { scriptHash: contracts.scheduler.policyId },
       schedulerSpend: deploymentEntry(
         contracts.scheduler.spendingScriptHash,
         contracts.scheduler.spendingScript,
+        "schedulerSpend",
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
     });
@@ -5058,7 +5107,7 @@ describe("fault-proof emulator integration", () => {
       signer: proverSigner,
       fraudulentHeaderHash: headerHash,
       awaitConfirmation: true,
-      requireReferenceScripts: false,
+      requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
       validTo: removeNow + 300_000n,
       stateQueueMutationLeaseCoordinator: {
@@ -5176,6 +5225,15 @@ describe("fault-proof emulator integration", () => {
       { realInvalidRange: true, alwaysFraudProofCatalogue: true },
     );
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    // See `publishRemovalReferenceScripts`: removal must source these seven
+    // validators from reference inputs to stay inside the 16,384-byte L1
+    // envelope. Published before the header clock is sampled so the whole
+    // timeline shifts uniformly.
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
     const headerStartTime =
       alignUnixTimeToEmulatorSlotBoundary(
         funderLucid,
@@ -5220,7 +5278,13 @@ describe("fault-proof emulator integration", () => {
       expectedHeaderHashes: [headerHash],
     });
 
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
     const initResult = await submitInit({
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -5355,7 +5419,7 @@ describe("fault-proof emulator integration", () => {
       fraudCategory: "invalidRange",
       fraudulentHeaderHash: headerHash,
       awaitConfirmation: true,
-      requireReferenceScripts: false,
+      requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
       validTo: removeNow + 300_000n,
     });
@@ -5431,6 +5495,15 @@ describe("fault-proof emulator integration", () => {
       { realZeroInput: true, alwaysFraudProofCatalogue: true },
     );
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    // See `publishRemovalReferenceScripts`: removal must source these seven
+    // validators from reference inputs to stay inside the 16,384-byte L1
+    // envelope. Published before the header clock is sampled so the whole
+    // timeline shifts uniformly.
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
     const zeroInputInclusion =
       await buildZeroInputTransactionInclusionFixture();
 
@@ -5471,7 +5544,13 @@ describe("fault-proof emulator integration", () => {
       expectedHeaderHashes: [headerHash],
     });
 
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
     const initResult = await submitInit({
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -5587,7 +5666,7 @@ describe("fault-proof emulator integration", () => {
       fraudCategory: "zeroInput",
       fraudulentHeaderHash: headerHash,
       awaitConfirmation: true,
-      requireReferenceScripts: false,
+      requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
       validTo: removeNow + 300_000n,
     });
@@ -5773,6 +5852,15 @@ describe("fault-proof emulator integration", () => {
     );
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
     const fixture = await buildNonExistentInputFixture();
+    // See `publishRemovalReferenceScripts`: removal must source these seven
+    // validators from reference inputs to stay inside the 16,384-byte L1
+    // envelope. Published before the header clock is sampled so the whole
+    // timeline shifts uniformly.
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
     const headerStartTime =
       alignUnixTimeToEmulatorSlotBoundary(
         funderLucid,
@@ -5805,7 +5893,13 @@ describe("fault-proof emulator integration", () => {
     });
     const { headerHash } = setup;
 
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
     const initResult = await submitInit({
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -5915,7 +6009,7 @@ describe("fault-proof emulator integration", () => {
       fraudCategory: "nonExistentInput",
       fraudulentHeaderHash: headerHash,
       awaitConfirmation: true,
-      requireReferenceScripts: false,
+      requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
       validTo: removeNow + 300_000n,
     });
@@ -5967,6 +6061,15 @@ describe("fault-proof emulator integration", () => {
       { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
     );
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+    // See `publishRemovalReferenceScripts`: removal must source these seven
+    // validators from reference inputs to stay inside the 16,384-byte L1
+    // envelope. Published before the header clock is sampled so the whole
+    // timeline shifts uniformly.
+    const removalReferenceScriptPublications =
+      await publishRemovalReferenceScripts({
+        lucid: proverLucid,
+        contracts,
+      });
     const funderPaymentCredential = getAddressDetails(
       await funderLucid.wallet().address(),
     ).paymentCredential;
@@ -5999,7 +6102,13 @@ describe("fault-proof emulator integration", () => {
       expectedHeaderHashes: [traceFixture.headerHash],
     });
 
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const deploymentInfo = buildRemovalDeploymentInfo(
+      contracts,
+      catalogue,
+      undefined,
+      undefined,
+      removalReferenceScriptPublications.published,
+    );
     const initResult = await submitInit({
       lucid: proverLucid,
       blueprint: realBlueprint,
@@ -6083,7 +6192,7 @@ describe("fault-proof emulator integration", () => {
       fraudCategory: "transitionTrace",
       fraudulentHeaderHash: traceFixture.headerHash,
       awaitConfirmation: true,
-      requireReferenceScripts: false,
+      requireReferenceScripts: true,
       validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
       validTo: removeNow + 300_000n,
     });
