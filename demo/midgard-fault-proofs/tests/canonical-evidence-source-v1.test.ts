@@ -26,6 +26,7 @@ import {
   prepareInvalidRangeFromCanonicalEvidenceV1,
   prepareZeroInputFromCanonicalEvidenceV1,
 } from "../src/evidence/index.js";
+import { decodeTransactionMaterial } from "../src/prepare-double-spend.js";
 import type {
   RetainedDaPayloadSource,
   RetainedDaPayloadSourceResult,
@@ -66,8 +67,11 @@ const doubleSpendBlock = async (): Promise<CanonicalBlockFixtureV1> =>
     ],
   });
 
-const validBlock = async (): Promise<CanonicalBlockFixtureV1> =>
+const validBlock = async (
+  transactionsRootMode: "payloadSource" | "nativeCompact" = "payloadSource",
+): Promise<CanonicalBlockFixtureV1> =>
   await buildCanonicalBlockFixtureV1({
+    transactionsRootMode,
     transactions: [
       buildFixtureTransactionV1({
         spendInputs: [outRefCbor(0x55, 0n)],
@@ -82,12 +86,42 @@ const validBlock = async (): Promise<CanonicalBlockFixtureV1> =>
 
 const evidenceFor = async (
   fixture: CanonicalBlockFixtureV1,
-): Promise<CanonicalBlockEvidenceV1> =>
-  await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(fixture),
-    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+): Promise<CanonicalBlockEvidenceV1> => {
+  // The public payload decoder intentionally authenticates the deployed node
+  // source-leaf convention.  For the native-compact control, first obtain the
+  // same canonical transaction material through that verified path, then
+  // rebind the test-only header to the compact-leaf root and recompute the
+  // inclusion authentication used by the proof builder.
+  const payloadFixture =
+    fixture.transactionsRootMode === "nativeCompact"
+      ? await buildCanonicalBlockFixtureV1({
+          transactions: fixture.transactions,
+          startTime: fixture.header.startTime,
+          endTime: fixture.header.endTime,
+        })
+      : fixture;
+  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    observation: authenticatedHeaderObservationV1(payloadFixture),
+    payloadEnvelopeCbor: payloadFixture.payloadEnvelopeCbor,
     daProvenance: DA_PROVENANCE,
   });
+  if (fixture.transactionsRootMode !== "nativeCompact") {
+    return evidence;
+  }
+  const inclusionRootAuthentication =
+    await authenticateTransactionsInclusionRootsV1({
+      header: fixture.header,
+      reconstruction: evidence.reconstruction,
+      transactions: evidence.transactions,
+    });
+  return {
+    ...evidence,
+    observation: authenticatedHeaderObservationV1(fixture),
+    headerHash: fixture.headerHash,
+    header: fixture.header,
+    inclusionRootAuthentication,
+  };
+};
 
 class StubDaSource implements RetainedDaPayloadSource {
   readonly sourceId: string;
@@ -516,19 +550,26 @@ describe("Q03 canonical-evidence builders", () => {
   });
 
   it("valid-block control: a block with no double spend yields no proof", async () => {
-    const fixture = await validBlock();
+    const fixture = await validBlock("nativeCompact");
     const evidence = await evidenceFor(fixture);
-    // Detection over authenticated material finds no violating pair, which is
-    // the failure the builder reports once the inclusion gate is satisfied.
-    const inputs = evidence.reconstruction.transactions.flatMap((entry) =>
-      entry.spendInputsPreimage.toString("hex"),
+    expect(
+      evidence.inclusionRootAuthentication.nativeInclusionAuthenticated,
+    ).toBe(true);
+    expect(fixture.header.transactionsRoot).toBe(
+      fixture.nativeCompactTransactionsRoot,
+    );
+    const decoded = await Promise.all(
+      evidence.transactions.map(decodeTransactionMaterial),
+    );
+    const inputs = decoded.flatMap((transaction) =>
+      transaction.inputs.map(
+        (input) => `${input.transactionId}#${input.outputIndex.toString()}`,
+      ),
     );
     expect(new Set(inputs).size).toBe(inputs.length);
-    expect(
-      await rejectionCode(async () =>
-        prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
-      ),
-    ).toBe("native_inclusion_root_unauthenticated");
+    await expect(
+      prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
+    ).rejects.toThrow("No double spend found in the selected block.");
   });
 });
 

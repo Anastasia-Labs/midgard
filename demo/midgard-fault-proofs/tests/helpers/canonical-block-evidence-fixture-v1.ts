@@ -1,11 +1,14 @@
 /**
  * Deterministic canonical-block fixture for the `Q03` evidence-source tests.
  *
- * It builds a `DaPayloadV1` exactly the way the production node does: the
- * header's `transactions_root` is the counted root over
+ * By default it builds a `DaPayloadV1` exactly the way the production node
+ * does: the header's `transactions_root` is the counted root over
  * `(tx_id -> Data(L2TransactionSourceV1))` leaves, which is what
  * `encodeTransactionRootValue` (demo/midgard-node/src/workers/utils/mpf.ts)
- * commits and what `reconstructDaPayloadV1` re-derives.
+ * commits and what `reconstructDaPayloadV1` re-derives.  The native-compact
+ * root mode is a test-only fixture for exercising the proof builder against
+ * the on-chain inclusion convention; its root is still derived from the
+ * actual compact CBOR leaves produced for each transaction.
  */
 import {
   computeMidgardNativeTxIdV1,
@@ -52,6 +55,7 @@ export type FixtureTransactionInputV1 = {
 export type FixtureTransactionV1 = {
   readonly txId: string;
   readonly canonicalCbor: Buffer;
+  readonly compactCbor: Buffer;
   readonly source: SDK.L2TransactionSourceV1;
   readonly sourceValueBytes: Buffer;
 };
@@ -104,6 +108,7 @@ export const buildFixtureTransactionV1 = ({
   return {
     txId: source.tx_id,
     canonicalCbor,
+    compactCbor: Buffer.from(proofSource.compactCbor),
     source,
     sourceValueBytes: encodeData(source, SDK.L2TransactionSourceV1Schema),
   };
@@ -121,22 +126,31 @@ export type CanonicalBlockFixtureV1 = {
   readonly payloadEnvelopeCbor: Buffer;
   readonly header: SDK.HeaderV1;
   readonly headerHash: string;
+  readonly transactionsRootMode: CanonicalTransactionsRootModeV1;
+  readonly payloadSourceTransactionsRoot: string;
+  readonly nativeCompactTransactionsRoot: string;
   readonly transactions: readonly FixtureTransactionV1[];
 };
+
+export type CanonicalTransactionsRootModeV1 = "payloadSource" | "nativeCompact";
 
 export const buildCanonicalBlockFixtureV1 = async ({
   transactions,
   startTime = 10n,
   endTime = 20n,
+  transactionsRootMode = "payloadSource",
 }: {
   readonly transactions: readonly FixtureTransactionV1[];
   readonly startTime?: bigint;
   readonly endTime?: bigint;
+  readonly transactionsRootMode?: CanonicalTransactionsRootModeV1;
 }): Promise<CanonicalBlockFixtureV1> => {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.txId,
     tx.sourceValueBytes.toString("hex"),
   ]);
+  const nativeCompactTransactionEntries: SDK.DaPayloadEntry[] =
+    transactions.map((tx) => [tx.txId, tx.compactCbor.toString("hex")]);
   const preimageEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.txId,
     tx.canonicalCbor.toString("hex"),
@@ -186,10 +200,18 @@ export const buildCanonicalBlockFixtureV1 = async ({
       value: Buffer.from(value, "hex"),
     }));
 
-  const transactionsRoot = await buildCountedRoot(
+  const payloadSourceTransactionsRoot = await buildCountedRoot(
     SDK.ROOT_DOMAINS.transactionsV1,
     bufferEntries(transactionEntries),
   );
+  const nativeCompactTransactionsRoot = await buildCountedRoot(
+    SDK.ROOT_DOMAINS.transactionsV1,
+    bufferEntries(nativeCompactTransactionEntries),
+  );
+  const transactionsRoot =
+    transactionsRootMode === "nativeCompact"
+      ? nativeCompactTransactionsRoot
+      : payloadSourceTransactionsRoot;
   const emptyRoot = async (domain: SDK.RootDomain) =>
     await buildCountedRoot(domain, []);
   const withdrawalsRoot = await emptyRoot(SDK.ROOT_DOMAINS.withdrawals);
@@ -265,6 +287,9 @@ export const buildCanonicalBlockFixtureV1 = async ({
     }),
     header,
     headerHash,
+    transactionsRootMode,
+    payloadSourceTransactionsRoot: payloadSourceTransactionsRoot.root,
+    nativeCompactTransactionsRoot: nativeCompactTransactionsRoot.root,
     transactions,
   };
 };
