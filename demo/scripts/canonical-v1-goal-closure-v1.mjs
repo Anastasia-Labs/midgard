@@ -182,6 +182,9 @@ const decodeBinding = (value, path) => {
   ) {
     fail(path, "BOUND requires identity and OPEN requires identity=null");
   }
+  if (object.status === "BOUND" && !allBound(object.evidence)) {
+    fail(path, "BOUND requires all evidence files to be bound");
+  }
   return object;
 };
 
@@ -220,6 +223,9 @@ const decodeCriterion = (value, path) => {
   );
   if (object.status === "PASS" && object.evidence.length === 0) {
     fail(path, "PASS requires at least one bound evidence file");
+  }
+  if (object.status === "PASS" && !allBound(object.evidence)) {
+    fail(path, "PASS requires all evidence files to be bound");
   }
   return object;
 };
@@ -332,6 +338,12 @@ export const decodeCanonicalV1GoalClosure = (input) => {
       "BOUND requires identity and OPEN requires identity=null",
     );
   }
+  if (deployment.status === "BOUND" && !allBound(deployment.evidence)) {
+    fail(
+      "$.deployment",
+      "BOUND requires all evidence files to be bound",
+    );
+  }
 
   assertArray(root.fixtureSets, "$.fixtureSets").forEach((entry, index) =>
     decodeFileBinding(entry, `$.fixtureSets[${index}]`),
@@ -369,6 +381,9 @@ export const decodeCanonicalV1GoalClosure = (input) => {
   );
   if (secrets.scanStatus === "PASS" && secrets.evidence.length === 0) {
     fail("$.secrets", "PASS requires bound evidence");
+  }
+  if (secrets.scanStatus === "PASS" && !allBound(secrets.evidence)) {
+    fail("$.secrets", "PASS requires all evidence files to be bound");
   }
 
   const release = assertExactKeys(root.release, "$.release", [
@@ -420,6 +435,8 @@ export const canonicalClosureDigest = (manifest) => {
 
 export const isBoundFile = (binding) => binding.status === "BOUND";
 
+export const allBound = (bindings) => bindings.every(isBoundFile);
+
 export const isReleaseReady = (manifest) =>
   manifest.revision.worktree === "BASELINE_RELATIVE_CLEAN" &&
   manifest.revision.releaseCommit !== null &&
@@ -427,13 +444,20 @@ export const isReleaseReady = (manifest) =>
   manifest.parameterSnapshot.status === "BOUND" &&
   manifest.blueprint.status === "BOUND" &&
   manifest.validatorSet.status === "BOUND" &&
+  allBound(manifest.validatorSet.evidence) &&
   manifest.closureArtifacts.length >= 5 &&
   manifest.closureArtifacts.every(isBoundFile) &&
   manifest.deployment.status === "BOUND" &&
+  allBound(manifest.deployment.evidence) &&
   manifest.fixtureSets.length > 0 &&
   manifest.fixtureSets.every(isBoundFile) &&
   manifest.commandResults.length > 0 &&
   manifest.commandResults.every(({ exitCode }) => exitCode === 0) &&
-  manifest.acceptanceCriteria.every(({ status }) => status === "PASS") &&
+  manifest.acceptanceCriteria.every(
+    ({ status, evidence }) =>
+      status === "PASS" && evidence.length > 0 && allBound(evidence),
+  ) &&
   manifest.secrets.scanStatus === "PASS" &&
+  manifest.secrets.evidence.length > 0 &&
+  allBound(manifest.secrets.evidence) &&
   manifest.release.status === "BOUND";
