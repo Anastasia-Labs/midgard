@@ -13,8 +13,8 @@ import {
   MIDGARD_NATIVE_NETWORK_ID_NONE,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
-  MidgardCekProgramMaterialMissingRootError,
 } from "@al-ft/midgard-core";
+import { MidgardCekProgramMaterialMissingRootError } from "@al-ft/midgard-core/cek-proof";
 import { deriveMidgardTxFieldReceiptAssetNameV1 } from "@al-ft/midgard-core/consensus-validation-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
