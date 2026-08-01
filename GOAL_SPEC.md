@@ -525,7 +525,7 @@ Maintain these sections and no diary-style transcript:
   (secret-safe per §4.1), and the current `GOAL_SPEC.md` SHA-256.
 - **Criterion ledger:** every `AC-*` from §12 with `TODO`, `IN_PROGRESS`,
   `BLOCKED`, or `PASS`, plus exact evidence.
-- **Task queue:** task ID, dependencies, owner, leased paths, status, commit,
+- **Task queue:** task ID, dependencies, owner, owned paths, status, commit,
   focused verification.
 - **Decisions:** only consequential decisions and why existing authority
   selected them.
@@ -542,7 +542,8 @@ revision, different parameter snapshot, or changed ABI is not a pass.
 ### 4.3 Worktree and commit discipline
 
 - Inventory dirty state before every assignment and integration.
-- Assign explicit path ownership. A subagent must not edit outside its lease.
+- Establish explicit path ownership before concurrent work begins; every
+  change stays inside the paths it owns.
 - Preserve pre-existing dirty bytes unless the owner explicitly hands them to
   this Goal.
 - Stage with explicit paths only.
@@ -619,36 +620,18 @@ not permit loss of the supported end-user journey on the fresh deployment.
 Failure of the checkpoint journey is a regression unless this specification
 explicitly requires the old behavior to be removed.
 
-## 5. Parallelization contract
+## 5. Concurrent work
 
-The task list is intentionally finer than the number of available agents.
-Parallelism means selecting independent ready tasks, not running every task at
-once.
+Independent ready tasks may proceed concurrently. This specification does not
+prescribe how that work is organized, scheduled, sized, or delegated — those
+are execution decisions belonging to whoever is doing the work. What it
+constrains is the state of the repository that work produces.
 
-### 5.1 Concurrency
+### 5.1 Serialization-sensitive surfaces
 
-- The concurrent-subagent limit is set by the execution-policy section of
-  `GOAL_PROGRESS.md` (four dependency-ready subagents as of 2026-07-28);
-  absent a recorded policy, default to two. Only the user changes the limit.
-- Use Ultra delegation selectively for bounded protocol, ABI, proof-soundness,
-  or recovery assignments where deeper reasoning materially reduces risk.
-  Routine inventory, formatting, and narrow test execution do not need an
-  Ultra subagent.
-- Each subagent receives one complete, bounded task ID, its dependencies,
-  allowed paths, prohibited shared paths, exact acceptance, and focused
-  commands, quoted from the F05 task manifest once that manifest exists.
-- Subagents return a concrete patch/findings and exact test results in one
-  pass. They do not stage, commit, regenerate the global blueprint, edit
-  closure matrices, or declare the Goal complete unless the parent explicitly
-  delegates that exact integration action.
-- The parent continues independent work while agents run and owns all
-  integration, ABI reconciliation, global verification, evidence, and
-  completion decisions.
-
-### 5.2 Shared integration surfaces
-
-These are parent-owned by default and may be leased to only one writer at a
-time:
+Concurrent changes to these surfaces yield incoherent integrations rather than
+honest merge conflicts, so changes to them must be serialized however the work
+is organized:
 
 - `GOAL_SPEC.md`, `GOAL_PROGRESS.md`, live closure matrices, and completion
   reports;
@@ -664,28 +647,10 @@ time:
 - global CLI switches and shared proof-family unions;
 - CI workflow aggregation.
 
-When a task must touch one of these, record an exclusive lease in
-`GOAL_PROGRESS.md`. Do not pair it with a second task that imports or rewrites
-the same ABI.
+Establish explicit ownership of these paths before concurrent work begins, and
+do not run two concurrent changes that import or rewrite the same ABI.
 
-### 5.3 Recommended initial delegation
-
-After the parent completes `F00`, the first bounded two-agent wave is:
-
-- **Agent A — `F01`:** canonical enabled-feature inventory, source paths, and
-  missing/ambiguous surfaces; read-only unless the parent grants exact output
-  paths.
-- **Agent B — `F02`:** format/ABI registry audit, constructor/tag/arity
-  mismatches, and obsolete branches; use Ultra reasoning because an incorrect
-  ABI inventory contaminates all downstream tasks.
-
-The parent performs `F03` and current source/status reconciliation while they
-run. After integrating that wave, the preferred second wave is `F10` and
-`F20`, while the parent performs `F30` and, in its own lane, `F41` (evidence
-schema) and `F04` (economics decision record). Do not spawn a duplicate broad
-audit.
-
-### 5.4 Task completion template
+### 5.2 Task completion template
 
 Every task below must produce:
 
@@ -740,7 +705,7 @@ compatible-looking helper exists.
 | F02 | Final format/ABI registry audit                 | F00           | Every serialized/authenticated format has one V1 schema and exact cross-language tag/arity tests; obsolete pre-launch branches are absent.                                                                                                                                                                                                                                                       |
 | F03 | Target-network authority preflight              | F00           | Select and identify the trusted Cardano L1-source mode/topology, effective/pending parameter query, testnet network, finality policy inputs, and credentials. Local-node mode records the watcher-operated node and aligned query/index services; external-provider mode records every independent provider. Missing external credentials are recorded (secret-safe per §4.1) before P5/P6 but do not block local work. F03 emits exactly one machine-readable L1-source declaration (mode, network, endpoints/identities, finality inputs) that every later task consumes. For this Goal the accepted acceptance-mode selection is `Preprod` + `local_node` + aligned local Kupmios — the only mode current repository tooling supports; selecting `external_providers` instead requires first deliberately building that acceptance path and amending this file. |
 | F04 | Quantitative economics and margin decision record | F03         | One approved decision record under `docs/midgard/decisions/` fixes: bond, slashing penalty, inactivity penalty, prover reward, fee/collateral floors, confirmation/finality depths per L1-source mode, retry budget, DA availability deadlines, `da_attestation_timeout` (Q61), governed DA-governor lower bounds (Q63), local acceptance-topology container ceilings (C80) plus the separate owner-set production hardware floor (documented through W46 and the readiness document), and confirms the §3.3 thresholds. Q53, W04, W12, C74, C80, Q61, and Q63 consume these values; no later task invents its own number. Values may enter as `PROVISIONAL` to unblock local work; owner approval is required before CG5 binds them into the release identity. Testnet deadline/timeout values must keep the complete C83–C87 live sweep executable inside a bounded acceptance window (target ≤ 48 hours) without violating §3.3. |
-| F05 | Machine-readable task manifest                  | F01–F03, F20–F21, F30, F41 | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable path lease, parent-owned paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. §5.1 assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own leases and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, a §13.4 evidence binding, and a subagent assignment brief — templates, excluded from evidence aggregation. |
+| F05 | Machine-readable task manifest                  | F01–F03, F20–F21, F30, F41 | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` lists every §7–§10 task with: ID, dependencies, exact source anchors, writable paths, paths it must not touch, required evidence outputs, focused verification commands, expected nonzero counts, invalidation triggers, and a size (S/M/L/XL) and risk classification. Assignments quote the manifest entry; inventory findings update it before dependent work is assigned. The manifest may decompose an oversized task into ordered sub-assignments (`Q22a`, `Q22b`, …) with their own path sets and focused commands while closure is judged for the whole ID. F05 also ships worked examples under `docs/exec-plans/templates/`: a golden manifest row, a §3.2 necessity artifact, an executable structural `N/A`, a §13.4 evidence binding, and a task assignment brief — templates, excluded from evidence aggregation. |
 | F10 | P0/P1/P2 evidence reconciliation                | F01–F02       | Re-run or invalidate every claimed P0/P1/P2 pass against current source; update the P2 task queue without weakening the matrix definition.                                                                                                                                                                                                                                                       |
 | F20 | Fault-proof matrix and catalogue reconciliation | F01–F02       | For every coverage row, identify rule, enabled state, proof family, current binding, catalogue reachability, tooling, tests, emulator/preprod evidence, and remaining task ID. F20 also emits the initial concrete §9.1 launch-scope family list.                                                                                                                                                                                                                   |
 | F21 | Structural/N/A claim audit                      | F20           | Each “unrepresentable”, “L1-enforced”, or “reduces to another proof” row has an executable adversarial test. Unsupported prose-only N/A claims become open tasks.                                                                                                                                                                                                                                |
@@ -812,7 +777,7 @@ items.
 | CG2 | Proof-item capability gate                  | C20-0–C33    | Every required P2 matrix row and every cell is `PASS`; complete-item carriage remains available wherever it fits; every bounded fallback has a measured §3.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.                                                        |
 
 Tasks `C20-*`, `C23`–`C26`, and `C27`–`C29` are logically independent
-after their named prerequisites, but any pair sharing a leased codec or large
+after their named prerequisites, but any pair sharing a codec or the large
 validation-machine module must run serially.
 
 ### 8.3 P3 narrow semantic resolvers
@@ -871,7 +836,7 @@ validation-machine module must run serially.
 | C80 | Exclusive topology/resource preflight | CG5, C79      | Enforced lock; no other Midgard topology; explicit container memory/CPU/PID limits from F04; serialized builds/tests; resource and container-count checks. Verify every operator/prover/DA wallet holds the W31-computed worst-case funding before any state-changing step. Preserve the local Preprod node/Kupo databases across attempts; a fresh chain sync is never required for a fresh Midgard deployment.                                                                  |
 | C81 | Fresh testnet deployment              | C80           | Use the C79-validated E2E acceptance skill in `fresh` mode; new on-chain identity, exact manifest, reference scripts, init, and matching clean local state. Never touch unrelated Cardano or L1-source state.               |
 | C82 | Functional lifecycle                  | C81           | Operator registration/activation, deposit, L2 submit, commit, confirmation, merge, withdrawal/reserve/payout, and final DB/chain/API reconciliation.                                                                        |
-| C83 | Fault-proof drills                    | C81, QG3, WG2 | At least one target-testnet drill per launch-scope proof family; complete proof token, removal, slashing, prover payment, and corrected queue. Drills may run in parallel where wallets and path leases permit; the Q51 journal makes the sweep resumable mid-run rather than restartable. Share drill instances with Q57 and W45 per the Q57 single-execution rule.                                                                              |
+| C83 | Fault-proof drills                    | C81, QG3, WG2 | At least one target-testnet drill per launch-scope proof family; complete proof token, removal, slashing, prover payment, and corrected queue. Drills may run in parallel where wallets and path ownership permit; the Q51 journal makes the sweep resumable mid-run rather than restartable. Share drill instances with Q57 and W45 per the Q57 single-execution rule.                                                                              |
 | C84 | Forced/classification drills          | C81–C83       | All C60–C68 paths against final deployment artifacts. A C83 drill instance may serve as this evidence where it exercises the identical final path; never spend a live transaction twice to prove the same claim.                                                                                                                                                                       |
 | C85 | Restart/rollback/recovery/withholding | C81–C84       | Injectable live drills — named crash boundaries, watcher recovery, configured L1-source inconsistency (including external-provider disagreement, induced by stopping or desyncing the aligned query/index services), missing DA, withholding, and stale manifest — fail closed without lost/duplicate state. L1 rollback and finalized-rollback incident paths are proven by the W44 local matrix plus an adapter-level rewind rehearsal against recorded live chain data; a naturally observed Preprod rollback is recorded as bonus evidence and is never a required trigger. |
 | C86 | Bounded stress                        | C82–C85       | Run only after functional acceptance; respect resource gate; preserve correctness/root/proof evidence.                                                                                                                      |
@@ -980,13 +945,13 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 | Q48 | Source-phase mismatch, trace-link/order, event-to-step, and every count-fault variant | Q00–Q03, C51                                                                        |
 | Q49 | All structural/N/A rows from F21                                                      | F21, Q00–Q03                                                                        |
 
-Multiple family tasks may run concurrently (within the §5.1 limit) only when
-their complete leased path sets do not overlap. Shared catalogue, CLI unions,
+Multiple family tasks may run concurrently only when their complete path sets
+do not overlap. Shared catalogue, CLI unions,
 blueprint, and matrices are integrated later by the parent.
 
 Q21, Q22, and Q45–Q48 are substantially larger than typical rows — the
 interactive validation-trace game especially. Decompose them into ordered F05
-sub-assignments with their own leases and focused commands; §9.1 closure is
+sub-assignments with their own path sets and focused commands; §9.1 closure is
 still judged for the whole family.
 
 ### 9.4 Shared correction lifecycle
@@ -1335,7 +1300,7 @@ Required behavior:
 
 F40 additionally provides a non-gating `goal:tasks:ready` helper that joins
 the F05 task manifest with the `GOAL_PROGRESS.md` task queue and prints
-dependency-ready tasks with their leases and focused commands. It is
+dependency-ready tasks with their owned paths and focused commands. It is
 scheduling tooling, not a gate; no acceptance claim may cite it.
 
 No command may use `--passWithNoTests`, ignored exit codes, hidden skips, or a
