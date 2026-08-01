@@ -39,13 +39,13 @@
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.ak",
         "baselineSha256": "afe358b315db698111b0935633888a71a9c962456ba475b8a33da908ea3f4a57",
-        "currentExpectedSha256": "07cde51ac1dd5dec24b16ace58cc616d8d9a40f7896527dc9c43eabbd1474e9a",
+        "currentExpectedSha256": "de356f9c87e6c876866629a6131d7e75c89dffa1df4d6939897721f40dc29c5c",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
         "path": "onchain/aiken/lib/midgard/script-sources-redeemer-normalization-v1.test.ak",
         "baselineSha256": "5bec5dbf14b919f08697c9502dbb6b2e9f072332ad4fefde4c19a2565db6fa2b",
-        "currentExpectedSha256": "adfdbff41bcfe1f5c9fcae89ab027fdd5bc8edd4e9d077c3a7a1a64c5cd7edd4",
+        "currentExpectedSha256": "2e6c0314e6d99501210b80f0ea9e9bc8f7fcf1eea2cea2fb1c2b55267c41d46e",
         "disposition": "PROTECTED_ACCEPTED_EXTERNAL_DRIFT"
       },
       {
@@ -57,19 +57,19 @@
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-execution-settlement-v1.ak",
         "baselineSha256": null,
-        "currentExpectedSha256": "d8277ebdb3e6b2691ac98f0ba84faabbaf0631a9f718ecf4caabb2a3b737e9a5",
+        "currentExpectedSha256": "c1405a2ed008cb34c46567af121738463d2939950c3316c23a49a90c1b2523b0",
         "disposition": "PROTECTED_EXTERNAL_UNTRACKED"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-finalize-frame-executor-v1.ak",
         "baselineSha256": "ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f",
-        "currentExpectedSha256": "ac9981696cee44fe137e48964a3796beb57ca2f076d6aadeb1fae230ceff1c6f",
+        "currentExpectedSha256": "1e6ab2d8acb6d97b880800cf1c124505bf654630738e3726b4114870e0bc105a",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
         "path": "onchain/aiken/validators/fraud-proofs/validation-trace/script-sources-stage-one-redeemer-fold-map-executor-v1.ak",
         "baselineSha256": "10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608",
-        "currentExpectedSha256": "10c00875852f0405041a2039033af55790e8f42f75ba92f97cbbc64dae299608",
+        "currentExpectedSha256": "7ccbe4d616827b8947927fce9ddbf20e1fc74c6212f1f634f5f2567718eede5a",
         "disposition": "PROTECTED_EXACT_BASELINE"
       },
       {
