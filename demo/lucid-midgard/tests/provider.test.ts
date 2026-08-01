@@ -1,4 +1,8 @@
-import { decodeMidgardProofSubmissionV1 } from "@al-ft/midgard-core/cek-proof";
+import {
+  decodeMidgardProofSubmissionV1,
+  encodeMidgardCekTermNodeV1,
+  hashMidgardCekTermNodeV1,
+} from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -99,6 +103,14 @@ const submitTx = {
     ),
   ).toString("hex"),
 };
+const submitProgramTerm = { kind: "error" } as const;
+const submitProgramMaterial = [
+  {
+    kind: "term" as const,
+    root: hashMidgardCekTermNodeV1(submitProgramTerm),
+    preimage: encodeMidgardCekTermNodeV1(submitProgramTerm),
+  },
+];
 
 const submitAdmission = (
   payload: Record<string, unknown> = {},
@@ -613,18 +625,23 @@ describe("MidgardNodeProvider", () => {
         init?.body instanceof Uint8Array
           ? Buffer.from(init.body)
           : Buffer.from(await new Response(init?.body).arrayBuffer());
-      submittedBodies.push(
-        decodeMidgardProofSubmissionV1(body).transactionCbor.toString("hex"),
-      );
+      const submission = decodeMidgardProofSubmissionV1(body);
+      expect(submission.transactionCbor.toString("hex")).toBe(submitTx.txHex);
+      expect(submission.programMaterial).toEqual(submitProgramMaterial);
+      submittedBodies.push(submission.transactionCbor.toString("hex"));
       return responses.shift()!;
     });
 
-    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+    await expect(
+      provider.submitTx(submitTx.txHex, submitProgramMaterial),
+    ).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 202,
       duplicate: false,
     });
-    await expect(provider.submitTx(submitTx.txHex)).resolves.toMatchObject({
+    await expect(
+      provider.submitTx(submitTx.txHex, submitProgramMaterial),
+    ).resolves.toMatchObject({
       txId: submitTx.txId,
       httpStatus: 200,
       duplicate: true,
