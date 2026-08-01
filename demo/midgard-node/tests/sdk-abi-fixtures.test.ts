@@ -1603,6 +1603,9 @@ describe("SDK canonical ABI fixtures", () => {
       Effect.either(
         SDK.validateHeaderTransitionCommitmentsV1Program({
           ...SDK.EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+          withdrawalsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          transactionsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+          depositsRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
           withdrawalCount: -1n,
         }),
       ),

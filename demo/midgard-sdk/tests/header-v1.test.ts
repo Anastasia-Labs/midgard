@@ -96,19 +96,25 @@ describe("HeaderV1", () => {
       transitionStepCount: value.transitionStepCount,
       validationTraceCount: value.validationTraceCount,
     };
+    const commitmentInput = {
+      ...commitments,
+      withdrawalsRoot: value.withdrawalsRoot,
+      transactionsRoot: value.transactionsRoot,
+      depositsRoot: value.depositsRoot,
+    };
 
     expect(Data.to(commitments, HeaderTransitionCommitmentsV1)).toBe(
       HEADER_TRANSITION_COMMITMENTS_V1_CBOR,
     );
     await expect(
       Effect.runPromise(
-        validateHeaderTransitionCommitmentsV1Program(commitments),
+        validateHeaderTransitionCommitmentsV1Program(commitmentInput),
       ),
     ).resolves.toEqual(commitments);
     await expect(
       Effect.runPromise(
         validateHeaderTransitionCommitmentsV1Program({
-          ...commitments,
+          ...commitmentInput,
           forcedTransactionCount: 1n,
         }),
       ),
@@ -116,7 +122,7 @@ describe("HeaderV1", () => {
     await expect(
       Effect.runPromise(
         validateHeaderTransitionCommitmentsV1Program({
-          ...commitments,
+          ...commitmentInput,
           transitionStepCount: 0n,
         }),
       ),
@@ -124,11 +130,51 @@ describe("HeaderV1", () => {
     await expect(
       Effect.runPromise(
         validateHeaderTransitionCommitmentsV1Program({
-          ...commitments,
+          ...commitmentInput,
           withdrawalCount: 10_001n,
         }),
       ),
     ).rejects.toThrow(/compiled consensus bound/u);
+
+    const nonEmptyCommitments = {
+      ...commitments,
+      withdrawalCount: 1n,
+      l2TransactionCount: 1n,
+      depositCount: 1n,
+      totalEventCount: 3n,
+      transitionStepCount: 3n,
+    };
+    const nonEmptyCommitmentInput = {
+      ...nonEmptyCommitments,
+      withdrawalsRoot: h32(9),
+      transactionsRoot: h32(3),
+      depositsRoot: h32(10),
+    };
+
+    await expect(
+      Effect.runPromise(
+        validateHeaderTransitionCommitmentsV1Program(nonEmptyCommitmentInput),
+      ),
+    ).resolves.toEqual(nonEmptyCommitments);
+
+    for (const [label, rootField] of [
+      ["withdrawals", "withdrawalsRoot"],
+      ["transactions", "transactionsRoot"],
+      ["deposits", "depositsRoot"],
+    ] as const) {
+      const invalid = await Effect.runPromise(
+        Effect.either(
+          validateHeaderTransitionCommitmentsV1Program({
+            ...nonEmptyCommitmentInput,
+            [rootField]: EMPTY_MERKLE_TREE_ROOT,
+          }),
+        ),
+      );
+      expect(invalid._tag).toBe("Left");
+      if (invalid._tag === "Left") {
+        expect(String(invalid.left.cause)).toContain(`${label}_root`);
+      }
+    }
   });
 
   it("has the exact L03 StateQueueNodeV1 topology and datum vector", () => {

@@ -1122,9 +1122,12 @@ export const updateLatestBlocksDatumAndGetTheNewHeaderV1Program = (
         }),
     });
     const operatorVkey = paymentCredentialOf(walletAddress).hash;
-    const commitments = yield* validateHeaderTransitionCommitmentsV1Program(
-      transitionCommitments,
-    );
+    const commitments = yield* validateHeaderTransitionCommitmentsV1Program({
+      ...transitionCommitments,
+      withdrawalsRoot,
+      transactionsRoot,
+      depositsRoot,
+    });
 
     if (latestBlocksDatum.key === "Empty") {
       const { data: confirmedState } =

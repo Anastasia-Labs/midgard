@@ -46,6 +46,7 @@ import {
   AddressData,
   addressDataFromBech32,
   type AuthenticatedValidator,
+  castConfirmedStateToData,
   ConfirmedState,
   EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
@@ -62,6 +63,8 @@ import {
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  type LinkedListNodeView,
+  makeGenesisConfirmedStateV1,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOperatorWalletInputs,
@@ -76,6 +79,7 @@ import {
   StateQueueRedeemer,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
+  updateLatestBlocksDatumAndGetTheNewHeaderV1Program,
   utxoToStateQueueUTxO,
 } from "../src/index.js";
 
@@ -431,6 +435,89 @@ const TWO_TRANSACTION_HEADER_COMMITMENTS = {
   transitionStepCount: 2n,
   validationTraceCount: 2n,
 } as const;
+
+describe("state-queue header validation boundary", () => {
+  it("validates every source root/count pair before building a header", async () => {
+    const lucid = {
+      wallet: () => ({
+        address: async () =>
+          "addr_test1wzylc3gg4h37gt69yx057gkn4egefs5t9rsycmryecpsenswtdp58",
+      }),
+    } as unknown as Parameters<
+      typeof updateLatestBlocksDatumAndGetTheNewHeaderV1Program
+    >[0];
+    const latestBlocksDatum: LinkedListNodeView = {
+      key: "Empty",
+      next: "Empty",
+      data: castConfirmedStateToData(
+        makeGenesisConfirmedStateV1(10n),
+      ) as LinkedListNodeView["data"],
+    };
+    const sourceRoots = {
+      withdrawalsRoot: h32("11"),
+      transactionsRoot: h32("22"),
+      depositsRoot: h32("33"),
+    };
+    const commitments = {
+      ...EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
+      transitionTraceRoot: h32("44"),
+      eventToStepRoot: h32("55"),
+      validationTracesRoot: h32("66"),
+      withdrawalCount: 1n,
+      l2TransactionCount: 1n,
+      depositCount: 1n,
+      totalEventCount: 3n,
+      transitionStepCount: 3n,
+      validationTraceCount: 1n,
+    };
+    const updateProgram = (roots: typeof sourceRoots = sourceRoots) =>
+      updateLatestBlocksDatumAndGetTheNewHeaderV1Program(
+        lucid,
+        latestBlocksDatum,
+        h32("77"),
+        roots.transactionsRoot,
+        roots.depositsRoot,
+        roots.withdrawalsRoot,
+        commitments,
+        11n,
+        {
+          blockSlot: 0n,
+          expectedNetworkId: 0n,
+          minFeeA: 0n,
+          minFeeB: 0n,
+        },
+      );
+    const update = (roots: typeof sourceRoots = sourceRoots) =>
+      Effect.runPromise(updateProgram(roots));
+
+    await expect(update()).resolves.toMatchObject({
+      header: {
+        withdrawalsRoot: sourceRoots.withdrawalsRoot,
+        transactionsRoot: sourceRoots.transactionsRoot,
+        depositsRoot: sourceRoots.depositsRoot,
+      },
+    });
+
+    for (const [label, rootField] of [
+      ["withdrawals", "withdrawalsRoot"],
+      ["transactions", "transactionsRoot"],
+      ["deposits", "depositsRoot"],
+    ] as const) {
+      const invalid = await Effect.runPromise(
+        Effect.either(
+          updateProgram({
+            ...sourceRoots,
+            [rootField]: EMPTY_MERKLE_TREE_ROOT,
+          }),
+        ),
+      );
+      expect(invalid._tag).toBe("Left");
+      if (invalid._tag === "Left") {
+        expect(String(invalid.left.cause)).toContain(`${label}_root`);
+      }
+    }
+  });
+});
 
 const isOnlyLovelace = (utxo: UTxO): boolean =>
   Object.keys(utxo.assets).every((unit) => unit === "lovelace");

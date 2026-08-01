@@ -124,6 +124,10 @@ export type MakeHeaderTransitionCommitmentsV1Input =
       readonly validationTraceCount: bigint;
     };
 
+export type ValidateHeaderTransitionCommitmentsV1Input =
+  HeaderTransitionCommitmentsV1 &
+    Pick<HeaderV1, "withdrawalsRoot" | "transactionsRoot" | "depositsRoot">;
+
 export class HeaderTransitionCommitmentsError extends EffectData.TaggedError(
   "HeaderTransitionCommitmentsError",
 )<GenericErrorFields> {}
@@ -135,12 +139,25 @@ const headerTransitionCommitmentsError = (
   new HeaderTransitionCommitmentsError({ message, cause });
 
 export const validateHeaderTransitionCommitmentsV1Program = (
-  commitments: HeaderTransitionCommitmentsV1,
+  input: ValidateHeaderTransitionCommitmentsV1Input,
 ): Effect.Effect<
   HeaderTransitionCommitmentsV1,
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
+    const commitments: HeaderTransitionCommitmentsV1 = {
+      forcedTransactionsRoot: input.forcedTransactionsRoot,
+      transitionTraceRoot: input.transitionTraceRoot,
+      eventToStepRoot: input.eventToStepRoot,
+      validationTracesRoot: input.validationTracesRoot,
+      withdrawalCount: input.withdrawalCount,
+      forcedTransactionCount: input.forcedTransactionCount,
+      l2TransactionCount: input.l2TransactionCount,
+      depositCount: input.depositCount,
+      totalEventCount: input.totalEventCount,
+      transitionStepCount: input.transitionStepCount,
+      validationTraceCount: input.validationTraceCount,
+    };
     const countEntries = [
       [
         "withdrawalCount",
@@ -197,9 +214,24 @@ export const validateHeaderTransitionCommitmentsV1Program = (
       }
     }
     yield* validateSourceRootCountV1(
+      "withdrawals",
+      input.withdrawalsRoot,
+      commitments.withdrawalCount,
+    );
+    yield* validateSourceRootCountV1(
       "forced_transactions",
       commitments.forcedTransactionsRoot,
       commitments.forcedTransactionCount,
+    );
+    yield* validateSourceRootCountV1(
+      "transactions",
+      input.transactionsRoot,
+      commitments.l2TransactionCount,
+    );
+    yield* validateSourceRootCountV1(
+      "deposits",
+      input.depositsRoot,
+      commitments.depositCount,
     );
 
     const expectedTotal =
@@ -303,33 +335,16 @@ export const makeHeaderTransitionCommitmentsV1Program = (
   HeaderTransitionCommitmentsError
 > =>
   Effect.gen(function* () {
-    yield* validateSourceRootCountV1(
-      "withdrawals",
-      input.withdrawalsRoot,
-      input.withdrawalCount,
-    );
-    yield* validateSourceRootCountV1(
-      "forced_transactions",
-      input.forcedTransactionsRoot,
-      input.forcedTransactionCount,
-    );
-    yield* validateSourceRootCountV1(
-      "transactions",
-      input.transactionsRoot,
-      input.l2TransactionCount,
-    );
-    yield* validateSourceRootCountV1(
-      "deposits",
-      input.depositsRoot,
-      input.depositCount,
-    );
     const totalEventCount =
       input.withdrawalCount +
       input.forcedTransactionCount +
       input.l2TransactionCount +
       input.depositCount;
     return yield* validateHeaderTransitionCommitmentsV1Program({
+      withdrawalsRoot: input.withdrawalsRoot,
       forcedTransactionsRoot: input.forcedTransactionsRoot,
+      transactionsRoot: input.transactionsRoot,
+      depositsRoot: input.depositsRoot,
       transitionTraceRoot: input.transitionTraceRoot ?? EMPTY_MERKLE_TREE_ROOT,
       eventToStepRoot: input.eventToStepRoot ?? EMPTY_MERKLE_TREE_ROOT,
       validationTracesRoot: input.validationTracesRoot,
