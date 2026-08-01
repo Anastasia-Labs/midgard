@@ -229,14 +229,20 @@ const pendingUserEventCountUpTo = (
 export const shouldHydrateCommitBaseEntries = ({
   payloadRootCheck,
   recordCorpus,
+  candidateTxCount,
+  pendingForcedTransactionCount,
   pendingWithdrawalCount,
 }: {
   readonly payloadRootCheck: string;
   readonly recordCorpus: string;
+  readonly candidateTxCount: number;
+  readonly pendingForcedTransactionCount: number;
   readonly pendingWithdrawalCount: number;
 }): boolean =>
   payloadRootCheck === "every_block" ||
   recordCorpus.trim().length > 0 ||
+  candidateTxCount > 0 ||
+  pendingForcedTransactionCount > 0 ||
   pendingWithdrawalCount > 0;
 
 export const revalidateAndPersistSpeculativeCandidateSources = ({
@@ -2046,6 +2052,9 @@ const databaseOperationsProgram = (
       requireEntries: shouldHydrateCommitBaseEntries({
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         recordCorpus: nodeConfig.MPF_RECORD_CORPUS,
+        candidateTxCount: candidateSelection.candidateTxs.length,
+        pendingForcedTransactionCount:
+          pendingUserEventCounts.forcedTransactions,
         pendingWithdrawalCount: pendingUserEventCounts.withdrawals,
       }),
     });

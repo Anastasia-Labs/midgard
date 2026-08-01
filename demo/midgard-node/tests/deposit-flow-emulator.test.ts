@@ -1,6 +1,6 @@
 import "./utils.js";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,6 +65,7 @@ import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal
 import { utxosProgram } from "@/commands/utxos.js";
 import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
 import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -73,6 +74,7 @@ import {
   DaPayloadsDB,
   DepositsDB,
   DepositSubmissionAttemptsDB,
+  ForcedTransactionsDB,
   ForeignTipReconciliationsDB,
   ImmutableDB,
   LedgerUtils,
@@ -91,6 +93,7 @@ import {
   WithdrawalsDB,
 } from "@/database/index.js";
 import { DatabaseError } from "@/database/utils/common.js";
+import * as Ledger from "@/database/utils/ledger.js";
 import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
 import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
 import { mergeAction, type MergeActionResult } from "@/fibers/merge.js";
@@ -568,6 +571,7 @@ const clearNodeTables = Effect.all(
     DepositSubmissionAttemptsDB.clear,
     ForeignTipReconciliationsDB.clear,
     TxRejectionsDB.clear,
+    ForcedTransactionsDB.clear,
     CommonUtils.clearTable(TxAdmissionsDB.tableName),
     CommonUtils.clearTable(MutationJobsDB.tableName),
     CommonUtils.clearTable(DepositsDB.tableName),
@@ -1513,10 +1517,12 @@ const runSpeculativeWorkerWithInstruction = async ({
   lucidService,
   watermarks,
   onReady,
+  nodeConfig,
 }: {
   readonly fixture: EmulatorFixture;
   readonly lucidService: Awaited<ReturnType<typeof makeLucidRuntimeService>>;
   readonly watermarks: UserEventBarrierWatermarks;
+  readonly nodeConfig?: NodeConfigDep;
   readonly onReady: (
     candidate: SpeculativeCandidateSummary,
   ) => Effect.Effect<
@@ -1554,7 +1560,7 @@ const runSpeculativeWorkerWithInstruction = async ({
           ),
         );
       },
-      undefined,
+      nodeConfig,
       () =>
         Effect.sync(() => {
           lucidAcquisitions += 1;
@@ -2929,6 +2935,407 @@ describeRealisticDepositFlow("deposit flow emulator", () => {
           : undefined,
     ).toEqual(fixture.operatorKeyHash);
   }, 180_000);
+
+  it("hydrates periodic and off commit candidates when stateful work is selected", async () => {
+    await configureEmulatorDaRuntimeManifest();
+
+    const runCase = async (payloadRootCheck: "periodic" | "off") => {
+      if (activeRuntimePaths !== null) {
+        await cleanupRuntimePaths(activeRuntimePaths);
+      }
+      activeRuntimePaths = makeRuntimePaths();
+      await cleanupRuntimePaths(activeRuntimePaths);
+      await initializeNodeRuntime();
+
+      const fixture = await makeFixture();
+      await initializeProtocol(fixture);
+      const lucidService = await makeLucidRuntimeService(fixture);
+      const globals = await makeGlobalsService();
+      const baseNodeConfig = await makeNodeConfigForFixture(fixture);
+      const nodeConfig: NodeConfigDep = {
+        ...baseNodeConfig,
+        MPF_PAYLOAD_ROOT_CHECK: payloadRootCheck,
+        MPF_RECORD_CORPUS: "",
+        MPF_ENGINE: "overlay",
+        COMMIT_MAX_L2_TX_COUNT: 1,
+        MIN_FEE_A: 0n,
+        MIN_FEE_B: 0n,
+      };
+      await advanceEmulatorPastLatestBlockEndTime(fixture);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      // Two real deposits provide an authenticated base snapshot with two
+      // independent UTxOs for the normal and forced spends below.
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 12_000_000n,
+      });
+      await submitDepositAndRefreshBarriers({
+        fixture,
+        lucidService,
+        globals,
+        lovelace: 13_000_000n,
+      });
+      const baseBlock = await fetchLatestCommittedBlock(
+        fixture.operatorLucid,
+        fixture.contracts,
+      );
+      const baseCommit = await runCommitWorkerUntilSubmitted({
+        fixture,
+        lucidService,
+        latestBlock: baseBlock,
+        nodeConfig,
+      });
+      await fixture.operatorLucid.awaitTx(baseCommit.submittedTxHash);
+      await advanceEmulatorPastUnixTime(fixture, baseCommit.blockEndTimeMs);
+      vi.setSystemTime(new Date(fixture.emulator.now()));
+
+      const baseJournal = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveActive(),
+      );
+      expect(Option.isSome(baseJournal)).toBe(true);
+      if (Option.isNone(baseJournal)) {
+        throw new Error("Expected the authenticated base journal");
+      }
+      const baseSnapshot = await runNodeDatabaseEffect(
+        materializeConfirmedLedgerSnapshot(baseJournal.value),
+      );
+      expect(baseSnapshot.root).toBe(
+        baseJournal.value[
+          PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT
+        ],
+      );
+      expect(baseSnapshot.entries.length).toBeGreaterThanOrEqual(2);
+      const senderAddress = await fixture.depositorLucid.wallet().address();
+      const sourceUtxos = baseSnapshot.entries
+        .map((entry) =>
+          decodeNodeUtxo({
+            outref: entry[Ledger.Columns.OUTREF].toString("hex"),
+            outputCbor: entry[Ledger.Columns.OUTPUT].toString("hex"),
+          }),
+        )
+        .filter((utxo) => utxo.address === senderAddress)
+        .slice(0, 2);
+      expect(sourceUtxos).toHaveLength(2);
+      const signer = CML.PrivateKey.from_bech32(
+        walletFromSeed(fixture.depositorAccount.seedPhrase, {
+          network: "Custom",
+        }).paymentKey,
+      );
+      const destinationAddress = await fixture.referenceScriptsLucid
+        .wallet()
+        .address();
+
+      // Exercise the root+aggregate fast path with no selected normal or
+      // forced work; the full confirmed-ledger scan must remain untouched.
+      const controlEndTimeMs = Math.max(
+        Date.now(),
+        baseCommit.blockEndTimeMs + 1,
+      );
+      const controlWatermarks: UserEventBarrierWatermarks = {
+        depositMs: controlEndTimeMs,
+        withdrawalMs: controlEndTimeMs,
+        txOrderMs: controlEndTimeMs,
+        refreshedAtMs: controlEndTimeMs,
+      };
+      const controlWorkerInput = await speculativeWorkerInputFromActiveJournal(
+        controlWatermarks,
+        canonicalSlotConfigForLucid(lucidService.api),
+      );
+      const controlScanBefore = await Effect.runPromise(
+        Metric.value(confirmedLedgerFullScanCounter),
+      );
+      let controlCandidate: SpeculativeCandidateSummary | undefined;
+      const controlOutput = await Effect.runPromise(
+        commitWorkerProgram(
+          fixture.contracts,
+          lucidService,
+          controlWorkerInput,
+          (candidate) => {
+            controlCandidate = candidate;
+            return Effect.succeed({
+              type: "InvalidateSpeculativeCandidate",
+              reason: "T1",
+            } satisfies SpeculativeCommitWorkerInstruction);
+          },
+          nodeConfig,
+          () => Effect.succeed(lucidService as any),
+        ).pipe(
+          Effect.provideService(
+            ContractDeploymentIdentity,
+            EMULATOR_DEPLOYMENT_IDENTITY,
+          ),
+          Effect.provide(Database.layer),
+        ),
+      );
+      const controlScanAfter = await Effect.runPromise(
+        Metric.value(confirmedLedgerFullScanCounter),
+      );
+      expect([
+        "NothingToCommitOutput",
+        "SpeculativeCandidateInvalidatedOutput",
+      ]).toContain(controlOutput.type);
+      if (controlCandidate !== undefined) {
+        expect(controlCandidate.expectedL2TransactionCount).toBe(0);
+        expect(controlCandidate.expectedUserEventCounts).toEqual({
+          deposits: 0,
+          forcedTransactions: 0,
+          withdrawals: 0,
+        });
+      }
+      expect(controlScanAfter.count).toBe(controlScanBefore.count);
+
+      const eventTime = new Date(
+        Math.max(Date.now(), baseCommit.blockEndTimeMs + 1),
+      );
+      const normalTransfer = await buildTransferTx({
+        senderAddress,
+        destinationAddress,
+        signer,
+        selectedInputs: [sourceUtxos[0]!],
+        requestedAssets: { lovelace: 2_000_000n },
+        networkId: 0n,
+      });
+      const forcedTransfer = await buildTransferTx({
+        senderAddress,
+        destinationAddress,
+        signer,
+        selectedInputs: [sourceUtxos[1]!],
+        requestedAssets: { lovelace: 2_000_000n },
+        networkId: 0n,
+      });
+
+      const queuedNormal = {
+        txId: normalTransfer.txId,
+        txCbor: normalTransfer.txCbor,
+        programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+        arrivalSeq: 0n,
+        createdAt: eventTime,
+      } satisfies QueuedTx;
+      const phaseA = await Effect.runPromise(
+        runPhaseAValidation([queuedNormal], {
+          expectedNetworkId: 0n,
+          minFeeA: nodeConfig.MIN_FEE_A,
+          minFeeB: nodeConfig.MIN_FEE_B,
+          concurrency: 1,
+          strictnessProfile: "phase1_midgard",
+        }),
+      );
+      expect(phaseA.rejected).toEqual([]);
+      const initialLedger = new Map(
+        baseSnapshot.entries.map((entry) => [
+          entry[Ledger.Columns.OUTREF].toString("hex"),
+          entry[Ledger.Columns.OUTPUT],
+        ]),
+      );
+      const phaseB = await Effect.runPromise(
+        runPhaseBValidationWithPatch(phaseA.accepted, initialLedger, {
+          nowCardanoSlotNo: 0n,
+          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+          enforceScriptBudget: true,
+        }),
+      );
+      expect(phaseB.rejected).toEqual([]);
+      const processedNormal = phaseB.accepted.map(
+        processedTxFromValidatedTx,
+      )[0];
+      if (processedNormal === undefined) {
+        throw new Error("Expected the normal spend to pass validation");
+      }
+
+      await runNodeDatabaseEffect(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* TxAdmissionsDB.tryInsert({
+            txId: normalTransfer.txId,
+            txCanonicalCbor: normalTransfer.txCbor,
+            programMaterialSidecarCbor: EMPTY_PROGRAM_MATERIAL_SIDECAR_V1,
+            submitSource: "native",
+          });
+          yield* sql.withTransaction(
+            MempoolDB.insertMultipleCore([processedNormal]),
+          );
+          yield* sql`UPDATE ${sql(MempoolDB.tableName)}
+            SET time_stamp_tz = ${eventTime}
+            WHERE ${sql(TxUtils.Columns.TX_ID)} = ${normalTransfer.txId}`;
+        }),
+      );
+
+      const forcedEncoding = await Effect.runPromise(
+        ForcedTransactionsDB.encodeForcedInclusionValueV1({
+          nativeTxCbor: forcedTransfer.txCbor,
+          operatorValidity: "TxIsValid",
+          consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        }),
+      );
+      const forcedEventId = Buffer.from(
+        Data.to(
+          {
+            transactionId: "f1".repeat(32),
+            outputIndex: 0n,
+          },
+          SDK.OutputReference,
+        ),
+        "hex",
+      );
+      const forcedSidecar = EMPTY_PROGRAM_MATERIAL_SIDECAR_V1;
+      await runNodeDatabaseEffect(
+        ForcedTransactionsDB.insertEntries([
+          {
+            [ForcedTransactionsDB.Columns.TX_ORDER_ID]: forcedEventId,
+            [ForcedTransactionsDB.Columns.TX_ORDER_L1_TX_HASH]: Buffer.alloc(
+              32,
+              0x42,
+            ),
+            [ForcedTransactionsDB.Columns.TX_ORDER_L1_OUTPUT_INDEX]: 0,
+            [ForcedTransactionsDB.Columns.ASSET_NAME]: Buffer.alloc(32, 0x43),
+            [ForcedTransactionsDB.Columns.RAW_DATUM]: Buffer.from("01", "hex"),
+            [ForcedTransactionsDB.Columns.TX_ID]: forcedEncoding.txId,
+            [ForcedTransactionsDB.Columns.TX_COMPACT]: forcedEncoding.txCompact,
+            [ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE]:
+              forcedEncoding.value,
+            [ForcedTransactionsDB.Columns.OPERATOR_VALIDITY]: "TxIsValid",
+            [ForcedTransactionsDB.Columns.CONSENSUS_PROFILE_ID]:
+              MIDGARD_CONSENSUS_PROFILE_V1.profileId,
+            [ForcedTransactionsDB.Columns.NATIVE_TX_CBOR]:
+              forcedTransfer.txCbor,
+            [ForcedTransactionsDB.Columns.TRANSACTION_COMMITMENT]:
+              forcedEncoding.transactionCommitment,
+            [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_CBOR]:
+              forcedSidecar,
+            [ForcedTransactionsDB.Columns.CEK_PROGRAM_MATERIAL_SIDECAR_SHA256]:
+              createHash("sha256").update(forcedSidecar).digest(),
+            [ForcedTransactionsDB.Columns.INCLUSION_TIME]: eventTime,
+            [ForcedTransactionsDB.Columns.PROJECTED_HEADER_HASH]: null,
+            [ForcedTransactionsDB.Columns.STATUS]:
+              ForcedTransactionsDB.Status.Awaiting,
+          },
+        ]),
+      );
+
+      const eventWatermarkMs = eventTime.getTime() + 60_000;
+      const watermarks: UserEventBarrierWatermarks = {
+        depositMs: eventWatermarkMs,
+        withdrawalMs: eventWatermarkMs,
+        txOrderMs: eventWatermarkMs,
+        refreshedAtMs: eventWatermarkMs,
+      };
+      const scanBefore = await Effect.runPromise(
+        Metric.value(confirmedLedgerFullScanCounter),
+      );
+      const speculative = await runSpeculativeWorkerWithInstruction({
+        fixture,
+        lucidService,
+        watermarks,
+        nodeConfig,
+        onReady: (candidate) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() =>
+              fixture.operatorLucid.awaitTx(baseCommit.submittedTxHash),
+            );
+            yield* Effect.promise(() =>
+              runBlockConfirmation(globals, fixture.contracts, lucidService),
+            );
+            const stateQueueLeaseToken =
+              yield* StateQueueMutationLeasesDB.acquire({
+                holder: `hydration-regression-${payloadRootCheck}`,
+              });
+            const snapshot = yield* fetchStateQueueSnapshotProgram(
+              lucidService.api,
+              fixture.contracts.stateQueue,
+              "commit_preflight",
+            );
+            const localFinalizationBlock = yield* Ref.get(
+              globals.AVAILABLE_LOCAL_FINALIZATION_BLOCK,
+            );
+            expect(candidate.expectedL2TransactionCount).toBe(1);
+            return {
+              type: "SubmitSpeculativeCandidate",
+              confirmedBlock: snapshot.tailCommitBase.utxo,
+              stateQueueLeaseToken,
+              baseSnapshotId: snapshot.snapshotId,
+              stateQueueHasUnmergedTail:
+                snapshot.root.outRef !== snapshot.tailCommitBase.outRef,
+              localFinalizationBlock:
+                localFinalizationBlock === ""
+                  ? undefined
+                  : localFinalizationBlock,
+            } satisfies SpeculativeCommitWorkerInstruction;
+          }),
+      });
+      const speculativeLease = await runNodeDatabaseEffect(
+        StateQueueMutationLeasesDB.retrieveActive(),
+      );
+      if (
+        speculativeLease?.[StateQueueMutationLeasesDB.Columns.HOLDER] ===
+        `hydration-regression-${payloadRootCheck}`
+      ) {
+        await runNodeDatabaseEffect(
+          StateQueueMutationLeasesDB.release(
+            speculativeLease[StateQueueMutationLeasesDB.Columns.TOKEN],
+          ),
+        );
+      }
+      const scanAfter = await Effect.runPromise(
+        Metric.value(confirmedLedgerFullScanCounter),
+      );
+      expect(scanAfter.count - scanBefore.count).toBeGreaterThan(0n);
+      expect(speculative.output.type).toBe(
+        "SubmittedAwaitingConfirmationOutput",
+      );
+      expect(speculative.candidate.expectedL2TransactionCount).toBe(1);
+
+      const active = await runNodeDatabaseEffect(
+        PendingBlockFinalizationsDB.retrieveActive(),
+      );
+      expect(Option.isSome(active)).toBe(true);
+      if (Option.isNone(active)) {
+        throw new Error("Expected the stateful candidate journal");
+      }
+      expect(active.value.mempoolTxIds).toEqual([normalTransfer.txId]);
+      expect(active.value.forcedTransactionEventIds).toEqual([forcedEventId]);
+      expect(active.value.depositEventIds).toEqual([]);
+      expect(active.value.withdrawalEventIds).toEqual([]);
+      expect(
+        active.value[
+          PendingBlockFinalizationsDB.Columns.EXPECTED_L2_TRANSACTION_COUNT
+        ],
+      ).toBe(1n);
+      expect(
+        active.value[
+          PendingBlockFinalizationsDB.Columns.EXPECTED_FORCED_TRANSACTION_COUNT
+        ],
+      ).toBe(1n);
+      expect(active.value.forcedTransactionMembers).toHaveLength(1);
+      const forcedJournalMember =
+        ForcedTransactionsDB.decodeForcedTransactionJournalMemberV1(
+          active.value.forcedTransactionMembers[0]![
+            PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR
+          ],
+        );
+      const forcedSource = Data.from(
+        forcedJournalMember.sourceValueCbor.toString("hex"),
+        SDK.ForcedInclusionTxV1,
+      );
+      expect(forcedSource.operator_validity).toBe("TxIsValid");
+
+      const postState = await runNodeDatabaseEffect(
+        materializeConfirmedLedgerSnapshot(active.value),
+      );
+      expect(postState.entries.length).toBeGreaterThan(0);
+      expect(postState.root).toBe(speculative.candidate.roots.utxos);
+      expect(
+        active.value[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT],
+      ).toBe(postState.root);
+    };
+
+    for (const payloadRootCheck of ["periodic", "off"] as const) {
+      await runCase(payloadRootCheck);
+    }
+  }, 360_000);
 
   it("commits the globally oldest transactions from a backlog deeper than three retrieval pages and anchors max endTime", async () => {
     const previousPageSize = process.env.MEMPOOL_RETRIEVE_PAGE_SIZE;

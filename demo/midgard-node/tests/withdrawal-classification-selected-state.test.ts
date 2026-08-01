@@ -49,6 +49,8 @@ describe("withdrawal classification selected state", () => {
       shouldHydrateCommitBaseEntries({
         payloadRootCheck: "periodic",
         recordCorpus: "",
+        candidateTxCount: 0,
+        pendingForcedTransactionCount: 0,
         pendingWithdrawalCount: 1,
       }),
     ).toBe(true);
@@ -56,6 +58,8 @@ describe("withdrawal classification selected state", () => {
       shouldHydrateCommitBaseEntries({
         payloadRootCheck: "periodic",
         recordCorpus: "",
+        candidateTxCount: 0,
+        pendingForcedTransactionCount: 0,
         pendingWithdrawalCount: 0,
       }),
     ).toBe(false);
@@ -63,6 +67,8 @@ describe("withdrawal classification selected state", () => {
       shouldHydrateCommitBaseEntries({
         payloadRootCheck: "every_block",
         recordCorpus: "",
+        candidateTxCount: 0,
+        pendingForcedTransactionCount: 0,
         pendingWithdrawalCount: 0,
       }),
     ).toBe(true);
