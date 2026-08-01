@@ -212,7 +212,7 @@
 | --------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AC-00     | IN_PROGRESS | Ledger initialized; all downstream evidence remains open.                                                                                                                                                                                                                                                                                                                                                                                               |
 | AC-01     | IN_PROGRESS | Protected baseline and hashes recorded; Goal commits and final relative-clean proof remain open.                                                                                                                                                                                                                                                                                                                                                        |
-| AC-02     | IN_PROGRESS | F01 is machine-readable and fail closed; F02 now passes its strict 132/132 canonical-format gate with exact schemas, cross-language evidence or justified N/A, hostile rejection, and retired-identity absence. Final release-profile identity remains open.                                                                                                                                                                                            |
+| AC-02     | IN_PROGRESS | F01 is machine-readable and fail closed. (Corrected 2026-08-01: this row previously claimed F02 "passes its strict 132/132 canonical-format gate" — that claim was unsupported and was already corrected in the watcher-checkpoint freeze section: the 132-row registry is structurally valid in incomplete mode with exactly 10 rows `PASS` and 122 `UNVERIFIED`, and strict release verification fails closed on those 122.) F02 registry promotion and final release-profile identity remain open.                                                                                                                                                                                            |
 | AC-03     | TODO        | Final release identity and digest required.                                                                                                                                                                                                                                                                                                                                                                                                             |
 | AC-C10    | TODO        | CG1 required.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | AC-C20    | TODO        | CG2 full P2 matrix required.                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -2357,8 +2357,34 @@ manifest, and §15 remain open.
 
 ## Current next action
 
+(Repaired 2026-08-01: this section and the Blockers section below were found
+damaged — this one empty, the next truncated mid-sentence — violating the
+AC-00 ledger-completeness duty. Both are restored here; the standing
+publication directive in the final superseding section below remains the
+authoritative loop.)
+
+Execute the 2026-08-01 owner decision on C21-STAGE4-GAP (Decisions §, top
+entry): implement Option A (drop `item_cbor` from the scriptSources stage-4
+fold) with forged-triple rejection evidence, then Option B′ (reference
+carriage for resolver 8/semantic 0), then correct the necessity artifacts and
+run the IG1 regeneration cascade. In parallel, land the owner-authorized
+mergeability slices (lockfile sync, Aiken format drift, VM-DEFECT-7 commit,
+closure-manifest rebind, this ledger repair), replay the touched-package
+gates, push one signed additive commit to draft PR #471, refresh its stale
+description (claims `7f74981f`/110-126; head has moved), and re-enter the
+fresh-head review loop of the final superseding section until CI is green on
+the checkpoint's stated scope.
+
 ## Blockers
-No current local-work blocker. Docker and the exact Aiken
+No current local-work blocker. Docker and the exact Aiken `v1.1.22+39d6b04`
+compiler are available; pinned Node `22.22.2` and corepack-cached pnpm
+`9.15.4`/`9.15.9` are usable directly. Standing non-blockers carried forward:
+the P6 preflight gaps (merge/reference-script/DA-L1-submitter credential
+sources, funded wallet/collateral proof, running watcher-operated Preprod
+local-node/Kupmios topology) gate only live-acceptance work, not
+dependency-ready local work; owner decisions remain open on the standing PR
+queue (watcher 8 MiB cap, C26 Step-2 wasm patcher, F04 PROVISIONAL approval
+before CG5).
 
 
 
