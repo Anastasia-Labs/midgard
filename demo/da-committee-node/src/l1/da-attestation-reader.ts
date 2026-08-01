@@ -9,7 +9,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { WatcherConfig } from "../config.js";
+import type { LoadedWatcherConfig, WatcherConfig } from "../config.js";
 import type { DaAttestationCandidateRecord } from "../domain.js";
 import {
   blockfrostCurrentChainPointResolver,
@@ -350,7 +350,7 @@ export class MultiDaAttestationChainReader implements DaAttestationChainReader {
 }
 
 export const daAttestationReaderFromConfig = async (
-  config: WatcherConfig,
+  config: LoadedWatcherConfig,
 ): Promise<DaAttestationChainReader | undefined> => {
   const l1Source = config.l1Source;
   const providerDescriptors =

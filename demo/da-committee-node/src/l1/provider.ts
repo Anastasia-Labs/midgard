@@ -933,8 +933,9 @@ export const stateQueueUtxosToObservedNodes = async (
 };
 
 export const providerFromConfig = async (
-  config: WatcherConfig,
+  config: LoadedWatcherConfig,
 ): Promise<StateQueueProvider> => {
+  const urls = config.cardanoProviderUrls;
   if (config.l1Source.sourceMode === "local_node") {
     const localSource = config.l1Source;
     const authority = localNodeChainAuthorityFromConfig(config);
@@ -945,7 +946,7 @@ export const providerFromConfig = async (
       localSource.chainSyncProviderUrl,
     );
     const queryProviders = await Promise.all(
-      localSource.queryProviderUrls.map((url) => providerFromUrl(url, config)),
+      urls.map((url) => providerFromUrl(url, config)),
     );
     const pointAware = queryProviders.map((provider, index) => {
       if (!("currentChainPoint" in provider)) {
@@ -958,7 +959,7 @@ export const providerFromConfig = async (
     return new LocalNodeStateQueueProvider(
       authority,
       pointAware,
-      localSource.queryProviderUrls.map(
+      urls.map(
         (_, index) =>
           `query:${localSource.authorityNodeId}:${index.toString()}`,
       ),
@@ -978,9 +979,7 @@ export const providerFromConfig = async (
     );
   }
   const providers = await Promise.all(
-    config.l1Source.providers.map(({ url }, index) =>
-      providerFromUrl(url, config, index),
-    ),
+    urls.map((url, index) => providerFromUrl(url, config, index)),
   );
   return new MultiStateQueueProvider(providers, {
     sourceMode: "external_providers",
@@ -991,7 +990,7 @@ export const providerFromConfig = async (
 const localAuthorityRegistry = new Map<string, LocalNodeChainAuthority>();
 
 export const localNodeChainAuthorityFromConfig = (
-  config: WatcherConfig,
+  config: LoadedWatcherConfig,
 ): LocalNodeChainAuthority => {
   if (config.l1Source.sourceMode !== "local_node") {
     throw new Error(
@@ -1063,10 +1062,10 @@ export const localNodeChainAuthorityFromConfig = (
 
 const localNodeChainCursorPath = (
   source: Extract<
-    WatcherConfig["l1Source"],
+    LoadedWatcherConfig["l1Source"],
     { readonly sourceMode: "local_node" }
   >,
-  localState: WatcherConfig["localState"],
+  localState: LoadedWatcherConfig["localState"],
 ): string => {
   const cursorPath =
     source.chainSyncCursorPath ??
