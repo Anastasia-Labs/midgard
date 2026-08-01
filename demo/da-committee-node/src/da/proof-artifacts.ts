@@ -20,8 +20,6 @@ import { Effect } from "effect";
 import type {
   DaPayloadRecord,
   HeaderV1,
-  PayloadCountSet,
-  PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { hashBlockHeaderV1 } from "../l1/state-queue-scanner.js";
@@ -29,6 +27,8 @@ import type { WatcherStore } from "../store.js";
 import { hexToBytes, normalizeHex } from "../utils/hex.js";
 import {
   computeDaPayloadV1Roots,
+  type DaPayloadCountSetV1,
+  type DaPayloadRootSetV1,
   daPayloadSha256,
   decodeDaPayloadV1Strict,
 } from "./payload.js";
@@ -97,11 +97,15 @@ type CountedRoot = KeyValuePhasRoot & {
   readonly phasRoot: string;
 };
 
+type ProofRootSetInput = DaPayloadRootSetV1;
+
+type ProofCountSetInput = DaPayloadCountSetV1;
+
 type TraceProofReconstruction = {
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
-  readonly rootSummary: PayloadRootSet;
-  readonly countSummary: PayloadCountSet;
+  readonly rootSummary: DaPayloadRootSetV1;
+  readonly countSummary: DaPayloadCountSetV1;
   readonly transitionTrace: ReadonlyMap<
     bigint,
     DecodedRootEntry<bigint, SDK.TransitionStep>
@@ -412,7 +416,7 @@ export class DaProofArtifactDeriver {
     ) {
       return { kind: "rejected", reasonCode: "payload_header_hash_mismatch" };
     }
-    let roots: PayloadRootSet;
+    let roots: DaPayloadRootSetV1;
     try {
       roots = await computeDaPayloadV1Roots(payload);
     } catch {
@@ -421,7 +425,9 @@ export class DaProofArtifactDeriver {
         reasonCode: "payload_root_derivation_failed",
       };
     }
-    if (rootMismatches(record.rootSummary!, roots).length > 0) {
+    if (
+      rootMismatches(record.rootSummary as ProofRootSetInput, roots).length > 0
+    ) {
       return { kind: "rejected", reasonCode: "stored_root_summary_mismatch" };
     }
     if (rootMismatches(headerRoots(committedHeader.header), roots).length > 0) {
@@ -482,7 +488,10 @@ export class DaProofArtifactDeriver {
       return "record_header_hash_mismatch";
     }
     try {
-      normalizeRootSet(record.rootSummary, "stored root summary");
+      normalizeRootSet(
+        record.rootSummary as ProofRootSetInput,
+        "stored root summary",
+      );
     } catch {
       return "stored_root_summary_malformed";
     }
@@ -560,10 +569,12 @@ const encodeProofBundleV1 = (
     countSummaryValues(reconstruction.countSummary),
   ]);
 
-const rootSummaryHash = (rootSummary: PayloadRootSet): Buffer =>
+const rootSummaryHash = (rootSummary: DaPayloadRootSetV1): Buffer =>
   computeDaSha256Hash(Buffer.concat(rootSummaryValues(rootSummary)));
 
-const rootSummaryValues = (rootSummary: PayloadRootSet): readonly Buffer[] => [
+const rootSummaryValues = (
+  rootSummary: DaPayloadRootSetV1,
+): readonly Buffer[] => [
   hexToBytes(rootSummary.utxosRoot, "utxos root", 32),
   hexToBytes(rootSummary.withdrawalsRoot, "withdrawals root", 32),
   hexToBytes(
@@ -575,10 +586,11 @@ const rootSummaryValues = (rootSummary: PayloadRootSet): readonly Buffer[] => [
   hexToBytes(rootSummary.depositsRoot, "deposits root", 32),
   hexToBytes(rootSummary.transitionTraceRoot, "transition trace root", 32),
   hexToBytes(rootSummary.eventToStepRoot, "event to step root", 32),
+  hexToBytes(rootSummary.validationTracesRoot, "validation traces root", 32),
 ];
 
 const countSummaryValues = (
-  countSummary: PayloadCountSet,
+  countSummary: DaPayloadCountSetV1,
 ): readonly bigint[] => [
   countSummary.withdrawalCount,
   countSummary.forcedTransactionCount,
@@ -586,6 +598,7 @@ const countSummaryValues = (
   countSummary.depositCount,
   countSummary.totalEventCount,
   countSummary.transitionStepCount,
+  countSummary.validationTraceCount,
 ];
 
 const decodeCanonicalEventKey = (bytes: Buffer): SDK.EventKey | null => {
@@ -609,8 +622,8 @@ const reconstructTraceProofs = async (
   context: {
     readonly headerHash: Buffer;
     readonly payloadHash: Buffer;
-    readonly rootSummary: PayloadRootSet;
-    readonly countSummary: PayloadCountSet;
+    readonly rootSummary: DaPayloadRootSetV1;
+    readonly countSummary: DaPayloadCountSetV1;
   },
 ): Promise<TraceProofReconstruction> => {
   const { block_body: body } = payload;
@@ -892,9 +905,9 @@ const buildEventToStepNonMembershipProof = async (
 });
 
 const normalizeRootSet = (
-  roots: PayloadRootSet,
+  roots: ProofRootSetInput,
   fieldName: string,
-): PayloadRootSet => ({
+): DaPayloadRootSetV1 => ({
   utxosRoot: normalizeHex(roots.utxosRoot, {
     fieldName: `${fieldName}.utxos_root`,
     byteLength: 32,
@@ -923,11 +936,15 @@ const normalizeRootSet = (
     fieldName: `${fieldName}.event_to_step_root`,
     byteLength: 32,
   }),
+  validationTracesRoot: normalizeHex(roots.validationTracesRoot, {
+    fieldName: `${fieldName}.validation_traces_root`,
+    byteLength: 32,
+  }),
 });
 
 const rootMismatches = (
-  expected: PayloadRootSet,
-  actual: PayloadRootSet,
+  expected: ProofRootSetInput,
+  actual: ProofRootSetInput,
 ): readonly string[] => {
   const normalizedExpected = normalizeRootSet(expected, "expected roots");
   const normalizedActual = normalizeRootSet(actual, "actual roots");
@@ -955,12 +972,16 @@ const rootMismatches = (
     normalizedExpected.eventToStepRoot === normalizedActual.eventToStepRoot
       ? null
       : "event_to_step_root",
+    normalizedExpected.validationTracesRoot ===
+    normalizedActual.validationTracesRoot
+      ? null
+      : "validation_traces_root",
   ].filter((field): field is string => field !== null);
 };
 
 const countMismatches = (
-  expected: PayloadCountSet,
-  actual: PayloadCountSet,
+  expected: ProofCountSetInput,
+  actual: ProofCountSetInput,
 ): readonly string[] =>
   [
     expected.withdrawalCount === actual.withdrawalCount
@@ -979,9 +1000,12 @@ const countMismatches = (
     expected.transitionStepCount === actual.transitionStepCount
       ? null
       : "transition_step_count",
+    expected.validationTraceCount === actual.validationTraceCount
+      ? null
+      : "validation_trace_count",
   ].filter((field): field is string => field !== null);
 
-const headerRoots = (header: HeaderV1): PayloadRootSet => ({
+const headerRoots = (header: HeaderV1): DaPayloadRootSetV1 => ({
   utxosRoot: header.utxosRoot,
   withdrawalsRoot: header.withdrawalsRoot,
   forcedTransactionsRoot: header.forcedTransactionsRoot,
@@ -989,15 +1013,17 @@ const headerRoots = (header: HeaderV1): PayloadRootSet => ({
   depositsRoot: header.depositsRoot,
   transitionTraceRoot: header.transitionTraceRoot,
   eventToStepRoot: header.eventToStepRoot,
+  validationTracesRoot: header.validationTracesRoot,
 });
 
-const headerCounts = (header: HeaderV1): PayloadCountSet => ({
+const headerCounts = (header: HeaderV1): DaPayloadCountSetV1 => ({
   withdrawalCount: header.withdrawalCount,
   forcedTransactionCount: header.forcedTransactionCount,
   l2TransactionCount: header.l2TransactionCount,
   depositCount: header.depositCount,
   totalEventCount: header.totalEventCount,
   transitionStepCount: header.transitionStepCount,
+  validationTraceCount: header.validationTraceCount,
 });
 
 const headerCborHex = (header: HeaderV1): string =>
