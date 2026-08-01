@@ -22,7 +22,8 @@ pub const list_frame: Int = 2
 
 pub const map_frame: Int = 3
 
-pub const max_revealed_data_leaf_bytes: Int = 9215
+pub const max_revealed_data_leaf_bytes: Int =
+  cek_proof_v1.max_bounded_blob_bytes
 
 pub type DataScanFrameV1 {
   kind: Int,
@@ -456,44 +457,7 @@ fn raw_preimage_matches(raw_cbor: ByteArray, expected_hash: ByteArray) -> Bool {
 }
 
 pub fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
-  let length = bytearray.length(bytes)
-  expect length <= max_revealed_data_leaf_bytes
-  if length <= cek_proof_v1.max_blob_chunk_bytes {
-    cek_proof_v1.hash_blob_chunk_v1(bytes)
-  } else {
-    let first = slice_len(bytes, 0, cek_proof_v1.max_blob_chunk_bytes)
-    let remaining = length - cek_proof_v1.max_blob_chunk_bytes
-    let second_length = if remaining <= cek_proof_v1.max_blob_chunk_bytes {
-      remaining
-    } else {
-      cek_proof_v1.max_blob_chunk_bytes
-    }
-    let second = slice_len(
-      bytes,
-      cek_proof_v1.max_blob_chunk_bytes,
-      second_length,
-    )
-    let left = cek_proof_v1.hash_blob_branch_v1(
-      cek_proof_v1.hash_blob_chunk_v1(first),
-      cek_proof_v1.hash_blob_chunk_v1(second),
-      cek_proof_v1.max_blob_chunk_bytes + second_length,
-    )
-    if remaining <= cek_proof_v1.max_blob_chunk_bytes {
-      left
-    } else {
-      let third_length = remaining - second_length
-      let third = slice_len(
-        bytes,
-        cek_proof_v1.max_blob_chunk_bytes + second_length,
-        third_length,
-      )
-      cek_proof_v1.hash_blob_branch_v1(
-        left,
-        cek_proof_v1.hash_blob_chunk_v1(third),
-        length,
-      )
-    }
-  }
+  cek_proof_v1.bounded_blob_root_v1(bytes)
 }
 
 fn data_is_small_leaf(data: Data) -> Bool {

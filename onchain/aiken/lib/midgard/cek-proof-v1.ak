@@ -3,7 +3,7 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/fraud_proofs/native_tx/codec.{
-  encode_definite_array_header, encode_definite_bytes,
+  encode_definite_array_header, encode_definite_bytes, slice_len,
 }
 
 const term_node_domain = #"4d69646761726443656b5465726d4e6f64655631"
@@ -31,6 +31,8 @@ const bls_expression_node_domain =
   #"4d69646761726443656b426c7345787072657373696f6e5631"
 
 pub const max_blob_chunk_bytes = 4095
+
+pub const max_bounded_blob_bytes = 9215
 
 pub const max_builtin_tag = 86
 
@@ -501,6 +503,39 @@ pub fn hash_blob_branch_v1(
           |> bytearray.concat(cbor.serialise(expect_uint64(byte_length))),
       )
     |> blake2b_256
+}
+
+pub fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+  let length = bytearray.length(bytes)
+  expect length <= max_bounded_blob_bytes
+  if length <= max_blob_chunk_bytes {
+    hash_blob_chunk_v1(bytes)
+  } else {
+    let first = slice_len(bytes, 0, max_blob_chunk_bytes)
+    let remaining = length - max_blob_chunk_bytes
+    let second_length = if remaining <= max_blob_chunk_bytes {
+      remaining
+    } else {
+      max_blob_chunk_bytes
+    }
+    let second = slice_len(bytes, max_blob_chunk_bytes, second_length)
+    let left = hash_blob_branch_v1(
+      hash_blob_chunk_v1(first),
+      hash_blob_chunk_v1(second),
+      max_blob_chunk_bytes + second_length,
+    )
+    if remaining <= max_blob_chunk_bytes {
+      left
+    } else {
+      let third_length = remaining - second_length
+      let third = slice_len(
+        bytes,
+        max_blob_chunk_bytes + second_length,
+        third_length,
+      )
+      hash_blob_branch_v1(left, hash_blob_chunk_v1(third), length)
+    }
+  }
 }
 
 pub fn hash_machine_state_v1(

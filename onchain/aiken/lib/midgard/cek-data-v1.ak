@@ -847,7 +847,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
         let constructor_data = builtin.i_data(constructor)
         let constructor_cbor = cbor.serialise(constructor_data)
         ConstrLargeData {
-          constructor_cbor_root: cek_proof_v1.hash_blob_chunk_v1(
+          constructor_cbor_root: cek_proof_v1.bounded_blob_root_v1(
             constructor_cbor,
           ),
           constructor_cbor_length: bytearray.length(constructor_cbor),
@@ -880,7 +880,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
     {
       let integer = builtin.un_i_data(data)
       IntegerData {
-        cbor_root: cek_proof_v1.hash_blob_chunk_v1(cbor.serialise(data)),
+        cbor_root: cek_proof_v1.bounded_blob_root_v1(cbor.serialise(data)),
         cbor_length,
         memory: 4 + integer_memory_size(integer),
       }
@@ -888,7 +888,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
     {
       let bytes = builtin.un_b_data(data)
       BytesData {
-        bytes_root: cek_proof_v1.hash_blob_chunk_v1(bytes),
+        bytes_root: cek_proof_v1.bounded_blob_root_v1(bytes),
         bytes_length: bytearray.length(bytes),
         cbor_length,
         memory: 4 + if bytearray.length(bytes) == 0 {

@@ -218,6 +218,19 @@ test revealed_large_bytes_leaf_uses_the_exact_chunked_semantic_root() {
   }
 }
 
+test direct_and_streamed_large_bytes_use_the_same_semantic_root() {
+  let bytes = bytearray.from_int_big_endian(0, 4400)
+    |> bytearray.concat(bytearray.from_int_big_endian(0, 4400))
+  let raw = cbor.serialise(builtin.b_data(bytes))
+  expect Some(leaf) = cek_data_scan_v1.revealed_leaf_at_v1(
+    raw,
+    blake2b_256(raw),
+    0,
+    bytearray.length(raw),
+  )
+  leaf.summary == cek_data_v1.semantic_data_summary_v1(builtin.b_data(bytes))
+}
+
 test large_constructor_header_and_summary_match_direct_semantics() {
   let field = builtin.i_data(1)
   let data = builtin.constr_data(128, [field])

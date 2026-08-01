@@ -1,4 +1,6 @@
 use aiken/builtin
+use aiken/cbor
+use aiken/primitive/bytearray
 use midgard/cek_constant_v1
 
 test canonical_integer_constant_matches_typescript() {
@@ -28,6 +30,40 @@ test canonical_list_constant_matches_typescript() {
       type_cbor: #"9f0500ff",
       payload_cbor: #"9f0102ff",
     },
+  )
+}
+
+test canonical_direct_4095_byte_constant_matches_typescript() {
+  let bytes = bytearray.from_int_big_endian(0, 4095)
+  cek_constant_v1.verify_constant_witness_v1(
+    #"39286d9f63929ce56cdd18c4b40524a0c1ecf7909825a3ed3b60f3afcd299d3a",
+    cek_constant_v1.ConstantWitnessV1 {
+      type_cbor: #"9f01ff",
+      payload_cbor: cbor.serialise(builtin.b_data(bytes)),
+    },
+  )
+}
+
+test canonical_direct_8800_byte_constant_matches_streamed_root() {
+  let bytes = bytearray.from_int_big_endian(0, 4400)
+    |> bytearray.concat(bytearray.from_int_big_endian(0, 4400))
+  cek_constant_v1.verify_constant_witness_v1(
+    #"83ee73cbaad1ceaad96adde815cb0cd758faa8846e9cf06ab966889df1750a87",
+    cek_constant_v1.ConstantWitnessV1 {
+      type_cbor: #"9f01ff",
+      payload_cbor: cbor.serialise(builtin.b_data(bytes)),
+    },
+  )
+}
+
+test direct_payload_above_9215_bytes_fails_closed() fail {
+  let bytes = bytearray.from_int_big_endian(0, 4608)
+    |> bytearray.concat(bytearray.from_int_big_endian(0, 4608))
+  let payload_cbor = cbor.serialise(builtin.b_data(bytes))
+  expect bytearray.length(payload_cbor) > 9215
+  cek_constant_v1.verify_constant_witness_v1(
+    #"83ee73cbaad1ceaad96adde815cb0cd758faa8846e9cf06ab966889df1750a87",
+    cek_constant_v1.ConstantWitnessV1 { type_cbor: #"9f01ff", payload_cbor },
   )
 }
 
