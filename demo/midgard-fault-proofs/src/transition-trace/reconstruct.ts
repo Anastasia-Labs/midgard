@@ -334,6 +334,42 @@ const validateDeclaredCounts = (payload: SDK.DaPayloadV1): void => {
   }
 };
 
+const validateDenseTransitionTrace = (
+  entries: readonly DecodedRootEntry<bigint, SDK.TransitionStep>[],
+  expectedCount: bigint,
+): void => {
+  const seen = new Set<bigint>();
+  for (const [index, entry] of entries.entries()) {
+    if (entry.key !== entry.value.step_index) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        `transition_trace[${index.toString()}].key must equal value.step_index.`,
+      );
+    }
+    if (entry.key < 0n || entry.key >= expectedCount) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        `transition_trace[${index.toString()}].key ${entry.key.toString()} is outside the declared transition step range.`,
+      );
+    }
+    if (seen.has(entry.key)) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        `transition_trace contains duplicate decoded key ${entry.key.toString()}.`,
+      );
+    }
+    seen.add(entry.key);
+  }
+  for (let index = 0n; index < expectedCount; index += 1n) {
+    if (!seen.has(index)) {
+      throw transitionTraceError(
+        "invalidPayloadEntries",
+        `transition_trace is missing decoded key ${index.toString()}.`,
+      );
+    }
+  }
+};
+
 const rawEntries = (
   fieldName: string,
   entries: readonly SDK.DaPayloadEntry[],
@@ -890,6 +926,7 @@ export const reconstructDaPayloadV1 = async ({
     keySchema: Data.Integer() as never,
     valueSchema: SDK.TransitionStepSchema,
   });
+  validateDenseTransitionTrace(transitionTrace, counts.transitionStepCount);
   const eventToStep = decodeTypedEntries<SDK.EventKey, SDK.EventToStepValue>({
     fieldName: "event_to_step",
     entries: body.event_to_step,

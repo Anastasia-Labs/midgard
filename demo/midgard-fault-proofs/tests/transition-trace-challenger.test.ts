@@ -252,13 +252,19 @@ const encodedEntry = <K, V>({
 }): SDK.DaPayloadEntry =>
   entry(encodeData(key, keySchema), encodeData(value, valueSchema));
 
-const traceEntry = (step: SDK.TransitionStep): SDK.DaPayloadEntry =>
+const traceEntryWithKey = (
+  key: bigint,
+  step: SDK.TransitionStep,
+): SDK.DaPayloadEntry =>
   encodedEntry({
-    key: step.step_index,
+    key,
     keySchema: Data.Integer() as never,
     value: step,
     valueSchema: SDK.TransitionStepSchema,
   });
+
+const traceEntry = (step: SDK.TransitionStep): SDK.DaPayloadEntry =>
+  traceEntryWithKey(step.step_index, step);
 
 const eventToStepEntry = (
   key: SDK.EventKey,
@@ -280,6 +286,7 @@ type PayloadFixtureInput = {
   readonly transactionPreimages?: readonly SDK.DaPayloadEntry[];
   readonly deposits?: readonly SDK.DaPayloadEntry[];
   readonly steps?: readonly SDK.TransitionStep[];
+  readonly transitionTraceEntries?: readonly SDK.DaPayloadEntry[];
   readonly eventToStep?: readonly SDK.DaPayloadEntry[];
 };
 
@@ -292,6 +299,7 @@ const buildPayloadFixture = async ({
   transactionPreimages = [],
   deposits = [],
   steps = [],
+  transitionTraceEntries = steps.map(traceEntry),
   eventToStep = [],
 }: PayloadFixtureInput): Promise<{
   readonly payload: SDK.DaPayloadV1;
@@ -376,9 +384,9 @@ const buildPayloadFixture = async ({
     ),
     transitionTrace: await buildCountedRoot(
       SDK.ROOT_DOMAINS.transitionTrace,
-      steps.map((step) => ({
-        key: encodeData(step.step_index, Data.Integer() as never),
-        value: encodeData(step, SDK.TransitionStepSchema),
+      transitionTraceEntries.map(([key, value]) => ({
+        key: Buffer.from(key, "hex"),
+        value: Buffer.from(value, "hex"),
       })),
     ),
     eventToStep: await buildCountedRoot(
@@ -406,7 +414,7 @@ const buildPayloadFixture = async ({
       BigInt(forcedTransactions.length) +
       BigInt(transactions.length) +
       BigInt(deposits.length),
-    transitionStepCount: BigInt(steps.length),
+    transitionStepCount: BigInt(transitionTraceEntries.length),
     validationTraceCount: BigInt(validationTraces.length),
   };
   const header: SDK.HeaderV1 = {
@@ -441,7 +449,7 @@ const buildPayloadFixture = async ({
       forced_transactions: sorted(forcedTransactions),
       transactions: sorted(transactions),
       deposits: sorted(deposits),
-      transition_trace: sorted(steps.map(traceEntry)),
+      transition_trace: sorted(transitionTraceEntries),
       event_to_step: sorted(eventToStep),
       transaction_preimages: sorted(transactionPreimages),
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
@@ -704,6 +712,84 @@ describe("transition-trace challenger tooling", () => {
         committedHeader: badHeader,
       }),
     ).rejects.toMatchObject({ code: "rootMismatch" });
+  });
+
+  it("rejects sparse, out-of-range, and key/value-mismatched transition traces", async () => {
+    const sparseSteps: SDK.TransitionStep[] = [
+      {
+        schema_version: 1n,
+        step_index: 0n,
+        event_key: depositEventKey(outRef(2)),
+        phase: "Deposit",
+        pre_utxos_root: h32(2),
+        post_utxos_root: h32(3),
+      },
+      {
+        schema_version: 1n,
+        step_index: 2n,
+        event_key: depositEventKey(outRef(3)),
+        phase: "Deposit",
+        pre_utxos_root: h32(4),
+        post_utxos_root: h32(5),
+      },
+    ];
+    await expect(
+      reconstruct(await buildPayloadFixture({ steps: sparseSteps })),
+    ).rejects.toMatchObject({
+      code: "invalidPayloadEntries",
+      message: expect.stringContaining("outside"),
+    });
+
+    const mismatchedStep: SDK.TransitionStep = {
+      schema_version: 1n,
+      step_index: 1n,
+      event_key: depositEventKey(outRef(4)),
+      phase: "Deposit",
+      pre_utxos_root: h32(6),
+      post_utxos_root: h32(7),
+    };
+    await expect(
+      reconstruct(
+        await buildPayloadFixture({
+          steps: [mismatchedStep],
+          transitionTraceEntries: [traceEntryWithKey(0n, mismatchedStep)],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: "invalidPayloadEntries",
+      message: expect.stringContaining("must equal"),
+    });
+  });
+
+  it("reconstructs a dense zero-based transition trace", async () => {
+    const steps: SDK.TransitionStep[] = [
+      {
+        schema_version: 1n,
+        step_index: 0n,
+        event_key: depositEventKey(outRef(5)),
+        phase: "Deposit",
+        pre_utxos_root: h32(8),
+        post_utxos_root: h32(9),
+      },
+      {
+        schema_version: 1n,
+        step_index: 1n,
+        event_key: depositEventKey(outRef(6)),
+        phase: "Deposit",
+        pre_utxos_root: h32(10),
+        post_utxos_root: h32(11),
+      },
+    ];
+    const reconstruction = await reconstruct(
+      await buildPayloadFixture({ steps }),
+    );
+
+    expect(reconstruction.transitionTrace.map(({ key }) => key)).toEqual([
+      0n,
+      1n,
+    ]);
+    expect(reconstruction.traceByStepIndex.has(0n)).toBe(true);
+    expect(reconstruction.traceByStepIndex.has(1n)).toBe(true);
   });
 
   it("builds witness redeemers for each Task08 proof family from reconstructed DA data", async () => {
