@@ -14262,37 +14262,87 @@ test stage_differential_twelve_finish_routes_agree() {
 }
 
 // ---------------------------------------------------------------------------
-// Dangling `redeemer_item_control_hash` probes.
+// LATENT HAZARD -- dangling `redeemer_item_control_hash`.
 //
+// These three are NOT route-agreement controls and they are NOT a defect
+// report. They are latent-hazard notes: they pin a real asymmetry between the
+// two implementations of one rule, on states the machine provably cannot
+// produce, so that the asymmetry is visible to whoever next touches the narrow
+// stage wrappers.
+//
+// THE ASYMMETRY.
 // The generic route binds a ScriptSources control with
 // `script_sources_control_is_bound`, which calls
-// `script_discovery_stage_is_well_formed`. That predicate forbids a non-empty
-// `discovery.redeemer_item_control_hash` at stages 8, 9 and 11, and
-// `script_sources_stage_ten` / `script_sources_stage_twelve` re-impose the same
-// rule as an explicit conjunct in their terminal branches. None of the deployed
-// per-stage binders (`script_sources_stage_{eight,nine,ten,eleven,twelve}_control_is_bound`)
-// carries that conjunct, and none of the narrow terminal wrappers restates it.
-//
-// These probes hold everything else fixed and flip only that field. If the two
-// routes really implement one rule they must still agree.
-//
-// STATUS: all three probes FAIL today, and they are left failing on purpose.
-// Each reports `expected True to equal False`, i.e. the left operand -- the
-// deployed narrow wrapper -- accepts, while the right operand -- the canonical
-// generic route reached by `verify_one_step_evidence` -- rejects. That is an
-// acceptance-widening divergence: a ScriptSources step the canonical machine
-// forbids can be won on-chain through
-// `script-sources-stage-eight-finish-semantic-v1`,
-// `script-sources-stage-ten-missing-semantic-v1` and
-// `script-sources-stage-twelve-finish-semantic-v1`. The clean-hash siblings
+// `script_discovery_stage_is_well_formed` (validation-machine-v1.ak:11862).
+// That predicate forbids a non-empty `discovery.redeemer_item_control_hash` at
+// stages 8, 9 and 11 (:11881, :11892, :11922), and `script_sources_stage_ten`
+// (:11094) / `script_sources_stage_twelve` (:11644) re-impose the same rule as
+// an explicit conjunct in their terminal branches. None of the deployed
+// per-stage binders
+// (`script_sources_stage_{eight,ten,twelve}_control_is_bound`, :10457, :11267,
+// :11788) carries that conjunct, and none of the narrow terminal wrappers
+// restates it. So on a state carrying a pending hash the narrow route ACCEPTS
+// where the generic route REJECTS -- the narrow route is strictly wider. Each
+// test below pins exactly that: `narrow_route_is_wider_than_generic` asserts
+// the deployed operand is True AND the generic operand is False, on a fixture
+// that differs from its passing clean-hash sibling
 // (`stage_differential_{eight_finish,ten_missing,twelve_finish}_routes_agree`)
-// pass on the very same fixtures, so the divergence is isolated to
-// `discovery.redeemer_item_control_hash` alone. Do NOT weaken these probes to
-// make them green: the fix belongs in the deployed binders/wrappers
-// (production code, out of this module's lease).
+// in that one field alone.
+//
+// WHY IT IS NOT EXPLOITABLE TODAY (reachability).
+// `discovery.redeemer_item_control_hash` is set to a non-empty value in exactly
+// four places -- :11142 and :11235 in `script_sources_stage_ten`, :11693 and
+// :11756 in `script_sources_stage_twelve`. All four sit under the branch guard
+// `discovery.redeemer_cursor != control.redeemer_count` and all four leave
+// `redeemer_cursor` unchanged. It is cleared at :11218 and :11740 (the cursor
+// advances past the item) and by `reset_script_discovery_current` (:10367),
+// which is the only way stages 8 and 11 are ever entered (:10386, :10527,
+// :10682, :11185); stage 7's hand-off into stage 8 and stage 11's hand-off into
+// stage 12 (:11422) carry an already-empty hash because
+// `script_discovery_stage_is_well_formed` forbids a pending hash at stages 8, 9
+// and 11 on the pre-state. The deployed narrow validators that produce
+// discovery successors (`script-sources-stage-{eight-purpose,nine-*,eleven-*}-semantic-v1`)
+// only propagate `..discovery` and never write the field, and the two
+// redeemer-scan validators that do write it
+// (`script-sources-stage-ten-mismatch-semantic-v1`,
+// `script-sources-stage-twelve-redeemer-semantic-v1`) call the GENERIC
+// dispatcher, so they carry the guard. Hence, for every state the machine can
+// produce:
+//   * stage 8, 9 or 11  =>  `redeemer_item_control_hash == #""`;
+//   * stage 10 or 12 with a pending hash  =>  `redeemer_cursor < redeemer_count`.
+// Each narrow wrapper below only applies in the opposite regime -- stage-8
+// finish is a stage-8 state; stage-10 missing and stage-12 finish both require
+// `redeemer_cursor == redeemer_count` -- so no reachable pre-state can reach
+// the divergence. There is no reachable-state variant of these probes to build:
+// in the reachable pending-hash regime (stage 10/12, cursor < count) the rule is
+// implemented only once, by the generic dispatcher, so there is no second
+// implementation to differentially test.
+//
+// THE HAZARD, AND WHAT BREAKS THESE TESTS.
+// The divergence becomes live the moment a narrow successor-splice wrapper is
+// added for a stage-10/12 redeemer-scan sub-case, or any narrow wrapper is
+// allowed to hand off a state that still carries a pending hash. At that point
+// the narrow route accepts ScriptSources steps the canonical machine forbids,
+// which is an acceptance-widening soundness break of the dispute game. These
+// tests are the tripwire: they FAIL if the narrow binders gain the missing
+// conjunct (the correct fix -- delete the note then), and they FAIL if the
+// generic route loses it. Do not relax them to `deployed == generic`; that
+// assertion is false today and asserts nothing about which side moved.
 // ---------------------------------------------------------------------------
 
-test stage_differential_eight_finish_pending_redeemer_hash_routes_agree() {
+/// The deployed narrow route accepts and the generic route rejects. Both
+/// operands are pinned, so neither side can drift without failing the test.
+fn narrow_route_is_wider_than_generic(deployed: Bool, generic: Bool) -> Bool {
+  and {
+    deployed,
+    !generic,
+  }
+}
+
+/// Latent hazard, stage 8. Unreachable: `reset_script_discovery_current` is the
+/// only door into stage 8 and it clears the pending hash, so no produced
+/// stage-8 state carries one. See the section note above.
+test stage_eight_finish_pending_redeemer_hash_divergence_is_unreachable() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
   let empty_discovery = validation_machine_v1.empty_script_discovery_control()
@@ -14323,17 +14373,25 @@ test stage_differential_eight_finish_pending_redeemer_hash_routes_agree() {
     work_witness_cbor,
     claimed_successor: post,
   }
-  validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
-    pre,
-    transition,
-  ) == validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
-    pre,
-    transition,
-    validation_machine_v1.NoAuxiliaryWitness,
+  narrow_route_is_wider_than_generic(
+    validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
+      pre,
+      transition,
+    ),
+    validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+      pre,
+      transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
   )
 }
 
-test stage_differential_ten_missing_pending_redeemer_hash_routes_agree() {
+/// Latent hazard, stage 10. Unreachable: the only writers of the pending hash
+/// (validation-machine-v1.ak:11142, :11235) are guarded by
+/// `redeemer_cursor != redeemer_count` and leave the cursor alone, while this
+/// wrapper's sub-case requires `redeemer_cursor == redeemer_count`. See the
+/// section note above.
+test stage_ten_missing_pending_redeemer_hash_divergence_is_unreachable() {
   let Pair(pre, work_witness_cbor) = stage_ten_missing_fixture(h_a)
   let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
@@ -14342,29 +14400,39 @@ test stage_differential_ten_missing_pending_redeemer_hash_routes_agree() {
       differential_missing_witness_code,
     ),
   }
-  validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
-    pre,
-    transition,
-  ) == validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
-    pre,
-    transition,
-    validation_machine_v1.NoAuxiliaryWitness,
+  narrow_route_is_wider_than_generic(
+    validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
+      pre,
+      transition,
+    ),
+    validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+      pre,
+      transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
   )
 }
 
-test stage_differential_twelve_finish_pending_redeemer_hash_routes_agree() {
+/// Latent hazard, stage 12. Unreachable for the same reason as stage 10
+/// (writers at validation-machine-v1.ak:11693, :11756), plus stage 11 -- the
+/// only door into stage 12 -- may not carry a pending hash at all.
+/// See the section note above.
+test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
   let Pair(pre, Pair(work_witness_cbor, Pair(post, _))) =
     stage_twelve_finish_fixture(h_a)
   let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
-    pre,
-    transition,
-  ) == validation_machine_v1.verify_script_sources_stage_twelve_semantics_v1(
-    pre,
-    transition,
-    validation_machine_v1.NoAuxiliaryWitness,
+  narrow_route_is_wider_than_generic(
+    validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+      pre,
+      transition,
+    ),
+    validation_machine_v1.verify_script_sources_stage_twelve_semantics_v1(
+      pre,
+      transition,
+      validation_machine_v1.NoAuxiliaryWitness,
+    ),
   )
 }
