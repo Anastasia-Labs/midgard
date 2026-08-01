@@ -185,8 +185,51 @@ const rollbackAuthorityKey = Uint8Array.from(
   { length: 32 },
   (_, index) => index + 1,
 );
+const canonicalJsonForTest = (value: unknown): string => {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value) as string;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error("unsupported test number");
+    }
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJsonForTest).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${canonicalJsonForTest(record[key])}`,
+      )
+      .join(",")}}`;
+  }
+  throw new Error("unsupported test value");
+};
 const sha256Canonical = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  createHash("sha256")
+    .update(canonicalJsonForTest(value), "utf8")
+    .digest("hex");
+const reorderWireKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(reorderWireKeys);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .reverse()
+        .map(([key, member]) => [key, reorderWireKeys(member)]),
+    );
+  }
+  return value;
+};
 
 class MemoryRollbackAuthorityBackend implements WatcherDurableAtomicBackend {
   bytes: Uint8Array | null = null;
@@ -1497,6 +1540,77 @@ describe("canonical watcher rollback engine", () => {
       revision: "1",
       transitionCount: "1",
     });
+  });
+
+  it("accepts reordered rollback wire keys while rejecting array, mutation, unknown, and unsupported changes", () => {
+    const finalityPolicy = policy();
+    const prior = pending(finalityPolicy, oldPoint);
+    const rewound = transition(finalityPolicy, prior, replacementPoint);
+    const sharedInput = hex32("ee");
+    const store = combine(
+      finalityPolicy.deploymentMarker,
+      "7",
+      [
+        graph("10", oldPoint, sharedInput),
+        graph("20", replacementPoint),
+        graph("30", descendantPoint),
+      ],
+      sharedInput,
+      rewound.observations,
+    );
+    const bootstrapState = bootstrap(finalityPolicy, store, prior);
+    const result = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      store,
+      prior,
+      rewound.consistency,
+      rewound.result,
+      bootstrapState,
+      bootstrapState,
+    );
+    const context: WatcherRollbackVerificationContextV1 = {
+      policy: finalityPolicy,
+      sourceStore: store,
+      previousFinalityState: prior,
+      consistency: rewound.consistency,
+      finalityResult: rewound.result,
+      previousRollbackState: bootstrapState,
+      rollbackBootstrapState: bootstrapState,
+    };
+
+    const reordered = reorderWireKeys(JSON.parse(JSON.stringify(result)));
+    expect(parseWatcherRollbackResultV1(reordered, context)).toEqual(result);
+
+    const arrayTampered = JSON.parse(JSON.stringify(result)) as Record<
+      string,
+      unknown
+    >;
+    arrayTampered.reasonCodes = [
+      "post_finality_incident",
+      ...(arrayTampered.reasonCodes as readonly string[]),
+    ];
+    expect(parseWatcherRollbackResultV1(arrayTampered, context)).toBe(null);
+
+    const mutated = JSON.parse(JSON.stringify(result)) as Record<
+      string,
+      unknown
+    >;
+    mutated.resultDigest = hex32("ff");
+    expect(parseWatcherRollbackResultV1(mutated, context)).toBe(null);
+
+    const unknown = JSON.parse(JSON.stringify(result)) as Record<
+      string,
+      unknown
+    >;
+    unknown.unexpected = true;
+    expect(parseWatcherRollbackResultV1(unknown, context)).toBe(null);
+
+    const unsupported = JSON.parse(JSON.stringify(result)) as Record<
+      string,
+      unknown
+    >;
+    (unsupported.rollbackState as Record<string, unknown>).transitionCount = 1n;
+    expect(parseWatcherRollbackResultV1(unsupported, context)).toBe(null);
   });
 
   it("deterministically rewinds every dependent W03 record class and preserves finalized/unrelated records", () => {

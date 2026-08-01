@@ -10,10 +10,13 @@ import {
   makeWatcherDurableStoreV1,
   parseWatcherDurableStoreV1,
   readWatcherDurableAtomicSnapshotV1,
+  watcherCanonicalJsonV1,
   type WatcherDurableAtomicBackend,
   type WatcherDurableRecordsV1,
   watcherDurableStoreBytesSha256,
   type WatcherDurableStoreV1,
+  watcherSameCanonicalJsonV1,
+  watcherSha256CanonicalJsonV1,
 } from "./durable-store.js";
 import {
   evaluateWatcherFinalityV1,
@@ -461,7 +464,13 @@ type ParsedFinalityTransition =
       finalityResult: WatcherFinalityResultV1;
     }>;
 
-const sha256Canonical = (value: unknown): string =>
+const sha256Canonical = watcherSha256CanonicalJsonV1;
+
+// Finality and multi-provider V1 producers still own their existing wire
+// digests. Rollback-owned commitments use sha256Canonical exclusively; these
+// checks only validate those adjacent producer contracts without expanding
+// RF-051 into their implementations.
+const sha256ProducerWireV1 = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 
 const exactPlainRecord = (
@@ -601,7 +610,7 @@ const sameMarker = (
 const sameBinding = (
   left: WatcherFinalityBoundObservationV1,
   right: WatcherFinalityBoundObservationV1,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+): boolean => watcherSameCanonicalJsonV1(left, right);
 
 const emptyRemovedRecords = (): WatcherRollbackRemovedRecordsV1 =>
   Object.freeze({
@@ -708,7 +717,7 @@ const parseInstruction = (
     replacementContentDigest: instruction.replacementContentDigest,
     replacementDepth: instruction.replacementDepth,
   };
-  if (sha256Canonical(canonical) !== instruction.instructionDigest) {
+  if (sha256ProducerWireV1(canonical) !== instruction.instructionDigest) {
     return null;
   }
   return Object.freeze({
@@ -787,7 +796,7 @@ const parseFinalityTransition = (
     previous,
     consistencyInput,
   );
-  if (JSON.stringify(recomputed) !== JSON.stringify(resultInput)) {
+  if (!watcherSameCanonicalJsonV1(recomputed, resultInput)) {
     return "finality_provenance_mismatch";
   }
   const consistency = consistencyInput as WatcherMultiProviderConsistencyV1;
@@ -850,7 +859,7 @@ const parseFinalityTransition = (
     state: next,
     rewindInstruction: instruction,
   };
-  if (sha256Canonical(canonical) !== result.resultDigest) {
+  if (sha256ProducerWireV1(canonical) !== result.resultDigest) {
     return "malformed_finality_result";
   }
 
@@ -902,7 +911,7 @@ const parseFinalityTransition = (
     ]) &&
     sameStrings(alerts, ["watcher_finality_post_finality_incident"]) &&
     finalityIncident.incidentDigest ===
-      sha256Canonical({
+      sha256ProducerWireV1({
         reasonCode: finalityIncident.reasonCode,
         triggerConsistencyDigest: finalityIncident.triggerConsistencyDigest,
         priorStateDigest: previous.stateDigest,
@@ -1315,7 +1324,7 @@ const parseRollbackIncident = (
   if (
     canonical.triggerConsistencyDigest !== canonical.consistencyDigest ||
     canonical.finalityIncidentDigest !==
-      sha256Canonical({
+      sha256ProducerWireV1({
         reasonCode: canonical.reasonCode,
         triggerConsistencyDigest: canonical.triggerConsistencyDigest,
         priorStateDigest: canonical.previousFinalityStateDigest,
@@ -2087,7 +2096,7 @@ const verifyPersistedConsistencyEvidence = (
     consistency.authorityGenesisIdentitySha256 !==
       policy.authorityGenesisIdentitySha256 ||
     consistency.configuredSourceDigest !==
-      sha256Canonical(watcherFinalityConfiguredSourceV1(policy)) ||
+      sha256ProducerWireV1(watcherFinalityConfiguredSourceV1(policy)) ||
     consistency.rejectedObservationCount !== 0 ||
     evidenceDigests.length === 0 ||
     consistency.observationCount !== evidenceDigests.length
@@ -2136,7 +2145,7 @@ const verifyPersistedConsistencyEvidence = (
           decoded,
           transportAttestationsInput as readonly WatcherL1TransportAttestationContextV1[],
         );
-  return JSON.stringify(recomputed) === JSON.stringify(consistency)
+  return watcherSameCanonicalJsonV1(recomputed, consistency)
     ? Object.freeze({
         observationIds,
         chainPointIds,
@@ -2665,12 +2674,18 @@ const replayWatcherRollbackState = (
   }
   if (
     candidate.epoch !== bootstrapState.epoch ||
-    JSON.stringify(candidate.epochCheckpoint) !==
-      JSON.stringify(bootstrapState.epochCheckpoint) ||
-    JSON.stringify(candidate.bootstrapStore) !==
-      JSON.stringify(bootstrapState.bootstrapStore) ||
-    JSON.stringify(candidate.bootstrapFinalityState) !==
-      JSON.stringify(bootstrapState.bootstrapFinalityState)
+    !watcherSameCanonicalJsonV1(
+      candidate.epochCheckpoint,
+      bootstrapState.epochCheckpoint,
+    ) ||
+    !watcherSameCanonicalJsonV1(
+      candidate.bootstrapStore,
+      bootstrapState.bootstrapStore,
+    ) ||
+    !watcherSameCanonicalJsonV1(
+      candidate.bootstrapFinalityState,
+      bootstrapState.bootstrapFinalityState,
+    )
   ) {
     return null;
   }
@@ -2698,8 +2713,8 @@ const replayWatcherRollbackState = (
     derivedStore = result.nextStore;
     derivedState = result.rollbackState;
   }
-  return JSON.stringify(derivedStore) === JSON.stringify(currentStore) &&
-    JSON.stringify(derivedState) === JSON.stringify(candidate)
+  return watcherSameCanonicalJsonV1(derivedStore, currentStore) &&
+    watcherSameCanonicalJsonV1(derivedState, candidate)
     ? derivedState
     : null;
 };
@@ -2755,7 +2770,7 @@ const parseRollbackBootstrapStateWithTrustedDigest = (
     candidate.bootstrapFinalityState,
   );
   return candidate.epoch === "0"
-    ? JSON.stringify(candidate) === JSON.stringify(expected)
+    ? watcherSameCanonicalJsonV1(candidate, expected)
       ? candidate
       : null
     : candidate.epochCheckpoint !== null &&
@@ -2943,7 +2958,7 @@ export const parseWatcherRollbackResultV1 = (
       context.trustedCheckpointAuthority,
       context.transportAttestations,
     );
-    return JSON.stringify(parsed) === JSON.stringify(expected) ? parsed : null;
+    return watcherSameCanonicalJsonV1(parsed, expected) ? parsed : null;
   } catch {
     return null;
   }
@@ -3180,7 +3195,7 @@ const makeResumableFinalityState = (
   };
   return Object.freeze({
     ...canonical,
-    stateDigest: sha256Canonical(canonical),
+    stateDigest: sha256ProducerWireV1(canonical),
   });
 };
 
@@ -3599,7 +3614,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
   }
   if (
     previousRecoveryState === null &&
-    JSON.stringify(currentStore) !== JSON.stringify(sourceStore)
+    !watcherSameCanonicalJsonV1(currentStore, sourceStore)
   ) {
     return rejectPostFinalityRecovery("recovery_state_mismatch");
   }
@@ -3689,8 +3704,8 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     const currentStoreDigest = storeDigest(currentStore);
     if (
       currentStoreDigest !== nextStoreDigest ||
-      JSON.stringify(currentStore) !== JSON.stringify(nextStore) ||
-      JSON.stringify(previousRecoveryState) !== JSON.stringify(recoveryState)
+      !watcherSameCanonicalJsonV1(currentStore, nextStore) ||
+      !watcherSameCanonicalJsonV1(previousRecoveryState, recoveryState)
     ) {
       return rejectPostFinalityRecovery("recovery_state_mismatch");
     }
@@ -3853,12 +3868,12 @@ const rollbackAuthorityMac = (
   >,
 ): string =>
   createHmac("sha256", key)
-    .update(JSON.stringify(canonical), "utf8")
+    .update(watcherCanonicalJsonV1(canonical), "utf8")
     .digest("hex");
 
 const encodeRollbackDurableAuthoritySnapshot = (
   value: WatcherRollbackDurableAuthoritySnapshotV1,
-): Uint8Array => rollbackAuthorityEncoder.encode(JSON.stringify(value));
+): Uint8Array => rollbackAuthorityEncoder.encode(watcherCanonicalJsonV1(value));
 
 const decodeRollbackDurableAuthoritySnapshot = (
   bytes: Uint8Array,
@@ -3985,7 +4000,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       authorityMac: record.authorityMac as string,
     });
     return sha256Canonical(canonicalWithoutDigest) ===
-      snapshot.authorityDigest && text === JSON.stringify(snapshot)
+      snapshot.authorityDigest && text === watcherCanonicalJsonV1(snapshot)
       ? snapshot
       : null;
   } catch {
@@ -4070,7 +4085,7 @@ const rollbackDurableTrustedHeadMac = (
 ): string =>
   createHmac("sha256", authenticationKey)
     .update(
-      `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION}:${JSON.stringify(value)}`,
+      `${WATCHER_ROLLBACK_DURABLE_TRUSTED_HEAD_V1_SCHEMA_VERSION}:${watcherCanonicalJsonV1(value)}`,
       "utf8",
     )
     .digest("hex");

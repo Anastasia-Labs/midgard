@@ -56,6 +56,8 @@ import {
   parseWatcherDurableStoreV1,
   watcherDurableStoreBytesSha256,
   type WatcherDurableStoreV1,
+  watcherSameCanonicalJsonV1,
+  watcherSha256CanonicalJsonV1,
 } from "./durable-store.js";
 import {
   evaluateWatcherFinalityV1,
@@ -371,17 +373,20 @@ const evidenceWithinBounds = (
     }
     if (typeof candidate === "string") {
       budget.bytes += Buffer.byteLength(candidate, "utf8");
-    } else if (
-      typeof candidate === "number" ||
-      typeof candidate === "bigint" ||
-      typeof candidate === "boolean"
-    ) {
+    } else if (typeof candidate === "number") {
+      if (!Number.isSafeInteger(candidate)) {
+        return false;
+      }
       budget.bytes += 8;
     } else if (
+      typeof candidate === "bigint" ||
       typeof candidate === "symbol" ||
-      typeof candidate === "function"
+      typeof candidate === "function" ||
+      typeof candidate === "undefined"
     ) {
       return false;
+    } else if (typeof candidate === "boolean") {
+      budget.bytes += 8;
     }
     if (
       budget.bytes > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceGraphBytes
@@ -471,10 +476,18 @@ const evidenceWithinBounds = (
 
 const sha256Bytes = (value: Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
-const sha256Canonical = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
-const same = (left: unknown, right: unknown): boolean =>
-  JSON.stringify(left) === JSON.stringify(right);
+const sha256Canonical = watcherSha256CanonicalJsonV1;
+const same = watcherSameCanonicalJsonV1;
+const samePlutusData = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+  try {
+    return Data.to(left as never) === Data.to(right as never);
+  } catch {
+    return watcherSameCanonicalJsonV1(left, right);
+  }
+};
 
 const exactRecord = (
   value: unknown,
@@ -2065,9 +2078,9 @@ const verifyTerminalSemantics = (
     withdrawalInfo.validity === "WithdrawalIsValid" &&
     addressMatchesData(produced.address(), hubDatum.payout_addr) &&
     payoutDatum !== null &&
-    same(payoutDatum.l2_value, withdrawalInfo.body?.l2_value) &&
-    same(payoutDatum.l1_address, withdrawalInfo.body?.l1_address) &&
-    same(payoutDatum.l1_datum, withdrawalInfo.body?.l1_datum)
+    samePlutusData(payoutDatum.l2_value, withdrawalInfo.body?.l2_value) &&
+    samePlutusData(payoutDatum.l1_address, withdrawalInfo.body?.l1_address) &&
+    samePlutusData(payoutDatum.l1_datum, withdrawalInfo.body?.l1_datum)
   );
 };
 

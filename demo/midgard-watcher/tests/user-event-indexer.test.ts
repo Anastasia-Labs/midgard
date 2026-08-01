@@ -138,8 +138,51 @@ const h32 = (byte: string): string => byte.repeat(32);
 const asWireValue = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
+const canonicalJsonForTest = (value: unknown): string => {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value) as string;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error("unsupported test number");
+    }
+    return value.toString();
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJsonForTest).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) => `${JSON.stringify(key)}:${canonicalJsonForTest(record[key])}`,
+      )
+      .join(",")}}`;
+  }
+  throw new Error("unsupported test value");
+};
 const sha256Canonical = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  createHash("sha256")
+    .update(canonicalJsonForTest(value), "utf8")
+    .digest("hex");
+const reorderWireKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(reorderWireKeys);
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .reverse()
+        .map(([key, member]) => [key, reorderWireKeys(member)]),
+    );
+  }
+  return value;
+};
 const encodeData = Data.to as unknown as (
   value: unknown,
   schema: unknown,
@@ -2748,6 +2791,76 @@ const accepted = (
 };
 
 describe("canonical authenticated user-event indexer", () => {
+  it("accepts reordered wire keys while rejecting array, mutation, unknown, and unsupported changes", () => {
+    const bundle = blockBundle(
+      [makeEventFixture("deposit", "9a", 0, 1_000n)],
+      null,
+      100,
+      1,
+    );
+    const observation = deriveWatcherUserEventObservationV1(
+      policy,
+      null,
+      bundle.context,
+    );
+    expect(observation).not.toBeNull();
+    const indexed = evaluateWatcherUserEventIndexerV1(
+      policy,
+      null,
+      observation,
+      bundle.context,
+    );
+    expect(indexed.action).toBe("accept");
+
+    const context = {
+      policy,
+      previousState: null,
+      observation,
+      publicContext: bundle.context,
+    };
+    const reordered = reorderWireKeys(asWireValue(indexed));
+    expect(parseWatcherUserEventIndexerResultV1(reordered, context)).toEqual(
+      indexed,
+    );
+    expect(
+      parseWatcherUserEventIndexerStateV1(
+        (reordered as Record<string, unknown>).state,
+        policy,
+      ),
+    ).toEqual(indexed.state);
+
+    const arrayTampered = asWireValue(indexed) as Record<string, unknown>;
+    arrayTampered.reasonCodes = [
+      "duplicate_observation",
+      ...(arrayTampered.reasonCodes as readonly string[]),
+    ];
+    expect(parseWatcherUserEventIndexerResultV1(arrayTampered, context)).toBe(
+      null,
+    );
+
+    const mutated = asWireValue(indexed) as Record<string, unknown>;
+    mutated.resultDigest = h32("ff");
+    expect(parseWatcherUserEventIndexerResultV1(mutated, context)).toBe(null);
+
+    const unknown = asWireValue(indexed) as Record<string, unknown>;
+    unknown.unexpected = true;
+    expect(parseWatcherUserEventIndexerResultV1(unknown, context)).toBe(null);
+
+    for (const unsupportedValue of [1n, new Date(0)]) {
+      const unsupported = asWireValue(indexed) as Record<string, unknown>;
+      const state = unsupported.state as Record<string, unknown>;
+      const history = state.history as Array<Record<string, unknown>>;
+      const publicContext = history[0]!.publicContext as Record<
+        string,
+        unknown
+      >;
+      publicContext.authenticatedProvider = unsupportedValue;
+      expect(parseWatcherUserEventIndexerResultV1(unsupported, context)).toBe(
+        null,
+      );
+    }
+  });
+
   it("requires one live, uniquely matching transport capability for every W10/W11 replay", async () => {
     const external = blockBundle(
       [makeEventFixture("deposit", "9a", 0, 1_000n)],

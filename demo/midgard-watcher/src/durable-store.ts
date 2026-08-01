@@ -129,7 +129,11 @@ const exactLiteral = <T extends string>(
   return value as T;
 };
 
-const canonicalJson = (value: CanonicalJson): string => {
+const canonicalJson = (
+  value: unknown,
+  path = "$",
+  ancestors = new WeakSet<object>(),
+): string => {
   if (
     value === null ||
     typeof value === "boolean" ||
@@ -139,21 +143,92 @@ const canonicalJson = (value: CanonicalJson): string => {
   }
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value)) {
-      fail("invalid_field", "$");
+      fail("invalid_field", path);
     }
     return value.toString();
   }
-  if (Array.isArray(value)) {
-    return `[${value.map((member) => canonicalJson(member)).join(",")}]`;
+  if (typeof value !== "object" || value === null) {
+    fail("invalid_field", path);
   }
-  const record = value as { readonly [key: string]: CanonicalJson };
-  return `{${Object.keys(record)
-    .sort()
-    .map(
-      (key) =>
-        `${JSON.stringify(key)}:${canonicalJson(record[key] as CanonicalJson)}`,
-    )
-    .join(",")}}`;
+  const objectValue = value as object;
+  if (ancestors.has(objectValue)) {
+    fail("invalid_field", path);
+  }
+  ancestors.add(objectValue);
+  let result: string;
+  if (Array.isArray(value)) {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      Reflect.ownKeys(value).length !== value.length + 1 ||
+      Reflect.ownKeys(value).some(
+        (key) =>
+          key !== "length" &&
+          (typeof key !== "string" ||
+            !/^(?:0|[1-9][0-9]*)$/u.test(key) ||
+            Number(key) >= value.length),
+      )
+    ) {
+      fail("invalid_field", path);
+    }
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        value,
+        index.toString(),
+      );
+      if (
+        descriptor === undefined ||
+        !descriptor.enumerable ||
+        descriptor.get !== undefined ||
+        descriptor.set !== undefined
+      ) {
+        fail("invalid_field", `${path}.${index}`);
+      }
+    }
+    result = `[${value
+      .map((member, index) =>
+        canonicalJson(member, `${path}.${index}`, ancestors),
+      )
+      .join(",")}]`;
+  } else {
+    const record = plainRecord(value, path);
+    for (const key of Object.keys(record)) {
+      const descriptor = Object.getOwnPropertyDescriptor(record, key);
+      if (
+        descriptor === undefined ||
+        !descriptor.enumerable ||
+        descriptor.get !== undefined ||
+        descriptor.set !== undefined
+      ) {
+        fail("invalid_field", `${path}.${key}`);
+      }
+    }
+    result = `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonicalJson(record[key], `${path}.${key}`, ancestors)}`,
+      )
+      .join(",")}}`;
+  }
+  ancestors.delete(objectValue);
+  return result;
+};
+
+export const watcherCanonicalJsonV1 = (value: unknown): string =>
+  canonicalJson(value);
+
+export const watcherSha256CanonicalJsonV1 = (value: unknown): string =>
+  sha256Utf8(watcherCanonicalJsonV1(value));
+
+export const watcherSameCanonicalJsonV1 = (
+  left: unknown,
+  right: unknown,
+): boolean => {
+  try {
+    return watcherCanonicalJsonV1(left) === watcherCanonicalJsonV1(right);
+  } catch {
+    return false;
+  }
 };
 
 export type WatcherDurablePayloadV1 = Readonly<{
