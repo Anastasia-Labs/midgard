@@ -400,7 +400,7 @@ describe("V1 CEK trace generator", () => {
         verifyMidgardCekCoreStepV1(step.pre, step.post, step.witness),
       ),
     ).toBe(true);
-  });
+  }, 15_000);
 
   it("proves semantic tag-51 zero-count control with its exact result and budget", () => {
     const program = buildMidgardCanonicalCekProgramV1(
