@@ -512,6 +512,9 @@ importers:
 
   midgard-watcher:
     dependencies:
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
