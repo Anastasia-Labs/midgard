@@ -17,9 +17,33 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDirectory, "..");
 const repositoryRoot = path.resolve(packageRoot, "../..");
 
+const commandArguments = process.argv.slice(2);
+if (
+  commandArguments.length > 1 ||
+  (commandArguments.length === 1 && commandArguments[0] !== "--check")
+) {
+  console.error(
+    "usage: node scripts/generate-native-compact-aiken-goldens.mjs [--check]",
+  );
+  process.exit(2);
+}
+const checkOnly = commandArguments.length === 1;
+
 const readUtf8 = (filePath) => fs.readFileSync(filePath, "utf8");
 const writeUtf8 = (filePath, value) =>
   fs.writeFileSync(filePath, value, "utf8");
+const syncUtf8 = (filePath, value) => {
+  const relativePath = path.relative(repositoryRoot, filePath);
+  if (checkOnly) {
+    if (!fs.existsSync(filePath) || readUtf8(filePath) !== value) {
+      throw new Error(`stale generated artifact: ${relativePath}`);
+    }
+    console.log(`checked ${relativePath}`);
+    return;
+  }
+  writeUtf8(filePath, value);
+  console.log(`wrote ${relativePath}`);
+};
 const hex = (value) => Buffer.from(value).toString("hex");
 const escapeRegExp = (value) =>
   value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -214,15 +238,13 @@ for (const family of GENERATED_FAMILIES) {
     }
   }
   aiken = updateNativeTxIdAssertion(aiken);
-  writeUtf8(aikenPath, aiken);
+  syncUtf8(aikenPath, aiken);
 
   fixture.txIdHex = fresh.txIdHex;
   fixture.compactTxCborHex = fresh.compactTxCborHex;
   fixture.compactBodyCborHex = fresh.compactBodyCborHex;
   fixture.hashes = { ...fixture.hashes, ...fresh.hashes };
-  writeUtf8(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
-  console.log(`wrote ${path.relative(repositoryRoot, fixturePath)}`);
-  console.log(`wrote ${path.relative(repositoryRoot, aikenPath)}`);
+  syncUtf8(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
 }
 
 const ordinaryAikenPath = path.join(
@@ -274,5 +296,4 @@ for (const [fieldName, preimageName, hashName] of BODY_ASSERTIONS.slice(0, 3)) {
   );
 }
 ordinaryAiken = updateNativeTxIdAssertion(ordinaryAiken);
-writeUtf8(ordinaryAikenPath, ordinaryAiken);
-console.log(`wrote ${path.relative(repositoryRoot, ordinaryAikenPath)}`);
+syncUtf8(ordinaryAikenPath, ordinaryAiken);
