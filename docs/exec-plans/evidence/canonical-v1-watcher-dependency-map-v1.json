@@ -15,7 +15,7 @@
       "GOAL_PROGRESS.md",
       "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
     ],
-    "resultContentTreeSha256": "2b71a8c6a986e02cac8e0764e6f1f17c43bf90c95528f5a076e6746200fc458f"
+    "resultContentTreeSha256": "82837fe50ce7a8cea90af8b03a3331b75c401b77b8b15854e065344dfbdb522c"
   },
   "requiredWatcherPackage": {
     "path": "demo/midgard-watcher",
@@ -319,6 +319,11 @@
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_code_and_path_only",
       "expectedFocusedTestCount": 9
+    },
+    "publicDaClient": {
+      "sourceSha256": "0ef14ec67d26c80375ae4815309ea211c917cd39f4de745b235a74e3b53e7e70",
+      "testSha256": "0f34fc6fbfc87db39a970e731021adde954c68d7f5947e2b989449a9989bca4a",
+      "expectedFocusedTestCount": 99
     },
     "scaffold": {
       "sourceSha256": "00f45dee3b6a8c2612ddfd9b54859756470019d4199e6c63b823b52efa01e5a7",

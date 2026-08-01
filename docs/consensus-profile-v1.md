@@ -493,7 +493,7 @@ families, and the profile digest cannot drift from source.
 
 <!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->
 
-Profile digest: `e81d6fdc21527a875099951e70a0634d8b16e1efa9bec89a2ab04d826ee4aaed`
+Profile digest: `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`
 
 ```json
 {
@@ -560,6 +560,7 @@ Profile digest: `e81d6fdc21527a875099951e70a0634d8b16e1efa9bec89a2ab04d826ee4aae
     "maxRequiredSignersPreimageBytes": 32768,
     "maxScriptExecutionCount": 16384,
     "maxScriptWitnessesPreimageBytes": 32768,
+    "maxSinglePublicationCompleteItemBytes": 14396,
     "maxSpendInputCount": 16384,
     "maxSpendInputsPreimageBytes": 32768,
     "maxTotalEventCount": 40000,
