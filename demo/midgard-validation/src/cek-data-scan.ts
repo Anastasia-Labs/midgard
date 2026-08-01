@@ -1,9 +1,18 @@
 import {
   buildMidgardValidationMerkleFrontierV1,
   buildMidgardValidationMerkleMembershipV1,
+  commitMidgardCekBlobV1,
   encodeCbor,
+  hashMidgardCekDataNodeV1,
   MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1,
+  midgardCekDataBytesCborLengthV1,
+  midgardCekDataBytesMemoryV1,
+  type MidgardCekDataNodeV1,
   type MidgardValidationMerkleFrontierV1,
+  summarizeMidgardCekLargeConstrDataV1,
+  summarizeMidgardCekListDataV1,
+  summarizeMidgardCekMapDataV1,
+  summarizeMidgardCekSmallConstrDataV1,
   validateMidgardValidationMerkleFrontierV1,
 } from "@al-ft/midgard-core";
 import {
@@ -23,8 +32,10 @@ import {
 import { Constr, Data as LucidData, fromHex } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { encodeMidgardCekPlutusDataV1 } from "./cek-constant.js";
-import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
+import {
+  encodeMidgardCekPlutusDataV1,
+  midgardCekIntegerMemorySizeV1,
+} from "./cek-constant.js";
 import {
   emptyMidgardCekDataListSummaryV1,
   emptyMidgardCekDataPairSummaryV1,
@@ -281,15 +292,6 @@ const emptySummary = (): MidgardCekDataSummaryV1 => ({
   memory: 0n,
 });
 
-const exactSummary = (data: Data): MidgardCekDataSummaryV1 => {
-  const tree = commitMidgardCekDataTreeV1(data);
-  return {
-    root: Buffer.from(tree.root),
-    cborLength: tree.cborLength,
-    memory: tree.memory,
-  };
-};
-
 export const encodeMidgardCekDataScanControlV1 = (
   control: MidgardCekDataScanControlV1,
 ): Buffer => {
@@ -359,6 +361,26 @@ type MutableFrame = {
   children: MidgardCekDataSummaryV1[];
 };
 
+type StructuredData = DataConstr | DataList | DataMap<Data, Data>;
+
+type ScanWork =
+  | {
+      readonly kind: "enter";
+      readonly data: Data;
+      readonly parent: MutableFrame | null;
+    }
+  | {
+      readonly kind: "exit";
+      readonly data: StructuredData;
+      readonly frame: MutableFrame;
+      readonly parent: MutableFrame | null;
+    };
+
+const replaceFrame = (target: MutableFrame, source: MutableFrame): void => {
+  target.frame = source.frame;
+  target.children = source.children;
+};
+
 const frameWith = (
   value: MutableFrame,
   foldCursor: number,
@@ -413,6 +435,57 @@ const scalarBytes = (value: DataB): Uint8Array => {
   return candidate.toBuffer();
 };
 
+const scalarSummary = (data: DataI | DataB): MidgardCekDataSummaryV1 => {
+  let node: MidgardCekDataNodeV1;
+  if (data instanceof DataI) {
+    const cbor = encodeMidgardCekPlutusDataV1(data);
+    node = {
+      kind: "integer",
+      cborRoot: commitMidgardCekBlobV1(cbor).root,
+      cborLength: BigInt(cbor.length),
+      memory: 4n + midgardCekIntegerMemorySizeV1(data.int),
+    };
+  } else {
+    const bytes = scalarBytes(data);
+    node = {
+      kind: "bytes",
+      bytesRoot: commitMidgardCekBlobV1(bytes).root,
+      bytesLength: BigInt(bytes.length),
+      cborLength: midgardCekDataBytesCborLengthV1(BigInt(bytes.length)),
+      memory: midgardCekDataBytesMemoryV1(BigInt(bytes.length)),
+    };
+  }
+  return {
+    root: Buffer.from(hashMidgardCekDataNodeV1(node)),
+    cborLength: node.cborLength,
+    memory: node.memory,
+  };
+};
+
+const structuredSummary = (
+  data: StructuredData,
+  sequence: MidgardCekDataSequenceSummaryV1,
+): MidgardCekDataSummaryV1 => {
+  if (data instanceof DataConstr) {
+    if (data.constr <= 127n) {
+      return summarizeMidgardCekSmallConstrDataV1(data.constr, sequence);
+    }
+    const constructorCbor = encodeMidgardCekPlutusDataV1(
+      new DataI(data.constr),
+    );
+    return summarizeMidgardCekLargeConstrDataV1({
+      constructorCborRoot: commitMidgardCekBlobV1(constructorCbor).root,
+      constructorCborLength: BigInt(constructorCbor.length),
+      constructorMemory: 4n + midgardCekIntegerMemorySizeV1(data.constr),
+      fields: sequence,
+    });
+  }
+  if (data instanceof DataList) {
+    return summarizeMidgardCekListDataV1(sequence);
+  }
+  return summarizeMidgardCekMapDataV1(sequence);
+};
+
 /**
  * Produces the exact content-addressed scan accepted by the L1 Data scanner.
  * Every transition reveals at most the one independently bounded raw Data
@@ -444,125 +517,137 @@ export const buildMidgardCekDataScanTraceV1 = (
     steps.push({ control, step });
   };
 
-  const scan = (
-    data: Data,
-    parent: MutableFrame | null,
-  ): MutableFrame | null => {
-    const summary = exactSummary(data);
-    if (data instanceof DataI || data instanceof DataB) {
-      const encoded = encodeMidgardCekPlutusDataV1(data);
-      if (data instanceof DataB && scalarBytes(data).length > 9_215) {
-        throw new Error(
-          "CEK Data scanner byte leaf exceeds its proof envelope",
-        );
-      }
-      emit({
-        kind: "revealLeaf",
-        rawCbor: raw,
-        parent: parent?.frame ?? null,
-        itemLength: encoded.length,
-      });
-      control = {
-        ...control,
-        offset: control.offset + encoded.length,
-      };
-      if (parent === null) {
-        if (control.offset !== raw.length) {
-          throw new Error("CEK scalar Data root has trailing bytes");
+  const canonical = encodeMidgardCekPlutusDataV1(rootData);
+  if (!canonical.equals(raw)) {
+    throw new Error("V1 Data scan source is not canonical Data CBOR");
+  }
+  const work: ScanWork[] = [{ kind: "enter", data: rootData, parent: null }];
+  while (work.length > 0) {
+    const operation = work.pop()!;
+    if (operation.kind === "enter") {
+      const { data, parent } = operation;
+      if (data instanceof DataI || data instanceof DataB) {
+        const summary = scalarSummary(data);
+        const encoded = encodeMidgardCekPlutusDataV1(data);
+        if (data instanceof DataB && scalarBytes(data).length > 9_215) {
+          throw new Error(
+            "CEK Data scanner byte leaf exceeds its proof envelope",
+          );
         }
-        control = { ...control, result: summary };
-        return null;
+        emit({
+          kind: "revealLeaf",
+          rawCbor: raw,
+          parent: parent?.frame ?? null,
+          itemLength: encoded.length,
+        });
+        control = {
+          ...control,
+          offset: control.offset + encoded.length,
+        };
+        if (parent === null) {
+          if (control.offset !== raw.length) {
+            throw new Error("CEK scalar Data root has trailing bytes");
+          }
+          control = { ...control, result: summary };
+          continue;
+        }
+        const nextParent = appendChild(parent, summary);
+        replaceFrame(parent, nextParent);
+        control = {
+          ...control,
+          frameRoot: hashMidgardCekDataScanFrameV1(parent.frame),
+          frameClosed:
+            parent.frame.kind === 3 &&
+            parent.frame.childCount === parent.frame.expectedChildren,
+        };
+        continue;
       }
-      const nextParent = appendChild(parent, summary);
+
+      if (
+        !(data instanceof DataConstr) &&
+        !(data instanceof DataList) &&
+        !(data instanceof DataMap)
+      ) {
+        throw new Error("CEK Data scanner received an unknown node");
+      }
+      if (data instanceof DataConstr && data.constr < 0n) {
+        throw new Error("Plutus Data constructor must be non-negative");
+      }
+      const structuredData: StructuredData = data;
+      const children: Data[] =
+        data instanceof DataConstr
+          ? [...data.fields]
+          : data instanceof DataList
+            ? [...data.list]
+            : data.map.flatMap((pair) => [pair.fst, pair.snd]);
+      const kind: 1 | 2 | 3 =
+        data instanceof DataConstr ? 1 : data instanceof DataList ? 2 : 3;
+      const constructor = data instanceof DataConstr ? data.constr : 0n;
+      const frame: MutableFrame = {
+        frame: {
+          kind,
+          constructor,
+          tail:
+            parent === null
+              ? Buffer.alloc(0)
+              : hashMidgardCekDataScanFrameV1(parent.frame),
+          expectedChildren: children.length,
+          childCount: 0,
+          childFrontier: buildMidgardValidationMerkleFrontierV1([]),
+          foldCursor: 0,
+          sequence:
+            kind === 3
+              ? emptyMidgardCekDataPairSummaryV1()
+              : emptyMidgardCekDataListSummaryV1(),
+        },
+        children: [],
+      };
+      if (kind === 1) {
+        emit({
+          kind: "openConstructor",
+          rawCbor: raw,
+          parent: parent?.frame ?? null,
+          constructor,
+          expectedChildren: children.length,
+        });
+        control = {
+          ...control,
+          offset: control.offset + constructorHeaderLength(constructor),
+        };
+      } else if (kind === 2) {
+        emit({
+          kind: "openList",
+          rawCbor: raw,
+          parent: parent?.frame ?? null,
+          expectedChildren: children.length,
+        });
+        control = { ...control, offset: control.offset + 1 };
+      } else {
+        emit({
+          kind: "openMap",
+          rawCbor: raw,
+          parent: parent?.frame ?? null,
+        });
+        control = {
+          ...control,
+          offset: control.offset + mapHeaderLength(children.length / 2),
+        };
+      }
       control = {
         ...control,
-        frameRoot: hashMidgardCekDataScanFrameV1(nextParent.frame),
-        frameClosed:
-          nextParent.frame.kind === 3 &&
-          nextParent.frame.childCount === nextParent.frame.expectedChildren,
+        frameRoot: hashMidgardCekDataScanFrameV1(frame.frame),
+        frameClosed: children.length === 0,
       };
-      return nextParent;
+      work.push({ kind: "exit", data: structuredData, frame, parent });
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        work.push({ kind: "enter", data: children[index]!, parent: frame });
+      }
+      continue;
     }
 
-    const children: Data[] =
-      data instanceof DataConstr
-        ? [...data.fields]
-        : data instanceof DataList
-          ? [...data.list]
-          : data instanceof DataMap
-            ? data.map.flatMap((pair) => [pair.fst, pair.snd])
-            : (() => {
-                throw new Error("CEK Data scanner received an unknown node");
-              })();
-    const kind: 1 | 2 | 3 =
-      data instanceof DataConstr ? 1 : data instanceof DataList ? 2 : 3;
-    const constructor = data instanceof DataConstr ? data.constr : 0n;
-    const frame: MutableFrame = {
-      frame: {
-        kind,
-        constructor,
-        tail:
-          parent === null
-            ? Buffer.alloc(0)
-            : hashMidgardCekDataScanFrameV1(parent.frame),
-        expectedChildren: children.length,
-        childCount: 0,
-        childFrontier: buildMidgardValidationMerkleFrontierV1([]),
-        foldCursor: 0,
-        sequence:
-          kind === 3
-            ? emptyMidgardCekDataPairSummaryV1()
-            : emptyMidgardCekDataListSummaryV1(),
-      },
-      children: [],
-    };
-    if (kind === 1) {
-      emit({
-        kind: "openConstructor",
-        rawCbor: raw,
-        parent: parent?.frame ?? null,
-        constructor,
-        expectedChildren: children.length,
-      });
-      control = {
-        ...control,
-        offset: control.offset + constructorHeaderLength(constructor),
-      };
-    } else if (kind === 2) {
-      emit({
-        kind: "openList",
-        rawCbor: raw,
-        parent: parent?.frame ?? null,
-        expectedChildren: children.length,
-      });
-      control = { ...control, offset: control.offset + 1 };
-    } else {
-      emit({
-        kind: "openMap",
-        rawCbor: raw,
-        parent: parent?.frame ?? null,
-      });
-      control = {
-        ...control,
-        offset: control.offset + mapHeaderLength(children.length / 2),
-      };
-    }
-    let current = frame;
-    control = {
-      ...control,
-      frameRoot: hashMidgardCekDataScanFrameV1(current.frame),
-      frameClosed: children.length === 0,
-    };
-    for (const child of children) {
-      const returned = scan(child, current);
-      if (returned === null) {
-        throw new Error("nested CEK Data scan lost its parent frame");
-      }
-      current = returned;
-    }
-
-    if (kind !== 3 && children.length > 0) {
-      emit({ kind: "closeSequence", rawCbor: raw, frame: current.frame });
+    const { data, frame, parent } = operation;
+    if (frame.frame.kind !== 3 && frame.frame.expectedChildren > 0) {
+      emit({ kind: "closeSequence", rawCbor: raw, frame: frame.frame });
       control = {
         ...control,
         offset: control.offset + 1,
@@ -570,22 +655,22 @@ export const buildMidgardCekDataScanTraceV1 = (
       };
     }
 
-    const leaves = current.children.map((child, index) =>
+    const leaves = frame.children.map((child, index) =>
       hashMidgardCekDataScanChildV1(index, child),
     );
-    if (kind === 3) {
+    if (frame.frame.kind === 3) {
       for (
-        let pairIndex = children.length / 2 - 1;
+        let pairIndex = frame.frame.expectedChildren / 2 - 1;
         pairIndex >= 0;
         pairIndex -= 1
       ) {
         const keyIndex = pairIndex * 2;
         const valueIndex = keyIndex + 1;
-        const key = current.children[keyIndex]!;
-        const value = current.children[valueIndex]!;
+        const key = frame.children[keyIndex]!;
+        const value = frame.children[valueIndex]!;
         emit({
           kind: "foldMap",
-          frame: current.frame,
+          frame: frame.frame,
           pairIndex,
           key,
           value,
@@ -598,50 +683,57 @@ export const buildMidgardCekDataScanTraceV1 = (
             valueIndex,
           ).siblings,
         });
-        current = frameWith(
-          current,
-          current.frame.foldCursor + 1,
-          prependMidgardCekDataPairSummaryV1(
-            key,
-            value,
-            current.frame.sequence,
+        replaceFrame(
+          frame,
+          frameWith(
+            frame,
+            frame.frame.foldCursor + 1,
+            prependMidgardCekDataPairSummaryV1(
+              key,
+              value,
+              frame.frame.sequence,
+            ),
           ),
         );
         control = {
           ...control,
-          frameRoot: hashMidgardCekDataScanFrameV1(current.frame),
+          frameRoot: hashMidgardCekDataScanFrameV1(frame.frame),
         };
       }
     } else {
       for (
-        let childIndex = children.length - 1;
+        let childIndex = frame.frame.expectedChildren - 1;
         childIndex >= 0;
         childIndex -= 1
       ) {
-        const child = current.children[childIndex]!;
+        const child = frame.children[childIndex]!;
         emit({
           kind: "foldList",
-          frame: current.frame,
+          frame: frame.frame,
           childIndex,
           child,
           siblings: buildMidgardValidationMerkleMembershipV1(leaves, childIndex)
             .siblings,
         });
-        current = frameWith(
-          current,
-          current.frame.foldCursor + 1,
-          prependMidgardCekDataListSummaryV1(child, current.frame.sequence),
+        replaceFrame(
+          frame,
+          frameWith(
+            frame,
+            frame.frame.foldCursor + 1,
+            prependMidgardCekDataListSummaryV1(child, frame.frame.sequence),
+          ),
         );
         control = {
           ...control,
-          frameRoot: hashMidgardCekDataScanFrameV1(current.frame),
+          frameRoot: hashMidgardCekDataScanFrameV1(frame.frame),
         };
       }
     }
 
+    const summary = structuredSummary(data, frame.frame.sequence);
     emit({
       kind: "finalizeFrame",
-      frame: current.frame,
+      frame: frame.frame,
       parent: parent?.frame ?? null,
     });
     if (parent === null) {
@@ -654,24 +746,18 @@ export const buildMidgardCekDataScanTraceV1 = (
         frameClosed: false,
         result: summary,
       };
-      return null;
+      continue;
     }
     const nextParent = appendChild(parent, summary);
+    replaceFrame(parent, nextParent);
     control = {
       ...control,
-      frameRoot: hashMidgardCekDataScanFrameV1(nextParent.frame),
+      frameRoot: hashMidgardCekDataScanFrameV1(parent.frame),
       frameClosed:
-        nextParent.frame.kind === 3 &&
-        nextParent.frame.childCount === nextParent.frame.expectedChildren,
+        parent.frame.kind === 3 &&
+        parent.frame.childCount === parent.frame.expectedChildren,
     };
-    return nextParent;
-  };
-
-  const canonical = encodeMidgardCekPlutusDataV1(rootData);
-  if (!canonical.equals(raw)) {
-    throw new Error("V1 Data scan source is not canonical Data CBOR");
   }
-  scan(rootData, null);
   if (control.result === null) {
     throw new Error("CEK Data scanner did not produce a terminal summary");
   }

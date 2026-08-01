@@ -83,6 +83,26 @@ describe("V1 content-addressed Data scanner", () => {
     expect(trace.terminal.result?.cborLength).toBe(BigInt(raw.length));
   });
 
+  it("summarizes large constructor alternatives after folding their fields", () => {
+    const data = new DataConstr(128n, [new DataI(1n)]);
+    const raw = encodeMidgardCekPlutusDataV1(data);
+    const trace = buildMidgardCekDataScanTraceV1(raw);
+    const expected = commitMidgardCekDataTreeV1(data);
+
+    expect(trace.steps.map(({ step }) => step.kind)).toEqual([
+      "openConstructor",
+      "revealLeaf",
+      "closeSequence",
+      "foldList",
+      "finalizeFrame",
+    ]);
+    expect(trace.terminal.result).toEqual({
+      root: Buffer.from(expected.root),
+      cborLength: expected.cborLength,
+      memory: expected.memory,
+    });
+  });
+
   it("rejects malformed controls, frames, and child summaries before hashing", () => {
     const data = new DataList([new DataI(1n)]);
     const trace = buildMidgardCekDataScanTraceV1(
