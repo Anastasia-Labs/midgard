@@ -1,3 +1,4 @@
+import { buildMidgardBoundedItemV1 } from "@al-ft/midgard-core";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -8,16 +9,25 @@ import {
   ValidationProofItemDatumV1,
 } from "../src/fraud-proof/index.js";
 
-const collectionProof = {
-  version: 1n,
-  field_index: 2n,
-  item_count: 1n,
-  item_index: 0n,
-  item_length: 2n,
-  item_commitment: "11".repeat(32),
-  frontier: [{ height: 0n, hash: "22".repeat(32) }],
-  siblings: [],
+const makeCollectionProof = (itemCbor: string) => {
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex: 2,
+    itemIndex: 0,
+    bytes: Buffer.from(itemCbor, "hex"),
+  });
+  return {
+    version: 1n,
+    field_index: 2n,
+    item_count: 1n,
+    item_index: 0n,
+    item_length: BigInt(item.bytes.length),
+    item_commitment: item.commitment.toString("hex"),
+    frontier: [{ height: 0n, hash: "22".repeat(32) }],
+    siblings: [],
+  };
 };
+
+const collectionProof = makeCollectionProof("8200");
 
 describe("validation proof-item publication V1", () => {
   it("encodes the complete canonical item and its authenticated descriptor", () => {
@@ -54,12 +64,55 @@ describe("validation proof-item publication V1", () => {
     ).toThrow(/hexadecimal CBOR/u);
   });
 
+  it("rejects compact length, commitment, and index mismatches", () => {
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: { ...collectionProof, item_length: 3n },
+        itemCbor: "8200",
+      }),
+    ).toThrow(/length/u);
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: {
+          ...collectionProof,
+          item_commitment: "ff".repeat(32),
+        },
+        itemCbor: "8200",
+      }),
+    ).toThrow(/commitment/u);
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: { ...collectionProof, item_index: -1n },
+        itemCbor: "8200",
+      }),
+    ).toThrow(/item index/u);
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: {
+          ...collectionProof,
+          field_index: BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        },
+        itemCbor: "8200",
+      }),
+    ).toThrow(/field index/u);
+  });
+
   it("round-trips the publication datum exactly and rejects mutated wire forms", () => {
+    const roundTripItem = "820182018201820082008200";
+    const roundTripProof = makeCollectionProof(roundTripItem);
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof,
-      itemCbor: "820182018201820082008200",
+      collectionProof: roundTripProof,
+      itemCbor: roundTripItem,
     });
     const exactDecode = (cbor: string): ValidationProofItemDatumV1 => {
       const decoded = Data.from(cbor, ValidationProofItemDatumV1);
@@ -68,9 +121,7 @@ describe("validation proof-item publication V1", () => {
       }
       return decoded;
     };
-    expect(exactDecode(publication.datumCbor).item_cbor).toBe(
-      "820182018201820082008200",
-    );
+    expect(exactDecode(publication.datumCbor).item_cbor).toBe(roundTripItem);
 
     // Trailing data after the exact datum rejects.
     expect(() => exactDecode(`${publication.datumCbor}00`)).toThrow();
@@ -89,39 +140,42 @@ describe("validation proof-item publication V1", () => {
       substitutionRejected = true;
     }
     expect(substitutionRejected).toBe(true);
-    // Omission of the item bytes changes the datum, never silently matches.
-    const omitted = deriveValidationProofItemPublicationV1({
-      transactionId: "33".repeat(32),
-      transactionCommitment: "44".repeat(32),
-      collectionProof,
-      itemCbor: "",
-    });
-    expect(omitted.datumCbor).not.toBe(publication.datumCbor);
-    // Duplicated item bytes change the datum identity as well.
-    const duplicated = deriveValidationProofItemPublicationV1({
-      transactionId: "33".repeat(32),
-      transactionCommitment: "44".repeat(32),
-      collectionProof,
-      itemCbor: "820182018201820082008200".repeat(2),
-    });
-    expect(duplicated.datumCbor).not.toBe(publication.datumCbor);
+    // Omission of the item bytes fails before a datum is constructed.
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: roundTripProof,
+        itemCbor: "",
+      }),
+    ).toThrow(/length/u);
+    // Duplicated item bytes fail the exact-length guard as well.
+    expect(() =>
+      deriveValidationProofItemPublicationV1({
+        transactionId: "33".repeat(32),
+        transactionCommitment: "44".repeat(32),
+        collectionProof: roundTripProof,
+        itemCbor: roundTripItem.repeat(2),
+      }),
+    ).toThrow(/length/u);
     // Reordered identities bind differently: swapping the transaction id and
     // commitment cannot reproduce the same publication datum.
     const reordered = deriveValidationProofItemPublicationV1({
       transactionId: "44".repeat(32),
       transactionCommitment: "33".repeat(32),
-      collectionProof,
-      itemCbor: "820182018201820082008200",
+      collectionProof: roundTripProof,
+      itemCbor: roundTripItem,
     });
     expect(reordered.datumCbor).not.toBe(publication.datumCbor);
   });
 
   it("accepts the complete canonical item up to the publication maximum without chunk inputs", () => {
     const maxItemHex = "a5".repeat(14_396);
+    const maxCollectionProof = makeCollectionProof(maxItemHex);
     const publication = deriveValidationProofItemPublicationV1({
       transactionId: "33".repeat(32),
       transactionCommitment: "44".repeat(32),
-      collectionProof,
+      collectionProof: maxCollectionProof,
       itemCbor: maxItemHex,
     });
     const decoded = Data.from(
@@ -130,7 +184,7 @@ describe("validation proof-item publication V1", () => {
     );
     expect(decoded.item_cbor).toBe(maxItemHex);
     expect(decoded.collection_proof.item_commitment).toBe(
-      collectionProof.item_commitment,
+      maxCollectionProof.item_commitment,
     );
   });
 

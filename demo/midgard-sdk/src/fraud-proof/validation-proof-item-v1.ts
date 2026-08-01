@@ -1,3 +1,4 @@
+import { buildMidgardBoundedItemV1 } from "@al-ft/midgard-core";
 import {
   CML,
   Data,
@@ -20,6 +21,17 @@ const hash32 = (value: string, label: string): string => {
     throw new Error(`${label} must be 32-byte lowercase hex`);
   }
   return value;
+};
+
+const exactNonNegativeSafeInteger = (value: bigint, label: string): number => {
+  if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  const exact = Number(value);
+  if (!Number.isSafeInteger(exact)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return exact;
 };
 
 export type ValidationProofItemPublicationV1 = {
@@ -91,6 +103,30 @@ export const deriveValidationProofItemPublicationV1 = ({
 }): ValidationProofItemPublicationV1 => {
   if (!/^(?:[0-9a-f]{2})*$/u.test(itemCbor)) {
     throw new Error("validation proof item must be lowercase hexadecimal CBOR");
+  }
+  const itemBytes = Buffer.from(itemCbor, "hex");
+  const fieldIndex = exactNonNegativeSafeInteger(
+    collectionProof.field_index,
+    "validation proof field index",
+  );
+  const itemIndex = exactNonNegativeSafeInteger(
+    collectionProof.item_index,
+    "validation proof item index",
+  );
+  if (collectionProof.item_length !== BigInt(itemBytes.length)) {
+    throw new Error(
+      "validation proof item length does not match collection proof",
+    );
+  }
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex,
+    itemIndex,
+    bytes: itemBytes,
+  });
+  if (item.commitment.toString("hex") !== collectionProof.item_commitment) {
+    throw new Error(
+      "validation proof item commitment does not match collection proof",
+    );
   }
   const datum: ValidationProofItemDatumV1Type = {
     version: 1n,

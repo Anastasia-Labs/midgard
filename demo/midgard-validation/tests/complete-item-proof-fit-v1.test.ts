@@ -414,14 +414,21 @@ describe("complete-item proof fit V1", () => {
       siblings: Array.from({ length: 14 }, () => "33".repeat(32)),
     };
     const measurePublicationTransaction = (itemBytes: number): number => {
+      const itemCbor = "a5".repeat(itemBytes);
+      const item = buildMidgardBoundedItemV1({
+        fieldIndex: 2,
+        itemIndex: 16_383,
+        bytes: Buffer.from(itemCbor, "hex"),
+      });
       const publication = deriveValidationProofItemPublicationV1({
         transactionId: "44".repeat(32),
         transactionCommitment: "55".repeat(32),
         collectionProof: {
           ...collectionProof,
-          item_length: BigInt(itemBytes),
+          item_length: BigInt(item.bytes.length),
+          item_commitment: item.commitment.toString("hex"),
         },
-        itemCbor: "a5".repeat(itemBytes),
+        itemCbor,
       });
       const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 4));
       const paymentKeyHash = signingKey.to_public().hash();

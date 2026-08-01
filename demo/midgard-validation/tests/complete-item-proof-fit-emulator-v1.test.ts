@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
+  buildMidgardBoundedItemV1,
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
 } from "@al-ft/midgard-core";
@@ -23,6 +24,8 @@ import {
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   validationMachineStateDataFromCore,
+  ValidationProofItemDatumV1,
+  type ValidationProofItemPublicationV1,
   type ValidationTraceDisputeFaultProofContracts,
 } from "@al-ft/midgard-sdk";
 import {
@@ -545,31 +548,20 @@ const submitSemanticProof = async ({
   };
 };
 
-const publishProofItem = async ({
-  harness,
-  itemCase,
-  itemCborHexOverride,
-}: {
-  readonly harness: EmulatorHarness;
-  readonly itemCase: CanonicalDecodeItemCase;
-  readonly itemCborHexOverride?: string;
-}): Promise<{
+type PublishedProofItem = {
   readonly measurement: CompleteSignedTransactionMeasurement;
   readonly utxo: UTxO;
   readonly datumCbor: string;
   readonly minAdaLovelace: bigint;
-}> => {
-  const collectionProof = Data.from(
-    Data.to(itemCase.collectionProofData),
-    BoundedCollectionItemProofV1,
-  );
-  const preState = itemCase.preState;
-  const publication = deriveValidationProofItemPublicationV1({
-    transactionId: preState.transaction_id,
-    transactionCommitment: preState.transaction_commitment,
-    collectionProof,
-    itemCbor: itemCborHexOverride ?? itemCase.itemCborHex,
-  });
+};
+
+const publishProofItemPublication = async ({
+  harness,
+  publication,
+}: {
+  readonly harness: EmulatorHarness;
+  readonly publication: ValidationProofItemPublicationV1;
+}): Promise<PublishedProofItem> => {
   const minAdaLovelace = minimumLovelaceForValidationProofItemPublicationV1({
     contracts: harness.contracts,
     publication,
@@ -606,6 +598,80 @@ const publishProofItem = async ({
     minAdaLovelace,
   };
 };
+
+const publishProofItem = async ({
+  harness,
+  itemCase,
+  itemCborHexOverride,
+}: {
+  readonly harness: EmulatorHarness;
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly itemCborHexOverride?: string;
+}): Promise<PublishedProofItem> => {
+  const collectionProof = Data.from(
+    Data.to(itemCase.collectionProofData),
+    BoundedCollectionItemProofV1,
+  );
+  const preState = itemCase.preState;
+  const itemCbor = itemCborHexOverride ?? itemCase.itemCborHex;
+  const item = buildMidgardBoundedItemV1({
+    fieldIndex: Number(collectionProof.field_index),
+    itemIndex: Number(collectionProof.item_index),
+    bytes: Buffer.from(itemCbor, "hex"),
+  });
+  const publication = deriveValidationProofItemPublicationV1({
+    transactionId: preState.transaction_id,
+    transactionCommitment: preState.transaction_commitment,
+    collectionProof: {
+      ...collectionProof,
+      item_length: BigInt(item.bytes.length),
+      item_commitment: item.commitment.toString("hex"),
+    },
+    itemCbor,
+  });
+  return await publishProofItemPublication({ harness, publication });
+};
+
+const buildRawProofItemPublicationForNegativeControl = ({
+  itemCase,
+  itemCbor,
+}: {
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly itemCbor: string;
+}): ValidationProofItemPublicationV1 => {
+  const collectionProof = Data.from(
+    Data.to(itemCase.collectionProofData),
+    BoundedCollectionItemProofV1,
+  );
+  const datum: ValidationProofItemPublicationV1["datum"] = {
+    version: 1n,
+    transaction_id: itemCase.preState.transaction_id,
+    transaction_commitment: itemCase.preState.transaction_commitment,
+    collection_proof: collectionProof,
+    item_cbor: itemCbor,
+  };
+  return {
+    datum,
+    datumCbor: Data.to(datum, ValidationProofItemDatumV1),
+  };
+};
+
+const publishRawProofItemForNegativeControl = async ({
+  harness,
+  itemCase,
+  itemCbor,
+}: {
+  readonly harness: EmulatorHarness;
+  readonly itemCase: CanonicalDecodeItemCase;
+  readonly itemCbor: string;
+}): Promise<PublishedProofItem> =>
+  await publishProofItemPublication({
+    harness,
+    publication: buildRawProofItemPublicationForNegativeControl({
+      itemCase,
+      itemCbor,
+    }),
+  });
 
 const measureDirectAt = async (
   itemBytes: number,
@@ -888,10 +954,10 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     // Substitution: same length, one flipped byte deep inside the item.
     const substituted = Buffer.from(itemCase.itemCborHex, "hex");
     substituted[itemBytes - 100] = substituted[itemBytes - 100]! ^ 0x01;
-    const substitutedPublication = await publishProofItem({
+    const substitutedPublication = await publishRawProofItemForNegativeControl({
       harness,
       itemCase,
-      itemCborHexOverride: substituted.toString("hex"),
+      itemCbor: substituted.toString("hex"),
     });
     await expect(
       submitSemanticProof({
@@ -903,10 +969,10 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     ).rejects.toThrow();
 
     // Trailing data: the exact item plus one extra byte.
-    const trailingPublication = await publishProofItem({
+    const trailingPublication = await publishRawProofItemForNegativeControl({
       harness,
       itemCase,
-      itemCborHexOverride: `${itemCase.itemCborHex}00`,
+      itemCbor: `${itemCase.itemCborHex}00`,
     });
     await expect(
       submitSemanticProof({
