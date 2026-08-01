@@ -1080,6 +1080,9 @@
 | Checkpoint-1 journey replay with operator-schedule advancement assertion                                                                                                                                                                                                                 | HEAD `4acf6821` plus 2026-07-29 worktree; pinned Node `22.22.2`/pnpm `9.15.9`; exact named emulator selector; disposable `midgard_test` PostgreSQL schema recreated after the first attempt correctly rejected its stale pre-goal checksum; 360-second hard timeout                                                                                                               | PASS. The journey starts from `INITIAL_SCHEDULER_DATUM`, proves the first real commit changes the scheduler and appoints the fixture operator, then completes reference-script publication, operator registration/activation, deposit ingestion, a signed canonical L2 transfer, commit/confirmation/recovery/merge cycles, withdrawal discovery/commit/merge, scheduler rewind, reserve funding, and payout conclusion. The corrected run remained live and exited normally. | Exact named emulator test 1/1; 12 intentionally skipped; 199.31 s test body / 202.04 s process; exit 0.                                                                                                   |
 | Checkpoint-1 post-journey trace and strict node compilation replay                                                                                                                                                                                                                       | HEAD `4acf6821` plus 2026-07-29 worktree; pinned Node `22.22.2`/pnpm `9.15.9`; transition-trace focused suite and node package typecheck                                                                                                                                                                                                                                      | PASS after one fail-closed repair. The first typecheck identified that the `reconcile da-attested` CLI path requested only the database layer even though canonical L1 evidence requires `Lucid` and `MidgardContracts`; routing it through the existing database/transaction service provider restores the exact runtime dependency boundary.                                                                                                                         | Transition trace 20/20 in 2.47 s; repaired typecheck exit 0 in 29.68 s.                                                                                                                                   |
 
+| OVERLAY-SEMANTICS dependency CONFIRMED — committed tree is not semantically self-consistent (2026-08-01, OWNER DECISION REQUIRED) | A/B blueprint experiment: the full fault-proofs suite against the committed-tree blueprint `ea4bceeb…` (368 validators), then the single failing selector against the overlay blueprint `d27fe6c9…` (main tree, protected dirty libs included) | Full fault-proofs suite: **215/216** against the committed-tree blueprint; the sole failure is `cannot be defeated when the operator honestly accepted a valid transaction carrying a non-empty ledger delta`, trapping at the dispute's verify-source stage (`EvaluatorError: unreachable`) instead of failing at prepare/semantic as designed. The SAME test passes 1/1 (165.7 s) against the overlay blueprint. Root cause: the TS producers and dispute tooling were built against the protected working-tree (source-task checkpoint) semantics of `cek-data-traverse-v1.ak`/`redeemer-item-proof-v1.ak`; every previously-green local run used overlay-built validators, so the committed libs' semantic lag was invisible until the committed tree was built in isolation — the same defect class as the standalone-compile break, one level deeper. | **CI cannot go fully green without an ownership decision:** (a) owner grants the explicit handoff and the two overlay lib files are committed (re-tracking the five withdrawn dependents on the now-consistent base), making the committed tree self-consistent; or (b) the source task lands its checkpoint through its own channel first, and Node CI stays red on exactly this named test until then. The standing rule ("do not edit, stage, commit, regenerate over, or claim any source-task checkpoint without an explicit ownership handoff") forbids acting without the owner. Decision requested in the PR checkpoint description and in session. |
+| §4.4 checkpoint journey regression (2026-08-01) | Fresh isolated PostgreSQL database `midgard_test_journey` (goal-test container, port 5433) after the ledgered `schema_checksum_mismatch` trap correctly rejected the stale shared `midgard_test` schema; pinned Node 22.22.2; committed-tree blueprint `ea4bceeb…` installed | PASS. The exact named selector `runs deposit, reserve absorption, withdrawal commitment, and payout to conclusion` completes 1/1 in 201.9 s (204.98 s process), exercising deposit ingestion, reserve absorption, withdrawal commitment/merge, and payout conclusion against this checkpoint's validators, schemas, and persistence. | Satisfies the §4.4 pre-push journey requirement for this checkpoint batch; the DB trap firing first on the stale shared schema is the designed fail-closed behavior, not a defect. |
+| C21-STAGE4 Option B′ dispositioned: STRUCTURALLY SUBSUMED by Option A (2026-08-01, owner review requested) | Source audit of every scriptSources-phase auxiliary emitter in `validation-machine.ts` and the descriptor builder `ledger-output-descriptor.ts`; package suite at maximum shapes | The owner-selected B′ (reference carriage for resolver 8/semantic 0) was motivated by the stage-4 complete-item reveal riding inline through the resolver's prepare and resolution transactions. With Option A landed, **no resolver-8/semantic-0 auxiliary can exceed direct carriage**: stage 4 is proof-only (O(1)); stage-3 `resolvedInputReplay` and resolveInputs `scheduledLedgerLookup` carry the compact ledger DESCRIPTOR, not output bytes — `buildCanonicalMidgardLedgerOutputMaterialV1` reduces assets to a 32-byte frontier commitment + count, datum to a bounded summary, reference script to language/hash/length/commitment, so descriptors are bounded at O(hundreds of bytes) regardless of output size; every other stage auxiliary is a chunk proof (4,095-byte chunks) or fixed-field scan witness. The only unbounded-byte auxiliary consumers in the machine remain the canonicalDecode pair, which already has both chunk fallback and deployed publication/reference carriage. | Implementing B′ now (a `VerifyNonOutputReference` arm plus a `proof_item_script_hash` validator parameter) would add hash-changing validator surface with **no producible consumer** — the producer cannot emit an oversized 8/0 auxiliary — violating §3 invariant 13 (no dormant protocol surface) and the §3.2 simplest-representation ordering. Disposition: NOT implemented; recorded as subsumed, evidence = Option A rows plus the validation package suite green at maximum Value/Data breadth shapes (every trace step must fit the producer's strict envelope guard to build at all). Flagged for owner review in the PR checkpoint description — the owner directive said "do this regardless" and this disposition supersedes it only on the structural-subsumption evidence above; Option B (chunked fold) likewise stays unnecessary unless A's forged-tuple evidence is refuted. |
 | C21-STAGE4 Option A IMPLEMENTED — stage-4 fold drops the item byte reveal (2026-08-01) | Main tree post-fmt; pinned `aiken v1.1.22+39d6b04` focused selectors; pinned Node 22.22.2 vitest; package tsc | **The soundness gap is closed at source and producer level.** `script_sources_stage_four` now expects the proof-only tag-29 `TransactionRedeemerItemBeginWitness { collection_proof }` and drops the two byte-reveal conjuncts (`item_length == bytearray.length(item_cbor)` and the `bounded_item_v1.from_bytes` recommit); the `(field_index==2, item_index, item_count)` pins, the 16,384 `item_length` cap, `bounded_collection_v1.verify_item`, and the successor `append_leaf` over `item_commitment` are unchanged. `verify_item` binds `(version, field_index, item_index, item_length, item_commitment)` into the leaf and requires `commitment(...) == outputs_hash` from `verify_native_tx_proof_source_v1`, so exactly one tuple passes — no ABI change, no new constructor, no §3.2 artifact (carriage was removed, not added). TS producer emits `transactionRedeemerItemBegin` at the stage-4 fold; canonicalDecode's complete/chunk byte carriage is untouched. | Aiken focused batch 5/5 (helper exit 0): honest fold accepts; **forged `item_commitment` rejects; forged `item_length` rejects with the successor held honest — isolating `verify_item` as the sole failing conjunct** (the Option A redundancy-claim evidence); stage 4→5 finish unchanged; `canonical_decode_authenticates_one_bounded_script_item` control unaffected. The superseded mismatched-bytes test is replaced by these two strictly stronger forged-tuple rejections. TS: `complete-item-proof-fit-v1.test.ts` 4/4 — the previously unprovable 16,384-byte maximum output now builds a stage-4 one-step argument, evidence < 2,048 bytes and auxiliary size equal across 256/14,774/16,384-byte outputs within CBOR integer width (≤8 bytes); the old 14,774 pin is retired with the gap. `complete-item-carriage-policy-v1.test.ts` + `complete-item-equivalence-v1.test.ts` pass with the emitter inventory updated (tag-30 emitters: type + canonicalDecode only). Package tsc exit 0. Blueprint regeneration and the seven-artifact invalidation cascade tracked in the following rows; `ledger-output-incremental-proof-v1.md:67-76` corrected per the analysis memo. |
 | COMMITTED-TREE-COMPILE defect found and resolved (2026-08-01) | Isolated clean worktree at the fmt commit (`681ca0b4`), pinned `aiken v1.1.22+39d6b04` under a pseudo-TTY (a detached invocation reproduces the known silent-exit-1-without-diagnostic pathology) | **The committed tree did not compile standalone since `636bb55f`.** Five committed files referenced symbols that exist only in the UNCOMMITTED protected working-tree versions of `cek-data-traverse-v1.ak`/`redeemer-item-proof-v1.ak` (the source task's stage-one redeemer feasibility checkpoint): the four dormant stage-one executor validators (`finalize-frame-executor`, `fold-map-executor`, `outer-normalizer`, `traversal-normalizer`) use `prevalidated_*`/`stage_data_*` helpers, and `script-sources-redeemer-normalization-v1.test.ak` uses ten such helpers/types through its shared fixtures. Every local gate ran with the protected dirty overlay present, so the defect was invisible locally and Aiken CI failed at the earlier fmt step before reaching `aiken check`. A constructor-aware export scan confirms no other committed file is affected (`validation-machine-v1.ak`'s `RedeemerItemProof*` references are constructors of committed pub types — fine). | Resolution: the five files are UNTRACKED again (index-only removal; working bytes byte-identical, still verified by the closure manifest), returning them to their pre-`636bb55f` protected-overlay status. `aiken check --skip-tests` on the resulting committed tree: 0 errors (exit 0). Reintroduction condition: they re-track in the same commit that lands the source task's protected stage-one checkpoint (which exports the required lib symbols); the `1063`-row condition (wiring requires `.test.ak` coverage) still applies to the four validators. Local coverage is unchanged — the working tree keeps all five files and local gates keep executing the test module. |
 | VM-DEFECT-7 FIXED (2026-08-01, owner-authorized in session) | Working tree with the ledgered one-line fix applied at `validation-machine-v1.ak:8847`; pinned `aiken v1.1.22+39d6b04`; focused selectors via `run-focused-check.mjs` | **The standing failing witness now passes.** `script_sources_replay_appends_reference_scripts` collects 1/1 and passes (helper exit 0) with `script_sources_replay_item` passing `next_sources.count` instead of the stale `control.source_total_count` — exactly the fix direction the 2026-07-31 row recorded as the owner's call. Adjacent replay selectors `script_sources_replay_appends_script_credential_spend_purposes` and `script_sources_rescans_receive_sources_for_distinctness` pass in the same-tree batch (mem 15,167,071 / cpu 6,580,810,847 and mem 43,358,185 / cpu 18,894,429,595). The Aiken successor construction now agrees with the canonical TS reference model (`validation-machine.ts:2090` advances both counters together). | Authorization: the owner directed execution of the recorded mergeability steps including this commit ("execute steps 1-5", 2026-08-01; step 3 named the VM-DEFECT-7 resolution). Residual validation-machine failure count drops from 4 to 3 pending a fresh module sweep; the three `stage_differential_*` Group-B rows were already repaired and pass individually per the 2026-07-31 disposition. No fresh full-module sweep is claimed here. |
@@ -2823,3 +2826,91 @@ Inspect every discussion surface and applicable current-head CI check to
 terminal completion, fix every actionable finding additively, and repeat
 until this checkpoint is good to merge on its stated scope. Keep the PR draft
 and the overarching Goal in progress.
+
+## Superseding mergeability and C21-STAGE4 closure checkpoint (2026-08-01)
+
+Owner-directed in session: execute mergeability steps 1–5 and the recorded
+C21-STAGE4 decision, then loop the fresh-head review until this checkpoint's
+CI is green on its stated scope. Covers the twelve commits `d64222b2..HEAD`
+plus this ledger commit. Baseline for this batch: published head `d64222b2`
+(local == origin, 0 behind base `8bae9403`).
+
+- **CI unblockers.** `333c87c9` regenerates `demo/pnpm-lock.yaml` with the
+  missing `@al-ft/midgard-core` workspace link (pinned pnpm 9.15.4, isolated
+  manifest-only resolution; frozen-lockfile check passes) — this single
+  defect failed Docs Site CI, Midgard Node CI, and both Evidence Integrity
+  runs with `ERR_PNPM_OUTDATED_LOCKFILE`. `681ca0b4` applies the exact
+  Aiken-CI format recipe to the 15 drifted tracked files; the two protected
+  lib files are untouched and byte-identical to their recorded hashes.
+- **Committed-tree standalone-compile defect (NEW, fixed).** `f9310109`:
+  since `636bb55f` the committed tree could not compile without the
+  uncommitted protected overlay — four dormant stage-one executor validators
+  plus `script-sources-redeemer-normalization-v1.test.ak` reference
+  overlay-only symbols. Index-only withdrawal (bytes untouched, still
+  hash-verified); isolated clean-worktree `aiken check --skip-tests` passes
+  0 errors. Reintroduction rides the source task's stage-one checkpoint.
+- **VM-DEFECT-7 fixed** (`0f3b8538`, owner-authorized): replay successor
+  passes `next_sources.count`; the standing failing witness
+  `script_sources_replay_appends_reference_scripts` collects 1/1 PASS plus
+  two adjacent replay selectors in the same-tree batch.
+- **C21-STAGE4 Option A** (`b7cacd85`, `75736e4c`): stage-4 fold is
+  proof-only (tag-29 witness), byte-reveal conjuncts dropped, no ABI change.
+  Aiken 5/5 incl. forged-commitment and forged-length rejections isolating
+  `verify_item`; TS complete-item suites 4/4 + carriage-policy/equivalence
+  green; validation-machine.test.ts 24/24 after two pin updates; the
+  16,384-byte maximum output builds O(1) stage-4 evidence. **Option B′
+  dispositioned STRUCTURALLY SUBSUMED** (validation-ledger row; owner
+  review requested in the PR description).
+- **Removal reference-scripts completed** (`5bf18902`): all six ledgered
+  removal sites publish and require reference scripts; zero
+  `requireReferenceScripts: false` remain; two end-to-end removal selectors
+  pass.
+- **Evidence/ledger repairs** (`826f8e29`, `3a6d9b1d`, `c4f7fd52`, this
+  commit): closure-manifest hashes rebound to committed bytes (verifier
+  `current-tree-valid`, self-test green); damaged Current-next-action and
+  truncated Blockers sections restored; AC-02's stale 132/132 claim
+  corrected; owner decision recorded;
+  `ledger-output-incremental-proof-v1.md:67-76` residual-gap paragraph
+  corrected and marked CLOSED.
+- **IG1 regeneration.** Blueprint rebuilt from the exact committed tree in
+  an isolated clean worktree: 368 validators, sha256
+  `ea4bceebc0d6b78a38a4e94e79cfaec13e1e71cb1edcd1aa308c63fb605f4956`,
+  installed as the local `plutus.json` so local pins verify what CI builds.
+  Dependent pins green against it: fault-proofs
+  aiken-blueprint-data/validation-dispute-submit/submit-init 27/27, SDK
+  fault-proof/proof-item/auxiliary-corpus 26/26 (40-constructor corpus
+  unchanged — zero ABI drift), applied-validator emulator complete-item
+  suite 5/5. The seven necessity artifacts are invalidated by the
+  validator-hash change (they were already stale on the blueprint axis);
+  re-measurement remains queued before CG5.
+- **Journey regression** (§4.4): the deposit → L2 → withdrawal → payout
+  selector PASSES 1/1 (201.9 s) against a fresh isolated database after the
+  ledgered `schema_checksum_mismatch` trap correctly rejected the stale
+  shared schema.
+- **Fault-proofs suite: 215/216 with one root-caused residual.** The sole
+  failure (`cannot be defeated when the operator honestly accepted a valid
+  transaction carrying a non-empty ledger delta`) is CONFIRMED by A/B
+  blueprint experiment to be an overlay-semantics dependency: it passes
+  against the overlay blueprint and traps at verify-source against the
+  committed-tree blueprint. The committed tree is not semantically
+  self-consistent without the protected source-task lib checkpoint —
+  Node CI stays red on exactly this test pending the owner's ownership
+  handoff decision (validation-ledger row).
+
+Left open (unchanged): W10 operational wire binding, W14 live provenance,
+122 registry promotions, formal release journeys, target-testnet
+acceptance, remaining §12 criteria, closure manifest completion, §15. The
+full `aiken check` (with tests) duration at the committed tree is being
+measured for Aiken-CI viability; if the validation-machine module's
+aiken#1389 pathology exceeds the CI window, the Aiken CI workflow needs an
+owner-reviewed sharded-selector amendment. Draft PR #471 must stay draft.
+
+## Superseding mergeability publication action
+
+Push these commits to the same `colll78/` branch, refresh draft PR #471's
+description to the new head (the current description claims `7f74981f` and
+110/126 — both stale), then watch every current-head CI check to terminal
+completion and fix every actionable finding additively until all six checks
+pass on the checkpoint's stated scope. Surface the B′ subsumption
+disposition and the Aiken-CI duration finding to the owner in the PR
+description. Keep the PR draft and the overarching Goal in progress.
