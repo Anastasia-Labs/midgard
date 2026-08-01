@@ -467,8 +467,7 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         }
         return witness.auxiliary.kind === "transactionFieldChunk"
           ? witness.auxiliary.chunkProof.chunk.length <= 4_095 &&
-              witness.cbor.length +
-                witness.auxiliary.chunkProof.chunk.length <
+              witness.cbor.length + witness.auxiliary.chunkProof.chunk.length <
                 16 * 1024
           : false;
       }),

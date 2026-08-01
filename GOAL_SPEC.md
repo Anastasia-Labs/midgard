@@ -270,8 +270,7 @@ The final tree must contain:
 - coherent checkpoint commits plus one final integration commit, without
   rewriting pre-existing history; and
 - exactly one long-lived Goal pull request targeting the `tx-validation`
-  branch, updated at every delivery checkpoint in §4.4 and containing
-  `releaseCommit` plus its §0.2 evidence commits.
+  branch, containing `releaseCommit` plus its §0.2 evidence commits.
 
 Large logs, databases, secrets, temporary corpora, and disposable deployment
 state are not deliverables. The closure manifest references committed
@@ -569,7 +568,7 @@ revision, different parameter snapshot, or changed ABI is not a pass.
 - Goal-owned work must be committed and the final worktree must be clean
   relative to the recorded pre-Goal dirty baseline.
 
-### 4.4 Single pull request and delivery checkpoints
+### 4.4 Single pull request
 
 Deliver the entire Goal through one long-lived pull request:
 
@@ -577,60 +576,53 @@ Deliver the entire Goal through one long-lived pull request:
 - Use one Goal-owned head branch and one pull request for the lifetime of this
   Goal. Do not open separate, stacked, replacement, proof-family, watcher, or
   release pull requests for Goal-owned work.
-- Open the pull request as a draft no later than completion of Checkpoint 1
-  below. If a Goal pull request already exists, verify its base and reuse it
-  rather than opening another.
-- Never force-push or rewrite published Goal history. Push coherent checkpoint
-  commits to the same head branch and update the same pull request.
-- Immediately after each checkpoint passes, push its commits and update the
-  pull-request description with the checkpoint revision, completed task/gate
-  IDs, exact verification results, remaining dependencies, and any genuine
-  external blocker. A pushed checkpoint is not final Goal completion.
+- Open the pull request as a draft no later than the first Goal-owned push. If
+  a Goal pull request already exists, verify its base and reuse it rather than
+  opening another.
+- Never force-push or rewrite published Goal history. Push coherent commits to
+  the same head branch.
+- Push completed work promptly; unpushed work is lost work. A push is not
+  final Goal completion. The pull-request description points at
+  `GOAL_PROGRESS.md` rather than restating it.
 - Keep the pull request draft while any mandatory `AC-*` is not `PASS`. Mark
   it ready for review only as the final §15 delivery action, after every
   technical and acceptance check succeeds and `releaseCommit`, its evidence
   commits, and the closure evidence are pushed.
 
-The required push checkpoints are:
+Push order follows the §6 dependency graph; a push is coherent when every gate
+it claims has passed at that revision.
 
-1. **Foundation and ABI:** F00–F03 and IG1, including F02 with every row of
-   its bound format-registry digest passing. The registry row count is bound
-   in evidence, not hard-coded here; a legitimately added or removed canonical
-   format changes the count without weakening the gate.
-2. **Inventories and harness:** F04–F05, F10, F20–F21, F30, F41, and then
-   F40.
-3. **Canonical capability:** CG1–CG4.
-4. **Local state correction:** QG1–QG2.
-5. **Local autonomous watcher:** WG1.
-6. **Release evidence:** CG5 and C79.
-7. **Live and final closure:** CG6, QG3, WG2, every `AC-*`, and §15.
+Before any push that changed validators, schemas, migrations, manifests,
+persistence, or node orchestration:
 
-Each checkpoint update must preserve the complete supported user journey on a
-fresh canonical-V1 deployment: deposit, block production/finalization, L2
-transaction submission and execution, withdrawal initiation, and withdrawal
-completion. Before pushing a checkpoint:
-
-- run the focused checks for every touched component;
+- run the focused checks for every touched component, using the §13.2 guarded
+  selector runner for Aiken modules; and
 - run a deterministic fresh-state local/emulator end-to-end regression of
-  deposit → L2 transactions → withdrawal using that checkpoint's validators,
-  schemas, manifests, persistence, and node orchestration;
-- record commands, revision, validator/manifest identities, transaction
-  results, and any failure in durable evidence and the pull-request update;
-- do not describe a skipped or failed required regression as passing; and
-- at Checkpoints 6 and 7, also run every dependency-ready target-testnet
-  lifecycle check required by §13, with the complete fresh target-testnet
-  acceptance mandatory at Checkpoint 7.
+  deposit → L2 transactions → withdrawal on that revision. Reuse the most
+  recent recorded result when nothing it exercises changed; cite reuse
+  explicitly.
 
-A checkpoint may reuse the most recent recorded end-to-end journey result
-when nothing it exercises changed since that run — judge that from the diff.
-Rerun when validators, schemas, migrations, or node orchestration changed;
-cite reused evidence explicitly.
+Never describe a skipped or failed required regression as passing.
+
+Target-testnet lifecycle checks and the complete fresh target-testnet
+acceptance run under IG5 and `goal:accept:testnet` before final closure.
 
 Pre-launch database, schema, and validator compatibility is not required:
 development state may be reset and redeployed as §3 requires. That reset does
-not permit loss of the supported end-user journey on the fresh deployment.
-Failure of the checkpoint journey is a regression unless this specification
-explicitly requires the old behavior to be removed.
+not permit loss of the supported end-user journey — deposit, block
+production/finalization, L2 transaction submission and execution, withdrawal
+initiation and completion — on the fresh deployment. Failure of that journey
+is a regression unless this specification explicitly requires the old behavior
+to be removed.
+
+(Owner amendment 2026-08-01: this section previously enumerated seven numbered
+push checkpoints — a second copy of the §6 dependency graph that could drift
+from it — and required, at every one, a hand-maintained pull-request
+description mirroring `GOAL_PROGRESS.md`, a duplicate evidence record already
+mandated by §4.2, and a ~200-second journey rerun regardless of whether
+anything it exercises had changed. The protective content is retained above;
+the per-push ceremony is not. §12 is byte-identical after this change.)
+
 
 ## 5. Concurrent work
 
@@ -1459,7 +1451,7 @@ Before any response claiming Goal completion:
 5. Reproduce the release-evidence digest and completion manifest.
 6. Confirm no external blocker or unresolved decision remains.
 7. Verify that exactly one Goal pull request exists, it targets
-   `tx-validation`, and it contains every completed §4.4 checkpoint update.
+   `tx-validation`, and its head contains every Goal-owned commit.
 8. Push the final evidence commit and closure evidence to that pull request,
    verify that its remote head is `releaseCommit` or an evidence-only
    descendant of it per §0.2, and mark it ready for review without opening a

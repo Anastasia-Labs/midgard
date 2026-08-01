@@ -1788,10 +1788,11 @@ const buildInvalidForcedTransitionTraceFixture = async ({
   };
 };
 
-
 type ForcedValidationSourceEntryV1 = NonNullable<
   ValidationClaimWitnessV1["source_membership"] extends infer Source
-    ? Source extends { ForcedValidationSource: { membership: { value: infer V } } }
+    ? Source extends {
+        ForcedValidationSource: { membership: { value: infer V } };
+      }
       ? V
       : never
     : never
@@ -1817,7 +1818,11 @@ const buildForcedValidationDisputeCommitments = async ({
   readonly operatorVkey: string;
   readonly now: number;
   readonly txOrderId: OutputReference;
-  readonly eventKey: { readonly ForcedTransactionEventKey: { readonly tx_order_id: OutputReference } };
+  readonly eventKey: {
+    readonly ForcedTransactionEventKey: {
+      readonly tx_order_id: OutputReference;
+    };
+  };
   readonly forcedTransaction: ForcedValidationSourceEntryV1;
   readonly operatorTrace: DeterministicValidationMachineTrace;
   readonly preUtxosRoot: string;
@@ -6984,7 +6989,6 @@ describe("fault-proof emulator integration", () => {
   }, 300_000);
 });
 
-
 /**
  * VM-DEFECT-2 dispute-level regression
  * (`docs/exec-plans/evidence/vm-defect-decision-memo.md` §2).
@@ -7396,7 +7400,8 @@ const runForcedValidationDisputeScenario = async (
 
 describe("validation-dispute soundness with a non-empty claimed ledger delta", () => {
   it("lets a challenger win against an operator who claimed Accepted over a non-empty claimed ledger delta", async () => {
-    const claimedLedgerDeltaRoot = await buildNonEmptyClaimedLedgerDeltaRootV1();
+    const claimedLedgerDeltaRoot =
+      await buildNonEmptyClaimedLedgerDeltaRootV1();
     // Guard against the fixture silently degrading back into the empty-delta
     // special case that hid VM-DEFECT-2.
     expect(claimedLedgerDeltaRoot).toHaveLength(32);
@@ -7489,7 +7494,8 @@ describe("validation-dispute soundness with a non-empty claimed ledger delta", (
   }, 600_000);
 
   it("rejects the cleared-delta rejection successor the deleted VM-DEFECT-2 clause required", async () => {
-    const claimedLedgerDeltaRoot = await buildNonEmptyClaimedLedgerDeltaRootV1();
+    const claimedLedgerDeltaRoot =
+      await buildNonEmptyClaimedLedgerDeltaRootV1();
     expect(
       claimedLedgerDeltaRoot.equals(EMPTY_CLAIMED_LEDGER_DELTA_ROOT_V1),
     ).toBe(false);

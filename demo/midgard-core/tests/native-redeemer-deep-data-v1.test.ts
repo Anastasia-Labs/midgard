@@ -12,12 +12,7 @@ const unaryConstructorDataCborHex = (depth: number): string =>
 
 const spendRedeemerPreimage = (dataCborHex: string): Buffer =>
   encodeCbor([
-    [
-      CML.RedeemerTag.Spend,
-      0n,
-      Buffer.from(dataCborHex, "hex"),
-      [1n, 2n],
-    ],
+    [CML.RedeemerTag.Spend, 0n, Buffer.from(dataCborHex, "hex"), [1n, 2n]],
   ]);
 
 const buildDeepCmlUnaryData = (depth: number): CML.PlutusData => {
@@ -49,9 +44,7 @@ describe("redeemer Data validation without a CML probe", () => {
     const redeemers = wrapInSpendRedeemers(buildDeepCmlUnaryData(4_043));
     const preimage = cardanoRedeemersToMidgardPreimageCbor(redeemers);
     expect(preimage.toString("hex")).toBe(
-      spendRedeemerPreimage(unaryConstructorDataCborHex(4_043)).toString(
-        "hex",
-      ),
+      spendRedeemerPreimage(unaryConstructorDataCborHex(4_043)).toString("hex"),
     );
     // Measured 12.1 s on a 2-core CI runner (first-ever CI execution of
     // this suite); the default 5 s budget was calibrated on 32 cores.
@@ -82,7 +75,10 @@ describe("redeemer Data validation without a CML probe", () => {
     // domain violations reject at the well-formedness gate
     expectFailure("f93c00", "must contain one Plutus Data item");
     expectFailure("d8789f00ff", "must contain one Plutus Data item");
-    expectFailure(`5841${"aa".repeat(65)}`, "must contain one Plutus Data item");
+    expectFailure(
+      `5841${"aa".repeat(65)}`,
+      "must contain one Plutus Data item",
+    );
     expectFailure("d866824080", "must contain one Plutus Data item");
     expectFailure("0000", "must contain one Plutus Data item");
     expectFailure("d879", "must contain one Plutus Data item");

@@ -38,27 +38,22 @@
           ]
         },
         {
-          "id": "static-nix-toolchain",
-          "cwd": ".",
-          "argv": [
-            "nix",
-            "develop",
-            "./demo",
-            "--command",
-            "bash",
-            "-c",
-            "node --version && pnpm --version"
-          ]
-        },
-        {
           "id": "static-git-diff",
           "cwd": ".",
-          "argv": ["git", "diff", "--check"]
+          "argv": [
+            "git",
+            "diff",
+            "--check"
+          ]
         },
         {
           "id": "static-git-status",
           "cwd": ".",
-          "argv": ["git", "status", "--short"]
+          "argv": [
+            "git",
+            "status",
+            "--short"
+          ]
         },
         {
           "id": "static-format-registry",
@@ -77,29 +72,42 @@
           ]
         },
         {
-          "id": "static-capability-inventory",
-          "cwd": ".",
+          "id": "static-aiken-check-no-tests",
+          "cwd": "onchain/aiken",
           "argv": [
-            "node",
-            "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs"
+            "aiken",
+            "check",
+            "--skip-tests"
           ]
         },
         {
-          "id": "static-fault-proof-inventory",
+          "id": "static-demo-format",
           "cwd": ".",
           "argv": [
-            "node",
-            "demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs"
+            "pnpm",
+            "--dir",
+            "demo",
+            "run",
+            "format-check"
           ]
         },
         {
-          "id": "static-watcher-map",
+          "id": "static-demo-lint",
           "cwd": ".",
           "argv": [
-            "node",
-            "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
+            "pnpm",
+            "--dir",
+            "demo",
+            "run",
+            "lint"
           ]
-        },
+        }
+      ]
+    },
+    "capability": {
+      "dependsOn": [],
+      "stateChanging": false,
+      "commands": [
         {
           "id": "static-generated-consensus-docs",
           "cwd": ".",
@@ -112,65 +120,37 @@
           ]
         },
         {
-          "id": "static-aiken-version",
-          "cwd": "onchain/aiken",
-          "argv": ["aiken", "--version"]
-        },
-        {
-          "id": "static-aiken-format",
-          "cwd": "onchain/aiken",
-          "argv": ["aiken", "fmt", "--check"]
-        },
-        {
-          "id": "static-aiken-check-no-tests",
-          "cwd": "onchain/aiken",
-          "argv": ["aiken", "check", "--skip-tests"]
-        },
-        {
-          "id": "static-aiken-check",
-          "cwd": "onchain/aiken",
-          "argv": ["aiken", "check"]
-        },
-        {
           "id": "static-aiken-build-testnet",
           "cwd": "onchain/aiken",
-          "argv": ["aiken", "build", "--env", "testnet"]
-        },
-        {
-          "id": "static-demo-format",
-          "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo", "run", "format-check"]
-        },
-        {
-          "id": "static-demo-lint",
-          "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo", "run", "lint"]
+          "argv": [
+            "aiken",
+            "build",
+            "--env",
+            "testnet"
+          ]
         },
         {
           "id": "static-demo-typecheck",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo", "run", "typecheck"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo",
+            "run",
+            "typecheck"
+          ]
         },
         {
           "id": "static-demo-build",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo", "run", "build"]
-        },
-        {
-          "id": "static-repository-criteria",
-          "cwd": ".",
           "argv": [
-            "node",
-            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
-            "--group=repository"
+            "pnpm",
+            "--dir",
+            "demo",
+            "run",
+            "build"
           ]
-        }
-      ]
-    },
-    "capability": {
-      "dependsOn": [],
-      "stateChanging": false,
-      "commands": [
+        },
         {
           "id": "capability-inventory",
           "cwd": ".",
@@ -182,12 +162,22 @@
         {
           "id": "capability-core",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-core", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-core",
+            "test"
+          ]
         },
         {
           "id": "capability-validation",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-validation", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-validation",
+            "test"
+          ]
         },
         {
           "id": "capability-c26-capacity-aiken",
@@ -234,12 +224,20 @@
         {
           "id": "capability-da",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/da-committee-node", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/da-committee-node",
+            "test"
+          ]
         },
         {
           "id": "capability-aiken",
           "cwd": "onchain/aiken",
-          "argv": ["aiken", "check"]
+          "argv": [
+            "aiken",
+            "check"
+          ]
         },
         {
           "id": "capability-criteria",
@@ -267,17 +265,32 @@
         {
           "id": "fault-proof-package",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-fault-proofs", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-fault-proofs",
+            "test"
+          ]
         },
         {
           "id": "fault-proof-sdk",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-sdk", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-sdk",
+            "test"
+          ]
         },
         {
           "id": "fault-proof-node",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-node", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-node",
+            "test"
+          ]
         },
         {
           "id": "fault-proof-criteria",
@@ -305,17 +318,35 @@
         {
           "id": "watcher-build",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "build"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-watcher",
+            "run",
+            "build"
+          ]
         },
         {
           "id": "watcher-typecheck",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "typecheck"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-watcher",
+            "run",
+            "typecheck"
+          ]
         },
         {
           "id": "watcher-lint",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "lint"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-watcher",
+            "run",
+            "lint"
+          ]
         },
         {
           "id": "watcher-format",
@@ -331,7 +362,12 @@
         {
           "id": "watcher-tests",
           "cwd": ".",
-          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "test"]
+          "argv": [
+            "pnpm",
+            "--dir",
+            "demo/midgard-watcher",
+            "test"
+          ]
         },
         {
           "id": "watcher-criteria",
@@ -345,12 +381,33 @@
       ]
     },
     "local": {
-      "dependsOn": ["static", "capability", "fault-proofs", "watcher"],
+      "dependsOn": [
+        "static",
+        "capability",
+        "fault-proofs",
+        "watcher"
+      ],
       "stateChanging": false,
-      "commands": []
+      "commands": [
+        {
+          "id": "static-nix-toolchain",
+          "cwd": ".",
+          "argv": [
+            "nix",
+            "develop",
+            "./demo",
+            "--command",
+            "bash",
+            "-c",
+            "node --version && pnpm --version"
+          ]
+        }
+      ]
     },
     "accept-testnet": {
-      "dependsOn": ["local"],
+      "dependsOn": [
+        "local"
+      ],
       "stateChanging": true,
       "commands": [
         {
@@ -375,11 +432,23 @@
             "demo/scripts/verify-canonical-v1-goal-closure.mjs",
             "--release"
           ]
+        },
+        {
+          "id": "static-repository-criteria",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+            "--group=repository"
+          ]
         }
       ]
     },
     "all": {
-      "dependsOn": ["local", "evidence"],
+      "dependsOn": [
+        "local",
+        "evidence"
+      ],
       "stateChanging": false,
       "commands": []
     }

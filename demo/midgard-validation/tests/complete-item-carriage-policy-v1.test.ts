@@ -31,9 +31,7 @@ const itemSemanticAiken = read(
 const proofItemAiken = read(
   "../../../onchain/aiken/validators/fraud-proofs/validation-trace/proof-item-v1.ak",
 );
-const blueprint = JSON.parse(
-  read("../../../onchain/aiken/plutus.json"),
-) as {
+const blueprint = JSON.parse(read("../../../onchain/aiken/plutus.json")) as {
   readonly definitions: Record<
     string,
     {
@@ -116,7 +114,9 @@ describe("C21 complete-item carriage production searches", () => {
     // The wire ABI keeps the complete-item witness and datum shapes.
     expect(sdkWitnessSource).toContain("TransactionFieldItemWitness");
     const datumBlock = sdkWitnessSource.slice(
-      sdkWitnessSource.indexOf("ValidationProofItemDatumV1Schema = Data.Object"),
+      sdkWitnessSource.indexOf(
+        "ValidationProofItemDatumV1Schema = Data.Object",
+      ),
     );
     for (const field of [
       "version: Data.Integer()",
@@ -159,18 +159,14 @@ describe("C21 complete-item carriage production searches", () => {
       "Verify",
       "VerifyReference",
     ]);
-    expect(
-      action?.anyOf?.[0]?.fields?.map((field) => field.title),
-    ).toEqual([
+    expect(action?.anyOf?.[0]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
       "transition",
       "collection_proof",
       "item_cbor",
     ]);
-    expect(
-      action?.anyOf?.[1]?.fields?.map((field) => field.title),
-    ).toEqual([
+    expect(action?.anyOf?.[1]?.fields?.map((field) => field.title)).toEqual([
       "input_index",
       "output_index",
       "transition",

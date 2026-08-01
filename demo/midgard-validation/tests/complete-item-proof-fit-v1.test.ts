@@ -315,7 +315,9 @@ describe("complete-item proof fit V1", () => {
     const atOldFrontier = await probeArgumentBytes(14_774);
     const small = await probeArgumentBytes(256);
     expect(atMaximum.evidenceBytes).toBeLessThan(2_048);
-    expect(Math.abs(atMaximum.auxiliaryBytes - small.auxiliaryBytes)).toBeLessThanOrEqual(8);
+    expect(
+      Math.abs(atMaximum.auxiliaryBytes - small.auxiliaryBytes),
+    ).toBeLessThanOrEqual(8);
     expect(
       Math.abs(atMaximum.auxiliaryBytes - atOldFrontier.auxiliaryBytes),
     ).toBeLessThanOrEqual(8);
@@ -421,9 +423,7 @@ describe("complete-item proof fit V1", () => {
         },
         itemCbor: "a5".repeat(itemBytes),
       });
-      const signingKey = CML.PrivateKey.from_normal_bytes(
-        Buffer.alloc(32, 4),
-      );
+      const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 4));
       const paymentKeyHash = signingKey.to_public().hash();
       const address = CML.Address.from_raw_bytes(
         Buffer.concat([
@@ -470,8 +470,12 @@ describe("complete-item proof fit V1", () => {
         ),
       );
       witnessSet.set_vkeywitnesses(vkeys);
-      return CML.Transaction.new(body, witnessSet, true, undefined)
-        .to_cbor_bytes().length;
+      return CML.Transaction.new(
+        body,
+        witnessSet,
+        true,
+        undefined,
+      ).to_cbor_bytes().length;
     };
 
     const maxOutputItem = measurePublicationTransaction(
