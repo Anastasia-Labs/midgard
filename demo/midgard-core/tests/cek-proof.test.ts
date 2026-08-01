@@ -59,6 +59,7 @@ import {
   midgardCekDataBytesCborLengthV1,
   midgardCekDataConstrCborLengthV1,
   midgardCekDataListCborLengthV1,
+  type MidgardCekDataNodeV1,
 } from "../src/cek-semantic.js";
 import type { Hash32 } from "../src/codec/hash.js";
 
@@ -320,6 +321,229 @@ const makeNestedListConstantProgramMaterial = (
       Buffer.from([0]),
       ...Array.from({ length: listDepth }, () => Buffer.from([0xff])),
     ]),
+  };
+};
+
+type FixtureConstr = {
+  readonly kind: "constr";
+  readonly constructor: bigint;
+  readonly fields: readonly FixtureData[];
+};
+
+type FixtureData = bigint | string | readonly FixtureData[] | FixtureConstr;
+
+type FixtureSummary = {
+  readonly root: Hash32;
+  readonly cborLength: bigint;
+  readonly memory: bigint;
+};
+
+type FixtureListSummary = {
+  readonly root: Hash32;
+  readonly length: bigint;
+  readonly payloadCborLength: bigint;
+  readonly memory: bigint;
+};
+
+const isFixtureConstr = (value: FixtureData): value is FixtureConstr =>
+  typeof value === "object" &&
+  value !== null &&
+  !Array.isArray(value) &&
+  "kind" in value &&
+  value.kind === "constr";
+
+const encodeFixtureHeader = (major: number, value: bigint): Buffer => {
+  const prefix = major << 5;
+  if (value < 24n) return Buffer.from([prefix | Number(value)]);
+  if (value <= 0xffn) return Buffer.from([prefix | 24, Number(value)]);
+  const result = Buffer.alloc(3);
+  result[0] = prefix | 25;
+  result.writeUInt16BE(Number(value), 1);
+  return result;
+};
+
+const encodeFixtureList = (values: readonly FixtureData[]): Buffer =>
+  values.length === 0
+    ? Buffer.from([0x80])
+    : Buffer.concat([
+        Buffer.from([0x9f]),
+        ...values.map(encodeFixtureData),
+        Buffer.from([0xff]),
+      ]);
+
+const encodeFixtureData = (value: FixtureData): Buffer => {
+  if (typeof value === "bigint") {
+    if (value >= 0n && value < 24n) return Buffer.from([Number(value)]);
+    throw new Error("fixture integers are limited to small values");
+  }
+  if (typeof value === "string") {
+    return encodeCanonicalSemanticBytes(Buffer.from(value, "hex"));
+  }
+  if (Array.isArray(value)) return encodeFixtureList(value);
+  if (!isFixtureConstr(value)) throw new Error("unknown fixture Data");
+  if (value.constructor > 6n) {
+    throw new Error("fixture constructors are limited to small values");
+  }
+  return Buffer.concat([
+    encodeFixtureHeader(6, 121n + value.constructor),
+    encodeFixtureList(value.fields),
+  ]);
+};
+
+const makeSemanticConstantProgramMaterial = (
+  typeTags: readonly number[],
+  payload: FixtureData,
+  memory: bigint,
+): {
+  readonly envelope: MidgardCekProgramEnvelopeV1;
+  readonly material: readonly MidgardCekProgramMaterialEntryV1[];
+  readonly typeCbor: Buffer;
+  readonly payloadCbor: Buffer;
+} => {
+  const byRoot = new Map<string, MidgardCekProgramMaterialEntryV1>();
+  const addEntry = (entry: MidgardCekProgramMaterialEntryV1): void => {
+    if (!byRoot.has(hex(entry.root))) byRoot.set(hex(entry.root), entry);
+  };
+  const addBlob = (bytes: Buffer): Hash32 => {
+    const blob = commitMidgardCekBlobV1(bytes);
+    for (const [rootHex, node] of blob.nodes.entries()) {
+      addEntry({
+        kind: node.kind === "chunk" ? "blobChunk" : "blobBranch",
+        root: Buffer.from(rootHex, "hex") as Hash32,
+        preimage: node.preimage,
+      });
+    }
+    return blob.root;
+  };
+  const commitList = (items: readonly FixtureData[]): FixtureListSummary => {
+    let summary: FixtureListSummary = {
+      root: MIDGARD_CEK_EMPTY_DATA_LIST_ROOT_V1,
+      length: 0n,
+      payloadCborLength: 0n,
+      memory: 0n,
+    };
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const head = commitData(items[index]!);
+      const node = {
+        head: head.root,
+        headCborLength: head.cborLength,
+        headMemory: head.memory,
+        tail: summary.root,
+        length: summary.length + 1n,
+        payloadCborLength: head.cborLength + summary.payloadCborLength,
+        memory: head.memory + summary.memory,
+      };
+      const root = hashMidgardCekDataListNodeV1(node);
+      addEntry({
+        kind: "dataList",
+        root,
+        preimage: encodeMidgardCekDataListNodeV1(node),
+      });
+      summary = {
+        root,
+        length: node.length,
+        payloadCborLength: node.payloadCborLength,
+        memory: node.memory,
+      };
+    }
+    return summary;
+  };
+  function commitData(value: FixtureData): FixtureSummary {
+    const cbor = encodeFixtureData(value);
+    let node: MidgardCekDataNodeV1;
+    if (typeof value === "bigint") {
+      node = {
+        kind: "integer",
+        cborRoot: addBlob(cbor),
+        cborLength: BigInt(cbor.length),
+        memory: 5n,
+      };
+    } else if (typeof value === "string") {
+      const bytes = Buffer.from(value, "hex");
+      node = {
+        kind: "bytes",
+        bytesRoot: addBlob(bytes),
+        bytesLength: BigInt(bytes.length),
+        cborLength: midgardCekDataBytesCborLengthV1(BigInt(bytes.length)),
+        memory: 4n + BigInt(Math.max(1, bytes.length)),
+      };
+    } else if (Array.isArray(value)) {
+      const items = commitList(value);
+      node = {
+        kind: "list",
+        itemsCount: items.length,
+        itemsRoot: items.root,
+        cborLength: midgardCekDataListCborLengthV1(
+          items.length,
+          items.payloadCborLength,
+        ),
+        memory: 4n + items.memory,
+      };
+    } else {
+      if (!isFixtureConstr(value)) throw new Error("unknown fixture Data");
+      const fields = commitList(value.fields);
+      node = {
+        kind: "constrSmall",
+        constructor: value.constructor,
+        fieldsCount: fields.length,
+        fieldsRoot: fields.root,
+        cborLength: midgardCekDataConstrCborLengthV1(
+          value.constructor,
+          fields.length,
+          fields.payloadCborLength,
+        ),
+        memory: 4n + fields.memory,
+      };
+    }
+    if (node.cborLength !== BigInt(cbor.length)) {
+      throw new Error("fixture semantic Data CBOR summary is not exact");
+    }
+    const root = hashMidgardCekDataNodeV1(node);
+    addEntry({
+      kind: "dataNode",
+      root,
+      preimage: encodeMidgardCekDataNodeV1(node),
+    });
+    return { root, cborLength: node.cborLength, memory: node.memory };
+  }
+  const typeCbor = Buffer.from([0x9f, ...typeTags, 0xff]);
+  const typeRoot = addBlob(typeCbor);
+  const semantic = commitData(payload);
+  const valueNode = {
+    kind: "constant",
+    typeRoot,
+    payloadRoot: semantic.root,
+    payloadLength: semantic.cborLength,
+    semanticRoot: semantic.root,
+    memory,
+  } as const;
+  const valueRoot = hashMidgardCekValueNodeV1(valueNode);
+  const termNode = { kind: "constant", value: valueRoot } as const;
+  const termRoot = hashMidgardCekTermNodeV1(termNode);
+  addEntry({
+    kind: "value",
+    root: valueRoot,
+    preimage: encodeMidgardCekValueNodeV1(valueNode),
+  });
+  addEntry({
+    kind: "term",
+    root: termRoot,
+    preimage: encodeMidgardCekTermNodeV1(termNode),
+  });
+  const material = [...byRoot.values()];
+  return {
+    envelope: {
+      uplcVersion: [1n, 1n, 0n],
+      termRoot,
+      nodeCount: BigInt(material.length),
+      materialByteLength: material.reduce(
+        (total, entry) => total + BigInt(entry.preimage.length),
+        0n,
+      ),
+    },
+    material,
+    typeCbor,
+    payloadCbor: encodeFixtureData(payload),
   };
 };
 
@@ -1286,6 +1510,181 @@ describe("V1 CEK commitments", () => {
       expect(() => midgardCekProgramMaterialDependenciesV1(entry)).toThrow(
         error,
       );
+    }
+  });
+
+  it("matches semantic constant payloads at the authenticated material boundary", () => {
+    const validCases: readonly {
+      readonly name: string;
+      readonly typeTags: readonly number[];
+      readonly payload: FixtureData;
+      readonly memory: bigint;
+    }[] = [
+      { name: "integer", typeTags: [0], payload: 0n, memory: 1n },
+      { name: "bytes", typeTags: [1], payload: "00ff", memory: 2n },
+      {
+        name: "UTF-8 string",
+        typeTags: [2],
+        payload: "c3a9",
+        memory: 2n,
+      },
+      {
+        name: "Unit",
+        typeTags: [3],
+        payload: { kind: "constr", constructor: 0n, fields: [] },
+        memory: 1n,
+      },
+      {
+        name: "Bool false",
+        typeTags: [4],
+        payload: { kind: "constr", constructor: 0n, fields: [] },
+        memory: 1n,
+      },
+      {
+        name: "Bool true",
+        typeTags: [4],
+        payload: { kind: "constr", constructor: 1n, fields: [] },
+        memory: 1n,
+      },
+      {
+        name: "list",
+        typeTags: [5, 3],
+        payload: [
+          { kind: "constr", constructor: 0n, fields: [] },
+          { kind: "constr", constructor: 0n, fields: [] },
+        ],
+        memory: 2n,
+      },
+      {
+        name: "pair",
+        typeTags: [6, 1, 0],
+        payload: {
+          kind: "constr",
+          constructor: 0n,
+          fields: ["aa", 0n],
+        },
+        memory: 2n,
+      },
+      {
+        name: "Data",
+        typeTags: [8],
+        payload: { kind: "constr", constructor: 2n, fields: [0n] },
+        memory: 9n,
+      },
+      {
+        name: "G1",
+        typeTags: [9],
+        payload: "00".repeat(48),
+        memory: 48n,
+      },
+      {
+        name: "G2",
+        typeTags: [10],
+        payload: "00".repeat(96),
+        memory: 96n,
+      },
+    ];
+    for (const testCase of validCases) {
+      const fixture = makeSemanticConstantProgramMaterial(
+        testCase.typeTags,
+        testCase.payload,
+        testCase.memory,
+      );
+      const verified = verifyMidgardCekProgramMaterialV1(
+        fixture.envelope,
+        fixture.material,
+      );
+      expect(verified.constants, testCase.name).toHaveLength(1);
+      expect(verified.constants[0]!.typeCbor, testCase.name).toEqual(
+        fixture.typeCbor,
+      );
+      expect(verified.constants[0]!.payloadCbor, testCase.name).toEqual(
+        fixture.payloadCbor,
+      );
+    }
+
+    const invalidCases: readonly {
+      readonly name: string;
+      readonly typeTags: readonly number[];
+      readonly payload: FixtureData;
+      readonly memory: bigint;
+    }[] = [
+      {
+        name: "integer rejects bytes",
+        typeTags: [0],
+        payload: "00",
+        memory: 1n,
+      },
+      {
+        name: "bytes rejects integer",
+        typeTags: [1],
+        payload: 0n,
+        memory: 1n,
+      },
+      {
+        name: "string rejects invalid UTF-8",
+        typeTags: [2],
+        payload: "ff",
+        memory: 1n,
+      },
+      {
+        name: "Unit rejects another constructor",
+        typeTags: [3],
+        payload: { kind: "constr", constructor: 1n, fields: [] },
+        memory: 1n,
+      },
+      {
+        name: "Bool rejects an unknown constructor",
+        typeTags: [4],
+        payload: { kind: "constr", constructor: 2n, fields: [] },
+        memory: 1n,
+      },
+      {
+        name: "list rejects a wrongly typed element",
+        typeTags: [5, 3],
+        payload: [0n],
+        memory: 1n,
+      },
+      {
+        name: "pair rejects a non-zero constructor",
+        typeTags: [6, 1, 0],
+        payload: {
+          kind: "constr",
+          constructor: 1n,
+          fields: ["aa", 0n],
+        },
+        memory: 1n,
+      },
+      {
+        name: "G1 rejects the wrong payload length",
+        typeTags: [9],
+        payload: "00".repeat(47),
+        memory: 48n,
+      },
+      {
+        name: "G2 rejects the wrong payload length",
+        typeTags: [10],
+        payload: "00".repeat(95),
+        memory: 96n,
+      },
+      {
+        name: "Miller-loop type rejects Data",
+        typeTags: [11],
+        payload: { kind: "constr", constructor: 0n, fields: [] },
+        memory: 192n,
+      },
+    ];
+    for (const testCase of invalidCases) {
+      const fixture = makeSemanticConstantProgramMaterial(
+        testCase.typeTags,
+        testCase.payload,
+        testCase.memory,
+      );
+      expect(
+        () =>
+          verifyMidgardCekProgramMaterialV1(fixture.envelope, fixture.material),
+        testCase.name,
+      ).toThrow(/payload does not match its semantic type/u);
     }
   });
 

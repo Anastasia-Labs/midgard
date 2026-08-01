@@ -2481,6 +2481,63 @@ const commitSemanticDataV1 = (
   };
 };
 
+const semanticConstantPayloadMatchesTypeV1 = (
+  type: SemanticConstantTypeV1,
+  value: SemanticDataValueV1,
+): boolean => {
+  if (type.kind === "integer") return typeof value === "bigint";
+  if (type.kind === "bytes") return typeof value === "string";
+  if (type.kind === "string") {
+    if (typeof value !== "string") return false;
+    try {
+      const bytes = Buffer.from(value, "hex");
+      const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      return Buffer.from(decoded, "utf8").equals(bytes);
+    } catch {
+      return false;
+    }
+  }
+  if (type.kind === "unit") {
+    return (
+      isSemanticConstrV1(value) &&
+      value.constructor === 0n &&
+      value.fields.length === 0
+    );
+  }
+  if (type.kind === "boolean") {
+    return (
+      isSemanticConstrV1(value) &&
+      (value.constructor === 0n || value.constructor === 1n) &&
+      value.fields.length === 0
+    );
+  }
+  if (type.kind === "list") {
+    return (
+      Array.isArray(value) &&
+      value.every((item) =>
+        semanticConstantPayloadMatchesTypeV1(type.element, item),
+      )
+    );
+  }
+  if (type.kind === "pair") {
+    return (
+      isSemanticConstrV1(value) &&
+      value.constructor === 0n &&
+      value.fields.length === 2 &&
+      semanticConstantPayloadMatchesTypeV1(type.first, value.fields[0]!) &&
+      semanticConstantPayloadMatchesTypeV1(type.second, value.fields[1]!)
+    );
+  }
+  if (type.kind === "data") return true;
+  if (type.kind === "blsG1") {
+    return typeof value === "string" && Buffer.from(value, "hex").length === 48;
+  }
+  if (type.kind === "blsG2") {
+    return typeof value === "string" && Buffer.from(value, "hex").length === 96;
+  }
+  return false;
+};
+
 const semanticConstantMemoryV1 = (
   type: SemanticConstantTypeV1,
   value: SemanticDataValueV1,
@@ -3423,6 +3480,11 @@ const verifyOneProgramMaterialV1 = (
         );
       }
       const constantType = decodeSemanticConstantTypeV1(typeCbor);
+      if (!semanticConstantPayloadMatchesTypeV1(constantType, decodedPayload)) {
+        throw new Error(
+          `CEK constant value ${valueKey} payload does not match its semantic type`,
+        );
+      }
       const memory = semanticConstantMemoryV1(constantType, decodedPayload);
       if (memory !== value.memory) {
         throw new Error(
