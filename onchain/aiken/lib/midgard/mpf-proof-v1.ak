@@ -117,10 +117,14 @@ fn non_membership_proof_is_well_formed(
         ),
       }
     }
-    [mpf.Fork { skip, neighbor }] -> and {
+    [mpf.Fork { skip, neighbor }] -> {
+      let next_cursor = cursor + 1 + skip
+      and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
       }
+    }
     [mpf.Fork { skip, neighbor }, ..steps] -> {
       let next_cursor = cursor + 1 + skip
       and {
@@ -135,11 +139,15 @@ fn non_membership_proof_is_well_formed(
         ),
       }
     }
-    [mpf.Leaf { skip, key, value }] -> and {
+    [mpf.Leaf { skip, key, value }] -> {
+      let next_cursor = cursor + 1 + skip
+      and {
         common_step_is_well_formed(cursor, skip, remaining_step_count),
         bytearray.length(key) == digest_byte_count,
         bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
       }
+    }
     [mpf.Leaf { skip, key, value }, ..steps] -> {
       let next_cursor = cursor + 1 + skip
       and {

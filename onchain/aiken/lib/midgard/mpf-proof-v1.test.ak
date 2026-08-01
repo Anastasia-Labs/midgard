@@ -4,11 +4,16 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
 use aiken/merkle_patricia_forestry/merkling.{null_hash}
+use aiken/primitive/bytearray
 use midgard/mpf_proof_v1
 
 const key = #"010203"
 
 const value = #"040506"
+
+const absent_key = #"070809"
+
+const absent_value = #"0a0b0c"
 
 fn singleton_root() -> ByteArray {
   combine(suffix(blake2b_256(key), 0), blake2b_256(value))
@@ -48,6 +53,75 @@ test mpf_proof_v1_verifies_empty_proof_membership() {
 
 test mpf_proof_v1_verifies_empty_trie_non_membership() {
   mpf_proof_v1.does_not_have(null_hash, key, [])
+}
+
+test mpf_proof_v1_rejects_singleton_present_as_non_membership() {
+  !mpf_proof_v1.does_not_have(
+    singleton_root(),
+    key,
+    [mpf.Leaf { skip: 0, key: blake2b_256(key), value: blake2b_256(value) }],
+  )
+}
+
+test mpf_proof_v1_rejects_same_branch_terminal_fork_as_non_membership() {
+  let path = blake2b_256(key)
+  let same_branch = nibble(path, 0)
+  let proof = [
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: same_branch,
+        prefix: #"",
+        root: null_hash,
+      },
+    },
+  ]
+  !mpf_proof_v1.does_not_have(
+    combine(bytearray.push(#"", same_branch), null_hash),
+    key,
+    proof,
+  )
+}
+
+test mpf_proof_v1_accepts_a_divergent_terminal_leaf_non_membership() {
+  let query_path = blake2b_256(key)
+  let absent_path = blake2b_256(absent_key)
+  let proof = [
+    mpf.Leaf { skip: 0, key: absent_path, value: blake2b_256(absent_value) },
+  ]
+  and {
+    nibble(query_path, 0) != nibble(absent_path, 0),
+    mpf_proof_v1.does_not_have(
+      combine(suffix(absent_path, 0), blake2b_256(absent_value)),
+      key,
+      proof,
+    ),
+  }
+}
+
+test mpf_proof_v1_accepts_a_divergent_terminal_fork_non_membership() {
+  let path = blake2b_256(key)
+  let same_branch = nibble(path, 0)
+  let different_branch = if same_branch == 15 {
+    0
+  } else {
+    same_branch + 1
+  }
+  let proof = [
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: different_branch,
+        prefix: #"",
+        root: null_hash,
+      },
+    },
+  ]
+  mpf_proof_v1.does_not_have(
+    combine(bytearray.push(#"", different_branch), null_hash),
+    key,
+    proof,
+  )
 }
 
 test mpf_proof_v1_returns_false_for_wrong_roots() {
