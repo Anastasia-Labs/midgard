@@ -7,6 +7,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Pool } from "pg";
 import { describe, expect, it } from "vitest";
 
+import { l1SourceAuthorityDigest } from "../src/config.js";
 import type {
   DaAttestationCandidateRecord,
   DaPayloadRecord,
@@ -20,12 +21,128 @@ import {
   decisionEffectId,
 } from "../src/store.js";
 import { PostgresWatcherStore } from "../src/store/postgres.js";
-import { fixtureHeaderBase } from "./helpers.js";
+import { WatcherService } from "../src/watcher.js";
+import { fixtureHeaderBase, minimalConfig } from "./helpers.js";
 
 const databaseUrl = process.env.WATCHER_TEST_DATABASE_URL;
 const maybeIt = databaseUrl === undefined ? it.skip : it;
 
 describe("PostgresWatcherStore", () => {
+  maybeIt(
+    "initializes fresh L1 source state before accepting early signatures",
+    async () => {
+      const schema = `watcher_test_rf034_${process.pid.toString()}_${Date.now().toString()}`;
+      const admin = new Pool({ connectionString: databaseUrl });
+      await admin.query(`CREATE SCHEMA ${schema}`);
+      try {
+        const store = await PostgresWatcherStore.open(
+          withSearchPath(databaseUrl!, schema),
+        );
+        try {
+          const config = minimalConfig({
+            dir: `/tmp/watcher-test-rf034-${process.pid.toString()}`,
+            manifestPath: "/tmp/watcher-test-rf034-manifest.json",
+            deploymentInfoPath: "/tmp/watcher-test-rf034-deployment.json",
+            signerSeed: "00".repeat(31) + "01",
+            signerPublicKey: "11".repeat(32),
+          });
+          const authoritySha256 = l1SourceAuthorityDigest(
+            config.network,
+            config.l1Source,
+          );
+          const initializedAt = "2026-07-28T00:00:00.000Z";
+          const service = new WatcherService({
+            config,
+            store,
+            stateQueueProvider: { fetchStateQueueNodes: async () => [] },
+            payloadSource: {
+              fetchPayloadCandidates: async () => ({
+                ok: false as const,
+                attempts: [],
+              }),
+            },
+            now: () => new Date(initializedAt),
+          });
+
+          await expect(store.getL1SourceState()).resolves.toBeUndefined();
+          await service.initialize();
+          await expect(store.getL1SourceState()).resolves.toMatchObject({
+            sourceMode: "local_node",
+            network: "Preview",
+            authoritySha256,
+            status: "healthy",
+            observations: [],
+            observedAt: initializedAt,
+          });
+          await expect(service.readinessSnapshot()).resolves.toMatchObject({
+            ready: false,
+            l1Source: { status: "healthy" },
+            scanner: { status: "not_started" },
+          });
+
+          const signature = daSignatureRecord();
+          await store.saveDaSignature(signature);
+          await expect(
+            store.getDaSignature({
+              headerHash: signature.headerHash,
+              signerIndex: signature.signerIndex,
+            }),
+          ).resolves.toEqual(signature);
+
+          await store.quarantineL1Decisions({
+            schemaVersion: 1,
+            sourceMode: "local_node",
+            network: "Preview",
+            authoritySha256,
+            status: "quarantined",
+            observations: [
+              {
+                headerHash: signature.headerHash,
+                stateQueueOutRef: signature.validation.stateQueueOutRef,
+                stateQueueStatus: "unattested",
+                slot: signature.l1ChainPoint.slot,
+                blockHash: signature.l1ChainPoint.blockHash,
+                finalized: true,
+                hasPersistedDecision: true,
+              },
+            ],
+            observedAt: "2026-07-28T00:00:00.000Z",
+            quarantineReason: "provider fork",
+            quarantinedAt: "2026-07-28T00:00:01.000Z",
+          });
+          await expect(store.getL1SourceState()).resolves.toMatchObject({
+            status: "quarantined",
+            authoritySha256,
+            quarantineReason: "provider fork",
+          });
+          await expect(
+            store.getDaSignature({
+              headerHash: signature.headerHash,
+              signerIndex: signature.signerIndex,
+            }),
+          ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+          await expect(
+            store.saveDaSignature({
+              ...signature,
+              broadcastStatus: "posted",
+            }),
+          ).rejects.toThrow(/L1 source is quarantined/u);
+          await expect(
+            store.getDaSignature({
+              headerHash: signature.headerHash,
+              signerIndex: signature.signerIndex,
+            }),
+          ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
+        } finally {
+          await store.close();
+        }
+      } finally {
+        await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        await admin.end();
+      }
+    },
+  );
+
   maybeIt("persists watcher state and detects payload conflicts", async () => {
     const schema = `watcher_test_${process.pid.toString()}_${Date.now().toString()}`;
     const admin = new Pool({ connectionString: databaseUrl });

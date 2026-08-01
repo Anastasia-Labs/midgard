@@ -262,6 +262,17 @@ export class WatcherService {
         throw error;
       }
     }
+    if (l1State === undefined) {
+      await this.deps.store.saveL1SourceState({
+        schemaVersion: 1,
+        sourceMode: this.l1SourceMode(),
+        network: this.deps.config.network,
+        authoritySha256: this.l1SourceAuthoritySha256(),
+        status: "healthy",
+        observations: [],
+        observedAt: this.nowIso(),
+      });
+    }
   }
 
   async tick(): Promise<WatcherTickResult> {
