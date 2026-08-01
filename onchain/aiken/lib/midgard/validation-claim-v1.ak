@@ -298,6 +298,18 @@ fn source_binding_is_exact(
   }
 }
 
+fn phase_for_event_key(
+  event_key: ledger_state.EventKey,
+) -> ledger_state.TransitionPhase {
+  when event_key is {
+    ledger_state.WithdrawalEventKey { .. } -> ledger_state.Withdrawal
+    ledger_state.ForcedTransactionEventKey { .. } ->
+      ledger_state.ForcedTransaction
+    ledger_state.L2TransactionEventKey { .. } -> ledger_state.L2Transaction
+    ledger_state.DepositEventKey { .. } -> ledger_state.Deposit
+  }
+}
+
 /// Authenticates the block-owned roots, descriptor endpoints, and transition
 /// location only. Normative endpoint/source checks deliberately happen in the
 /// following source step so a malformed committed initial or terminal state is
@@ -326,6 +338,7 @@ pub fn committed_claim_structure_is_valid(
     witness.transition_step_membership.key == event_to_step.step_index,
     witness.event_to_step_membership.key == event_key,
     transition_step.event_key == event_key,
+    transition_step.phase == phase_for_event_key(event_key),
     transition_step.phase == event_to_step.phase,
     witness.initial_state_proof.state_index == 0,
     witness.initial_state_proof.state_hash == validation_trace_v1.hash_machine_state(

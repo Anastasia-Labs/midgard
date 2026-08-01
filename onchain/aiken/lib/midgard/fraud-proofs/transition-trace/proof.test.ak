@@ -626,6 +626,7 @@ fn omitted_forced_event_is_valid(inclusion_time: Int) -> Bool {
 
 fn accepted_forced_transition_case(
   operator_validity: ledger_state.MidgardTxValidity,
+  phase: ledger_state.TransitionPhase,
   claimed_post_root: ByteArray,
   terminal_post_root: ByteArray,
 ) -> Pair<
@@ -637,19 +638,9 @@ fn accepted_forced_transition_case(
   }
   let source = authenticated_forced_tx(operator_validity)
   let source_membership = forced_source_membership(out_ref(0), source)
-  let opened_step = step(
-    0,
-    event_key,
-    ledger_state.ForcedTransaction,
-    h32_a,
-    claimed_post_root,
-  )
+  let opened_step = step(0, event_key, phase, h32_a, claimed_post_root)
   let transition_membership = trace_membership(opened_step)
-  let event_to_step = event_to_step_membership(
-    event_key,
-    0,
-    ledger_state.ForcedTransaction,
-  )
+  let event_to_step = event_to_step_membership(event_key, 0, phase)
   let event_key_hash = blake2b_256(cbor.serialise(event_key))
   let validation_context_hash = validation_trace_v1.hash_validation_context(
     validation_context_cbor,
@@ -1299,6 +1290,7 @@ test accepts_invalid_forced_transaction_no_op_transition_fault() {
 test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
   let Pair(header, witness) = accepted_forced_transition_case(
     ledger_state.TxIsValid,
+    ledger_state.ForcedTransaction,
     h32_b,
     h32_c,
   )
@@ -1311,6 +1303,7 @@ test accepts_valid_forced_transaction_wrong_accepted_post_root_fault() {
 test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
   let Pair(header, witness) = accepted_forced_transition_case(
     ledger_state.TxIsValid,
+    ledger_state.ForcedTransaction,
     h32_b,
     h32_b,
   )
@@ -1323,6 +1316,20 @@ test rejects_valid_forced_transaction_matching_accepted_post_root_fault() {
 test rejects_invalid_forced_source_with_accepted_validation_claim() {
   let Pair(header, witness) = accepted_forced_transition_case(
     ledger_state.FailedScript,
+    ledger_state.ForcedTransaction,
+    h32_b,
+    h32_c,
+  )
+  !proof.validate_accepted_transaction_fault_proof(
+    prove(header, proof.AcceptedTransactionTransitionMismatch { witness }),
+    asset_name_for(header),
+  )
+}
+
+test rejects_forced_event_with_l2_transition_phase_in_accepted_claim() {
+  let Pair(header, witness) = accepted_forced_transition_case(
+    ledger_state.TxIsValid,
+    ledger_state.L2Transaction,
     h32_b,
     h32_c,
   )
