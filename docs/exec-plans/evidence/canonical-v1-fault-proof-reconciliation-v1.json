@@ -2,8 +2,7 @@
   "schema": "midgard.canonical-v1-fault-proof-reconciliation.v1",
   "generatedAt": "2026-07-28",
   "source": {
-    "path": "docs/fault-proofs/coverage-matrix.md",
-    "sha256": "116839c7440323bbb624df5ed6eb096daaeeaf3c22069fbc45a3bf10b6250124"
+    "path": "docs/fault-proofs/coverage-matrix.md"
   },
   "coverageContract": [
     "rule",

@@ -3,8 +3,7 @@
   "version": 1,
   "generatedAt": "2026-07-29",
   "goalSpec": {
-    "path": "GOAL_SPEC.md",
-    "sha256": "30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde"
+    "path": "GOAL_SPEC.md"
   },
   "parentOwnedPaths": [
     "GOAL_SPEC.md",

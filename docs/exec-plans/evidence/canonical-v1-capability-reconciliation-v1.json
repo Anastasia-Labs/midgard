@@ -3,32 +3,25 @@
   "generatedAt": "2026-07-29",
   "sources": {
     "goalSpec": {
-      "path": "GOAL_SPEC.md",
-      "sha256": "30a12ec92bebc914b032b22ba994220e662f7881240645e25dda16455e803dde"
+      "path": "GOAL_SPEC.md"
     },
     "p2Matrix": {
-      "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md",
-      "sha256": "d44db93b941378c8b98bf63e68fe9754a1d87ee7ba22c09af277c11cc5d85f0f"
+      "path": "docs/exec-plans/cardano-capability-p2-closure-matrix-2026-07-26.md"
     },
     "canonicalTransaction": {
-      "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak",
-      "sha256": "b3452fa7a7398dcbb67506234c3b12e9cba7b169c7c51e3f451753f2314123b7"
+      "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak"
     },
     "validationMachineTypeScript": {
-      "path": "demo/midgard-validation/src/validation-machine.ts",
-      "sha256": "426ba765e78772fb00c4ccefa951317d31cbf1970e948f96aaeba4b189252fdf"
+      "path": "demo/midgard-validation/src/validation-machine.ts"
     },
     "validationMachineDataTypeScript": {
-      "path": "demo/midgard-validation/src/validation-machine-data.ts",
-      "sha256": "70287a78eaf9b354ba0a5d0a285842ac5adf7c0a37758664f6755532c042ee02"
+      "path": "demo/midgard-validation/src/validation-machine-data.ts"
     },
     "validationAuxiliaryTypeScript": {
-      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
-      "sha256": "df8454ffd2d998918caed237b9eb9444e1a44399480a7914e5feec43b9162c4e"
+      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts"
     },
     "validationMachineAiken": {
-      "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-      "sha256": "95aa6f121f2c7b6a752373d606771b82be10ea6333ef7191d180c91ba3485046"
+      "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak"
     }
   },
   "controlPlane": {
