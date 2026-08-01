@@ -141,14 +141,22 @@ insufficient.
 ### Committed on L1 (per block header)
 
 Fixed-size header, Blake2b-224 hashed (`technical-spec/1-ledger-state/1-block.tex:130-181`;
-Aiken type `onchain/aiken/lib/midgard/ledger-state.ak:57-77`):
+Aiken type `onchain/aiken/lib/midgard/ledger-state.ak:60-85`):
 
-- **8 roots**: `prev_utxos_root`, `utxos_root`, `withdrawals_root`,
-  `forced_transactions_root`, `transactions_root`, `deposits_root`,
-  `transition_trace_root`, `event_to_step_root` — all counted, domain-separated MPF
-  commitments (`1-block.tex:70`).
-- **6 counts** with equational constraints (`1-block.tex:167-176`).
-- `start_time`/`end_time`, `prev_header_hash`, `operator_vkey`, `protocol_version`.
+- **9 roots** in this order: `prev_utxos_root`, `utxos_root`,
+  `withdrawals_root`, `forced_transactions_root`, `transactions_root`,
+  `deposits_root`, `transition_trace_root`, `event_to_step_root`,
+  `validation_traces_root`. `prev_utxos_root` and `utxos_root` are ledger
+  roots; the seven source, transition, event-to-step, and validation roots use
+  counted, domain-separated MPF commitments paired with the seven count fields
+  (`1-block.tex:70`).
+- **7 counts** in this order: `withdrawal_count`, `forced_transaction_count`,
+  `l2_transaction_count`, `deposit_count`, `total_event_count`,
+  `transition_step_count`, `validation_trace_count`, with equational constraints
+  (`1-block.tex:167-176`).
+- Metadata fields follow the counts in this order: `start_time`, `end_time`,
+  `block_slot`, `expected_network_id`, `min_fee_a`, `min_fee_b`,
+  `prev_header_hash`, `operator_vkey`, `protocol_version`.
 
 ### Transaction commitment format
 
@@ -165,9 +173,10 @@ there is no Plutus-script concept in the L1-disputable format
 ### Retained off-chain (evidence sources)
 
 - **DA committee payload**: `DaPayloadV1` (header + utxos + four event member arrays +
-  trace + event-to-step + counts) keyed by header hash
+  trace + event-to-step + validation-trace descriptors + counts) keyed by header hash
   (`technical-spec/6-offchain-data-architecture/1-da-layer.tex:20-26,39-53`). Committee
-  members verify 7 roots + 6 counts against the L1 header before signing
+  members verify the 8 payload roots (all HeaderV1 roots except
+  `prev_utxos_root`) + 7 counts against the L1 header before signing
   (`demo/da-committee-node/src/da/payload.ts:173-260,807-861`).
 - **Proof artifacts served by the DA node** (`demo/da-committee-node/src/da/proof-artifacts.ts:136-354`):
   proof bundle (roots+counts CBOR), transition-trace step + MPF membership proof,

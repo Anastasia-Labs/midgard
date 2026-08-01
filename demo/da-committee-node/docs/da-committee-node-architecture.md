@@ -57,8 +57,9 @@ with an exact inner length and SHA-256.
 - fetches payload, metadata, chunks, proof artifacts, and attestations over
   allowlisted libp2p V1 protocols;
 - unwraps V1 with a dual compressed/decoded size cap, canonical-decodes
-  the inner `DaPayloadV1`, recomputes all eight roots and the committed
-  counts, and compares the embedded header and header hash with L1;
+  the inner `DaPayloadV1`, recomputes the eight payload roots (all HeaderV1
+  roots except `prev_utxos_root`) and the seven committed counts, and compares
+  the embedded header and header hash with L1;
 - stores deployment, header, payload, signature, peer, and L1 submission state
   in a JSON-file or PostgreSQL store;
 - signs `MidgardDAAttestationV1 || header_hash` only after the payload is
@@ -166,9 +167,10 @@ Validation responsibilities:
 - Verify deployment fingerprint and peer identity through the runtime manifest
   and transport envelope; verify payload version and the protocol version in
   the embedded header.
-- Recompute the seven committed roots and all header counts from the payload.
+- Recompute the eight payload roots (all HeaderV1 roots except
+  `prev_utxos_root`) and all seven header counts from the payload.
 - Validate transition-trace and event-to-step coverage carried by the payload.
-- Decode the exact Midgard `Header` value embedded in the payload.
+- Decode the exact Midgard `HeaderV1` value embedded in the payload.
 - Compute `header_hash = blake2b_224(serialise_data(reconstructed_header))`.
 - Resolve the matching state-queue node from Cardano L1 before signing.
 - Verify the reconstructed header equals the state-queue header datum observed on L1.
@@ -208,7 +210,7 @@ Store requirements:
 - Chunked reads for large payloads over libp2p streams.
 - Retention sweeper that refuses deletion before the 14-day promise plus configured safety margin.
 
-### L1 Header Resolver
+### L1 HeaderV1 Resolver
 
 Follows Cardano L1 enough to confirm that the target header exists in the Midgard state queue.
 
@@ -371,6 +373,18 @@ The manifest is not currently authenticated by the DA contracts; deployments mus
 
 The inner shared payload codec is `DaPayloadV1` in
 `demo/midgard-sdk/src/da-payload.ts`. Its canonical Plutus-data CBOR shape is:
+
+The embedded `HeaderV1` is constructor tag 0 with arity 25. Its exact field
+order is the single registry contract:
+
+```text
+prev_utxos_root, utxos_root, withdrawals_root, forced_transactions_root,
+transactions_root, deposits_root, transition_trace_root, event_to_step_root,
+validation_traces_root, withdrawal_count, forced_transaction_count,
+l2_transaction_count, deposit_count, total_event_count, transition_step_count,
+validation_trace_count, start_time, end_time, block_slot, expected_network_id,
+min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
+```
 
 ```text
 DaPayloadV1 {

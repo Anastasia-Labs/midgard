@@ -39,6 +39,9 @@ transition_trace_root:
 
 event_to_step_root:
   EventKey -> EventToStepValue
+
+validation_traces_root:
+  validation_trace_index -> ValidationTraceDescriptorV1
 ```
 
 The final `utxos` members retained in DA and durable ledger records contain the
@@ -96,7 +99,7 @@ node data is `StateQueueNode`:
 
 ```text
 StateQueueNode {
-  header: Header
+  header: HeaderV1
   da_attestation: ByteArray
 }
 ```
@@ -108,13 +111,13 @@ Datum = linked_list.Element<ConfirmedState, StateQueueNode>
 ```
 
 The transition-trace roots live in the queued block's state commitment, meaning
-the `Header` embedded in `StateQueueNode.header`. They are not only off-chain DA
+the `HeaderV1` embedded in `StateQueueNode.header`. They are not only off-chain DA
 metadata and they are not stored only in the node database.
 
 Current compact header shape:
 
 ```text
-Header {
+HeaderV1 {
   prev_utxos_root: MidgardLedgerRoot
   utxos_root: MidgardLedgerRoot
 
@@ -125,6 +128,7 @@ Header {
 
   transition_trace_root: TransitionTraceRoot
   event_to_step_root: EventToStepRoot
+  validation_traces_root: ValidationTracesRoot
 
   withdrawal_count: UInt64
   forced_transaction_count: UInt64
@@ -132,19 +136,24 @@ Header {
   deposit_count: UInt64
   total_event_count: UInt64
   transition_step_count: UInt64
+  validation_trace_count: UInt64
 
   start_time: PosixTime
   end_time: PosixTime
+  block_slot: UInt64
+  expected_network_id: UInt64
+  min_fee_a: UInt64
+  min_fee_b: UInt64
   prev_header_hash: HeaderHash
   operator_vkey: VerificationKeyHash
   protocol_version: Int
 }
 ```
 
-The header hash is computed over the full `Header`, including all transition
-roots and counts. Deploying this shape requires a clean redeploy because all
-state-queue header hashes, node asset names, DA attestations, proof inputs,
-settlement proofs, and downstream SDK codecs change.
+The header hash is computed over the full `HeaderV1`, including all roots,
+counts, and validation-context metadata. Deploying this shape requires a clean
+redeploy because all state-queue header hashes, node asset names, DA attestations,
+proof inputs, settlement proofs, and downstream SDK codecs change.
 
 Placement visualization:
 
@@ -154,22 +163,23 @@ flowchart TD
   Datum["state-queue Datum"]
   Elem["linked_list.Element"]
   Node["StateQueueNode"]
-  Header["Header"]
+  HeaderV1["HeaderV1"]
 
   L1 --> Datum
   Datum --> Elem
   Elem --> Node
-  Node --> Header
+  Node --> HeaderV1
 
-  Header --> Prev["prev_utxos_root"]
-  Header --> Utxos["utxos_root"]
-  Header --> Withdrawals["withdrawals_root"]
-  Header --> Forced["forced_transactions_root"]
-  Header --> Txs["transactions_root"]
-  Header --> Deposits["deposits_root"]
-  Header --> Trace["transition_trace_root"]
-  Header --> EventStep["event_to_step_root"]
-  Header --> Counts["event counts"]
+  HeaderV1 --> Prev["prev_utxos_root"]
+  HeaderV1 --> Utxos["utxos_root"]
+  HeaderV1 --> Withdrawals["withdrawals_root"]
+  HeaderV1 --> Forced["forced_transactions_root"]
+  HeaderV1 --> Txs["transactions_root"]
+  HeaderV1 --> Deposits["deposits_root"]
+  HeaderV1 --> Trace["transition_trace_root"]
+  HeaderV1 --> EventStep["event_to_step_root"]
+  HeaderV1 --> Validation["validation_traces_root"]
+  HeaderV1 --> Counts["seven counts"]
 ```
 
 ## Data Availability Placement
@@ -615,11 +625,12 @@ Together:
 
 ## Required Invariants
 
-### Header Count Invariants
+### HeaderV1 Count Invariants
 
 - Each count equals the member count of its corresponding source root.
 - `total_event_count` equals the sum of per-kind counts.
 - `transition_step_count == total_event_count`.
+- `validation_trace_count == forced_transaction_count + l2_transaction_count`.
 - `event_to_step_root.count == total_event_count`.
 - If `total_event_count == 0`, then `prev_utxos_root == utxos_root` and all
   source/event/trace roots are empty.
@@ -627,9 +638,9 @@ Together:
 ### Trace Boundary Invariants
 
 - If `transition_step_count > 0`, the first trace leaf's `pre_utxos_root` equals
-  `Header.prev_utxos_root`.
+  `HeaderV1.prev_utxos_root`.
 - If `transition_step_count > 0`, the last trace leaf's `post_utxos_root` equals
-  `Header.utxos_root`.
+  `HeaderV1.utxos_root`.
 
 ### Trace Link Invariants
 
@@ -691,7 +702,7 @@ not end at the committed current root.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - trace leaf membership proof for step `0` or step `transition_step_count - 1`;
 - opened trace leaf.
 
@@ -708,7 +719,7 @@ Purpose: prove two adjacent trace steps do not connect.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - trace leaf membership proof for step `i`;
 - trace leaf membership proof for step `i + 1`;
 - opened trace leaves.
@@ -725,7 +736,7 @@ Purpose: prove a trace step does not bind to the event mapped to that step.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - opened trace leaf and opened event-to-step leaf.
@@ -745,7 +756,7 @@ Purpose: prove a mapped event key does not exist in the matching source root.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for `trace.event_key`;
 - source-root non-membership proof for the event key's source id.
@@ -764,7 +775,7 @@ source event to its pre-state root.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - trace leaf membership proof for step `i`;
 - `event_to_step_root` membership proof for the trace step's event key;
 - source-root membership proof for the event;
@@ -799,7 +810,7 @@ was omitted from its source root.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - L1 evidence for the deposit, withdrawal, or forced transaction order UTxO and
   datum;
 - proof that the event is due in the block interval. For forced transaction
@@ -821,7 +832,7 @@ Purpose: prove a committed source-root member has no corresponding trace step.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - source-root membership proof for the event;
 - `event_to_step_root` non-membership proof for the event key.
 
@@ -857,7 +868,7 @@ validity range does not require processing in the block interval.
 
 Evidence:
 
-- state-queue reference input containing `Header`;
+- state-queue reference input containing `HeaderV1`;
 - source-root membership proof for the event;
 - opened source member or L1 event evidence.
 
@@ -875,7 +886,7 @@ Evidence:
 
 - root metadata proof or count opening for one source root, `event_to_step_root`,
   or `transition_trace_root`;
-- state-queue reference input containing `Header`.
+- state-queue reference input containing `HeaderV1`.
 
 Checks:
 
@@ -1088,9 +1099,9 @@ MidgardTransitionStepV1
 
 ## Launch-Gate State
 
-- The current `Header` ABI includes `forced_transactions_root`,
-  `transition_trace_root`, `event_to_step_root`, all per-source counts,
-  `total_event_count`, and `transition_step_count`.
+- The current `HeaderV1` ABI includes its nine ordered roots, seven ordered
+  counts (including `validation_trace_count`), and nine metadata fields; the
+  exact constructor-0 order is the registry contract above.
 - Block production builds deterministic source roots, event-to-step members, and
   dense transition trace members in phase order.
 - DA payload V1 retains the header, final UTxO members, all source-root members,

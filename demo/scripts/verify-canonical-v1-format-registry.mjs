@@ -5,6 +5,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertHeaderV1AbiContract } from "./verify-canonical-v1-header-v1-abi.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 // Git provenance is the authority: bind one immutable source path/revision and
 // compare those source bytes directly, without duplicating Git tree/file hashes.
@@ -1106,6 +1108,18 @@ if (registry !== undefined) {
         fail(
           `${label}.crossLanguageEvidence needs tests or a non-empty notApplicableReason`,
         );
+      }
+    }
+
+    const l01Contract = registry.formats.find((row) => row?.id === "L01")
+      ?.canonicalForms?.[0];
+    if (l01Contract === undefined) {
+      fail("L01 requires the machine-readable HeaderV1 ABI contract");
+    } else {
+      try {
+        assertHeaderV1AbiContract(l01Contract);
+      } catch (error) {
+        fail(`L01 HeaderV1 ABI contract is invalid: ${error.message}`);
       }
     }
 

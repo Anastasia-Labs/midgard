@@ -2227,15 +2227,147 @@
       "canonicalResult": "HeaderV1",
       "boundaryBindingAndPersistence": "State-queue datum, block hash, DA root checks",
       "requiredEvidence": "TS/Aiken datum and hash vector",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-sdk/src/ledger-state.ts",
+          "symbols": ["HeaderV1Schema", "encodeHeaderV1Cbor", "decodeHeaderV1Cbor", "hashBlockHeaderV1"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+          "symbols": ["HeaderV1", "header_v1_is_valid"]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "schema": "midgard-header-v1-abi-v1",
+          "version": 1,
+          "name": "HeaderV1",
+          "constructor": { "tag": 0, "arity": 25 },
+          "kind": "Plutus V3 constructor ABI",
+          "wireRepresentation": "constructor tag 0 with 25 ordered fields in the canonical HeaderV1 Data encoding",
+          "versionPolicy": "protocol_version is the final field and is exactly 1 for the V1 protocol",
+          "exactFields": [
+            "prev_utxos_root",
+            "utxos_root",
+            "withdrawals_root",
+            "forced_transactions_root",
+            "transactions_root",
+            "deposits_root",
+            "transition_trace_root",
+            "event_to_step_root",
+            "validation_traces_root",
+            "withdrawal_count",
+            "forced_transaction_count",
+            "l2_transaction_count",
+            "deposit_count",
+            "total_event_count",
+            "transition_step_count",
+            "validation_trace_count",
+            "start_time",
+            "end_time",
+            "block_slot",
+            "expected_network_id",
+            "min_fee_a",
+            "min_fee_b",
+            "prev_header_hash",
+            "operator_vkey",
+            "protocol_version"
+          ],
+          "constructorTags": [0],
+          "constructorArity": 25,
+          "arrayArityNotApplicable": "HeaderV1 is a constructor; its 25 fields are ordered constructor fields, not an array payload.",
+          "blueprintDefinition": "midgard/ledger_state/HeaderV1",
+          "groups": [
+            { "name": "roots", "start": 0, "count": 9 },
+            { "name": "counts", "start": 9, "count": 7 },
+            { "name": "metadata", "start": 16, "count": 9 }
+          ],
+          "fields": [
+            { "index": 0, "name": "prev_utxos_root", "sdkName": "prevUtxosRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardLedgerRoot" },
+            { "index": 1, "name": "utxos_root", "sdkName": "utxosRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardLedgerRoot" },
+            { "index": 2, "name": "withdrawals_root", "sdkName": "withdrawalsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/WithdrawalsRoot" },
+            { "index": 3, "name": "forced_transactions_root", "sdkName": "forcedTransactionsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/ForcedTransactionsRoot" },
+            { "index": 4, "name": "transactions_root", "sdkName": "transactionsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardTxsRoot" },
+            { "index": 5, "name": "deposits_root", "sdkName": "depositsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/DepositsRoot" },
+            { "index": 6, "name": "transition_trace_root", "sdkName": "transitionTraceRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/TransitionTraceRoot" },
+            { "index": 7, "name": "event_to_step_root", "sdkName": "eventToStepRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/EventToStepRoot" },
+            { "index": 8, "name": "validation_traces_root", "sdkName": "validationTracesRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/ValidationTracesRoot" },
+            { "index": 9, "name": "withdrawal_count", "sdkName": "withdrawalCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 10, "name": "forced_transaction_count", "sdkName": "forcedTransactionCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 11, "name": "l2_transaction_count", "sdkName": "l2TransactionCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 12, "name": "deposit_count", "sdkName": "depositCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 13, "name": "total_event_count", "sdkName": "totalEventCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 14, "name": "transition_step_count", "sdkName": "transitionStepCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 15, "name": "validation_trace_count", "sdkName": "validationTraceCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
+            { "index": 16, "name": "start_time", "sdkName": "startTime", "group": "metadata", "type": "integer", "aikenRef": "midgard/common/types/PosixTime" },
+            { "index": 17, "name": "end_time", "sdkName": "endTime", "group": "metadata", "type": "integer", "aikenRef": "midgard/common/types/PosixTime" },
+            { "index": 18, "name": "block_slot", "sdkName": "blockSlot", "group": "metadata", "type": "integer", "aikenRef": "Int" },
+            { "index": 19, "name": "expected_network_id", "sdkName": "expectedNetworkId", "group": "metadata", "type": "integer", "aikenRef": "Int" },
+            { "index": 20, "name": "min_fee_a", "sdkName": "minFeeA", "group": "metadata", "type": "integer", "aikenRef": "Int" },
+            { "index": 21, "name": "min_fee_b", "sdkName": "minFeeB", "group": "metadata", "type": "integer", "aikenRef": "Int" },
+            { "index": 22, "name": "prev_header_hash", "sdkName": "prevHeaderHash", "group": "metadata", "type": "bytes28", "aikenRef": "midgard/ledger_state/HeaderHash" },
+            { "index": 23, "name": "operator_vkey", "sdkName": "operatorVkey", "group": "metadata", "type": "bytes28", "aikenRef": "aiken/crypto/VerificationKeyHash" },
+            { "index": 24, "name": "protocol_version", "sdkName": "protocolVersion", "group": "metadata", "type": "integer", "aikenRef": "Int" }
+          ],
+          "boundary": "State-queue HeaderV1 datum, header hash, DA payload header, and counted root checks",
+          "binding": "Canonical Plutus Data encoding and BLAKE2b-224 header hash; the registry verifier compares the exact ABI to the SDK runtime schema and generated Aiken blueprint",
+          "persistence": "Stored in the L1 state-queue datum and referenced by DA/fault-proof artifacts; no compatibility projection is accepted",
+          "encoders": [
+            {
+              "path": "demo/midgard-sdk/src/ledger-state.ts",
+              "symbols": ["HeaderV1Schema", "encodeHeaderV1Cbor", "hashBlockHeaderV1"]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+              "symbols": ["HeaderV1", "header_v1_is_valid"]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-sdk/src/ledger-state.ts",
+              "symbols": ["HeaderV1Schema", "decodeHeaderV1Cbor"]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "testNames": ["has the exact L01 TypeScript CBOR and blake2b-224 vector"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.test.ak",
+          "testNames": ["l01_header_v1_aiken_cbor_and_hash_vector_is_exact"]
+        },
+        {
+          "path": "demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs",
+          "testNames": ["accepts the canonical contract and matching SDK/Aiken projections"]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "testNames": ["has the exact L01 TypeScript CBOR and blake2b-224 vector"]
+        },
+        {
+          "path": "demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs",
+          "testNames": ["rejects reordered, missing, extra, type, group, tag, and arity mutations"]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
-        "tests": [],
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts",
+            "testNames": ["matches %s to %s recursively"]
+          },
+          {
+            "path": "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
+            "testNames": ["HeaderV1 ABI verified: registry, SDK runtime schema, and Aiken blueprint agree"]
+          }
+        ],
         "notApplicableReason": null
       },
       "obsoleteBranchEvidence": [],

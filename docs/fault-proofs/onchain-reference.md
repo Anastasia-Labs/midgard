@@ -48,7 +48,18 @@ logic lives under `validators/`. Exceptions with real logic in `lib/`:
 | MPF non-membership           | `validators/pexcludes.ak:22` — `mpf.insert(...)` must succeed                                                                                                                                                                                    | Same pattern                                                                                                                                                         |
 | Delegation helpers           | `lib/midgard/common/utils.ak:597-719` (`plutarch_phas[_raw]`, `plutarch_pexcludes[_raw]`), `:739-758` (`plutarch_pdelete` — **unusable, env hash `#""`**)                                                                                        |                                                                                                                                                                      |
 | Counted roots                | `lib/midgard/transition-trace.ak:9-16` (`RootDomain`), `:64-80` (`commit_counted_root` = `blake2b_256(tag ‖ cbor(domain) ‖ raw_root ‖ cbor(count))`)                                                                                             | Consumed by `settlement.ak:83-118`, user-event validators, `fraud-proofs/common.ak:611-620`. Landed in PR #458 (`5169b7f7`)                                          |
-| Header type                  | `lib/midgard/ledger-state.ak:57-77`                                                                                                                                                                                                              | 8 roots + 6 counts + times + prev hash + operator vkey + protocol version                                                                                            |
+| Header type                  | `lib/midgard/ledger-state.ak:60-85`                                                                                                                                                                                                              | `HeaderV1`, constructor tag 0, arity 25; nine roots, seven counts, and nine metadata fields in the registry order below                                             |
+
+The exact `HeaderV1` constructor-0 field order is:
+
+```text
+prev_utxos_root, utxos_root, withdrawals_root, forced_transactions_root,
+transactions_root, deposits_root, transition_trace_root, event_to_step_root,
+validation_traces_root, withdrawal_count, forced_transaction_count,
+l2_transaction_count, deposit_count, total_event_count, transition_step_count,
+validation_trace_count, start_time, end_time, block_slot, expected_network_id,
+min_fee_a, min_fee_b, prev_header_hash, operator_vkey, protocol_version
+```
 
 ## 3. State-queue removal and slashing
 
