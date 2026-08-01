@@ -58,17 +58,41 @@ const canonicalV1CommitViolations = ({
     "export const recoverLocalFinalizationAgainstConfirmedBlock",
   );
 
+  const proofValidationSetup = section(
+    mpfProcessing,
+    "const proofValidationSlotConfig",
+    "const processed = yield* processMpfs(",
+  );
+
   if (worker.includes("isMidgardConsensusProfileV1")) {
     violations.push("worker_profile_selector");
   }
+  // Forced proof validation must run for every commit build. The property is:
+  // the slot mapping is read straight from provider-free worker input with no
+  // selector of any kind in front of it, an absent mapping fails the build
+  // closed, and the MPF-processing phase acquires no provider handle. The
+  // last clause is why this check no longer demands an unconditional
+  // `proofValidationLucid`: acquiring Lucid before CandidateReady breaks the
+  // provider-free-candidate invariant, so unconditional proof validation has
+  // to be reached without it.
   if (
-    !mpfProcessing.includes(
-      "const proofValidationLucid = (yield* acquireCommitLucidOnce).api;",
-    )
+    !/^const proofValidationSlotConfig =\s*workerInput\.data\.forcedValidationSlotConfig;/.test(
+      proofValidationSetup,
+    ) ||
+    proofValidationSetup.includes("?") ||
+    !/if \(proofValidationSlotConfig === undefined\) \{\s*return yield\* Effect\.fail\(/.test(
+      proofValidationSetup,
+    ) ||
+    mpfProcessing.includes("proofValidationLucid") ||
+    mpfProcessing.includes("acquireCommitLucidOnce")
   ) {
     violations.push("proof_validation_lucid_not_unconditional");
   }
-  if (!/forcedValidation:\s*\{[\s\S]*?slotForUnixTime:/.test(mpfProcessing)) {
+  if (
+    !/forcedValidation:\s*\{[\s\S]*?slotForUnixTime:[\s\S]*?unixTimeToSlotForConfig\(\s*unixTimeMs,\s*proofValidationSlotConfig,?\s*\)/.test(
+      mpfProcessing,
+    )
+  ) {
     violations.push("forced_validation_not_unconditional");
   }
 
@@ -143,8 +167,22 @@ describe("canonical V1 commit profile", () => {
     const workerProfileMutation = {
       ...sources,
       worker: sources.worker.replace(
-        "const proofValidationLucid = (yield* acquireCommitLucidOnce).api;",
-        "const proofValidationLucid = isMidgardConsensusProfileV1(profile) ? (yield* acquireCommitLucidOnce).api : undefined;",
+        /const proofValidationSlotConfig =\s*workerInput\.data\.forcedValidationSlotConfig;/,
+        "const proofValidationSlotConfig = isMidgardConsensusProfileV1(profile)\n      ? workerInput.data.forcedValidationSlotConfig\n      : undefined;",
+      ),
+    };
+    const workerProviderMutation = {
+      ...sources,
+      worker: sources.worker.replace(
+        "const processed = yield* processMpfs(",
+        "const proofValidationLucid = (yield* acquireCommitLucidOnce).api;\n    const processed = yield* processMpfs(",
+      ),
+    };
+    const workerForcedValidationMutation = {
+      ...sources,
+      worker: sources.worker.replace(
+        "forcedValidation: {",
+        "forcedValidation:\n          proofValidationSlotConfig === undefined\n            ? undefined\n            : {",
       ),
     };
     const forcedMaterialMutation = {
@@ -165,6 +203,15 @@ describe("canonical V1 commit profile", () => {
     expect(canonicalV1CommitViolations(workerProfileMutation)).toContain(
       "worker_profile_selector",
     );
+    expect(canonicalV1CommitViolations(workerProfileMutation)).toContain(
+      "proof_validation_lucid_not_unconditional",
+    );
+    expect(canonicalV1CommitViolations(workerProviderMutation)).toContain(
+      "proof_validation_lucid_not_unconditional",
+    );
+    expect(
+      canonicalV1CommitViolations(workerForcedValidationMutation),
+    ).toContain("forced_validation_not_unconditional");
     expect(canonicalV1CommitViolations(forcedMaterialMutation)).toContain(
       "submission_profile_selector",
     );

@@ -5,7 +5,6 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { isMidgardConsensusProfileV1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
 import { type LucidEvolution, toUnit } from "@lucid-evolution/lucid";
@@ -2084,15 +2083,15 @@ const databaseOperationsProgram = (
     }
     const mpfProcessingStartedAtMs = Date.now();
     mpfProcessingPasses += 1;
-    const proofValidationSlotConfig = isMidgardConsensusProfileV1(
-      deploymentIdentity.consensusProfile,
-    )
-      ? workerInput.data.forcedValidationSlotConfig
-      : undefined;
-    if (
-      isMidgardConsensusProfileV1(deploymentIdentity.consensusProfile) &&
-      proofValidationSlotConfig === undefined
-    ) {
+    // Canonical V1 is the only consensus profile this node can carry: the
+    // deployment manifest parser and the derived-contract path both reject
+    // anything that is not exactly MIDGARD_CONSENSUS_PROFILE_V1, so forced
+    // proof validation is unconditional and its slot mapping is required.
+    // The mapping is plain node-selected data, which keeps candidate
+    // construction provider-free.
+    const proofValidationSlotConfig =
+      workerInput.data.forcedValidationSlotConfig;
+    if (proofValidationSlotConfig === undefined) {
       return yield* Effect.fail(
         new Error(
           "Canonical V1 commitment input is missing its node-selected slot configuration",
@@ -2125,22 +2124,16 @@ const databaseOperationsProgram = (
           : undefined,
         initialLedgerEntries,
         consensusProfile: deploymentIdentity.consensusProfile,
-        forcedValidation:
-          proofValidationSlotConfig === undefined
-            ? undefined
-            : {
-                expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
-                minFeeA: nodeConfig.MIN_FEE_A,
-                minFeeB: nodeConfig.MIN_FEE_B,
-                bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
-                slotForUnixTime: (unixTimeMs) =>
-                  BigInt(
-                    unixTimeToSlotForConfig(
-                      unixTimeMs,
-                      proofValidationSlotConfig,
-                    ),
-                  ),
-              },
+        forcedValidation: {
+          expectedNetworkId: nodeConfig.NETWORK === "Mainnet" ? 1n : 0n,
+          minFeeA: nodeConfig.MIN_FEE_A,
+          minFeeB: nodeConfig.MIN_FEE_B,
+          bucketConcurrency: nodeConfig.VALIDATION_G4_BUCKET_CONCURRENCY,
+          slotForUnixTime: (unixTimeMs) =>
+            BigInt(
+              unixTimeToSlotForConfig(unixTimeMs, proofValidationSlotConfig),
+            ),
+        },
         selectedBaseUtxoRoot: commitBase.root,
         payloadRootCheck: nodeConfig.MPF_PAYLOAD_ROOT_CHECK,
         baseUtxoPayloadAggregate: commitBase.utxoPayloadAggregate,
