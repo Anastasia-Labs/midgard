@@ -189,6 +189,36 @@ test("evidence writer emits only canonical contiguous V1 records", () => {
   }
 });
 
+test("oversized cleanup diagnostics do not consume an evidence sequence", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "midgard-watchdog-v1-"));
+  const evidencePath = join(directory, "watchdog.ndjson");
+  try {
+    const writer = createEvidenceWriter(evidencePath);
+    const fixture = harness({ probes: [{ status: 0 }, { status: 23 }] });
+    fixture.runtime.stop = async () => {
+      throw new Error("x".repeat(4_097));
+    };
+    try {
+      const result = await runThroughputLoadWatchdog({
+        ...options(fixture),
+        record: writer.record,
+      });
+      assert.equal(result.status, "tripped");
+    } finally {
+      writer.close();
+    }
+
+    const lines = readFileSync(evidencePath, "utf8").trimEnd().split("\n");
+    assert.equal(lines.length, 9);
+    lines.forEach((line, index) => {
+      const parsed = parseThroughputWatchdogEvidenceLineV1(line, index + 1);
+      assert.equal(parsed.sequence, index + 1);
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("preflight failure never starts or stops the load container", async () => {
   const fixture = harness({ probes: [{ status: 7 }] });
   const result = await runThroughputLoadWatchdog(options(fixture));

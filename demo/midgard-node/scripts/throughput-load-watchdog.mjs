@@ -430,16 +430,17 @@ export const createEvidenceWriter = (path) => {
           "watchdog evidence event must not override its V1 identity",
         );
       }
-      sequence += 1;
+      const nextSequence = sequence + 1;
       const canonical = canonicalWatchdogEvidenceRecordV1(
         {
           ...event,
           schemaVersion: WATCHDOG_SCHEMA_VERSION,
-          sequence,
+          sequence: nextSequence,
         },
-        sequence,
+        nextSequence,
       );
       writeSync(descriptor, `${JSON.stringify(canonical)}\n`);
+      sequence = nextSequence;
     },
     close: () => closeSync(descriptor),
   };
