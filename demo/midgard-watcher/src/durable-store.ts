@@ -416,6 +416,23 @@ const parseChainPoint: RecordParser<WatcherL1ChainPointV1> = (value, path) => {
   };
 };
 
+const compareChainPointOrder = (
+  left: Pick<WatcherL1ChainPointV1, "blockNo" | "slot">,
+  right: Pick<WatcherL1ChainPointV1, "blockNo" | "slot">,
+): number => {
+  const leftBlockNo = BigInt(left.blockNo);
+  const rightBlockNo = BigInt(right.blockNo);
+  if (leftBlockNo < rightBlockNo) {
+    return -1;
+  }
+  if (leftBlockNo > rightBlockNo) {
+    return 1;
+  }
+  const leftSlot = BigInt(left.slot);
+  const rightSlot = BigInt(right.slot);
+  return leftSlot < rightSlot ? -1 : leftSlot > rightSlot ? 1 : 0;
+};
+
 const parseL1Observation: RecordParser<WatcherL1ObservationV1> = (
   value,
   path,
@@ -988,10 +1005,13 @@ const assertReferences = (records: WatcherDurableRecordsV1): void => {
     records.protocolUtxos.map(({ outRef }) => outRef),
   );
   for (const utxo of records.spentProtocolUtxos) {
+    const creationPoint = chainPoints.get(utxo.chainPointId);
+    const spentAtPoint = chainPoints.get(utxo.spentAtChainPointId);
     if (
       activeOutRefs.has(utxo.outRef) ||
-      !chainPoints.has(utxo.chainPointId) ||
-      !chainPoints.has(utxo.spentAtChainPointId)
+      creationPoint === undefined ||
+      spentAtPoint === undefined ||
+      compareChainPointOrder(spentAtPoint, creationPoint) < 0
     ) {
       fail(
         activeOutRefs.has(utxo.outRef) ? "duplicate_key" : "broken_reference",
@@ -1393,6 +1413,12 @@ export const journalWatcherProtocolUtxoTransitionV1 = (input: {
   const priorSpent = new Set(
     source.spentProtocolUtxos.map(({ outRef }) => outRef),
   );
+  const sourceChainPoints = new Map(
+    source.chainPoints.map((entry) => [entry.chainPointId, entry]),
+  );
+  const spentAtPoint = input.nextChainPoints.find(
+    ({ chainPointId }) => chainPointId === spentAtChainPointId,
+  );
   const nextActive = new Map<string, WatcherProtocolUtxoV1>();
   for (const entry of input.nextProtocolUtxos) {
     if (nextActive.has(entry.outRef) || priorSpent.has(entry.outRef)) {
@@ -1410,10 +1436,20 @@ export const journalWatcherProtocolUtxoTransitionV1 = (input: {
   }
   const newlySpent = source.protocolUtxos
     .filter(({ outRef }) => !nextActive.has(outRef))
-    .map((entry) => ({
-      ...entry,
-      spentAtChainPointId,
-    }));
+    .map((entry) => {
+      const creationPoint = sourceChainPoints.get(entry.chainPointId);
+      if (
+        creationPoint === undefined ||
+        spentAtPoint === undefined ||
+        compareChainPointOrder(spentAtPoint, creationPoint) < 0
+      ) {
+        fail("broken_reference", `$.protocolUtxos.${entry.outRef}`);
+      }
+      return {
+        ...entry,
+        spentAtChainPointId,
+      };
+    });
   return Object.freeze({
     protocolUtxos: Object.freeze(
       sortRecords(input.nextProtocolUtxos, (entry) => entry.outRef),

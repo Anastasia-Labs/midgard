@@ -4235,7 +4235,7 @@ describe("canonical authenticated user-event indexer", () => {
       ),
     ).toBeNull();
 
-    const created = blockBundle([fixture], null, 112, 1);
+    const created = blockBundle([fixture], null, 100, 1);
     const active = accepted(null, created);
     for (const redeemerIndex of [0, 1, 2]) {
       for (const mutate of [adjacentConstructor, truncatedConstructor]) {
@@ -4278,7 +4278,7 @@ describe("canonical authenticated user-event indexer", () => {
       ["forced_order", "c8"],
     ] as const) {
       const nonDepositFixture = makeEventFixture(kind, nonce, 0, 1_000n);
-      const nonDepositCreated = blockBundle([nonDepositFixture], null, 113, 1);
+      const nonDepositCreated = blockBundle([nonDepositFixture], null, 100, 1);
       const nonDepositActive = accepted(null, nonDepositCreated);
       const redeemerIndices = kind === "withdrawal" ? [0, 2] : [0];
       for (const redeemerIndex of redeemerIndices) {
@@ -4307,7 +4307,7 @@ describe("canonical authenticated user-event indexer", () => {
 
   it("rejects unsigned deployment substitutions and rehashed store subset, revision, and chain-point attacks", () => {
     const fixture = makeEventFixture("deposit", "c6", 0, 1_000n);
-    const initial = blockBundle([fixture], null, 120, 1);
+    const initial = blockBundle([fixture], null, 100, 1);
     const forgedDeployment = structuredClone(initial.context) as MutableRecord;
     forgedDeployment.deploymentAuthority.policy.appliedScriptHashes.depositMint =
       h28("ee");

@@ -446,6 +446,76 @@ describe("watcher durable store V1", () => {
         }),
       "duplicate_key",
     );
+
+    const laterPoint = {
+      chainPointId: hex32("02"),
+      providerId: "provider-a",
+      blockHash: hex32("20"),
+      slot: "101",
+      blockNo: "51",
+      depth: "8",
+    };
+    const forwardSource = makeWatcherDurableStoreV1({
+      deploymentMarker: source.deploymentMarker,
+      revision: source.revision,
+      records: {
+        ...recordsFixture(),
+        chainPoints: [...source.chainPoints, laterPoint],
+        spentProtocolUtxos: [
+          {
+            ...source.spentProtocolUtxos[0]!,
+            spentAtChainPointId: laterPoint.chainPointId,
+          },
+        ],
+      },
+    });
+    const forwardJournal = journalWatcherProtocolUtxoTransitionV1({
+      sourceStore: forwardSource,
+      nextChainPoints: forwardSource.chainPoints,
+      nextProtocolUtxos: [],
+      spentAtChainPointId: laterPoint.chainPointId,
+    });
+    expect(forwardJournal.spentProtocolUtxos).toContainEqual({
+      ...forwardSource.protocolUtxos[0],
+      spentAtChainPointId: laterPoint.chainPointId,
+    });
+
+    expectStoreError(
+      () =>
+        parseWatcherDurableStoreV1(
+          mutateStore(forwardSource, (value) => {
+            value.spentProtocolUtxos[0].chainPointId = laterPoint.chainPointId;
+            value.spentProtocolUtxos[0].spentAtChainPointId =
+              spentAtChainPointId;
+          }),
+        ),
+      "broken_reference",
+    );
+
+    const backwardJournalSource = makeWatcherDurableStoreV1({
+      deploymentMarker: source.deploymentMarker,
+      revision: source.revision,
+      records: {
+        ...recordsFixture(),
+        chainPoints: [...source.chainPoints, laterPoint],
+        protocolUtxos: [
+          {
+            ...source.protocolUtxos[0]!,
+            chainPointId: laterPoint.chainPointId,
+          },
+        ],
+      },
+    });
+    expectStoreError(
+      () =>
+        journalWatcherProtocolUtxoTransitionV1({
+          sourceStore: backwardJournalSource,
+          nextChainPoints: backwardJournalSource.chainPoints,
+          nextProtocolUtxos: [],
+          spentAtChainPointId,
+        }),
+      "broken_reference",
+    );
   });
 
   it("initializes once and makes repeat migration byte-idempotent", async () => {

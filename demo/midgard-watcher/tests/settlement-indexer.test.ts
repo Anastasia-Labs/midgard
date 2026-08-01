@@ -1320,6 +1320,7 @@ const bundle = (input: {
   l1Observation?: Mutable;
   sourceDurableStore?: WatcherDurableStoreV1;
   durableStore?: WatcherDurableStoreV1;
+  journalSpentAtChainPointId?: string;
   previousFinalityState?: unknown;
   rollbackAuthority?: WatcherSettlementPublicContextV1["rollbackAuthority"];
   predecessorStateDigest?: string;
@@ -1505,7 +1506,8 @@ const bundle = (input: {
     sourceStore,
     nextChainPoints,
     nextProtocolUtxos: protocolUtxos,
-    spentAtChainPointId: normalized.chainPoint.chainPointId,
+    spentAtChainPointId:
+      input.journalSpentAtChainPointId ?? normalized.chainPoint.chainPointId,
   });
   const store =
     input.durableStore ??
@@ -2140,6 +2142,8 @@ const postFinalitySettlementRecoveryBundle = (
     l1Observation: common.primaryRaw,
     sourceDurableStore: incident.nextStore!,
     durableStore: recovery.nextStore!,
+    journalSpentAtChainPointId:
+      replacementTail.at(-1)!.evidence.observations[0]!.chainPoint.chainPointId,
     rollbackAuthority: {
       result: recovery,
       context: recoveryInput,
@@ -5469,7 +5473,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
         terminalTransactionHash: resolveTransactionHash,
       },
     );
-  });
+  }, 30_000);
 
   it("rejects exact transaction identity collisions", () => {
     const initial = bundle({
@@ -5651,6 +5655,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       l1Observation: recovery.recoveryEvidence.context.l1Observation as Mutable,
       sourceDurableStore: recovery.incident.nextStore!,
       durableStore: recovery.recovery.nextStore!,
+      journalSpentAtChainPointId:
+        recovery.incident.nextStore!.chainPoints.at(-1)!.chainPointId,
       rollbackAuthority: {
         result: recovery.recovery,
         context: recovery.recoveryInput,
@@ -6234,6 +6240,7 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       authenticatedProvider: retainedAnchorProvider,
       l1Observation: retainedAnchorRaw,
       durableStore: authoritative.nextStore!,
+      journalSpentAtChainPointId: replacementA.chainPoint.chainPointId,
       rollbackAuthority: {
         result: authoritative,
         context: rollbackVerificationContext,

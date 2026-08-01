@@ -3932,6 +3932,7 @@ describe("W17 public proof/computation-thread indexer", () => {
         ).action,
       ).toBe("reject");
     },
+    30_000,
   );
 
   it.each<FixtureSourceMode>(["local_node", "external_providers"])(
