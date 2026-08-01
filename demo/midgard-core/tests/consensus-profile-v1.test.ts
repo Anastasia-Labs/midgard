@@ -130,6 +130,113 @@ describe("canonical V1 consensus profile", () => {
     expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(604_800_000);
   });
 
+  // Regression pin for C21-CORE-ENVELOPE.
+  //
+  // `maxReliableDirectCompleteItemBytes` is the single value that decides
+  // complete-item carriage: `selectValidationCompleteItemCarriageV1` carries an
+  // item at or below it DIRECTLY inside the proof redeemer, and anything above
+  // it by reference to a published proof-item UTxO. Two other numbers in this
+  // repository measure a DIFFERENT transaction shape and must never be bound
+  // here:
+  //
+  //   13,998 - `scripts/measure-validation-proof-item-envelope.mjs`, whose
+  //            "direct" route sources the validator from a reference input and
+  //            embeds no script witness at all.
+  //   13,282 - the single-transaction semantic-proof frontier recorded in
+  //            `docs/exec-plans/evidence/necessity/`, the same by-reference
+  //            basis measured on a complete signed transaction.
+  //
+  // The deployed direct-carriage route embeds the applied validator in the
+  // transaction (reference-input count 0) and is limited by the observation
+  // stage, so its frontier is far smaller than either. Binding a by-reference
+  // number here selects direct carriage for items the observation transaction
+  // cannot carry, which the L1 proof envelope then rejects.
+  it("pins the direct complete-item carriage frontier in both directions", () => {
+    const reserve =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
+    const budget =
+      MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes - reserve;
+    const frontier =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+
+    // Anchored to the deployed five-stage measurement, observation limiting.
+    expect(reserve).toBe(512);
+    expect(budget).toBe(15_872);
+    expect(frontier).toBe(8_273);
+    expect(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes,
+    ).toBe(8_769);
+
+    // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
+    // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
+    // package dependency), and the validation carriage-policy suite pins its
+    // source to exactly this constant with these `<=` semantics. Evaluating the
+    // rule at literal byte counts therefore pins the deployed boundary: any
+    // rebind of the constant flips one of these four answers.
+    const carriage = (itemBytes: number): "direct" | "reference" =>
+      itemBytes <= frontier ? "direct" : "reference";
+
+    // Direction 1: the frontier item is carried directly.
+    expect(carriage(8_273)).toBe("direct");
+    // Direction 2: one byte over is NOT. Widening this boundary is a soundness
+    // regression, not a fix.
+    expect(carriage(8_274)).toBe("reference");
+    // The two by-reference frontiers must both fall in the reference region.
+    expect(carriage(13_282)).toBe("reference");
+    expect(carriage(13_998)).toBe("reference");
+    expect(frontier).toBeLessThan(13_282);
+
+    // Why one byte over cannot fit: the limiting direct transaction already
+    // sits exactly on the reliability budget at the frontier item size, and
+    // item bytes expand at least 1:1 into it.
+    expect(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+    ).toBe(budget);
+    expect(
+      Math.max(
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+        MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
+      ),
+    ).toBe(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+    );
+    // Observation, not authentication, is the stage that governs the bound.
+    expect(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemObservationTransactionBytes,
+    ).toBeGreaterThan(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
+    );
+
+    // The zero-reserve frontier may exceed the reliable one by at most the
+    // reserve itself, because item bytes cannot expand sub-1:1.
+    const slack =
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes -
+      frontier;
+    expect(slack).toBeGreaterThan(0);
+    expect(slack).toBeLessThanOrEqual(reserve);
+
+    // Embedding the applied validator is what makes direct carriage expensive:
+    // the identical proof resolved by reference costs a fraction of the
+    // transaction, which is why the reference route exists at all.
+    expect(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.referenceCompleteItemProofTransactionBytes,
+    ).toBeLessThan(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
+    );
+
+    // Reference carriage must stay reachable: a non-empty band of items sits
+    // above the direct frontier and still publishes in one transaction, and
+    // the selector's hard cap stays at or below every publication measurement.
+    expect(
+      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+    ).toBeGreaterThan(frontier);
+    expect(
+      MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes,
+    ).toBeLessThanOrEqual(
+      MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationBytes,
+    );
+  });
+
   it("fits a worst-case one-step redeemer inside a concrete Conway proof transaction", () => {
     const hash = (fill: number): Buffer => Buffer.alloc(32, fill);
     const input = (fill: number): CML.TransactionInput =>

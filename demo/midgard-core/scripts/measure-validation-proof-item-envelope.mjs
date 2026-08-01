@@ -1,3 +1,18 @@
+// MEASUREMENT BASIS — read before adopting any number this script prints.
+//
+// Every transaction modelled here sources its validator from a reference input
+// and embeds no script witness. That is the SINGLE-TRANSACTION BY-REFERENCE
+// basis. It is NOT the basis of
+// `MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes`, which
+// governs `selectValidationCompleteItemCarriageV1`: the deployed direct
+// carriage route embeds the applied validator in the transaction (reference
+// input count 0) and is limited by the observation stage, so its frontier is
+// far smaller than the `semantic-proof-validator-by-reference` boundary below.
+//
+// Copying that boundary into the direct-carriage constant selects direct
+// carriage for items the observation transaction cannot carry. The
+// `consensus-profile-v1` suite pins that boundary in both directions and will
+// fail if it is rebound here.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -303,11 +318,14 @@ console.log(
       },
       boundaries: [
         reportBoundary("complete-item-publication", publicationTransaction),
-        reportBoundary("direct-proof", (itemBytes) =>
+        // NOT the direct-carriage frontier: the validator is a reference input
+        // here, so this boundary is ~5,700 item bytes larger than the deployed
+        // direct route. See the measurement-basis note at the top of the file.
+        reportBoundary("semantic-proof-validator-by-reference", (itemBytes) =>
           proofTransaction(itemBytes, "direct"),
         ),
         {
-          name: "reference-proof",
+          name: "reference-proof-item-and-validator-by-reference",
           itemBytesResolvedFromUtxo: 14_000,
           ...proofTransaction(14_000, "reference"),
         },
