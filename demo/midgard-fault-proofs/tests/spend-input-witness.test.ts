@@ -15,9 +15,15 @@ import {
   spendInputsWitnessFromCbors,
 } from "../src/spend-input-witness.js";
 
+// Hold the emulator to the literal 16,384-byte L1 envelope. A relaxed
+// `maxTxSize` here would be load-bearing (Lucid caches the provider's protocol
+// parameters at construction and CML rejects the build with "Max transaction
+// size of N exceeded"), so raising it would silently let this publication grow
+// past what any Cardano node would accept. Measured today: the 180-input
+// witness publication is 7,518 bytes, i.e. 8,866 bytes of margin.
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: 65_536,
+  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
   maxCollateralInputs: 3,
 } as const;
 
