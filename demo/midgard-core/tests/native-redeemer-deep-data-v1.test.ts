@@ -53,7 +53,9 @@ describe("redeemer Data validation without a CML probe", () => {
         "hex",
       ),
     );
-  });
+    // Measured 12.1 s on a 2-core CI runner (first-ever CI execution of
+    // this suite); the default 5 s budget was calibrated on 32 cores.
+  }, 60_000);
 
   it("validates deep Midgard redeemer entries without parsing them through CML", () => {
     // Depth 1,024 exercises the recursion-free entry validation and stays
