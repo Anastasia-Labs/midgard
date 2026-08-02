@@ -144,6 +144,43 @@ fn opened_descriptor_is_well_formed(control: RedeemerItemProofControlV1) -> Bool
   }
 }
 
+pub fn stage_data_outer_fields_are_well_formed_v1(
+  control: RedeemerItemProofControlV1,
+) -> Bool {
+  let expected_is_absent = and {
+      control.expected_purpose_tag == -1,
+      control.expected_pointer_index == -1,
+    }
+  let expected_is_present = and {
+      supported_purpose_tag(control.expected_purpose_tag),
+      control.expected_pointer_index >= 0,
+    }
+  let descriptor_is_open = opened_descriptor_is_well_formed(control)
+  let ex_units_are_open = and {
+      control.execution_memory >= 0,
+      control.execution_steps >= 0,
+    }
+  and {
+    control.version == version,
+    control.mode == mode_data,
+    control.stage == stage_data,
+    control.item_index >= 0,
+    control.item_count > control.item_index,
+    control.total_length > 0,
+    bytearray.length(control.item_commitment) == 32,
+    expected_is_absent || expected_is_present,
+    descriptor_is_open,
+    ex_units_are_open,
+    when control.traversal is {
+      None -> False
+      Some(traversal) -> and {
+          traversal.source_start == control.data_offset,
+          traversal.source_length == control.data_length,
+        }
+    },
+  }
+}
+
 pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
   let expected_is_absent = and {
       control.expected_purpose_tag == -1,
@@ -179,10 +216,12 @@ pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
       }
     } else if control.stage == stage_data {
       and {
-        control.mode == mode_data,
-        descriptor_is_open,
-        ex_units_are_open,
-        optional_traversal_is_well_formed(control),
+        stage_data_outer_fields_are_well_formed_v1(control),
+        when control.traversal is {
+          None -> False
+          Some(traversal) ->
+            cek_data_traverse_v1.control_is_well_formed(traversal)
+        },
       }
     } else if control.mode == mode_descriptor {
       and {
@@ -253,6 +292,13 @@ fn encode_optional_traversal(
 
 pub fn encode_control_v1(control: RedeemerItemProofControlV1) -> ByteArray {
   expect control_is_well_formed(control)
+  encode_control_prefix_v1(control)
+    |> bytearray.concat(encode_optional_traversal(control.traversal))
+}
+
+fn encode_control_prefix_v1(
+  control: RedeemerItemProofControlV1,
+) -> ByteArray {
   encode_definite_array_header(16)
     |> bytearray.concat(cbor.serialise(control.version))
     |> bytearray.concat(cbor.serialise(control.mode))
@@ -269,7 +315,48 @@ pub fn encode_control_v1(control: RedeemerItemProofControlV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(control.data_length))
     |> bytearray.concat(cbor.serialise(control.execution_memory))
     |> bytearray.concat(cbor.serialise(control.execution_steps))
-    |> bytearray.concat(encode_optional_traversal(control.traversal))
+}
+
+fn control_hash_prefix_v1(
+  control: RedeemerItemProofControlV1,
+) -> ByteArray {
+  control_domain
+    |> bytearray.concat(encode_control_prefix_v1(control))
+}
+
+pub fn stage_data_outer_control_prefix_v1(
+  control: RedeemerItemProofControlV1,
+) -> ByteArray {
+  expect stage_data_outer_fields_are_well_formed_v1(control)
+  encode_control_prefix_v1(control)
+}
+
+pub fn stage_data_some_traversal_hash_prefix_v1(
+  control: RedeemerItemProofControlV1,
+) -> ByteArray {
+  expect stage_data_outer_fields_are_well_formed_v1(control)
+  control_hash_prefix_v1(control)
+    |> bytearray.concat(#"d8799f")
+}
+
+pub fn hash_stage_data_from_authenticated_prefix_v1(
+  authenticated_hash_prefix_cbor: ByteArray,
+  checked_next_traversal_control_cbor: ByteArray,
+) -> ByteArray {
+  authenticated_hash_prefix_cbor
+    |> bytearray.concat(checked_next_traversal_control_cbor)
+    |> bytearray.concat(#"ff")
+    |> blake2b_256
+}
+
+pub fn hash_stage_data_outer_with_checked_traversal_v1(
+  control: RedeemerItemProofControlV1,
+  checked_traversal_control_cbor: ByteArray,
+) -> ByteArray {
+  hash_stage_data_from_authenticated_prefix_v1(
+    stage_data_some_traversal_hash_prefix_v1(control),
+    checked_traversal_control_cbor,
+  )
 }
 
 fn optional_traversal_from_data(
@@ -320,8 +407,9 @@ pub fn decode_control_v1(control_cbor: ByteArray) -> RedeemerItemProofControlV1 
 }
 
 pub fn hash_control_v1(control: RedeemerItemProofControlV1) -> ByteArray {
-  control_domain
-    |> bytearray.concat(encode_control_v1(control))
+  expect control_is_well_formed(control)
+  control_hash_prefix_v1(control)
+    |> bytearray.concat(encode_optional_traversal(control.traversal))
     |> blake2b_256
 }
 

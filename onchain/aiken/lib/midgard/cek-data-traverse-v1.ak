@@ -83,6 +83,12 @@ pub type DataTraverseActionV1 {
   }
 }
 
+pub type FinalizeFrameTransitionV1 {
+  next_stage: Int,
+  next_frame_root: ByteArray,
+  next_result: Option<cek_data_v1.DataSummaryV1>,
+}
+
 pub type CborArgumentV1 {
   major: Int,
   value: Int,
@@ -372,9 +378,10 @@ fn encode_summary(summary: cek_data_v1.DataSummaryV1) -> ByteArray {
     |> bytearray.concat(cbor.serialise(summary.memory))
 }
 
-fn encode_optional_summary(
+pub fn encode_optional_summary_v1(
   value: Option<cek_data_v1.DataSummaryV1>,
 ) -> ByteArray {
+  expect optional_summary_is_well_formed(value)
   when value is {
     None -> #"d87a80"
     Some(exact) ->
@@ -398,7 +405,7 @@ pub fn encode_control_v1(control: DataTraverseControlV1) -> ByteArray {
       )
     |> bytearray.concat(encode_optional_integer(control.integer))
     |> bytearray.concat(encode_optional_bytes(control.bytes))
-    |> bytearray.concat(encode_optional_summary(control.result))
+    |> bytearray.concat(encode_optional_summary_v1(control.result))
 }
 
 fn optional_int_from_data(data: Data) -> Option<Int> {
@@ -688,29 +695,25 @@ fn next_parent_stage(frame: cek_data_frame_v1.DataFrameV1) -> Int {
   }
 }
 
-fn attach_summary(
-  control: DataTraverseControlV1,
+fn prevalidated_attach_summary_transition_v1(
+  current_frame_root: ByteArray,
   summary: cek_data_v1.DataSummaryV1,
   parent: Option<cek_data_frame_v1.DataFrameV1>,
   offset: Int,
-) -> Option<DataTraverseControlV1> {
+  source_length: Int,
+) -> Option<FinalizeFrameTransitionV1> {
   if !summary_is_well_formed(summary) {
     None
-  } else if control.frame_root == #"" {
+  } else if current_frame_root == #"" {
     if and {
       parent == None,
-      offset == control.source_length,
+      offset == source_length,
     } {
-      checked_control(
-        DataTraverseControlV1 {
-          ..control,
-          stage: stage_terminal,
-          offset,
-          frame_root: #"",
-          pending_large_expected_children: None,
-          integer: None,
-          bytes: None,
-          result: Some(summary),
+      Some(
+        FinalizeFrameTransitionV1 {
+          next_stage: stage_terminal,
+          next_frame_root: #"",
+          next_result: Some(summary),
         },
       )
     } else {
@@ -722,28 +725,77 @@ fn attach_summary(
       Some(parent_frame) ->
         if and {
           cek_data_frame_v1.frame_is_well_formed(parent_frame),
-          cek_data_frame_v1.hash_frame_v1(parent_frame) == control.frame_root,
+          cek_data_frame_v1.hash_frame_v1(parent_frame) == current_frame_root,
         } {
           when cek_data_frame_v1.append_child_v1(parent_frame, summary) is {
             None -> None
-            Some(next_parent) ->
-              checked_control(
-                DataTraverseControlV1 {
-                  ..control,
-                  stage: next_parent_stage(next_parent),
-                  offset,
-                  frame_root: cek_data_frame_v1.hash_frame_v1(next_parent),
-                  pending_large_expected_children: None,
-                  integer: None,
-                  bytes: None,
-                  result: None,
+            Some(next_parent) -> {
+              let next_stage = next_parent_stage(next_parent)
+              if and {
+                if or {
+                  next_stage == stage_head,
+                  next_stage == stage_close,
+                } {
+                  offset < source_length
+                } else {
+                  True
                 },
-              )
+                or {
+                  next_stage == stage_head,
+                  next_stage == stage_close,
+                  next_stage == stage_fold,
+                },
+              } {
+                Some(
+                  FinalizeFrameTransitionV1 {
+                    next_stage,
+                    next_frame_root: cek_data_frame_v1.hash_frame_v1(
+                      next_parent,
+                    ),
+                    next_result: None,
+                  },
+                )
+              } else {
+                None
+              }
+            }
           }
         } else {
           None
         }
     }
+  }
+}
+
+fn attach_summary(
+  control: DataTraverseControlV1,
+  summary: cek_data_v1.DataSummaryV1,
+  parent: Option<cek_data_frame_v1.DataFrameV1>,
+  offset: Int,
+) -> Option<DataTraverseControlV1> {
+  when
+    prevalidated_attach_summary_transition_v1(
+      control.frame_root,
+      summary,
+      parent,
+      offset,
+      control.source_length,
+    )
+  is {
+    None -> None
+    Some(transition) ->
+      checked_control(
+        DataTraverseControlV1 {
+          ..control,
+          stage: transition.next_stage,
+          offset,
+          frame_root: transition.next_frame_root,
+          pending_large_expected_children: None,
+          integer: None,
+          bytes: None,
+          result: transition.next_result,
+        },
+      )
   }
 }
 
@@ -1157,47 +1209,98 @@ fn step_close(
   }
 }
 
-fn step_finalize_frame(
-  control: DataTraverseControlV1,
+pub fn prevalidated_finalize_frame_transition_v1(
+  current_frame_root: ByteArray,
+  current_offset: Int,
+  source_length: Int,
   frame: cek_data_frame_v1.DataFrameV1,
   parent: Option<cek_data_frame_v1.DataFrameV1>,
-) -> Option<DataTraverseControlV1> {
+) -> Option<FinalizeFrameTransitionV1> {
   if and {
     cek_data_frame_v1.frame_is_well_formed(frame),
-    cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
+    cek_data_frame_v1.hash_frame_v1(frame) == current_frame_root,
   } {
     when cek_data_frame_v1.finalized_summary_v1(frame) is {
       None -> None
       Some(summary) ->
         if frame.tail == #"" {
-          attach_summary(
-            DataTraverseControlV1 { ..control, frame_root: #"" },
+          prevalidated_attach_summary_transition_v1(
+            #"",
             summary,
             parent,
-            control.offset,
+            current_offset,
+            source_length,
           )
         } else {
-          when parent is {
-            None -> None
-            Some(parent_frame) ->
-              if and {
-                cek_data_frame_v1.frame_is_well_formed(parent_frame),
-                cek_data_frame_v1.hash_frame_v1(parent_frame) == frame.tail,
-              } {
-                attach_summary(
-                  DataTraverseControlV1 {
-                    ..control,
-                    frame_root: frame.tail,
-                  },
-                  summary,
-                  Some(parent_frame),
-                  control.offset,
-                )
-              } else {
-                None
-              }
-          }
+          prevalidated_attach_summary_transition_v1(
+            frame.tail,
+            summary,
+            parent,
+            current_offset,
+            source_length,
+          )
         }
+    }
+  } else {
+    None
+  }
+}
+
+fn step_finalize_frame(
+  control: DataTraverseControlV1,
+  frame: cek_data_frame_v1.DataFrameV1,
+  parent: Option<cek_data_frame_v1.DataFrameV1>,
+) -> Option<DataTraverseControlV1> {
+  when
+    prevalidated_finalize_frame_transition_v1(
+      control.frame_root,
+      control.offset,
+      control.source_length,
+      frame,
+      parent,
+    )
+  is {
+    None -> None
+    Some(transition) ->
+      checked_control(
+        DataTraverseControlV1 {
+          ..control,
+          stage: transition.next_stage,
+          frame_root: transition.next_frame_root,
+          pending_large_expected_children: None,
+          integer: None,
+          bytes: None,
+          result: transition.next_result,
+        },
+      )
+  }
+}
+
+pub fn prevalidated_fold_map_next_frame_root_v1(
+  current_frame_root: ByteArray,
+  frame: cek_data_frame_v1.DataFrameV1,
+  pair_index: Int,
+  key: cek_data_v1.DataSummaryV1,
+  value: cek_data_v1.DataSummaryV1,
+  key_siblings: List<ByteArray>,
+  value_siblings: List<ByteArray>,
+) -> Option<ByteArray> {
+  if and {
+    cek_data_frame_v1.frame_is_well_formed(frame),
+    cek_data_frame_v1.hash_frame_v1(frame) == current_frame_root,
+  } {
+    when
+      cek_data_frame_v1.fold_map_pair_v1(
+        frame,
+        pair_index,
+        key,
+        value,
+        key_siblings,
+        value_siblings,
+      )
+    is {
+      None -> None
+      Some(next_frame) -> Some(cek_data_frame_v1.hash_frame_v1(next_frame))
     }
   } else {
     None
@@ -1246,31 +1349,25 @@ fn step_fold(
         key_siblings,
         value_siblings,
       } ->
-        if and {
-          cek_data_frame_v1.frame_is_well_formed(frame),
-          cek_data_frame_v1.hash_frame_v1(frame) == control.frame_root,
-        } {
-          when
-            cek_data_frame_v1.fold_map_pair_v1(
-              frame,
-              pair_index,
-              key,
-              value,
-              key_siblings,
-              value_siblings,
+        when
+          prevalidated_fold_map_next_frame_root_v1(
+            control.frame_root,
+            frame,
+            pair_index,
+            key,
+            value,
+            key_siblings,
+            value_siblings,
+          )
+        is {
+          None -> None
+          Some(next_frame_root) ->
+            checked_control(
+              DataTraverseControlV1 {
+                ..control,
+                frame_root: next_frame_root,
+              },
             )
-          is {
-            None -> None
-            Some(next_frame) ->
-              checked_control(
-                DataTraverseControlV1 {
-                  ..control,
-                  frame_root: cek_data_frame_v1.hash_frame_v1(next_frame),
-                },
-              )
-          }
-        } else {
-          None
         }
       FinalizeFrame { frame, parent } ->
         step_finalize_frame(control, frame, parent)

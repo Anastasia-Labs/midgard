@@ -1049,9 +1049,21 @@ test accepts_l2_mapped_event_missing_from_source_fault() {
 
 test accepts_l2_source_event_missing_trace_fault() {
   let tx_id = h32_c
+  // native_l2_compact_cbor decodes both arguments as canonical preimage CBOR
+  // (decode_midgard_tx_{inputs,outputs}_preimage_cbor), so they must be
+  // encoded preimages, not raw 32-byte hashes. Passing h32_a/h32_b made the
+  // definite-array header decoder abort on `expect tag == 154` before the
+  // fault under test was ever exercised; every other caller of this helper
+  // passes encode_{input,output}_preimage output.
+  let spend_inputs_preimage = native_preimages.encode_input_preimage(
+    [native_input(h32_a, 0)],
+  )
+  let outputs_preimage = native_preimages.encode_output_preimage(
+    [native_output()],
+  )
   let source_membership = raw_l2_source_membership(
     tx_id,
-    native_l2_compact_cbor(h32_a, h32_b),
+    native_l2_compact_cbor(spend_inputs_preimage, outputs_preimage),
   )
   let event_to_step_non_membership = empty_non_membership(
     transition_trace.EventToStepRootDomain,

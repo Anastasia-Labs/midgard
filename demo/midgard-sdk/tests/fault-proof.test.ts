@@ -515,7 +515,11 @@ describe("fault-proof contract builder", () => {
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-    ).toBe(120);
+      // 121 since the stage-one redeemer feasibility checkpoint was
+      // integrated: re-tracking the four stage-one executor validators grew
+      // the blueprint from 368 to 376 validators, adding one further distinct
+      // applied step hash across these six chains.
+    ).toBe(121);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
