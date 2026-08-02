@@ -10,10 +10,14 @@ on:
       - onchain/aiken/**
 
 env:
-  # github.com/colll78/aiken @ perf/check-codegen-1389, reporting
-  # v1.1.23+6d14ab2. Pinned by commit so the toolchain is reproducible even
-  # though the branch is mutable.
-  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
+  # github.com/colll78/aiken, reporting v1.1.23+6d14ab2. Pinned by commit
+  # rather than branch so the toolchain is reproducible. This is the exact
+  # commit every published measurement was taken on: full `aiken check` in
+  # 735.9 s / 819 tests / 0 failures on 4 vCPU, which is the GitHub-hosted
+  # runner size for this public repo. Do not advance this pin without
+  # re-running that measurement — the branch tip (2a78108c) is one clippy
+  # commit ahead and was never validated.
+  AIKEN_FORK_REV: 6d14ab2dd63633db6a7d626c4ad129d87c0f108c
 
 jobs:
   build:
@@ -45,15 +49,27 @@ jobs:
         working-directory: .
         run: |
           rustup toolchain install 1.94.1 --profile minimal
+          # --locked honours the fork's committed Cargo.lock; without it cargo
+          # re-resolves every dependency on each cache miss, so an unrelated
+          # crate release could redden this branch or silently change the
+          # toolchain the measurement above was taken on.
           cargo +1.94.1 install \
             --git https://github.com/colll78/aiken \
             --rev "$AIKEN_FORK_REV" \
+            --locked \
             --root ~/.aiken-fork \
             aiken
-      - name: Record both compiler identities
+      # Assert, don't just print: a cache poisoned by an earlier rev or a
+      # setup-aiken resolution drift must fail here rather than silently
+      # changing which compiler produced the result.
+      - name: Assert both compiler identities
         run: |
-          aiken --version
-          ~/.aiken-fork/bin/aiken --version
+          set -euo pipefail
+          released="$(aiken --version)"
+          patched="$(~/.aiken-fork/bin/aiken --version)"
+          printf 'released: %s\npatched:  %s\n' "$released" "$patched"
+          test "$released" = "aiken v1.1.22+39d6b04"
+          test "$patched" = "aiken v1.1.23+${AIKEN_FORK_REV:0:7}"
       - name: Verify generated user events witness prefix
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
         working-directory: .
