@@ -2935,3 +2935,65 @@ completion and fix every actionable finding additively until all six checks
 pass on the checkpoint's stated scope. Surface the B′ subsumption
 disposition and the Aiken-CI duration finding to the owner in the PR
 description. Keep the PR draft and the overarching Goal in progress.
+
+## Superseding overlay-handoff and Aiken-CI unblock checkpoint (2026-08-02)
+
+Owner-directed: execute the ownership handoff, wire CI to the patched Aiken
+fork, and drive PR #471 toward merge readiness. Covers `ba9f3e7c..HEAD`.
+
+- **OVERLAY-SEMANTICS closed.** Under amended §3 invariant 14 the source
+  task's stage-one redeemer feasibility checkpoint
+  (`cek-data-traverse-v1.ak`, `redeemer-item-proof-v1.ak`, provenance Codex
+  task `019f8ca7`, cursor revision 81) is committed, and the five previously
+  withdrawn dependents re-track: the normalization test module and the four
+  stage-one executor validators. The committed tree had compiled standalone
+  but was not semantically self-consistent — the TypeScript dispute tooling
+  was written against these overlay semantics, so the honest-operator
+  soundness test trapped at verify-source against any committed-tree
+  blueprint. Committed-tree builds now carry those semantics.
+- **IG1 cascade rebound** against the regenerated blueprint (376 validators,
+  sha256 `277b6457…`, pinned v1.1.22): `fault-proof.test.ts` distinct applied
+  step hashes 120 → 121, and 22 applied semantic-resolver hashes in
+  `validation-resolver-v1.test.ak` recomputed from the production builder.
+  Indices 21 and 22 of `script_source_resolvers` previously shared one hash
+  and now differ, so index 22 was replaced positionally rather than by value.
+- **`accepts_l2_source_event_missing_trace_fault` fixed — a FIXTURE defect,
+  not a production defect.** It passed `h32_a`/`h32_b` (raw 32-byte hashes)
+  to `native_l2_compact_cbor`, which decodes both arguments as canonical
+  preimage CBOR; the definite-array header decoder aborted on
+  `expect tag == 154` before the fault under test was reached. Every other
+  caller passes `encode_{input,output}_preimage` output. Now passes with no
+  traces, so it genuinely exercises the fault.
+- **Aiken CI unblocked.** Full `aiken check` measured **10m24s / 819 tests**
+  with the patched fork versus **485 minutes** under pinned v1.1.22 — a 47×
+  reduction that turns a job which exceeded the 360-minute ceiling into one
+  with ~35× headroom. The workflow now splits by role: released v1.1.22
+  remains the authority for `aiken fmt`, `aiken build`, and every applied
+  validator hash in release evidence, while the fork executes only the test
+  suite. **Measured basis for that split:** on an identical tree the fork
+  yields byte-identical ABI (same 376 titles, `definitions` equal) but 16
+  differing validator bodies and hashes, including
+  `script_sources_non_output_semantic_v1` and `scheduler.spend`. Adopting it
+  as the build compiler would change deployed script identity and re-trigger
+  the IG1 cascade — recorded below as an open owner decision, not taken here.
+  The fork is pinned by commit `2a78108c`, not branch, and cached on it.
+- **Formatter gate unified.** The exclusion for the two protected lib files
+  and `protected-format-checkpoint.sha256` are removed now that the
+  checkpoint is integrated; every tracked `.ak` file is held to one standard.
+
+Verification at this checkpoint: pinned v1.1.22 `aiken check --skip-tests`
+0 errors; SDK 124/124 (24 files); midgard-validation 223/223 (45 files);
+midgard-core 305/305; all six evidence gates exit 0 (closure, closure
+self-test, capability reconciliation, dependency map, verification plan,
+format registry in incomplete mode).
+
+Open owner decision: whether to promote the fork to the build/authority
+compiler. Doing so changes 16 applied validator hashes and therefore
+deployment identity. Pre-launch there is no compatibility contract
+(AGENTS.md), so it is permissible, but it is a protocol-identity change and
+the fork currently has no tagged release, which weighs against pinning
+production to a mutable branch under the auditability North Star.
+
+Left open and unchanged: 122 registry promotions, formal release journeys,
+target-testnet acceptance, remaining §12 criteria, closure manifest
+completion, and §15. Draft PR #471 stays draft.
