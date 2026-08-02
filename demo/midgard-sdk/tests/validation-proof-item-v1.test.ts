@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveValidationProofItemPublicationV1,
   minimumLovelaceForValidationProofItemPublicationV1,
-  type ValidationTraceDisputeFaultProofContracts,
   ValidationProofItemDatumV1,
+  type ValidationTraceDisputeFaultProofContracts,
 } from "../src/fraud-proof/index.js";
 
 const makeCollectionProof = (itemCbor: string) => {

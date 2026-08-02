@@ -5,13 +5,14 @@
  * authenticated L1 observations, not operator-private REST/DB/files except
  * labelled diagnostics."
  */
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  ADMITTED_EVIDENCE_TRUST_CLASSES_V1,
   admitAuthenticatedL1ObservationV1,
   admitAuthenticatedStateQueueHeaderObservationV1,
   admitEvidenceProvenanceV1,
+  ADMITTED_EVIDENCE_TRUST_CLASSES_V1,
   assertNativeInclusionRootAuthenticatedV1,
   assertSecurityGradeEvidenceV1,
   type AuthenticatedStateQueueHeaderObservationV1,
@@ -27,7 +28,6 @@ import {
   PROHIBITED_EVIDENCE_TRUST_CLASSES_V1,
   type TransactionsInclusionRootAuthenticationV1,
 } from "@/index.js";
-import { Effect } from "effect";
 
 const h = (byte: number, size: number): string =>
   byte.toString(16).padStart(2, "0").repeat(size);

@@ -56,14 +56,6 @@
           ]
         },
         {
-          "id": "static-format-registry",
-          "cwd": ".",
-          "argv": [
-            "node",
-            "demo/scripts/verify-canonical-v1-format-registry.mjs"
-          ]
-        },
-        {
           "id": "static-goal-policy",
           "cwd": ".",
           "argv": [
@@ -424,6 +416,14 @@
       "dependsOn": [],
       "stateChanging": false,
       "commands": [
+        {
+          "id": "evidence-format-registry-strict",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/verify-canonical-v1-format-registry.mjs"
+          ]
+        },
         {
           "id": "release-evidence",
           "cwd": ".",

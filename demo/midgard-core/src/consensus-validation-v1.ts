@@ -4,8 +4,8 @@ import {
   verifyMidgardBoundedCollectionItemProofV1,
 } from "./bounded-collection-v1.js";
 import {
-  buildMidgardBoundedItemV1,
   buildMidgardBoundedItemChunkProofV1,
+  buildMidgardBoundedItemV1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
   verifyMidgardBoundedItemChunkProofV1,
