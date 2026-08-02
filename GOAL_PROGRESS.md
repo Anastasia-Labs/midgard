@@ -2997,3 +2997,51 @@ production to a mutable branch under the auditability North Star.
 Left open and unchanged: 122 registry promotions, formal release journeys,
 target-testnet acceptance, remaining §12 criteria, closure manifest
 completion, and §15. Draft PR #471 stays draft.
+
+## Superseding Aiken-CI fork validation (2026-08-02)
+
+First CI evidence that the Aiken workflow can complete. Run 30763493968 at
+head `83474ccd`:
+
+| Step | Result |
+| --- | --- |
+| Cache patched Aiken test compiler | success (miss, 1 s) |
+| Build patched Aiken test compiler | success, **4 m 05 s** (19:30:10 → 19:34:15) |
+| Assert both compiler identities | success — both exact version strings matched |
+| Run normalized Aiken auto-formatter check | success, exclusion-free over all tracked `.ak` |
+| Compile Aiken code with the released compiler | success (`--skip-tests`, pinned v1.1.22) |
+
+Every step preceding the test run passed, including the two that are new
+this checkpoint. The fork build cost 4 m 05 s on a cache **miss** — well
+under the ~15 min estimated — and is cached on commit `6d14ab2d`, so
+subsequent runs pay ~1 s.
+
+Three sibling checks are green at the same head: Evidence Integrity, Docs
+Site, and Latex.
+
+Independent 4-vCPU measurement (the GitHub-hosted runner size for this
+public repo) recorded for the record, since the earlier 10 m 24 s figure was
+taken on 32 cores and does not transfer on its own: **735.9 s, 819 tests, 0
+failures**, peak RSS ~645 MB against 16 GB. Only ~18% slower than 32 cores
+because this workload is compile-bound rather than test-bound. Stock
+v1.1.22 was independently confirmed to hit the ceiling — job 91500521832 ran
+13:10:52Z → 19:10:45Z and was cancelled at exactly 6 h without finishing.
+
+Two corrections landed before this run, both found by an independent review
+lane rather than by CI:
+
+- `AIKEN_FORK_REV` had pinned the branch tip `2a78108c` while every
+  published measurement was taken on `6d14ab2`. The tip is one
+  machine-applied clippy commit ahead with no logic change, but a compiler
+  pin that gates a merge must be the validated commit. Now pinned to
+  `6d14ab2d`.
+- The compiler-identity step only printed, so a poisoned cache or a
+  setup-aiken drift would have passed silently — it would not have caught
+  the pin defect above. It now asserts both exact version strings, and both
+  assertions were verified against the real binaries before commit.
+  `cargo install` also gained `--locked`.
+
+Also confirmed by that lane and worth recording, because it removes two
+hypothetical risks from adopting the fork: fork and stock `aiken fmt`
+produce byte-identical output across every tracked `.ak` file, and neither
+compiler modifies `aiken.lock`. The adoption risk is confined to codegen.
