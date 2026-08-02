@@ -12,6 +12,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The format-registry verifier asserts that
+          # registry.authority.sourceRevision is an ancestor of HEAD and that
+          # the recorded source path existed at that revision. Both need real
+          # history; actions/checkout defaults to a depth-1 shallow clone, in
+          # which every such check fails regardless of correctness.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
           version: 9
