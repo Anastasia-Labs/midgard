@@ -3073,3 +3073,69 @@ state is therefore ~11–12 minutes per run against a 360-minute ceiling.
 Sibling checks green at the same head: Evidence Integrity, Docs Site, Latex.
 
 Still open at this checkpoint: one fault-proofs test — see the next row.
+
+## Superseding honest-operator diagnosis and OVERLAY-SEMANTICS correction (2026-08-02)
+
+### The failing test is an ENVIRONMENT defect, not a protocol or fixture defect
+
+`cannot be defeated when the operator honestly accepted a valid transaction
+carrying a non-empty ledger delta` — the sole failure in midgard-fault-proofs
+(229/230) — is a wasm memory-ceiling exhaustion in the test harness. Two
+independent lanes, briefed with opposing hypotheses, converged on the same
+mechanism with separate reproductions.
+
+`EvaluatorError: unreachable` is a raw WebAssembly trap, **not** a Plutus
+script failure. `@lucid-evolution/uplc` instantiates its wasm module once per
+Node process and leaks linear memory on every `eval_phase_two_raw` call
+(measured 1.5–3.7 MB/call depending on window; monotone, never reclaimed).
+The wasm32 ceiling on this Node 22.22.2 build is ~4,080 MB, i.e. roughly a
+thousand evaluations per process. Vitest isolates per FILE, so all ~18
+emulator journeys in the 7,586-line `submit-init-emulator.test.ts` share one
+worker and together exceed it. The failing test is simply the **last `it` in
+the file**, so it eats the trap.
+
+Evidence that settles it:
+
+- **Causal reproduction.** Pinning the uplc wasm memory at 4.000 GiB before
+  the run — touching no repo file, fixture or blueprint — reproduces the
+  byte-identical signature, differing only in which stage name appears.
+- **Isolation passes.** The test alone passes 5/5 (177–210 s each). Its whole
+  three-test describe passes 3/3 with peak wasm 1,036 MB against ~4,080 MB.
+- **`unreachable` cannot be a validator rejection.** Aiken's real failure text
+  is "the validator crashed / exited prematurely" plus traces; a bare
+  `unreachable` with `cause: {}` is the JSON shape of a
+  `WebAssembly.RuntimeError`.
+- **It explains the drift.** The trap moved from `source` to `open` after the
+  blueprint grew 368 → 376 validators. Only a resource ceiling slides earlier
+  when per-evaluation memory rises; a semantic change would either fix the
+  test or leave the trap where it was.
+
+Fix in progress: split the file so each heavy journey gets its own worker,
+lift shared helpers to `tests/support/`, add an `afterEach` heap guard that
+fails with an actionable message near the ceiling, and cap
+`poolOptions.forks.maxForks`. No assertion, fixture or validator is changed —
+all three are correct.
+
+### CORRECTION: the earlier OVERLAY-SEMANTICS conclusion was not supported
+
+The 2026-08-01 row concluding that the committed tree was "not semantically
+self-consistent" rested on a **confounded A/B**: it compared a FULL-SUITE run
+against the committed-tree blueprint with an ISOLATED single-selector run
+against the overlay blueprint. Two variables moved at once — blueprint *and*
+isolation — and the isolated control against the committed-tree blueprint was
+never run. The isolated run passed because it was isolated, not because of
+the blueprint. That row's conclusion is withdrawn.
+
+Consequences, stated plainly:
+
+- The overlay handoff (`49c49000`) remains correct and stands, but on its own
+  authority — the owner directed it under amended invariant 14. It should not
+  be credited with closing OVERLAY-SEMANTICS, and the claim in the
+  overlay-handoff checkpoint above that "committed-tree builds now carry those
+  semantics" is unproven by that experiment.
+- The IG1 cascade, the 368 → 376 blueprint change and the rebound pins are all
+  still valid and independently verified; they follow from re-tracking the
+  validators, not from the withdrawn diagnosis.
+- Method note worth keeping: change one variable per comparison. This is the
+  second time in this program a confounded comparison produced a confident
+  wrong conclusion.
