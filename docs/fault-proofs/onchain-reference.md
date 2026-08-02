@@ -144,7 +144,7 @@ Environment selected via `aiken build --env <name>`
 paths, `fault-proof.ak`, or `fault-proof-catalogue.ak`. Among step validators, only
 invalid-range step-01 and zero-input step-02 have direct Aiken tests; the remaining
 machinery is exercised indirectly by the TypeScript emulator suite
-(`demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts`), which is CI-wired
+(`demo/midgard-fault-proofs/tests/submit-init-emulator*.test.ts`), which is CI-wired
 through the fault-proof package job ([`testing-status.md`](testing-status.md)).
 
 Build/test: `aiken fmt --check && aiken check` in `onchain/aiken` (CI:
