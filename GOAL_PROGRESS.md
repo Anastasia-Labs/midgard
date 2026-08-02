@@ -3185,3 +3185,446 @@ disagrees with itself at one commit cannot support a merge decision, so it
 needs stabilising — most likely the same treatment applied here: bound the
 per-worker work, or raise the specific budget that loses under CI load
 rather than widening anything semantic.
+
+
+## Superseding CI diagnosis at `dc54f715` (2026-08-02)
+
+Both remaining red checks are now diagnosed from CI output rather than
+guessed at. The repaired reporter in `dc54f715` is what made this possible:
+the previous run printed a bare filename because vitest sets a file-level
+`message` of `""` for assertion-level failures and `??` does not catch the
+empty string, so the only evidence of the cause was being discarded.
+
+### CORRECTION: the watcher failure is not a load-sensitive flake
+
+The entry immediately above hypothesised a timing/budget flake and proposed
+raising a budget. That hypothesis was wrong and the proposed remedy would
+have been the wrong action. The actual failure is a durable-store integrity
+rejection:
+
+```
+settlement-indexer.test.ts > ... records an authenticated W16 recovery when
+W13 removed no indexed settlement change:
+WatcherDurableStoreError: Watcher durable store rejected: broken_reference
+  at $.protocolUtxos.e053ac91...#0
+  at bundle (tests/settlement-indexer.test.ts:1321:27)
+  at tests/settlement-indexer.test.ts:5275:22
+```
+
+`broken_reference` is a soundness assertion firing, not a timeout. The gate
+runs `--pool=forks --no-file-parallelism --maxWorkers=1`, so file and test
+order are deterministic and no cross-file interference is possible; the
+nondeterminism is therefore internal to the test or to the code under test.
+No budget may be raised and no retry added until it is known whether the
+fixture constructs a reference it never registers, or the watcher genuinely
+drops/mis-keys a protocol UTxO. The second case would be a real defect that
+this gate is correctly catching, and loosening it would have buried it.
+
+### The fault-proofs split was insufficient, and the heap guard proved it
+
+`Midgard Node CI` failed 3/230 in `submit-init-emulator.test.ts`: two
+journeys (`'direct'` and `'reference'` resolve) timed out at 300 000 ms, and
+`removes a non-tail double-spend block with multiple successors in queue
+order` tripped the new guard at **3269 MiB** of the ~4096 MiB wasm32
+ceiling. Total step duration 3370 s on a 2-core runner.
+
+This is the guard working exactly as intended: instead of a bare
+`EvaluatorError: unreachable`, CI now names the mechanism and forbids the
+tempting wrong fix. The earlier split (7,586 → 4,172 lines, 3 tests lifted
+out) reduced accumulation but not enough — the remaining 13 journeys still
+exhaust the per-file wasm heap on CI. The remedy is further per-file
+distribution, not assertion weakening.
+
+### Authority hold in `GOAL_ASSIST.md` resolved (provenance, invariant 14)
+
+`GOAL_ASSIST.md` is untracked by design (`PROTECTED_EXTERNAL_UNTRACKED` in
+`canonical-v1-goal-closure-v1.json`) and is another task's coordination
+surface. Its lead entry held *registry completion, every push/PR checkpoint,
+and final acceptance* pending reconciliation of a `GOAL_SPEC.md` line/SHA
+divergence. That hold is now obsolete on every premise and has been marked
+RESOLVED in place rather than deleted:
+
+- the delta it flagged as unauthorised (§4.4's seven push checkpoints, the
+  mirrored PR description, the unconditional journey rerun) was removed on
+  direct owner instruction, and §4.4 carries the signed
+  `Owner amendment 2026-08-01` note recording it;
+- both recorded hashes describe files that no longer exist — `GOAL_SPEC.md`
+  is now 1,466 lines after further owner-directed rewrites;
+- the mechanism is now spec-prohibited: §0 and §4.1 forbid recording SHA-256
+  of tracked files and route change detection through
+  `git log -p -- GOAL_SPEC.md`, so a hash-enforced hold contradicts the
+  specification it claims to protect.
+
+Edited under invariant 14, which permits integrating another task's in-flight
+work where it advances the Goal and requires the provenance recorded here.
+The original concern is retained verbatim in summary so it stays auditable.
+Draft status is unchanged and remains governed solely by the `AC-*` gate.
+
+
+## Superseding watcher `broken_reference` root cause (2026-08-02)
+
+The intermittent `Evidence Integrity CI` failure is closed. It was a
+**fixture defect**; the production durable-store guard was correct and was
+right to fire.
+
+`tests/settlement-indexer.test.ts` selected "the newest chain point" with
+`chainPoints.at(-1)`. That collection is canonicalized by CONTENT HASH, not
+chain order — `src/durable-store.ts:1355` sorts on `entry.chainPointId` —
+so positional access returns the lexicographically largest hash, which is an
+effectively uniform draw over the 14 chain points (blockNos 1-6) in that
+store. The fixture then asked the journal to mark a settlement UTxO created
+at blockNo 4 as spent at that arbitrary point. When the draw landed below
+blockNo 4, the store correctly refused to record a UTxO spent before it
+existed (`src/durable-store.ts:1512-1522`), which is the only fail site
+whose path is exactly `$.protocolUtxos.<outRef>` with no field suffix —
+matching the CI string precisely.
+
+A dangling `protocolUtxos` reference is NOT reachable from any real caller:
+`settlement-indexer.ts:2787-2792` and the state-queue, user-event and
+proof-thread indexers all pass the chain point of the block being indexed,
+and a UTxO cannot be consumed in a block earlier than the one that created
+it. The guard is a genuine soundness check with no production defect behind
+it. Loosening it — the remedy the earlier "flaky gate" entry proposed —
+would have suppressed a correct assertion to hide a broken fixture.
+
+Nondeterminism source: every `chainPointId` derives from a module-global
+`serial` counter, so any change to how many `bundle()` calls precede this
+test re-rolls all downstream hashes and re-rolls the ~15-30% draw. The test
+was never stable; it passed on whatever hash layout the tree happened to
+produce. That is why it could disagree with itself across two CI events at
+one commit.
+
+Reproduction was done with ONE variable and a control, deliberately avoiding
+the confound that invalidated the earlier OVERLAY-SEMANTICS conclusion: the
+command was held fixed and only a seed bump varied. Control passes; sweeping
+0-19 produced failures at 2, 3 and 16 with the identical outRef. After the
+fix, 40/40 seeds pass and 20 consecutive single-file runs pass.
+
+Fix: select the newest point by `(blockNo, slot)`, mirroring the store's own
+`compareChainPointOrder` (`src/durable-store.ts:494-506`). Both premises were
+re-verified independently at the parent before acceptance. No retry, no
+loosened validation, no skip, no renamed test.
+
+### Follow-up recorded, not fixed
+
+`tests/settlement-indexer.test.ts:1196` and `:1201` sort with
+`(l, r) => BigInt(l.blockNo) < BigInt(r.blockNo) ? 1 : -1`, which returns
+`-1` for ties in both directions and is therefore non-transitive. A 200k-case
+randomized stress of V8's sort showed index 0 is always a max-`blockNo`
+element, so it does not currently produce a wrong answer, but the tie-break
+among equal-`blockNo` points is arbitrary and hash-order dependent. Left
+unchanged because correcting it shifts slots for every bundle in the file and
+cascades through many assertions; it should be fixed deliberately, not as a
+side effect. Separately, `sortRecords` (`src/durable-store.ts:1346`) uses
+`localeCompare` for canonical ordering; on lowercase hex it agrees with
+ASCII, but an ICU-independent comparison is the safer canonicalization
+primitive.
+
+### Sweep for the same defect class
+
+The failure mode generalizes to "positional access on a collection that
+`canonicalizeRecords` sorts by content hash". `src/durable-store.ts:1349-1372`
+canonicalizes `l1Observations`, `chainPoints`, `protocolUtxos`,
+`spentProtocolUtxos`, `daProofInputs`, `reconstructedStates`, `decisions`,
+`faults`, `submissions` and `confirmations` this way, so index `0`/`at(-1)`
+on any of them carries no ordering meaning.
+
+Swept every `.at(-1)` and positional index in the watcher tests. The bulk of
+them — `activeEntryDigests`, `history`, `auditHistory`, `transitionHistory` —
+are NOT in that set: `activeEntryDigests` is append-built and truncated by
+`slice(0, indexOf(...) + 1)` (`src/user-event-indexer.ts:3664-3677`), so it is
+genuinely chronological and `at(-1)` is correct there. No further live defect
+found.
+
+One latent case recorded, deliberately not changed:
+`tests/durable-store.test.ts:401` takes `source.chainPoints[0]` as a
+`spentAtChainPointId`, which is the lexicographically smallest content hash
+rather than any chain-ordered point. It is stable today only because
+`populatedStore()` is built from fixed `hex32` constants rather than the
+serial counter that made `settlement-indexer` roll. Adding a chain point to
+that fixture, or changing one constant, could silently select a point before
+the UTxO's creation and trip the same guard. Left alone because it is
+deterministic at this revision and rewriting a passing fixture mid-session
+risks conflicting with concurrent lanes; it should be made explicit when that
+file is next touched.
+
+
+## Superseding RF-021 disposition: DORMANT-BUT-NEEDED, blocked on a real
+## parameter cycle (2026-08-02)
+
+### Correction: six validators are dormant, not seven
+
+`script_sources_stage_one_redeemer_semantic_v1` IS wired — registered as
+`scriptSourcesStageOneRedeemer` at
+`demo/midgard-sdk/src/fraud-proof/contracts.ts:200-201`, inside the
+script-sources resolver group. An earlier statement in this session that
+"all seven are dormant" was wrong. The correct picture is that six dormant
+validators are an in-progress REPLACEMENT for the seventh, which is wired.
+
+### The replacement is necessary, and this is measured, not asserted
+
+Compiled `.main.spend` sizes from `onchain/aiken/plutus.json`, verified at
+the parent:
+
+| validator | bytes | vs 16,384 |
+| --- | --- | --- |
+| `..._stage_one_redeemer_semantic_v1` (wired) | 84,789 | 5.2x OVER |
+| traversal-normalizer | 11,886 | fits |
+| finalize-frame-executor | 9,335 | fits |
+| envelope | 8,516 | fits |
+| fold-map-executor | 7,577 | fits |
+| execution-settlement | 5,843 | fits |
+| outer-normalizer | 4,169 | fits |
+
+The wired validator cannot be published in any Cardano transaction. The six
+dormant ones all fit. Invariant 13 (no dormant surface) and invariant 14
+(finish necessary work) therefore point the same way, and RF-057's earlier
+"delete the unwired validators" recommendation is superseded — deleting them
+would discard the only working fix for an undeployable validator.
+
+The problem is not confined to this family: **42 of 151 spend handlers
+exceed 16,384 bytes**, totalling 1.63 MB of excess, topped by `cek_v1` at
+141,805 bytes. That is precisely the P1 gate in
+`docs/exec-plans/cardano-capability-proof-completion.md:193` ("every
+parameterized hub/control validator fits a real 16,384-byte Cardano
+publication transaction with margin"), which is currently failing 42 times.
+This family is the pilot for the decomposition pattern that closes it.
+
+### The family cannot be built as written: the parameter graph is cyclic
+
+Verified directly from the validator signatures and from the blueprint's
+`parameters` arrays — these are compile-time validator parameters, not datum
+fields, so no offchain application order can resolve them:
+
+- envelope takes traversal, outer, fold-map, finalize-frame and settlement;
+- traversal takes envelope;
+- outer takes envelope, traversal;
+- fold-map takes envelope, traversal, outer, settlement;
+- finalize-frame takes envelope, traversal, outer, settlement;
+- settlement takes envelope, traversal, outer, fold-map, finalize-frame
+  (plus award, which points outside the family and is acyclic).
+
+That is 16 backward intra-family parameters across five validators. A
+parameterized script's hash is a function of its applied parameters, so this
+has no fixed point: `applyParamsToScript` over this family fails today
+regardless of build order. Note that fold-map<->settlement and
+finalize-frame<->settlement are cyclic independently of how
+`input_script_hash` is derived, so the cycle does not rest on any single
+disputed premise.
+
+This was established by adversarial review: three independent lenses were
+tasked with REFUTING the cycle; one refuted, two confirmed, and the
+adjudicator ruled CYCLE REAL BUT ESCAPABLE at high confidence after
+re-opening the sources. The parent then re-verified the decisive
+parameter lists directly rather than accepting any agent's citation. One
+cited line number in the original report was off by one
+(`singular-utxo-indexer.ak:37`, not `:36`); the mechanism was correct.
+
+### Revised estimate: M, not XL
+
+The cycle is not intrinsic. The datum already carries every hash,
+`envelope_commitment_v1` already binds them tamper-evidently, and the route
+checks already run against datum fields. The shipped twin
+`canonical-decode-item-source-v1.ak:19-21` takes only its successor and roots
+custody at the catalogue via `computation-thread.ak:103`, which is the
+established pattern in this repo. Removing the backward parameters and
+re-anchoring on thread-NFT custody restores a DAG.
+
+### OPEN OWNER DECISION — do not proceed without it
+
+Whether removing the backward parameters is SECURITY-NEUTRAL is unresolved.
+Those parameters currently give each stage a compile-time-pinned assertion
+about who produced its datum. Replacing that with inductive thread-NFT
+custody is sound only if no other catalogue-listed chain can route a thread
+token to a normalizer or executor address — a cross-family confusion
+property that has not been exhaustively checked. It is possible the backward
+parameters were added deliberately to foreclose exactly that risk, in which
+case the fix must supply an alternative anchor (a registry reference input,
+or a `deployment_id`-derived binder) rather than simply deleting them. The
+family is dormant with no design note and no offchain instantiation, so there
+is no recorded intent to recover; this decision has to be made fresh.
+
+RF-021 remains open for Goal closure and does not block this checkpoint.
+
+
+## Superseding format-registry calibration and an integrity hole (2026-08-02)
+
+A pilot promoted family C (C06, C07, C08) with evidence that was actually
+run. Registry UNVERIFIED count 121 -> 118. Strict mode now reports exactly
+118 errors, all of the form `auditStatus must be PASS`, none naming the three
+promoted rows. But the pilot's real value is what it found about the gate.
+
+### The registry gate is substring-only
+
+`demo/scripts/verify-canonical-v1-format-registry.mjs:659-687` reduces
+`sourceEvidence`, `positiveEvidence`, `rejectionEvidence`,
+`crossLanguageEvidence.tests` and each form's encoders/parsers to one check:
+the cited file must exist, and the cited string must be a literal substring
+of it. The verifier never executes a test, cannot tell a `testName` from a
+comment, and cannot distinguish a passing test from a failing, skipped, or
+deleted one. Everything that makes a row genuine evidence rather than
+genuine-looking text rests on auditor honesty, not on the gate.
+
+Secondary weaknesses: `classification: "external"` legally removes the
+rejection-evidence requirement; `notApplicableReason` is unbounded free text
+and is the cheapest legal discharge of cross-language evidence; the five
+prose columns are never compared against the Markdown authority and C07/C08
+already carry drifted text. What IS strongly enforced: ID set and order must
+match the Markdown, `authority.sourceRevision` must be an ancestor of HEAD
+with a byte-equal `git show`, `forbiddenActivePatterns` must deep-equal the
+hardcoded table, and `obsoleteBranchEvidence` scans genuinely execute.
+
+### PROVEN CONSEQUENCE: C04 is a green row backed by a red test
+
+`demo/midgard-node/tests/deployment-manifest-v1.test.ts >
+"accepts the sole exact authenticated V1 manifest"` is cited in C04's
+`positiveEvidence` while C04 sits at PASS. Run at the parent on committed
+code, it FAILS:
+
+```
+Expected: "58fa9eb4d72b7d840ef6900126e09c96935bf11b24ba6622e2d49847c701fd2c"
+Received: "68c2a3ae3ccefddb060ed90c28d8a9d6c4b395611760012ce8fe5c91e446a50a"
+```
+
+The golden constant is unchanged from `aea8c617` through HEAD, so the
+expectation did not move — the COMPUTED manifest digest did, and the golden
+was never rebound. The likely origin is the 2026-07-30 merge `baa7e937`
+("reconcile origin b81221e1 into acceleration branch"), which rewrote this
+test file by 113 insertions / 67 deletions. Whether the drift is legitimate
+schema evolution (pre-launch has no compatibility contract, so rebinding the
+golden would be correct) or a genuine regression in manifest content MUST be
+determined before touching the constant. Rebinding a golden to whatever the
+code now emits, without establishing that the new value is right, is exactly
+the hollowing-out invariant 14 forbids.
+
+**Action required: re-audit the 11 pre-existing PASS rows by actually running
+their cited tests.** C04 must be reopened. `deployment-run-state.test.ts >
+"refuses conflicting manifest and run-state auth policies"` also fails.
+
+### This failure is currently MASKED in CI
+
+`.github/workflows/midgard-node-ci.yml:137-138` runs `Test Midgard node`
+AFTER `Build, typecheck, and test fault-proof tooling` at `:113-114`. Because
+fault-proofs is currently red, the node suite never executes. The moment the
+fault-proofs split lands, these node failures become the next CI blocker.
+They are queued, not absent.
+
+### Measured promotion cost, and why family C flatters the estimate
+
+Family C was unusually easy: all three rows already had purpose-built passing
+tests (zero new test authoring), two are off-chain-only so cross-language was
+discharged by prose, one is `classification: "external"` so rejection
+evidence was not even required, and all its tests are 1-4 s unit tests.
+Marginal cost there was ~2.3 min and ~11k unique tokens per row on top of a
+fixed ~33k-token onboarding per agent context.
+
+Extrapolated to the remaining 118: roughly **1.6-2.2M unique tokens and
+12-20 hours of agent wall clock**, plus ~400k tokens for the ~12
+re-onboardings no single context can avoid. The distribution is uneven —
+~6-8 `delete` rows are cheaper than C; families A and P are comparable;
+N/K/S/V (~52 rows) are 2.5-4x because their `requiredEvidence` demands real
+cross-language TS/Aiken vector agreement, which requires locating AND
+executing an Aiken test and manually confirming both sides use the same
+vectors; L (18) is worst, citing emulator round-trips. **Aiken wall clock
+dominates, not tokens**: targeted single-test runs cost 2-4 min each and do
+not parallelize on one machine because of the shared build directory, giving
+2.5-7.5 hours of pure Aiken execution.
+
+### Silent false-green in evidence collection
+
+`aiken check -m "ledger_state"` and `-m "midgard/ledger-state"` both collect
+ZERO tests and exit 0; only an exact test name works. Two vitest runs
+likewise exited 0 having run nothing, because the package filter was wrong
+(`midgard-node`, not `@al-ft/midgard-node`). At 118 rows this is the single
+most likely way fabricated evidence enters the registry, and it fails in the
+dangerous direction. Any promotion campaign must assert a non-zero collected
+count, not merely a zero exit code.
+
+### Rows that cannot be closed by effort alone
+
+Some rows require the node to EMIT a value rather than parse one, and are
+gated on validator-hash-bound L1 release evidence that does not exist
+pre-deployment (C05 says so explicitly; C02 cites a test named "fails closed
+until validator-hash-bound L1 release evidence is compiled in"). Those are
+testnet/owner blockers, not cost. The P-family post-launch-seam row needs an
+owner ruling on whether it can be PASS before launch at all.
+
+
+## Superseding fault-proofs heap split completed (2026-08-02)
+
+### CORRECTION: "passes locally" was a marginal pass, not health
+
+An earlier entry recorded the pre-split package at 230/230 locally with exit
+0, and this session treated that as evidence the failure was CI-specific.
+That reading was wrong. An instrumented baseline of the same pre-split tree
+reached **3274 MiB** on `removes a non-tail double-spend block with multiple
+successors in queue order` — against CI's **3269 MiB** on the identical test.
+Local and CI heap growth are 0.15% apart, so local measurement is directly
+predictive and the earlier green run was straddling the 3000 MiB guard by
+luck, exactly like the watcher fixture. "Passes locally" should not have been
+offered as evidence of health for a test whose failure mode is cumulative
+memory growth.
+
+### New mechanism: the leak is a QUADRATIC SLOWDOWN, not only a ceiling
+
+`memory.grow` copies the entire linear memory, so every evaluation gets
+slower as the heap grows. Same tests, pre-split (heap 1.9-3.3 GiB) versus
+post-split (fresh heap per file):
+
+| test | pre-split | post-split | speedup |
+| --- | --- | --- | --- |
+| coordinates non-tail removal | 51.1 s | 2.66 s | 19x |
+| rejects non-tail removal without a lease | 74.2 s | 2.18 s | 34x |
+| lease failed, refetch fails | 76.7 s | 2.17 s | 35x |
+| lease failed, preparation fails | 85.9 s | 2.29 s | 38x |
+| removes a tail double-spend block | 96.8 s | 2.32 s | 42x |
+| removes a non-tail double-spend, multiple successors | 163.2 s | 3.24 s | 50x |
+
+This single mechanism explains BOTH CI symptoms — the heap-guard trip and the
+two 300 s timeouts. They were never independent failures, and no timeout
+budget was ever the real problem.
+
+### Isolation confirmed, so per-file splitting is the correct remedy
+
+The package script is `vitest run --pool=forks --no-file-parallelism` and
+`isolate` is unset, so it defaults to true: with `pool=forks` every test file
+gets its own forked child and therefore a fresh wasm heap. Proven from the
+heap trace, where each file starts at 1 MiB. `--no-file-parallelism` only
+serialises files; it does not share heap.
+
+### Result
+
+15 tests redistributed by theme across six files, with 31 shared helper
+declarations (1605 lines) lifted verbatim into
+`tests/support/submit-init-emulator-fixtures.ts`. The
+`describe("fault-proof emulator integration")` wrapper is retained in every
+file so full test names are byte-identical to HEAD, which matters because CI
+evidence keys off them.
+
+Worst-file peak heap is now **1042 MiB — 35% of the guard, 25% of the
+ceiling**, down from 3274 MiB (109% of the guard). Measurement instrumentation
+was removed; `uplc-heap-guard.ts` is byte-identical to HEAD.
+
+Coverage held at 230 tests. Exactly one timeout changed: the `it.each`
+dispute block 300 s -> 600 s, justified by a measured ≥2.0x 2-core CI factor
+against a local 137.6/142.4 s, which projects ~290-300 s post-split — no
+margin at 300 s. Sibling dispute journeys already sit at 600/600/900 s, so
+300 s was the outlier, not the new value.
+
+### The `test:tx-prep:emulator` coverage regression is repaired
+
+`demo/package.json:18` pinned the named regression script to the single file
+`tests/submit-init-emulator.test.ts`. The first split silently reduced what
+that script ran from 18 tests to 15 — a coverage regression introduced in
+this session and not noticed at the time. It now runs the whole family via a
+`tests/submit-init-emulator` prefix filter, empirically confirmed at 6 files /
+18 tests / exit 0. `--pool=forks --no-file-parallelism` was added so the
+script inherits the package's heap discipline; previously it used vitest
+defaults (threads pool, file parallelism), which after a split would run
+several heavy emulator files concurrently on a 2-core box.
+
+Four coverage-asserting documents were repointed to the six-file family.
+Dated checkpoint transcripts and audit-journal entries were deliberately left
+alone: they are historical records, not coverage claims, and rewriting them
+would falsify the record. No gate script asserts per-file existence or counts,
+which was checked rather than assumed.

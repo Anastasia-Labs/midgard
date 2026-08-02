@@ -1,7 +1,17 @@
 name: Evidence Integrity CI
 
 on:
+  # Scoped to `main` to match every other workflow in this repository
+  # (aiken-ci, docs-site-ci, midgard-node-ci, latex-ci). An unrestricted
+  # `push:` made this the only gate that ran TWICE per pull-request commit —
+  # once for the push event and once for the pull_request event. Beyond
+  # doubling the cost of the most expensive gate, the duplicate run reported
+  # two independent samples under one check name, so a nondeterministic test
+  # surfaced as "CI disagreeing with itself at the same commit" and cost real
+  # time to attribute. Pull requests remain fully gated by the
+  # `pull_request` trigger below.
   push:
+    branches: ["main"]
   pull_request:
 
 permissions:
