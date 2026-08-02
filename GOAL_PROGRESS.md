@@ -3139,3 +3139,49 @@ Consequences, stated plainly:
 - Method note worth keeping: change one variable per comparison. This is the
   second time in this program a confounded comparison produced a confident
   wrong conclusion.
+
+## Superseding fault-proofs green and heap-guard checkpoint (2026-08-02)
+
+`midgard-fault-proofs` passes **230/230 across 19 files, exit 0** — the whole
+package green for the first time. The previously failing
+`cannot be defeated when the operator honestly accepted a valid transaction
+carrying a non-empty ledger delta` passes in the extracted file (3/3).
+
+The remedy was the one the diagnosis predicted: bound UPLC evaluations per
+worker. `submit-init-emulator.test.ts` went 7,586 → 4,172 lines, the
+three-test soundness describe moved to
+`submit-init-emulator-soundness.test.ts`, and the shared helpers were lifted
+to `tests/support/submit-init-emulator-shared.ts`. 13 + 3 = 16 `it`s are
+preserved; no assertion, fixture or validator changed.
+
+`tests/support/uplc-heap-guard.ts` is now a vitest `setupFile`. It fails a
+file approaching the wasm32 ceiling with a message naming the real cause and
+the real remedy — split the file, never weaken an assertion. It is inert
+below 3 GiB and swallows its own errors so it can never itself break a run.
+Its purpose is precisely to stop this class being re-diagnosed as an on-chain
+rejection, which cost this program one confident wrong conclusion already.
+
+### Correction to my own 8f509bea change
+
+That commit claimed to raise the mint/burn `it.each` budget from 15 s to
+60 s. It did not. An `it.each` takes its timeout as the THIRD argument to the
+returned call, and I misread the closing brace: the `}, 60_000)` I edited
+belonged to the following test, while the `it.each` timeout sat unchanged at
+`15_000,`. Both mint and burn consequently timed out at 15 s in CI run
+30764762152. Now genuinely raised, the misattributed comment moved off the
+neighbouring test, and the two remaining budgets in the same timing class
+(`replays signed burn`, `bounded mint proofs` — 6.4–6.6 s locally on 32
+cores, ~14–15 s on a 2-core runner) raised as well rather than left to flake
+later. midgard-validation passes 24/24 after the change.
+
+### Open: a flaky gate
+
+Evidence Integrity CI passed on the `pull_request` event and failed on the
+`push` event **at the same commit** `83a9eb17`, in
+`Verify canonical watcher focused-test evidence` ("Vitest exited with status
+1"). The same gate passes locally at 14 files / 356/356. This is the
+load-sensitive watcher flake already noted in this ledger. A gate that
+disagrees with itself at one commit cannot support a merge decision, so it
+needs stabilising — most likely the same treatment applied here: bound the
+per-worker work, or raise the specific budget that loses under CI load
+rather than widening anything semantic.
