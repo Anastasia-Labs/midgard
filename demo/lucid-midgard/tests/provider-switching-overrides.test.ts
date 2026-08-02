@@ -79,7 +79,10 @@ const protocolInfo = (
     minFeeA: opts.minFeeA ?? 0n,
     minFeeB: opts.minFeeB ?? 0n,
   },
-  submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+  submissionLimits: {
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+  },
   validation: {
     strictnessProfile: "phase1_midgard",
     localValidationIsAuthoritative: false,

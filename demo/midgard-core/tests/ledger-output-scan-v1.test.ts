@@ -23,10 +23,7 @@ const outputFixture = (): {
   readonly cbor: Buffer;
 } => {
   const output: MidgardTxOutput = {
-    address: Buffer.concat([
-      Buffer.from([0x78]),
-      Buffer.alloc(28, 0x11),
-    ]),
+    address: Buffer.concat([Buffer.from([0x78]), Buffer.alloc(28, 0x11)]),
     value: {
       lovelace: 8_000_000n,
       assets: new Map([
@@ -39,9 +36,7 @@ const outputFixture = (): {
         ],
       ]),
     },
-    datum: decodeMidgardDatum(
-      Buffer.from(Data.to("ab".repeat(5_000)), "hex"),
-    ),
+    datum: decodeMidgardDatum(Buffer.from(Data.to("ab".repeat(5_000)), "hex")),
     script_ref: {
       language: "PlutusV3",
       scriptBytes: Buffer.alloc(6_000, 0x6b),
@@ -70,9 +65,7 @@ describe("ledger output scan V1", () => {
 
     expect(fixture.cbor.length).toBeGreaterThan(8_192);
     expect(fixture.cbor.length).toBeLessThan(16_384);
-    expect(terminal.stage).toBe(
-      MidgardLedgerOutputScanStagesV1.Terminal,
-    );
+    expect(terminal.stage).toBe(MidgardLedgerOutputScanStagesV1.Terminal);
     expect(terminal.cursor).toBe(fixture.cbor.length);
     expect(terminal.address).toStrictEqual(fixture.output.address);
     expect(terminal.lovelace).toBe(8_000_000n);
@@ -81,16 +74,12 @@ describe("ledger output scan V1", () => {
     );
     expect(terminal.assetFrontier.count).toBe(2);
     expect(
-      commitMidgardValidationMerkleFrontierV1(
-        terminal.assetFrontier,
-      ),
+      commitMidgardValidationMerkleFrontierV1(terminal.assetFrontier),
     ).toStrictEqual(expectedAssets.commitment);
     expect(terminal.datumLength).toBe(fixture.output.datum!.cbor.length);
     expect(terminal.referenceScriptLanguage).toBe(3);
     expect(terminal.referenceScriptLength).toBe(6_000);
-    expect(
-      terminal.cursor - terminal.referenceScriptItemOffset,
-    ).toBe(
+    expect(terminal.cursor - terminal.referenceScriptItemOffset).toBe(
       encodeMidgardVersionedScript(fixture.output.script_ref!).length,
     );
     expect(
@@ -102,15 +91,11 @@ describe("ledger output scan V1", () => {
       trace.steps
         .filter(
           ({ control }) =>
-            control.stage ===
-              MidgardLedgerOutputScanStagesV1.DatumPayload ||
+            control.stage === MidgardLedgerOutputScanStagesV1.DatumPayload ||
             control.stage ===
               MidgardLedgerOutputScanStagesV1.ReferenceScriptPayload,
         )
-        .some(
-          ({ next }) =>
-            next.cursor > 0 && next.cursor % 4_095 === 0,
-        ),
+        .some(({ next }) => next.cursor > 0 && next.cursor % 4_095 === 0),
     ).toBe(true);
   });
 
@@ -151,8 +136,8 @@ describe("ledger output scan V1", () => {
       "hex",
     );
 
-    expect(() =>
-      buildMidgardLedgerOutputScanTraceV1(emptyInlineDatum),
-    ).toThrow(/canonical Plutus Data|failed closed/);
+    expect(() => buildMidgardLedgerOutputScanTraceV1(emptyInlineDatum)).toThrow(
+      /canonical Plutus Data|failed closed/,
+    );
   });
 });

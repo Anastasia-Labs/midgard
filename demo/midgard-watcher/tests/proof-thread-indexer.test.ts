@@ -2600,7 +2600,6 @@ describe("W17 public proof/computation-thread indexer", () => {
         reasonCodes: ["malformed_public_context"],
       });
     }
-
   });
 
   it("binds the proof lifecycle catalogue and computation policy to signed W02 commitments", () => {

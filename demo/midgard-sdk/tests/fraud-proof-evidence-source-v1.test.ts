@@ -193,13 +193,25 @@ describe("canonical evidence provenance", () => {
   it("computes bundle grade as the weakest contributing record", () => {
     expect(
       combineEvidenceGradeV1([
-        { trustClass: "authenticated_cardano_l1", sourceId: "a", grade: "security" },
-        { trustClass: "public_or_permissionless_da", sourceId: "b", grade: "security" },
+        {
+          trustClass: "authenticated_cardano_l1",
+          sourceId: "a",
+          grade: "security",
+        },
+        {
+          trustClass: "public_or_permissionless_da",
+          sourceId: "b",
+          grade: "security",
+        },
       ]),
     ).toBe("security");
     expect(
       combineEvidenceGradeV1([
-        { trustClass: "authenticated_cardano_l1", sourceId: "a", grade: "security" },
+        {
+          trustClass: "authenticated_cardano_l1",
+          sourceId: "a",
+          grade: "security",
+        },
         {
           trustClass: "operator_private_file",
           sourceId: "b",
@@ -320,9 +332,9 @@ describe("native inclusion-root gate", () => {
 
   it("rejects an unauthenticated native-compact root with both roots in the code", async () => {
     const value = authentication(false);
-    expect(await code(() => assertNativeInclusionRootAuthenticatedV1(value))).toBe(
-      "native_inclusion_root_unauthenticated",
-    );
+    expect(
+      await code(() => assertNativeInclusionRootAuthenticatedV1(value)),
+    ).toBe("native_inclusion_root_unauthenticated");
     try {
       assertNativeInclusionRootAuthenticatedV1(value);
     } catch (error) {

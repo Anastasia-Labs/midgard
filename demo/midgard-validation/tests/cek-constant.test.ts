@@ -18,8 +18,7 @@ import {
   parseMidgardCekConstantTypeV1,
 } from "../src/cek-constant.js";
 
-const hex = (bytes: Uint8Array): string =>
-  Buffer.from(bytes).toString("hex");
+const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 const constantRoot = (constant: UPLCConst): string => {
   const canonical = encodeMidgardCekCanonicalConstantV1(constant);
@@ -33,12 +32,8 @@ const constantRoot = (constant: UPLCConst): string => {
 
 describe("V1 semantic CEK constants", () => {
   it("matches the Aiken integer, boolean, and list vectors", () => {
-    const integer = encodeMidgardCekCanonicalConstantV1(
-      Constant.int(41),
-    );
-    const boolean = encodeMidgardCekCanonicalConstantV1(
-      Constant.bool(true),
-    );
+    const integer = encodeMidgardCekCanonicalConstantV1(Constant.int(41));
+    const boolean = encodeMidgardCekCanonicalConstantV1(Constant.bool(true));
     const integers = encodeMidgardCekCanonicalConstantV1(
       Constant.listOf(constT.int)([1n, 2n]),
     );
@@ -57,9 +52,7 @@ describe("V1 semantic CEK constants", () => {
 
     expect(hex(integers.typeCbor)).toBe("9f0500ff");
     expect(hex(integers.payloadCbor)).toBe("9f0102ff");
-    expect(
-      constantRoot(Constant.listOf(constT.int)([1n, 2n])),
-    ).toBe(
+    expect(constantRoot(Constant.listOf(constT.int)([1n, 2n]))).toBe(
       "455063152b571b24bc7ba2e98d14120484eea1fe9a4b7210b639fb413f27f0ba",
     );
   });
@@ -79,9 +72,9 @@ describe("V1 semantic CEK constants", () => {
       type: constT.bls12_381_G1_element,
       value: undefined,
     } as unknown as UPLCConst;
-    expect(() =>
-      encodeMidgardCekCanonicalConstantV1(sourceBls),
-    ).toThrow(/cannot contain encoded BLS constants/u);
+    expect(() => encodeMidgardCekCanonicalConstantV1(sourceBls)).toThrow(
+      /cannot contain encoded BLS constants/u,
+    );
   });
 
   it("decodes and hashes the exact canonical L1 witness", () => {

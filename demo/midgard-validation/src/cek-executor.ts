@@ -117,10 +117,7 @@ const exactState = (
 
 const exactComputeSuccessor = (
   pre: MidgardCekMachineStateV1,
-  update: Omit<
-    Parameters<typeof exactState>[1],
-    "cpuDelta" | "memoryDelta"
-  >,
+  update: Omit<Parameters<typeof exactState>[1], "cpuDelta" | "memoryDelta">,
 ): MidgardCekMachineStateV1 =>
   exactState(pre, {
     ...update,
@@ -188,17 +185,12 @@ export const buildMidgardCekExecutionGraphV1 = (
   contextCbor: Uint8Array,
 ): MidgardCekExecutionGraphV1 => {
   const source = [...sourceMaterial];
-  const verifiedSource = verifyMidgardCekProgramMaterialV1(
-    envelope,
-    source,
-    { allowUnreachable: true },
-  );
+  const verifiedSource = verifyMidgardCekProgramMaterialV1(envelope, source, {
+    allowUnreachable: true,
+  });
 
   const material = new Map<string, MidgardCekProgramMaterialEntryV1>();
-  const constantWitnesses = new Map<
-    string,
-    MidgardCekConstantValueWitnessV1
-  >(
+  const constantWitnesses = new Map<string, MidgardCekConstantValueWitnessV1>(
     verifiedSource.constants.map((constant) => {
       if (constant.payloadCbor.length <= 9_215) {
         return [
@@ -247,7 +239,9 @@ export const buildMidgardCekExecutionGraphV1 = (
         prior.kind !== exact.kind ||
         !Buffer.from(prior.preimage).equals(exact.preimage)
       ) {
-        throw new Error("CEK execution graph contains a material hash collision");
+        throw new Error(
+          "CEK execution graph contains a material hash collision",
+        );
       }
       return;
     }
@@ -330,10 +324,7 @@ export const buildMidgardCekExecutionGraphV1 = (
     payloadRoot: contextSemantic.root,
     payloadLength: contextSemantic.cborLength,
     semanticRoot: contextSemantic.root,
-    memory: midgardCekConstantMemorySizeV1(
-      context.type,
-      contextPayload,
-    ),
+    memory: midgardCekConstantMemorySizeV1(context.type, contextPayload),
   });
   constantWitnesses.set(
     rootHex(contextValueRoot),
@@ -346,10 +337,7 @@ export const buildMidgardCekExecutionGraphV1 = (
           cborLength: contextSemantic.cborLength,
           memory: contextSemantic.memory,
         }),
-        memory: midgardCekConstantMemorySizeV1(
-          context.type,
-          contextPayload,
-        ),
+        memory: midgardCekConstantMemorySizeV1(context.type, contextPayload),
       }),
     }),
   );
@@ -389,14 +377,8 @@ class StructuralExecutorV1 {
   >();
   private readonly sequences = new Map<string, SequenceNodeV1>();
   private readonly dataNodes = new Map<string, MidgardCekDataNodeV1>();
-  private readonly dataLists = new Map<
-    string,
-    MidgardCekDataListNodeV1
-  >();
-  private readonly dataPairs = new Map<
-    string,
-    MidgardCekDataPairNodeV1
-  >();
+  private readonly dataLists = new Map<string, MidgardCekDataListNodeV1>();
+  private readonly dataPairs = new Map<string, MidgardCekDataPairNodeV1>();
   private readonly blobs = new Map<
     string,
     ReturnType<typeof decodeMidgardCekProgramBlobPreimageV1>
@@ -415,10 +397,7 @@ class StructuralExecutorV1 {
     root: Bytes,
     material: Iterable<MidgardCekProgramMaterialEntryV1>,
     executionIndex: bigint,
-    constantWitnesses: ReadonlyMap<
-      string,
-      MidgardCekConstantValueWitnessV1
-    >,
+    constantWitnesses: ReadonlyMap<string, MidgardCekConstantValueWitnessV1>,
   ) {
     for (const entry of material) {
       const exact = decodeMidgardCekProgramMaterialEntryV1(
@@ -452,30 +431,15 @@ class StructuralExecutorV1 {
           decodeMidgardCekProgramSequencePreimageV1(exact.preimage),
         );
       } else if (exact.kind === "dataNode") {
-        this.dataNodes.set(
-          key,
-          decodeMidgardCekDataNodeV1(exact.preimage),
-        );
+        this.dataNodes.set(key, decodeMidgardCekDataNodeV1(exact.preimage));
       } else if (exact.kind === "dataList") {
-        this.dataLists.set(
-          key,
-          decodeMidgardCekDataListNodeV1(exact.preimage),
-        );
+        this.dataLists.set(key, decodeMidgardCekDataListNodeV1(exact.preimage));
       } else if (exact.kind === "dataPair") {
-        this.dataPairs.set(
-          key,
-          decodeMidgardCekDataPairNodeV1(exact.preimage),
-        );
-      } else if (
-        exact.kind === "blobChunk" ||
-        exact.kind === "blobBranch"
-      ) {
+        this.dataPairs.set(key, decodeMidgardCekDataPairNodeV1(exact.preimage));
+      } else if (exact.kind === "blobChunk" || exact.kind === "blobBranch") {
         this.blobs.set(
           key,
-          decodeMidgardCekProgramBlobPreimageV1(
-            exact.kind,
-            exact.preimage,
-          ),
+          decodeMidgardCekProgramBlobPreimageV1(exact.kind, exact.preimage),
         );
       }
     }
@@ -611,9 +575,7 @@ class StructuralExecutorV1 {
     return root;
   }
 
-  private addDirectResult(
-    result: MidgardCekDirectValueWitnessV1,
-  ): Bytes {
+  private addDirectResult(result: MidgardCekDirectValueWitnessV1): Bytes {
     const resultRoot = hashMidgardCekDirectValueWitnessV1(result);
     if (result.kind === "constant") {
       const witness = result.witness;
@@ -625,10 +587,7 @@ class StructuralExecutorV1 {
         payloadRoot: semantic.root,
         payloadLength: semantic.cborLength,
         semanticRoot: semantic.root,
-        memory: midgardCekConstantMemorySizeV1(
-          decoded.type,
-          decoded.payload,
-        ),
+        memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
       } as const;
       if (!sameBytes(this.addValue(node), resultRoot)) {
         throw new Error("CEK builtin result constant root mismatch");
@@ -648,9 +607,7 @@ class StructuralExecutorV1 {
         memory: witness.memory,
       } as const;
       if (!sameBytes(this.addValue(node), resultRoot)) {
-        throw new Error(
-          "CEK semantic builtin result constant root mismatch",
-        );
+        throw new Error("CEK semantic builtin result constant root mismatch");
       }
       this.constants.set(rootHex(resultRoot), result);
     } else if (result.kind === "blsMillerLoop") {
@@ -717,10 +674,7 @@ class StructuralExecutorV1 {
     return values;
   }
 
-  private dataPairValues(
-    root: Bytes,
-    count: bigint,
-  ): DataPair<Data, Data>[] {
+  private dataPairValues(root: Bytes, count: bigint): DataPair<Data, Data>[] {
     const values: DataPair<Data, Data>[] = [];
     let cursor = Buffer.from(root);
     let remaining = count;
@@ -732,10 +686,7 @@ class StructuralExecutorV1 {
         );
       }
       values.push(
-        new DataPair(
-          this.dataValue(node.key),
-          this.dataValue(node.value),
-        ),
+        new DataPair(this.dataValue(node.key), this.dataValue(node.value)),
       );
       cursor = Buffer.from(node.tail);
       remaining -= 1n;
@@ -749,9 +700,7 @@ class StructuralExecutorV1 {
   private dataValue(root: Bytes): Data {
     const node = this.dataNodes.get(rootHex(root));
     if (node === undefined) {
-      throw new Error(
-        `missing authenticated CEK Data node ${rootHex(root)}`,
-      );
+      throw new Error(`missing authenticated CEK Data node ${rootHex(root)}`);
     }
     let value: Data;
     switch (node.kind) {
@@ -765,10 +714,7 @@ class StructuralExecutorV1 {
         const constructor = dataFromCbor(
           this.blobBytes(node.constructorCborRoot),
         );
-        if (
-          !(constructor instanceof DataI) ||
-          constructor.int <= 127n
-        ) {
+        if (!(constructor instanceof DataI) || constructor.int <= 127n) {
           throw new Error("CEK large Data constructor is not canonical");
         }
         value = new DataConstr(
@@ -851,8 +797,7 @@ class StructuralExecutorV1 {
     const typeCbor = encodeMidgardCekConstantTypeCborV1(type);
     const payloadCbor = encodeMidgardCekPlutusDataV1(payload);
     const result: MidgardCekDirectValueWitnessV1 =
-      payloadCbor.length <=
-      MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
+      payloadCbor.length <= MIDGARD_CEK_MAX_DIRECT_CONSTANT_PAYLOAD_BYTES_V1
         ? {
             kind: "constant",
             witness: {
@@ -1235,10 +1180,7 @@ class StructuralExecutorV1 {
     tail: Bytes,
   ): MidgardCekMachineStateV1 {
     const required = midgardCekBuiltinArgumentCount(builtin.tag);
-    if (
-      builtin.forcesRemaining !== 0n ||
-      builtin.argumentsCount >= required
-    ) {
+    if (builtin.forcesRemaining !== 0n || builtin.argumentsCount >= required) {
       throw new Error(
         `invalid CEK builtin application state tag=${builtin.tag.toString()} forces=${builtin.forcesRemaining.toString()} arguments=${builtin.argumentsCount.toString()} required=${required.toString()}`,
       );
@@ -1320,9 +1262,7 @@ class StructuralExecutorV1 {
     while (remaining > 0n) {
       const node = this.sequence(cursor, remaining);
       const witness = this.runtimeValueWitness(node.head);
-      if (
-        !sameBytes(hashMidgardCekRuntimeValueWitnessV1(witness), node.head)
-      ) {
+      if (!sameBytes(hashMidgardCekRuntimeValueWitnessV1(witness), node.head)) {
         throw new Error("CEK runtime argument witness root mismatch");
       }
       reversed.push(witness);
@@ -1348,8 +1288,7 @@ class StructuralExecutorV1 {
             root: sourceNode.itemsRoot,
             length: sourceNode.itemsCount,
             payload:
-              sourceNode.cborLength -
-              (sourceNode.itemsCount === 0n ? 1n : 2n),
+              sourceNode.cborLength - (sourceNode.itemsCount === 0n ? 1n : 2n),
             memory: sourceNode.memory - 4n,
           }
         : tag === 43n && sourceNode.kind === "map"
@@ -1453,8 +1392,7 @@ class StructuralExecutorV1 {
       }
       resultPayload = new DataList(
         sourcePayload.map.map(
-          (entry) =>
-            new DataConstr(0n, [entry.fst, entry.snd]),
+          (entry) => new DataConstr(0n, [entry.fst, entry.snd]),
         ),
       );
       resultType = {
@@ -1467,9 +1405,7 @@ class StructuralExecutorV1 {
       };
     }
     const added = this.addSemanticResult(resultType, resultPayload);
-    const sourceNode = this.dataNodes.get(
-      rootHex(source.witness.payload.root),
-    );
+    const sourceNode = this.dataNodes.get(rootHex(source.witness.payload.root));
     const resultNode = this.dataNodes.get(rootHex(added.tree.root));
     if (sourceNode === undefined || resultNode === undefined) {
       throw new Error("CEK map conversion is missing its top Data nodes");
@@ -1533,15 +1469,13 @@ class StructuralExecutorV1 {
       ...control,
       sourceRoot: Buffer.from(sourceTail),
       sourceRemaining: control.sourceRemaining - 1n,
-      sourcePayloadCborLength:
-        control.sourcePayloadCborLength - sourcePayload,
+      sourcePayloadCborLength: control.sourcePayloadCborLength - sourcePayload,
       sourceMemory: control.sourceMemory - sourceMemory,
       destinationRoot: Buffer.from(destinationTail),
       destinationRemaining: control.destinationRemaining - 1n,
       destinationPayloadCborLength:
         control.destinationPayloadCborLength - destinationPayload,
-      destinationMemory:
-        control.destinationMemory - destinationMemory,
+      destinationMemory: control.destinationMemory - destinationMemory,
     });
   }
 
@@ -1562,13 +1496,9 @@ class StructuralExecutorV1 {
     }
     const first = this.dataLists.get(rootHex(pair.fieldsRoot));
     const second =
-      first === undefined
-        ? undefined
-        : this.dataLists.get(rootHex(first.tail));
+      first === undefined ? undefined : this.dataLists.get(rootHex(first.tail));
     const key =
-      first === undefined
-        ? undefined
-        : this.dataNodes.get(rootHex(first.head));
+      first === undefined ? undefined : this.dataNodes.get(rootHex(first.head));
     const value =
       second === undefined
         ? undefined
@@ -1607,9 +1537,7 @@ class StructuralExecutorV1 {
     }
     if (control.tag === 38n) {
       const source = this.dataLists.get(rootHex(control.sourceRoot));
-      const destination = this.dataPairs.get(
-        rootHex(control.destinationRoot),
-      );
+      const destination = this.dataPairs.get(rootHex(control.destinationRoot));
       if (source === undefined || destination === undefined) {
         throw new Error("CEK list-to-map control material is missing");
       }
@@ -1644,9 +1572,7 @@ class StructuralExecutorV1 {
       return;
     }
     const source = this.dataPairs.get(rootHex(control.sourceRoot));
-    const destination = this.dataLists.get(
-      rootHex(control.destinationRoot),
-    );
+    const destination = this.dataLists.get(rootHex(control.destinationRoot));
     if (source === undefined || destination === undefined) {
       throw new Error("CEK map-to-list control material is missing");
     }
@@ -1680,9 +1606,7 @@ class StructuralExecutorV1 {
     );
   }
 
-  private resolvedConstant(
-    value: MidgardCekDirectValueWitnessV1,
-  ): {
+  private resolvedConstant(value: MidgardCekDirectValueWitnessV1): {
     readonly type: MidgardCekConstantTypeV1;
     readonly payload: Data;
     readonly tree: ReturnType<typeof commitMidgardCekDataTreeV1>;
@@ -1698,9 +1622,7 @@ class StructuralExecutorV1 {
       const tree = commitMidgardCekDataTreeV1(payload);
       this.installSemanticTree(tree);
       return {
-        type: decodeMidgardCekConstantTypeCborV1(
-          value.witness.typeCbor,
-        ),
+        type: decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor),
         payload,
         tree,
       };
@@ -1728,17 +1650,11 @@ class StructuralExecutorV1 {
           ? node.itemsRoot
           : null;
     const pairRoot =
-      node.kind === "map" && node.entriesCount > 0n
-        ? node.entriesRoot
-        : null;
+      node.kind === "map" && node.entriesCount > 0n ? node.entriesRoot : null;
     const list =
-      listRoot === null
-        ? null
-        : this.dataLists.get(rootHex(listRoot));
+      listRoot === null ? null : this.dataLists.get(rootHex(listRoot));
     const pair =
-      pairRoot === null
-        ? null
-        : this.dataPairs.get(rootHex(pairRoot));
+      pairRoot === null ? null : this.dataPairs.get(rootHex(pairRoot));
     if (
       (listRoot !== null && list === undefined) ||
       (pairRoot !== null && pair === undefined)
@@ -1833,12 +1749,7 @@ class StructuralExecutorV1 {
         source.payload instanceof DataList &&
         source.payload.list.length === 0
       ) {
-        this.recordSemanticFailure(
-          pre,
-          tag,
-          arguments_,
-          source,
-        );
+        this.recordSemanticFailure(pre, tag, arguments_, source);
         return;
       }
     }
@@ -1858,12 +1769,7 @@ class StructuralExecutorV1 {
                 ? !(source.payload instanceof DataI)
                 : !(source.payload instanceof DataB);
       if (wrongVariant) {
-        this.recordSemanticFailure(
-          pre,
-          tag,
-          arguments_,
-          source,
-        );
+        this.recordSemanticFailure(pre, tag, arguments_, source);
         return;
       }
     }
@@ -1899,28 +1805,16 @@ class StructuralExecutorV1 {
       ) {
         throw new Error("CEK semantic pair material is incomplete");
       }
-      const selectedType =
-        tag === 29n ? source.type.first : source.type.second;
+      const selectedType = tag === 29n ? source.type.first : source.type.second;
       const selectedPayload =
-        tag === 29n
-          ? source.payload.fields[0]!
-          : source.payload.fields[1]!;
-      const added = this.addSemanticResult(
-        selectedType,
-        selectedPayload,
-      );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node, firstNode, secondNode],
-          listNodes: [firstLink, secondLink],
-          pairNodes: [],
-          scalarPreimages: [],
-        },
-      );
+        tag === 29n ? source.payload.fields[0]! : source.payload.fields[1]!;
+      const added = this.addSemanticResult(selectedType, selectedPayload);
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node, firstNode, secondNode],
+        listNodes: [firstLink, secondLink],
+        pairNodes: [],
+        scalarPreimages: [],
+      });
       return;
     }
     if (tag >= 31n && tag <= 35n) {
@@ -1935,21 +1829,13 @@ class StructuralExecutorV1 {
       const top = this.topSemanticMaterial(source.tree);
       if (tag === 31n) {
         const result =
-          source.payload.list.length === 0
-            ? arguments_[1]!
-            : arguments_[2]!;
-        this.recordSemanticResult(
-          pre,
-          tag,
-          arguments_,
-          result,
-          {
-            dataNodes: [top.node],
-            listNodes: top.lists,
-            pairNodes: [],
-            scalarPreimages: [],
-          },
-        );
+          source.payload.list.length === 0 ? arguments_[1]! : arguments_[2]!;
+        this.recordSemanticResult(pre, tag, arguments_, result, {
+          dataNodes: [top.node],
+          listNodes: top.lists,
+          pairNodes: [],
+          scalarPreimages: [],
+        });
         return;
       }
       if (tag === 32n) {
@@ -1958,40 +1844,25 @@ class StructuralExecutorV1 {
           source.type,
           new DataList([item.payload, ...source.payload.list]),
         );
-        this.recordSemanticResult(
-          pre,
-          tag,
-          arguments_,
-          added.result,
-          {
-            dataNodes: [top.node],
-            listNodes: top.lists,
-            pairNodes: [],
-            scalarPreimages: [],
-          },
-        );
+        this.recordSemanticResult(pre, tag, arguments_, added.result, {
+          dataNodes: [top.node],
+          listNodes: top.lists,
+          pairNodes: [],
+          scalarPreimages: [],
+        });
         return;
       }
       if (tag === 35n) {
         const added = this.addSemanticResult(
           { kind: "boolean" },
-          new DataConstr(
-            source.payload.list.length === 0 ? 1n : 0n,
-            [],
-          ),
+          new DataConstr(source.payload.list.length === 0 ? 1n : 0n, []),
         );
-        this.recordSemanticResult(
-          pre,
-          tag,
-          arguments_,
-          added.result,
-          {
-            dataNodes: [top.node],
-            listNodes: top.lists,
-            pairNodes: [],
-            scalarPreimages: [],
-          },
-        );
+        this.recordSemanticResult(pre, tag, arguments_, added.result, {
+          dataNodes: [top.node],
+          listNodes: top.lists,
+          pairNodes: [],
+          scalarPreimages: [],
+        });
         return;
       }
       if (source.payload.list.length === 0) {
@@ -2011,29 +1882,17 @@ class StructuralExecutorV1 {
       }
       const added =
         tag === 33n
-          ? this.addSemanticResult(
-              source.type.element,
-              source.payload.list[0]!,
-            )
+          ? this.addSemanticResult(source.type.element, source.payload.list[0]!)
           : this.addSemanticResult(
               source.type,
               new DataList(source.payload.list.slice(1)),
             );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node, headNode],
-          listNodes:
-            tailLink === undefined
-              ? [firstLink]
-              : [firstLink, tailLink],
-          pairNodes: [],
-          scalarPreimages: [],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node, headNode],
+        listNodes: tailLink === undefined ? [firstLink] : [firstLink, tailLink],
+        pairNodes: [],
+        scalarPreimages: [],
+      });
       return;
     }
     if (tag === 36n) {
@@ -2074,8 +1933,7 @@ class StructuralExecutorV1 {
         throw new Error("constrData requires non-negative index and Data list");
       }
       const fieldsTop = this.topSemanticMaterial(fields.tree);
-      const indexIsSemantic =
-        arguments_[0]?.kind === "semanticConstant";
+      const indexIsSemantic = arguments_[0]?.kind === "semanticConstant";
       const indexTop = indexIsSemantic
         ? this.topSemanticMaterial(index.tree)
         : null;
@@ -2083,24 +1941,18 @@ class StructuralExecutorV1 {
         { kind: "data" },
         new DataConstr(index.payload.int, fields.payload.list),
       );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes:
-            indexTop === null
-              ? [fieldsTop.node]
-              : [indexTop.node, fieldsTop.node],
-          listNodes: fieldsTop.lists,
-          pairNodes: [],
-          scalarPreimages:
-            indexTop === null
-              ? []
-              : [encodeMidgardCekPlutusDataV1(index.payload)],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes:
+          indexTop === null
+            ? [fieldsTop.node]
+            : [indexTop.node, fieldsTop.node],
+        listNodes: fieldsTop.lists,
+        pairNodes: [],
+        scalarPreimages:
+          indexTop === null
+            ? []
+            : [encodeMidgardCekPlutusDataV1(index.payload)],
+      });
       return;
     }
     if (tag === 39n) {
@@ -2113,22 +1965,13 @@ class StructuralExecutorV1 {
         throw new Error("listData requires a Data list");
       }
       const top = this.topSemanticMaterial(items.tree);
-      const added = this.addSemanticResult(
-        { kind: "data" },
-        items.payload,
-      );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages: [],
-        },
-      );
+      const added = this.addSemanticResult({ kind: "data" }, items.payload);
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node],
+        listNodes: top.lists,
+        pairNodes: [],
+        scalarPreimages: [],
+      });
       return;
     }
     if (tag === 40n || tag === 45n) {
@@ -2144,20 +1987,12 @@ class StructuralExecutorV1 {
         { kind: tag === 40n ? "data" : "integer" },
         source.payload,
       );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node],
-          listNodes: [],
-          pairNodes: [],
-          scalarPreimages: [
-            encodeMidgardCekPlutusDataV1(source.payload),
-          ],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node],
+        listNodes: [],
+        pairNodes: [],
+        scalarPreimages: [encodeMidgardCekPlutusDataV1(source.payload)],
+      });
       return;
     }
     if (tag === 41n || tag === 46n) {
@@ -2173,18 +2008,12 @@ class StructuralExecutorV1 {
         { kind: tag === 41n ? "data" : "bytes" },
         source.payload,
       );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node],
-          listNodes: [],
-          pairNodes: [],
-          scalarPreimages: [source.payload.bytes.toBuffer()],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node],
+        listNodes: [],
+        pairNodes: [],
+        scalarPreimages: [source.payload.bytes.toBuffer()],
+      });
       return;
     }
     if (tag === 42n) {
@@ -2210,25 +2039,15 @@ class StructuralExecutorV1 {
           new DataList(source.payload.fields),
         ]),
       );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages:
-            source.payload.constr <= 127n
-              ? []
-              : [
-                  encodeMidgardCekPlutusDataV1(
-                    new DataI(source.payload.constr),
-                  ),
-                ],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node],
+        listNodes: top.lists,
+        pairNodes: [],
+        scalarPreimages:
+          source.payload.constr <= 127n
+            ? []
+            : [encodeMidgardCekPlutusDataV1(new DataI(source.payload.constr))],
+      });
       return;
     }
     if (tag === 44n) {
@@ -2247,18 +2066,12 @@ class StructuralExecutorV1 {
         },
         source.payload,
       );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [top.node],
-          listNodes: top.lists,
-          pairNodes: [],
-          scalarPreimages: [],
-        },
-      );
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [top.node],
+        listNodes: top.lists,
+        pairNodes: [],
+        scalarPreimages: [],
+      });
       return;
     }
     if (tag === 47n) {
@@ -2343,22 +2156,13 @@ class StructuralExecutorV1 {
           "serialiseData source exceeds the exact L1 revealed-preimage envelope",
         );
       }
-      const added = this.addSemanticResult(
-        { kind: "bytes" },
-        new DataB(raw),
-      );
-      this.recordSemanticResult(
-        pre,
-        tag,
-        arguments_,
-        added.result,
-        {
-          dataNodes: [],
-          listNodes: [],
-          pairNodes: [],
-          scalarPreimages: [raw],
-        },
-      );
+      const added = this.addSemanticResult({ kind: "bytes" }, new DataB(raw));
+      this.recordSemanticResult(pre, tag, arguments_, added.result, {
+        dataNodes: [],
+        listNodes: [],
+        pairNodes: [],
+        scalarPreimages: [raw],
+      });
       return;
     }
     throw new Error(`unsupported CEK semantic builtin ${tag.toString()}`);
@@ -2424,12 +2228,7 @@ class StructuralExecutorV1 {
     ) {
       const source = this.resolvedConstant(directArguments[0]);
       if (!(source.payload instanceof DataMap)) {
-        this.recordSemanticFailure(
-          pre,
-          builtin.tag,
-          directArguments,
-          source,
-        );
+        this.recordSemanticFailure(pre, builtin.tag, directArguments, source);
         return;
       }
     }
@@ -2437,11 +2236,7 @@ class StructuralExecutorV1 {
       (builtin.tag === 38n || builtin.tag === 43n) &&
       directArguments[0]?.kind === "semanticConstant"
     ) {
-      this.startMapConversion(
-        pre,
-        builtin.tag,
-        directArguments,
-      );
+      this.startMapConversion(pre, builtin.tag, directArguments);
       return;
     }
     if (
@@ -2463,10 +2258,7 @@ class StructuralExecutorV1 {
     if (builtin.tag === 70n) {
       const left = directArguments[0];
       const right = directArguments[1];
-      if (
-        left?.kind !== "blsMillerLoop" ||
-        right?.kind !== "blsMillerLoop"
-      ) {
+      if (left?.kind !== "blsMillerLoop" || right?.kind !== "blsMillerLoop") {
         throw new Error(
           "CEK BLS finalVerify requires two authenticated expression values",
         );
@@ -2655,8 +2447,7 @@ class StructuralExecutorV1 {
           const environment = this.addEnvironment({
             value: Buffer.from(pre.focusRoot) as Hash32,
             tail: Buffer.from(functionValue.environment) as Hash32,
-            length:
-              (summary.kind === "empty" ? 0n : summary.length) + 1n,
+            length: (summary.kind === "empty" ? 0n : summary.length) + 1n,
           });
           this.record(
             {
@@ -2706,8 +2497,7 @@ class StructuralExecutorV1 {
           const environment = this.addEnvironment({
             value: Buffer.from(frame.value) as Hash32,
             tail: Buffer.from(value.environment) as Hash32,
-            length:
-              (summary.kind === "empty" ? 0n : summary.length) + 1n,
+            length: (summary.kind === "empty" ? 0n : summary.length) + 1n,
           });
           this.record(
             {

@@ -129,9 +129,7 @@ const validationOneStepArgumentFromFiles = async (
   }
   if (
     config.validationSemanticResolverIndex !== null &&
-    (!Number.isSafeInteger(
-      config.validationSemanticResolverIndex,
-    ) ||
+    (!Number.isSafeInteger(config.validationSemanticResolverIndex) ||
       config.validationSemanticResolverIndex < 0)
   ) {
     throw new Error(
@@ -150,8 +148,7 @@ const validationOneStepArgumentFromFiles = async (
   ]);
   return {
     resolverIndex: config.validationResolverIndex,
-    semanticResolverIndex:
-      config.validationSemanticResolverIndex,
+    semanticResolverIndex: config.validationSemanticResolverIndex,
     transitionCbor: Buffer.from(transitionCbor, "hex"),
     auxiliaryCbor: Buffer.from(auxiliaryCbor, "hex"),
   };
@@ -267,8 +264,7 @@ export const submitValidationDisputePrepareResolutionFromFiles = async (
 };
 
 export const submitValidationDisputePrepareSelectedFromFiles = async (
-  config: ValidationDisputeFromFilesBase &
-    ValidationOneStepArgumentFromFiles,
+  config: ValidationDisputeFromFilesBase & ValidationOneStepArgumentFromFiles,
 ): Promise<SubmitValidationDisputePrepareSelectedResult> => {
   const [runtime, oneStepArgument] = await Promise.all([
     runtimeFromFiles(config),
@@ -283,23 +279,21 @@ export const submitValidationDisputePrepareSelectedFromFiles = async (
   });
 };
 
-export const submitValidationDisputeSemanticResolutionFromFiles =
-  async (
-    config: ValidationDisputeFromFilesBase &
-      ValidationOneStepArgumentFromFiles,
-  ): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
-    const [runtime, oneStepArgument] = await Promise.all([
-      runtimeFromFiles(config),
-      validationOneStepArgumentFromFiles(config),
-    ]);
-    return await submitValidationDisputeSemanticResolution({
-      ...runtime,
-      network: config.network,
-      threadOutRef: config.threadOutRef,
-      oneStepArgument,
-      awaitConfirmation: config.awaitConfirmation,
-    });
-  };
+export const submitValidationDisputeSemanticResolutionFromFiles = async (
+  config: ValidationDisputeFromFilesBase & ValidationOneStepArgumentFromFiles,
+): Promise<SubmitValidationDisputeSemanticResolutionResult> => {
+  const [runtime, oneStepArgument] = await Promise.all([
+    runtimeFromFiles(config),
+    validationOneStepArgumentFromFiles(config),
+  ]);
+  return await submitValidationDisputeSemanticResolution({
+    ...runtime,
+    network: config.network,
+    threadOutRef: config.threadOutRef,
+    oneStepArgument,
+    awaitConfirmation: config.awaitConfirmation,
+  });
+};
 
 export const submitValidationDisputeAwardFromFiles = async (
   config: ValidationDisputeFromFilesBase,
@@ -313,23 +307,21 @@ export const submitValidationDisputeAwardFromFiles = async (
   });
 };
 
-export const submitValidationDisputeDirectResolutionFromFiles =
-  async (
-    config: ValidationDisputeFromFilesBase &
-      ValidationOneStepArgumentFromFiles,
-  ): Promise<SubmitValidationDisputeDirectResolutionResult> => {
-    const [runtime, oneStepArgument] = await Promise.all([
-      runtimeFromFiles(config),
-      validationOneStepArgumentFromFiles(config),
-    ]);
-    return await submitValidationDisputeDirectResolution({
-      ...runtime,
-      network: config.network,
-      threadOutRef: config.threadOutRef,
-      oneStepArgument,
-      awaitConfirmation: config.awaitConfirmation,
-    });
-  };
+export const submitValidationDisputeDirectResolutionFromFiles = async (
+  config: ValidationDisputeFromFilesBase & ValidationOneStepArgumentFromFiles,
+): Promise<SubmitValidationDisputeDirectResolutionResult> => {
+  const [runtime, oneStepArgument] = await Promise.all([
+    runtimeFromFiles(config),
+    validationOneStepArgumentFromFiles(config),
+  ]);
+  return await submitValidationDisputeDirectResolution({
+    ...runtime,
+    network: config.network,
+    threadOutRef: config.threadOutRef,
+    oneStepArgument,
+    awaitConfirmation: config.awaitConfirmation,
+  });
+};
 
 export const submitValidationDisputeEnterTimeoutFromFiles = async (
   config: ValidationDisputeFromFilesBase,

@@ -23,9 +23,7 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT,
 } from "../src/cek-program.js";
 
-const compile = (
-  version: readonly [number, number, number],
-): Buffer => {
+const compile = (version: readonly [number, number, number]): Buffer => {
   const program = new UPLCProgram(
     [version[0], version[1], version[2]],
     new Application(
@@ -51,9 +49,8 @@ const compileLargeString = (byteLength: number): Buffer => {
 
 const compileError = (): Buffer =>
   Buffer.from(
-    UPLCEncoder.compile(
-      new UPLCProgram([1, 1, 0], new ErrorUPLC()),
-    ).toBuffer().buffer,
+    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], new ErrorUPLC())).toBuffer()
+      .buffer,
   );
 
 const materialShape = (
@@ -106,9 +103,9 @@ describe("canonical V1 CEK programs", () => {
   });
 
   it("fails closed on an unpinned UPLC version without a stale raw-byte cap", () => {
-    expect(() =>
-      buildMidgardCanonicalCekProgramV1(compile([1, 0, 0])),
-    ).toThrow(/only UPLC 1\.1\.0/u);
+    expect(() => buildMidgardCanonicalCekProgramV1(compile([1, 0, 0]))).toThrow(
+      /only UPLC 1\.1\.0/u,
+    );
     const raw = compileLargeString(7_000);
     expect(raw.length).toBeGreaterThan(6_911);
     const canonical = buildMidgardCanonicalCekProgramV1(raw);
@@ -129,17 +126,12 @@ describe("canonical V1 CEK programs", () => {
     // Bare and over-forced Flat both decode to Harmonic's same normalized
     // Builtin AST. Neither is the canonical UPLC 1.1.0 encoding.
     expect(() =>
-      buildMidgardCanonicalCekProgramV1(
-        Buffer.from("0101007430", "hex"),
-      ),
+      buildMidgardCanonicalCekProgramV1(Buffer.from("0101007430", "hex")),
     ).toThrow(/exactly the builtin forces/u);
     expect(() =>
-      buildMidgardCanonicalCekProgramV1(
-        Buffer.from("010100557421", "hex"),
-      ),
+      buildMidgardCanonicalCekProgramV1(Buffer.from("010100557421", "hex")),
     ).toThrow(/exactly the builtin forces/u);
   });
-
 });
 
 describe("canonical V1 script artifacts", () => {
@@ -182,9 +174,7 @@ describe("canonical V1 script artifacts", () => {
       first.canonicalMidgardCredentialScriptHash,
     );
     expect(first.canonicalMaterialSidecarCbor).toEqual(
-      encodeMidgardCekProgramMaterialSidecarV1([
-        ...program.material.values(),
-      ]),
+      encodeMidgardCekProgramMaterialSidecarV1([...program.material.values()]),
     );
     expect(first.canonicalMaterialSidecarCbor).toEqual(
       second.canonicalMaterialSidecarCbor,
@@ -218,9 +208,7 @@ describe("canonical V1 script artifacts", () => {
       sourceRawFlatProgramBytes: source,
     });
 
-    expect(midgard.canonicalMidgardCredentialScript.language).toBe(
-      "MidgardV1",
-    );
+    expect(midgard.canonicalMidgardCredentialScript.language).toBe("MidgardV1");
     expect(midgard.canonicalMidgardCredentialScript.scriptBytes).toEqual(
       plutus.canonicalMidgardCredentialScript.scriptBytes,
     );

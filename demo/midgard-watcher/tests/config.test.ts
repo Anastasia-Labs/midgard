@@ -607,8 +607,7 @@ describe("strict watcher configuration", () => {
     ];
     inputs[0]!.l1.source.authorityNodeId = "Watcher Node";
     inputs[1]!.l1.source.chainSync.socketPath = "/tmp/node.socket";
-    inputs[2]!.l1.source.queryServices[0]!.endpoint =
-      "http://ogmios.example";
+    inputs[2]!.l1.source.queryServices[0]!.endpoint = "http://ogmios.example";
     for (const input of inputs) {
       rejected(
         () => parseWatcherConfig(input),

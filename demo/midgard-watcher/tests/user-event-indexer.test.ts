@@ -2395,14 +2395,8 @@ const postFinalityUserEventRecoveryBundle = (
   const commonRaw = commonBundle.context.l1Observation as Record<string, any>;
   const orphanRaw = orphanBundle.context.l1Observation as Record<string, any>;
   const common = postFinalityRecoveryEvidence(commonRaw, "0");
-  const orphanPending = postFinalityRecoveryEvidence(
-    orphanRaw,
-    "1",
-  );
-  const orphanFinalized = postFinalityRecoveryEvidence(
-    orphanRaw,
-    "2",
-  );
+  const orphanPending = postFinalityRecoveryEvidence(orphanRaw, "1");
+  const orphanFinalized = postFinalityRecoveryEvidence(orphanRaw, "2");
   const replacementRaw = {
     schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
     network: "Preprod",
@@ -2721,7 +2715,6 @@ describe("canonical authenticated user-event indexer", () => {
         providerATransport,
       ]),
     ).toBeNull();
-
   });
 
   it("indexes exact deposit, withdrawal, and forced-order bytes with NFT, datum, witness, provenance, and finality", () => {
@@ -2767,14 +2760,7 @@ describe("canonical authenticated user-event indexer", () => {
     "rejects %s two-step competing forks and oversized W12 evidence",
     () => {
       const initial = blockBundle(
-        [
-          makeEventFixture(
-            "deposit",
-            "d3",
-            0,
-            1_000n,
-          ),
-        ],
+        [makeEventFixture("deposit", "d3", 0, 1_000n)],
         null,
         100,
         1,
@@ -2818,14 +2804,7 @@ describe("canonical authenticated user-event indexer", () => {
       ).toBeNull();
 
       const invalid = blockBundle(
-        [
-          makeEventFixture(
-            "deposit",
-            "d7",
-            0,
-            1_000n,
-          ),
-        ],
+        [makeEventFixture("deposit", "d7", 0, 1_000n)],
         null,
         100,
         1,
@@ -2857,14 +2836,7 @@ describe("canonical authenticated user-event indexer", () => {
       });
 
       const fork = blockBundle(
-        [
-          makeEventFixture(
-            "deposit",
-            "d5",
-            0,
-            1_000n,
-          ),
-        ],
+        [makeEventFixture("deposit", "d5", 0, 1_000n)],
         initial.store,
         102,
         1,
@@ -2880,14 +2852,7 @@ describe("canonical authenticated user-event indexer", () => {
   it.each(["external_providers"] as const)(
     "authenticates %s ancestry across an empty intermediate block",
     () => {
-      const initial = blockBundle(
-        [],
-        null,
-        100,
-        1,
-        "mint",
-        undefined,
-      );
+      const initial = blockBundle([], null, 100, 1, "mint", undefined);
       const state = accepted(null, initial);
       const gap = contextFromTransaction(
         null,
@@ -3489,21 +3454,9 @@ describe("canonical authenticated user-event indexer", () => {
   it.each(["external_providers"] as const)(
     "consumes an exact %s W13 post-finality recovery, prunes the orphan lineage, and resumes idempotently",
     () => {
-      const commonBundle = blockBundle(
-        [],
-        null,
-        1_100,
-        0,
-        "mint",
-        undefined,
-      );
+      const commonBundle = blockBundle([], null, 1_100, 0, "mint", undefined);
       const commonState = accepted(null, commonBundle);
-      const fixture = makeEventFixture(
-        "deposit",
-        "d9",
-        0,
-        1_000n,
-      );
+      const fixture = makeEventFixture("deposit", "d9", 0, 1_000n);
       const orphanBundle = blockBundle(
         [fixture],
         commonBundle.store,

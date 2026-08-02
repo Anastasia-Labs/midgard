@@ -56,15 +56,12 @@ const appendBoundaryCorpusEntryV1 = ({
   readonly sourceRawScriptAuditHash: string | undefined;
   readonly resolvedReferenceUtxos: readonly SDK.DaPayloadEntry[] | undefined;
 }): void => {
-  const corpusPath =
-    process.env.MIDGARD_BOUNDARY_CORPUS_JSONL;
+  const corpusPath = process.env.MIDGARD_BOUNDARY_CORPUS_JSONL;
   if (corpusPath === undefined || corpusLabel === undefined) {
     return;
   }
   if (!isAbsolute(corpusPath)) {
-    throw new Error(
-      "MIDGARD_BOUNDARY_CORPUS_JSONL must be an absolute path",
-    );
+    throw new Error("MIDGARD_BOUNDARY_CORPUS_JSONL must be an absolute path");
   }
   appendFileSync(
     corpusPath,
@@ -114,19 +111,12 @@ export type RetainedDaCanonicalScriptProjectionV1 = {
   readonly sourceRawScriptAuditHash: string;
 };
 
-const sourceValueHex = (
-  source: SDK.L2TransactionSourceV1,
-): string =>
+const sourceValueHex = (source: SDK.L2TransactionSourceV1): string =>
   aikenSerialisedPlutusDataCbor(
-    Data.to(
-      source as never,
-      SDK.L2TransactionSourceV1Schema as never,
-    ),
+    Data.to(source as never, SDK.L2TransactionSourceV1Schema as never),
   );
 
-const forcedSourceValueHex = (
-  source: SDK.L2TransactionSourceV1,
-): string =>
+const forcedSourceValueHex = (source: SDK.L2TransactionSourceV1): string =>
   aikenSerialisedPlutusDataCbor(
     Data.to(
       {
@@ -191,18 +181,10 @@ const makeRetainedPairPayloadV1 = ({
       header,
       utxos: [],
       withdrawals: [],
-      forced_transactions: [
-        [forcedOrderIdHex, forcedSourceValueHex(source)],
-      ],
-      transactions: [
-        [transactionIdHex, sourceValueHex(source)],
-      ],
-      transaction_preimages: [
-        [transactionIdHex, transactionCborHex],
-      ],
-      forced_transaction_preimages: [
-        [forcedOrderIdHex, transactionCborHex],
-      ],
+      forced_transactions: [[forcedOrderIdHex, forcedSourceValueHex(source)]],
+      transactions: [[transactionIdHex, sourceValueHex(source)]],
+      transaction_preimages: [[transactionIdHex, transactionCborHex]],
+      forced_transaction_preimages: [[forcedOrderIdHex, transactionCborHex]],
       cek_program_material: [],
       deposits: [],
       transition_trace: [],
@@ -218,13 +200,9 @@ const requireEntry = (
   keyHex: string,
   fieldName: string,
 ): SDK.DaPayloadEntry => {
-  const matches = entries.filter(
-    ([entryKeyHex]) => entryKeyHex === keyHex,
-  );
+  const matches = entries.filter(([entryKeyHex]) => entryKeyHex === keyHex);
   if (matches.length !== 1) {
-    throw new Error(
-      `${fieldName} must retain exactly one entry for ${keyHex}`,
-    );
+    throw new Error(`${fieldName} must retain exactly one entry for ${keyHex}`);
   }
   return matches[0]!;
 };
@@ -248,8 +226,7 @@ const assertSourceMatches = ({
 }): void => {
   if (
     retainedSource.tx_id !== transactionIdHex ||
-    retainedSource.transaction_commitment !==
-      transactionCommitmentHex ||
+    retainedSource.transaction_commitment !== transactionCommitmentHex ||
     retainedSource.source.compact_cbor !== compactCborHex ||
     retainedSource.source.witness_set_compact_cbor !==
       witnessSetCompactCborHex ||
@@ -277,14 +254,8 @@ const reconstructRetainedClassificationV1 = ({
 }): RetainedClassificationMeasurementV1 => {
   const retainedSource =
     sourceKind === "normal"
-      ? Data.from(
-          sourceEntry[1],
-          SDK.L2TransactionSourceV1Schema as never,
-        )
-      : Data.from(
-          sourceEntry[1],
-          SDK.ForcedInclusionTxV1Schema as never,
-        );
+      ? Data.from(sourceEntry[1], SDK.L2TransactionSourceV1Schema as never)
+      : Data.from(sourceEntry[1], SDK.ForcedInclusionTxV1Schema as never);
   const exactSource = retainedSource as SDK.L2TransactionSourceV1 & {
     readonly operator_validity?: string;
   };
@@ -292,31 +263,21 @@ const reconstructRetainedClassificationV1 = ({
     sourceKind === "forced" &&
     exactSource.operator_validity !== "TxIsValid"
   ) {
-    throw new Error(
-      "forced retained-DA source lost its operator validity",
-    );
+    throw new Error("forced retained-DA source lost its operator validity");
   }
 
-  const retainedCanonicalCbor = Buffer.from(
-    preimageEntry[1],
-    "hex",
+  const retainedCanonicalCbor = Buffer.from(preimageEntry[1], "hex");
+  const retainedTransaction = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    retainedCanonicalCbor,
   );
-  const retainedTransaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      retainedCanonicalCbor,
-    );
-  const retainedTransactionId =
-    computeMidgardNativeTxIdV1(retainedTransaction);
+  const retainedTransactionId = computeMidgardNativeTxIdV1(retainedTransaction);
   const retainedProofSource =
     deriveMidgardNativeTxProofSourceV1(retainedTransaction);
   const retainedTransactionCommitment =
-    computeMidgardNativeTxProofCommitmentV1(
-      retainedProofSource,
-    );
+    computeMidgardNativeTxProofCommitmentV1(retainedProofSource);
   if (
     retainedTransactionId.toString("hex") !== transactionIdHex ||
-    retainedTransactionCommitment.toString("hex") !==
-      transactionCommitmentHex
+    retainedTransactionCommitment.toString("hex") !== transactionCommitmentHex
   ) {
     throw new Error(
       `${sourceKind} retained-DA transaction identity or commitment changed`,
@@ -334,9 +295,7 @@ const reconstructRetainedClassificationV1 = ({
     fieldName: `${sourceKind} retained-DA source`,
   });
 
-  const chunkProofs = deriveMidgardV1TxFieldChunks(
-    retainedCanonicalCbor,
-  );
+  const chunkProofs = deriveMidgardV1TxFieldChunks(retainedCanonicalCbor);
   for (const chunk of chunkProofs) {
     verifyMidgardV1TxFieldChunk({
       transactionId: retainedTransactionId,
@@ -414,17 +373,13 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
       "resolved reference UTxOs are permitted only for maximum-reference-inputs",
     );
   }
-  const exactCanonicalTransactionCbor = Buffer.from(
-    canonicalTransactionCbor,
+  const exactCanonicalTransactionCbor = Buffer.from(canonicalTransactionCbor);
+  const transaction = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+    exactCanonicalTransactionCbor,
   );
-  const transaction =
-    decodeMidgardNativeTxFullV1FromCanonicalCbor(
-      exactCanonicalTransactionCbor,
-    );
   const transactionId = computeMidgardNativeTxIdV1(transaction);
   const source = deriveMidgardNativeTxProofSourceV1(transaction);
-  const transactionCommitment =
-    computeMidgardNativeTxProofCommitmentV1(source);
+  const transactionCommitment = computeMidgardNativeTxProofCommitmentV1(source);
   const transactionIdHex = transactionId.toString("hex");
   const forcedOrderIdHex = Data.to(
     {
@@ -433,8 +388,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
     },
     SDK.OutputReference,
   );
-  const transactionCommitmentHex =
-    transactionCommitment.toString("hex");
+  const transactionCommitmentHex = transactionCommitment.toString("hex");
   appendBoundaryCorpusEntryV1({
     corpusLabel,
     productionAdmission,
@@ -450,8 +404,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
     transaction_commitment: transactionCommitmentHex,
     source: {
       compact_cbor: source.compactCbor.toString("hex"),
-      witness_set_compact_cbor:
-        source.witnessSetCompactCbor.toString("hex"),
+      witness_set_compact_cbor: source.witnessSetCompactCbor.toString("hex"),
       field_preimage_lengths_cbor:
         source.fieldPreimageLengthsCbor.toString("hex"),
     },
@@ -459,27 +412,20 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
   const payload = makeRetainedPairPayloadV1({
     transactionIdHex,
     forcedOrderIdHex,
-    transactionCborHex:
-      exactCanonicalTransactionCbor.toString("hex"),
+    transactionCborHex: exactCanonicalTransactionCbor.toString("hex"),
     source: retainedSource,
   });
   const innerPayloadCbor = SDK.encodeDaPayloadV1(payload);
-  const storedPayloadCbor = await wrapDaPayloadV1(
-    innerPayloadCbor,
-    { mode: "identity" },
-  );
+  const storedPayloadCbor = await wrapDaPayloadV1(innerPayloadCbor, {
+    mode: "identity",
+  });
   const unwrapped = await unwrapDaPayloadV1(storedPayloadCbor, {
-    maxPayloadBytes:
-      MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
+    maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
   });
   if (!unwrapped.innerBytes.equals(innerPayloadCbor)) {
-    throw new Error(
-      "retained DA envelope changed the canonical inner payload",
-    );
+    throw new Error("retained DA envelope changed the canonical inner payload");
   }
-  const decoded = SDK.decodeDaPayloadV1(
-    unwrapped.innerBytes,
-  );
+  const decoded = SDK.decodeDaPayloadV1(unwrapped.innerBytes);
   const normalSourceEntry = requireEntry(
     decoded.block_body.transactions,
     transactionIdHex,
@@ -523,9 +469,7 @@ export const exerciseMidgardRetainedDaCanonicalBoundaryV1 = async ({
     forced,
   };
   if (process.env.MIDGARD_PRINT_RETAINED_DA === "1") {
-    console.info(
-      JSON.stringify({ retainedDaBoundaryV1: measurement }),
-    );
+    console.info(JSON.stringify({ retainedDaBoundaryV1: measurement }));
   }
   return measurement;
 };
@@ -540,10 +484,9 @@ export const exerciseMidgardRetainedDaBoundaryV1 = ({
   readonly resolvedReferenceUtxos?: readonly SDK.DaPayloadEntry[];
 }): Promise<RetainedDaBoundaryMeasurementV1> =>
   exerciseMidgardRetainedDaCanonicalBoundaryV1({
-    canonicalTransactionCbor:
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(signedCardanoCborHex, "hex"),
-      ),
+    canonicalTransactionCbor: cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(signedCardanoCborHex, "hex"),
+    ),
     corpusLabel,
     resolvedReferenceUtxos,
   });

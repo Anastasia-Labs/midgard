@@ -16,8 +16,7 @@ import {
 const request = (label: string): TxAdmissionsDB.ReservedAdmissionRequest => ({
   txId: createHash("sha256").update(`collector:${label}`).digest(),
   txCanonicalCbor: Buffer.from(label),
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
   submitSource: "native",
 });
 

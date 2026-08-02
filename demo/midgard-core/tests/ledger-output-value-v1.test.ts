@@ -42,9 +42,7 @@ const expectedValueSummary = ({
   readonly lovelace: bigint;
   readonly entries: readonly MidgardLedgerOutputAssetV1[];
 }): MidgardCekDataSummaryV1 => {
-  const summarizeScalar = (
-    value: string | bigint,
-  ): MidgardCekDataSummaryV1 => {
+  const summarizeScalar = (value: string | bigint): MidgardCekDataSummaryV1 => {
     const cbor = Buffer.from(Data.to(value as never), "hex");
     return finalizeMidgardCekDataTraverseV1(
       buildMidgardCekDataTraverseTraceV1({
@@ -111,9 +109,7 @@ describe("streamed ledger output Value V1", () => {
       lovelace: 8_000_000n,
     });
 
-    expect(
-      finalizeMidgardLedgerOutputValueV1(trace.terminal),
-    ).toStrictEqual(
+    expect(finalizeMidgardLedgerOutputValueV1(trace.terminal)).toStrictEqual(
       expectedValueSummary({
         lovelace: 8_000_000n,
         entries: assets,
@@ -133,9 +129,7 @@ describe("streamed ledger output Value V1", () => {
       lovelace: 0n,
     });
 
-    expect(
-      finalizeMidgardLedgerOutputValueV1(trace.terminal),
-    ).toStrictEqual(
+    expect(finalizeMidgardLedgerOutputValueV1(trace.terminal)).toStrictEqual(
       expectedValueSummary({ lovelace: 0n, entries: [] }),
     );
   });
@@ -195,9 +189,7 @@ describe("streamed ledger output Value V1", () => {
     });
 
     expect(trace.steps).toHaveLength(302);
-    expect(
-      finalizeMidgardLedgerOutputValueV1(trace.terminal),
-    ).toStrictEqual(
+    expect(finalizeMidgardLedgerOutputValueV1(trace.terminal)).toStrictEqual(
       expectedValueSummary({
         lovelace: 1n,
         entries: manyAssets,
@@ -208,10 +200,7 @@ describe("streamed ledger output Value V1", () => {
         ...trace.steps.map(({ witness }) =>
           witness === null
             ? 0
-            : 28 +
-              witness.assetName.length +
-              9 +
-              witness.siblings.length * 32,
+            : 28 + witness.assetName.length + 9 + witness.siblings.length * 32,
         ),
       ),
     ).toBeLessThan(16_384);
@@ -223,16 +212,11 @@ describe("streamed ledger output Value V1", () => {
       lovelace: 8_000_000n,
     });
     const leaves = assets.map(hashMidgardLedgerOutputAssetLeafV1);
-    const membership = buildMidgardValidationMerkleMembershipV1(
-      leaves,
-      2,
-    );
+    const membership = buildMidgardValidationMerkleMembershipV1(leaves, 2);
 
     expect(membership.frontier).toStrictEqual(trace.frontier);
     expect(
-      encodeMidgardLedgerOutputValueControlV1(
-        trace.terminal,
-      ).toString("hex"),
+      encodeMidgardLedgerOutputValueControlV1(trace.terminal).toString("hex"),
     ).toBe(
       "8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f835820f6d68f04ebaaf198c28e605965e60a233a8a46428e2284e19f344f6290e7464d18591888ff",
     );

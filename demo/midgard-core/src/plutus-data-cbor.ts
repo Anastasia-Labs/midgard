@@ -79,9 +79,7 @@ const parseCborNode = (
   let cursor = offset;
   let completed: CborNode | null = null;
 
-  const attach = (
-    initialNode: CborNode,
-  ): CborNode | null => {
+  const attach = (initialNode: CborNode): CborNode | null => {
     let node = initialNode;
     while (frames.length > 0) {
       const frame = frames.at(-1)!;
@@ -160,11 +158,7 @@ const parseCborNode = (
     }
     const major = initial >> 5;
     const additional = initial & 0x1f;
-    const length = readCborLength(
-      bytes,
-      cursor + 1,
-      additional,
-    );
+    const length = readCborLength(bytes, cursor + 1, additional);
     cursor = length.offset;
 
     if (major === 0 || major === 1) {
@@ -173,9 +167,7 @@ const parseCborNode = (
         major === 0 ? "uint" : "nint",
       );
       completed = attach(
-        major === 0
-          ? { kind: "uint", value }
-          : { kind: "nint", value },
+        major === 0 ? { kind: "uint", value } : { kind: "nint", value },
       );
       continue;
     }
@@ -185,10 +177,7 @@ const parseCborNode = (
         const chunks: Buffer[] = [];
         while (bytes[cursor] !== 0xff) {
           const chunkInitial = bytes[cursor];
-          if (
-            chunkInitial === undefined ||
-            chunkInitial >> 5 !== 2
-          ) {
+          if (chunkInitial === undefined || chunkInitial >> 5 !== 2) {
             throw new Error(
               "Indefinite CBOR bytes must contain only definite byte chunks",
             );
@@ -199,16 +188,11 @@ const parseCborNode = (
             chunkInitial & 0x1f,
           );
           const definiteChunkLength = Number(
-            expectCborLength(
-              chunkLength.value,
-              "indefinite bytes chunk",
-            ),
+            expectCborLength(chunkLength.value, "indefinite bytes chunk"),
           );
           const end = chunkLength.offset + definiteChunkLength;
           if (end > bytes.length) {
-            throw new Error(
-              "Unexpected end of indefinite CBOR bytes",
-            );
+            throw new Error("Unexpected end of indefinite CBOR bytes");
           }
           chunks.push(bytes.subarray(chunkLength.offset, end));
           cursor = end;
@@ -223,9 +207,7 @@ const parseCborNode = (
         });
         continue;
       }
-      const byteLength = Number(
-        expectCborLength(length.value, "bytes"),
-      );
+      const byteLength = Number(expectCborLength(length.value, "bytes"));
       const end = cursor + byteLength;
       if (end > bytes.length) {
         throw new Error("Unexpected end of CBOR bytes");
@@ -278,9 +260,7 @@ const parseCborNode = (
       continue;
     }
 
-    throw new Error(
-      `Unsupported PlutusData CBOR major type ${major}`,
-    );
+    throw new Error(`Unsupported PlutusData CBOR major type ${major}`);
   }
 
   return { node: completed, offset: cursor };
@@ -409,22 +389,14 @@ const encodeCborNodeWithDefiniteMaps = (
     if (!visit.expanded) {
       stack.push({ node: current, expanded: true });
       if (current.kind === "array") {
-        for (
-          let index = current.items.length - 1;
-          index >= 0;
-          index -= 1
-        ) {
+        for (let index = current.items.length - 1; index >= 0; index -= 1) {
           stack.push({
             node: current.items[index]!,
             expanded: false,
           });
         }
       } else if (current.kind === "map") {
-        for (
-          let index = current.entries.length - 1;
-          index >= 0;
-          index -= 1
-        ) {
+        for (let index = current.entries.length - 1; index >= 0; index -= 1) {
           const [key, value] = current.entries[index]!;
           stack.push({ node: value, expanded: false });
           stack.push({ node: key, expanded: false });
@@ -447,10 +419,7 @@ const encodeCborNodeWithDefiniteMaps = (
           encoded.set(
             current,
             Buffer.concat([
-              encodeCborHeader(
-                2,
-                BigInt(current.value.length),
-              ),
+              encodeCborHeader(2, BigInt(current.value.length)),
               current.value,
             ]),
           );
@@ -462,22 +431,12 @@ const encodeCborNodeWithDefiniteMaps = (
           chunkOffset < current.value.length;
           chunkOffset += 64
         ) {
-          const chunk = current.value.subarray(
-            chunkOffset,
-            chunkOffset + 64,
-          );
-          chunks.push(
-            encodeCborHeader(2, BigInt(chunk.length)),
-            chunk,
-          );
+          const chunk = current.value.subarray(chunkOffset, chunkOffset + 64);
+          chunks.push(encodeCborHeader(2, BigInt(chunk.length)), chunk);
         }
         encoded.set(
           current,
-          Buffer.concat([
-            Buffer.from([0x5f]),
-            ...chunks,
-            Buffer.from([0xff]),
-          ]),
+          Buffer.concat([Buffer.from([0x5f]), ...chunks, Buffer.from([0xff])]),
         );
         break;
       }
@@ -507,12 +466,10 @@ const encodeCborNodeWithDefiniteMaps = (
           current,
           Buffer.concat([
             encodeCborHeader(5, BigInt(entries.length)),
-            ...entries.flatMap(
-              ({ encodedKey, encodedValue }) => [
-                encodedKey,
-                encodedValue,
-              ],
-            ),
+            ...entries.flatMap(({ encodedKey, encodedValue }) => [
+              encodedKey,
+              encodedValue,
+            ]),
           ]),
         );
         break;
@@ -526,9 +483,7 @@ const encodeCborNodeWithDefiniteMaps = (
             ? Buffer.concat([
                 encodeCborHeader(6, current.tag),
                 Buffer.from([0x82]),
-                ...current.value.items.map(
-                  (item) => encoded.get(item)!,
-                ),
+                ...current.value.items.map((item) => encoded.get(item)!),
               ])
             : Buffer.concat([
                 encodeCborHeader(6, current.tag),
@@ -547,9 +502,7 @@ const encodeCborNodeWithDefiniteMaps = (
  * longer than 64 bytes use an indefinite byte string containing definite
  * chunks of at most 64 bytes.
  */
-export const aikenSerialisedPlutusDataBytes = (
-  bytes: Uint8Array,
-): Buffer =>
+export const aikenSerialisedPlutusDataBytes = (bytes: Uint8Array): Buffer =>
   encodeCborNodeWithDefiniteMaps(
     { kind: "bytes", value: Buffer.from(bytes) },
     true,
@@ -564,9 +517,7 @@ const aikenSerialisedPlutusDataCborWithMapOrder = (
   if (parsed.offset !== input.length) {
     throw new Error("Unexpected trailing bytes in PlutusData CBOR");
   }
-  return encodeCborNodeWithDefiniteMaps(parsed.node, sortMaps).toString(
-    "hex",
-  );
+  return encodeCborNodeWithDefiniteMaps(parsed.node, sortMaps).toString("hex");
 };
 
 export const aikenSerialisedPlutusDataCbor = (cbor: string): string =>
@@ -870,10 +821,7 @@ export const assertMidgardPlutusDataWellFormedV1 = (
             "General PlutusData constructor alternative must be an unsigned integer",
           );
         }
-        const fields = readMidgardPlutusDataHeadV1(
-          bytes,
-          alternative.offset,
-        );
+        const fields = readMidgardPlutusDataHeadV1(bytes, alternative.offset);
         if (fields.major !== 4) {
           throw new Error("PlutusData constructor fields must be an array");
         }

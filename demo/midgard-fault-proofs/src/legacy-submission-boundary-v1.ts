@@ -46,7 +46,8 @@ export const isRetiredUnauthenticatedSubmissionRouteV1 = ({
 }): boolean =>
   (command !== undefined && RETIRED_STEP_COMMANDS.has(command)) ||
   (command === "submit-init" &&
-    (fraudCategory === undefined || RETIRED_INIT_CATEGORIES.has(fraudCategory)));
+    (fraudCategory === undefined ||
+      RETIRED_INIT_CATEGORIES.has(fraudCategory)));
 
 /**
  * The single fail-closed guard used by the shipped CLI and file entrypoints.
@@ -61,9 +62,7 @@ export const rejectRetiredUnauthenticatedSubmissionRouteV1 = ({
   readonly command: string | undefined;
   readonly fraudCategory?: string;
 }): void => {
-  if (
-    !isRetiredUnauthenticatedSubmissionRouteV1({ command, fraudCategory })
-  ) {
+  if (!isRetiredUnauthenticatedSubmissionRouteV1({ command, fraudCategory })) {
     return;
   }
   const categorySuffix =

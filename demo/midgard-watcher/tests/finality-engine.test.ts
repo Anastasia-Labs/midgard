@@ -517,7 +517,6 @@ describe("canonical release-bound watcher finality", () => {
         deploymentIdentity(),
       ),
     ).toBeNull();
-
   });
 
   it("rejects configuration/deployment mismatches without emitting values", () => {
@@ -1030,7 +1029,6 @@ describe("canonical release-bound watcher finality", () => {
         state: finalized,
       });
     }
-
   });
 
   it("rejects stale policy state, deployment, and release bindings", () => {

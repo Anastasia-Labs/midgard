@@ -85,7 +85,10 @@ const memoryProvider = (
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     codecSupportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
     protocolFeeParameters: { minFeeA: 0n, minFeeB: 0n },
-    submissionLimits: { maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes },
+    submissionLimits: {
+      maxSubmitTxCborBytes:
+        MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    },
     validation: {
       strictnessProfile: "phase1_midgard",
       localValidationIsAuthoritative: false,
@@ -102,7 +105,8 @@ const memoryProvider = (
     minFeeA: 0n,
     minFeeB: 0n,
     networkId: 0n,
-    maxSubmitTxCborBytes: MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
+    maxSubmitTxCborBytes:
+      MIDGARD_CONSENSUS_PROFILE_V1.limits.maxTxCanonicalCborBytes,
     strictnessProfile: "phase1_midgard",
   }),
   getCurrentSlot: async () => 0n,

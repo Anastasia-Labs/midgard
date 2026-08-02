@@ -62,7 +62,8 @@ const FraudProofCatalogueIdSchema = LucidData.Bytes({
 type LucidDataSchema = Parameters<typeof LucidData.to>[1];
 
 type IndexedFraudProof<
-  CategoryName extends SDK.FraudProofCatalogueCategoryName = SDK.FraudProofCatalogueCategoryName,
+  CategoryName extends
+    SDK.FraudProofCatalogueCategoryName = SDK.FraudProofCatalogueCategoryName,
 > = readonly [
   categoryId: Buffer,
   validator: SDK.SpendingValidator,
@@ -688,8 +689,7 @@ export const buildAtomicProtocolInitTxProgram = (
   fraudProofCatalogueMerkleRoot: string,
   validTo?: bigint,
   referenceScripts?: AtomicProtocolInitReferenceScripts,
-  consensusProfile: ContractDeploymentIdentityValue["consensusProfile"] =
-    MIDGARD_CONSENSUS_PROFILE_V1,
+  consensusProfile: ContractDeploymentIdentityValue["consensusProfile"] = MIDGARD_CONSENSUS_PROFILE_V1,
 ): Effect.Effect<
   TxBuilder,
   | SDK.LucidError

@@ -163,7 +163,10 @@ const deploymentContract = (
       ? mintingPolicyToId(script as never)
       : validatorToScriptHash(script as never);
   const configuredScriptHash = stringAt(root, ["scriptHash"]);
-  if (configuredScriptHash === undefined || configuredScriptHash.trim() === "") {
+  if (
+    configuredScriptHash === undefined ||
+    configuredScriptHash.trim() === ""
+  ) {
     throw new Error(`${label} scriptHash is required`);
   }
   const scriptHash = normalizeHex(configuredScriptHash, {

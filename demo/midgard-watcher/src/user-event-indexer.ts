@@ -437,7 +437,8 @@ const evidenceWithinBounds = (
     }
     if (
       !array &&
-      keys.length > WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
+      keys.length >
+        WATCHER_USER_EVENT_INDEXER_V1_BOUNDS.evidenceContainerEntries
     ) {
       return false;
     }
@@ -519,7 +520,6 @@ const exactRecord = (
   }
   return value as PlainRecord;
 };
-
 
 const isHex28 = (value: unknown): value is string =>
   typeof value === "string" && HEX_28.test(value);

@@ -581,7 +581,10 @@ describe("coordinator witness and candidate planning", () => {
   });
 });
 
-const submitted = (txHash: string) => ({ status: "submitted" as const, txHash });
+const submitted = (txHash: string) => ({
+  status: "submitted" as const,
+  txHash,
+});
 
 const candidateRecord = ({
   attestationCount,

@@ -67,21 +67,13 @@ const validateAnyPlutusData = (
   }
   if (value instanceof Constr) {
     value.fields.forEach((field, index) =>
-      validateAnyPlutusData(
-        field,
-        `${path}.${index.toString()}`,
-        depth + 1,
-      ),
+      validateAnyPlutusData(field, `${path}.${index.toString()}`, depth + 1),
     );
     return;
   }
   if (Array.isArray(value)) {
     value.forEach((item, index) =>
-      validateAnyPlutusData(
-        item,
-        `${path}[${index.toString()}]`,
-        depth + 1,
-      ),
+      validateAnyPlutusData(item, `${path}[${index.toString()}]`, depth + 1),
     );
     return;
   }

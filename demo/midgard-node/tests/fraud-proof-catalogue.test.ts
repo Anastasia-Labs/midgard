@@ -22,9 +22,7 @@ describe("Fraud Proof Catalogue Root", () => {
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
         expect(indexedFraudProofs).toHaveLength(6);
         expect(indexedFraudProofs[5][0].toString("hex")).toBe("00000005");
-        expect(indexedFraudProofs[5][2]).toBe(
-          "validationTraceDispute",
-        );
+        expect(indexedFraudProofs[5][2]).toBe("validationTraceDispute");
 
         const fraudProofsMPF =
           yield* createFraudProofCatalogueMpf(indexedFraudProofs);
@@ -54,5 +52,4 @@ describe("Fraud Proof Catalogue Root", () => {
         }
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
-
 });

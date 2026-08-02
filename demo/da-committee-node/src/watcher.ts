@@ -1383,7 +1383,6 @@ export const ingestDaConflictEvidenceV1 = async (args: {
   return args.store.saveDaConflictEvidence(record);
 };
 
-
 const l1ObservationTransitionFailure = (
   previous: L1SourceState | undefined,
   current: Awaited<ReturnType<typeof scanStateQueue>>,

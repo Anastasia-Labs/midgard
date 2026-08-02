@@ -1,7 +1,4 @@
-import {
-  encodeCbor,
-  MIDGARD_CONSENSUS_LIMITS_V1,
-} from "@al-ft/midgard-core";
+import { encodeCbor, MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import {
   Constr,
@@ -11,9 +8,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import {
-  commitMidgardCekDataTreeV1,
-} from "./cek-data-tree.js";
+import { commitMidgardCekDataTreeV1 } from "./cek-data-tree.js";
 import {
   emptyMidgardCekDataListSummaryV1,
   emptyMidgardCekDataPairSummaryV1,
@@ -48,12 +43,11 @@ const hash32 = (bytes: Uint8Array): Buffer =>
 
 const bytes = (value: Uint8Array): Buffer => Buffer.from(value);
 
-export const emptyMidgardCekDataSummaryV1 =
-  (): MidgardCekDataSummaryV1 => ({
-    root: Buffer.alloc(0),
-    cborLength: 0n,
-    memory: 0n,
-  });
+export const emptyMidgardCekDataSummaryV1 = (): MidgardCekDataSummaryV1 => ({
+  root: Buffer.alloc(0),
+  cborLength: 0n,
+  memory: 0n,
+});
 
 export const encodeMidgardCekDataSummaryV1 = (
   summary: MidgardCekDataSummaryV1,
@@ -116,10 +110,7 @@ export const summarizeMidgardCekLucidMapV1 = (
 export const validateMidgardCekObserverCollectionV1 = (
   observers: readonly Uint8Array[],
 ): void => {
-  if (
-    observers.length >
-    MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount
-  ) {
+  if (observers.length > MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount) {
     throw new Error(
       "CEK observer context exceeds the transaction-size-derived collection guardrail",
     );
@@ -499,9 +490,7 @@ export const summarizeMidgardCekContextPartsV1 = (
     referenceItems: summarizeMidgardCekLucidListV1(
       asList(fields[1]!, "reference inputs"),
     ),
-    outputItems: summarizeMidgardCekLucidListV1(
-      asList(fields[2]!, "outputs"),
-    ),
+    outputItems: summarizeMidgardCekLucidListV1(asList(fields[2]!, "outputs")),
     observer: summarizeMidgardCekLucidDataV1(fields[observerIndex]!),
     signerItems: summarizeMidgardCekLucidListV1(
       asList(fields[signerIndex]!, "signers"),
@@ -510,9 +499,7 @@ export const summarizeMidgardCekContextPartsV1 = (
     redeemerItems: summarizeMidgardCekLucidMapV1(
       asMap(fields[redeemerIndex]!, "redeemers"),
     ),
-    tailFields: summarizeMidgardCekLucidListV1(
-      fields.slice(tailStart),
-    ),
+    tailFields: summarizeMidgardCekLucidListV1(fields.slice(tailStart)),
   };
 };
 
@@ -521,18 +508,11 @@ export const composeMidgardCekContextSummaryV1 = (
 ): MidgardCekDataSummaryV1 =>
   summarizeMidgardCekSmallConstrDataV1(
     0n,
-    [
-      control.txInfo,
-      control.redeemer,
-      control.scriptInfo,
-    ].reduceRight(
-      (tail, field) =>
-        prependMidgardCekDataListSummaryV1(field, tail),
+    [control.txInfo, control.redeemer, control.scriptInfo].reduceRight(
+      (tail, field) => prependMidgardCekDataListSummaryV1(field, tail),
       emptyMidgardCekDataListSummaryV1(),
     ),
   );
 
-export const asMidgardCekListSummaryV1 =
-  summarizeMidgardCekListDataV1;
-export const asMidgardCekMapSummaryV1 =
-  summarizeMidgardCekMapDataV1;
+export const asMidgardCekListSummaryV1 = summarizeMidgardCekListDataV1;
+export const asMidgardCekMapSummaryV1 = summarizeMidgardCekMapDataV1;

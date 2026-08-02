@@ -12,7 +12,11 @@ describe("bounded collection V1", () => {
       fieldIndex: 2,
       items: [Buffer.from("a"), Buffer.from("bb"), Buffer.from("ccc")],
     });
-    for (let itemIndex = 0; itemIndex < collection.items.length; itemIndex += 1) {
+    for (
+      let itemIndex = 0;
+      itemIndex < collection.items.length;
+      itemIndex += 1
+    ) {
       expect(
         verifyMidgardBoundedCollectionItemProofV1({
           expectedCommitment: collection.commitment,

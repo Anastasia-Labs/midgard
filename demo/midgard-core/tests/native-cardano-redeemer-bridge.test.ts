@@ -67,9 +67,7 @@ const integerRedeemer = (): CML.LegacyRedeemer =>
     CML.ExUnits.new(11n, 13n),
   );
 
-const nestedRedeemer = (
-  dataCborHex: string,
-): CML.LegacyRedeemer =>
+const nestedRedeemer = (dataCborHex: string): CML.LegacyRedeemer =>
   CML.LegacyRedeemer.new(
     CML.RedeemerTag.Spend,
     2n,
@@ -124,24 +122,19 @@ describe("canonical V1 Cardano redeemer bridge", () => {
       const native = cardanoTxBytesToMidgardNativeTxFullV1(
         cardanoTxWithRedeemers(cardanoRedeemers),
       );
-      expect(
-        native.witnessSet.redeemerTxWitsPreimageCbor.toString("hex"),
-      ).toBe(NORMALIZED_REDEEMERS_CBOR_HEX);
+      expect(native.witnessSet.redeemerTxWitsPreimageCbor.toString("hex")).toBe(
+        NORMALIZED_REDEEMERS_CBOR_HEX,
+      );
     }
   });
 
   it("reconstructs a canonical Cardano map with exact Data and execution units", () => {
-    const preimageCbor = Buffer.from(
-      NORMALIZED_REDEEMERS_CBOR_HEX,
-      "hex",
-    );
+    const preimageCbor = Buffer.from(NORMALIZED_REDEEMERS_CBOR_HEX, "hex");
     const native = materializeMidgardNativeTxFromCanonicalV1(
       makeCanonical(preimageCbor),
     );
     const cardanoCbor = midgardNativeTxFullToCardanoTxEncoding(native);
-    const cardanoRedeemers = CML.Transaction.from_cbor_bytes(
-      cardanoCbor,
-    )
+    const cardanoRedeemers = CML.Transaction.from_cbor_bytes(cardanoCbor)
       .witness_set()
       .redeemers();
     expect(cardanoRedeemers).toBeDefined();
@@ -189,27 +182,19 @@ describe("canonical V1 Cardano redeemer bridge", () => {
     const aikenData = CML.PlutusData.from_cbor_hex(
       NESTED_REDEEMER_DATA_CBOR_HEX,
     );
-    const cmlCanonicalDataCborHex =
-      aikenData.to_canonical_cbor_hex();
-    expect(cmlCanonicalDataCborHex).not.toBe(
-      NESTED_REDEEMER_DATA_CBOR_HEX,
-    );
+    const cmlCanonicalDataCborHex = aikenData.to_canonical_cbor_hex();
+    expect(cmlCanonicalDataCborHex).not.toBe(NESTED_REDEEMER_DATA_CBOR_HEX);
 
     const fromAiken = cardanoTxBytesToMidgardNativeTxFullV1(
       cardanoTxWithRedeemers(
-        cardanoMapRedeemers([
-          nestedRedeemer(NESTED_REDEEMER_DATA_CBOR_HEX),
-        ]),
+        cardanoMapRedeemers([nestedRedeemer(NESTED_REDEEMER_DATA_CBOR_HEX)]),
       ),
     );
-    const fromCmlCanonical =
-      cardanoTxBytesToMidgardNativeTxFullV1(
-        cardanoTxWithRedeemers(
-          cardanoMapRedeemers([
-            nestedRedeemer(cmlCanonicalDataCborHex),
-          ]),
-        ),
-      );
+    const fromCmlCanonical = cardanoTxBytesToMidgardNativeTxFullV1(
+      cardanoTxWithRedeemers(
+        cardanoMapRedeemers([nestedRedeemer(cmlCanonicalDataCborHex)]),
+      ),
+    );
     const expectedPreimage = encodeCbor([
       [
         CML.RedeemerTag.Spend,
@@ -218,12 +203,12 @@ describe("canonical V1 Cardano redeemer bridge", () => {
         [17n, 19n],
       ],
     ]);
-    expect(
-      fromAiken.witnessSet.redeemerTxWitsPreimageCbor,
-    ).toEqual(expectedPreimage);
-    expect(
-      fromCmlCanonical.witnessSet.redeemerTxWitsPreimageCbor,
-    ).toEqual(expectedPreimage);
+    expect(fromAiken.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
+      expectedPreimage,
+    );
+    expect(fromCmlCanonical.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
+      expectedPreimage,
+    );
 
     const reconstructed = CML.Transaction.from_cbor_bytes(
       midgardNativeTxFullToCardanoTxEncoding(
@@ -257,9 +242,9 @@ describe("canonical V1 Cardano redeemer bridge", () => {
         ),
       ),
     );
-    expect(
-      roundTrip.witnessSet.redeemerTxWitsPreimageCbor,
-    ).toEqual(expectedPreimage);
+    expect(roundTrip.witnessSet.redeemerTxWitsPreimageCbor).toEqual(
+      expectedPreimage,
+    );
   });
 
   it("rejects duplicate pointers and purposes that cannot cross the bridge", () => {

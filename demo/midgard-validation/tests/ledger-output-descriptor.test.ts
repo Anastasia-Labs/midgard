@@ -52,9 +52,7 @@ const outputFixture = (): {
         ],
       ]),
     },
-    datum: decodeMidgardDatum(
-      Buffer.from(Data.to("ab".repeat(5_000)), "hex"),
-    ),
+    datum: decodeMidgardDatum(Buffer.from(Data.to("ab".repeat(5_000)), "hex")),
     script_ref: {
       language: "PlutusV3",
       scriptBytes: Buffer.alloc(100, 0x6b),
@@ -66,23 +64,17 @@ const outputFixture = (): {
 describe("canonical ledger output descriptor V1", () => {
   it("derives the consensus value from an exact canonical ledger out-ref", () => {
     const fixture = outputFixture();
-    const outRef = Buffer.from(
-      "825820" + "42".repeat(32) + "07",
-      "hex",
-    );
-    const fromEntry =
-      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
-        outRef,
-        outputCbor: fixture.cbor,
-      });
+    const outRef = Buffer.from("825820" + "42".repeat(32) + "07", "hex");
+    const fromEntry = buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+      outRef,
+      outputCbor: fixture.cbor,
+    });
     const fromCreation = buildCanonicalMidgardLedgerOutputMaterialV1({
       outputIndex: 7,
       outputCbor: fixture.cbor,
     });
 
-    expect(fromEntry.descriptorCbor).toStrictEqual(
-      fromCreation.descriptorCbor,
-    );
+    expect(fromEntry.descriptorCbor).toStrictEqual(fromCreation.descriptorCbor);
     expect(fromEntry.descriptor.outputIndex).toBe(7);
   });
 
@@ -127,14 +119,10 @@ describe("canonical ledger output descriptor V1", () => {
     expect(material.descriptor.cardanoValueSize).toBeLessThanOrEqual(5_000);
     expect(material.descriptorCbor).toStrictEqual(repeated.descriptorCbor);
     expect(material.descriptor.assetCount).toBe(2);
-    expect(material.descriptor.address).toStrictEqual(
-      protectedScriptAddress,
-    );
+    expect(material.descriptor.address).toStrictEqual(protectedScriptAddress);
     expect(material.descriptor.referenceScriptLanguage).toBe(3);
     expect(material.descriptor.referenceScriptHash).toHaveLength(28);
-    expect(material.descriptor.referenceScriptItemCommitment).toHaveLength(
-      32,
-    );
+    expect(material.descriptor.referenceScriptItemCommitment).toHaveLength(32);
     expect(material.descriptor.cardanoTxOut.root).not.toStrictEqual(
       material.descriptor.midgardTxOut.root,
     );
@@ -152,17 +140,12 @@ describe("canonical ledger output descriptor V1", () => {
       expect(
         verifyMidgardLedgerOutputChunkV1({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(
-            material.item,
-            chunkIndex,
-          ),
+          proof: buildMidgardBoundedItemChunkProofV1(material.item, chunkIndex),
         }),
       ).toBe(true);
     }
 
-    const scriptCbor = encodeMidgardVersionedScript(
-      fixture.output.script_ref!,
-    );
+    const scriptCbor = encodeMidgardVersionedScript(fixture.output.script_ref!);
     const scriptItem = buildMidgardBoundedItemV1({
       fieldIndex: MIDGARD_LEDGER_OUTPUT_FIELD_INDEX_V1,
       itemIndex: 7,
@@ -179,10 +162,7 @@ describe("canonical ledger output descriptor V1", () => {
       expect(
         verifyMidgardLedgerOutputReferenceScriptChunkV1({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(
-            scriptItem,
-            chunkIndex,
-          ),
+          proof: buildMidgardBoundedItemChunkProofV1(scriptItem, chunkIndex),
         }),
       ).toBe(true);
     }
@@ -206,36 +186,28 @@ describe("canonical ledger output descriptor V1", () => {
     expect(
       commitMidgardValidationMerkleFrontierV1(scan.assetFrontier),
     ).toStrictEqual(material.descriptor.assetFrontierCommitment);
-    expect(scan.cardanoValueSize).toBe(
-      material.descriptor.cardanoValueSize,
-    );
+    expect(scan.cardanoValueSize).toBe(material.descriptor.cardanoValueSize);
     expect(scan.referenceScriptLanguage).toBe(
       material.descriptor.referenceScriptLanguage,
     );
     expect(
-      summarizeMidgardLedgerOutputCardanoSpendDatumV1(
-        terminal,
-      ),
-    ).toStrictEqual(
-      material.descriptor.cardanoSpendDatum,
+      summarizeMidgardLedgerOutputCardanoSpendDatumV1(terminal),
+    ).toStrictEqual(material.descriptor.cardanoSpendDatum);
+    expect(summarizeMidgardLedgerOutputCardanoTxOutV1(terminal)).toStrictEqual(
+      material.descriptor.cardanoTxOut,
     );
-    expect(
-      summarizeMidgardLedgerOutputCardanoTxOutV1(terminal),
-    ).toStrictEqual(material.descriptor.cardanoTxOut);
-    expect(
-      summarizeMidgardLedgerOutputMidgardTxOutV1(terminal),
-    ).toStrictEqual(material.descriptor.midgardTxOut);
-    expect(
-      terminal.totalLength - scan.referenceScriptItemOffset,
-    ).toBe(material.descriptor.referenceScriptTotalLength);
-    expect(
-      digestMidgardLedgerOutputReferenceScriptV1(terminal),
-    ).toStrictEqual(material.descriptor.referenceScriptHash);
+    expect(summarizeMidgardLedgerOutputMidgardTxOutV1(terminal)).toStrictEqual(
+      material.descriptor.midgardTxOut,
+    );
+    expect(terminal.totalLength - scan.referenceScriptItemOffset).toBe(
+      material.descriptor.referenceScriptTotalLength,
+    );
+    expect(digestMidgardLedgerOutputReferenceScriptV1(terminal)).toStrictEqual(
+      material.descriptor.referenceScriptHash,
+    );
     expect(
       commitMidgardLedgerOutputReferenceScriptItemV1(terminal),
-    ).toStrictEqual(
-      material.descriptor.referenceScriptItemCommitment,
-    );
+    ).toStrictEqual(material.descriptor.referenceScriptItemCommitment);
     expect(
       verifyMidgardLedgerOutputDescriptorV1({
         control: terminal,
@@ -272,14 +244,11 @@ describe("canonical ledger output descriptor V1", () => {
       { ...descriptor, referenceScriptLanguage: 0 as const },
       {
         ...descriptor,
-        referenceScriptHash: changedBytes(
-          descriptor.referenceScriptHash,
-        ),
+        referenceScriptHash: changedBytes(descriptor.referenceScriptHash),
       },
       {
         ...descriptor,
-        referenceScriptTotalLength:
-          descriptor.referenceScriptTotalLength + 1,
+        referenceScriptTotalLength: descriptor.referenceScriptTotalLength + 1,
       },
       {
         ...descriptor,
@@ -340,8 +309,7 @@ describe("canonical ledger output descriptor V1", () => {
         ...descriptor,
         cardanoSpendDatum: {
           ...descriptor.cardanoSpendDatum,
-          cborLength:
-            descriptor.cardanoSpendDatum.cborLength + 1n,
+          cborLength: descriptor.cardanoSpendDatum.cborLength + 1n,
         },
       },
       {
@@ -367,32 +335,22 @@ describe("canonical ledger output descriptor V1", () => {
       ...withoutDatum
     } = fixture.output;
     const withoutDatumCbor = encodeMidgardTxOutput(withoutDatum);
-    const withoutDatumMaterial =
-      buildCanonicalMidgardLedgerOutputMaterialV1({
-        outputIndex: 7,
-        outputCbor: withoutDatumCbor,
-      });
-    const withoutDatumTerminal =
-      buildMidgardLedgerOutputProofTraceV1({
-        outputIndex: 7,
-        outputCbor: withoutDatumCbor,
-      }).terminal;
+    const withoutDatumMaterial = buildCanonicalMidgardLedgerOutputMaterialV1({
+      outputIndex: 7,
+      outputCbor: withoutDatumCbor,
+    });
+    const withoutDatumTerminal = buildMidgardLedgerOutputProofTraceV1({
+      outputIndex: 7,
+      outputCbor: withoutDatumCbor,
+    }).terminal;
     expect(
-      summarizeMidgardLedgerOutputCardanoSpendDatumV1(
-        withoutDatumTerminal,
-      ),
-    ).toStrictEqual(
-      withoutDatumMaterial.descriptor.cardanoSpendDatum,
-    );
+      summarizeMidgardLedgerOutputCardanoSpendDatumV1(withoutDatumTerminal),
+    ).toStrictEqual(withoutDatumMaterial.descriptor.cardanoSpendDatum);
     expect(
-      summarizeMidgardLedgerOutputCardanoTxOutV1(
-        withoutDatumTerminal,
-      ),
+      summarizeMidgardLedgerOutputCardanoTxOutV1(withoutDatumTerminal),
     ).toStrictEqual(withoutDatumMaterial.descriptor.cardanoTxOut);
     expect(
-      summarizeMidgardLedgerOutputMidgardTxOutV1(
-        withoutDatumTerminal,
-      ),
+      summarizeMidgardLedgerOutputMidgardTxOutV1(withoutDatumTerminal),
     ).toStrictEqual(withoutDatumMaterial.descriptor.midgardTxOut);
     expect(
       verifyMidgardLedgerOutputDescriptorV1({

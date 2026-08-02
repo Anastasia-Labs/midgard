@@ -104,9 +104,8 @@ const decodeWordsLe = (
     throw new Error(`${field} must contain ${expectedWords.toString()} words`);
   }
   const source = Buffer.from(bytes);
-  return Array.from(
-    { length: expectedWords },
-    (_, index) => source.readBigUInt64LE(index * 8),
+  return Array.from({ length: expectedWords }, (_, index) =>
+    source.readBigUInt64LE(index * 8),
   );
 };
 
@@ -382,9 +381,7 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         round: 0,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
     }
     if (block !== null && block !== undefined) return null;
     if (control.stage === MidgardBlake2b256TraceStagesV1.Round) {
@@ -402,9 +399,7 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         round,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
     }
     if (control.stage === MidgardBlake2b256TraceStagesV1.Finish) {
       const cursor = control.cursor + control.activeBlockLength;
@@ -421,9 +416,7 @@ export const advanceMidgardBlake2b256TraceV1 = ({
         }),
         ...emptyActiveState,
       };
-      return isWellFormedMidgardBlake2b256TraceControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardBlake2b256TraceControlV1(next) ? next : null;
     }
     return null;
   } catch {
@@ -454,10 +447,7 @@ export const buildMidgardBlake2b256TraceV1 = (
           )
         : null;
     const next = advanceMidgardBlake2b256TraceV1({ control, block });
-    if (
-      next === null ||
-      !isWellFormedMidgardBlake2b256TraceControlV1(next)
-    ) {
+    if (next === null || !isWellFormedMidgardBlake2b256TraceControlV1(next)) {
       throw new Error("V1 BLAKE2b-256 trace failed closed");
     }
     steps.push({ control, block, next });

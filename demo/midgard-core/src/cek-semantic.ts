@@ -4,14 +4,8 @@ import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
 const DATA_NODE_DOMAIN = Buffer.from("MidgardCekDataNodeV1", "ascii");
-const DATA_LIST_NODE_DOMAIN = Buffer.from(
-  "MidgardCekDataListNodeV1",
-  "ascii",
-);
-const DATA_PAIR_NODE_DOMAIN = Buffer.from(
-  "MidgardCekDataPairNodeV1",
-  "ascii",
-);
+const DATA_LIST_NODE_DOMAIN = Buffer.from("MidgardCekDataListNodeV1", "ascii");
+const DATA_PAIR_NODE_DOMAIN = Buffer.from("MidgardCekDataPairNodeV1", "ascii");
 
 const UINT32_MAX = 0xffff_ffffn;
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
@@ -51,11 +45,7 @@ const asBytes = (value: unknown, fieldName: string): Buffer => {
   return Buffer.from(value);
 };
 
-const bounded = (
-  value: bigint,
-  maximum: bigint,
-  fieldName: string,
-): bigint => {
+const bounded = (value: bigint, maximum: bigint, fieldName: string): bigint => {
   if (value < 0n || value > maximum) {
     throw new RangeError(
       `${fieldName} must be between 0 and ${maximum.toString(10)}`,
@@ -214,22 +204,17 @@ export const encodeMidgardCekDataNodeV1 = (
   }
 };
 
-export const hashMidgardCekDataNodeV1 = (
-  node: MidgardCekDataNodeV1,
-): Hash32 => hash32(DATA_NODE_DOMAIN, encodeMidgardCekDataNodeV1(node));
+export const hashMidgardCekDataNodeV1 = (node: MidgardCekDataNodeV1): Hash32 =>
+  hash32(DATA_NODE_DOMAIN, encodeMidgardCekDataNodeV1(node));
 
-export const hashMidgardCekDataNodePreimageV1 = (
-  preimage: Bytes,
-): Hash32 => hash32(DATA_NODE_DOMAIN, preimage);
+export const hashMidgardCekDataNodePreimageV1 = (preimage: Bytes): Hash32 =>
+  hash32(DATA_NODE_DOMAIN, preimage);
 
 export const decodeMidgardCekDataNodeV1 = (
   preimage: Bytes,
 ): MidgardCekDataNodeV1 => {
   const source = Buffer.from(preimage);
-  const fields = asArray(
-    decodeSingleCbor(source),
-    "cek_data_node",
-  );
+  const fields = asArray(decodeSingleCbor(source), "cek_data_node");
   const tag = asBigInt(fields[0], "cek_data_node.tag");
   let node: MidgardCekDataNodeV1;
   if (tag === MidgardCekDataNodeTags.ConstrSmall) {
@@ -352,34 +337,24 @@ export const hashMidgardCekDataListNodeV1 = (
 ): Hash32 =>
   hash32(DATA_LIST_NODE_DOMAIN, encodeMidgardCekDataListNodeV1(node));
 
-export const hashMidgardCekDataListNodePreimageV1 = (
-  preimage: Bytes,
-): Hash32 => hash32(DATA_LIST_NODE_DOMAIN, preimage);
+export const hashMidgardCekDataListNodePreimageV1 = (preimage: Bytes): Hash32 =>
+  hash32(DATA_LIST_NODE_DOMAIN, preimage);
 
 export const decodeMidgardCekDataListNodeV1 = (
   preimage: Bytes,
 ): MidgardCekDataListNodeV1 => {
   const source = Buffer.from(preimage);
-  const fields = asArray(
-    decodeSingleCbor(source),
-    "cek_data_list_node",
-  );
+  const fields = asArray(decodeSingleCbor(source), "cek_data_list_node");
   if (fields.length !== 7) {
     throw new Error("CEK Data list node must have seven fields");
   }
   const node = {
     head: asBytes(fields[0], "cek_data_list.head"),
-    headCborLength: asBigInt(
-      fields[1],
-      "cek_data_list.head_cbor_length",
-    ),
+    headCborLength: asBigInt(fields[1], "cek_data_list.head_cbor_length"),
     headMemory: asBigInt(fields[2], "cek_data_list.head_memory"),
     tail: asBytes(fields[3], "cek_data_list.tail"),
     length: asBigInt(fields[4], "cek_data_list.length"),
-    payloadCborLength: asBigInt(
-      fields[5],
-      "cek_data_list.payload_cbor_length",
-    ),
+    payloadCborLength: asBigInt(fields[5], "cek_data_list.payload_cbor_length"),
     memory: asBigInt(fields[6], "cek_data_list.memory"),
   } satisfies MidgardCekDataListNodeV1;
   if (!encodeMidgardCekDataListNodeV1(node).equals(source)) {
@@ -417,10 +392,7 @@ export const encodeMidgardCekDataPairNodeV1 = (
     uint64(node.valueMemory, "cek_data_pair.value_memory"),
     exactHash(node.tail, "cek_data_pair.tail"),
     uint32(node.length, "cek_data_pair.length"),
-    uint64(
-      node.payloadCborLength,
-      "cek_data_pair.payload_cbor_length",
-    ),
+    uint64(node.payloadCborLength, "cek_data_pair.payload_cbor_length"),
     uint64(node.memory, "cek_data_pair.memory"),
   ]);
 
@@ -429,40 +401,27 @@ export const hashMidgardCekDataPairNodeV1 = (
 ): Hash32 =>
   hash32(DATA_PAIR_NODE_DOMAIN, encodeMidgardCekDataPairNodeV1(node));
 
-export const hashMidgardCekDataPairNodePreimageV1 = (
-  preimage: Bytes,
-): Hash32 => hash32(DATA_PAIR_NODE_DOMAIN, preimage);
+export const hashMidgardCekDataPairNodePreimageV1 = (preimage: Bytes): Hash32 =>
+  hash32(DATA_PAIR_NODE_DOMAIN, preimage);
 
 export const decodeMidgardCekDataPairNodeV1 = (
   preimage: Bytes,
 ): MidgardCekDataPairNodeV1 => {
   const source = Buffer.from(preimage);
-  const fields = asArray(
-    decodeSingleCbor(source),
-    "cek_data_pair_node",
-  );
+  const fields = asArray(decodeSingleCbor(source), "cek_data_pair_node");
   if (fields.length !== 10) {
     throw new Error("CEK Data pair node must have ten fields");
   }
   const node = {
     key: asBytes(fields[0], "cek_data_pair.key"),
-    keyCborLength: asBigInt(
-      fields[1],
-      "cek_data_pair.key_cbor_length",
-    ),
+    keyCborLength: asBigInt(fields[1], "cek_data_pair.key_cbor_length"),
     keyMemory: asBigInt(fields[2], "cek_data_pair.key_memory"),
     value: asBytes(fields[3], "cek_data_pair.value"),
-    valueCborLength: asBigInt(
-      fields[4],
-      "cek_data_pair.value_cbor_length",
-    ),
+    valueCborLength: asBigInt(fields[4], "cek_data_pair.value_cbor_length"),
     valueMemory: asBigInt(fields[5], "cek_data_pair.value_memory"),
     tail: asBytes(fields[6], "cek_data_pair.tail"),
     length: asBigInt(fields[7], "cek_data_pair.length"),
-    payloadCborLength: asBigInt(
-      fields[8],
-      "cek_data_pair.payload_cbor_length",
-    ),
+    payloadCborLength: asBigInt(fields[8], "cek_data_pair.payload_cbor_length"),
     memory: asBigInt(fields[9], "cek_data_pair.memory"),
   } satisfies MidgardCekDataPairNodeV1;
   if (!encodeMidgardCekDataPairNodeV1(node).equals(source)) {
@@ -490,23 +449,16 @@ export const midgardCekDataListCborLengthV1 = (
   return length === 0n ? 1n : 2n + payloadCborLength;
 };
 
-export const midgardCekDataMapCborLengthV1 =
-  (length: bigint, payloadCborLength: bigint): bigint => {
-    uint32(length, "cek_data_map.length");
-    uint64(
-      payloadCborLength,
-      "cek_data_map.payload_cbor_length",
-    );
-    const headerLength =
-      length < 24n
-        ? 1n
-        : length <= 0xffn
-          ? 2n
-          : length <= 0xffffn
-            ? 3n
-            : 5n;
-    return headerLength + payloadCborLength;
-  };
+export const midgardCekDataMapCborLengthV1 = (
+  length: bigint,
+  payloadCborLength: bigint,
+): bigint => {
+  uint32(length, "cek_data_map.length");
+  uint64(payloadCborLength, "cek_data_map.payload_cbor_length");
+  const headerLength =
+    length < 24n ? 1n : length <= 0xffn ? 2n : length <= 0xffffn ? 3n : 5n;
+  return headerLength + payloadCborLength;
+};
 
 const unsignedCborLength = (value: bigint): bigint => {
   if (value < 0n) {
@@ -517,9 +469,7 @@ const unsignedCborLength = (value: bigint): bigint => {
   if (value <= 0xffffn) return 3n;
   if (value <= 0xffff_ffffn) return 5n;
   if (value <= UINT64_MAX) return 9n;
-  const magnitudeBytes = BigInt(
-    Math.ceil(value.toString(2).length / 8),
-  );
+  const magnitudeBytes = BigInt(Math.ceil(value.toString(2).length / 8));
   // Positive-bignum tag 2 followed by its shortest magnitude bytestring.
   return 1n + definiteBytesHeaderLength(magnitudeBytes) + magnitudeBytes;
 };
@@ -565,16 +515,12 @@ export const midgardCekDataBytesCborLengthV1 = (
   const remainder = bytesLength % 64n;
   const fullChunkBytes = fullChunks * (2n + 64n);
   const remainderBytes =
-    remainder === 0n
-      ? 0n
-      : definiteBytesHeaderLength(remainder) + remainder;
+    remainder === 0n ? 0n : definiteBytesHeaderLength(remainder) + remainder;
   // Indefinite bytestring start and break.
   return 2n + fullChunkBytes + remainderBytes;
 };
 
-export const midgardCekDataBytesMemoryV1 = (
-  bytesLength: bigint,
-): bigint => {
+export const midgardCekDataBytesMemoryV1 = (bytesLength: bigint): bigint => {
   uint32(bytesLength, "cek_data.bytes.bytes_length");
   return 4n + (bytesLength === 0n ? 1n : bytesLength);
 };
@@ -610,8 +556,7 @@ export const prependMidgardCekDataListSummaryV1 = (
     headMemory: head.memory,
     tail: tail.root,
     length: tail.length + 1n,
-    payloadCborLength:
-      head.cborLength + tail.payloadCborLength,
+    payloadCborLength: head.cborLength + tail.payloadCborLength,
     memory: head.memory + tail.memory,
   };
   return {
@@ -645,9 +590,7 @@ export const prependMidgardCekDataPairSummaryV1 = (
     tail: tail.root,
     length: tail.length + 1n,
     payloadCborLength:
-      key.cborLength +
-      value.cborLength +
-      tail.payloadCborLength,
+      key.cborLength + value.cborLength + tail.payloadCborLength,
     memory: key.memory + value.memory + tail.memory,
   };
   return {
@@ -699,18 +642,12 @@ export const summarizeMidgardCekLargeConstrDataV1 = ({
   readonly constructorMemory: bigint;
   readonly fields: MidgardCekDataSequenceSummaryV1;
 }): MidgardCekDataSummaryV1 => {
-  exactHash(
-    constructorCborRoot,
-    "cek_data.constr_large.constructor_cbor_root",
-  );
+  exactHash(constructorCborRoot, "cek_data.constr_large.constructor_cbor_root");
   uint32(
     constructorCborLength,
     "cek_data.constr_large.constructor_cbor_length",
   );
-  uint64(
-    constructorMemory,
-    "cek_data.constr_large.constructor_memory",
-  );
+  uint64(constructorMemory, "cek_data.constr_large.constructor_memory");
   if (constructorCborLength === 0n) {
     throw new RangeError(
       "cek_data.constr_large.constructor_cbor_length must be positive",
@@ -732,8 +669,7 @@ export const summarizeMidgardCekLargeConstrDataV1 = ({
     constructorMemory,
     fieldsCount: fields.length,
     fieldsRoot: fields.root,
-    cborLength:
-      3n + constructorCborLength + fieldsCborLength,
+    cborLength: 3n + constructorCborLength + fieldsCborLength,
     memory: 4n + fields.memory,
   });
 };

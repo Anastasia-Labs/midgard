@@ -384,8 +384,7 @@ export const parseProtocolInfo = (
     "supportedScriptLanguages",
     MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   );
-  const profileTxLimit =
-    MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes;
+  const profileTxLimit = MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes;
   const maxSubmitTxCborBytes = requireNumber(
     submissionLimits.maxSubmitTxCborBytes,
     "submissionLimits.maxSubmitTxCborBytes",

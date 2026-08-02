@@ -54,8 +54,7 @@ export const MIDGARD_CEK_MAX_PROGRAM_MATERIAL_BYTES =
 
 export type MidgardCekProgramMaterialKindV1 =
   MidgardCekProgramMaterialEntryV1["kind"];
-export type MidgardCekProgramMaterialNodeV1 =
-  MidgardCekProgramMaterialEntryV1;
+export type MidgardCekProgramMaterialNodeV1 = MidgardCekProgramMaterialEntryV1;
 
 export type MidgardCanonicalCekProgramV1 = {
   readonly envelope: MidgardCekProgramEnvelopeV1;
@@ -68,9 +67,7 @@ export type MidgardCanonicalCekProgramV1 = {
   >;
 };
 
-export type MidgardCanonicalScriptArtifactLanguageV1 =
-  | "PlutusV3"
-  | "MidgardV1";
+export type MidgardCanonicalScriptArtifactLanguageV1 = "PlutusV3" | "MidgardV1";
 
 export type MidgardCanonicalScriptArtifactInputV1 = {
   readonly language: MidgardCanonicalScriptArtifactLanguageV1;
@@ -95,16 +92,13 @@ export type MidgardCanonicalScriptArtifactV1 = {
   readonly canonicalMaterialSidecarCbor: Buffer;
 };
 
-const rootHex = (root: Uint8Array): string =>
-  Buffer.from(root).toString("hex");
+const rootHex = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-const unwrapCanonicalCborByteString = (
-  bytes: Buffer,
-): Buffer | null => {
-  if (bytes.length === 0 || (bytes[0]! >> 5) !== 2) return null;
+const unwrapCanonicalCborByteString = (bytes: Buffer): Buffer | null => {
+  if (bytes.length === 0 || bytes[0]! >> 5 !== 2) return null;
   const additional = bytes[0]! & 0x1f;
   let headerLength = 1;
   let payloadLength: bigint;
@@ -141,10 +135,7 @@ const unwrapCanonicalCborByteString = (
   ) {
     return null;
   }
-  return bytes.subarray(
-    headerLength,
-    headerLength + Number(payloadLength),
-  );
+  return bytes.subarray(headerLength, headerLength + Number(payloadLength));
 };
 
 const canonicalFlatProgramBytes = (scriptBytes: Buffer): Buffer => {
@@ -172,9 +163,7 @@ export const buildMidgardCanonicalCekProgramV1 = (
 
   const flat = canonicalFlatProgramBytes(raw);
   const program = parseUPLC(flat, "flat");
-  const reencoded = Buffer.from(
-    UPLCEncoder.compile(program).toBuffer().buffer,
-  );
+  const reencoded = Buffer.from(UPLCEncoder.compile(program).toBuffer().buffer);
   if (!flat.equals(reencoded)) {
     throw new Error(
       "V1 requires canonical Flat bytes with exactly the builtin forces implied by UPLC 1.1.0",
@@ -191,10 +180,7 @@ export const buildMidgardCanonicalCekProgramV1 = (
   }
 
   const material = new Map<string, MidgardCekProgramMaterialNodeV1>();
-  const constantWitnesses = new Map<
-    string,
-    MidgardCekConstantValueWitnessV1
-  >();
+  const constantWitnesses = new Map<string, MidgardCekConstantValueWitnessV1>();
   let materialByteLength = 0;
   const addMaterial = (
     kind: MidgardCekProgramMaterialKindV1,
@@ -299,10 +285,7 @@ export const buildMidgardCanonicalCekProgramV1 = (
       payloadRoot: semantic.root,
       payloadLength: semantic.cborLength,
       semanticRoot: semantic.root,
-      memory: midgardCekConstantMemorySizeV1(
-        canonical.type,
-        payload,
-      ),
+      memory: midgardCekConstantMemorySizeV1(canonical.type, payload),
     } as const;
     const root = hashMidgardCekValueNodeV1(node);
     addMaterial("value", root, encodeMidgardCekValueNodeV1(node));
@@ -540,8 +523,7 @@ export const buildMidgardCanonicalScriptArtifactV1 = ({
   sourceRawFlatProgramBytes,
 }: MidgardCanonicalScriptArtifactInputV1): MidgardCanonicalScriptArtifactV1 => {
   const sourceBytes = Buffer.from(sourceRawFlatProgramBytes);
-  const canonicalProgram =
-    buildMidgardCanonicalCekProgramV1(sourceBytes);
+  const canonicalProgram = buildMidgardCanonicalCekProgramV1(sourceBytes);
   const sourceRawScriptAuditHash = hashMidgardVersionedScript({
     language,
     scriptBytes: sourceBytes,

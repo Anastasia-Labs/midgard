@@ -126,12 +126,11 @@ export const buildValidationDisputeEvidenceBundleV1 = ({
   );
   const openingDisputeCbor = encodeValidationDisputeDataCborV1(openingDispute);
   const finalDisputeCbor = encodeValidationDisputeDataCborV1(dispute);
-  const boundaryEvidenceCbor =
-    encodeValidationBoundaryEvidenceCborV1({
-      dispute,
-      operatorTrace,
-      challengerTrace,
-    });
+  const boundaryEvidenceCbor = encodeValidationBoundaryEvidenceCborV1({
+    dispute,
+    operatorTrace,
+    challengerTrace,
+  });
   const oneStepArgument = buildValidationOneStepArgumentV1({
     trace: challengerTrace,
     stateIndex: dispute.lowIndex,

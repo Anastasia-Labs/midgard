@@ -247,10 +247,7 @@ export const decodeMidgardCekConstantTypeCborV1 = (
 const sameBytes = (left: Uint8Array, right: Uint8Array): boolean =>
   Buffer.from(left).equals(Buffer.from(right));
 
-const encodeSmallCborArgument = (
-  major: number,
-  value: bigint,
-): Buffer => {
+const encodeSmallCborArgument = (major: number, value: bigint): Buffer => {
   if (value < 0n) {
     throw new Error("CBOR argument must be non-negative");
   }
@@ -296,11 +293,7 @@ const encodeCardanoBytes = (bytes: Uint8Array): Buffer => {
 const encodeCardanoList = (items: readonly Buffer[]): Buffer =>
   items.length === 0
     ? Buffer.from([0x80])
-    : Buffer.concat([
-        Buffer.from([0x9f]),
-        ...items,
-        Buffer.from([0xff]),
-      ]);
+    : Buffer.concat([Buffer.from([0x9f]), ...items, Buffer.from([0xff])]);
 
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
@@ -421,9 +414,7 @@ const payloadMatchesType = (
     case "list":
       return (
         payload instanceof DataList &&
-        payload.list.every((item) =>
-          payloadMatchesType(type.element, item),
-        )
+        payload.list.every((item) => payloadMatchesType(type.element, item))
       );
     case "pair":
       return (
@@ -437,13 +428,11 @@ const payloadMatchesType = (
       return true;
     case "blsG1":
       return (
-        payload instanceof DataB &&
-        asByteArray(payload.bytes).length === 48
+        payload instanceof DataB && asByteArray(payload.bytes).length === 48
       );
     case "blsG2":
       return (
-        payload instanceof DataB &&
-        asByteArray(payload.bytes).length === 96
+        payload instanceof DataB && asByteArray(payload.bytes).length === 96
       );
     case "blsMillerLoopResult":
       return false;
@@ -514,10 +503,7 @@ const midgardConstantTypeToTagsV1 = (
     case "boolean":
       return [ConstTyTag.bool];
     case "list":
-      return [
-        ConstTyTag.list,
-        ...midgardConstantTypeToTagsV1(type.element),
-      ];
+      return [ConstTyTag.list, ...midgardConstantTypeToTagsV1(type.element)];
     case "pair":
       return [
         ConstTyTag.pair,
@@ -540,9 +526,7 @@ export const encodeMidgardCekConstantTypeCborV1 = (
 ): Buffer =>
   encodeMidgardCekPlutusDataV1(
     new DataList(
-      midgardConstantTypeToTagsV1(type).map(
-        (tag) => new DataI(BigInt(tag)),
-      ),
+      midgardConstantTypeToTagsV1(type).map((tag) => new DataI(BigInt(tag))),
     ),
   );
 
@@ -659,14 +643,9 @@ export const hashMidgardCekConstantWitnessV1 = (
     kind: "constant",
     typeRoot: hashMidgardCekBlobChunkV1(witness.typeCbor),
     payloadRoot: semantic.root,
-    payloadLength: BigInt(
-      encodeMidgardCekPlutusDataV1(decoded.payload).length,
-    ),
+    payloadLength: BigInt(encodeMidgardCekPlutusDataV1(decoded.payload).length),
     semanticRoot: semantic.root,
-    memory: midgardCekConstantMemorySizeV1(
-      decoded.type,
-      decoded.payload,
-    ),
+    memory: midgardCekConstantMemorySizeV1(decoded.type, decoded.payload),
   });
 };
 
@@ -703,22 +682,16 @@ const byteLengthOrOne = (bytes: Uint8Array): bigint =>
  * magnitude used by cardano-node's CEK cost model, not the encoded payload
  * length.
  */
-export const midgardCekIntegerMemorySizeV1 = (
-  value: bigint,
-): bigint => {
-  const doubledMagnitude =
-    value < 0n ? (-value - 1n) << 1n : value << 1n;
+export const midgardCekIntegerMemorySizeV1 = (value: bigint): bigint => {
+  const doubledMagnitude = value < 0n ? (-value - 1n) << 1n : value << 1n;
   if (doubledMagnitude === 0n) {
     return 1n;
   }
-  return BigInt(
-    Math.floor((doubledMagnitude.toString(2).length - 1) / 8) + 1,
-  );
+  return BigInt(Math.floor((doubledMagnitude.toString(2).length - 1) / 8) + 1);
 };
 
-export const midgardCekByteStringMemorySizeV1 = (
-  value: Uint8Array,
-): bigint => byteLengthOrOne(value);
+export const midgardCekByteStringMemorySizeV1 = (value: Uint8Array): bigint =>
+  byteLengthOrOne(value);
 
 /**
  * Plutus Data charges four memory words for every node, then the signed
@@ -834,9 +807,7 @@ export const encodeMidgardCekCanonicalConstantV1 = (
   return Object.freeze({
     type,
     typeCbor: encodeMidgardCekPlutusDataV1(
-      new DataList(
-        constant.type.map((tag) => new DataI(BigInt(tag))),
-      ),
+      new DataList(constant.type.map((tag) => new DataI(BigInt(tag)))),
     ),
     payloadCbor: encodeMidgardCekPlutusDataV1(
       semanticData(type, constant.value),

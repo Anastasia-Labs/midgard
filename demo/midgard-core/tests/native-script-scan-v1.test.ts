@@ -22,9 +22,7 @@ describe("native script syntax scan V1", () => {
   it("iteratively scans canonical trees beyond the retired count caps", () => {
     const script: MidgardNativeScript = {
       type: "all",
-      scripts: Array.from({ length: 40 }, (_, index) =>
-        signature(index),
-      ),
+      scripts: Array.from({ length: 40 }, (_, index) => signature(index)),
     };
     const bytes = encodeMidgardNativeScript(script);
     const trace = buildMidgardNativeScriptStructureTraceV1(bytes);
@@ -32,9 +30,7 @@ describe("native script syntax scan V1", () => {
 
     expect(terminal.nodeCount).toBe(41);
     expect(terminal.stackDepth).toBe(0);
-    expect(
-      isExactMidgardNativeScriptStructureTerminalV1(terminal),
-    ).toBe(true);
+    expect(isExactMidgardNativeScriptStructureTerminalV1(terminal)).toBe(true);
   });
 
   it("iteratively scans canonical trees beyond the retired depth cap", () => {
@@ -48,12 +44,10 @@ describe("native script syntax scan V1", () => {
     const terminal = trace.at(-1)!.next;
 
     expect(terminal.nodeCount).toBe(21);
-    expect(
-      Math.max(...trace.map(({ control }) => control.stackDepth)),
-    ).toBe(20);
-    expect(
-      isExactMidgardNativeScriptStructureTerminalV1(terminal),
-    ).toBe(true);
+    expect(Math.max(...trace.map(({ control }) => control.stackDepth))).toBe(
+      20,
+    );
+    expect(isExactMidgardNativeScriptStructureTerminalV1(terminal)).toBe(true);
   });
 
   it("round-trips canonical controls and emits the Aiken vector", () => {
@@ -64,15 +58,12 @@ describe("native script syntax scan V1", () => {
     });
     const terminal =
       buildMidgardNativeScriptStructureTraceV1(bytes).at(-1)!.next;
-    const controlCbor =
-      encodeMidgardNativeScriptStructureControlV1(terminal);
+    const controlCbor = encodeMidgardNativeScriptStructureControlV1(terminal);
 
     expect(
       decodeMidgardNativeScriptStructureControlV1(controlCbor),
     ).toStrictEqual(terminal);
-    expect(controlCbor.toString("hex")).toBe(
-      "8801030018281828400003",
-    );
+    expect(controlCbor.toString("hex")).toBe("8801030018281828400003");
   });
 
   it("reports authenticated malformed syntax and trailing bytes", () => {

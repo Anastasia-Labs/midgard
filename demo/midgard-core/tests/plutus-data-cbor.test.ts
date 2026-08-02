@@ -38,29 +38,23 @@ describe("Aiken PlutusData serialization", () => {
 
   it("distinguishes typed map sorting from raw Data map order", () => {
     const assetThenAda = "bf4111014002ff";
-    expect(aikenSerialisedPlutusDataCbor(assetThenAda)).toBe(
-      "a24002411101",
+    expect(aikenSerialisedPlutusDataCbor(assetThenAda)).toBe("a24002411101");
+    expect(aikenSerialisedPlutusDataCborPreservingMapOrder(assetThenAda)).toBe(
+      "a24111014002",
     );
-    expect(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(assetThenAda),
-    ).toBe("a24111014002");
   });
 
   it("normalizes and traverses a unary depth beyond the former host stack ceiling", () => {
     const depth = 4_000;
     const unary = `${"9f".repeat(depth)}00${"ff".repeat(depth)}`;
-    expect(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(unary),
-    ).toBe(unary);
+    expect(aikenSerialisedPlutusDataCborPreservingMapOrder(unary)).toBe(unary);
     expect(aikenSerialisedPlutusDataCbor(unary)).toBe(unary);
 
     const trace = buildMidgardCekDataTraverseTraceV1({
       sourceStart: 0,
       source: Buffer.from(unary, "hex"),
     });
-    const terminal = finalizeMidgardCekDataTraverseV1(
-      trace.terminal,
-    );
+    const terminal = finalizeMidgardCekDataTraverseV1(trace.terminal);
     expect(terminal).not.toBeNull();
     expect(terminal!.cborLength).toBe(BigInt(unary.length / 2));
     expect(
@@ -72,18 +66,14 @@ describe("Aiken PlutusData serialization", () => {
           ),
         0,
       ),
-    ).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-    );
+    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1);
   });
 
   it("still rejects trailing, broken, and truncated CBOR", () => {
     expect(() => aikenSerialisedPlutusDataCbor("00ff")).toThrow(
       /trailing bytes/u,
     );
-    expect(() => aikenSerialisedPlutusDataCbor("ff")).toThrow(
-      /break marker/u,
-    );
+    expect(() => aikenSerialisedPlutusDataCbor("ff")).toThrow(/break marker/u);
     expect(() => aikenSerialisedPlutusDataCbor("9f00")).toThrow(
       /Unexpected end/u,
     );

@@ -20,7 +20,7 @@
  * - the writer refuses to overwrite an implemented family.
  */
 import { existsSync, globSync } from "node:fs";
-import { mkdir,mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -369,8 +369,10 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
       rejectionCode(
         mutatedSpec((spec) => {
           (
-            (spec.steps as Record<string, unknown>[])[1]
-              .inputState as Record<string, unknown>[]
+            (spec.steps as Record<string, unknown>[])[1].inputState as Record<
+              string,
+              unknown
+            >[]
           )[0].type = "anything";
         }),
       ),
@@ -379,8 +381,10 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
       rejectionCode(
         mutatedSpec((spec) => {
           (
-            (spec.steps as Record<string, unknown>[])[1]
-              .inputState as Record<string, unknown>[]
+            (spec.steps as Record<string, unknown>[])[1].inputState as Record<
+              string,
+              unknown
+            >[]
           )[0].name = "badTxNetworkId";
         }),
       ),
@@ -398,8 +402,10 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
       rejectionCode(
         mutatedSpec((spec) => {
           (
-            (spec.steps as Record<string, unknown>[])[1]
-              .inputState as Record<string, unknown>[]
+            (spec.steps as Record<string, unknown>[])[1].inputState as Record<
+              string,
+              unknown
+            >[]
           )[0] = { name: "x_field", type: "int" };
         }),
       ),
@@ -616,9 +622,9 @@ describe("Q02 generated families retain explicit schemas and tests", () => {
     expect(checklist.closureOutputs).toHaveLength(
       FAMILY_CLOSURE_OUTPUTS_V1.length,
     );
-    expect(
-      checklist.closureOutputs.every((row) => row.status === "TODO"),
-    ).toBe(true);
+    expect(checklist.closureOutputs.every((row) => row.status === "TODO")).toBe(
+      true,
+    );
   });
 });
 
@@ -628,7 +634,11 @@ describe("Q02 permissive-dispatch scanner", () => {
     readonly language: ScaffoldArtifactLanguageV1;
     readonly line: string;
   }[] = [
-    { ruleId: "ak_catch_all_arm_true", language: "aiken", line: "      _ -> True" },
+    {
+      ruleId: "ak_catch_all_arm_true",
+      language: "aiken",
+      line: "      _ -> True",
+    },
     {
       ruleId: "ak_catch_all_arm",
       language: "aiken",
@@ -720,7 +730,9 @@ describe("Q02 permissive-dispatch scanner", () => {
   it("produces no findings on any shipped fraud-proof artifact", async () => {
     const files = [
       ...globSync(`${REPO_ROOT}/onchain/aiken/validators/fraud-proofs/**/*.ak`),
-      ...globSync(`${REPO_ROOT}/onchain/aiken/lib/midgard/fraud-proofs/**/*.ak`),
+      ...globSync(
+        `${REPO_ROOT}/onchain/aiken/lib/midgard/fraud-proofs/**/*.ak`,
+      ),
       ...globSync(`${REPO_ROOT}/demo/midgard-sdk/src/fraud-proof/*.ts`),
     ].filter((path) => !path.includes(".test."));
     expect(files.length).toBeGreaterThan(100);
@@ -736,7 +748,9 @@ describe("Q02 permissive-dispatch scanner", () => {
       )
     ).flat();
     expect(
-      findings.map((finding) => `${finding.path}:${finding.line} ${finding.ruleId}`),
+      findings.map(
+        (finding) => `${finding.path}:${finding.line} ${finding.ruleId}`,
+      ),
     ).toEqual([]);
   });
 
@@ -816,9 +830,8 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitAikenStepValidator: (input) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(
-            input,
-          );
+          const emitted =
+            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: `${emitted.contents}\nfn accept(r: Redeemer) -> Bool {\n  when r is {\n    _ -> True\n  }\n}\n`,
@@ -849,9 +862,8 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitAikenStepValidator: (input) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(
-            input,
-          );
+          const emitted =
+            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -868,9 +880,8 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitAikenStepValidator: (input) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(
-            input,
-          );
+          const emitted =
+            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(/todo\s+@"[^"]*"/gu, "True"),
@@ -888,7 +899,10 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
             FAMILY_SCAFFOLD_EMITTERS_V1.emitSdkFamilyTestModule(spec);
           return {
             ...emitted,
-            contents: emitted.contents.replace(/SCAFFOLD_UNIMPLEMENTED/gu, "ok"),
+            contents: emitted.contents.replace(
+              /SCAFFOLD_UNIMPLEMENTED/gu,
+              "ok",
+            ),
           };
         },
       }),
@@ -916,9 +930,8 @@ describe("Q02 generator refuses its own permissive or vacuous output", () => {
     expect(
       guardCode({
         emitAikenStepValidator: (input) => {
-          const emitted = FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(
-            input,
-          );
+          const emitted =
+            FAMILY_SCAFFOLD_EMITTERS_V1.emitAikenStepValidator(input);
           return {
             ...emitted,
             contents: emitted.contents.replace(
@@ -1001,7 +1014,10 @@ describe("Q02 scaffold writer is fail-closed", () => {
     // The refusal is atomic: nothing else was written either.
     expect(
       existsSync(
-        join(root, "onchain/aiken/validators/fraud-proofs/network-id/step-01.ak"),
+        join(
+          root,
+          "onchain/aiken/validators/fraud-proofs/network-id/step-01.ak",
+        ),
       ),
     ).toBe(false);
     expect(await readFile(target, "utf8")).toBe("// real implemented step\n");
@@ -1070,7 +1086,10 @@ describe("Q02 scaffold CLI", () => {
     expect(report.written).toHaveLength(7);
     expect(
       existsSync(
-        join(root, "onchain/aiken/validators/fraud-proofs/network-id/step-01.ak"),
+        join(
+          root,
+          "onchain/aiken/validators/fraud-proofs/network-id/step-01.ak",
+        ),
       ),
     ).toBe(true);
   });
@@ -1146,7 +1165,10 @@ describe("Q02 generated shape matches the deployed families", () => {
       "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
     ).contents;
     const shippedTypes = await readFile(
-      join(REPO_ROOT, "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak"),
+      join(
+        REPO_ROOT,
+        "onchain/aiken/lib/midgard/fraud-proofs/zero-input/step-02.ak",
+      ),
       "utf8",
     );
     // Same declarations, in the same order, as the family that already builds.

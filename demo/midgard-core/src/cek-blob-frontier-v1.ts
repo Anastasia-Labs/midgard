@@ -58,11 +58,8 @@ export const validateMidgardCekBlobFrontierV1 = (
   const count = exactUint32(frontier.count, "count");
   const byteLength = exactUint64(frontier.byteLength, "byte length");
   const expectedMinimum =
-    count === 0
-      ? 0n
-      : BigInt(count - 1) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
-  const expectedMaximum =
-    BigInt(count) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
+    count === 0 ? 0n : BigInt(count - 1) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
+  const expectedMaximum = BigInt(count) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
   if (
     byteLength < expectedMinimum ||
     byteLength > expectedMaximum ||
@@ -78,12 +75,10 @@ export const validateMidgardCekBlobFrontierV1 = (
     const peak = frontier.peaks[index]!;
     const height = exactUint32(peak.height, "peak height");
     const leaves = powerOfTwo(height);
-    const maximum =
-      leaves * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
+    const maximum = leaves * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES);
     const minimum =
       index === 0
-        ? (leaves - 1n) *
-          BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES)
+        ? (leaves - 1n) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES)
         : maximum;
     if (
       height <= priorHeight ||
@@ -104,13 +99,12 @@ export const validateMidgardCekBlobFrontierV1 = (
   }
 };
 
-export const emptyMidgardCekBlobFrontierV1 =
-  (): MidgardCekBlobFrontierV1 =>
-    Object.freeze({
-      count: 0,
-      byteLength: 0n,
-      peaks: Object.freeze([]),
-    });
+export const emptyMidgardCekBlobFrontierV1 = (): MidgardCekBlobFrontierV1 =>
+  Object.freeze({
+    count: 0,
+    byteLength: 0n,
+    peaks: Object.freeze([]),
+  });
 
 export const appendMidgardCekBlobFrontierChunkRootV1 = (
   frontier: MidgardCekBlobFrontierV1,
@@ -124,8 +118,7 @@ export const appendMidgardCekBlobFrontierChunkRootV1 = (
     frontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
     (frontier.count > 0 &&
       frontier.byteLength !==
-        BigInt(frontier.count) *
-          BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES))
+        BigInt(frontier.count) * BigInt(MIDGARD_CEK_BLOB_CHUNK_BYTES))
   ) {
     throw new Error("V1 CEK blob frontier cannot append after a final leaf");
   }
@@ -140,10 +133,7 @@ export const appendMidgardCekBlobFrontierChunkRootV1 = (
   const peaks = [...frontier.peaks];
   let peak: MidgardCekBlobFrontierPeakV1 = {
     height: 0,
-    root: ensureHash32(
-      chunk.root,
-      "cek_blob_frontier_v1.appended_chunk.root",
-    ),
+    root: ensureHash32(chunk.root, "cek_blob_frontier_v1.appended_chunk.root"),
     byteLength: BigInt(chunk.byteLength),
   };
   while (peaks[0]?.height === peak.height) {

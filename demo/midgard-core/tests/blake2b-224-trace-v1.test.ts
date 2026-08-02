@@ -32,13 +32,9 @@ describe("bounded BLAKE2b-224 trace V1", () => {
       message[0] = 3;
       const trace = buildMidgardBlake2b224TraceV1(message);
       const terminal = trace.at(-1)!.next;
-      const blockCount = Math.ceil(
-        length / MIDGARD_BLAKE2B_BLOCK_BYTES,
-      );
+      const blockCount = Math.ceil(length / MIDGARD_BLAKE2B_BLOCK_BYTES);
 
-      expect(trace).toHaveLength(
-        blockCount * (MIDGARD_BLAKE2B_ROUNDS + 2),
-      );
+      expect(trace).toHaveLength(blockCount * (MIDGARD_BLAKE2B_ROUNDS + 2));
       expect(digestMidgardBlake2b224TraceV1(terminal)).toStrictEqual(
         referenceDigest(message),
       );
@@ -108,9 +104,7 @@ describe("bounded BLAKE2b-224 trace V1", () => {
     "matches the canonical $language script identity",
     (script) => {
       const message = Buffer.concat([
-        Buffer.from([
-          Number(MidgardVersionedScriptTags[script.language]),
-        ]),
+        Buffer.from([Number(MidgardVersionedScriptTags[script.language])]),
         script.scriptBytes,
       ]);
       const terminal = buildMidgardBlake2b224TraceV1(message).at(-1)!.next;

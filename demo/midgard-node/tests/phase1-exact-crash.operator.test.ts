@@ -116,9 +116,7 @@ describe("Phase 1 exact killed-tx operator closure", () => {
       const metricsEndpoint =
         process.env.PHASE1_EXACT_CRASH_METRICS_ENDPOINT ?? "";
       expect(endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
-      expect(metricsEndpoint).toMatch(
-        /^http:\/\/127\.0\.0\.1:\d+\/metrics$/u,
-      );
+      expect(metricsEndpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/metrics$/u);
       const timeoutMs = Number(
         process.env.PHASE1_EXACT_CRASH_TIMEOUT_MS ?? 180_000,
       );
@@ -139,7 +137,9 @@ describe("Phase 1 exact killed-tx operator closure", () => {
         runDatabase(
           Effect.gen(function* () {
             const sql = yield* SqlClient.SqlClient;
-            const rows = yield* sql<{ readonly present: boolean }>`SELECT EXISTS (
+            const rows = yield* sql<{
+              readonly present: boolean;
+            }>`SELECT EXISTS (
               SELECT 1
               FROM pending_block_finalization_txs AS member
               INNER JOIN pending_block_finalizations AS journal
@@ -170,12 +170,8 @@ describe("Phase 1 exact killed-tx operator closure", () => {
         rm(restartStopFile, { force: true }),
       ]);
 
-      let firstProcess:
-        | Promise<ServiceSupervisorSummary>
-        | undefined;
-      let restartProcess:
-        | Promise<ServiceSupervisorSummary>
-        | undefined;
+      let firstProcess: Promise<ServiceSupervisorSummary> | undefined;
+      let restartProcess: Promise<ServiceSupervisorSummary> | undefined;
       try {
         expect(await runDatabase(MempoolDB.retrieveTxCount)).toBe(0n);
         expect(await runDatabase(TxAdmissionsDB.getByTxId(txId))).toBeNull();
@@ -248,9 +244,9 @@ describe("Phase 1 exact killed-tx operator closure", () => {
         });
         firstProcess = undefined;
 
-        expect((await runDatabase(TxAdmissionsDB.getByTxId(txId)))?.status).toBe(
-          TxAdmissionsDB.Status.Accepted,
-        );
+        expect(
+          (await runDatabase(TxAdmissionsDB.getByTxId(txId)))?.status,
+        ).toBe(TxAdmissionsDB.Status.Accepted);
         expect(await runDatabase(MempoolDB.retrieveTxCount)).toBe(1n);
         expect(
           (await runDatabase(MempoolTxDeltasDB.retrieveByTxIds([txId]))).size,

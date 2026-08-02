@@ -3,10 +3,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 
-const BRANCH_DOMAIN = Buffer.from(
-  "MidgardValidationMerkleBranchV1",
-  "ascii",
-);
+const BRANCH_DOMAIN = Buffer.from("MidgardValidationMerkleBranchV1", "ascii");
 const FRONTIER_DOMAIN = Buffer.from(
   "MidgardValidationMerkleFrontierV1",
   "ascii",
@@ -167,11 +164,7 @@ const locatePeak = (
   leafIndex: number,
 ): { readonly height: number; readonly start: number } => {
   let offset = 0;
-  for (
-    let height = Math.floor(Math.log2(count));
-    height >= 0;
-    height -= 1
-  ) {
+  for (let height = Math.floor(Math.log2(count)); height >= 0; height -= 1) {
     if (!bitIsSet(count, height)) continue;
     const size = 2 ** height;
     if (leafIndex < offset + size) {
@@ -203,25 +196,18 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
   let start = 0;
   for (
     let height =
-      leaves.length === 0
-        ? -1
-        : Math.floor(Math.log2(leaves.length));
+      leaves.length === 0 ? -1 : Math.floor(Math.log2(leaves.length));
     height >= 0;
     height -= 1
   ) {
     if (!bitIsSet(leaves.length, height)) continue;
-    const levels: Hash32[][] = [
-      leaves.slice(start, start + 2 ** height),
-    ];
+    const levels: Hash32[][] = [leaves.slice(start, start + 2 ** height)];
     while (levels.at(-1)!.length > 1) {
       const level = levels.at(-1)!;
       const next: Hash32[] = [];
       for (let index = 0; index < level.length; index += 2) {
         next.push(
-          hashMidgardValidationMerkleBranchV1(
-            level[index]!,
-            level[index + 1]!,
-          ),
+          hashMidgardValidationMerkleBranchV1(level[index]!, level[index + 1]!),
         );
       }
       levels.push(next);
@@ -241,13 +227,8 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
   validateMidgardValidationMerkleFrontierV1(cachedFrontier);
 
   return {
-    frontier:
-      cloneMidgardValidationMerkleFrontierV1(
-        cachedFrontier,
-      ),
-    membershipAt: (
-      leafIndex: number,
-    ): MidgardValidationMerkleMembershipV1 => {
+    frontier: cloneMidgardValidationMerkleFrontierV1(cachedFrontier),
+    membershipAt: (leafIndex: number): MidgardValidationMerkleMembershipV1 => {
       if (
         !Number.isSafeInteger(leafIndex) ||
         leafIndex < 0 ||
@@ -275,18 +256,11 @@ export const buildMidgardValidationMerkleMembershipIndexV1 = (
         levelIndex < peak.levels.length - 1;
         levelIndex += 1
       ) {
-        siblings.push(
-          Buffer.from(
-            peak.levels[levelIndex]![localIndex ^ 1]!,
-          ),
-        );
+        siblings.push(Buffer.from(peak.levels[levelIndex]![localIndex ^ 1]!));
         localIndex = Math.floor(localIndex / 2);
       }
       return {
-        frontier:
-          cloneMidgardValidationMerkleFrontierV1(
-            cachedFrontier,
-          ),
+        frontier: cloneMidgardValidationMerkleFrontierV1(cachedFrontier),
         leafIndex,
         leafHash: Buffer.from(leaves[leafIndex]!),
         siblings,
@@ -322,10 +296,7 @@ export const buildMidgardValidationMerkleMembershipV1 = (
     const next: Hash32[] = [];
     for (let index = 0; index < level.length; index += 2) {
       next.push(
-        hashMidgardValidationMerkleBranchV1(
-          level[index]!,
-          level[index + 1]!,
-        ),
+        hashMidgardValidationMerkleBranchV1(level[index]!, level[index + 1]!),
       );
     }
     localIndex = Math.floor(localIndex / 2);

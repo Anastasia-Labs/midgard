@@ -1,7 +1,4 @@
-import {
-  CML,
-  Emulator,
-} from "@lucid-evolution/lucid";
+import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -46,10 +43,8 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
           recipientAddress: funder.address,
           requestedOutputCount,
           lovelacePerOutput: 2_000_000n,
-          minFeeA:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
           minFeeRefScriptCostPerByte:
             PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
         }),
@@ -60,11 +55,10 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     const adjacentCardanoMeasurement = measureSignedCardanoOutputsV1(
       boundary.adjacent.cborHex,
     );
-    const midgardMeasurement =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: boundary.accepted.cborHex,
-        fieldIndex: 2,
-      });
+    const midgardMeasurement = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: boundary.accepted.cborHex,
+      fieldIndex: 2,
+    });
     const retainedDa = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "maximum-outputs",
@@ -110,9 +104,7 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     expect(adjacentCardanoMeasurement.outputCount).toBe(
       cardanoMeasurement.outputCount + 1,
     );
-    expect(midgardMeasurement.itemCount).toBe(
-      cardanoMeasurement.outputCount,
-    );
+    expect(midgardMeasurement.itemCount).toBe(cardanoMeasurement.outputCount);
     expect(midgardMeasurement.revealStepCount).toBe(
       cardanoMeasurement.outputCount,
     );
@@ -130,28 +122,21 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
             orderedCollectionBoundaryV1: {
               fieldIndex: 2,
               fieldName: "outputs",
-              maxTxSize:
-                emulator.protocolParameters.maxTxSize,
-              maxValueSize:
-                emulator.protocolParameters.maxValSize,
-              requestedOutputCount:
-                boundary.accepted.requestedItemCount,
+              maxTxSize: emulator.protocolParameters.maxTxSize,
+              maxValueSize: emulator.protocolParameters.maxValSize,
+              requestedOutputCount: boundary.accepted.requestedItemCount,
               signedCardanoBytes: boundary.accepted.signedBytes,
               fee: boundary.accepted.fee.toString(),
               cardanoOutputCount: cardanoMeasurement.outputCount,
-              nativeCanonicalBytes:
-                midgardMeasurement.nativeCanonicalBytes,
+              nativeCanonicalBytes: midgardMeasurement.nativeCanonicalBytes,
               outputsFieldBytes: midgardMeasurement.fieldBytes,
               maxRevealBytes: midgardMeasurement.maxRevealBytes,
               maxChunkBytes: midgardMeasurement.maxChunkBytes,
-              outputRevealSteps:
-                midgardMeasurement.revealStepCount,
-              completeFoldSteps:
-                midgardMeasurement.completeFoldStepCount,
+              outputRevealSteps: midgardMeasurement.revealStepCount,
+              completeFoldSteps: midgardMeasurement.completeFoldStepCount,
               adjacentRequestedOutputCount:
                 boundary.adjacent.requestedItemCount,
-              adjacentSignedCardanoBytes:
-                boundary.adjacent.signedBytes,
+              adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
               adjacentFee: boundary.adjacent.fee.toString(),
               adjacentCardanoOutputCount:
                 adjacentCardanoMeasurement.outputCount,

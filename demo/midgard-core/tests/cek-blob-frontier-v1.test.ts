@@ -15,10 +15,7 @@ import {
 const buildFrontier = (bytes: Buffer) => {
   let frontier = emptyMidgardCekBlobFrontierV1();
   if (bytes.length === 0) {
-    return appendMidgardCekBlobFrontierChunkV1(
-      frontier,
-      Buffer.alloc(0),
-    );
+    return appendMidgardCekBlobFrontierChunkV1(frontier, Buffer.alloc(0));
   }
   for (
     let offset = 0;
@@ -29,10 +26,7 @@ const buildFrontier = (bytes: Buffer) => {
       frontier,
       bytes.subarray(
         offset,
-        Math.min(
-          offset + MIDGARD_CEK_BLOB_CHUNK_BYTES,
-          bytes.length,
-        ),
+        Math.min(offset + MIDGARD_CEK_BLOB_CHUNK_BYTES, bytes.length),
       ),
     );
   }
@@ -75,10 +69,10 @@ describe("streaming CEK blob frontier V1", () => {
 
     expect(fromRoot).toStrictEqual(fromBytes);
     expect(() =>
-      appendMidgardCekBlobFrontierChunkRootV1(
-        emptyMidgardCekBlobFrontierV1(),
-        { root: Buffer.alloc(31), byteLength: chunk.length },
-      ),
+      appendMidgardCekBlobFrontierChunkRootV1(emptyMidgardCekBlobFrontierV1(), {
+        root: Buffer.alloc(31),
+        byteLength: chunk.length,
+      }),
     ).toThrow(/32 bytes/u);
   });
 

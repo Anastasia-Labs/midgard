@@ -29,8 +29,7 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
-const hex = (bytes: Uint8Array): string =>
-  Buffer.from(bytes).toString("hex");
+const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
 
 const jsonDataSummary = (summary: {
   readonly root: Uint8Array;
@@ -51,11 +50,8 @@ const jsonDataFrame = (
     ? { constructor: frame.constructor.toString() }
     : frame.kind === "constrLarge"
       ? {
-          constructorCborRootHex: hex(
-            frame.constructorCborRoot,
-          ),
-          constructorCborLength:
-            frame.constructorCborLength.toString(),
+          constructorCborRootHex: hex(frame.constructorCborRoot),
+          constructorCborLength: frame.constructorCborLength.toString(),
           constructorMemory: frame.constructorMemory.toString(),
         }
       : {}),
@@ -70,8 +66,7 @@ const jsonDataFrame = (
   sequence: {
     rootHex: hex(frame.sequence.root),
     length: frame.sequence.length.toString(),
-    payloadCborLength:
-      frame.sequence.payloadCborLength.toString(),
+    payloadCborLength: frame.sequence.payloadCborLength.toString(),
     memory: frame.sequence.memory.toString(),
   },
 });
@@ -98,8 +93,7 @@ const maximumNestedDataTerminalVectorV1 = {
   terminalPostControlCborHex:
     "8a01071831193f2b193f2b40d87a80d87a80d87a80d8799f83582077156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f193f2b19bd6bff",
   terminalSummary: {
-    rootHex:
-      "77156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f",
+    rootHex: "77156535ea7ff621233f808b4995b94294f504a0dd78455593440e3d03ad2b6f",
     cborLength: "16171",
     memory: "48491",
   },
@@ -135,13 +129,10 @@ describe("canonical V1 nested Cardano Data boundary", () => {
         recipientAddress: funder.address,
         requestedNestedLeafCount,
         nestedDatumCborHex,
-        minFeeA:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-        minFeeB:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
         minFeeRefScriptCostPerByte:
-          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1
-            .minFeeRefScriptCostPerByte,
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
       });
     };
     const boundary = await findSignedCardanoCollectionBoundaryV1({
@@ -175,9 +166,7 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     expect(accepted.datumCborBytes).toBe(
       boundary.accepted.requestedItemCount * 3 + 10,
     );
-    expect(adjacent.datumCborBytes).toBe(
-      accepted.datumCborBytes + 3,
-    );
+    expect(adjacent.datumCborBytes).toBe(accepted.datumCborBytes + 3);
     expect({
       outputCount: accepted.outputCount,
       vkeyWitnessCount: accepted.vkeyWitnessCount,
@@ -198,24 +187,18 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       collateralInputCount: 0,
     });
 
-    const canonical =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(boundary.accepted.cborHex, "hex"),
-      );
-    const native =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
-    expect(
-      validateMidgardConsensusV1Tx(native, canonical.length),
-    ).toBeNull();
+    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(boundary.accepted.cborHex, "hex"),
+    );
+    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+    expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
     const outputCbors = decodeMidgardNativeByteListPreimage(
       native.body.outputsPreimageCbor,
       "native.outputs",
     );
     expect(outputCbors).toHaveLength(1);
     const output = decodeMidgardTxOutput(outputCbors[0]!);
-    expect(output.datum?.cbor.toString("hex")).toBe(
-      acceptedDatumCborHex,
-    );
+    expect(output.datum?.cbor.toString("hex")).toBe(acceptedDatumCborHex);
 
     const outputProof = buildMidgardLedgerOutputProofTraceV1({
       outputIndex: 0,
@@ -232,9 +215,7 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     );
     expect(
       datumSteps.map(({ witness }) =>
-        witness!.kind === "datum"
-          ? witness!.action?.kind
-          : undefined,
+        witness!.kind === "datum" ? witness!.action?.kind : undefined,
       ),
     ).toEqual(
       expect.arrayContaining([
@@ -247,15 +228,10 @@ describe("canonical V1 nested Cardano Data boundary", () => {
         "finalizeFrame",
       ]),
     );
-    const maximumSourceSpan = datumSteps.reduce(
-      (maximum, { control }) => {
-        const span = nextMidgardCekDataTraverseSpanV1(
-          control.datum!,
-        );
-        return Math.max(maximum, span?.length ?? 0);
-      },
-      0,
-    );
+    const maximumSourceSpan = datumSteps.reduce((maximum, { control }) => {
+      const span = nextMidgardCekDataTraverseSpanV1(control.datum!);
+      return Math.max(maximum, span?.length ?? 0);
+    }, 0);
     expect(maximumSourceSpan).toBeLessThanOrEqual(
       MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
     );
@@ -286,42 +262,32 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       finalDatumStep.next.datum!,
     );
     expect(terminalSummary).not.toBeNull();
-    expect(terminalSummary!.cborLength).toBe(
-      BigInt(accepted.datumCborBytes),
-    );
+    expect(terminalSummary!.cborLength).toBe(BigInt(accepted.datumCborBytes));
     const terminalVector = {
       maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-      nestedLeafCount:
-        boundary.accepted.requestedItemCount,
-      dataNodeCount:
-        boundary.accepted.requestedItemCount * 2 + 2,
+      nestedLeafCount: boundary.accepted.requestedItemCount,
+      dataNodeCount: boundary.accepted.requestedItemCount * 2 + 2,
       datumCborBytes: accepted.datumCborBytes,
       signedCardanoBytes: boundary.accepted.signedBytes,
       signedCardanoByteMargin:
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1 -
-        boundary.accepted.signedBytes,
-      adjacentLeafCount:
-        boundary.adjacent.requestedItemCount,
+        CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - boundary.accepted.signedBytes,
+      adjacentLeafCount: boundary.adjacent.requestedItemCount,
       adjacentDatumCborBytes: adjacent.datumCborBytes,
-      adjacentSignedCardanoBytes:
-        boundary.adjacent.signedBytes,
+      adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
       nativeCanonicalBytes: canonical.length,
       outputItemBytes: outputCbors[0]!.length,
       outputProofSteps: outputProof.steps.length,
       datumTraverseSteps: datumSteps.length,
       maximumSourceSpan,
-      terminalPreControlCborHex:
-        encodeMidgardCekDataTraverseControlV1(
-          finalDatumStep.control.datum!,
-        ).toString("hex"),
-      terminalFrameCborHex:
-        encodeMidgardCekDataFrameV1(
-          finalAction.frame,
-        ).toString("hex"),
-      terminalPostControlCborHex:
-        encodeMidgardCekDataTraverseControlV1(
-          finalDatumStep.next.datum!,
-        ).toString("hex"),
+      terminalPreControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        finalDatumStep.control.datum!,
+      ).toString("hex"),
+      terminalFrameCborHex: encodeMidgardCekDataFrameV1(
+        finalAction.frame,
+      ).toString("hex"),
+      terminalPostControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        finalDatumStep.next.datum!,
+      ).toString("hex"),
       terminalSummary: {
         rootHex: Buffer.from(terminalSummary!.root).toString("hex"),
         cborLength: terminalSummary!.cborLength.toString(),
@@ -337,107 +303,86 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       "foldMap",
       "finalizeFrame",
     ] as const;
-    const appliedActionVectors = representativeKinds.map(
-      (kind) => {
-        const step = datumSteps.find(({ witness }) =>
-          witness?.kind === "datum"
-            ? witness.action?.kind === kind
-            : false,
-        );
-        if (
-          step === undefined ||
-          step.witness?.kind !== "datum" ||
-          step.witness.action === null ||
-          step.control.datum === null ||
-          step.next.datum === null
-        ) {
-          throw new Error(
-            `Maximum nested datum lost applied ${kind} evidence`,
-          );
-        }
-        const { action } = step.witness;
-        const span = nextMidgardCekDataTraverseSpanV1(
+    const appliedActionVectors = representativeKinds.map((kind) => {
+      const step = datumSteps.find(({ witness }) =>
+        witness?.kind === "datum" ? witness.action?.kind === kind : false,
+      );
+      if (
+        step === undefined ||
+        step.witness?.kind !== "datum" ||
+        step.witness.action === null ||
+        step.control.datum === null ||
+        step.next.datum === null
+      ) {
+        throw new Error(`Maximum nested datum lost applied ${kind} evidence`);
+      }
+      const { action } = step.witness;
+      const span = nextMidgardCekDataTraverseSpanV1(step.control.datum);
+      const sourceBytes =
+        span === null
+          ? null
+          : Buffer.from(acceptedDatumCborHex, "hex").subarray(
+              span.absoluteStart - step.control.datum.sourceStart,
+              span.absoluteStart - step.control.datum.sourceStart + span.length,
+            );
+      expect(
+        advanceMidgardCekDataTraverseV1({
+          control: step.control.datum,
+          sourceBytes,
+          action,
+        }),
+      ).toEqual(step.next.datum);
+      return {
+        kind,
+        preControlCborHex: encodeMidgardCekDataTraverseControlV1(
           step.control.datum,
-        );
-        const sourceBytes =
-          span === null
-            ? null
-            : Buffer.from(acceptedDatumCborHex, "hex").subarray(
-                span.absoluteStart -
-                  step.control.datum.sourceStart,
-                span.absoluteStart -
-                  step.control.datum.sourceStart +
-                  span.length,
-              );
-        expect(
-          advanceMidgardCekDataTraverseV1({
-            control: step.control.datum,
-            sourceBytes,
-            action,
-          }),
-        ).toEqual(step.next.datum);
-        return {
-          kind,
-          preControlCborHex:
-            encodeMidgardCekDataTraverseControlV1(
-              step.control.datum,
-            ).toString("hex"),
-          sourceBytesHex:
-            sourceBytes === null ? null : sourceBytes.toString("hex"),
-          postControlCborHex:
-            encodeMidgardCekDataTraverseControlV1(
-              step.next.datum,
-            ).toString("hex"),
-          action:
-            action.kind === "headLargeConstructor"
+        ).toString("hex"),
+        sourceBytesHex:
+          sourceBytes === null ? null : sourceBytes.toString("hex"),
+        postControlCborHex: encodeMidgardCekDataTraverseControlV1(
+          step.next.datum,
+        ).toString("hex"),
+        action:
+          action.kind === "headLargeConstructor"
+            ? {
+                constructorCborLength: action.constructorCborLength,
+                expectedChildren: action.expectedChildren,
+              }
+            : action.kind === "headSequence"
               ? {
-                  constructorCborLength:
-                    action.constructorCborLength,
                   expectedChildren: action.expectedChildren,
                 }
-              : action.kind === "headSequence"
-                ? {
-                    expectedChildren:
-                      action.expectedChildren,
-                  }
-                : action.kind === "headScalar"
-                  ? { itemLength: action.itemLength }
-                  : action.kind === "foldList"
+              : action.kind === "headScalar"
+                ? { itemLength: action.itemLength }
+                : action.kind === "foldList"
+                  ? {
+                      frame: jsonDataFrame(action.frame),
+                      childIndex: action.childIndex,
+                      child: jsonDataSummary(action.child),
+                      siblingHexes: action.siblings.map(hex),
+                    }
+                  : action.kind === "foldMap"
                     ? {
                         frame: jsonDataFrame(action.frame),
-                        childIndex: action.childIndex,
-                        child: jsonDataSummary(action.child),
-                        siblingHexes: action.siblings.map(hex),
+                        pairIndex: action.pairIndex,
+                        key: jsonDataSummary(action.key),
+                        value: jsonDataSummary(action.value),
+                        keySiblingHexes: action.keySiblings.map(hex),
+                        valueSiblingHexes: action.valueSiblings.map(hex),
                       }
-                    : action.kind === "foldMap"
+                    : action.kind === "finalizeFrame"
                       ? {
                           frame: jsonDataFrame(action.frame),
-                          pairIndex: action.pairIndex,
-                          key: jsonDataSummary(action.key),
-                          value: jsonDataSummary(action.value),
-                          keySiblingHexes:
-                            action.keySiblings.map(hex),
-                          valueSiblingHexes:
-                            action.valueSiblings.map(hex),
+                          parent:
+                            action.parent === null
+                              ? null
+                              : jsonDataFrame(action.parent),
                         }
-                      : action.kind === "finalizeFrame"
-                        ? {
-                            frame: jsonDataFrame(action.frame),
-                            parent:
-                              action.parent === null
-                                ? null
-                                : jsonDataFrame(
-                                    action.parent,
-                                  ),
-                          }
-                        : {},
-        };
-      },
-    );
+                      : {},
+      };
+    });
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR !== "1") {
-      expect(terminalVector).toEqual(
-        maximumNestedDataTerminalVectorV1,
-      );
+      expect(terminalVector).toEqual(maximumNestedDataTerminalVectorV1);
     }
 
     const field = exerciseMidgardOrderedCollectionBoundaryV1({
@@ -449,23 +394,15 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       signedCardanoCborHex: boundary.accepted.cborHex,
       corpusLabel: "balanced-nested-datum",
     });
-    expect(retained.normal.reconstructedCanonicalBytes).toBe(
-      canonical.length,
-    );
-    expect(retained.forced.reconstructedCanonicalBytes).toBe(
-      canonical.length,
-    );
-    expect(retained.normal.revealStepCount).toBe(
-      field.completeFoldStepCount,
-    );
-    expect(retained.forced.revealStepCount).toBe(
-      field.completeFoldStepCount,
-    );
+    expect(retained.normal.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.normal.revealStepCount).toBe(field.completeFoldStepCount);
+    expect(retained.forced.revealStepCount).toBe(field.completeFoldStepCount);
 
     const roundTrip = measureSignedCardanoNestedDatumV1(
-      Buffer.from(
-        midgardNativeTxFullToCardanoTxEncoding(native),
-      ).toString("hex"),
+      Buffer.from(midgardNativeTxFullToCardanoTxEncoding(native)).toString(
+        "hex",
+      ),
     );
     expect({
       outputCount: roundTrip.outputCount,
@@ -479,17 +416,14 @@ describe("canonical V1 nested Cardano Data boundary", () => {
       datumCborHex: accepted.datumCborHex,
     });
 
-    const txHash = await emulator.submitTx(
-      boundary.accepted.cborHex,
-    );
+    const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
 
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(
         JSON.stringify({
           nestedDataBoundaryV1: terminalVector,
-          nestedDataAppliedActionVectorsV1:
-            appliedActionVectors,
+          nestedDataAppliedActionVectorsV1: appliedActionVectors,
         }),
       );
     }

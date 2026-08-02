@@ -267,8 +267,7 @@ describe("canonical V1 consensus transaction bounds", () => {
     const evidence = deriveMidgardV1TxFieldEvidence(canonicalCbor);
     const item = evidence.find(
       (entry) =>
-        entry.kind === "completeItem" &&
-        entry.collectionProof.fieldIndex === 2,
+        entry.kind === "completeItem" && entry.collectionProof.fieldIndex === 2,
     );
     expect(item?.kind).toBe("completeItem");
     if (item?.kind !== "completeItem") {

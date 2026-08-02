@@ -18,11 +18,7 @@ import {
   ExBudget,
   PartialBuiltin,
 } from "@harmoniclabs/plutus-machine";
-import {
-  ConstTyTag,
-  type UPLCBuiltinTag,
-  UPLCConst,
-} from "@harmoniclabs/uplc";
+import { ConstTyTag, type UPLCBuiltinTag, UPLCConst } from "@harmoniclabs/uplc";
 
 import {
   decodeMidgardCekConstantTypeCborV1,
@@ -193,7 +189,7 @@ const constantType = (
     ? decodeMidgardCekConstantWitnessV1(value.witness).type
     : value.kind === "semanticConstant"
       ? decodeMidgardCekConstantTypeCborV1(value.witness.typeCbor)
-    : null;
+      : null;
 
 const matchesKind = (
   value: MidgardCekRuntimeValueWitnessV1,
@@ -328,8 +324,7 @@ export const verifyMidgardCekBuiltinTypeFailureV1 = (
     ) {
       return false;
     }
-    const { root, count } =
-      hashMidgardCekRuntimeArgumentsV1(arguments_);
+    const { root, count } = hashMidgardCekRuntimeArgumentsV1(arguments_);
     if (
       !sameBytes(
         builtinValueRoot,
@@ -431,9 +426,7 @@ const directWitnessPayloadBytes = (
     0n,
   );
 
-const decodedDirectConstant = (
-  value: MidgardCekDirectValueWitnessV1,
-) => {
+const decodedDirectConstant = (value: MidgardCekDirectValueWitnessV1) => {
   if (value.kind !== "constant") {
     throw new Error("V1 builtin requires a revealed constant");
   }
@@ -473,14 +466,9 @@ const directBoolean = (value: MidgardCekDirectValueWitnessV1): boolean => {
   return decoded.payload.constr === 1n;
 };
 
-const directByteLength = (
-  value: MidgardCekDirectValueWitnessV1,
-): number => {
+const directByteLength = (value: MidgardCekDirectValueWitnessV1): number => {
   const decoded = decodedDirectConstant(value);
-  if (
-    decoded.type.kind !== "bytes" ||
-    !(decoded.payload instanceof DataB)
-  ) {
+  if (decoded.type.kind !== "bytes" || !(decoded.payload instanceof DataB)) {
     throw new Error("V1 builtin requires a byte string");
   }
   return decoded.payload.bytes.toBuffer().length;
@@ -512,26 +500,16 @@ export const midgardCekDirectBuiltinCostSizesV1 = (
       throw new Error("trace requires two arguments");
     }
     const message = decodedDirectConstant(arguments_[0]!);
-    if (
-      message.type.kind !== "string" ||
-      !(message.payload instanceof DataB)
-    ) {
+    if (message.type.kind !== "string" || !(message.payload instanceof DataB)) {
       throw new Error("trace requires a string message");
     }
-    return Object.freeze([
-      BigInt(message.payload.bytes.toBuffer().length),
-      1n,
-    ]);
+    return Object.freeze([BigInt(message.payload.bytes.toBuffer().length), 1n]);
   }
   if (tag === 31n) {
     if (arguments_.length !== 3) {
       throw new Error("chooseList requires three arguments");
     }
-    return Object.freeze([
-      directValueMemorySize(arguments_[0]!),
-      1n,
-      1n,
-    ]);
+    return Object.freeze([directValueMemorySize(arguments_[0]!), 1n, 1n]);
   }
   if (tag === 36n) {
     if (arguments_.length !== 6) {
@@ -584,9 +562,7 @@ const selectedControlResult = (
     if (arguments_.length !== 3) {
       throw new Error("ifThenElse requires three arguments");
     }
-    return directBoolean(arguments_[0]!)
-      ? arguments_[1]!
-      : arguments_[2]!;
+    return directBoolean(arguments_[0]!) ? arguments_[1]! : arguments_[2]!;
   }
   if (tag === 27n) {
     if (arguments_.length !== 2) {
@@ -613,15 +589,10 @@ const selectedControlResult = (
       throw new Error("chooseList requires three arguments");
     }
     const source = decodedDirectConstant(arguments_[0]!);
-    if (
-      source.type.kind !== "list" ||
-      !(source.payload instanceof DataList)
-    ) {
+    if (source.type.kind !== "list" || !(source.payload instanceof DataList)) {
       throw new Error("chooseList requires a list");
     }
-    return source.payload.list.length === 0
-      ? arguments_[1]!
-      : arguments_[2]!;
+    return source.payload.list.length === 0 ? arguments_[1]! : arguments_[2]!;
   }
   if (tag === 36n) {
     if (arguments_.length !== 6) {
@@ -681,19 +652,12 @@ const directConstantToReferenceValue = (
     ) => typeof payloadBytes;
     return CEKConst.fromUplc(
       UPLCConst.byteString(
-        new ByteStringConstructor(
-          Uint8Array.from(payloadBytes.toBuffer()),
-        ),
+        new ByteStringConstructor(Uint8Array.from(payloadBytes.toBuffer())),
       ),
     );
   }
-  if (
-    decoded.type.kind !== "blsG1" &&
-    decoded.type.kind !== "blsG2"
-  ) {
-    return CEKConst.fromUplc(
-      midgardCekConstantWitnessToUplcV1(witness),
-    );
+  if (decoded.type.kind !== "blsG1" && decoded.type.kind !== "blsG2") {
+    return CEKConst.fromUplc(midgardCekConstantWitnessToUplcV1(witness));
   }
   if (!(decoded.payload instanceof DataB)) {
     throw new Error("V1 BLS payload is not bytes");
@@ -709,9 +673,7 @@ const directConstantToReferenceValue = (
   const detachedBytes = new ByteStringConstructor(
     Uint8Array.from(payloadBytes.toBuffer()),
   );
-  const compressed = CEKConst.fromUplc(
-    UPLCConst.byteString(detachedBytes),
-  );
+  const compressed = CEKConst.fromUplc(UPLCConst.byteString(detachedBytes));
   const uncompressed = runPinnedReferenceBuiltin(
     decoded.type.kind === "blsG1" ? 60 : 67,
     [compressed],
@@ -877,18 +839,11 @@ const evaluateReferenceBuiltin = (
   const referenceArguments: CEKConst[] = [];
   for (const argument of arguments_) {
     if (argument.kind !== "constant") {
-      throw new Error(
-        "non-control V1 builtin arguments must be constants",
-      );
+      throw new Error("non-control V1 builtin arguments must be constants");
     }
-    referenceArguments.push(
-      directConstantToReferenceValue(argument.witness),
-    );
+    referenceArguments.push(directConstantToReferenceValue(argument.witness));
   }
-  const result = runPinnedReferenceBuiltin(
-    Number(tag),
-    referenceArguments,
-  );
+  const result = runPinnedReferenceBuiltin(Number(tag), referenceArguments);
   if (result instanceof CEKError) return "failure";
   if (!(result instanceof CEKConst)) {
     throw new Error("reference builtin returned a non-constant value");
@@ -917,9 +872,7 @@ export const evaluateMidgardCekDirectBuiltinV1 = (
         : BigInt(
             // The CEK machine owns the consensus arity table. This local
             // evaluator deliberately relies on the pinned reference type.
-            PartialBuiltin.getNRequiredArgsFor(
-              Number(tag) as UPLCBuiltinTag,
-            ),
+            PartialBuiltin.getNRequiredArgsFor(Number(tag) as UPLCBuiltinTag),
           ))
   ) {
     throw new Error("V1 builtin has an invalid tag or arity");
@@ -1065,10 +1018,7 @@ const evaluateBlsExpressionV1 = (
   if (expression.kind === "millerLoop") {
     const g1Decoded = decodeMidgardCekConstantWitnessV1(expression.g1);
     const g2Decoded = decodeMidgardCekConstantWitnessV1(expression.g2);
-    if (
-      g1Decoded.type.kind !== "blsG1" ||
-      g2Decoded.type.kind !== "blsG2"
-    ) {
+    if (g1Decoded.type.kind !== "blsG1" || g2Decoded.type.kind !== "blsG2") {
       throw new Error("BLS expression leaf requires G1 and G2 constants");
     }
     const g1 = directConstantToReferenceValue(expression.g1);
@@ -1130,11 +1080,7 @@ export const evaluateMidgardCekBlsFinalV1 = (
   ) {
     throw new Error("BLS finalVerify expression root mismatch");
   }
-  if (
-    left.leaves + right.leaves > 10 ||
-    left.depth > 10 ||
-    right.depth > 10
-  ) {
+  if (left.leaves + right.leaves > 10 || left.depth > 10 || right.depth > 10) {
     throw new Error(
       "BLS finalVerify expression exceeds the ten-leaf L1 proof reserve",
     );

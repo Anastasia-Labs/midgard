@@ -69,7 +69,10 @@ const mapCbor = (
 ): Buffer =>
   Buffer.concat([
     encodeCborHead(5, BigInt(entries.length)),
-    ...entries.flatMap(([key, value]) => [Buffer.from(key), Buffer.from(value)]),
+    ...entries.flatMap(([key, value]) => [
+      Buffer.from(key),
+      Buffer.from(value),
+    ]),
   ]);
 const tagCbor = (tag: bigint, item: Uint8Array): Buffer =>
   Buffer.concat([encodeCborHead(6, tag), Buffer.from(item)]);

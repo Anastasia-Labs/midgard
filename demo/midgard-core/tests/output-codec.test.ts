@@ -103,19 +103,19 @@ describe("Midgard output codec", () => {
   });
 
   it("uses the exact Aiken serialiseData framing for inline datums", () => {
-    expect(
-      decodeMidgardDatum(Buffer.from("d87b9f182aff", "hex")).cbor,
-    ).toEqual(Buffer.from("d87b9f182aff", "hex"));
-    expect(
-      decodeMidgardDatum(Buffer.from("a24111014002", "hex")).cbor,
-    ).toEqual(Buffer.from("a24111014002", "hex"));
-    expect(
-      decodeMidgardDatum(Buffer.from("a24002411101", "hex")).cbor,
-    ).toEqual(Buffer.from("a24002411101", "hex"));
+    expect(decodeMidgardDatum(Buffer.from("d87b9f182aff", "hex")).cbor).toEqual(
+      Buffer.from("d87b9f182aff", "hex"),
+    );
+    expect(decodeMidgardDatum(Buffer.from("a24111014002", "hex")).cbor).toEqual(
+      Buffer.from("a24111014002", "hex"),
+    );
+    expect(decodeMidgardDatum(Buffer.from("a24002411101", "hex")).cbor).toEqual(
+      Buffer.from("a24002411101", "hex"),
+    );
 
-    expect(() =>
-      decodeMidgardDatum(Buffer.from("d87b81182a", "hex")),
-    ).toThrow(/not canonical/u);
+    expect(() => decodeMidgardDatum(Buffer.from("d87b81182a", "hex"))).toThrow(
+      /not canonical/u,
+    );
     expect(() =>
       decodeMidgardDatum(Buffer.from("bf4111014002ff", "hex")),
     ).toThrow(/not canonical/u);
@@ -220,10 +220,7 @@ describe("Midgard output codec", () => {
               encodeCborBytes(Buffer.from("0000", "hex")),
               encodeCborUnsigned(2n),
             ],
-            [
-              encodeCborBytes(Buffer.from("ff", "hex")),
-              encodeCborUnsigned(1n),
-            ],
+            [encodeCborBytes(Buffer.from("ff", "hex")), encodeCborUnsigned(1n)],
           ]),
         ],
       ]),

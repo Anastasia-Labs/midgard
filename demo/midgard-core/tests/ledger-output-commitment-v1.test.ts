@@ -19,8 +19,8 @@ const facts = (): MidgardLedgerOutputCommitmentFactsV1 => ({
   address: Buffer.concat([Buffer.from([0x60]), Buffer.alloc(28, 0x11)]),
   lovelace: 5_000_000n,
   assetCount: 0,
-  assetFrontierCommitment:
-    buildMidgardLedgerOutputAssetFrontierV1([]).commitment,
+  assetFrontierCommitment: buildMidgardLedgerOutputAssetFrontierV1([])
+    .commitment,
   cardanoValueSize: 5,
   referenceScriptLanguage: -1,
   referenceScriptHash: Buffer.alloc(0),
@@ -85,10 +85,7 @@ describe("ledger output commitment V1", () => {
       expect(
         verifyMidgardLedgerOutputChunkV1({
           descriptor: material.descriptor,
-          proof: buildMidgardBoundedItemChunkProofV1(
-            material.item,
-            chunkIndex,
-          ),
+          proof: buildMidgardBoundedItemChunkProofV1(material.item, chunkIndex),
         }),
       ).toBe(true);
     }
@@ -181,9 +178,9 @@ describe("ledger output commitment V1", () => {
         itemCommitment: Buffer.alloc(32, 0xff),
       },
     ]) {
-      expect(
-        verifyMidgardLedgerOutputChunkV1({ descriptor, proof }),
-      ).toBe(false);
+      expect(verifyMidgardLedgerOutputChunkV1({ descriptor, proof })).toBe(
+        false,
+      );
     }
   });
 });

@@ -118,7 +118,10 @@ const ZERO_COUNTS = {
  */
 const buildPrevBlockPayload = async (
   utxos: readonly (readonly [string, string])[],
-): Promise<{ readonly payloadEnvelopeCbor: Buffer; readonly utxosRoot: string }> => {
+): Promise<{
+  readonly payloadEnvelopeCbor: Buffer;
+  readonly utxosRoot: string;
+}> => {
   const utxoRoot = await keyValuePhasRootWithCount(
     utxos.map(([key, value]) => ({
       key: Buffer.from(key, "hex"),
@@ -172,10 +175,9 @@ const buildPrevBlockPayload = async (
     },
   };
   return {
-    payloadEnvelopeCbor: await wrapDaPayloadV1(
-      SDK.encodeDaPayloadV1(payload),
-      { mode: "identity" },
-    ),
+    payloadEnvelopeCbor: await wrapDaPayloadV1(SDK.encodeDaPayloadV1(payload), {
+      mode: "identity",
+    }),
     utxosRoot: utxoRoot.root,
   };
 };

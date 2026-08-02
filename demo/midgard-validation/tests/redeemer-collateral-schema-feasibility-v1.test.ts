@@ -43,10 +43,9 @@ const alwaysSucceedsBlueprint = JSON.parse(
   readonly validators: readonly BlueprintValidator[];
 };
 
-const alwaysSucceedsCompiledCode =
-  alwaysSucceedsBlueprint.validators.find(
-    (validator) => validator.title === "midgard.deposit_spend.else",
-  )?.compiledCode;
+const alwaysSucceedsCompiledCode = alwaysSucceedsBlueprint.validators.find(
+  (validator) => validator.title === "midgard.deposit_spend.else",
+)?.compiledCode;
 if (alwaysSucceedsCompiledCode === undefined) {
   throw new Error(
     "Missing always-succeeds blueprint entry midgard.deposit_spend.else",
@@ -59,22 +58,16 @@ const spendingScript: SpendingValidator = {
 };
 
 const optionalCborHex = (
-  value:
-    | { readonly to_cbor_bytes: () => Uint8Array }
-    | undefined,
+  value: { readonly to_cbor_bytes: () => Uint8Array } | undefined,
 ): string | undefined =>
   value === undefined
     ? undefined
     : Buffer.from(value.to_cbor_bytes()).toString("hex");
 
-const collectionItemCborHexes = (
-  collection: {
-    readonly len: () => number;
-    readonly get: (
-      index: number,
-    ) => { readonly to_cbor_bytes: () => Uint8Array };
-  },
-): readonly string[] =>
+const collectionItemCborHexes = (collection: {
+  readonly len: () => number;
+  readonly get: (index: number) => { readonly to_cbor_bytes: () => Uint8Array };
+}): readonly string[] =>
   Array.from({ length: collection.len() }, (_, index) =>
     Buffer.from(collection.get(index).to_cbor_bytes()).toString("hex"),
   );
@@ -83,15 +76,13 @@ const optionalCollectionItemCborHexes = (
   collection:
     | {
         readonly len: () => number;
-        readonly get: (
-          index: number,
-        ) => { readonly to_cbor_bytes: () => Uint8Array };
+        readonly get: (index: number) => {
+          readonly to_cbor_bytes: () => Uint8Array;
+        };
       }
     | undefined,
 ): readonly string[] | undefined =>
-  collection === undefined
-    ? undefined
-    : collectionItemCborHexes(collection);
+  collection === undefined ? undefined : collectionItemCborHexes(collection);
 
 const optionalKeyHashHexes = (
   collection: CML.Ed25519KeyHashList | undefined,
@@ -149,29 +140,24 @@ const mintEntries = (
       throw new Error("Mint policy has no asset map");
     }
     const assetNames = policyAssets.keys();
-    const assets = Array.from(
-      { length: assetNames.len() },
-      (_, assetIndex) => {
-        const assetName = assetNames.get(assetIndex);
-        const quantity = policyAssets.get(assetName);
-        if (quantity === undefined) {
-          throw new Error("Mint asset has no quantity");
-        }
-        return {
-          assetNameHex: assetName.to_hex(),
-          quantity,
-        };
-      },
-    ).sort((left, right) =>
+    const assets = Array.from({ length: assetNames.len() }, (_, assetIndex) => {
+      const assetName = assetNames.get(assetIndex);
+      const quantity = policyAssets.get(assetName);
+      if (quantity === undefined) {
+        throw new Error("Mint asset has no quantity");
+      }
+      return {
+        assetNameHex: assetName.to_hex(),
+        quantity,
+      };
+    }).sort((left, right) =>
       left.assetNameHex.localeCompare(right.assetNameHex),
     );
     return {
       policyIdHex: policy.to_hex(),
       assets,
     };
-  }).sort((left, right) =>
-    left.policyIdHex.localeCompare(right.policyIdHex),
-  );
+  }).sort((left, right) => left.policyIdHex.localeCompare(right.policyIdHex));
 };
 
 const sharedBodyFields = (
@@ -200,9 +186,7 @@ const sharedBodyFields = (
   readonly networkId: bigint | undefined;
 } => ({
   spendInputs: collectionItemCborHexes(body.inputs()),
-  referenceInputs: optionalCollectionItemCborHexes(
-    body.reference_inputs(),
-  ),
+  referenceInputs: optionalCollectionItemCborHexes(body.reference_inputs()),
   outputs: collectionItemCborHexes(body.outputs()),
   fee: body.fee(),
   validityStart: body.validity_interval_start(),
@@ -268,15 +252,15 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       .complete({ localUPLCEval: true });
     const signed = await completed.sign.withWallet().complete();
     const collateralizedCardanoCborHex = signed.toCBOR();
-    const collateralized =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        collateralizedCardanoCborHex,
-      );
+    const collateralized = measureCollateralizedPlutusFeasibilityCandidateV1(
+      collateralizedCardanoCborHex,
+    );
     const collateralizedTransaction = CML.Transaction.from_cbor_hex(
       collateralizedCardanoCborHex,
     );
-    const collateralizedRedeemers =
-      collateralizedTransaction.witness_set().redeemers();
+    const collateralizedRedeemers = collateralizedTransaction
+      .witness_set()
+      .redeemers();
     expect(collateralizedRedeemers).toBeDefined();
     const collateralizedFlatRedeemers =
       collateralizedRedeemers!.to_flat_format();
@@ -286,9 +270,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       [
         collateralizedRedeemer.tag(),
         collateralizedRedeemer.index(),
-        Buffer.from(
-          collateralizedRedeemer.data().to_canonical_cbor_bytes(),
-        ),
+        Buffer.from(collateralizedRedeemer.data().to_canonical_cbor_bytes()),
         [
           collateralizedRedeemer.ex_units().mem(),
           collateralizedRedeemer.ex_units().steps(),
@@ -296,9 +278,9 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       ],
     ]);
     expect(collateralizedRedeemer.tag()).toBe(CML.RedeemerTag.Spend);
-    expect(
-      collateralizedRedeemer.data().to_canonical_cbor_hex(),
-    ).toBe("d87980");
+    expect(collateralizedRedeemer.data().to_canonical_cbor_hex()).toBe(
+      "d87980",
+    );
     const fullSpendOutRefs = Array.from(
       {
         length: collateralizedTransaction.body().inputs().len(),
@@ -308,10 +290,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
         return `${input.transaction_id().to_hex()}#${input.index().toString()}`;
       },
     ).sort();
-    const genesisKeyOutRefs = [
-      `${"00".repeat(32)}#0`,
-      `${"00".repeat(32)}#1`,
-    ];
+    const genesisKeyOutRefs = [`${"00".repeat(32)}#0`, `${"00".repeat(32)}#1`];
     const retainedKeySpendOutRefs = fullSpendOutRefs.filter((outRef) =>
       genesisKeyOutRefs.includes(outRef),
     );
@@ -336,9 +315,7 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
     expect(collateralizedTransaction.body().mint()).toBeUndefined();
     expect(collateralized.executionMemory).toBeGreaterThan(0n);
     expect(collateralized.executionSteps).toBeGreaterThan(0n);
-    expect(collateralized.redeemerDataCborHexes).toEqual([
-      Data.void(),
-    ]);
+    expect(collateralized.redeemerDataCborHexes).toEqual([Data.void()]);
     const txHash = await signed.submit();
     await expect(lucid.awaitTx(txHash)).resolves.toBe(true);
 
@@ -360,14 +337,9 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       };
       collateralRejection = {
         message: error instanceof Error ? error.message : String(error),
-        code:
-          typeof structured.code === "string"
-            ? structured.code
-            : null,
+        code: typeof structured.code === "string" ? structured.code : null,
         detail:
-          typeof structured.detail === "string"
-            ? structured.detail
-            : null,
+          typeof structured.detail === "string" ? structured.detail : null,
       };
     }
     expect(collateralRejection).toEqual({
@@ -377,20 +349,17 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       detail: "collateral_inputs",
     });
 
-    const parallel =
-      buildCollateralFreeMidgardSchemaParallelCandidateV1({
-        collateralizedCardanoCborHex,
-        privateKeyBech32: privateKey.to_bech32(),
-      });
+    const parallel = buildCollateralFreeMidgardSchemaParallelCandidateV1({
+      collateralizedCardanoCborHex,
+      privateKeyBech32: privateKey.to_bech32(),
+    });
     expect(parallel.parallelRedeemersCborHex).toBe(
       parallel.collateralizedRedeemersCborHex,
     );
     expect(parallel.parallelRedeemersCborHex).toBe(
       collateralized.redeemersCborHex,
     );
-    const parallelTransaction = CML.Transaction.from_cbor_hex(
-      parallel.cborHex,
-    );
+    const parallelTransaction = CML.Transaction.from_cbor_hex(parallel.cborHex);
     const parallelSpendOutRefs = Array.from(
       { length: parallelTransaction.body().inputs().len() },
       (_, index) => {
@@ -402,23 +371,11 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
     expect(sharedBodyFields(parallelTransaction.body())).toEqual(
       sharedBodyFields(collateralizedTransaction.body()),
     );
-    expect(
-      parallelTransaction.body().collateral_inputs()?.len() ?? 0,
-    ).toBe(0);
-    expect(
-      parallelTransaction.body().collateral_return(),
-    ).toBeUndefined();
-    expect(
-      parallelTransaction.body().total_collateral(),
-    ).toBeUndefined();
-    expect(
-      optionalCborHex(
-        parallelTransaction.witness_set().redeemers(),
-      ),
-    ).toBe(
-      optionalCborHex(
-        collateralizedTransaction.witness_set().redeemers(),
-      ),
+    expect(parallelTransaction.body().collateral_inputs()?.len() ?? 0).toBe(0);
+    expect(parallelTransaction.body().collateral_return()).toBeUndefined();
+    expect(parallelTransaction.body().total_collateral()).toBeUndefined();
+    expect(optionalCborHex(parallelTransaction.witness_set().redeemers())).toBe(
+      optionalCborHex(collateralizedTransaction.witness_set().redeemers()),
     );
     expect(
       optionalCollectionItemCborHexes(
@@ -446,28 +403,20 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
             redeemerCollateralSchemaFeasibilityDiagnosticV1: {
               cardanoSignedBytes: collateralized.signedBytes,
               cardanoByteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 -
-                collateralized.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - collateralized.signedBytes,
               sharedSpendOutRefs: fullSpendOutRefs,
-              collateralInputOutRefs:
-                collateralized.collateralInputOutRefs,
+              collateralInputOutRefs: collateralized.collateralInputOutRefs,
               collateralReturnCborHex:
                 collateralized.collateralReturnCborHex ?? null,
               totalCollateral:
                 collateralized.totalCollateral?.toString() ?? null,
               fee: collateralized.fee.toString(),
-              scriptDataHashHex:
-                collateralized.scriptDataHashHex,
-              redeemersCborHex:
-                collateralized.redeemersCborHex,
-              redeemerDataCborHexes:
-                collateralized.redeemerDataCborHexes,
-              executionMemory:
-                collateralized.executionMemory.toString(),
-              executionSteps:
-                collateralized.executionSteps.toString(),
-              productionCollateralRejection:
-                collateralRejection,
+              scriptDataHashHex: collateralized.scriptDataHashHex,
+              redeemersCborHex: collateralized.redeemersCborHex,
+              redeemerDataCborHexes: collateralized.redeemerDataCborHexes,
+              executionMemory: collateralized.executionMemory.toString(),
+              executionSteps: collateralized.executionSteps.toString(),
+              productionCollateralRejection: collateralRejection,
               parallelSignedBytes: parallel.cborHex.length / 2,
               exactSharedBodyFields: true,
               exactRedeemerCborMatch: true,
@@ -480,56 +429,46 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
       );
     }
 
-    const parallelNativeCbor =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(parallel.cborHex, "hex"),
-      );
+    const parallelNativeCbor = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(parallel.cborHex, "hex"),
+    );
     const parallelNative =
       decodeMidgardNativeTxFullV1FromCanonicalCbor(parallelNativeCbor);
     expect(
-      parallelNative.witnessSet.redeemerTxWitsPreimageCbor.toString(
-        "hex",
-      ),
+      parallelNative.witnessSet.redeemerTxWitsPreimageCbor.toString("hex"),
     ).toBe(expectedMidgardRedeemersCbor.toString("hex"));
     const reconstructedCardano = CML.Transaction.from_cbor_bytes(
       midgardNativeTxFullToCardanoTxEncoding(parallelNative),
     );
-    const reconstructedRedeemers =
-      reconstructedCardano.witness_set().redeemers();
+    const reconstructedRedeemers = reconstructedCardano
+      .witness_set()
+      .redeemers();
     expect(
       reconstructedRedeemers?.as_map_redeemer_key_to_redeemer_val(),
     ).toBeDefined();
-    const reconstructedFlatRedeemers =
-      reconstructedRedeemers!.to_flat_format();
+    const reconstructedFlatRedeemers = reconstructedRedeemers!.to_flat_format();
     expect(reconstructedFlatRedeemers.len()).toBe(1);
     const reconstructedRedeemer = reconstructedFlatRedeemers.get(0);
     expect({
       tag: reconstructedRedeemer.tag(),
       index: reconstructedRedeemer.index(),
-      dataCborHex: reconstructedRedeemer
-        .data()
-        .to_canonical_cbor_hex(),
+      dataCborHex: reconstructedRedeemer.data().to_canonical_cbor_hex(),
       memory: reconstructedRedeemer.ex_units().mem(),
       steps: reconstructedRedeemer.ex_units().steps(),
     }).toEqual({
       tag: collateralizedRedeemer.tag(),
       index: collateralizedRedeemer.index(),
-      dataCborHex: collateralizedRedeemer
-        .data()
-        .to_canonical_cbor_hex(),
+      dataCborHex: collateralizedRedeemer.data().to_canonical_cbor_hex(),
       memory: collateralizedRedeemer.ex_units().mem(),
       steps: collateralizedRedeemer.ex_units().steps(),
     });
-    const redeemerField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: parallel.cborHex,
-        fieldIndex: 8,
-      });
+    const redeemerField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: parallel.cborHex,
+      fieldIndex: 8,
+    });
     expect(redeemerField.itemCount).toBe(1);
     expect(redeemerField.revealStepCount).toBe(1);
-    expect(redeemerField.fieldBytes).toBe(
-      expectedMidgardRedeemersCbor.length,
-    );
+    expect(redeemerField.fieldBytes).toBe(expectedMidgardRedeemersCbor.length);
 
     if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
       console.info(
@@ -538,48 +477,34 @@ describe("canonical V1 redeemer/collateral schema feasibility", () => {
             redeemerCollateralSchemaFeasibilityV1: {
               cardanoSignedBytes: collateralized.signedBytes,
               cardanoByteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 -
-                collateralized.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - collateralized.signedBytes,
               inputCount: collateralized.inputCount,
               outputCount: collateralized.outputCount,
               fee: collateralized.fee.toString(),
-              collateralInputOutRefs:
-                collateralized.collateralInputOutRefs,
+              collateralInputOutRefs: collateralized.collateralInputOutRefs,
               collateralReturnCborHex:
                 collateralized.collateralReturnCborHex ?? null,
               totalCollateral:
                 collateralized.totalCollateral?.toString() ?? null,
-              scriptDataHashHex:
-                collateralized.scriptDataHashHex,
-              vkeyWitnessCount:
-                collateralized.vkeyWitnessCount,
-              plutusV3ScriptCount:
-                collateralized.plutusV3ScriptCount,
+              scriptDataHashHex: collateralized.scriptDataHashHex,
+              vkeyWitnessCount: collateralized.vkeyWitnessCount,
+              plutusV3ScriptCount: collateralized.plutusV3ScriptCount,
               redeemerCount: collateralized.redeemerCount,
-              redeemersCborHex:
-                collateralized.redeemersCborHex,
+              redeemersCborHex: collateralized.redeemersCborHex,
               normalizedMidgardRedeemersCborHex:
                 expectedMidgardRedeemersCbor.toString("hex"),
-              redeemerDataCborHexes:
-                collateralized.redeemerDataCborHexes,
-              executionMemory:
-                collateralized.executionMemory.toString(),
-              executionSteps:
-                collateralized.executionSteps.toString(),
-              productionCollateralRejection:
-                collateralRejection,
+              redeemerDataCborHexes: collateralized.redeemerDataCborHexes,
+              executionMemory: collateralized.executionMemory.toString(),
+              executionSteps: collateralized.executionSteps.toString(),
+              productionCollateralRejection: collateralRejection,
               parallelSignedBytes: parallel.cborHex.length / 2,
               exactRedeemerCborMatch: true,
               field8Bytes: redeemerField.fieldBytes,
               field8Items: redeemerField.itemCount,
-              field8RevealSteps:
-                redeemerField.revealStepCount,
-              field8MaxChunkBytes:
-                redeemerField.maxChunkBytes,
-              field8MaxRevealBytes:
-                redeemerField.maxRevealBytes,
-              completeFoldSteps:
-                redeemerField.completeFoldStepCount,
+              field8RevealSteps: redeemerField.revealStepCount,
+              field8MaxChunkBytes: redeemerField.maxChunkBytes,
+              field8MaxRevealBytes: redeemerField.maxRevealBytes,
+              completeFoldSteps: redeemerField.completeFoldStepCount,
               emulatorResult: "PASS",
             },
           },

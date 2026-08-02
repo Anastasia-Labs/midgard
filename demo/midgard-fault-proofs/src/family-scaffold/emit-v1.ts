@@ -458,7 +458,9 @@ const laterStepTests = (
   ].map((name) => `${name}_${stepModule}`);
   return selectors
     .map(
-      (name) => `/// TODO(${spec.taskId}): implement this ${stepModule} selector.
+      (
+        name,
+      ) => `/// TODO(${spec.taskId}): implement this ${stepModule} selector.
 test ${name}() {
 ${unimplementedAikenTest(spec, names.aikenModule, name)}
 }`,

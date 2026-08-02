@@ -79,8 +79,7 @@ const maximumNestedValueTerminalVectorV1 = {
   terminalControlCborHex:
     "8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f83582035df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb419138a193f46ff",
   terminalResult: {
-    rootHex:
-      "35df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb4",
+    rootHex: "35df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb4",
     cborLength: "5002",
     memory: "16198",
   },
@@ -89,8 +88,7 @@ const maximumNestedValueTerminalVectorV1 = {
       "87010018e4581c1212121212121212121212121212121212121212121212121212121284582018a9e6706a9c0f115695a7d384af88baa135d31fa409e78ee3ab09ca6fe4cf8f18e41902ab1908e8845820e6b1158ed70eadba4dd3edea999fbc8ce3f345de8a1c442c11d25f67245209b905190deb192d14d87a80",
     nextControlCborHex:
       "87010018e3581c11111111111111111111111111111111111111111111111111111111845820f3a575175904810deba1e2e614bb689c08dfd8797bfb1913783c8dd98ed55af501030a845820ae48ba80db2f915cc4653c8bfd3a3394d4fe56f340dbe7cf66225478a2a93a65061910b6193620d87a80",
-    policyIdHex:
-      "11111111111111111111111111111111111111111111111111111111",
+    policyIdHex: "11111111111111111111111111111111111111111111111111111111",
     assetNameHex: "e2",
     quantity: "1",
     siblingHexes: [
@@ -143,10 +141,7 @@ const makeBoundaryEmulator = (
     },
   };
   return {
-    emulator: new Emulator(
-      [funder],
-      PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
-    ),
+    emulator: new Emulator([funder], PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1),
     funder,
   };
 };
@@ -172,9 +167,7 @@ const buildCandidate = async ({
   });
 
 const exactAssetSemantics = (
-  measurement: ReturnType<
-    typeof measureSignedCardanoNestedValueV1
-  >,
+  measurement: ReturnType<typeof measureSignedCardanoNestedValueV1>,
 ): readonly (readonly [string, string, bigint])[] =>
   measurement.assetNameHexes
     .map(
@@ -194,9 +187,7 @@ const exactAssetSemantics = (
 const expectedAssetSemantics = (
   requestedValueCborBytes: number,
 ): readonly (readonly [string, string, bigint])[] =>
-  cardanoBoundaryNestedValueAssetsV1(
-    requestedValueCborBytes,
-  ).map(
+  cardanoBoundaryNestedValueAssetsV1(requestedValueCborBytes).map(
     ({ policyIdHex, assetNameHex, quantity }) =>
       [policyIdHex, assetNameHex, quantity] as const,
   );
@@ -205,9 +196,7 @@ const expectedAssetSemantics = (
 // produced the canonical Value bytes for the pinned protocol-major-11 shape.
 const violatesCardanoOutputTooBigUtxoSnapshotV1 = (
   canonicalValueCborBytes: number,
-): boolean =>
-  canonicalValueCborBytes >
-  CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1;
+): boolean => canonicalValueCborBytes > CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1;
 
 describe("canonical V1 nested Cardano Value boundary", () => {
   it("retains and folds an exact 5,000-byte Value while rejecting 5,001 bytes", async () => {
@@ -218,13 +207,11 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1,
     );
     const acceptedCandidate = await buildCandidate({
-      requestedValueCborBytes:
-        CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
+      requestedValueCborBytes: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
       funder: acceptedEnvironment.funder,
     });
     const adjacentCandidate = await buildCandidate({
-      requestedValueCborBytes:
-        CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1,
+      requestedValueCborBytes: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1,
       funder: adjacentEnvironment.funder,
     });
     const accepted = measureSignedCardanoNestedValueV1(
@@ -234,9 +221,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       adjacentCandidate.cborHex,
     );
 
-    expect(accepted.valueCborBytes).toBe(
-      CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
-    );
+    expect(accepted.valueCborBytes).toBe(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1);
     expect(adjacent.valueCborBytes).toBe(
       CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1,
     );
@@ -248,14 +233,12 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     );
     expect({
       protocolMajor: CARDANO_BOUNDARY_PROTOCOL_MAJOR_V1,
-      acceptedOutputTooBig:
-        violatesCardanoOutputTooBigUtxoSnapshotV1(
-          accepted.valueCborBytes,
-        ),
-      adjacentOutputTooBig:
-        violatesCardanoOutputTooBigUtxoSnapshotV1(
-          adjacent.valueCborBytes,
-        ),
+      acceptedOutputTooBig: violatesCardanoOutputTooBigUtxoSnapshotV1(
+        accepted.valueCborBytes,
+      ),
+      adjacentOutputTooBig: violatesCardanoOutputTooBigUtxoSnapshotV1(
+        adjacent.valueCborBytes,
+      ),
     }).toEqual({
       protocolMajor: 11,
       acceptedOutputTooBig: false,
@@ -265,20 +248,15 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       expectedAssetSemantics(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1),
     );
     expect(exactAssetSemantics(adjacent)).toEqual(
-      expectedAssetSemantics(
-        CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1,
-      ),
+      expectedAssetSemantics(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1 + 1),
+    );
+    expect(accepted.assetQuantities.every((quantity) => quantity === 1n)).toBe(
+      true,
     );
     expect(
-      accepted.assetQuantities.every((quantity) => quantity === 1n),
-    ).toBe(true);
-    expect(
-      adjacent.assetQuantities.filter(
-        (quantity) => quantity === 24n,
-      ),
+      adjacent.assetQuantities.filter((quantity) => quantity === 24n),
     ).toHaveLength(1);
-    const policyCount =
-      CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.length;
+    const policyCount = CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1.length;
     const acceptedValueLowerBound =
       7 +
       policyCount * 32 +
@@ -287,26 +265,15 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     const sevenPolicyAdjacentCardinalityLowerBound =
       7 +
       policyCount * 32 +
-      (CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 + 1) *
-        3 -
+      (CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 + 1) * 3 -
       policyCount;
-    const atMostSixPolicyAdjacentCardinalityLowerBound =
-      7 + 6 * 803 + 51 * 4;
+    const atMostSixPolicyAdjacentCardinalityLowerBound = 7 + 6 * 803 + 51 * 4;
     const atLeastEightPolicyAdjacentCardinalityLowerBound =
-      7 +
-      8 * 30 +
-      (CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 + 1) *
-        3;
-    expect(acceptedValueLowerBound).toBe(
-      CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
-    );
+      7 + 8 * 30 + (CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1 + 1) * 3;
+    expect(acceptedValueLowerBound).toBe(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1);
     expect(sevenPolicyAdjacentCardinalityLowerBound).toBe(5_003);
-    expect(atMostSixPolicyAdjacentCardinalityLowerBound).toBe(
-      5_029,
-    );
-    expect(atLeastEightPolicyAdjacentCardinalityLowerBound).toBe(
-      5_026,
-    );
+    expect(atMostSixPolicyAdjacentCardinalityLowerBound).toBe(5_029);
+    expect(atLeastEightPolicyAdjacentCardinalityLowerBound).toBe(5_026);
     expect({
       outputCount: accepted.outputCount,
       vkeyWitnessCount: accepted.vkeyWitnessCount,
@@ -324,12 +291,9 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       outputCount: 2,
       vkeyWitnessCount: 1,
       outputAddress: acceptedEnvironment.funder.address,
-      outputLovelace:
-        CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1,
-      policyHashHexes:
-        CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1,
-      assetCount:
-        CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1,
+      outputLovelace: CARDANO_BOUNDARY_NESTED_VALUE_LOVELACE_V1,
+      policyHashHexes: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1,
+      assetCount: CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1,
       hasWithdrawals: false,
       hasMint: false,
       hasPlutusScripts: false,
@@ -338,33 +302,21 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       collateralInputCount: 0,
     });
 
-    const acceptedCanonical =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(acceptedCandidate.cborHex, "hex"),
-      );
-    const adjacentCanonical =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(adjacentCandidate.cborHex, "hex"),
-      );
+    const acceptedCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(acceptedCandidate.cborHex, "hex"),
+    );
+    const adjacentCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(adjacentCandidate.cborHex, "hex"),
+    );
     const acceptedNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        acceptedCanonical,
-      );
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(acceptedCanonical);
     const adjacentNative =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        adjacentCanonical,
-      );
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(adjacentCanonical);
     expect(
-      validateMidgardConsensusV1Tx(
-        acceptedNative,
-        acceptedCanonical.length,
-      ),
+      validateMidgardConsensusV1Tx(acceptedNative, acceptedCanonical.length),
     ).toBeNull();
     expect(
-      validateMidgardConsensusV1Tx(
-        adjacentNative,
-        adjacentCanonical.length,
-      ),
+      validateMidgardConsensusV1Tx(adjacentNative, adjacentCanonical.length),
     ).toMatchObject({
       code: "E_VALUE_SIZE",
       featureId: "output_value",
@@ -377,20 +329,16 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     expect(outputCbors).toHaveLength(2);
     const targetOutput = decodeMidgardTxOutput(outputCbors[0]!);
     expect(
-      midgardValueToCmlValue(
-        targetOutput.value,
-      ).to_cbor_bytes().length,
+      midgardValueToCmlValue(targetOutput.value).to_cbor_bytes().length,
     ).toBe(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1);
     const valueAssets: MidgardLedgerOutputAssetV1[] = [
       ...targetOutput.value.assets.entries(),
     ].flatMap(([policyIdHex, policyAssets]) =>
-      [...policyAssets.entries()].map(
-        ([assetNameHex, quantity]) => ({
-          policyId: Buffer.from(policyIdHex, "hex"),
-          assetName: Buffer.from(assetNameHex, "hex"),
-          quantity,
-        }),
-      ),
+      [...policyAssets.entries()].map(([assetNameHex, quantity]) => ({
+        policyId: Buffer.from(policyIdHex, "hex"),
+        assetName: Buffer.from(assetNameHex, "hex"),
+        quantity,
+      })),
     );
     expect(valueAssets).toHaveLength(
       CARDANO_BOUNDARY_NESTED_VALUE_ASSET_COUNT_V1,
@@ -400,13 +348,11 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       outputIndex: 0,
       outputCbor: outputCbors[0]!,
     });
-    const chunkWitnesses = outputProof.steps.flatMap(
-      ({ witness }) =>
-        witness?.kind === "chunks" ? [witness] : [],
+    const chunkWitnesses = outputProof.steps.flatMap(({ witness }) =>
+      witness?.kind === "chunks" ? [witness] : [],
     );
-    const valueWitnesses = outputProof.steps.flatMap(
-      ({ witness }) =>
-        witness?.kind === "value" ? [witness] : [],
+    const valueWitnesses = outputProof.steps.flatMap(({ witness }) =>
+      witness?.kind === "value" ? [witness] : [],
     );
     expect(outputProof.terminal.outputScan.cardanoValueSize).toBe(
       CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
@@ -425,9 +371,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
           witness.nextChunkProof?.chunk.length ?? 0,
         ]),
       ),
-    ).toBeLessThanOrEqual(
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-    );
+    ).toBeLessThanOrEqual(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
     const maxValueWitnessBytes = Math.max(
       ...valueWitnesses.map(
         (witness) =>
@@ -437,9 +381,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
           witness.siblings.length * 32,
       ),
     );
-    expect(maxValueWitnessBytes).toBeLessThan(
-      CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-    );
+    expect(maxValueWitnessBytes).toBeLessThan(CARDANO_BOUNDARY_MAX_TX_SIZE_V1);
 
     const valueTrace = buildMidgardLedgerOutputValueTraceV1({
       assets: valueAssets,
@@ -452,9 +394,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       ({ control, witness }) =>
         witness !== null &&
         control.currentPolicy.length > 0 &&
-        !Buffer.from(witness.policyId).equals(
-          control.currentPolicy,
-        ),
+        !Buffer.from(witness.policyId).equals(control.currentPolicy),
     );
     expect(
       policyTransitionSteps.map(({ control, witness, next }) => ({
@@ -465,84 +405,63 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       })),
     ).toEqual([
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[6],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[5],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[6],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[5],
         remainingBefore: 1_365,
         remainingAfter: 1_364,
       },
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[5],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[4],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[5],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[4],
         remainingBefore: 1_138,
         remainingAfter: 1_137,
       },
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[4],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[3],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[4],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[3],
         remainingBefore: 911,
         remainingAfter: 910,
       },
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[3],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[2],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[3],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[2],
         remainingBefore: 684,
         remainingAfter: 683,
       },
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[2],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[1],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[2],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[1],
         remainingBefore: 456,
         remainingAfter: 455,
       },
       {
-        fromPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[1],
-        toPolicyHex:
-          CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[0],
+        fromPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[1],
+        toPolicyHex: CARDANO_BOUNDARY_NESTED_VALUE_POLICY_ID_HEXES_V1[0],
         remainingBefore: 228,
         remainingAfter: 227,
       },
     ]);
     const policyTransitionStep = policyTransitionSteps.at(-1)!;
     expect(
-      encodeMidgardLedgerOutputValueControlV1(
-        outputProof.terminal.value!,
-      ),
-    ).toEqual(
-      encodeMidgardLedgerOutputValueControlV1(
-        valueTrace.terminal,
-      ),
-    );
+      encodeMidgardLedgerOutputValueControlV1(outputProof.terminal.value!),
+    ).toEqual(encodeMidgardLedgerOutputValueControlV1(valueTrace.terminal));
     expect(
       finalizeMidgardLedgerOutputValueV1(valueTrace.terminal),
     ).not.toBeNull();
     const finalizeStep = valueTrace.steps.at(-1)!;
-    const terminalResult =
-      finalizeMidgardLedgerOutputValueV1(
-        valueTrace.terminal,
-      )!;
+    const terminalResult = finalizeMidgardLedgerOutputValueV1(
+      valueTrace.terminal,
+    )!;
     const terminalVector = {
       protocolMajor: CARDANO_BOUNDARY_PROTOCOL_MAJOR_V1,
       maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
       maxValueSize: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
       signedCardanoBytes: acceptedCandidate.signedBytes,
-      adjacentSignedCardanoBytes:
-        adjacentCandidate.signedBytes,
+      adjacentSignedCardanoBytes: adjacentCandidate.signedBytes,
       cardanoValueBytes: accepted.valueCborBytes,
       adjacentCardanoValueBytes: adjacent.valueCborBytes,
       nativeCanonicalBytes: acceptedCanonical.length,
-      outputsFieldBytes:
-        acceptedNative.body.outputsPreimageCbor.length,
+      outputsFieldBytes: acceptedNative.body.outputsPreimageCbor.length,
       outputItemBytes: outputCbors[0]!.length,
       outputProofSteps: outputProof.steps.length,
       valueAssetCount: valueTrace.assets.length,
@@ -552,44 +471,34 @@ describe("canonical V1 nested Cardano Value boundary", () => {
         height: peak.height,
         hashHex: peak.hash.toString("hex"),
       })),
-      preTerminalControlCborHex:
-        encodeMidgardLedgerOutputValueControlV1(
-          finalizeStep.control,
-        ).toString("hex"),
-      terminalControlCborHex:
-        encodeMidgardLedgerOutputValueControlV1(
-          finalizeStep.next,
-        ).toString("hex"),
+      preTerminalControlCborHex: encodeMidgardLedgerOutputValueControlV1(
+        finalizeStep.control,
+      ).toString("hex"),
+      terminalControlCborHex: encodeMidgardLedgerOutputValueControlV1(
+        finalizeStep.next,
+      ).toString("hex"),
       terminalResult: {
         rootHex: Buffer.from(terminalResult.root).toString("hex"),
         cborLength: terminalResult.cborLength.toString(),
         memory: terminalResult.memory.toString(),
       },
       policyTransition: {
-        controlCborHex:
-          encodeMidgardLedgerOutputValueControlV1(
-            policyTransitionStep.control,
-          ).toString("hex"),
-        nextControlCborHex:
-          encodeMidgardLedgerOutputValueControlV1(
-            policyTransitionStep.next,
-          ).toString("hex"),
-        policyIdHex:
-          policyTransitionStep.witness!.policyId.toString("hex"),
-        assetNameHex:
-          policyTransitionStep.witness!.assetName.toString("hex"),
-        quantity:
-          policyTransitionStep.witness!.quantity.toString(),
-        siblingHexes:
-          policyTransitionStep.witness!.siblings.map((sibling) =>
-            Buffer.from(sibling).toString("hex"),
-          ),
+        controlCborHex: encodeMidgardLedgerOutputValueControlV1(
+          policyTransitionStep.control,
+        ).toString("hex"),
+        nextControlCborHex: encodeMidgardLedgerOutputValueControlV1(
+          policyTransitionStep.next,
+        ).toString("hex"),
+        policyIdHex: policyTransitionStep.witness!.policyId.toString("hex"),
+        assetNameHex: policyTransitionStep.witness!.assetName.toString("hex"),
+        quantity: policyTransitionStep.witness!.quantity.toString(),
+        siblingHexes: policyTransitionStep.witness!.siblings.map((sibling) =>
+          Buffer.from(sibling).toString("hex"),
+        ),
       },
     };
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR !== "1") {
-      expect(terminalVector).toEqual(
-        maximumNestedValueTerminalVectorV1,
-      );
+      expect(terminalVector).toEqual(maximumNestedValueTerminalVectorV1);
     }
 
     const midgard = exerciseMidgardOrderedCollectionBoundaryV1({
@@ -597,9 +506,7 @@ describe("canonical V1 nested Cardano Value boundary", () => {
       fieldIndex: 2,
     });
     expect(midgard.itemCount).toBe(2);
-    expect(midgard.maxChunkBytes).toBe(
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-    );
+    expect(midgard.maxChunkBytes).toBe(MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1);
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
       signedCardanoCborHex: acceptedCandidate.cborHex,
       corpusLabel: "maximum-nested-value",
@@ -610,12 +517,8 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     expect(retained.forced.reconstructedCanonicalBytes).toBe(
       acceptedCanonical.length,
     );
-    expect(retained.normal.revealStepCount).toBe(
-      midgard.completeFoldStepCount,
-    );
-    expect(retained.forced.revealStepCount).toBe(
-      midgard.completeFoldStepCount,
-    );
+    expect(retained.normal.revealStepCount).toBe(midgard.completeFoldStepCount);
+    expect(retained.forced.revealStepCount).toBe(midgard.completeFoldStepCount);
 
     const roundtrip = measureSignedCardanoNestedValueV1(
       Buffer.from(
@@ -639,9 +542,9 @@ describe("canonical V1 nested Cardano Value boundary", () => {
     const txHash = await acceptedEnvironment.emulator.submitTx(
       acceptedCandidate.cborHex,
     );
-    await expect(
-      acceptedEnvironment.emulator.awaitTx(txHash),
-    ).resolves.toBe(true);
+    await expect(acceptedEnvironment.emulator.awaitTx(txHash)).resolves.toBe(
+      true,
+    );
 
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(

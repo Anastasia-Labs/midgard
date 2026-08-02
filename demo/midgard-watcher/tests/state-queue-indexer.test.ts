@@ -710,9 +710,7 @@ afterAll(async () => {
   await rm(transportFixtureDirectory, { recursive: true, force: true });
 });
 
-const finalityPolicyAtDepth = (
-  depth: number,
-) =>
+const finalityPolicyAtDepth = (depth: number) =>
   makeWatcherFinalityPolicyV1(
     {
       schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
@@ -1887,10 +1885,7 @@ const recoveryAppendBundle = (
   return { block, store, snapshot, observation, state: result.state! };
 };
 
-const recoveryEvidence = (
-  rawObservation: Mutable,
-  depth: string,
-) => {
+const recoveryEvidence = (rawObservation: Mutable, depth: string) => {
   const primaryProvider = provider;
   const primaryRaw = structuredClone(rawObservation);
   primaryRaw.providerId = primaryProvider.providerId;
@@ -4701,84 +4696,75 @@ describe("authenticated state-queue indexer", () => {
     expect(parseWatcherStateQueueIndexerStateV1(forged, policy)).toBeNull();
   });
 
-  it(
-    "consumes exact external-provider W13 post-finality recovery and preserves foreign roles across restart",
-    () => {
-      const bootBundle = bootstrapBundleWithForeignRole();
-      const boot = evaluateWatcherStateQueueIndexerV1(
-        policy,
-        null,
-        bootBundle.observation,
-        bootBundle.context,
-      ).state!;
-      const orphan = recoveryAppendBundle(bootBundle, boot);
-      const bundle = postFinalityStateQueueRecoveryBundle(
-        bootBundle,
-        orphan,
-      );
-      const observation = observationFor(
-        bundle.contextBlock,
-        bundle.recovery.nextStore!,
-        boot.snapshot,
-        "rollback",
-        orphan.state.stateDigest,
-        null,
-        null,
-        { transactionHash: null },
-      );
-      const recovered = evaluateWatcherStateQueueIndexerV1(
+  it("consumes exact external-provider W13 post-finality recovery and preserves foreign roles across restart", () => {
+    const bootBundle = bootstrapBundleWithForeignRole();
+    const boot = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      null,
+      bootBundle.observation,
+      bootBundle.context,
+    ).state!;
+    const orphan = recoveryAppendBundle(bootBundle, boot);
+    const bundle = postFinalityStateQueueRecoveryBundle(bootBundle, orphan);
+    const observation = observationFor(
+      bundle.contextBlock,
+      bundle.recovery.nextStore!,
+      boot.snapshot,
+      "rollback",
+      orphan.state.stateDigest,
+      null,
+      null,
+      { transactionHash: null },
+    );
+    const recovered = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      orphan.state,
+      observation,
+      bundle.context,
+    );
+    expect(recovered).toMatchObject({
+      action: "accept",
+      protocolDecision: "indexed",
+      reasonCodes: ["rollback_authenticated"],
+      state: { snapshot: boot.snapshot },
+    });
+    expect(recovered.state?.history).toHaveLength(boot.history.length);
+    expect(recovered.state?.auditHistory.map(({ status }) => status)).toEqual([
+      "orphaned",
+      "rollback",
+    ]);
+    expect(recovered.state?.auditHistory.at(-1)?.entry.rollbackResult).toEqual(
+      bundle.recovery,
+    );
+    if (bundle.foreignSentinel !== undefined) {
+      expect(
+        (
+          recovered.state?.auditHistory.at(-1)?.entry.publicContext
+            .durableStore as WatcherDurableStoreV1
+        ).protocolUtxos,
+      ).toContainEqual(bundle.foreignSentinel);
+    }
+
+    const serialized = JSON.parse(JSON.stringify(recovered.state));
+    const restarted = parseWatcherStateQueueIndexerStateV1(serialized, policy);
+    expect(restarted).toEqual(recovered.state);
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
         policy,
         orphan.state,
         observation,
-        bundle.context,
-      );
-      expect(recovered).toMatchObject({
-        action: "accept",
-        protocolDecision: "indexed",
-        reasonCodes: ["rollback_authenticated"],
-        state: { snapshot: boot.snapshot },
-      });
-      expect(recovered.state?.history).toHaveLength(boot.history.length);
-      expect(recovered.state?.auditHistory.map(({ status }) => status)).toEqual(
-        ["orphaned", "rollback"],
-      );
-      expect(
-        recovered.state?.auditHistory.at(-1)?.entry.rollbackResult,
-      ).toEqual(bundle.recovery);
-      if (bundle.foreignSentinel !== undefined) {
-        expect(
-          (
-            recovered.state?.auditHistory.at(-1)?.entry.publicContext
-              .durableStore as WatcherDurableStoreV1
-          ).protocolUtxos,
-        ).toContainEqual(bundle.foreignSentinel);
-      }
-
-      const serialized = JSON.parse(JSON.stringify(recovered.state));
-      const restarted = parseWatcherStateQueueIndexerStateV1(
-        serialized,
+        JSON.parse(JSON.stringify(bundle.context)),
+      ),
+    ).toEqual(recovered);
+    expect(
+      parseWatcherStateQueueIndexerResultV1(recovered, {
         policy,
-      );
-      expect(restarted).toEqual(recovered.state);
-      expect(
-        evaluateWatcherStateQueueIndexerV1(
-          policy,
-          orphan.state,
-          observation,
-          JSON.parse(JSON.stringify(bundle.context)),
-        ),
-      ).toEqual(recovered);
-      expect(
-        parseWatcherStateQueueIndexerResultV1(recovered, {
-          policy,
-          previousState: orphan.state,
-          observation,
-          publicContext: bundle.context,
-        }),
-      ).toEqual(recovered);
-    },
-    30_000,
-  );
+        previousState: orphan.state,
+        observation,
+        publicContext: bundle.context,
+      }),
+    ).toEqual(recovered);
+  }, 30_000);
 
   it("accepts post-finality recovery with no indexed owned change", () => {
     const bootBundle = bootstrapBundleWithForeignRole();
@@ -4838,10 +4824,7 @@ describe("authenticated state-queue indexer", () => {
       bootBundle.context,
     ).state!;
     const orphan = recoveryAppendBundle(bootBundle, boot);
-    const bundle = postFinalityStateQueueRecoveryBundle(
-      bootBundle,
-      orphan,
-    );
+    const bundle = postFinalityStateQueueRecoveryBundle(bootBundle, orphan);
     const observation = observationFor(
       bundle.contextBlock,
       bundle.recovery.nextStore!,

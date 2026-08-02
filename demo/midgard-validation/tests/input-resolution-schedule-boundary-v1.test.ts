@@ -272,9 +272,7 @@ const buildResolutionNodes = (
   readonly nodes: readonly ResolutionNodeV1[];
   readonly originalScheduleHash: Buffer;
 } => {
-  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
-    boundaryEntry(label),
-  );
+  const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(boundaryEntry(label));
   const spendKeys = decodeMidgardNativeByteListPreimage(
     tx.body.spendInputsPreimageCbor,
     `${label}.spend_inputs`,
@@ -339,24 +337,15 @@ const toPeakVector = (
     hashHex: Buffer.from(peak.hash).toString("hex"),
   }));
 
-const deriveTerminalVector = (
-  label: string,
-): ResolutionTerminalVectorV1 => {
-  const {
-    spendCount,
-    referenceCount,
-    nodes,
-    originalScheduleHash,
-  } = buildResolutionNodes(label);
+const deriveTerminalVector = (label: string): ResolutionTerminalVectorV1 => {
+  const { spendCount, referenceCount, nodes, originalScheduleHash } =
+    buildResolutionNodes(label);
   expect(nodes.length).toBeGreaterThan(0);
   let remainingScheduleHash = originalScheduleHash;
   let accumulator = initialMidgardResolvedInputsAccumulatorV1();
-  let resolvedItemFrontier =
-    emptyMidgardValidationMerkleFrontierV1();
+  let resolvedItemFrontier = emptyMidgardValidationMerkleFrontierV1();
   let spendIndex = 0;
-  let penultimate:
-    | ResolutionTerminalVectorV1["penultimate"]
-    | undefined;
+  let penultimate: ResolutionTerminalVectorV1["penultimate"] | undefined;
 
   for (const [cursor, node] of nodes.entries()) {
     expect(remainingScheduleHash).toEqual(node.scheduleHash);
@@ -364,8 +353,7 @@ const deriveTerminalVector = (
       penultimate = {
         cursor,
         accumulatorHex: accumulator.toString("hex"),
-        remainingScheduleHashHex:
-          remainingScheduleHash.toString("hex"),
+        remainingScheduleHashHex: remainingScheduleHash.toString("hex"),
         spendIndex,
         resolvedItemPeaks: toPeakVector(resolvedItemFrontier),
       };
@@ -402,9 +390,9 @@ const deriveTerminalVector = (
     originalScheduleHashHex: originalScheduleHash.toString("hex"),
     terminalAccumulatorHex: accumulator.toString("hex"),
     terminalFrontierCommitmentHex:
-      commitMidgardValidationMerkleFrontierV1(
-        resolvedItemFrontier,
-      ).toString("hex"),
+      commitMidgardValidationMerkleFrontierV1(resolvedItemFrontier).toString(
+        "hex",
+      ),
     penultimate: penultimate!,
     terminal: {
       cursor: nodes.length,
@@ -438,8 +426,7 @@ const assertAdjacentMutationsReject = (
   expect(exact).toEqual(remaining);
   expect(
     prependMidgardInputResolutionScheduleV1({
-      sourceKind:
-        last.sourceKind === "spend" ? "reference" : "spend",
+      sourceKind: last.sourceKind === "spend" ? "reference" : "spend",
       key,
       nextHash: next,
     }),
@@ -475,9 +462,7 @@ describe("retained input-resolution schedule boundary", () => {
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
       console.info(JSON.stringify(vector, null, 2));
     }
-    expect(vector).toEqual(
-      expectedTerminalVectors["maximum-reference-inputs"],
-    );
+    expect(vector).toEqual(expectedTerminalVectors["maximum-reference-inputs"]);
     assertAdjacentMutationsReject(vector);
   });
 });

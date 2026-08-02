@@ -405,9 +405,7 @@ export class DaLibp2pPayloadProtocolHandlers {
     if (payloadBytes.length > this.limits.maxPayloadBytes) {
       return { ok: false, reasonCode: "payload_too_large" };
     }
-    if (
-      request.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)
-    ) {
+    if (request.payloadSchemaVersion !== Number(SDK.DA_PAYLOAD_V1_VERSION)) {
       return { ok: false, reasonCode: "payload_schema_version_mismatch" };
     }
     const actualPayloadHash = computeDaSha256Hash(payloadBytes);

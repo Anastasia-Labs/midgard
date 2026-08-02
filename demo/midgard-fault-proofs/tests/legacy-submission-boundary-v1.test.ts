@@ -46,9 +46,7 @@ const retiredInitCategories = [
 describe("RF-043 legacy submission boundary", () => {
   it("covers every retired command and leaves canonical controls available", () => {
     for (const command of retiredCommands) {
-      expect(
-        isRetiredUnauthenticatedSubmissionRouteV1({ command }),
-      ).toBe(true);
+      expect(isRetiredUnauthenticatedSubmissionRouteV1({ command })).toBe(true);
     }
     for (const fraudCategory of retiredInitCategories) {
       expect(
@@ -115,9 +113,9 @@ describe("RF-043 legacy submission boundary", () => {
       "submitZeroInputStep02",
       "submitZeroInputStep02FromFiles",
     ]) {
-      expect(Object.prototype.hasOwnProperty.call(productionExports, name)).toBe(
-        false,
-      );
+      expect(
+        Object.prototype.hasOwnProperty.call(productionExports, name),
+      ).toBe(false);
     }
     expect(
       Object.prototype.hasOwnProperty.call(

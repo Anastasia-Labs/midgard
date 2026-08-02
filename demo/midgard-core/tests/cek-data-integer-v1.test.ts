@@ -57,14 +57,10 @@ describe("authenticated CEK Data integer V1", () => {
         sourceStart: 91,
         source,
       });
-      const summary = finalizeMidgardCekDataIntegerV1(
-        trace.terminal,
-      )!;
+      const summary = finalizeMidgardCekDataIntegerV1(trace.terminal)!;
       const cborRoot = commitMidgardCekBlobV1(source).root;
 
-      expect(trace.terminal.stage).toBe(
-        MidgardCekDataIntegerStagesV1.Terminal,
-      );
+      expect(trace.terminal.stage).toBe(MidgardCekDataIntegerStagesV1.Terminal);
       expect(summary).toStrictEqual({
         root: Buffer.from(
           hashMidgardCekDataNodeV1({
@@ -120,10 +116,7 @@ describe("authenticated CEK Data integer V1", () => {
   });
 
   it("binds the source range in every nested state", () => {
-    const source = Buffer.from(
-      "c349010000000000000000",
-      "hex",
-    );
+    const source = Buffer.from("c349010000000000000000", "hex");
     const trace = buildMidgardCekDataIntegerTraceV1({
       sourceStart: 17,
       source,
@@ -134,26 +127,19 @@ describe("authenticated CEK Data integer V1", () => {
         .filter(({ next }) => next.blob !== null)
         .every(
           ({ next }) =>
-            next.blob!.version ===
-              MIDGARD_CEK_SOURCE_BLOB_V1_VERSION &&
+            next.blob!.version === MIDGARD_CEK_SOURCE_BLOB_V1_VERSION &&
             next.blob!.sourceStart === 17 &&
             next.blob!.sourceLength === source.length,
         ),
     ).toBe(true);
     expect(
-      encodeMidgardCekDataIntegerControlV1(
-        trace.terminal,
-      ).toString("hex"),
+      encodeMidgardCekDataIntegerControlV1(trace.terminal).toString("hex"),
     ).toBe(
       "860102110b0dd8799f860101110b8401010b8183005820529618b73f1e990ed364ce58c08a76518a3f4ddaf2397ea92207a760422764840bd87a80ff",
     );
     expect(
-      finalizeMidgardCekDataIntegerV1(
-        trace.terminal,
-      )!.root.toString("hex"),
-    ).toBe(
-      "720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691",
-    );
+      finalizeMidgardCekDataIntegerV1(trace.terminal)!.root.toString("hex"),
+    ).toBe("720c28eb8291c0e25d860108458a13027f509d93b9c61296532fdb230063c691");
   });
 
   it("accepts only canonical constructor alternatives above 127", () => {

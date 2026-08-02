@@ -198,8 +198,7 @@ export const isWellFormedMidgardRedeemerItemProofControlV1 = (
 ): boolean => {
   try {
     const expectedAbsent =
-      control.expectedPurposeTag === -1 &&
-      control.expectedPointerIndex === -1;
+      control.expectedPurposeTag === -1 && control.expectedPointerIndex === -1;
     const expectedPresent =
       supportedPurposeTag(control.expectedPurposeTag) &&
       control.expectedPointerIndex >= 0;
@@ -240,17 +239,14 @@ export const isWellFormedMidgardRedeemerItemProofControlV1 = (
               descriptorOpen &&
               exUnitsOpen &&
               traversalOpen
-            : control.mode ===
-                MidgardRedeemerItemProofModesV1.Descriptor
+            : control.mode === MidgardRedeemerItemProofModesV1.Descriptor
               ? descriptorOpen && exUnitsOpen && control.traversal === null
               : descriptorOpen &&
                 exUnitsOpen &&
                 traversalOpen &&
                 control.traversal!.stage ===
                   MidgardCekDataTraverseStagesV1.Terminal &&
-                finalizeMidgardCekDataTraverseV1(
-                  control.traversal!,
-                ) !== null)
+                finalizeMidgardCekDataTraverseV1(control.traversal!) !== null)
     );
   } catch {
     return false;
@@ -282,10 +278,7 @@ export const initialMidgardRedeemerItemProofControlV1 = ({
     itemCount: exactSafeInt(itemCount, "itemCount"),
     totalLength: exactSafeInt(totalLength, "totalLength"),
     itemCommitment: ensureHash32(itemCommitment, "itemCommitment"),
-    expectedPurposeTag: exactSafeInt(
-      expectedPurposeTag,
-      "expectedPurposeTag",
-    ),
+    expectedPurposeTag: exactSafeInt(expectedPurposeTag, "expectedPurposeTag"),
     expectedPointerIndex: exactSafeInt(
       expectedPointerIndex,
       "expectedPointerIndex",
@@ -400,8 +393,7 @@ export const nextMidgardRedeemerItemProofSpanV1 = (
   if (control.stage === MidgardRedeemerItemProofStagesV1.Tail) {
     return {
       absoluteStart: control.dataOffset + control.dataLength,
-      length:
-        control.totalLength - control.dataOffset - control.dataLength,
+      length: control.totalLength - control.dataOffset - control.dataLength,
     };
   }
   if (
@@ -438,8 +430,7 @@ const authenticatedSpan = ({
     absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   );
   const lastChunkIndex = Math.floor(
-    (absoluteStart + length - 1) /
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+    (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   );
   const matches = (
     proof: MidgardBoundedItemChunkProofV1,
@@ -460,15 +451,13 @@ const authenticatedSpan = ({
     return null;
   }
   const localStart =
-    absoluteStart -
-    firstChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    absoluteStart - firstChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
   if (lastChunkIndex === firstChunkIndex) {
     return nextChunkProof === null
       ? chunkProof.chunk.subarray(localStart, localStart + length)
       : null;
   }
-  return nextChunkProof !== null &&
-    matches(nextChunkProof, lastChunkIndex)
+  return nextChunkProof !== null && matches(nextChunkProof, lastChunkIndex)
     ? Buffer.concat([chunkProof.chunk, nextChunkProof.chunk]).subarray(
         localStart,
         localStart + length,
@@ -487,10 +476,7 @@ export const advanceMidgardRedeemerItemProofV1 = ({
   const span = nextMidgardRedeemerItemProofSpanV1(control);
   let sourceBytes: Buffer | null = null;
   if (span === null) {
-    if (
-      witness.chunkProof !== null ||
-      witness.nextChunkProof !== null
-    ) {
+    if (witness.chunkProof !== null || witness.nextChunkProof !== null) {
       return null;
     }
   } else {
@@ -538,9 +524,7 @@ export const advanceMidgardRedeemerItemProofV1 = ({
         dataOffset: data.nextOffset,
         dataLength: data.value,
       } satisfies MidgardRedeemerItemProofControlV1;
-      return isWellFormedMidgardRedeemerItemProofControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardRedeemerItemProofControlV1(next) ? next : null;
     }
     if (
       control.stage === MidgardRedeemerItemProofStagesV1.Tail &&
@@ -580,17 +564,14 @@ export const advanceMidgardRedeemerItemProofV1 = ({
               })
             : null,
       } satisfies MidgardRedeemerItemProofControlV1;
-      return isWellFormedMidgardRedeemerItemProofControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardRedeemerItemProofControlV1(next) ? next : null;
     }
     if (
       control.stage === MidgardRedeemerItemProofStagesV1.Data &&
       control.traversal !== null
     ) {
       if (
-        control.traversal.stage ===
-          MidgardCekDataTraverseStagesV1.Terminal &&
+        control.traversal.stage === MidgardCekDataTraverseStagesV1.Terminal &&
         witness.action.kind === "finishData" &&
         sourceBytes === null
       ) {
@@ -640,14 +621,10 @@ const spanProofs = ({
     absoluteStart / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   );
   const lastChunkIndex = Math.floor(
-    (absoluteStart + length - 1) /
-      MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
+    (absoluteStart + length - 1) / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   );
   return {
-    chunkProof: buildMidgardBoundedItemChunkProofV1(
-      item,
-      firstChunkIndex,
-    ),
+    chunkProof: buildMidgardBoundedItemChunkProofV1(item, firstChunkIndex),
     nextChunkProof:
       lastChunkIndex === firstChunkIndex
         ? null
@@ -686,9 +663,7 @@ export const buildMidgardRedeemerItemProofTraceV1 = ({
   });
   const steps: MidgardRedeemerItemProofTraceStepV1[] = [];
   let control = initial;
-  const emit = (
-    witness: MidgardRedeemerItemProofWitnessV1,
-  ): void => {
+  const emit = (witness: MidgardRedeemerItemProofWitnessV1): void => {
     const next = advanceMidgardRedeemerItemProofV1({
       control,
       witness,
@@ -744,9 +719,7 @@ export const buildMidgardRedeemerItemProofTraceV1 = ({
       nextChunkProof: null,
     });
   }
-  if (
-    control.stage !== MidgardRedeemerItemProofStagesV1.Terminal
-  ) {
+  if (control.stage !== MidgardRedeemerItemProofStagesV1.Terminal) {
     throw new Error("Redeemer item proof did not reach terminal");
   }
   return { item, initial, steps, terminal: control };

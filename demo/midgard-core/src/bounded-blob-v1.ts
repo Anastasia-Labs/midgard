@@ -41,10 +41,7 @@ export type MidgardBoundedBlobChunkProofV1 = {
 };
 
 const hash32 = (value: Uint8Array): Hash32 =>
-  ensureHash32(
-    blake2b(value, { dkLen: 32 }),
-    "bounded_blob_v1.commitment",
-  );
+  ensureHash32(blake2b(value, { dkLen: 32 }), "bounded_blob_v1.commitment");
 
 const boundedFieldIndex = (fieldIndex: number): number => {
   if (
@@ -59,14 +56,14 @@ const boundedFieldIndex = (fieldIndex: number): number => {
 
 const boundedLength = (totalLength: number): number => {
   if (!Number.isSafeInteger(totalLength) || totalLength < 0) {
-    throw new Error("V1 bounded-blob length must be a non-negative safe integer");
+    throw new Error(
+      "V1 bounded-blob length must be a non-negative safe integer",
+    );
   }
   return totalLength;
 };
 
-export const midgardBoundedBlobChunkCountV1 = (
-  totalLength: number,
-): number => {
+export const midgardBoundedBlobChunkCountV1 = (totalLength: number): number => {
   const length = boundedLength(totalLength);
   return length === 0
     ? 0
@@ -90,8 +87,7 @@ export const midgardBoundedBlobChunkLengthV1 = ({
   }
   return chunkIndex + 1 < count
     ? MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1
-    : totalLength -
-        chunkIndex * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1;
+    : totalLength - chunkIndex * MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1;
 };
 
 export const hashMidgardBoundedBlobChunkV1 = ({
@@ -172,10 +168,7 @@ export const buildMidgardBoundedBlobV1 = ({
     offset += MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1
   ) {
     chunks.push(
-      source.subarray(
-        offset,
-        offset + MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1,
-      ),
+      source.subarray(offset, offset + MIDGARD_BOUNDED_BLOB_CHUNK_BYTES_V1),
     );
   }
   const leafHashes = chunks.map((chunk, chunkIndex) =>

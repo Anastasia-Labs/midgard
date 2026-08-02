@@ -198,7 +198,8 @@ describe("Q03 provenance admission", () => {
       /prohibited_trust_class/u,
     );
     expect(
-      SDK.admitEvidenceProvenanceV1({ provenance, allowDiagnostic: true }).grade,
+      SDK.admitEvidenceProvenanceV1({ provenance, allowDiagnostic: true })
+        .grade,
     ).toBe("diagnostic");
   });
 
@@ -236,7 +237,11 @@ describe("Q03 provenance admission", () => {
   it("degrades a bundle to diagnostic when any contributing record is diagnostic", () => {
     expect(
       SDK.combineEvidenceGradeV1([
-        { trustClass: "authenticated_cardano_l1", sourceId: "l1", grade: "security" },
+        {
+          trustClass: "authenticated_cardano_l1",
+          sourceId: "l1",
+          grade: "security",
+        },
         {
           trustClass: "operator_admin_api",
           sourceId: "node",
@@ -469,9 +474,9 @@ describe("Q03 transactions-root inclusion authentication", () => {
       nativeInclusionAuthenticated: true,
       payloadSourceAuthenticated: true,
     };
-    expect(
-      SDK.assertNativeInclusionRootAuthenticatedV1(authenticated),
-    ).toEqual(authenticated);
+    expect(SDK.assertNativeInclusionRootAuthenticatedV1(authenticated)).toEqual(
+      authenticated,
+    );
   });
 });
 

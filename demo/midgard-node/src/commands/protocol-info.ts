@@ -16,8 +16,7 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
-export const PROTOCOL_INFO_API_VERSION =
-  MIDGARD_PROTOCOL_INFO_V1_API_VERSION;
+export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_V1_API_VERSION;
 
 type ProtocolInfoConfig = {
   readonly NETWORK: Network;
@@ -123,9 +122,7 @@ export const encodeProtocolInfo = ({
   return {
     ...common,
     apiVersion: PROTOCOL_INFO_API_VERSION,
-    midgardNativeTxVersion: Number(
-      MIDGARD_NATIVE_TX_V1_VERSION,
-    ) as 1,
+    midgardNativeTxVersion: Number(MIDGARD_NATIVE_TX_V1_VERSION) as 1,
     consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
     supportedScriptLanguages: MIDGARD_SUPPORTED_SCRIPT_LANGUAGES,
   };

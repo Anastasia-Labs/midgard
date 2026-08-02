@@ -23,13 +23,9 @@ describe("bounded BLAKE2b-256 trace V1", () => {
       const message = Buffer.alloc(length, 0x6b);
       const trace = buildMidgardBlake2b256TraceV1(message);
       const terminal = trace.at(-1)!.next;
-      const blockCount = Math.ceil(
-        length / MIDGARD_BLAKE2B_256_BLOCK_BYTES,
-      );
+      const blockCount = Math.ceil(length / MIDGARD_BLAKE2B_256_BLOCK_BYTES);
 
-      expect(trace).toHaveLength(
-        blockCount * (MIDGARD_BLAKE2B_256_ROUNDS + 2),
-      );
+      expect(trace).toHaveLength(blockCount * (MIDGARD_BLAKE2B_256_ROUNDS + 2));
       expect(digestMidgardBlake2b256TraceV1(terminal)).toStrictEqual(
         referenceDigest(message),
       );

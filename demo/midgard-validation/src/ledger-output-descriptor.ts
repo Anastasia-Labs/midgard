@@ -20,13 +20,9 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
-import {
-  summarizeMidgardCekLucidDataV1,
-} from "./cek-context.js";
+import { summarizeMidgardCekLucidDataV1 } from "./cek-context.js";
 import { decodeMidgardOutRefBytes } from "./ledger-tx/codec.js";
-import {
-  commitMidgardScriptContextTxOutV1,
-} from "./script-context-proof.js";
+import { commitMidgardScriptContextTxOutV1 } from "./script-context-proof.js";
 
 const MAX_LEDGER_OUTPUT_INDEX_V1 = 65_535n;
 
@@ -58,9 +54,7 @@ const cardanoSpendDatumSummary = (
     summarizeMidgardCekLucidDataV1(
       datum === undefined
         ? new Constr(1, [])
-        : new Constr(0, [
-            Data.from(datum.cbor.toString("hex")) as never,
-          ]),
+        : new Constr(0, [Data.from(datum.cbor.toString("hex")) as never]),
     ),
   );
 };
@@ -106,10 +100,7 @@ const referenceScriptFacts = ({
     referenceScriptLanguage: Number(
       MidgardVersionedScriptTags[script.language],
     ) as Exclude<MidgardLedgerOutputReferenceScriptLanguageV1, -1>,
-    referenceScriptHash: Buffer.from(
-      hashMidgardVersionedScript(script),
-      "hex",
-    ),
+    referenceScriptHash: Buffer.from(hashMidgardVersionedScript(script), "hex"),
     referenceScriptTotalLength: item.bytes.length,
     referenceScriptItemCommitment: item.commitment,
   };
@@ -140,8 +131,8 @@ export const buildCanonicalMidgardLedgerOutputMaterialV1 = ({
       lovelace: output.value.lovelace,
       assetCount: assets.count,
       assetFrontierCommitment: assets.commitment,
-      cardanoValueSize:
-        midgardValueToCmlValue(output.value).to_cbor_bytes().length,
+      cardanoValueSize: midgardValueToCmlValue(output.value).to_cbor_bytes()
+        .length,
       ...referenceScriptFacts({ outputIndex, output }),
       cardanoTxOut: contextTxOutSummary(output, "cardano"),
       midgardTxOut: contextTxOutSummary(output, "midgard"),
@@ -167,10 +158,7 @@ export const buildCanonicalMidgardLedgerEntryOutputMaterialV1 = ({
   if (!canonicalOutRef.equals(Buffer.from(outRef))) {
     throw new Error("ledger out-ref must use exact canonical Cardano CBOR");
   }
-  if (
-    decoded.index < 0n ||
-    decoded.index > MAX_LEDGER_OUTPUT_INDEX_V1
-  ) {
+  if (decoded.index < 0n || decoded.index > MAX_LEDGER_OUTPUT_INDEX_V1) {
     throw new Error("ledger output index exceeds the V1 descriptor domain");
   }
   return buildCanonicalMidgardLedgerOutputMaterialV1({

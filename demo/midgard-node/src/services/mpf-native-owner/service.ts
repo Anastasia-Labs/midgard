@@ -11,7 +11,7 @@ import {
   createEventFlatDigest,
   prepareEventFlatDigest,
 } from "../../workers/utils/mpf-event-flat-digest.js";
-import { encodeNativeMpfRpcFrame,NativeMpfRpcFrameDecoder } from "./codec.js";
+import { encodeNativeMpfRpcFrame, NativeMpfRpcFrameDecoder } from "./codec.js";
 import {
   assertNativeMpfGenerationHandle,
   assertNativeMpfHashHex,

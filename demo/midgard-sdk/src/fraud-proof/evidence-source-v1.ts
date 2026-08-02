@@ -166,7 +166,11 @@ export const admitEvidenceProvenanceV1 = ({
         `provenance.trustClass=${trustClass} cannot carry grade=security`,
       );
     }
-    return Object.freeze({ trustClass: provenance.trustClass, sourceId, grade: "security" });
+    return Object.freeze({
+      trustClass: provenance.trustClass,
+      sourceId,
+      grade: "security",
+    });
   }
   if ((provenance.diagnosticLabel ?? "").trim().length === 0) {
     reject("missing_diagnostic_label", `provenance.sourceId=${sourceId}`);
@@ -278,13 +282,17 @@ export const admitAuthenticatedL1ObservationV1 = ({
       `minimumConfirmationDepth=${String(minimumConfirmationDepth)}`,
     );
   }
-  if (observation.schemaVersion !== CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION) {
+  if (
+    observation.schemaVersion !== CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION
+  ) {
     reject(
       "evidence_grade_mismatch",
       `observation.schemaVersion=${String(observation.schemaVersion)}`,
     );
   }
-  if (!(L1_SOURCE_MODES_V1 as readonly string[]).includes(observation.sourceMode)) {
+  if (
+    !(L1_SOURCE_MODES_V1 as readonly string[]).includes(observation.sourceMode)
+  ) {
     reject(
       "unknown_l1_source_mode",
       `observation.sourceMode=${String(observation.sourceMode)}`,
@@ -348,7 +356,9 @@ export const admitAuthenticatedStateQueueHeaderObservationV1 = async ({
     "malformed_header_hash",
     "observation.headerHash",
   );
-  const derived = await Effect.runPromise(hashBlockHeaderV1(observation.header));
+  const derived = await Effect.runPromise(
+    hashBlockHeaderV1(observation.header),
+  );
   if (derived !== headerHash) {
     reject(
       "header_hash_mismatch",

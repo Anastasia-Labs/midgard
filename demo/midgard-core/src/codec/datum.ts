@@ -43,9 +43,7 @@ export const decodeMidgardDatum = (bytes: Uint8Array): MidgardDatum => {
   let canonical: Buffer;
   try {
     canonical = Buffer.from(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        source.toString("hex"),
-      ),
+      aikenSerialisedPlutusDataCborPreservingMapOrder(source.toString("hex")),
       "hex",
     );
   } catch (cause) {

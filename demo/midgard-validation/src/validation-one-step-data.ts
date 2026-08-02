@@ -7,9 +7,7 @@ import {
 } from "@al-ft/midgard-core";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
-import type {
-  DeterministicValidationMachineTrace,
-} from "./validation-machine.js";
+import type { DeterministicValidationMachineTrace } from "./validation-machine.js";
 import { validationMachineStateDataV1 } from "./validation-machine-data.js";
 
 type PlutusData = unknown;

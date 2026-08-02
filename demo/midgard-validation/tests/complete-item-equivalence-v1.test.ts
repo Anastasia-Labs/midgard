@@ -101,9 +101,9 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     expect(completeCommitmentMatches(item.bytes)).toBe(true);
 
     // Omission.
-    expect(completeCommitmentMatches(item.bytes.subarray(0, itemBytes - 1))).toBe(
-      false,
-    );
+    expect(
+      completeCommitmentMatches(item.bytes.subarray(0, itemBytes - 1)),
+    ).toBe(false);
     expect(completeCommitmentMatches(Buffer.alloc(0))).toBe(false);
     const lastChunk = buildMidgardBoundedItemChunkProofV1(item, 2);
     expect(
@@ -147,7 +147,11 @@ describe("complete-item versus bounded-chunk semantic equivalence V1", () => {
     expect(
       verifyMidgardBoundedCollectionItemProofV1({
         expectedCommitment: collection.commitment,
-        proof: { ...siblingProof, itemIndex: 0, siblings: collectionProof.siblings },
+        proof: {
+          ...siblingProof,
+          itemIndex: 0,
+          siblings: collectionProof.siblings,
+        },
       }),
     ).toBe(false);
 

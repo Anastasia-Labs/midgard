@@ -174,7 +174,9 @@ export const submitZeroInputStep01 = async ({
   }
 
   requireNativeTxMatchesCompactCbor(txInclusion);
-  if (!nativeTxBodyHasZeroInputViolation({ txBody: txInclusion.nativeTx.body })) {
+  if (
+    !nativeTxBodyHasZeroInputViolation({ txBody: txInclusion.nativeTx.body })
+  ) {
     throw new Error(
       "--tx-inclusion.nativeTx spends at least one input, so it does not violate the zero-input ledger rule.",
     );

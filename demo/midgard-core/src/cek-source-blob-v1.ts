@@ -61,15 +61,9 @@ export type MidgardCekSourceBlobTraceV1 = {
   readonly terminal: MidgardCekSourceBlobControlV1;
 };
 
-const BLOB_CHUNK_DOMAIN = Buffer.from(
-  "MidgardCekBlobChunkV1",
-  "ascii",
-);
+const BLOB_CHUNK_DOMAIN = Buffer.from("MidgardCekBlobChunkV1", "ascii");
 
-const exactNonNegativeSafeInteger = (
-  value: number,
-  field: string,
-): number => {
+const exactNonNegativeSafeInteger = (value: number, field: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`Invalid V1 CEK source blob ${field}`);
   }
@@ -96,10 +90,7 @@ const chunkPrefix = (length: number): Buffer =>
   Buffer.concat([BLOB_CHUNK_DOMAIN, definiteBytesHeader(length)]);
 
 const expectedChunkCount = (sourceLength: number): number =>
-  Math.max(
-    1,
-    Math.ceil(sourceLength / MIDGARD_CEK_BLOB_CHUNK_BYTES),
-  );
+  Math.max(1, Math.ceil(sourceLength / MIDGARD_CEK_BLOB_CHUNK_BYTES));
 
 const expectedFrontierByteLength = ({
   sourceLength,
@@ -108,16 +99,9 @@ const expectedFrontierByteLength = ({
   readonly sourceLength: number;
   readonly count: number;
 }): bigint =>
-  BigInt(
-    Math.min(
-      sourceLength,
-      count * MIDGARD_CEK_BLOB_CHUNK_BYTES,
-    ),
-  );
+  BigInt(Math.min(sourceLength, count * MIDGARD_CEK_BLOB_CHUNK_BYTES));
 
-const activeChunkLength = (
-  control: MidgardCekSourceBlobControlV1,
-): number =>
+const activeChunkLength = (control: MidgardCekSourceBlobControlV1): number =>
   control.sourceLength === 0
     ? 0
     : Math.min(
@@ -141,17 +125,11 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
       !Number.isSafeInteger(control.stage) ||
       control.stage < MidgardCekSourceBlobStagesV1.Active ||
       control.stage > MidgardCekSourceBlobStagesV1.Terminal ||
-      exactNonNegativeSafeInteger(
-        control.sourceStart,
-        "source start",
-      ) !== control.sourceStart ||
-      exactNonNegativeSafeInteger(
-        control.sourceLength,
-        "source length",
-      ) !== control.sourceLength ||
-      !Number.isSafeInteger(
-        control.sourceStart + control.sourceLength,
-      )
+      exactNonNegativeSafeInteger(control.sourceStart, "source start") !==
+        control.sourceStart ||
+      exactNonNegativeSafeInteger(control.sourceLength, "source length") !==
+        control.sourceLength ||
+      !Number.isSafeInteger(control.sourceStart + control.sourceLength)
     ) {
       return false;
     }
@@ -170,16 +148,13 @@ export const isWellFormedMidgardCekSourceBlobControlV1 = (
     }
     if (control.stage === MidgardCekSourceBlobStagesV1.Terminal) {
       return (
-        control.frontier.count === chunkCount &&
-        control.activeHash === null
+        control.frontier.count === chunkCount && control.activeHash === null
       );
     }
     if (
       control.frontier.count >= chunkCount ||
       control.activeHash === null ||
-      !isWellFormedMidgardBlake2b256TraceControlV1(
-        control.activeHash,
-      )
+      !isWellFormedMidgardBlake2b256TraceControlV1(control.activeHash)
     ) {
       return false;
     }
@@ -252,8 +227,7 @@ export const nextMidgardCekSourceBlobSpanV1 = (
   if (
     !isWellFormedMidgardCekSourceBlobControlV1(control) ||
     control.stage !== MidgardCekSourceBlobStagesV1.Active ||
-    control.activeHash!.stage !==
-      MidgardBlake2b256TraceStagesV1.Ready
+    control.activeHash!.stage !== MidgardBlake2b256TraceStagesV1.Ready
   ) {
     return null;
   }
@@ -264,10 +238,7 @@ export const nextMidgardCekSourceBlobSpanV1 = (
     hashControl.totalLength - hashControl.cursor,
   );
   const prefixStart = Math.min(hashControl.cursor, prefix.length);
-  const prefixEnd = Math.min(
-    hashControl.cursor + blockLength,
-    prefix.length,
-  );
+  const prefixEnd = Math.min(hashControl.cursor + blockLength, prefix.length);
   const prefixLength = prefixEnd - prefixStart;
   return {
     absoluteStart:
@@ -317,10 +288,7 @@ export const advanceMidgardCekSourceBlobV1 = ({
       return null;
     }
     const hashControl = control.activeHash!;
-    if (
-      hashControl.stage ===
-      MidgardBlake2b256TraceStagesV1.Terminal
-    ) {
+    if (hashControl.stage === MidgardBlake2b256TraceStagesV1.Terminal) {
       if (sourceBytes !== null && sourceBytes !== undefined) return null;
       const root = digestMidgardBlake2b256TraceV1(hashControl);
       if (root === null) return null;
@@ -348,16 +316,10 @@ export const advanceMidgardCekSourceBlobV1 = ({
               ),
             ),
       } satisfies MidgardCekSourceBlobControlV1;
-      return isWellFormedMidgardCekSourceBlobControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardCekSourceBlobControlV1(next) ? next : null;
     }
-    const ready =
-      hashControl.stage === MidgardBlake2b256TraceStagesV1.Ready;
-    if (
-      ready !==
-      (sourceBytes !== null && sourceBytes !== undefined)
-    ) {
+    const ready = hashControl.stage === MidgardBlake2b256TraceStagesV1.Ready;
+    if (ready !== (sourceBytes !== null && sourceBytes !== undefined)) {
       return null;
     }
     const block = ready
@@ -373,9 +335,7 @@ export const advanceMidgardCekSourceBlobV1 = ({
     });
     if (activeHash === null) return null;
     const next = { ...control, activeHash };
-    return isWellFormedMidgardCekSourceBlobControlV1(next)
-      ? next
-      : null;
+    return isWellFormedMidgardCekSourceBlobControlV1(next) ? next : null;
   } catch {
     return null;
   }
@@ -416,10 +376,7 @@ export const buildMidgardCekSourceBlobTraceV1 = ({
       control,
       sourceBytes,
     });
-    if (
-      next === null ||
-      !isWellFormedMidgardCekSourceBlobControlV1(next)
-    ) {
+    if (next === null || !isWellFormedMidgardCekSourceBlobControlV1(next)) {
       throw new Error("V1 CEK source blob trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

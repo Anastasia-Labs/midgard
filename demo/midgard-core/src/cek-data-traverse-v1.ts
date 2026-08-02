@@ -38,30 +38,20 @@ import {
   parseMidgardCekDataIntegerSyntaxV1,
   parseMidgardCekDataLargeConstructorSyntaxV1,
 } from "./cek-data-integer-v1.js";
-import {
-  type MidgardCekDataSummaryV1,
-} from "./cek-semantic.js";
+import { type MidgardCekDataSummaryV1 } from "./cek-semantic.js";
 import {
   finalizeMidgardCekSourceBlobV1,
   type MidgardCekSourceBlobSpanV1,
 } from "./cek-source-blob-v1.js";
-import {
-  encodeCbor,
-  encodeCborArrayRaw,
-} from "./codec/cbor.js";
+import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
-import {
-  buildMidgardValidationMerkleMembershipIndexV1,
-} from "./validation-merkle.js";
+import { buildMidgardValidationMerkleMembershipIndexV1 } from "./validation-merkle.js";
 
 export const MIDGARD_CEK_DATA_TRAVERSE_V1_VERSION = 1 as const;
 export const MIDGARD_CEK_DATA_TRAVERSE_HEAD_BYTES_V1 = 14;
 export const MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1 = 132;
 
-const CONTROL_DOMAIN = Buffer.from(
-  "MidgardCekDataTraverseControlV1",
-  "ascii",
-);
+const CONTROL_DOMAIN = Buffer.from("MidgardCekDataTraverseControlV1", "ascii");
 const UINT32_MAX = 0xffff_ffff;
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
@@ -166,15 +156,8 @@ type SmallConstructorHead = {
   readonly prefixLength: number;
 };
 
-const exactUint32 = (
-  value: number,
-  fieldName: string,
-): number => {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > UINT32_MAX
-  ) {
+const exactUint32 = (value: number, fieldName: string): number => {
+  if (!Number.isSafeInteger(value) || value < 0 || value > UINT32_MAX) {
     throw new RangeError(`${fieldName} must fit uint32`);
   }
   return value;
@@ -183,9 +166,7 @@ const exactUint32 = (
 const optionalHashIsWellFormed = (value: Uint8Array): boolean =>
   value.length === 0 || value.length === 32;
 
-const summaryIsWellFormed = (
-  summary: MidgardCekDataSummaryV1,
-): boolean => {
+const summaryIsWellFormed = (summary: MidgardCekDataSummaryV1): boolean => {
   try {
     ensureHash32(summary.root, "cek_data_traverse.result.root");
     return (
@@ -209,8 +190,7 @@ const nestedIntegerFits = (
     isWellFormedMidgardCekDataIntegerControlV1(integer) &&
     (startsAtCursor
       ? integer.sourceStart === absoluteCursor
-      : integer.sourceStart + integer.sourceLength ===
-        absoluteCursor) &&
+      : integer.sourceStart + integer.sourceLength === absoluteCursor) &&
     integer.sourceStart >= control.sourceStart &&
     integer.sourceStart + integer.sourceLength <=
       control.sourceStart + control.sourceLength
@@ -222,28 +202,18 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
 ): boolean => {
   try {
     if (
-      control.version !==
-        MIDGARD_CEK_DATA_TRAVERSE_V1_VERSION ||
+      control.version !== MIDGARD_CEK_DATA_TRAVERSE_V1_VERSION ||
       !Number.isInteger(control.stage) ||
       control.stage < MidgardCekDataTraverseStagesV1.Head ||
-      control.stage >
-        MidgardCekDataTraverseStagesV1.Terminal ||
-      exactUint32(
-        control.sourceStart,
-        "cek_data_traverse.source_start",
-      ) !== control.sourceStart ||
-      exactUint32(
-        control.sourceLength,
-        "cek_data_traverse.source_length",
-      ) !== control.sourceLength ||
+      control.stage > MidgardCekDataTraverseStagesV1.Terminal ||
+      exactUint32(control.sourceStart, "cek_data_traverse.source_start") !==
+        control.sourceStart ||
+      exactUint32(control.sourceLength, "cek_data_traverse.source_length") !==
+        control.sourceLength ||
       control.sourceLength === 0 ||
-      !Number.isSafeInteger(
-        control.sourceStart + control.sourceLength,
-      ) ||
-      exactUint32(
-        control.offset,
-        "cek_data_traverse.offset",
-      ) !== control.offset ||
+      !Number.isSafeInteger(control.sourceStart + control.sourceLength) ||
+      exactUint32(control.offset, "cek_data_traverse.offset") !==
+        control.offset ||
       control.offset > control.sourceLength ||
       !optionalHashIsWellFormed(control.frameRoot) ||
       (control.pendingLargeExpectedChildren !== null &&
@@ -251,8 +221,7 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
           control.pendingLargeExpectedChildren,
           "cek_data_traverse.pending_large_children",
         ) !== control.pendingLargeExpectedChildren) ||
-      (control.result !== null &&
-        !summaryIsWellFormed(control.result))
+      (control.result !== null && !summaryIsWellFormed(control.result))
     ) {
       return false;
     }
@@ -260,8 +229,7 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
       case MidgardCekDataTraverseStagesV1.Head:
         return (
           control.offset < control.sourceLength &&
-          (control.frameRoot.length === 32 ||
-            control.offset === 0) &&
+          (control.frameRoot.length === 32 || control.offset === 0) &&
           control.pendingLargeExpectedChildren === null &&
           control.integer === null &&
           control.bytes === null &&
@@ -281,13 +249,9 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
           control.integer === null &&
           control.bytes !== null &&
           control.result === null &&
-          isWellFormedMidgardCekDataBytesControlV1(
-            control.bytes,
-          ) &&
-          control.bytes.sourceStart ===
-            control.sourceStart + control.offset &&
-          control.offset + control.bytes.sourceLength <=
-            control.sourceLength
+          isWellFormedMidgardCekDataBytesControlV1(control.bytes) &&
+          control.bytes.sourceStart === control.sourceStart + control.offset &&
+          control.offset + control.bytes.sourceLength <= control.sourceLength
         );
       case MidgardCekDataTraverseStagesV1.LargeConstructor:
         return (
@@ -296,15 +260,13 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
           control.bytes === null &&
           control.result === null &&
           nestedIntegerFits(control, control.integer, true) &&
-          control.offset + control.integer.sourceLength <
-            control.sourceLength
+          control.offset + control.integer.sourceLength < control.sourceLength
         );
       case MidgardCekDataTraverseStagesV1.LargeFields:
         return (
           control.pendingLargeExpectedChildren !== null &&
           control.integer !== null &&
-          control.integer.stage ===
-            MidgardCekDataIntegerStagesV1.Terminal &&
+          control.integer.stage === MidgardCekDataIntegerStagesV1.Terminal &&
           control.bytes === null &&
           control.result === null &&
           nestedIntegerFits(control, control.integer, false) &&
@@ -318,8 +280,7 @@ export const isWellFormedMidgardCekDataTraverseControlV1 = (
           control.integer === null &&
           control.bytes === null &&
           control.result === null &&
-          (control.stage !==
-            MidgardCekDataTraverseStagesV1.Close ||
+          (control.stage !== MidgardCekDataTraverseStagesV1.Close ||
             control.offset < control.sourceLength)
         );
       case MidgardCekDataTraverseStagesV1.Terminal:
@@ -372,10 +333,7 @@ const optionalIntCbor = (value: number | null): Buffer =>
       ]);
 
 const optionalControlCbor = (
-  control:
-    | MidgardCekDataIntegerControlV1
-    | MidgardCekDataBytesControlV1
-    | null,
+  control: MidgardCekDataIntegerControlV1 | MidgardCekDataBytesControlV1 | null,
 ): Buffer => {
   if (control === null) return Buffer.from("d87a80", "hex");
   const nested =
@@ -493,10 +451,7 @@ const readCanonicalCborArgument = (
         : additional === 26
           ? 4
           : null;
-  if (
-    byteLength === null ||
-    offset + 1 + byteLength > bytes.length
-  ) {
+  if (byteLength === null || offset + 1 + byteLength > bytes.length) {
     return null;
   }
   let value = 0;
@@ -530,9 +485,7 @@ const parseSmallConstructorHead = (
   if (bytes.length < 3 || bytes[0] !== 0xd9) return null;
   const tag = bytes[1]! * 256 + bytes[2]!;
   const constructor = tag - 1_280 + 7;
-  return tag >= 1_280 &&
-    tag <= 1_400 &&
-    constructor <= 127
+  return tag >= 1_280 && tag <= 1_400 && constructor <= 127
     ? { constructor: BigInt(constructor), prefixLength: 3 }
     : null;
 };
@@ -575,20 +528,14 @@ type ParsedDataNode =
     };
 
 type ParsedContainerHead = {
-  readonly node: Exclude<
-    ParsedDataNode,
-    { readonly kind: "scalar" }
-  >;
+  readonly node: Exclude<ParsedDataNode, { readonly kind: "scalar" }>;
   readonly nextOffset: number;
   readonly remainingChildren: number | null;
 };
 
 type ParsedNodeHead =
   | {
-      readonly node: Extract<
-        ParsedDataNode,
-        { readonly kind: "scalar" }
-      >;
+      readonly node: Extract<ParsedDataNode, { readonly kind: "scalar" }>;
       readonly nextOffset: number;
       readonly remainingChildren: 0;
     }
@@ -603,10 +550,7 @@ type DataTraceFrame = {
   frame: MidgardCekDataFrameV1;
   readonly childSummaries: MidgardCekDataSummaryV1[];
   readonly parent: DataTraceFrame | null;
-  readonly node: Exclude<
-    ParsedDataNode,
-    { readonly kind: "scalar" }
-  >;
+  readonly node: Exclude<ParsedDataNode, { readonly kind: "scalar" }>;
 };
 
 type DataTraceOperation =
@@ -645,17 +589,12 @@ const readCanonicalCborArgumentWide = (
           : additional === 27
             ? 8
             : null;
-  if (
-    byteLength === null ||
-    offset + 1 + byteLength > bytes.length
-  ) {
+  if (byteLength === null || offset + 1 + byteLength > bytes.length) {
     return null;
   }
   let value = 0n;
   for (let index = 0; index < byteLength; index += 1) {
-    value =
-      (value << 8n) |
-      BigInt(bytes[offset + 1 + index]!);
+    value = (value << 8n) | BigInt(bytes[offset + 1 + index]!);
   }
   if (
     (additional === 24 && value < 24n) ||
@@ -668,13 +607,10 @@ const readCanonicalCborArgumentWide = (
   return { major, value, nextOffset: offset + 1 + byteLength };
 };
 
-const parseIntegerEnd = (
-  bytes: Buffer,
-  start: number,
-): number | null => {
+const parseIntegerEnd = (bytes: Buffer, start: number): number | null => {
   const first = bytes[start];
   if (first === undefined) return null;
-  if ((first >>> 5) <= 1) {
+  if (first >>> 5 <= 1) {
     const argument = readCanonicalCborArgumentWide(bytes, start);
     if (
       argument === null ||
@@ -686,10 +622,7 @@ const parseIntegerEnd = (
     return argument.nextOffset;
   }
   if (first !== 0xc2 && first !== 0xc3) return null;
-  const magnitude = readCanonicalCborArgumentWide(
-    bytes,
-    start + 1,
-  );
+  const magnitude = readCanonicalCborArgumentWide(bytes, start + 1);
   if (
     magnitude === null ||
     magnitude.major !== 2 ||
@@ -698,8 +631,7 @@ const parseIntegerEnd = (
   ) {
     return null;
   }
-  const endBigInt =
-    BigInt(magnitude.nextOffset) + magnitude.value;
+  const endBigInt = BigInt(magnitude.nextOffset) + magnitude.value;
   if (
     endBigInt > BigInt(bytes.length) ||
     endBigInt > BigInt(Number.MAX_SAFE_INTEGER)
@@ -711,10 +643,7 @@ const parseIntegerEnd = (
   return end;
 };
 
-const parseBytesEnd = (
-  bytes: Buffer,
-  start: number,
-): number | null => {
+const parseBytesEnd = (bytes: Buffer, start: number): number | null => {
   const first = bytes[start];
   if (first === undefined) return null;
   if (first >= 0x40 && first <= 0x57) {
@@ -734,10 +663,7 @@ const parseBytesEnd = (
   let contentLength = 0;
   let previousChunkLength: number | null = null;
   while (cursor < bytes.length && bytes[cursor] !== 0xff) {
-    if (
-      previousChunkLength !== null &&
-      previousChunkLength !== 64
-    ) {
+    if (previousChunkLength !== null && previousChunkLength !== 64) {
       return null;
     }
     const chunkFirst = bytes[cursor]!;
@@ -773,16 +699,13 @@ const parseBytesEnd = (
   return cursor + 1;
 };
 
-const scalarEnd = (
-  bytes: Buffer,
-  start: number,
-): number | null => {
+const scalarEnd = (bytes: Buffer, start: number): number | null => {
   const first = bytes[start];
   if (first === undefined) return null;
   const end =
-    (first >>> 5) <= 1 || first === 0xc2 || first === 0xc3
+    first >>> 5 <= 1 || first === 0xc2 || first === 0xc3
       ? parseIntegerEnd(bytes, start)
-      : (first >>> 5) === 2
+      : first >>> 5 === 2
         ? parseBytesEnd(bytes, start)
         : null;
   if (end === null) return null;
@@ -791,17 +714,14 @@ const scalarEnd = (
     start,
     Math.min(
       end,
-      start + (
-        (first >>> 5) <= 1 ||
-          first === 0xc2 ||
-          first === 0xc3
+      start +
+        (first >>> 5 <= 1 || first === 0xc2 || first === 0xc3
           ? MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES
-          : MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES
-      ),
+          : MIDGARD_CEK_DATA_BYTES_SYNTAX_BYTES),
     ),
   );
   const valid =
-    (first >>> 5) <= 1 || first === 0xc2 || first === 0xc3
+    first >>> 5 <= 1 || first === 0xc2 || first === 0xc3
       ? parseMidgardCekDataIntegerSyntaxV1({
           syntaxBytes,
           sourceLength,
@@ -821,13 +741,11 @@ const parseSequenceHead = ({
   readonly bytes: Buffer;
   readonly start: number;
   readonly prefixLength: number;
-}):
-  | {
-      readonly nextOffset: number;
-      readonly remainingChildren: number | null;
-      readonly closesWithBreak: boolean;
-    }
-  | null => {
+}): {
+  readonly nextOffset: number;
+  readonly remainingChildren: number | null;
+  readonly closesWithBreak: boolean;
+} | null => {
   const sequence = bytes[start + prefixLength];
   if (sequence === 0x80) {
     return {
@@ -846,10 +764,7 @@ const parseSequenceHead = ({
   return null;
 };
 
-const parseDataNodeHead = (
-  bytes: Buffer,
-  start: number,
-): ParsedNodeHead => {
+const parseDataNodeHead = (bytes: Buffer, start: number): ParsedNodeHead => {
   const scalar = scalarEnd(bytes, start);
   if (scalar !== null) {
     return {
@@ -864,9 +779,7 @@ const parseDataNodeHead = (
     };
   }
 
-  const small = parseSmallConstructorHead(
-    bytes.subarray(start),
-  );
+  const small = parseSmallConstructorHead(bytes.subarray(start));
   if (small !== null) {
     const sequence = parseSequenceHead({
       bytes,
@@ -891,24 +804,17 @@ const parseDataNodeHead = (
 
   if (
     start + 3 <= bytes.length &&
-    bytes.subarray(start, start + 3).equals(
-      Buffer.from("d86682", "hex"),
-    )
+    bytes.subarray(start, start + 3).equals(Buffer.from("d86682", "hex"))
   ) {
     const constructorStart = start + 3;
-    const constructorEnd = parseIntegerEnd(
-      bytes,
-      constructorStart,
-    );
+    const constructorEnd = parseIntegerEnd(bytes, constructorStart);
     if (constructorEnd !== null) {
-      const constructorCborLength =
-        constructorEnd - constructorStart;
+      const constructorCborLength = constructorEnd - constructorStart;
       const syntaxBytes = bytes.subarray(
         constructorStart,
         Math.min(
           constructorEnd,
-          constructorStart +
-            MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
+          constructorStart + MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
         ),
       );
       const sequence = parseSequenceHead({
@@ -1008,12 +914,10 @@ const parseMidgardCekDataNodesV1 = (
     if (node.kind === "scalar") {
       throw new Error("V1 CEK Data parser frame cannot be scalar");
     }
-    const closesWithBreak = node.kind !== "map" &&
-      node.closesWithBreak;
+    const closesWithBreak = node.kind !== "map" && node.closesWithBreak;
     const isComplete =
       frame.remainingChildren === 0 ||
-      (frame.remainingChildren === null &&
-        source[cursor] === 0xff);
+      (frame.remainingChildren === null && source[cursor] === 0xff);
     if (isComplete) {
       if (closesWithBreak) {
         if (
@@ -1031,13 +935,8 @@ const parseMidgardCekDataNodesV1 = (
       frames.pop();
       continue;
     }
-    if (
-      cursor >= source.length ||
-      source[cursor] === 0xff
-    ) {
-      throw new Error(
-        "V1 CEK Data traversal rejected an incomplete container",
-      );
+    if (cursor >= source.length || source[cursor] === 0xff) {
+      throw new Error("V1 CEK Data traversal rejected an incomplete container");
     }
     const child = parseDataNodeHead(source, cursor);
     const childIndex = nodes.length;
@@ -1061,9 +960,7 @@ const parseMidgardCekDataNodesV1 = (
     cursor = nodes[0]!.end;
   }
   if (cursor !== source.length) {
-    throw new Error(
-      "V1 CEK Data traversal rejected trailing source bytes",
-    );
+    throw new Error("V1 CEK Data traversal rejected trailing source bytes");
   }
   return nodes;
 };
@@ -1090,9 +987,7 @@ const exactSourceBytes = ({
 const advanced = (
   control: MidgardCekDataTraverseControlV1,
 ): MidgardCekDataTraverseControlV1 | null =>
-  isWellFormedMidgardCekDataTraverseControlV1(control)
-    ? control
-    : null;
+  isWellFormedMidgardCekDataTraverseControlV1(control) ? control : null;
 
 const nextParentStage = (
   frame: MidgardCekDataFrameV1,
@@ -1134,24 +1029,17 @@ const attachSummary = ({
   }
   if (
     parent === null ||
-    !hashMidgardCekDataFrameV1(parent).equals(
-      control.frameRoot,
-    )
+    !hashMidgardCekDataFrameV1(parent).equals(control.frameRoot)
   ) {
     return null;
   }
-  const nextParent = appendMidgardCekDataFrameChildV1(
-    parent,
-    summary,
-  );
+  const nextParent = appendMidgardCekDataFrameChildV1(parent, summary);
   if (nextParent === null) return null;
   return advanced({
     ...control,
     stage: nextParentStage(nextParent),
     offset,
-    frameRoot: Buffer.from(
-      hashMidgardCekDataFrameV1(nextParent),
-    ),
+    frameRoot: Buffer.from(hashMidgardCekDataFrameV1(nextParent)),
     pendingLargeExpectedChildren: null,
     integer: null,
     bytes: null,
@@ -1175,14 +1063,11 @@ const stepHeadScalar = ({
     action.itemLength,
     "cek_data_traverse.scalar_length",
   );
-  if (
-    itemLength === 0 ||
-    control.offset + itemLength > control.sourceLength
-  ) {
+  if (itemLength === 0 || control.offset + itemLength > control.sourceLength) {
     return null;
   }
   const first = bytes[0]!;
-  if ((first >>> 5) <= 1 || first === 0xc2 || first === 0xc3) {
+  if (first >>> 5 <= 1 || first === 0xc2 || first === 0xc3) {
     return advanced({
       ...control,
       stage: MidgardCekDataTraverseStagesV1.Integer,
@@ -1192,7 +1077,7 @@ const stepHeadScalar = ({
       }),
     });
   }
-  if ((first >>> 5) === 2) {
+  if (first >>> 5 === 2) {
     return advanced({
       ...control,
       stage: MidgardCekDataTraverseStagesV1.Bytes,
@@ -1306,11 +1191,8 @@ const stepHeadLargeConstructor = ({
   if (
     constructorCborLength === 0 ||
     bytes.length < 3 ||
-    !bytes.subarray(0, 3).equals(
-      Buffer.from("d86682", "hex"),
-    ) ||
-    control.offset + 3 + constructorCborLength >=
-      control.sourceLength
+    !bytes.subarray(0, 3).equals(Buffer.from("d86682", "hex")) ||
+    control.offset + 3 + constructorCborLength >= control.sourceLength
   ) {
     return null;
   }
@@ -1367,10 +1249,7 @@ const stepInteger = ({
 }): MidgardCekDataTraverseControlV1 | null => {
   const integer = control.integer!;
   if (integer.stage === MidgardCekDataIntegerStagesV1.Terminal) {
-    if (
-      sourceBytes !== null &&
-      sourceBytes !== undefined
-    ) {
+    if (sourceBytes !== null && sourceBytes !== undefined) {
       return null;
     }
     if (action === null || action.kind !== "attachScalar") {
@@ -1406,13 +1285,8 @@ const stepBytes = ({
   readonly action: MidgardCekDataTraverseActionV1;
 }): MidgardCekDataTraverseControlV1 | null => {
   const byteControl = control.bytes!;
-  if (
-    byteControl.stage === MidgardCekDataBytesStagesV1.Terminal
-  ) {
-    if (
-      sourceBytes !== null &&
-      sourceBytes !== undefined
-    ) {
+  if (byteControl.stage === MidgardCekDataBytesStagesV1.Terminal) {
+    if (sourceBytes !== null && sourceBytes !== undefined) {
       return null;
     }
     if (action === null || action.kind !== "attachScalar") {
@@ -1425,8 +1299,7 @@ const stepBytes = ({
           control,
           summary,
           parent: action.parent,
-          offset:
-            control.offset + byteControl.sourceLength,
+          offset: control.offset + byteControl.sourceLength,
         });
   }
   if (action !== null) return null;
@@ -1434,9 +1307,7 @@ const stepBytes = ({
     control: byteControl,
     sourceBytes,
   });
-  return nextBytes === null
-    ? null
-    : advanced({ ...control, bytes: nextBytes });
+  return nextBytes === null ? null : advanced({ ...control, bytes: nextBytes });
 };
 
 const stepLargeConstructor = ({
@@ -1494,12 +1365,10 @@ const stepLargeFields = ({
 }): MidgardCekDataTraverseControlV1 | null => {
   if (action !== null) return null;
   const bytes = exactSourceBytes({ control, sourceBytes });
-  const expectedChildren =
-    control.pendingLargeExpectedChildren!;
+  const expectedChildren = control.pendingLargeExpectedChildren!;
   const sequenceHeader = expectedChildren === 0 ? 0x80 : 0x9f;
   const integer = control.integer!;
-  const constructorCborRoot =
-    finalizeMidgardCekSourceBlobV1(integer.blob!);
+  const constructorCborRoot = finalizeMidgardCekSourceBlobV1(integer.blob!);
   if (
     bytes === null ||
     bytes[0] !== sequenceHeader ||
@@ -1557,11 +1426,7 @@ const stepFinalizeFrame = ({
     { readonly kind: "finalizeFrame" }
   >;
 }): MidgardCekDataTraverseControlV1 | null => {
-  if (
-    !hashMidgardCekDataFrameV1(action.frame).equals(
-      control.frameRoot,
-    )
-  ) {
+  if (!hashMidgardCekDataFrameV1(action.frame).equals(control.frameRoot)) {
     return null;
   }
   const summary = finalizeMidgardCekDataFrameV1(action.frame);
@@ -1576,9 +1441,7 @@ const stepFinalizeFrame = ({
   }
   if (
     action.parent === null ||
-    !hashMidgardCekDataFrameV1(action.parent).equals(
-      action.frame.tail,
-    )
+    !hashMidgardCekDataFrameV1(action.parent).equals(action.frame.tail)
   ) {
     return null;
   }
@@ -1602,17 +1465,12 @@ const stepFold = ({
   readonly sourceBytes?: Uint8Array | null;
   readonly action: MidgardCekDataTraverseActionV1;
 }): MidgardCekDataTraverseControlV1 | null => {
-  if (
-    (sourceBytes !== null && sourceBytes !== undefined) ||
-    action === null
-  ) {
+  if ((sourceBytes !== null && sourceBytes !== undefined) || action === null) {
     return null;
   }
   if (
     "frame" in action &&
-    !hashMidgardCekDataFrameV1(action.frame).equals(
-      control.frameRoot,
-    )
+    !hashMidgardCekDataFrameV1(action.frame).equals(control.frameRoot)
   ) {
     return null;
   }
@@ -1718,12 +1576,9 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
   });
   const steps: MidgardCekDataTraverseTraceStepV1[] = [];
   let control = initial;
-  const currentStage = (): MidgardCekDataTraverseStageV1 =>
-    control.stage;
+  const currentStage = (): MidgardCekDataTraverseStageV1 => control.stage;
 
-  const emit = (
-    action: MidgardCekDataTraverseActionV1,
-  ): void => {
+  const emit = (action: MidgardCekDataTraverseActionV1): void => {
     const span = nextMidgardCekDataTraverseSpanV1(control);
     const sourceBytes =
       span === null
@@ -1737,18 +1592,12 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
       sourceBytes,
       action,
     });
-    if (
-      next === null ||
-      !isWellFormedMidgardCekDataTraverseControlV1(next)
-    ) {
-      throw new Error(
-        "V1 CEK Data traversal evidence failed closed",
-      );
+    if (next === null || !isWellFormedMidgardCekDataTraverseControlV1(next)) {
+      throw new Error("V1 CEK Data traversal evidence failed closed");
     }
     steps.push({
       control,
-      sourceBytes:
-        sourceBytes === null ? null : Buffer.from(sourceBytes),
+      sourceBytes: sourceBytes === null ? null : Buffer.from(sourceBytes),
       action,
       next,
     });
@@ -1760,38 +1609,26 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
     summary: MidgardCekDataSummaryV1,
   ): void => {
     if (parent === null) return;
-    const next = appendMidgardCekDataFrameChildV1(
-      parent.frame,
-      summary,
-    );
+    const next = appendMidgardCekDataFrameChildV1(parent.frame, summary);
     if (next === null) {
-      throw new Error(
-        "V1 CEK Data traversal rejected a child summary",
-      );
+      throw new Error("V1 CEK Data traversal rejected a child summary");
     }
     parent.frame = next;
     parent.childSummaries.push(summary);
   };
 
   const initialFrame = (
-    node: Exclude<
-      ParsedDataNode,
-      { readonly kind: "scalar" }
-    >,
+    node: Exclude<ParsedDataNode, { readonly kind: "scalar" }>,
     parent: DataTraceFrame | null,
-    largeConstructor:
-      | {
-          readonly root: Buffer;
-          readonly memory: bigint;
-        }
-      | null,
+    largeConstructor: {
+      readonly root: Buffer;
+      readonly memory: bigint;
+    } | null,
   ): MidgardCekDataFrameV1 => {
     const tail =
       parent === null
         ? Buffer.alloc(0)
-        : Buffer.from(
-            hashMidgardCekDataFrameV1(parent.frame),
-          );
+        : Buffer.from(hashMidgardCekDataFrameV1(parent.frame));
     switch (node.kind) {
       case "list":
         return initialMidgardCekDataListFrameV1({
@@ -1811,15 +1648,11 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         });
       case "constrLarge":
         if (largeConstructor === null) {
-          throw new Error(
-            "V1 CEK Data traversal lost a large constructor",
-          );
+          throw new Error("V1 CEK Data traversal lost a large constructor");
         }
         return initialMidgardCekDataLargeConstrFrameV1({
           constructorCborRoot: largeConstructor.root,
-          constructorCborLength: BigInt(
-            node.constructorCborLength,
-          ),
+          constructorCborLength: BigInt(node.constructorCborLength),
           constructorMemory: largeConstructor.memory,
           tail,
           expectedChildren: node.children.length,
@@ -1838,9 +1671,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         control.stage !== MidgardCekDataTraverseStagesV1.Head ||
         control.offset !== node.start
       ) {
-        throw new Error(
-          "V1 CEK Data traversal evidence lost source position",
-        );
+        throw new Error("V1 CEK Data traversal evidence lost source position");
       }
       if (node.kind === "scalar") {
         emit({
@@ -1848,27 +1679,20 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
           itemLength: node.end - node.start,
         });
         while (
-          (currentStage() ===
-            MidgardCekDataTraverseStagesV1.Integer &&
+          (currentStage() === MidgardCekDataTraverseStagesV1.Integer &&
             control.integer!.stage !==
               MidgardCekDataIntegerStagesV1.Terminal) ||
-          (currentStage() ===
-            MidgardCekDataTraverseStagesV1.Bytes &&
-            control.bytes!.stage !==
-              MidgardCekDataBytesStagesV1.Terminal)
+          (currentStage() === MidgardCekDataTraverseStagesV1.Bytes &&
+            control.bytes!.stage !== MidgardCekDataBytesStagesV1.Terminal)
         ) {
           emit(null);
         }
         const summary =
           control.integer !== null
-            ? finalizeMidgardCekDataIntegerV1(
-                control.integer,
-              )
+            ? finalizeMidgardCekDataIntegerV1(control.integer)
             : finalizeMidgardCekDataBytesV1(control.bytes!);
         if (summary === null) {
-          throw new Error(
-            "V1 CEK Data traversal rejected a scalar",
-          );
+          throw new Error("V1 CEK Data traversal rejected a scalar");
         }
         emit({
           kind: "attachScalar",
@@ -1878,44 +1702,33 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         continue;
       }
 
-      let largeConstructor:
-        | {
-            readonly root: Buffer;
-            readonly memory: bigint;
-          }
-        | null = null;
+      let largeConstructor: {
+        readonly root: Buffer;
+        readonly memory: bigint;
+      } | null = null;
       if (node.kind === "map") {
         emit({ kind: "headMap" });
       } else if (node.kind === "constrLarge") {
         emit({
           kind: "headLargeConstructor",
-          constructorCborLength:
-            node.constructorCborLength,
+          constructorCborLength: node.constructorCborLength,
           expectedChildren: node.children.length,
         });
         while (
-          currentStage() ===
-          MidgardCekDataTraverseStagesV1.LargeConstructor
+          currentStage() === MidgardCekDataTraverseStagesV1.LargeConstructor
         ) {
           emit(null);
         }
         if (
-          currentStage() !==
-            MidgardCekDataTraverseStagesV1.LargeFields ||
+          currentStage() !== MidgardCekDataTraverseStagesV1.LargeFields ||
           control.integer === null ||
           control.integer.blob === null
         ) {
-          throw new Error(
-            "V1 CEK Data traversal rejected a large constructor",
-          );
+          throw new Error("V1 CEK Data traversal rejected a large constructor");
         }
-        const root = finalizeMidgardCekSourceBlobV1(
-          control.integer.blob,
-        );
+        const root = finalizeMidgardCekSourceBlobV1(control.integer.blob);
         if (root === null) {
-          throw new Error(
-            "V1 CEK Data traversal lost constructor bytes",
-          );
+          throw new Error("V1 CEK Data traversal lost constructor bytes");
         }
         largeConstructor = {
           root: Buffer.from(root),
@@ -1927,11 +1740,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
           expectedChildren: node.children.length,
         });
       }
-      const frame = initialFrame(
-        node,
-        operation.parent,
-        largeConstructor,
-      );
+      const frame = initialFrame(node, operation.parent, largeConstructor);
       if (node.kind === "constrLarge") {
         emit(null);
       }
@@ -1942,11 +1751,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         node,
       };
       operations.push({ kind: "finish", context });
-      for (
-        let index = node.children.length - 1;
-        index >= 0;
-        index -= 1
-      ) {
+      for (let index = node.children.length - 1; index >= 0; index -= 1) {
         operations.push({
           kind: "visit",
           nodeIndex: node.children[index]!,
@@ -1962,9 +1767,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
       context.frame.childCount !== node.children.length ||
       childSummaries.length !== node.children.length
     ) {
-      throw new Error(
-        "V1 CEK Data traversal evidence lost container children",
-      );
+      throw new Error("V1 CEK Data traversal evidence lost container children");
     }
     if (node.kind !== "map" && node.closesWithBreak) {
       emit(null);
@@ -1972,8 +1775,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
     const leaves = childSummaries.map((child, index) =>
       hashMidgardCekDataFrameChildV1(index, child),
     );
-    const memberships =
-      buildMidgardValidationMerkleMembershipIndexV1(leaves);
+    const memberships = buildMidgardValidationMerkleMembershipIndexV1(leaves);
     let frame = context.frame;
     if (node.kind === "map") {
       for (
@@ -1985,10 +1787,8 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         const valueIndex = keyIndex + 1;
         const key = childSummaries[keyIndex]!;
         const value = childSummaries[valueIndex]!;
-        const keySiblings =
-          memberships.membershipAt(keyIndex).siblings;
-        const valueSiblings =
-          memberships.membershipAt(valueIndex).siblings;
+        const keySiblings = memberships.membershipAt(keyIndex).siblings;
+        const valueSiblings = memberships.membershipAt(valueIndex).siblings;
         emit({
           kind: "foldMap",
           frame,
@@ -2007,9 +1807,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
           valueSiblings,
         });
         if (next === null) {
-          throw new Error(
-            "V1 CEK Data traversal rejected a map fold",
-          );
+          throw new Error("V1 CEK Data traversal rejected a map fold");
         }
         frame = next;
       }
@@ -2020,8 +1818,7 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
         childIndex -= 1
       ) {
         const child = childSummaries[childIndex]!;
-        const siblings =
-          memberships.membershipAt(childIndex).siblings;
+        const siblings = memberships.membershipAt(childIndex).siblings;
         emit({
           kind: "foldList",
           frame,
@@ -2036,18 +1833,14 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
           siblings,
         });
         if (next === null) {
-          throw new Error(
-            "V1 CEK Data traversal rejected a sequence fold",
-          );
+          throw new Error("V1 CEK Data traversal rejected a sequence fold");
         }
         frame = next;
       }
     }
     const summary = finalizeMidgardCekDataFrameV1(frame);
     if (summary === null) {
-      throw new Error(
-        "V1 CEK Data traversal rejected container finalization",
-      );
+      throw new Error("V1 CEK Data traversal rejected container finalization");
     }
     emit({
       kind: "finalizeFrame",
@@ -2058,13 +1851,10 @@ export const buildMidgardCekDataTraverseTraceV1 = ({
   }
 
   if (
-    currentStage() !==
-      MidgardCekDataTraverseStagesV1.Terminal ||
+    currentStage() !== MidgardCekDataTraverseStagesV1.Terminal ||
     finalizeMidgardCekDataTraverseV1(control) === null
   ) {
-    throw new Error(
-      "V1 CEK Data traversal evidence did not terminate",
-    );
+    throw new Error("V1 CEK Data traversal evidence did not terminate");
   }
   return Object.freeze({
     initial,

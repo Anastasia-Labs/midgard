@@ -18,9 +18,7 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
     const address = CML.EnterpriseAddress.new(
       0,
-      CML.Credential.new_pub_key(
-        spendingKey.to_public().hash(),
-      ),
+      CML.Credential.new_pub_key(spendingKey.to_public().hash()),
     )
       .to_address()
       .to_bech32();
@@ -37,9 +35,9 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
       })),
       PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
     );
-    const availableInputs = (
-      await emulator.getUtxos(address)
-    ).sort((left, right) => left.outputIndex - right.outputIndex);
+    const availableInputs = (await emulator.getUtxos(address)).sort(
+      (left, right) => left.outputIndex - right.outputIndex,
+    );
     expect(availableInputs).toHaveLength(inputSupply);
     for (const [index, input] of availableInputs.entries()) {
       expect(input.txHash).toBe("00".repeat(32));
@@ -54,10 +52,8 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
           availableInputs,
           recipientAddress: address,
           requestedInputCount,
-          minFeeA:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
           minFeeRefScriptCostPerByte:
             PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
         }),
@@ -126,9 +122,7 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
     expect(adjacentCardano.vkeyWitnessCount).toBe(1);
     expect(adjacentCardano.outputCount).toBe(1);
     expect(inputField.itemCount).toBe(acceptedCardano.inputCount);
-    expect(inputField.revealStepCount).toBe(
-      acceptedCardano.inputCount,
-    );
+    expect(inputField.revealStepCount).toBe(acceptedCardano.inputCount);
     expect(inputField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
@@ -143,41 +137,31 @@ describe("canonical V1 spend-inputs Cardano boundary", () => {
             spendInputsBoundaryV1: {
               fieldIndex: 0,
               fieldName: "spend_inputs",
-              maxTxSize:
-                emulator.protocolParameters.maxTxSize,
-              maxValueSize:
-                emulator.protocolParameters.maxValSize,
+              maxTxSize: emulator.protocolParameters.maxTxSize,
+              maxValueSize: emulator.protocolParameters.maxValSize,
               inputSupplyDerivation:
                 "floor(maxTxSize / 32-byte transaction id) + 2 adjacent reserve",
               realGenesisInputSupply: inputSupply,
               lovelacePerInput: lovelacePerInput.toString(),
-              requestedInputCount:
-                boundary.accepted.requestedItemCount,
+              requestedInputCount: boundary.accepted.requestedItemCount,
               actualInputCount: acceptedCardano.inputCount,
-              actualVkeyWitnessCount:
-                acceptedCardano.vkeyWitnessCount,
+              actualVkeyWitnessCount: acceptedCardano.vkeyWitnessCount,
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.accepted.signedBytes,
               fee: boundary.accepted.fee.toString(),
-              nativeCanonicalBytes:
-                inputField.nativeCanonicalBytes,
+              nativeCanonicalBytes: inputField.nativeCanonicalBytes,
               spendInputsFieldBytes: inputField.fieldBytes,
               inputItemCount: inputField.itemCount,
               inputRevealSteps: inputField.revealStepCount,
               maxChunkBytes: inputField.maxChunkBytes,
               maxRevealBytes: inputField.maxRevealBytes,
-              completeFoldSteps:
-                inputField.completeFoldStepCount,
-              adjacentRequestedInputCount:
-                boundary.adjacent.requestedItemCount,
-              adjacentActualInputCount:
-                adjacentCardano.inputCount,
-              adjacentVkeyWitnessCount:
-                adjacentCardano.vkeyWitnessCount,
-              adjacentSignedCardanoBytes:
-                boundary.adjacent.signedBytes,
+              completeFoldSteps: inputField.completeFoldStepCount,
+              adjacentRequestedInputCount: boundary.adjacent.requestedItemCount,
+              adjacentActualInputCount: adjacentCardano.inputCount,
+              adjacentVkeyWitnessCount: adjacentCardano.vkeyWitnessCount,
+              adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
               adjacentByteMargin:
                 emulator.protocolParameters.maxTxSize -
                 boundary.adjacent.signedBytes,

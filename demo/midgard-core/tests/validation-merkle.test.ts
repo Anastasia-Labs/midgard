@@ -28,9 +28,7 @@ describe("validation Merkle frontier", () => {
     expect(commitMidgardValidationMerkleFrontierV1(frontier)).toHaveLength(32);
     expect(
       commitMidgardValidationMerkleFrontierV1(frontier).toString("hex"),
-    ).toBe(
-      "f257467b03621e7d54b952ac6be9dd6b965bd9f86da60b367ec62b3eb1118ea0",
-    );
+    ).toBe("f257467b03621e7d54b952ac6be9dd6b965bd9f86da60b367ec62b3eb1118ea0");
   });
 
   it("rejects a mutated path and malformed frontier", () => {
@@ -55,10 +53,7 @@ describe("validation Merkle frontier", () => {
       const leaves = Array.from({ length: count }, (_, index) =>
         hash((index * 37 + count) % 256),
       );
-      const indexed =
-        buildMidgardValidationMerkleMembershipIndexV1(
-          leaves,
-        );
+      const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
       expect(indexed.frontier).toStrictEqual(
         buildMidgardValidationMerkleFrontierV1(leaves),
       );
@@ -70,26 +65,20 @@ describe("validation Merkle frontier", () => {
         continue;
       }
       for (let leafIndex = 0; leafIndex < count; leafIndex += 1) {
-        const expected =
-          buildMidgardValidationMerkleMembershipV1(
-            leaves,
-            leafIndex,
-          );
+        const expected = buildMidgardValidationMerkleMembershipV1(
+          leaves,
+          leafIndex,
+        );
         const actual = indexed.membershipAt(leafIndex);
         expect(actual).toStrictEqual(expected);
-        expect(
-          verifyMidgardValidationMerkleMembershipV1(actual),
-        ).toBe(true);
+        expect(verifyMidgardValidationMerkleMembershipV1(actual)).toBe(true);
       }
     }
   });
 
   it("isolates cached paths from mutations to returned buffers", () => {
-    const leaves = Array.from({ length: 8 }, (_, index) =>
-      hash(index + 1),
-    );
-    const indexed =
-      buildMidgardValidationMerkleMembershipIndexV1(leaves);
+    const leaves = Array.from({ length: 8 }, (_, index) => hash(index + 1));
+    const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
     const corrupted = indexed.membershipAt(3);
     corrupted.leafHash.fill(0xa1);
     for (const sibling of corrupted.siblings) {
@@ -102,21 +91,15 @@ describe("validation Merkle frontier", () => {
       peak.hash.fill(0xd4);
     }
 
-    const expected =
-      buildMidgardValidationMerkleMembershipV1(leaves, 3);
+    const expected = buildMidgardValidationMerkleMembershipV1(leaves, 3);
     const subsequent = indexed.membershipAt(3);
     expect(subsequent).toStrictEqual(expected);
-    expect(
-      verifyMidgardValidationMerkleMembershipV1(subsequent),
-    ).toBe(true);
+    expect(verifyMidgardValidationMerkleMembershipV1(subsequent)).toBe(true);
   });
 
   it("keeps sibling order consequential and fails closed for malformed requests", () => {
-    const leaves = Array.from({ length: 8 }, (_, index) =>
-      hash(index + 1),
-    );
-    const indexed =
-      buildMidgardValidationMerkleMembershipIndexV1(leaves);
+    const leaves = Array.from({ length: 8 }, (_, index) => hash(index + 1));
+    const indexed = buildMidgardValidationMerkleMembershipIndexV1(leaves);
     const membership = indexed.membershipAt(1);
     expect(membership.siblings).toHaveLength(3);
     expect(
@@ -131,9 +114,7 @@ describe("validation Merkle frontier", () => {
       );
     }
     expect(() =>
-      buildMidgardValidationMerkleMembershipIndexV1([
-        Buffer.alloc(31),
-      ]),
+      buildMidgardValidationMerkleMembershipIndexV1([Buffer.alloc(31)]),
     ).toThrow(/must be 32 bytes/u);
   });
 

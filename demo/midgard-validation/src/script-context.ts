@@ -169,9 +169,7 @@ const baseTxInfoData = (
   purposeData: (purpose: MidgardScriptPurpose) => Constr<unknown> | undefined,
 ): Constr<unknown> =>
   new Constr(0, [
-    view.inputs.map((input) =>
-      scriptContextTxInInfoData(input, "cardano"),
-    ),
+    view.inputs.map((input) => scriptContextTxInInfoData(input, "cardano")),
     view.referenceInputs.map((input) =>
       scriptContextTxInInfoData(input, "cardano"),
     ),
@@ -248,9 +246,7 @@ export const buildMidgardV1ScriptContext = (
 ): Constr<unknown> =>
   new Constr(0, [
     new Constr(0, [
-      view.inputs.map((input) =>
-        scriptContextTxInInfoData(input, "midgard"),
-      ),
+      view.inputs.map((input) => scriptContextTxInInfoData(input, "midgard")),
       view.referenceInputs.map((input) =>
         scriptContextTxInInfoData(input, "midgard"),
       ),

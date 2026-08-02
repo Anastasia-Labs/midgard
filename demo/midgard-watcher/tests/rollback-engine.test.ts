@@ -1835,72 +1835,72 @@ describe("canonical watcher rollback engine", () => {
       }
       const incidentSnapshot = Uint8Array.from(backend.bytes!);
       const recoveryContender = await loadWatcherRollbackDurableAuthorityV1({
+        backend,
+        policy: fixture.finalityPolicy,
+        authenticationKey: rollbackAuthorityKey,
+        trustedHead: incident.trustedHead,
+      });
+      const recoveryResults = await Promise.all([
+        evaluateAndPersistWatcherPostFinalityRecoveryV1({
+          authority: incident.authority,
+          previousCanonicalPath: fixture.previousPath,
+          replacementCanonicalPath: fixture.replacementPath,
+        }),
+        evaluateAndPersistWatcherPostFinalityRecoveryV1({
+          authority: recoveryContender,
+          previousCanonicalPath: fixture.previousPath,
+          replacementCanonicalPath: fixture.replacementPath,
+        }),
+      ]);
+      const recoveryLoser = recoveryResults.find(
+        ({ persistence }) => persistence === "conflict",
+      );
+      expect(recoveryLoser).toEqual({ persistence: "conflict" });
+      expect(recoveryLoser).not.toHaveProperty("authority");
+      expect(recoveryLoser).not.toHaveProperty("trustedHead");
+      expect(recoveryLoser).not.toHaveProperty("result");
+      const persistedRecovery = recoveryResults.find(
+        ({ persistence }) => persistence === "committed",
+      );
+      expect(persistedRecovery).toBeDefined();
+      if (
+        persistedRecovery === undefined ||
+        persistedRecovery.persistence !== "committed"
+      ) {
+        throw new Error("expected committed rollback recovery");
+      }
+      expect(persistedRecovery).toMatchObject({
+        persistence: "committed",
+        result: { action: "rewind_and_replay" },
+      });
+      expect(persistedRecovery.result).toEqual(applied);
+      expect(
+        watcherRollbackDurableAuthorityStatusV1(persistedRecovery.authority),
+      ).toMatchObject({
+        revision: "2",
+        epoch: "1",
+        incidentDigest: null,
+      });
+      const latestSnapshot = Uint8Array.from(backend.bytes!);
+      backend.bytes = incidentSnapshot;
+      await expect(
+        loadWatcherRollbackDurableAuthorityV1({
           backend,
           policy: fixture.finalityPolicy,
           authenticationKey: rollbackAuthorityKey,
-          trustedHead: incident.trustedHead,
-        });
-        const recoveryResults = await Promise.all([
-          evaluateAndPersistWatcherPostFinalityRecoveryV1({
-            authority: incident.authority,
-            previousCanonicalPath: fixture.previousPath,
-            replacementCanonicalPath: fixture.replacementPath,
-          }),
-          evaluateAndPersistWatcherPostFinalityRecoveryV1({
-            authority: recoveryContender,
-            previousCanonicalPath: fixture.previousPath,
-            replacementCanonicalPath: fixture.replacementPath,
-          }),
-        ]);
-        const recoveryLoser = recoveryResults.find(
-          ({ persistence }) => persistence === "conflict",
-        );
-        expect(recoveryLoser).toEqual({ persistence: "conflict" });
-        expect(recoveryLoser).not.toHaveProperty("authority");
-        expect(recoveryLoser).not.toHaveProperty("trustedHead");
-        expect(recoveryLoser).not.toHaveProperty("result");
-        const persistedRecovery = recoveryResults.find(
-          ({ persistence }) => persistence === "committed",
-        );
-        expect(persistedRecovery).toBeDefined();
-        if (
-          persistedRecovery === undefined ||
-          persistedRecovery.persistence !== "committed"
-        ) {
-          throw new Error("expected committed rollback recovery");
-        }
-        expect(persistedRecovery).toMatchObject({
-          persistence: "committed",
-          result: { action: "rewind_and_replay" },
-        });
-        expect(persistedRecovery.result).toEqual(applied);
-        expect(
-          watcherRollbackDurableAuthorityStatusV1(persistedRecovery.authority),
-        ).toMatchObject({
-          revision: "2",
-          epoch: "1",
-          incidentDigest: null,
-        });
-        const latestSnapshot = Uint8Array.from(backend.bytes!);
-        backend.bytes = incidentSnapshot;
-        await expect(
-          loadWatcherRollbackDurableAuthorityV1({
-            backend,
-            policy: fixture.finalityPolicy,
-            authenticationKey: rollbackAuthorityKey,
-            trustedHead: persistedRecovery.trustedHead,
-          }),
-        ).rejects.toThrow("watcher rollback durable trusted head mismatch");
-        await expect(
-          prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
-            backend,
-            policy: fixture.finalityPolicy,
-            authenticationKey: rollbackAuthorityKey,
-            trustedHead: persistedRecovery.trustedHead,
-          }),
-        ).rejects.toThrow(
-          "watcher rollback durable trusted head reconciliation refused",
-        );
+          trustedHead: persistedRecovery.trustedHead,
+        }),
+      ).rejects.toThrow("watcher rollback durable trusted head mismatch");
+      await expect(
+        prepareWatcherRollbackDurableTrustedHeadReconciliationV1({
+          backend,
+          policy: fixture.finalityPolicy,
+          authenticationKey: rollbackAuthorityKey,
+          trustedHead: persistedRecovery.trustedHead,
+        }),
+      ).rejects.toThrow(
+        "watcher rollback durable trusted head reconciliation refused",
+      );
       backend.bytes = latestSnapshot;
 
       expect(applied).toMatchObject({
@@ -2071,10 +2071,7 @@ describe("canonical watcher rollback engine", () => {
   );
 
   it("accepts the exact k=2160 recovery boundary and rejects 2161 without mutation", () => {
-    const atBoundary = postFinalityRecoveryFixture(
-      2_160,
-      "external_providers",
-    );
+    const atBoundary = postFinalityRecoveryFixture(2_160, "external_providers");
     const accepted = evaluateWatcherPostFinalityRecoveryV1({
       policy: atBoundary.finalityPolicy,
       sourceStore: atBoundary.sourceStore,

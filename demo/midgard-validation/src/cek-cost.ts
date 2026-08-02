@@ -16,11 +16,9 @@ const MAX_BUILTIN_TAG = 86;
 
 export const MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1 =
   costModelV3ToBuiltinCosts(
-  toCostModelV3(
-    [...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW] as unknown as Parameters<
-      typeof toCostModelV3
-    >[0],
-  ),
+    toCostModelV3([
+      ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
+    ] as unknown as Parameters<typeof toCostModelV3>[0]),
   );
 
 const assertCostSize = (size: bigint): void => {
@@ -55,9 +53,7 @@ export const computeMidgardCekBuiltinBudgetV1 = (
   costArgumentSizes.forEach(assertCostSize);
 
   const costs = MIDGARD_CEK_PINNED_PLUTUS_V3_BUILTIN_COSTS_V1(builtinTag);
-  const cpuAt = costs.cpu.at.bind(costs.cpu) as (
-    ...sizes: bigint[]
-  ) => bigint;
+  const cpuAt = costs.cpu.at.bind(costs.cpu) as (...sizes: bigint[]) => bigint;
   const memoryAt = costs.mem.at.bind(costs.mem) as (
     ...sizes: bigint[]
   ) => bigint;

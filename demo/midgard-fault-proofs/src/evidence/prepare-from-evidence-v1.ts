@@ -52,7 +52,9 @@ export const admitCanonicalEvidenceForProofBuildV1 = (
   evidence: CanonicalBlockEvidenceV1,
 ) => {
   const transactions = blockTransactionsFromCanonicalEvidenceV1(evidence);
-  assertNativeInclusionRootAuthenticatedV1(evidence.inclusionRootAuthentication);
+  assertNativeInclusionRootAuthenticatedV1(
+    evidence.inclusionRootAuthentication,
+  );
   return {
     transactions,
     headerHash: evidence.headerHash,

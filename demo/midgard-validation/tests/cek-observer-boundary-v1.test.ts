@@ -140,11 +140,7 @@ describe("bounded CEK observer context", () => {
         ? hashes.map((hash) => hash.toString("hex"))
         : new Map(
             hashes.map(
-              (hash) =>
-                [
-                  new Constr(1, [hash.toString("hex")]),
-                  0n,
-                ] as const,
+              (hash) => [new Constr(1, [hash.toString("hex")]), 0n] as const,
             ),
           );
 
@@ -157,17 +153,13 @@ describe("bounded CEK observer context", () => {
         }).subarray(0, 2),
       ).toEqual(Buffer.from([0x98, 0x18]));
 
-      if (
-        languageTag === 3 &&
-        process.env.MIDGARD_PRINT_PROOF_FIT === "1"
-      ) {
+      if (languageTag === 3 && process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(
           JSON.stringify({
             observerCekBoundaryV1: {
               signedCardanoBytes: boundary.accepted.signedBytes,
               byteMargin:
-                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 -
-                boundary.accepted.signedBytes,
+                CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - boundary.accepted.signedBytes,
               fieldBytes: boundary.acceptedField.fieldBytes,
               itemCount: boundary.acceptedField.itemCount,
               maxRevealBytes: boundary.acceptedField.maxRevealBytes,
@@ -186,8 +178,7 @@ describe("bounded CEK observer context", () => {
                 cborLength: summary.cborLength.toString(),
                 memory: summary.memory.toString(),
               },
-              terminalFoldVector:
-                boundary.acceptedField.terminalFoldVector,
+              terminalFoldVector: boundary.acceptedField.terminalFoldVector,
             },
           }),
         );
@@ -206,16 +197,12 @@ describe("bounded CEK observer context", () => {
     ).not.toThrow();
     expect(() =>
       validateMidgardCekObserverCollectionV1(
-        observers(
-          MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount,
-        ),
+        observers(MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount),
       ),
     ).not.toThrow();
     expect(() =>
       validateMidgardCekObserverCollectionV1(
-        observers(
-          MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount + 1,
-        ),
+        observers(MIDGARD_CONSENSUS_LIMITS_V1.maxRequiredObserverCount + 1),
       ),
     ).toThrow("transaction-size-derived collection guardrail");
     expect(() =>

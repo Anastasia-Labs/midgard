@@ -261,7 +261,11 @@ export const encodeRecomputedNativeTx = (
 ): NativeTxFixture => {
   const updated: MidgardNativeTxFullV1 = {
     ...tx,
-    compact: deriveMidgardNativeTxCompactV1(tx.body, tx.witnessSet, tx.validity),
+    compact: deriveMidgardNativeTxCompactV1(
+      tx.body,
+      tx.witnessSet,
+      tx.validity,
+    ),
   };
   const txId = computeMidgardNativeTxIdV1(updated);
   const txCbor = encodeMidgardNativeTxCanonicalV1(updated);
@@ -281,8 +285,7 @@ export const makeQueued = (
   txCbor,
   arrivalSeq,
   createdAt: new Date(0),
-  programMaterialSidecarCbor:
-    encodeMidgardCekProgramMaterialSidecarV1([]),
+  programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
 });
 
 export const ledgerEntry = (outRef: Buffer, output: Buffer): LedgerEntry => ({
@@ -321,8 +324,7 @@ export const makePhaseBCandidate = (
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
     txCbor: submittedTx.txCbor,
-    programMaterialSidecarCbor:
-      opts.programMaterialSidecarCbor ?? null,
+    programMaterialSidecarCbor: opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,
     createdAt: new Date(0),
     redeemerWitnessHash: submittedTx.commitments.redeemerWitnessHash,

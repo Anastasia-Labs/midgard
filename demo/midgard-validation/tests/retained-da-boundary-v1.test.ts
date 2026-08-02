@@ -23,20 +23,16 @@ const sizeBalancedFixture = JSON.parse(
 
 describe("canonical V1 retained-DA boundary harness", () => {
   it("reconstructs the same large canonical transaction from normal and forced retention", async () => {
-    const measurement =
-      await exerciseMidgardRetainedDaCanonicalBoundaryV1({
-        canonicalTransactionCbor: Buffer.from(
-          sizeBalancedFixture.fullTxCborHex,
-          "hex",
-        ),
-        corpusLabel: "mixed-size-balanced",
-        productionAdmission:
-          "diagnostic-synthetic-script-witnesses",
-      });
+    const measurement = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+      canonicalTransactionCbor: Buffer.from(
+        sizeBalancedFixture.fullTxCborHex,
+        "hex",
+      ),
+      corpusLabel: "mixed-size-balanced",
+      productionAdmission: "diagnostic-synthetic-script-witnesses",
+    });
 
-    expect(measurement.transactionIdHex).toBe(
-      sizeBalancedFixture.txIdHex,
-    );
+    expect(measurement.transactionIdHex).toBe(sizeBalancedFixture.txIdHex);
     expect(measurement.normal.sourceKind).toBe("normal");
     expect(measurement.forced.sourceKind).toBe("forced");
     expect(measurement.normal.retainedPreimageBytes).toBe(
@@ -45,12 +41,12 @@ describe("canonical V1 retained-DA boundary harness", () => {
     expect(measurement.forced.retainedPreimageBytes).toBe(
       sizeBalancedFixture.sizes.fullTxCborBytes,
     );
-    expect(
-      measurement.normal.reconstructedCanonicalBytes,
-    ).toBe(measurement.normal.retainedPreimageBytes);
-    expect(
-      measurement.forced.reconstructedCanonicalBytes,
-    ).toBe(measurement.forced.retainedPreimageBytes);
+    expect(measurement.normal.reconstructedCanonicalBytes).toBe(
+      measurement.normal.retainedPreimageBytes,
+    );
+    expect(measurement.forced.reconstructedCanonicalBytes).toBe(
+      measurement.forced.retainedPreimageBytes,
+    );
     expect(measurement.normal.revealStepCount).toBeGreaterThan(0);
     expect(measurement.forced.revealStepCount).toBe(
       measurement.normal.revealStepCount,

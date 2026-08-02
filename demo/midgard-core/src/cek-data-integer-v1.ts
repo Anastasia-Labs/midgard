@@ -67,10 +67,7 @@ type CborArgument = {
   readonly nextOffset: number;
 };
 
-const exactSourceCoordinate = (
-  value: number,
-  field: string,
-): number => {
+const exactSourceCoordinate = (value: number, field: string): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`Invalid V1 CEK Data integer ${field}`);
   }
@@ -102,17 +99,12 @@ const readCanonicalCborArgument = (
           : additional === 27
             ? 8
             : null;
-  if (
-    byteLength === null ||
-    offset + 1 + byteLength > bytes.length
-  ) {
+  if (byteLength === null || offset + 1 + byteLength > bytes.length) {
     return null;
   }
   let value = 0n;
   for (let index = 0; index < byteLength; index += 1) {
-    value =
-      (value << 8n) |
-      BigInt(bytes[offset + 1 + index]!);
+    value = (value << 8n) | BigInt(bytes[offset + 1 + index]!);
   }
   if (
     (additional === 24 && value < 24n) ||
@@ -156,19 +148,13 @@ export const parseMidgardCekDataIntegerSyntaxV1 = ({
       sourceLength < 1 ||
       sourceLength > UINT32_MAX ||
       syntaxBytes.length !==
-        Math.min(
-          sourceLength,
-          MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES,
-        )
+        Math.min(sourceLength, MIDGARD_CEK_DATA_INTEGER_SYNTAX_BYTES)
     ) {
       return null;
     }
     const first = syntaxBytes[0]!;
-    if ((first >>> 5) <= 1) {
-      const argument = readCanonicalCborArgument(
-        syntaxBytes,
-        0,
-      );
+    if (first >>> 5 <= 1) {
+      const argument = readCanonicalCborArgument(syntaxBytes, 0);
       if (
         argument === null ||
         argument.major > 1 ||
@@ -180,29 +166,20 @@ export const parseMidgardCekDataIntegerSyntaxV1 = ({
       return 4n + unsignedByteLength(argument.value * 2n);
     }
     if (first !== 0xc2 && first !== 0xc3) return null;
-    const magnitude = readCanonicalCborArgument(
-      syntaxBytes,
-      1,
-    );
+    const magnitude = readCanonicalCborArgument(syntaxBytes, 1);
     if (
       magnitude === null ||
       magnitude.major !== 2 ||
       magnitude.value < 9n ||
       magnitude.value > BigInt(UINT32_MAX) ||
-      BigInt(magnitude.nextOffset) + magnitude.value !==
-        BigInt(sourceLength) ||
+      BigInt(magnitude.nextOffset) + magnitude.value !== BigInt(sourceLength) ||
       magnitude.nextOffset >= syntaxBytes.length
     ) {
       return null;
     }
-    const firstMagnitudeByte =
-      syntaxBytes[magnitude.nextOffset]!;
+    const firstMagnitudeByte = syntaxBytes[magnitude.nextOffset]!;
     if (firstMagnitudeByte === 0) return null;
-    return (
-      4n +
-      magnitude.value +
-      (firstMagnitudeByte >= 0x80 ? 1n : 0n)
-    );
+    return 4n + magnitude.value + (firstMagnitudeByte >= 0x80 ? 1n : 0n);
   } catch {
     return null;
   }
@@ -245,16 +222,12 @@ export const isWellFormedMidgardCekDataIntegerControlV1 = (
       !Number.isInteger(control.stage) ||
       control.stage < MidgardCekDataIntegerStagesV1.Syntax ||
       control.stage > MidgardCekDataIntegerStagesV1.Terminal ||
-      exactSourceCoordinate(
-        control.sourceStart,
-        "source start",
-      ) !== control.sourceStart ||
+      exactSourceCoordinate(control.sourceStart, "source start") !==
+        control.sourceStart ||
       !Number.isInteger(control.sourceLength) ||
       control.sourceLength < 1 ||
       control.sourceLength > UINT32_MAX ||
-      !Number.isSafeInteger(
-        control.sourceStart + control.sourceLength,
-      ) ||
+      !Number.isSafeInteger(control.sourceStart + control.sourceLength) ||
       control.memory < 0n ||
       control.memory > UINT64_MAX
     ) {
@@ -383,9 +356,7 @@ export const advanceMidgardCekDataIntegerV1 = ({
           sourceLength: control.sourceLength,
         }),
       } satisfies MidgardCekDataIntegerControlV1;
-      return isWellFormedMidgardCekDataIntegerControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardCekDataIntegerControlV1(next) ? next : null;
     }
     if (
       control.stage !== MidgardCekDataIntegerStagesV1.Blob ||
@@ -393,9 +364,7 @@ export const advanceMidgardCekDataIntegerV1 = ({
     ) {
       return null;
     }
-    if (
-      control.blob.stage === MidgardCekSourceBlobStagesV1.Terminal
-    ) {
+    if (control.blob.stage === MidgardCekSourceBlobStagesV1.Terminal) {
       if (sourceBytes !== null && sourceBytes !== undefined) {
         return null;
       }
@@ -403,9 +372,7 @@ export const advanceMidgardCekDataIntegerV1 = ({
         ...control,
         stage: MidgardCekDataIntegerStagesV1.Terminal,
       } satisfies MidgardCekDataIntegerControlV1;
-      return isWellFormedMidgardCekDataIntegerControlV1(next)
-        ? next
-        : null;
+      return isWellFormedMidgardCekDataIntegerControlV1(next) ? next : null;
     }
     const blob = advanceMidgardCekSourceBlobV1({
       control: control.blob,
@@ -413,9 +380,7 @@ export const advanceMidgardCekDataIntegerV1 = ({
     });
     if (blob === null) return null;
     const next = { ...control, blob };
-    return isWellFormedMidgardCekDataIntegerControlV1(next)
-      ? next
-      : null;
+    return isWellFormedMidgardCekDataIntegerControlV1(next) ? next : null;
   } catch {
     return null;
   }
@@ -430,9 +395,7 @@ export const finalizeMidgardCekDataIntegerV1 = (
   ) {
     return null;
   }
-  const cborRoot = finalizeMidgardCekSourceBlobV1(
-    control.blob!,
-  );
+  const cborRoot = finalizeMidgardCekSourceBlobV1(control.blob!);
   if (cborRoot === null) return null;
   return Object.freeze({
     root: Buffer.from(
@@ -462,9 +425,7 @@ export const buildMidgardCekDataIntegerTraceV1 = ({
   });
   const steps: MidgardCekDataIntegerTraceStepV1[] = [];
   let control = initial;
-  while (
-    control.stage !== MidgardCekDataIntegerStagesV1.Terminal
-  ) {
+  while (control.stage !== MidgardCekDataIntegerStagesV1.Terminal) {
     const span = nextMidgardCekDataIntegerSpanV1(control);
     const sourceBytes =
       span === null
@@ -477,10 +438,7 @@ export const buildMidgardCekDataIntegerTraceV1 = ({
       control,
       sourceBytes,
     });
-    if (
-      next === null ||
-      !isWellFormedMidgardCekDataIntegerControlV1(next)
-    ) {
+    if (next === null || !isWellFormedMidgardCekDataIntegerControlV1(next)) {
       throw new Error("V1 CEK Data integer trace failed closed");
     }
     steps.push({ control, sourceBytes, next });

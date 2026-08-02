@@ -36,14 +36,11 @@ import {
 import { verifyMidgardCekCoreStepV1 } from "../src/cek-machine.js";
 import { buildMidgardCanonicalCekProgramV1 } from "../src/cek-program.js";
 
-const compileIdentity = (): Buffer =>
-  compile(new Lambda(new UPLCVar(0)));
+const compileIdentity = (): Buffer => compile(new Lambda(new UPLCVar(0)));
 
 const compile = (term: UPLCTerm): Buffer =>
   Buffer.from(
-    UPLCEncoder.compile(
-      new UPLCProgram([1, 1, 0], term),
-    ).toBuffer().buffer,
+    UPLCEncoder.compile(new UPLCProgram([1, 1, 0], term)).toBuffer().buffer,
   );
 
 describe("V1 CEK trace generator", () => {
@@ -125,8 +122,7 @@ describe("V1 CEK trace generator", () => {
     expect(execution.steps.length).toBeLessThan(64);
     expect(execution.terminalState.mode).not.toMatch(/^halt/u);
     expect(
-      execution.terminalState.cpu > 0n ||
-        execution.terminalState.memory > 0n,
+      execution.terminalState.cpu > 0n || execution.terminalState.memory > 0n,
     ).toBe(true);
     expect(
       execution.steps
@@ -153,10 +149,9 @@ describe("V1 CEK trace generator", () => {
     const program = buildMidgardCanonicalCekProgramV1(
       compile(
         new Lambda(
-          new Case(
-            new Constr(0n, [UPLCConst.int(42)]),
-            [new Lambda(new UPLCVar(0))],
-          ),
+          new Case(new Constr(0n, [UPLCConst.int(42)]), [
+            new Lambda(new UPLCVar(0)),
+          ]),
         ),
       ),
     );
@@ -173,14 +168,10 @@ describe("V1 CEK trace generator", () => {
     });
     expect(execution.terminalState.mode).toBe("haltSuccess");
     expect(
-      execution.steps.some(
-        (step) => step.witness.kind === "selectCaseBranch",
-      ),
+      execution.steps.some((step) => step.witness.kind === "selectCaseBranch"),
     ).toBe(true);
     expect(
-      execution.steps.some(
-        (step) => step.witness.kind === "applyCaseValue",
-      ),
+      execution.steps.some((step) => step.witness.kind === "applyCaseValue"),
     ).toBe(true);
   });
 
@@ -199,9 +190,7 @@ describe("V1 CEK trace generator", () => {
       "returnForceDelay",
     );
 
-    const unbound = buildMidgardCanonicalCekProgramV1(
-      compile(new UPLCVar(0)),
-    );
+    const unbound = buildMidgardCanonicalCekProgramV1(compile(new UPLCVar(0)));
     const rejected = executeMidgardCekStructuralProgramV1({
       root: unbound.envelope.termRoot,
       material: unbound.material.values(),
@@ -278,9 +267,8 @@ describe("V1 CEK trace generator", () => {
       expect(builtinStep.witness.result.kind).toBe("constant");
       if (builtinStep.witness.result.kind === "constant") {
         expect(
-          decodeMidgardCekConstantWitnessV1(
-            builtinStep.witness.result.witness,
-          ).payload,
+          decodeMidgardCekConstantWitnessV1(builtinStep.witness.result.witness)
+            .payload,
         ).toMatchObject({ int: 42n });
       }
     }
@@ -316,9 +304,7 @@ describe("V1 CEK trace generator", () => {
       maxSteps: 32,
     });
     expect(failed.terminalState.mode).toBe("haltError");
-    expect(failed.steps.at(-1)?.witness.kind).toBe(
-      "executeBuiltinFailure",
-    );
+    expect(failed.steps.at(-1)?.witness.kind).toBe("executeBuiltinFailure");
   });
 
   it("routes tag-51 direct results to semantic witnesses only past the boundary", () => {
@@ -458,12 +444,7 @@ describe("V1 CEK trace generator", () => {
       [3n],
     ]);
     const program = buildMidgardCanonicalCekProgramV1(
-      compile(
-        new Application(
-          Builtin.headList,
-          nested,
-        ),
-      ),
+      compile(new Application(Builtin.headList, nested)),
     );
     const execution = executeMidgardCekStructuralProgramV1({
       root: program.envelope.termRoot,
@@ -474,22 +455,19 @@ describe("V1 CEK trace generator", () => {
     expect(execution.terminalState.mode).toBe("haltSuccess");
     expect(
       execution.steps.filter(
-        (candidate) =>
-          candidate.witness.kind === "returnForceBuiltin",
+        (candidate) => candidate.witness.kind === "returnForceBuiltin",
       ),
     ).toHaveLength(1);
     const step = execution.steps.find(
-      (candidate) =>
-        candidate.witness.kind === "executeBuiltinSemantic",
+      (candidate) => candidate.witness.kind === "executeBuiltinSemantic",
     );
     expect(step?.witness.kind).toBe("executeBuiltinSemantic");
     if (step?.witness.kind === "executeBuiltinSemantic") {
       expect(step.witness.result.kind).toBe("constant");
       if (step.witness.result.kind === "constant") {
         expect(
-          decodeMidgardCekConstantWitnessV1(
-            step.witness.result.witness,
-          ).payload,
+          decodeMidgardCekConstantWitnessV1(step.witness.result.witness)
+            .payload,
         ).toMatchObject({ list: [{ int: 1n }, { int: 2n }] });
       }
     }
@@ -497,11 +475,7 @@ describe("V1 CEK trace generator", () => {
 
   it("proves unMapData one map pair per semantic CEK step", () => {
     const program = buildMidgardCanonicalCekProgramV1(
-      compile(
-        new Lambda(
-          new Application(Builtin.unMapData, new UPLCVar(0)),
-        ),
-      ),
+      compile(new Lambda(new Application(Builtin.unMapData, new UPLCVar(0)))),
     );
     const context = new DataMap<Data, Data>([
       new DataPair(new DataI(1n), new DataB(Buffer.alloc(9_000, 0x2a))),
@@ -520,7 +494,9 @@ describe("V1 CEK trace generator", () => {
     });
     const semanticKinds = execution.steps
       .map((step) => step.witness.kind)
-      .filter((kind) => kind.includes("MapConversion") || kind.includes("MapToList"));
+      .filter(
+        (kind) => kind.includes("MapConversion") || kind.includes("MapToList"),
+      );
     expect(semanticKinds).toEqual([
       "startBuiltinMapConversion",
       "stepBuiltinMapToList",
@@ -538,9 +514,7 @@ describe("V1 CEK trace generator", () => {
   it("proves large structured Data traversal without revealing the whole constant", () => {
     const program = buildMidgardCanonicalCekProgramV1(
       compile(
-        new Lambda(
-          new Application(Builtin.unConstrData, new UPLCVar(0)),
-        ),
+        new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
       ),
     );
     const context = new DataConstr(128n, [
@@ -567,9 +541,9 @@ describe("V1 CEK trace generator", () => {
       expect(semantic.witness.tag).toBe(42n);
       expect(semantic.witness.material.dataNodes).toHaveLength(1);
       expect(semantic.witness.material.scalarPreimages).toHaveLength(1);
-      expect(
-        semantic.witness.material.scalarPreimages[0]?.length,
-      ).toBeLessThan(16);
+      expect(semantic.witness.material.scalarPreimages[0]?.length).toBeLessThan(
+        16,
+      );
     }
     expect(execution.terminalState.mode).toBe("haltSuccess");
     expect(
@@ -582,16 +556,11 @@ describe("V1 CEK trace generator", () => {
   it("proves a wrong semantic Data variant as a zero-budget CEK failure", () => {
     const program = buildMidgardCanonicalCekProgramV1(
       compile(
-        new Lambda(
-          new Application(Builtin.unConstrData, new UPLCVar(0)),
-        ),
+        new Lambda(new Application(Builtin.unConstrData, new UPLCVar(0))),
       ),
     );
     const context = new DataMap<Data, Data>([
-      new DataPair(
-        new DataI(1n),
-        new DataB(Buffer.alloc(9_000, 0x71)),
-      ),
+      new DataPair(new DataI(1n), new DataB(Buffer.alloc(9_000, 0x71))),
     ]);
     const graph = buildMidgardCekExecutionGraphV1(
       program.envelope,
@@ -605,9 +574,7 @@ describe("V1 CEK trace generator", () => {
       maxSteps: 64,
     });
     const failure = execution.steps.at(-1);
-    expect(failure?.witness.kind).toBe(
-      "executeBuiltinSemanticFailure",
-    );
+    expect(failure?.witness.kind).toBe("executeBuiltinSemanticFailure");
     expect(execution.terminalState.mode).toBe("haltError");
     expect(failure?.post.cpu).toBe(failure?.pre.cpu);
     expect(failure?.post.memory).toBe(failure?.pre.memory);
@@ -651,10 +618,7 @@ describe("V1 CEK trace generator", () => {
       compile(
         new Lambda(
           new Application(
-            new Application(
-              Builtin.bls12_381_finalVerify,
-              millerLoop(),
-            ),
+            new Application(Builtin.bls12_381_finalVerify, millerLoop()),
             millerLoop(),
           ),
         ),

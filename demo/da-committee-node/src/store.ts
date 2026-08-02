@@ -1026,7 +1026,6 @@ const parseWatcherDeploymentRecord = (
   };
 };
 
-
 export const decisionEffectId = (args: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;

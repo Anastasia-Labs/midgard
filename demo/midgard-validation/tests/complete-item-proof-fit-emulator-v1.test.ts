@@ -83,7 +83,8 @@ const RESERVED_MEMORY_UNITS = Math.floor(
 const RESERVED_CPU_UNITS = Math.floor(
   MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxCpuUnits * 0.8,
 );
-const MAX_L1_PROOF_TX_BYTES = MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+const MAX_L1_PROOF_TX_BYTES =
+  MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
 
 const encodeBoundedBytesItem = (payload: Buffer): Buffer => {
   if (payload.length < 24) {
@@ -266,15 +267,17 @@ type CompleteSignedTransactionMeasurement = {
  * must also be value-level.
  */
 const sameDatumValue = (left: string, right: string): boolean =>
-  left === right ||
-  Data.to(Data.from(left)) === Data.to(Data.from(right));
+  left === right || Data.to(Data.from(left)) === Data.to(Data.from(right));
 
 const measureCompleteSignedTransaction = (
   transactionCbor: string,
 ): CompleteSignedTransactionMeasurement => {
   const transaction = CML.Transaction.from_cbor_hex(transactionCbor);
   const body = transaction.body();
-  const redeemers = transaction.witness_set().redeemers()?.as_arr_legacy_redeemer();
+  const redeemers = transaction
+    .witness_set()
+    .redeemers()
+    ?.as_arr_legacy_redeemer();
   let executionMemory = 0n;
   let executionSteps = 0n;
   let redeemerCount = 0;
@@ -392,7 +395,8 @@ const setupEmulator = async (
   threadDatums: readonly string[],
 ): Promise<EmulatorHarness> => {
   const contracts = await loadContracts();
-  const semanticContract = contracts.validationTraceDispute.semanticResolvers[1];
+  const semanticContract =
+    contracts.validationTraceDispute.semanticResolvers[1];
   if (semanticContract === undefined) {
     throw new Error("canonical-decode item semantic resolver is missing");
   }
@@ -466,7 +470,10 @@ const submitSemanticProof = async ({
   readonly outputDatum: string;
   readonly signedCbor: string;
 }> => {
-  const outputDatum = authenticatedOutputDatumCbor(itemCase, harness.signerHash);
+  const outputDatum = authenticatedOutputDatumCbor(
+    itemCase,
+    harness.signerHash,
+  );
   const makeRedeemer: BuildTxWithRedeemer = (ctx) => {
     const inputIndex = requireInputIndex(
       ctx,
@@ -761,14 +768,10 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
     );
     expect(
       Number(authentication.measurement.executionMemory),
-    ).toBeLessThanOrEqual(
-      RESERVED_MEMORY_UNITS,
-    );
+    ).toBeLessThanOrEqual(RESERVED_MEMORY_UNITS);
     expect(
       Number(authentication.measurement.executionSteps),
-    ).toBeLessThanOrEqual(
-      RESERVED_CPU_UNITS,
-    );
+    ).toBeLessThanOrEqual(RESERVED_CPU_UNITS);
     expect(authentication.measurement.referenceInputCount).toBe(0);
     expect(authentication.measurement.completeSignedBytes).toBeLessThanOrEqual(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,

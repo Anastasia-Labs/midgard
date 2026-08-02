@@ -19,7 +19,10 @@ export {
   submitStep01,
 } from "../../src/submit-step-01.js";
 export { submitStep02 } from "../../src/submit-step-02.js";
-export { parseSpendInputCbors, submitStep03 } from "../../src/submit-step-03.js";
+export {
+  parseSpendInputCbors,
+  submitStep03,
+} from "../../src/submit-step-03.js";
 export { submitStep04 } from "../../src/submit-step-04.js";
 export { submitZeroInputStep01 } from "../../src/submit-zero-input-step-01.js";
 export { submitZeroInputStep02 } from "../../src/submit-zero-input-step-02.js";

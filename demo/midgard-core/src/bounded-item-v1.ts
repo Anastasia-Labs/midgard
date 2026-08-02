@@ -80,8 +80,7 @@ export const midgardBoundedItemExpectedChunkLengthV1 = ({
   }
   return exactChunkIndex + 1 < count
     ? MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1
-    : totalLength -
-        exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    : totalLength - exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
 };
 
 export const hashMidgardBoundedItemChunkV1 = ({
@@ -197,8 +196,7 @@ export const buildMidgardBoundedItemChunkProofV1 = (
     item.chunkHashes,
     exactChunkIndex,
   );
-  const offset =
-    exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+  const offset = exactChunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
   return {
     version: MIDGARD_BOUNDED_ITEM_V1_VERSION,
     fieldIndex: item.fieldIndex,
@@ -232,10 +230,8 @@ export const verifyMidgardBoundedItemChunkProofV1 = ({
       proof.version !== MIDGARD_BOUNDED_ITEM_V1_VERSION ||
       proof.totalLength < 0 ||
       proof.chunkIndex < 0 ||
-      proof.chunkIndex >=
-        midgardBoundedItemChunkCountV1(proof.totalLength) ||
-      proof.chunk.length !==
-        midgardBoundedItemExpectedChunkLengthV1(proof)
+      proof.chunkIndex >= midgardBoundedItemChunkCountV1(proof.totalLength) ||
+      proof.chunk.length !== midgardBoundedItemExpectedChunkLengthV1(proof)
     ) {
       return false;
     }
@@ -252,9 +248,7 @@ export const verifyMidgardBoundedItemChunkProofV1 = ({
         itemIndex: proof.itemIndex,
         totalLength: proof.totalLength,
         frontier: proof.frontier,
-      }).equals(
-        ensureHash32(expectedCommitment, "bounded_item_v1.expected"),
-      )
+      }).equals(ensureHash32(expectedCommitment, "bounded_item_v1.expected"))
     );
   } catch {
     return false;

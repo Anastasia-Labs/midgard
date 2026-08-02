@@ -42,17 +42,13 @@ const transition = (
   harness: Harness,
   action: MidgardCekDataTraverseActionV1,
 ): void => {
-  const span = nextMidgardCekDataTraverseSpanV1(
-    harness.control,
-  );
+  const span = nextMidgardCekDataTraverseSpanV1(harness.control);
   const sourceBytes =
     span === null
       ? null
       : harness.source.subarray(
           span.absoluteStart - harness.sourceStart,
-          span.absoluteStart -
-            harness.sourceStart +
-            span.length,
+          span.absoluteStart - harness.sourceStart + span.length,
         );
   if (sourceBytes !== null) {
     harness.reveals.push(Buffer.from(sourceBytes));
@@ -82,11 +78,9 @@ const finishScalar = (
   parent: MidgardCekDataFrameV1 | null,
 ): MidgardCekDataSummaryV1 => {
   while (
-    (harness.control.stage ===
-      MidgardCekDataTraverseStagesV1.Integer &&
+    (harness.control.stage === MidgardCekDataTraverseStagesV1.Integer &&
       harness.control.integer!.stage !== 2) ||
-    (harness.control.stage ===
-      MidgardCekDataTraverseStagesV1.Bytes &&
+    (harness.control.stage === MidgardCekDataTraverseStagesV1.Bytes &&
       harness.control.bytes!.stage !== 3)
   ) {
     transition(harness, null);
@@ -114,16 +108,11 @@ const foldList = (
     hashMidgardCekDataFrameChildV1(index, child),
   );
   let frame = initial;
-  for (
-    let childIndex = children.length - 1;
-    childIndex >= 0;
-    childIndex -= 1
-  ) {
-    const membership =
-      buildMidgardValidationMerkleMembershipV1(
-        leaves,
-        childIndex,
-      );
+  for (let childIndex = children.length - 1; childIndex >= 0; childIndex -= 1) {
+    const membership = buildMidgardValidationMerkleMembershipV1(
+      leaves,
+      childIndex,
+    );
     transition(harness, {
       kind: "foldList",
       frame,
@@ -142,10 +131,7 @@ const foldList = (
   return frame;
 };
 
-const harness = (
-  source: Uint8Array,
-  sourceStart = 17,
-): Harness => ({
+const harness = (source: Uint8Array, sourceStart = 17): Harness => ({
   control: initialMidgardCekDataTraverseControlV1({
     sourceStart,
     sourceLength: source.length,
@@ -162,11 +148,7 @@ const encodeCardanoDataBytes = (content: Uint8Array): Buffer => {
   for (let offset = 0; offset < bytes.length; offset += 64) {
     chunks.push(encodeCborBytes(bytes.subarray(offset, offset + 64)));
   }
-  return Buffer.concat([
-    Buffer.from([0x5f]),
-    ...chunks,
-    Buffer.from([0xff]),
-  ]);
+  return Buffer.concat([Buffer.from([0x5f]), ...chunks, Buffer.from([0xff])]);
 };
 
 describe("authenticated CEK Data traversal V1", () => {
@@ -190,15 +172,11 @@ describe("authenticated CEK Data traversal V1", () => {
     );
     expect(
       Math.max(...trace.reveals.map((reveal) => reveal.length)),
-    ).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
-    );
+    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1);
   });
 
   it("authenticates list heads, children, closure, folds, and finalization", () => {
-    const bytes = encodeCardanoDataBytes(
-      Buffer.alloc(65, 0x6a),
-    );
+    const bytes = encodeCardanoDataBytes(Buffer.alloc(65, 0x6a));
     const source = Buffer.concat([
       Buffer.from([0x9f, 0x01]),
       bytes,
@@ -282,10 +260,7 @@ describe("authenticated CEK Data traversal V1", () => {
   });
 
   it("streams a large constructor alternative before its fields", () => {
-    const constructorCbor = Buffer.from(
-      "c249010000000000000000",
-      "hex",
-    );
+    const constructorCbor = Buffer.from("c249010000000000000000", "hex");
     const source = Buffer.concat([
       Buffer.from("d86682", "hex"),
       constructorCbor,
@@ -299,14 +274,12 @@ describe("authenticated CEK Data traversal V1", () => {
       expectedChildren: 1,
     });
     while (
-      trace.control.stage ===
-      MidgardCekDataTraverseStagesV1.LargeConstructor
+      trace.control.stage === MidgardCekDataTraverseStagesV1.LargeConstructor
     ) {
       transition(trace, null);
     }
     const integer = trace.control.integer!;
-    const constructorCborRoot =
-      finalizeMidgardCekSourceBlobV1(integer.blob!)!;
+    const constructorCborRoot = finalizeMidgardCekSourceBlobV1(integer.blob!)!;
     let frame = initialMidgardCekDataLargeConstrFrameV1({
       constructorCborRoot,
       constructorCborLength: BigInt(constructorCbor.length),
@@ -330,51 +303,33 @@ describe("authenticated CEK Data traversal V1", () => {
       expected,
     );
     expect(
-      encodeMidgardCekDataTraverseControlV1(
-        trace.control,
-      ).toString("hex"),
+      encodeMidgardCekDataTraverseControlV1(trace.control).toString("hex"),
     ).toBe(
       "8a010711111140d87a80d87a80d87a80d8799f835820844cdd8ac8dc97d87e4ed149da121054504365b523034a804a12c014d55c2c441109ff",
     );
     expect(
-      hashMidgardCekDataTraverseControlV1(
-        trace.control,
-      ).toString("hex"),
-    ).toBe(
-      "173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16",
-    );
+      hashMidgardCekDataTraverseControlV1(trace.control).toString("hex"),
+    ).toBe("173ab9eb57665546414d5c286c55bc1fcd939a1784a7b800863e9970b82f6c16");
   });
 
   it("pins active nested integer and byte controls for Aiken decoding", () => {
-    const integer = harness(
-      Buffer.from("c249010000000000000000", "hex"),
-    );
+    const integer = harness(Buffer.from("c249010000000000000000", "hex"));
     transition(integer, {
       kind: "headScalar",
       itemLength: integer.source.length,
     });
     expect(
-      encodeMidgardCekDataTraverseControlV1(
-        integer.control,
-      ).toString("hex"),
-    ).toBe(
-      "8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80",
-    );
+      encodeMidgardCekDataTraverseControlV1(integer.control).toString("hex"),
+    ).toBe("8a0101110b0040d87a80d8799f860100110b00d87a80ffd87a80d87a80");
 
-    const bytes = harness(
-      encodeCardanoDataBytes(Buffer.alloc(65, 0x6a)),
-    );
+    const bytes = harness(encodeCardanoDataBytes(Buffer.alloc(65, 0x6a)));
     transition(bytes, {
       kind: "headScalar",
       itemLength: bytes.source.length,
     });
     expect(
-      encodeMidgardCekDataTraverseControlV1(
-        bytes.control,
-      ).toString("hex"),
-    ).toBe(
-      "8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80",
-    );
+      encodeMidgardCekDataTraverseControlV1(bytes.control).toString("hex"),
+    ).toBe("8a01021118460040d87a80d87a80d8799f86010011184600d87a80ffd87a80");
   });
 
   it("fails closed for wrong counts, trailing bytes, and small large constructors", () => {
@@ -392,9 +347,7 @@ describe("authenticated CEK Data traversal V1", () => {
     });
     const child = finishScalar(wrongCount, frame);
     frame = appendChild(frame, child);
-    const closeWindow = nextMidgardCekDataTraverseSpanV1(
-      wrongCount.control,
-    )!;
+    const closeWindow = nextMidgardCekDataTraverseSpanV1(wrongCount.control)!;
 
     expect(closeWindow.length).toBe(1);
     expect(
@@ -407,9 +360,7 @@ describe("authenticated CEK Data traversal V1", () => {
 
     const trailing = harness(Buffer.from("0102", "hex"));
     transition(trailing, { kind: "headScalar", itemLength: 1 });
-    while (
-      trailing.control.integer!.stage !== 2
-    ) {
+    while (trailing.control.integer!.stage !== 2) {
       transition(trailing, null);
     }
     expect(
@@ -420,9 +371,7 @@ describe("authenticated CEK Data traversal V1", () => {
       }),
     ).toBeNull();
 
-    const smallLarge = harness(
-      Buffer.from("d86682187f80", "hex"),
-    );
+    const smallLarge = harness(Buffer.from("d86682187f80", "hex"));
     transition(smallLarge, {
       kind: "headLargeConstructor",
       constructorCborLength: 2,
@@ -435,13 +384,10 @@ describe("authenticated CEK Data traversal V1", () => {
         action: null,
       }),
     ).toBeNull();
-
   });
 
   it("automatically constructs every reveal and witness for nested canonical Data", () => {
-    const byteLeaf = encodeCardanoDataBytes(
-      Buffer.alloc(65, 0x71),
-    );
+    const byteLeaf = encodeCardanoDataBytes(Buffer.alloc(65, 0x71));
     const source = Buffer.concat([
       Buffer.from("a2019fd87980ff", "hex"),
       byteLeaf,
@@ -451,26 +397,17 @@ describe("authenticated CEK Data traversal V1", () => {
       sourceStart: 31,
       source,
     });
-    const summary = finalizeMidgardCekDataTraverseV1(
-      trace.terminal,
-    );
+    const summary = finalizeMidgardCekDataTraverseV1(trace.terminal);
 
     expect(summary).not.toBeNull();
     expect(trace.terminal.offset).toBe(source.length);
     expect(
-      Math.max(
-        ...trace.steps
-          .map((step) => step.sourceBytes?.length ?? 0),
-      ),
-    ).toBeLessThanOrEqual(
-      MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
+      Math.max(...trace.steps.map((step) => step.sourceBytes?.length ?? 0)),
+    ).toBeLessThanOrEqual(MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1);
+    expect(trace.steps.map((step) => step.action?.kind)).toContain("foldMap");
+    expect(trace.steps.map((step) => step.action?.kind)).toContain(
+      "headLargeConstructor",
     );
-    expect(
-      trace.steps.map((step) => step.action?.kind),
-    ).toContain("foldMap");
-    expect(
-      trace.steps.map((step) => step.action?.kind),
-    ).toContain("headLargeConstructor");
     for (const step of trace.steps) {
       expect(
         advanceMidgardCekDataTraverseV1({
@@ -515,9 +452,7 @@ describe("authenticated CEK Data traversal V1", () => {
       action?.kind === "foldMap" ? [action] : [],
     );
 
-    expect(
-      listFolds.map(({ childIndex }) => childIndex),
-    ).toStrictEqual([
+    expect(listFolds.map(({ childIndex }) => childIndex)).toStrictEqual([
       ...Array.from(
         { length: listChildCount },
         (_, index) => listChildCount - index - 1,
@@ -525,17 +460,14 @@ describe("authenticated CEK Data traversal V1", () => {
       1,
       0,
     ]);
-    expect(
-      mapFolds.map(({ pairIndex }) => pairIndex),
-    ).toStrictEqual(
+    expect(mapFolds.map(({ pairIndex }) => pairIndex)).toStrictEqual(
       Array.from(
         { length: mapPairCount },
         (_, index) => mapPairCount - index - 1,
       ),
     );
 
-    const listChildren =
-      new Array<MidgardCekDataSummaryV1>(listChildCount);
+    const listChildren = new Array<MidgardCekDataSummaryV1>(listChildCount);
     for (const action of listFolds.slice(0, listChildCount)) {
       listChildren[action.childIndex] = action.child;
     }
@@ -544,15 +476,12 @@ describe("authenticated CEK Data traversal V1", () => {
     );
     for (const action of listFolds.slice(0, listChildCount)) {
       expect(action.siblings).toStrictEqual(
-        buildMidgardValidationMerkleMembershipV1(
-          listLeaves,
-          action.childIndex,
-        ).siblings,
+        buildMidgardValidationMerkleMembershipV1(listLeaves, action.childIndex)
+          .siblings,
       );
     }
 
-    const mapChildren =
-      new Array<MidgardCekDataSummaryV1>(mapPairCount * 2);
+    const mapChildren = new Array<MidgardCekDataSummaryV1>(mapPairCount * 2);
     for (const action of mapFolds) {
       mapChildren[action.pairIndex * 2] = action.key;
       mapChildren[action.pairIndex * 2 + 1] = action.value;
@@ -584,9 +513,7 @@ describe("authenticated CEK Data traversal V1", () => {
         }),
       ).toStrictEqual(step.next);
     }
-    expect(
-      finalizeMidgardCekDataTraverseV1(trace.terminal),
-    ).not.toBeNull();
+    expect(finalizeMidgardCekDataTraverseV1(trace.terminal)).not.toBeNull();
   });
 
   it("constructs deeply nested evidence without a JavaScript call-stack limit", () => {
@@ -602,18 +529,11 @@ describe("authenticated CEK Data traversal V1", () => {
     });
 
     expect(source.length).toBe(12_001);
-    expect(
-      finalizeMidgardCekDataTraverseV1(trace.terminal),
-    ).not.toBeNull();
+    expect(finalizeMidgardCekDataTraverseV1(trace.terminal)).not.toBeNull();
   });
 
   it("makes the automatic constructor reject noncanonical and trailing bytes", () => {
-    const malformed = [
-      "8101",
-      "9fff",
-      "d86682187f80",
-      "0102",
-    ];
+    const malformed = ["8101", "9fff", "d86682187f80", "0102"];
     for (const source of malformed) {
       expect(() =>
         buildMidgardCekDataTraverseTraceV1({

@@ -47,7 +47,9 @@ describe("bounded blob V1", () => {
     expect(verify(proof)).toBe(true);
     expect(verify({ ...proof, fieldIndex: 8 })).toBe(false);
     expect(verify({ ...proof, chunkIndex: 0 })).toBe(false);
-    expect(verify({ ...proof, totalLength: proof.totalLength + 1 })).toBe(false);
+    expect(verify({ ...proof, totalLength: proof.totalLength + 1 })).toBe(
+      false,
+    );
     expect(
       verify({
         ...proof,

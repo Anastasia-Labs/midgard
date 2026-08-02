@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 
 describe("committee runtime capability", () => {
   it("pins Node >=22.15 and passes the zstd decoder self-test", async () => {
-    const packagePath = fileURLToPath(new URL("../package.json", import.meta.url));
+    const packagePath = fileURLToPath(
+      new URL("../package.json", import.meta.url),
+    );
     const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
       readonly engines?: { readonly node?: string };
     };

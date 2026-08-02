@@ -117,7 +117,9 @@ const asHexBytes = (
   }
   const bytes = Buffer.from(value, "hex");
   if (exactLength !== undefined && bytes.length !== exactLength) {
-    throw new Error(`${field} must contain exactly ${exactLength.toString()} bytes`);
+    throw new Error(
+      `${field} must contain exactly ${exactLength.toString()} bytes`,
+    );
   }
   if (maximumLength !== undefined && bytes.length > maximumLength) {
     throw new Error(`${field} exceeds ${maximumLength.toString()} bytes`);
@@ -137,16 +139,16 @@ export const parseMidgardMpfProofJsonV1 = (
   return value.map((rawStep, index) => {
     const field = `mpf_proof[${index.toString()}]`;
     const step = asRecord(rawStep, field);
-    const skip = asBoundedInteger(step.skip, `${field}.skip`, PATH_NIBBLE_COUNT);
+    const skip = asBoundedInteger(
+      step.skip,
+      `${field}.skip`,
+      PATH_NIBBLE_COUNT,
+    );
     if (step.type === "branch") {
       return {
         kind: "branch",
         skip,
-        neighbors: asHexBytes(
-          step.neighbors,
-          `${field}.neighbors`,
-          4 * 32,
-        ),
+        neighbors: asHexBytes(step.neighbors, `${field}.neighbors`, 4 * 32),
       };
     }
     if (step.type === "fork") {
@@ -193,22 +195,14 @@ export const parseMidgardMpfProofJsonV1 = (
 };
 
 const nibbleAt = (path: Uint8Array, index: number): number => {
-  if (
-    !Number.isSafeInteger(index) ||
-    index < 0 ||
-    index >= PATH_NIBBLE_COUNT
-  ) {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= PATH_NIBBLE_COUNT) {
     throw new Error("MPF nibble cursor is outside the key path");
   }
   const byte = path[Math.floor(index / 2)]!;
   return index % 2 === 0 ? Math.floor(byte / 16) : byte % 16;
 };
 
-const pathNibbles = (
-  path: Uint8Array,
-  start: number,
-  end: number,
-): Buffer => {
+const pathNibbles = (path: Uint8Array, start: number, end: number): Buffer => {
   const result: number[] = [];
   for (let cursor = start; cursor < end; cursor += 1) {
     result.push(nibbleAt(path, cursor));
@@ -243,8 +237,7 @@ const merkle2 = (
   branch: number,
   root: Uint8Array,
   neighbor: Uint8Array,
-): Hash32 =>
-  branch <= 0 ? combine(root, neighbor) : combine(neighbor, root);
+): Hash32 => (branch <= 0 ? combine(root, neighbor) : combine(neighbor, root));
 
 const merkle4 = (
   branch: number,
@@ -265,10 +258,7 @@ const merkle8 = (
 ): Hash32 =>
   branch <= 3
     ? combine(merkle4(branch, root, neighbor2, neighbor1), neighbor4)
-    : combine(
-        neighbor4,
-        merkle4(branch - 4, root, neighbor2, neighbor1),
-      );
+    : combine(neighbor4, merkle4(branch - 4, root, neighbor2, neighbor1));
 
 const merkle16 = (
   branch: number,
@@ -279,19 +269,10 @@ const merkle16 = (
   neighbor1: Uint8Array,
 ): Hash32 =>
   branch <= 7
-    ? combine(
-        merkle8(branch, root, neighbor4, neighbor2, neighbor1),
-        neighbor8,
-      )
+    ? combine(merkle8(branch, root, neighbor4, neighbor2, neighbor1), neighbor8)
     : combine(
         neighbor8,
-        merkle8(
-          branch - 8,
-          root,
-          neighbor4,
-          neighbor2,
-          neighbor1,
-        ),
+        merkle8(branch - 8, root, neighbor4, neighbor2, neighbor1),
       );
 
 const sparseMerkle16 = (
@@ -443,7 +424,9 @@ const validateFrameStructure = (frame: MidgardMpfProofFrameV1): void => {
   }
   if (frame.step.kind === "branch") {
     if (frame.step.neighbors.length !== 4 * 32) {
-      throw new Error("MPF branch frame must contain exactly 128 neighbor bytes");
+      throw new Error(
+        "MPF branch frame must contain exactly 128 neighbor bytes",
+      );
     }
     return;
   }
@@ -515,9 +498,7 @@ export const encodeMidgardMpfProofFrameV1 = (
 export const hashMidgardMpfProofFrameV1 = (
   frame: MidgardMpfProofFrameV1,
 ): Hash32 =>
-  hash32(
-    Buffer.concat([FRAME_DOMAIN, encodeMidgardMpfProofFrameV1(frame)]),
-  );
+  hash32(Buffer.concat([FRAME_DOMAIN, encodeMidgardMpfProofFrameV1(frame)]));
 
 export const buildMidgardMpfProofFramesV1 = (
   steps: readonly MidgardMpfProofStepV1[],
@@ -549,10 +530,7 @@ export const buildMidgardMpfProofDescriptorV1 = (
   let cursor = 0;
   frames.forEach((frame, frameIndex) => {
     validateFrameStructure(frame);
-    if (
-      frame.frameIndex !== frameIndex ||
-      frame.cursor !== cursor
-    ) {
+    if (frame.frameIndex !== frameIndex || frame.cursor !== cursor) {
       throw new Error("MPF proof frames are not one canonical ordered path");
     }
     cursor = frame.nextCursor;
@@ -630,11 +608,7 @@ export const buildMidgardMpfProofFoldTraceV1 = ({
     const post: MidgardMpfProofFoldControlV1 = {
       nextFrameIndex: frameIndex - 1,
       expectedNextCursor: frame.cursor,
-      includingRoot: foldIncludingFrame(
-        path,
-        frame,
-        control.includingRoot,
-      ),
+      includingRoot: foldIncludingFrame(path, frame, control.includingRoot),
       excludingRoot: foldExcludingFrame(
         path,
         frame,

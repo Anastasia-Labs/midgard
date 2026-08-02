@@ -9,11 +9,7 @@ import {
   DataPair,
 } from "@harmoniclabs/plutus-data";
 import { Machine } from "@harmoniclabs/plutus-machine";
-import {
-  Application,
-  Builtin,
-  UPLCConst,
-} from "@harmoniclabs/uplc";
+import { Application, Builtin, UPLCConst } from "@harmoniclabs/uplc";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -52,40 +48,32 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
       UPLCConst.int(128),
     );
     const evaluation = new Machine(
-      toCostModelV3(
-        [...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW] as unknown as Parameters<
-          typeof toCostModelV3
-        >[0],
-      ),
+      toCostModelV3([
+        ...PLUTUS_V3_CANONICAL_COST_MODEL_VIEW,
+      ] as unknown as Parameters<typeof toCostModelV3>[0]),
     ).eval(program);
     const builtin = computeMidgardCekBuiltinBudgetV1(0, [1n, 2n]);
 
     // startup + builtin + two application + two constant CEK nodes
-    expect(evaluation.budgetSpent.cpu).toBe(
-      100n + 5n * 16_000n + builtin.cpu,
-    );
-    expect(evaluation.budgetSpent.mem).toBe(
-      100n + 5n * 100n + builtin.memory,
-    );
+    expect(evaluation.budgetSpent.cpu).toBe(100n + 5n * 16_000n + builtin.cpu);
+    expect(evaluation.budgetSpent.mem).toBe(100n + 5n * 100n + builtin.memory);
   });
 
   it("fails closed on unknown tags, wrong arity, or negative sizes", () => {
-    expect(() =>
-      computeMidgardCekBuiltinBudgetV1(87, [1n]),
-    ).toThrow(/outside Plutus V3/u);
-    expect(() =>
-      computeMidgardCekBuiltinBudgetV1(0, [1n]),
-    ).toThrow(/requires 2 cost sizes/u);
-    expect(() =>
-      computeMidgardCekBuiltinBudgetV1(18, [-1n]),
-    ).toThrow(/must be non-negative/u);
+    expect(() => computeMidgardCekBuiltinBudgetV1(87, [1n])).toThrow(
+      /outside Plutus V3/u,
+    );
+    expect(() => computeMidgardCekBuiltinBudgetV1(0, [1n])).toThrow(
+      /requires 2 cost sizes/u,
+    );
+    expect(() => computeMidgardCekBuiltinBudgetV1(18, [-1n])).toThrow(
+      /must be non-negative/u,
+    );
   });
 
   it("uses signed integer bytes and cardano-node's empty-byte rule", () => {
     expect(
-      [-129n, -128n, -1n, 0n, 127n, 128n].map(
-        midgardCekIntegerMemorySizeV1,
-      ),
+      [-129n, -128n, -1n, 0n, 127n, 128n].map(midgardCekIntegerMemorySizeV1),
     ).toEqual([2n, 1n, 1n, 1n, 1n, 2n]);
     expect(
       midgardCekConstantMemorySizeV1(
@@ -120,10 +108,7 @@ describe("V1 pinned Plutus V3 builtin costs", () => {
     ).toBe(5n);
 
     const data = new DataMap([
-      new DataPair(
-        new DataI(1n),
-        new DataList([new DataB(new Uint8Array(2))]),
-      ),
+      new DataPair(new DataI(1n), new DataList([new DataB(new Uint8Array(2))])),
     ]);
     expect(midgardCekDataMemorySizeV1(data)).toBe(19n);
   });

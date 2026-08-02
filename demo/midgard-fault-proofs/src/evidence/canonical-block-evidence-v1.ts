@@ -110,7 +110,9 @@ export const authenticateTransactionsInclusionRootsV1 = async ({
   readonly reconstruction: TransitionTraceReconstruction;
   readonly transactions: readonly CanonicalBlockTransactionV1[];
 }): Promise<TransactionsInclusionRootAuthenticationV1> => {
-  const decoded = await Promise.all(transactions.map(decodeTransactionMaterial));
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
   const nativeCompactPhas = await keyValuePhasRootWithCount(
     decoded.map(nativeTrieItem),
   );

@@ -28,9 +28,7 @@ describe("authenticated CEK source blob V1", () => {
         ),
       );
 
-      expect(trace.terminal.stage).toBe(
-        MidgardCekSourceBlobStagesV1.Terminal,
-      );
+      expect(trace.terminal.stage).toBe(MidgardCekSourceBlobStagesV1.Terminal);
       expect(finalizeMidgardCekSourceBlobV1(trace.terminal)).toStrictEqual(
         commitMidgardCekBlobV1(source).root,
       );
@@ -56,9 +54,7 @@ describe("authenticated CEK source blob V1", () => {
       source,
     });
     expect(
-      encodeMidgardCekSourceBlobControlV1(
-        trace.terminal,
-      ).toString("hex"),
+      encodeMidgardCekSourceBlobControlV1(trace.terminal).toString("hex"),
     ).toBe(
       "860101111910008401021910008183015820eeae7280d2825a069ee81fdde1b202e15766bb7bf1689a514224772d104bc59d191000d87a80",
     );
@@ -101,10 +97,7 @@ describe("authenticated CEK source blob V1", () => {
     expect(() =>
       initialMidgardCekSourceBlobControlV1({
         sourceStart: 0,
-        sourceLength:
-          MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT *
-            4_095 +
-          1,
+        sourceLength: MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT * 4_095 + 1,
       }),
     ).toThrow(/range/u);
   });

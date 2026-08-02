@@ -7,10 +7,7 @@ import {
   verifyMidgardBoundedItemChunkProofV1,
 } from "./bounded-item-v1.js";
 import { encodeMidgardAddressBytes } from "./codec/address.js";
-import {
-  decodeSingleCbor,
-  encodeCbor,
-} from "./codec/cbor.js";
+import { decodeSingleCbor, encodeCbor } from "./codec/cbor.js";
 import { ensureHash32, type Hash32 } from "./codec/hash.js";
 import {
   buildMidgardValidationMerkleFrontierV1,
@@ -35,11 +32,7 @@ export type MidgardLedgerOutputDataSummaryV1 = {
   readonly memory: bigint;
 };
 
-export type MidgardLedgerOutputReferenceScriptLanguageV1 =
-  | -1
-  | 0
-  | 3
-  | 128;
+export type MidgardLedgerOutputReferenceScriptLanguageV1 = -1 | 0 | 3 | 128;
 
 /**
  * The compact value stored in a ledger MPF leaf.
@@ -165,11 +158,7 @@ const decodedBigInt = (value: unknown, field: string): bigint => {
   throw new Error(`Decoded ${field} is not an integer`);
 };
 
-const exactBytes = (
-  value: unknown,
-  length: number,
-  field: string,
-): Buffer => {
+const exactBytes = (value: unknown, length: number, field: string): Buffer => {
   if (!(value instanceof Uint8Array) || value.length !== length) {
     throw new Error(`${field} must contain exactly ${length.toString()} bytes`);
   }
@@ -260,10 +249,7 @@ const exactReferenceScript = ({
     28,
     "ledger_output_commitment_v1.reference_script_hash",
   );
-  const exactTotalLength = exactLength(
-    totalLength,
-    "reference-script length",
-  );
+  const exactTotalLength = exactLength(totalLength, "reference-script length");
   const exactCommitment = exactOptionalBytes(
     itemCommitment,
     32,
@@ -301,9 +287,7 @@ const exactReferenceScript = ({
 export const encodeMidgardLedgerOutputCommitmentV1 = (
   descriptor: MidgardLedgerOutputCommitmentV1,
 ): Buffer => {
-  if (
-    descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION
-  ) {
+  if (descriptor.version !== MIDGARD_LEDGER_OUTPUT_COMMITMENT_V1_VERSION) {
     throw new Error("Invalid V1 ledger output commitment version");
   }
   const address = encodeMidgardAddressBytes(descriptor.address);
@@ -467,10 +451,7 @@ export const buildMidgardLedgerOutputAssetFrontierV1 = (
     const assetNameOrder =
       previous.assetName.length - current.assetName.length ||
       Buffer.compare(previous.assetName, current.assetName);
-    if (
-      policyOrder > 0 ||
-      (policyOrder === 0 && assetNameOrder >= 0)
-    ) {
+    if (policyOrder > 0 || (policyOrder === 0 && assetNameOrder >= 0)) {
       throw new Error(
         "V1 ledger output assets must be in canonical policy/name order",
       );

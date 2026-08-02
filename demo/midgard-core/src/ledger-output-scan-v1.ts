@@ -1,6 +1,4 @@
-import {
-  MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
-} from "./bounded-item-v1.js";
+import { MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1 } from "./bounded-item-v1.js";
 import { decodeMidgardAddressBytes } from "./codec/address.js";
 import {
   compareBytes,
@@ -115,11 +113,7 @@ const assertSafeControlInteger = ({
   readonly minimum: number;
   readonly maximum?: number;
 }): void => {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < minimum ||
-    value > maximum
-  ) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw new Error(`Invalid V1 ledger output scan ${field}`);
   }
 };
@@ -147,10 +141,7 @@ export const encodeMidgardLedgerOutputScanControlV1 = (
     minimum: 0,
     maximum: 4,
   });
-  if (
-    control.mapEntryCount !== 0 &&
-    control.mapEntryCount < 2
-  ) {
+  if (control.mapEntryCount !== 0 && control.mapEntryCount < 2) {
     throw new Error("Invalid V1 ledger output scan map entry count");
   }
   assertSafeControlInteger({
@@ -275,17 +266,14 @@ const readKey = (
 ): number => {
   const key = readCborUnsigned(window, offset, "ledger_output.key");
   if (key.value !== expected) {
-    throw new Error(
-      `V1 ledger output expected key ${expected.toString(10)}`,
-    );
+    throw new Error(`V1 ledger output expected key ${expected.toString(10)}`);
   }
   return key.nextOffset;
 };
 
 const optionalFieldsComplete = (
   control: MidgardLedgerOutputScanControlV1,
-): boolean =>
-  control.optionalFieldCount + 2 === control.mapEntryCount;
+): boolean => control.optionalFieldCount + 2 === control.mapEntryCount;
 
 const encodedCborLength = (value: bigint | Uint8Array): number =>
   encodeCbor(value).length;
@@ -307,20 +295,12 @@ const stepRequiredFields = ({
   readonly window: Uint8Array;
   readonly windowOffset: number;
 }): MidgardLedgerOutputScanControlV1 => {
-  const outputMap = readCborMapHeader(
-    window,
-    windowOffset,
-    "ledger_output",
-  );
+  const outputMap = readCborMapHeader(window, windowOffset, "ledger_output");
   if (outputMap.length < 2 || outputMap.length > 4) {
     throw new Error("V1 ledger output must contain two to four fields");
   }
   const addressOffset = readKey(window, outputMap.nextOffset, 0n);
-  const address = readCborBytes(
-    window,
-    addressOffset,
-    "ledger_output.address",
-  );
+  const address = readCborBytes(window, addressOffset, "ledger_output.address");
   decodeMidgardAddressBytes(address.value);
   return {
     ...control,
@@ -345,11 +325,7 @@ const stepValueHeader = ({
   readonly windowOffset: number;
 }): MidgardLedgerOutputScanControlV1 => {
   const valueOffset = readKey(window, windowOffset, 1n);
-  const value = readCborArrayHeader(
-    window,
-    valueOffset,
-    "ledger_output.value",
-  );
+  const value = readCborArrayHeader(window, valueOffset, "ledger_output.value");
   if (value.length !== 2) {
     throw new Error("V1 ledger output Value must contain two fields");
   }
@@ -462,13 +438,10 @@ const stepAsset = ({
     assetName.value.length > 32 ||
     quantity.value <= 0n ||
     control.assetRemaining <= 0 ||
-    control.assetFrontier.count >=
-      MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
+    control.assetFrontier.count >= MIDGARD_VALIDATION_MERKLE_MAX_LEAF_COUNT ||
     (control.policyAssetCursor > 0 &&
-      compareCanonicalAssetNames(
-        control.previousAssetName,
-        assetName.value,
-      ) >= 0)
+      compareCanonicalAssetNames(control.previousAssetName, assetName.value) >=
+        0)
   ) {
     throw new Error("Invalid V1 ledger output asset");
   }
@@ -490,18 +463,12 @@ const stepAsset = ({
     }),
     policyRemaining: nextPolicyRemaining,
     assetRemaining: nextAssetRemaining,
-    policyAssetCursor: policyComplete
-      ? 0
-      : control.policyAssetCursor + 1,
+    policyAssetCursor: policyComplete ? 0 : control.policyAssetCursor + 1,
     previousPolicy: policyComplete
       ? control.currentPolicy
       : control.previousPolicy,
-    currentPolicy: policyComplete
-      ? Buffer.alloc(0)
-      : control.currentPolicy,
-    previousAssetName: policyComplete
-      ? Buffer.alloc(0)
-      : assetName.value,
+    currentPolicy: policyComplete ? Buffer.alloc(0) : control.currentPolicy,
+    previousAssetName: policyComplete ? Buffer.alloc(0) : assetName.value,
     assetFrontier: appendMidgardValidationMerkleLeafV1(
       control.assetFrontier,
       hashMidgardLedgerOutputAssetLeafV1({
@@ -588,11 +555,7 @@ const stepDatumHeader = ({
   readonly windowOffset: number;
 }): MidgardLedgerOutputScanControlV1 => {
   const datumOffset = readKey(window, windowOffset, 2n);
-  const datum = readCborBytesHeader(
-    window,
-    datumOffset,
-    "ledger_output.datum",
-  );
+  const datum = readCborBytesHeader(window, datumOffset, "ledger_output.datum");
   if (datum.length === 0) {
     throw new Error("V1 inline datum must contain canonical Plutus Data");
   }
@@ -824,16 +787,14 @@ export const buildMidgardLedgerOutputScanTraceV1 = (
     const chunkIndex = Math.floor(
       control.cursor / MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
     );
-    const chunkStart =
-      chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    const chunkStart = chunkIndex * MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
     const currentChunk = bytes.subarray(
       chunkStart,
       chunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
     );
     const tokenStage =
       control.stage <= MidgardLedgerOutputScanStagesV1.OptionalField;
-    const nextChunkStart =
-      chunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
+    const nextChunkStart = chunkStart + MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1;
     const hasNextChunk = nextChunkStart < bytes.length;
     const nextChunk =
       tokenStage && hasNextChunk
@@ -874,9 +835,7 @@ export const buildMidgardLedgerOutputScanTraceV1 = (
       control,
       next,
       chunkIndex,
-      nextChunkIndex: tokenStage && hasNextChunk
-          ? chunkIndex + 1
-          : null,
+      nextChunkIndex: tokenStage && hasNextChunk ? chunkIndex + 1 : null,
       asset,
     });
     control = next;

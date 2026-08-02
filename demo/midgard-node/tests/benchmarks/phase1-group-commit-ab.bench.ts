@@ -38,14 +38,10 @@ type DbStats = {
 
 type AdmissionFixture = {
   readonly seedRequests: readonly TxAdmissionsDB.ReservedAdmissionRequest[];
-  readonly laneRequests: readonly (
-    readonly TxAdmissionsDB.ReservedAdmissionRequest[]
-  )[];
+  readonly laneRequests: readonly (readonly TxAdmissionsDB.ReservedAdmissionRequest[])[];
   readonly mergedRequests: readonly TxAdmissionsDB.ReservedAdmissionRequest[];
   readonly expectedKinds: readonly ("new" | "duplicate" | "conflict")[];
-  readonly laneFirstNewRequests: readonly (
-    readonly TxAdmissionsDB.ReservedAdmissionRequest[]
-  )[];
+  readonly laneFirstNewRequests: readonly (readonly TxAdmissionsDB.ReservedAdmissionRequest[])[];
   readonly mergedFirstNewRequests: readonly TxAdmissionsDB.ReservedAdmissionRequest[];
   readonly duplicateGroupRequests: readonly TxAdmissionsDB.ReservedAdmissionRequest[];
   readonly existingRequests: readonly TxAdmissionsDB.ReservedAdmissionRequest[];
@@ -54,8 +50,12 @@ type AdmissionFixture = {
 const percentile = (samples: readonly number[], fraction: number): number => {
   const ordered = [...samples].sort((left, right) => left - right);
   return (
-    ordered[Math.max(0, Math.min(ordered.length - 1, Math.ceil(ordered.length * fraction) - 1))] ??
-    0
+    ordered[
+      Math.max(
+        0,
+        Math.min(ordered.length - 1, Math.ceil(ordered.length * fraction) - 1),
+      )
+    ] ?? 0
   );
 };
 
@@ -99,8 +99,9 @@ const requestForLane = (
       return {
         txId,
         txCanonicalCbor: deterministicBytes(`${label}:canonical`, 96),
-        programMaterialSidecarCbor:
-          encodeMidgardCekProgramMaterialSidecarV1([]),
+        programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1(
+          [],
+        ),
         submitSource: "native",
       };
     }
@@ -126,10 +127,7 @@ const buildFixture = (): AdmissionFixture => {
         96,
       ),
     };
-    const existing = requestForLane(
-      lane,
-      `lane-${lane.toString()}:existing`,
-    );
+    const existing = requestForLane(lane, `lane-${lane.toString()}:existing`);
     const existingConflict = {
       ...existing,
       txCanonicalCbor: deterministicBytes(
@@ -239,10 +237,7 @@ const readDbStats = (observerSql: SqlClient.SqlClient) =>
     } satisfies DbStats;
   });
 
-const resetAndSeed = (
-  sql: SqlClient.SqlClient,
-  fixture: AdmissionFixture,
-) =>
+const resetAndSeed = (sql: SqlClient.SqlClient, fixture: AdmissionFixture) =>
   Effect.gen(function* () {
     yield* sql`TRUNCATE TABLE tx_rejections, tx_admission_payloads, tx_admissions RESTART IDENTITY CASCADE`;
     const seeded = yield* TxAdmissionsDB.admitReservedBatch(
@@ -309,7 +304,9 @@ const expectStrictlyIncreasingArrival = (
   );
   expect(arrivals.every((value) => value >= 0n)).toBe(true);
   expect(
-    arrivals.every((value, index) => index === 0 || value > arrivals[index - 1]!),
+    arrivals.every(
+      (value, index) => index === 0 || value > arrivals[index - 1]!,
+    ),
   ).toBe(true);
 };
 
@@ -332,14 +329,16 @@ const verifySemanticState = (
     expect(toBigInt(counts[0]?.payload_count ?? -1)).toBe(250n);
 
     for (let lane = 0; lane < laneCount; lane += 1) {
-      const duplicateGroup =
-        yield* TxAdmissionsDB.getByTxId(fixture.duplicateGroupRequests[lane]!.txId);
+      const duplicateGroup = yield* TxAdmissionsDB.getByTxId(
+        fixture.duplicateGroupRequests[lane]!.txId,
+      );
       expect(duplicateGroup?.request_count).toBe(2n);
       expect(duplicateGroup?.tx_canonical_cbor).toEqual(
         fixture.duplicateGroupRequests[lane]!.txCanonicalCbor,
       );
-      const existing =
-        yield* TxAdmissionsDB.getByTxId(fixture.existingRequests[lane]!.txId);
+      const existing = yield* TxAdmissionsDB.getByTxId(
+        fixture.existingRequests[lane]!.txId,
+      );
       expect(existing?.request_count).toBe(2n);
       expect(existing?.tx_canonical_cbor).toEqual(
         fixture.existingRequests[lane]!.txCanonicalCbor,
@@ -423,7 +422,9 @@ describe("Phase 1 global group-commit PostgreSQL A/B diagnostic", () => {
       const database = process.env.POSTGRES_DB ?? "";
       expect(runToken).toMatch(/^[a-z0-9_]+$/u);
       expect(database).toBe(`midgard_phase1_group_commit_${runToken}`);
-      expect(process.env.POSTGRES_HOST).toMatch(/^(127\.0\.0\.1|localhost|::1)$/u);
+      expect(process.env.POSTGRES_HOST).toMatch(
+        /^(127\.0\.0\.1|localhost|::1)$/u,
+      );
       expect(Number(process.env.POSTGRES_PORT)).not.toBe(5_433);
       expect(Number.isSafeInteger(repetitions) && repetitions >= 9).toBe(true);
       expect(outputPath).toContain(runToken);
@@ -446,10 +447,9 @@ describe("Phase 1 global group-commit PostgreSQL A/B diagnostic", () => {
           });
           const fixture = buildFixture();
           expect(fixture.mergedRequests).toHaveLength(mergedRows);
-          expect(fixture.laneRequests.map((requests) => requests.length)).toEqual([
-            rowsPerLane,
-            rowsPerLane,
-          ]);
+          expect(
+            fixture.laneRequests.map((requests) => requests.length),
+          ).toEqual([rowsPerLane, rowsPerLane]);
           const requestDigest = createHash("sha256");
           for (const request of fixture.mergedRequests) {
             requestDigest.update(request.txId);
@@ -540,7 +540,8 @@ describe("Phase 1 global group-commit PostgreSQL A/B diagnostic", () => {
             mergedRows,
             requestSha256: requestDigest.digest("hex"),
             expectedOutcomeCounts: {
-              new: fixture.expectedKinds.filter((kind) => kind === "new").length,
+              new: fixture.expectedKinds.filter((kind) => kind === "new")
+                .length,
               duplicate: fixture.expectedKinds.filter(
                 (kind) => kind === "duplicate",
               ).length,

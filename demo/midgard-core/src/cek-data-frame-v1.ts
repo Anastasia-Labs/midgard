@@ -23,10 +23,7 @@ import {
 } from "./validation-merkle.js";
 
 const FRAME_DOMAIN = Buffer.from("MidgardCekDataFrameV1", "ascii");
-const CHILD_DOMAIN = Buffer.from(
-  "MidgardCekDataFrameChildV1",
-  "ascii",
-);
+const CHILD_DOMAIN = Buffer.from("MidgardCekDataFrameChildV1", "ascii");
 
 const UINT32_MAX = 0xffff_ffffn;
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
@@ -69,10 +66,9 @@ export const MidgardCekDataFrameTagsV1 = Object.freeze({
 
 const hash32 = (domain: Bytes, preimage: Bytes): Hash32 =>
   ensureHash32(
-    blake2b(
-      Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]),
-      { dkLen: 32 },
-    ),
+    blake2b(Buffer.concat([Buffer.from(domain), Buffer.from(preimage)]), {
+      dkLen: 32,
+    }),
     "cek_data_frame_hash",
   );
 
@@ -89,24 +85,14 @@ const boundedBigInt = (
   return value;
 };
 
-const boundedCount = (
-  value: number,
-  fieldName: string,
-): number => {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > Number(UINT32_MAX)
-  ) {
+const boundedCount = (value: number, fieldName: string): number => {
+  if (!Number.isSafeInteger(value) || value < 0 || value > Number(UINT32_MAX)) {
     throw new RangeError(`${fieldName} must fit uint32`);
   }
   return value;
 };
 
-const exactOptionalHash = (
-  value: Bytes,
-  fieldName: string,
-): Buffer => {
+const exactOptionalHash = (value: Bytes, fieldName: string): Buffer => {
   if (value.length === 0) return Buffer.alloc(0);
   return Buffer.from(ensureHash32(value, fieldName));
 };
@@ -116,16 +102,8 @@ const exactSummary = (
   fieldName: string,
 ): void => {
   ensureHash32(summary.root, `${fieldName}.root`);
-  boundedBigInt(
-    summary.cborLength,
-    UINT64_MAX,
-    `${fieldName}.cbor_length`,
-  );
-  boundedBigInt(
-    summary.memory,
-    UINT64_MAX,
-    `${fieldName}.memory`,
-  );
+  boundedBigInt(summary.cborLength, UINT64_MAX, `${fieldName}.cbor_length`);
+  boundedBigInt(summary.memory, UINT64_MAX, `${fieldName}.memory`);
   if (summary.cborLength === 0n || summary.memory < 4n) {
     throw new RangeError(
       `${fieldName} must describe a nonempty canonical Data item`,
@@ -151,12 +129,7 @@ const constructorFields = (
 ): readonly [bigint, Buffer, bigint, bigint] => {
   switch (frame.kind) {
     case "constrSmall":
-      return [
-        frame.constructor,
-        Buffer.alloc(0),
-        0n,
-        0n,
-      ];
+      return [frame.constructor, Buffer.alloc(0), 0n, 0n];
     case "constrLarge":
       return [
         0n,
@@ -219,13 +192,8 @@ export const validateMidgardCekDataFrameV1 = (
       UINT64_MAX,
       "cek_data_frame.constructor_memory",
     );
-    if (
-      frame.constructorCborLength === 0n ||
-      frame.constructorMemory < 5n
-    ) {
-      throw new RangeError(
-        "large-constructor frame summary is not canonical",
-      );
+    if (frame.constructorCborLength === 0n || frame.constructorMemory < 5n) {
+      throw new RangeError("large-constructor frame summary is not canonical");
     }
   }
   if (frame.kind === "map" && expectedChildren % 2 !== 0) {
@@ -239,17 +207,11 @@ export const validateMidgardCekDataFrameV1 = (
     );
   }
   if (frame.childFrontier.count !== childCount) {
-    throw new Error(
-      "cek_data_frame frontier count does not match child_count",
-    );
+    throw new Error("cek_data_frame frontier count does not match child_count");
   }
-  validateMidgardValidationMerkleFrontierV1(
-    frame.childFrontier,
-  );
+  validateMidgardValidationMerkleFrontierV1(frame.childFrontier);
   const maximumFoldCursor =
-    frame.kind === "map"
-      ? expectedChildren / 2
-      : expectedChildren;
+    frame.kind === "map" ? expectedChildren / 2 : expectedChildren;
   if (foldCursor > maximumFoldCursor) {
     throw new RangeError(
       "cek_data_frame.fold_cursor exceeds its sequence length",
@@ -463,20 +425,13 @@ export const appendMidgardCekDataFrameChildV1 = (
   try {
     validateMidgardCekDataFrameV1(frame);
     exactSummary(child, "cek_data_frame_child.summary");
-    if (
-      frame.foldCursor !== 0 ||
-      frame.childCount >= frame.expectedChildren
-    ) {
+    if (frame.foldCursor !== 0 || frame.childCount >= frame.expectedChildren) {
       return null;
     }
-    const childFrontier =
-      appendMidgardValidationMerkleLeafV1(
-        frame.childFrontier,
-        hashMidgardCekDataFrameChildV1(
-          frame.childCount,
-          child,
-        ),
-      );
+    const childFrontier = appendMidgardValidationMerkleLeafV1(
+      frame.childFrontier,
+      hashMidgardCekDataFrameChildV1(frame.childCount, child),
+    );
     const next = {
       ...frame,
       childCount: frame.childCount + 1,
@@ -509,12 +464,8 @@ export const foldMidgardCekDataFrameListChildV1 = ({
     ) {
       return null;
     }
-    const expectedIndex =
-      frame.expectedChildren - frame.foldCursor - 1;
-    const leafHash = hashMidgardCekDataFrameChildV1(
-      childIndex,
-      child,
-    );
+    const expectedIndex = frame.expectedChildren - frame.foldCursor - 1;
+    const leafHash = hashMidgardCekDataFrameChildV1(childIndex, child);
     if (
       childIndex !== expectedIndex ||
       !verifyMidgardValidationMerkleMembershipV1({
@@ -522,10 +473,7 @@ export const foldMidgardCekDataFrameListChildV1 = ({
         leafIndex: childIndex,
         leafHash,
         siblings: siblings.map((sibling) =>
-          ensureHash32(
-            sibling,
-            "cek_data_frame_child.sibling",
-          ),
+          ensureHash32(sibling, "cek_data_frame_child.sibling"),
         ),
       })
     ) {
@@ -534,10 +482,7 @@ export const foldMidgardCekDataFrameListChildV1 = ({
     const next = {
       ...frame,
       foldCursor: frame.foldCursor + 1,
-      sequence: prependMidgardCekDataListSummaryV1(
-        child,
-        frame.sequence,
-      ),
+      sequence: prependMidgardCekDataListSummaryV1(child, frame.sequence),
     };
     validateMidgardCekDataFrameV1(next);
     return next;
@@ -563,26 +508,16 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
 }): MidgardCekDataFrameV1 | null => {
   try {
     validateMidgardCekDataFrameV1(frame);
-    if (
-      frame.kind !== "map" ||
-      frame.childCount !== frame.expectedChildren
-    ) {
+    if (frame.kind !== "map" || frame.childCount !== frame.expectedChildren) {
       return null;
     }
     const pairCount = frame.expectedChildren / 2;
     if (frame.foldCursor >= pairCount) return null;
-    const expectedPairIndex =
-      pairCount - frame.foldCursor - 1;
+    const expectedPairIndex = pairCount - frame.foldCursor - 1;
     const keyIndex = pairIndex * 2;
     const valueIndex = keyIndex + 1;
-    const keyLeafHash = hashMidgardCekDataFrameChildV1(
-      keyIndex,
-      key,
-    );
-    const valueLeafHash = hashMidgardCekDataFrameChildV1(
-      valueIndex,
-      value,
-    );
+    const keyLeafHash = hashMidgardCekDataFrameChildV1(keyIndex, key);
+    const valueLeafHash = hashMidgardCekDataFrameChildV1(valueIndex, value);
     if (
       pairIndex !== expectedPairIndex ||
       !verifyMidgardValidationMerkleMembershipV1({
@@ -590,10 +525,7 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
         leafIndex: keyIndex,
         leafHash: keyLeafHash,
         siblings: keySiblings.map((sibling) =>
-          ensureHash32(
-            sibling,
-            "cek_data_frame_map.key_sibling",
-          ),
+          ensureHash32(sibling, "cek_data_frame_map.key_sibling"),
         ),
       }) ||
       !verifyMidgardValidationMerkleMembershipV1({
@@ -601,10 +533,7 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
         leafIndex: valueIndex,
         leafHash: valueLeafHash,
         siblings: valueSiblings.map((sibling) =>
-          ensureHash32(
-            sibling,
-            "cek_data_frame_map.value_sibling",
-          ),
+          ensureHash32(sibling, "cek_data_frame_map.value_sibling"),
         ),
       })
     ) {
@@ -613,11 +542,7 @@ export const foldMidgardCekDataFrameMapPairV1 = ({
     const next = {
       ...frame,
       foldCursor: frame.foldCursor + 1,
-      sequence: prependMidgardCekDataPairSummaryV1(
-        key,
-        value,
-        frame.sequence,
-      ),
+      sequence: prependMidgardCekDataPairSummaryV1(key, value, frame.sequence),
     };
     validateMidgardCekDataFrameV1(next);
     return next;

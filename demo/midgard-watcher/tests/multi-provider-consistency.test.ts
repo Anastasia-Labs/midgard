@@ -248,7 +248,6 @@ const observation = (
   return normalized;
 };
 
-
 const evaluateWatcherMultiProviderConsistencyV1 = (
   configuredSource: unknown,
   observations: unknown,

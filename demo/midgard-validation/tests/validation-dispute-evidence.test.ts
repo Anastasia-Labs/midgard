@@ -51,8 +51,7 @@ const falsifyTerminalVerdict = (
   trace: DeterministicValidationMachineTrace,
   verdict: Exclude<MidgardValidationVerdictName, "pending">,
 ): DeterministicValidationMachineTrace => {
-  const rejectionCode =
-    verdict === "accepted" ? null : RejectCodes.EmptyInputs;
+  const rejectionCode = verdict === "accepted" ? null : RejectCodes.EmptyInputs;
   const rejectionCodeHash =
     rejectionCode === null
       ? MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH
@@ -96,11 +95,12 @@ const buildAcceptedForcedTrace =
         outputCbor: output,
       }),
     ];
-    const ledgerMutationSteps =
-      await buildValidationMachineLedgerMutationSteps({
+    const ledgerMutationSteps = await buildValidationMachineLedgerMutationSteps(
+      {
         initialEntries: [{ outRef: spent, output }],
         operations: expectedLedgerOps,
-      });
+      },
+    );
     return await Effect.runPromise(
       buildDeterministicValidationMachineTrace({
         ...baseContext,
@@ -144,9 +144,7 @@ const expectExactBundle = (
   bundle: ReturnType<typeof buildValidationDisputeEvidenceBundleV1>,
 ): void => {
   expect(bundle.finalDispute.turn).toEqual({ type: "readyForOneStep" });
-  expect(bundle.finalDispute.highIndex).toBe(
-    bundle.finalDispute.lowIndex + 1,
-  );
+  expect(bundle.finalDispute.highIndex).toBe(bundle.finalDispute.lowIndex + 1);
   expect(bundle.moves.length).toBeGreaterThan(0);
   expect(
     bundle.moves.every(
@@ -164,8 +162,7 @@ const expectExactBundle = (
   });
   parseExactAikenDataCbor({
     blueprint,
-    definitionName:
-      "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
+    definitionName: "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
     cbor: bundle.oneStepArgument.transitionCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
@@ -178,16 +175,13 @@ const expectExactBundle = (
   });
   parseExactAikenDataCbor({
     blueprint,
-    definitionName:
-      "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
+    definitionName: "midgard/validation_machine_v1/ValidationOneStepEvidenceV1",
     cbor: bundle.oneStepArgument.evidenceCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
   expect(bundle.oneStepArgument.resolverIndex).toBeGreaterThanOrEqual(0);
   expect(bundle.oneStepArgument.resolverIndex).toBeLessThan(14);
-  expect(
-    bundle.oneStepArgument.semanticResolverIndex === null,
-  ).toBe(
+  expect(bundle.oneStepArgument.semanticResolverIndex === null).toBe(
     bundle.oneStepArgument.resolverIndex === 9 ||
       bundle.oneStepArgument.resolverIndex === 11 ||
       bundle.oneStepArgument.resolverIndex === 12,
@@ -197,10 +191,7 @@ const expectExactBundle = (
 describe("validation dispute evidence construction", () => {
   it("challenges a valid forced transaction falsely classified as a no-op", async () => {
     const challengerTrace = await buildAcceptedForcedTrace();
-    const operatorTrace = falsifyTerminalVerdict(
-      challengerTrace,
-      "rejected",
-    );
+    const operatorTrace = falsifyTerminalVerdict(challengerTrace, "rejected");
     const bundle = buildValidationDisputeEvidenceBundleV1({
       operatorTrace,
       challengerTrace,
@@ -219,10 +210,7 @@ describe("validation dispute evidence construction", () => {
 
   it("challenges an invalid forced no-op falsely classified as effectful", async () => {
     const challengerTrace = await buildRejectedForcedTrace();
-    const operatorTrace = falsifyTerminalVerdict(
-      challengerTrace,
-      "accepted",
-    );
+    const operatorTrace = falsifyTerminalVerdict(challengerTrace, "accepted");
     const bundle = buildValidationDisputeEvidenceBundleV1({
       operatorTrace,
       challengerTrace,

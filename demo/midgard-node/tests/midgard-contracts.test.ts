@@ -54,8 +54,9 @@ describe("midgard contracts registry", () => {
     txHash: "00".repeat(32),
     outputIndex: 0,
   } as const;
-  const cardanoSnapshot =
-    normalizeDeploymentManifestV1JsonValue({ maxTxSize: 16_384 });
+  const cardanoSnapshot = normalizeDeploymentManifestV1JsonValue({
+    maxTxSize: 16_384,
+  });
   const daVkey = "11".repeat(32);
   const manifestIdentityContext: DeploymentManifestV1IdentityContext = {
     cardanoProtocolParameters: {
@@ -70,8 +71,9 @@ describe("midgard contracts registry", () => {
     },
     da: {
       committeeVkeys: [daVkey],
-      committeeSignersHash:
-        computeDeploymentManifestV1DaCommitteeSignersHash([daVkey]),
+      committeeSignersHash: computeDeploymentManifestV1DaCommitteeSignersHash([
+        daVkey,
+      ]),
       threshold: 1,
       transportProfile: {
         protocolVersion: DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -204,8 +206,7 @@ describe("midgard contracts registry", () => {
         resolved.fraudProofs.validationTraceDispute.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.source.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.game.spendingScriptHash,
-        resolved.fraudProofs.validationTraceDispute.boundary
-          .spendingScriptHash,
+        resolved.fraudProofs.validationTraceDispute.boundary.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.timeout.spendingScriptHash,
         resolved.fraudProofs.validationTraceDispute.award.spendingScriptHash,
       ];
@@ -227,9 +228,9 @@ describe("midgard contracts registry", () => {
       expect(
         txOrderContracts.txOrderFieldReceipt.spendingScriptHash,
       ).toHaveLength(56);
-      expect(txOrderContracts.cekProgramMaterial.spendingScriptHash).toHaveLength(
-        56,
-      );
+      expect(
+        txOrderContracts.cekProgramMaterial.spendingScriptHash,
+      ).toHaveLength(56);
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 

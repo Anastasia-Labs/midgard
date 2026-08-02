@@ -1,6 +1,4 @@
-import {
-  commitMidgardCekBlobV1,
-} from "./cek-proof.js";
+import { commitMidgardCekBlobV1 } from "./cek-proof.js";
 import {
   emptyMidgardCekDataPairSummaryV1,
   hashMidgardCekDataNodeV1,
@@ -11,10 +9,7 @@ import {
   prependMidgardCekDataPairSummaryV1,
   summarizeMidgardCekMapDataV1,
 } from "./cek-semantic.js";
-import {
-  encodeCbor,
-  encodeCborArrayRaw,
-} from "./codec/cbor.js";
+import { encodeCbor, encodeCborArrayRaw } from "./codec/cbor.js";
 import { ensureHash32 } from "./codec/hash.js";
 import {
   buildMidgardLedgerOutputAssetFrontierV1,
@@ -73,11 +68,7 @@ const UINT32_MAX = 0xffff_ffff;
 const UINT64_MAX = 0xffff_ffff_ffff_ffffn;
 
 const exactUint32 = (value: number, field: string): number => {
-  if (
-    !Number.isSafeInteger(value) ||
-    value < 0 ||
-    value > UINT32_MAX
-  ) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > UINT32_MAX) {
     throw new Error(`Invalid V1 ledger output Value ${field}`);
   }
   return value;
@@ -108,10 +99,7 @@ const exactSummary = (
   field: string,
 ): MidgardCekDataSummaryV1 => ({
   root: ensureHash32(summary.root, `${field}.root`),
-  cborLength: exactUint64(
-    summary.cborLength,
-    `${field}.cbor_length`,
-  ),
+  cborLength: exactUint64(summary.cborLength, `${field}.cbor_length`),
   memory: exactUint64(summary.memory, `${field}.memory`),
 });
 
@@ -135,11 +123,7 @@ const encodeOptionalSummary = (
   const exact = exactSummary(summary, "result");
   return Buffer.concat([
     Buffer.from("d8799f", "hex"),
-    encodeCbor([
-      exact.root,
-      exact.cborLength,
-      exact.memory,
-    ]),
+    encodeCbor([exact.root, exact.cborLength, exact.memory]),
     Buffer.from([0xff]),
   ]);
 };
@@ -178,9 +162,7 @@ export const isWellFormedMidgardLedgerOutputValueControlV1 = (
     exactSequence(control.currentAssets, "current_assets");
     exactSequence(control.valueEntries, "value_entries");
     if (control.result !== null) exactSummary(control.result, "result");
-    if (
-      control.stage === MidgardLedgerOutputValueStagesV1.Terminal
-    ) {
+    if (control.stage === MidgardLedgerOutputValueStagesV1.Terminal) {
       return (
         control.assetRemaining === 0 &&
         control.currentPolicy.length === 0 &&
@@ -193,8 +175,7 @@ export const isWellFormedMidgardLedgerOutputValueControlV1 = (
       control.result === null &&
       (control.currentPolicy.length !== 0 ||
         isEmptyPairSequence(control.currentAssets)) &&
-      (control.stage !==
-        MidgardLedgerOutputValueStagesV1.Finalize ||
+      (control.stage !== MidgardLedgerOutputValueStagesV1.Finalize ||
         control.assetRemaining === 0)
     );
   } catch {
@@ -243,9 +224,7 @@ const integerMemory = (value: bigint): bigint => {
   return BigInt(Math.ceil(doubled.toString(2).length / 8));
 };
 
-const summarizeInteger = (
-  value: bigint,
-): MidgardCekDataSummaryV1 => {
+const summarizeInteger = (value: bigint): MidgardCekDataSummaryV1 => {
   const cbor = encodeCbor(value);
   const memory = 4n + integerMemory(value);
   return {
@@ -260,9 +239,7 @@ const summarizeInteger = (
   };
 };
 
-const summarizeBytes = (
-  bytes: Uint8Array,
-): MidgardCekDataSummaryV1 => {
+const summarizeBytes = (bytes: Uint8Array): MidgardCekDataSummaryV1 => {
   const exact = Buffer.from(bytes);
   const bytesLength = BigInt(exact.length);
   const cborLength = midgardCekDataBytesCborLengthV1(bytesLength);
@@ -294,9 +271,7 @@ const finalizeCurrentPolicy = (
 const advanced = (
   control: MidgardLedgerOutputValueControlV1,
 ): MidgardLedgerOutputValueControlV1 | null =>
-  isWellFormedMidgardLedgerOutputValueControlV1(control)
-    ? control
-    : null;
+  isWellFormedMidgardLedgerOutputValueControlV1(control) ? control : null;
 
 export const advanceMidgardLedgerOutputValueV1 = ({
   control,
@@ -317,9 +292,7 @@ export const advanceMidgardLedgerOutputValueV1 = ({
       return null;
     }
     exactUint64(lovelace, "lovelace");
-    if (
-      control.stage === MidgardLedgerOutputValueStagesV1.Assets
-    ) {
+    if (control.stage === MidgardLedgerOutputValueStagesV1.Assets) {
       if (control.assetRemaining === 0) {
         return witness === null
           ? advanced({
@@ -380,9 +353,7 @@ export const advanceMidgardLedgerOutputValueV1 = ({
         valueEntries,
       });
     }
-    if (
-      control.stage === MidgardLedgerOutputValueStagesV1.Finalize
-    ) {
+    if (control.stage === MidgardLedgerOutputValueStagesV1.Finalize) {
       if (witness !== null) return null;
       let valueEntries = finalizeCurrentPolicy(control);
       if (lovelace !== 0n) {
@@ -430,9 +401,7 @@ export const buildMidgardLedgerOutputValueTraceV1 = ({
 }): MidgardLedgerOutputValueTraceV1 => {
   exactUint64(lovelace, "lovelace");
   const material = buildMidgardLedgerOutputAssetFrontierV1(assets);
-  const initial = initialMidgardLedgerOutputValueControlV1(
-    material.count,
-  );
+  const initial = initialMidgardLedgerOutputValueControlV1(material.count);
   const steps: MidgardLedgerOutputValueTraceStepV1[] = [];
   let control = initial;
   while (control.assetRemaining > 0) {

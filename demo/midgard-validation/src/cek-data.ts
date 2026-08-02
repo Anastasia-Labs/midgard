@@ -56,13 +56,8 @@ export const midgardCekMachineStateDataV1 = (
     state.memory,
   ]);
 
-const constantWitnessData = (
-  witness: MidgardCekConstantWitnessV1,
-): CekData =>
-  new Constr(0, [
-    bytesData(witness.typeCbor),
-    bytesData(witness.payloadCbor),
-  ]);
+const constantWitnessData = (witness: MidgardCekConstantWitnessV1): CekData =>
+  new Constr(0, [bytesData(witness.typeCbor), bytesData(witness.payloadCbor)]);
 
 const environmentSummaryData = (
   summary: MidgardCekEnvironmentSummaryV1,
@@ -115,9 +110,7 @@ const machineValueData = (value: MidgardCekValueNodeV1): CekData => {
   }
 };
 
-const directValueData = (
-  value: MidgardCekDirectValueWitnessV1,
-): CekData => {
+const directValueData = (value: MidgardCekDirectValueWitnessV1): CekData => {
   switch (value.kind) {
     case "constant":
       return new Constr(0, [constantWitnessData(value.witness)]);
@@ -140,9 +133,7 @@ const directValueData = (
   }
 };
 
-const runtimeValueData = (
-  value: MidgardCekRuntimeValueWitnessV1,
-): CekData => {
+const runtimeValueData = (value: MidgardCekRuntimeValueWitnessV1): CekData => {
   switch (value.kind) {
     case "constant":
       return new Constr(0, [constantWitnessData(value.witness)]);
@@ -535,9 +526,7 @@ export const midgardCekCoreStepWitnessDataV1 = (
         dataNodeData(witness.value),
       ]);
     case "finishBuiltinMapConversion":
-      return new Constr(35, [
-        mapConversionControlData(witness.control),
-      ]);
+      return new Constr(35, [mapConversionControlData(witness.control)]);
     case "executeBuiltinSemanticFailure":
       return new Constr(36, [
         witness.tag,

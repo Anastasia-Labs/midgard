@@ -181,7 +181,10 @@ describe("multi-node DA committee integration", () => {
   });
 });
 
-const submitted = (txHash: string) => ({ status: "submitted" as const, txHash });
+const submitted = (txHash: string) => ({
+  status: "submitted" as const,
+  txHash,
+});
 
 const candidateRecord = ({
   headerHash,

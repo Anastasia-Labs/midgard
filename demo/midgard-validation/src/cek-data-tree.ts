@@ -40,10 +40,7 @@ export type MidgardCekDataTreeCommitmentV1 = {
   readonly root: Uint8Array;
   readonly cborLength: bigint;
   readonly memory: bigint;
-  readonly dataNodes: ReadonlyMap<
-    string,
-    HashedMaterial<MidgardCekDataNodeV1>
-  >;
+  readonly dataNodes: ReadonlyMap<string, HashedMaterial<MidgardCekDataNodeV1>>;
   readonly listNodes: ReadonlyMap<
     string,
     HashedMaterial<MidgardCekDataListNodeV1>
@@ -97,8 +94,7 @@ type DataWork =
       readonly list: ListWork;
     };
 
-const rootKey = (root: Uint8Array): string =>
-  Buffer.from(root).toString("hex");
+const rootKey = (root: Uint8Array): string => Buffer.from(root).toString("hex");
 
 const addExact = <Node>(
   entries: Map<string, HashedMaterial<Node>>,
@@ -107,10 +103,7 @@ const addExact = <Node>(
 ): void => {
   const key = rootKey(root);
   const existing = entries.get(key);
-  if (
-    existing !== undefined &&
-    !existing.preimage.equals(material.preimage)
-  ) {
+  if (existing !== undefined && !existing.preimage.equals(material.preimage)) {
     throw new Error("CEK semantic material hash collision");
   }
   entries.set(key, material);
@@ -141,18 +134,9 @@ const asByteArray = (value: unknown): Uint8Array => {
 export const commitMidgardCekDataTreeV1 = (
   value: Data,
 ): MidgardCekDataTreeCommitmentV1 => {
-  const dataNodes = new Map<
-    string,
-    HashedMaterial<MidgardCekDataNodeV1>
-  >();
-  const listNodes = new Map<
-    string,
-    HashedMaterial<MidgardCekDataListNodeV1>
-  >();
-  const pairNodes = new Map<
-    string,
-    HashedMaterial<MidgardCekDataPairNodeV1>
-  >();
+  const dataNodes = new Map<string, HashedMaterial<MidgardCekDataNodeV1>>();
+  const listNodes = new Map<string, HashedMaterial<MidgardCekDataListNodeV1>>();
+  const pairNodes = new Map<string, HashedMaterial<MidgardCekDataPairNodeV1>>();
   const blobNodes = new Map<
     string,
     {

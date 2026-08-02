@@ -620,7 +620,9 @@ describe("provider-neutral authenticated L1 adapter", () => {
     });
     expect(connectionCount).toBe(0);
     await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error === undefined ? resolve() : reject(error))),
+      server.close((error) =>
+        error === undefined ? resolve() : reject(error),
+      ),
     );
   });
 
@@ -806,8 +808,7 @@ describe("provider-neutral authenticated L1 adapter", () => {
     alteredRedeemer.providerId = providerId;
     alteredRedeemer.transactions[0].redeemers[0].bytes = publicBytes("00");
     rejected(
-      () =>
-        normalizeWatcherL1BlockV1(authenticatedProvider(), alteredRedeemer),
+      () => normalizeWatcherL1BlockV1(authenticatedProvider(), alteredRedeemer),
       "identity_mismatch",
       "$.transactions[0].redeemers",
     );

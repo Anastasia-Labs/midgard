@@ -4,12 +4,7 @@ import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
   assertMidgardPlutusDataWellFormedV1,
 } from "../plutus-data-cbor.js";
-import {
-  asArray,
-  asBytes,
-  decodeSingleCbor,
-  encodeCbor,
-} from "./cbor.js";
+import { asArray, asBytes, decodeSingleCbor, encodeCbor } from "./cbor.js";
 import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import { asFixedArray, asUnsigned } from "./native-validation.js";
 
@@ -23,7 +18,10 @@ type NormalizedRedeemer = {
 
 const supportedCardanoRedeemerTag = (
   tag: number,
-): tag is CML.RedeemerTag.Spend | CML.RedeemerTag.Mint | CML.RedeemerTag.Reward =>
+): tag is
+  | CML.RedeemerTag.Spend
+  | CML.RedeemerTag.Mint
+  | CML.RedeemerTag.Reward =>
   tag === CML.RedeemerTag.Spend ||
   tag === CML.RedeemerTag.Mint ||
   tag === CML.RedeemerTag.Reward;
@@ -45,7 +43,9 @@ const normalizeRedeemers = (
 ): readonly NormalizedRedeemer[] => {
   const sorted = [...redeemers].sort(compareRedeemers);
   for (let index = 1; index < sorted.length; index += 1) {
-    if (redeemerPointer(sorted[index - 1]!) === redeemerPointer(sorted[index]!)) {
+    if (
+      redeemerPointer(sorted[index - 1]!) === redeemerPointer(sorted[index]!)
+    ) {
       throw new MidgardTxCodecError(
         MidgardTxCodecErrorCodes.SchemaMismatch,
         `${fieldName} contains a duplicate redeemer pointer`,
@@ -95,9 +95,7 @@ const validateCanonicalPlutusDataCbor = (
   let canonical: Buffer;
   try {
     canonical = Buffer.from(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        source.toString("hex"),
-      ),
+      aikenSerialisedPlutusDataCborPreservingMapOrder(source.toString("hex")),
       "hex",
     );
   } catch (error) {
@@ -148,9 +146,7 @@ const normalizeCardanoPlutusData = (
 ): Buffer => {
   try {
     return Buffer.from(
-      aikenSerialisedPlutusDataCborPreservingMapOrder(
-        data.to_cbor_hex(),
-      ),
+      aikenSerialisedPlutusDataCborPreservingMapOrder(data.to_cbor_hex()),
       "hex",
     );
   } catch (error) {
@@ -270,7 +266,5 @@ export const midgardRedeemersToCardano = (
       ),
     );
   }
-  return CML.Redeemers.new_map_redeemer_key_to_redeemer_val(
-    redeemerMap,
-  );
+  return CML.Redeemers.new_map_redeemer_key_to_redeemer_val(redeemerMap);
 };

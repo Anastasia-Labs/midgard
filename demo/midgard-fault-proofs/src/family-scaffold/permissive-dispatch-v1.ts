@@ -119,8 +119,7 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
     ruleId: "ak_always_true_predicate",
     category: "accept_any_dispatch",
     languages: AIKEN,
-    explanation:
-      "a predicate whose entire body is True validates nothing",
+    explanation: "a predicate whose entire body is True validates nothing",
     pattern: /->\s*Bool\s*\{\s*True\s*\}/u,
   },
   {
@@ -174,8 +173,7 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
     ruleId: "ts_nullish_true",
     category: "silent_fallback",
     languages: TYPESCRIPT,
-    explanation:
-      "`?? true` turns an absent value into acceptance",
+    explanation: "`?? true` turns an absent value into acceptance",
     pattern: /\?\?\s*true\b/u,
   },
   {
@@ -214,7 +212,8 @@ export const PERMISSIVE_DISPATCH_RULES_V1: readonly Rule[] = [
     ruleId: "ts_always_true_predicate",
     category: "accept_any_dispatch",
     languages: BOTH,
-    explanation: "an arrow function that returns the literal true validates nothing",
+    explanation:
+      "an arrow function that returns the literal true validates nothing",
     pattern: /=>\s*true\s*;/u,
   },
 ];

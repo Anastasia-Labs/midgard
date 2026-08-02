@@ -59,10 +59,9 @@ const alwaysSucceedsBlueprint = JSON.parse(
   readonly validators: readonly BlueprintValidator[];
 };
 
-const alwaysSucceedsCompiledCode =
-  alwaysSucceedsBlueprint.validators.find(
-    (validator) => validator.title === "midgard.deposit_spend.else",
-  )?.compiledCode;
+const alwaysSucceedsCompiledCode = alwaysSucceedsBlueprint.validators.find(
+  (validator) => validator.title === "midgard.deposit_spend.else",
+)?.compiledCode;
 if (alwaysSucceedsCompiledCode === undefined) {
   throw new Error(
     "Missing always-succeeds blueprint entry midgard.deposit_spend.else",
@@ -96,8 +95,7 @@ const maximumNestedRedeemerDataTerminalVectorV1 = {
   terminalPostControlCborHex:
     "8a010700193e6e193e6e40d87a80d87a80d87a80d8799f83582026ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20193e6e19bb34ff",
   terminalSummary: {
-    rootHex:
-      "26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20",
+    rootHex: "26ef420c9e803ba9d74f048b521bff6c99e6a6b4d8aefd077c300a8e31a4dc20",
     cborLength: "15982",
     memory: "47924",
   },
@@ -144,9 +142,9 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       ],
       PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
     );
-    const walletInputs = (
-      await emulator.getUtxos(walletAddress)
-    ).sort((left, right) => left.outputIndex - right.outputIndex);
+    const walletInputs = (await emulator.getUtxos(walletAddress)).sort(
+      (left, right) => left.outputIndex - right.outputIndex,
+    );
     const scriptInputs = await emulator.getUtxos(scriptAddress);
     expect(walletInputs).toHaveLength(2);
     expect(scriptInputs).toHaveLength(1);
@@ -161,54 +159,39 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       .attach.SpendingValidator(spendingScript)
       .complete({ localUPLCEval: true });
     const signedSeed = await completedSeed.sign.withWallet().complete();
-    const seed =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        signedSeed.toCBOR(),
-      );
-    const seedTransaction = CML.Transaction.from_cbor_hex(
+    const seed = measureCollateralizedPlutusFeasibilityCandidateV1(
       signedSeed.toCBOR(),
     );
-    const seedScripts =
-      seedTransaction.witness_set().plutus_v3_scripts();
+    const seedTransaction = CML.Transaction.from_cbor_hex(signedSeed.toCBOR());
+    const seedScripts = seedTransaction.witness_set().plutus_v3_scripts();
     expect(seedScripts?.len()).toBe(1);
     expect(seed.executionMemory).toBeGreaterThan(0n);
     expect(seed.executionSteps).toBeGreaterThan(0n);
 
-    const buildCandidate = async (
-      requestedNestedLeafCount: number,
-    ) => {
-      const candidate =
-        await buildSignedCardanoSpendRedeemersCandidateV1({
-          privateKeyBech32: privateKey.to_bech32(),
-          feeFundingInput: walletInputs[0]!,
-          collateralInput: walletInputs[1]!,
-          availableScriptInputs: scriptInputs,
-          recipientAddress: walletAddress,
-          plutusV3ScriptCborHex: seedScripts!.get(0).to_cbor_hex(),
-          redeemerDataCborHex:
-            cardanoBoundaryNestedDataCborV1(
-              requestedNestedLeafCount,
-            ),
-          executionMemory: seed.executionMemory,
-          executionSteps: seed.executionSteps,
-          requestedRedeemerCount: 1,
-          minFeeA:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
-          minFeeB:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
-          minFeeRefScriptCostPerByte:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1
-              .minFeeRefScriptCostPerByte,
-          priceMem:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
-          priceStep:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
-          collateralPercentage:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1
-              .collateralPercentage,
-          costModels:
-            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
-        });
+    const buildCandidate = async (requestedNestedLeafCount: number) => {
+      const candidate = await buildSignedCardanoSpendRedeemersCandidateV1({
+        privateKeyBech32: privateKey.to_bech32(),
+        feeFundingInput: walletInputs[0]!,
+        collateralInput: walletInputs[1]!,
+        availableScriptInputs: scriptInputs,
+        recipientAddress: walletAddress,
+        plutusV3ScriptCborHex: seedScripts!.get(0).to_cbor_hex(),
+        redeemerDataCborHex: cardanoBoundaryNestedDataCborV1(
+          requestedNestedLeafCount,
+        ),
+        executionMemory: seed.executionMemory,
+        executionSteps: seed.executionSteps,
+        requestedRedeemerCount: 1,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+        minFeeRefScriptCostPerByte:
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+        priceMem: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceMem,
+        priceStep: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.priceStep,
+        collateralPercentage:
+          PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.collateralPercentage,
+        costModels: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.costModels,
+      });
       return {
         ...candidate,
         requestedItemCount: requestedNestedLeafCount,
@@ -218,14 +201,12 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       maxTxSize: emulator.protocolParameters.maxTxSize,
       buildSignedCandidate: buildCandidate,
     });
-    const accepted =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        boundary.accepted.cborHex,
-      );
-    const adjacent =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        boundary.adjacent.cborHex,
-      );
+    const accepted = measureCollateralizedPlutusFeasibilityCandidateV1(
+      boundary.accepted.cborHex,
+    );
+    const adjacent = measureCollateralizedPlutusFeasibilityCandidateV1(
+      boundary.adjacent.cborHex,
+    );
     const acceptedDataCborHex = cardanoBoundaryNestedDataCborV1(
       boundary.accepted.requestedItemCount,
     );
@@ -243,29 +224,19 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
     );
     expect(accepted.redeemerCount).toBe(1);
     expect(adjacent.redeemerCount).toBe(1);
-    expect(accepted.redeemerTags).toEqual([
-      CML.RedeemerTag.Spend,
-    ]);
+    expect(accepted.redeemerTags).toEqual([CML.RedeemerTag.Spend]);
     expect(accepted.redeemerIndexes).toEqual([1n]);
-    expect(accepted.redeemerDataCborHexes).toEqual([
-      acceptedDataCborHex,
-    ]);
-    expect(adjacent.redeemerDataCborHexes).toEqual([
-      adjacentDataCborHex,
-    ]);
+    expect(accepted.redeemerDataCborHexes).toEqual([acceptedDataCborHex]);
+    expect(adjacent.redeemerDataCborHexes).toEqual([adjacentDataCborHex]);
     expect(accepted.executionMemory).toBe(seed.executionMemory);
     expect(accepted.executionSteps).toBe(seed.executionSteps);
-    expect(accepted.totalCollateral).toBe(
-      CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1,
-    );
+    expect(accepted.totalCollateral).toBe(CARDANO_BOUNDARY_TOTAL_COLLATERAL_V1);
     const acceptedTransaction = CML.Transaction.from_cbor_hex(
       boundary.accepted.cborHex,
     );
     expect(acceptedTransaction.body().withdrawals()).toBeUndefined();
     expect(acceptedTransaction.body().mint()).toBeUndefined();
-    expect(
-      acceptedTransaction.body().required_signers(),
-    ).toBeUndefined();
+    expect(acceptedTransaction.body().required_signers()).toBeUndefined();
 
     let collateralRejection:
       | {
@@ -285,14 +256,9 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       };
       collateralRejection = {
         message: error instanceof Error ? error.message : String(error),
-        code:
-          typeof structured.code === "string"
-            ? structured.code
-            : null,
+        code: typeof structured.code === "string" ? structured.code : null,
         detail:
-          typeof structured.detail === "string"
-            ? structured.detail
-            : null,
+          typeof structured.detail === "string" ? structured.detail : null,
       };
     }
     expect(collateralRejection).toEqual({
@@ -302,24 +268,14 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       detail: "collateral_inputs",
     });
 
-    const parallel =
-      buildCollateralFreeMidgardSchemaParallelCandidateV1({
-        collateralizedCardanoCborHex:
-          boundary.accepted.cborHex,
-        privateKeyBech32: privateKey.to_bech32(),
-      });
-    const parallelTransaction = CML.Transaction.from_cbor_hex(
-      parallel.cborHex,
-    );
-    expect(
-      parallelTransaction.body().collateral_inputs(),
-    ).toBeUndefined();
-    expect(
-      parallelTransaction.body().collateral_return(),
-    ).toBeUndefined();
-    expect(
-      parallelTransaction.body().total_collateral(),
-    ).toBeUndefined();
+    const parallel = buildCollateralFreeMidgardSchemaParallelCandidateV1({
+      collateralizedCardanoCborHex: boundary.accepted.cborHex,
+      privateKeyBech32: privateKey.to_bech32(),
+    });
+    const parallelTransaction = CML.Transaction.from_cbor_hex(parallel.cborHex);
+    expect(parallelTransaction.body().collateral_inputs()).toBeUndefined();
+    expect(parallelTransaction.body().collateral_return()).toBeUndefined();
+    expect(parallelTransaction.body().total_collateral()).toBeUndefined();
     expect(parallelTransaction.body().withdrawals()).toBeUndefined();
     expect(parallelTransaction.body().mint()).toBeUndefined();
     expect(
@@ -359,20 +315,15 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
     expect(parallelTransaction.body().fee()).toBe(
       acceptedTransaction.body().fee(),
     );
-    expect(
-      parallelTransaction.body().script_data_hash()?.to_hex(),
-    ).toBe(
+    expect(parallelTransaction.body().script_data_hash()?.to_hex()).toBe(
       acceptedTransaction.body().script_data_hash()?.to_hex(),
     );
 
-    const nativeCanonical =
-      cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
-        Buffer.from(parallel.cborHex, "hex"),
-      );
+    const nativeCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(parallel.cborHex, "hex"),
+    );
     const native =
-      decodeMidgardNativeTxFullV1FromCanonicalCbor(
-        nativeCanonical,
-      );
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(nativeCanonical);
     const decodedRedeemers = decodeMidgardRedeemers(
       native.witnessSet.redeemerTxWitsPreimageCbor,
     );
@@ -386,17 +337,15 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       },
     });
     expect(
-      Buffer.from(
-        decodedRedeemers[0]!.dataCborHex,
-        "hex",
-      ).equals(Buffer.from(acceptedDataCborHex, "hex")),
+      Buffer.from(decodedRedeemers[0]!.dataCborHex, "hex").equals(
+        Buffer.from(acceptedDataCborHex, "hex"),
+      ),
     ).toBe(true);
 
-    const redeemerField =
-      exerciseMidgardOrderedCollectionBoundaryV1({
-        signedCardanoCborHex: parallel.cborHex,
-        fieldIndex: 8,
-      });
+    const redeemerField = exerciseMidgardOrderedCollectionBoundaryV1({
+      signedCardanoCborHex: parallel.cborHex,
+      fieldIndex: 8,
+    });
     expect(redeemerField.itemCount).toBe(1);
     expect(redeemerField.maxChunkBytes).toBe(
       MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
@@ -408,8 +357,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       sourceStart: 0,
       source: Buffer.from(acceptedDataCborHex, "hex"),
     });
-    const terminalSummary =
-      finalizeMidgardCekDataTraverseV1(trace.terminal);
+    const terminalSummary = finalizeMidgardCekDataTraverseV1(trace.terminal);
     expect(terminalSummary).not.toBeNull();
     expect(terminalSummary!.cborLength).toBe(
       BigInt(acceptedDataCborHex.length / 2),
@@ -428,44 +376,33 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
     const terminalStep = trace.steps.at(-1)!;
     expect(terminalStep.action?.kind).toBe("finalizeFrame");
     if (terminalStep.action?.kind !== "finalizeFrame") {
-      throw new Error(
-        "Maximum nested redeemer lost its terminal frame",
-      );
+      throw new Error("Maximum nested redeemer lost its terminal frame");
     }
     const terminalVector = {
       maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
-      nestedLeafCount:
-        boundary.accepted.requestedItemCount,
-      dataNodeCount:
-        boundary.accepted.requestedItemCount * 2 + 2,
+      nestedLeafCount: boundary.accepted.requestedItemCount,
+      dataNodeCount: boundary.accepted.requestedItemCount * 2 + 2,
       dataCborBytes: acceptedDataCborHex.length / 2,
       signedCardanoBytes: boundary.accepted.signedBytes,
       signedCardanoByteMargin:
-        CARDANO_BOUNDARY_MAX_TX_SIZE_V1 -
-        boundary.accepted.signedBytes,
-      adjacentLeafCount:
-        boundary.adjacent.requestedItemCount,
-      adjacentDataCborBytes:
-        adjacentDataCborHex.length / 2,
-      adjacentSignedCardanoBytes:
-        boundary.adjacent.signedBytes,
+        CARDANO_BOUNDARY_MAX_TX_SIZE_V1 - boundary.accepted.signedBytes,
+      adjacentLeafCount: boundary.adjacent.requestedItemCount,
+      adjacentDataCborBytes: adjacentDataCborHex.length / 2,
+      adjacentSignedCardanoBytes: boundary.adjacent.signedBytes,
       parallelSignedCardanoBytes: parallel.cborHex.length / 2,
       nativeCanonicalBytes: nativeCanonical.length,
       redeemerFieldBytes: redeemerField.fieldBytes,
       redeemerTraverseSteps: trace.steps.length,
       maximumSourceSpan,
-      terminalPreControlCborHex:
-        encodeMidgardCekDataTraverseControlV1(
-          terminalStep.control,
-        ).toString("hex"),
-      terminalFrameCborHex:
-        encodeMidgardCekDataFrameV1(
-          terminalStep.action.frame,
-        ).toString("hex"),
-      terminalPostControlCborHex:
-        encodeMidgardCekDataTraverseControlV1(
-          terminalStep.next,
-        ).toString("hex"),
+      terminalPreControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalStep.control,
+      ).toString("hex"),
+      terminalFrameCborHex: encodeMidgardCekDataFrameV1(
+        terminalStep.action.frame,
+      ).toString("hex"),
+      terminalPostControlCborHex: encodeMidgardCekDataTraverseControlV1(
+        terminalStep.next,
+      ).toString("hex"),
       terminalSummary: {
         rootHex: Buffer.from(terminalSummary!.root).toString("hex"),
         cborLength: terminalSummary!.cborLength.toString(),
@@ -474,9 +411,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       productionCollateralRejection: collateralRejection,
     };
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR !== "1") {
-      expect(terminalVector).toEqual(
-        maximumNestedRedeemerDataTerminalVectorV1,
-      );
+      expect(terminalVector).toEqual(maximumNestedRedeemerDataTerminalVectorV1);
     }
 
     const retained = await exerciseMidgardRetainedDaBoundaryV1({
@@ -501,13 +436,11 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       });
     const productionRetained =
       await exerciseMidgardRetainedDaCanonicalBoundaryV1({
-        canonicalTransactionCbor:
-          retainedProjection.canonicalTransactionCbor,
+        canonicalTransactionCbor: retainedProjection.canonicalTransactionCbor,
         corpusLabel: "balanced-nested-redeemer",
         canonicalMaterialSidecarCbor:
           retainedProjection.canonicalMaterialSidecarCbor,
-        sourceRawScriptAuditHash:
-          retainedProjection.sourceRawScriptAuditHash,
+        sourceRawScriptAuditHash: retainedProjection.sourceRawScriptAuditHash,
       });
     expect(productionRetained.normal.reconstructedCanonicalBytes).toBe(
       retainedProjection.canonicalTransactionCbor.length,
@@ -516,12 +449,11 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       retainedProjection.canonicalTransactionCbor.length,
     );
 
-    const reconstructed =
-      measureCollateralizedPlutusFeasibilityCandidateV1(
-        Buffer.from(
-          midgardNativeTxFullToCardanoTxEncoding(native),
-        ).toString("hex"),
-      );
+    const reconstructed = measureCollateralizedPlutusFeasibilityCandidateV1(
+      Buffer.from(midgardNativeTxFullToCardanoTxEncoding(native)).toString(
+        "hex",
+      ),
+    );
     expect({
       tags: reconstructed.redeemerTags,
       indexes: reconstructed.redeemerIndexes,
@@ -536,9 +468,7 @@ describe("canonical V1 nested Cardano redeemer Data boundary", () => {
       steps: accepted.executionSteps,
     });
 
-    const txHash = await emulator.submitTx(
-      boundary.accepted.cborHex,
-    );
+    const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
 
     if (process.env.MIDGARD_PRINT_AIKEN_VECTOR === "1") {
