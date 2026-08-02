@@ -118,9 +118,39 @@ try {
         if (failedFile.status === "passed") {
           continue;
         }
-        process.stderr.write(
-          `${basename(failedFile.name)}: ${failedFile.message ?? "failed without a diagnostic"}\n`,
+        const name = basename(failedFile.name);
+        // Vitest sets file-level `message` to the EMPTY STRING when the
+        // failure is at assertion level and the detail lives in
+        // assertionResults. `??` does not catch "", so this used to print a
+        // bare "settlement-indexer.test.ts:" and discard the only evidence of
+        // why CI failed. Report the per-test detail explicitly.
+        const fileMessage =
+          typeof failedFile.message === "string" && failedFile.message !== ""
+            ? failedFile.message
+            : null;
+        if (fileMessage !== null) {
+          process.stderr.write(`${name}: ${fileMessage}\n`);
+        }
+        const failedAssertions = (failedFile.assertionResults ?? []).filter(
+          ({ status }) => status === "failed",
         );
+        for (const assertion of failedAssertions) {
+          const detail = (assertion.failureMessages ?? []).join("\n  ");
+          process.stderr.write(
+            `${name} > ${assertion.fullName ?? assertion.title}: ${
+              detail === "" ? "failed without a diagnostic" : detail
+            }\n`,
+          );
+        }
+        if (fileMessage === null && failedAssertions.length === 0) {
+          // Neither a file message nor a failed assertion: the worker died
+          // before reporting (crash, OOM, or the runner reclaiming it).
+          process.stderr.write(
+            `${name}: status="${failedFile.status}" with no failed assertion and no message — ` +
+              `the worker exited before reporting. Treat as an infrastructure ` +
+              `failure, not a test failure, and re-run before diagnosing.\n`,
+          );
+        }
       }
     } catch (error) {
       process.stderr.write(
