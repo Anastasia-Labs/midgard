@@ -1091,6 +1091,21 @@ const persistedChainPoints = (
   return [...points.values()];
 };
 
+/**
+ * Durable stores canonicalize `chainPoints` by sorting on `chainPointId`, which
+ * is a content hash. Positional access therefore carries no chain ordering, so
+ * the newest point has to be selected by (blockNo, slot) the same way
+ * `compareChainPointOrder` does inside the durable store.
+ */
+const latestChainPoint = (store: WatcherDurableStoreV1) =>
+  store.chainPoints.reduce((latest, candidate) =>
+    BigInt(candidate.blockNo) > BigInt(latest.blockNo) ||
+    (BigInt(candidate.blockNo) === BigInt(latest.blockNo) &&
+      BigInt(candidate.slot) > BigInt(latest.slot))
+      ? candidate
+      : latest,
+  );
+
 let serial = 0;
 
 type Bundle = Readonly<{
@@ -5282,8 +5297,8 @@ describe("authenticated settlement, reserve, and payout indexer", () => {
       l1Observation: recovery.recoveryEvidence.context.l1Observation as Mutable,
       sourceDurableStore: recovery.incident.nextStore!,
       durableStore: recovery.recovery.nextStore!,
-      journalSpentAtChainPointId:
-        recovery.incident.nextStore!.chainPoints.at(-1)!.chainPointId,
+      journalSpentAtChainPointId: latestChainPoint(recovery.incident.nextStore!)
+        .chainPointId,
       rollbackAuthority: {
         result: recovery.recovery,
         context: recovery.recoveryInput,
