@@ -9,6 +9,12 @@ on:
     paths:
       - onchain/aiken/**
 
+env:
+  # github.com/colll78/aiken @ perf/check-codegen-1389, reporting
+  # v1.1.23+6d14ab2. Pinned by commit so the toolchain is reproducible even
+  # though the branch is mutable.
+  AIKEN_FORK_REV: 2a78108ccb184161689b8a06c84d942e13b5b209
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,6 +27,33 @@ jobs:
       - uses: aiken-lang/setup-aiken@v1.0.3
         with:
           version: v1.1.22
+      # The released v1.1.22 compiler stays the authority for `aiken fmt`,
+      # `aiken build`, and every applied validator hash in release evidence.
+      # It cannot, however, run the test suite: upstream aiken#1389 makes a
+      # full `aiken check` take 485 minutes on this tree, against a 360-minute
+      # job ceiling, so this workflow could never pass. The patched fork runs
+      # the identical suite in ~10 minutes. It is used ONLY to execute tests;
+      # it is pinned by commit, not branch, and cached by that commit.
+      - name: Cache patched Aiken test compiler
+        id: aiken-fork
+        uses: actions/cache@v4
+        with:
+          path: ~/.aiken-fork
+          key: aiken-fork-${{ env.AIKEN_FORK_REV }}-${{ runner.os }}
+      - name: Build patched Aiken test compiler
+        if: steps.aiken-fork.outputs.cache-hit != 'true'
+        working-directory: .
+        run: |
+          rustup toolchain install 1.94.1 --profile minimal
+          cargo +1.94.1 install \
+            --git https://github.com/colll78/aiken \
+            --rev "$AIKEN_FORK_REV" \
+            --root ~/.aiken-fork \
+            aiken
+      - name: Record both compiler identities
+        run: |
+          aiken --version
+          ~/.aiken-fork/bin/aiken --version
       - name: Verify generated user events witness prefix
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
         working-directory: .
@@ -29,19 +62,20 @@ jobs:
           git diff --name-only --exit-code onchain/aiken/env/default.ak onchain/aiken/env/testnet.ak
       - name: Run normalized Aiken auto-formatter check
         run: |
-          sha256sum --check protected-format-checkpoint.sha256
-          git ls-files -z '*.ak' \
-            ':!lib/midgard/cek-data-traverse-v1.ak' \
-            ':!lib/midgard/redeemer-item-proof-v1.ak' \
-            | xargs -0 aiken fmt
+          # The two formerly excluded lib files were another task's in-flight
+          # checkpoint; they are integrated now, so the exclusion and its
+          # protected-format-checkpoint.sha256 pin are gone and every tracked
+          # .ak file is held to the same standard.
+          git ls-files -z '*.ak' | xargs -0 aiken fmt
           # Aiken 1.1.22 emits trailing spaces for monadic let/expect syntax.
           # Normalize only that formatter artifact before comparing sources.
-          git ls-files -z '*.ak' \
-            ':!lib/midgard/cek-data-traverse-v1.ak' \
-            ':!lib/midgard/redeemer-item-proof-v1.ak' \
-            | xargs -0 sed -i 's/[[:space:]]\+$//'
+          git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
           git diff --name-only --exit-code -- '*.ak'
-      - name: Compile Aiken code and run test suite
-        run: aiken check
+      # Type/compile check with the released authority compiler, then execute
+      # the suite with the patched one. Both must pass.
+      - name: Compile Aiken code with the released compiler
+        run: aiken check --skip-tests
+      - name: Run the Aiken test suite with the patched compiler
+        run: ~/.aiken-fork/bin/aiken check
       - name: Check that aiken.lock is up-to-date
         run: git diff --name-only --exit-code aiken.lock

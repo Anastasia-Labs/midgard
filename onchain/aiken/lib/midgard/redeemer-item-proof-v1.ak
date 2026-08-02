@@ -123,8 +123,7 @@ fn descriptor_fields_are_empty(control: RedeemerItemProofControlV1) -> Bool {
 }
 
 fn opened_descriptor_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
-  let tail_length =
-    control.total_length - control.data_offset - control.data_length
+  let tail_length = control.total_length - control.data_offset - control.data_length
   and {
     supported_purpose_tag(control.purpose_tag),
     control.pointer_index >= 0,
@@ -148,18 +147,18 @@ pub fn stage_data_outer_fields_are_well_formed_v1(
   control: RedeemerItemProofControlV1,
 ) -> Bool {
   let expected_is_absent = and {
-      control.expected_purpose_tag == -1,
-      control.expected_pointer_index == -1,
-    }
+    control.expected_purpose_tag == -1,
+    control.expected_pointer_index == -1,
+  }
   let expected_is_present = and {
-      supported_purpose_tag(control.expected_purpose_tag),
-      control.expected_pointer_index >= 0,
-    }
+    supported_purpose_tag(control.expected_purpose_tag),
+    control.expected_pointer_index >= 0,
+  }
   let descriptor_is_open = opened_descriptor_is_well_formed(control)
   let ex_units_are_open = and {
-      control.execution_memory >= 0,
-      control.execution_steps >= 0,
-    }
+    control.execution_memory >= 0,
+    control.execution_steps >= 0,
+  }
   and {
     control.version == version,
     control.mode == mode_data,
@@ -183,18 +182,18 @@ pub fn stage_data_outer_fields_are_well_formed_v1(
 
 pub fn control_is_well_formed(control: RedeemerItemProofControlV1) -> Bool {
   let expected_is_absent = and {
-      control.expected_purpose_tag == -1,
-      control.expected_pointer_index == -1,
-    }
+    control.expected_purpose_tag == -1,
+    control.expected_pointer_index == -1,
+  }
   let expected_is_present = and {
-      supported_purpose_tag(control.expected_purpose_tag),
-      control.expected_pointer_index >= 0,
-    }
+    supported_purpose_tag(control.expected_purpose_tag),
+    control.expected_pointer_index >= 0,
+  }
   let descriptor_is_open = opened_descriptor_is_well_formed(control)
   let ex_units_are_open = and {
-      control.execution_memory >= 0,
-      control.execution_steps >= 0,
-    }
+    control.execution_memory >= 0,
+    control.execution_steps >= 0,
+  }
   and {
     control.version == version,
     control.mode == mode_descriptor || control.mode == mode_data,
@@ -255,25 +254,24 @@ pub fn initial_control_v1(
   expected_purpose_tag: Int,
   expected_pointer_index: Int,
 ) -> RedeemerItemProofControlV1 {
-  let control =
-    RedeemerItemProofControlV1 {
-      version,
-      mode,
-      stage: stage_header,
-      item_index,
-      item_count,
-      total_length,
-      item_commitment,
-      expected_purpose_tag,
-      expected_pointer_index,
-      purpose_tag: -1,
-      pointer_index: -1,
-      data_offset: 0,
-      data_length: 0,
-      execution_memory: -1,
-      execution_steps: -1,
-      traversal: None,
-    }
+  let control = RedeemerItemProofControlV1 {
+    version,
+    mode,
+    stage: stage_header,
+    item_index,
+    item_count,
+    total_length,
+    item_commitment,
+    expected_purpose_tag,
+    expected_pointer_index,
+    purpose_tag: -1,
+    pointer_index: -1,
+    data_offset: 0,
+    data_length: 0,
+    execution_memory: -1,
+    execution_steps: -1,
+    traversal: None,
+  }
   expect control_is_well_formed(control)
   control
 }
@@ -296,9 +294,7 @@ pub fn encode_control_v1(control: RedeemerItemProofControlV1) -> ByteArray {
     |> bytearray.concat(encode_optional_traversal(control.traversal))
 }
 
-fn encode_control_prefix_v1(
-  control: RedeemerItemProofControlV1,
-) -> ByteArray {
+fn encode_control_prefix_v1(control: RedeemerItemProofControlV1) -> ByteArray {
   encode_definite_array_header(16)
     |> bytearray.concat(cbor.serialise(control.version))
     |> bytearray.concat(cbor.serialise(control.mode))
@@ -317,9 +313,7 @@ fn encode_control_prefix_v1(
     |> bytearray.concat(cbor.serialise(control.execution_steps))
 }
 
-fn control_hash_prefix_v1(
-  control: RedeemerItemProofControlV1,
-) -> ByteArray {
+fn control_hash_prefix_v1(control: RedeemerItemProofControlV1) -> ByteArray {
   control_domain
     |> bytearray.concat(encode_control_prefix_v1(control))
 }
@@ -375,32 +369,33 @@ fn optional_traversal_from_data(
 
 pub fn decode_control_v1(control_cbor: ByteArray) -> RedeemerItemProofControlV1 {
   expect Some(data) = cbor.deserialise(control_cbor)
-  expect [
-    version_data, mode_data, stage_data, item_index_data, item_count_data,
-    total_length_data, item_commitment_data, expected_purpose_tag_data,
-    expected_pointer_index_data, purpose_tag_data, pointer_index_data,
-    data_offset_data, data_length_data, execution_memory_data,
-    execution_steps_data, traversal_data,
-  ] = builtin.un_list_data(data)
-  let control =
-    RedeemerItemProofControlV1 {
-      version: builtin.un_i_data(version_data),
-      mode: builtin.un_i_data(mode_data),
-      stage: builtin.un_i_data(stage_data),
-      item_index: builtin.un_i_data(item_index_data),
-      item_count: builtin.un_i_data(item_count_data),
-      total_length: builtin.un_i_data(total_length_data),
-      item_commitment: builtin.un_b_data(item_commitment_data),
-      expected_purpose_tag: builtin.un_i_data(expected_purpose_tag_data),
-      expected_pointer_index: builtin.un_i_data(expected_pointer_index_data),
-      purpose_tag: builtin.un_i_data(purpose_tag_data),
-      pointer_index: builtin.un_i_data(pointer_index_data),
-      data_offset: builtin.un_i_data(data_offset_data),
-      data_length: builtin.un_i_data(data_length_data),
-      execution_memory: builtin.un_i_data(execution_memory_data),
-      execution_steps: builtin.un_i_data(execution_steps_data),
-      traversal: optional_traversal_from_data(traversal_data),
-    }
+  expect
+      [
+        version_data, mode_data, stage_data, item_index_data, item_count_data,
+        total_length_data, item_commitment_data, expected_purpose_tag_data,
+        expected_pointer_index_data, purpose_tag_data, pointer_index_data,
+        data_offset_data, data_length_data, execution_memory_data,
+        execution_steps_data, traversal_data,
+      ]
+    = builtin.un_list_data(data)
+  let control = RedeemerItemProofControlV1 {
+    version: builtin.un_i_data(version_data),
+    mode: builtin.un_i_data(mode_data),
+    stage: builtin.un_i_data(stage_data),
+    item_index: builtin.un_i_data(item_index_data),
+    item_count: builtin.un_i_data(item_count_data),
+    total_length: builtin.un_i_data(total_length_data),
+    item_commitment: builtin.un_b_data(item_commitment_data),
+    expected_purpose_tag: builtin.un_i_data(expected_purpose_tag_data),
+    expected_pointer_index: builtin.un_i_data(expected_pointer_index_data),
+    purpose_tag: builtin.un_i_data(purpose_tag_data),
+    pointer_index: builtin.un_i_data(pointer_index_data),
+    data_offset: builtin.un_i_data(data_offset_data),
+    data_length: builtin.un_i_data(data_length_data),
+    execution_memory: builtin.un_i_data(execution_memory_data),
+    execution_steps: builtin.un_i_data(execution_steps_data),
+    traversal: optional_traversal_from_data(traversal_data),
+  }
   expect control_is_well_formed(control)
   expect encode_control_v1(control) == control_cbor
   control
@@ -417,16 +412,16 @@ pub fn descriptor_v1(
   control: RedeemerItemProofControlV1,
 ) -> Option<RedeemerItemDescriptorV1> {
   let descriptor_is_available = or {
-      and {
-        control_is_well_formed(control),
-        control.stage >= stage_data,
-      },
-      and {
-        control_is_well_formed(control),
-        control.stage == stage_terminal,
-        control.mode == mode_descriptor,
-      },
-    }
+    and {
+      control_is_well_formed(control),
+      control.stage >= stage_data,
+    },
+    and {
+      control_is_well_formed(control),
+      control.stage == stage_terminal,
+      control.mode == mode_descriptor,
+    },
+  }
   if descriptor_is_available {
     Some(
       RedeemerItemDescriptorV1 {
@@ -467,12 +462,11 @@ pub fn finalize_v1(
 pub fn next_source_span_v1(
   control: RedeemerItemProofControlV1,
 ) -> Option<RedeemerItemSourceSpanV1> {
-  let header_length =
-    if control.total_length < max_header_span {
-      control.total_length
-    } else {
-      max_header_span
-    }
+  let header_length = if control.total_length < max_header_span {
+    control.total_length
+  } else {
+    max_header_span
+  }
   if !control_is_well_formed(control) {
     None
   } else if control.stage == stage_header {
@@ -533,10 +527,8 @@ fn authenticated_span(
     None
   } else {
     let first_chunk_index = span.absolute_start / bounded_item_v1.chunk_bytes
-    let last_chunk_index =
-      ( span.absolute_start + span.length - 1 ) / bounded_item_v1.chunk_bytes
-    let local_start =
-      span.absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
+    let last_chunk_index = ( span.absolute_start + span.length - 1 ) / bounded_item_v1.chunk_bytes
+    let local_start = span.absolute_start - first_chunk_index * bounded_item_v1.chunk_bytes
     if or {
       last_chunk_index > first_chunk_index + 1,
       !chunk_proof_matches(control, chunk_proof, first_chunk_index),
@@ -601,15 +593,14 @@ fn header_step(
                 is {
                   None -> RedeemerItemProofInvalid
                   Some(data) -> {
-                    let next =
-                      RedeemerItemProofControlV1 {
-                        ..control,
-                        stage: stage_tail,
-                        purpose_tag: purpose.value,
-                        pointer_index: pointer.value,
-                        data_offset: data.next_offset,
-                        data_length: data.value,
-                      }
+                    let next = RedeemerItemProofControlV1 {
+                      ..control,
+                      stage: stage_tail,
+                      purpose_tag: purpose.value,
+                      pointer_index: pointer.value,
+                      data_offset: data.next_offset,
+                      data_length: data.value,
+                    }
                     if control_is_well_formed(next) {
                       RedeemerItemProofAdvanced { control: next }
                     } else {
@@ -650,27 +641,26 @@ fn tail_step(
                 if steps.next_offset != bytearray.length(source_bytes) {
                   RedeemerItemProofInvalid
                 } else {
-                  let next =
-                    RedeemerItemProofControlV1 {
-                      ..control,
-                      stage: if control.mode == mode_data {
-                        stage_data
-                      } else {
-                        stage_terminal
-                      },
-                      execution_memory: memory.value,
-                      execution_steps: steps.value,
-                      traversal: if control.mode == mode_data {
-                        Some(
-                          cek_data_traverse_v1.initial_control_v1(
-                            control.data_offset,
-                            control.data_length,
-                          ),
-                        )
-                      } else {
-                        None
-                      },
-                    }
+                  let next = RedeemerItemProofControlV1 {
+                    ..control,
+                    stage: if control.mode == mode_data {
+                      stage_data
+                    } else {
+                      stage_terminal
+                    },
+                    execution_memory: memory.value,
+                    execution_steps: steps.value,
+                    traversal: if control.mode == mode_data {
+                      Some(
+                        cek_data_traverse_v1.initial_control_v1(
+                          control.data_offset,
+                          control.data_length,
+                        ),
+                      )
+                    } else {
+                      None
+                    },
+                  }
                   if control_is_well_formed(next) {
                     RedeemerItemProofAdvanced { control: next }
                   } else {
@@ -762,34 +752,30 @@ pub fn step_v1(
   if !control_is_well_formed(control) {
     None
   } else {
-    let authenticated: Option<Option<ByteArray>> =
-      when next_source_span_v1(control) is {
-        None ->
-          if and {
-            witness.chunk_proof == None,
-            witness.next_chunk_proof == None,
-          } {
-            Some(None)
-          } else {
-            None
-          }
-        Some(span) ->
-          when witness.chunk_proof is {
-            None -> None
-            Some(first) ->
-              when
-                authenticated_span(
-                  control,
-                  span,
-                  first,
-                  witness.next_chunk_proof,
-                )
-              is {
-                None -> None
-                Some(bytes) -> Some(Some(bytes))
-              }
-          }
-      }
+    let authenticated: Option<Option<ByteArray>> = when
+      next_source_span_v1(control)
+    is {
+      None ->
+        if and {
+          witness.chunk_proof == None,
+          witness.next_chunk_proof == None,
+        } {
+          Some(None)
+        } else {
+          None
+        }
+      Some(span) ->
+        when witness.chunk_proof is {
+          None -> None
+          Some(first) ->
+            when
+              authenticated_span(control, span, first, witness.next_chunk_proof)
+            is {
+              None -> None
+              Some(bytes) -> Some(Some(bytes))
+            }
+        }
+    }
     when authenticated is {
       None -> None
       Some(source_bytes) -> apply_step(control, source_bytes, witness.action)

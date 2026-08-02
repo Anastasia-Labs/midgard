@@ -58,10 +58,7 @@ pub type DataTraverseActionV1 {
   HeadScalar { item_length: Int }
   HeadSequence { expected_children: Int }
   HeadMap
-  HeadLargeConstructor {
-    constructor_cbor_length: Int,
-    expected_children: Int,
-  }
+  HeadLargeConstructor { constructor_cbor_length: Int, expected_children: Int }
   AttachScalar { parent: Option<cek_data_frame_v1.DataFrameV1> }
   FoldList {
     frame: cek_data_frame_v1.DataFrameV1,
@@ -123,9 +120,7 @@ fn optional_hash_is_well_formed(value: ByteArray) -> Bool {
   }
 }
 
-fn summary_is_well_formed(
-  summary: cek_data_v1.DataSummaryV1,
-) -> Bool {
+fn summary_is_well_formed(summary: cek_data_v1.DataSummaryV1) -> Bool {
   and {
     bytearray.length(summary.root) == 32,
     summary.cbor_length > 0,
@@ -165,14 +160,11 @@ fn nested_integer_fits(
       integer.source_start + integer.source_length == absolute_cursor
     },
     integer.source_start >= control.source_start,
-    integer.source_start + integer.source_length
-      <= control.source_start + control.source_length,
+    integer.source_start + integer.source_length <= control.source_start + control.source_length,
   }
 }
 
-fn head_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn head_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   and {
     control.offset < control.source_length,
     or {
@@ -186,13 +178,10 @@ fn head_stage_is_well_formed(
   }
 }
 
-fn integer_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn integer_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.integer is {
     None -> False
-    Some(integer) ->
-      and {
+    Some(integer) -> and {
         control.pending_large_expected_children == None,
         control.bytes == None,
         control.result == None,
@@ -201,13 +190,10 @@ fn integer_stage_is_well_formed(
   }
 }
 
-fn bytes_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn bytes_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.bytes is {
     None -> False
-    Some(bytes_control) ->
-      and {
+    Some(bytes_control) -> and {
         control.pending_large_expected_children == None,
         control.integer == None,
         control.result == None,
@@ -223,8 +209,7 @@ fn large_constructor_stage_is_well_formed(
 ) -> Bool {
   when control.integer is {
     None -> False
-    Some(integer) ->
-      and {
+    Some(integer) -> and {
         control.pending_large_expected_children != None,
         control.bytes == None,
         control.result == None,
@@ -234,13 +219,10 @@ fn large_constructor_stage_is_well_formed(
   }
 }
 
-fn large_fields_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn large_fields_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   when control.integer is {
     None -> False
-    Some(integer) ->
-      and {
+    Some(integer) -> and {
         control.pending_large_expected_children != None,
         integer.stage == cek_data_integer_v1.stage_terminal,
         control.bytes == None,
@@ -251,9 +233,7 @@ fn large_fields_stage_is_well_formed(
   }
 }
 
-fn closed_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn closed_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   and {
     bytearray.length(control.frame_root) == 32,
     control.pending_large_expected_children == None,
@@ -268,9 +248,7 @@ fn closed_stage_is_well_formed(
   }
 }
 
-fn terminal_stage_is_well_formed(
-  control: DataTraverseControlV1,
-) -> Bool {
+fn terminal_stage_is_well_formed(control: DataTraverseControlV1) -> Bool {
   and {
     control.offset == control.source_length,
     control.frame_root == #"",
@@ -292,9 +270,7 @@ pub fn control_is_well_formed(control: DataTraverseControlV1) -> Bool {
     uint32_is_well_formed(control.offset),
     control.offset <= control.source_length,
     optional_hash_is_well_formed(control.frame_root),
-    optional_uint32_is_well_formed(
-      control.pending_large_expected_children,
-    ),
+    optional_uint32_is_well_formed(control.pending_large_expected_children),
     optional_summary_is_well_formed(control.result),
     if control.stage == stage_head {
       head_stage_is_well_formed(control)
@@ -448,9 +424,7 @@ fn optional_bytes_from_data(
   }
 }
 
-fn optional_summary_from_data(
-  data: Data,
-) -> Option<cek_data_v1.DataSummaryV1> {
+fn optional_summary_from_data(data: Data) -> Option<cek_data_v1.DataSummaryV1> {
   let Pair(index, fields) = builtin.un_constr_data(data)
   if index == 1 {
     expect fields == []
@@ -458,8 +432,8 @@ fn optional_summary_from_data(
   } else {
     expect index == 0
     expect [value] = fields
-    expect [root_data, cbor_length_data, memory_data] =
-      builtin.un_list_data(value)
+    expect [root_data,
+          cbor_length_data, memory_data] = builtin.un_list_data(value)
     Some(
       cek_data_v1.DataSummaryV1 {
         root: builtin.un_b_data(root_data),
@@ -472,11 +446,12 @@ fn optional_summary_from_data(
 
 pub fn control_from_data_v1(data: Data) -> DataTraverseControlV1 {
   expect
-    [
-      version_data, stage_data, source_start_data, source_length_data,
-      offset_data, frame_root_data, pending_large_data, integer_data,
-      bytes_data, result_data,
-    ] = builtin.un_list_data(data)
+      [
+        version_data, stage_data, source_start_data, source_length_data,
+        offset_data, frame_root_data, pending_large_data, integer_data,
+        bytes_data, result_data,
+      ]
+    = builtin.un_list_data(data)
   let control = DataTraverseControlV1 {
     version: builtin.un_i_data(version_data),
     stage: builtin.un_i_data(stage_data),
@@ -484,9 +459,7 @@ pub fn control_from_data_v1(data: Data) -> DataTraverseControlV1 {
     source_length: builtin.un_i_data(source_length_data),
     offset: builtin.un_i_data(offset_data),
     frame_root: builtin.un_b_data(frame_root_data),
-    pending_large_expected_children: optional_int_from_data(
-      pending_large_data,
-    ),
+    pending_large_expected_children: optional_int_from_data(pending_large_data),
     integer: optional_integer_from_data(integer_data),
     bytes: optional_bytes_from_data(bytes_data),
     result: optional_summary_from_data(result_data),
@@ -517,10 +490,7 @@ pub fn next_source_span_v1(
     Some(
       cek_source_blob_v1.CekSourceBlobSpanV1 {
         absolute_start: control.source_start + control.offset,
-        length: minimum(
-          head_bytes,
-          control.source_length - control.offset,
-        ),
+        length: minimum(head_bytes, control.source_length - control.offset),
       },
     )
   } else if or {
@@ -586,13 +556,7 @@ fn read_canonical_argument(
     let major = initial / 32
     let additional = initial % 32
     if additional < 24 {
-      Some(
-        CborArgumentV1 {
-          major,
-          value: additional,
-          next_offset: offset + 1,
-        },
-      )
+      Some(CborArgumentV1 { major, value: additional, next_offset: offset + 1 })
     } else {
       let byte_count = argument_byte_count(additional)
       if or {
@@ -601,9 +565,8 @@ fn read_canonical_argument(
       } {
         None
       } else {
-        let value =
-          slice_len(bytes, offset + 1, byte_count)
-            |> builtin.bytearray_to_integer(True, _)
+        let value = slice_len(bytes, offset + 1, byte_count)
+          |> builtin.bytearray_to_integer(True, _)
         if argument_is_minimal(additional, value) {
           Some(
             CborArgumentV1 {
@@ -979,10 +942,7 @@ fn step_head(
         HeadSequence { expected_children } ->
           step_head_sequence(control, bytes, expected_children)
         HeadMap -> step_head_map(control, bytes)
-        HeadLargeConstructor {
-          constructor_cbor_length,
-          expected_children,
-        } ->
+        HeadLargeConstructor { constructor_cbor_length, expected_children } ->
           step_head_large_constructor(
             control,
             bytes,
@@ -1026,10 +986,7 @@ fn step_integer(
       None -> None
       Some(next_integer) ->
         checked_control(
-          DataTraverseControlV1 {
-            ..control,
-            integer: Some(next_integer),
-          },
+          DataTraverseControlV1 { ..control, integer: Some(next_integer) },
         )
     }
   }
@@ -1067,10 +1024,7 @@ fn step_bytes(
       None -> None
       Some(next_bytes) ->
         checked_control(
-          DataTraverseControlV1 {
-            ..control,
-            bytes: Some(next_bytes),
-          },
+          DataTraverseControlV1 { ..control, bytes: Some(next_bytes) },
         )
     }
   }
@@ -1100,20 +1054,18 @@ fn step_large_constructor(
   } else if action != NoAction {
     None
   } else {
-    let syntax_is_valid =
-      if integer.stage == cek_data_integer_v1.stage_syntax {
-        when source_bytes is {
-          None -> False
-          Some(bytes) ->
-            cek_data_integer_v1.parse_large_constructor_syntax_v1(
-              bytes,
-              integer.source_length,
-            )
-              != None
-        }
-      } else {
-        True
+    let syntax_is_valid = if integer.stage == cek_data_integer_v1.stage_syntax {
+      when source_bytes is {
+        None -> False
+        Some(bytes) ->
+          cek_data_integer_v1.parse_large_constructor_syntax_v1(
+            bytes,
+            integer.source_length,
+          ) != None
       }
+    } else {
+      True
+    }
     if !syntax_is_valid {
       None
     } else {
@@ -1121,10 +1073,7 @@ fn step_large_constructor(
         None -> None
         Some(next_integer) ->
           checked_control(
-            DataTraverseControlV1 {
-              ..control,
-              integer: Some(next_integer),
-            },
+            DataTraverseControlV1 { ..control, integer: Some(next_integer) },
           )
       }
     }
@@ -1139,8 +1088,7 @@ fn step_large_fields(
   if action != NoAction {
     None
   } else {
-    expect Some(expected_children) =
-      control.pending_large_expected_children
+    expect Some(expected_children) = control.pending_large_expected_children
     expect Some(integer) = control.integer
     expect Some(blob) = integer.blob
     let sequence_header = if expected_children == 0 {
@@ -1148,10 +1096,12 @@ fn step_large_fields(
     } else {
       159
     }
-    when Pair(
-      exact_source_bytes(control, source_bytes),
-      cek_source_blob_v1.finalize_v1(blob),
-    ) is {
+    when
+      Pair(
+        exact_source_bytes(control, source_bytes),
+        cek_source_blob_v1.finalize_v1(blob),
+      )
+    is {
       Pair(Some(bytes), Some(constructor_cbor_root)) ->
         if bytearray.at(bytes, 0) == sequence_header {
           let frame = cek_data_frame_v1.initial_large_constr_frame_v1(
@@ -1341,14 +1291,7 @@ fn step_fold(
         } else {
           None
         }
-      FoldMap {
-        frame,
-        pair_index,
-        key,
-        value,
-        key_siblings,
-        value_siblings,
-      } ->
+      FoldMap { frame, pair_index, key, value, key_siblings, value_siblings } ->
         when
           prevalidated_fold_map_next_frame_root_v1(
             control.frame_root,
@@ -1363,10 +1306,7 @@ fn step_fold(
           None -> None
           Some(next_frame_root) ->
             checked_control(
-              DataTraverseControlV1 {
-                ..control,
-                frame_root: next_frame_root,
-              },
+              DataTraverseControlV1 { ..control, frame_root: next_frame_root },
             )
         }
       FinalizeFrame { frame, parent } ->
