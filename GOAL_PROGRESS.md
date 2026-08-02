@@ -3045,3 +3045,31 @@ Also confirmed by that lane and worth recording, because it removes two
 hypothetical risks from adopting the fork: fork and stock `aiken fmt`
 produce byte-identical output across every tracked `.ak` file, and neither
 compiler modifies `aiken.lock`. The adoption risk is confined to codegen.
+
+## Superseding Aiken CI GREEN (2026-08-02)
+
+**Aiken CI passed for the first time in this branch's history.** Run
+30763493968 at head `83474ccd`, conclusion `success`, all fourteen steps
+green including `Run the Aiken test suite with the patched compiler`.
+
+| Measure | Value |
+| --- | --- |
+| Test step | **10 m 40 s** (19:35:05Z → 19:45:45Z) |
+| Total job | **15 m 56 s** including the one-time fork build |
+| Fork build (cache miss) | 4 m 05 s; cached thereafter |
+| Prior behaviour | cancelled at the 6 h ceiling, every run, 38+ attempts |
+
+This closes the AIKEN-CI-STRUCTURALLY-UNPASSABLE row. The escalation recorded
+there — that the workflow needed an owner-reviewed sharded-selector amendment
+— is superseded: no sharding was required. The three ranked options in that
+row are moot.
+
+The role split holds in practice: `aiken fmt` and
+`aiken check --skip-tests` ran under released v1.1.22 and passed, the test
+suite ran under the pinned fork commit `6d14ab2d` and passed, and the
+identity assertions confirmed both binaries were the intended ones. Steady
+state is therefore ~11–12 minutes per run against a 360-minute ceiling.
+
+Sibling checks green at the same head: Evidence Integrity, Docs Site, Latex.
+
+Still open at this checkpoint: one fault-proofs test — see the next row.
