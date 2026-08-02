@@ -977,46 +977,269 @@
     {
       "id": "C06",
       "family": "C",
-      "sourceOwnerAndCurrentIdentity": "Contract deployment marker and `manifestId` computation",
+      "sourceOwnerAndCurrentIdentity": "Contract deployment marker and `manifestId` computation, owned by `midgard-core/src/deployment-manifest-identity-v1.ts`",
       "classification": "schema",
-      "canonicalResult": "DeploymentMarkerV1` bound to canonical final manifest ID",
-      "boundaryBindingAndPersistence": "Postgres, MPF metadata, DA store, E2E run state",
+      "canonicalResult": "`DeploymentMarkerV1`; `midgard-deployment-marker-v1` bound to the canonical final `DeploymentManifestV1` manifest ID",
+      "boundaryBindingAndPersistence": "Postgres pending-block-finalization and foreign-tip-reconciliation rows, pending-finalization MPF replay metadata, DA committee store, E2E deployment run state, and the public protocol-info payload",
       "requiredEvidence": "Canonical preimage golden; exact marker mismatch rejection",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "symbols": [
+            "MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION",
+            "DeploymentMarkerV1",
+            "parseDeploymentMarkerV1",
+            "makeDeploymentMarkerV1",
+            "assertDeploymentMarkerV1Matches"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/e2e/run-state.ts",
+          "symbols": [
+            "bindDeploymentRunStateToMarkerV1",
+            "parseDeploymentMarkerV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store.ts",
+          "symbols": [
+            "assertDeploymentMarkerV1Matches",
+            "parseDeploymentMarkerV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/database/pendingBlockFinalizations.ts",
+          "symbols": [
+            "DEPLOYMENT_MARKER_SCHEMA_VERSION",
+            "parseDeploymentMarkerV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/database/migrations/sql/0001_initial_schema.sql",
+          "symbols": [
+            "deployment_marker_schema_version",
+            "midgard-deployment-marker-v1",
+            "pending_block_finalizations_deployment_manifest_id_check",
+            "foreign_tip_reconciliations_deployment_marker_schema_check"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DeploymentMarkerV1",
+          "kind": "exact two-field authenticated JSON object",
+          "wireRepresentation": "JSON object with exactly the two keys schemaVersion and manifestId; manifestId is lowercase SHA-256 hex matching /^[0-9a-f]{64}$/",
+          "versionPolicy": "schemaVersion is exactly the string midgard-deployment-marker-v1; no other schema version and no additional key is accepted",
+          "exactFields": [
+            "schemaVersion",
+            "manifestId"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON object; no sum-type discriminator.",
+          "arrayArityNotApplicable": "Exact JSON object; not an array.",
+          "boundary": "Every durable and transport boundary that must be pinned to one final deployment: Postgres pending-block-finalization and foreign-tip-reconciliation rows, DA committee store deployment record, E2E deployment run state, and the public protocol-info payload consumed by the SDK provider",
+          "binding": "manifestId is exactly the SHA-256 DeploymentManifestV1 identity audited by C04; parse recomputes nothing and instead fails closed on any value that is not lowercase SHA-256 hex, and assertDeploymentMarkerV1Matches fails closed on any manifestId difference at the boundary",
+          "persistence": "Persisted as two Postgres columns guarded by CHECK constraints (deployment_marker_schema_version = 'midgard-deployment-marker-v1' and deployment_manifest_id ~ '^[0-9a-f]{64}$'), as the DA store deployment record, and inside the E2E run-state identity; a different marker is terminal and requires an explicit fresh redeploy",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "makeDeploymentMarkerV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "parseDeploymentMarkerV1",
+                "assertDeploymentMarkerV1Matches"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "owns the sole exact DeploymentMarkerV1 boundary"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/deployment-run-state.test.ts",
+          "testNames": [
+            "binds the run state exactly once to the final deployment marker"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "persists only the exact final DeploymentMarkerV1"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "owns the sole exact DeploymentMarkerV1 boundary"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/deployment-run-state.test.ts",
+          "testNames": [
+            "binds the run state exactly once to the final deployment marker"
+          ]
+        },
+        {
+          "path": "demo/lucid-midgard/tests/provider.test.ts",
+          "testNames": [
+            "rejects a missing or malformed final deployment marker"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "persists only the exact final DeploymentMarkerV1"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The deployment marker is an off-chain durable and HTTP identity that Aiken never decodes; the on-chain validator bytes and hashes it authenticates are audited by C04 and their own format-family rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Core owns the sole marker constructor, parser, and equality assertion; node, DA committee node, and the SDK provider all import them rather than re-deriving the two-field shape.",
+        "The rejection tests cover all four failure modes named by the row: extra field, missing schemaVersion, wrong schemaVersion string, and manifestId mismatch at a durable boundary."
+      ]
     },
     {
       "id": "C07",
       "family": "C",
-      "sourceOwnerAndCurrentIdentity": "Target-network Cardano parameter snapshot",
+      "sourceOwnerAndCurrentIdentity": "Target-network Cardano parameter snapshot read from the configured Cardano provider by `midgard-node/src/commands/contract-deployment-info.ts`",
       "classification": "external",
-      "canonicalResult": "Preserve Cardano names/values; include snapshot in manifest",
-      "boundaryBindingAndPersistence": "Trusted provider input and release evidence",
+      "canonicalResult": "Preserve Cardano-owned parameter names and values verbatim; carry them in the manifest as the exact two-field `cardanoProtocolParameters` object `{snapshot, digest}`",
+      "boundaryBindingAndPersistence": "Trusted configured-provider input, normalized and digested at deployment-manifest construction and re-verified on every manifest parse",
       "requiredEvidence": "Direct configured-provider read, canonical JSON normalization/digest, exact manifest field language, identity binding, and digest-mismatch rejection",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "external",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-node/src/commands/contract-deployment-info.ts",
+          "symbols": [
+            "cardanoProtocolParametersIdentityV1FromProvider",
+            "buildDeploymentManifestV1IdentityContextProgram",
+            "getProtocolParameters",
+            "Lucid has no configured Cardano provider"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "symbols": [
+            "cardanoProtocolParameters",
+            "normalizeDeploymentManifestV1JsonValue",
+            "computeDeploymentManifestV1JsonDigest",
+            "verifyFinalizedDeploymentManifestV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+          "symbols": [
+            "cardanoProtocolParameters",
+            "parseDeploymentManifestV1Value",
+            "cardanoProtocolParameters.digest mismatch"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DeploymentManifestV1 cardanoProtocolParameters",
+          "kind": "external Cardano snapshot wrapped in an exact authenticated JSON field",
+          "wireRepresentation": "JSON object with exactly the two keys snapshot and digest; snapshot is the configured provider's getProtocolParameters() result passed through the canonical manifest JSON normalizer (recursively key-sorted, bigints rendered as base-10 strings, JSON-safe values only); digest is lowercase SHA-256 hex over the normalized snapshot",
+          "versionPolicy": "Cardano-owned parameter names and values are preserved exactly as the provider reports them and are never renamed or reset to a Midgard V1 identity; only the Midgard wrapper object is canonical V1",
+          "exactFields": [
+            "snapshot",
+            "digest"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON object; no sum-type discriminator.",
+          "arrayArityNotApplicable": "Exact JSON object; the external snapshot's own nested shape is Cardano-owned and is bound wholesale by the digest rather than by field enumeration.",
+          "boundary": "Deployment-manifest construction from the configured Cardano provider, and every subsequent manifest parse in the node and in core",
+          "binding": "SHA-256 digest of the normalized snapshot, recomputed and compared on each parse, and transitively covered by the C04 SHA-256 manifestId over all root fields",
+          "persistence": "Embedded in the canonical deployment manifest artifact and therefore in every deployment-bound durable marker; never re-read from the provider after deployment",
+          "encoders": [
+            {
+              "path": "demo/midgard-node/src/commands/contract-deployment-info.ts",
+              "symbols": [
+                "cardanoProtocolParametersIdentityV1FromProvider"
+              ]
+            },
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "normalizeDeploymentManifestV1JsonValue",
+                "computeDeploymentManifestV1JsonDigest"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+              "symbols": [
+                "parseDeploymentManifestV1Value"
+              ]
+            },
+            {
+              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "symbols": [
+                "verifyFinalizedDeploymentManifestV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-node/tests/contract-deployment-info.test.ts",
+          "testNames": [
+            "derives the exact Cardano parameter snapshot and digest from the configured provider"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "owns canonical JSON normalization and digest vectors"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "testNames": [
+            "rejects tampered Cardano and DA identity fields",
+            "rejects missing and unexpected root fields"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "testNames": [
+            "rejects values outside the canonical JSON boundary"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The Cardano protocol-parameter snapshot is an off-chain JSON manifest field that Aiken never decodes; no on-chain decoder or equivalence vector exists for it."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The provider read is direct and single-shot: cardanoProtocolParametersIdentityV1FromProvider calls getProtocolParameters() exactly once and fails closed when Lucid has no configured provider.",
+        "Because the snapshot is external and its interior is Cardano-owned, the wrapper binds it by digest rather than by enumerating Cardano parameter names, which is what keeps the external names and values unchanged."
+      ]
     },
     {
       "id": "C08",
@@ -1026,19 +1249,164 @@
       "canonicalResult": "Preserve authenticated genesis sentinel 0 and transition every first ordinary header to protocol version 1",
       "boundaryBindingAndPersistence": "State-queue root NFT datum at initialization, first-header construction/validation, and first merge to confirmed state",
       "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0→1 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "sentinel",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-sdk/src/ledger-constants.ts",
+          "symbols": [
+            "GENESIS_PROTOCOL_VERSION",
+            "GENESIS_HEADER_HASH",
+            "EMPTY_MERKLE_TREE_ROOT"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/src/ledger-state.ts",
+          "symbols": [
+            "ConfirmedStateSchema",
+            "makeGenesisConfirmedStateV1",
+            "confirmedStateNextHeaderProtocolVersionV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/src/initialization.ts",
+          "symbols": [
+            "makeGenesisConfirmedStateV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/src/state-queue-production.ts",
+          "symbols": [
+            "confirmedStateNextHeaderProtocolVersionV1"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+          "symbols": [
+            "genesis_protocol_version",
+            "protocol_version_v1",
+            "genesis_header_hash",
+            "genesis_utxo_root",
+            "genesis_confirmed_state_v1",
+            "confirmed_state_next_header_protocol_version_v1"
+          ]
+        },
+        {
+          "path": "onchain/aiken/validators/state-queue.ak",
+          "symbols": [
+            "genesis_confirmed_state_v1",
+            "confirmed_state_next_header_protocol_version_v1",
+            "commit_block_header_carries_confirmed_state_v1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "ConfirmedState genesis protocol-version sentinel",
+          "kind": "sentinel integer inside the six-field confirmed-state Plutus Data record",
+          "wireRepresentation": "Plutus Data constructor 0 with six positional fields in the order header_hash, prev_header_hash, utxo_root, start_time, end_time, protocol_version; identical field order in the TypeScript ConfirmedStateSchema and the Aiken ConfirmedState type",
+          "versionPolicy": "protocol_version is exactly 0 only for the single authenticated genesis state (all-zero 28-byte header hash and prev hash, empty-Merkle-tree utxo root, start_time == end_time >= 0); every ordinary confirmed state and every committed header carries exactly protocol version 1; the sentinel 0 is preserved rather than reset and can never leak into a committed header",
+          "exactFields": [
+            "0: header_hash",
+            "1: prev_header_hash",
+            "2: utxo_root",
+            "3: start_time",
+            "4: end_time",
+            "5: protocol_version"
+          ],
+          "constructorTags": [
+            {
+              "name": "ConfirmedState",
+              "tag": 0,
+              "arity": 6
+            }
+          ],
+          "arrayArity": 6,
+          "boundary": "State-queue root NFT datum written at initialization, the protocol version required of the next ordinary header at commit-block-header, and the first merge to confirmed state",
+          "binding": "The sentinel is authenticated structurally rather than by a version field alone: confirmed_state_next_header_protocol_version_v1 / confirmedStateNextHeaderProtocolVersionV1 accept only the exact all-genesis six-field state or an ordinary V1 state that has left the genesis header identity, and return the required next header version 1 in both cases; anything else returns None/null and fails closed",
+          "persistence": "Persisted as the state-queue root datum on L1 from initialization until the first merge to confirmed state; the SDK writes the same value off-chain via makeGenesisConfirmedStateV1",
+          "encoders": [
+            {
+              "path": "demo/midgard-sdk/src/ledger-state.ts",
+              "symbols": [
+                "makeGenesisConfirmedStateV1",
+                "castConfirmedStateToData"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+              "symbols": [
+                "genesis_confirmed_state_v1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-sdk/src/ledger-state.ts",
+              "symbols": [
+                "confirmedStateNextHeaderProtocolVersionV1"
+              ]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/ledger-state.ak",
+              "symbols": [
+                "confirmed_state_next_header_protocol_version_v1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+          "testNames": [
+            "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.test.ak",
+          "testNames": [
+            "genesis_protocol_sentinel_and_first_ordinary_v1_are_distinct"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+          "testNames": [
+            "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
+          ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/ledger-state.test.ak",
+          "testNames": [
+            "genesis_protocol_sentinel_and_first_ordinary_v1_are_distinct"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
-        "tests": [],
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+            "testNames": [
+              "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
+            ]
+          },
+          {
+            "path": "onchain/aiken/lib/midgard/ledger-state.test.ak",
+            "testNames": [
+              "genesis_protocol_sentinel_and_first_ordinary_v1_are_distinct"
+            ]
+          }
+        ],
         "notApplicableReason": null
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The TypeScript and Aiken tests run the same vectors: genesis time 10, ordinary header hash 0xaa repeated 28 times, non-genesis utxo root 0xbb repeated 32 times. Both assert genesis_confirmed_state_v1(10) equals the exact six-field sentinel, that a negative genesis time is refused, that both the sentinel and an ordinary V1 state yield next header version 1, and that each single-field mutation of the sentinel (protocol version 1, mutated header hash, mutated prev hash, mutated utxo root, end_time != start_time, negative time, start_time > end_time, protocol version 2) is refused.",
+        "Production wiring is present on both sides: demo/midgard-sdk/src/initialization.ts and state-queue.ts construct the genesis datum, state-queue.ts and state-queue-production.ts gate header construction on the authenticator, and onchain/aiken/validators/state-queue.ak uses genesis_confirmed_state_v1 for the initialization root datum and confirmed_state_next_header_protocol_version_v1 for the first and every subsequent ordinary header via commit_block_header_carries_confirmed_state_v1."
+      ]
     },
     {
       "id": "C09",
