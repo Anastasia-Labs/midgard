@@ -44,8 +44,8 @@
     "C20-3": "PASS",
     "C20-4": "PARTIAL",
     "C20-5": "PARTIAL",
-    "C20-6": "PARTIAL",
-    "C20-7": "PARTIAL",
+    "C20-6": "PASS",
+    "C20-7": "PASS",
     "C20-8": "PASS",
     "C21": "PASS",
     "C22": "PASS",
@@ -64,8 +64,8 @@
   },
   "p2Summary": {
     "tasks": 22,
-    "pass": 10,
-    "partial": 12,
+    "pass": 12,
+    "partial": 10,
     "open": 0,
     "authoritativeConflict": 0,
     "gate": "OPEN"
