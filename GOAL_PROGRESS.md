@@ -3628,3 +3628,84 @@ Dated checkpoint transcripts and audit-journal entries were deliberately left
 alone: they are historical records, not coverage claims, and rewriting them
 would falsify the record. No gate script asserts per-file existence or counts,
 which was checked rather than assumed.
+
+CI CONFIRMATION at `d996ffea`: `Midgard Node CI` step 14
+("Build, typecheck, and test fault-proof tooling") now SUCCEEDS on a real
+2-core runner, as does step 16 (watcher). `Aiken CI`, `Docs Site CI`,
+`Latex CI` and `Evidence Integrity CI` all green, and Evidence Integrity now
+appears exactly ONCE rather than twice, confirming the trigger scoping.
+
+
+## Superseding lucid-midgard golden divergence (2026-08-02)
+
+The next masked failure after fault-proofs was `Test lucid-midgard` (step 19):
+`tests/native-compact-goldens.test.ts > "checks checked-in goldens without
+writing"`, where the generator's `--check` exits 1 on
+`tests/fixtures/native-high-cardinality.json`.
+
+### The obvious fix was a trap
+
+Regenerating the goldens clears the lucid-midgard failure but turns Aiken CI
+RED: with the committed golden,
+`aiken check -m "encode_native_tx_compact_matches_node_cbor_shape"` reports
+`pass`; with the regenerated golden it reports `fail` on the
+`spend_inputs_hash` conjunct, while all four other conjuncts (both CBOR
+round-trips and `tx_id`) still pass. Committing the regeneration would have
+traded one red gate for another and buried a genuine TS/Aiken disagreement.
+The regeneration was reverted before any commit.
+
+### Two defects, both on the TS side; no `.ak` file needed changing
+
+**Defect 1 — the actual `--check` failure.** Per
+`demo/midgard-core/src/codec/native-witness.ts:66-81`, every compact hash
+field is the V1 bounded-collection commitment over the field's semantic items
+with the field index folded into domain separation — explicitly NOT
+`blake2b_256(preimageCbor)`. The fixture builder
+(`demo/lucid-midgard/tests/fixtures/native-high-cardinality.ts:538-546`)
+computed the three witness fields as `computeHash32(...PreimageCbor)`, the
+raw pre-commitment hash, while taking `witnessSetHashHex` from the real
+compact witness set.
+
+The committed fixture was therefore internally inconsistent WITH ITSELF, which
+proves the drift direction without reference to any code. Verified
+independently at the parent by recomputing blake2b-256 over the CBOR
+3-element array:
+
+```
+fixture's own witnessSetHashHex : 5ade743c4292...b6e6c184
+blake2b(cbor(OLD triple))       : 90cd55ec1aa9...e8a2d64d   MISMATCH
+blake2b(cbor(NEW triple))       : 5ade743c4292...b6e6c184   EXACT MATCH
+```
+
+The aggregate is embedded in the golden compact CBOR and asserted on-chain, so
+it was already committing to the fresh triple. The three component fields were
+stale; the encoder was right.
+
+**Defect 2 — why regenerating broke Aiken.** The generator's
+`replaceBodyHashAssertion` matched assertion TEXT with a global regex on
+`compact\.body\.spend_inputs_hash == #"[0-9a-f]+"`. That string is a SUBSTRING
+of `view.tx_compact.body.spend_inputs_hash`, so the global replace also
+rewrote `onchain/aiken/lib/midgard/fraud-proofs/native-tx.test.ak:288` — a
+line inside a self-contained CBOR-shape test that builds a local
+`NativeTxBodyCompact` with `0x01*32 ... 0x08*32` placeholders. The `0x01*32`
+there is CORRECT: it is the literal value of that local struct, not a stale
+golden. Rebinding it to a different transaction's real hash is what made the
+assertion false. Fixed by rebinding by old hash VALUE rather than by assertion
+text, so a placeholder in an unrelated test can never be captured.
+
+Verified at the parent: `git status -- '*.ak'` is empty (no Aiken file
+changed), the generator `--check` exits 0 and is idempotent, the placeholder
+is still present in `native-tx.test.ak`, and lucid-midgard passes 162/162
+across 19 files. No assertion was loosened, no conjunct deleted, no file
+skipped from generation.
+
+### Pattern worth noting across three defects this session
+
+The watcher fixture, the manifest golden and this fixture all failed the same
+way: a value that LOOKS like evidence (positional pick, pinned digest, raw
+hash) standing in for the value the system actually commits to. In all three
+cases the tempting remedy — raise a budget, rebind a golden, regenerate a
+fixture — would have destroyed a correct assertion. The distinguishing test
+that worked each time was to find an INDEPENDENT arithmetic or ordering
+invariant the artifact must satisfy, and check the artifact against itself
+rather than against the code that produced it.
