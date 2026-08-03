@@ -20,9 +20,29 @@ describe("Fraud Proof Catalogue Root", () => {
         const fraudProofs = contracts.fraudProofs;
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
-        expect(indexedFraudProofs).toHaveLength(6);
+        // Category IDs are the positional index in
+        // FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER, so every declared fraud-proof
+        // family must appear exactly once and every ID must equal its index.
+        // Comparing against the declared validator record (rather than a
+        // hardcoded count) catches a family that is added to `FraudProofs` but
+        // never registered in the catalogue order.
+        expect(indexedFraudProofs.map(([, , name]) => name).sort()).toEqual(
+          Object.keys(fraudProofs).sort(),
+        );
+        expect(
+          indexedFraudProofs.map(([categoryId]) => categoryId.toString("hex")),
+        ).toEqual(
+          indexedFraudProofs.map((_entry, index) =>
+            uint32ToFraudProofID(index).toString("hex"),
+          ),
+        );
+        // The tail IDs are a wire contract with the on-chain catalogue.
+        // `zeroInput` was appended at index 5, which shifted
+        // `validationTraceDispute` from 00000005 to 00000006.
         expect(indexedFraudProofs[5][0].toString("hex")).toBe("00000005");
-        expect(indexedFraudProofs[5][2]).toBe("validationTraceDispute");
+        expect(indexedFraudProofs[5][2]).toBe("zeroInput");
+        expect(indexedFraudProofs[6][0].toString("hex")).toBe("00000006");
+        expect(indexedFraudProofs[6][2]).toBe("validationTraceDispute");
 
         const fraudProofsMPF =
           yield* createFraudProofCatalogueMpf(indexedFraudProofs);

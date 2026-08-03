@@ -237,9 +237,36 @@ describe("V1 deployment manifest", () => {
     );
   });
 
+  // The golden manifest ID is `sha256` over the canonical stable JSON of the
+  // identity above, so it moves whenever the identity's field set moves. The
+  // previous value (`58fa9eb4...`, written at `0cecf536`) was reproduced
+  // bit-for-bit by reverting exactly three additions, each of which is a
+  // deliberate V1 addition and none of which drops or reshapes an existing
+  // field:
+  //
+  //  1. `4a4bc660` added `limits.maxSinglePublicationCompleteItemBytes` (14396)
+  //     to `MIDGARD_CONSENSUS_LIMITS_V1` (midgard-core
+  //     `src/consensus-profile-v1.ts`), moving `consensusProfile` and
+  //     `consensusProfileDigest` (`e81d6fdc...` -> `181730d3...`). This landed
+  //     BEFORE `0cecf536`, so `58fa9eb4...` was already stale when written;
+  //     `docs/consensus-profile-v1.md` was left stale in the same way and was
+  //     only re-synced later at `72dc8ead`.
+  //  2. `fraudProofZeroInput` was added to
+  //     `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES`, taking `contracts` from 50 to
+  //     51 entries.
+  //  3. `zeroInput` was inserted at index 5 of
+  //     `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` (midgard-sdk
+  //     `src/fraud-proof/catalogue.ts`), which adds a 7th catalogue category
+  //     and shifts `validationTraceDispute` from `00000005` to `00000006`.
+  //     Merge `baa7e937` also replaced this fixture's hand-written catalogue
+  //     (fake root `"33".repeat(32)`, `membershipProofCbor: "80"`) with the
+  //     real one derived by `buildFraudProofCatalogueDeploymentInfo`, which is
+  //     now mandatory: `verifyDeploymentManifestV1FraudProofCatalogueIdentity`
+  //     reconstructs the catalogue MPF root from the categories and verifies
+  //     every membership proof, so a fake root no longer parses.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "58fa9eb4d72b7d840ef6900126e09c96935bf11b24ba6622e2d49847c701fd2c",
+      "68c2a3ae3ccefddb060ed90c28d8a9d6c4b395611760012ce8fe5c91e446a50a",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

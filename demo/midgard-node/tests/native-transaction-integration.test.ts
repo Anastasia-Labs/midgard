@@ -769,11 +769,15 @@ const phaseAConfig = {
   strictnessProfile: "phase1_midgard",
 } as const;
 
-const mkQueued = (txId: Buffer, txCbor: Buffer): QueuedTx => ({
+const mkQueued = (
+  txId: Buffer,
+  txCbor: Buffer,
+  programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
+): QueuedTx => ({
   txId,
   txCbor,
   programMaterialSidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([
-    ...testProgramMaterial.values(),
+    ...(programMaterial ?? testProgramMaterial.values()),
   ]),
   arrivalSeq: 0n,
   createdAt: new Date(0),
@@ -786,9 +790,13 @@ const runBothPhases = async (
   phaseBOptions?: {
     readonly enforceScriptBudget?: boolean;
   },
+  programMaterial?: readonly MidgardCekProgramMaterialEntryV1[],
 ) => {
   const phaseA = await Effect.runPromise(
-    runPhaseAValidation([mkQueued(txId, txCbor)], phaseAConfig),
+    runPhaseAValidation(
+      [mkQueued(txId, txCbor, programMaterial)],
+      phaseAConfig,
+    ),
   );
   const { accepted, rejected } = await Effect.runPromise(
     runPhaseBValidationWithPatch(phaseA.accepted, preState, {
@@ -877,6 +885,7 @@ const runPlutusV3SpendScenario = async (opts: {
   readonly attachScriptIntegrityHash?: boolean;
   readonly referenceOutput?: Buffer;
   readonly phaseBOptions?: Parameters<typeof runBothPhases>[3];
+  readonly programMaterial?: readonly MidgardCekProgramMaterialEntryV1[];
 }) => {
   const base = buildNativeTx(opts.txOptions);
   const tx =
@@ -893,7 +902,13 @@ const runPlutusV3SpendScenario = async (opts: {
 
   return {
     ...tx,
-    ...(await runBothPhases(tx.txId, tx.txCbor, preState, opts.phaseBOptions)),
+    ...(await runBothPhases(
+      tx.txId,
+      tx.txCbor,
+      preState,
+      opts.phaseBOptions,
+      opts.programMaterial,
+    )),
   };
 };
 
@@ -2091,8 +2106,15 @@ describe("native transaction integration", () => {
     expect(phaseB.accepted).toHaveLength(0);
     expect(phaseB.rejected).toHaveLength(1);
     expect(phaseB.rejected[0].code).toBe(RejectCodes.CekProgramMaterial);
+    // `ac0e8aa4` widened this boundary from reference-script envelopes only to
+    // the exact attached+reference bundle, renaming the detail. Assert the
+    // decoder cause too, so this still proves the malformed reference-script
+    // envelope is what was caught.
     expect(phaseB.rejected[0].detail).toContain(
-      "invalid reference-script CEK material",
+      "invalid exact attached/reference-script CEK material",
+    );
+    expect(phaseB.rejected[0].detail).toContain(
+      "cek_program_envelope must be an array",
     );
   });
 
@@ -2586,6 +2608,12 @@ describe("native transaction integration", () => {
           { tag: CML.RedeemerTag.Spend, index: 0n },
         ]),
       },
+      // The script is deliberately absent from the tx, so there is no program
+      // envelope for it and therefore no program material either. Since
+      // `ac0e8aa4` made the sidecar exact (dropping `allowUnreachable`), the
+      // shared harness corpus would be rejected at the material boundary
+      // before witness discovery and mask the condition under test.
+      programMaterial: [],
     });
 
     expect(phaseA.rejected).toHaveLength(0);

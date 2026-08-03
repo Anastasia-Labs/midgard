@@ -627,7 +627,14 @@ describe("deployment run-state command identity guards", () => {
           hubOracleOneShot: { txHash: oneShotTxHash, outputIndex: 0 },
           manifestPath,
           referenceScriptAuthPolicyId: runStatePolicyInfo.policyId,
-          referenceScriptAuthPolicy: runStatePolicyInfo,
+          // Run state stores only the two fields
+          // `resolveReferenceScriptAuthPolicyProgram` persists; the wider
+          // deployment-info record (`tokenNames`, `postTimelockAudit`) is
+          // manifest-only and `parseDeploymentRunIdentityV1` fails closed on it.
+          referenceScriptAuthPolicy: {
+            policyId: runStatePolicyInfo.policyId,
+            nativeScript: runStatePolicyInfo.nativeScript,
+          },
         },
       }),
     );
