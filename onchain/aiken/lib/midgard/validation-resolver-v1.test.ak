@@ -96,6 +96,7 @@ fn script_source_resolvers() -> List<ScriptHash> {
     #"dc6561fe389cf36a1b520934cf508eafd2428e53e1208b77b53d545c",
     #"8b2be118846589dc7584d74cbf8a35b17ca14b9ef49a0a3187ba1fe3",
     #"594f9a0e996ff5857847edee440f9fe63cb297e05bbbf196cff650c7",
+    #"9e0e7ddbfa728c2b6b27f084e31220f3c68025ecb249d2d0eaa9ae8a",
   ]
 }
 

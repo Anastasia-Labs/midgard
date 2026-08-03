@@ -22,7 +22,6 @@ pub type SpendRedeemer =
 
 validator main(
   deployment_id: ByteArray,
-  expected_envelope_binder_script_hash: ScriptHash,
   expected_traversal_normalizer_script_hash: ScriptHash,
   expected_outer_normalizer_script_hash: ScriptHash,
   expected_fold_map_executor_script_hash: ScriptHash,
@@ -68,7 +67,6 @@ validator main(
             expect Some(state) = input_state
             and {
               bytearray.length(deployment_id) == 32,
-              bytearray.length(expected_envelope_binder_script_hash) == 28,
               bytearray.length(expected_traversal_normalizer_script_hash) == 28,
               bytearray.length(expected_outer_normalizer_script_hash) == 28,
               bytearray.length(expected_fold_map_executor_script_hash) == 28,
@@ -77,7 +75,7 @@ validator main(
                 state,
                 envelope,
                 deployment_id,
-                expected_envelope_binder_script_hash,
+                state.envelope_binder_script_hash,
                 expected_traversal_normalizer_script_hash,
                 expected_outer_normalizer_script_hash,
                 expected_fold_map_executor_script_hash,

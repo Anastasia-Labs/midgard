@@ -1,5 +1,4 @@
 use aiken/cbor
-use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -26,10 +25,6 @@ pub type SpendRedeemer =
 
 validator main(
   deployment_id: ByteArray,
-  expected_envelope_binder_script_hash: ScriptHash,
-  expected_traversal_normalizer_script_hash: ScriptHash,
-  expected_outer_normalizer_script_hash: ScriptHash,
-  expected_settlement_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
@@ -113,26 +108,22 @@ validator main(
                 )
                 and {
                   bytearray.length(deployment_id) == 32,
-                  bytearray.length(expected_envelope_binder_script_hash) == 28,
-                  bytearray.length(expected_traversal_normalizer_script_hash) == 28,
-                  bytearray.length(expected_outer_normalizer_script_hash) == 28,
-                  bytearray.length(expected_settlement_script_hash) == 28,
                   normalization.outer_normalized_state_is_bound_v1(
                     state,
                     normalization.finalize_frame_family,
                     deployment_id,
-                    expected_envelope_binder_script_hash,
-                    expected_traversal_normalizer_script_hash,
-                    expected_outer_normalizer_script_hash,
+                    state.envelope_binder_script_hash,
+                    state.traversal_normalizer_script_hash,
+                    state.outer_normalizer_script_hash,
                     input_script_hash,
-                    expected_settlement_script_hash,
+                    state.settlement_script_hash,
                   ),
                   normalization.semantic_executor_route_is_exact_v1(
                     state,
                     normalization.finalize_frame_family,
                     input_script_hash,
                     output_script_hash,
-                    expected_settlement_script_hash,
+                    state.settlement_script_hash,
                   ),
                   normalization.traversal_action_identity_is_bound_v1(
                     traversal_action,

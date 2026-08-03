@@ -86,7 +86,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
         ({ spendingScriptHash }) => spendingScriptHash,
       );
 
-    expect(deployedSemanticHashes).toHaveLength(75);
+    expect(deployedSemanticHashes).toHaveLength(76);
     expect(contracts.validationTraceDispute.prepareResolvers).toHaveLength(12);
     expect(
       extractResolverGroup(
@@ -96,7 +96,10 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     ).toEqual(deployedSemanticHashes.slice(24, 26));
     expect(
       extractResolverGroup("script_source_resolvers", "script_address"),
-    ).toEqual(deployedSemanticHashes.slice(32, 60));
+    ).toEqual([
+      ...deployedSemanticHashes.slice(32, 60),
+      deployedSemanticHashes[75]!,
+    ]);
     expect(
       contracts.validationTraceDispute.prepareResolvers[6].spendingScriptHash,
     ).toBe(
@@ -112,7 +115,10 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     ).toBe(
       appliedPrepareHash(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.scriptSources,
-        deployedSemanticHashes.slice(32, 60),
+        [
+          ...deployedSemanticHashes.slice(32, 60),
+          deployedSemanticHashes[75]!,
+        ],
         contracts.computationThread.policyId,
       ),
     );

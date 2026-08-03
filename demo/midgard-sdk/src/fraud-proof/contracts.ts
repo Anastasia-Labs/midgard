@@ -2,13 +2,16 @@ import {
   Address,
   applyParamsToScript,
   Data,
+  fromHex,
   MintingPolicy,
   mintingPolicyToId,
   Network,
   SpendingValidator as LucidSpendingValidator,
   validatorToAddress,
   validatorToScriptHash,
+  toHex,
 } from "@lucid-evolution/lucid";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
 import {
@@ -81,6 +84,20 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
       "fraud_proofs/validation_trace/canonical_decode_item_proof_v1.main.spend",
     settlement:
       "fraud_proofs/validation_trace/canonical_decode_item_settlement_v1.main.spend",
+  },
+  scriptSourcesStageOneRedeemerStages: {
+    envelope:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_envelope_v1.main.spend",
+    traversalNormalizer:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_traversal_normalizer_v1.main.spend",
+    outerNormalizer:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_outer_normalizer_v1.main.spend",
+    foldMapExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_fold_map_executor_v1.main.spend",
+    finalizeFrameExecutor:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_finalize_frame_executor_v1.main.spend",
+    settlement:
+      "fraud_proofs/validation_trace/script_sources_stage_one_redeemer_execution_settlement_v1.main.spend",
   },
   prepares: {
     canonicalDecode:
@@ -361,6 +378,14 @@ export type ValidationTraceDisputeFaultProofContracts = {
       readonly proof: SpendingValidator;
       readonly settlement: SpendingValidator;
     };
+    readonly scriptSourcesStageOneRedeemerStages: {
+      readonly envelope: SpendingValidator;
+      readonly traversalNormalizer: SpendingValidator;
+      readonly outerNormalizer: SpendingValidator;
+      readonly foldMapExecutor: SpendingValidator;
+      readonly finalizeFrameExecutor: SpendingValidator;
+      readonly settlement: SpendingValidator;
+    };
     readonly prepareResolvers: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -376,6 +401,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
       SpendingValidator,
     ];
     readonly semanticResolvers: readonly [
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -513,6 +539,17 @@ export type BuildTransitionTraceFaultProofContractsParams =
 
 export type BuildValidationTraceDisputeFaultProofContractsParams =
   BuildFaultProofContractsParams;
+
+export const deriveValidationTraceDeploymentIdV1 = (
+  fraudProofCataloguePolicyId: string,
+): string => {
+  if (!/^[0-9a-fA-F]{56}$/u.test(fraudProofCataloguePolicyId)) {
+    throw new Error(
+      "Fraud-proof catalogue policy id must be exactly 28 bytes of hexadecimal",
+    );
+  }
+  return toHex(blake2b(fromHex(fraudProofCataloguePolicyId), { dkLen: 32 }));
+};
 
 export const parseFaultProofBlueprint = (
   value: unknown,
@@ -1064,6 +1101,7 @@ const buildValidationTraceDisputeChain = ({
   blueprint,
   network,
   hubOraclePolicyId,
+  fraudProofCataloguePolicyId,
   computationThread,
   fraudProof,
   fraudProofTokenAddressData,
@@ -1071,6 +1109,7 @@ const buildValidationTraceDisputeChain = ({
   readonly blueprint: FaultProofBlueprint;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
+  readonly fraudProofCataloguePolicyId: string;
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
@@ -1097,6 +1136,119 @@ const buildValidationTraceDisputeChain = ({
           ),
         ),
     );
+
+    const deploymentId = deriveValidationTraceDeploymentIdV1(
+      fraudProofCataloguePolicyId,
+    );
+    const buildStageOneRedeemerExecutor = (
+      title: string,
+      label: string,
+    ): Effect.Effect<SpendingValidator, Error> =>
+      tryBuild(`Failed to build stage-one redeemer ${label} validator`, () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(getCompiledScript(blueprint, title), [
+            deploymentId,
+            computationThread.policyId,
+          ]),
+        ),
+      );
+    const stageOneRedeemerFoldMapExecutor =
+      yield* buildStageOneRedeemerExecutor(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.foldMapExecutor,
+        "fold-map executor",
+      );
+    const stageOneRedeemerFinalizeFrameExecutor =
+      yield* buildStageOneRedeemerExecutor(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
+        "finalize-frame executor",
+      );
+    const stageOneRedeemerOuterNormalizer = yield* tryBuild(
+      "Failed to build stage-one redeemer outer normalizer validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .scriptSourcesStageOneRedeemerStages.outerNormalizer,
+            ),
+            [deploymentId, computationThread.policyId],
+          ),
+        ),
+    );
+    const stageOneRedeemerTraversalNormalizer = yield* tryBuild(
+      "Failed to build stage-one redeemer traversal normalizer validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
+            ),
+            [deploymentId, computationThread.policyId],
+          ),
+        ),
+    );
+    const stageOneRedeemerSettlement = yield* tryBuild(
+      "Failed to build stage-one redeemer settlement validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .scriptSourcesStageOneRedeemerStages.settlement,
+            ),
+            [
+              deploymentId,
+              stageOneRedeemerTraversalNormalizer.spendingScriptHash,
+              stageOneRedeemerOuterNormalizer.spendingScriptHash,
+              stageOneRedeemerFoldMapExecutor.spendingScriptHash,
+              stageOneRedeemerFinalizeFrameExecutor.spendingScriptHash,
+              award.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const stageOneRedeemerEnvelope = yield* tryBuild(
+      "Failed to build stage-one redeemer envelope validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+                .scriptSourcesStageOneRedeemerStages.envelope,
+            ),
+            [
+              deploymentId,
+              stageOneRedeemerTraversalNormalizer.spendingScriptHash,
+              stageOneRedeemerOuterNormalizer.spendingScriptHash,
+              stageOneRedeemerFoldMapExecutor.spendingScriptHash,
+              stageOneRedeemerFinalizeFrameExecutor.spendingScriptHash,
+              stageOneRedeemerSettlement.spendingScriptHash,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+    const scriptSourcesStageOneRedeemerStages = {
+      envelope: stageOneRedeemerEnvelope,
+      traversalNormalizer: stageOneRedeemerTraversalNormalizer,
+      outerNormalizer: stageOneRedeemerOuterNormalizer,
+      foldMapExecutor: stageOneRedeemerFoldMapExecutor,
+      finalizeFrameExecutor: stageOneRedeemerFinalizeFrameExecutor,
+      settlement: stageOneRedeemerSettlement,
+    } as const;
 
     const semanticTitles = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
@@ -1215,7 +1367,7 @@ const buildValidationTraceDisputeChain = ({
         new Error("Validation-trace semantic resolver set is incomplete"),
       );
     }
-    const semanticResolvers = [
+    const baseSemanticResolvers = [
       builtSemanticResolvers[0]!,
       builtSemanticResolvers[1]!,
       builtSemanticResolvers[2]!,
@@ -1292,6 +1444,10 @@ const buildValidationTraceDisputeChain = ({
       builtSemanticResolvers[73]!,
       builtSemanticResolvers[74]!,
     ] as const;
+    const semanticResolvers = [
+      ...baseSemanticResolvers,
+      stageOneRedeemerEnvelope,
+    ] as const;
     const semanticResolverGroups = [
       [semanticResolvers[0], semanticResolvers[1]],
       [semanticResolvers[2]],
@@ -1357,6 +1513,7 @@ const buildValidationTraceDisputeChain = ({
         semanticResolvers[57],
         semanticResolvers[58],
         semanticResolvers[59],
+        semanticResolvers[75],
       ],
       [semanticResolvers[60], semanticResolvers[61], semanticResolvers[62]],
       [
@@ -1591,6 +1748,11 @@ const buildValidationTraceDisputeChain = ({
         award,
         proofItem,
         ...semanticResolvers,
+        stageOneRedeemerTraversalNormalizer,
+        stageOneRedeemerOuterNormalizer,
+        stageOneRedeemerFoldMapExecutor,
+        stageOneRedeemerFinalizeFrameExecutor,
+        stageOneRedeemerSettlement,
         ...Object.values(canonicalDecodeItemStages),
         ...prepareResolvers,
         ...directResolvers,
@@ -1603,6 +1765,7 @@ const buildValidationTraceDisputeChain = ({
       award,
       proofItem,
       canonicalDecodeItemStages,
+      scriptSourcesStageOneRedeemerStages,
       prepareResolvers,
       semanticResolvers,
       directResolvers,

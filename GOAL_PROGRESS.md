@@ -4113,3 +4113,27 @@ direction that flatters progress; one triage count was unreproducible and was
 dropped rather than copied. The two rows that stayed open stayed open for
 reasons that are now accurate: C21-STAGE4-GAP on an owner ratification, W20 on
 a dependency that was never enqueued.
+
+## RF-021 closure: additive stage-one redeemer split route (2026-08-03)
+
+RF-021 was unwired because restoring the six split validators restored only
+their Aiken sources: the production SDK catalogue, the 29-entry ScriptSources
+prepare group, and the fault-proof transaction submitter still selected the
+84,789-byte monolithic semantic validator. The original split hash parameters
+also formed a compile-time cycle, so no off-chain builder could instantiate
+the family.
+
+The cycle is removed without weakening the runtime route commitments. The
+existing local-15/global-47 monolith is retained for its complete action
+family. A new local-28/global-75 heavy-item handler executes envelope,
+traversal normalization, outer normalization, the exact FoldMap or
+FinalizeFrame executor, and settlement; the existing award submission is the
+sixth/final transaction. The envelope commits the complete route, every stage
+checks its observed predecessor/successor and computation-thread custody, and
+settlement retains compile-time pins to every predecessor and the award.
+
+Verification used `/home/gumbo/.local/bin/aiken-fork` for all Aiken checks:
+five exact normalization route/provenance/family guards passed, the production
+29-resolver prepare-route pair passed 2/2, SDK contract/application tests
+passed 18/18 after the testnet blueprint rebuild, and fault-proof submit tests
+passed 13/13 with typecheck, lint, and build/DTS clean.

@@ -21,6 +21,7 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  deriveValidationTraceDeploymentIdV1,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
   DoubleSpendStep01SpendRedeemer,
@@ -500,7 +501,7 @@ describe("fault-proof contract builder", () => {
     expect(contracts.validationTraceDispute.firstStep).toBe(
       contracts.validationTraceDispute.steps[0],
     );
-    expect(contracts.validationTraceDispute.steps).toHaveLength(100);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(106);
     expect(contracts.validationTraceDispute.resolvers).toHaveLength(
       VALIDATION_TRACE_RESOLVER_COUNT_V1,
     );
@@ -515,11 +516,9 @@ describe("fault-proof contract builder", () => {
           ...contracts.validationTraceDispute.steps,
         ].map((step) => step.spendingScriptHash),
       ).size,
-      // 121 since the stage-one redeemer feasibility checkpoint was
-      // integrated: re-tracking the four stage-one executor validators grew
-      // the blueprint from 368 to 376 validators, adding one further distinct
-      // applied step hash across these six chains.
-    ).toBe(121);
+      // The split stage-one route contributes the envelope resolver plus five
+      // internal stage hashes to the applied proof surface.
+    ).toBe(127);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {
@@ -766,6 +765,9 @@ describe("fault-proof contract builder", () => {
       ...Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
       ),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages,
+      ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(
@@ -800,7 +802,72 @@ describe("fault-proof contract builder", () => {
         fraudProofTokenAddressData,
       ],
     );
-    const expectedSemanticResolvers = Object.values(
+    const deploymentId = deriveValidationTraceDeploymentIdV1(h28c);
+    const expectedStageOneRedeemerFoldMapExecutor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.foldMapExecutor,
+      ),
+      [deploymentId, contracts.computationThread.policyId],
+    );
+    const expectedStageOneRedeemerFinalizeFrameExecutor = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.finalizeFrameExecutor,
+      ),
+      [deploymentId, contracts.computationThread.policyId],
+    );
+    const expectedStageOneRedeemerOuterNormalizer = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.outerNormalizer,
+      ),
+      [deploymentId, contracts.computationThread.policyId],
+    );
+    const expectedStageOneRedeemerTraversalNormalizer = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.traversalNormalizer,
+      ),
+      [deploymentId, contracts.computationThread.policyId],
+    );
+    const expectedStageOneRedeemerSettlement = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.settlement,
+      ),
+      [
+        deploymentId,
+        spendingScriptHash(expectedStageOneRedeemerTraversalNormalizer),
+        spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
+        spendingScriptHash(expectedStageOneRedeemerFoldMapExecutor),
+        spendingScriptHash(expectedStageOneRedeemerFinalizeFrameExecutor),
+        spendingScriptHash(expectedAward),
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedStageOneRedeemerEnvelope = applyParamsToScript(
+      compiledScript(
+        blueprint,
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES
+          .scriptSourcesStageOneRedeemerStages.envelope,
+      ),
+      [
+        deploymentId,
+        spendingScriptHash(expectedStageOneRedeemerTraversalNormalizer),
+        spendingScriptHash(expectedStageOneRedeemerOuterNormalizer),
+        spendingScriptHash(expectedStageOneRedeemerFoldMapExecutor),
+        spendingScriptHash(expectedStageOneRedeemerFinalizeFrameExecutor),
+        spendingScriptHash(expectedStageOneRedeemerSettlement),
+        contracts.computationThread.policyId,
+      ],
+    );
+    const expectedBaseSemanticResolvers = Object.values(
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics,
     ).map((title, index) =>
       applyParamsToScript(
@@ -818,6 +885,10 @@ describe("fault-proof contract builder", () => {
             ],
       ),
     );
+    const expectedSemanticResolvers = [
+      ...expectedBaseSemanticResolvers,
+      expectedStageOneRedeemerEnvelope,
+    ];
     const expectedSemanticResolverGroups = [
       [expectedSemanticResolvers[0]!, expectedSemanticResolvers[1]!],
       [expectedSemanticResolvers[2]!],
@@ -883,6 +954,7 @@ describe("fault-proof contract builder", () => {
         expectedSemanticResolvers[57]!,
         expectedSemanticResolvers[58]!,
         expectedSemanticResolvers[59]!,
+        expectedSemanticResolvers[75]!,
       ],
       [
         expectedSemanticResolvers[60]!,
@@ -1025,7 +1097,7 @@ describe("fault-proof contract builder", () => {
       ).toBeLessThan(14 * 1024);
     }
 
-    expect(contracts.validationTraceDispute.steps).toHaveLength(100);
+    expect(contracts.validationTraceDispute.steps).toHaveLength(106);
     expect(contracts.validationTraceDispute.award.spendingScriptCBOR).toBe(
       expectedAward,
     );
@@ -1034,6 +1106,18 @@ describe("fault-proof contract builder", () => {
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
     ).toEqual(expectedSemanticResolvers);
+    expect(
+      Object.values(
+        contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages,
+      ).map(({ spendingScriptCBOR }) => spendingScriptCBOR),
+    ).toEqual([
+      expectedStageOneRedeemerEnvelope,
+      expectedStageOneRedeemerTraversalNormalizer,
+      expectedStageOneRedeemerOuterNormalizer,
+      expectedStageOneRedeemerFoldMapExecutor,
+      expectedStageOneRedeemerFinalizeFrameExecutor,
+      expectedStageOneRedeemerSettlement,
+    ]);
     expect(
       contracts.validationTraceDispute.prepareResolvers.map(
         ({ spendingScriptCBOR }) => spendingScriptCBOR,

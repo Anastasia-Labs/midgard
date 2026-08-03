@@ -1,4 +1,3 @@
-use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
@@ -19,8 +18,6 @@ pub type SpendRedeemer =
 
 validator main(
   deployment_id: ByteArray,
-  expected_envelope_binder_script_hash: ScriptHash,
-  expected_traversal_normalizer_script_hash: ScriptHash,
   computation_thread_policy_id: PolicyId,
 ) {
   spend(
@@ -110,12 +107,10 @@ validator main(
               normalization.traversal_normalized_state_is_bound_v1(
                 state,
                 deployment_id,
-                expected_envelope_binder_script_hash,
-                expected_traversal_normalizer_script_hash,
+                state.envelope_binder_script_hash,
+                state.traversal_normalizer_script_hash,
               ),
               bytearray.length(deployment_id) == 32,
-              bytearray.length(expected_envelope_binder_script_hash) == 28,
-              bytearray.length(expected_traversal_normalizer_script_hash) == 28,
               normalization.outer_normalizer_route_is_exact_v1(
                 state,
                 input_script_hash,

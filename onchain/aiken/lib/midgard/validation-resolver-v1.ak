@@ -11,7 +11,7 @@ use midgard/validation_trace_v1
 
 pub const phase_a_script_preconditions_semantic_resolver_count: Int = 2
 
-pub const script_sources_semantic_resolver_count: Int = 28
+pub const script_sources_semantic_resolver_count: Int = 29
 
 pub type Datum =
   ct.StepDatum<validation_resolution_v1.ValidationResolutionStateV1>
