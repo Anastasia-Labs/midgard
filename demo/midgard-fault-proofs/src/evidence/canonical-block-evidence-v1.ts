@@ -245,13 +245,9 @@ export const fetchCanonicalBlockEvidenceV1 = async ({
     sources,
     ...(retries === undefined ? {} : { retries }),
   });
-  const daProvenance = admitEvidenceProvenanceV1({
-    provenance: {
-      trustClass: "public_or_permissionless_da",
-      sourceId: `${fetched.sourceId}/${fetched.sourcePeerId}`,
-      grade: "security",
-    },
-  });
+  const daProvenance = assertSecurityGradeEvidenceV1(
+    admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
+  );
   return await canonicalBlockEvidenceFromVerifiedPayloadV1({
     observation: admittedObservation,
     payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,

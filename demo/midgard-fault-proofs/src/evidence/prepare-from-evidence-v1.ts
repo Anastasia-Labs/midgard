@@ -30,6 +30,10 @@ import {
   prepareInvalidRangeFromTransactions,
 } from "../prepare-invalid-range.js";
 import {
+  type PreparedNonExistentInputOutput,
+  prepareNonExistentInputFromTransactions,
+} from "../prepare-non-existent-input.js";
+import {
   type PreparedZeroInputOutput,
   prepareZeroInputFromTransactions,
 } from "../prepare-zero-input.js";
@@ -118,4 +122,133 @@ export const prepareInvalidRangeFromCanonicalEvidenceV1 = async ({
     ...(txId === undefined ? {} : { txId }),
     ...(outputDir === undefined ? {} : { outputDir }),
   });
+};
+
+/**
+ * Builds a non-existent-input proof solely from admitted block evidence. A
+ * non-genesis predecessor ledger must be supplied as its own verified
+ * DA/L1-bound block evidence; an operator file is never accepted here.
+ */
+export const prepareNonExistentInputFromCanonicalEvidenceV1 = async ({
+  evidence,
+  previousBlockEvidence,
+  badTxId,
+  badInputIndex,
+  outputDir,
+}: CanonicalEvidenceBuilderInputV1 & {
+  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+  readonly badTxId?: string;
+  readonly badInputIndex?: string | number;
+}): Promise<PreparedNonExistentInputOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
+  if (previousBlockEvidence !== undefined) {
+    // The predecessor contributes an authenticated ledger snapshot, not a
+    // native transaction-inclusion argument. Admit both provenances without
+    // incorrectly requiring its transaction leaf convention to be native.
+    blockTransactionsFromCanonicalEvidenceV1(previousBlockEvidence);
+    if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
+      throw new Error(
+        "Previous canonical block evidence is not the predecessor committed by this header.",
+      );
+    }
+    if (
+      evidence.header.prevUtxosRoot !== previousBlockEvidence.header.utxosRoot
+    ) {
+      throw new Error(
+        "Previous canonical block evidence does not authenticate this block's prev_utxos_root.",
+      );
+    }
+    previousBlockPayloadEnvelopeCbor =
+      previousBlockEvidence.reconstruction.payloadEnvelopeCbor;
+  }
+  return await prepareNonExistentInputFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
+    prevUtxosRoot: evidence.header.prevUtxosRoot,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    ...(previousBlockPayloadEnvelopeCbor === undefined
+      ? {}
+      : { prevBlockPayloadEnvelopeCbor: previousBlockPayloadEnvelopeCbor }),
+    ...(badTxId === undefined ? {} : { badTxId }),
+    ...(badInputIndex === undefined ? {} : { badInputIndex }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
+};
+
+export type CanonicalPrepareCommandV1 =
+  | {
+      readonly command: "prepare-double-spend";
+      readonly tx1Id?: string;
+      readonly tx2Id?: string;
+      readonly outputDir?: string;
+    }
+  | {
+      readonly command: "prepare-invalid-range";
+      readonly txId?: string;
+      readonly outputDir?: string;
+    }
+  | {
+      readonly command: "prepare-non-existent-input";
+      readonly badTxId?: string;
+      readonly badInputIndex?: string | number;
+      readonly outputDir?: string;
+    }
+  | {
+      readonly command: "prepare-zero-input";
+      readonly txId?: string;
+      readonly outputDir?: string;
+    };
+
+/** Package-root-reachable canonical router for all four prepare CLI verbs. */
+export const executeCanonicalPrepareCommandV1 = async ({
+  request,
+  evidence,
+  previousBlockEvidence,
+}: {
+  readonly request: CanonicalPrepareCommandV1;
+  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+}) => {
+  switch (request.command) {
+    case "prepare-double-spend":
+      return await prepareDoubleSpendFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.tx1Id === undefined ? {} : { tx1Id: request.tx1Id }),
+        ...(request.tx2Id === undefined ? {} : { tx2Id: request.tx2Id }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-invalid-range":
+      return await prepareInvalidRangeFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.txId === undefined ? {} : { txId: request.txId }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-non-existent-input":
+      return await prepareNonExistentInputFromCanonicalEvidenceV1({
+        evidence,
+        ...(previousBlockEvidence === undefined
+          ? {}
+          : { previousBlockEvidence }),
+        ...(request.badTxId === undefined ? {} : { badTxId: request.badTxId }),
+        ...(request.badInputIndex === undefined
+          ? {}
+          : { badInputIndex: request.badInputIndex }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-zero-input":
+      return await prepareZeroInputFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.txId === undefined ? {} : { txId: request.txId }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+  }
 };

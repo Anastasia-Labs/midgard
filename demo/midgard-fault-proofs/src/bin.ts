@@ -4,11 +4,13 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { formatUnknownError } from "@al-ft/midgard-core";
+import { assertSecurityGradeEvidenceV1 } from "@al-ft/midgard-sdk";
 
 import {
   diagnosticEvidenceBannerV1,
   LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1,
   MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1,
+  SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1,
 } from "./evidence/diagnostic-evidence-v1.js";
 import {
   generateFraudProofFamilyScaffoldV1,
@@ -24,23 +26,6 @@ import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
 import { neSubmitStep04FromFiles } from "./ne-submit-step-04.js";
-import {
-  prepareDoubleSpendFromFile,
-  prepareDoubleSpendFromNode,
-  prepareSampleDoubleSpend,
-} from "./prepare-double-spend.js";
-import {
-  prepareInvalidRangeFromFile,
-  prepareInvalidRangeFromNode,
-} from "./prepare-invalid-range.js";
-import {
-  prepareNonExistentInputFromFile,
-  prepareNonExistentInputFromNode,
-} from "./prepare-non-existent-input.js";
-import {
-  prepareZeroInputFromFile,
-  prepareZeroInputFromNode,
-} from "./prepare-zero-input.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { type ProviderKind } from "./runtime.js";
 import {
@@ -129,10 +114,8 @@ export type ParsedArgs = {
 };
 
 const usage = `Usage:
-  midgard-fault-proofs prepare-double-spend (--midgard-node-url <url> | --transactions-file <path> | --sample-double-spend) --header-hash <hex> [--expected-transactions-root <hex>] [--tx1-id <hex> --tx2-id <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-invalid-range (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --block-valid-from <posixMs> --block-valid-to <posixMs> [--expected-transactions-root <hex>] [--tx-id <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-non-existent-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> [--bad-tx-id <hex>] [--bad-input-index <n>] [--prev-utxos-root <hex> --prev-block-payload-file <daPayloadV2.hex>] [--expected-transactions-root <hex>] [--output-dir <path>]
-  midgard-fault-proofs prepare-zero-input (--midgard-node-url <url> | --transactions-file <path>) --header-hash <hex> --expected-transactions-root <hex> [--tx-id <hex>] [--output-dir <path>]
+  prepare-* security-grade execution consumes CanonicalBlockEvidenceV1 through executeCanonicalPrepareCommandV1.
+  --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
   midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -682,184 +665,32 @@ export const main = async (): Promise<void> => {
     fraudCategory: args.fraudCategory,
   });
 
-  // Q03: operator REST/file evidence imports are permitted only as labelled
-  // diagnostics, so every prepare run driven by one announces it before doing
-  // any work. Canonical runs consume verified DA payloads plus authenticated L1
-  // observations through `src/evidence/**` instead.
+  // Q03: the executable CLI has no operator-private compatibility route. The
+  // current REST/file/sample flags are retained solely as clearly labelled
+  // diagnostic imports and are rejected by the same security-grade gate every
+  // canonical builder uses. Security-grade callers route all four verbs through
+  // `executeCanonicalPrepareCommandV1`, supplying verified DA/L1 evidence from
+  // the watcher/public transport rather than claiming a local file is trusted.
   if (args.command.startsWith("prepare-")) {
-    if (args.midgardNodeUrl !== undefined) {
-      process.stderr.write(
-        `${diagnosticEvidenceBannerV1(MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1)}\n`,
-      );
-    } else if (args.transactionsPath !== undefined) {
-      process.stderr.write(
-        `${diagnosticEvidenceBannerV1(LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1)}\n`,
-      );
-    }
-  }
-
-  if (args.command === "prepare-double-spend") {
-    if (args.headerHash === undefined) {
-      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
-    }
-    const inputModes = [
-      args.midgardNodeUrl !== undefined,
-      args.transactionsPath !== undefined,
-      args.sampleDoubleSpend,
-    ].filter(Boolean).length;
-    if (inputModes !== 1) {
-      throw new Error(
-        `Provide exactly one of --midgard-node-url, --transactions-file, or --sample-double-spend.\n${usage}`,
-      );
-    }
-    const output =
-      args.midgardNodeUrl !== undefined
-        ? await prepareDoubleSpendFromNode({
-            midgardNodeUrl: args.midgardNodeUrl,
-            headerHash: args.headerHash,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
-            tx1Id: args.tx1Id,
-            tx2Id: args.tx2Id,
-            outputDir: args.outputDir,
-          })
-        : args.transactionsPath !== undefined
-          ? await prepareDoubleSpendFromFile({
-              transactionsPath: args.transactionsPath,
-              headerHash: args.headerHash,
-              expectedTransactionsRoot: args.expectedTransactionsRoot,
-              tx1Id: args.tx1Id,
-              tx2Id: args.tx2Id,
-              outputDir: args.outputDir,
-            })
-          : await prepareSampleDoubleSpend({
-              headerHash: args.headerHash,
-              expectedTransactionsRoot: args.expectedTransactionsRoot,
-              outputDir: args.outputDir,
-            });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "prepare-invalid-range") {
-    if (args.headerHash === undefined) {
-      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
-    }
-    if (args.blockValidFrom === undefined) {
-      throw new Error(
-        `Missing required --block-valid-from <posixMs>.\n${usage}`,
-      );
-    }
-    if (args.blockValidTo === undefined) {
-      throw new Error(`Missing required --block-valid-to <posixMs>.\n${usage}`);
-    }
-    const inputModes = [
-      args.midgardNodeUrl !== undefined,
-      args.transactionsPath !== undefined,
-    ].filter(Boolean).length;
-    if (inputModes !== 1) {
-      throw new Error(
-        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
-      );
-    }
-    const output =
-      args.midgardNodeUrl !== undefined
-        ? await prepareInvalidRangeFromNode({
-            midgardNodeUrl: args.midgardNodeUrl,
-            headerHash: args.headerHash,
-            blockValidFrom: args.blockValidFrom,
-            blockValidTo: args.blockValidTo,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
-            txId: args.txId,
-            outputDir: args.outputDir,
-          })
-        : await prepareInvalidRangeFromFile({
-            transactionsPath: args.transactionsPath!,
-            headerHash: args.headerHash,
-            blockValidFrom: args.blockValidFrom,
-            blockValidTo: args.blockValidTo,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
-            txId: args.txId,
-            outputDir: args.outputDir,
-          });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "prepare-non-existent-input") {
-    if (args.headerHash === undefined) {
-      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
-    }
-    const inputModes = [
-      args.midgardNodeUrl !== undefined,
-      args.transactionsPath !== undefined,
-    ].filter(Boolean).length;
-    if (inputModes !== 1) {
-      throw new Error(
-        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
-      );
-    }
-    const output =
-      args.midgardNodeUrl !== undefined
-        ? await prepareNonExistentInputFromNode({
-            midgardNodeUrl: args.midgardNodeUrl,
-            headerHash: args.headerHash,
-            badTxId: args.badTxId,
-            badInputIndex: args.badInputIndex,
-            prevUtxosRoot: args.prevUtxosRoot,
-            prevBlockPayloadPath: args.prevBlockPayloadPath,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
-            outputDir: args.outputDir,
-          })
-        : await prepareNonExistentInputFromFile({
-            transactionsPath: args.transactionsPath!,
-            headerHash: args.headerHash,
-            badTxId: args.badTxId,
-            badInputIndex: args.badInputIndex,
-            prevUtxosRoot: args.prevUtxosRoot,
-            prevBlockPayloadPath: args.prevBlockPayloadPath,
-            expectedTransactionsRoot: args.expectedTransactionsRoot,
-            outputDir: args.outputDir,
-          });
-    writeJson(output);
-    return;
-  }
-
-  if (args.command === "prepare-zero-input") {
-    if (args.headerHash === undefined) {
-      throw new Error(`Missing required --header-hash <hex>.\n${usage}`);
-    }
-    const inputModes = [
-      args.midgardNodeUrl !== undefined,
-      args.transactionsPath !== undefined,
-    ].filter(Boolean).length;
-    if (inputModes !== 1) {
-      throw new Error(
-        `Provide exactly one of --midgard-node-url or --transactions-file.\n${usage}`,
-      );
-    }
-    if (args.expectedTransactionsRoot === undefined) {
+    if (
+      args.command === "prepare-zero-input" &&
+      args.expectedTransactionsRoot === undefined
+    ) {
       throw new Error(
         `Missing required --expected-transactions-root <hex>.\n${usage}`,
       );
     }
-    const expectedTransactionsRoot = args.expectedTransactionsRoot;
-    const output =
+    const provenance =
       args.midgardNodeUrl !== undefined
-        ? await prepareZeroInputFromNode({
-            midgardNodeUrl: args.midgardNodeUrl,
-            headerHash: args.headerHash,
-            expectedTransactionsRoot,
-            txId: args.txId,
-            outputDir: args.outputDir,
-          })
-        : await prepareZeroInputFromFile({
-            transactionsPath: args.transactionsPath!,
-            headerHash: args.headerHash,
-            expectedTransactionsRoot,
-            txId: args.txId,
-            outputDir: args.outputDir,
-          });
-    writeJson(output);
+        ? MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1
+        : args.transactionsPath !== undefined
+          ? LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1
+          : SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1;
+    process.stderr.write(`${diagnosticEvidenceBannerV1(provenance)}\n`);
+    assertSecurityGradeEvidenceV1(provenance);
+    // `assertSecurityGradeEvidenceV1` always throws for these prohibited
+    // diagnostic trust classes. This return documents that no prepare command
+    // can fall through to blueprint/wallet/submission paths.
     return;
   }
 

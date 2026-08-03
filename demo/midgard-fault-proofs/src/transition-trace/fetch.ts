@@ -17,6 +17,13 @@ import {
   encodeDaTraceStepByIndexRequestV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
 import { normalizeHex } from "@al-ft/midgard-core/hex";
+import {
+  admitEvidenceProvenanceV1,
+  assertSecurityGradeEvidenceV1,
+  CanonicalEvidenceRejectionV1,
+  type EvidenceProvenanceV1,
+  requireEvidenceTrustClassV1,
+} from "@al-ft/midgard-sdk";
 
 import { transitionTraceError } from "./errors.js";
 
@@ -52,6 +59,7 @@ export type RetainedDaFetchAttempt = {
 };
 
 export type RetainedDaPayloadFetchResult = {
+  readonly provenance: EvidenceProvenanceV1;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly payloadEnvelopeCbor: Buffer;
@@ -60,6 +68,7 @@ export type RetainedDaPayloadFetchResult = {
 };
 
 export type RetainedDaProofBundle = {
+  readonly provenance: EvidenceProvenanceV1;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly proofBundleHash: Buffer;
@@ -68,6 +77,7 @@ export type RetainedDaProofBundle = {
 };
 
 export type RetainedDaTraceStep = {
+  readonly provenance: EvidenceProvenanceV1;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly stepIndex: number;
@@ -77,6 +87,7 @@ export type RetainedDaTraceStep = {
 };
 
 export type RetainedDaEventToStep = {
+  readonly provenance: EvidenceProvenanceV1;
   readonly sourceId: string;
   readonly sourcePeerId: string;
   readonly eventKey: Buffer;
@@ -124,6 +135,25 @@ type SourceFailure = {
   readonly sourceId: string;
   readonly attempts: readonly RetainedDaFetchAttempt[];
 };
+
+/**
+ * Public retained-DA records are security inputs. Construct and admit their
+ * provenance at the transport boundary, before any payload or proof bytes can
+ * leave this module.
+ */
+const admitRetainedDaProvenanceV1 = (
+  sourceId: string,
+  sourcePeerId: string,
+): EvidenceProvenanceV1 =>
+  assertSecurityGradeEvidenceV1(
+    admitEvidenceProvenanceV1({
+      provenance: {
+        trustClass: "public_or_permissionless_da",
+        sourceId: `${sourceId}/${sourcePeerId}`,
+        grade: "security",
+      },
+    }),
+  );
 
 export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
   readonly sourceId: string;
@@ -174,6 +204,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
+          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           payloadEnvelopeCbor: result.payloadEnvelopeCbor,
@@ -253,6 +284,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         );
         return {
           ok: true,
+          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           proofBundleHash: Buffer.from(response.proofBundleHash),
@@ -323,6 +355,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
+          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           stepIndex,
@@ -392,6 +425,7 @@ export class DaLibp2pRetainedDaSource implements RetainedDaPayloadSource {
         }
         return {
           ok: true,
+          provenance: admitRetainedDaProvenanceV1(this.sourceId, peer.peerId),
           sourceId: this.sourceId,
           sourcePeerId: peer.peerId,
           eventKey: eventKeyBytes,
@@ -636,7 +670,20 @@ export const fetchRetainedDaPayloadByHeaderHash = async ({
         await source.fetchPayloadByHeaderHash(normalizedHeaderHash);
       attempts.push(...result.attempts);
       if (result.ok) {
+        const provenance = requireEvidenceTrustClassV1({
+          provenance: assertSecurityGradeEvidenceV1(result.provenance),
+          expected: "public_or_permissionless_da",
+          code: "da_evidence_wrong_trust_class",
+        });
+        const expectedSourceId = `${result.sourceId}/${result.sourcePeerId}`;
+        if (provenance.sourceId !== expectedSourceId) {
+          throw new CanonicalEvidenceRejectionV1(
+            "da_evidence_wrong_trust_class",
+            `provenance.sourceId=${provenance.sourceId} expected=${expectedSourceId}`,
+          );
+        }
         return {
+          provenance,
           sourceId: result.sourceId,
           sourcePeerId: result.sourcePeerId,
           payloadEnvelopeCbor: result.payloadEnvelopeCbor,

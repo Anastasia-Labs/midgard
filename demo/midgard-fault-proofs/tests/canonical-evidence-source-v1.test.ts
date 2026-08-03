@@ -10,10 +10,18 @@
  * classes, unknown classes, diagnostic records, unauthenticated observations,
  * mutated payloads, foreign headers, and valid blocks with no violation.
  */
-import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
+import {
+  computeDaSha256Hash,
+  DaRequestResponseProtocol,
+  encodeDaEventToStepByEventResponseV1Cbor,
+  encodeDaPayloadByHeaderResponseV1Cbor,
+  encodeDaProofBundleByHeaderResponseV1Cbor,
+  encodeDaTraceStepByIndexResponseV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { main as cliMain } from "../src/bin.js";
 import {
   authenticateTransactionsInclusionRootsV1,
   blockTransactionsFromCanonicalEvidenceV1,
@@ -21,15 +29,23 @@ import {
   type CanonicalBlockEvidenceV1,
   diagnosticBlockTransactionsFromMidgardNodeV1,
   diagnosticEvidenceBannerV1,
+  executeCanonicalPrepareCommandV1,
   fetchCanonicalBlockEvidenceV1,
   prepareDoubleSpendFromCanonicalEvidenceV1,
   prepareInvalidRangeFromCanonicalEvidenceV1,
+  prepareNonExistentInputFromCanonicalEvidenceV1,
   prepareZeroInputFromCanonicalEvidenceV1,
 } from "../src/evidence/index.js";
+import * as FaultProofs from "../src/index.js";
 import { decodeTransactionMaterial } from "../src/prepare-double-spend.js";
 import type {
   RetainedDaPayloadSource,
   RetainedDaPayloadSourceResult,
+} from "../src/transition-trace/fetch.js";
+import {
+  DaLibp2pRetainedDaSource,
+  fetchRetainedDaPayloadByHeaderHash,
+  type RetainedDaLibp2pTransport,
 } from "../src/transition-trace/fetch.js";
 import {
   authenticatedHeaderObservationV1,
@@ -49,8 +65,11 @@ const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
 
 const sharedInput = outRefCbor(0x11, 7n);
 
-const doubleSpendBlock = async (): Promise<CanonicalBlockFixtureV1> =>
+const doubleSpendBlock = async (
+  transactionsRootMode: "payloadSource" | "nativeCompact" = "payloadSource",
+): Promise<CanonicalBlockFixtureV1> =>
   await buildCanonicalBlockFixtureV1({
+    transactionsRootMode,
     transactions: [
       buildFixtureTransactionV1({
         spendInputs: [sharedInput, outRefCbor(0x22, 0n)],
@@ -142,6 +161,11 @@ class StubDaSource implements RetainedDaPayloadSource {
     }
     return Promise.resolve({
       ok: true,
+      provenance: SDK.assertSecurityGradeEvidenceV1({
+        trustClass: "public_or_permissionless_da",
+        sourceId: `${this.sourceId}/peer-a`,
+        grade: "security",
+      }),
       sourceId: this.sourceId,
       sourcePeerId: "peer-a",
       payloadEnvelopeCbor: this.payloadEnvelopeCbor,
@@ -163,6 +187,17 @@ const rejectionCode = async (run: () => Promise<unknown>): Promise<string> => {
 };
 
 describe("Q03 provenance admission", () => {
+  it("exports the W20 evidence API from both package roots", () => {
+    expect(SDK.admitEvidenceProvenanceV1).toBeTypeOf("function");
+    expect(SDK.assertSecurityGradeEvidenceV1).toBeTypeOf("function");
+    expect(SDK.admitAuthenticatedL1ObservationV1).toBeTypeOf("function");
+    expect(FaultProofs.fetchCanonicalBlockEvidenceV1).toBeTypeOf("function");
+    expect(FaultProofs.executeCanonicalPrepareCommandV1).toBeTypeOf("function");
+    expect(
+      FaultProofs.prepareNonExistentInputFromCanonicalEvidenceV1,
+    ).toBeTypeOf("function");
+  });
+
   it("admits every enumerated public trust class at security grade", () => {
     for (const trustClass of SDK.ADMITTED_EVIDENCE_TRUST_CLASSES_V1) {
       const admitted = SDK.assertSecurityGradeEvidenceV1({
@@ -362,6 +397,92 @@ describe("Q03 canonical block evidence", () => {
     expect(evidence.transactions).toHaveLength(3);
   });
 
+  it("admits payload and every retained proof surface at the public-DA boundary", async () => {
+    const fixture = await doubleSpendBlock();
+    const proofBundleBytes = Buffer.from("proof bundle");
+    const transitionStepBytes = Buffer.from("transition step");
+    const membershipProofBytes = Buffer.from("membership proof");
+    const eventKey = Buffer.from("aabb", "hex");
+    const eventEntry = Buffer.from("event entry");
+    const transport: RetainedDaLibp2pTransport = {
+      request: async ({ protocol }) => {
+        switch (protocol) {
+          case DaRequestResponseProtocol.payloadByHeader:
+            return encodeDaPayloadByHeaderResponseV1Cbor({
+              status: "found_inline",
+              headerHash: Buffer.from(fixture.headerHash, "hex"),
+              payloadHash: computeDaSha256Hash(fixture.payloadEnvelopeCbor),
+              payloadBytes: fixture.payloadEnvelopeCbor,
+              chunkManifest: null,
+              reasonCode: null,
+            });
+          case DaRequestResponseProtocol.proofBundleByHeader:
+            return encodeDaProofBundleByHeaderResponseV1Cbor({
+              status: "found_inline",
+              headerHash: Buffer.from(fixture.headerHash, "hex"),
+              proofBundleHash: computeDaSha256Hash(proofBundleBytes),
+              proofBundleBytes,
+              chunkManifest: null,
+              reasonCode: null,
+            });
+          case DaRequestResponseProtocol.traceStepByIndex:
+            return encodeDaTraceStepByIndexResponseV1Cbor({
+              status: "found",
+              headerHash: Buffer.from(fixture.headerHash, "hex"),
+              stepIndex: 0,
+              transitionStepBytes,
+              membershipProofBytes,
+            });
+          case DaRequestResponseProtocol.eventToStepByEvent:
+            return encodeDaEventToStepByEventResponseV1Cbor({
+              status: "found",
+              headerHash: Buffer.from(fixture.headerHash, "hex"),
+              eventKey,
+              eventToStepEntryBytes: eventEntry,
+              membershipOrNonmembershipProofBytes: membershipProofBytes,
+            });
+          default:
+            throw new Error(`unsupported test protocol ${protocol}`);
+        }
+      },
+    };
+    const source = new DaLibp2pRetainedDaSource({
+      sourceId: "public-da",
+      deploymentFingerprint: h32(0x99),
+      peers: [{ peerId: "peer-a" }],
+      transport,
+    });
+    const payload = await fetchRetainedDaPayloadByHeaderHash({
+      headerHash: fixture.headerHash,
+      sources: [source],
+      retries: 0,
+    });
+    const proofBundle = await source.fetchProofBundleByHeaderHash(
+      fixture.headerHash,
+    );
+    const traceStep = await source.fetchTraceStepByIndex({
+      headerHash: fixture.headerHash,
+      stepIndex: 0,
+    });
+    const eventToStep = await source.fetchEventToStepByEvent({
+      headerHash: fixture.headerHash,
+      eventKey,
+    });
+    if (!proofBundle.ok || !traceStep.ok || !eventToStep.ok) {
+      throw new Error("expected every retained proof surface");
+    }
+    for (const retained of [payload, proofBundle, traceStep, eventToStep]) {
+      expect(retained.provenance).toMatchObject({
+        trustClass: "public_or_permissionless_da",
+        sourceId: "public-da/peer-a",
+        grade: "security",
+      });
+      expect(() =>
+        SDK.assertSecurityGradeEvidenceV1(retained.provenance),
+      ).not.toThrow();
+    }
+  });
+
   it("rejects DA bytes served for a different block", async () => {
     const fixture = await doubleSpendBlock();
     const other = await validBlock();
@@ -532,6 +653,109 @@ describe("Q03 canonical-evidence builders", () => {
     ).toBe("native_inclusion_root_unauthenticated");
   });
 
+  it("emits each family artifact only from native-root-authenticated canonical evidence", async () => {
+    const doubleSpend = await evidenceFor(
+      await doubleSpendBlock("nativeCompact"),
+    );
+    expect(
+      (
+        await executeCanonicalPrepareCommandV1({
+          request: { command: "prepare-double-spend" },
+          evidence: doubleSpend,
+        })
+      ).txCount,
+    ).toBe(3);
+
+    const zeroInputFixture = await buildCanonicalBlockFixtureV1({
+      transactionsRootMode: "nativeCompact",
+      transactions: [buildFixtureTransactionV1({ spendInputs: [], fee: 1n })],
+    });
+    expect(
+      (
+        await executeCanonicalPrepareCommandV1({
+          request: { command: "prepare-zero-input" },
+          evidence: await evidenceFor(zeroInputFixture),
+        })
+      ).txCount,
+    ).toBe(1);
+
+    const invalidRangeFixture = await buildCanonicalBlockFixtureV1({
+      transactionsRootMode: "nativeCompact",
+      startTime: 10n,
+      endTime: 20n,
+      transactions: [
+        buildFixtureTransactionV1({
+          spendInputs: [outRefCbor(0x77, 0n)],
+          fee: 1n,
+          validityIntervalStart: 30n,
+          validityIntervalEnd: 40n,
+        }),
+      ],
+    });
+    expect(
+      (
+        await executeCanonicalPrepareCommandV1({
+          request: { command: "prepare-invalid-range" },
+          evidence: await evidenceFor(invalidRangeFixture),
+        })
+      ).txCount,
+    ).toBe(1);
+
+    const nonExistentInputFixture = await buildCanonicalBlockFixtureV1({
+      transactionsRootMode: "nativeCompact",
+      transactions: [
+        buildFixtureTransactionV1({
+          spendInputs: [outRefCbor(0x88, 0n)],
+          fee: 1n,
+        }),
+      ],
+    });
+    expect(
+      (
+        await executeCanonicalPrepareCommandV1({
+          request: { command: "prepare-non-existent-input" },
+          evidence: await evidenceFor(nonExistentInputFixture),
+        })
+      ).txCount,
+    ).toBe(1);
+  });
+
+  it("rejects diagnostic grade before every gated builder can emit proof material", async () => {
+    const fixture = await doubleSpendBlock("nativeCompact");
+    const evidence = await evidenceFor(fixture);
+    const downgraded: CanonicalBlockEvidenceV1 = {
+      ...evidence,
+      provenance: {
+        ...evidence.provenance,
+        da: {
+          trustClass: "operator_admin_api",
+          sourceId: "midgard-node-url",
+          grade: "diagnostic",
+          diagnosticLabel: "operator REST diagnostic",
+        },
+      },
+    };
+    const builders = [
+      async () =>
+        await prepareDoubleSpendFromCanonicalEvidenceV1({
+          evidence: downgraded,
+        }),
+      async () =>
+        await prepareZeroInputFromCanonicalEvidenceV1({ evidence: downgraded }),
+      async () =>
+        await prepareInvalidRangeFromCanonicalEvidenceV1({
+          evidence: downgraded,
+        }),
+      async () =>
+        await prepareNonExistentInputFromCanonicalEvidenceV1({
+          evidence: downgraded,
+        }),
+    ];
+    for (const build of builders) {
+      expect(await rejectionCode(build)).toBe("prohibited_trust_class");
+    }
+  });
+
   it("applies the provenance gate before the inclusion gate", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
@@ -579,6 +803,52 @@ describe("Q03 canonical-evidence builders", () => {
 });
 
 describe("Q03 labelled diagnostics", () => {
+  it("rejects diagnostic grade on every prepare CLI verb before proof construction", async () => {
+    const priorArgv = process.argv;
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    const cases = [
+      ["prepare-double-spend", "--header-hash", "11".repeat(28)],
+      [
+        "prepare-invalid-range",
+        "--header-hash",
+        "11".repeat(28),
+        "--block-valid-from",
+        "10",
+        "--block-valid-to",
+        "20",
+      ],
+      ["prepare-non-existent-input", "--header-hash", "11".repeat(28)],
+      [
+        "prepare-zero-input",
+        "--header-hash",
+        "11".repeat(28),
+        "--expected-transactions-root",
+        "22".repeat(32),
+      ],
+    ];
+    try {
+      for (const commandArgs of cases) {
+        process.argv = [
+          "node",
+          "midgard-fault-proofs",
+          ...commandArgs,
+          "--midgard-node-url",
+          "http://operator.invalid",
+        ];
+        await expect(cliMain()).rejects.toThrow(/prohibited_trust_class/u);
+      }
+      expect(stderr).toHaveBeenCalledTimes(4);
+      for (const call of stderr.mock.calls) {
+        expect(call[0]).toMatch(/^DIAGNOSTIC EVIDENCE/u);
+      }
+    } finally {
+      process.argv = priorArgv;
+      stderr.mockRestore();
+    }
+  });
+
   it("labels operator REST imports and keeps them out of security paths", async () => {
     const fixture = await doubleSpendBlock();
     const payloads = fixture.transactions.map((tx) => ({

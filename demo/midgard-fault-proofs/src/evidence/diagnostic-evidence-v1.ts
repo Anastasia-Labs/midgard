@@ -34,6 +34,9 @@ export const MIDGARD_NODE_URL_DIAGNOSTIC_LABEL_V1 =
 export const LOCAL_FILE_DIAGNOSTIC_LABEL_V1 =
   "operator-local file import: diagnostic and import only, never a security input for a submitted proof" as const;
 
+export const SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL_V1 =
+  "generated sample evidence: diagnostic only, never an authenticated L1/public-DA security input for a submitted proof" as const;
+
 /** Provenance every `--midgard-node-url` evidence import carries. */
 export const MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
   trustClass: "operator_admin_api",
@@ -48,6 +51,13 @@ export const LOCAL_FILE_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
   sourceId: "transactions-file",
   grade: "diagnostic",
   diagnosticLabel: LOCAL_FILE_DIAGNOSTIC_LABEL_V1,
+};
+
+export const SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE_V1: EvidenceProvenanceV1 = {
+  trustClass: "operator_only_diagnostic_endpoint",
+  sourceId: "sample-double-spend",
+  grade: "diagnostic",
+  diagnosticLabel: SAMPLE_EVIDENCE_DIAGNOSTIC_LABEL_V1,
 };
 
 export type DiagnosticBlockTransactionsV1 = {
