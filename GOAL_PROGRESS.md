@@ -3709,3 +3709,110 @@ fixture — would have destroyed a correct assertion. The distinguishing test
 that worked each time was to find an INDEPENDENT arithmetic or ordering
 invariant the artifact must satisfy, and check the artifact against itself
 rather than against the code that produced it.
+
+
+## Superseding midgard-node suite green (2026-08-02)
+
+`pnpm --dir demo/midgard-node test` now exits 0 at **1555 passed / 6 skipped /
+1561 collected**, in ~68 minutes. Every fix was test-side; no production code
+required changing.
+
+### `bail: 3` hides failures, and it misled this ledger
+
+`demo/midgard-node/vitest.config.ts:28` sets `bail: 3`, so the suite aborts
+after three failures. CI at `bffb66e8` therefore reported only three
+(`deployment-run-state` plus two in `native-transaction-integration`) out of
+**six real failures across four files**. An earlier entry in this session used
+that truncated CI list to conclude that `deployment-manifest-v1.test.ts` was
+NOT genuinely failing and that the C04 finding was an artifact of a stale local
+build. **That conclusion was wrong, and is withdrawn.** The manifest test was
+genuinely red; it simply sat behind the bail cutoff. The original C04 finding —
+a registry row at `PASS` citing a red test — was correct.
+
+The general lesson: a truncated failure list is not a failure list. Any
+enumeration of what is broken must disable `bail` first.
+
+The sixth failure was also easy to miss for a different reason:
+`tests/native-tx-workload-utils.test.mjs` failed as a *Failed Suites* entry
+("No test suite found in file"), which vitest prints separately from
+*Failed Tests*.
+
+### The manifest golden was STALE ON ARRIVAL; rebinding is correct
+
+Not a regression and not a merge accident. Exact reconstruction — reverting
+three additions in a probe — reproduced the golden bit-for-bit:
+
+```
+computed today   68c2a3ae3ccefddb060ed90c28d8a9d6c4b395611760012ce8fe5c91e446a50a
+golden           58fa9eb4d72b7d840ef6900126e09c96935bf11b24ba6622e2d49847c701fd2c
+```
+
+The three deltas, all additive, verified independently at the parent:
+
+1. `maxSinglePublicationCompleteItemBytes` added to `MIDGARD_CONSENSUS_LIMITS_V1`
+   (`demo/midgard-core/src/consensus-profile-v1.ts:192`), moving the profile
+   digest. Corroborated by `docs/consensus-profile-v1.md` still carrying the
+   old digest at `aea8c617`.
+2. `fraudProofZeroInput` added to the manifest contract set (50 -> 51),
+   registered in BOTH `demo/midgard-node/src/deployment-manifest-v1.ts:103`
+   and `demo/midgard-core/src/deployment-manifest-identity-v1.ts:69`, with the
+   role mapping mirrored in both.
+3. `zeroInput` inserted at index 5 of `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER`
+   (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), shifting
+   `validationTraceDispute` to index 6. Verified: order length 7, `zeroInput`
+   at 5, `validationTraceDispute` at 6, and the backing
+   `onchain/aiken/validators/fraud-proofs/zero-input` validator exists.
+
+Crucially the golden was introduced at `0cecf536` when delta 1 was ALREADY an
+ancestor, so the test never matched from the moment it was written. `0cecf536`
+is also where run-state was tightened to exact keys without narrowing its
+fixture, so failures 1 and 2 share one origin. The earlier hypothesis that
+merge `baa7e937` caused it is superseded: that merge added two further deltas
+to an already-broken golden.
+
+Correctness beyond the accounting: `parseDeploymentManifestV1Value` now
+enforces exact root keys, the exact 51-contract set, and
+`verifyDeploymentManifestV1FraudProofCatalogueIdentity`, which rebuilds the
+catalogue MPF root and verifies every membership proof. The fixture's previous
+hand-written root (`"33".repeat(32)`, `membershipProofCbor: "80"`) would now be
+REJECTED, so replacing it was mandatory rather than cosmetic.
+
+### The two negative controls were masked, not wrong
+
+`native-transaction-integration.test.ts`: commit `ac0e8aa4` widened the
+material check from reference-script envelopes to the exact attached+reference
+bundle and dropped `allowUnreachable`, so the shared harness sidecar was being
+rejected at the material boundary BEFORE witness discovery — the tests were
+failing for a reason unrelated to what they assert. Fixed by tracking the
+message rename and ADDING an assertion on the decoder cause, so the malformed
+reference-script envelope is still proven caught, plus a `programMaterial`
+override so the missing-script scenario reaches `E_MISSING_REQUIRED_WITNESS`
+again as intended.
+
+`fraud-proof-catalogue.test.ts` had a hardcoded count of 6. Rather than bump it
+to 7, it now asserts the substantive invariant: category names must equal the
+keys of the declared `FraudProofs` record, so a family added but never
+registered is caught, with the tail IDs pinned explicitly because they are a
+wire contract with the onchain catalogue.
+
+`native-tx-workload-utils.test.mjs` imported `test` from `node:test` inside a
+vitest suite. It is wired into no script or CI step, so excluding it would have
+silently dropped the coverage; converting it to a vitest import makes it a
+first-class member, which is why the collected count rose 1560 -> 1561.
+
+### Two operational gotchas worth remembering
+
+`demo/node_modules/.bin/vitest` is **1.6.1** while midgard-node requires
+**3.0.7** (`demo/midgard-node/node_modules/.bin/vitest`). Invoking the root
+binary spins for tens of minutes and reports EVERY file as a failed suite — a
+false-negative that looks like catastrophic breakage. Always resolve the
+package-local binary.
+
+The suite takes ~68 minutes, dominated by `deposit-flow-emulator.test.ts`
+(~35 min of 5-second emulator pauses). An earlier 40-minute local budget in
+this session could never have completed it, and its SIGTERM was misread as
+signal.
+
+The 6 skipped tests are all environment-gated and expected (DA phase-5 joined
+E2E, wycheproof operator, preprod operator lifecycle x2, phase-1 admission and
+crash operator).
