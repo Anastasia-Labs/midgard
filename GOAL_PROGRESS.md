@@ -4147,21 +4147,26 @@ before proof construction. The SDK evidence-source suite passed 14/14,
 canonical evidence passed 32/32, the four prepare suites passed 33/33, and the
 SDK/fault-proofs typechecks plus the fault-proofs lint/build passed.
 
-W20/RF-056 remains **BLOCKED**, not deleted and not falsely exported. The
-existing strict client is eventually required by the production watcher, but
-the production DA committee node always installs its registry-backed
-connection gater and rejects an independent watcher identity before a
-retrieval request reaches the retained-payload handlers. The watcher has no
-local libp2p identity source or deployment registration route. Opening the
-existing committee gater is not acceptable because that node also hosts
-mutation and attestation protocols.
+W20/RF-056 is **PASS** at `e1cc8509`, not deleted. A dedicated
+`midgard-public-retained-da` process now owns a distinct manifest-bound
+non-signer identity and mounts exactly the seven read-only retrieval
+protocols over TCP/Noise/Yamux. It cannot use the committee/file-store
+credentials, verifies an exact SELECT-only PostgreSQL login/session role, and
+runs every query in a read-only transaction. The existing committee gater,
+submit/attestation handlers, gossip, signer, and mutable store remain outside
+that process. Global, active-peer, and proof-lane admission is bounded with no
+waiter queue; all handlers share one absolute deadline.
 
-The required next architecture step is a dedicated public, read-only retained
-DA listener/profile with only bounded retrieval protocols. After that exists,
-W20 can add its TCP/Noise/Yamux transport, authenticated remote PeerID and
-strict framing/deadline/failover conformance tests, then export and admit the
-client into W21's immutable pre-verification store. W22 must subsequently bind
-the retained bytes to the observed L1 header/root before the production
-watcher service is enabled. The alternative, deployment-registering every
-watcher identity, creates a closed topology and does not meet the intended
-independent public-retrieval contract.
+The watcher now owns and exports the real transport and strict client. It pins
+the server PeerID in the direct DNS/TCP multiaddr, verifies the negotiated
+Noise identity, uses one bounded four-byte frame, propagates cancellation and
+failover, and emits only admitted `public_or_permissionless_da` provenance.
+The real localhost integration proves an unregistered public client can read
+capabilities while `payload-submit` cannot be negotiated. Focused evidence is
+green: daemon 61/61 plus five direct read-store tests, watcher 149/149, core
+8/8, node manifest 7/7, both builds and all touched lint/format checks; the
+authoritative watcher gates pass at 14 files and 361/361 tests. A live
+PostgreSQL integration was unavailable, so the role/session/privilege boundary
+is covered through a non-skipped injected-pool suite. W21 immutable retention
+and W22 observed-L1 header/root binding remain subsequent tasks; neither is
+claimed or enabled by W20.
