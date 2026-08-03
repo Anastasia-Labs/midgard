@@ -908,7 +908,7 @@ const exactActiveStepCount = (lines, name, command) => {
     let end = index + 1;
     while (
       end < lines.length &&
-      !(lines[end]?.indent === 6 && lines[end]?.trimmed.startsWith("- "))
+      lines[end].indent > 6
     ) {
       end += 1;
     }
@@ -1257,6 +1257,8 @@ if (
     JSON.stringify(["local_node", "external_providers"]) ||
   strictConfiguration.discriminatorPolicy !==
     "explicit_source_mode_required_without_compatibility_inference" ||
+  strictConfiguration.wireSourceConfigPolicy !==
+    "external_providers_only_local_node_pure_state_vocabulary_not_public_wire_config" ||
   strictConfiguration.selectableL1SourceModes?.length !== 1 ||
   strictConfiguration.selectableL1SourceModes[0] !== "external_providers" ||
   JSON.stringify(strictConfiguration.deferredL1SourceModes) !==
@@ -1304,9 +1306,18 @@ if (
     configSource,
   ) ||
   configSource.includes("parseLocalQueryEndpoint") ||
-  configSource.includes("parseLocalQueryServices")
+  configSource.includes("parseLocalQueryServices") ||
+  configSource.includes("WatcherLocalNodeQueryService") ||
+  configSource.includes("queryServices") ||
+  configSource.includes("socketPath") ||
+  watcherIndexSource.includes("WatcherLocalNodeQueryService") ||
+  !/export type WatcherL1SourceConfig = Readonly<\{\s*sourceMode: "external_providers";\s*providers:/u.test(
+    configSource,
+  )
 ) {
-  fail("W01 local_node must be rejected before socket-path processing");
+  fail(
+    "W01 local_node must be rejected before socket-path processing and absent from the public wire source type",
+  );
 }
 const deploymentIdentity =
   dependencyMap.requiredWatcherPackage?.deploymentIdentity;
@@ -1611,7 +1622,7 @@ if (
     "exact_source_mode_bound_persisted_W10_paths_recomputed_W11_agreement_incident_endpoint_digests_W12_incident_W03_chain_point_origin_store_and_external_bootstrap" ||
   rollbackEngine.unknownBehavior !== "fail_closed" ||
   rollbackEngine.diagnostics !== "deterministic_value_free_codes" ||
-  rollbackEngine.expectedFocusedTestCount !== 25
+  rollbackEngine.expectedFocusedTestCount !== 26
 ) {
   fail("W13 rollback-engine evidence is incomplete or stale");
 }
@@ -1729,7 +1740,7 @@ if (
     "exact_W13_pre_and_post_finality_internally_derived_sparse_block_cut_journal_restoration_suffix_rewind_restart_replacement_path_replay_and_reinclusion" ||
   userEventIndexer.unknownBehavior !== "fail_closed" ||
   userEventIndexer.diagnostics !== "deterministic_value_free_codes" ||
-  userEventIndexer.expectedFocusedTestCount !== 22
+  userEventIndexer.expectedFocusedTestCount !== 23
 ) {
   fail("W15 user-event-indexer evidence is incomplete or stale");
 }

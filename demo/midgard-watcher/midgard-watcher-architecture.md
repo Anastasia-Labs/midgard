@@ -181,6 +181,14 @@ external CAS and read-back are required before load. Startup rejects older,
 skipped, divergent, or tampered snapshot/head pairs. These persistence and
 publication steps are required before `start` or `replay` is enabled.
 
+The RF-051 prelaunch durable-store, finality, multi-provider, rollback, and
+user-event V1 JSON integrity commitments use one strict canonical serialization:
+object keys are sorted recursively, arrays retain their exact order, and only
+safe JSON-shaped values are accepted. Non-plain objects, accessors, symbols,
+unsupported values, and cycles fail closed. Digest, equality, HMAC, and
+authority-byte paths use this canonical UTF-8 form in place, with no raw-order
+fallback or compatibility alias.
+
 ### 2. State Queue Tracking
 
 For each state-queue update, the watcher parses the linked-list node datum and distinguishes:

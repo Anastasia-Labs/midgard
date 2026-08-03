@@ -25,6 +25,83 @@ import {
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_SCHEMA_VERSION,
 } from "../src/multi-provider-consistency.js";
 
+const canonicalJsonForTest = (
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+): string => {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) throw new Error("unsupported number");
+    return value.toString();
+  }
+  if (typeof value !== "object") throw new Error("unsupported value");
+  if (ancestors.has(value)) throw new Error("cycle");
+  ancestors.add(value);
+  let result: string;
+  if (Array.isArray(value)) {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      Reflect.ownKeys(value).length !== value.length + 1 ||
+      Reflect.ownKeys(value).some(
+        (key) =>
+          key !== "length" &&
+          (typeof key !== "string" ||
+            !/^(?:0|[1-9][0-9]*)$/u.test(key) ||
+            Number(key) >= value.length),
+      )
+    ) {
+      throw new Error("unsupported array");
+    }
+    result = `[${value
+      .map((member) => canonicalJsonForTest(member, ancestors))
+      .join(",")}]`;
+  } else {
+    const record = value as Record<string, unknown>;
+    const prototype = Object.getPrototypeOf(record);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Reflect.ownKeys(record).length !== Object.keys(record).length
+    ) {
+      throw new Error("unsupported object");
+    }
+    result = `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonicalJsonForTest(record[key], ancestors)}`,
+      )
+      .join(",")}}`;
+  }
+  ancestors.delete(value);
+  return result;
+};
+
+const sha256CanonicalForTest = (value: unknown): string =>
+  createHash("sha256")
+    .update(canonicalJsonForTest(value), "utf8")
+    .digest("hex");
+
+const reorderObjectKeysForTest = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(reorderObjectKeysForTest);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .reverse()
+        .map((key) => [
+          key,
+          reorderObjectKeysForTest((value as Record<string, unknown>)[key]),
+        ]),
+    );
+  }
+  return value;
+};
+
 const observationAttestations = new WeakMap<
   object,
   WatcherL1TransportAttestationContextV1
@@ -375,12 +452,27 @@ describe("fail-closed multi-provider consistency", () => {
       [first, second],
     );
     const reverse = evaluateWatcherMultiProviderConsistencyV1(
-      externalConfig(),
-      [second, first],
+      reorderObjectKeysForTest(externalConfig()),
+      [reorderObjectKeysForTest(second), reorderObjectKeysForTest(first)],
+      [
+        observationAttestations.get(second)!,
+        observationAttestations.get(first)!,
+      ],
     );
 
     expect(reverse).toEqual(forward);
     expect(reverse.consistencyDigest).toBe(forward.consistencyDigest);
+    const { consistencyDigest, ...canonical } = forward;
+    expect(consistencyDigest).toBe(sha256CanonicalForTest(canonical));
+    const reversedEvidence = {
+      ...canonical,
+      observationEvidenceDigests: [
+        ...canonical.observationEvidenceDigests,
+      ].reverse(),
+    };
+    expect(sha256CanonicalForTest(reversedEvidence)).not.toBe(
+      consistencyDigest,
+    );
   });
 
   it("is byte-stable when a configured provider id is bound to an unconfigured identity", () => {
@@ -749,6 +841,29 @@ describe("fail-closed multi-provider consistency", () => {
       "Preprod",
       [observation("provider-a", "aa"), observation("provider-b", "bb")],
     );
+    const unsupportedConfig = structuredClone(externalConfig()) as Record<
+      string,
+      unknown
+    >;
+    (
+      (unsupportedConfig.providers as Record<string, unknown>[])[0] as Record<
+        string,
+        unknown
+      >
+    ).providerId = 1n;
+    const cycleConfig = structuredClone(externalConfig()) as Record<
+      string,
+      unknown
+    >;
+    cycleConfig.providers = [cycleConfig];
+    const unsupportedResult = evaluateWatcherMultiProviderConsistencyV1(
+      unsupportedConfig,
+      [observation("provider-a", "aa"), observation("provider-b", "bb")],
+    );
+    const cycleResult = evaluateWatcherMultiProviderConsistencyV1(cycleConfig, [
+      observation("provider-a", "aa"),
+      observation("provider-b", "bb"),
+    ]);
 
     expect(malformedResult).toMatchObject({
       status: "quarantined",
@@ -768,6 +883,8 @@ describe("fail-closed multi-provider consistency", () => {
       sourceMode: null,
       reasonCodes: ["invalid_configured_network"],
     });
+    expect(unsupportedResult.status).toBe("quarantined");
+    expect(cycleResult.status).toBe("quarantined");
     expect(
       JSON.stringify([
         malformedResult,

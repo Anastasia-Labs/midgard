@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isProxy } from "node:util/types";
 
 import {
   DepositDatumSchema,
@@ -4007,6 +4008,9 @@ export const parseWatcherUserEventIndexerResultV1 = (
     transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
   }>,
 ): WatcherUserEventIndexerResultV1 | null => {
+  if (typeof value === "object" && value !== null && isProxy(value)) {
+    return null;
+  }
   if (!evidenceWithinBounds(value)) {
     return null;
   }

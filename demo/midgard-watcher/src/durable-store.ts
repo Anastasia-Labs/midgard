@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isProxy } from "node:util/types";
 
 import {
   type DeploymentMarkerV1,
@@ -151,6 +152,9 @@ const canonicalJson = (
     fail("invalid_field", path);
   }
   const objectValue = value as object;
+  if (isProxy(objectValue)) {
+    fail("invalid_field", path);
+  }
   if (ancestors.has(objectValue)) {
     fail("invalid_field", path);
   }

@@ -38,6 +38,82 @@ import {
 import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../src/multi-provider-consistency.js";
 
 const hex32 = (byte: string): string => byte.repeat(32);
+const canonicalJsonForTest = (
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+): string => {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) throw new Error("unsupported number");
+    return value.toString();
+  }
+  if (typeof value !== "object") throw new Error("unsupported value");
+  if (ancestors.has(value)) throw new Error("cycle");
+  ancestors.add(value);
+  let result: string;
+  if (Array.isArray(value)) {
+    if (
+      Object.getPrototypeOf(value) !== Array.prototype ||
+      Reflect.ownKeys(value).length !== value.length + 1 ||
+      Reflect.ownKeys(value).some(
+        (key) =>
+          key !== "length" &&
+          (typeof key !== "string" ||
+            !/^(?:0|[1-9][0-9]*)$/u.test(key) ||
+            Number(key) >= value.length),
+      )
+    ) {
+      throw new Error("unsupported array");
+    }
+    result = `[${value
+      .map((member) => canonicalJsonForTest(member, ancestors))
+      .join(",")}]`;
+  } else {
+    const record = value as Record<string, unknown>;
+    const prototype = Object.getPrototypeOf(record);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Reflect.ownKeys(record).length !== Object.keys(record).length
+    ) {
+      throw new Error("unsupported object");
+    }
+    result = `{${Object.keys(record)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonicalJsonForTest(record[key], ancestors)}`,
+      )
+      .join(",")}}`;
+  }
+  ancestors.delete(value);
+  return result;
+};
+
+const sha256CanonicalForTest = (value: unknown): string =>
+  createHash("sha256")
+    .update(canonicalJsonForTest(value), "utf8")
+    .digest("hex");
+
+const reorderObjectKeysForTest = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(reorderObjectKeysForTest);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .reverse()
+        .map((key) => [
+          key,
+          reorderObjectKeysForTest((value as Record<string, unknown>)[key]),
+        ]),
+    );
+  }
+  return value;
+};
 const execFileAsync = promisify(execFile);
 const observationAttestations = new WeakMap<
   object,
@@ -486,9 +562,7 @@ describe("canonical release-bound watcher finality", () => {
     expect(
       parseWatcherFinalityPolicyV1({
         ...narrowedRecoveryPolicyCanonical,
-        policyDigest: createHash("sha256")
-          .update(JSON.stringify(narrowedRecoveryPolicyCanonical), "utf8")
-          .digest("hex"),
+        policyDigest: sha256CanonicalForTest(narrowedRecoveryPolicyCanonical),
       }),
     ).toBeNull();
 
@@ -1068,9 +1142,7 @@ describe("canonical release-bound watcher finality", () => {
     bound.visibilityCount = "1";
     const canonical = { ...impossible };
     delete canonical.stateDigest;
-    impossible.stateDigest = createHash("sha256")
-      .update(JSON.stringify(canonical), "utf8")
-      .digest("hex");
+    impossible.stateDigest = sha256CanonicalForTest(canonical);
 
     expect(parseWatcherFinalityStateV1(impossible)).not.toBeNull();
     expect(parseWatcherFinalityStateV1(impossible, finalityPolicy)).toBeNull();
@@ -1093,9 +1165,8 @@ describe("canonical release-bound watcher finality", () => {
       ...samePolicyImpossible,
     } as Record<string, unknown>;
     delete samePolicyCanonical.stateDigest;
-    samePolicyImpossible.stateDigest = createHash("sha256")
-      .update(JSON.stringify(samePolicyCanonical), "utf8")
-      .digest("hex");
+    samePolicyImpossible.stateDigest =
+      sha256CanonicalForTest(samePolicyCanonical);
     expect(
       evaluateWatcherFinalityV1(
         finalityPolicy,
@@ -1119,18 +1190,26 @@ describe("canonical release-bound watcher finality", () => {
       null,
       forwardEvidence,
     );
-    const reorderedPolicy = Object.fromEntries(
-      Object.entries(finalityPolicy).reverse(),
-    );
     const reverse = evaluateWatcherFinalityV1(
-      reorderedPolicy,
+      reorderObjectKeysForTest(finalityPolicy),
       null,
-      reverseEvidence,
+      reorderObjectKeysForTest(reverseEvidence),
     );
 
     expect(reverseEvidence).toEqual(forwardEvidence);
     expect(reverse).toEqual(forward);
     expect(reverse.resultDigest).toBe(forward.resultDigest);
+    const { policyDigest, ...policyCanonical } = finalityPolicy;
+    expect(policyDigest).toBe(sha256CanonicalForTest(policyCanonical));
+    const reversedProviders = {
+      ...policyCanonical,
+      externalProviders: [...policyCanonical.externalProviders!].reverse(),
+    };
+    expect(sha256CanonicalForTest(reversedProviders)).not.toBe(policyDigest);
+    const { stateDigest, ...stateCanonical } = forward.state!;
+    expect(stateDigest).toBe(sha256CanonicalForTest(stateCanonical));
+    const { resultDigest, ...resultCanonical } = forward;
+    expect(resultDigest).toBe(sha256CanonicalForTest(resultCanonical));
   });
 
   it("rejects malformed, unsafe, unknown, and uint64-overflow inputs", () => {
@@ -1148,11 +1227,38 @@ describe("canonical release-bound watcher finality", () => {
       "18446744073709551616";
     const withoutDigest = { ...overflow };
     delete withoutDigest.consistencyDigest;
-    overflow.consistencyDigest = createHash("sha256")
-      .update(JSON.stringify(withoutDigest), "utf8")
-      .digest("hex");
+    overflow.consistencyDigest = sha256CanonicalForTest(withoutDigest);
+    const arrayOrder = structuredClone(agreement("1")) as Record<
+      string,
+      unknown
+    >;
+    arrayOrder.observationEvidenceDigests = [
+      ...(arrayOrder.observationEvidenceDigests as string[]),
+    ].reverse();
+    const unsupportedBigInt = structuredClone(agreement("1")) as Record<
+      string,
+      unknown
+    >;
+    (unsupportedBigInt.agreement as Record<string, unknown>).minimumDepth = 1n;
+    const unsupportedDate = structuredClone(agreement("1")) as Record<
+      string,
+      unknown
+    >;
+    (unsupportedDate.agreement as Record<string, unknown>).minimumDepth =
+      new Date(0);
+    const cycle = structuredClone(agreement("1")) as Record<string, unknown>;
+    cycle.agreement = cycle;
 
-    for (const malformed of [unsafe, unknown, overflow, new Error("no")]) {
+    for (const malformed of [
+      unsafe,
+      unknown,
+      overflow,
+      arrayOrder,
+      unsupportedBigInt,
+      unsupportedDate,
+      cycle,
+      new Error("no"),
+    ]) {
       expect(
         evaluateWatcherFinalityV1(finalityPolicy, null, malformed),
       ).toMatchObject({

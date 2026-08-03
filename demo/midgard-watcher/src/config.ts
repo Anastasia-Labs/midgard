@@ -8,7 +8,6 @@ export const WATCHER_CARDANO_SECURITY_PARAMETER_K = 2_160 as const;
 export const WATCHER_CONFIG_BOUNDS = {
   configJsonBytes: { min: 2, max: 262_144 },
   externalProviders: { min: 2, max: 4 },
-  queryServices: { min: 0, max: 8 },
   daPeers: { min: 1, max: 32 },
   requestTimeoutMs: { min: 100, max: 120_000 },
   concurrency: { min: 1, max: 64 },
@@ -31,38 +30,17 @@ export type WatcherL1ProviderConfig = Readonly<{
   endpoint: string;
 }>;
 
-export type WatcherLocalNodeQueryServiceKind =
-  | "ogmios"
-  | "kupo"
-  | "kupmios"
-  | "db_sync";
-
-export type WatcherLocalNodeQueryServiceConfig = Readonly<{
-  kind: WatcherLocalNodeQueryServiceKind;
-  identity: string;
-  endpoint: string;
-}>;
-
 /**
- * Local-node is retained as a pure source-mode vocabulary for the future
- * peer-authenticated adapter and state machines. The current wire parser
- * rejects it before inspecting any socket-path fields.
+ * The prelaunch wire configuration has one selectable source shape. The
+ * local-node discriminator remains a pure state-machine vocabulary in the
+ * adapter and indexing modules, but no public wire config can carry a socket
+ * path or query-service authority until a peer-authenticated native adapter
+ * exists.
  */
-export type WatcherL1SourceConfig =
-  | Readonly<{
-      sourceMode: "local_node";
-      authorityNodeId: string;
-      chainSync: Readonly<{
-        kind: "cardano_node_socket";
-        socketPath: string;
-        genesisIdentitySha256: string;
-      }>;
-      queryServices: readonly WatcherLocalNodeQueryServiceConfig[];
-    }>
-  | Readonly<{
-      sourceMode: "external_providers";
-      providers: readonly WatcherL1ProviderConfig[];
-    }>;
+export type WatcherL1SourceConfig = Readonly<{
+  sourceMode: "external_providers";
+  providers: readonly WatcherL1ProviderConfig[];
+}>;
 
 export type WatcherL1Config = Readonly<{
   source: WatcherL1SourceConfig;

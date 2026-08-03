@@ -1340,6 +1340,50 @@ describe("canonical watcher rollback engine", () => {
     expect(parseWatcherRollbackResultV1(unsupported, context)).toBe(null);
   });
 
+  it("rejects nested proxied rollback values before structural reconstruction", () => {
+    const finalityPolicy = policy();
+    const prior = pending(finalityPolicy, oldPoint);
+    const rewound = transition(finalityPolicy, prior, replacementPoint);
+    const sharedInput = hex32("ee");
+    const store = combine(
+      finalityPolicy.deploymentMarker,
+      "7",
+      [
+        graph("10", oldPoint, sharedInput),
+        graph("20", replacementPoint),
+        graph("30", descendantPoint),
+      ],
+      sharedInput,
+      rewound.observations,
+    );
+    const bootstrapState = bootstrap(finalityPolicy, store, prior);
+    const result = evaluateWatcherRollbackV1(
+      finalityPolicy,
+      store,
+      prior,
+      rewound.consistency,
+      rewound.result,
+      bootstrapState,
+      bootstrapState,
+    );
+    const context: WatcherRollbackVerificationContextV1 = {
+      policy: finalityPolicy,
+      sourceStore: store,
+      previousFinalityState: prior,
+      consistency: rewound.consistency,
+      finalityResult: rewound.result,
+      previousRollbackState: bootstrapState,
+      rollbackBootstrapState: bootstrapState,
+    };
+
+    const proxied = JSON.parse(JSON.stringify(result)) as Record<
+      string,
+      unknown
+    >;
+    proxied.rollbackState = new Proxy(proxied.rollbackState as object, {});
+    expect(parseWatcherRollbackResultV1(proxied, context)).toBe(null);
+  });
+
   it("deterministically rewinds every dependent W03 record class and preserves finalized/unrelated records", () => {
     const finalityPolicy = policy();
     const prior = pending(finalityPolicy, oldPoint);

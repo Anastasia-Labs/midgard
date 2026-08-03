@@ -15,8 +15,6 @@ export {
   type WatcherL1ProviderConfig,
   type WatcherL1SourceConfig,
   type WatcherL1SourceMode,
-  type WatcherLocalNodeQueryServiceConfig,
-  type WatcherLocalNodeQueryServiceKind,
   type WatcherRollbackAuthorityKeySource,
   type WatcherTargetNetwork,
   type WatcherWalletKeySource,

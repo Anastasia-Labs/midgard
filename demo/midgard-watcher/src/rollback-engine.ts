@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { isProxy } from "node:util/types";
 
 import {
   type DeploymentMarkerV1,
@@ -466,18 +467,16 @@ type ParsedFinalityTransition =
 
 const sha256Canonical = watcherSha256CanonicalJsonV1;
 
-// Finality and multi-provider V1 producers still own their existing wire
-// digests. Rollback-owned commitments use sha256Canonical exclusively; these
-// checks only validate those adjacent producer contracts without expanding
-// RF-051 into their implementations.
-const sha256ProducerWireV1 = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
-
 const exactPlainRecord = (
   value: unknown,
   keys: readonly string[],
 ): PlainRecord | null => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    isProxy(value) ||
+    Array.isArray(value)
+  ) {
     return null;
   }
   const candidate = value as object;
@@ -511,6 +510,7 @@ const exactStringArray = (
 ): readonly string[] | null => {
   if (
     !Array.isArray(value) ||
+    isProxy(value) ||
     Object.getPrototypeOf(value) !== Array.prototype ||
     Reflect.ownKeys(value).length !== value.length + 1
   ) {
@@ -540,6 +540,7 @@ const exactUnrestrictedStringArray = (
 ): readonly string[] | null => {
   if (
     !Array.isArray(value) ||
+    isProxy(value) ||
     Object.getPrototypeOf(value) !== Array.prototype ||
     Reflect.ownKeys(value).length !== value.length + 1
   ) {
@@ -566,6 +567,7 @@ const exactUnrestrictedStringArray = (
 const exactArray = (value: unknown): readonly unknown[] | null => {
   if (
     !Array.isArray(value) ||
+    isProxy(value) ||
     Object.getPrototypeOf(value) !== Array.prototype ||
     Reflect.ownKeys(value).length !== value.length + 1
   ) {
@@ -717,7 +719,7 @@ const parseInstruction = (
     replacementContentDigest: instruction.replacementContentDigest,
     replacementDepth: instruction.replacementDepth,
   };
-  if (sha256ProducerWireV1(canonical) !== instruction.instructionDigest) {
+  if (sha256Canonical(canonical) !== instruction.instructionDigest) {
     return null;
   }
   return Object.freeze({
@@ -859,7 +861,7 @@ const parseFinalityTransition = (
     state: next,
     rewindInstruction: instruction,
   };
-  if (sha256ProducerWireV1(canonical) !== result.resultDigest) {
+  if (sha256Canonical(canonical) !== result.resultDigest) {
     return "malformed_finality_result";
   }
 
@@ -911,7 +913,7 @@ const parseFinalityTransition = (
     ]) &&
     sameStrings(alerts, ["watcher_finality_post_finality_incident"]) &&
     finalityIncident.incidentDigest ===
-      sha256ProducerWireV1({
+      sha256Canonical({
         reasonCode: finalityIncident.reasonCode,
         triggerConsistencyDigest: finalityIncident.triggerConsistencyDigest,
         priorStateDigest: previous.stateDigest,
@@ -1324,7 +1326,7 @@ const parseRollbackIncident = (
   if (
     canonical.triggerConsistencyDigest !== canonical.consistencyDigest ||
     canonical.finalityIncidentDigest !==
-      sha256ProducerWireV1({
+      sha256Canonical({
         reasonCode: canonical.reasonCode,
         triggerConsistencyDigest: canonical.triggerConsistencyDigest,
         priorStateDigest: canonical.previousFinalityStateDigest,
@@ -2096,7 +2098,7 @@ const verifyPersistedConsistencyEvidence = (
     consistency.authorityGenesisIdentitySha256 !==
       policy.authorityGenesisIdentitySha256 ||
     consistency.configuredSourceDigest !==
-      sha256ProducerWireV1(watcherFinalityConfiguredSourceV1(policy)) ||
+      sha256Canonical(watcherFinalityConfiguredSourceV1(policy)) ||
     consistency.rejectedObservationCount !== 0 ||
     evidenceDigests.length === 0 ||
     consistency.observationCount !== evidenceDigests.length
@@ -2942,6 +2944,9 @@ export const parseWatcherRollbackResultV1 = (
   value: unknown,
   context: WatcherRollbackVerificationContextV1,
 ): WatcherRollbackResultV1 | null => {
+  if (typeof value === "object" && value !== null && isProxy(value)) {
+    return null;
+  }
   const parsed = decodeWatcherRollbackResultV1Structural(value);
   if (parsed === null) {
     return null;
@@ -3195,7 +3200,7 @@ const makeResumableFinalityState = (
   };
   return Object.freeze({
     ...canonical,
-    stateDigest: sha256ProducerWireV1(canonical),
+    stateDigest: sha256Canonical(canonical),
   });
 };
 

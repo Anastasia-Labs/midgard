@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { isAbsolute, normalize as normalizePath } from "node:path";
 
 import {
@@ -11,6 +10,7 @@ import {
   type WatcherConfig,
 } from "./config.js";
 import type { VerifiedWatcherDeploymentIdentityV1 } from "./deployment-identity.js";
+import { watcherSha256CanonicalJsonV1 } from "./durable-store.js";
 import {
   WATCHER_MULTI_PROVIDER_ALERT_CODES_V1,
   WATCHER_MULTI_PROVIDER_CONSISTENCY_V1_BOUNDS,
@@ -359,8 +359,7 @@ const isUint64 = (value: unknown): value is string =>
 const isPositiveUint64 = (value: unknown): value is string =>
   isUint64(value) && value !== "0";
 
-const sha256Canonical = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+const sha256Canonical = watcherSha256CanonicalJsonV1;
 
 const freezeStrings = <T extends string>(values: readonly T[]): readonly T[] =>
   Object.freeze([...values]);
@@ -704,45 +703,25 @@ export const makeWatcherFinalityPolicyV1 = (
     if (identity === null || identity.network !== config.targetNetwork) {
       return null;
     }
+    const source = config.l1.source;
     return makePolicy({
       schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
       network: config.targetNetwork,
-      sourceMode: config.l1.source.sourceMode,
-      authorityNodeId:
-        config.l1.source.sourceMode === "local_node"
-          ? config.l1.source.authorityNodeId
-          : null,
-      authorityGenesisIdentitySha256:
-        config.l1.source.sourceMode === "local_node"
-          ? config.l1.source.chainSync.genesisIdentitySha256
-          : null,
-      authorityChainSyncSocketPath:
-        config.l1.source.sourceMode === "local_node"
-          ? config.l1.source.chainSync.socketPath
-          : null,
-      localQueryServices:
-        config.l1.source.sourceMode === "local_node"
-          ? config.l1.source.queryServices.map((service) =>
-              Object.freeze({
-                kind: service.kind,
-                providerId: service.identity,
-                endpoint: service.endpoint,
-              }),
-            )
-          : [],
-      externalProviders:
-        config.l1.source.sourceMode === "external_providers"
-          ? Object.freeze(
-              config.l1.source.providers.map((provider) =>
-                Object.freeze({
-                  providerId: provider.identity,
-                  operatorIdentitySha256: provider.operatorIdentitySha256,
-                  endpoint: provider.endpoint,
-                  authenticationKind: "https_tls_identity_v1" as const,
-                }),
-              ),
-            )
-          : null,
+      sourceMode: source.sourceMode,
+      authorityNodeId: null,
+      authorityGenesisIdentitySha256: null,
+      authorityChainSyncSocketPath: null,
+      localQueryServices: [],
+      externalProviders: Object.freeze(
+        source.providers.map((provider) =>
+          Object.freeze({
+            providerId: provider.identity,
+            operatorIdentitySha256: provider.operatorIdentitySha256,
+            endpoint: provider.endpoint,
+            authenticationKind: "https_tls_identity_v1" as const,
+          }),
+        ),
+      ),
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
         config.l1.finality.rollback.maxDepth.toString(),

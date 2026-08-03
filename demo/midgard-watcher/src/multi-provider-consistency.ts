@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import { isAbsolute, normalize as normalizePath } from "node:path";
 
+import { watcherSha256CanonicalJsonV1 } from "./durable-store.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
   isWatcherL1BlockAttestedByV1,
@@ -457,8 +457,7 @@ const parseNormalizedObservation = (
   return null;
 };
 
-const sha256Canonical = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+const sha256Canonical = watcherSha256CanonicalJsonV1;
 
 const sortCodes = <T extends string>(
   values: ReadonlySet<T>,

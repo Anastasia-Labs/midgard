@@ -2629,6 +2629,19 @@ describe("canonical authenticated user-event indexer", () => {
       ),
     ).toEqual(indexed.state);
 
+    expect(
+      parseWatcherUserEventIndexerResultV1(
+        new Proxy(asWireValue(indexed), {}),
+        context,
+      ),
+    ).toBeNull();
+    const nestedProxy = asWireValue(indexed) as Record<string, unknown>;
+    const nestedState = nestedProxy.state as Record<string, unknown>;
+    nestedState.snapshot = new Proxy(nestedState.snapshot as object, {});
+    expect(
+      parseWatcherUserEventIndexerResultV1(nestedProxy, context),
+    ).toBeNull();
+
     const arrayTampered = asWireValue(indexed) as Record<string, unknown>;
     arrayTampered.reasonCodes = [
       "duplicate_observation",
@@ -2659,6 +2672,40 @@ describe("canonical authenticated user-event indexer", () => {
         null,
       );
     }
+  });
+
+  it("rejects a proxied user-event result before canonical integrity comparison", () => {
+    const bundle = blockBundle(
+      [makeEventFixture("deposit", "9a", 0, 1_000n)],
+      null,
+      100,
+      1,
+    );
+    const observation = deriveWatcherUserEventObservationV1(
+      policy,
+      null,
+      bundle.context,
+    );
+    expect(observation).not.toBeNull();
+    const indexed = evaluateWatcherUserEventIndexerV1(
+      policy,
+      null,
+      observation,
+      bundle.context,
+    );
+    expect(indexed.action).toBe("accept");
+
+    expect(
+      parseWatcherUserEventIndexerResultV1(
+        new Proxy(asWireValue(indexed), {}),
+        {
+          policy,
+          previousState: null,
+          observation,
+          publicContext: bundle.context,
+        },
+      ),
+    ).toBeNull();
   });
 
   it("requires one live, uniquely matching transport capability for every W10/W11 replay", async () => {
