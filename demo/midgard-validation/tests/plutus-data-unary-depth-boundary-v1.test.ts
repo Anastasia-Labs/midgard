@@ -4,9 +4,14 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
+  deriveMidgardV1TxFieldChunks,
+  encodeCbor,
   encodeMidgardCekDataFrameV1,
   encodeMidgardCekDataTraverseControlV1,
+  encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardTxOutput,
   finalizeMidgardCekDataTraverseV1,
+  materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN_V1,
   nextMidgardCekDataTraverseSpanV1,
   validateMidgardConsensusV1Tx,
@@ -23,7 +28,10 @@ import {
   findSignedCardanoCollectionBoundaryV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
-import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+import {
+  exerciseMidgardRetainedDaBoundaryV1,
+  exerciseMidgardRetainedDaCanonicalBoundaryV1,
+} from "./helpers/retained-da-boundary-v1.js";
 import {
   buildRawSignedCardanoUnaryCandidateV1,
   cardanoUnaryConstructorDataCborV1,
@@ -291,6 +299,134 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
 
     const txHash = await emulator.submitTx(candidate.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
+  }, 300_000);
+
+  /**
+   * Retained DA reconstruction at the exact derived maximum, not just at the
+   * 1,024 production-runtime witness above.
+   *
+   * Two constraints shape this test, both third-party and both measured:
+   *
+   *  1. CML cannot *build* a 4,043-deep `PlutusData` in-process, so the signed
+   *     candidate comes from the raw signer, exactly as the emulator-admission
+   *     test below does.
+   *  2. Maximum-depth `CML.Transaction.from_cbor_bytes` is effectively one-shot
+   *     per process even with the patched shadow stack: the first call in a
+   *     fresh worker succeeds, and a second one — or a first one in a worker
+   *     where any earlier test already drove CML through a deep datum — fails
+   *     with `RangeError: Maximum call stack size exceeded`. That is the same
+   *     property `helpers/cml-max-depth-runner-v1.ts` exists for, so the
+   *     signed-Cardano-hex entry `exerciseMidgardRetainedDaBoundaryV1` cannot
+   *     be used here without making the suite order-dependent.
+   *
+   * The canonical maximum-shape transaction is therefore projected through the
+   * repo's own recursion-free codecs — the shallow candidate goes through the
+   * production Cardano bridge and the maximum-depth datum is substituted into
+   * its single output — and handed to the canonical retained-DA entry point.
+   * That is the same exercise `exerciseMidgardRetainedDaBoundaryV1` delegates
+   * to (envelope, SDK decode, both DA classifications, every bounded reveal and
+   * the terminal reconstruction fold); only the CML-bound conversion in front
+   * of it is replaced. It matches the depth-4,043 measurement in
+   * `docs/exec-plans/evidence/c26-cml-investigation.md`, which was likewise
+   * taken with stock CML through the repo codecs.
+   *
+   * Emulator admission stays in the child-process test below.
+   */
+  it("retains the exact maximum-depth witness through normal and forced paths", async () => {
+    const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+    const { acceptedDepth, acceptedDatumCborBytes } =
+      maximumUnaryDepthTerminalVectorV1.cardanoSignedCapacityCandidate;
+    const address = CML.EnterpriseAddress.new(
+      0,
+      CML.Credential.new_pub_key(privateKey.to_public().hash()),
+    )
+      .to_address()
+      .to_bech32();
+    const buildCandidate = (requestedDepth: number) =>
+      buildRawSignedCardanoUnaryCandidateV1({
+        privateKey,
+        inputTransactionId: "00".repeat(32),
+        inputLovelace: 40_000_000_000n,
+        recipientAddress: address,
+        requestedDepth,
+        minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+        minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+      });
+
+    // The genuine signed candidate at the derived maximum: exactly on the
+    // signed capacity, unlike the 1,024 witness above which is strictly inside
+    // it. Built and measured without asking CML to read the deep datum.
+    const maximumCandidate = buildCandidate(acceptedDepth);
+    const maximumDatumCborHex =
+      cardanoUnaryConstructorDataCborV1(acceptedDepth);
+    expect(maximumCandidate.datumCbor.toString("hex")).toBe(
+      maximumDatumCborHex,
+    );
+    expect(maximumCandidate.datumCbor.length).toBe(acceptedDatumCborBytes);
+    expect(maximumCandidate.signedBytes).toBe(CARDANO_BOUNDARY_MAX_TX_SIZE_V1);
+    expect(measureExactUnaryConstructorDataV1(maximumDatumCborHex).depth).toBe(
+      acceptedDepth,
+    );
+
+    const shallowCanonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(buildCandidate(1).cborHex, "hex"),
+    );
+    const shallowNative =
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(shallowCanonical);
+    const shallowOutputs = decodeMidgardNativeByteListPreimage(
+      shallowNative.body.outputsPreimageCbor,
+      "native.outputs",
+    );
+    expect(shallowOutputs).toHaveLength(1);
+    const shallowOutput = decodeMidgardTxOutput(shallowOutputs[0]!);
+    expect(shallowOutput.datum?.cbor.toString("hex")).toBe(
+      cardanoUnaryConstructorDataCborV1(1),
+    );
+    const canonical = encodeMidgardNativeTxCanonicalV1(
+      materializeMidgardNativeTxFromCanonicalV1({
+        version: shallowNative.version,
+        validity: shallowNative.validity,
+        body: {
+          ...shallowNative.body,
+          outputsPreimageCbor: encodeCbor([
+            encodeMidgardTxOutput({
+              ...shallowOutput,
+              datum: { kind: "inline", cbor: maximumCandidate.datumCbor },
+            }),
+          ]),
+        },
+        witnessSet: shallowNative.witnessSet,
+      }),
+    );
+
+    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+    expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+    const outputs = decodeMidgardNativeByteListPreimage(
+      native.body.outputsPreimageCbor,
+      "native.outputs",
+    );
+    expect(outputs).toHaveLength(1);
+    expect(decodeMidgardTxOutput(outputs[0]!).datum?.cbor.toString("hex")).toBe(
+      maximumDatumCborHex,
+    );
+    // Canonical maximum-shape byte count pinned by the C26 investigation
+    // record's depth-4,043 row.
+    expect(canonical.length).toBe(16_470);
+    const completeFoldStepCount =
+      deriveMidgardV1TxFieldChunks(canonical).length;
+    expect(completeFoldStepCount).toBe(6);
+
+    const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+      canonicalTransactionCbor: canonical,
+    });
+    expect(retained.normal.sourceKind).toBe("normal");
+    expect(retained.forced.sourceKind).toBe("forced");
+    expect(retained.normal.retainedPreimageBytes).toBe(canonical.length);
+    expect(retained.forced.retainedPreimageBytes).toBe(canonical.length);
+    expect(retained.normal.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
+    expect(retained.normal.revealStepCount).toBe(completeFoldStepCount);
+    expect(retained.forced.revealStepCount).toBe(completeFoldStepCount);
   }, 300_000);
 
   /**
