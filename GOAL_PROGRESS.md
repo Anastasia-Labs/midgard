@@ -4137,3 +4137,31 @@ five exact normalization route/provenance/family guards passed, the production
 29-resolver prepare-route pair passed 2/2, SDK contract/application tests
 passed 18/18 after the testnet blueprint rebuild, and fault-proof submit tests
 passed 13/13 with typecheck, lint, and build/DTS clean.
+
+## Q03 and W20/RF-056 disposition (2026-08-03)
+
+Q03 is **PASS** at `e26e3b49`. Security-grade proof preparation now admits
+only supplied `public_or_permissionless_da` provenance; operator REST, file,
+and sample sources remain available only as diagnostic inputs and are rejected
+before proof construction. The SDK evidence-source suite passed 14/14,
+canonical evidence passed 32/32, the four prepare suites passed 33/33, and the
+SDK/fault-proofs typechecks plus the fault-proofs lint/build passed.
+
+W20/RF-056 remains **BLOCKED**, not deleted and not falsely exported. The
+existing strict client is eventually required by the production watcher, but
+the production DA committee node always installs its registry-backed
+connection gater and rejects an independent watcher identity before a
+retrieval request reaches the retained-payload handlers. The watcher has no
+local libp2p identity source or deployment registration route. Opening the
+existing committee gater is not acceptable because that node also hosts
+mutation and attestation protocols.
+
+The required next architecture step is a dedicated public, read-only retained
+DA listener/profile with only bounded retrieval protocols. After that exists,
+W20 can add its TCP/Noise/Yamux transport, authenticated remote PeerID and
+strict framing/deadline/failover conformance tests, then export and admit the
+client into W21's immutable pre-verification store. W22 must subsequently bind
+the retained bytes to the observed L1 header/root before the production
+watcher service is enabled. The alternative, deployment-registering every
+watcher identity, creates a closed topology and does not meet the intended
+independent public-retrieval contract.
