@@ -9,3 +9,4 @@ export * from "./DaTopics.js";
 export * from "./identity.js";
 export * from "./payload-source.js";
 export * from "./proof-protocols.js";
+export * from "./PublicRetainedDaListener.js";

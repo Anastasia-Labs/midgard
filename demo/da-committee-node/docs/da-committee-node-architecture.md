@@ -157,6 +157,45 @@ Transport responsibilities:
 - Reject conflicting bytes for a `header_hash` that this node has already signed.
 - Apply peer scoring, rate limits, and backpressure before expensive validation.
 
+### Public Retained-DA Listener
+
+The public read plane is the separate `midgard-public-retained-da` executable,
+not a flag on `da-committee-node`. The committee executable rejects public
+reader environment variables. The public executable requires
+`DA_PUBLIC_RETAINED_DA_ENABLED=true`, a public private-key source, the runtime
+and contract-deployment manifests, and its own database URL/role. Its derived
+peer ID must equal the deployment-manifest `public_retained_da.peer_id`; the
+manifest parser rejects using a producer or committee peer ID for this profile.
+
+The public executable refuses `WATCHER_DB_PATH` and `WATCHER_DATABASE_URL`:
+the file store cannot be safely shared with the committee process, and mutable
+committee database credentials are not public-reader credentials. It accepts
+only `DA_PUBLIC_RETAINED_DA_DATABASE_URL` with a separately configured role
+that is verified at startup to have `SELECT` and no DML privilege on
+`watcher_da_payloads` and `watcher_state_queue_headers`. Each lookup is in an
+explicit PostgreSQL `READ ONLY` transaction; the public process never creates
+or migrates schema.
+
+The profile is deliberately not the committee node's connection gater or
+service stack. It has its own non-signer identity, TCP transport, Noise
+encryption, Yamux, listener addresses, and lifecycle. It has no peer discovery,
+gossip, identify service, outbound dialing, relays, signing, attestation, or
+payload-submission handler. An inbound client is admitted only after Noise
+authentication; it need not be a committee member.
+
+Its exact manifest-bound request surface is:
+
+- `capabilities`
+- `payload-by-header`, `payload-chunk`, and `metadata-by-header`
+- `proof-bundle-by-header`, `trace-step-by-index`, and
+  `event-to-step-by-event`
+
+Every handler has the profile deadline and strict four-byte framed bounded I/O.
+Global, per-authenticated-peer, and proof-request permits reject overload
+instead of retaining an unbounded public queue. In particular, the profile
+does not expose `payload-submit`, attestation exchange, signature exchange,
+gossip publication, or any state-mutating endpoint.
+
 ### Payload Validator
 
 Validates that the payload is complete and reconstructs the committed block header.

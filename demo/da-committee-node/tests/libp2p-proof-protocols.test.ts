@@ -327,7 +327,7 @@ describe("DA libp2p proof protocol handlers", () => {
       deploymentFingerprint,
       store,
       limits: streamLimits,
-      registry,
+      accessPolicy: { kind: "manifest_roles", registry },
     });
     const protocolId = createDaProtocolAllowlist(
       deploymentFingerprint,
@@ -410,6 +410,7 @@ const makeHandlers = async (): Promise<{
   const handlers = new DaLibp2pProofProtocolHandlers({
     deploymentFingerprint,
     store,
+    accessPolicy: { kind: "any_noise_authenticated_peer" },
   });
   return { handlers, store };
 };

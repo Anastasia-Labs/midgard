@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "bin": {
-    "da-committee-node": "./dist/index.js"
+    "da-committee-node": "./dist/index.js",
+    "midgard-public-retained-da": "./dist/public-retained-da.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

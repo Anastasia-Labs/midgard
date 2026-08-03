@@ -91,7 +91,10 @@ const main = async (): Promise<void> => {
       deploymentFingerprint: config.deploymentFingerprint,
       store,
       limits: config.daTransport.limits,
-      registry: daPeerRegistry,
+      accessPolicy: {
+        kind: "manifest_roles",
+        registry: daPeerRegistry,
+      },
     }),
     ...createDaLibp2pAttestationRequestHandlers({
       deploymentFingerprint: config.deploymentFingerprint,

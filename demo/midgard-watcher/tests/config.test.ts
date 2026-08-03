@@ -11,7 +11,7 @@ import {
 } from "../src/config.js";
 
 const PEER_A =
-  "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
+  "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345";
 const OPERATOR_ID_A = "11".repeat(32);
 const OPERATOR_ID_B = "22".repeat(32);
 const GENESIS_ID = "33".repeat(32);

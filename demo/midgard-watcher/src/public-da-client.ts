@@ -1,4 +1,9 @@
-import { DA_PAYLOAD_V1_VERSION, decodeDaPayloadV1 } from "@al-ft/midgard-sdk";
+import {
+  assertSecurityGradeEvidenceV1,
+  DA_PAYLOAD_V1_VERSION,
+  decodeDaPayloadV1,
+  type EvidenceProvenanceV1,
+} from "@al-ft/midgard-sdk";
 
 import { unwrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
 import {
@@ -46,6 +51,7 @@ const MAX_EVENT_KEY_BYTES = 4_096;
 
 export type WatcherPublicDaRequestV1 = Readonly<{
   peerIdentity: string;
+  peerId: string;
   multiaddr: string;
   protocol: DaRequestResponseProtocol;
   protocolId: string;
@@ -127,6 +133,8 @@ export type WatcherPublicDaPayloadV1 = Readonly<{
   payloadEnvelopeCbor: Buffer;
   innerPayloadCbor: Buffer;
   sourcePeerIdentity: string;
+  sourcePeerId: string;
+  provenance: EvidenceProvenanceV1;
   durableInput: WatcherDaProofInputV1;
   attempts: readonly WatcherPublicDaAttemptV1[];
 }>;
@@ -138,6 +146,8 @@ export type WatcherPublicDaProofBundleV1 = Readonly<{
   proofBundleHash: string;
   proofBundleBytes: Buffer;
   sourcePeerIdentity: string;
+  sourcePeerId: string;
+  provenance: EvidenceProvenanceV1;
   durableInput: WatcherDaProofInputV1;
   attempts: readonly WatcherPublicDaAttemptV1[];
 }>;
@@ -152,6 +162,8 @@ export type WatcherPublicDaTraceStepV1 = Readonly<{
   membershipProofBytes: Buffer;
   membershipProofSha256: string;
   sourcePeerIdentity: string;
+  sourcePeerId: string;
+  provenance: EvidenceProvenanceV1;
   attempts: readonly WatcherPublicDaAttemptV1[];
 }>;
 
@@ -165,6 +177,8 @@ export type WatcherPublicDaEventToStepV1 = Readonly<{
   membershipOrNonmembershipProofBytes: Buffer;
   membershipOrNonmembershipProofSha256: string;
   sourcePeerIdentity: string;
+  sourcePeerId: string;
+  provenance: EvidenceProvenanceV1;
   attempts: readonly WatcherPublicDaAttemptV1[];
 }>;
 
@@ -365,6 +379,8 @@ export class WatcherPublicDaClientV1 {
             payloadEnvelopeCbor,
             innerPayloadCbor,
             sourcePeerIdentity: peer.identity,
+            sourcePeerId: peer.peerId,
+            provenance: admittedPublicDaProvenance(peer),
             durableInput: durableInput(
               "da_payload",
               payloadHashHex,
@@ -448,6 +464,8 @@ export class WatcherPublicDaClientV1 {
             proofBundleHash: proofBundleHashHex,
             proofBundleBytes,
             sourcePeerIdentity: peer.identity,
+            sourcePeerId: peer.peerId,
+            provenance: admittedPublicDaProvenance(peer),
             durableInput: durableInput(
               "proof_input",
               proofBundleHashHex,
@@ -537,6 +555,8 @@ export class WatcherPublicDaClientV1 {
             membershipProofSha256:
               computeDaSha256Hash(membershipProofBytes).toString("hex"),
             sourcePeerIdentity: peer.identity,
+            sourcePeerId: peer.peerId,
+            provenance: admittedPublicDaProvenance(peer),
           },
         };
       }),
@@ -622,6 +642,8 @@ export class WatcherPublicDaClientV1 {
             membershipOrNonmembershipProofSha256:
               computeDaSha256Hash(proof).toString("hex"),
             sourcePeerIdentity: peer.identity,
+            sourcePeerId: peer.peerId,
+            provenance: admittedPublicDaProvenance(peer),
           },
         };
       }),
@@ -821,6 +843,7 @@ export class WatcherPublicDaClientV1 {
       const response = await Promise.race([
         this.transport.request({
           peerIdentity: peer.identity,
+          peerId: peer.peerId,
           multiaddr: peer.multiaddr,
           protocol,
           protocolId: daRequestResponseProtocolId(
@@ -935,6 +958,16 @@ const requiredValue = <T>(
   }
   return value;
 };
+
+/** Every successful wire result crosses Q03 before it becomes a caller input. */
+const admittedPublicDaProvenance = (
+  peer: WatcherDaPeerConfig,
+): EvidenceProvenanceV1 =>
+  assertSecurityGradeEvidenceV1({
+    trustClass: "public_or_permissionless_da",
+    sourceId: peer.peerId,
+    grade: "security",
+  });
 
 const strictInnerPayload = async (
   payloadEnvelopeCbor: Buffer,

@@ -2940,6 +2940,10 @@ program
     "--producer-libp2p-key-source <source>",
     "Producer DA_LIBP2P_PRIVATE_KEY_SOURCE",
   )
+  .requiredOption(
+    "--public-retained-da-libp2p-key-source <source>",
+    "Dedicated non-signer DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE",
+  )
   .requiredOption("--threshold <n>", "DA committee threshold")
   .option(
     "--committee-member <spec>",
@@ -2951,10 +2955,15 @@ program
   .option("--local-signer-index <n>", "Local watcher signer index")
   .option("--producer-port <port>", "Producer retrieval libp2p port")
   .option("--watcher-port <port>", "Watcher libp2p port")
+  .option("--public-retained-da-port <port>", "Public retained-DA libp2p port")
   .option("--producer-service-name <name>", "Compose producer service DNS name")
   .option("--watcher-service-name <name>", "Compose watcher service DNS name")
   .option("--producer-public-host <host>", "Public producer DNS/IP")
   .option("--watcher-public-host <host>", "Public watcher DNS/IP")
+  .option(
+    "--public-retained-da-public-host <host>",
+    "Public retained-DA DNS/IP (defaults to --watcher-public-host)",
+  )
   .option("--out <path>", "Write manifest JSON to this path")
   .action(async (options) => {
     const opts = typeof options.opts === "function" ? options.opts() : options;
@@ -2970,6 +2979,7 @@ program
         profile: parseDaLibp2pRuntimeProfile(opts.profile),
         contractDeploymentInfoPath: opts.contractDeploymentInfo,
         producerPrivateKeySource: opts.producerLibp2pKeySource,
+        publicRetainedDaPrivateKeySource: opts.publicRetainedDaLibp2pKeySource,
         committeeMembers,
         threshold: parsePositiveIntegerOption(opts.threshold, "--threshold"),
         network: opts.network,
@@ -2997,6 +3007,14 @@ program
               ),
             }
           : {}),
+        ...(typeof opts.publicRetainedDaPort === "string"
+          ? {
+              publicRetainedDaPort: parsePositiveIntegerOption(
+                opts.publicRetainedDaPort,
+                "--public-retained-da-port",
+              ),
+            }
+          : {}),
         ...(typeof opts.producerServiceName === "string"
           ? { producerServiceName: opts.producerServiceName }
           : {}),
@@ -3008,6 +3026,9 @@ program
           : {}),
         ...(typeof opts.watcherPublicHost === "string"
           ? { watcherPublicHost: opts.watcherPublicHost }
+          : {}),
+        ...(typeof opts.publicRetainedDaPublicHost === "string"
+          ? { publicRetainedDaPublicHost: opts.publicRetainedDaPublicHost }
           : {}),
       });
       if (typeof opts.out === "string" && opts.out.length > 0) {

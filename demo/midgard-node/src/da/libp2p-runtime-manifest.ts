@@ -37,6 +37,8 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly contractDeploymentInfoPath: string;
   readonly network: string;
   readonly producerPrivateKeySource: string;
+  /** Dedicated non-signer identity for the public retained-DA process. */
+  readonly publicRetainedDaPrivateKeySource?: string;
   readonly committeeMembers: readonly DaLibp2pRuntimeCommitteeMemberInput[];
   readonly threshold: number;
   readonly localSignerIndex?: number;
@@ -46,10 +48,13 @@ export type DaLibp2pRuntimeManifestOptions = {
   readonly watcherServiceName?: string;
   readonly producerPublicHost?: string;
   readonly watcherPublicHost?: string;
+  readonly publicRetainedDaPort?: number;
+  readonly publicRetainedDaPublicHost?: string;
 };
 
 const DEFAULT_PRODUCER_PORT = 39002;
 const DEFAULT_WATCHER_PORT = 39001;
+const DEFAULT_PUBLIC_RETAINED_DA_PORT = 39003;
 const DEFAULT_PRODUCER_SERVICE = "midgard-node";
 const DEFAULT_WATCHER_SERVICE = "da-committee-node";
 
@@ -65,6 +70,14 @@ export const generateDaLibp2pRuntimeManifest = async (
   );
   const producerIdentity = await loadDaLibp2pIdentity(
     options.producerPrivateKeySource,
+  );
+  if (options.publicRetainedDaPrivateKeySource === undefined) {
+    throw new Error(
+      "public retained DA runtime manifest requires publicRetainedDaPrivateKeySource",
+    );
+  }
+  const publicRetainedDaIdentity = await loadDaLibp2pIdentity(
+    options.publicRetainedDaPrivateKeySource,
   );
   const members = await Promise.all(
     options.committeeMembers.map(async (member) => {
@@ -85,13 +98,28 @@ export const generateDaLibp2pRuntimeManifest = async (
   const ports = {
     producer: options.producerPort ?? DEFAULT_PRODUCER_PORT,
     watcher: options.watcherPort ?? DEFAULT_WATCHER_PORT,
+    publicRetainedDa:
+      options.publicRetainedDaPort ?? DEFAULT_PUBLIC_RETAINED_DA_PORT,
   };
   validatePort(ports.producer, "producer port");
   validatePort(ports.watcher, "watcher port");
+  validatePort(ports.publicRetainedDa, "public retained DA port");
   const hosts = hostsForProfile(options);
   if (options.profile === "public") {
     rejectLocalRuntimeHost(hosts.producer, "producer public host");
     rejectLocalRuntimeHost(hosts.watcher, "watcher public host");
+    rejectLocalRuntimeHost(
+      options.publicRetainedDaPublicHost ?? options.watcherPublicHost!,
+      "public retained DA host",
+    );
+  }
+  if (
+    publicRetainedDaIdentity.peerId === producerIdentity.peerId ||
+    members.some((member) => member.peerId === publicRetainedDaIdentity.peerId)
+  ) {
+    throw new Error(
+      "public retained DA identity must not be a producer or committee identity",
+    );
   }
 
   const producerAddr = multiaddrForHost(
@@ -118,6 +146,15 @@ export const generateDaLibp2pRuntimeManifest = async (
           (_addr, index) => members[index]!.peerId !== producerIdentity.peerId,
         )
       : [producerAddr];
+  const publicRetainedDaHost =
+    options.profile === "public"
+      ? (options.publicRetainedDaPublicHost ?? options.watcherPublicHost!)
+      : hosts.watcher;
+  const publicRetainedDaAddr = multiaddrForHost(
+    publicRetainedDaHost,
+    ports.publicRetainedDa,
+    publicRetainedDaIdentity.peerId,
+  );
 
   return parseDaLibp2pRuntimeManifest({
     schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
@@ -158,6 +195,34 @@ export const generateDaLibp2pRuntimeManifest = async (
         request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
       },
       retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
+    },
+    public_retained_da: {
+      profile: "public-retained-da-v1",
+      access_policy: "any_noise_authenticated_peer",
+      peer_id: publicRetainedDaIdentity.peerId,
+      listen_multiaddrs: [
+        listenAddr(
+          listenHostForProfile(options.profile),
+          ports.publicRetainedDa,
+        ),
+      ],
+      announce_multiaddrs: [publicRetainedDaAddr],
+      protocols: [
+        "capabilities",
+        "payload-by-header",
+        "payload-chunk",
+        "metadata-by-header",
+        "proof-bundle-by-header",
+        "trace-step-by-index",
+        "event-to-step-by-event",
+      ],
+      limits: {
+        max_streams_per_peer: 4,
+        max_inflight_requests: 32,
+        max_inflight_requests_per_peer: 2,
+        max_inflight_proof_requests: 1,
+        request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+      },
     },
     da_committee: {
       threshold: options.threshold,

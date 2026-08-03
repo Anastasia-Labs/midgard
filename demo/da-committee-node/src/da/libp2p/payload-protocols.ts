@@ -37,6 +37,12 @@ export type DaLibp2pPayloadProtocolStore = Pick<
   "getDaPayload" | "saveDaPayload"
 >;
 
+/** Read-only authority required by the public retained-DA listener. */
+export type DaLibp2pPublicRetainedDaPayloadStore = Pick<
+  WatcherStore,
+  "getDaPayload"
+>;
+
 export type DaLibp2pPayloadProtocolLimits = {
   readonly maxPayloadBytes: number;
   readonly maxInlineResponseBytes: number;
@@ -45,9 +51,12 @@ export type DaLibp2pPayloadProtocolLimits = {
   readonly requestTimeoutMs: number;
 };
 
-export type DaLibp2pPayloadProtocolHandlersOptions = {
+export type DaLibp2pPayloadProtocolHandlersOptions<
+  Store extends
+    DaLibp2pPublicRetainedDaPayloadStore = DaLibp2pPayloadProtocolStore,
+> = {
   readonly deploymentFingerprint: string | Uint8Array;
-  readonly store: DaLibp2pPayloadProtocolStore;
+  readonly store: Store;
   readonly limits?: Partial<DaLibp2pPayloadProtocolLimits>;
   readonly now?: () => Date;
 };
@@ -73,14 +82,17 @@ export class DaLibp2pPayloadProtocolError extends Error {
   }
 }
 
-export class DaLibp2pPayloadProtocolHandlers {
+export class DaLibp2pPayloadProtocolHandlers<
+  Store extends
+    DaLibp2pPublicRetainedDaPayloadStore = DaLibp2pPayloadProtocolStore,
+> {
   private readonly deploymentFingerprint: string;
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly limits: DaLibp2pPayloadProtocolLimits;
   private readonly now: () => Date;
-  private readonly store: DaLibp2pPayloadProtocolStore;
+  private readonly store: Store;
 
-  constructor(options: DaLibp2pPayloadProtocolHandlersOptions) {
+  constructor(options: DaLibp2pPayloadProtocolHandlersOptions<Store>) {
     this.deploymentFingerprint = normalizeDaDeploymentFingerprintHex(
       options.deploymentFingerprint,
     );
@@ -131,7 +143,10 @@ export class DaLibp2pPayloadProtocolHandlers {
     });
   }
 
-  async handlePayloadSubmit(requestCbor: Uint8Array): Promise<Buffer> {
+  async handlePayloadSubmit(
+    this: DaLibp2pPayloadProtocolHandlers<DaLibp2pPayloadProtocolStore>,
+    requestCbor: Uint8Array,
+  ): Promise<Buffer> {
     const request = decodeRequest(
       () => decodeDaPayloadSubmitRequestV1Cbor(requestCbor),
       "payload-submit request",
@@ -456,6 +471,7 @@ export class DaLibp2pPayloadProtocolHandlers {
   }
 
   private async retainInlinePayloadUnverified(
+    this: DaLibp2pPayloadProtocolHandlers<DaLibp2pPayloadProtocolStore>,
     headerHash: string,
     payloadHash: string,
     payloadBytes: Buffer,

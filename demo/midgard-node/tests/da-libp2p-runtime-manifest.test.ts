@@ -42,6 +42,7 @@ import {
 
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
+const PUBLIC_RETAINED_DA_KEY = `seed:${"00".repeat(31)}03`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
 const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
@@ -95,6 +96,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
       threshold: 1,
       committeeMembers: [
         {
@@ -142,6 +144,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
       watcherServiceName: "watcher-a",
       threshold: 1,
       committeeMembers: [
@@ -165,6 +168,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
       threshold: 1,
       committeeMembers: [
         {
@@ -199,6 +203,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
       threshold: 1,
       committeeMembers: [
         {
@@ -240,6 +245,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         contractDeploymentInfoPath: deploymentInfo.path,
         network: "Preprod",
         producerPrivateKeySource: PRODUCER_KEY,
+        publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
         producerPublicHost: "127.0.0.1",
         watcherPublicHost: "da.example",
         threshold: 1,
@@ -268,6 +274,7 @@ describe("DA libp2p runtime manifest profiles", () => {
         contractDeploymentInfoPath: deploymentInfo.path,
         network: "Preprod",
         producerPrivateKeySource: PRODUCER_KEY,
+        publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
         threshold: 1,
         committeeMembers: [
           {
@@ -289,6 +296,7 @@ describe("DA libp2p runtime manifest profiles", () => {
       contractDeploymentInfoPath: deploymentInfo.path,
       network: "Preprod",
       producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
       threshold: 1,
       committeeMembers: [
         {

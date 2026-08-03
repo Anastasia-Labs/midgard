@@ -55,7 +55,7 @@ include rejected values.
     "peers": [
       {
         "identity": "da-peer-a",
-        "multiaddr": "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345"
+        "multiaddr": "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345"
       }
     ],
     "requestTimeoutMs": 10000,
@@ -102,14 +102,21 @@ constructor, type, and exports have no compatibility alias. `start` and
 `replay` remain transport-free scaffolds and exit with code `78`; neither can
 turn a rejected local configuration into a connection attempt.
 
-DA peers must be public DNS libp2p multiaddresses. The SQLite path must be
-absolute and durable. The rollback-authority key and prover key are separate
-required secret references, each through a named environment variable or an
-absolute file. The rollback-authority source must resolve to the same 32-byte
-key across restarts and restores; missing, changed, reused, random, or
-ephemeral key material fails closed because W13 recovery snapshots are
-authenticated with it. Inline keys, seeds, tokens, and password fields are
-always rejected.
+DA peers must be public direct-TCP libp2p multiaddresses of the form
+`/dns4/<host>/tcp/<port>/p2p/<PeerID>` (or `dns6`). HTTP(S), WebSocket,
+relay, and TLS multiaddr layers are rejected. Before each request the watcher
+checks that the embedded `PeerID` is the configured peer; after dialing, it
+checks that the Noise-authenticated remote identity is the same peer. It emits
+accepted public-DA evidence as `public_or_permissionless_da`, never as
+committee-attested evidence.
+
+The SQLite path must be absolute and durable. The rollback-authority key and
+prover key are separate required secret references, each through a named
+environment variable or an absolute file. The rollback-authority source must
+resolve to the same 32-byte key across restarts and restores; missing, changed,
+reused, random, or ephemeral key material fails closed because W13 recovery
+snapshots are authenticated with it. Inline keys, seeds, tokens, and password
+fields are always rejected.
 
 Finality is explicit: pre-finality rollback rewinds pending work. A mode-valid,
 agreed canonical contradiction after finality opens a durable incident, and

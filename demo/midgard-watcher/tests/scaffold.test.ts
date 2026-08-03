@@ -32,7 +32,13 @@ describe("W00 watcher package identity", () => {
     expect(watcherPackage.dependencies).toEqual({
       "@al-ft/midgard-core": "workspace:*",
       "@al-ft/midgard-sdk": "workspace:*",
+      "@chainsafe/libp2p-noise": "17.0.0",
+      "@chainsafe/libp2p-yamux": "8.0.1",
+      "@libp2p/peer-id": "6.0.11",
+      "@libp2p/tcp": "11.0.22",
       "@lucid-evolution/lucid": "0.6.0",
+      "@multiformats/multiaddr": "13.0.3",
+      libp2p: "3.3.4",
     });
     expect(watcherPackage.scripts).toMatchObject({
       build: expect.any(String),
@@ -46,6 +52,7 @@ describe("W00 watcher package identity", () => {
     expect(committeePackage.name).toBe("da-committee-node");
     expect(committeePackage.bin).toEqual({
       "da-committee-node": "./dist/index.js",
+      "midgard-public-retained-da": "./dist/public-retained-da.js",
     });
     expect(committeePackage.name).not.toBe(watcherPackage.name);
   });

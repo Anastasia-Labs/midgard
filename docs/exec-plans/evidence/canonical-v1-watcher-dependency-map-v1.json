@@ -322,7 +322,7 @@
       "expectedFocusedTestCount": 9
     },
     "publicDaClient": {
-      "expectedFocusedTestCount": 99
+      "expectedFocusedTestCount": 102
     },
     "scaffold": {
       "expectedFocusedTestCount": 5

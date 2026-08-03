@@ -518,9 +518,27 @@ importers:
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk
+      '@chainsafe/libp2p-noise':
+        specifier: 17.0.0
+        version: 17.0.0
+      '@chainsafe/libp2p-yamux':
+        specifier: 8.0.1
+        version: 8.0.1
+      '@libp2p/peer-id':
+        specifier: 6.0.11
+        version: 6.0.11
+      '@libp2p/tcp':
+        specifier: 11.0.22
+        version: 11.0.22
       '@lucid-evolution/lucid':
         specifier: 0.6.0
         version: 0.6.0(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@2.0.1)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+      '@multiformats/multiaddr':
+        specifier: 13.0.3
+        version: 13.0.3
+      libp2p:
+        specifier: 3.3.4
+        version: 3.3.4
     devDependencies:
       '@types/node':
         specifier: ^22.17.0

@@ -189,6 +189,30 @@ export type Libp2pDaTransportConfig = {
   readonly peers: readonly Libp2pDaPeerConfig[];
 };
 
+export type PublicRetainedDaConfig = {
+  readonly peerId: string;
+  readonly privateKeySource: string;
+  readonly listenMultiaddrs: readonly string[];
+  readonly announceMultiaddrs: readonly string[];
+  readonly protocols: readonly string[];
+  readonly limits: {
+    readonly maxStreamsPerPeer: number;
+    readonly maxInflightRequests: number;
+    readonly maxInflightRequestsPerPeer: number;
+    readonly maxInflightProofRequests: number;
+    readonly requestTimeoutMs: number;
+  };
+};
+
+/** Minimal authority set for the separate public retained-DA executable. */
+export type PublicRetainedDaRuntimeConfig = {
+  readonly deploymentFingerprint: string;
+  readonly publicRetainedDa: PublicRetainedDaConfig;
+  readonly dataLimits: Libp2pDaTransportLimits;
+  readonly databaseUrl: string;
+  readonly databaseRole: string;
+};
+
 export type L1SubmitterPreflightConfig = {
   readonly enabled: boolean;
   readonly minPlainAdaLovelace: bigint;
@@ -281,6 +305,7 @@ export const loadWatcherConfig = async (
     deploymentFingerprint,
   });
   const libp2pPrivateKeySource = libp2pPrivateKeySourceConfig(env);
+  rejectPublicRetainedDaCoHosting(env);
   const midgardNodeDeployment = parseMidgardNodeDeploymentInfo(
     contractDeploymentInfo,
     network,
@@ -1336,6 +1361,19 @@ const libp2pPrivateKeySourceConfig = (env: Env): string => {
   }
   validateLibp2pPrivateKeySource(source);
   return source;
+};
+
+const rejectPublicRetainedDaCoHosting = (env: Env): void => {
+  if (
+    env.DA_PUBLIC_RETAINED_DA_ENABLED !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_DATABASE_URL !== undefined ||
+    env.DA_PUBLIC_RETAINED_DA_DATABASE_ROLE !== undefined
+  ) {
+    throw new Error(
+      "public retained-DA must run as the dedicated midgard-public-retained-da process, not inside da-committee-node",
+    );
+  }
 };
 
 const validateLibp2pPrivateKeySource = (source: string): void => {

@@ -489,7 +489,7 @@ const makeFinalityPolicy = (source: unknown): WatcherFinalityPolicyV1 =>
           {
             identity: "da-peer-a",
             multiaddr:
-              "/dns4/da-a.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
+              "/dns4/da-a.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz12345",
           },
         ],
         requestTimeoutMs: 10_000,

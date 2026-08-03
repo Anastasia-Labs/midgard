@@ -26,6 +26,7 @@ import {
   parseL1SourceConfig,
 } from "../src/config.js";
 import { parseMidgardNodeDeploymentInfo } from "../src/l1/deployment.js";
+import { loadPublicRetainedDaRuntimeConfig } from "../src/public-retained-da-config.js";
 import { tempDir } from "./helpers.js";
 import { readDaDeploymentFixture } from "./helpers/deployment-fixture.js";
 
@@ -152,6 +153,56 @@ describe("loadWatcherConfig", () => {
         },
       ],
     });
+  });
+
+  it("loads the manifest-bound public retained-DA process with only its read-only authority", async () => {
+    const dir = await tempDir();
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      libp2pManifest("01".repeat(32)),
+    );
+    const publicProcessEnv = {
+      MIDGARD_DEPLOYMENT_MANIFEST_PATH: manifestPath,
+      MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH: deploymentInfoPath,
+      DA_PUBLIC_RETAINED_DA_ENABLED: "true",
+      DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: `seed:${"03".repeat(32)}`,
+      DA_PUBLIC_RETAINED_DA_DATABASE_URL:
+        "postgresql://public_reader@localhost/midgard",
+      DA_PUBLIC_RETAINED_DA_DATABASE_ROLE: "public_reader",
+    };
+    const enabled = await loadPublicRetainedDaRuntimeConfig(publicProcessEnv);
+    expect(enabled.publicRetainedDa).toMatchObject({
+      peerId: LIBP2P_PEER_ID_PUBLIC,
+      listenMultiaddrs: ["/ip4/0.0.0.0/tcp/0"],
+      announceMultiaddrs: [
+        `/dns4/public-da.example/tcp/4002/p2p/${LIBP2P_PEER_ID_PUBLIC}`,
+      ],
+      protocols: [
+        "capabilities",
+        "payload-by-header",
+        "payload-chunk",
+        "metadata-by-header",
+        "proof-bundle-by-header",
+        "trace-step-by-index",
+        "event-to-step-by-event",
+      ],
+    });
+    expect(enabled.databaseRole).toBe("public_reader");
+
+    const {
+      DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: _publicPrivateKey,
+      ...missingPublicKeyEnv
+    } = publicProcessEnv;
+    await expect(
+      loadPublicRetainedDaRuntimeConfig(missingPublicKeyEnv),
+    ).rejects.toThrow(/DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE/);
+    await expect(
+      loadWatcherConfig({
+        ...libp2pConfigEnv(dir, manifestPath, deploymentInfoPath),
+        DA_PUBLIC_RETAINED_DA_ENABLED: "true",
+        DA_PUBLIC_RETAINED_DA_PRIVATE_KEY_SOURCE: `seed:${"03".repeat(32)}`,
+      }),
+    ).rejects.toThrow(/dedicated midgard-public-retained-da process/u);
   });
 
   it("allows contract deployment info raw SHA drift without changing identity", async () => {
@@ -1101,6 +1152,8 @@ describe("loadWatcherConfig", () => {
 
 const LIBP2P_PEER_ID_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const LIBP2P_PEER_ID_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
+const LIBP2P_PEER_ID_PUBLIC =
+  "12D3KooWCQ8WRN84GxEkR7k8dV6gb4ca3bNqM5LmT3evQVfBPGwv";
 const LIBP2P_PRIVATE_KEY_SOURCE = `seed:${"00".repeat(31)}01`;
 const canonicalDeploymentManifest = await readDaDeploymentFixture();
 const DEPLOYMENT_MANIFEST_ID = canonicalDeploymentManifest.manifestId;
@@ -1150,6 +1203,31 @@ const libp2pManifest = (
         LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
       max_chunk_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
       max_streams_per_peer: LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+      request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
+    },
+  },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: LIBP2P_PEER_ID_PUBLIC,
+    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/0"],
+    announce_multiaddrs: [
+      `/dns4/public-da.example/tcp/4002/p2p/${LIBP2P_PEER_ID_PUBLIC}`,
+    ],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
       request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
     },
   },

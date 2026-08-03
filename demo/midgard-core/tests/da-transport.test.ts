@@ -522,6 +522,29 @@ const runtimeManifestFixture = (): Record<string, unknown> => ({
     },
     retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
   },
+  public_retained_da: {
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: "peer-public",
+    listen_multiaddrs: ["/ip4/0.0.0.0/tcp/39003"],
+    announce_multiaddrs: ["/dns4/public.example/tcp/39003/p2p/peer-public"],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    },
+  },
   da_committee: {
     threshold: 1,
     members: [

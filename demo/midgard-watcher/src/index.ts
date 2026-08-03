@@ -203,6 +203,28 @@ export {
   type WatcherProofThreadTransitionKindV1,
 } from "./proof-thread-indexer.js";
 export {
+  WATCHER_PUBLIC_DA_CLIENT_V1_SCHEMA_VERSION,
+  type WatcherPublicDaAttemptStatusV1,
+  type WatcherPublicDaAttemptV1,
+  type WatcherPublicDaClientErrorCodeV1,
+  WatcherPublicDaClientErrorV1,
+  WatcherPublicDaClientV1,
+  type WatcherPublicDaEventToStepV1,
+  type WatcherPublicDaLibp2pTransportV1,
+  type WatcherPublicDaPayloadV1,
+  type WatcherPublicDaProofBundleV1,
+  type WatcherPublicDaRequestV1,
+  type WatcherPublicDaTraceStepV1,
+} from "./public-da-client.js";
+export {
+  createWatcherPublicDaLibp2pTransportV1,
+  encodeWatcherPublicDaFrameV1,
+  readWatcherPublicDaFramesV1,
+  type WatcherPublicDaLibp2pFactoryV1,
+  WatcherPublicDaLibp2pTransport,
+  type WatcherPublicDaLibp2pTransportOptionsV1,
+} from "./public-da-libp2p-transport.js";
+export {
   evaluateAndPersistWatcherPostFinalityRecoveryV1,
   evaluateAndPersistWatcherRollbackV1,
   evaluateWatcherPostFinalityRecoveryV1,

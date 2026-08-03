@@ -32,12 +32,20 @@ export type DaLibp2pProofProtocolLimits = {
   readonly maxInlineResponseBytes: number;
 };
 
+/** The caller must choose public Noise access or manifest-role authorization. */
+export type DaLibp2pProofAccessPolicy =
+  | { readonly kind: "any_noise_authenticated_peer" }
+  | {
+      readonly kind: "manifest_roles";
+      readonly registry: Pick<DaPeerRegistry, "getByPeerId">;
+      readonly allowedRequesterRoles?: readonly Libp2pDaRole[];
+    };
+
 export type DaLibp2pProofProtocolHandlersOptions = {
   readonly deploymentFingerprint: string | Uint8Array;
   readonly store: DaProofArtifactStore;
   readonly limits?: Partial<DaLibp2pProofProtocolLimits>;
-  readonly registry?: Pick<DaPeerRegistry, "getByPeerId">;
-  readonly allowedRequesterRoles?: readonly Libp2pDaRole[];
+  readonly accessPolicy: DaLibp2pProofAccessPolicy;
 };
 
 export type DaLibp2pProofRequestContext = {
@@ -55,8 +63,7 @@ export class DaLibp2pProofProtocolHandlers {
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly deriver: DaProofArtifactDeriver;
   private readonly limits: DaLibp2pProofProtocolLimits;
-  private readonly registry?: Pick<DaPeerRegistry, "getByPeerId">;
-  private readonly allowedRequesterRoles: ReadonlySet<Libp2pDaRole>;
+  private readonly accessPolicy: DaLibp2pProofAccessPolicy;
 
   constructor(options: DaLibp2pProofProtocolHandlersOptions) {
     const deploymentFingerprint = normalizeDaDeploymentFingerprintHex(
@@ -69,15 +76,7 @@ export class DaLibp2pProofProtocolHandlers {
       deploymentFingerprint,
       store: options.store,
     });
-    this.registry = options.registry;
-    this.allowedRequesterRoles = new Set(
-      options.allowedRequesterRoles ?? [
-        "committee",
-        "watcher",
-        "challenger",
-        "retrieval",
-      ],
-    );
+    this.accessPolicy = options.accessPolicy;
     this.limits = {
       maxPayloadBytes:
         options.limits?.maxPayloadBytes ??
@@ -192,17 +191,28 @@ export class DaLibp2pProofProtocolHandlers {
   private authorizationError(
     context: DaLibp2pProofRequestContext,
   ): string | undefined {
-    if (this.registry === undefined) {
+    if (this.accessPolicy.kind === "any_noise_authenticated_peer") {
+      // The public listener rejects a missing remote PeerID before dispatch.
+      // Direct handler tests and in-process callers do not represent a wire
+      // admission boundary, so they may omit this contextual value.
       return undefined;
     }
     if (context.remotePeerId === undefined) {
       return "unknown_peer";
     }
-    const entry = this.registry.getByPeerId(context.remotePeerId);
+    const entry = this.accessPolicy.registry.getByPeerId(context.remotePeerId);
     if (entry === undefined) {
       return "unknown_peer";
     }
-    return entry.roles.some((role) => this.allowedRequesterRoles.has(role))
+    const allowedRequesterRoles = new Set(
+      this.accessPolicy.allowedRequesterRoles ?? [
+        "committee",
+        "watcher",
+        "challenger",
+        "retrieval",
+      ],
+    );
+    return entry.roles.some((role) => allowedRequesterRoles.has(role))
       ? undefined
       : "unauthorized_peer_role";
   }
@@ -212,19 +222,19 @@ export const createDaLibp2pProofRequestHandlers = ({
   deploymentFingerprint,
   store,
   limits,
-  registry,
+  accessPolicy,
 }: {
   readonly deploymentFingerprint: string;
   readonly store: DaProofArtifactStore;
   readonly limits: Libp2pDaTransportLimits;
-  readonly registry?: Pick<DaPeerRegistry, "getByPeerId">;
+  readonly accessPolicy: DaLibp2pProofAccessPolicy;
 }): ReadonlyMap<string, DaLibp2pStreamHandler> => {
   const protocolIds = createDaProtocolAllowlist(deploymentFingerprint);
   const handlers = new DaLibp2pProofProtocolHandlers({
     deploymentFingerprint,
     store,
     limits,
-    registry,
+    accessPolicy,
   });
   const handlerMap = new Map<string, DaLibp2pStreamHandler>();
   const addHandler = (

@@ -4,7 +4,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayloadV1,
 } from "@al-ft/midgard-sdk";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
@@ -42,6 +42,11 @@ import {
   type WatcherPublicDaLibp2pTransportV1,
   type WatcherPublicDaRequestV1,
 } from "../src/public-da-client.js";
+import {
+  encodeWatcherPublicDaFrameV1,
+  readWatcherPublicDaFramesV1,
+  WatcherPublicDaLibp2pTransport,
+} from "../src/public-da-libp2p-transport.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -61,7 +66,7 @@ const PEERS = ["da-peer-a", "da-peer-b", "da-peer-c", "da-peer-d", "da-peer-e"];
 const PEER_ID_SUFFIX = ["A", "B", "C", "D", "E"];
 
 const multiaddrFor = (index: number): string =>
-  `/dns4/da-${String.fromCharCode(97 + index)}.example/tcp/443/tls/ws/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz1234${PEER_ID_SUFFIX[index]!}`;
+  `/dns4/da-${String.fromCharCode(97 + index)}.example/tcp/443/p2p/12D3KooWAbcdefghijkmnopqrstuvwxyz1234${PEER_ID_SUFFIX[index]!}`;
 
 const rawConfig = (options?: {
   readonly peerCount?: number;
@@ -1934,3 +1939,142 @@ describe("WatcherPublicDaClientV1 auxiliary DA surfaces", () => {
     expect(statuses(error.attempts)).toEqual(["invalid_content"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 10. Concrete TCP + Noise + Yamux transport framing and peer binding
+// ---------------------------------------------------------------------------
+
+describe("WatcherPublicDaLibp2pTransport", () => {
+  const authenticatedPeerId =
+    "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
+  const requestFor = (
+    signal = new AbortController().signal,
+  ): WatcherPublicDaRequestV1 => ({
+    peerIdentity: "public-da-a",
+    peerId: authenticatedPeerId,
+    multiaddr: `/dns4/public-da.example/tcp/39003/p2p/${authenticatedPeerId}`,
+    protocol: DaRequestResponseProtocol.capabilities,
+    protocolId: daRequestResponseProtocolId(
+      FINGERPRINT,
+      DaRequestResponseProtocol.capabilities,
+    ),
+    requestCbor: Buffer.from([0xa0]),
+    timeoutMs: 100,
+    signal,
+  });
+
+  it("uses exact bounded framing across fragments and rejects adjacent responses", async () => {
+    const frame = encodeWatcherPublicDaFrameV1(Buffer.from("response"), 32);
+    const decoded = await collectBuffers(
+      readWatcherPublicDaFramesV1(
+        asAsyncIterable([frame.subarray(0, 3), frame.subarray(3)]),
+        32,
+      ),
+    );
+    expect(decoded).toEqual([Buffer.from("response")]);
+
+    expect(() => encodeWatcherPublicDaFrameV1(Buffer.alloc(0), 32)).toThrow(
+      /must not be empty/u,
+    );
+    expect(() => encodeWatcherPublicDaFrameV1(Buffer.alloc(33), 32)).toThrow(
+      /exceeds configured bound/u,
+    );
+    await expect(
+      collectBuffers(
+        readWatcherPublicDaFramesV1(asAsyncIterable([Buffer.from([0, 0])]), 32),
+      ),
+    ).rejects.toThrow(/incomplete/u);
+  });
+
+  it("requires the Noise-authenticated connection peer to equal the configured peer", async () => {
+    const sent: Uint8Array[] = [];
+    const stream = {
+      send: (frame: Uint8Array): boolean => {
+        sent.push(frame);
+        return true;
+      },
+      close: async (): Promise<void> => undefined,
+      abort: (): void => undefined,
+      async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+        yield encodeWatcherPublicDaFrameV1(Buffer.from("response"));
+      },
+    };
+    const transport = new WatcherPublicDaLibp2pTransport({
+      libp2pFactory: async () => ({
+        start: async (): Promise<void> => undefined,
+        stop: async (): Promise<void> => undefined,
+        dialProtocol: async () => stream,
+        getConnections: () => [
+          { remotePeer: { toString: () => authenticatedPeerId } },
+        ],
+      }),
+    });
+    await transport.start();
+    await expect(transport.request(requestFor())).resolves.toEqual(
+      Buffer.from("response"),
+    );
+    expect(sent).toHaveLength(1);
+    await transport.stop();
+
+    const abortWrongPeerStream = vi.fn();
+    const wrongPeerStream = {
+      ...stream,
+      abort: abortWrongPeerStream,
+    };
+    const wrongPeerTransport = new WatcherPublicDaLibp2pTransport({
+      libp2pFactory: async () => ({
+        start: async (): Promise<void> => undefined,
+        stop: async (): Promise<void> => undefined,
+        dialProtocol: async () => wrongPeerStream,
+        getConnections: () => [
+          {
+            remotePeer: {
+              toString: () =>
+                "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47",
+            },
+          },
+        ],
+      }),
+    });
+    await wrongPeerTransport.start();
+    await expect(wrongPeerTransport.request(requestFor())).rejects.toThrow(
+      /Noise-authenticated remote peer/u,
+    );
+    expect(abortWrongPeerStream).toHaveBeenCalledOnce();
+    await wrongPeerTransport.stop();
+  });
+
+  it("honors an already-aborted request before it can dial", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("test cancellation"));
+    const dialProtocol = vi.fn();
+    const transport = new WatcherPublicDaLibp2pTransport({
+      libp2pFactory: async () => ({
+        start: async (): Promise<void> => undefined,
+        stop: async (): Promise<void> => undefined,
+        dialProtocol,
+        getConnections: () => [],
+      }),
+    });
+    await transport.start();
+    await expect(
+      transport.request(requestFor(controller.signal)),
+    ).rejects.toThrow(/test cancellation/u);
+    expect(dialProtocol).not.toHaveBeenCalled();
+    await transport.stop();
+  });
+});
+
+const collectBuffers = async (
+  iterable: AsyncIterable<Buffer>,
+): Promise<Buffer[]> => {
+  const values: Buffer[] = [];
+  for await (const value of iterable) values.push(value);
+  return values;
+};
+
+const asAsyncIterable = async function* (
+  values: readonly Uint8Array[],
+): AsyncGenerator<Uint8Array> {
+  yield* values;
+};

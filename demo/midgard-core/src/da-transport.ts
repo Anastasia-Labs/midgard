@@ -28,6 +28,24 @@ export const DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION =
   "midgard-da-libp2p-runtime-manifest-v1";
 export const DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE =
   "contract_deployment_manifest_id";
+export const DA_PUBLIC_RETAINED_DA_PROFILE_V1 =
+  "public-retained-da-v1" as const;
+export const DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1 =
+  "any_noise_authenticated_peer" as const;
+
+/**
+ * This is deliberately a positive list.  The public profile is a one-way
+ * retained-data service; it must never grow into the committee control plane.
+ */
+export const DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1 = [
+  "capabilities",
+  "payload-by-header",
+  "payload-chunk",
+  "metadata-by-header",
+  "proof-bundle-by-header",
+  "trace-step-by-index",
+  "event-to-step-by-event",
+] as const;
 
 export const DA_TRANSPORT_LIMITS_V1 = {
   maxPayloadBytes: MIDGARD_CONSENSUS_LIMITS_V1.maxDaPayloadBytes,
@@ -107,6 +125,22 @@ export type DaLibp2pRuntimeManifest = {
       readonly request_timeout_ms: number;
     };
     readonly retention_days: number;
+  };
+  readonly public_retained_da: {
+    readonly profile: typeof DA_PUBLIC_RETAINED_DA_PROFILE_V1;
+    readonly access_policy: typeof DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1;
+    /** A dedicated, non-committee Noise identity. */
+    readonly peer_id: string;
+    readonly listen_multiaddrs: readonly string[];
+    readonly announce_multiaddrs: readonly string[];
+    readonly protocols: readonly (typeof DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1)[number][];
+    readonly limits: {
+      readonly max_streams_per_peer: number;
+      readonly max_inflight_requests: number;
+      readonly max_inflight_requests_per_peer: number;
+      readonly max_inflight_proof_requests: number;
+      readonly request_timeout_ms: number;
+    };
   };
   readonly da_committee: {
     readonly threshold: number;
@@ -998,6 +1032,130 @@ const parseDaLibp2pRuntimeCommittee = (
   return { threshold, members };
 };
 
+const parsePublicRetainedDaProfile = (
+  value: unknown,
+  fieldName: string,
+): DaLibp2pRuntimeManifest["public_retained_da"] => {
+  const profile = recordValue(value, fieldName);
+  exactRecordKeys(
+    profile,
+    [
+      "profile",
+      "access_policy",
+      "peer_id",
+      "listen_multiaddrs",
+      "announce_multiaddrs",
+      "protocols",
+      "limits",
+    ],
+    fieldName,
+  );
+  if (profile.profile !== DA_PUBLIC_RETAINED_DA_PROFILE_V1) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.profile must be ${DA_PUBLIC_RETAINED_DA_PROFILE_V1}`,
+      String(profile.profile),
+    );
+  }
+  if (profile.access_policy !== DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.access_policy must be ${DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1}`,
+      String(profile.access_policy),
+    );
+  }
+  const protocols = stringArrayValue(
+    profile.protocols,
+    `${fieldName}.protocols`,
+  );
+  if (
+    protocols.length !== DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1.length ||
+    protocols.some(
+      (protocol, index) =>
+        protocol !== DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1[index],
+    )
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.protocols must equal the public retained DA protocol allowlist`,
+    );
+  }
+  const limitsFieldName = `${fieldName}.limits`;
+  const limits = recordValue(profile.limits, limitsFieldName);
+  exactRecordKeys(
+    limits,
+    [
+      "max_streams_per_peer",
+      "max_inflight_requests",
+      "max_inflight_requests_per_peer",
+      "max_inflight_proof_requests",
+      "request_timeout_ms",
+    ],
+    limitsFieldName,
+  );
+  const maxStreamsPerPeer = safeIntegerValue(
+    limits.max_streams_per_peer,
+    `${limitsFieldName}.max_streams_per_peer`,
+    1,
+    DA_TRANSPORT_LIMITS_V1.maxStreamsPerPeer,
+  );
+  const maxInflightRequests = safeIntegerValue(
+    limits.max_inflight_requests,
+    `${limitsFieldName}.max_inflight_requests`,
+    1,
+    256,
+  );
+  const maxInflightRequestsPerPeer = safeIntegerValue(
+    limits.max_inflight_requests_per_peer,
+    `${limitsFieldName}.max_inflight_requests_per_peer`,
+    1,
+    maxInflightRequests,
+  );
+  const maxInflightProofRequests = safeIntegerValue(
+    limits.max_inflight_proof_requests,
+    `${limitsFieldName}.max_inflight_proof_requests`,
+    1,
+    maxInflightRequests,
+  );
+  const requestTimeoutMs = safeIntegerValue(
+    limits.request_timeout_ms,
+    `${limitsFieldName}.request_timeout_ms`,
+    100,
+    DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+  );
+  const peerId = nonEmptyStringValue(profile.peer_id, `${fieldName}.peer_id`);
+  const announceMultiaddrs = stringArrayValue(
+    profile.announce_multiaddrs,
+    `${fieldName}.announce_multiaddrs`,
+  );
+  if (
+    !announceMultiaddrs.every((address) => address.endsWith(`/p2p/${peerId}`))
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.announce_multiaddrs must bind public_retained_da.peer_id`,
+    );
+  }
+  return {
+    profile: DA_PUBLIC_RETAINED_DA_PROFILE_V1,
+    access_policy: DA_PUBLIC_RETAINED_DA_ACCESS_POLICY_V1,
+    peer_id: peerId,
+    listen_multiaddrs: stringArrayValue(
+      profile.listen_multiaddrs,
+      `${fieldName}.listen_multiaddrs`,
+    ),
+    announce_multiaddrs: announceMultiaddrs,
+    protocols: [...DA_PUBLIC_RETAINED_DA_PROTOCOLS_V1],
+    limits: {
+      max_streams_per_peer: maxStreamsPerPeer,
+      max_inflight_requests: maxInflightRequests,
+      max_inflight_requests_per_peer: maxInflightRequestsPerPeer,
+      max_inflight_proof_requests: maxInflightProofRequests,
+      request_timeout_ms: requestTimeoutMs,
+    },
+  };
+};
+
 export const parseDaLibp2pRuntimeManifest = (
   value: unknown,
 ): DaLibp2pRuntimeManifest => {
@@ -1011,6 +1169,7 @@ export const parseDaLibp2pRuntimeManifest = (
       "deployment",
       "runtime_topology",
       "da_transport",
+      "public_retained_da",
       "da_committee",
     ],
     fieldName,
@@ -1022,6 +1181,29 @@ export const parseDaLibp2pRuntimeManifest = (
       String(manifest.schemaVersion),
     );
   }
+  const publicRetainedDa = parsePublicRetainedDaProfile(
+    manifest.public_retained_da,
+    `${fieldName}.public_retained_da`,
+  );
+  const daCommittee = parseDaLibp2pRuntimeCommittee(
+    manifest.da_committee,
+    `${fieldName}.da_committee`,
+  );
+  const topology = parseDaLibp2pRuntimeTopology(
+    manifest.runtime_topology,
+    `${fieldName}.runtime_topology`,
+  );
+  if (
+    publicRetainedDa.peer_id === topology.producer_peer_id ||
+    daCommittee.members.some(
+      (member) => member.peer_id === publicRetainedDa.peer_id,
+    )
+  ) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName}.public_retained_da.peer_id must not be a producer or committee peer identity`,
+    );
+  }
   return {
     schemaVersion: DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
     network: nonEmptyStringValue(manifest.network, `${fieldName}.network`),
@@ -1029,18 +1211,13 @@ export const parseDaLibp2pRuntimeManifest = (
       manifest.deployment,
       `${fieldName}.deployment`,
     ),
-    runtime_topology: parseDaLibp2pRuntimeTopology(
-      manifest.runtime_topology,
-      `${fieldName}.runtime_topology`,
-    ),
+    runtime_topology: topology,
     da_transport: parseDaLibp2pRuntimeTransport(
       manifest.da_transport,
       `${fieldName}.da_transport`,
     ),
-    da_committee: parseDaLibp2pRuntimeCommittee(
-      manifest.da_committee,
-      `${fieldName}.da_committee`,
-    ),
+    public_retained_da: publicRetainedDa,
+    da_committee: daCommittee,
   };
 };
 

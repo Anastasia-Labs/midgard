@@ -59,6 +59,8 @@ export type WatcherL1Config = Readonly<{
 
 export type WatcherDaPeerConfig = Readonly<{
   identity: string;
+  /** Peer id embedded in, and authenticated against, `multiaddr`. */
+  peerId: string;
   multiaddr: string;
 }>;
 
@@ -354,7 +356,7 @@ const parseExternalProviderEndpoint = (
 };
 
 const DA_MULTIADDR_PATTERN =
-  /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})(?:\/tls)?(?:\/ws)?\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
+  /^\/dns(4|6)\/([a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)\/tcp\/([1-9][0-9]{0,4})\/p2p\/([1-9A-HJ-NP-Za-km-z]{20,128})$/u;
 
 const parsePublicDaMultiaddr = (
   value: unknown,
@@ -463,7 +465,8 @@ const parseDaPeers = (value: unknown): readonly WatcherDaPeerConfig[] => {
       }
       identities.add(identity);
       endpoints.add(endpoint.aliasKey);
-      return Object.freeze({ identity, multiaddr: endpoint.multiaddr });
+      const peerId = endpoint.aliasKey.split(":")[2]!;
+      return Object.freeze({ identity, peerId, multiaddr: endpoint.multiaddr });
     }),
   );
 };
