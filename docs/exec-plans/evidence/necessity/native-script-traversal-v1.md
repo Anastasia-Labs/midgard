@@ -7,11 +7,15 @@
   complete Cardano native script from the script-witness field or an output;
   maximum shape bounded by the 32,768-byte script-witness aggregate field
   and the 16,384-node/depth guardrails (transaction bytes effective).
-- Applied validator hashes measured: shared complete-item route
-  `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
-  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`; blueprint
-  sha256 `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
-  Any change invalidates this artifact (GOAL_SPEC.md §3.2).
+- Applied validator hashes measured (re-measured 2026-08-03): shared
+  complete-item route
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` /
+  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab` (the second
+  unchanged); blueprint sha256
+  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`.
+  Any change invalidates this artifact (GOAL_SPEC.md §3.2). Superseded pin
+  (2026-07-29): `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
+  blueprint `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
@@ -63,3 +67,32 @@ complete item bind the identical bounded-item commitment
 (`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
 proves commitment equality and omission/duplication/reorder/substitution/
 trailing rejection for both representations).
+
+## Re-measurement 2026-08-03 (task C21-AUDIT)
+
+Basis, blueprint provenance, and the shared by-reference byte series are
+recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
+2026-08-03"; that section's overlay-build caveat applies to the digests
+pinned above.
+
+Re-verified unchanged for this family: `maxTransactionAggregateFieldBytes`
+32,768, `maxNativeScriptNodeCount` 16,384, `maxNativeScriptDepth` 16,384,
+`maxTransactionFieldChunkBytes` 4,095,
+`maxSinglePublicationCompleteItemBytes` 14,396,
+`maxFieldPublicationUnsignedTransactionBytes` 4,675, and the consensus
+profile digest. Both guardrails the frame representation is sized against —
+16,384 nodes and 16,384 depth — are byte-identical to the 2026-07-29 pin.
+
+Re-measured on the fresh basis: 16,384 item bytes → 17,922/16,384 (over by
+1,538, recorded 1,906); 32,768 item bytes → 34,818/16,384 (over by 18,434,
+recorded 18,802). Both differ from the recorded values by a uniform 368
+bytes (see the basis-mismatch note in `transaction-field-chunk-v1.md`);
+direction and magnitude class are unchanged.
+
+Conclusion still supported: YES. Byte-impossibility above the publication
+frontier is re-confirmed, and the recursion argument that forces frames
+depends only on the node/depth guardrails, which did not move.
+
+Carried forward unverified: 13,282, 15,256, 18,290, 35,186, 205,594,
+500,275,649, 974,576, 264,106, 552,114,352, 826,821 — see the
+"not re-measurable" list in `transaction-field-chunk-v1.md`.

@@ -7,10 +7,12 @@
   construction) / one complete canonical CEK program's material graph;
   maximum shape 67,108,418 structural bytes across at most 1,597,819 nodes
   within the 64 MiB DA envelope, blob chunks of at most 4,095 bytes.
-- Applied validator hashes measured: the compact 50-byte program envelope
-  and material commitments are bound by the deployed validation-machine
-  bundle in blueprint sha256
-  `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`;
+- Applied validator hashes measured (re-measured 2026-08-03): the compact
+  50-byte program envelope and material commitments are bound by the deployed
+  validation-machine bundle in blueprint sha256
+  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`
+  (superseded pin, 2026-07-29:
+  `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`);
   publication measurements pinned against
   `MIDGARD_V1_ENVELOPE_MEASUREMENTS` (`maxProgramMaterialPublicationDatumBytes`
   4,268, `maxProgramMaterialPublicationUnsignedTransactionBytes` 4,369) by
@@ -67,3 +69,29 @@ material publications reject
 (`demo/midgard-sdk/tests/tx-order-v1.test.ts`), and the chunk commitment
 equals the complete-blob commitment by construction
 (`commitMidgardCekBlobV1` frontier over the same chunk hashes).
+
+## Re-measurement 2026-08-03 (task C21-AUDIT)
+
+Basis, blueprint provenance, and the shared by-reference byte series are
+recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
+2026-08-03"; that section's overlay-build caveat applies to the digest pinned
+above.
+
+Re-verified unchanged for this family: `maxCekProgramMaterialBytes`
+67,108,418, `maxCekProgramNodeCount` 1,597,819, `maxCekProgramEnvelopeBytes`
+50, `maxTransactionFieldChunkBytes` 4,095, the 9,215-byte direct-constant
+gate (`MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1`),
+`maxProgramMaterialPublicationDatumBytes` 4,268,
+`maxProgramMaterialPublicationUnsignedTransactionBytes` 4,369, and the
+consensus profile digest. Moved: the blueprint digest only.
+
+Conclusion still supported: YES. The limiting constraint is the ratio between
+the maximum material graph and the L1 envelope, and both terms are unchanged
+(67,108,418 structural bytes against 16,384), as is every per-node
+publication measurement the deployed representation depends on.
+
+Carried forward unverified: the one-shot comparison pair 45,154,331 memory /
+14,905,078,582 CPU and the per-step ceiling 3,398,228 / 1,209,745,039 as
+observed receipts (the two envelope constants themselves are re-verified;
+their derivation from a live emulator run is not). Re-running
+`demo/midgard-sdk/tests/tx-order-v1.test.ts` regenerates them.

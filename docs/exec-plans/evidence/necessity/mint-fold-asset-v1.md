@@ -6,11 +6,15 @@
   `chunk_proof`/`next_chunk_proof`) / the complete canonical mint field
   folded asset by asset; maximum shape the 32,768-byte mint aggregate field
   with up to 16,384 distinct assets.
-- Applied validator hashes measured: shared complete-item route
-  `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
-  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`; blueprint
-  sha256 `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
-  Any change invalidates this artifact (GOAL_SPEC.md §3.2).
+- Applied validator hashes measured (re-measured 2026-08-03): shared
+  complete-item route
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` /
+  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab` (the second
+  unchanged); blueprint sha256
+  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`.
+  Any change invalidates this artifact (GOAL_SPEC.md §3.2). Superseded pin
+  (2026-07-29): `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
+  blueprint `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
@@ -59,3 +63,31 @@ chunk whose bytes are the complete field. Chunked and complete
 representations bind the identical bounded-item commitment with hostile
 omission/duplication/reorder/substitution/trailing rejection proven at
 `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`.
+
+## Re-measurement 2026-08-03 (task C21-AUDIT)
+
+Basis, blueprint provenance, and the shared by-reference byte series are
+recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
+2026-08-03"; that section's overlay-build caveat applies to the digests
+pinned above.
+
+Re-verified unchanged for this family: `maxMintPreimageBytes` 32,768,
+`maxDistinctAssetCount` 16,384, `maxTransactionFieldChunkBytes` 4,095,
+`maxSinglePublicationCompleteItemBytes` 14,396,
+`maxFieldPublicationUnsignedTransactionBytes` 4,675, and the consensus
+profile digest. Both bounds that make this fold necessary — the 32,768-byte
+mint aggregate and the 16,384-asset guardrail — are byte-identical to the
+2026-07-29 pin.
+
+Re-measured on the fresh basis: the 32,768-byte aggregate's single signed
+publication measures 34,818/16,384, over by 18,434 rather than the recorded
+18,802 — the same uniform 368-byte difference the other artifacts show (see
+the basis-mismatch note in `transaction-field-chunk-v1.md`).
+
+Conclusion still supported: YES. The aggregate remains more than twice the
+envelope, and the per-asset conservation argument — which is what actually
+forces the fold — is unaffected by any measurement in this pass.
+
+Carried forward unverified: 13,282, 15,256, 18,290, 35,186, 205,594,
+500,275,649, 974,576, 264,106, 552,114,352, 826,821 — see the
+"not re-measurable" list in `transaction-field-chunk-v1.md`.

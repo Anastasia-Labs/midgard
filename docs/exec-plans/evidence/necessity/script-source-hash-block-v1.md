@@ -6,11 +6,15 @@
   with `chunk_proof`/`next_chunk_proof` driving the staged Blake2b-256
   trace) / one complete script source revealed for hash authentication;
   maximum shape bounded by the 32,768-byte script-witness aggregate field.
-- Applied validator hashes measured: shared complete-item route
-  `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
-  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`; blueprint
-  sha256 `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
-  Any change invalidates this artifact (GOAL_SPEC.md §3.2).
+- Applied validator hashes measured (re-measured 2026-08-03): shared
+  complete-item route
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143` /
+  `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab` (the second
+  unchanged); blueprint sha256
+  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`.
+  Any change invalidates this artifact (GOAL_SPEC.md §3.2). Superseded pin
+  (2026-07-29): `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96` /
+  blueprint `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
 - Parameter snapshot digests: profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
@@ -62,3 +66,29 @@ item commitment as the complete item
 (`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`),
 and hostile omission/duplication/reorder/substitution/trailing chunks
 reject in both representations.
+
+## Re-measurement 2026-08-03 (task C21-AUDIT)
+
+Basis, blueprint provenance, and the shared by-reference byte series are
+recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
+2026-08-03"; that section's overlay-build caveat applies to the digests
+pinned above.
+
+Re-verified unchanged for this family: `maxTransactionAggregateFieldBytes`
+32,768, `maxTransactionFieldChunkBytes` 4,095,
+`maxSinglePublicationCompleteItemBytes` 14,396,
+`maxFieldPublicationUnsignedTransactionBytes` 4,675, and the consensus
+profile digest.
+
+Re-measured on the fresh basis: 16,384 item bytes → 17,922/16,384; 32,768
+item bytes → 34,818/16,384; one chunk (4,095 bytes) publishes in a
+5,249-byte transaction, comfortably inside the envelope.
+
+Conclusion still supported: YES. The execution half of the argument — that a
+script hash is a strict function of every source byte and that one step must
+therefore be bounded to one block run — is independent of every measurement
+in this pass, and the byte half is re-confirmed.
+
+Carried forward unverified: 13,282, 15,256, 18,290, 35,186, 205,594,
+500,275,649, 974,576, 264,106, 552,114,352, 826,821 — see the
+"not re-measurable" list in `transaction-field-chunk-v1.md`.

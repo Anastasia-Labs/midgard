@@ -8,13 +8,15 @@
   `LedgerOutputProofValue`, `LedgerOutputProofNativeFrame` /
   `LedgerOutputProofFinalizeWitness`) / one complete ledger output preimage;
   maximum shape 16,384 bytes (`maxLedgerOutputPreimageBytes`).
-- Applied validator hashes measured:
-  `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96`
+- Applied validator hashes measured (re-measured 2026-08-03):
+  `983051b4a0c3fe90057a599e77ed44c5ab694014036d49c86373a143`
   (`canonical_decode_item_semantic_v1` applied on the measurement
   deployment), `22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab`
-  (`proof_item_v1`); blueprint sha256
-  `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
-  Any change invalidates this artifact (GOAL_SPEC.md §3.2).
+  (`proof_item_v1`, unchanged); blueprint sha256
+  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`.
+  Any change invalidates this artifact (GOAL_SPEC.md §3.2). Superseded pin
+  (2026-07-29): applied `925662085ac87eb3cd63221b5184f59fde2c8b46d8db93052e80fc96`,
+  blueprint `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`.
 - Parameter snapshot digests: consensus profile digest
   `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
   capability floor per
@@ -88,3 +90,36 @@ canonical decode (chunk and complete carriage) and this artifact's stage-5
 `_length` (forged-tuple rejection via `verify_item` alone) and the
 "builds output-size-independent stage-4 one-step evidence up to the
 16,384-byte ledger maximum" case in `complete-item-proof-fit-v1.test.ts`.
+
+## Re-measurement 2026-08-03 (task C21-AUDIT)
+
+Basis, blueprint provenance, and the shared by-reference byte series are
+recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
+2026-08-03"; that section's overlay-build caveat applies to the digests
+pinned above.
+
+Re-verified unchanged for this family: `maxLedgerOutputPreimageBytes` 16,384,
+`maxSinglePublicationCompleteItemBytes` 14,396,
+`maxTransactionFieldChunkBytes` 4,095,
+`maxFieldPublicationUnsignedTransactionBytes` 4,675, the per-step receipt
+ceilings 3,398,228 / 1,209,745,039, and the consensus profile digest.
+
+Re-measured on the fresh basis: a 16,384-byte output's complete signed
+publication measures 17,922/16,384 — over by 1,538 rather than the recorded
+1,906, a uniform 368-byte difference also seen at 32,768 bytes and most
+likely a collection-proof-shape difference (see the basis-mismatch note in
+`transaction-field-chunk-v1.md`). Direction and conclusion unchanged.
+
+Independent consistency check on the stage-4 closure paragraph above: its
+"practical gap near (8,769, 16,384]" now coincides exactly with
+`MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes` = 8,769 in
+`demo/midgard-core/src/consensus-profile-v1.ts`, whose reliable counterpart
+8,273 is the deployed direct-carriage selector bound. The two records agree.
+
+Conclusion still supported: YES. A maximum ledger output still equals the
+whole L1 envelope by itself and still overshoots its own publication
+transaction, so incremental authentication remains required.
+
+Carried forward unverified: 16,900, 13,282, 18,290, 15,256, 205,594,
+500,275,649, 974,576, 264,106, 552,114,352, 826,821 — see the
+"not re-measurable" list in `transaction-field-chunk-v1.md`.

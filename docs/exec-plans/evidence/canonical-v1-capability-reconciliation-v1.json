@@ -1,6 +1,12 @@
 {
   "schema": "midgard.canonical-v1-capability-reconciliation.v1",
-  "generatedAt": "2026-07-29",
+  "generatedAt": "2026-08-03",
+  "previousGeneratedAt": "2026-07-29",
+  "updateContract": {
+    "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
+    "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
+    "note": "The verifier asserts p2Summary by deepEqual against literal counts {tasks:22,pass:10,partial:12,open:0,authoritativeConflict:0,gate:'OPEN'} AND cross-checks them against p2Tasks. Any promotion or demotion of a P2 task therefore requires editing the verifier's literals in the same change; editing p2Tasks alone makes the check fail. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
+  },
   "sources": {
     "goalSpec": {
       "path": "GOAL_SPEC.md"
@@ -75,7 +81,9 @@
       "7": "address witnesses"
     },
     "disposition": "RESOLVED",
-    "note": "Resolved 2026-07-29: current source implements the authoritative order (script witnesses at field 6, vkey/address witnesses at field 7), proven by the 56/56 native-tx module replay including cross-substitution, adjacency, and genuine accepted-maximum boundary selectors. Complete-item proof-fit for these fields remains open under C21; C20-6/C20-7 are PARTIAL, not PASS."
+    "note": "Resolved 2026-07-29: current source implements the authoritative order (script witnesses at field 6, vkey/address witnesses at field 7), proven by the 56/56 native-tx module replay including cross-substitution, adjacency, and genuine accepted-maximum boundary selectors. Complete-item proof-fit for these fields remains open under C21; C20-6/C20-7 are PARTIAL, not PASS.",
+    "reverification2026-08-03": "Field-order implementation re-verified as source-complete in onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak: all nine consensus indices 0..8 are dispatched in both transaction_field_commitment_v1 (distinct hash field per index, out-of-range -> fail) and verify_midgard_transaction_field_preimage_against_source_v1 (decode-and-re-encode per index, so a hash match alone cannot authenticate a non-canonical shape), with field 6 = script witnesses, 7 = address witnesses, 8 = redeemers and no todo/unimplemented branch in the module. This confirms the RESOLVED disposition on source grounds.",
+    "crossLaneDivergence2026-08-03": "A separate lane is reported to be closing C20-6/C20-7 as PASS in the ledger. This artifact still records them as PARTIAL. The divergence is NOT a judgement that the promotion is wrong - it is a mechanical constraint: promoting them here changes the derived counts to pass=12/partial=10, which fails the verifier's literal p2Summary deepEqual. Reconciling the two records requires one change that edits both this artifact and the verifier's literals. Until then, treat the ledger as authoritative for the task status and this artifact as authoritative only for the counts its verifier enforces."
   },
   "wholePreimageFinding": {
     "status": "RESOLVED_ABI",
@@ -109,7 +117,10 @@
     "validityIntervalRegression": "1/1",
     "wholePreimageAbi": "IN_PROGRESS: TypeScript ABI/control tests 14/14 pass; Aiken selectors and active-helper audit pending",
     "typechecks": "4/4",
-    "nativeTxFieldOrderModuleReplay": "56/56 (23 pre-existing + 33 Wave-1 cross-substitution/boundary tests; parent independent replay exit 0)"
+    "nativeTxFieldOrderModuleReplay": "56/56 (23 pre-existing + 33 Wave-1 cross-substitution/boundary tests; parent independent replay exit 0)",
+    "nativeTxFieldOrderSourceCompleteness": "9/9 fields (2026-08-03): indices 0..8 dispatched with a distinct commitment and a decode-and-re-encode check each in onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak; out-of-range index fails; no todo/unimplemented branch",
+    "validationMachineModuleTestCount": "152 tests declared in onchain/aiken/lib/midgard/validation-machine-v1.test.ak (2026-08-03 count; the VM-MODULE-FAILURES sweep recorded 126, so the module has grown by 26 tests since that sweep)",
+    "vmModuleFailuresFiveNamed": "5/5 PASS (2026-08-03): module midgard/validation_machine_v1.test reports total 5, passed 5, failed 0, seed 4023423627 for signatures_accepts_an_empty_required_signer_and_witness_set, canonical_v1_decode_is_independently_verified_on_l1, static_rules_prove_a_network_mismatch_is_an_exact_no_op, phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op, script_sources_rejects_an_unsigned_protected_pubkey_output. Reproduce with: cd onchain/aiken && aiken check -m <each of the five names> (aiken v1.1.22+39d6b04, ~12 min). This closes the five named failures the VM-MODULE-FAILURES investigation bisected to 0cecf536 as older latent defects; it does NOT constitute a full-module sweep, so the sixteen VM-SCRIPT-SOURCES-CEK failures and CG2/AC-C20 are unaffected by this check."
   },
   "acceptance": {
     "F10": "PASS",
