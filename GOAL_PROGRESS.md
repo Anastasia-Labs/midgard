@@ -3816,3 +3816,57 @@ signal.
 The 6 skipped tests are all environment-gated and expected (DA phase-5 joined
 E2E, wycheproof operator, preprod operator lifecycle x2, phase-1 admission and
 crash operator).
+
+
+## Superseding ALL CI GREEN at `7d7b4e4b` (2026-08-03)
+
+First fully green CI on PR #471. Every workflow passes and the pull request
+reports `mergeStateStatus: CLEAN` (previously `UNSTABLE`):
+
+| workflow | result |
+| --- | --- |
+| Aiken CI | SUCCESS |
+| Midgard Node CI | SUCCESS |
+| Evidence Integrity CI | SUCCESS |
+| Docs Site CI | SUCCESS |
+| Latex CI | SUCCESS |
+
+PR state: `draft=true`, `base=tx-validation`, `mergeable=MERGEABLE`,
+`mergeStateStatus=CLEAN`, 100 commits, 0 unpushed. §4.4 invariants hold —
+exactly one Goal pull request, correct base, no force-push, all Goal-owned
+commits on the head.
+
+### What it took, and the order it unblocked in
+
+`Midgard Node CI` advanced one masked failure at a time, each fix revealing the
+next rather than recurring:
+
+- step 14 `fault-proof tooling` — wasm heap ceiling, fixed by the six-way split
+- step 19 `Test lucid-midgard` — fixture witness hashes not bounded-collection
+  commitments, plus a generator regex that clobbered an unrelated placeholder
+- step 24 `Test Midgard node` — six stale fixtures, three hidden by `bail: 3`
+
+Together with the watcher `broken_reference` fixture defect and the Aiken CI
+fork wiring, that is five independent defect classes cleared at this
+checkpoint. Not one of them required a production-code change: every root cause
+was a test fixture, a golden, a generator, a CI trigger, or a toolchain pin.
+The production code was correct in all five cases, and in three of them the
+guard that fired was a genuine soundness check that the tempting remedy would
+have suppressed.
+
+### Draft status is correct and must remain
+
+Green CI is not Goal completion. The acceptance gate stands at **1 PASS
+(AC-W12), 4 IN_PROGRESS, 30 TODO** of 35 criteria, and `releaseCommit` is
+unset, so §15 is structurally unreachable. §4.4 requires the pull request stay
+draft while any mandatory `AC-*` is not `PASS`. The remaining long poles are
+unchanged: 118 UNVERIFIED format-registry rows, the C/Q/W/X gate families,
+watcher live provenance, and fresh target-testnet acceptance under IG5.
+
+What changed at this checkpoint is narrower but real: the tree is now
+continuously verifiable. Before this, no CI signal could be trusted — Aiken was
+cancelling at a 6-hour ceiling, the evidence gate disagreed with itself across
+duplicate runs, and three suites hid failures behind an earlier red step or a
+bail cutoff. Every gate now runs to completion and reports honestly, which is
+the precondition for the registry and gate work rather than a substitute for
+it.
