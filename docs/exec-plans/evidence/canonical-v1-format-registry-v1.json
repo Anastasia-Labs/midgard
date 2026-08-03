@@ -36,12 +36,20 @@
     },
     {
       "id": "P07-retired-unversioned-worker-candidate",
-      "paths": ["demo/midgard-node/src", "demo/midgard-validation/src"],
-      "patterns": ["\\bWirePhaseACandidate\\b"]
+      "paths": [
+        "demo/midgard-node/src",
+        "demo/midgard-validation/src"
+      ],
+      "patterns": [
+        "\\bWirePhaseACandidate\\b"
+      ]
     },
     {
       "id": "P05-retired-event-flat-overlay-identities",
-      "paths": ["demo/midgard-node/native", "demo/midgard-node/src"],
+      "paths": [
+        "demo/midgard-node/native",
+        "demo/midgard-node/src"
+      ],
       "patterns": [
         "ParkedEventFlat(?:Overlay|Shard)V[2-9][0-9]*",
         "ResumedEventFlatOverlayV[2-9][0-9]*",
@@ -230,7 +238,10 @@
     },
     {
       "id": "A21-obsolete-architecture-g-artifact-identities",
-      "paths": ["demo/midgard-node/scripts", "demo/midgard-node/src/workers"],
+      "paths": [
+        "demo/midgard-node/scripts",
+        "demo/midgard-node/src/workers"
+      ],
       "patterns": [
         "midgard-architecture-g-(?:phase1-formal-binding-identity|runtime-identity|corpus-preparation|corpus-funding|production-root-gate|root-diagnostic-smoke|commit-candidate-seed|commit-candidate-seed-result|commit-candidate-input|commit-candidate-probe|commit-candidate-gate|commit-candidate-smoke)-v[2-9][0-9]*"
       ]
@@ -265,7 +276,10 @@
         "demo/midgard-validation/src",
         "demo/midgard-validation/tests"
       ],
-      "patterns": ["midgard-launch-consensus-v1", "midgard-proof-consensus-v3"]
+      "patterns": [
+        "midgard-launch-consensus-v1",
+        "midgard-proof-consensus-v3"
+      ]
     },
     {
       "id": "A22-retired-phase5-da-artifacts",
@@ -372,7 +386,9 @@
     },
     {
       "id": "P02-retired-da-postgres-column-migration",
-      "paths": ["demo/da-committee-node/src/store/postgres.ts"],
+      "paths": [
+        "demo/da-committee-node/src/store/postgres.ts"
+      ],
       "patterns": [
         "migratePeerIdColumnNames",
         "renameColumnIfOnlyLegacyExists",
@@ -590,13 +606,17 @@
           "encoders": [
             {
               "path": "demo/midgard-core/src/consensus-profile-v1.ts",
-              "symbols": ["encodeMidgardConsensusProfileV1"]
+              "symbols": [
+                "encodeMidgardConsensusProfileV1"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/midgard-core/src/consensus-profile-v1.ts",
-              "symbols": ["isMidgardConsensusProfileV1"]
+              "symbols": [
+                "isMidgardConsensusProfileV1"
+              ]
             }
           ]
         }
@@ -661,19 +681,28 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak",
-          "symbols": ["native_tx_version_v1"]
+          "symbols": [
+            "native_tx_version_v1"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-trace-v1.ak",
-          "symbols": ["machine_version", "descriptor_version"]
+          "symbols": [
+            "machine_version",
+            "descriptor_version"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
-          "symbols": ["dispute_version"]
+          "symbols": [
+            "dispute_version"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/cek-proof-v1.ak",
-          "symbols": ["program_envelope_version"]
+          "symbols": [
+            "program_envelope_version"
+          ]
         }
       ],
       "canonicalForms": [
@@ -719,13 +748,17 @@
           "encoders": [
             {
               "path": "demo/midgard-core/src/consensus-profile-v1.ts",
-              "symbols": ["encodeMidgardConsensusProfileV1"]
+              "symbols": [
+                "encodeMidgardConsensusProfileV1"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/midgard-core/src/consensus-profile-v1.ts",
-              "symbols": ["isMidgardConsensusProfileV1"]
+              "symbols": [
+                "isMidgardConsensusProfileV1"
+              ]
             }
           ]
         }
@@ -733,17 +766,23 @@
       "positiveEvidence": [
         {
           "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
-          "testNames": ["pins the indivisible V1 version tuple"]
+          "testNames": [
+            "pins the indivisible V1 version tuple"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/canonical-version-tuple-v1.test.ak",
-          "testNames": ["canonical_v1_version_tuple_matches_typescript_profile"]
+          "testNames": [
+            "canonical_v1_version_tuple_matches_typescript_profile"
+          ]
         }
       ],
       "rejectionEvidence": [
         {
           "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
-          "testNames": ["accepts only the exact compiled V1 profile"]
+          "testNames": [
+            "accepts only the exact compiled V1 profile"
+          ]
         }
       ],
       "crossLanguageEvidence": {
@@ -751,7 +790,9 @@
         "tests": [
           {
             "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
-            "testNames": ["pins the indivisible V1 version tuple"]
+            "testNames": [
+              "pins the indivisible V1 version tuple"
+            ]
           },
           {
             "path": "onchain/aiken/lib/midgard/canonical-version-tuple-v1.test.ak",
@@ -838,11 +879,15 @@
           "parsers": [
             {
               "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
-              "symbols": ["parseDeploymentManifestV1Value"]
+              "symbols": [
+                "parseDeploymentManifestV1Value"
+              ]
             },
             {
               "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
-              "symbols": ["verifyFinalizedDeploymentManifestV1"]
+              "symbols": [
+                "verifyFinalizedDeploymentManifestV1"
+              ]
             }
           ]
         }
@@ -857,7 +902,9 @@
         },
         {
           "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
-          "testNames": ["recomputes the exact full-manifest identity"]
+          "testNames": [
+            "recomputes the exact full-manifest identity"
+          ]
         }
       ],
       "rejectionEvidence": [
@@ -871,7 +918,9 @@
         },
         {
           "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
-          "testNames": ["rejects tampering, missing fields, and extra fields"]
+          "testNames": [
+            "rejects tampering, missing fields, and extra fields"
+          ]
         }
       ],
       "crossLanguageEvidence": {
@@ -905,7 +954,10 @@
         },
         {
           "path": "demo/lucid-midgard/src/provider/payload.ts",
-          "symbols": ["parseProtocolInfo", "assertExactObjectKeys"]
+          "symbols": [
+            "parseProtocolInfo",
+            "assertExactObjectKeys"
+          ]
         }
       ],
       "canonicalForms": [
@@ -934,13 +986,17 @@
           "encoders": [
             {
               "path": "demo/midgard-node/src/commands/protocol-info.ts",
-              "symbols": ["encodeProtocolInfo"]
+              "symbols": [
+                "encodeProtocolInfo"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/lucid-midgard/src/provider/payload.ts",
-              "symbols": ["parseProtocolInfo"]
+              "symbols": [
+                "parseProtocolInfo"
+              ]
             }
           ]
         }
@@ -1248,7 +1304,7 @@
       "classification": "sentinel",
       "canonicalResult": "Preserve authenticated genesis sentinel 0 and transition every first ordinary header to protocol version 1",
       "boundaryBindingAndPersistence": "State-queue root NFT datum at initialization, first-header construction/validation, and first merge to confirmed state",
-      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0→1 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
+      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0\u21921 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
       "disposition": "sentinel",
       "auditStatus": "PASS",
       "sourceEvidence": [
@@ -1421,7 +1477,9 @@
       "sourceEvidence": [
         {
           "path": "onchain/aiken/aiken.toml",
-          "symbols": ["plutus = \"v3\""]
+          "symbols": [
+            "plutus = \"v3\""
+          ]
         },
         {
           "path": "demo/midgard-core/src/codec/versioned-script.ts",
@@ -1435,7 +1493,11 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/script-proof-v1.ak",
-          "symbols": ["PlutusV3Script", "language_tag", "versioned_script_hash"]
+          "symbols": [
+            "PlutusV3Script",
+            "language_tag",
+            "versioned_script_hash"
+          ]
         }
       ],
       "canonicalForms": [
@@ -1462,21 +1524,29 @@
           "encoders": [
             {
               "path": "demo/midgard-core/src/codec/versioned-script.ts",
-              "symbols": ["encodeMidgardVersionedScript"]
+              "symbols": [
+                "encodeMidgardVersionedScript"
+              ]
             },
             {
               "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
-              "symbols": ["encode_midgard_versioned_script"]
+              "symbols": [
+                "encode_midgard_versioned_script"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/midgard-core/src/codec/versioned-script.ts",
-              "symbols": ["decodeMidgardVersionedScript"]
+              "symbols": [
+                "decodeMidgardVersionedScript"
+              ]
             },
             {
               "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
-              "symbols": ["decode_midgard_versioned_script_at"]
+              "symbols": [
+                "decode_midgard_versioned_script_at"
+              ]
             }
           ]
         }
@@ -1490,7 +1560,9 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
-          "testNames": ["script_proof_source_and_redeemer_vectors_are_stable"]
+          "testNames": [
+            "script_proof_source_and_redeemer_vectors_are_stable"
+          ]
         }
       ],
       "rejectionEvidence": [
@@ -1512,7 +1584,9 @@
           },
           {
             "path": "onchain/aiken/lib/midgard/script-proof-v1.test.ak",
-            "testNames": ["script_proof_source_and_redeemer_vectors_are_stable"]
+            "testNames": [
+              "script_proof_source_and_redeemer_vectors_are_stable"
+            ]
           }
         ],
         "notApplicableReason": null
@@ -1545,7 +1619,10 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/script-proof-v1.ak",
-          "symbols": ["language_tag", "versioned_script_hash"]
+          "symbols": [
+            "language_tag",
+            "versioned_script_hash"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
@@ -1589,21 +1666,29 @@
           "encoders": [
             {
               "path": "demo/midgard-core/src/codec/versioned-script.ts",
-              "symbols": ["encodeMidgardVersionedScript"]
+              "symbols": [
+                "encodeMidgardVersionedScript"
+              ]
             },
             {
               "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
-              "symbols": ["encode_midgard_versioned_script"]
+              "symbols": [
+                "encode_midgard_versioned_script"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/midgard-core/src/codec/versioned-script.ts",
-              "symbols": ["decodeMidgardVersionedScript"]
+              "symbols": [
+                "decodeMidgardVersionedScript"
+              ]
             },
             {
               "path": "onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak",
-              "symbols": ["decode_midgard_versioned_script_at"]
+              "symbols": [
+                "decode_midgard_versioned_script_at"
+              ]
             }
           ]
         }
@@ -1969,19 +2054,39 @@
       "canonicalResult": "Delete",
       "boundaryBindingAndPersistence": "Historical raw payload path",
       "requiredEvidence": "No export/decoder/capability",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
+      "disposition": "delete",
+      "auditStatus": "PASS",
       "sourceEvidence": [],
       "canonicalForms": [],
       "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "fails closed on every version other than 1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "rejects adjacent runtime payload schema versions before verification"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The retired raw payload identity has no canonical wire value and no Aiken counterpart; the sole retained DA payload body is audited by D03/D04."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "The absence scan sweeps every active src and tests tree of midgard-sdk, midgard-core, midgard-node, da-committee-node, and midgard-fault-proofs for DaPayloadV2/V3/V4, DA_PAYLOAD_V2/3/4, and encode/decodeDaPayloadV2/3/4 and finds zero matches.",
+        "Beyond absence, the retained V1 decoders fail closed on any non-1 version, so a historical V2 payload cannot be admitted even if one were replayed from an archive."
+      ]
     },
     {
       "id": "D02",
@@ -1991,19 +2096,45 @@
       "canonicalResult": "Delete",
       "boundaryBindingAndPersistence": "Historical envelope payload path",
       "requiredEvidence": "No export/decoder/capability",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
+      "disposition": "delete",
+      "auditStatus": "PASS",
       "sourceEvidence": [],
       "canonicalForms": [],
       "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "fails closed on every version other than 1"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-payload-envelope.test.ts",
+          "testNames": [
+            "rejects adjacent envelope versions and unknown encodings before decompression"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "rejects adjacent runtime payload schema versions before verification"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The retired envelope payload identity has no canonical wire value and no Aiken counterpart; the sole retained envelope is audited by D05."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "The same repository-owned zero-match scan that clears D01 also covers DaPayloadEnvelopeV2/V3/V4 and DA_PAYLOAD_ENVELOPE_V2/3/4 identities.",
+        "The retained envelope decoder rejects envelope version values other than 1 before any decompression work, so the historical envelope path is unreachable."
+      ]
     },
     {
       "id": "D03",
@@ -2013,19 +2144,204 @@
       "canonicalResult": "DaPayloadV1` / `VerifiedDaPayloadV1`, version `1",
       "boundaryBindingAndPersistence": "Commit worker, DA committee, watcher, reconstruction",
       "requiredEvidence": "Canonical CBOR, roots, counts, and size vectors",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-sdk/src/da-payload.ts",
+          "symbols": [
+            "DA_PAYLOAD_V1_VERSION",
+            "DaPayloadV1Schema",
+            "encodeDaPayloadV1",
+            "decodeDaPayloadV1",
+            "daPayloadHashHex",
+            "DaPayloadV1NonCanonicalError"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/payload.ts",
+          "symbols": [
+            "VerifiedDaPayloadV1",
+            "decodeDaPayloadV1Strict",
+            "verifyDaPayloadV1AgainstHeader",
+            "computeDaPayloadV1Roots",
+            "daPayloadSha256"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
+          "symbols": [
+            "DA_PAYLOAD_V1_VERSION",
+            "encodeDaPayloadV1",
+            "wrapDaPayloadV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "DA_PAYLOAD_V1_VERSION",
+            "decodeDaPayloadV1",
+            "unwrapDaPayloadV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts",
+          "symbols": [
+            "DA_PAYLOAD_V1_VERSION",
+            "decodeDaPayloadV1",
+            "unwrapDaPayloadV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadV1",
+          "kind": "exact canonical Plutus-data CBOR payload",
+          "wireRepresentation": "Tag-121 indefinite constructor (0xd8 0x79 0x9f ... 0xff) written by one exact-size writer; byte strings above 64 bytes use the indefinite 64-byte chunked form and every integer uses the minimal CBOR argument",
+          "versionPolicy": "version is required and exactly 1; encodeDaPayloadV1 refuses any other value and decodeDaPayloadV1Strict rejects it as wrong_version before structural validation",
+          "exactFields": [
+            "0: version (integer, exactly 1)",
+            "1: block_body (DaPayloadBodyV1 constructor, audited by D04)"
+          ],
+          "constructorTags": [
+            "d87 9 9f: Plutus Constr index 0 (CBOR tag 121) with an indefinite field list terminated by 0xff, for the outer DaPayloadV1 and every nested constructor"
+          ],
+          "arrayArity": 2,
+          "boundary": "Commit-block-header worker publication, DA committee admission and attestation, watcher retrieval verification, and fault-proof transition-trace reconstruction",
+          "binding": "Embedded HeaderV1 CBOR hash equals block_body.header_hash; every derived member root and count is compared against the L1 header; payload SHA-256 is the transport-level payload hash",
+          "persistence": "Producer da_payloads rows and DA committee stored payload records, always inside the D05 envelope",
+          "encoders": [
+            {
+              "path": "demo/midgard-sdk/src/da-payload.ts",
+              "symbols": [
+                "encodeDaPayloadV1",
+                "daPayloadV1EncodedSize"
+              ]
+            },
+            {
+              "path": "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
+              "symbols": [
+                "encodeDaPayloadV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-sdk/src/da-payload.ts",
+              "symbols": [
+                "decodeDaPayloadV1"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/da/payload.ts",
+              "symbols": [
+                "decodeDaPayloadV1Strict"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "VerifiedDaPayloadV1",
+          "kind": "in-process verification result of an admitted DaPayloadV1",
+          "wireRepresentation": "Not serialized: an in-memory record produced only after envelope unwrap, strict decode, header binding, root, count, and trace-coverage checks all succeed",
+          "versionPolicy": "Constructed exclusively from PayloadVerificationOptions whose payloadSchemaVersion is the literal 1; no other schema version can reach construction",
+          "exactFields": [
+            "0: payload (the decoded DaPayloadV1)",
+            "1: storedPayloadCbor (the exact D05 envelope bytes as received)",
+            "2: innerPayloadCbor (the exact canonical inner payload bytes)",
+            "3: payloadSha256 (SHA-256 of the stored bytes)",
+            "4: roots (DaPayloadRootSetV1 including validationTracesRoot)",
+            "5: counts (DaPayloadCountSetV1 including validationTraceCount)",
+            "6: validation (ValidationSummary carrying rootSummary and countSummary)"
+          ],
+          "constructorTagsNotApplicable": "In-process TypeScript record; it has no constructor tags because it never crosses a wire boundary.",
+          "arrayArityNotApplicable": "In-process TypeScript record, not a CBOR tuple.",
+          "boundary": "DA committee verification result handed to signing, storage, metadata, and proof-serving paths",
+          "binding": "Carries the exact stored and inner byte views alongside the derived root/count sets, so no downstream consumer re-derives them from unverified bytes",
+          "persistence": "Not persisted directly; its projections become the D19 stored payload record and the D12 metadata response",
+          "encoders": [],
+          "parsers": [
+            {
+              "path": "demo/da-committee-node/src/da/payload.ts",
+              "symbols": [
+                "verifyDaPayloadV1AgainstHeader"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "uses the newest payload shape and is byte-identical to its schema",
+            "pins the exact V1 body/count field order and constructor arities",
+            "pins the exact DA-derived CEK material ceilings"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "decodes the canonical inner payload and derives every committed root",
+            "verifies mandatory envelope, header binding, roots, counts, and trace coverage"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload.test.ts",
+          "testNames": [
+            "builds a canonical payload whose roots, counts, and header match the journal",
+            "builds canonical V1 journals with distinct preimage sidecars"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-payload-sizing.test.ts",
+          "testNames": [
+            "matches canonical CBOR argument and byte-string boundaries",
+            "matches actual envelope and inline-request encoders"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "fails closed on every version other than 1",
+            "rejects malformed fields and non-canonical framing",
+            "bounds every protocol integer to native CBOR",
+            "sizes maintained UTxO aggregates exactly and rejects aggregate drift"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "rejects adjacent runtime payload schema versions before verification",
+            "rejects well-formed payload members whose derived roots differ from the header",
+            "rejects duplicate transaction keys before committee attestation",
+            "rejects transaction preimage coverage gaps before attestation",
+            "rejects missing transition and validation trace evidence"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload.test.ts",
+          "testNames": [
+            "rejects a payload whose recomputed roots do not match the journal"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The DA payload is an off-chain availability object that Aiken never decodes; its embedded HeaderV1 has the cross-language ABI row L01, and its committed member roots are audited by the L16/L17 commitment and proof rows."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "One writer computes the exact encoded size first and then fails if the byte count written differs, so the canonical size vectors and the encoder cannot drift apart.",
+        "decodeDaPayloadV1Strict enforces the consensus byte ceiling before decoding, so an oversized payload is rejected without allocating the decoded form."
+      ]
     },
     {
       "id": "D04",
@@ -2035,19 +2351,176 @@
       "canonicalResult": "DaPayloadBodyV1` / `DaPayloadCountsV1",
       "boundaryBindingAndPersistence": "Mandatory payload envelope",
       "requiredEvidence": "Field order and root/count validation",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-sdk/src/da-payload.ts",
+          "symbols": [
+            "DaPayloadBodyV1Schema",
+            "DaPayloadCountsV1Schema",
+            "DaPayloadEntrySchema",
+            "daPayloadEntryEncodedSize"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/payload.ts",
+          "symbols": [
+            "validateDaPayloadCountsV1",
+            "validateDaPayloadConsensusV1",
+            "daPayloadRootMismatchesV1",
+            "daPayloadCountMismatchesV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadBodyV1",
+          "kind": "exact nested canonical Plutus-data constructor",
+          "wireRepresentation": "Tag-121 indefinite constructor; each of the eleven entry collections is an indefinite list of two-element key/value byte-string tuples, empty collections are the definite empty array 0x80",
+          "versionPolicy": "Unversioned nested body reached only through the DaPayloadV1 version-1 envelope; field order is fixed by the schema and the single exact-size writer",
+          "exactFields": [
+            "0: header_hash (28-byte hash of the embedded header CBOR)",
+            "1: header (HeaderV1, audited by L01)",
+            "2: utxos",
+            "3: withdrawals",
+            "4: forced_transactions",
+            "5: transactions",
+            "6: transaction_preimages",
+            "7: forced_transaction_preimages",
+            "8: cek_program_material",
+            "9: deposits",
+            "10: transition_trace",
+            "11: event_to_step",
+            "12: validation_traces",
+            "13: counts (DaPayloadCountsV1)"
+          ],
+          "constructorTags": [
+            "d879 9f: Plutus Constr index 0 with an indefinite field list, identical framing to the outer DaPayloadV1"
+          ],
+          "arrayArity": 14,
+          "boundary": "Mandatory payload envelope contents on every publication, admission, retrieval, and reconstruction path",
+          "binding": "Every collection is root-committed against the embedded header; transaction and forced-transaction preimages must cover their compact source entries, and transition/validation traces must cover every source event",
+          "persistence": "Only inside a DaPayloadV1 payload wrapped by the D05 envelope",
+          "encoders": [
+            {
+              "path": "demo/midgard-sdk/src/da-payload.ts",
+              "symbols": [
+                "encodeDaPayloadV1",
+                "writeList"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-sdk/src/da-payload.ts",
+              "symbols": [
+                "decodeDaPayloadV1"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/da/payload.ts",
+              "symbols": [
+                "validateEntries",
+                "validateTraceCoverage"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaPayloadCountsV1",
+          "kind": "exact nested canonical Plutus-data constructor",
+          "wireRepresentation": "Tag-121 indefinite constructor of seven minimal-encoding CBOR integers",
+          "versionPolicy": "Unversioned nested record reached only through the DaPayloadV1 version-1 envelope; retained unchanged from the pre-V1 count tuple ordering",
+          "exactFields": [
+            "0: withdrawalCount",
+            "1: forcedTransactionCount",
+            "2: l2TransactionCount",
+            "3: depositCount",
+            "4: totalEventCount",
+            "5: transitionStepCount",
+            "6: validationTraceCount"
+          ],
+          "constructorTags": [
+            "d879 9f: Plutus Constr index 0 with an indefinite field list of seven integers"
+          ],
+          "arrayArity": 7,
+          "boundary": "Count cross-check between the payload body and the L1 header before committee attestation",
+          "binding": "Each count must equal both the actual member cardinality in the body and the corresponding header count; total event count must equal the sum of its components",
+          "persistence": "Only inside DaPayloadBodyV1",
+          "encoders": [
+            {
+              "path": "demo/midgard-sdk/src/da-payload.ts",
+              "symbols": [
+                "encodeDaPayloadV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/da-committee-node/src/da/payload.ts",
+              "symbols": [
+                "validateCountsV1",
+                "validateDaPayloadCountsV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "pins the exact V1 body/count field order and constructor arities",
+            "sizes maintained UTxO aggregates exactly and rejects aggregate drift"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "decodes the canonical inner payload and derives every committed root",
+            "verifies mandatory envelope, header binding, roots, counts, and trace coverage"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload.test.ts",
+          "testNames": [
+            "builds canonical V1 journals with distinct preimage sidecars"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-sdk/tests/da-payload.test.ts",
+          "testNames": [
+            "rejects malformed fields and non-canonical framing",
+            "bounds every protocol integer to native CBOR"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "rejects well-formed payload members whose derived roots differ from the header",
+            "rejects duplicate transaction keys before committee attestation",
+            "rejects transaction preimage coverage gaps before attestation",
+            "rejects missing transition and validation trace evidence"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "These nested bodies are off-chain DA containers that Aiken never decodes; the embedded HeaderV1 is the cross-language surface and is audited by L01."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "The counts record is validated twice: once for internal consistency against the actual member cardinalities and once against the L1 header counts, so a self-consistent but header-divergent payload is still rejected.",
+        "Entry collections are two-element byte-string tuples throughout, which is what lets the same exact-size writer serve both the size vectors and the encoder."
+      ]
     },
     {
       "id": "D05",
@@ -2057,19 +2530,182 @@
       "canonicalResult": "DaPayloadEnvelopeV1`, envelope `1`, inner `1`; mandatory `identity` or `zstd` tag",
       "boundaryBindingAndPersistence": "Stored bytes, libp2p submission/retrieval, DB payload rows",
       "requiredEvidence": "Identity/zstd round trips; raw/off/inferred input rejected",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-payload-envelope.ts",
+          "symbols": [
+            "DA_PAYLOAD_ENVELOPE_V1_VERSION",
+            "DA_PAYLOAD_INNER_V1_SCHEMA_VERSION",
+            "DaPayloadContentEncoding",
+            "encodeDaPayloadEnvelopeV1",
+            "decodeDaPayloadEnvelopeV1",
+            "wrapDaPayloadV1",
+            "unwrapDaPayloadV1",
+            "DaPayloadEnvelopeError"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/src/da-compression.ts",
+          "symbols": [
+            "compressDaPayloadZstd",
+            "decompressDaPayloadZstd",
+            "assertDaZstdAvailable"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/src/da-payload-sizing.ts",
+          "symbols": [
+            "daPayloadEnvelopeV1EncodedSize",
+            "maxDaPayloadV1InnerBytes",
+            "zstdCompressBound"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/payload.ts",
+          "symbols": [
+            "unwrapDaPayloadV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
+          "symbols": [
+            "wrapDaPayloadV1"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "unwrapDaPayloadV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadEnvelopeV1",
+          "kind": "exact canonical CBOR tuple wrapping every stored or transported DA payload",
+          "wireRepresentation": "Definite five-element canonical CBOR array; decoding rejects non-array input, any arity other than five, non-minimal framing, and trailing bytes before any decompression is attempted",
+          "versionPolicy": "version is required and exactly 1 and the inner payload schema version is exactly 1; raw unwrapped payload bytes, adjacent envelope versions, and unknown content-encoding codes are all rejected",
+          "exactFields": [
+            "0: version (unsigned, exactly 1)",
+            "1: content_encoding (unsigned; 0 = identity, 1 = zstd, no other code decodable)",
+            "2: inner_bytes (positive safe integer, the declared decompressed length)",
+            "3: inner_sha256 (exactly 32 bytes)",
+            "4: body (non-empty bytes; the identity or zstd-framed inner payload)"
+          ],
+          "constructorTags": [
+            "identity = unsigned 0",
+            "zstd = unsigned 1"
+          ],
+          "arrayArity": 5,
+          "boundary": "Every stored DA payload byte string, every libp2p submission and retrieval frame, and every DB payload row",
+          "binding": "The declared inner length and inner SHA-256 are both enforced after decompression, and the declared length is checked against the consensus ceiling before decompression so an over-expanding frame cannot be materialized",
+          "persistence": "Producer da_payloads rows, DA committee JSON and Postgres payload records, and libp2p inline or chunked frames",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-payload-envelope.ts",
+              "symbols": [
+                "encodeDaPayloadEnvelopeV1",
+                "wrapDaPayloadV1"
+              ]
+            },
+            {
+              "path": "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
+              "symbols": [
+                "wrapDaPayloadV1"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-payload-envelope.ts",
+              "symbols": [
+                "decodeDaPayloadEnvelopeV1",
+                "unwrapDaPayloadV1"
+              ]
+            },
+            {
+              "path": "demo/da-committee-node/src/da/payload.ts",
+              "symbols": [
+                "unwrapDaPayloadV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-payload-envelope.test.ts",
+          "testNames": [
+            "pins the exact five-field identity envelope vector",
+            "round-trips canonical %s envelopes and preserves stored-byte identity",
+            "reports envelope parse, decompress, and inner-hash stages"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-payload-sizing.test.ts",
+          "testNames": [
+            "matches actual envelope and inline-request encoders",
+            "computes exact mode ceilings beneath the unchanged V1 frame cap",
+            "uses the standard zstd worst-case bound"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/runtime-capability.test.ts",
+          "testNames": [
+            "pins Node >=22.15 and passes the zstd decoder self-test"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "durably accepts an inline V1 envelope and serves bytes plus metadata"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-payload-envelope.test.ts",
+          "testNames": [
+            "rejects raw payload bytes without the mandatory V1 envelope",
+            "rejects adjacent envelope versions and unknown encodings before decompression",
+            "rejects inferred or off modes instead of treating them as zstd",
+            "rejects non-minimal envelope framing without a whole-envelope re-encode",
+            "rejects an oversized declared inner payload before decompression",
+            "enforces maxOutputLength against an over-expanding zstd frame",
+            "rejects inner length and hash mismatches",
+            "refuses to encode structurally invalid V1 envelopes"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/payload.test.ts",
+          "testNames": [
+            "fails closed when the mandatory DA envelope is unavailable"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS an envelope whose declared inner SHA-256 does not match its body",
+            "REJECTS an envelope carrying a payload for a different header"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The envelope is an off-chain storage and transport frame that Aiken never decodes; the inner payload and its embedded header are audited by D03/D04 and L01."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "The envelope is mandatory in both directions: encoding refuses a structurally invalid envelope and decoding refuses bare payload bytes, so there is no raw-inference fallback left.",
+        "Timing instrumentation is explicitly semantics-neutral, and a throwing clock is covered by its own test."
+      ]
     },
     {
       "id": "D06",
@@ -2079,19 +2715,163 @@
       "canonicalResult": "Sole DA transport V1",
       "boundaryBindingAndPersistence": "libp2p negotiation",
       "requiredEvidence": "Exact protocol/capability handshake",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DA_TRANSPORT_V1_PROTOCOL_VERSION",
+            "DaRequestResponseProtocol",
+            "DaGossipTopic",
+            "daRequestResponseProtocolId",
+            "daGossipTopic",
+            "DaTransportSigningDomain",
+            "DA_TRANSPORT_LIMITS_V1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/DaProtocols.ts",
+          "symbols": [
+            "DA_REQUEST_RESPONSE_PROTOCOLS",
+            "createDaProtocolAllowlist",
+            "requireProtocolId"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/da/libp2p-producer.ts",
+          "symbols": [
+            "DaRequestResponseProtocol",
+            "DaGossipTopic"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "daRequestResponseProtocolId"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DA transport V1 protocol identifier and topic namespace",
+          "kind": "frozen libp2p protocol-ID and gossip-topic string namespace",
+          "wireRepresentation": "/midgard/<64-hex deployment fingerprint>/da/<exact protocol or topic name>/1 built by one helper per surface; the trailing segment is the literal transport protocol version",
+          "versionPolicy": "Sole transport version 1. The version is a compile-time constant appended by the ID builders, so a peer speaking any other version cannot be dialed or matched.",
+          "exactFields": [
+            "request-response: capabilities",
+            "request-response: payload-submit",
+            "request-response: payload-by-header",
+            "request-response: payload-chunk",
+            "request-response: metadata-by-header",
+            "request-response: proof-bundle-by-header",
+            "request-response: trace-step-by-index",
+            "request-response: event-to-step-by-event",
+            "request-response: attestations-by-header",
+            "gossip topic: payload-announcements",
+            "gossip topic: attestations",
+            "gossip topic: conflicts",
+            "signing domain: MidgardDALibp2pPayloadAnnouncementV1",
+            "signing domain: MidgardDALibp2pPayloadSubmitV1",
+            "signing domain: MidgardDALibp2pConflictEvidenceV1"
+          ],
+          "constructorTagsNotApplicable": "Protocol and topic identifiers are exact strings from closed enum tables, not constructor tags.",
+          "arrayArityNotApplicable": "A string namespace, not a CBOR tuple.",
+          "boundary": "libp2p protocol negotiation, gossipsub topic allowlisting, and connection gating on producer, committee, and watcher nodes",
+          "binding": "Every identifier is scoped to the normalized 32-byte deployment fingerprint, so a peer from another deployment cannot match any protocol or topic",
+          "persistence": "Not persisted; the fingerprint that scopes the identifiers comes from the D18 runtime manifest",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "daRequestResponseProtocolId",
+                "daGossipTopic"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "exactStringEnumValue",
+                "normalizeDaDeploymentFingerprintHex"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "pins sole V1 protocol IDs, topics, signing domains, and capabilities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "freezes protocol IDs, topics, domains, limits, and enum codes"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-runtime.test.ts",
+          "testNames": [
+            "derives allowlisted IDs from the Phase 0/1 core transport module",
+            "publishes only allowlisted topics within gossip bounds"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "dials the deployment-scoped protocol id"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "sends payload-submit/1 to manifest committee peers and gossips an announcement"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "rejects non-tuple, trailing, and unsupported enum CBOR",
+            "rejects malformed UTF-8 and decoder-stripped BOMs structurally"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-runtime.test.ts",
+          "testNames": [
+            "denies unmanifested peers and unmanifested multiaddrs",
+            "rejects oversized, empty, and incomplete frames"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/no-http-da-transport.test.ts",
+          "testNames": [
+            "passes for the migrated DA libp2p target set",
+            "fails on an injected forbidden token in a new libp2p DA module"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "libp2p protocol identifiers and gossip topics are host-to-host transport strings; Aiken has no transport surface."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The runtime allowlist is derived from the core transport module rather than restated, so a new protocol cannot be dialed without appearing in the frozen table.",
+        "The no-HTTP guardrail test is self-checking: it also proves the scan fails when a forbidden token is injected, so a silently passing scan is ruled out."
+      ]
     },
     {
       "id": "D07",
@@ -2101,19 +2881,126 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Gossip frame",
       "requiredEvidence": "Canonical CBOR/signature/context validation",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaPayloadAnnouncementV1",
+            "encodeDaPayloadAnnouncementV1Cbor",
+            "decodeDaPayloadAnnouncementV1Cbor",
+            "DaTransportSigningDomain"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/da/libp2p-producer.ts",
+          "symbols": [
+            "publishDaPayloadAnnouncement",
+            "payloadAnnouncementSigningPreimage",
+            "encodeDaPayloadAnnouncementV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadAnnouncementV1",
+          "kind": "exact canonical CBOR gossip frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: payload_schema_version (unsigned, exactly 1)",
+            "4: payload_bytes (unsigned)",
+            "5: chunk_size (unsigned)",
+            "6: chunk_count (unsigned)",
+            "7: root_summary_hash (32 bytes)",
+            "8: announced_by_peer_id (non-empty UTF-8 string)",
+            "9: announced_at_slot (unsigned)",
+            "10: signature (exactly 64 bytes)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 11,
+          "boundary": "payload-announcements gossip topic, scoped to the deployment fingerprint",
+          "binding": "The signature covers the MidgardDALibp2pPayloadAnnouncementV1 domain concatenated with the announcement re-encoded with an empty signature field, so the signed context includes the deployment fingerprint, header hash, payload hash, and root summary hash",
+          "persistence": "Producer daPayloadAnnouncements attempt rows; the frame itself is not stored by receivers",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadAnnouncementV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadAnnouncementV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "sends payload-submit/1 to manifest committee peers and gossips an announcement"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-runtime.test.ts",
+          "testNames": [
+            "publishes only allowlisted topics within gossip bounds"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "rejects non-tuple, trailing, and unsupported enum CBOR"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-runtime.test.ts",
+          "testNames": [
+            "dispatches conflicts only from strictly signed authenticated gossip messages",
+            "rejects oversized, empty, and incomplete frames"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "A libp2p gossip frame is never decoded by Aiken; the payload and root values it announces are audited by D03/D04 and the L-family root rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The signing preimage re-encodes the announcement with a zeroed signature field, so the domain-separated signature is over exactly the canonical frame the receiver decodes.",
+        "Gossipsub runs with strict signing and no self-emit, and only allowlisted topics are publishable."
+      ]
     },
     {
       "id": "D08",
@@ -2123,19 +3010,188 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Producer-to-committee stream",
       "requiredEvidence": "Request/response bounds and error codes",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaPayloadSubmitRequestV1",
+            "DaPayloadSubmitResponseV1",
+            "DaPayloadSubmitMode",
+            "DaPayloadSubmitStatus",
+            "encodeDaPayloadSubmitRequestV1Cbor",
+            "decodeDaPayloadSubmitRequestV1Cbor",
+            "encodeDaPayloadSubmitResponseV1Cbor",
+            "decodeDaPayloadSubmitResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+          "symbols": [
+            "handlePayloadSubmit",
+            "validateSubmitManifest"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/da/libp2p-producer.ts",
+          "symbols": [
+            "encodeDaPayloadSubmitRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadSubmitRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: payload_schema_version (unsigned, exactly 1)",
+            "4: mode (enum code; 0 = inline, 1 = chunked)",
+            "5: payload_bytes (bytes or null; the D05 envelope for inline mode)",
+            "6: chunk_manifest (DaPayloadChunkManifestV1 or null)"
+          ],
+          "constructorTags": [
+            "inline = 0",
+            "chunked = 1"
+          ],
+          "arrayArity": 7,
+          "boundary": "payload-submit request-response stream from producer to committee",
+          "binding": "The deployment fingerprint must match the receiving committee node, and the announced payload hash must equal the SHA-256 of the submitted envelope bytes",
+          "persistence": "Accepted submissions become D19 stored payload records; the request frame itself is not retained",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadSubmitRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadSubmitRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaPayloadSubmitResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = accepted, 1 = duplicate, 2 = conflict, 3 = rejected, 4 = deferred)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: reason_code (valid UTF-8 string or null)",
+            "4: retry_after_ms (unsigned or null)"
+          ],
+          "constructorTags": [
+            "accepted = 0",
+            "duplicate = 1",
+            "conflict = 2",
+            "rejected = 3",
+            "deferred = 4"
+          ],
+          "arrayArity": 5,
+          "boundary": "payload-submit response on the same stream",
+          "binding": "Echoes the header hash and payload hash of the submission being answered, so a producer cannot count an acceptance for a different payload",
+          "persistence": "Producer-side submission attempt ledger only",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadSubmitResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadSubmitResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas",
+            "reports submit-request decode timing without changing canonical bytes"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "durably accepts an inline V1 envelope and serves bytes plus metadata",
+            "treats identical submits as duplicates and valid divergent envelopes as conflicts",
+            "serializes expensive submit admission and releases the slot"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "sends payload-submit/1 to manifest committee peers and gossips an announcement",
+            "succeeds when one committee peer rejects the payload",
+            "returns at threshold without waiting for a slow peer and safely records the straggler"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "rejects non-tuple, trailing, and unsupported enum CBOR"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "rejects malformed, oversized, and hash-mismatched submissions",
+            "rejects an incomplete frame without response or persistence and recovers",
+            "aborts a stalled inbound submit, releases admission, and recovers",
+            "shares process admission and times out a queued submit before frame read"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "does not count accepted responses for the wrong payload hash",
+            "surfaces per-peer failures without HTTP fallback and enforces threshold"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Producer-to-committee stream frames are never decoded by Aiken; the submitted payload bytes are audited by D03/D04/D05."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Every status is a frozen unsigned code and every reason code is validated UTF-8, so an unknown status or malformed reason string fails the decode instead of being coerced.",
+        "Submit admission is serialized with an explicit timeout and released on abort, and an incomplete frame produces neither a response nor persistence."
+      ]
     },
     {
       "id": "D09",
@@ -2145,19 +3201,169 @@
       "canonicalResult": "Retain V1; advertise payload/envelope V1 only",
       "boundaryBindingAndPersistence": "Capability negotiation",
       "requiredEvidence": "No V2/V3/V4 payload advertisement",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaCapabilitiesRequestV1",
+            "DaCapabilitiesResponseV1",
+            "encodeDaCapabilitiesRequestV1Cbor",
+            "decodeDaCapabilitiesRequestV1Cbor",
+            "encodeDaCapabilitiesResponseV1Cbor",
+            "decodeDaCapabilitiesResponseV1Cbor",
+            "DA_TRANSPORT_V1_PROTOCOL_VERSION"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+          "symbols": [
+            "handleCapabilities"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "decodeDaCapabilitiesResponseV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaCapabilitiesRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 1,
+          "boundary": "capabilities request-response stream before any other DA request",
+          "binding": "Carries only the deployment fingerprint the caller expects the peer to serve",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaCapabilitiesRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaCapabilitiesRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaCapabilitiesResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "transport_protocol_version is exactly 1 and payload_schema_versions is the single-element tuple [1]; no V2/V3/V4 payload schema can be advertised or accepted",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: transport_protocol_version (unsigned, exactly 1)",
+            "2: payload_schema_versions (exactly the one-element list [1])",
+            "3: envelope_content_encodings (unsigned codes drawn from identity=0 and zstd=1)",
+            "4: max_payload_bytes (unsigned)",
+            "5: max_inline_response_bytes (unsigned)",
+            "6: max_chunk_bytes (unsigned)",
+            "7: max_streams_per_peer (unsigned)",
+            "8: request_timeout_ms (unsigned)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 9,
+          "boundary": "Capability negotiation on producer, committee, and watcher clients",
+          "binding": "Callers reject a response whose deployment fingerprint is foreign and clamp every advertised limit down to the frozen protocol ceiling before issuing a request",
+          "persistence": "Negotiated limits are held per client session only",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaCapabilitiesResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaCapabilitiesResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "pins sole V1 protocol IDs, topics, signing domains, and capabilities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "round-trips deployment-scoped decoder capabilities canonically"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "advertises only the exact V1 payload and envelope capabilities"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "negotiates before requesting and clamps limits to the protocol ceiling"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "requires a threshold of exact V1 envelope capabilities"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "rejects capabilities announcing a foreign deployment fingerprint",
+            "rejects undecodable capability bytes",
+            "rejects capabilities with %s",
+            "zero maxPayloadBytes",
+            "inline ceiling above payload ceiling",
+            "chunk ceiling above payload ceiling"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Capability negotiation is a libp2p handshake with no Aiken counterpart; the advertised payload schema version is the D03 identity."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D01-D05-retired-da-payload-identities"
+        }
+      ],
+      "notes": [
+        "The advertised payload schema list is typed as the literal one-element tuple [1], so advertising a retired payload version is a type error as well as a scan violation.",
+        "The producer requires a threshold of peers advertising the exact V1 envelope capabilities before it will publish at all."
+      ]
     },
     {
       "id": "D10",
@@ -2167,19 +3373,194 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Retrieval stream",
       "requiredEvidence": "Manifest/deployment/header binding",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaPayloadByHeaderRequestV1",
+            "DaPayloadByHeaderResponseV1",
+            "DaPayloadByHeaderStatus",
+            "encodeDaPayloadByHeaderRequestV1Cbor",
+            "decodeDaPayloadByHeaderRequestV1Cbor",
+            "encodeDaPayloadByHeaderResponseV1Cbor",
+            "decodeDaPayloadByHeaderResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+          "symbols": [
+            "handlePayloadByHeader"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-source.ts",
+          "symbols": [
+            "encodeDaPayloadByHeaderRequestV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "encodeDaPayloadByHeaderRequestV1Cbor",
+            "decodeDaPayloadByHeaderResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/da/libp2p-producer.ts",
+          "symbols": [
+            "decodeDaPayloadByHeaderRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadByHeaderRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: accepted_payload_hashes (list of 32-byte hashes, or null for any)",
+            "3: max_inline_bytes (unsigned)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 4,
+          "boundary": "payload-by-header retrieval stream, and the same frame is the metadata-by-header request audited by D12",
+          "binding": "Deployment fingerprint plus header hash select the record; the accepted-hash allowlist binds the answer to a payload the caller already committed to",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadByHeaderRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadByHeaderRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaPayloadByHeaderResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = found_inline, 1 = found_chunked, 2 = not_found, 3 = conflict, 4 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes or null)",
+            "3: payload_bytes (bytes or null; the D05 envelope for inline delivery)",
+            "4: chunk_manifest (DaPayloadChunkManifestV1 or null)",
+            "5: reason_code (valid UTF-8 string or null)"
+          ],
+          "constructorTags": [
+            "found_inline = 0",
+            "found_chunked = 1",
+            "not_found = 2",
+            "conflict = 3",
+            "rejected = 4"
+          ],
+          "arrayArity": 6,
+          "boundary": "payload-by-header response consumed by watcher and committee retrieval clients",
+          "binding": "Clients require the echoed header hash to match the request, the payload SHA-256 to match the announced hash, and inline and chunked deliveries to be mutually exclusive",
+          "persistence": "Retrieved envelopes become D19 stored payload records after verification",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadByHeaderResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadByHeaderResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "accepts an inline payload whose SHA-256 matches the announced hash",
+            "accepts a payload present in acceptedPayloadHashes",
+            "accepts an inline payload exactly at the negotiated inline ceiling"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "durably accepts an inline V1 envelope and serves bytes plus metadata"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "serves retained DA payloads by header hash for watcher backfill"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "rejects non-tuple, trailing, and unsupported enum CBOR"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS a response echoing a different header hash",
+            "REJECTS an inline payload whose bytes were corrupted after hashing",
+            "REJECTS an honest payload announced under a foreign payload hash",
+            "REJECTS a payload not present in acceptedPayloadHashes",
+            "REJECTS an inline response that also carries a chunk manifest",
+            "REJECTS a chunked response that also carries inline bytes",
+            "REJECTS an inline payload above the negotiated inline ceiling",
+            "rejects %s acceptedPayloadHashes"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Retrieval stream frames are never decoded by Aiken; the retrieved envelope and payload are audited by D05 and D03/D04."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The request frame is shared with metadata-by-header, which is why D12 has no separate request form.",
+        "Failover is evidence-driven: a not_found, conflict, rejected, or corrupted answer is recorded per peer and the client moves on rather than accepting the first response."
+      ]
     },
     {
       "id": "D11",
@@ -2189,19 +3570,206 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Bounded retrieval chunks",
       "requiredEvidence": "Chunk hash/length/order tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaPayloadChunkManifestV1",
+            "DaPayloadChunkRequestV1",
+            "DaPayloadChunkResponseV1",
+            "encodeDaPayloadChunkManifestCbor",
+            "decodeDaPayloadChunkManifestCbor",
+            "encodeDaPayloadChunkRequestV1Cbor",
+            "decodeDaPayloadChunkRequestV1Cbor",
+            "encodeDaPayloadChunkResponseV1Cbor",
+            "decodeDaPayloadChunkResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+          "symbols": [
+            "handlePayloadChunk"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "DaPayloadChunkManifestV1",
+            "encodeDaPayloadChunkRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaPayloadChunkManifestV1",
+          "kind": "exact canonical CBOR sub-tuple committing to a chunked payload",
+          "wireRepresentation": "Definite four-element canonical CBOR array, embedded as one field of a submit or retrieval frame or encodable standalone",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: payload_hash (32 bytes)",
+            "1: total_bytes (unsigned)",
+            "2: chunk_size (unsigned)",
+            "3: chunk_hashes (list of 32-byte hashes, one per chunk in index order)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 4,
+          "boundary": "Chunked submit and chunked retrieval negotiation",
+          "binding": "Clients require the manifest payload hash to equal the announced payload hash, the chunk count to be consistent with total_bytes and chunk_size, and chunk_size to be within the negotiated ceiling",
+          "persistence": "Not persisted; only the reassembled envelope is stored",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadChunkManifestCbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadChunkManifestCbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaPayloadChunkRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: chunk_index (unsigned)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 4,
+          "boundary": "payload-chunk retrieval stream",
+          "binding": "Names the exact payload hash and chunk index being requested",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadChunkRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadChunkRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaPayloadChunkResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = found, 1 = not_found, 2 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: chunk_index (unsigned)",
+            "4: chunk_bytes (bytes or null)",
+            "5: chunk_hash (32 bytes or null)"
+          ],
+          "constructorTags": [
+            "found = 0",
+            "not_found = 1",
+            "rejected = 2"
+          ],
+          "arrayArity": 6,
+          "boundary": "payload-chunk response consumed by retrieval clients",
+          "binding": "Each chunk must answer the requested index, hash to the manifest entry for that index, and the final chunk must have the exact remaining length; the reassembled bytes must hash to the whole-payload hash",
+          "persistence": "Only the verified reassembled envelope is persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaPayloadChunkResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaPayloadChunkResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples",
+            "freezes hash lengths and V1 helper preimages"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "reassembles a multi-chunk payload and verifies the whole-payload hash",
+            "requests every chunk index in order"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "serves bounded authenticated chunks when inline delivery is unavailable"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS a chunk whose bytes do not hash to the manifest entry",
+            "REJECTS a chunk announcing a hash that is not the manifest entry",
+            "REJECTS a chunk answering the wrong index",
+            "REJECTS a manifest committing to a different payload hash",
+            "REJECTS a manifest whose chunk count contradicts totalBytes/chunkSize",
+            "REJECTS a manifest with an empty chunk list",
+            "REJECTS a manifest whose chunkSize exceeds the negotiated chunk ceiling",
+            "REJECTS a manifest with %s",
+            "zero totalBytes",
+            "totalBytes above the payload ceiling",
+            "REJECTS a final chunk of the wrong length"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Chunked retrieval frames are never decoded by Aiken; the reassembled envelope is audited by D05."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Every chunk is authenticated twice: against its manifest hash entry and, after reassembly, against the whole-payload hash.",
+        "Manifest arithmetic is validated before any chunk is requested, so a self-inconsistent manifest cannot cause unbounded fetching."
+      ]
     },
     {
       "id": "D12",
@@ -2211,19 +3779,130 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Retrieval metadata",
       "requiredEvidence": "Exact deployment/header binding",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaMetadataByHeaderResponseV1",
+            "DaMetadataStatus",
+            "DaLocalPayloadStatus",
+            "encodeDaMetadataByHeaderResponseV1Cbor",
+            "decodeDaMetadataByHeaderResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
+          "symbols": [
+            "handleMetadataByHeader",
+            "metadataForPayload",
+            "metadataAbsentResponse"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/da/libp2p-producer.ts",
+          "symbols": [
+            "decodeDaMetadataByHeaderResponseV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaMetadataByHeaderResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 response on the metadata-by-header/1 protocol; payload_schema_version is either null or exactly 1, and the request frame is the shared DaPayloadByHeaderRequestV1 audited by D10.",
+          "exactFields": [
+            "0: status (enum code; 0 = found, 1 = not_found, 2 = conflict, 3 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes or null)",
+            "3: payload_schema_version (unsigned exactly 1, or null)",
+            "4: payload_bytes (unsigned or null)",
+            "5: root_summary_hash (32 bytes or null)",
+            "6: proof_bundle_hash (32 bytes or null)",
+            "7: transition_trace_root (32 bytes or null)",
+            "8: event_to_step_root (32 bytes or null)",
+            "9: retained_until_slot (unsigned or null)",
+            "10: local_status (enum code or null; 0 = staged, 1 = verified, 2 = signed, 3 = conflict)"
+          ],
+          "constructorTags": [
+            "status: found = 0, not_found = 1, conflict = 2, rejected = 3",
+            "local_status: staged = 0, verified = 1, signed = 2, conflict = 3"
+          ],
+          "arrayArity": 11,
+          "boundary": "metadata-by-header retrieval metadata stream, also used as the producer's committee reachability probe",
+          "binding": "A request whose deployment fingerprint does not match the serving node is answered rejected with every optional field null; a payload hash outside the caller's accepted set is answered conflict; roots are reported only from a verified stored record",
+          "persistence": "Derived from the D19 stored payload record and its verification summary; the response frame is not stored",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaMetadataByHeaderResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaMetadataByHeaderResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "returns verified root metadata from a canonical stored record"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "preflights committee reachability with metadata-by-header probes"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "fails closed when an injected preflight transport has the wrong peer id",
+            "reports dial-only preflight as a probe without listener validation"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Retrieval metadata is a libp2p response frame with no Aiken counterpart; the roots it reports are audited by the L-family commitment rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "There is no separate metadata request type: handleMetadataByHeader decodes the shared DaPayloadByHeaderRequestV1 frame, so deployment and header binding are identical to D10.",
+        "Every optional field is explicitly nulled on the absent, conflict, and rejected branches, so a caller cannot read stale roots out of a negative answer."
+      ]
     },
     {
       "id": "D13",
@@ -2233,19 +3912,175 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
       "requiredEvidence": "Root/member/preimage binding tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaProofBundleByHeaderRequestV1",
+            "DaProofBundleByHeaderResponseV1",
+            "DaProofBundleStatus",
+            "encodeDaProofBundleByHeaderRequestV1Cbor",
+            "decodeDaProofBundleByHeaderRequestV1Cbor",
+            "encodeDaProofBundleByHeaderResponseV1Cbor",
+            "decodeDaProofBundleByHeaderResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/proof-artifacts.ts",
+          "symbols": [
+            "proofBundleByHeader",
+            "DaProofArtifactDeriver"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/proof-protocols.ts",
+          "symbols": [
+            "handleProofBundleByHeader"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "encodeDaProofBundleByHeaderRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaProofBundleByHeaderRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: max_inline_bytes (unsigned)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 3,
+          "boundary": "proof-bundle-by-header auditor and fault-proof retrieval stream",
+          "binding": "Deployment fingerprint plus header hash select the bundle",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaProofBundleByHeaderRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaProofBundleByHeaderRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaProofBundleByHeaderResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = found_inline, 1 = found_chunked, 2 = not_found, 3 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: proof_bundle_hash (32 bytes or null)",
+            "3: proof_bundle_bytes (bytes or null)",
+            "4: chunk_manifest (DaPayloadChunkManifestV1 or null)",
+            "5: reason_code (valid UTF-8 string or null)"
+          ],
+          "constructorTags": [
+            "found_inline = 0",
+            "found_chunked = 1",
+            "not_found = 2",
+            "rejected = 3"
+          ],
+          "arrayArity": 6,
+          "boundary": "proof-bundle-by-header response consumed by auditors and fault-proof clients",
+          "binding": "Bundles are served only from a verified payload; the client requires the bundle SHA-256 to equal the announced proof_bundle_hash and refuses a chunked bundle because only inline delivery is supported",
+          "persistence": "Not persisted by the client",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaProofBundleByHeaderResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaProofBundleByHeaderResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "serves proof bundles, trace openings, and event-to-step membership proofs from verified payloads"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "accepts a proof bundle whose SHA-256 matches"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "rejects malformed event keys and enforces the exact inline proof-bundle limit",
+            "fails closed for unverified payloads, root mismatches, and deployment mismatches",
+            "gates stream request handlers by registered requester roles"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS a proof bundle whose SHA-256 does not match",
+            "REJECTS a chunked proof bundle (only inline is supported)",
+            "REJECTS a proof bundle with empty bytes"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The retrieval frame is never decoded by Aiken; the proof members it carries are audited by the L17 MPF proof row and the V-family validation rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Bundles are derived from a verified payload only, and root mismatches or deployment mismatches fail closed before serving.",
+        "The exact inline proof-bundle limit is enforced on the serving side and re-checked against the negotiated ceiling on the client side."
+      ]
     },
     {
       "id": "D14",
@@ -2255,19 +4090,169 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
       "requiredEvidence": "Index/root proof validation",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaTraceStepByIndexRequestV1",
+            "DaTraceStepByIndexResponseV1",
+            "encodeDaTraceStepByIndexRequestV1Cbor",
+            "decodeDaTraceStepByIndexRequestV1Cbor",
+            "encodeDaTraceStepByIndexResponseV1Cbor",
+            "decodeDaTraceStepByIndexResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/proof-artifacts.ts",
+          "symbols": [
+            "traceStepByIndex"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/proof-protocols.ts",
+          "symbols": [
+            "handleTraceStepByIndex"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "encodeDaTraceStepByIndexRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaTraceStepByIndexRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: step_index (unsigned)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 3,
+          "boundary": "trace-step-by-index auditor and fault-proof retrieval stream",
+          "binding": "The step index is validated as a non-negative safe integer before any peer is dialed",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaTraceStepByIndexRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaTraceStepByIndexRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaTraceStepByIndexResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = found, 1 = not_found, 2 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: step_index (unsigned)",
+            "3: transition_step_bytes (bytes or null)",
+            "4: membership_proof_bytes (bytes or null)"
+          ],
+          "constructorTags": [
+            "found = 0",
+            "not_found = 1",
+            "rejected = 2"
+          ],
+          "arrayArity": 5,
+          "boundary": "trace-step-by-index response consumed by auditors and fault-proof clients",
+          "binding": "The echoed step index must match the request, both parts must be non-empty on a found answer, and their joint size must stay within the negotiated payload ceiling; openings are served only against the verified transition-trace root",
+          "persistence": "Not persisted by the client",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaTraceStepByIndexResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaTraceStepByIndexResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "serves proof bundles, trace openings, and event-to-step membership proofs from verified payloads"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "accepts a trace step that fits inside the payload ceiling"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "fails closed for unverified payloads, root mismatches, and deployment mismatches"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS a trace step answering a different index",
+            "REJECTS a trace step with an empty %s",
+            "REJECTS a trace step whose parts jointly exceed the payload ceiling"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The retrieval frame is never decoded by Aiken; the transition step and membership proof it carries are audited by the L-family transition-trace and L17 proof rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Index validation happens client-side before dialing, so a malformed index never reaches the network.",
+        "Openings are computed from the verified transition-trace root of an admitted payload, not from unverified bytes."
+      ]
     },
     {
       "id": "D15",
@@ -2277,19 +4262,173 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Auditor/fault-proof retrieval",
       "requiredEvidence": "Event/root proof validation",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaEventToStepByEventRequestV1",
+            "DaEventToStepByEventResponseV1",
+            "encodeDaEventToStepByEventRequestV1Cbor",
+            "decodeDaEventToStepByEventRequestV1Cbor",
+            "encodeDaEventToStepByEventResponseV1Cbor",
+            "decodeDaEventToStepByEventResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/proof-artifacts.ts",
+          "symbols": [
+            "eventToStepByEvent"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/proof-protocols.ts",
+          "symbols": [
+            "handleEventToStepByEvent"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "symbols": [
+            "encodeDaEventToStepByEventRequestV1Cbor"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaEventToStepByEventRequestV1",
+          "kind": "exact canonical CBOR request frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: event_key (non-empty bounded bytes)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 3,
+          "boundary": "event-to-step-by-event auditor and fault-proof retrieval stream",
+          "binding": "The event key is validated as non-empty, even-length lowercase hex within bounds before any peer is dialed, and malformed keys are also rejected on the serving side",
+          "persistence": "Not persisted",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaEventToStepByEventRequestV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaEventToStepByEventRequestV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaEventToStepByEventResponseV1",
+          "kind": "exact canonical CBOR response frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: status (enum code; 0 = found, 1 = not_found, 2 = rejected)",
+            "1: header_hash (28 bytes)",
+            "2: event_key (bytes, echoing the request)",
+            "3: event_to_step_entry_bytes (bytes or null; null carries a non-membership answer)",
+            "4: membership_or_nonmembership_proof_bytes (bytes or null)"
+          ],
+          "constructorTags": [
+            "found = 0",
+            "not_found = 1",
+            "rejected = 2"
+          ],
+          "arrayArity": 5,
+          "boundary": "event-to-step-by-event response consumed by auditors and fault-proof clients",
+          "binding": "The echoed event key must match the request, the proof bytes must be non-empty, and a present entry must be non-empty; a null entry is only accepted as an explicit non-membership answer proved against the verified event-to-step root",
+          "persistence": "Not persisted by the client",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaEventToStepByEventResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaEventToStepByEventResponseV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "serves proof bundles, trace openings, and event-to-step membership proofs from verified payloads",
+            "serves event-to-step non-membership proofs for absent event keys"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "accepts an event-to-step membership answer and hashes both parts",
+            "accepts a non-membership answer with a null entry"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-proof-protocols.test.ts",
+          "testNames": [
+            "rejects malformed event keys and enforces the exact inline proof-bundle limit",
+            "fails closed for unverified payloads, root mismatches, and deployment mismatches"
+          ]
+        },
+        {
+          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "testNames": [
+            "REJECTS an event-to-step answer echoing a different event key",
+            "REJECTS an event-to-step answer with no proof bytes",
+            "REJECTS an event-to-step answer with empty proof bytes",
+            "REJECTS an event-to-step answer with a present-but-empty entry"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The retrieval frame is never decoded by Aiken; the event-to-step entry and its membership or non-membership proof are audited by the L-family event-to-step and L17 proof rows."
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "Non-membership is an explicit, proved answer rather than an absence of data, and the client distinguishes a null entry with a proof from a missing proof.",
+        "Both the client and the serving handler validate the event key, so a malformed key is rejected on either side of the stream."
+      ]
     },
     {
       "id": "D16",
@@ -2299,19 +4438,260 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Committee signature and L1 attestation",
       "requiredEvidence": "Signature preimage and threshold tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaAttestationGossipV1",
+            "DaAttestationsByHeaderRequestV1",
+            "DaAttestationsByHeaderResponseV1",
+            "DA_ON_CHAIN_ATTESTATION_V1_DOMAIN",
+            "encodeDaAttestationV1Preimage",
+            "encodeDaAttestationGossipV1Cbor",
+            "decodeDaAttestationGossipV1Cbor",
+            "encodeDaAttestationsByHeaderRequestV1Cbor",
+            "decodeDaAttestationsByHeaderResponseV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/signer.ts",
+          "symbols": [
+            "DA_ATTESTATION_MESSAGE_PREFIX",
+            "signDaAttestation"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/da/libp2p/attestations.ts",
+          "symbols": [
+            "encodeDaAttestationGossipV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/src/da-attestation.ts",
+          "symbols": [
+            "DA_ATTESTATION_MESSAGE_PREFIX",
+            "daAttestationMessage",
+            "countDaAttestedSigners",
+            "applyDaAttestationSignatureWitnesses"
+          ]
+        },
+        {
+          "path": "onchain/aiken/validators/da-attestation.ak",
+          "symbols": [
+            "attestation_message",
+            "MidgardDAAttestationV1"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaAttestationGossipV1",
+          "kind": "exact canonical CBOR gossip and query frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: payload_hash (32 bytes)",
+            "3: signer_index (unsigned)",
+            "4: da_vkey (bytes)",
+            "5: on_chain_witness (exactly 65 bytes)",
+            "6: retention_until_slot (unsigned)",
+            "7: announced_by_peer_id (non-empty UTF-8 string)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 8,
+          "boundary": "attestations gossip topic and attestations-by-header request-response stream; the carried witness is the value submitted on L1",
+          "binding": "The on-chain witness is transported unchanged, and its signature is over the MidgardDAAttestationV1 domain concatenated with the 28-byte header hash, which is the exact preimage the Aiken da-attestation validator reconstructs",
+          "persistence": "Committee D20 signature records; the gossip frame itself is not stored",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaAttestationGossipV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaAttestationGossipV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "MidgardDAAttestationV1 signature preimage",
+          "kind": "exact domain-separated signature preimage shared by TypeScript and Aiken",
+          "wireRepresentation": "Raw byte concatenation of the UTF-8 domain literal MidgardDAAttestationV1 and the 28-byte header hash, with no length prefix or separator",
+          "versionPolicy": "The domain literal carries the version; there is one attestation domain and no adjacent domain is accepted on either side of the boundary",
+          "exactFields": [
+            "0: MidgardDAAttestationV1 (22-byte UTF-8 domain literal)",
+            "1: header_hash (exactly 28 bytes)"
+          ],
+          "constructorTagsNotApplicable": "A flat byte-concatenated preimage, not a tagged structure.",
+          "arrayArityNotApplicable": "A flat byte string, not a CBOR tuple.",
+          "boundary": "Committee signing, gossip verification, and the on-chain da-attestation validator signature check",
+          "binding": "The header hash length is enforced at exactly 28 bytes before concatenation, so no other value can produce a valid witness",
+          "persistence": "Not persisted; recomputed from the header hash on both sides",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaAttestationV1Preimage"
+              ]
+            },
+            {
+              "path": "demo/midgard-sdk/src/da-attestation.ts",
+              "symbols": [
+                "daAttestationMessage"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "onchain/aiken/validators/da-attestation.ak",
+              "symbols": [
+                "attestation_message"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaAttestationsByHeaderRequestV1 / DaAttestationsByHeaderResponseV1",
+          "kind": "exact canonical CBOR query frames",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "request 0: deployment_fingerprint (32 bytes)",
+            "request 1: header_hash (28 bytes)",
+            "request 2: accepted_signer_indexes (list of unsigned or null)",
+            "request 3: max_attestations (unsigned or null)",
+            "response 0: status (enum code; 0 = found, 1 = not_found, 2 = rejected)",
+            "response 1: header_hash (28 bytes)",
+            "response 2: attestations (list of DaAttestationGossipV1 tuples)",
+            "response 3: reason_code (valid UTF-8 string or null)"
+          ],
+          "constructorTags": [
+            "found = 0",
+            "not_found = 1",
+            "rejected = 2"
+          ],
+          "arrayArity": 4,
+          "boundary": "attestations-by-header request-response stream",
+          "binding": "The signer-index allowlist and the exact result limit are honored literally, including a zero limit, and the response echoes the queried header hash",
+          "persistence": "Retrieved witnesses become D20 signature records after verification",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaAttestationsByHeaderResponseV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaAttestationsByHeaderRequestV1Cbor"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples",
+            "freezes hash lengths and V1 helper preimages"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "freezes protocol IDs, topics, domains, limits, and enum codes",
+            "matches frozen CBOR vectors for the Phase 0/1 message schemas"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+          "testNames": [
+            "builds canonical attestation gossip messages without changing the on-chain witness",
+            "retrieves attestations over the typed libp2p request/response protocol",
+            "polls arbitrary signer-index witnesses over the libp2p attestation exchange without a local signer"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/tests/da-attestation.test.ts",
+          "testNames": [
+            "sorts and packs indexed witnesses deterministically",
+            "applies witnesses to the MSB-first bitmap"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/watcher.test.ts",
+          "testNames": [
+            "uses a stored peer signature to reach threshold in one add-signatures transaction"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/midgard-sdk/tests/da-attestation.test.ts",
+          "testNames": [
+            "rejects malformed, duplicate, already-attested, and out-of-committee witnesses",
+            "preflights add-signatures committee compatibility",
+            "preflights apply header and threshold requirements"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/peer-coordinator.test.ts",
+          "testNames": [
+            "rejects a local DA signer index that disagrees with the manifest peer",
+            "filters the local DA peer out of remote attestation targets"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
+          "testNames": [
+            "rejects an attestation whose announced peer differs from the remote peer",
+            "honors an exact zero attestation result limit"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
-        "tests": [],
+        "status": "PASS",
+        "tests": [
+          {
+            "path": "demo/da-committee-node/tests/scalus-add-signatures-eval.test.ts",
+            "testNames": [
+              "completes the one-signature AddSignatures transaction with local UPLC"
+            ]
+          },
+          {
+            "path": "demo/midgard-core/tests/da-transport.test.ts",
+            "testNames": [
+              "freezes protocol IDs, topics, domains, limits, and enum codes"
+            ]
+          }
+        ],
         "notApplicableReason": null
       },
       "obsoleteBranchEvidence": [],
-      "notes": []
+      "notes": [
+        "The Scalus test is a genuine cross-language check: the witness is produced by the TypeScript signer over the MidgardDAAttestationV1 preimage and is then verified by the compiled Aiken da-attestation validator under local UPLC evaluation, so a preimage divergence would fail the script rather than a mirrored constant assertion.",
+        "The transport layer never rewrites the witness; it only moves the exact 65-byte value that L1 will check."
+      ]
     },
     {
       "id": "D17",
@@ -2321,19 +4701,226 @@
       "canonicalResult": "Retain V1",
       "boundaryBindingAndPersistence": "Peer evidence and persistence",
       "requiredEvidence": "Conflicting signature/header tests",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "retain",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DaConflictEvidenceV1",
+            "DaConflictingSignatureHeaderEvidenceV1",
+            "DaConflictEvidenceKind",
+            "encodeDaConflictEvidenceV1Cbor",
+            "decodeDaConflictEvidenceV1Cbor",
+            "encodeDaConflictingSignatureHeaderEvidenceV1Cbor",
+            "decodeDaConflictingSignatureHeaderEvidenceV1Cbor"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/domain.ts",
+          "symbols": [
+            "DaStoredConflictEvidenceRecordV1",
+            "parseDaStoredConflictEvidenceRecordV1"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store.ts",
+          "symbols": [
+            "saveDaConflictEvidence",
+            "listDaConflictEvidence"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/store/postgres.ts",
+          "symbols": [
+            "saveDaConflictEvidence",
+            "assertConflictEvidenceRowIdentity"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DaConflictEvidenceV1",
+          "kind": "exact canonical CBOR gossip frame",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: deployment_fingerprint (32 bytes)",
+            "1: header_hash (28 bytes)",
+            "2: evidence_kind (enum code; 0 = conflicting_payload_bytes, 1 = invalid_roots, 2 = signature_without_retrieval, 3 = malformed_message, 4 = equivocation)",
+            "3: evidence_hash (32 bytes)",
+            "4: compact_evidence (bytes or null)"
+          ],
+          "constructorTags": [
+            "conflicting_payload_bytes = 0",
+            "invalid_roots = 1",
+            "signature_without_retrieval = 2",
+            "malformed_message = 3",
+            "equivocation = 4"
+          ],
+          "arrayArity": 5,
+          "boundary": "conflicts gossip topic, scoped to the deployment fingerprint",
+          "binding": "Only strictly signed authenticated gossip is dispatched to the conflict handler, and evidence for a foreign deployment is refused before persistence",
+          "persistence": "Accepted evidence becomes a DaStoredConflictEvidenceRecordV1",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaConflictEvidenceV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaConflictEvidenceV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaConflictingSignatureHeaderEvidenceV1",
+          "kind": "exact canonical CBOR compact-evidence sub-tuple",
+          "wireRepresentation": "Definite-length canonical CBOR array (tuple); every field is positionally addressed and decoded through one fixed-arity reader that rejects maps, extra members, and trailing bytes",
+          "versionPolicy": "Sole V1 transport shape. The protocol ID carries the literal transport version 1 and no adjacent version is decodable.",
+          "exactFields": [
+            "0: signer_index (unsigned)",
+            "1: da_vkey (bytes)",
+            "2: lower_header_hash (28 bytes)",
+            "3: lower_header_witness (65 bytes)",
+            "4: upper_header_hash (28 bytes)",
+            "5: upper_header_witness (65 bytes)"
+          ],
+          "constructorTagsNotApplicable": "Positional CBOR tuple; enum members are frozen unsigned codes rather than constructor tags.",
+          "arrayArity": 6,
+          "boundary": "compact_evidence body of an equivocation conflict frame",
+          "binding": "Both witnesses must verify against the same committee vkey over their respective MidgardDAAttestationV1 preimages, so forged evidence is rejected before it can be stored",
+          "persistence": "Stored as the compact evidence CBOR hex of the conflict record",
+          "encoders": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "encodeDaConflictingSignatureHeaderEvidenceV1Cbor"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "decodeDaConflictingSignatureHeaderEvidenceV1Cbor"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "DaStoredConflictEvidenceRecordV1",
+          "kind": "exact persisted JSON/Postgres record",
+          "wireRepresentation": "JSON object parsed by one exact-key parser used on both writes and reads; unknown or missing keys fail closed",
+          "versionPolicy": "conflictSchemaVersion is required and exactly numeric 1; no missing or defaulted value is accepted",
+          "exactFields": [
+            "required: conflictSchemaVersion (exactly 1)",
+            "required: deploymentFingerprint",
+            "required: headerHash",
+            "required: conflictingHeaderHash",
+            "required: signerIndex",
+            "required: evidenceKind (exactly the literal equivocation)",
+            "required: evidenceHash",
+            "required: compactEvidenceCborHex",
+            "required: reporterPeerId",
+            "required: receivedAt"
+          ],
+          "constructorTagsNotApplicable": "Exact JSON record; evidenceKind is a validated string literal rather than a constructor tag.",
+          "arrayArityNotApplicable": "Exact JSON record.",
+          "boundary": "Committee JSON watcher state and the Postgres conflict-evidence table",
+          "binding": "The row identity is asserted against the parsed record on read, and repeated reports of the same conflict deduplicate to one stored record",
+          "persistence": "JSON watcher state or the watcher conflict-evidence Postgres rows",
+          "encoders": [
+            {
+              "path": "demo/da-committee-node/src/store.ts",
+              "symbols": [
+                "saveDaConflictEvidence"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/da-committee-node/src/domain.ts",
+              "symbols": [
+                "parseDaStoredConflictEvidenceRecordV1"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "matches golden vectors for remaining request-response and gossip tuples",
+            "freezes hash lengths and V1 helper preimages"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/conflict-evidence.test.ts",
+          "testNames": [
+            "persists authenticated conflicting signatures once and survives restart"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "deduplicates and reloads only exact explicit-V1 conflict evidence records"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/watcher.test.ts",
+          "testNames": [
+            "registers the store-backed conflict handler before libp2p startup"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport-vectors.test.ts",
+          "testNames": [
+            "rejects adjacent versions, languages, widths, and tuple arities"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/conflict-evidence.test.ts",
+          "testNames": [
+            "rejects forged, malformed, and wrong-deployment evidence before persistence"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/libp2p-runtime.test.ts",
+          "testNames": [
+            "dispatches conflicts only from strictly signed authenticated gossip messages"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/store-factory.test.ts",
+          "testNames": [
+            "rejects malformed DA records when opening an existing JSON store"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "Conflict evidence is committee-internal gossip and persistence; Aiken never decodes it. The attestation witnesses it embeds share the D16 preimage, whose cross-language agreement is proved there."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "D17-retired-da-conflict-evidence-identities"
+        }
+      ],
+      "notes": [
+        "The same exact-key parser runs on writes and reads, so a corrupt historical row fails closed instead of being partially accepted.",
+        "Authentication precedes persistence: forged, malformed, and wrong-deployment evidence never reaches the store."
+      ]
     },
     {
       "id": "D18",
@@ -2343,19 +4930,160 @@
       "canonicalResult": "DaRuntimeManifestV1`; `midgard-da-libp2p-runtime-manifest-v1",
       "boundaryBindingAndPersistence": "Producer/watcher startup",
       "requiredEvidence": "Exact manifest parser and deployment identity",
-      "disposition": "UNVERIFIED",
-      "auditStatus": "UNVERIFIED",
-      "sourceEvidence": [],
-      "canonicalForms": [],
-      "positiveEvidence": [],
-      "rejectionEvidence": [],
+      "disposition": "reset-to-v1",
+      "auditStatus": "PASS",
+      "sourceEvidence": [
+        {
+          "path": "demo/midgard-core/src/da-transport.ts",
+          "symbols": [
+            "DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION",
+            "DA_LIBP2P_RUNTIME_MANIFEST_IDENTITY_SOURCE",
+            "DaLibp2pRuntimeManifest",
+            "parseDaLibp2pRuntimeManifest"
+          ]
+        },
+        {
+          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "symbols": [
+            "daRuntimeManifestSchemaVersion"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/src/config.ts",
+          "symbols": [
+            "parseDaLibp2pRuntimeManifest"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/src/index.ts",
+          "symbols": [
+            "generateDaLibp2pRuntimeManifest",
+            "writeDaLibp2pRuntimeManifest"
+          ]
+        }
+      ],
+      "canonicalForms": [
+        {
+          "name": "DA libp2p runtime manifest V1 (midgard-da-libp2p-runtime-manifest-v1)",
+          "kind": "exact persisted JSON startup artifact",
+          "wireRepresentation": "JSON object written atomically by the producer and parsed by one exact-key parser on producer, committee, and watcher startup; every unknown or missing root and nested key fails closed",
+          "versionPolicy": "schemaVersion is required and exactly the literal midgard-da-libp2p-runtime-manifest-v1; the identity source is exactly contract_deployment_manifest_id and no other manifest schema is loadable",
+          "exactFields": [
+            "required: schemaVersion (exactly midgard-da-libp2p-runtime-manifest-v1)",
+            "required: network",
+            "required: deployment{fingerprint, contract_deployment_manifest_id, contract_deployment_info_sha256, identity_source}",
+            "required: runtime_topology (producer variant: target, profile, producer_peer_id)",
+            "required: runtime_topology (watcher variant: target, profile, producer_peer_id, local_signer_index)",
+            "required: da_transport{kind, no_http_da_transport, listen_multiaddrs, announce_multiaddrs, bootstrap_multiaddrs, gossip, limits, retention_days}",
+            "required: da_transport.gossip{strict_sign, emit_self, allowed_topics_only, max_gossip_message_bytes}",
+            "required: da_transport.limits{max_payload_bytes, max_inline_response_bytes, max_chunk_bytes, max_streams_per_peer, request_timeout_ms}",
+            "required: da_committee{threshold, members}",
+            "required: da_committee.members[]{signer_index, da_vkey, peer_id, multiaddrs, roles}"
+          ],
+          "constructorTags": [
+            "da_transport.kind = libp2p",
+            "da_transport.no_http_da_transport = true",
+            "runtime_topology.target = producer | watcher",
+            "deployment.identity_source = contract_deployment_manifest_id"
+          ],
+          "arrayArityNotApplicable": "Exact JSON artifact, not a CBOR tuple.",
+          "boundary": "Producer and watcher startup, before any libp2p listen or dial",
+          "binding": "The manifest deployment fingerprint, contract deployment manifest id, and contract-deployment-info SHA-256 must agree with the loaded deployment and the consensus profile, and the manifest network must match the operator configuration",
+          "persistence": "A JSON file written atomically by the producer and read by every DA runtime; it is also the source of the deployment fingerprint that scopes every D06 protocol identifier",
+          "encoders": [
+            {
+              "path": "demo/midgard-node/src/index.ts",
+              "symbols": [
+                "writeDaLibp2pRuntimeManifest"
+              ]
+            }
+          ],
+          "parsers": [
+            {
+              "path": "demo/midgard-core/src/da-transport.ts",
+              "symbols": [
+                "parseDaLibp2pRuntimeManifest"
+              ]
+            }
+          ]
+        }
+      ],
+      "positiveEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "parses the exact canonical producer and watcher runtime manifests"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-libp2p-runtime-manifest.test.ts",
+          "testNames": [
+            "persists the exact runtime manifest atomically",
+            "emits compose service DNS addresses for compose profile",
+            "keeps producer retrieval peers on the producer port and out of producer bootstrap"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/config.test.ts",
+          "testNames": [
+            "parses only the exact V1 manifest and consensus-profile pairing",
+            "binds runtime-manifest network to deployment identity and operator config",
+            "parses libp2p DA transport manifests without HTTP endpoint config"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/deployment-fixture.test.ts",
+          "testNames": [
+            "produces a finalized manifest that passes canonical verification"
+          ]
+        }
+      ],
+      "rejectionEvidence": [
+        {
+          "path": "demo/midgard-core/tests/da-transport.test.ts",
+          "testNames": [
+            "rejects every unknown or missing root and nested runtime-manifest key"
+          ]
+        },
+        {
+          "path": "demo/da-committee-node/tests/config.test.ts",
+          "testNames": [
+            "rejects missing or unknown runtime-manifest root and nested keys",
+            "fails closed for invalid libp2p DA manifest security fields",
+            "rejects URL-shaped DA manifest fields and values in libp2p mode"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-libp2p-runtime-manifest.test.ts",
+          "testNames": [
+            "rejects stale or inconsistent producer runtime manifest identities",
+            "rejects incomplete contract deployment manifests",
+            "rejects local-only hosts in public profile"
+          ]
+        },
+        {
+          "path": "demo/midgard-node/tests/da-payload-libp2p-producer.test.ts",
+          "testNames": [
+            "rejects an unsupported runtime-manifest schema",
+            "rejects runtime manifests with split deployment identity",
+            "rejects HTTP-shaped DA manifest fields in libp2p mode"
+          ]
+        }
+      ],
       "crossLanguageEvidence": {
-        "status": "UNVERIFIED",
+        "status": "PASS",
         "tests": [],
-        "notApplicableReason": null
+        "notApplicableReason": "The runtime manifest is a host startup artifact that Aiken never reads; the deployment identity it binds is audited by the A-family deployment-manifest rows."
       },
-      "obsoleteBranchEvidence": [],
-      "notes": []
+      "obsoleteBranchEvidence": [
+        {
+          "scanId": "A01-retired-da-runtime-manifest-identities"
+        }
+      ],
+      "notes": [
+        "The retained v1 identity is asserted from three independent directions: the core schema-version constant, the consensus profile's daRuntimeManifestSchemaVersion, and the repository-owned zero-match scan for v2-and-later identities.",
+        "There is no v1 fixture reader left beside a v2 writer: the same parser serves generation, startup, and test fixtures, and an unsupported schema version is rejected at producer startup."
+      ]
     },
     {
       "id": "D19",
@@ -2370,15 +5098,22 @@
       "sourceEvidence": [
         {
           "path": "demo/da-committee-node/src/domain.ts",
-          "symbols": ["DaStoredPayloadRecordV1", "parseDaStoredPayloadRecordV1"]
+          "symbols": [
+            "DaStoredPayloadRecordV1",
+            "parseDaStoredPayloadRecordV1"
+          ]
         },
         {
           "path": "demo/da-committee-node/src/store.ts",
-          "symbols": ["parseDaStoredPayloadRecordV1"]
+          "symbols": [
+            "parseDaStoredPayloadRecordV1"
+          ]
         },
         {
           "path": "demo/da-committee-node/src/store/postgres.ts",
-          "symbols": ["parseDaStoredPayloadRecordV1"]
+          "symbols": [
+            "parseDaStoredPayloadRecordV1"
+          ]
         }
       ],
       "canonicalForms": [
@@ -2410,17 +5145,23 @@
           "encoders": [
             {
               "path": "demo/da-committee-node/src/store.ts",
-              "symbols": ["saveDaPayload"]
+              "symbols": [
+                "saveDaPayload"
+              ]
             },
             {
               "path": "demo/da-committee-node/src/store/postgres.ts",
-              "symbols": ["saveDaPayload"]
+              "symbols": [
+                "saveDaPayload"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/da-committee-node/src/domain.ts",
-              "symbols": ["parseDaStoredPayloadRecordV1"]
+              "symbols": [
+                "parseDaStoredPayloadRecordV1"
+              ]
             }
           ]
         }
@@ -2434,7 +5175,9 @@
         },
         {
           "path": "demo/da-committee-node/tests/postgres-store.test.ts",
-          "testNames": ["persists watcher state and detects payload conflicts"]
+          "testNames": [
+            "persists watcher state and detects payload conflicts"
+          ]
         }
       ],
       "rejectionEvidence": [
@@ -2447,7 +5190,9 @@
         },
         {
           "path": "demo/da-committee-node/tests/postgres-store.test.ts",
-          "testNames": ["persists watcher state and detects payload conflicts"]
+          "testNames": [
+            "persists watcher state and detects payload conflicts"
+          ]
         }
       ],
       "crossLanguageEvidence": {
@@ -2473,19 +5218,28 @@
       "sourceEvidence": [
         {
           "path": "demo/da-committee-node/src/domain.ts",
-          "symbols": ["DaSignatureRecordV1", "parseDaSignatureRecordV1"]
+          "symbols": [
+            "DaSignatureRecordV1",
+            "parseDaSignatureRecordV1"
+          ]
         },
         {
           "path": "demo/da-committee-node/src/peer/signatures.ts",
-          "symbols": ["parseDaSignatureRecordV1"]
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
         },
         {
           "path": "demo/da-committee-node/src/store.ts",
-          "symbols": ["parseDaSignatureRecordV1"]
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
         },
         {
           "path": "demo/da-committee-node/src/store/postgres.ts",
-          "symbols": ["parseDaSignatureRecordV1"]
+          "symbols": [
+            "parseDaSignatureRecordV1"
+          ]
         }
       ],
       "canonicalForms": [
@@ -2529,21 +5283,29 @@
           "encoders": [
             {
               "path": "demo/da-committee-node/src/store.ts",
-              "symbols": ["saveDaSignature"]
+              "symbols": [
+                "saveDaSignature"
+              ]
             },
             {
               "path": "demo/da-committee-node/src/store/postgres.ts",
-              "symbols": ["saveDaSignature"]
+              "symbols": [
+                "saveDaSignature"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/da-committee-node/src/domain.ts",
-              "symbols": ["parseDaSignatureRecordV1"]
+              "symbols": [
+                "parseDaSignatureRecordV1"
+              ]
             },
             {
               "path": "demo/da-committee-node/src/peer/signatures.ts",
-              "symbols": ["parseDaSignatureRecordV1"]
+              "symbols": [
+                "parseDaSignatureRecordV1"
+              ]
             }
           ]
         }
@@ -2600,11 +5362,19 @@
       "sourceEvidence": [
         {
           "path": "demo/midgard-sdk/src/ledger-state.ts",
-          "symbols": ["HeaderV1Schema", "encodeHeaderV1Cbor", "decodeHeaderV1Cbor", "hashBlockHeaderV1"]
+          "symbols": [
+            "HeaderV1Schema",
+            "encodeHeaderV1Cbor",
+            "decodeHeaderV1Cbor",
+            "hashBlockHeaderV1"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/ledger-state.ak",
-          "symbols": ["HeaderV1", "header_v1_is_valid"]
+          "symbols": [
+            "HeaderV1",
+            "header_v1_is_valid"
+          ]
         }
       ],
       "canonicalForms": [
@@ -2612,7 +5382,10 @@
           "schema": "midgard-header-v1-abi-v1",
           "version": 1,
           "name": "HeaderV1",
-          "constructor": { "tag": 0, "arity": 25 },
+          "constructor": {
+            "tag": 0,
+            "arity": 25
+          },
           "kind": "Plutus V3 constructor ABI",
           "wireRepresentation": "constructor tag 0 with 25 ordered fields in the canonical HeaderV1 Data encoding",
           "versionPolicy": "protocol_version is the final field and is exactly 1 for the V1 protocol",
@@ -2643,41 +5416,230 @@
             "operator_vkey",
             "protocol_version"
           ],
-          "constructorTags": [0],
+          "constructorTags": [
+            0
+          ],
           "constructorArity": 25,
           "arrayArityNotApplicable": "HeaderV1 is a constructor; its 25 fields are ordered constructor fields, not an array payload.",
           "blueprintDefinition": "midgard/ledger_state/HeaderV1",
           "groups": [
-            { "name": "roots", "start": 0, "count": 9 },
-            { "name": "counts", "start": 9, "count": 7 },
-            { "name": "metadata", "start": 16, "count": 9 }
+            {
+              "name": "roots",
+              "start": 0,
+              "count": 9
+            },
+            {
+              "name": "counts",
+              "start": 9,
+              "count": 7
+            },
+            {
+              "name": "metadata",
+              "start": 16,
+              "count": 9
+            }
           ],
           "fields": [
-            { "index": 0, "name": "prev_utxos_root", "sdkName": "prevUtxosRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardLedgerRoot" },
-            { "index": 1, "name": "utxos_root", "sdkName": "utxosRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardLedgerRoot" },
-            { "index": 2, "name": "withdrawals_root", "sdkName": "withdrawalsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/WithdrawalsRoot" },
-            { "index": 3, "name": "forced_transactions_root", "sdkName": "forcedTransactionsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/ForcedTransactionsRoot" },
-            { "index": 4, "name": "transactions_root", "sdkName": "transactionsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/MidgardTxsRoot" },
-            { "index": 5, "name": "deposits_root", "sdkName": "depositsRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/DepositsRoot" },
-            { "index": 6, "name": "transition_trace_root", "sdkName": "transitionTraceRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/TransitionTraceRoot" },
-            { "index": 7, "name": "event_to_step_root", "sdkName": "eventToStepRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/EventToStepRoot" },
-            { "index": 8, "name": "validation_traces_root", "sdkName": "validationTracesRoot", "group": "roots", "type": "bytes32", "aikenRef": "midgard/ledger_state/ValidationTracesRoot" },
-            { "index": 9, "name": "withdrawal_count", "sdkName": "withdrawalCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 10, "name": "forced_transaction_count", "sdkName": "forcedTransactionCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 11, "name": "l2_transaction_count", "sdkName": "l2TransactionCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 12, "name": "deposit_count", "sdkName": "depositCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 13, "name": "total_event_count", "sdkName": "totalEventCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 14, "name": "transition_step_count", "sdkName": "transitionStepCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 15, "name": "validation_trace_count", "sdkName": "validationTraceCount", "group": "counts", "type": "integer", "aikenRef": "Int" },
-            { "index": 16, "name": "start_time", "sdkName": "startTime", "group": "metadata", "type": "integer", "aikenRef": "midgard/common/types/PosixTime" },
-            { "index": 17, "name": "end_time", "sdkName": "endTime", "group": "metadata", "type": "integer", "aikenRef": "midgard/common/types/PosixTime" },
-            { "index": 18, "name": "block_slot", "sdkName": "blockSlot", "group": "metadata", "type": "integer", "aikenRef": "Int" },
-            { "index": 19, "name": "expected_network_id", "sdkName": "expectedNetworkId", "group": "metadata", "type": "integer", "aikenRef": "Int" },
-            { "index": 20, "name": "min_fee_a", "sdkName": "minFeeA", "group": "metadata", "type": "integer", "aikenRef": "Int" },
-            { "index": 21, "name": "min_fee_b", "sdkName": "minFeeB", "group": "metadata", "type": "integer", "aikenRef": "Int" },
-            { "index": 22, "name": "prev_header_hash", "sdkName": "prevHeaderHash", "group": "metadata", "type": "bytes28", "aikenRef": "midgard/ledger_state/HeaderHash" },
-            { "index": 23, "name": "operator_vkey", "sdkName": "operatorVkey", "group": "metadata", "type": "bytes28", "aikenRef": "aiken/crypto/VerificationKeyHash" },
-            { "index": 24, "name": "protocol_version", "sdkName": "protocolVersion", "group": "metadata", "type": "integer", "aikenRef": "Int" }
+            {
+              "index": 0,
+              "name": "prev_utxos_root",
+              "sdkName": "prevUtxosRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/MidgardLedgerRoot"
+            },
+            {
+              "index": 1,
+              "name": "utxos_root",
+              "sdkName": "utxosRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/MidgardLedgerRoot"
+            },
+            {
+              "index": 2,
+              "name": "withdrawals_root",
+              "sdkName": "withdrawalsRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/WithdrawalsRoot"
+            },
+            {
+              "index": 3,
+              "name": "forced_transactions_root",
+              "sdkName": "forcedTransactionsRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/ForcedTransactionsRoot"
+            },
+            {
+              "index": 4,
+              "name": "transactions_root",
+              "sdkName": "transactionsRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/MidgardTxsRoot"
+            },
+            {
+              "index": 5,
+              "name": "deposits_root",
+              "sdkName": "depositsRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/DepositsRoot"
+            },
+            {
+              "index": 6,
+              "name": "transition_trace_root",
+              "sdkName": "transitionTraceRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/TransitionTraceRoot"
+            },
+            {
+              "index": 7,
+              "name": "event_to_step_root",
+              "sdkName": "eventToStepRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/EventToStepRoot"
+            },
+            {
+              "index": 8,
+              "name": "validation_traces_root",
+              "sdkName": "validationTracesRoot",
+              "group": "roots",
+              "type": "bytes32",
+              "aikenRef": "midgard/ledger_state/ValidationTracesRoot"
+            },
+            {
+              "index": 9,
+              "name": "withdrawal_count",
+              "sdkName": "withdrawalCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 10,
+              "name": "forced_transaction_count",
+              "sdkName": "forcedTransactionCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 11,
+              "name": "l2_transaction_count",
+              "sdkName": "l2TransactionCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 12,
+              "name": "deposit_count",
+              "sdkName": "depositCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 13,
+              "name": "total_event_count",
+              "sdkName": "totalEventCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 14,
+              "name": "transition_step_count",
+              "sdkName": "transitionStepCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 15,
+              "name": "validation_trace_count",
+              "sdkName": "validationTraceCount",
+              "group": "counts",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 16,
+              "name": "start_time",
+              "sdkName": "startTime",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "midgard/common/types/PosixTime"
+            },
+            {
+              "index": 17,
+              "name": "end_time",
+              "sdkName": "endTime",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "midgard/common/types/PosixTime"
+            },
+            {
+              "index": 18,
+              "name": "block_slot",
+              "sdkName": "blockSlot",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 19,
+              "name": "expected_network_id",
+              "sdkName": "expectedNetworkId",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 20,
+              "name": "min_fee_a",
+              "sdkName": "minFeeA",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 21,
+              "name": "min_fee_b",
+              "sdkName": "minFeeB",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "Int"
+            },
+            {
+              "index": 22,
+              "name": "prev_header_hash",
+              "sdkName": "prevHeaderHash",
+              "group": "metadata",
+              "type": "bytes28",
+              "aikenRef": "midgard/ledger_state/HeaderHash"
+            },
+            {
+              "index": 23,
+              "name": "operator_vkey",
+              "sdkName": "operatorVkey",
+              "group": "metadata",
+              "type": "bytes28",
+              "aikenRef": "aiken/crypto/VerificationKeyHash"
+            },
+            {
+              "index": 24,
+              "name": "protocol_version",
+              "sdkName": "protocolVersion",
+              "group": "metadata",
+              "type": "integer",
+              "aikenRef": "Int"
+            }
           ],
           "boundary": "State-queue HeaderV1 datum, header hash, DA payload header, and counted root checks",
           "binding": "Canonical Plutus Data encoding and BLAKE2b-224 header hash; the registry verifier compares the exact ABI to the SDK runtime schema and generated Aiken blueprint",
@@ -2685,17 +5647,27 @@
           "encoders": [
             {
               "path": "demo/midgard-sdk/src/ledger-state.ts",
-              "symbols": ["HeaderV1Schema", "encodeHeaderV1Cbor", "hashBlockHeaderV1"]
+              "symbols": [
+                "HeaderV1Schema",
+                "encodeHeaderV1Cbor",
+                "hashBlockHeaderV1"
+              ]
             },
             {
               "path": "onchain/aiken/lib/midgard/ledger-state.ak",
-              "symbols": ["HeaderV1", "header_v1_is_valid"]
+              "symbols": [
+                "HeaderV1",
+                "header_v1_is_valid"
+              ]
             }
           ],
           "parsers": [
             {
               "path": "demo/midgard-sdk/src/ledger-state.ts",
-              "symbols": ["HeaderV1Schema", "decodeHeaderV1Cbor"]
+              "symbols": [
+                "HeaderV1Schema",
+                "decodeHeaderV1Cbor"
+              ]
             }
           ]
         }
@@ -2703,25 +5675,35 @@
       "positiveEvidence": [
         {
           "path": "demo/midgard-sdk/tests/header-v1.test.ts",
-          "testNames": ["has the exact L01 TypeScript CBOR and blake2b-224 vector"]
+          "testNames": [
+            "has the exact L01 TypeScript CBOR and blake2b-224 vector"
+          ]
         },
         {
           "path": "onchain/aiken/lib/midgard/ledger-state.test.ak",
-          "testNames": ["l01_header_v1_aiken_cbor_and_hash_vector_is_exact"]
+          "testNames": [
+            "l01_header_v1_aiken_cbor_and_hash_vector_is_exact"
+          ]
         },
         {
           "path": "demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs",
-          "testNames": ["accepts the canonical contract and matching SDK/Aiken projections"]
+          "testNames": [
+            "accepts the canonical contract and matching SDK/Aiken projections"
+          ]
         }
       ],
       "rejectionEvidence": [
         {
           "path": "demo/midgard-sdk/tests/header-v1.test.ts",
-          "testNames": ["has the exact L01 TypeScript CBOR and blake2b-224 vector"]
+          "testNames": [
+            "has the exact L01 TypeScript CBOR and blake2b-224 vector"
+          ]
         },
         {
           "path": "demo/scripts/verify-canonical-v1-header-v1-abi.test.mjs",
-          "testNames": ["rejects reordered, missing, extra, type, group, tag, and arity mutations"]
+          "testNames": [
+            "rejects reordered, missing, extra, type, group, tag, and arity mutations"
+          ]
         }
       ],
       "crossLanguageEvidence": {
@@ -2729,11 +5711,15 @@
         "tests": [
           {
             "path": "demo/midgard-node/tests/sdk-aiken-schema-parity.test.ts",
-            "testNames": ["matches %s to %s recursively"]
+            "testNames": [
+              "matches %s to %s recursively"
+            ]
           },
           {
             "path": "demo/scripts/verify-canonical-v1-header-v1-abi.mjs",
-            "testNames": ["HeaderV1 ABI verified: registry, SDK runtime schema, and Aiken blueprint agree"]
+            "testNames": [
+              "HeaderV1 ABI verified: registry, SDK runtime schema, and Aiken blueprint agree"
+            ]
           }
         ],
         "notApplicableReason": null
@@ -4616,7 +7602,7 @@
       "family": "A",
       "sourceOwnerAndCurrentIdentity": "Phase-5 DA measurement/distribution/fixture/strict-chain artifacts v1",
       "classification": "artifact",
-      "canonicalResult": "Invalidate/remove; regenerate only after §2.5 follow-up can produce complete V1 bytes within bounded publication",
+      "canonicalResult": "Invalidate/remove; regenerate only after \u00a72.5 follow-up can produce complete V1 bytes within bounded publication",
       "boundaryBindingAndPersistence": "No active reader, writer, package command, or evidence boundary remains; future bounded-publication evidence must use a newly audited canonical format.",
       "requiredEvidence": "Zero active matches for the retired package command, large-envelope/report inputs, and both Phase-5 evidence schema identities.",
       "disposition": "delete",
