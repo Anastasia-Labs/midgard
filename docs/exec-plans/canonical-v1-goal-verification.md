@@ -80,19 +80,13 @@ release.
 
 ## State-changing Preprod acceptance
 
-`pnpm --dir demo run goal:accept:testnet` is the only state-changing Goal
-command. It requires:
-
-- explicit `MIDGARD_GOAL_ACCEPT_TESTNET=YES`;
-- `NETWORK=preprod`, `L1_PROVIDER=Kupmios`, and no provider failover;
-- explicit local Kupo/Ogmios, wallet, DA submitter, and PostgreSQL environment
-  names required by the E2E acceptance skill;
-- a current passing E2E runbook preflight; and
-- the exact C80–C87, Q57/QG3, and W45–W46/WG2 orchestrator.
-
-It rejects Mainnet and refuses to substitute a narrower legacy acceptance
-flow. Secrets and raw runtime state are never closure artifacts; the
-orchestrator must retain immutable redacted evidence and hashes.
+The published state-changing Goal route is retired while C79 remains OPEN.
+The verification plan therefore contains no state-changing phase and the demo
+package publishes no `goal:accept:testnet` command. This is deliberate: the
+required C80–C87, Q57/QG3, and W45–W46/WG2 primitives are not complete, so a
+partial live command would violate the acceptance invariant and could imply
+evidence that does not exist. Reintroduce the route only when C79's complete
+orchestrator, runbook rehearsal, and prerequisite gates are implemented.
 
 ## Evidence and release commands
 

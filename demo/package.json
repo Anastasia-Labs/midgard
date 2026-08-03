@@ -25,7 +25,6 @@
     "goal:verify:fault-proofs": "node scripts/run-canonical-v1-goal-verification.mjs fault-proofs",
     "goal:verify:watcher": "node scripts/run-canonical-v1-goal-verification.mjs watcher",
     "goal:verify:local": "node scripts/run-canonical-v1-goal-verification.mjs local",
-    "goal:accept:testnet": "node scripts/run-canonical-v1-goal-verification.mjs accept-testnet",
     "goal:verify:evidence": "node scripts/run-canonical-v1-goal-verification.mjs evidence",
     "goal:verify:all": "node scripts/run-canonical-v1-goal-verification.mjs all",
     "goal:tasks:ready": "node scripts/canonical-v1-goal-tasks-ready.mjs",

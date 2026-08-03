@@ -1,7 +1,7 @@
 {
  "summary": {
-  "STILL_PRESENT": 49,
-  "ALREADY_FIXED": 4,
+  "STILL_PRESENT": 48,
+  "ALREADY_FIXED": 5,
   "INVALID": 1
  },
  "byVerdict": {
@@ -110,13 +110,6 @@
     "verdict": "STILL_PRESENT",
     "evidence": "All four sources unchanged since d145d19d. Legacy spec technical-spec/1-ledger-state/6-transaction.tex:12 defines `TxSet \u2254 Map(TxId, MidgardTxCompact)` (compact = body_hash/wits_hash/validity). technical-spec/6-offchain-data-architecture/1-da-layer.tex:48-49 instead maps `forced_transactions : [(TxOrderId, ForcedInclusionTx)]`, `transactions : [(TxId, L2TransactionSourceV1)]`. docs/consensus-profile-v1.md:100-109 declares `ForcedInclusionTxV1 { tx_id, compact_tx, field_preimage_hashes, operator_verdict }`. The SDK demo/midgard-sdk/src/ledger-state.ts:692-700 declares `ForcedInclusionTxV1Schema { tx_id, transaction_commitment, source, operator_validity }` with source = NativeTxProofSourceV1 { compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor } (lines 558-562) \u2014 different fields than the profile. Implementation commits the SDK shapes: demo/da-committee-node/src/da/payload.ts:243-252 roots body.transactions/body.forced_transactions directly. Disagreement stands.",
     "fixSketch": "Declare the SDK schemas normative; rewrite the TxSet equation in 6-transaction.tex and the ForcedInclusionTxV1 field list in consensus-profile-v1.md to match, and bind a cross-language fixture to the exact leaf CBOR encodings."
-   },
-   {
-    "id": "RF-032",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/package.json:29 still publishes `\"goal:accept:testnet\": \"node scripts/run-canonical-v1-goal-verification.mjs accept-testnet\"`; the plan (docs/exec-plans/evidence/canonical-v1-goal-verification-plan-v1.json, phase accept-testnet) runs `node demo/scripts/canonical-v1-goal-testnet-acceptance.mjs`, which at lines 59-67 resolves `demo/midgard-node/scripts/canonical-v1-goal-testnet-acceptance.mjs` and throws `\"C80-C87/Q57/QG3/W45-W46/WG2 testnet orchestrator is not implemented; refusing to substitute a narrower live flow\"` when absent. `ls` confirms that implementation file still does not exist, so the published acceptance command deterministically fails after env preflight. No commit in d145d19d..HEAD touched either script or package.json.",
-    "fixSketch": "Implement the guarded orchestrator at demo/midgard-node/scripts/canonical-v1-goal-testnet-acceptance.mjs, or remove the goal:accept:testnet script and accept-testnet plan phase and record the acceptance criterion as OPEN."
    },
    {
     "id": "RF-033",
@@ -342,7 +335,13 @@
     "fixSketch": ""
    }
   ],
-  "ALREADY_FIXED": [
+ "ALREADY_FIXED": [
+   {
+    "id": "RF-032",
+    "priority": "P1",
+    "verdict": "ALREADY_FIXED",
+    "evidence": "The published state-changing route is retired: demo/package.json no longer exposes goal:accept:testnet, the verification plan has no accept-testnet phase or state-changing phase, the old wrapper is removed, and the runner rejects direct accept-testnet requests with an explicit C79-OPEN error. C79 remains OPEN because its complete orchestrator and prerequisite live acceptance primitives are not present. This removes the misleading production route without claiming C80-C87/Q57/QG3/W45-W46/WG2 completion."
+   },
    {
     "id": "RF-004",
     "priority": "P1",

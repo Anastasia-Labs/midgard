@@ -19,6 +19,11 @@ const closurePath = resolve(
 const plan = JSON.parse(readFileSync(planPath, "utf8"));
 const requestedPhase = process.argv[2];
 
+if (requestedPhase === "accept-testnet") {
+  throw new Error(
+    "testnet acceptance is retired while C79 remains OPEN; no state-changing Goal route is published",
+  );
+}
 if (
   process.argv.length !== 3 ||
   typeof requestedPhase !== "string" ||
@@ -30,15 +35,6 @@ if (
     ).join("|")}>`,
   );
 }
-if (
-  requestedPhase === "accept-testnet" &&
-  process.env.MIDGARD_GOAL_ACCEPT_TESTNET !== "YES"
-) {
-  throw new Error(
-    "state-changing Preprod acceptance requires MIDGARD_GOAL_ACCEPT_TESTNET=YES",
-  );
-}
-
 // GOAL_SPEC §13.1: the aggregate commands run "with bounded resources". A
 // command that hangs must fail the phase rather than occupy the machine
 // forever, so every command gets a wall-clock bound: its own plan `timeoutMs`

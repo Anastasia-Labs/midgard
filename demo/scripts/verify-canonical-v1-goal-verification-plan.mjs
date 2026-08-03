@@ -82,10 +82,12 @@ assertTimeoutMs(
 if (
   plan.execution.mode !== "serial" ||
   plan.execution.stopOnFailure !== true ||
-  plan.execution.stateChangingPhase !== "accept-testnet" ||
+  plan.execution.stateChangingPhase !== null ||
   plan.execution.network !== "preprod"
 ) {
-  throw new Error("verification execution policy is not strict Preprod serial");
+  throw new Error(
+    "verification execution policy is not strict Preprod serial with no published state-changing phase",
+  );
 }
 
 const requiredPhases = [
@@ -94,7 +96,6 @@ const requiredPhases = [
   "fault-proofs",
   "watcher",
   "local",
-  "accept-testnet",
   "evidence",
   "all",
 ];
@@ -144,8 +145,10 @@ for (const phaseName of requiredPhases) {
   if (typeof phase.stateChanging !== "boolean") {
     throw new Error(`${phaseName}: stateChanging must be boolean`);
   }
-  if (phase.stateChanging !== (phaseName === "accept-testnet")) {
-    throw new Error(`${phaseName}: only accept-testnet may be state-changing`);
+  if (phase.stateChanging !== false) {
+    throw new Error(
+      `${phaseName}: retired plan must contain no state-changing phase`,
+    );
   }
   if (!Array.isArray(phase.commands)) {
     throw new Error(`${phaseName}: commands must be an array`);
@@ -217,17 +220,13 @@ if (
 ) {
   throw new Error("all must run local then evidence");
 }
-if (
-  JSON.stringify(plan.phases["accept-testnet"].dependsOn) !==
-  JSON.stringify(["local"])
-) {
-  throw new Error("accept-testnet must require all local gates first");
-}
-
 const commandText = Object.values(plan.phases)
   .flatMap(({ commands }) => commands)
   .map(({ argv }) => argv.join(" "))
   .join("\n");
+if ("goal:accept:testnet" in (packageManifest.scripts ?? {})) {
+  throw new Error("goal:accept:testnet must remain retired while C79 is OPEN");
+}
 for (const required of [
   "nix develop ./demo --command bash -c node --version && pnpm --version",
   // A bare `aiken --version` is not required as its own plan command:
@@ -283,8 +282,6 @@ const expectedScripts = {
     "node scripts/run-canonical-v1-goal-verification.mjs watcher",
   "goal:verify:local":
     "node scripts/run-canonical-v1-goal-verification.mjs local",
-  "goal:accept:testnet":
-    "node scripts/run-canonical-v1-goal-verification.mjs accept-testnet",
   "goal:verify:evidence":
     "node scripts/run-canonical-v1-goal-verification.mjs evidence",
   "goal:verify:all": "node scripts/run-canonical-v1-goal-verification.mjs all",

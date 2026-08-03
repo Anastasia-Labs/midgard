@@ -4,7 +4,7 @@
   "execution": {
     "mode": "serial",
     "stopOnFailure": true,
-    "stateChangingPhase": "accept-testnet",
+    "stateChangingPhase": null,
     "network": "preprod",
     "resourceBounds": {
       "defaultCommandTimeoutMs": 3600000
@@ -404,22 +404,6 @@
           "argv": [
             "node",
             "demo/scripts/canonical-v1-goal-conditional-make-spec.mjs"
-          ]
-        }
-      ]
-    },
-    "accept-testnet": {
-      "dependsOn": [
-        "local"
-      ],
-      "stateChanging": true,
-      "commands": [
-        {
-          "id": "testnet-preflight",
-          "cwd": ".",
-          "argv": [
-            "node",
-            "demo/scripts/canonical-v1-goal-testnet-acceptance.mjs"
           ]
         }
       ]

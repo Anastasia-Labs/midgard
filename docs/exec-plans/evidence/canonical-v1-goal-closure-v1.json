@@ -138,10 +138,6 @@
       "status": "BOUND"
     },
     {
-      "path": "demo/scripts/canonical-v1-goal-testnet-acceptance.mjs",
-      "status": "BOUND"
-    },
-    {
       "path": "docs/exec-plans/canonical-v1-goal-verification.md",
       "status": "BOUND"
     }
