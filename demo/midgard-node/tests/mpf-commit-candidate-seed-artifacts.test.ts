@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeArchitectureGCommitCandidateSeedInputV1,
   decodeArchitectureGCorpusFundingV1,
+  toJsonSafeCount,
   validateArchitectureGCommitCandidateSeedResultV1,
 } from "@/workers/utils/mpf-commit-candidate-artifacts.js";
 
@@ -74,6 +75,17 @@ const funding = () => ({
 });
 
 describe("Architecture G commit-candidate seed V1 artifacts", () => {
+  it("converts the database count only when it is JSON-safe", () => {
+    expect(toJsonSafeCount(50_000n, "mempool transaction count")).toBe(50_000);
+    expect(() => toJsonSafeCount(-1n, "mempool transaction count")).toThrow();
+    expect(() =>
+      toJsonSafeCount(
+        BigInt(Number.MAX_SAFE_INTEGER) + 1n,
+        "mempool transaction count",
+      ),
+    ).toThrow();
+  });
+
   it("accepts the complete canonical seed input", () => {
     const value = seedInput();
     expect(decodeArchitectureGCommitCandidateSeedInputV1(value)).toBe(value);

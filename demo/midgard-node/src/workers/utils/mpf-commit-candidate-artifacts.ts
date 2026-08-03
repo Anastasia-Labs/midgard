@@ -299,6 +299,17 @@ const nonNegativeSafeInteger = (value: unknown, label: string): number => {
   return value as number;
 };
 
+/** Converts a database count for a JSON artifact without truncation. */
+export const toJsonSafeCount = (count: bigint, label: string): number => {
+  const maximum = BigInt(Number.MAX_SAFE_INTEGER);
+  if (count < 0n || count > maximum) {
+    throw new Error(
+      `${label} must be a safe integer between 0 and ${maximum.toString()}: ${count.toString()}`,
+    );
+  }
+  return Number(count);
+};
+
 const positiveFiniteNumber = (value: unknown, label: string): number => {
   if (!Number.isFinite(value) || (value as number) <= 0) {
     throw new Error(`${label} must be a positive finite number`);

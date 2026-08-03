@@ -20,6 +20,7 @@ import { decodeCanonicalProbeRow } from "@/workers/mpf-engine-probe-corpus.js";
 import {
   decodeArchitectureGCommitCandidateSeedInputV1,
   decodeArchitectureGCorpusFundingV1,
+  toJsonSafeCount,
   validateArchitectureGCommitCandidateSeedResultV1,
 } from "@/workers/utils/mpf-commit-candidate-artifacts.js";
 
@@ -192,8 +193,12 @@ void (async () => {
         ),
       1,
     );
+    const mempoolTxCount = toJsonSafeCount(
+      yield* MempoolDB.retrieveTxCount,
+      "Candidate seed mempool transaction count",
+    );
     return {
-      mempoolTxCount: yield* MempoolDB.retrieveTxCount,
+      mempoolTxCount,
       fundingCount: funding.length,
       terminalLedgerCount: net.produced.length,
       deltaCount: processed.length,
