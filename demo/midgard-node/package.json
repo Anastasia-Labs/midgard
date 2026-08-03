@@ -29,6 +29,8 @@
     "init": "pnpm run build && node dist/index.js init",
     "bench:fixtures:generate": "node tests/benchmarks/scripts/generate-validation-fixtures.mjs",
     "fixtures:transition-trace:generate": "UPDATE_TRANSITION_TRACE_ABI_FIXTURE=1 vitest run tests/sdk-abi-fixtures.test.ts -t \"matches transition trace golden ABI fixture files\"",
+    "fixtures:transaction-root-v1": "pnpm --dir ../midgard-core run build && pnpm run build && node scripts/generate-transaction-root-v1-fixture.mjs",
+    "fixtures:transaction-root-v1:check": "pnpm --dir ../midgard-core run build && pnpm run build && node scripts/generate-transaction-root-v1-fixture.mjs --check",
     "bench:codec": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:quick": "export NODE_ENV='emulator' && export BENCH_QUICK=1 && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",
     "bench:codec:full": "export NODE_ENV='emulator' && vitest run --config vitest.bench.config.ts tests/benchmarks/midgard-tx-codec.bench.ts --disable-console-intercept",

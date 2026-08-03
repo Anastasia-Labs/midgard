@@ -95,18 +95,49 @@ The compact transaction commits each field hash and the full witness-set hash.
 The transaction id remains the domain-separated hash of the canonical compact
 body and version.
 
-A V1 transaction-order commitment contains the compact transaction, the fixed
-body fields, and the hash of every canonical dynamic field preimage. The
-forced-transactions source root maps the order id to:
+A V1 transaction-root value is the exact Plutus-Data projection produced by the
+production native encoder:
+
+```text
+L2TransactionSourceV1 {
+  tx_id,
+  transaction_commitment,
+  source: NativeTxProofSourceV1 {
+    compact_cbor,
+    witness_set_compact_cbor,
+    field_preimage_lengths_cbor,
+  },
+}
+```
+
+The map key is the 32-byte `tx_id`, and duplicate keys are rejected. A
+V1 transaction-order commitment uses the same source and adds the operator's
+terminal validity classification. The forced-transactions source root maps
+the serialized L1 order output reference (not the L2 transaction ID) to:
 
 ```text
 ForcedInclusionTxV1 {
   tx_id,
-  compact_tx,
-  field_preimage_hashes,
-  operator_verdict,
+  transaction_commitment,
+  source: NativeTxProofSourceV1 {
+    compact_cbor,
+    witness_set_compact_cbor,
+    field_preimage_lengths_cbor,
+  },
+  operator_validity,
 }
 ```
+
+The same L2 transaction may therefore occur under multiple order keys, and
+each forced value preserves the exact operator verdict constructor. The
+normal map is committed under `TransactionsV1RootDomain`; the forced map is
+committed under `ForcedTransactionsV1RootDomain`. These domains are distinct
+and are part of the counted-root preimage.
+The canonical input and generated TypeScript/Aiken golden are maintained at
+`demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json`; run
+`pnpm --dir demo run fixtures:transaction-root-v1:check` to verify that the
+derived JSON and Aiken projection are fresh. Set `MIDGARD_AIKEN_BIN` when a
+specific Aiken formatter executable must be used.
 
 Normal DA carries every canonical field preimage. A forced submission uses a
 staged L1 protocol for each field:

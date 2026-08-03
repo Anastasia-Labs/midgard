@@ -22,8 +22,8 @@ Transaction requests submitted to operators' mempools and forced transaction ord
     \begin{array}{ll}
         \T{utxos} : & \T{UtxoSet} \\
         \T{withdrawals} : & \T{WithdrawalSet} \\
-        \T{forced\_transactions} : & \T{ForcedTransactionSet} \\
-        \T{transactions} : & \T{TxSet} \\
+        \T{forced\_transactions} : & \T{ForcedTransactionSetV1} \\
+        \T{transactions} : & \T{TxSetV1} \\
         \T{deposits} : & \T{DepositSet} \\
         \T{transition\_trace} : & \T{TransitionTrace} \\
         \T{event\_to\_step} : & \T{EventToStep} \\
@@ -73,7 +73,9 @@ Each of these root hashes can be verified onchain by streaming over the correspo
 The source roots, \code{transition\_trace\_root}, \code{event\_to\_step\_root}, and \code{validation\_traces\_root} are counted, domain-separated commitments: fraud proofs can open membership, non-membership, and the committed member count for the relevant root.
 
 \Cref{fig:block-tx-mpt} shows an example MPT representation of a block's transactions.
-Each leaf stores a pair $(\T{TxId_i}, v_i)$ where $v_i : \T{MidgardTxCompact}$.
+Each normal-transaction leaf stores a pair $(\T{TxId_i}, v_i)$ where
+$v_i : \T{L2TransactionSourceV1}$; forced-transaction leaves use their
+\T{TxOrderId} key and \T{ForcedInclusionTxV1} value.
 These pairs are individually hashed to form the leaves $L_i$ of the tree.
 The hashes of sibling leaves are concatenated and hashed to form their parent nodes.
 The nodes $N_{ij}$ are formed by concatenating and hashing their children's hashes.

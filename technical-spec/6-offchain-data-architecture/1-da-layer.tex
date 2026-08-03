@@ -44,10 +44,10 @@ Operator debug endpoints are not a production DA source; challenger tooling must
         \T{header} : & \T{Header} \\
         \T{utxos} : & \T{[(ByteArray, ByteArray)]} \\
         \T{withdrawals} : & \T{[(WithdrawalId, WithdrawalInfo)]} \\
-        \T{forced\_transactions} : & \T{[(TxOrderId, ForcedInclusionTx)]} \\
+        \T{forced\_transactions} : & \T{[(TxOrderId, ForcedInclusionTxV1)]} \\
         \T{transactions} : & \T{[(TxId, L2TransactionSourceV1)]} \\
         \T{transaction\_preimages} : & \T{[(TxId, ByteArray)]} \\
-        \T{forced\_transaction\_preimages} : & \T{[(TxId, ByteArray)]} \\
+        \T{forced\_transaction\_preimages} : & \T{[(TxOrderId, ByteArray)]} \\
         \T{cek\_program\_material} : & \T{[(CekRoot, ByteArray)]} \\
         \T{deposits} : & \T{[(DepositId, DepositInfo)]} \\
         \T{transition\_trace} : & \T{[(Int, TransitionStep)]} \\
@@ -56,6 +56,17 @@ Operator debug endpoints are not a production DA source; challenger tooling must
         \T{counts} : & \T{HeaderCounts}
     \end{array} \right\}
 \end{equation*}
+
+The \code{transactions} member is the exact
+\code{Map(TxId, L2TransactionSourceV1)} projection committed by
+\code{transactions\_root}.  The \code{forced\_transactions} member is the
+exact \code{Map(TxOrderId, ForcedInclusionTxV1)} projection committed by
+\code{forced\_transactions\_root}; its key is the serialized L1 output
+reference, even when several orders carry the same L2 transaction.  The
+corresponding preimage arrays use those same keys and contain the canonical
+native transaction bytes.  The machine-readable contract and cross-language
+golden are generated from
+\code{demo/midgard-node/tests/fixtures/transaction-root-v1.canonical.json}.
 
 We are considering three solutions for the data availability layer (in decreasing preference):
 \begin{enumerate}

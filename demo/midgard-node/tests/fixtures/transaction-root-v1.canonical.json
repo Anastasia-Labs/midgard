@@ -1,0 +1,110 @@
+{
+  "schema": "midgard-transaction-root-v1-canonical-input",
+  "version": 1,
+  "transactions": [
+    {
+      "name": "alpha",
+      "version": "1",
+      "validity": "TxIsValid",
+      "body": {
+        "spendInputsPreimageCbor": "80",
+        "referenceInputsPreimageCbor": "80",
+        "outputsPreimageCbor": "80",
+        "fee": "0",
+        "validityIntervalStart": "-1",
+        "validityIntervalEnd": "-1",
+        "requiredObserversPreimageCbor": "80",
+        "requiredSignersPreimageCbor": "80",
+        "mintPreimageCbor": "80",
+        "scriptIntegrityHash": "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
+        "auxiliaryDataHash": "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+        "networkId": "255"
+      },
+      "witnessSet": {
+        "addrTxWitsPreimageCbor": "80",
+        "scriptTxWitsPreimageCbor": "80",
+        "redeemerTxWitsPreimageCbor": "80"
+      }
+    },
+    {
+      "name": "beta",
+      "version": "1",
+      "validity": "TxIsValid",
+      "body": {
+        "spendInputsPreimageCbor": "80",
+        "referenceInputsPreimageCbor": "80",
+        "outputsPreimageCbor": "80",
+        "fee": "7",
+        "validityIntervalStart": "-1",
+        "validityIntervalEnd": "100",
+        "requiredObserversPreimageCbor": "80",
+        "requiredSignersPreimageCbor": "80",
+        "mintPreimageCbor": "80",
+        "scriptIntegrityHash": "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8",
+        "auxiliaryDataHash": "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+        "networkId": "255"
+      },
+      "witnessSet": {
+        "addrTxWitsPreimageCbor": "80",
+        "scriptTxWitsPreimageCbor": "80",
+        "redeemerTxWitsPreimageCbor": "80"
+      }
+    }
+  ],
+  "forcedOrders": [
+    {
+      "name": "alpha-valid",
+      "transaction": "alpha",
+      "orderId": {
+        "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "outputIndex": "0"
+      },
+      "operatorValidity": "TxIsValid"
+    },
+    {
+      "name": "alpha-missing-input",
+      "transaction": "alpha",
+      "orderId": {
+        "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "outputIndex": "1"
+      },
+      "operatorValidity": "NonExistentInputUtxo"
+    },
+    {
+      "name": "alpha-invalid-signature",
+      "transaction": "alpha",
+      "orderId": {
+        "transactionId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "outputIndex": "2"
+      },
+      "operatorValidity": "InvalidSignature"
+    },
+    {
+      "name": "beta-failed-script",
+      "transaction": "beta",
+      "orderId": {
+        "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "outputIndex": "0"
+      },
+      "operatorValidity": "FailedScript"
+    },
+    {
+      "name": "beta-fee-too-low",
+      "transaction": "beta",
+      "orderId": {
+        "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "outputIndex": "1"
+      },
+      "operatorValidity": "FeeTooLow"
+    },
+    {
+      "name": "beta-unbalanced",
+      "transaction": "beta",
+      "orderId": {
+        "transactionId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "outputIndex": "2"
+      },
+      "operatorValidity": "UnbalancedTx"
+    }
+  ]
+}
