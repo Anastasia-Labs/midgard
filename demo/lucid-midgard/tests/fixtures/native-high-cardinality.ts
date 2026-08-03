@@ -1,9 +1,9 @@
 import type { MidgardCekProgramMaterialEntryV1 } from "@al-ft/midgard-core/cek-proof";
 import {
-  computeHash32,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeSingleCbor,
+  deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxBodyCompactV1,
   encodeMidgardNativeTxCompactV1,
   hashMidgardVersionedScript,
@@ -466,6 +466,12 @@ export const buildHighCardinalityNativeTxFixture =
     const completed = await builder.complete({ programMaterial });
     const signed = await completed.sign(wallet);
     const tx = decodeMidgardNativeTxFullV1FromCanonicalCbor(signed.txCbor);
+    // The compact witness-set fields commit to the V1 bounded-collection
+    // commitment of each preimage (native-witness.ts deriveNativeTxWitnessSetCompact),
+    // not to a raw blake2b of the preimage CBOR.
+    const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompactV1(
+      tx.witnessSet,
+    );
     const compactTxCbor = encodeMidgardNativeTxCompactV1(tx.compact);
     const compactBodyCbor = encodeMidgardNativeTxBodyCompactV1(
       tx.compact.transactionBody,
@@ -535,15 +541,9 @@ export const buildHighCardinalityNativeTxFixture =
           tx.compact.transactionBody.requiredSignersHash,
         ),
         mintHashHex: hex(tx.compact.transactionBody.mintHash),
-        addrTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.addrTxWitsPreimageCbor),
-        ),
-        scriptTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.scriptTxWitsPreimageCbor),
-        ),
-        redeemerTxWitsHashHex: hex(
-          computeHash32(tx.witnessSet.redeemerTxWitsPreimageCbor),
-        ),
+        addrTxWitsHashHex: hex(witnessSetCompact.addrTxWitsHash),
+        scriptTxWitsHashHex: hex(witnessSetCompact.scriptTxWitsHash),
+        redeemerTxWitsHashHex: hex(witnessSetCompact.redeemerTxWitsHash),
         witnessSetHashHex: hex(tx.compact.transactionWitnessSetHash),
       },
     };

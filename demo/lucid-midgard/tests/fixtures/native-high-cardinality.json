@@ -73,9 +73,9 @@
     "requiredObserversHashHex": "f9e0d6e641d40f55e7b4451d8d843876853c175474c09d4f61eaeabac0ff4000",
     "requiredSignersHashHex": "453dfb0d91ede6f16748af7c53dd089e3c66b793e029cf6ee93ac71d4c4adca9",
     "mintHashHex": "f35ee4999365b55237cbfe126a77ef8dfc525f96fb884a3cf7a9e34c629a5208",
-    "addrTxWitsHashHex": "ca022a7c6e8470ef0d9b5aa25220709c429d2286381d869fe3f594a4dcf3466e",
-    "scriptTxWitsHashHex": "1f2f5152e576c671d84a959ba1955ee6d4653438e5cb1325bdc88f4389d4867b",
-    "redeemerTxWitsHashHex": "5f36860f1d73dc4d7d100333a66af25ea6f912ac21463f981747502eeb2a1438",
+    "addrTxWitsHashHex": "53098ac6503b1aee0d2a1bf2978504eb707318a82606ae93c886f29012c8a316",
+    "scriptTxWitsHashHex": "2e404579b15728257e2af56f360c0ae9248a67c372dd08885d4ea4dfbcddede3",
+    "redeemerTxWitsHashHex": "eae134cc09135ef11b605ed1551b772e9f8b15631b0b8fc98b4d41af19fb0e5c",
     "witnessSetHashHex": "5ade743c42928720553c96e40a004cd9eda294022272374376ed9f93b6e6c184"
   }
 }

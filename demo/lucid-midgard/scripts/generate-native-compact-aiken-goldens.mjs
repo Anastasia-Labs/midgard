@@ -72,25 +72,19 @@ const replaceAllExact = (source, oldValue, newValue, label) => {
   return source.replaceAll(oldValue, newValue);
 };
 
-const replaceBodyHashAssertion = (
-  source,
-  fieldName,
-  preimageName,
-  freshHash,
-) => {
-  const literalPattern = new RegExp(
-    String.raw`compact\.body\.${escapeRegExp(fieldName)} == #"[0-9a-f]+"`,
-    "gu",
-  );
-  const literal = `compact.body.${fieldName} == #"${freshHash}"`;
-  if (literalPattern.test(source)) {
-    return source.replace(literalPattern, literal);
+// Rebinds a golden hash literal by VALUE, never by assertion text. Matching on
+// `compact.body.<field> == #"..."` is unsafe: that string is also a substring of
+// unrelated assertions such as `view.tx_compact.body.spend_inputs_hash == ...`
+// in self-contained shape tests, whose placeholder hashes belong to a locally
+// constructed struct and must not be bound to this golden transaction.
+const rebindHashLiteral = (source, staleHash, freshHash, label) => {
+  if (typeof freshHash !== "string" || staleHash === freshHash) {
+    return source;
   }
-  const raw = `blake2b_256(${preimageName}) == compact.body.${fieldName}`;
-  if (!source.includes(raw)) {
-    throw new Error(`missing ${fieldName} Aiken assertion`);
+  if (!source.includes(staleHash)) {
+    return source;
   }
-  return source.replace(raw, literal);
+  return replaceAllExact(source, staleHash, freshHash, label);
 };
 
 const updateNativeTxIdAssertion = (source) => {
@@ -152,7 +146,6 @@ const GENERATED_FAMILIES = [
       "onchain/aiken/lib/midgard/fraud-proofs/native-tx.high-cardinality.test.ak",
     compactName: "high_cardinality_compact_cbor",
     txIdName: "high_cardinality_tx_id",
-    replaceRawBodyAssertions: true,
   },
   {
     fixture: "tests/fixtures/native-size-balanced-15_5k.json",
@@ -160,29 +153,18 @@ const GENERATED_FAMILIES = [
       "onchain/aiken/lib/midgard/fraud-proofs/native-tx.size-balanced.test.ak",
     compactName: "size_balanced_compact_cbor",
     txIdName: "size_balanced_tx_id",
-    replaceRawBodyAssertions: false,
   },
 ];
 
-const BODY_ASSERTIONS = [
-  ["spend_inputs_hash", "spend_inputs_preimage_cbor", "spendInputsHashHex"],
-  [
-    "reference_inputs_hash",
-    "reference_inputs_preimage_cbor",
-    "referenceInputsHashHex",
-  ],
-  ["outputs_hash", "outputs_preimage_cbor", "outputsHashHex"],
-  [
-    "required_observers_hash",
-    "required_observers_preimage_cbor",
-    "requiredObserversHashHex",
-  ],
-  [
-    "required_signers_hash",
-    "required_signers_preimage_cbor",
-    "requiredSignersHashHex",
-  ],
-  ["mint_hash", "mint_preimage_cbor", "mintHashHex"],
+// Compact-body hash fields, in the order they appear in the compact body CBOR,
+// paired with the fixture JSON key that mirrors each one.
+const BODY_HASH_FIELDS = [
+  ["spendInputsHash", "spendInputsHashHex"],
+  ["referenceInputsHash", "referenceInputsHashHex"],
+  ["outputsHash", "outputsHashHex"],
+  ["requiredObserversHash", "requiredObserversHashHex"],
+  ["requiredSignersHash", "requiredSignersHashHex"],
+  ["mintHash", "mintHashHex"],
 ];
 
 for (const family of GENERATED_FAMILIES) {
@@ -217,25 +199,12 @@ for (const family of GENERATED_FAMILIES) {
     `${family.txIdName}`,
   );
   for (const [hashName, staleHash] of Object.entries(stale.hashes)) {
-    const freshHash = fresh.hashes[hashName];
-    if (typeof freshHash === "string" && aiken.includes(staleHash)) {
-      aiken = replaceAllExact(
-        aiken,
-        staleHash,
-        freshHash,
-        `${family.compactName}.${hashName}`,
-      );
-    }
-  }
-  if (family.replaceRawBodyAssertions) {
-    for (const [fieldName, preimageName, hashName] of BODY_ASSERTIONS) {
-      aiken = replaceBodyHashAssertion(
-        aiken,
-        fieldName,
-        preimageName,
-        fresh.hashes[hashName],
-      );
-    }
+    aiken = rebindHashLiteral(
+      aiken,
+      staleHash,
+      fresh.hashes[hashName],
+      `${family.compactName}.${hashName}`,
+    );
   }
   aiken = updateNativeTxIdAssertion(aiken);
   syncUtf8(aikenPath, aiken);
@@ -264,9 +233,11 @@ const ordinaryStaleTxId = extractConstant(
   ordinaryAiken,
   "golden_core_native_tx_id",
 );
+const ordinaryStaleDecoded = decodeMidgardNativeTxCompactV1(
+  Buffer.from(ordinaryStaleCompact, "hex"),
+);
 const ordinaryStaleWitnessSetHash = hex(
-  decodeMidgardNativeTxCompactV1(Buffer.from(ordinaryStaleCompact, "hex"))
-    .transactionWitnessSetHash,
+  ordinaryStaleDecoded.transactionWitnessSetHash,
 );
 const ordinaryFresh = deriveGolden(ordinaryFull);
 ordinaryAiken = replaceAllExact(
@@ -287,12 +258,12 @@ ordinaryAiken = replaceAllExact(
   ordinaryFresh.hashes.witnessSetHashHex,
   "ordinary witness-set hash",
 );
-for (const [fieldName, preimageName, hashName] of BODY_ASSERTIONS.slice(0, 3)) {
-  ordinaryAiken = replaceBodyHashAssertion(
+for (const [bodyField, hashName] of BODY_HASH_FIELDS) {
+  ordinaryAiken = rebindHashLiteral(
     ordinaryAiken,
-    fieldName,
-    preimageName,
+    hex(ordinaryStaleDecoded.transactionBody[bodyField]),
     ordinaryFresh.hashes[hashName],
+    `ordinary ${hashName}`,
   );
 }
 ordinaryAiken = updateNativeTxIdAssertion(ordinaryAiken);
