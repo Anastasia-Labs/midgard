@@ -72,6 +72,30 @@ const assertExactKeys = (value, path, keys) => {
   return object;
 };
 
+// Same exactness as assertExactKeys for required keys, plus a closed set of
+// optional keys. Used only where a field is genuinely absent for most records
+// (a command result carries transaction hashes only when it submitted
+// transactions); every other shape stays exact.
+const assertKeys = (value, path, required, optional) => {
+  const object = assertObject(value, path);
+  const allowed = new Set([...required, ...optional]);
+  const unexpected = Object.keys(object)
+    .filter((key) => !allowed.has(key))
+    .sort();
+  const missing = [...required].filter((key) => !(key in object)).sort();
+  if (unexpected.length > 0 || missing.length > 0) {
+    fail(
+      path,
+      `expected keys [${[...required].sort().join(", ")}] with optional [${[
+        ...optional,
+      ]
+        .sort()
+        .join(", ")}], received [${Object.keys(object).sort().join(", ")}]`,
+    );
+  }
+  return object;
+};
+
 const assertString = (value, path, { nonEmpty = true } = {}) => {
   if (typeof value !== "string" || (nonEmpty && value.length === 0)) {
     fail(path, "expected a non-empty string");
@@ -123,6 +147,14 @@ const assertCommit = (value, path, { nullable = false } = {}) => {
   }
   if (typeof value !== "string" || !COMMIT_PATTERN.test(value)) {
     fail(path, "expected a lowercase 40-character Git commit");
+  }
+  return value;
+};
+
+// A Cardano transaction identity is the exact 32-byte hash, lowercase hex.
+const assertTransactionHash = (value, path) => {
+  if (typeof value !== "string" || !SHA256_PATTERN.test(value)) {
+    fail(path, "expected a lowercase 32-byte transaction hash");
   }
   return value;
 };
@@ -188,17 +220,27 @@ const decodeBinding = (value, path) => {
   return object;
 };
 
+// GOAL_SPEC §13.2 records command, exit code, test count, duration, revision
+// and artifact identity; §13.3/F41 additionally require the transaction
+// identities of live acceptance evidence. `transactionHashes` is optional
+// because only state-changing target-testnet commands produce them — when it
+// is present it must name at least one exact 32-byte hash.
 const decodeCommandResult = (value, path) => {
-  const object = assertExactKeys(value, path, [
-    "artifactIdentity",
-    "command",
-    "durationMs",
-    "exitCode",
-    "finishedAt",
-    "id",
-    "revision",
-    "testCount",
-  ]);
+  const object = assertKeys(
+    value,
+    path,
+    [
+      "artifactIdentity",
+      "command",
+      "durationMs",
+      "exitCode",
+      "finishedAt",
+      "id",
+      "revision",
+      "testCount",
+    ],
+    ["transactionHashes"],
+  );
   assertString(object.id, `${path}.id`);
   assertArray(object.command, `${path}.command`).forEach((entry, index) =>
     assertString(entry, `${path}.command[${index}]`),
@@ -211,6 +253,51 @@ const decodeCommandResult = (value, path) => {
   assertCommit(object.revision, `${path}.revision`);
   assertNullableString(object.artifactIdentity, `${path}.artifactIdentity`);
   assertString(object.finishedAt, `${path}.finishedAt`);
+  if ("transactionHashes" in object) {
+    const hashes = assertArray(
+      object.transactionHashes,
+      `${path}.transactionHashes`,
+    );
+    if (hashes.length === 0) {
+      fail(
+        `${path}.transactionHashes`,
+        "omit the key instead of recording an empty transaction list",
+      );
+    }
+    hashes.forEach((entry, index) =>
+      assertTransactionHash(entry, `${path}.transactionHashes[${index}]`),
+    );
+    if (new Set(hashes).size !== hashes.length) {
+      fail(`${path}.transactionHashes`, "duplicate transaction hash");
+    }
+  }
+  return object;
+};
+
+// GOAL_SPEC §9.5: a decision row may end in a named residual launch blocker,
+// but only when it is recorded in root `public_testnet_readiness.md` and in
+// this manifest with the owner's explicit acceptance — never silence.
+// `ownerAccepted` therefore carries the same evidence burden as a PASS
+// criterion: acceptance without a bound evidence file is not acceptance.
+const decodeResidualBlocker = (value, path) => {
+  const object = assertExactKeys(value, path, [
+    "description",
+    "evidence",
+    "id",
+    "ownerAccepted",
+  ]);
+  assertString(object.id, `${path}.id`);
+  assertString(object.description, `${path}.description`);
+  assertBoolean(object.ownerAccepted, `${path}.ownerAccepted`);
+  assertArray(object.evidence, `${path}.evidence`).forEach((entry, index) =>
+    decodeFileBinding(entry, `${path}.evidence[${index}]`),
+  );
+  if (object.ownerAccepted && object.evidence.length === 0) {
+    fail(path, "ownerAccepted requires at least one bound evidence file");
+  }
+  if (object.ownerAccepted && !allBound(object.evidence)) {
+    fail(path, "ownerAccepted requires all evidence files to be bound");
+  }
   return object;
 };
 
@@ -242,9 +329,11 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     "generatedAt",
     "parameterSnapshot",
     "release",
+    "residualBlockers",
     "revision",
     "schema",
     "secrets",
+    "targetTestnetParameterSnapshot",
     "toolchain",
     "validatorSet",
     "version",
@@ -307,7 +396,26 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     decodeTool(toolchain[key], `$.toolchain.${key}`);
   }
 
+  // GOAL_SPEC §13.3 and C70 require BOTH parameter snapshots: the trusted
+  // Cardano mainnet effective/pending parameters that fix the capability floor
+  // (`parameterSnapshot`, unchanged key so existing bindings keep their
+  // meaning) and the target-testnet effective/pending parameters the
+  // deployment is validated against (`targetTestnetParameterSnapshot`).
+  // Capability parity derives from the least restrictive applicable value
+  // across both (§3.1.10); one snapshot cannot answer both questions.
   decodeFileBinding(root.parameterSnapshot, "$.parameterSnapshot");
+  decodeFileBinding(
+    root.targetTestnetParameterSnapshot,
+    "$.targetTestnetParameterSnapshot",
+  );
+  if (
+    root.parameterSnapshot.path === root.targetTestnetParameterSnapshot.path
+  ) {
+    fail(
+      "$.targetTestnetParameterSnapshot",
+      "the mainnet capability-floor and target-testnet snapshots must be distinct files",
+    );
+  }
   decodeFileBinding(root.blueprint, "$.blueprint");
   decodeBinding(root.validatorSet, "$.validatorSet");
   assertArray(root.closureArtifacts, "$.closureArtifacts").forEach(
@@ -339,10 +447,7 @@ export const decodeCanonicalV1GoalClosure = (input) => {
     );
   }
   if (deployment.status === "BOUND" && !allBound(deployment.evidence)) {
-    fail(
-      "$.deployment",
-      "BOUND requires all evidence files to be bound",
-    );
+    fail("$.deployment", "BOUND requires all evidence files to be bound");
   }
 
   assertArray(root.fixtureSets, "$.fixtureSets").forEach((entry, index) =>
@@ -351,6 +456,18 @@ export const decodeCanonicalV1GoalClosure = (input) => {
   assertArray(root.commandResults, "$.commandResults").forEach((entry, index) =>
     decodeCommandResult(entry, `$.commandResults[${index}]`),
   );
+
+  const residualBlockers = assertArray(
+    root.residualBlockers,
+    "$.residualBlockers",
+  );
+  residualBlockers.forEach((entry, index) =>
+    decodeResidualBlocker(entry, `$.residualBlockers[${index}]`),
+  );
+  const residualBlockerIds = residualBlockers.map(({ id }) => id);
+  if (new Set(residualBlockerIds).size !== residualBlockerIds.length) {
+    fail("$.residualBlockers", "duplicate id");
+  }
 
   const criteria = assertArray(root.acceptanceCriteria, "$.acceptanceCriteria");
   criteria.forEach((entry, index) =>
@@ -442,6 +559,7 @@ export const isReleaseReady = (manifest) =>
   manifest.revision.releaseCommit !== null &&
   manifest.revision.headCommit === manifest.revision.releaseCommit &&
   manifest.parameterSnapshot.status === "BOUND" &&
+  manifest.targetTestnetParameterSnapshot.status === "BOUND" &&
   manifest.blueprint.status === "BOUND" &&
   manifest.validatorSet.status === "BOUND" &&
   allBound(manifest.validatorSet.evidence) &&
@@ -460,4 +578,10 @@ export const isReleaseReady = (manifest) =>
   manifest.secrets.scanStatus === "PASS" &&
   manifest.secrets.evidence.length > 0 &&
   allBound(manifest.secrets.evidence) &&
+  // §9.5: an unaccepted or unevidenced residual launch blocker keeps release
+  // closed. An empty list is the healthy case, not a missing check.
+  manifest.residualBlockers.every(
+    ({ ownerAccepted, evidence }) =>
+      ownerAccepted === true && evidence.length > 0 && allBound(evidence),
+  ) &&
   manifest.release.status === "BOUND";

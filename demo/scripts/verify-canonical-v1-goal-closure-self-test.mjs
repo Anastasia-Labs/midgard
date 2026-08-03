@@ -31,10 +31,19 @@ const openEvidence = {
   path: "docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json",
   status: "OPEN",
 };
+// Counted rather than hard-coded: the printed total is the number of hostile
+// mutations this run actually rejected, so it can never drift from the suite.
+let hostileMutations = 0;
 const mustReject = (mutate, pattern) => {
   const candidate = clone(manifest);
   mutate(candidate);
   assert.throws(() => decodeCanonicalV1GoalClosure(candidate), pattern);
+  hostileMutations += 1;
+};
+let releaseGateRejections = 0;
+const mustNotBeReleaseReady = (candidate) => {
+  assert.equal(isReleaseReady(candidate), false);
+  releaseGateRejections += 1;
 };
 
 decodeCanonicalV1GoalClosure(manifest);
@@ -85,11 +94,118 @@ mustReject((candidate) => {
   candidate.secrets.evidence = [openEvidence];
 }, /PASS requires all evidence files to be bound/u);
 
+// GOAL_SPEC §13.3/C70 dual parameter snapshots: neither may be dropped, and
+// one file cannot stand in for both the mainnet capability floor and the
+// target-testnet deployment parameters.
+mustReject((candidate) => {
+  delete candidate.targetTestnetParameterSnapshot;
+}, /expected keys/u);
+mustReject((candidate) => {
+  candidate.targetTestnetParameterSnapshot.path =
+    candidate.parameterSnapshot.path;
+}, /must be distinct files/u);
+mustReject((candidate) => {
+  candidate.targetTestnetParameterSnapshot.status = "PASS";
+}, /expected one of OPEN, BOUND/u);
+
+// GOAL_SPEC §9.5 residual launch blockers: never silence, never unevidenced
+// owner acceptance, never a duplicate id.
+mustReject((candidate) => {
+  delete candidate.residualBlockers;
+}, /expected keys/u);
+mustReject((candidate) => {
+  candidate.residualBlockers = [
+    {
+      id: "RB-1",
+      description: "unaccepted",
+      ownerAccepted: "yes",
+      evidence: [],
+    },
+  ];
+}, /expected a boolean/u);
+mustReject((candidate) => {
+  candidate.residualBlockers = [
+    {
+      id: "RB-1",
+      description: "accepted without evidence",
+      ownerAccepted: true,
+      evidence: [],
+    },
+  ];
+}, /ownerAccepted requires at least one bound evidence file/u);
+mustReject((candidate) => {
+  candidate.residualBlockers = [
+    {
+      id: "RB-1",
+      description: "accepted with unbound evidence",
+      ownerAccepted: true,
+      evidence: [openEvidence],
+    },
+  ];
+}, /ownerAccepted requires all evidence files to be bound/u);
+mustReject((candidate) => {
+  candidate.residualBlockers = [
+    { id: "RB-1", description: "first", ownerAccepted: false, evidence: [] },
+    { id: "RB-1", description: "second", ownerAccepted: false, evidence: [] },
+  ];
+}, /duplicate id/u);
+mustReject((candidate) => {
+  candidate.residualBlockers = [
+    {
+      id: "RB-1",
+      description: "extra key",
+      ownerAccepted: false,
+      evidence: [],
+      owner: "someone",
+    },
+  ];
+}, /expected keys \[description, evidence, id, ownerAccepted\]/u);
+
+// F41 live-acceptance transaction identities: exact 32-byte hashes only, no
+// duplicates, and no empty list masquerading as recorded evidence.
+const syntheticCommandResult = {
+  artifactIdentity: null,
+  command: ["node", "self-test"],
+  durationMs: 1,
+  exitCode: 0,
+  finishedAt: manifest.generatedAt,
+  id: "self-test",
+  revision: manifest.revision.headCommit,
+  testCount: 1,
+};
+const commandResultWith = (candidate, patch) => {
+  candidate.commandResults = [
+    { ...(candidate.commandResults[0] ?? syntheticCommandResult), ...patch },
+  ];
+};
+mustReject((candidate) => {
+  commandResultWith(candidate, { transactionHashes: [] });
+}, /omit the key instead of recording an empty transaction list/u);
+mustReject((candidate) => {
+  commandResultWith(candidate, { transactionHashes: ["deadbeef"] });
+}, /expected a lowercase 32-byte transaction hash/u);
+mustReject((candidate) => {
+  commandResultWith(candidate, {
+    transactionHashes: ["a".repeat(64), "a".repeat(64)],
+  });
+}, /duplicate transaction hash/u);
+mustReject((candidate) => {
+  commandResultWith(candidate, { txHashes: ["a".repeat(64)] });
+}, /optional \[transactionHashes\]/u);
+
+// A recorded live-acceptance transaction list is accepted when it is exact.
+const transactionHashCandidate = clone(manifest);
+commandResultWith(transactionHashCandidate, {
+  transactionHashes: ["a".repeat(64), "b".repeat(64)],
+});
+decodeCanonicalV1GoalClosure(transactionHashCandidate);
+
 const releaseReadyCandidate = clone(manifest);
 releaseReadyCandidate.revision.worktree = "BASELINE_RELATIVE_CLEAN";
 releaseReadyCandidate.revision.releaseCommit =
   releaseReadyCandidate.revision.headCommit;
 releaseReadyCandidate.parameterSnapshot.status = "BOUND";
+releaseReadyCandidate.targetTestnetParameterSnapshot.status = "BOUND";
 releaseReadyCandidate.blueprint.status = "BOUND";
 releaseReadyCandidate.validatorSet = {
   identity: "validator-set",
@@ -128,13 +244,42 @@ releaseReadyCandidate.release.digest = "0".repeat(64);
 assert.equal(allBound([boundEvidence]), true);
 decodeCanonicalV1GoalClosure(releaseReadyCandidate);
 assert.equal(isReleaseReady(releaseReadyCandidate), true);
+
+// An unbound second C70 snapshot keeps release closed: §13.3 requires both.
+const singleSnapshotCandidate = clone(releaseReadyCandidate);
+singleSnapshotCandidate.targetTestnetParameterSnapshot.status = "OPEN";
+mustNotBeReleaseReady(singleSnapshotCandidate);
+
+// A named §9.5 residual launch blocker without recorded owner acceptance keeps
+// release closed; the same blocker with bound acceptance evidence does not.
+const residualBlockerCandidate = clone(releaseReadyCandidate);
+residualBlockerCandidate.residualBlockers = [
+  {
+    id: "RB-1",
+    description: "named residual launch blocker",
+    ownerAccepted: false,
+    evidence: [],
+  },
+];
+decodeCanonicalV1GoalClosure(residualBlockerCandidate);
+mustNotBeReleaseReady(residualBlockerCandidate);
+residualBlockerCandidate.residualBlockers[0].ownerAccepted = true;
+residualBlockerCandidate.residualBlockers[0].evidence = [boundEvidence];
+decodeCanonicalV1GoalClosure(residualBlockerCandidate);
+assert.equal(isReleaseReady(residualBlockerCandidate), true);
+
 releaseReadyCandidate.acceptanceCriteria[0].evidence = [openEvidence];
-assert.equal(isReleaseReady(releaseReadyCandidate), false);
+mustNotBeReleaseReady(releaseReadyCandidate);
+
+// The original suite carried 11 hostile mutations; new manifest fields may only
+// add to that set, never replace it.
+assert.ok(hostileMutations >= 11);
 
 process.stdout.write(
   `${JSON.stringify({
     status: "PASS",
-    hostileMutations: 11,
+    hostileMutations,
+    releaseGateRejections,
     criteria: manifest.acceptanceCriteria.length,
   })}\n`,
 );

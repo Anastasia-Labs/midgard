@@ -43,9 +43,69 @@ jobs:
         run: >-
           pnpm --dir demo/midgard-core run build &&
           pnpm --dir demo/midgard-sdk run build
+      # Deliberately NOT part of `goal:verify:static`. The verification plan
+      # forbids `--allow-incomplete` in any plan command, and the registry's
+      # strict run is the `evidence` phase's `evidence-format-registry-strict`
+      # gate for release. Until the remaining UNVERIFIED rows are closed, the
+      # structural (incomplete-tolerant) form is the honest CI gate and is
+      # invoked here directly rather than weakening a plan phase.
       - name: Verify incomplete canonical V1 format registry structure
         run: node demo/scripts/verify-canonical-v1-format-registry.mjs --allow-incomplete
       - name: Verify canonical watcher dependency map
         run: node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs
       - name: Verify canonical watcher focused-test evidence
         run: node demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs
+
+  # GOAL_SPEC.md §7 F40: "wires `goal:verify:static` into repository CI for the
+  # Goal branch so drift is caught between checkpoints." This job runs the
+  # static phase exactly as the plan defines it — no extra commands, no removed
+  # ones — so CI and a local `pnpm --dir demo run goal:verify:static` cannot
+  # disagree.
+  goal-static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The closure verifier asserts that the checked-out branch equals the
+          # manifest's declared branch and that the recorded revision descends
+          # into HEAD. A detached PR merge commit has no branch name and a
+          # shallow clone has no ancestry, so check out the head branch itself
+          # at full depth.
+          ref: ${{ github.head_ref || github.ref }}
+          fetch-depth: 0
+      - name: Resolve the Goal branch this closure manifest binds
+        id: scope
+        run: |
+          set -euo pipefail
+          declared="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync("docs/exec-plans/evidence/canonical-v1-goal-closure-v1.json","utf8")).revision.branch)')"
+          actual="$(git branch --show-current)"
+          printf 'declared Goal branch: %s\nchecked-out branch:  %s\n' "$declared" "$actual"
+          if [ "$declared" = "$actual" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Not the Goal branch: the static Goal phase is scoped to ${declared} and is not run here."
+          fi
+      - uses: aiken-lang/setup-aiken@v1.0.3
+        if: steps.scope.outputs.run == 'true'
+        with:
+          # The static phase asserts this compiler equals the version declared
+          # in onchain/aiken/aiken.toml, so it must be the released authority
+          # compiler, not the patched test fork used by Aiken CI.
+          version: v1.1.22
+      - uses: pnpm/action-setup@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install workspace dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: pnpm --dir demo install --frozen-lockfile
+      - name: Run the Goal static verification phase
+        if: steps.scope.outputs.run == 'true'
+        run: pnpm --dir demo run goal:verify:static

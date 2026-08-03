@@ -5,7 +5,10 @@
     "mode": "serial",
     "stopOnFailure": true,
     "stateChangingPhase": "accept-testnet",
-    "network": "preprod"
+    "network": "preprod",
+    "resourceBounds": {
+      "defaultCommandTimeoutMs": 3600000
+    }
   },
   "phases": {
     "static": {
@@ -229,7 +232,8 @@
           "argv": [
             "aiken",
             "check"
-          ]
+          ],
+          "timeoutMs": 43200000
         },
         {
           "id": "capability-criteria",
@@ -392,6 +396,14 @@
             "bash",
             "-c",
             "node --version && pnpm --version"
+          ]
+        },
+        {
+          "id": "local-conditional-make-spec",
+          "cwd": ".",
+          "argv": [
+            "node",
+            "demo/scripts/canonical-v1-goal-conditional-make-spec.mjs"
           ]
         }
       ]

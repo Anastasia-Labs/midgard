@@ -139,7 +139,9 @@ const verifyFileBinding = (binding, owner) => {
     return;
   }
   if (!existsSync(safeAbsolutePath(binding.path))) {
-    throw new Error(`${owner} binding references a missing file: ${binding.path}`);
+    throw new Error(
+      `${owner} binding references a missing file: ${binding.path}`,
+    );
   }
 };
 
@@ -150,6 +152,10 @@ for (const entry of manifest.dirtyBaseline.protectedPaths) {
 }
 
 verifyFileBinding(manifest.parameterSnapshot, "parameterSnapshot");
+verifyFileBinding(
+  manifest.targetTestnetParameterSnapshot,
+  "targetTestnetParameterSnapshot",
+);
 verifyFileBinding(manifest.blueprint, "blueprint");
 for (const entry of manifest.closureArtifacts) {
   verifyFileBinding(entry, "closureArtifacts");
@@ -170,6 +176,14 @@ for (const criterion of manifest.acceptanceCriteria) {
 }
 for (const entry of manifest.secrets.evidence) {
   verifyFileBinding(entry, "secrets");
+}
+// GOAL_SPEC §9.5: a residual launch blocker is only a legitimate outcome when
+// it is named here AND in root `public_testnet_readiness.md` with the owner's
+// explicit acceptance. Verify the acceptance evidence actually exists.
+for (const blocker of manifest.residualBlockers) {
+  for (const entry of blocker.evidence) {
+    verifyFileBinding(entry, `residualBlockers[${blocker.id}]`);
+  }
 }
 
 const commandIds = manifest.commandResults.map(({ id }) => id);
@@ -256,7 +270,11 @@ const verifyNoSecrets = () => {
     }
   };
   addBinding(manifest.parameterSnapshot);
+  addBinding(manifest.targetTestnetParameterSnapshot);
   addBinding(manifest.blueprint);
+  manifest.residualBlockers.forEach(({ evidence }) =>
+    evidence.forEach(addBinding),
+  );
   manifest.closureArtifacts.forEach(addBinding);
   manifest.validatorSet.evidence.forEach(addBinding);
   manifest.deployment.evidence.forEach(addBinding);
@@ -316,7 +334,12 @@ process.stdout.write(
     status,
     headCommit: currentHead,
     criteria: manifest.acceptanceCriteria.length,
+    passingCriteria: manifest.acceptanceCriteria.filter(
+      ({ status }) => status === "PASS",
+    ).length,
     protectedPaths: manifest.dirtyBaseline.protectedPaths.length,
+    commandResults: manifest.commandResults.length,
+    residualBlockers: manifest.residualBlockers.length,
     digestPreview,
   })}\n`,
 );

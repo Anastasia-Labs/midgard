@@ -27,6 +27,37 @@ const exactKeys = (value, path, expected) => {
   }
 };
 
+// Same exactness as exactKeys for required keys, plus a closed optional set.
+const requiredAndOptionalKeys = (value, path, required, optional) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path}: expected object`);
+  }
+  const allowed = new Set([...required, ...optional]);
+  const unexpected = Object.keys(value).filter((key) => !allowed.has(key));
+  const missing = required.filter((key) => !(key in value));
+  if (unexpected.length > 0 || missing.length > 0) {
+    throw new Error(`${path}: unexpected keys`);
+  }
+};
+
+// GOAL_SPEC §13.1 requires the aggregate commands to run with bounded
+// resources. A timeout may only ever be a positive integer of milliseconds
+// inside these bounds: below a minute it would truncate ordinary commands, and
+// above a day it would not bound anything a human waits on.
+const MINIMUM_TIMEOUT_MS = 60_000;
+const MAXIMUM_TIMEOUT_MS = 86_400_000;
+const assertTimeoutMs = (value, path) => {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < MINIMUM_TIMEOUT_MS ||
+    value > MAXIMUM_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `${path}: timeout must be an integer between ${MINIMUM_TIMEOUT_MS} and ${MAXIMUM_TIMEOUT_MS} milliseconds`,
+    );
+  }
+};
+
 exactKeys(plan, "$", ["execution", "phases", "schema", "version"]);
 if (
   plan.schema !== "midgard.canonical-v1-goal-verification-plan.v1" ||
@@ -37,9 +68,17 @@ if (
 exactKeys(plan.execution, "$.execution", [
   "mode",
   "network",
+  "resourceBounds",
   "stateChangingPhase",
   "stopOnFailure",
 ]);
+exactKeys(plan.execution.resourceBounds, "$.execution.resourceBounds", [
+  "defaultCommandTimeoutMs",
+]);
+assertTimeoutMs(
+  plan.execution.resourceBounds.defaultCommandTimeoutMs,
+  "$.execution.resourceBounds.defaultCommandTimeoutMs",
+);
 if (
   plan.execution.mode !== "serial" ||
   plan.execution.stopOnFailure !== true ||
@@ -85,6 +124,7 @@ const safeCwd = (cwd, path) => {
 
 const ids = [];
 let exactAikenSelectors = 0;
+let declaredTimeouts = 0;
 for (const phaseName of requiredPhases) {
   const phase = plan.phases[phaseName];
   exactKeys(phase, `$.phases.${phaseName}`, [
@@ -112,7 +152,16 @@ for (const phaseName of requiredPhases) {
   }
   phase.commands.forEach((command, index) => {
     const path = `$.phases.${phaseName}.commands[${index}]`;
-    exactKeys(command, path, ["argv", "cwd", "id"]);
+    requiredAndOptionalKeys(
+      command,
+      path,
+      ["argv", "cwd", "id"],
+      ["timeoutMs"],
+    );
+    if ("timeoutMs" in command) {
+      assertTimeoutMs(command.timeoutMs, `${path}.timeoutMs`);
+      declaredTimeouts += 1;
+    }
     if (typeof command.id !== "string" || command.id.length === 0) {
       throw new Error(`${path}: id must be non-empty`);
     }
@@ -208,6 +257,11 @@ for (const required of [
   "test:cardano-capability-p2:data-breadth",
   "verify-canonical-v1-goal-closure-self-test.mjs",
   "verify-canonical-v1-goal-static-policy.mjs",
+  // §13.2 requires `make spec` from the repository root, skipped only when
+  // technical-spec/ is unchanged. The plan carries no conditional command
+  // shape, so the condition lives in this wrapper; the wrapper itself is
+  // mandatory so the specification build cannot be quietly dropped.
+  "canonical-v1-goal-conditional-make-spec.mjs",
   "git diff --check",
   "git status --short",
 ]) {
@@ -234,6 +288,10 @@ const expectedScripts = {
   "goal:verify:evidence":
     "node scripts/run-canonical-v1-goal-verification.mjs evidence",
   "goal:verify:all": "node scripts/run-canonical-v1-goal-verification.mjs all",
+  // §13.1: F40 additionally provides the non-gating READY-task helper. It is
+  // scheduling tooling, so it is required to exist but is not a plan phase and
+  // no acceptance claim may cite it.
+  "goal:tasks:ready": "node scripts/canonical-v1-goal-tasks-ready.mjs",
 };
 for (const [name, expected] of Object.entries(expectedScripts)) {
   if (packageManifest.scripts?.[name] !== expected) {
@@ -247,6 +305,9 @@ process.stdout.write(
     phases: requiredPhases.length,
     commands: ids.length,
     exactAikenSelectors,
+    declaredTimeouts,
+    defaultCommandTimeoutMs:
+      plan.execution.resourceBounds.defaultCommandTimeoutMs,
     mode: plan.execution.mode,
     network: plan.execution.network,
     status: "PASS",

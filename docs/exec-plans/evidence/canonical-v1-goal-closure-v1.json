@@ -96,6 +96,10 @@
     "path": "docs/exec-plans/evidence/canonical-v1-parameter-snapshot-v1.json",
     "status": "OPEN"
   },
+  "targetTestnetParameterSnapshot": {
+    "path": "docs/exec-plans/evidence/canonical-v1-target-testnet-parameter-snapshot-v1.json",
+    "status": "OPEN"
+  },
   "blueprint": {
     "path": "onchain/aiken/plutus.json",
     "status": "OPEN"
@@ -171,7 +175,124 @@
       "status": "BOUND"
     }
   ],
-  "commandResults": [],
+  "commandResults": [
+    {
+      "id": "static-aiken-check-no-tests",
+      "command": ["aiken", "check", "--skip-tests"],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 41044,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:42.508Z"
+    },
+    {
+      "id": "static-closure-hostile-self-test",
+      "command": [
+        "node",
+        "demo/scripts/verify-canonical-v1-goal-closure-self-test.mjs"
+      ],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 30,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.405Z"
+    },
+    {
+      "id": "static-closure-schema",
+      "command": [
+        "node",
+        "demo/scripts/verify-canonical-v1-goal-closure.mjs",
+        "--schema-only"
+      ],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 40,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.372Z"
+    },
+    {
+      "id": "static-demo-format",
+      "command": ["pnpm", "--dir", "demo", "run", "format-check"],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 14127,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:56.638Z"
+    },
+    {
+      "id": "static-demo-lint",
+      "command": ["pnpm", "--dir", "demo", "run", "lint"],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 12908,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:16:09.549Z"
+    },
+    {
+      "id": "static-git-diff",
+      "command": ["git", "diff", "--check"],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 11,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.419Z"
+    },
+    {
+      "id": "static-git-status",
+      "command": ["git", "status", "--short"],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 6,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.427Z"
+    },
+    {
+      "id": "static-goal-policy",
+      "command": [
+        "node",
+        "demo/scripts/verify-canonical-v1-goal-static-policy.mjs"
+      ],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 31,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.461Z"
+    },
+    {
+      "id": "static-plan",
+      "command": [
+        "node",
+        "demo/scripts/verify-canonical-v1-goal-verification-plan.mjs"
+      ],
+      "exitCode": 0,
+      "testCount": null,
+      "durationMs": 25,
+      "revision": "e0a999fb2de9a649a25144ca4ddad9d044cc92d7",
+      "artifactIdentity": null,
+      "finishedAt": "2026-08-03T16:15:01.328Z"
+    },
+    {
+      "id": "watcher-focused-tests",
+      "command": [
+        "node",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
+      ],
+      "exitCode": 0,
+      "testCount": 356,
+      "durationMs": 114284,
+      "revision": "ff4a7fc37a393abac20a59c3cdb2cdf2a6c6532d",
+      "artifactIdentity": "midgard-watcher focused Vitest report: 14 files, 356/356 at the dependency-map expected counts",
+      "finishedAt": "2026-08-03T16:02:41.000Z"
+    }
+  ],
   "acceptanceCriteria": [
     {
       "id": "AC-00",
@@ -290,8 +411,21 @@
     },
     {
       "id": "AC-W12",
-      "status": "OPEN",
-      "evidence": []
+      "status": "PASS",
+      "evidence": [
+        {
+          "path": "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+          "status": "BOUND"
+        },
+        {
+          "path": "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json",
+          "status": "BOUND"
+        },
+        {
+          "path": "GOAL_PROGRESS.md",
+          "status": "BOUND"
+        }
+      ]
     },
     {
       "id": "AC-W13",
@@ -349,6 +483,7 @@
       "evidence": []
     }
   ],
+  "residualBlockers": [],
   "secrets": {
     "scanStatus": "OPEN",
     "evidence": []
