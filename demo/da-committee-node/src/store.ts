@@ -906,6 +906,8 @@ export const libp2pSubmittedDaPayloadRecord = (args: {
   sourcePeerId: "libp2p:payload-submit",
   fetchedAt: args.receivedAt.toISOString(),
   payloadFetchStatus: "available",
+  // A payload-submit ACK proves retention only.  The watcher must promote
+  // this to "verified" after strict inner payload/header validation.
   validationStatus: "fetched",
 });
 

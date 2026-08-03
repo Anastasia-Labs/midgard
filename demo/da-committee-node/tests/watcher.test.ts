@@ -1,3 +1,4 @@
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DaGossipTopic } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -1127,7 +1128,12 @@ describe("WatcherService", () => {
   it("fails closed for malformed locally accepted payload bytes", async () => {
     const dir = await tempDir();
     const { header, headerHash } = await makePayloadFixture();
-    const invalidPayload = Buffer.from("deadbeef", "hex");
+    // A payload-submit ACK can retain a canonical outer envelope whose inner
+    // body is malformed.  The watcher remains the sole semantic gate.
+    const invalidPayload = await wrapDaPayloadV1(
+      Buffer.from("deadbeef", "hex"),
+      { mode: "identity" },
+    );
     const seed = "00".repeat(31) + "01";
     const signer = await loadDaSigner(`hex:${seed}`);
     const config = minimalConfig({

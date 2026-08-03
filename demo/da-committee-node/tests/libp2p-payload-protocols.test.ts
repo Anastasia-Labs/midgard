@@ -1,4 +1,5 @@
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec";
 import { DaRequestTimeoutError } from "@al-ft/midgard-core/da-request-deadline";
 import {
   computeDaSha256Hash,
@@ -42,7 +43,11 @@ import {
   DaPayloadSubmitAdmission,
   processWideDaPayloadSubmitAdmission,
 } from "../src/da/libp2p/payload-source.js";
-import type { DaStoredPayloadRootSetV1, HeaderV1 } from "../src/domain.js";
+import type {
+  DaSignatureRecord,
+  DaStoredPayloadRootSetV1,
+  HeaderV1,
+} from "../src/domain.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
 
@@ -378,6 +383,79 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     });
   });
 
+  it("retains malformed and header-mismatched inner payloads as unverified envelopes", async () => {
+    const { handlers, store } = await makeHandlers();
+    const fixture = await makePayloadFixture();
+    const malformedInnerEnvelope = await wrapDaPayloadV1(
+      Buffer.from("deadbeef", "hex"),
+      { mode: "identity" },
+    );
+    const mismatchedHeaderHash = "fe".repeat(28);
+
+    const malformed = decodeDaPayloadSubmitResponseV1Cbor(
+      await handlers.handlePayloadSubmit(
+        encodeSubmit(fixture.headerHash, malformedInnerEnvelope),
+      ),
+    );
+    expect(malformed).toMatchObject({ status: "accepted", reasonCode: null });
+    const retainedMalformed = await store.getDaPayload(fixture.headerHash);
+    expect(retainedMalformed).toMatchObject({
+      payloadCborHex: malformedInnerEnvelope.toString("hex"),
+      validationStatus: "fetched",
+    });
+    expect(retainedMalformed?.rootSummary).toBeUndefined();
+    expect(retainedMalformed?.verifiedAt).toBeUndefined();
+
+    const headerMismatched = decodeDaPayloadSubmitResponseV1Cbor(
+      await handlers.handlePayloadSubmit(
+        encodeSubmit(mismatchedHeaderHash, fixture.payloadCbor),
+      ),
+    );
+    expect(headerMismatched).toMatchObject({
+      status: "accepted",
+      reasonCode: null,
+    });
+    await expect(
+      store.getDaPayload(mismatchedHeaderHash),
+    ).resolves.toMatchObject({
+      payloadCborHex: fixture.payloadCbor.toString("hex"),
+      validationStatus: "fetched",
+    });
+
+    const metadata = decodeDaMetadataByHeaderResponseV1Cbor(
+      await handlers.handleMetadataByHeader(
+        encodeDaPayloadByHeaderRequestV1Cbor({
+          deploymentFingerprint: deploymentFingerprintBytes,
+          headerHash: Buffer.from(fixture.headerHash, "hex"),
+          acceptedPayloadHashes: [computeDaSha256Hash(malformedInnerEnvelope)],
+          maxInlineBytes: 0,
+        }),
+      ),
+    );
+    expect(metadata).toMatchObject({ status: "found", localStatus: "staged" });
+
+    const attestationProtocol = new StoreBackedDaAttestationProtocol({
+      deploymentFingerprint,
+      localPeerId: "committee-peer",
+      committeeValidation: {
+        committeeKeys: [],
+        committeeSignersHash: "00".repeat(32),
+        threshold: 0,
+      },
+      store,
+    });
+    await expect(
+      attestationProtocol.acceptAttestation({
+        // The eligibility gate must reject before inspecting a peer signature.
+        record: { headerHash: fixture.headerHash } as DaSignatureRecord,
+        sourcePeerId: "remote-peer",
+      }),
+    ).resolves.toEqual({
+      status: "rejected",
+      reason: "verified payload is not available",
+    });
+  });
+
   it("serves bounded authenticated chunks when inline delivery is unavailable", async () => {
     const fixture = await makePayloadFixture();
     const { handlers } = await makeHandlers({
@@ -477,9 +555,9 @@ describe("canonical V1 DA libp2p payload protocols", () => {
     );
   });
 
-  it("rejects malformed, oversized, and hash-mismatched submissions", async () => {
+  it("rejects outer-envelope, schema, oversized, and hash mutations before storage", async () => {
     const fixture = await makePayloadFixture();
-    const { handlers } = await makeHandlers({
+    const { handlers, store } = await makeHandlers({
       maxPayloadBytes: fixture.payloadCbor.length - 1,
       maxChunkBytes: 64,
     });
@@ -496,8 +574,24 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       status: "rejected",
       reasonCode: "payload_too_large",
     });
+    await expect(
+      store.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
 
-    const permissive = (await makeHandlers()).handlers;
+    const { handlers: permissive, store: permissiveStore } =
+      await makeHandlers();
+    const malformedEnvelope = Buffer.from(fixture.payloadCbor);
+    malformedEnvelope[0] = (malformedEnvelope[0] ?? 0) ^ 0x01;
+    const malformed = decodeDaPayloadSubmitResponseV1Cbor(
+      await permissive.handlePayloadSubmit(
+        encodeSubmit(fixture.headerHash, malformedEnvelope),
+      ),
+    );
+    expect(malformed).toMatchObject({ status: "rejected" });
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+
     const mismatched = decodeDaPayloadSubmitResponseV1Cbor(
       await permissive.handlePayloadSubmit(
         encodeDaPayloadSubmitRequestV1Cbor({
@@ -515,6 +609,20 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       status: "rejected",
       reasonCode: "payload_hash_mismatch",
     });
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
+
+    const mutatedSchema = decodeSingleCbor(
+      encodeSubmit(fixture.headerHash, fixture.payloadCbor),
+    ) as unknown[];
+    mutatedSchema[3] = 2n;
+    await expect(
+      permissive.handlePayloadSubmit(encodeCbor(mutatedSchema)),
+    ).rejects.toBeInstanceOf(DaLibp2pPayloadProtocolError);
+    await expect(
+      permissiveStore.getDaPayload(fixture.headerHash),
+    ).resolves.toBeUndefined();
   });
 
   it("honors an exact zero attestation result limit", async () => {

@@ -15,6 +15,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "@al-ft/midgard-core/codec";
 import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_PROTOCOL_V1_VERSION,
   MIDGARD_VALIDATION_MACHINE_V1_VERSION,
@@ -122,18 +123,30 @@ const acceptedTraceDescriptor = (seed: number): string =>
     rejectionCodeHash: Buffer.alloc(32),
   }).toString("hex");
 
-export const makePayloadFixture = async (): Promise<{
+export const makePayloadFixture = async (
+  transactionCount = 3,
+): Promise<{
   readonly payload: SDK.DaPayloadV1;
   readonly innerPayloadCbor: Buffer;
   readonly payloadCbor: Buffer;
   readonly header: HeaderV1;
   readonly headerHash: string;
 }> => {
-  const transactions = [
-    canonicalTransaction(0n),
-    canonicalTransaction(1n),
-    canonicalTransaction(2n),
-  ].sort((left, right) => left.txId.localeCompare(right.txId));
+  if (
+    !Number.isSafeInteger(transactionCount) ||
+    transactionCount < 1 ||
+    transactionCount > MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount
+  ) {
+    throw new Error(
+      `fixture transaction count must be in [1, ${MIDGARD_CONSENSUS_LIMITS_V1.maxL2TransactionCount.toString()}]; got ${transactionCount.toString()}`,
+    );
+  }
+  const transactions = Array.from({ length: transactionCount }, (_, index) =>
+    canonicalTransaction(BigInt(index)),
+  ).sort((left, right) => left.txId.localeCompare(right.txId));
+  if (new Set(transactions.map(({ txId }) => txId)).size !== transactionCount) {
+    throw new Error("fixture transaction identities must be distinct");
+  }
   const sources = transactions.map(transactionSourceV1);
   const sourceEvents: readonly SDK.EventKey[] = transactions.map(
     ({ txId }) => ({ L2TransactionEventKey: { tx_id: txId } }),
@@ -149,11 +162,11 @@ export const makePayloadFixture = async (): Promise<{
   const counts: SDK.DaPayloadCountsV1 = {
     withdrawalCount: 0n,
     forcedTransactionCount: 0n,
-    l2TransactionCount: 3n,
+    l2TransactionCount: BigInt(transactionCount),
     depositCount: 0n,
-    totalEventCount: 3n,
-    transitionStepCount: 3n,
-    validationTraceCount: 3n,
+    totalEventCount: BigInt(transactionCount),
+    transitionStepCount: BigInt(transactionCount),
+    validationTraceCount: BigInt(transactionCount),
   };
   const placeholderHeader: HeaderV1 = {
     ...fixtureHeaderBase(),

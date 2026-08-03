@@ -31,7 +31,6 @@ import {
   type WatcherStore,
 } from "../../store.js";
 import { bytesToHex, hexToBytes, normalizeHex } from "../../utils/hex.js";
-import { decodeDaPayloadV1Strict } from "../payload.js";
 
 export type DaLibp2pPayloadProtocolStore = Pick<
   WatcherStore,
@@ -51,6 +50,20 @@ export type DaLibp2pPayloadProtocolHandlersOptions = {
   readonly store: DaLibp2pPayloadProtocolStore;
   readonly limits?: Partial<DaLibp2pPayloadProtocolLimits>;
   readonly now?: () => Date;
+};
+
+/**
+ * What an accepted inline payload-submit has established.
+ *
+ * This is deliberately only durable retention of a bounded, canonical outer
+ * envelope whose raw bytes are SHA-256-bound to the request.  It is not a
+ * decoded DA payload and must never be used as an attestation, signing, or
+ * proof-artifact eligibility signal.  The watcher owns the sole strict inner
+ * payload validation step.
+ */
+type RetainedDaPayloadAdmissionV1 = {
+  readonly payloadSchemaVersion: 1;
+  readonly rawEnvelopeSha256: Buffer;
 };
 
 export class DaLibp2pPayloadProtocolError extends Error {
@@ -154,13 +167,16 @@ export class DaLibp2pPayloadProtocolHandlers {
       return rejected("inline_submit_must_not_include_chunk_manifest");
     }
     const payloadBytes = Buffer.from(request.payloadBytes);
-    const checked = await this.checkInlineSubmitPayload(request, payloadBytes);
+    const checked = await this.checkInlineRetainedPayload(
+      request,
+      payloadBytes,
+    );
     if (!checked.ok) {
       return rejected(checked.reasonCode);
     }
 
     const headerHashHex = headerHash.toString("hex");
-    const payloadHashHex = payloadHash.toString("hex");
+    const payloadHashHex = checked.admission.rawEnvelopeSha256.toString("hex");
     const existing = await this.store.getDaPayload(headerHashHex);
     if (existing !== undefined && existing.validationStatus === "conflicted") {
       return encodeSubmitConflict(headerHash, payloadHash, "stored_conflict");
@@ -175,11 +191,11 @@ export class DaLibp2pPayloadProtocolHandlers {
           retryAfterMs: null,
         });
       }
-      const saved = await this.saveInlinePayload(
+      const saved = await this.retainInlinePayloadUnverified(
         headerHashHex,
         payloadHashHex,
         payloadBytes,
-        request.payloadSchemaVersion,
+        checked.admission.payloadSchemaVersion,
       );
       return saved.validationStatus === "conflicted"
         ? encodeSubmitConflict(
@@ -190,11 +206,11 @@ export class DaLibp2pPayloadProtocolHandlers {
         : encodeSubmitAccepted(headerHash, payloadHash);
     }
 
-    const saved = await this.saveInlinePayload(
+    const saved = await this.retainInlinePayloadUnverified(
       headerHashHex,
       payloadHashHex,
       payloadBytes,
-      request.payloadSchemaVersion,
+      checked.admission.payloadSchemaVersion,
     );
     return saved.validationStatus === "conflicted"
       ? encodeSubmitConflict(
@@ -393,11 +409,12 @@ export class DaLibp2pPayloadProtocolHandlers {
     return { ok: true, reasonCode: "chunked_submit_deferred" };
   }
 
-  private async checkInlineSubmitPayload(
+  private async checkInlineRetainedPayload(
     request: DaPayloadSubmitRequestV1,
     payloadBytes: Buffer,
   ): Promise<
-    { readonly ok: true } | { readonly ok: false; readonly reasonCode: string }
+    | { readonly ok: true; readonly admission: RetainedDaPayloadAdmissionV1 }
+    | { readonly ok: false; readonly reasonCode: string }
   > {
     if (payloadBytes.length === 0) {
       return { ok: false, reasonCode: "empty_payload" };
@@ -413,34 +430,32 @@ export class DaLibp2pPayloadProtocolHandlers {
       return { ok: false, reasonCode: "payload_hash_mismatch" };
     }
     try {
-      const unwrapped = await unwrapDaPayloadV1(payloadBytes, {
+      // This validates only the canonical outer envelope, bounded
+      // decompression, and the envelope's inner-byte hash.  Deliberately do
+      // not decode, traverse, or compare the inner DA transaction body here:
+      // the watcher is the sole semantic gate before any protocol eligibility.
+      await unwrapDaPayloadV1(payloadBytes, {
         maxPayloadBytes: this.limits.maxPayloadBytes,
       });
-      const payload = decodeDaPayloadV1Strict(unwrapped.innerBytes);
-      if (
-        payload.block_body.header_hash !== request.headerHash.toString("hex")
-      ) {
-        return { ok: false, reasonCode: "payload_header_hash_mismatch" };
-      }
-      if (payload.version !== SDK.DA_PAYLOAD_V1_VERSION) {
-        return { ok: false, reasonCode: "payload_schema_version_mismatch" };
-      }
     } catch (cause) {
       return {
         ok: false,
         reasonCode:
           cause instanceof DaPayloadEnvelopeError
             ? cause.reasonCode
-            : cause instanceof Error &&
-                cause.name === "DaPayloadValidationError"
-              ? "malformed_payload"
-              : "payload_decode_failed",
+            : "payload_envelope_check_failed",
       };
     }
-    return { ok: true };
+    return {
+      ok: true,
+      admission: {
+        payloadSchemaVersion: 1,
+        rawEnvelopeSha256: actualPayloadHash,
+      },
+    };
   }
 
-  private async saveInlinePayload(
+  private async retainInlinePayloadUnverified(
     headerHash: string,
     payloadHash: string,
     payloadBytes: Buffer,
@@ -732,10 +747,12 @@ const metadataForPayload = async (
       "stored payload schema version is not canonical V1",
     );
   }
-  const unwrapped = await unwrapDaPayloadV1(payloadBytes, {
+  await unwrapDaPayloadV1(payloadBytes, {
     maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
   });
-  decodeDaPayloadV1Strict(unwrapped.innerBytes);
+  // Metadata establishes only that the retained bytes are a valid bounded
+  // outer envelope.  Inner DA parsing and header/root validation stay in the
+  // watcher so a fetched record cannot be mistaken for a verified payload.
   return {
     status: "found",
     headerHash,
