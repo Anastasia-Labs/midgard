@@ -63,6 +63,10 @@ const expectedByFile = new Map([
     "public-da-client.test.ts",
     watcherEvidence.publicDaClient?.expectedFocusedTestCount,
   ],
+  [
+    "canonical-block-store.test.ts",
+    watcherEvidence.canonicalBlockStore?.expectedFocusedTestCount,
+  ],
   ["scaffold.test.ts", watcherEvidence.scaffold?.expectedFocusedTestCount],
 ]);
 
@@ -71,13 +75,13 @@ const fail = (message) => {
 };
 
 if (
-  expectedByFile.size !== 14 ||
+  expectedByFile.size !== 15 ||
   [...expectedByFile.values()].some(
     (count) => !Number.isSafeInteger(count) || count <= 0,
   )
 ) {
   fail(
-    "dependency map must declare a positive expected count for all 14 files",
+    "dependency map must declare a positive expected count for all 15 files",
   );
 }
 

@@ -30,6 +30,7 @@
       "demo/midgard-watcher/src/l1-adapter.ts",
       "demo/midgard-watcher/src/multi-provider-consistency.ts",
       "demo/midgard-watcher/src/proof-thread-indexer.ts",
+      "demo/midgard-watcher/src/canonical-block-store.ts",
       "demo/midgard-watcher/src/public-da-client.ts",
       "demo/midgard-watcher/src/public-da-libp2p-transport.ts",
       "demo/midgard-watcher/src/rollback-engine.ts",
@@ -40,6 +41,7 @@
       "demo/midgard-watcher/src/user-event-indexer.ts",
       "demo/midgard-watcher/tests/config.test.ts",
       "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts",
+      "demo/midgard-watcher/tests/canonical-block-store.test.ts",
       "demo/midgard-watcher/tests/deployment-identity.test.ts",
       "demo/midgard-watcher/tests/durable-store.test.ts",
       "demo/midgard-watcher/tests/finality-engine.test.ts",
@@ -325,6 +327,9 @@
     "publicDaClient": {
       "expectedFocusedTestCount": 102
     },
+    "canonicalBlockStore": {
+      "expectedFocusedTestCount": 46
+    },
     "scaffold": {
       "expectedFocusedTestCount": 5
     },
@@ -332,7 +337,7 @@
       "W04",
       "W10-OPERATIONAL-WIRE",
       "W14-LIVE-PROVENANCE",
-      "W20-W22",
+      "W22",
       "W24-W46",
       "WG1",
       "WG2"
