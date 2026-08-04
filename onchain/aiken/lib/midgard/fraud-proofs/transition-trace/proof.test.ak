@@ -1619,7 +1619,11 @@ test rejects_valid_deposit_transition_with_wrong_network_id() {
   )
 }
 
-test accepts_l2_transaction_transition_fault() {
+// Q43 structural-N/A adversarial control: a canonical valid normal L2
+// transaction must apply its exact delete/insert transition. Reusing its
+// authenticated pre-root as the claimed post-root makes the transition a
+// no-op; the accepted-transaction final route must still convict it.
+test accepts_valid_l2_transaction_no_op_transition_fault() {
   let spent_input = native_input(h32_a, 0)
   let spent_key = native_components.encode_midgard_tx_input(spent_input)
   let spent_value = native_output_cbor()
@@ -1655,7 +1659,7 @@ test accepts_l2_transaction_transition_fault() {
     event_key,
     ledger_state.L2Transaction,
     pre_root,
-    h32_b,
+    pre_root,
   )
   let trace_proof = trace_membership(opened_step)
   let event_to_step = event_to_step_membership(

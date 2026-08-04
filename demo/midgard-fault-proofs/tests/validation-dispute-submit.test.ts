@@ -404,6 +404,50 @@ describe("validation-dispute transaction validity", () => {
         proofItemReferenceInputIndex: 0n,
       }),
     ).toThrow(/complete item/u);
+
+    // C21-STAGE4 Option B′ disposition: resolver 8 / semantic resolver 0
+    // does not consume a TransactionFieldItemWitness any more. Option A made
+    // the stage-four fold proof-only (tag 29), so admitting the proof-item
+    // datum's tag-30 item through a reference-input ABI would create a route
+    // that cannot be semantically equivalent to the direct proof. Keep the
+    // direct deployed ABI parseable and fail closed on that reference route.
+    const stageFourAuxiliaryCbor = Buffer.from(
+      Data.to(new Constr(29, [completeCollectionProof]) as never),
+      "hex",
+    );
+    const stageFourDirect = encodeValidationSemanticResolutionRedeemerV1({
+      oneStepArgument: {
+        resolverIndex: 8,
+        semanticResolverIndex: 0,
+        transitionCbor,
+        auxiliaryCbor: stageFourAuxiliaryCbor,
+      },
+      inputIndex: 0n,
+      outputIndex: 0n,
+    });
+    expect(
+      parseExactAikenDataCbor({
+        blueprint,
+        definitionName:
+          "fraud_proofs/validation_trace/script_sources_non_output_semantic_v1/SpendRedeemer",
+        cbor: stageFourDirect.toString("hex"),
+        maxBytes: 16 * 1024 - 1,
+      }),
+    ).toBeInstanceOf(Constr);
+    expect(() =>
+      encodeValidationSemanticResolutionRedeemerV1({
+        oneStepArgument: {
+          resolverIndex: 8,
+          semanticResolverIndex: 0,
+          transitionCbor,
+          auxiliaryCbor: stageFourAuxiliaryCbor,
+        },
+        inputIndex: 0n,
+        outputIndex: 0n,
+        proofItemReferenceInputIndex: 0n,
+      }),
+    ).toThrow(/CanonicalDecode complete item/u);
+
     const sourceFields = [
       0n,
       0n,

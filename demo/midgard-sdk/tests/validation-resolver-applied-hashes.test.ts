@@ -119,5 +119,27 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
         contracts.computationThread.policyId,
       ),
     );
+
+    const scriptSourcesNonOutput = blueprint.validators.find(
+      (entry) =>
+        entry.title ===
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
+          .scriptSourcesNonOutput,
+    );
+    if (scriptSourcesNonOutput === undefined) {
+      throw new Error("ScriptSources non-output semantic validator is missing");
+    }
+    // C21-STAGE4 Option B′: resolver 8 / semantic 0 remains the two-parameter
+    // generic resolver. Its ABI deliberately has no proof-item reference
+    // variant because stage four now authenticates tag-29 proof-only evidence.
+    expect(deployedSemanticHashes[32]).toBe(
+      validatorToScriptHash({
+        type: "PlutusV3",
+        script: applyParamsToScript(scriptSourcesNonOutput.compiledCode, [
+          contracts.validationTraceDispute.award.spendingScriptHash,
+          contracts.computationThread.policyId,
+        ]),
+      }),
+    );
   });
 });
