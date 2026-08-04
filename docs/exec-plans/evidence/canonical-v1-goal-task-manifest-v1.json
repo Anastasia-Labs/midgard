@@ -292,7 +292,7 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json ../docs/exec-plans/templates/README.md ../docs/exec-plans/templates/task-manifest-row.json ../docs/exec-plans/templates/necessity-artifact-template.md ../docs/exec-plans/templates/structural-na-template.md ../docs/exec-plans/templates/subagent-assignment-brief.md scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json docs/exec-plans/templates/README.md docs/exec-plans/templates/task-manifest-row.json docs/exec-plans/templates/necessity-artifact-template.md docs/exec-plans/templates/structural-na-template.md docs/exec-plans/templates/subagent-assignment-brief.md demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 115 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 119 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
       "invalidationTriggers": [
         "Any F01/F02/F20/F21/F30 inventory/reconciliation finding, F41 closure-schema requirement, GOAL_SPEC §7-§10 task, or authoritative first-queue ID/dependency/status changes",
         "Any manifest row, dependency expansion, lease, anchor, command, count contract, blocker, summary cardinality, template, or quality-verifier rule changes after capture",
@@ -937,24 +937,24 @@
         "Exact accepted maximum and adjacent signed-Cardano rejection for field 0, with spend input identities, count, order, lengths, source commitment, replay schedule, and terminal vector",
         "Normal and forced production reconstructDaPayloadV1 outputs reaching the same authenticated field-0 terminal",
         "Complete-item direct and inline-datum input/reference-input proof-fit measurements; any fallback is rejected unless a measured §3.2 necessity artifact is separately authorized",
-        "Guarded Aiken and one-file TypeScript transcripts with compiler/tool versions and the exact count contract"
+        "Guarded Aiken 4/4 and one-file TypeScript 1/1 transcripts with compiler/tool versions, including the maximum spend-input field terminal selector at the genuine signed boundary"
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/proof_v1_fragment_envelope maximum_profile_field_0_item_0_chunk_0_verifies_independently_on_l1",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_spend_input_schedule_terminal_matches_typescript cek_context_spend_item_uses_authenticated_descriptor_frontier",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_spend_input_schedule_terminal_matches_typescript cek_context_spend_item_uses_authenticated_descriptor_frontier maximum_spend_input_field_terminal_matches_typescript",
         "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/native-tx/compact.ak lib/midgard/fraud-proofs/native-tx/preimages.ak lib/midgard/fraud-proofs/native-tx/transaction.ak lib/midgard/fraud-proofs/proof-v1-fragment-envelope.test.ak lib/midgard/user-events/tx-order-v1.ak lib/midgard/user-events/tx-order-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/ordered-collection-boundary-v1.ts tests/helpers/retained-da-boundary-v1.ts tests/ordered-collection-spend-inputs-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-spend-inputs-boundary-v1.test.ts. Existing guarded Aiken selectors: exactly 1 fragment-envelope test plus exactly 2 validation-machine tests; TypeScript boundary file: exactly 1 test; all 4 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-spend-inputs-boundary-v1.test.ts. Exactly 1 fragment-envelope test, exactly 3 validation-machine tests, and exactly 1 TypeScript test pass with 0 failures; guarded Aiken total is exactly 4 and TypeScript total is exactly 1.",
       "invalidationTriggers": [
         "F10 capability inventory or canonical field ordering changes",
         "Any writable path, reconstructDaPayloadV1, consensus profile, applied validator hash, target protocol parameters, or maxTxSize changes after capture",
         "The accepted maximum count, adjacent fixture, proof representation, source commitment, replay schedule, or terminal vector changes"
       ],
-      "readyBecause": "F10 is PASS in the authoritative first GOAL_PROGRESS.md task queue; C20-0 is ready for bounded assignment but is not recorded PASS there.",
+      "readyBecause": "C20-0 is PASS after exact 4-Aiken/1-TypeScript replay of the genuine 434-input maximum at 16,379 signed bytes and its adjacent 435-input rejection at 16,417 bytes, with the field-0 terminal fold vector pinned byte-identically on both sides.",
       "schedulingNote": "Serialize this row behind one shared Aiken compiler lease and an exclusive lease for validation-machine-v1.ak plus validation-machine-v1.test.ak; run all guarded Aiken commands serially, then acquire the serialized TypeScript workspace lease."
     },
     {
@@ -1007,24 +1007,24 @@
         "Exact accepted maximum and adjacent signed-Cardano rejection for field 1, including mixed spend/reference distinctness, identities, count, order, lengths, replay schedule, and terminal vector",
         "Normal and forced production reconstructDaPayloadV1 outputs reaching the same authenticated field-1 terminal",
         "Complete-item direct and inline-datum input/reference-input proof-fit measurements; any fallback is rejected unless a measured §3.2 necessity artifact is separately authorized",
-        "Guarded Aiken and one-file TypeScript transcripts with compiler/tool versions and the exact count contract"
+        "Guarded Aiken 6/6 and one-file TypeScript 1/1 transcripts with compiler/tool versions, including the maximum reference-input field terminal selector at the genuine signed boundary"
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/proof_v1_fragment_envelope maximum_profile_field_1_item_0_chunk_0_verifies_independently_on_l1",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_reference_input_schedule_terminal_matches_typescript input_sets_accepts_bounded_disjoint_spend_and_reference_inputs input_sets_proves_spend_reference_overlap_unilaterally cek_context_reference_item_uses_authenticated_descriptor_frontier",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_reference_input_schedule_terminal_matches_typescript input_sets_accepts_bounded_disjoint_spend_and_reference_inputs input_sets_proves_spend_reference_overlap_unilaterally cek_context_reference_item_uses_authenticated_descriptor_frontier maximum_reference_input_field_terminal_matches_typescript",
         "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/native-tx/compact.ak lib/midgard/fraud-proofs/native-tx/preimages.ak lib/midgard/fraud-proofs/native-tx/transaction.ak lib/midgard/fraud-proofs/proof-v1-fragment-envelope.test.ak lib/midgard/user-events/tx-order-v1.ak lib/midgard/user-events/tx-order-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/ordered-collection-boundary-v1.ts tests/helpers/retained-da-boundary-v1.ts tests/ordered-collection-reference-inputs-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-reference-inputs-boundary-v1.test.ts. Existing guarded Aiken selectors: exactly 1 fragment-envelope test plus exactly 4 validation-machine tests; TypeScript boundary file: exactly 1 test; all 6 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-reference-inputs-boundary-v1.test.ts. Exactly 1 fragment-envelope test, exactly 5 validation-machine tests, and exactly 1 TypeScript test pass with 0 failures; guarded Aiken total is exactly 6 and TypeScript total is exactly 1.",
       "invalidationTriggers": [
         "F10 capability inventory or canonical field ordering changes",
         "Any writable path, reconstructDaPayloadV1, consensus profile, applied validator hash, target protocol parameters, or maxTxSize changes after capture",
         "The accepted maximum count, adjacent fixture, mixed-input distinctness rule, replay schedule, or terminal vector changes"
       ],
-      "readyBecause": "F10 is PASS in the authoritative first GOAL_PROGRESS.md task queue; C20-1 is ready for bounded assignment but is not recorded PASS there.",
+      "readyBecause": "C20-1 is PASS after exact 6-Aiken/1-TypeScript replay of the genuine 433-reference-input maximum at 16,380 signed bytes and its adjacent 434-input rejection at 16,418 bytes, with one disjoint spend input and the field-1 terminal fold vector pinned byte-identically on both sides.",
       "schedulingNote": "Serialize this row behind one shared Aiken compiler lease and an exclusive lease for validation-machine-v1.ak plus validation-machine-v1.test.ak; run all guarded Aiken commands serially, then acquire the serialized TypeScript workspace lease."
     },
     {
@@ -1148,24 +1148,24 @@
         "Exact 224-observer accepted fixture and 225-observer adjacent rejection, with identities, count, order, deduplication, lengths, source commitment, Data summary, and terminal",
         "Normal and forced production reconstructDaPayloadV1 outputs and complete-item proof-fit reaching the same observer terminal",
         "Malformed proof, reordered successor, duplicate observer, omitted observer, substitution, and terminal-summary rejection evidence",
-        "Guarded Aiken and one-file TypeScript transcripts with exact counts and tool versions"
+        "Guarded Aiken 7/7 and one-file TypeScript 1/1 transcripts with exact counts and tool versions, including the maximum observer field terminal selector at the genuine signed boundary"
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/proof_v1_fragment_envelope maximum_profile_field_3_item_0_chunk_0_verifies_independently_on_l1",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree cek_context_observer_empty_field_has_exact_no_auxiliary_path cek_context_observer_rejects_malformed_proofs_order_and_successors cek_context_observer_complete_summary_relation_is_exact",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree cek_context_observer_empty_field_has_exact_no_auxiliary_path cek_context_observer_rejects_malformed_proofs_order_and_successors cek_context_observer_complete_summary_relation_is_exact maximum_observer_field_terminal_matches_typescript",
         "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/native-tx/compact.ak lib/midgard/fraud-proofs/native-tx/preimages.ak lib/midgard/fraud-proofs/native-tx/transaction.ak lib/midgard/fraud-proofs/proof-v1-fragment-envelope.test.ak lib/midgard/user-events/tx-order-v1.ak lib/midgard/user-events/tx-order-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/ordered-collection-boundary-v1.ts tests/helpers/retained-da-boundary-v1.ts tests/ordered-collection-observer-native-script-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-observer-native-script-boundary-v1.test.ts. Existing guarded Aiken selectors: exactly 1 fragment-envelope test plus exactly 5 validation-machine tests; TypeScript boundary file: exactly 1 test; all 7 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/validation_machine_v1, ordered-collection-observer-native-script-boundary-v1.test.ts. Exactly 1 fragment-envelope test, exactly 6 validation-machine tests, and exactly 1 TypeScript test pass with 0 failures; guarded Aiken total is exactly 7 and TypeScript total is exactly 1.",
       "invalidationTriggers": [
         "F10 inventory, observer semantics, canonical field ordering, or deduplication rule changes",
         "Any writable path, reconstructDaPayloadV1, applied validator hash, target parameters, or maxTxSize changes",
         "The 224/225 boundary, terminal summary, proof representation, or mutation behavior changes"
       ],
-      "readyBecause": "F10 is PASS in the authoritative first GOAL_PROGRESS.md task queue; C20-3 is ready for bounded assignment but is not recorded PASS there.",
+      "readyBecause": "C20-3 is PASS after exact 7-Aiken/1-TypeScript replay of the genuine 224-observer maximum at 16,338 signed bytes and its adjacent 225-observer rejection at 16,410 bytes, with the field-3 terminal fold vector pinned byte-identically on both sides.",
       "schedulingNote": "Serialize this row behind one shared Aiken compiler lease and an exclusive validation-machine-v1 source/test lease; run guarded Aiken commands serially, then acquire the serialized TypeScript workspace lease."
     },
     {
@@ -1507,7 +1507,7 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/proof_v1_fragment_envelope maximum_profile_field_8_item_15_chunk_0_verifies_independently_on_l1 maximum_profile_field_8_item_15_chunk_1_verifies_independently_on_l1",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/native_tx/max_redeemers maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment maximum_cardano_spend_redeemer_terminal_fold_matches_typescript",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/native_tx maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment maximum_cardano_spend_redeemer_terminal_fold_matches_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/redeemer_item_proof_v1 redeemer_item_descriptor_authenticates_header_tail_and_exact_metadata redeemer_item_rejects_mutated_header_tail_and_chunk_evidence redeemer_item_terminal_data_summary_agrees_with_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 cek_context_redeemer_scalar_scan_is_content_addressed cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer",
         "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-redeemer-boundary-v1.test.ts tests/redeemer-item-proof-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts",
@@ -1516,13 +1516,13 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/ordered-collection-boundary-v1.ts tests/helpers/retained-da-boundary-v1.ts tests/ordered-collection-redeemer-boundary-v1.test.ts tests/redeemer-item-proof-v1.test.ts tests/nested-redeemer-data-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/fraud_proofs/native_tx/max_redeemers, midgard/redeemer_item_proof_v1, midgard/validation_machine_v1, ordered-collection-redeemer-boundary-v1.test.ts, redeemer-item-proof-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts. Existing guarded Aiken selectors: exactly 2 fragment-envelope tests, exactly 2 native-tx/max-redeemers tests, exactly 3 redeemer-item-proof-v1 tests, and exactly 2 validation-machine tests; TypeScript files: exactly 4 tests across exactly 3 files; all 13 tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/proof_v1_fragment_envelope, midgard/fraud_proofs/native_tx, midgard/redeemer_item_proof_v1, midgard/validation_machine_v1, ordered-collection-redeemer-boundary-v1.test.ts, redeemer-item-proof-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts. Exactly 2 fragment-envelope tests, exactly 2 native-tx max-redeemer tests, exactly 3 redeemer-item-proof-v1 tests, and exactly 2 validation-machine tests pass; TypeScript files contribute exactly 4 tests across exactly 3 files; all 13 tests pass with 0 failures. The max-redeemer tests live in the dotted module midgard/fraud_proofs/native_tx.max_redeemers.test, and Aiken's -m matcher splits a pattern at its first '.', so the only reachable module prefix is midgard/fraud_proofs/native_tx; the earlier midgard/fraud_proofs/native_tx/max_redeemers selector collected 0 tests and could never pass.",
       "invalidationTriggers": [
         "F10 inventory, canonical field ordering, redeemer purpose/index/ex-unit schema, Data semantics, or execution limits change",
         "Any writable path, reconstructDaPayloadV1, applied validator hash, target parameters, maxTxSize, collateral rule, or cost model changes",
         "The accepted maximum, adjacent fixture, descriptor/envelope/traversal representation, or terminal vector changes"
       ],
-      "readyBecause": "F10 is PASS in the authoritative first GOAL_PROGRESS.md task queue; C20-8 is ready for bounded assignment but is not recorded PASS there.",
+      "readyBecause": "C20-8 is PASS after exact 13-test replay (9 guarded Aiken, 4 TypeScript) of the genuine field-8 maximum and adjacent rejection, once the previously unreachable max-redeemer module selector was corrected.",
       "schedulingNote": "Serialize this row behind one shared Aiken compiler lease and an exclusive validation-machine-v1 source/test lease; run all guarded Aiken commands serially, then acquire the serialized TypeScript workspace lease."
     },
     {
@@ -1722,8 +1722,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, child identities/order, source span/frontier, complete-item fit, or terminal changes"
       ],
-      "blockedOn": ["C20-8"],
-      "blockedBecause": "C23 remains dependency-blocked only on current non-PASS queue row C20-8; C20-2 is PASS and is deliberately omitted.",
+      "blockedBecause": "C23 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23–C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1786,8 +1785,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, child identities/order, source span/frontier, complete-item fit, or terminal changes"
       ],
-      "blockedOn": ["C20-8"],
-      "blockedBecause": "C24 remains dependency-blocked only on current non-PASS queue row C20-8; C20-2 is PASS and is deliberately omitted.",
+      "blockedBecause": "C24 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23–C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1850,8 +1848,7 @@
         "Any writable path, target protocol parameter, cost model, maxTxSize, applied validator hash, or proof representation changes",
         "The accepted/adjacent breadth, pair/key/value identities/order, source span/frontiers, complete-item fit, or terminal changes"
       ],
-      "blockedOn": ["C20-8"],
-      "blockedBecause": "C25 remains dependency-blocked only on current non-PASS queue row C20-8; C20-2 is PASS and is deliberately omitted.",
+      "blockedBecause": "C25 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After blockers clear, serialize one shared Aiken compiler lease and the TypeScript workspace lease; C23–C25 share the same breadth modules/file and must run sequentially."
     },
     {
@@ -1912,8 +1909,7 @@
         "The authoritative first GOAL_PROGRESS.md C26 status or any dependency status/ABI changes"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": ["C20-8"],
-      "blockedBecause": "C26 remains dependency-blocked only on current non-PASS queue row C20-8. Its prior PASS promotion was corrected because full acceptance residuals remain.",
+      "blockedBecause": "C26 has no remaining non-PASS dependency; C20-2 and C20-8 are both PASS in the authoritative first GOAL_PROGRESS.md queue.",
       "schedulingNote": "After C20-8 closes, serialize one shared Aiken compiler lease before the guarded selector batch, then acquire the serialized TypeScript workspace lease; do not overlap shared Data/codec work."
     },
     {
@@ -2131,8 +2127,7 @@
         "Any C20-0 through C20-8 dependency status/ABI changes, including a new maximum retained-source representation",
         "Applied validator hash, target protocol parameters, maxTxSize, canonical CBOR rules, or normal/forced retained bytes change"
       ],
-      "blockedOn": ["C20-0", "C20-1", "C20-3", "C20-8"],
-      "blockedBecause": "C29 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8. C20-2, C20-4, and C20-5 are PASS and are deliberately omitted."
+      "blockedBecause": "C29 has no remaining non-PASS dependency: every C20-* ordered-field row is PASS in the authoritative first GOAL_PROGRESS.md queue."
     },
     {
       "id": "C30",
@@ -2205,20 +2200,8 @@
         "Any non-PASS dependency in blockedOn changes ABI or status, including the retained C21 Option A ABI or C21-AUDIT remeasurement",
         "Target protocol parameters, maxTxSize, retained payload roots/counts, applied validator hash, or maximum corpus changes"
       ],
-      "blockedOn": [
-        "C20-0",
-        "C20-1",
-        "C20-3",
-        "C20-8",
-        "C21",
-        "C22",
-        "C23",
-        "C24",
-        "C25",
-        "C26",
-        "C29"
-      ],
-      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29. PASS dependencies are deliberately omitted."
+      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C26", "C29"],
+      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C31",
@@ -2291,20 +2274,8 @@
         "Any non-PASS dependency in blockedOn changes ABI or status, including the retained C21 Option A ABI or C21-AUDIT remeasurement",
         "Forced transaction root/count, verdict/classification, target parameters, applied validator hash, or maximum corpus changes"
       ],
-      "blockedOn": [
-        "C20-0",
-        "C20-1",
-        "C20-3",
-        "C20-8",
-        "C21",
-        "C22",
-        "C23",
-        "C24",
-        "C25",
-        "C26",
-        "C29"
-      ],
-      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29. PASS dependencies are deliberately omitted."
+      "blockedOn": ["C21", "C22", "C23", "C24", "C25", "C26", "C29"],
+      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C32",
@@ -2403,10 +2374,6 @@
         "Applied validator hash, target protocol parameters, cost model, maxTxSize, min-Ada, or complete-item necessity conclusion changes"
       ],
       "blockedOn": [
-        "C20-0",
-        "C20-1",
-        "C20-3",
-        "C20-8",
         "C21",
         "C22",
         "C23",
@@ -2417,7 +2384,7 @@
         "C30",
         "C31"
       ],
-      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29, C30, C31. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29, C30, C31; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C33",
@@ -2557,10 +2524,6 @@
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
       ],
       "blockedOn": [
-        "C20-0",
-        "C20-1",
-        "C20-3",
-        "C20-8",
         "C21",
         "C22",
         "C23",
@@ -2573,7 +2536,7 @@
         "C32",
         "C33"
       ],
-      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29, C30, C31, C32, C33. PASS dependencies are deliberately omitted."
+      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows C21, C22, C23, C24, C25, C26, C29, C30, C31, C32, C33; every C20-* ordered-field row is PASS and is deliberately omitted."
     },
     {
       "id": "C40",

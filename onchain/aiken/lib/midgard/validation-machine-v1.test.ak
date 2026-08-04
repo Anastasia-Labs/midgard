@@ -10255,10 +10255,25 @@ fn verify_maximum_field_terminal_fixture_v1(
     fixture.field_preimage_lengths_cbor,
   )
   let alternate_field_lengths = when fixture.field_index is {
+    0 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        spend_inputs: field_lengths.spend_inputs + 1,
+      }
+    1 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        reference_inputs: field_lengths.reference_inputs + 1,
+      }
     2 ->
       NativeTxFieldPreimageLengthsV1 {
         ..field_lengths,
         outputs: field_lengths.outputs + 1,
+      }
+    3 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        required_observers: field_lengths.required_observers + 1,
       }
     4 ->
       NativeTxFieldPreimageLengthsV1 {
@@ -10377,6 +10392,232 @@ fn verify_maximum_field_terminal_fixture_v1(
       fixture.chunk_proof,
     ),
   }
+}
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts
+// (accepted 434 spend inputs at 16,379 signed bytes; adjacent 435 at 16,417).
+fn maximum_spend_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 0,
+    item_count: 434,
+    item_index: 433,
+    item_length: 38,
+    item_commitment: #"dba9086489131c8444128fddbf2a864d16f628c13cac5b157d35b2bffeb8f12c",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 1,
+        hash: #"dd12647adc66bb3ef04f3e994637f7057ca5c4b96b7a58cde6e4f925a34c4d83",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"8539f11555b31aa517cb051cdf1c6849258e396576dc70474c16bd92b53efa01",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"e0c3b95882dc7bdf380e0aa80c42b4a02cb52e77e4627db5e9a0399102039c25",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"548fabcfbe39b4adee5ef017869a04015edfbc9fe2a2c8489a86a8059e956515",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"2ec5b0bf539013547a4e08389d40946112938257232a275eabda35f47a512ef8",
+      },
+    ],
+    siblings: [
+      #"7857404d8ac012dc3b41cc157772693f62616b0fecb0714d7526254f4850a8f0",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 0,
+    item_index: 433,
+    total_length: 38,
+    chunk_index: 0,
+    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000001901b1",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"cb3168562b9c7affbe10efaa7474882ba25cc037186ac9075b2106d9f68f8d2e",
+      },
+    ],
+    siblings: [],
+  }
+
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"5616fc26bfef26893b4d4413a9b75af4275feed78dd7e13000d52af2b221402b",
+    transaction_commitment: #"c91b1c78baee450b8138a85aa4febfd6d9b5e6e208633fef29d4cec4e2c63d0b",
+    compact_cbor: #"84018c5820fa49d0bce0fd16e8a8f20703162027ce5d24e4de5872def31c5e89f46d27cdb25820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58204b9a64944d619f32cd8c14e88f53c67857b717dd0686b1a20838c8e815308dce1a000d5e1920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ecaa2a4ca3d5110e0d124e3b3da2012a20c326fd6bdc25c1b71e67e9b9a04a9e00",
+    witness_set_compact_cbor: #"835820bdb04d390efaca1a689981865803b28a488f2c518ce905626962c7a7cebb7be25820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"891942bb01183001010101186801",
+    field_index: 0,
+    item_count: 434,
+    item_index: 433,
+    encoded_length_before_item: 17043,
+    expected_pre_work_root: #"99ce6f53c84ad64e689f582577913b117d7f86257bffb96308554678d1506973",
+    expected_post_work_root: #"d0354c24ccee8206b9926ca2662ea50639e0a114a5b60f4173eb986a94792cef",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+test maximum_spend_input_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_spend_input_field_terminal_fixture_v1()),
+) {
+  verify_maximum_field_terminal_fixture_v1(fixture)
+}
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts
+// (accepted 433 reference inputs at 16,380 signed bytes; adjacent 434 at
+// 16,418), sharing one spend input disjoint from every reference input.
+fn maximum_reference_input_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 1,
+    item_count: 433,
+    item_index: 432,
+    item_length: 38,
+    item_commitment: #"36b4dd3bf311b81d7f82428358cefdd48f2a8a896b105454ac98d24120580a51",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"f25dce7b75dc95fac3a66ae5014c50b4e3aa3ae235aa70f5cf03d59888aa490d",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"b9dfbe97f48da08a03316da8df54bc031cbbc6acfaf038ee04cf0e33d8ec12f6",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"9328ea0ba44c359f4a243f6573f819a44ed4d70b086a61d0f5aebdf7261bd857",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"266cda5f3304f6975845924b5ceb99aeb2f7379d619bac20f87ea4dd5049d6a5",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"8606d2748f4812aa20f053dfc7660fb46b7f80a2fe4fb75309dc26cf8b0bd9b7",
+      },
+    ],
+    siblings: [],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 1,
+    item_index: 432,
+    total_length: 38,
+    chunk_index: 0,
+    chunk: #"82582000000000000000000000000000000000000000000000000000000000000000001901b1",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"4a6e597090be615a74af8ce771e0d4db02d004da070c991b1dfea5f355a87d78",
+      },
+    ],
+    siblings: [],
+  }
+
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"cee18ffae3c1e118db1b046c5cc2da1e06cc8c611fe1afd2e6355149e869e3dc",
+    transaction_commitment: #"81de50f4c6b825a90ce4d70bdc89e7062494af859cfeda854dbe335a61c329f0",
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820e8d8722d2b57d87875a3aead6c1b8ea4aa999d1ad7d8340a712ae2dee01a228458204ddc79a7ae5ce6f67c3282833863d15ffe34a3dcad707bb6b921a31bf9c77b3b1a000d5e4520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820d79bc2560eef235bd2a538c7f6110513f9bca34ff66948b14aab16b2c21f5ec600",
+    witness_set_compact_cbor: #"83582058a2b8a985737738bebe056e227d4b84b4a97c9534a63afd2b10925d2e28b8935820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"891827194295182c01010101186801",
+    field_index: 1,
+    item_count: 433,
+    item_index: 432,
+    encoded_length_before_item: 17005,
+    expected_pre_work_root: #"b7ccf4d203ce485dc61512b6680f6a7710f0fc9a57a5732fb838e1ada6b60d3b",
+    expected_post_work_root: #"63b56d7b9c2368b667349fa33f722915691adba711645dce39a556a280a965af",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+test maximum_reference_input_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_reference_input_field_terminal_fixture_v1()),
+) {
+  verify_maximum_field_terminal_fixture_v1(fixture)
+}
+
+// Derived by the genuine Cardano boundary fixture in
+// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts
+// (accepted 224 observers at 16,338 signed bytes; adjacent 225 at 16,410). This
+// is the same signed transaction replayed by
+// cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree, so
+// the two selectors share one exact source.
+fn maximum_observer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 3,
+    item_count: 224,
+    item_index: 223,
+    item_length: 28,
+    item_commitment: #"eea077178a4c1efc0237062dd79d0e88e25f226a75c50e2941386c551c8dbdf1",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"b3d0869ae6f779e2a3bd2657550bad972479f7bd2bf30525d7d6ea1f6e273219",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 6,
+        hash: #"8b8872929417945fc60a184c86b36e6cb8b3f79f063a2b1bd74276e3e6dd4561",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"4f23682ce5aac57bdd356897e085c19da0956f3c43a4d0a590e06931693ec7aa",
+      },
+    ],
+    siblings: [
+      #"37a247add2ab2bb8dd1ca90bc7340ccbd288795241423781485f83f1d2404441",
+      #"12cbd11747b0ee2b75df2dbf849eb190bfa2ad508af765c0ef769438b6b697e4",
+      #"761dcb1c5ea56450765f089f956ac800528d0d03b602a5f2ebdbcfdc391aeb92",
+      #"38c8a30b4b417afa1434d182e99e1c5f595d57dfd0643c0e49e8c1975d60884c",
+      #"637359bdbf37e81101c411bd6f8f72efd3bf2983764dfe73da65ebc09e999582",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 3,
+    item_index: 223,
+    total_length: 28,
+    chunk_index: 0,
+    chunk: #"ffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"770f825142ee9790250392a5b0310c8e2a8e833eaa6c62ca6f7223b5ed9e2288",
+      },
+    ],
+    siblings: [],
+  }
+
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"9e6740ff958462051886f6d64a5fb7d03ee47dc50bd627c5765734f1c32f4bde",
+    transaction_commitment: #"7c0bebc279806e82bfdda06d46c06e6917e132e13325e48d2f3eb5ad7b7509da",
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820598bbaa08e9cc6dc4d9634b23089ead14091f45c5e1165dcf8a6288be95a1b001a000d570d201927105820e127f848e4bda8c1e9b42ddf4c89dfbd1479301dd90551baeff900fdfcec2e975820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff58205c66a9cb2310e13ca74d861c7d29f5b996030ad755920f1dfc2c325ec3cb015d00",
+    witness_set_compact_cbor: #"8358209c3c9f949b41759fc4d9ea024e36e2aa7659f3d5dbe41611256f4dfc80a9a62d5820ad4dcd868783831d5bd321d25528c3295f55b1ea6c8d61d85c3216be9a73ea3d5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"89182701182c191a420101192682186801",
+    field_index: 3,
+    item_count: 224,
+    item_index: 223,
+    encoded_length_before_item: 6692,
+    expected_pre_work_root: #"f07593faa6515f95d422e6ab0cdad5c58fc1946bf7bbd43d6a78c02fd1db6566",
+    expected_post_work_root: #"ff51cd1448de36fccb43040b44c7977b7a0d6e96c11c41ad3bb2b4ebe4794136",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+test maximum_observer_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_observer_field_terminal_fixture_v1()),
+) {
+  verify_maximum_field_terminal_fixture_v1(fixture)
 }
 
 fn maximum_output_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
