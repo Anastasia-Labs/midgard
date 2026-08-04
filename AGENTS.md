@@ -22,6 +22,18 @@ and evidence another engineer can verify.
 
 Tradeoff order: correctness, safety, liveness, performance, convenience.
 
+## Engineering Principles
+
+- Grow the system in layers. Start from the smallest version that works end to
+  end, and add each new capability on top of a product that already works.
+  Never trade a working product for unfinished complexity.
+- Keep components modular and concerns clearly separated.
+- Prefer established, well-maintained libraries when they reduce overall
+  complexity or improve reliability. Do not reimplement common functionality
+  without a clear reason.
+- Make architectural decisions for the long term. Do not accept a stopgap that
+  only works for now and is meant to be replaced later.
+
 ## Repo Shape
 
 - `onchain/aiken`: Plutus V3 contracts.
