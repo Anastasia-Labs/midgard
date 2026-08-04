@@ -5058,12 +5058,7 @@
         "a CG3 resolver-set change (onchain/aiken/lib/midgard/validation-resolver-v1.ak cardinality guards) invalidates the `no looser implementation` claim"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": [
-        "W21",
-        "W22",
-        "CG3"
-      ],
-      "blockedBecause": "GOAL_SPEC.md §10.3 gives W24 dependencies W21-W23 and CG3. W23 is PASS but W21/W22 are not enqueued and CG3 (P3 gate) is not PASS in the GOAL_PROGRESS.md task queue."
+      "readyBecause": "READY under the recorded 2026-08-03 parent CG3 waiver (GOAL_PROGRESS.md 'W24 wave dispositions', pending owner ratification): W21 PASS 67132a52, W22 PASS 9ea58dcc, W23 PASS. Conditions: consume canonical Phase A only through @al-ft/midgard-validation/phase-a (declared watcher workspace dependency); publish the reachable rejection-code set with per-exclusion justification (D4); CG3 re-imposed un-waived at W27/W28; invalidation triggers: any C40-C53/resolver-cardinality change, midgard-validation dist rebuild."
     },
     {
       "id": "W25",
@@ -5127,12 +5122,7 @@
         "an indexer record-shape change in W14/W15/W16"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": [
-        "W21",
-        "W22",
-        "W24"
-      ],
-      "blockedBecause": "GOAL_SPEC.md §10.3 gives W25 dependencies W14-W16 and W21-W24. W14-W16 are PASS (GOAL_PROGRESS.md lines 292-294) and W23 is PASS, but W21/W22/W24 are not enqueued."
+      "schedulingNote": "Serial after W24 (hard §10.3 chain). Same CG3 waiver conditions; claims the Phase-B-only rejection-code complement so the W24+W25 union is provably total (D4)."
     },
     {
       "id": "W26",
@@ -5192,11 +5182,7 @@
         "a forced-classification semantics change (C60-C68)"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": [
-        "W24",
-        "W25"
-      ],
-      "blockedBecause": "GOAL_SPEC.md §10.3 gives W26 dependencies W15-W16 and W23-W25. W15/W16/W23 are PASS but W24 and W25 are not enqueued."
+      "schedulingNote": "Serial after W25. Same waiver; prefer import over port for the transition-trace oracle set (fault-proofs is a declared watcher dependency)."
     },
     {
       "id": "W27",
@@ -5260,15 +5246,7 @@
         "a Q03 admission-API change re-runs the provenance routing cases"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": [
-        "Q03",
-        "W21",
-        "W22",
-        "W24",
-        "W25",
-        "W26"
-      ],
-      "blockedBecause": "GOAL_SPEC.md §10.3 gives W27 dependencies W21-W26 and Q03; only W23 among them is PASS."
+      "schedulingNote": "Serial after W26. CG3 waiver does NOT extend here - re-evaluate the gate before assignment."
     },
     {
       "id": "W28",

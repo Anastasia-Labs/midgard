@@ -33,6 +33,7 @@ describe("W00 watcher package identity", () => {
       "@al-ft/midgard-core": "workspace:*",
       "@al-ft/midgard-fault-proofs": "workspace:*",
       "@al-ft/midgard-sdk": "workspace:*",
+      "@al-ft/midgard-validation": "workspace:*",
       "@chainsafe/libp2p-noise": "17.0.0",
       "@chainsafe/libp2p-yamux": "8.0.1",
       "@libp2p/peer-id": "6.0.11",

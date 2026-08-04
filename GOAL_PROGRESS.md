@@ -4288,3 +4288,42 @@ of the brief's decision points:
 
 Q54 queue row: added below as IN_PROGRESS (parent-assigned lane, lease per
 the manifest row).
+
+## W24 wave dispositions from the watcher-chain scoping brief (2026-08-03)
+
+A source-verified W24–W29 scoping brief found no W2x row strictly
+dependency-ready: W24 gates on CG3, an un-started C40–C53 program, and the
+whole wave is a hard serial chain (W24→W25→W26→W27→W28→W29), after which only
+W37 unlocks — the WG1 critical path then runs through Q50–Q59, not more
+watcher rows. The owner's ordered plan explicitly continues W24–W46, so the
+parent grants the brief's narrow CG3 waiver rather than idling the program.
+**OWNER-RATIFY: D1 below is a spec-graph waiver and stands for owner
+ratification; every other disposition is ordinary parent execution.**
+
+- **D1 (CG3 waiver for W24–W26 only):** granted with the brief's conditions —
+  (a) W24 consumes canonical Phase A exclusively through
+  `@al-ft/midgard-validation/phase-a` (`validatePhaseASingle` /
+  `runPhaseAValidation`; the 49-code `RejectCodes` vocabulary), never a local
+  predicate — this is what "not a looser watcher-only implementation"
+  protects; (b) the gate is re-imposed un-waived at W27/W28, whose subject
+  matter (proof materialization/family classification) is what CG3 actually
+  guards; (c) the two known CG3 totality holes are open W24 residuals
+  (`semanticResolverOffsetsV1` −1 at indices 11/12;
+  `validationSemanticResolverIndexV1` null for Cek and ValueAndMint — C48/C49
+  scope); (d) any C40–C53/resolver-cardinality change and any
+  midgard-validation dist rebuild are W24 invalidation triggers.
+- **D2:** `@al-ft/midgard-validation: workspace:*` declared as a watcher
+  dependency (P0, mirroring `d12cb188`): package.json, scaffold mirror
+  (5/5 replayed), lockfile, dist built. Trust boundary verified by the brief:
+  pure library, no node/DB/REST surface, no forbidden substrings, already a
+  transitive dependency via fault-proofs.
+- **D3:** stale W24–W27 manifest `blockedOn/blockedBecause` cleared with
+  waiver-citing notes; lane prompts quote the brief's measured numbers.
+- **D4:** W24 must publish its reachable rejection-code set with per-exclusion
+  justification; W25 claims the Phase-B complement so the union is provably
+  total.
+- **D5:** second gitignored dist (midgard-validation) accepted with a recorded
+  invalidation trigger; source-based watcher→workspace resolution stays an
+  open parent follow-up.
+- **D6:** authoritative watcher full-suite baseline is 281/282 (pre-existing
+  5000 ms proof-thread-indexer flake); stated in every lane prompt.
