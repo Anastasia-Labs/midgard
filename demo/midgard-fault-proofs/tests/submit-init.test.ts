@@ -278,14 +278,15 @@ describe("fault-proof deployment contract resolution", () => {
         fraudProofCataloguePolicyId: h28b,
       }),
     );
+    // Q13/F20-01: the no-index first step is now derived from the compiled
+    // blueprint like every other family, so the deployment must record exactly
+    // the applied `input_no_idx/step_01` script.
+    const noIndexFirstStep = contracts.nonExistentInputNoIndex.firstStep;
     const noIndexContract = {
       type: "PlutusV3" as const,
-      cborHex: "01",
+      cborHex: noIndexFirstStep.spendingScript.script,
     };
-    const noIndexScriptHash = validatorToScriptHash({
-      type: noIndexContract.type,
-      script: noIndexContract.cborHex,
-    });
+    const noIndexScriptHash = noIndexFirstStep.spendingScriptHash;
     const fraudProofCatalogue = await catalogueFor({
       nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
       nonExistentInputNoIndex: noIndexScriptHash,
@@ -320,6 +321,10 @@ describe("fault-proof deployment contract resolution", () => {
     );
     expect(resolved.category.categoryId).toBe("00000002");
     expect(resolved.stateQueuePolicyId).toBe("66".repeat(28));
+
+    expect(resolved.firstStepAddress).toBe(
+      noIndexFirstStep.spendingScriptAddress,
+    );
 
     const { contract: _contract, ...withoutContract } = noIndexDeploymentEntry;
     await expect(
@@ -356,9 +361,35 @@ describe("fault-proof deployment contract resolution", () => {
       }),
     ).rejects.toThrow(/script hash mismatch/u);
 
+    // Self-consistent embedded bytes that are not the applied step-01 script
+    // must still fail closed.
+    const foreignContract = { type: "PlutusV3" as const, cborHex: "01" };
+    const foreignScriptHash = validatorToScriptHash({
+      type: foreignContract.type,
+      script: foreignContract.cborHex,
+    });
     await expect(
       resolveNonExistentInputNoIndexInit({
-        blueprint: {},
+        blueprint,
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: {
+            ...deploymentInfo.contracts,
+            fraudProofNonExistentInputNoIndex: {
+              scriptHash: foreignScriptHash,
+              contract: foreignContract,
+            },
+          },
+        },
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(
+      /fraudProofNonExistentInputNoIndex step-01 script mismatch/u,
+    );
+
+    await expect(
+      resolveNonExistentInputNoIndexInit({
+        blueprint,
         deploymentInfo: {
           ...deploymentInfo,
           contracts: {

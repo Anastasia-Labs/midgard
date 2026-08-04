@@ -39,6 +39,7 @@ import {
   type AuthenticatedValidator,
   buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildPhasMembershipRewardRegistrationTxProgram,
@@ -546,6 +547,7 @@ export const buildMinimalFaultProofContracts = async (
     realTransitionTrace = false,
     realZeroInput = false,
     realDaHashPreimage = false,
+    realInputNoIdx = false,
     realValidationTraceDispute = false,
     alwaysFraudProofCatalogue = false,
   }: {
@@ -554,6 +556,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realTransitionTrace?: boolean;
     readonly realZeroInput?: boolean;
     readonly realDaHashPreimage?: boolean;
+    readonly realInputNoIdx?: boolean;
     readonly realValidationTraceDispute?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
@@ -731,6 +734,21 @@ export const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const inputNoIdxContracts = realInputNoIdx
+    ? await Effect.runPromise(
+        buildInputNoIdxFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (inputNoIdxContracts !== undefined) {
+    expect(inputNoIdxContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -815,6 +833,9 @@ export const buildMinimalFaultProofContracts = async (
       daHashPreimage:
         daHashPreimageContracts?.daHashPreimage.firstStep ??
         withActiveOperators.fraudProofs.daHashPreimage,
+      nonExistentInputNoIndex:
+        inputNoIdxContracts?.nonExistentInputNoIndex.firstStep ??
+        withActiveOperators.fraudProofs.nonExistentInputNoIndex,
       validationTraceDispute:
         validationTraceDisputeContracts === undefined
           ? withActiveOperators.fraudProofs.validationTraceDispute
@@ -2914,6 +2935,16 @@ export const buildRemovalDeploymentInfo = (
       },
       fraudProofDaHashPreimage: {
         scriptHash: contracts.fraudProofs.daHashPreimage.spendingScriptHash,
+      },
+      fraudProofNonExistentInputNoIndex: {
+        scriptHash:
+          contracts.fraudProofs.nonExistentInputNoIndex.spendingScriptHash,
+        contract: {
+          type: contracts.fraudProofs.nonExistentInputNoIndex.spendingScript
+            .type,
+          cborHex:
+            contracts.fraudProofs.nonExistentInputNoIndex.spendingScript.script,
+        },
       },
       validationTraceDispute: {
         scriptHash:

@@ -45,6 +45,13 @@ export const NON_EXISTENT_INPUT_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/no_input/step_04.main.spend",
 } as const;
 
+export const INPUT_NO_IDX_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/input_no_idx/step_01.main.spend",
+  step02: "fraud_proofs/input_no_idx/step_02.main.spend",
+  step03: "fraud_proofs/input_no_idx/step_03.main.spend",
+  step04: "fraud_proofs/input_no_idx/step_04.main.spend",
+} as const;
+
 export const INVALID_RANGE_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/invalid_range/step_01.main.spend",
   step02: "fraud_proofs/invalid_range/step_02.main.spend",
@@ -321,6 +328,23 @@ export type NonExistentInputFaultProofContracts = {
   };
 };
 
+/**
+ * Q13 `input-no-idx` (`nonExistentInputNoIndex`): a committed transaction
+ * spends an output index its in-block producing transaction never created.
+ */
+export type InputNoIdxFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly nonExistentInputNoIndex: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
 export type InvalidRangeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -521,6 +545,7 @@ export type FaultProofContracts = {
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
   readonly validationTraceDispute: ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
   readonly daHashPreimage: DaHashPreimageFaultProofContracts["daHashPreimage"];
+  readonly nonExistentInputNoIndex: InputNoIdxFaultProofContracts["nonExistentInputNoIndex"];
 };
 
 type SharedFaultProofContracts = {
@@ -540,6 +565,9 @@ export type BuildDoubleSpendFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildNonExistentInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildInputNoIdxFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildInvalidRangeFaultProofContractsParams =
@@ -889,6 +917,90 @@ const buildNonExistentInputChain = ({
             ],
           ),
         ),
+    );
+
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
+  });
+
+/**
+ * Applied-parameter order is taken from the compiled blueprint
+ * (`fraud_proofs/input_no_idx/step_0{1..4}.main.spend`), which differs from the
+ * `no_input` chain at steps 02/03: step 02 takes only the next-step hash and
+ * the thread policy, step 03 re-enters the block binding and therefore also
+ * takes the hub oracle, and step 04 takes the thread policy first.
+ */
+const buildInputNoIdxChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<
+  InputNoIdxFaultProofContracts["nonExistentInputNoIndex"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const step04 = yield* tryBuild("Failed to build input-no-idx step 04", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step04),
+          [
+            computationThread.policyId,
+            fraudProof.policyId,
+            fraudProofTokenAddressData,
+          ],
+        ),
+      ),
+    );
+
+    const step03 = yield* tryBuild("Failed to build input-no-idx step 03", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step03),
+          [
+            step04.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ],
+        ),
+      ),
+    );
+
+    const step02 = yield* tryBuild("Failed to build input-no-idx step 02", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step02),
+          [step03.spendingScriptHash, computationThread.policyId],
+        ),
+      ),
+    );
+
+    const step01 = yield* tryBuild("Failed to build input-no-idx step 01", () =>
+      makeSpendingValidator(
+        network,
+        applyParamsToScript(
+          getCompiledScript(blueprint, INPUT_NO_IDX_FAULT_PROOF_TITLES.step01),
+          [
+            step02.spendingScriptHash,
+            computationThread.policyId,
+            hubOraclePolicyId,
+          ],
+        ),
+      ),
     );
 
     return {
@@ -1883,6 +1995,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const nonExistentInputNoIndex = yield* buildInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
@@ -1894,6 +2010,7 @@ export const buildFaultProofContracts = (
       transitionTrace,
       validationTraceDispute,
       daHashPreimage,
+      nonExistentInputNoIndex,
     };
   });
 
@@ -1926,6 +2043,22 @@ export const buildNonExistentInputFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       nonExistentInput,
+    };
+  });
+
+export const buildInputNoIdxFaultProofContracts = (
+  params: BuildInputNoIdxFaultProofContractsParams,
+): Effect.Effect<InputNoIdxFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const nonExistentInputNoIndex = yield* buildInputNoIdxChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      nonExistentInputNoIndex,
     };
   });
 

@@ -23,7 +23,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  assertFraudProofCatalogueCategoryReady,
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "./inspect-contracts.js";
@@ -44,6 +43,7 @@ import {
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
+  resolveInputNoIdxDeploymentContracts,
   resolveInvalidRangeDeploymentContracts,
   resolveNonExistentInputDeploymentContracts,
   resolveProverSigner,
@@ -164,6 +164,14 @@ export type ResolvedNonExistentInputNoIndexInit = {
   readonly firstStepHash: string;
 };
 
+/**
+ * Q13/F20-01: the no-index category is now derived from the compiled blueprint
+ * like every other family (`buildInputNoIdxFaultProofContracts`) instead of
+ * trusting the embedded deployment script bytes. The embedded bytes are still
+ * cross-checked, so a deployment whose recorded contract disagrees with the
+ * applied chain fails closed rather than initialising a thread nobody can
+ * spend.
+ */
 export const resolveNonExistentInputNoIndexInit = async ({
   blueprint,
   deploymentInfo,
@@ -174,7 +182,6 @@ export const resolveNonExistentInputNoIndexInit = async ({
   readonly network: Network;
 }): Promise<ResolvedNonExistentInputNoIndexInit> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
-  const catalogue = requireFraudProofCatalogue(parsedDeploymentInfo);
   const deployedFirstStep =
     parsedDeploymentInfo.fraudProofNonExistentInputNoIndex;
   if (deployedFirstStep === undefined) {
@@ -187,40 +194,38 @@ export const resolveNonExistentInputNoIndexInit = async ({
       'Deployment info "fraudProofNonExistentInputNoIndex" is missing embedded contract bytes.',
     );
   }
-  const firstStepScript: Script = {
+  const embeddedScript: Script = {
     type: deployedFirstStep.contract.type,
     script: deployedFirstStep.contract.cborHex,
   };
-  const firstStepHash = validatorToScriptHash(firstStepScript);
-  if (firstStepHash !== deployedFirstStep.scriptHash) {
+  const embeddedHash = validatorToScriptHash(embeddedScript);
+  if (embeddedHash !== deployedFirstStep.scriptHash) {
     throw new Error(
-      `fraudProofNonExistentInputNoIndex script hash mismatch: deployment=${deployedFirstStep.scriptHash}, derived=${firstStepHash}.`,
+      `fraudProofNonExistentInputNoIndex script hash mismatch: deployment=${deployedFirstStep.scriptHash}, derived=${embeddedHash}.`,
     );
   }
-  const category = await assertFraudProofCatalogueCategoryReady({
-    catalogue,
-    categoryName: "nonExistentInputNoIndex",
-    expectedFirstStepHash: firstStepHash,
-    deploymentMatchesFirstStep: true,
-  });
-  const resolvedDeployment = await resolveNonExistentInputDeploymentContracts({
+  const resolvedDeployment = await resolveInputNoIdxDeploymentContracts({
     blueprint,
     deploymentInfo,
     network,
     requireStateQueueMint: true,
   });
+  const firstStep =
+    resolvedDeployment.contracts.nonExistentInputNoIndex.firstStep;
+  if (embeddedHash !== firstStep.spendingScriptHash) {
+    throw new Error(
+      `fraudProofNonExistentInputNoIndex embedded contract ${embeddedHash} does not match the input-no-idx step-01 script ${firstStep.spendingScriptHash} derived from the blueprint.`,
+    );
+  }
   return {
-    category,
+    category: resolvedDeployment.nonExistentInputNoIndexCategory,
     stateQueuePolicyId: resolvedDeployment.stateQueuePolicyId!,
     computationThreadPolicyId:
       resolvedDeployment.contracts.computationThread.policyId,
     computationThreadMintingScript:
       resolvedDeployment.contracts.computationThread.mintingScript,
-    firstStepAddress: credentialToAddress(
-      network,
-      scriptHashToCredential(firstStepHash),
-    ),
-    firstStepHash,
+    firstStepAddress: firstStep.spendingScriptAddress,
+    firstStepHash: firstStep.spendingScriptHash,
   };
 };
 

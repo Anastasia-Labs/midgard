@@ -13,7 +13,7 @@ import {
   parseFaultProofBlueprint,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
-import { Data, validatorToScriptHash } from "@lucid-evolution/lucid";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -29,14 +29,14 @@ const placeholderDoubleSpend = "00".repeat(28);
 const placeholderNonExistentInput = "02".repeat(28);
 const placeholderInvalidRange = "01".repeat(28);
 const placeholderZeroInput = "03".repeat(28);
-const nonExistentInputNoIndexContract = {
-  type: "PlutusV3" as const,
-  cborHex: "01",
-};
-const nonExistentInputNoIndexScriptHash = validatorToScriptHash({
-  type: nonExistentInputNoIndexContract.type,
-  script: nonExistentInputNoIndexContract.cborHex,
-});
+const Q13_APPLIED_STEP_HASHES = [
+  "5c79063d6b56296f23f7df24380efb980fb43ae1462ee1c01989334f",
+  "a562f6b3f7b1337f0f764aa0d94fc85390dfa74b9c06682e1fcb55e2",
+  "e22e2b38df904c51090c66a7eebb20a78d5b9b60a0c55b833cd80abb",
+  "9984b16ce9b35df88905e1eb732a65febb21a624c56d915a16fcd355",
+] as const;
+const Q13_CATALOGUE_ROOT =
+  "d88f9829ae8856b0fcd1023c0f6377e76319d46d69f0940444a193241bcca394";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -130,7 +130,8 @@ const buildInspectionFixture = async () => {
   const fraudProofCatalogue = await buildCatalogueFixture({
     doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
     nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
-    nonExistentInputNoIndex: nonExistentInputNoIndexScriptHash,
+    nonExistentInputNoIndex:
+      contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
@@ -176,8 +177,13 @@ const deploymentInfoFor = (
       scriptHash: nonExistentInputScriptHash,
     },
     fraudProofNonExistentInputNoIndex: {
-      scriptHash: nonExistentInputNoIndexScriptHash,
-      contract: nonExistentInputNoIndexContract,
+      scriptHash:
+        contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash,
+      contract: {
+        type: "PlutusV3" as const,
+        cborHex:
+          contracts.nonExistentInputNoIndex.firstStep.spendingScript.script,
+      },
     },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
@@ -203,6 +209,23 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         deploymentInfo: deploymentInfoFor(fixture),
       }),
     );
+
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify({
+          q13AppliedIdentities: {
+            computationThreadPolicyId: output.computationThread.policyId,
+            fraudProofPolicyId: output.fraudProof.policyId,
+            fraudProofSpendingScriptHash: output.fraudProof.spendingScriptHash,
+            stepHashes: output.nonExistentInputNoIndex.steps.map(
+              (step) => step.scriptHash,
+            ),
+            catalogue: output.fraudProofCatalogue.nonExistentInputNoIndex,
+            catalogueRoot: output.fraudProofCatalogue.root,
+          },
+        }),
+      );
+    }
 
     expect(output.network).toBe("Preprod");
     expect(output.computationThread.policyId).toBe(
@@ -237,6 +260,9 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
     expect(
       output.nonExistentInput.deploymentNonExistentInputMatchesFirstStep,
     ).toBe(true);
+    expect(
+      output.nonExistentInputNoIndex.steps.map((step) => step.scriptHash),
+    ).toEqual(Q13_APPLIED_STEP_HASHES);
     expect(output.invalidRange.categoryFirstStepHash).toBe(
       contracts.invalidRange.firstStep.spendingScriptHash,
     );
@@ -315,6 +341,10 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         category: "daHashPreimage",
         step,
       })),
+      ...output.nonExistentInputNoIndex.steps.map((step) => ({
+        category: "nonExistentInputNoIndex",
+        step,
+      })),
       ...output.transitionTrace.steps.map((step) => ({
         category: "transitionTrace",
         step,
@@ -330,6 +360,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       ...contracts.invalidRange.steps,
       ...contracts.zeroInput.steps,
       ...contracts.daHashPreimage.steps,
+      ...contracts.nonExistentInputNoIndex.steps,
       contracts.transitionTrace.route,
       ...contracts.transitionTrace.finals,
       contracts.validationTraceDispute.opener,
@@ -378,6 +409,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       oversizedAppliedSpendingScripts: expectedOversized,
     });
     expect(output.fraudProofCatalogue.root).toBe(fraudProofCatalogue.root);
+    expect(output.fraudProofCatalogue.root).toBe(Q13_CATALOGUE_ROOT);
     expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
     expect(output.fraudProofCatalogue.doubleSpend.categoryId).toBe("00000000");
     expect(output.fraudProofCatalogue.doubleSpend.expectedCategoryId).toBe(

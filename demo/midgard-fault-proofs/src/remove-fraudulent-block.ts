@@ -6,6 +6,7 @@ import {
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
   buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
@@ -23,6 +24,7 @@ import {
   HUB_ORACLE_ASSET_NAME,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
+  type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
   type NonExistentInputFaultProofContracts,
@@ -279,6 +281,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "zeroInput"
   | "validationTraceDispute"
   | "daHashPreimage"
+  | "nonExistentInputNoIndex"
 >;
 
 export type StateQueueMutationLease = {
@@ -558,7 +561,8 @@ const buildRemovalContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | ValidationTraceDisputeFaultProofContracts
-    | DaHashPreimageFaultProofContracts;
+    | DaHashPreimageFaultProofContracts
+    | InputNoIdxFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
@@ -566,7 +570,8 @@ const buildRemovalContracts = async ({
     | "fraudProofTransitionTrace"
     | "fraudProofZeroInput"
     | "validationTraceDispute"
-    | "fraudProofDaHashPreimage";
+    | "fraudProofDaHashPreimage"
+    | "fraudProofNonExistentInputNoIndex";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -634,6 +639,19 @@ const buildRemovalContracts = async ({
     derivedCategoryFirstStepHash =
       validationTraceDisputeContracts.validationTraceDispute.firstStep
         .spendingScriptHash;
+  } else if (fraudCategory === "nonExistentInputNoIndex") {
+    const inputNoIdxContracts = await Effect.runPromise(
+      buildInputNoIdxFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = inputNoIdxContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNonExistentInputNoIndex";
+    derivedCategoryFirstStepHash =
+      inputNoIdxContracts.nonExistentInputNoIndex.firstStep.spendingScriptHash;
   } else if (fraudCategory === "daHashPreimage") {
     const daHashPreimageContracts = await Effect.runPromise(
       buildDaHashPreimageFaultProofContracts({

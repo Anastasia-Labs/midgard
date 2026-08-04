@@ -32,9 +32,20 @@
  * the `MidgardTxOutput` shape in
  * `onchain/aiken/lib/midgard/fraud-proofs/native-tx/types.ak`.
  */
-import { Data } from "@lucid-evolution/lucid";
+import {
+  buildMidgardBoundedCollectionItemProofV1,
+  buildMidgardBoundedCollectionV1,
+  encodeCbor,
+  type MidgardBoundedCollectionItemProofV1,
+  verifyMidgardBoundedCollectionItemProofV1,
+} from "@al-ft/midgard-core";
+import { CML, Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
+import { H32Schema, PubKeyHashSchema, ScriptHashSchema } from "@/common.js";
+import {
+  type BoundedCollectionItemProofV1,
+  BoundedCollectionItemProofV1Schema,
+} from "@/ledger-state.js";
 
 import {
   FaultProofStepCancel,
@@ -51,6 +62,17 @@ import {
 
 /** Catalogue violation identifier adjudicated by this family. */
 export const INPUT_NO_IDX_VIOLATION_ID_V1 = "input-no-idx" as const;
+
+/**
+ * Release-policy boundary for direct step-02 carriage. This does not restrict
+ * the consensus-valid `Complete` constructor.
+ */
+export const INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1 = 19;
+
+export const inputNoIdxStep02ExecutionModeV1 = (
+  itemCount: number,
+): "direct" | "fold" =>
+  itemCount <= INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1 ? "direct" : "fold";
 
 /** Catalogue category name this family is registered under (§5.1 order). */
 export const INPUT_NO_IDX_CATALOGUE_CATEGORY_V1 =
@@ -212,9 +234,20 @@ export const InputNoIdxStep01SpendRedeemer =
   InputNoIdxStep01SpendRedeemerSchema as unknown as InputNoIdxStep01SpendRedeemer;
 
 /** Mirrors `midgard/fraud_proofs/input_no_idx/step_02.State`. */
-export const InputNoIdxStep02StateSchema = Data.Object({
+export const InputNoIdxStep02DirectStateSchema = Data.Object({
   verified_tx_inputs_hash: H32Schema,
 });
+export const InputNoIdxStep02FoldingStateSchema = Data.Object({
+  verified_tx_inputs_hash: H32Schema,
+  item_count: Data.Integer(),
+  next_item_index: Data.Integer(),
+  bad_inputs_index: Data.Integer(),
+  selected_input: Data.Nullable(MidgardTxInputSchema),
+});
+export const InputNoIdxStep02StateSchema = Data.Enum([
+  Data.Object({ Direct: InputNoIdxStep02DirectStateSchema }),
+  Data.Object({ Folding: InputNoIdxStep02FoldingStateSchema }),
+]);
 export type InputNoIdxStep02State = Data.Static<
   typeof InputNoIdxStep02StateSchema
 >;
@@ -230,12 +263,55 @@ export type InputNoIdxStep02Datum = Data.Static<
 export const InputNoIdxStep02Datum =
   InputNoIdxStep02DatumSchema as unknown as InputNoIdxStep02Datum;
 
-export const InputNoIdxStep02ArgsSchema = Data.Object({
+/** Typed inline datum carried by an Ada-only tier-2 publication output. */
+export const PublishedSpendInputsV1Schema = Data.Object({
+  version: Data.Integer(),
+  computation_thread_policy_id: ScriptHashSchema,
+  computation_thread_asset_name: Data.Bytes({ maxLength: 32 }),
+  fraud_prover: PubKeyHashSchema,
+  verified_tx_inputs_hash: H32Schema,
+  item_count: Data.Integer(),
+  inputs: MidgardTxInputListSchema,
+});
+export type PublishedSpendInputsV1 = Data.Static<
+  typeof PublishedSpendInputsV1Schema
+>;
+export const PublishedSpendInputsV1 =
+  PublishedSpendInputsV1Schema as unknown as PublishedSpendInputsV1;
+
+export const InputNoIdxStep02CompleteArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   inputs_preimage: MidgardTxInputListSchema,
   bad_inputs_index: Data.Integer(),
 });
+export const InputNoIdxStep02CompletePublishedArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  publication_reference_input_index: Data.Integer(),
+  bad_inputs_index: Data.Integer(),
+});
+export const InputNoIdxStep02FoldStartArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  bad_inputs_index: Data.Integer(),
+  input_cbor: Data.Bytes(),
+  collection_proof: BoundedCollectionItemProofV1Schema,
+});
+export const InputNoIdxStep02FoldNextArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  input_cbor: Data.Bytes(),
+  collection_proof: BoundedCollectionItemProofV1Schema,
+});
+export const InputNoIdxStep02ArgsSchema = Data.Enum([
+  Data.Object({ Complete: InputNoIdxStep02CompleteArgsSchema }),
+  Data.Object({
+    CompletePublished: InputNoIdxStep02CompletePublishedArgsSchema,
+  }),
+  Data.Object({ FoldStart: InputNoIdxStep02FoldStartArgsSchema }),
+  Data.Object({ FoldNext: InputNoIdxStep02FoldNextArgsSchema }),
+]);
 export type InputNoIdxStep02Args = Data.Static<
   typeof InputNoIdxStep02ArgsSchema
 >;
@@ -337,7 +413,9 @@ export {
 export const inputNoIdxStep02StateFromBadTxV1 = (
   badTxSpendInputsHash: string,
 ): InputNoIdxStep02State => ({
-  verified_tx_inputs_hash: badTxSpendInputsHash.toLowerCase(),
+  Direct: {
+    verified_tx_inputs_hash: badTxSpendInputsHash.toLowerCase(),
+  },
 });
 
 /** Exactly the state `step-02` writes for `step-03`. */
@@ -359,3 +437,354 @@ export const inputNoIdxStep04StateFromEvidenceV1 = ({
   producing_tx_outputs_hash: producingTxOutputsHash.toLowerCase(),
   bad_input_output_index: evidence.badInput.output_index,
 });
+
+// ## Canonical native item encoders
+//
+// Byte-for-byte twins of `encode_midgard_tx_input` and
+// `encode_midgard_tx_output`
+// (`onchain/aiken/lib/midgard/fraud-proofs/native-tx/components.ak`). Both
+// preimage-opening steps of this family re-derive their bounded-collection
+// commitment from these encoders rather than trusting a prepared file, so an
+// off-chain builder and the L1 verifier cannot drift.
+
+/** Canonical spend-inputs field index of a native V1 transaction body. */
+export const INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1 = 0;
+
+/** Canonical outputs field index of a native V1 transaction body. */
+export const INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1 = 2;
+
+const definiteBytes = (bytes: Buffer): Buffer => {
+  const length = bytes.length;
+  if (length <= 23) {
+    return Buffer.concat([Buffer.from([0x40 + length]), bytes]);
+  }
+  if (length <= 0xff) {
+    return Buffer.concat([Buffer.from([0x58, length]), bytes]);
+  }
+  if (length <= 0xffff) {
+    const header = Buffer.alloc(3);
+    header[0] = 0x59;
+    header.writeUInt16BE(length, 1);
+    return Buffer.concat([header, bytes]);
+  }
+  const header = Buffer.alloc(5);
+  header[0] = 0x5a;
+  header.writeUInt32BE(length, 1);
+  return Buffer.concat([header, bytes]);
+};
+
+const definiteMapHeader = (length: number): Buffer => {
+  if (length <= 23) {
+    return Buffer.from([0xa0 + length]);
+  }
+  if (length <= 0xff) {
+    return Buffer.from([0xb8, length]);
+  }
+  if (length <= 0xffff) {
+    const header = Buffer.alloc(3);
+    header[0] = 0xb9;
+    header.writeUInt16BE(length, 1);
+    return header;
+  }
+  const header = Buffer.alloc(5);
+  header[0] = 0xba;
+  header.writeUInt32BE(length, 1);
+  return header;
+};
+
+const credentialHash = (credential: MidgardCredential): Buffer =>
+  Buffer.from(
+    "PubKeyCredential" in credential
+      ? credential.PubKeyCredential[0]
+      : credential.ScriptCredential[0],
+    "hex",
+  );
+
+const credentialIsScript = (credential: MidgardCredential): boolean =>
+  !("PubKeyCredential" in credential);
+
+/** Twin of `encode_midgard_address`. */
+export const encodeMidgardAddressCanonicalV1 = (
+  address: MidgardAddress,
+): Buffer => {
+  const networkId = Number(address.network_id);
+  if (networkId !== 0 && networkId !== 1) {
+    throw new Error(`Midgard address network id ${networkId} is not 0 or 1`);
+  }
+  const paymentHash = credentialHash(address.payment_credential);
+  const stake = address.stake_credential;
+  const addressType =
+    stake === null
+      ? credentialIsScript(address.payment_credential)
+        ? 7
+        : 6
+      : (credentialIsScript(address.payment_credential) ? 1 : 0) +
+        (credentialIsScript(stake) ? 2 : 0);
+  const header = addressType * 16 + networkId + (address.protected ? 8 : 0);
+  return Buffer.concat([
+    Buffer.from([header]),
+    paymentHash,
+    ...(stake === null ? [] : [credentialHash(stake)]),
+  ]);
+};
+
+/** Twin of `encode_midgard_value`; `assets` keys are `policy_id ++ name`. */
+export const encodeMidgardValueCanonicalV1 = (value: MidgardValue): Buffer => {
+  if (value.lovelace < 0n) {
+    throw new Error("Midgard value lovelace must not be negative");
+  }
+  const groups: { policyId: Buffer; assets: [Buffer, bigint][] }[] = [];
+  for (const [unitHex, quantity] of value.assets.entries()) {
+    const unit = Buffer.from(unitHex, "hex");
+    if (unit.length < 28) {
+      throw new Error(`Midgard asset unit ${unitHex} is shorter than a policy`);
+    }
+    const policyId = Buffer.from(unit.subarray(0, 28));
+    const assetName = Buffer.from(unit.subarray(28));
+    const previous = groups.at(-1);
+    if (previous !== undefined && previous.policyId.equals(policyId)) {
+      previous.assets.push([assetName, quantity]);
+    } else {
+      groups.push({ policyId, assets: [[assetName, quantity]] });
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x82]),
+    encodeCbor(value.lovelace),
+    definiteMapHeader(groups.length),
+    ...groups.flatMap((group) => [
+      definiteBytes(group.policyId),
+      definiteMapHeader(group.assets.length),
+      ...group.assets.flatMap(([assetName, quantity]) => [
+        definiteBytes(assetName),
+        encodeCbor(quantity),
+      ]),
+    ]),
+  ]);
+};
+
+const SCRIPT_LANGUAGE_TAG_V1: Readonly<Record<MidgardScriptLanguage, number>> =
+  {
+    NativeCardanoScript: 0,
+    PlutusV3Script: 3,
+    MidgardV1Script: 128,
+  };
+
+/** Twin of `encode_midgard_versioned_script`. */
+export const encodeMidgardVersionedScriptCanonicalV1 = (
+  script: MidgardVersionedScript,
+): Buffer =>
+  Buffer.concat([
+    Buffer.from([0x82]),
+    encodeCbor(BigInt(SCRIPT_LANGUAGE_TAG_V1[script.language])),
+    definiteBytes(Buffer.from(script.script_bytes, "hex")),
+  ]);
+
+/** Twin of `encode_midgard_tx_output`. */
+export const encodeMidgardTxOutputCanonicalV1 = (
+  output: MidgardTxOutput,
+): Buffer => {
+  const entryCount =
+    2 +
+    (output.datum_cbor === null ? 0 : 1) +
+    (output.script_ref === null ? 0 : 1);
+  return Buffer.concat([
+    Buffer.from([0xa0 + entryCount, 0x00]),
+    definiteBytes(encodeMidgardAddressCanonicalV1(output.address)),
+    Buffer.from([0x01]),
+    encodeMidgardValueCanonicalV1(output.value),
+    ...(output.datum_cbor === null
+      ? []
+      : [
+          Buffer.from([0x02]),
+          definiteBytes(Buffer.from(output.datum_cbor, "hex")),
+        ]),
+    ...(output.script_ref === null
+      ? []
+      : [
+          Buffer.from([0x03]),
+          encodeMidgardVersionedScriptCanonicalV1(output.script_ref),
+        ]),
+  ]);
+};
+
+/** Twin of `encode_midgard_tx_input`: canonical Cardano `TransactionInput`. */
+export const encodeMidgardTxInputCanonicalV1 = (
+  input: MidgardTxInputData,
+): Buffer =>
+  Buffer.from(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_hex(input.tx_id),
+      input.output_index,
+    ).to_cbor_bytes(),
+  );
+
+/**
+ * The `spend_inputs_hash` a native transaction body commits for `inputs`,
+ * derived exactly as `bounded_collection_v1.from_items(0, ...)` does on-chain.
+ */
+export const inputNoIdxSpendInputsCommitmentV1 = (
+  inputs: readonly MidgardTxInputData[],
+): string =>
+  buildMidgardBoundedCollectionV1({
+    fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
+    items: inputs.map(encodeMidgardTxInputCanonicalV1),
+  }).commitment.toString("hex");
+
+/** One ordered field-0 opening used by the step-02 fold path. */
+export type InputNoIdxSpendInputFoldOpeningV1 = {
+  readonly inputCbor: string;
+  readonly collectionProof: BoundedCollectionItemProofV1;
+};
+
+const collectionProofFromCoreV1 = (
+  proof: MidgardBoundedCollectionItemProofV1,
+): BoundedCollectionItemProofV1 => ({
+  version: BigInt(proof.version),
+  field_index: BigInt(proof.fieldIndex),
+  item_count: BigInt(proof.itemCount),
+  item_index: BigInt(proof.itemIndex),
+  item_length: BigInt(proof.itemLength),
+  item_commitment: proof.itemCommitment.toString("hex"),
+  frontier: proof.frontier.peaks.map((peak) => ({
+    height: BigInt(peak.height),
+    hash: peak.hash.toString("hex"),
+  })),
+  siblings: proof.siblings.map((sibling) => sibling.toString("hex")),
+});
+
+const proofIntegerV1 = (value: bigint, label: string): number => {
+  const exact = Number(value);
+  if (!Number.isSafeInteger(exact) || exact < 0 || BigInt(exact) !== value) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+  return exact;
+};
+
+const proofHashV1 = (value: string, label: string): Buffer => {
+  if (!/^[0-9a-f]{64}$/u.test(value)) {
+    throw new Error(`${label} must be a lowercase 32-byte hexadecimal hash`);
+  }
+  return Buffer.from(value, "hex");
+};
+
+const collectionProofToCoreV1 = (
+  proof: BoundedCollectionItemProofV1,
+): MidgardBoundedCollectionItemProofV1 => {
+  const version = proofIntegerV1(proof.version, "collection proof version");
+  if (version !== 1) {
+    throw new Error(`unknown bounded-collection proof version ${version}`);
+  }
+  const itemCount = proofIntegerV1(
+    proof.item_count,
+    "collection proof item count",
+  );
+  return {
+    version,
+    fieldIndex: proofIntegerV1(
+      proof.field_index,
+      "collection proof field index",
+    ),
+    itemCount,
+    itemIndex: proofIntegerV1(proof.item_index, "collection proof item index"),
+    itemLength: proofIntegerV1(
+      proof.item_length,
+      "collection proof item length",
+    ),
+    itemCommitment: proofHashV1(
+      proof.item_commitment,
+      "collection proof item commitment",
+    ),
+    frontier: {
+      count: itemCount,
+      peaks: proof.frontier.map((peak) => ({
+        height: proofIntegerV1(peak.height, "collection proof peak height"),
+        hash: proofHashV1(peak.hash, "collection proof peak hash"),
+      })),
+    },
+    siblings: proof.siblings.map((sibling) =>
+      proofHashV1(sibling, "collection proof sibling"),
+    ),
+  };
+};
+
+/**
+ * Derives every consecutive field-0 opening from one complete canonical input
+ * list. Callers expose the complete list, never fold indices or frontiers.
+ */
+export const buildInputNoIdxSpendInputFoldOpeningsV1 = (
+  inputs: readonly MidgardTxInputData[],
+): readonly InputNoIdxSpendInputFoldOpeningV1[] => {
+  const inputCbors = inputs.map(encodeMidgardTxInputCanonicalV1);
+  const collection = buildMidgardBoundedCollectionV1({
+    fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
+    items: inputCbors,
+  });
+  return inputCbors.map((inputCbor, itemIndex) => ({
+    inputCbor: inputCbor.toString("hex"),
+    collectionProof: collectionProofFromCoreV1(
+      buildMidgardBoundedCollectionItemProofV1(collection, itemIndex),
+    ),
+  }));
+};
+
+/**
+ * Verifies an opening against a complete input list, including canonical item
+ * bytes, ordered index, item commitment, and the collection commitment.
+ */
+export const verifyInputNoIdxSpendInputFoldOpeningV1 = ({
+  inputs,
+  opening,
+}: {
+  readonly inputs: readonly MidgardTxInputData[];
+  readonly opening: InputNoIdxSpendInputFoldOpeningV1;
+}): boolean => {
+  try {
+    const proof = collectionProofToCoreV1(opening.collectionProof);
+    if (
+      proof.fieldIndex !== INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1 ||
+      proof.itemCount !== inputs.length ||
+      proof.itemIndex >= inputs.length
+    ) {
+      return false;
+    }
+    const canonicalItem = encodeMidgardTxInputCanonicalV1(
+      inputs[proof.itemIndex]!,
+    );
+    if (
+      opening.inputCbor !== canonicalItem.toString("hex") ||
+      proof.itemLength !== canonicalItem.length
+    ) {
+      return false;
+    }
+    const collection = buildMidgardBoundedCollectionV1({
+      fieldIndex: INPUT_NO_IDX_SPEND_INPUTS_FIELD_INDEX_V1,
+      items: inputs.map(encodeMidgardTxInputCanonicalV1),
+    });
+    if (
+      !proof.itemCommitment.equals(
+        collection.items[proof.itemIndex]!.commitment,
+      )
+    ) {
+      return false;
+    }
+    return verifyMidgardBoundedCollectionItemProofV1({
+      expectedCommitment: collection.commitment,
+      proof,
+    });
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The `outputs_hash` a native transaction body commits for `outputs`, derived
+ * exactly as `bounded_collection_v1.from_items(2, ...)` does on-chain.
+ */
+export const inputNoIdxOutputsCommitmentV1 = (
+  outputs: readonly MidgardTxOutput[],
+): string =>
+  buildMidgardBoundedCollectionV1({
+    fieldIndex: INPUT_NO_IDX_OUTPUTS_FIELD_INDEX_V1,
+    items: outputs.map(encodeMidgardTxOutputCanonicalV1),
+  }).commitment.toString("hex");

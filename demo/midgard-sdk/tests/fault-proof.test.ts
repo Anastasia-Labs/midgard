@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyParamsToScript,
+  Constr,
   Data,
   type SpendingValidator as LucidSpendingValidator,
   validatorToAddress,
@@ -352,27 +353,195 @@ describe("fault-proof ABI", () => {
 
     const step02Datum = {
       fraud_prover: h28,
-      data: { verified_tx_inputs_hash: h32 },
+      data: { Direct: { verified_tx_inputs_hash: h32 } },
     };
     expect(roundTrip(step02Datum, SDK.InputNoIdxStep02Datum)).toEqual(
       step02Datum,
+    );
+    const publishedInputs = {
+      version: 1n,
+      computation_thread_policy_id: h28,
+      computation_thread_asset_name: h28b,
+      fraud_prover: h28,
+      verified_tx_inputs_hash: h32,
+      item_count: 1n,
+      inputs: [{ tx_id: h32b, output_index: 7n }],
+    };
+    expect(roundTrip(publishedInputs, SDK.PublishedSpendInputsV1)).toEqual(
+      publishedInputs,
     );
     expect(
       roundTrip(
         {
           Continue: [
             {
-              input_index: 0n,
-              output_index: 0n,
-              inputs_preimage: [{ tx_id: h32b, output_index: 7n }],
-              bad_inputs_index: 0n,
+              Complete: {
+                input_index: 0n,
+                output_index: 0n,
+                inputs_preimage: [{ tx_id: h32b, output_index: 7n }],
+                bad_inputs_index: 0n,
+              },
             },
           ],
         },
         SDK.InputNoIdxStep02SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ inputs_preimage: [{ output_index: 7n }] }],
+      Continue: [{ Complete: { inputs_preimage: [{ output_index: 7n }] } }],
+    });
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              CompletePublished: {
+                input_index: 1n,
+                output_index: 0n,
+                publication_reference_input_index: 2n,
+                bad_inputs_index: 0n,
+              },
+            },
+          ],
+        },
+        SDK.InputNoIdxStep02SpendRedeemer,
+      ),
+    ).toEqual({
+      Continue: [
+        {
+          CompletePublished: {
+            input_index: 1n,
+            output_index: 0n,
+            publication_reference_input_index: 2n,
+            bad_inputs_index: 0n,
+          },
+        },
+      ],
+    });
+
+    const foldInputs = Array.from({ length: 20 }, (_, index) => ({
+      tx_id: index % 2 === 0 ? h32 : h32b,
+      output_index: BigInt(index),
+    }));
+    expect(SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1).toBe(19);
+    expect(SDK.inputNoIdxStep02ExecutionModeV1(19)).toBe("direct");
+    expect(SDK.inputNoIdxStep02ExecutionModeV1(20)).toBe("fold");
+    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(foldInputs);
+    expect(openings).toHaveLength(20);
+    expect(
+      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+        inputs: foldInputs,
+        opening: openings[0]!,
+      }),
+    ).toBe(true);
+    expect(
+      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+        inputs: foldInputs,
+        opening: { ...openings[0]!, inputCbor: "00" },
+      }),
+    ).toBe(false);
+    const opening = openings[7]!;
+    const malformedOpenings = [
+      {
+        ...opening,
+        collectionProof: { ...opening.collectionProof, field_index: 1n },
+      },
+      {
+        ...opening,
+        collectionProof: { ...opening.collectionProof, item_count: 21n },
+      },
+      {
+        ...opening,
+        collectionProof: { ...opening.collectionProof, item_index: 8n },
+      },
+      {
+        ...opening,
+        collectionProof: {
+          ...opening.collectionProof,
+          item_length: opening.collectionProof.item_length + 1n,
+        },
+      },
+      {
+        ...opening,
+        collectionProof: {
+          ...opening.collectionProof,
+          item_commitment: "00".repeat(32),
+        },
+      },
+      {
+        ...opening,
+        collectionProof: { ...opening.collectionProof, frontier: [] },
+      },
+      {
+        ...opening,
+        collectionProof: {
+          ...opening.collectionProof,
+          siblings: [...opening.collectionProof.siblings, "00".repeat(32)],
+        },
+      },
+      { ...opening, inputCbor: openings[8]!.inputCbor },
+      { ...opening, inputCbor: `${opening.inputCbor}00` },
+    ];
+    for (const malformed of malformedOpenings) {
+      expect(
+        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+          inputs: foldInputs,
+          opening: malformed,
+        }),
+      ).toBe(false);
+    }
+    for (const alteredInputs of [
+      foldInputs.slice(0, -1),
+      [...foldInputs, foldInputs[7]!],
+      [...foldInputs].reverse(),
+      foldInputs.map((input, index) =>
+        index === 19 ? { ...input, output_index: 99n } : input,
+      ),
+    ]) {
+      expect(
+        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+          inputs: alteredInputs,
+          opening,
+        }),
+      ).toBe(false);
+    }
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              FoldStart: {
+                input_index: 0n,
+                output_index: 0n,
+                bad_inputs_index: 7n,
+                input_cbor: openings[0]!.inputCbor,
+                collection_proof: openings[0]!.collectionProof,
+              },
+            },
+          ],
+        },
+        SDK.InputNoIdxStep02SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [{ FoldStart: { collection_proof: { item_count: 20n } } }],
+    });
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              FoldNext: {
+                input_index: 0n,
+                output_index: 0n,
+                input_cbor: openings[1]!.inputCbor,
+                collection_proof: openings[1]!.collectionProof,
+              },
+            },
+          ],
+        },
+        SDK.InputNoIdxStep02SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [{ FoldNext: { collection_proof: { item_index: 1n } } }],
     });
 
     const step03Datum = {
@@ -431,6 +600,126 @@ describe("fault-proof ABI", () => {
         },
       ],
     });
+  });
+
+  it("pins the flattened input-no-idx step-02 wire ABI", () => {
+    const inputs = [
+      { tx_id: h32b, output_index: 7n },
+      { tx_id: h32, output_index: 8n },
+    ];
+    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(inputs);
+    const complete = {
+      Complete: {
+        input_index: 0n,
+        output_index: 0n,
+        inputs_preimage: [inputs[0]!],
+        bad_inputs_index: 0n,
+      },
+    };
+    const variants = [
+      ["Complete", 0, 4, complete],
+      [
+        "CompletePublished",
+        1,
+        4,
+        {
+          CompletePublished: {
+            input_index: 1n,
+            output_index: 0n,
+            publication_reference_input_index: 2n,
+            bad_inputs_index: 0n,
+          },
+        },
+      ],
+      [
+        "FoldStart",
+        2,
+        5,
+        {
+          FoldStart: {
+            input_index: 0n,
+            output_index: 0n,
+            bad_inputs_index: 1n,
+            input_cbor: openings[0]!.inputCbor,
+            collection_proof: openings[0]!.collectionProof,
+          },
+        },
+      ],
+      [
+        "FoldNext",
+        3,
+        4,
+        {
+          FoldNext: {
+            input_index: 0n,
+            output_index: 0n,
+            input_cbor: openings[1]!.inputCbor,
+            collection_proof: openings[1]!.collectionProof,
+          },
+        },
+      ],
+    ] as const;
+    let completeFields: readonly unknown[] | undefined;
+
+    for (const [label, tag, arity, args] of variants) {
+      const redeemer = { Continue: [args] };
+      const cbor = Data.to(
+        redeemer as never,
+        SDK.InputNoIdxStep02SpendRedeemer,
+      );
+      const outer = Data.from(cbor);
+
+      expect(outer, label).toBeInstanceOf(Constr);
+      const continueConstr = outer as Constr<unknown>;
+      expect(continueConstr.index, label).toBe(1);
+      expect(continueConstr.fields, label).toHaveLength(1);
+      expect(continueConstr.fields[0], label).toBeInstanceOf(Constr);
+      const argsConstr = continueConstr.fields[0] as Constr<unknown>;
+      expect(argsConstr.index, label).toBe(tag);
+      expect(argsConstr.fields, label).toHaveLength(arity);
+      expect(
+        typeof argsConstr.fields[0],
+        `${label} has no wrapper constructor`,
+      ).toBe("bigint");
+      expect(Data.from(cbor, SDK.InputNoIdxStep02SpendRedeemer), label).toEqual(
+        redeemer,
+      );
+
+      if (label === "Complete") {
+        completeFields = argsConstr.fields;
+        expect(cbor).toBe(`d87a9fd8799f00009fd8799f5820${h32b}07ffff00ffff`);
+      }
+    }
+
+    expect(completeFields).toBeDefined();
+    const fields = [...completeFields!];
+    const invalid = [
+      [
+        "obsolete nested CompleteArgs wrapper",
+        new Constr(1, [new Constr(0, [new Constr(0, fields)])]),
+      ],
+      [
+        "Complete payload under adjacent CompletePublished tag",
+        new Constr(1, [new Constr(1, fields)]),
+      ],
+      [
+        "Complete wrong arity",
+        new Constr(1, [new Constr(0, fields.slice(0, 3))]),
+      ],
+      [
+        "args adjacent out-of-range tag",
+        new Constr(1, [new Constr(4, fields)]),
+      ],
+      ["Continue wrong arity", new Constr(1, [])],
+    ] as const;
+
+    for (const [label, malformed] of invalid) {
+      const cbor = Data.to(malformed as never);
+      expect(
+        () => Data.from(cbor, SDK.InputNoIdxStep02SpendRedeemer),
+        label,
+      ).toThrow();
+    }
   });
 
   it("detects an input-no-idx violation from the producing outputs count", () => {
@@ -622,6 +911,10 @@ describe("fault-proof contract builder", () => {
       contracts.nonExistentInput.steps[0],
     );
     expect(contracts.nonExistentInput.steps).toHaveLength(4);
+    expect(contracts.nonExistentInputNoIndex.firstStep).toBe(
+      contracts.nonExistentInputNoIndex.steps[0],
+    );
+    expect(contracts.nonExistentInputNoIndex.steps).toHaveLength(4);
     expect(contracts.invalidRange.firstStep).toBe(
       contracts.invalidRange.steps[0],
     );
@@ -644,6 +937,7 @@ describe("fault-proof contract builder", () => {
         [
           ...contracts.doubleSpend.steps,
           ...contracts.nonExistentInput.steps,
+          ...contracts.nonExistentInputNoIndex.steps,
           ...contracts.invalidRange.steps,
           ...contracts.zeroInput.steps,
           ...contracts.transitionTrace.steps,
@@ -652,7 +946,7 @@ describe("fault-proof contract builder", () => {
       ).size,
       // The split stage-one route contributes the envelope resolver plus five
       // internal stage hashes to the applied proof surface.
-    ).toBe(127);
+    ).toBe(131);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {

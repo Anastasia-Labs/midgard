@@ -9,6 +9,7 @@ import {
 import {
   buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
+  buildInputNoIdxFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
@@ -18,6 +19,7 @@ import {
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
+  type InputNoIdxFaultProofContracts,
   type InvalidRangeFaultProofContracts,
   MerkleRoot,
   type NonExistentInputFaultProofContracts,
@@ -362,6 +364,15 @@ export type ResolvedDaHashPreimageDeploymentContracts = {
   readonly contracts: DaHashPreimageFaultProofContracts;
 };
 
+export type ResolvedInputNoIdxDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly nonExistentInputNoIndexCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: InputNoIdxFaultProofContracts;
+};
+
 export type ResolvedZeroInputDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly zeroInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
@@ -375,6 +386,7 @@ type SupportedFaultProofCategoryName = Extract<
   FraudProofCatalogueCategoryName,
   | "doubleSpend"
   | "nonExistentInput"
+  | "nonExistentInputNoIndex"
   | "invalidRange"
   | "transitionTrace"
   | "zeroInput"
@@ -385,6 +397,7 @@ type SupportedFaultProofCategoryName = Extract<
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   doubleSpend: "fraudProofDoubleSpend",
   nonExistentInput: "fraudProofNonExistentInput",
+  nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
   invalidRange: "fraudProofInvalidRange",
   transitionTrace: "fraudProofTransitionTrace",
   zeroInput: "fraudProofZeroInput",
@@ -400,6 +413,8 @@ const categoryLabel = (
       return "double-spend";
     case "nonExistentInput":
       return "non-existent-input";
+    case "nonExistentInputNoIndex":
+      return "input-no-idx";
     case "invalidRange":
       return "invalid-range";
     case "transitionTrace":
@@ -440,7 +455,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | ValidationTraceDisputeFaultProofContracts
-    | DaHashPreimageFaultProofContracts;
+    | DaHashPreimageFaultProofContracts
+    | InputNoIdxFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -497,7 +513,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
     | ValidationTraceDisputeFaultProofContracts
-    | DaHashPreimageFaultProofContracts;
+    | DaHashPreimageFaultProofContracts
+    | InputNoIdxFaultProofContracts;
   let derivedFirstStepHash: string;
   if (categoryName === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -523,6 +540,18 @@ const resolveFaultProofDeploymentContracts = async ({
     contracts = nonExistentInputContracts;
     derivedFirstStepHash =
       nonExistentInputContracts.nonExistentInput.firstStep.spendingScriptHash;
+  } else if (categoryName === "nonExistentInputNoIndex") {
+    const inputNoIdxContracts = await Effect.runPromise(
+      buildInputNoIdxFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = inputNoIdxContracts;
+    derivedFirstStepHash =
+      inputNoIdxContracts.nonExistentInputNoIndex.firstStep.spendingScriptHash;
   } else if (categoryName === "invalidRange") {
     const invalidRangeContracts = await Effect.runPromise(
       buildInvalidRangeFaultProofContracts({
@@ -658,6 +687,27 @@ export const resolveNonExistentInputDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as NonExistentInputFaultProofContracts,
+  };
+};
+
+export const resolveInputNoIdxDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedInputNoIdxDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "nonExistentInputNoIndex",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    nonExistentInputNoIndexCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as InputNoIdxFaultProofContracts,
   };
 };
 

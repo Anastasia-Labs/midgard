@@ -73,7 +73,8 @@ export type InputNoIdxRejectionCodeV1 =
   | "producing_tx_not_committed"
   | "no_violating_input"
   | "input_exists_in_producing_tx"
-  | "malformed_native_output";
+  | "malformed_native_output"
+  | "preimage_commitment_mismatch";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
 export class InputNoIdxRejectionV1 extends Error {
@@ -424,11 +425,17 @@ export type PreparedInputNoIdxInputsPreimageJson = {
   readonly badInputsIndex: number;
 };
 
-/** step-04 material: the complete outputs preimage of the producing tx. */
+/**
+ * step-04 material: the complete outputs preimage of the producing tx, carried
+ * as the canonical `encode_midgard_tx_output` bytes. The structured
+ * `MidgardTxOutput` PlutusData the redeemer needs contains a native-asset map,
+ * which JSON cannot represent losslessly, so the artifact stores the canonical
+ * items the on-chain step re-encodes and the submitter re-projects them.
+ */
 export type PreparedInputNoIdxOutputsPreimageJson = {
   readonly producingTxId: string;
   readonly producingTxOutputsHash: string;
-  readonly outputsPreimage: readonly SDK.MidgardTxOutput[];
+  readonly outputsPreimageCbor: readonly string[];
   readonly badInputOutputIndex: string;
 };
 
@@ -444,8 +451,10 @@ export type PreparedInputNoIdxProofFitV1 = {
   readonly step04OutputsPreimageDatumBytes: number;
   readonly badTxCompactCborBytes: number;
   readonly producingTxCompactCborBytes: number;
-  /** Carried complete in one redeemer per step at these measured sizes. */
-  readonly completeItemCarriage: true;
+  /** The direct complete-item redeemer is used only through the measured cap. */
+  readonly completeItemCarriage: boolean;
+  /** Larger preimages are re-opened in authenticated, ordered fold steps. */
+  readonly step02Execution: "direct" | "fold";
 };
 
 export type PreparedInputNoIdxOutput = {
@@ -470,6 +479,8 @@ export type PreparedInputNoIdxOutput = {
   readonly step02State: SDK.InputNoIdxStep02State;
   readonly step03State: SDK.InputNoIdxStep03State;
   readonly step04: PreparedInputNoIdxOutputsPreimageJson;
+  /** In-memory projection of `step04.outputsPreimageCbor`. */
+  readonly outputsPreimage: readonly SDK.MidgardTxOutput[];
   readonly step04State: SDK.InputNoIdxStep04State;
   readonly proofFit: PreparedInputNoIdxProofFitV1;
   readonly files?: {
@@ -722,6 +733,32 @@ export const prepareInputNoIdxFromTransactions = async ({
   const outputsPreimage = candidate.producingOutputs.map(
     midgardTxOutputFromCanonicalCborV1,
   );
+  // Self-check: the preimages this builder emits must re-derive the exact
+  // bounded-collection commitments the two opening steps compare against, so a
+  // projection bug can never reach a prover.
+  const derivedInputsCommitment =
+    SDK.inputNoIdxSpendInputsCommitmentV1(inputsPreimage);
+  if (
+    derivedInputsCommitment !==
+    candidate.badTx.nativeTxCompact.body.spend_inputs_hash
+  ) {
+    reject(
+      "preimage_commitment_mismatch",
+      `bad_tx_id=${candidate.badTx.nodeTxId} committed_spend_inputs_hash=${candidate.badTx.nativeTxCompact.body.spend_inputs_hash} derived=${derivedInputsCommitment}`,
+    );
+  }
+  const derivedOutputsCommitment =
+    SDK.inputNoIdxOutputsCommitmentV1(outputsPreimage);
+  if (
+    derivedOutputsCommitment !==
+    candidate.producingTx.nativeTxCompact.body.outputs_hash
+  ) {
+    reject(
+      "preimage_commitment_mismatch",
+      `producing_tx_id=${candidate.producingTx.nodeTxId} committed_outputs_hash=${candidate.producingTx.nativeTxCompact.body.outputs_hash} derived=${derivedOutputsCommitment}`,
+    );
+  }
+
   const step02State = SDK.inputNoIdxStep02StateFromBadTxV1(
     candidate.badTx.nativeTxCompact.body.spend_inputs_hash,
   );
@@ -769,7 +806,8 @@ export const prepareInputNoIdxFromTransactions = async ({
     ),
     step02: {
       badTxId: candidate.badTx.nodeTxId,
-      verifiedTxInputsHash: step02State.verified_tx_inputs_hash,
+      verifiedTxInputsHash:
+        candidate.badTx.nativeTxCompact.body.spend_inputs_hash,
       inputsPreimage,
       badInputsIndex: candidate.badInputsIndex,
     },
@@ -778,9 +816,12 @@ export const prepareInputNoIdxFromTransactions = async ({
     step04: {
       producingTxId: candidate.producingTx.nodeTxId,
       producingTxOutputsHash: step04State.producing_tx_outputs_hash,
-      outputsPreimage,
+      outputsPreimageCbor: candidate.producingOutputs.map((item) =>
+        item.toString("hex"),
+      ),
       badInputOutputIndex: candidate.badInput.output_index.toString(),
     },
+    outputsPreimage,
     step04State,
     proofFit: {
       step02InputsPreimageItemCount: inputsPreimage.length,
@@ -790,7 +831,12 @@ export const prepareInputNoIdxFromTransactions = async ({
       badTxCompactCborBytes: candidate.badTx.nativeCompactCbor.length / 2,
       producingTxCompactCborBytes:
         candidate.producingTx.nativeCompactCbor.length / 2,
-      completeItemCarriage: true,
+      completeItemCarriage:
+        inputsPreimage.length <= SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
+      step02Execution:
+        inputsPreimage.length <= SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1
+          ? "direct"
+          : "fold",
     },
   };
 

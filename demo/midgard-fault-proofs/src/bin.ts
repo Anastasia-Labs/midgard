@@ -34,6 +34,13 @@ import {
   type SubmitInitFraudCategory,
   submitInitFromFiles,
 } from "./submit-init.js";
+import { submitInputNoIdxStep01FromFiles } from "./submit-input-no-idx-step-01.js";
+import {
+  submitInputNoIdxStep02FromFiles,
+  submitInputNoIdxStep02UntilTerminalFromFiles,
+} from "./submit-input-no-idx-step-02.js";
+import { submitInputNoIdxStep03FromFiles } from "./submit-input-no-idx-step-03.js";
+import { submitInputNoIdxStep04FromFiles } from "./submit-input-no-idx-step-04.js";
 import { submitInvalidRangeStep01FromFiles } from "./submit-invalid-range-step-01.js";
 import { submitInvalidRangeStep02FromFiles } from "./submit-invalid-range-step-02.js";
 import { submitStep01FromFiles } from "./submit-step-01.js";
@@ -99,6 +106,7 @@ export type ParsedArgs = {
   readonly prevUtxosRoot: string | undefined;
   readonly prevBlockPayloadPath: string | undefined;
   readonly inputsPreimagePath: string | undefined;
+  readonly outputsPreimagePath: string | undefined;
   readonly ledgerNonMembershipProofPath: string | undefined;
   readonly txsNonMembershipProofPath: string | undefined;
   readonly validationClaimCborPath: string | undefined;
@@ -146,7 +154,12 @@ const usage = `Usage:
   midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-da-hash-preimage-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-da-hash-preimage-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput|validationTraceDispute|daHashPreimage>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <bad-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <inputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-fold --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --inputs-preimage <inputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <producing-tx-inclusion.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-input-no-idx-step-04 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --outputs-preimage <outputs-preimage.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -219,6 +232,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let prevUtxosRoot: string | undefined;
   let prevBlockPayloadPath: string | undefined;
   let inputsPreimagePath: string | undefined;
+  let outputsPreimagePath: string | undefined;
   let ledgerNonMembershipProofPath: string | undefined;
   let txsNonMembershipProofPath: string | undefined;
   let validationClaimCborPath: string | undefined;
@@ -364,6 +378,9 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--inputs-preimage":
         inputsPreimagePath = rest[++index];
         break;
+      case "--outputs-preimage":
+        outputsPreimagePath = rest[++index];
+        break;
       case "--ledger-non-membership-proof":
         ledgerNonMembershipProofPath = rest[++index];
         break;
@@ -468,6 +485,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     prevUtxosRoot,
     prevBlockPayloadPath,
     inputsPreimagePath,
+    outputsPreimagePath,
     ledgerNonMembershipProofPath,
     txsNonMembershipProofPath,
     validationClaimCborPath,
@@ -495,11 +513,6 @@ export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
   if (args.fraudulentHeaderHash === undefined) {
     throw new Error(
       `Missing required --fraudulent-header-hash <hex>.\n${usage}`,
-    );
-  }
-  if (args.fraudCategory === "nonExistentInputNoIndex") {
-    throw new Error(
-      "remove-fraudulent-block does not yet support the nonExistentInputNoIndex proof machine.",
     );
   }
   return {
@@ -630,6 +643,7 @@ export const main = async (): Promise<void> => {
     args.command !== "prepare-invalid-range" &&
     args.command !== "prepare-non-existent-input" &&
     args.command !== "prepare-zero-input" &&
+    args.command !== "prepare-input-no-idx" &&
     args.command !== "inspect-contracts" &&
     args.command !== "submit-init" &&
     args.command !== "submit-step-01" &&
@@ -646,6 +660,11 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-zero-input-step-02" &&
     args.command !== "submit-da-hash-preimage-step-01" &&
     args.command !== "submit-da-hash-preimage-step-02" &&
+    args.command !== "submit-input-no-idx-step-01" &&
+    args.command !== "submit-input-no-idx-step-02" &&
+    args.command !== "submit-input-no-idx-fold" &&
+    args.command !== "submit-input-no-idx-step-03" &&
+    args.command !== "submit-input-no-idx-step-04" &&
     args.command !== "submit-validation-dispute-open" &&
     args.command !== "submit-validation-dispute-verify-source" &&
     args.command !== "submit-validation-dispute-reveal" &&
@@ -1142,6 +1161,173 @@ export const main = async (): Promise<void> => {
       walletPrivateKey: args.walletPrivateKey,
       walletPrivateKeyEnv: args.walletPrivateKeyEnv,
       threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-input-no-idx-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitInputNoIdxStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-input-no-idx-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.inputsPreimagePath === undefined) {
+      throw new Error(`Missing required --inputs-preimage <path>.\n${usage}`);
+    }
+    const output = await submitInputNoIdxStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      inputsPreimagePath: args.inputsPreimagePath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-input-no-idx-fold") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.inputsPreimagePath === undefined) {
+      throw new Error(`Missing required --inputs-preimage <path>.\n${usage}`);
+    }
+    const output = await submitInputNoIdxStep02UntilTerminalFromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      inputsPreimagePath: args.inputsPreimagePath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-input-no-idx-step-03") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitInputNoIdxStep03FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-input-no-idx-step-04") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.outputsPreimagePath === undefined) {
+      throw new Error(`Missing required --outputs-preimage <path>.\n${usage}`);
+    }
+    const output = await submitInputNoIdxStep04FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      outputsPreimagePath: args.outputsPreimagePath,
       awaitConfirmation: args.awaitConfirmation,
     });
 

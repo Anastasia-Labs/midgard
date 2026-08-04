@@ -25,6 +25,7 @@ import {
   type PreparedDoubleSpendOutput,
   prepareDoubleSpendFromTransactions,
 } from "../prepare-double-spend.js";
+import { prepareInputNoIdxFromCanonicalEvidenceV1 } from "../prepare-input-no-idx.js";
 import {
   type PreparedInvalidRangeOutput,
   prepareInvalidRangeFromTransactions,
@@ -176,6 +177,8 @@ export const prepareNonExistentInputFromCanonicalEvidenceV1 = async ({
   });
 };
 
+export { prepareInputNoIdxFromCanonicalEvidenceV1 };
+
 export type CanonicalPrepareCommandV1 =
   | {
       readonly command: "prepare-double-spend";
@@ -195,12 +198,18 @@ export type CanonicalPrepareCommandV1 =
       readonly outputDir?: string;
     }
   | {
+      readonly command: "prepare-input-no-idx";
+      readonly badTxId?: string;
+      readonly badInputsIndex?: string | number;
+      readonly outputDir?: string;
+    }
+  | {
       readonly command: "prepare-zero-input";
       readonly txId?: string;
       readonly outputDir?: string;
     };
 
-/** Package-root-reachable canonical router for all four prepare CLI verbs. */
+/** Package-root-reachable canonical router for every prepare CLI verb. */
 export const executeCanonicalPrepareCommandV1 = async ({
   request,
   evidence,
@@ -238,6 +247,17 @@ export const executeCanonicalPrepareCommandV1 = async ({
         ...(request.badInputIndex === undefined
           ? {}
           : { badInputIndex: request.badInputIndex }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-input-no-idx":
+      return await prepareInputNoIdxFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.badTxId === undefined ? {} : { badTxId: request.badTxId }),
+        ...(request.badInputsIndex === undefined
+          ? {}
+          : { badInputsIndex: request.badInputsIndex }),
         ...(request.outputDir === undefined
           ? {}
           : { outputDir: request.outputDir }),

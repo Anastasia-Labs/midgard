@@ -145,6 +145,19 @@ export type InspectContractsOutput = {
       InspectContractsStepOutput,
     ];
   };
+  readonly nonExistentInputNoIndex: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentNonExistentInputNoIndexScriptHash: string | null;
+    readonly deploymentNonExistentInputNoIndexMatchesFirstStep: boolean | null;
+    /** Embedded deployment bytes still cross-checked against the applied hash. */
+    readonly deploymentMatchesEmbeddedScriptBytes: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
   readonly transitionTrace: {
     readonly categoryFirstStepHash: string;
     readonly deploymentTransitionTraceScriptHash: string | null;
@@ -212,7 +225,8 @@ export type InspectContractsProofCategory =
   | "zeroInput"
   | "transitionTrace"
   | "validationTraceDispute"
-  | "daHashPreimage";
+  | "daHashPreimage"
+  | "nonExistentInputNoIndex";
 
 export type InspectContractsOversizedSpendingScript = {
   readonly category: InspectContractsProofCategory;
@@ -577,18 +591,21 @@ const inspectEmbeddedDeploymentScriptIdentity = (
   deploymentInfo: ContractDeploymentInfo,
   name: string,
 ): {
+  readonly deploymentScriptHash: string | null;
   readonly expectedScriptHash: string;
   readonly deploymentMatchesScriptBytes: boolean | null;
 } => {
   const entry = deploymentInfo[name];
   if (entry === undefined) {
     return {
+      deploymentScriptHash: null,
       expectedScriptHash: "",
       deploymentMatchesScriptBytes: null,
     };
   }
   if (entry.contract === undefined) {
     return {
+      deploymentScriptHash: entry.scriptHash,
       expectedScriptHash: entry.scriptHash,
       deploymentMatchesScriptBytes: false,
     };
@@ -598,6 +615,7 @@ const inspectEmbeddedDeploymentScriptIdentity = (
     script: entry.contract.cborHex,
   });
   return {
+    deploymentScriptHash: entry.scriptHash,
     expectedScriptHash: derivedScriptHash,
     deploymentMatchesScriptBytes: derivedScriptHash === entry.scriptHash,
   };
@@ -1014,6 +1032,13 @@ export const inspectContracts = ({
       stepOutput("step01", contracts.zeroInput.steps[0]),
       stepOutput("step02", contracts.zeroInput.steps[1]),
     ];
+    const nonExistentInputNoIndexSteps: InspectContractsOutput["nonExistentInputNoIndex"]["steps"] =
+      [
+        stepOutput("step01", contracts.nonExistentInputNoIndex.steps[0]),
+        stepOutput("step02", contracts.nonExistentInputNoIndex.steps[1]),
+        stepOutput("step03", contracts.nonExistentInputNoIndex.steps[2]),
+        stepOutput("step04", contracts.nonExistentInputNoIndex.steps[3]),
+      ];
     const daHashPreimageSteps: InspectContractsOutput["daHashPreimage"]["steps"] =
       [
         stepOutput("step01", contracts.daHashPreimage.steps[0]),
@@ -1073,6 +1098,10 @@ export const inspectContracts = ({
         category: "daHashPreimage" as const,
         step,
       })),
+      ...nonExistentInputNoIndexSteps.map((step) => ({
+        category: "nonExistentInputNoIndex" as const,
+        step,
+      })),
       ...transitionTraceSteps.map((step) => ({
         category: "transitionTrace" as const,
         step,
@@ -1105,6 +1134,8 @@ export const inspectContracts = ({
       contracts.zeroInput.firstStep.spendingScriptHash;
     const daHashPreimageCategoryFirstStepHash =
       contracts.daHashPreimage.firstStep.spendingScriptHash;
+    const nonExistentInputNoIndexCategoryFirstStepHash =
+      contracts.nonExistentInputNoIndex.firstStep.spendingScriptHash;
     const transitionTraceCategoryFirstStepHash =
       contracts.transitionTrace.firstStep.spendingScriptHash;
     const validationTraceDisputeCategoryFirstStepHash =
@@ -1132,6 +1163,11 @@ export const inspectContracts = ({
         ? null
         : deploymentDaHashPreimageScriptHash ===
           daHashPreimageCategoryFirstStepHash;
+    const deploymentNonExistentInputNoIndexMatchesFirstStep =
+      nonExistentInputNoIndexIdentity.deploymentScriptHash === null
+        ? null
+        : nonExistentInputNoIndexIdentity.deploymentScriptHash ===
+          nonExistentInputNoIndexCategoryFirstStepHash;
     const deploymentTransitionTraceMatchesFirstStep =
       deploymentTransitionTraceScriptHash === null
         ? null
@@ -1147,8 +1183,7 @@ export const inspectContracts = ({
       {
         doubleSpend: categoryFirstStepHash,
         nonExistentInput: nonExistentInputCategoryFirstStepHash,
-        nonExistentInputNoIndex:
-          nonExistentInputNoIndexIdentity.expectedScriptHash,
+        nonExistentInputNoIndex: nonExistentInputNoIndexCategoryFirstStepHash,
         invalidRange: invalidRangeCategoryFirstStepHash,
         zeroInput: zeroInputCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
@@ -1159,7 +1194,7 @@ export const inspectContracts = ({
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
         nonExistentInput: deploymentNonExistentInputMatchesFirstStep,
         nonExistentInputNoIndex:
-          nonExistentInputNoIndexIdentity.deploymentMatchesScriptBytes,
+          deploymentNonExistentInputNoIndexMatchesFirstStep,
         invalidRange: deploymentInvalidRangeMatchesFirstStep,
         zeroInput: deploymentZeroInputMatchesFirstStep,
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,
@@ -1220,6 +1255,15 @@ export const inspectContracts = ({
         deploymentDaHashPreimageScriptHash,
         deploymentDaHashPreimageMatchesFirstStep,
         steps: daHashPreimageSteps,
+      },
+      nonExistentInputNoIndex: {
+        categoryFirstStepHash: nonExistentInputNoIndexCategoryFirstStepHash,
+        deploymentNonExistentInputNoIndexScriptHash:
+          nonExistentInputNoIndexIdentity.deploymentScriptHash,
+        deploymentNonExistentInputNoIndexMatchesFirstStep,
+        deploymentMatchesEmbeddedScriptBytes:
+          nonExistentInputNoIndexIdentity.deploymentMatchesScriptBytes,
+        steps: nonExistentInputNoIndexSteps,
       },
       transitionTrace: {
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,

@@ -179,7 +179,7 @@ describe("fault-proof CLI argument parsing", () => {
     );
   });
 
-  it("rejects no-index removal until its removal machine is implemented", () => {
+  it("accepts no-index removal now that the input-no-idx machine is registered", () => {
     const parsed = parseArgs([
       "node",
       "midgard-fault-proofs",
@@ -194,9 +194,83 @@ describe("fault-proof CLI argument parsing", () => {
       "nonExistentInputNoIndex",
     ]);
 
-    expect(() => buildRemoveFraudulentBlockCliConfig(parsed)).toThrow(
-      /does not yet support the nonExistentInputNoIndex proof machine/u,
+    expect(buildRemoveFraudulentBlockCliConfig(parsed).fraudCategory).toBe(
+      "nonExistentInputNoIndex",
     );
+  });
+
+  it("parses the four input-no-idx submit verbs and their preimage inputs", () => {
+    const base = ["node", "midgard-fault-proofs"];
+    const step01 = parseArgs([
+      ...base,
+      "submit-input-no-idx-step-01",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      `${"aa".repeat(32)}#0`,
+      "--state-queue-block-out-ref",
+      `${"bb".repeat(32)}#1`,
+      "--tx-inclusion",
+      "bad-tx-inclusion.json",
+    ]);
+    expect(step01.command).toBe("submit-input-no-idx-step-01");
+    expect(step01.txInclusionPath).toBe("bad-tx-inclusion.json");
+
+    const step02 = parseArgs([
+      ...base,
+      "submit-input-no-idx-step-02",
+      "--thread-out-ref",
+      `${"aa".repeat(32)}#0`,
+      "--inputs-preimage",
+      "inputs-preimage.json",
+    ]);
+    expect(step02.command).toBe("submit-input-no-idx-step-02");
+
+    const fold = parseArgs([
+      "node",
+      "midgard-fault-proofs",
+      "submit-input-no-idx-fold",
+      "--blueprint",
+      "plutus.json",
+      "--deployment-info",
+      "deployment.json",
+      "--thread-out-ref",
+      "ab".repeat(32) + "#0",
+      "--inputs-preimage",
+      "inputs.json",
+      "--wallet-seed-phrase-env",
+      "MIDGARD_PROVER_SEED",
+    ]);
+    expect(fold.command).toBe("submit-input-no-idx-fold");
+    expect(fold.inputsPreimagePath).toBe("inputs.json");
+    expect(fold.walletSeedPhraseEnv).toBe("MIDGARD_PROVER_SEED");
+    expect(step02.inputsPreimagePath).toBe("inputs-preimage.json");
+
+    const step03 = parseArgs([
+      ...base,
+      "submit-input-no-idx-step-03",
+      "--thread-out-ref",
+      `${"aa".repeat(32)}#0`,
+      "--state-queue-block-out-ref",
+      `${"bb".repeat(32)}#1`,
+      "--tx-inclusion",
+      "producing-tx-inclusion.json",
+    ]);
+    expect(step03.command).toBe("submit-input-no-idx-step-03");
+    expect(step03.txInclusionPath).toBe("producing-tx-inclusion.json");
+
+    const step04 = parseArgs([
+      ...base,
+      "submit-input-no-idx-step-04",
+      "--thread-out-ref",
+      `${"aa".repeat(32)}#0`,
+      "--outputs-preimage",
+      "outputs-preimage.json",
+    ]);
+    expect(step04.command).toBe("submit-input-no-idx-step-04");
+    expect(step04.outputsPreimagePath).toBe("outputs-preimage.json");
   });
 
   it("parses fail-closed validation-dispute submission inputs", () => {

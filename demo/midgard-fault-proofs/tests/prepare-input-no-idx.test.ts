@@ -132,10 +132,15 @@ const spenderTx = (
   producerTxId: string,
   outputIndex: bigint,
   fee: bigint,
+  spendInputCount = 1,
 ): NodeTransactionPayload =>
   payloadFromTx(
     makeNativeTx({
-      spendInputCbors: [inputCbor(producerTxId, outputIndex)],
+      spendInputCbors: Array.from({ length: spendInputCount }, (_, index) =>
+        index === spendInputCount - 1
+          ? inputCbor(producerTxId, outputIndex)
+          : inputCbor(index.toString(16).padStart(64, "0"), BigInt(index)),
+      ),
       outputCbors: [nativeOutputCbor(0x11, 1_000_000n)],
       fee,
     }),
@@ -158,14 +163,16 @@ const committedTransactionsRoot = async (
 };
 
 /** Producer with one output; spender challenging index 7 (out of range). */
-const violatingBlock = async (): Promise<{
+const violatingBlock = async (
+  spendInputCount = 1,
+): Promise<{
   readonly transactions: readonly NodeTransactionPayload[];
   readonly producer: NodeTransactionPayload;
   readonly spender: NodeTransactionPayload;
   readonly expectedTransactionsRoot: string;
 }> => {
   const producer = producerTx(1, 1n);
-  const spender = spenderTx(producer.nodeTxId, 7n, 2n);
+  const spender = spenderTx(producer.nodeTxId, 7n, 2n, spendInputCount);
   const transactions = [producer, spender];
   return {
     transactions,
@@ -247,9 +254,12 @@ describe("Q13 input-no-idx canonical evidence", () => {
     }
 
     // step-01 -> step-02
-    expect(output.step02State.verified_tx_inputs_hash).toBe(
-      output.badTxInclusion.nativeTx.body.spend_inputs_hash,
-    );
+    expect(output.step02State).toEqual({
+      Direct: {
+        verified_tx_inputs_hash:
+          output.badTxInclusion.nativeTx.body.spend_inputs_hash,
+      },
+    });
     // step-02 -> step-03
     expect(output.step03State).toEqual({
       bad_input_tx_id: block.producer.nodeTxId,
@@ -265,7 +275,8 @@ describe("Q13 input-no-idx canonical evidence", () => {
         output.producingTxInclusion.nativeTx.body.outputs_hash,
       bad_input_output_index: 7n,
     });
-    expect(output.step04.outputsPreimage).toHaveLength(1);
+    expect(output.outputsPreimage).toHaveLength(1);
+    expect(output.step04.outputsPreimageCbor).toHaveLength(1);
   });
 
   it("projects the producing transaction's canonical outputs into step-04 PlutusData", async () => {
@@ -276,7 +287,7 @@ describe("Q13 input-no-idx canonical evidence", () => {
       expectedTransactionsRoot: block.expectedTransactionsRoot,
     });
 
-    const [outputZero] = output.step04.outputsPreimage;
+    const [outputZero] = output.outputsPreimage;
     expect(outputZero).toBeDefined();
     expect(outputZero!.address.protected).toBe(false);
     expect(outputZero!.address.network_id).toBe(0n);
@@ -292,12 +303,10 @@ describe("Q13 input-no-idx canonical evidence", () => {
       typeof Data.to
     >[1];
     const encoded = Data.to(
-      output.step04.outputsPreimage as unknown as Parameters<typeof Data.to>[0],
+      output.outputsPreimage as unknown as Parameters<typeof Data.to>[0],
       outputsSchema,
     );
-    expect(Data.from(encoded, outputsSchema)).toEqual(
-      output.step04.outputsPreimage,
-    );
+    expect(Data.from(encoded, outputsSchema)).toEqual(output.outputsPreimage);
   });
 
   it("inverts a canonical output carrying a stake credential, datum and script reference", () => {
@@ -339,6 +348,146 @@ describe("Q13 input-no-idx canonical evidence", () => {
       language: "PlutusV3Script",
       script_bytes: script.toString("hex"),
     });
+  });
+
+  it("re-derives both bounded-collection commitments from the emitted preimages", async () => {
+    // A three-output producer challenged past its end: the canonical encoders
+    // must reproduce the transaction's own committed hashes, which is what the
+    // two opening steps recompute on-chain.
+    const producer = producerTx(3, 1n);
+    const spender = spenderTx(producer.nodeTxId, 5n, 2n);
+    const transactions = [producer, spender];
+    const output = await prepareInputNoIdxFromTransactions({
+      headerHash: h28("aa"),
+      transactions,
+      expectedTransactionsRoot: await committedTransactionsRoot(transactions),
+    });
+
+    expect(output.evidence.producingTxOutputCount).toBe(3);
+    expect(output.outputsPreimage).toHaveLength(3);
+    expect(SDK.inputNoIdxOutputsCommitmentV1(output.outputsPreimage)).toBe(
+      output.producingTxInclusion.nativeTx.body.outputs_hash,
+    );
+    expect(
+      SDK.inputNoIdxSpendInputsCommitmentV1(output.step02.inputsPreimage),
+    ).toBe(output.badTxInclusion.nativeTx.body.spend_inputs_hash);
+    // The artifact carries the canonical bytes the validator re-encodes.
+    expect(
+      output.step04.outputsPreimageCbor.map((item) =>
+        SDK.encodeMidgardTxOutputCanonicalV1(
+          midgardTxOutputFromCanonicalCborV1(Buffer.from(item, "hex")),
+        ).toString("hex"),
+      ),
+    ).toEqual([...output.step04.outputsPreimageCbor]);
+  });
+
+  it("derives ordered field-0 fold openings from a complete public preimage", () => {
+    const inputs = Array.from({ length: 20 }, (_, index) => ({
+      tx_id: `${index.toString(16).padStart(2, "0")}${"ab".repeat(31)}`,
+      output_index: BigInt(index),
+    }));
+    const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(inputs);
+    expect(openings).toHaveLength(20);
+    expect(
+      openings.every((opening) =>
+        SDK.verifyInputNoIdxSpendInputFoldOpeningV1({ inputs, opening }),
+      ),
+    ).toBe(true);
+    const substituted = {
+      ...openings[7]!,
+      inputCbor: openings[8]!.inputCbor,
+    };
+    expect(
+      SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+        inputs,
+        opening: substituted,
+      }),
+    ).toBe(false);
+  });
+
+  it.each([20, 296])(
+    "selects the resumable ordered fold plan at the %i-input boundary",
+    async (spendInputCount) => {
+      const block = await violatingBlock(spendInputCount);
+      const output = await prepareInputNoIdxFromTransactions({
+        headerHash: h28("aa"),
+        transactions: block.transactions,
+        expectedTransactionsRoot: block.expectedTransactionsRoot,
+      });
+
+      expect(output.step02.inputsPreimage).toHaveLength(spendInputCount);
+      expect(output.step02.badInputsIndex).toBe(spendInputCount - 1);
+      expect(output.proofFit).toMatchObject({
+        completeItemCarriage: false,
+        step02Execution: "fold",
+      });
+      const openings = SDK.buildInputNoIdxSpendInputFoldOpeningsV1(
+        output.step02.inputsPreimage,
+      );
+      expect(
+        openings.map((opening) => opening.collectionProof.item_index),
+      ).toEqual(
+        Array.from({ length: spendInputCount }, (_, index) => BigInt(index)),
+      );
+      for (const index of [
+        0,
+        Math.floor(spendInputCount / 2),
+        spendInputCount - 1,
+      ]) {
+        expect(
+          SDK.verifyInputNoIdxSpendInputFoldOpeningV1({
+            inputs: output.step02.inputsPreimage,
+            opening: openings[index]!,
+          }),
+        ).toBe(true);
+      }
+      expect(output.step03State).toEqual({
+        bad_input_tx_id: block.producer.nodeTxId,
+        bad_input_output_index: 7n,
+      });
+    },
+  );
+
+  it("selects direct carriage at the shared 19-input release boundary", async () => {
+    const block = await violatingBlock(
+      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
+    );
+    const output = await prepareInputNoIdxFromTransactions({
+      headerHash: h28("aa"),
+      transactions: block.transactions,
+      expectedTransactionsRoot: block.expectedTransactionsRoot,
+    });
+
+    expect(output.step02.inputsPreimage).toHaveLength(
+      SDK.INPUT_NO_IDX_STEP02_DIRECT_INPUT_LIMIT_V1,
+    );
+    expect(output.proofFit).toMatchObject({
+      completeItemCarriage: true,
+      step02Execution: "direct",
+    });
+  });
+
+  it("round-trips a native-asset output through the canonical encoder", () => {
+    const bytes = Buffer.concat([
+      Buffer.from([0xa2, 0x00, 0x58, 0x1d, 0x71]),
+      Buffer.alloc(28, 0x44),
+      Buffer.from([0x01, 0x82]),
+      encodeCbor(3_000_000n),
+      Buffer.from([0xa1, 0x58, 0x1c]),
+      Buffer.alloc(28, 0x55),
+      Buffer.from([0xa2, 0x43]),
+      Buffer.from("abc", "ascii"),
+      Buffer.from([0x07, 0x44]),
+      Buffer.from("defg", "ascii"),
+      Buffer.from([0x09]),
+    ]);
+    const projected = midgardTxOutputFromCanonicalCborV1(bytes);
+    expect(projected.address.payment_credential).toEqual({
+      ScriptCredential: ["44".repeat(28)],
+    });
+    expect(projected.address.network_id).toBe(1n);
+    expect([...projected.value.assets.values()]).toEqual([7n, 9n]);
+    expect(SDK.encodeMidgardTxOutputCanonicalV1(projected)).toEqual(bytes);
   });
 
   it("measures the complete proof item carried by each step (§3.2 tier 1)", async () => {
