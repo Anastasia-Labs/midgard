@@ -3168,7 +3168,8 @@
         {
           "path": "demo/da-committee-node/tests/libp2p-payload-protocols.test.ts",
           "testNames": [
-            "rejects malformed, oversized, and hash-mismatched submissions",
+            "rejects outer-envelope, schema, oversized, and hash mutations before storage",
+            "retains malformed and header-mismatched inner payloads as unverified envelopes",
             "rejects an incomplete frame without response or persistence and recovers",
             "aborts a stalled inbound submit, releases admission, and recovers",
             "shares process admission and times out a queued submit before frame read"
