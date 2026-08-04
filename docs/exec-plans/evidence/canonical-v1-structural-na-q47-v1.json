@@ -1,0 +1,299 @@
+{
+  "schema": "midgard.canonical-v1-structural-na-q47.v1",
+  "version": 1,
+  "goalIds": ["Q47"],
+  "issue": 482,
+  "note": "Q47 (omitted / out-of-window deposit, withdrawal and forced-event variants) is structurally N/A as a standalone proof family: all six violation variants are constructors of the shared transitionTrace family. GOAL_SPEC.md 9.1 requires an adversarial EXECUTABLE proof of that fact plus a precise matrix N/A; prose is insufficient. This artifact binds the executable disposition only. It records LOCAL_PASS for the Q47 disposition and claims no Q57/QG3 LIVE_PASS.",
+  "structuralClaim": {
+    "sharedFamily": "transitionTrace",
+    "catalogueCategoryIndex": 4,
+    "catalogueCategoryId": "00000004",
+    "constructorHome": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.ak",
+    "faultConstructors": ["OmittedDueL1Event", "OutOfWindowSourceEvent"],
+    "witnessEnums": [
+      "OmittedDueL1EventWitness",
+      "OutOfWindowSourceEventWitness"
+    ],
+    "publicEntryPoints": [
+      "validate_l1_event_fault_proof",
+      "validate_transition_fault_proof"
+    ],
+    "publicationWindow": "(start_time, end_time] — start_time is excluded and end_time is included, per timed_l1_event_is_due in proof.ak"
+  },
+  "variantMatrix": [
+    {
+      "variant": "omittedDueDeposit",
+      "constructor": "OmittedDueDeposit",
+      "rootDomain": "DepositsRootDomain",
+      "headerRoot": "deposits_root",
+      "headerCount": "deposit_count",
+      "coveredBy": "Q21",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/proof",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.test.ak",
+        "selectors": ["accepts_omitted_due_deposit_fault"]
+      }
+    },
+    {
+      "variant": "omittedDueWithdrawal",
+      "constructor": "OmittedDueWithdrawal",
+      "rootDomain": "WithdrawalsRootDomain",
+      "headerRoot": "withdrawals_root",
+      "headerCount": "withdrawal_count",
+      "coveredBy": "Q47",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
+        "selectors": ["q47_omitted_due_withdrawal_accepts"]
+      }
+    },
+    {
+      "variant": "omittedDueForcedTransaction",
+      "constructor": "OmittedDueForcedTransaction",
+      "rootDomain": "ForcedTransactionsV1RootDomain",
+      "headerRoot": "forced_transactions_root",
+      "headerCount": "forced_transaction_count",
+      "coveredBy": "Q47",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
+        "selectors": ["q47_omitted_due_forced_accepts"]
+      }
+    },
+    {
+      "variant": "outOfWindowDeposit",
+      "constructor": "OutOfWindowDeposit",
+      "rootDomain": "DepositsRootDomain",
+      "headerRoot": "deposits_root",
+      "headerCount": "deposit_count",
+      "coveredBy": "Q21",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/proof",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.test.ak",
+        "selectors": ["accepts_out_of_window_deposit_fault"]
+      }
+    },
+    {
+      "variant": "outOfWindowWithdrawal",
+      "constructor": "OutOfWindowWithdrawal",
+      "rootDomain": "WithdrawalsRootDomain",
+      "headerRoot": "withdrawals_root",
+      "headerCount": "withdrawal_count",
+      "coveredBy": "Q47",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
+        "selectors": ["q47_out_of_window_withdrawal_accepts"]
+      }
+    },
+    {
+      "variant": "outOfWindowForcedTransaction",
+      "constructor": "OutOfWindowForcedTransaction",
+      "rootDomain": "ForcedTransactionsV1RootDomain",
+      "headerRoot": "forced_transactions_root",
+      "headerCount": "forced_transaction_count",
+      "coveredBy": "Q47",
+      "aiken": {
+        "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
+        "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
+        "selectors": ["q47_out_of_window_forced_accepts"]
+      }
+    }
+  ],
+  "inheritedEventWindowGuard": {
+    "module": "midgard/fraud_proofs/transition_trace/proof",
+    "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/proof.test.ak",
+    "owner": "Q21",
+    "measured": {
+      "selectors": 5,
+      "passed": 5,
+      "failed": 0,
+      "compiler": "aiken v1.1.23+2a78108"
+    },
+    "selectors": [
+      "accepts_omitted_due_deposit_fault",
+      "accepts_omitted_forced_order_at_authenticated_end_time_boundary",
+      "rejects_omitted_forced_order_at_excluded_start_time_boundary",
+      "rejects_omitted_forced_order_published_after_challenged_block",
+      "accepts_out_of_window_deposit_fault"
+    ]
+  },
+  "q47AikenSelectors": {
+    "module": "midgard/fraud_proofs/transition_trace/structural_na_q47_event_window_variants",
+    "file": "onchain/aiken/lib/midgard/fraud-proofs/transition-trace/structural-na-q47-event-window-variants.test.ak",
+    "measured": {
+      "selectors": 8,
+      "passed": 8,
+      "failed": 0,
+      "compiler": "aiken v1.1.23+2a78108"
+    },
+    "selectors": [
+      {
+        "name": "q47_omitted_due_withdrawal_accepts",
+        "class": "positive",
+        "claim": "A withdrawal order published at the inclusive end_time boundary is due, and the block's empty counted withdrawals_root omits it."
+      },
+      {
+        "name": "q47_out_of_window_withdrawal_accepts",
+        "class": "positive",
+        "claim": "A withdrawal order published one tick after the authenticated end_time is nonetheless committed by the block."
+      },
+      {
+        "name": "q47_omitted_due_forced_accepts",
+        "class": "positive",
+        "claim": "A forced order due against both the block window and its transaction validity interval is omitted from the counted forced_transactions_root."
+      },
+      {
+        "name": "q47_out_of_window_forced_accepts",
+        "class": "positive",
+        "claim": "A forced order published one tick after the authenticated end_time is nonetheless committed by the block."
+      },
+      {
+        "name": "q47_in_window_withdrawal_rejects",
+        "class": "adjacentValidNegative",
+        "claim": "A withdrawal published inside the window is correctly committed, so the out-of-window fault does not hold; publication time is the only difference from the accepting vector."
+      },
+      {
+        "name": "q47_in_window_forced_rejects",
+        "class": "adjacentValidNegative",
+        "claim": "A forced order published inside the window is correctly committed, so the out-of-window fault does not hold."
+      },
+      {
+        "name": "q47_wrong_domain_rejects",
+        "class": "control",
+        "claim": "Substituting DepositsRootDomain for WithdrawalsRootDomain, with identical root and count, cannot prove a withdrawal omission."
+      },
+      {
+        "name": "q47_wrong_event_id_rejects",
+        "class": "control",
+        "claim": "A non-membership key other than the authenticated L1 event id proves nothing about the referenced order."
+      }
+    ]
+  },
+  "q47TypeScriptTwins": {
+    "file": "demo/midgard-fault-proofs/tests/structural-na-q47-event-window-variants.test.ts",
+    "command": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/structural-na-q47-event-window-variants.test.ts",
+    "measured": { "tests": 8, "passed": 8, "failed": 0 },
+    "titles": [
+      "encodes the omitted-due deposit variant exactly as the Aiken constructor",
+      "encodes the omitted-due withdrawal variant exactly as the Aiken constructor",
+      "encodes the omitted-due forced-transaction variant with its validity override",
+      "encodes the out-of-window deposit variant exactly as the Aiken constructor",
+      "encodes the out-of-window withdrawal variant with its validity override",
+      "encodes the out-of-window forced-transaction variant with its validity override",
+      "keeps the root domain a load-bearing discriminator off-chain",
+      "keeps the event id a load-bearing discriminator off-chain"
+    ]
+  },
+  "standaloneInventory": {
+    "aikenValidatorDirectories": [],
+    "aikenLibDirectories": [],
+    "catalogueCategories": [],
+    "prepareCommands": [],
+    "submitCommands": [],
+    "forbiddenPathSubstrings": [
+      "fraud-proofs/q47",
+      "fraud_proofs/q47",
+      "prepare-q47",
+      "submit-q47"
+    ],
+    "inventory": "Zero standalone Q47 family, category, builder, submitter or final validator exists or may exist: the six variants are reachable only through the shared transitionTrace lifecycle at catalogue category id 00000004.",
+    "unreachableProofSurface": "None. No proof surface was removed for Q47 because none was ever created; the Q47 test modules add selectors and remove nothing."
+  },
+  "closureOutputs": [
+    {
+      "output": 1,
+      "title": "Normative rule and violation identifier",
+      "status": "LOCAL_PASS",
+      "evidence": "Six violation identifiers are enumerated in variantMatrix, each bound to its Aiken constructor, root domain, and header root/count field. The normative rule is timed_l1_event_is_due / forced_event_is_due in proof.ak with the (start_time, end_time] window recorded in structuralClaim.publicationWindow."
+    },
+    {
+      "output": 2,
+      "title": "Canonical evidence schema and strict TypeScript/Aiken codec agreement",
+      "status": "LOCAL_PASS",
+      "evidence": "The six TypeScript twins in q47TypeScriptTwins assert the outer TransitionFault constructor index (5 and 7), the inner witness constructor index (0, 1, 2), the exact field arity of each arm (3 for the deposit arms, 4 for the arms carrying a validity override) and a byte-exact Plutus Data round trip through the deployed SDK schema."
+    },
+    {
+      "output": 3,
+      "title": "Correct native counted-root/typed-commitment binding",
+      "status": "LOCAL_PASS",
+      "evidence": "Every Q47 Aiken selector opens its proof through transition_trace.commit_counted_root against the challenged header's committed root and count for the variant's own domain. q47_wrong_domain_rejects proves the domain is a load-bearing discriminator on-chain and the matching TypeScript twin proves it changes the encoding off-chain."
+    },
+    {
+      "output": 4,
+      "title": "Aiken proof steps with positive and valid-block negative tests",
+      "status": "LOCAL_PASS",
+      "evidence": "Four positive selectors, two adjacent valid-block negatives and two controls, measured 8 of 8 passing with 0 failures, plus the 5 inherited Q21 event-window selectors measured 5 of 5 passing."
+    },
+    {
+      "output": 5,
+      "title": "Maximum/adversarial proof-fit fixture",
+      "status": "N/A",
+      "justification": "Q47 adds no proof step, no validator and no transaction shape. Proof fit for the omitted/out-of-window arms is a property of the shared transitionTrace l1-event-v1 validator and is owned by Q21, not by this structural disposition. Q47 cannot measure a transaction it does not construct.",
+      "owner": "Q21"
+    },
+    {
+      "output": 6,
+      "title": "Catalogue identifier, first-step hash, membership proof, deployment and reference-script records",
+      "status": "N/A",
+      "justification": "Structurally N/A: Q47 registers no catalogue category. The six variants are reached through the already-registered transitionTrace category at append-only id 00000004; standaloneInventory records exactly zero standalone categories, and the verifier fails if any appears.",
+      "owner": "Q21/Q50"
+    },
+    {
+      "output": 7,
+      "title": "DA-first evidence builder using retained authenticated material",
+      "status": "N/A",
+      "justification": "Q47 adds no builder. buildOmittedDueL1EventFault and buildOutOfWindowSourceEventFault in demo/midgard-fault-proofs/src/transition-trace/witnesses.ts already construct all six variants from a TransitionTraceReconstruction; they are Q21-owned and are not edited here.",
+      "owner": "Q21"
+    },
+    {
+      "output": 8,
+      "title": "One resumable prepare/submit command, with no hidden manual state",
+      "status": "N/A",
+      "justification": "Structurally N/A: Q47 proposes no CLI verb. The transitionTrace prepare/submit route carries all six variants; standaloneInventory records exactly zero Q47 prepare or submit commands.",
+      "owner": "Q21"
+    },
+    {
+      "output": 9,
+      "title": "Emulator lifecycle: init, every step, permanent proof token, removal, slashing/reward",
+      "status": "N/A",
+      "justification": "Structurally N/A: the lifecycle belongs to the shared transitionTrace family and is exercised by demo/midgard-fault-proofs/tests/submit-init-emulator-transition-trace.test.ts. Q47 introduces no thread, token, or removal path of its own.",
+      "owner": "Q21"
+    },
+    {
+      "output": 10,
+      "title": "Coverage and catalogue rows changed to LOCAL_PASS at integration",
+      "status": "PARENT_PENDING",
+      "justification": "docs/fault-proofs/coverage-matrix.md and docs/fault-proofs/catalogue-status.md are parent-owned. The rows this artifact supports are listed in parentIntegration.pendingEdits and are deliberately not edited here.",
+      "owner": "parent"
+    }
+  ],
+  "summary": {
+    "variants": 6,
+    "inheritedSelectors": 5,
+    "q47AikenSelectors": 8,
+    "q47TypeScriptTwins": 8,
+    "closureOutputs": 10,
+    "localPass": 4,
+    "structuralNa": 5,
+    "parentPending": 1,
+    "standalonePaths": 0,
+    "standaloneCategories": 0
+  },
+  "residualFindings": [
+    {
+      "id": "Q47-F1",
+      "severity": "observation",
+      "finding": "The off-chain detector detectOmittedDueL1Events / detectOutOfWindowSourceEvents in demo/midgard-fault-proofs/src/transition-trace/detect.ts decides purely on source-root membership and applies no publication-window predicate. It will therefore propose omitted/out-of-window faults that the on-chain window check correctly rejects. This is a proof-construction futility, not an unsoundness: the authority is on-chain. Owner Q21; not claimed closed here.",
+      "owner": "Q21"
+    }
+  ],
+  "parentIntegration": {
+    "owner": "parent",
+    "pendingEdits": [
+      "docs/fault-proofs/coverage-matrix.md: the generic L1-event omitted/out-of-window rows currently record deposit-only breadth; they may cite this artifact for withdrawal and forced-event coverage at LOCAL_PASS.",
+      "docs/fault-proofs/catalogue-status.md: record Q47 as structural N/A against the transitionTrace category (id 00000004) with zero standalone registration.",
+      "GOAL_PROGRESS.md: bind the Q47 row with the measured counts in this artifact's summary."
+    ]
+  }
+}
