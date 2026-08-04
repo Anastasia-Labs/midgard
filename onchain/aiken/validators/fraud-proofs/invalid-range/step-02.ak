@@ -9,6 +9,7 @@ use midgard/fraud_proofs/common.{cancel, finalize}
 use midgard/fraud_proofs/invalid_range/step_02.{
   Args, Datum, SpendRedeemer, State,
 }
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -101,4 +102,69 @@ validator main(
   else(_) {
     fail
   }
+}
+
+// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+
+fn run_finalize(state: State) -> Bool {
+  let asset_name = fixture.ct_token_asset_name(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+  )
+  main.spend(
+    fixture.fraud_proof_policy_id,
+    fixture.fraud_proof_token_address(),
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(
+      Args {
+        input_index: 0,
+        output_index: 0,
+        fraud_proof_mint_redeemer_index: 0,
+      },
+    ),
+    fixture.own_out_ref(),
+    fixture.finalize_step_l1_tx_v1(asset_name),
+  )
+}
+
+/// Positive selector: both malformed-interval shapes finalize into a permanent
+/// fraud-proof token — a closed interval whose lower bound falls below the
+/// block's `start_time`, and an inverted interval, which overlaps no block
+/// interval at all. The inverted case is the executable disposition of F21
+/// physical structural row L302 (Q49-L302), previously an unverified inference.
+test invalid_range_step_02_accepts_uncovered_and_inverted_intervals() {
+  and {
+    run_finalize(
+      State {
+        block_valid_from: 10,
+        block_valid_to: 20,
+        bad_tx_normalized_validity_range: ClosedRange { lower: 5, upper: 8 },
+      },
+    ),
+    run_finalize(
+      State {
+        block_valid_from: 10,
+        block_valid_to: 20,
+        bad_tx_normalized_validity_range: InvalidRange,
+      },
+    ),
+  }
+}
+
+/// Valid-block negative selector: in a valid block every transaction interval
+/// lies inside the header's `[start_time, end_time)` window, so a challenge
+/// carrying a covered interval cannot finalize.
+test invalid_range_step_02_rejects_valid_block_challenge() fail {
+  run_finalize(
+    State {
+      block_valid_from: 10,
+      block_valid_to: 20,
+      bad_tx_normalized_validity_range: ClosedRange { lower: 10, upper: 19 },
+    },
+  )
 }

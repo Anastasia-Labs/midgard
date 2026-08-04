@@ -26,6 +26,10 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/double_spend/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/double_spend/step_02
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/types.{
+  MidgardTransaction, MidgardTransactionBody,
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -91,4 +95,73 @@ validator main(
   else(_) {
     fail
   }
+}
+
+// ## Family selectors (GOAL_SPEC.md §9.1 output 4)
+//
+// Step-01 binds the first of the two conflicting transactions to a committed
+// block: only a transaction genuinely held by the header's counted
+// `transactions_root` may forward its id and canonical spend-inputs commitment.
+
+/// The second conflicting transaction: identical spend inputs, a different fee,
+/// hence a different canonical transaction id. A block holding both is the
+/// `double-spend` violation.
+fn conflicting_native_tx_v1() -> MidgardTransaction {
+  let base = fixture.valid_native_tx_v1()
+  MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, fee: 2_000_000 },
+  }
+}
+
+fn first_step_datum() -> Datum {
+  ct.StepDatum { fraud_prover: fixture.fraud_prover_key_hash, data: None }
+}
+
+fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
+  let expected_output_state: Data = step_02.State {
+    verified_tx1_id: claimed.tx_id,
+    verified_tx1_spend_inputs_hash: claimed.compact.body.spend_inputs_hash,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    claimed,
+    expected_output_state,
+    claimed.transactions_phas_root,
+    claimed.tx_id,
+    claimed.compact_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(first_step_datum()),
+    ct.Continue(fixture.native_inclusion_args_v1(claimed)),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
+}
+
+/// Positive selector: the first conflicting transaction is genuinely committed
+/// under the block's counted `transactions_root`, so its id and canonical
+/// spend-inputs commitment reach step-02.
+test double_spend_step_01_binds_native_v1_block_fixture() {
+  run_step_01(fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()))
+}
+
+/// Valid-block negative selector: a raw transactions root that is not the one
+/// committed by the header's counted `transactions_root` cannot bind, so a
+/// transaction fabricated against a valid block's header is rejected before any
+/// conflict can be claimed.
+test double_spend_step_01_rejects_forged_transactions_root() fail {
+  let valid_block = fixture.native_block_fixture_v1(
+    fixture.valid_native_tx_v1(),
+  )
+  let forged_block = fixture.native_block_fixture_v1(conflicting_native_tx_v1())
+  run_step_01(
+    fixture.NativeBlockFixtureV1 {
+      ..forged_block,
+      header: valid_block.header,
+      header_hash: valid_block.header_hash,
+    },
+  )
 }
