@@ -39,11 +39,11 @@ const statusCount = (status) =>
   taskEntries.filter(([, disposition]) => disposition === status).length;
 assert.deepEqual(evidence.p2Summary, {
   tasks: 22,
-  // C20-6/C20-7 were promoted 2026-08-03. C20-2/C20-4/C20-5 were promoted
-  // 2026-08-04 after independent exact Aiken/TypeScript boundary and terminal
-  // replay. CG2 stays OPEN while any P2 task is PARTIAL.
-  pass: 15,
-  partial: 7,
+  // C20-6/C20-7 were promoted 2026-08-03. C20-2/C20-4/C20-5 and C27 were
+  // promoted 2026-08-04 after exact focused boundary/protocol verification.
+  // CG2 stays OPEN while any P2 task is PARTIAL.
+  pass: 16,
+  partial: 6,
   open: 0,
   authoritativeConflict: 0,
   gate: "OPEN",

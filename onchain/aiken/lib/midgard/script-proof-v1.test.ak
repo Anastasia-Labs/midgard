@@ -39,6 +39,17 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
     script_proof_v1.versioned_script_hash(script),
     #"0102",
   )
+  let script_cbor = encode_midgard_versioned_script(script)
+  let reference_key = #"825820"
+    |> bytearray.concat(
+        #"4444444444444444444444444444444444444444444444444444444444444444",
+      )
+    |> bytearray.concat(#"02")
+  let reference_leaf = script_proof_v1.source_leaf_hash(
+    1,
+    reference_key,
+    script,
+  )
   and {
     script_proof_v1.versioned_script_hash(script) == #"8b8c11dcad0af38c40d742ed155b4c938acc5507a0ecbcfcea36496a",
     source_leaf == #"6b4984caceb70e0446b5d02a9b01068b7f409c76a54cf4e3b2b78f965b9eecc6",
@@ -59,6 +70,38 @@ test script_proof_source_and_redeemer_vectors_are_stable() {
       176,
       218,
     ) == #"2758fe3ec7c263c1630eab8cb4bb7f431cd403838a25b46bfe3848b0481daef3",
+    reference_leaf == script_proof_v1.reference_source_leaf_hash(
+      reference_key,
+      3,
+      script_proof_v1.versioned_script_hash(script),
+      bytearray.length(script_cbor),
+      bounded_item_v1.from_bytes(2, 2, script_cbor),
+    ),
+    script_proof_v1.canonical_reference_source_key(reference_key),
+    !script_proof_v1.canonical_reference_source_key(
+      #"82581f"
+        |> bytearray.concat(
+            #"44444444444444444444444444444444444444444444444444444444444444",
+          )
+        |> bytearray.concat(#"02"),
+    ),
+    !script_proof_v1.canonical_reference_source_key(
+      reference_key |> bytearray.concat(#"00"),
+    ),
+    !script_proof_v1.canonical_reference_source_key(
+      #"825820"
+        |> bytearray.concat(
+            #"4444444444444444444444444444444444444444444444444444444444444444",
+          )
+        |> bytearray.concat(#"1802"),
+    ),
+    !script_proof_v1.canonical_reference_source_key(
+      #"825820"
+        |> bytearray.concat(
+            #"4444444444444444444444444444444444444444444444444444444444444444",
+          )
+        |> bytearray.concat(#"1a00010000"),
+    ),
   }
 }
 

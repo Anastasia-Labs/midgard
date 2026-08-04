@@ -5,7 +5,7 @@
   "updateContract": {
     "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
     "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
-    "note": "The verifier asserts p2Summary by deepEqual against literal counts {tasks:22,pass:15,partial:7,open:0,authoritativeConflict:0,gate:'OPEN'} AND cross-checks them against p2Tasks. Any promotion or demotion of a P2 task therefore requires editing the verifier's literals in the same change; editing p2Tasks alone makes the check fail. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
+    "note": "The verifier asserts p2Summary by deepEqual against literal counts {tasks:22,pass:16,partial:6,open:0,authoritativeConflict:0,gate:'OPEN'} AND cross-checks them against p2Tasks. Any promotion or demotion of a P2 task therefore requires editing the verifier's literals in the same change; editing p2Tasks alone makes the check fail. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
   },
   "sources": {
     "goalSpec": {
@@ -53,7 +53,7 @@
     "C24": "PASS",
     "C25": "PASS",
     "C26": "PARTIAL",
-    "C27": "PARTIAL",
+    "C27": "PASS",
     "C28": "PARTIAL",
     "C29": "PARTIAL",
     "C30": "PARTIAL",
@@ -64,8 +64,8 @@
   },
   "p2Summary": {
     "tasks": 22,
-    "pass": 15,
-    "partial": 7,
+    "pass": 16,
+    "partial": 6,
     "open": 0,
     "authoritativeConflict": 0,
     "gate": "OPEN"
@@ -83,7 +83,7 @@
     "disposition": "RESOLVED",
     "note": "Resolved 2026-07-29 and reverified 2026-08-04: current source implements the authoritative order (script witnesses at field 6, vkey/address witnesses at field 7), proven by the 56/56 native-tx module replay including cross-substitution, adjacency, and genuine accepted-maximum boundary selectors. C20-6/C20-7 are PASS; complete-item policy is tracked separately by C21 and the downstream maximum-family rows.",
     "reverification2026-08-03": "Field-order implementation re-verified as source-complete in onchain/aiken/lib/midgard/fraud-proofs/native-tx/transaction.ak: all nine consensus indices 0..8 are dispatched in both transaction_field_commitment_v1 (distinct hash field per index, out-of-range -> fail) and verify_midgard_transaction_field_preimage_against_source_v1 (decode-and-re-encode per index, so a hash match alone cannot authenticate a non-canonical shape), with field 6 = script witnesses, 7 = address witnesses, 8 = redeemers and no todo/unimplemented branch in the module. This confirms the RESOLVED disposition on source grounds.",
-    "crossLaneDivergence2026-08-03": "Resolved in the synchronized current-tree record: C20-6/C20-7 are PASS in both ledger and capability evidence, and the verifier literals move with every disposition change. The 2026-08-04 C20-2/C20-4/C20-5 promotions produce 15 PASS and 7 PARTIAL tasks without an authority conflict."
+    "crossLaneDivergence2026-08-03": "Resolved in the synchronized current-tree record: C20-6/C20-7 are PASS in both ledger and capability evidence, and the verifier literals move with every disposition change. The 2026-08-04 C20-2/C20-4/C20-5/C27 promotions produce 16 PASS and 6 PARTIAL tasks without an authority conflict."
   },
   "wholePreimageFinding": {
     "status": "RESOLVED_ABI",

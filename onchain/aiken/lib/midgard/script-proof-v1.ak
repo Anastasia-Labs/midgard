@@ -57,6 +57,54 @@ pub fn versioned_script_hash(script: MidgardVersionedScript) -> ByteArray {
     |> blake2b_224
 }
 
+fn data_is_list(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, True, False, False)
+}
+
+fn data_is_integer(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, False, True, False)
+}
+
+fn data_is_bytes(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, False, False, True)
+}
+
+/// The sole V1 reference-script source key is the exact canonical CBOR
+/// encoding of `[32-byte transaction id, uint16 output index]`.
+pub fn canonical_reference_source_key(source_key: ByteArray) -> Bool {
+  when cbor.deserialise(source_key) is {
+    None -> False
+    Some(data) ->
+      if data_is_list(data) {
+        when builtin.un_list_data(data) is {
+          [transaction_id_data, output_index_data] ->
+            if and {
+              data_is_bytes(transaction_id_data),
+              data_is_integer(output_index_data),
+            } {
+              let transaction_id = builtin.un_b_data(transaction_id_data)
+              let output_index = builtin.un_i_data(output_index_data)
+              and {
+                bytearray.length(transaction_id) == 32,
+                output_index >= 0,
+                output_index <= 65535,
+                (
+                  #"825820"
+                    |> bytearray.concat(transaction_id)
+                    |> bytearray.concat(cbor.serialise(output_index))
+                ) == source_key,
+              }
+            } else {
+              False
+            }
+          _ -> False
+        }
+      } else {
+        False
+      }
+  }
+}
+
 /// `origin_kind` is 0 for an inline witness and 1 for a reference input.
 /// `source_key` is the inline index encoding or canonical reference out-ref.
 pub fn inline_source_leaf_hash(
@@ -107,11 +155,10 @@ pub fn source_leaf_hash(
       bounded_item_v1.from_bytes(6, source_index, script_cbor),
     )
   } else {
+    expect canonical_reference_source_key(source_key)
     expect Some(source_key_data) = cbor.deserialise(source_key)
     expect [_, output_index_data] = builtin.un_list_data(source_key_data)
     let output_index = builtin.un_i_data(output_index_data)
-    expect output_index >= 0
-    expect output_index <= 65535
     let script_cbor = encode_midgard_versioned_script(script)
     reference_source_leaf_hash(
       source_key,
@@ -130,6 +177,7 @@ pub fn reference_source_leaf_hash(
   script_total_length: Int,
   item_commitment: ByteArray,
 ) -> ByteArray {
+  expect canonical_reference_source_key(source_key)
   expect or {
       script_language_tag == 0,
       script_language_tag == 3,

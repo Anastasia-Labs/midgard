@@ -51,6 +51,39 @@ const hash32 = (bytes: Uint8Array): Hash32 =>
   ensureHash32(blake2b(bytes, { dkLen: 32 }), "script_proof_hash");
 
 /**
+ * Decodes the only canonical V1 reference-script source key: the exact CBOR
+ * `[32-byte transaction id, uint16 output index]` encoding.
+ */
+const decodeCanonicalReferenceScriptSourceKeyV1 = (
+  sourceKeyBytes: Uint8Array,
+): { readonly outputIndex: bigint } => {
+  const sourceKey = decodeSingleCbor(sourceKeyBytes);
+  if (
+    !Array.isArray(sourceKey) ||
+    sourceKey.length !== 2 ||
+    !(sourceKey[0] instanceof Uint8Array) ||
+    sourceKey[0].length !== 32
+  ) {
+    throw new Error("reference script source key is not an output reference");
+  }
+  const outputIndex =
+    typeof sourceKey[1] === "number" && Number.isSafeInteger(sourceKey[1])
+      ? BigInt(sourceKey[1])
+      : sourceKey[1];
+  if (
+    typeof outputIndex !== "bigint" ||
+    outputIndex < 0n ||
+    outputIndex > 65_535n ||
+    !encodeCbor([Buffer.from(sourceKey[0]), outputIndex]).equals(
+      Buffer.from(sourceKeyBytes),
+    )
+  ) {
+    throw new Error("reference script source key is not canonical");
+  }
+  return { outputIndex };
+};
+
+/**
  * Validates V1's meaning of non-native script bytes.
  */
 export const decodeMidgardV1ScriptProgramEnvelope = (
@@ -67,7 +100,11 @@ export const decodeMidgardV1ScriptProgramEnvelope = (
 export const hashMidgardV1VersionedScript = (
   script: MidgardVersionedScript,
 ): string => {
-  decodeMidgardV1ScriptProgramEnvelope(script);
+  if (decodeMidgardV1ScriptProgramEnvelope(script) === null) {
+    throw new Error(
+      "NativeCardano scripts are not canonical Midgard V1 program envelopes",
+    );
+  }
   return hashMidgardVersionedScript(script);
 };
 
@@ -173,33 +210,13 @@ export const hashMidgardScriptSourceLeafV1 = (input: {
     hashMidgardVersionedScript(input.script),
     "hex",
   );
-  const sourceKey = decodeSingleCbor(input.sourceKey);
-  if (
-    !Array.isArray(sourceKey) ||
-    sourceKey.length !== 2 ||
-    !(sourceKey[0] instanceof Uint8Array) ||
-    sourceKey[0].length !== 32
-  ) {
-    throw new Error("reference script source key is not an output reference");
-  }
-  const decodedOutputIndex =
-    typeof sourceKey[1] === "number" && Number.isSafeInteger(sourceKey[1])
-      ? BigInt(sourceKey[1])
-      : sourceKey[1];
-  if (
-    typeof decodedOutputIndex !== "bigint" ||
-    decodedOutputIndex < 0n ||
-    decodedOutputIndex > 65_535n ||
-    !encodeCbor([Buffer.from(sourceKey[0]), decodedOutputIndex]).equals(
-      Buffer.from(input.sourceKey),
-    )
-  ) {
-    throw new Error("reference script source key is not canonical");
-  }
+  const { outputIndex } = decodeCanonicalReferenceScriptSourceKeyV1(
+    input.sourceKey,
+  );
   const scriptCbor = encodeMidgardVersionedScript(input.script);
   const item = buildMidgardBoundedItemV1({
     fieldIndex: 2,
-    itemIndex: Number(decodedOutputIndex),
+    itemIndex: Number(outputIndex),
     bytes: scriptCbor,
   });
   return hashMidgardReferenceScriptSourceLeafV1({
@@ -220,6 +237,7 @@ export const hashMidgardReferenceScriptSourceLeafV1 = (input: {
   readonly scriptTotalLength: number;
   readonly itemCommitment: Uint8Array;
 }): Hash32 => {
+  decodeCanonicalReferenceScriptSourceKeyV1(input.sourceKey);
   if (
     input.scriptLanguageTag !== 0 &&
     input.scriptLanguageTag !== 3 &&

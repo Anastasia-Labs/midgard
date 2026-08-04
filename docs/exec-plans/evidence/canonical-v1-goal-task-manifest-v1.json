@@ -292,7 +292,7 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json ../docs/exec-plans/templates/README.md ../docs/exec-plans/templates/task-manifest-row.json ../docs/exec-plans/templates/necessity-artifact-template.md ../docs/exec-plans/templates/structural-na-template.md ../docs/exec-plans/templates/subagent-assignment-brief.md scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json docs/exec-plans/templates/README.md docs/exec-plans/templates/task-manifest-row.json docs/exec-plans/templates/necessity-artifact-template.md docs/exec-plans/templates/structural-na-template.md docs/exec-plans/templates/subagent-assignment-brief.md demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 113 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 114 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
       "invalidationTriggers": [
         "Any F01/F02/F20/F21/F30 inventory/reconciliation finding, F41 closure-schema requirement, GOAL_SPEC §7-§10 task, or authoritative first-queue ID/dependency/status changes",
         "Any manifest row, dependency expansion, lease, anchor, command, count contract, blocker, summary cardinality, template, or quality-verifier rule changes after capture",
@@ -331,21 +331,21 @@
       ],
       "evidenceOutputs": [
         "Current-tree capability reconciliation preserving all 22 P2 task dispositions, fresh-check provenance, resolved C20-6/C20-7 authority conflict, removed whole-preimage ABI, and exact source bindings",
-        "Passing verifier transcript for the F10 reconciliation deliverable: 15 PASS, 7 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT among the 22 P2 tasks",
-        "Explicit non-promotion record: F10 acceptance is PASS as an inventory/reconciliation deliverable while CG2 remains OPEN and all 7 PARTIAL implementation tasks remain open work"
+        "Passing verifier transcript for the F10 reconciliation deliverable: 16 PASS, 6 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT among the 22 P2 tasks",
+        "Explicit non-promotion record: F10 acceptance is PASS as an inventory/reconciliation deliverable while CG2 remains OPEN and all 6 PARTIAL implementation tasks remain open work"
       ],
       "focusedCommands": [
         "node demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json scripts/verify-canonical-v1-capability-reconciliation.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json demo/scripts/verify-canonical-v1-capability-reconciliation.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs. Exactly 22 reconciled P2 tasks comprise 15 PASS, 7 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT dispositions; exactly 5 control-plane statuses are PASS, F10 acceptance is exactly 1 PASS, and CG2 is exactly 1 OPEN gate with 0 PARTIAL tasks promoted by this reconciliation alone.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs. Exactly 22 reconciled P2 tasks comprise 16 PASS, 6 PARTIAL, 0 OPEN, and 0 AUTHORITATIVE_CONFLICT dispositions; exactly 5 control-plane statuses are PASS, F10 acceptance is exactly 1 PASS, and CG2 is exactly 1 OPEN gate with 0 PARTIAL tasks promoted by this reconciliation alone.",
       "invalidationTriggers": [
         "F01/F02 changes or any P0/P1/P2 matrix row, source binding, fresh-check result, disposition, control-plane status, authority-conflict fact, or whole-preimage ABI fact changes",
         "A claimed PASS loses current-source evidence, a PARTIAL residual closes/changes, a new capability gap appears, or the P2 task queue diverges from the reconciliation",
         "The capability reconciliation, verifier, or any exact source path semantically asserted by the verifier changes after capture"
       ],
-      "readyBecause": "F01 and F02 are PASS in the authoritative first GOAL_PROGRESS.md queue, and the live F10 verifier currently passes the 22-task reconciliation, so F10's inventory deliverable is ready. This does not make the 7 PARTIAL P2 tasks complete or close CG2."
+      "readyBecause": "F01 and F02 are PASS in the authoritative first GOAL_PROGRESS.md queue, and the live F10 verifier currently passes the 22-task reconciliation, so F10's inventory deliverable is ready. This does not make the 6 PARTIAL P2 tasks complete or close CG2."
     },
     {
       "id": "F20",
@@ -1967,7 +1967,7 @@
         "C20-6 no longer records PASS, or the complete inline/reference program fit result changes",
         "Applied validator hash, target protocol parameters, maxTxSize, or reference-program ledger identity changes"
       ],
-      "readyBecause": "C27 has no non-PASS dependency in the authoritative first GOAL_PROGRESS.md task queue as of 2026-08-04; its lease, anchors, evidence outputs, focused gates, count contract, and invalidation triggers are complete."
+      "readyBecause": "C27 is PASS in the authoritative first GOAL_PROGRESS.md queue after direct pinned compilation, structured guarded Aiken 5/5, TypeScript 5/5, and all narrow format/type/lint/diff/protected-path gates passed."
     },
     {
       "id": "C28",
@@ -2024,8 +2024,7 @@
         "C27 becomes PASS and changes the admitted script envelope, or complete direct/reference material fit changes",
         "Applied validator hash, target protocol parameters, maxTxSize, datum carriage, or CEK program bound changes"
       ],
-      "blockedOn": ["C27"],
-      "blockedBecause": "C28 remains dependency-blocked only on current non-PASS queue rows: C27. Dependencies recorded PASS, including Q02 and Q03 where applicable, are deliberately omitted."
+      "readyBecause": "C27 is PASS in the authoritative first GOAL_PROGRESS.md queue, so C28 is ready for its exact serialized six-file implementation lease."
     },
     {
       "id": "C29",
@@ -2176,11 +2175,10 @@
         "C24",
         "C25",
         "C26",
-        "C27",
         "C28",
         "C29"
       ],
-      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C27, C28, C29. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C31",
@@ -2264,11 +2262,10 @@
         "C24",
         "C25",
         "C26",
-        "C27",
         "C28",
         "C29"
       ],
-      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C27, C28, C29. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C32",
@@ -2292,7 +2289,6 @@
         "C24",
         "C25",
         "C26",
-        "C27",
         "C28",
         "C29",
         "C30",
@@ -2378,13 +2374,12 @@
         "C24",
         "C25",
         "C26",
-        "C27",
         "C28",
         "C29",
         "C30",
         "C31"
       ],
-      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C27, C28, C29, C30, C31. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29, C30, C31. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C33",
@@ -2447,8 +2442,8 @@
         "Any C23 through C28 dependency status/ABI changes, including script/program carriage semantics",
         "CML/emulator version, target protocol parameters, language views, applied validator hash, or signed boundary fixture changes"
       ],
-      "blockedOn": ["C23", "C24", "C25", "C26", "C27", "C28"],
-      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25, C26, C27, C28. PASS dependencies are deliberately omitted."
+      "blockedOn": ["C23", "C24", "C25", "C26", "C28"],
+      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25, C26, C28. PASS dependencies are deliberately omitted."
     },
     {
       "id": "CG2",
@@ -2503,7 +2498,7 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md 8.2 P2 proof-item capability tasks, row CG2: Every required P2 matrix row and every cell is `PASS`; complete-item carriage remains available wherever it fits; every bounded fallback has a measured §3.2 necessity artifact and exact semantic-equivalence tests; production searches and ABI tests reject unjustified bounded-only paths.",
-        "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json (22-row P2 matrix, current 15 PASS/7 PARTIAL summary, CG2 OPEN)",
+        "docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json (22-row P2 matrix, current 16 PASS/6 PARTIAL summary, CG2 OPEN)",
         "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs (exact matrix/static ABI/gate assertions)",
         "docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md and its seven enumerated §3.2 necessity families"
       ],
@@ -2518,7 +2513,7 @@
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/complete-item-carriage-policy-v1.test.ts tests/complete-item-equivalence-v1.test.ts tests/complete-item-proof-fit-v1.test.ts tests/complete-item-proof-fit-emulator-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs, complete-item-carriage-policy-v1.test.ts, complete-item-equivalence-v1.test.ts, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. The reconciliation verifier asserts exactly 22 P2 task entries, exactly 15 PASS, exactly 7 PARTIAL, exactly 0 OPEN task rows, and gate CG2 OPEN; the 4 exact TypeScript files collect exactly 17 tests, all passing with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-capability-reconciliation.mjs, complete-item-carriage-policy-v1.test.ts, complete-item-equivalence-v1.test.ts, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts. The reconciliation verifier asserts exactly 22 P2 task entries, exactly 16 PASS, exactly 6 PARTIAL, exactly 0 OPEN task rows, and gate CG2 OPEN; the 4 exact TypeScript files collect exactly 17 tests, all passing with 0 failures.",
       "invalidationTriggers": [
         "Any dependency, serialized ABI, catalogue order, compiled validator hash, deployment identity, target parameter, or owned executable path changes after evidence capture",
         "A final-tree source inventory changes the enabled/reachable family or rule set named by this row"
@@ -2534,7 +2529,6 @@
         "C24",
         "C25",
         "C26",
-        "C27",
         "C28",
         "C29",
         "C30",
@@ -2542,7 +2536,7 @@
         "C32",
         "C33"
       ],
-      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C27, C28, C29, C30, C31, C32, C33. PASS dependencies are deliberately omitted."
+      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29, C30, C31, C32, C33. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C40",
