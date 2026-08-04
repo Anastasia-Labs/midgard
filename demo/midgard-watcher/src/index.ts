@@ -145,6 +145,24 @@ export {
   type WatcherFinalityStateV1,
 } from "./finality-engine.js";
 export {
+  type EvaluateWatcherHeaderRootReconstructionInputV1,
+  evaluateWatcherHeaderRootReconstructionV1,
+  makeWatcherAuthenticatedHeaderObservationV1,
+  makeWatcherHeaderRootReconstructedStateV1,
+  WATCHER_HEADER_COUNT_FIELDS_V1,
+  WATCHER_HEADER_ROOT_FIELDS_V1,
+  WATCHER_HEADER_ROOT_RECONSTRUCTION_REASON_CODES_V1,
+  WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION,
+  type WatcherHeaderCountFieldV1,
+  type WatcherHeaderCountSetV1,
+  type WatcherHeaderRootFieldV1,
+  WatcherHeaderRootReconstructionError,
+  type WatcherHeaderRootReconstructionErrorCode,
+  type WatcherHeaderRootReconstructionReasonCodeV1,
+  type WatcherHeaderRootReconstructionResultV1,
+  type WatcherHeaderRootSetV1,
+} from "./header-root-reconstruction.js";
+export {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,

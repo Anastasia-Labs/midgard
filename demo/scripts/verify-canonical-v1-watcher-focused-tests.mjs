@@ -67,6 +67,10 @@ const expectedByFile = new Map([
     "canonical-block-store.test.ts",
     watcherEvidence.canonicalBlockStore?.expectedFocusedTestCount,
   ],
+  [
+    "header-root-reconstruction.test.ts",
+    watcherEvidence.headerRootReconstruction?.expectedFocusedTestCount,
+  ],
   ["scaffold.test.ts", watcherEvidence.scaffold?.expectedFocusedTestCount],
 ]);
 
@@ -75,13 +79,13 @@ const fail = (message) => {
 };
 
 if (
-  expectedByFile.size !== 15 ||
+  expectedByFile.size !== 16 ||
   [...expectedByFile.values()].some(
     (count) => !Number.isSafeInteger(count) || count <= 0,
   )
 ) {
   fail(
-    "dependency map must declare a positive expected count for all 15 files",
+    "dependency map must declare a positive expected count for all 16 files",
   );
 }
 
