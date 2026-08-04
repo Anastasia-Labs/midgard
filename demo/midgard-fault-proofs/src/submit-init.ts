@@ -40,6 +40,7 @@ import {
   readJsonFile,
   requireDeploymentScriptHash,
   requireSingletonUtxo,
+  resolveDaHashPreimageDeploymentContracts,
   resolveDoubleSpendDeploymentContracts,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
@@ -74,7 +75,8 @@ export type SubmitInitFraudCategory =
   | "invalidRange"
   | "transitionTrace"
   | "zeroInput"
-  | "validationTraceDispute";
+  | "validationTraceDispute"
+  | "daHashPreimage";
 
 export type SubmitInitResult = {
   readonly txHash: string;
@@ -121,6 +123,8 @@ const fraudCategoryLabel = (category: SubmitInitFraudCategory): string => {
       return "zero-input";
     case "validationTraceDispute":
       return "validation-trace-dispute";
+    case "daHashPreimage":
+      return "da-hash-preimage";
   }
 };
 
@@ -359,6 +363,24 @@ export const submitInit = async ({
     firstStepHash =
       resolvedDeployment.contracts.validationTraceDispute.firstStep
         .spendingScriptHash;
+  } else if (fraudCategory === "daHashPreimage") {
+    const resolvedDeployment = await resolveDaHashPreimageDeploymentContracts({
+      blueprint,
+      deploymentInfo,
+      network,
+      requireStateQueueMint: true,
+    });
+    category = resolvedDeployment.daHashPreimageCategory;
+    stateQueuePolicyId = resolvedDeployment.stateQueuePolicyId!;
+    computationThreadPolicyId =
+      resolvedDeployment.contracts.computationThread.policyId;
+    computationThreadMintingScript =
+      resolvedDeployment.contracts.computationThread.mintingScript;
+    firstStepAddress =
+      resolvedDeployment.contracts.daHashPreimage.firstStep
+        .spendingScriptAddress;
+    firstStepHash =
+      resolvedDeployment.contracts.daHashPreimage.firstStep.spendingScriptHash;
   } else {
     const resolvedDeployment = await resolveZeroInputDeploymentContracts({
       blueprint,

@@ -222,6 +222,11 @@ export type FraudProofs = {
    */
   validationTraceDispute: ValidationTraceDisputeValidators;
   zeroInput: SpendingValidator;
+  /**
+   * Q44 `da-hash-preimage`: a committed `transactions_root` leaf whose key is
+   * not the canonical native-V1 transaction id of its own value.
+   */
+  daHashPreimage: SpendingValidator;
 };
 
 export type MidgardValidators = {

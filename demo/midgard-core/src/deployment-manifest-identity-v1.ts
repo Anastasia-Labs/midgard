@@ -77,6 +77,7 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "validationTraceDisputeBoundary",
   "validationTraceDisputeTimeout",
   "validationTraceDisputeAward",
+  "fraudProofDaHashPreimage",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
@@ -88,6 +89,7 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "transitionTrace",
     "zeroInput",
     "validationTraceDispute",
+    "daHashPreimage",
   ] as const);
 
 export type DeploymentManifestV1FraudProofCatalogueCategory =
@@ -991,6 +993,7 @@ const validateFinalizedContracts = (
     transitionTrace: "fraudProofTransitionTrace",
     zeroInput: "fraudProofZeroInput",
     validationTraceDispute: "validationTraceDispute",
+    daHashPreimage: "fraudProofDaHashPreimage",
   } as const satisfies Record<
     DeploymentManifestV1FraudProofCatalogueCategory,
     string

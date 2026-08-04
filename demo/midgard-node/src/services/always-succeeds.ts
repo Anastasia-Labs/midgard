@@ -267,6 +267,13 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       award: transitionTrace,
     };
 
+    // The always-succeeds devnet blueprint has no dedicated
+    // `da_hash_preimage` stub validator, so the Q44 category reuses the
+    // `zero_input` stub here, exactly as `validationTraceDispute` reuses the
+    // `transition_trace` stub above. Devnet only: the production contracts
+    // service builds the real Q44 chain from the Aiken blueprint.
+    const daHashPreimage = zeroInput;
+
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
       nonExistentInput,
@@ -275,6 +282,7 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       transitionTrace,
       zeroInput,
       validationTraceDispute,
+      daHashPreimage,
     };
 
     return {

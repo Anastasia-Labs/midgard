@@ -31,6 +31,7 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "transitionTrace",
   "zeroInput",
   "validationTraceDispute",
+  "daHashPreimage",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =

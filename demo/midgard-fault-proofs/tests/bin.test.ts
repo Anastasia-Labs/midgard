@@ -175,7 +175,7 @@ describe("fault-proof CLI argument parsing", () => {
         "invalid-range",
       ]),
     ).toThrow(
-      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "validationTraceDispute"',
+      '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "validationTraceDispute", or "daHashPreimage"',
     );
   });
 

@@ -94,6 +94,7 @@ export type InspectContractsOutput = {
     readonly zeroInput: InspectContractsCatalogueCategoryOutput;
     readonly transitionTrace: InspectContractsCatalogueCategoryOutput;
     readonly validationTraceDispute: InspectContractsCatalogueCategoryOutput;
+    readonly daHashPreimage: InspectContractsCatalogueCategoryOutput;
   };
   readonly doubleSpend: {
     readonly categoryFirstStepHash: string;
@@ -130,6 +131,15 @@ export type InspectContractsOutput = {
     readonly categoryFirstStepHash: string;
     readonly deploymentZeroInputScriptHash: string | null;
     readonly deploymentZeroInputMatchesFirstStep: boolean | null;
+    readonly steps: readonly [
+      InspectContractsStepOutput,
+      InspectContractsStepOutput,
+    ];
+  };
+  readonly daHashPreimage: {
+    readonly categoryFirstStepHash: string;
+    readonly deploymentDaHashPreimageScriptHash: string | null;
+    readonly deploymentDaHashPreimageMatchesFirstStep: boolean | null;
     readonly steps: readonly [
       InspectContractsStepOutput,
       InspectContractsStepOutput,
@@ -201,7 +211,8 @@ export type InspectContractsProofCategory =
   | "invalidRange"
   | "zeroInput"
   | "transitionTrace"
-  | "validationTraceDispute";
+  | "validationTraceDispute"
+  | "daHashPreimage";
 
 export type InspectContractsOversizedSpendingScript = {
   readonly category: InspectContractsProofCategory;
@@ -228,7 +239,8 @@ export type ImplementedFraudProofCategoryName =
   | "invalidRange"
   | "zeroInput"
   | "transitionTrace"
-  | "validationTraceDispute";
+  | "validationTraceDispute"
+  | "daHashPreimage";
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
@@ -760,6 +772,7 @@ const inspectFraudProofCatalogue = (
       zeroInput: emptyCatalogueCategoryInspection(),
       transitionTrace: emptyCatalogueCategoryInspection(),
       validationTraceDispute: emptyCatalogueCategoryInspection(),
+      daHashPreimage: emptyCatalogueCategoryInspection(),
     });
   }
 
@@ -828,6 +841,7 @@ const inspectFraudProofCatalogue = (
       const validationTraceDispute = await inspectCategory(
         "validationTraceDispute",
       );
+      const daHashPreimage = await inspectCategory("daHashPreimage");
       const implementedCategories: readonly ImplementedFraudProofCategoryName[] =
         [
           "doubleSpend",
@@ -837,6 +851,7 @@ const inspectFraudProofCatalogue = (
           "zeroInput",
           "transitionTrace",
           "validationTraceDispute",
+          "daHashPreimage",
         ];
       const implementedCategoriesReady = implementedCategories.every((name) => {
         return {
@@ -847,6 +862,7 @@ const inspectFraudProofCatalogue = (
           zeroInput,
           transitionTrace,
           validationTraceDispute,
+          daHashPreimage,
         }[name].ready;
       });
 
@@ -862,6 +878,7 @@ const inspectFraudProofCatalogue = (
         zeroInput,
         transitionTrace,
         validationTraceDispute,
+        daHashPreimage,
       };
     },
     catch: (cause) =>
@@ -920,6 +937,10 @@ export const inspectContracts = ({
     const deploymentTransitionTraceScriptHash = optionalDeploymentScriptHash(
       parsedDeploymentInfo,
       "fraudProofTransitionTrace",
+    );
+    const deploymentDaHashPreimageScriptHash = optionalDeploymentScriptHash(
+      parsedDeploymentInfo,
+      "fraudProofDaHashPreimage",
     );
     const deploymentValidationTraceDisputeScriptHash =
       optionalDeploymentScriptHash(
@@ -993,6 +1014,11 @@ export const inspectContracts = ({
       stepOutput("step01", contracts.zeroInput.steps[0]),
       stepOutput("step02", contracts.zeroInput.steps[1]),
     ];
+    const daHashPreimageSteps: InspectContractsOutput["daHashPreimage"]["steps"] =
+      [
+        stepOutput("step01", contracts.daHashPreimage.steps[0]),
+        stepOutput("step02", contracts.daHashPreimage.steps[1]),
+      ];
     const transitionTraceSteps: InspectContractsOutput["transitionTrace"]["steps"] =
       [
         stepOutput("route", contracts.transitionTrace.route),
@@ -1043,6 +1069,10 @@ export const inspectContracts = ({
         category: "zeroInput" as const,
         step,
       })),
+      ...daHashPreimageSteps.map((step) => ({
+        category: "daHashPreimage" as const,
+        step,
+      })),
       ...transitionTraceSteps.map((step) => ({
         category: "transitionTrace" as const,
         step,
@@ -1073,6 +1103,8 @@ export const inspectContracts = ({
       contracts.invalidRange.firstStep.spendingScriptHash;
     const zeroInputCategoryFirstStepHash =
       contracts.zeroInput.firstStep.spendingScriptHash;
+    const daHashPreimageCategoryFirstStepHash =
+      contracts.daHashPreimage.firstStep.spendingScriptHash;
     const transitionTraceCategoryFirstStepHash =
       contracts.transitionTrace.firstStep.spendingScriptHash;
     const validationTraceDisputeCategoryFirstStepHash =
@@ -1095,6 +1127,11 @@ export const inspectContracts = ({
       deploymentZeroInputScriptHash === null
         ? null
         : deploymentZeroInputScriptHash === zeroInputCategoryFirstStepHash;
+    const deploymentDaHashPreimageMatchesFirstStep =
+      deploymentDaHashPreimageScriptHash === null
+        ? null
+        : deploymentDaHashPreimageScriptHash ===
+          daHashPreimageCategoryFirstStepHash;
     const deploymentTransitionTraceMatchesFirstStep =
       deploymentTransitionTraceScriptHash === null
         ? null
@@ -1116,6 +1153,7 @@ export const inspectContracts = ({
         zeroInput: zeroInputCategoryFirstStepHash,
         transitionTrace: transitionTraceCategoryFirstStepHash,
         validationTraceDispute: validationTraceDisputeCategoryFirstStepHash,
+        daHashPreimage: daHashPreimageCategoryFirstStepHash,
       },
       {
         doubleSpend: deploymentDoubleSpendMatchesFirstStep,
@@ -1127,6 +1165,7 @@ export const inspectContracts = ({
         transitionTrace: deploymentTransitionTraceMatchesFirstStep,
         validationTraceDispute:
           deploymentValidationTraceDisputeMatchesFirstStep,
+        daHashPreimage: deploymentDaHashPreimageMatchesFirstStep,
       },
     );
 
@@ -1175,6 +1214,12 @@ export const inspectContracts = ({
           stepOutput("step01", contracts.zeroInput.steps[0]),
           stepOutput("step02", contracts.zeroInput.steps[1]),
         ],
+      },
+      daHashPreimage: {
+        categoryFirstStepHash: daHashPreimageCategoryFirstStepHash,
+        deploymentDaHashPreimageScriptHash,
+        deploymentDaHashPreimageMatchesFirstStep,
+        steps: daHashPreimageSteps,
       },
       transitionTrace: {
         categoryFirstStepHash: transitionTraceCategoryFirstStepHash,

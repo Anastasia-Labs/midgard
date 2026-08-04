@@ -480,6 +480,12 @@ export const makeAlwaysSucceedsContracts = (
       timeout: alwaysValidationTraceDispute,
       award: alwaysValidationTraceDispute,
     },
+    // The always-succeeds devnet blueprint has no dedicated
+    // `da_hash_preimage` stub, so Q44 reuses the `zero_input` stub, mirroring
+    // how `validationTraceDispute` reuses `transition_trace`.
+    daHashPreimage: makeSpendingValidator(
+      alwaysScript(blueprint, "fraud_proofs", "zero_input", "spend"),
+    ),
   };
   const fieldPreimageV1 = makeSpendingValidator(
     alwaysScript(blueprint, "midgard", "state_queue", "spend"),

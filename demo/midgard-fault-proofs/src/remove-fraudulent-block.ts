@@ -4,12 +4,14 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
+  buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  type DaHashPreimageFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -276,6 +278,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "transitionTrace"
   | "zeroInput"
   | "validationTraceDispute"
+  | "daHashPreimage"
 >;
 
 export type StateQueueMutationLease = {
@@ -554,14 +557,16 @@ const buildRemovalContracts = async ({
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | DaHashPreimageFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
     | "fraudProofZeroInput"
-    | "validationTraceDispute";
+    | "validationTraceDispute"
+    | "fraudProofDaHashPreimage";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -629,6 +634,19 @@ const buildRemovalContracts = async ({
     derivedCategoryFirstStepHash =
       validationTraceDisputeContracts.validationTraceDispute.firstStep
         .spendingScriptHash;
+  } else if (fraudCategory === "daHashPreimage") {
+    const daHashPreimageContracts = await Effect.runPromise(
+      buildDaHashPreimageFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = daHashPreimageContracts;
+    expectedCategoryDeploymentEntry = "fraudProofDaHashPreimage";
+    derivedCategoryFirstStepHash =
+      daHashPreimageContracts.daHashPreimage.firstStep.spendingScriptHash;
   } else {
     const zeroInputContracts = await Effect.runPromise(
       buildZeroInputFaultProofContracts({

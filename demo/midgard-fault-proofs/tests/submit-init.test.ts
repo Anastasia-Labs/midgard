@@ -560,6 +560,9 @@ describe("fault-proof deployment contract resolution", () => {
       ...Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.canonicalDecodeItemStages,
       ),
+      ...Object.values(
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.scriptSourcesStageOneRedeemerStages,
+      ),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares),
       ...Object.values(VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics),
       ...Object.values(
@@ -597,10 +600,10 @@ describe("fault-proof deployment contract resolution", () => {
       network: "Preprod",
     });
     expect(resolved.validationTraceDisputeCategory.categoryId).toBe("00000006");
-    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(100);
+    expect(resolved.contracts.validationTraceDispute.steps).toHaveLength(106);
     expect(
       resolved.contracts.validationTraceDispute.semanticResolvers,
-    ).toHaveLength(75);
+    ).toHaveLength(76);
     expect(
       resolved.contracts.validationTraceDispute.prepareResolvers,
     ).toHaveLength(12);

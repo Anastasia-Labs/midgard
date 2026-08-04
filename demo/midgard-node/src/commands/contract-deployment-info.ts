@@ -517,6 +517,10 @@ const collectScriptDescriptors = (
   ),
   spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
   spendDescriptor(
+    "fraudProofDaHashPreimage",
+    contracts.fraudProofs.daHashPreimage,
+  ),
+  spendDescriptor(
     "validationTraceDispute",
     contracts.fraudProofs.validationTraceDispute,
     "V1 validation-trace dispute",

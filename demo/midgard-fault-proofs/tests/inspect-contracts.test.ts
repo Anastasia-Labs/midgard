@@ -136,6 +136,7 @@ const buildInspectionFixture = async () => {
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
     validationTraceDispute:
       contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    daHashPreimage: contracts.daHashPreimage.firstStep.spendingScriptHash,
   });
   return { blueprintJson, contracts, fraudProofCatalogue };
 };
@@ -183,6 +184,9 @@ const deploymentInfoFor = (
     fraudProofTransitionTrace: { scriptHash: transitionTraceScriptHash },
     validationTraceDispute: {
       scriptHash: contracts.validationTraceDispute.firstStep.spendingScriptHash,
+    },
+    fraudProofDaHashPreimage: {
+      scriptHash: contracts.daHashPreimage.firstStep.spendingScriptHash,
     },
   },
 });
@@ -286,7 +290,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       "boundary",
       "timeout",
       "award",
-      ...Array.from({ length: 75 }, (_, index) => `semantic-resolver-${index}`),
+      ...Array.from({ length: 76 }, (_, index) => `semantic-resolver-${index}`),
       ...Array.from({ length: 12 }, (_, index) => `prepare-resolver-${index}`),
       ...Array.from({ length: 2 }, (_, index) => `direct-resolver-${index}`),
     ]);
@@ -307,6 +311,10 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
         category: "zeroInput",
         step,
       })),
+      ...output.daHashPreimage.steps.map((step) => ({
+        category: "daHashPreimage",
+        step,
+      })),
       ...output.transitionTrace.steps.map((step) => ({
         category: "transitionTrace",
         step,
@@ -321,6 +329,7 @@ describe("inspect-contracts", { timeout: 30_000 }, () => {
       ...contracts.nonExistentInput.steps,
       ...contracts.invalidRange.steps,
       ...contracts.zeroInput.steps,
+      ...contracts.daHashPreimage.steps,
       contracts.transitionTrace.route,
       ...contracts.transitionTrace.finals,
       contracts.validationTraceDispute.opener,

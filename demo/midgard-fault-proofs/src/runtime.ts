@@ -7,12 +7,14 @@ import {
   parseOutRefLabel,
 } from "@al-ft/midgard-core/out-ref";
 import {
+  buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  type DaHashPreimageFaultProofContracts,
   type DoubleSpendFaultProofContracts,
   type FraudProofCatalogueCategoryDeploymentInfo,
   type FraudProofCatalogueCategoryName,
@@ -351,6 +353,15 @@ export type ResolvedValidationTraceDisputeDeploymentContracts = {
   readonly contracts: ValidationTraceDisputeFaultProofContracts;
 };
 
+export type ResolvedDaHashPreimageDeploymentContracts = {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly daHashPreimageCategory: FraudProofCatalogueCategoryDeploymentInfo;
+  readonly stateQueuePolicyId: string | undefined;
+  readonly fraudProofCataloguePolicyId: string;
+  readonly hubOraclePolicyId: string;
+  readonly contracts: DaHashPreimageFaultProofContracts;
+};
+
 export type ResolvedZeroInputDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly zeroInputCategory: FraudProofCatalogueCategoryDeploymentInfo;
@@ -368,6 +379,7 @@ type SupportedFaultProofCategoryName = Extract<
   | "transitionTrace"
   | "zeroInput"
   | "validationTraceDispute"
+  | "daHashPreimage"
 >;
 
 const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
@@ -377,6 +389,7 @@ const FRAUD_PROOF_DEPLOYMENT_ENTRY_BY_CATEGORY = {
   transitionTrace: "fraudProofTransitionTrace",
   zeroInput: "fraudProofZeroInput",
   validationTraceDispute: "validationTraceDispute",
+  daHashPreimage: "fraudProofDaHashPreimage",
 } as const satisfies Record<SupportedFaultProofCategoryName, string>;
 
 const categoryLabel = (
@@ -395,6 +408,8 @@ const categoryLabel = (
       return "zero-input";
     case "validationTraceDispute":
       return "validation-trace-dispute";
+    case "daHashPreimage":
+      return "da-hash-preimage";
   }
 };
 
@@ -424,7 +439,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | DaHashPreimageFaultProofContracts;
 }> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
   const catalogue =
@@ -480,7 +496,8 @@ const resolveFaultProofDeploymentContracts = async ({
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
     | ZeroInputFaultProofContracts
-    | ValidationTraceDisputeFaultProofContracts;
+    | ValidationTraceDisputeFaultProofContracts
+    | DaHashPreimageFaultProofContracts;
   let derivedFirstStepHash: string;
   if (categoryName === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -543,6 +560,18 @@ const resolveFaultProofDeploymentContracts = async ({
     derivedFirstStepHash =
       validationTraceDisputeContracts.validationTraceDispute.firstStep
         .spendingScriptHash;
+  } else if (categoryName === "daHashPreimage") {
+    const daHashPreimageContracts = await Effect.runPromise(
+      buildDaHashPreimageFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    contracts = daHashPreimageContracts;
+    derivedFirstStepHash =
+      daHashPreimageContracts.daHashPreimage.firstStep.spendingScriptHash;
   } else {
     const zeroInputContracts = await Effect.runPromise(
       buildZeroInputFaultProofContracts({
@@ -719,6 +748,27 @@ export const resolveZeroInputDeploymentContracts = async (params: {
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
     contracts: resolved.contracts as ZeroInputFaultProofContracts,
+  };
+};
+
+export const resolveDaHashPreimageDeploymentContracts = async (params: {
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
+  readonly requireStateQueueMint?: boolean;
+  readonly requireFraudProofSpend?: boolean;
+}): Promise<ResolvedDaHashPreimageDeploymentContracts> => {
+  const resolved = await resolveFaultProofDeploymentContracts({
+    ...params,
+    categoryName: "daHashPreimage",
+  });
+  return {
+    deploymentInfo: resolved.deploymentInfo,
+    daHashPreimageCategory: resolved.category,
+    stateQueuePolicyId: resolved.stateQueuePolicyId,
+    fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
+    hubOraclePolicyId: resolved.hubOraclePolicyId,
+    contracts: resolved.contracts as DaHashPreimageFaultProofContracts,
   };
 };
 

@@ -28,6 +28,8 @@ import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
 import { neSubmitStep04FromFiles } from "./ne-submit-step-04.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
 import { type ProviderKind } from "./runtime.js";
+import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
+import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.js";
 import {
   type SubmitInitFraudCategory,
   submitInitFromFiles,
@@ -118,7 +120,7 @@ const usage = `Usage:
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
   midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
-  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-init --blueprint <path> --deployment-info <path> --fraudulent-block-out-ref <txHash#outputIndex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|nonExistentInputNoIndex|zeroInput|validationTraceDispute|daHashPreimage>] [--fraudulent-header-hash <hex>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-step-03 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --tx1-inputs <raw-input-cbor-list.json> --double-spent-input-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -142,7 +144,9 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
-  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput|validationTraceDispute>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-da-hash-preimage-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs submit-da-hash-preimage-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <doubleSpend|invalidRange|transitionTrace|nonExistentInput|zeroInput|validationTraceDispute|daHashPreimage>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
 `;
 
 export const parseFraudCategory = (
@@ -158,12 +162,13 @@ export const parseFraudCategory = (
     value === "nonExistentInput" ||
     value === "nonExistentInputNoIndex" ||
     value === "zeroInput" ||
-    value === "validationTraceDispute"
+    value === "validationTraceDispute" ||
+    value === "daHashPreimage"
   ) {
     return value;
   }
   throw new Error(
-    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", or "validationTraceDispute".',
+    '--fraud-category must be one of "doubleSpend", "invalidRange", "transitionTrace", "nonExistentInput", "nonExistentInputNoIndex", "zeroInput", "validationTraceDispute", or "daHashPreimage".',
   );
 };
 
@@ -639,6 +644,8 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-non-existent-input-step-04" &&
     args.command !== "submit-zero-input-step-01" &&
     args.command !== "submit-zero-input-step-02" &&
+    args.command !== "submit-da-hash-preimage-step-01" &&
+    args.command !== "submit-da-hash-preimage-step-02" &&
     args.command !== "submit-validation-dispute-open" &&
     args.command !== "submit-validation-dispute-verify-source" &&
     args.command !== "submit-validation-dispute-reveal" &&
@@ -1122,6 +1129,70 @@ export const main = async (): Promise<void> => {
       );
     }
     const output = await submitZeroInputStep02FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-da-hash-preimage-step-01") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.stateQueueBlockOutRef === undefined) {
+      throw new Error(
+        `Missing required --state-queue-block-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    if (args.txInclusionPath === undefined) {
+      throw new Error(`Missing required --tx-inclusion <path>.\n${usage}`);
+    }
+    const output = await submitDaHashPreimageStep01FromFiles({
+      blueprintPath: args.blueprintPath,
+      deploymentInfoPath: args.deploymentInfoPath,
+      network: parseNetwork(args.network),
+      provider: args.provider,
+      blockfrostApiUrl: args.blockfrostApiUrl,
+      blockfrostKey: args.blockfrostKey,
+      kupoUrl: args.kupoUrl,
+      ogmiosUrl: args.ogmiosUrl,
+      walletSeedPhrase: args.walletSeedPhrase,
+      walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+      walletPrivateKey: args.walletPrivateKey,
+      walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+      threadOutRef: args.threadOutRef,
+      stateQueueBlockOutRef: args.stateQueueBlockOutRef,
+      txInclusionPath: args.txInclusionPath,
+      awaitConfirmation: args.awaitConfirmation,
+    });
+
+    writeJson(output);
+    return;
+  }
+
+  if (args.command === "submit-da-hash-preimage-step-02") {
+    if (args.threadOutRef === undefined) {
+      throw new Error(
+        `Missing required --thread-out-ref <txHash#outputIndex>.\n${usage}`,
+      );
+    }
+    const output = await submitDaHashPreimageStep02FromFiles({
       blueprintPath: args.blueprintPath,
       deploymentInfoPath: args.deploymentInfoPath,
       network: parseNetwork(args.network),

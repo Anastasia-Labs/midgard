@@ -264,9 +264,15 @@ describe("V1 deployment manifest", () => {
   //     now mandatory: `verifyDeploymentManifestV1FraudProofCatalogueIdentity`
   //     reconstructs the catalogue MPF root from the categories and verifies
   //     every membership proof, so a fake root no longer parses.
+  //  4. Goal task `Q44` appended `fraudProofDaHashPreimage` to
+  //     `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` (51 -> 52 `contracts` entries)
+  //     and `daHashPreimage` to `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` as the
+  //     8th category (`00000007`), which also moves the derived catalogue root
+  //     and every membership proof. Both are append-only, so no existing
+  //     category ID shifts. `68c2a3ae...` -> `a9219993...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "68c2a3ae3ccefddb060ed90c28d8a9d6c4b395611760012ce8fe5c91e446a50a",
+      "a9219993bbb9327711c9ef33152abd76971b12d953e92931da046e00907a2aeb",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

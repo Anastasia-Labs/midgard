@@ -42,6 +42,7 @@ const CATALOGUE_CATEGORY_TO_CONTRACT = Object.freeze({
   transitionTrace: "fraudProofTransitionTrace",
   zeroInput: "fraudProofZeroInput",
   validationTraceDispute: "validationTraceDispute",
+  daHashPreimage: "fraudProofDaHashPreimage",
 } as const);
 
 const REFERENCE_SCRIPT_ROLES = Object.freeze(

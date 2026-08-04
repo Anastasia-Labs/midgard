@@ -12,5 +12,7 @@ export * from "./prepare-non-existent-input.js";
 export * from "./prepare-zero-input.js";
 export * from "./remove-fraudulent-block.js";
 export * from "./runtime.js";
+export * from "./submit-da-hash-preimage-step-01.js";
+export * from "./submit-da-hash-preimage-step-02.js";
 export * from "./transition-trace/index.js";
 export * from "./validation-dispute/index.js";

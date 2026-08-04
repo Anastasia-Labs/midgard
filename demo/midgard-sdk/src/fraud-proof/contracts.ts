@@ -55,6 +55,11 @@ export const ZERO_INPUT_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/zero_input/step_02.main.spend",
 } as const;
 
+export const DA_HASH_PREIMAGE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/da_hash_preimage/step_01.main.spend",
+  step02: "fraud_proofs/da_hash_preimage/step_02.main.spend",
+} as const;
+
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
   route: "fraud_proofs/transition_trace/route_v1.main.spend",
   control: "fraud_proofs/transition_trace/control_v1.main.spend",
@@ -332,6 +337,14 @@ export type ZeroInputFaultProofContracts = {
   };
 };
 
+export type DaHashPreimageFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly daHashPreimage: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
 export type TransitionTraceFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
@@ -507,6 +520,7 @@ export type FaultProofContracts = {
   readonly zeroInput: ZeroInputFaultProofContracts["zeroInput"];
   readonly transitionTrace: TransitionTraceFaultProofContracts["transitionTrace"];
   readonly validationTraceDispute: ValidationTraceDisputeFaultProofContracts["validationTraceDispute"];
+  readonly daHashPreimage: DaHashPreimageFaultProofContracts["daHashPreimage"];
 };
 
 type SharedFaultProofContracts = {
@@ -532,6 +546,9 @@ export type BuildInvalidRangeFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildZeroInputFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildDaHashPreimageFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -991,6 +1008,66 @@ const buildZeroInputChain = ({
     return {
       firstStep: zeroInputStep01,
       steps: [zeroInputStep01, zeroInputStep02],
+    };
+  });
+
+const buildDaHashPreimageChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: {
+  readonly blueprint: FaultProofBlueprint;
+  readonly network: Network;
+  readonly hubOraclePolicyId: string;
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fraudProofTokenAddressData: Data;
+}): Effect.Effect<DaHashPreimageFaultProofContracts["daHashPreimage"], Error> =>
+  Effect.gen(function* () {
+    const daHashPreimageStep02 = yield* tryBuild(
+      "Failed to build da-hash-preimage step 02",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step02,
+            ),
+            [
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              computationThread.policyId,
+            ],
+          ),
+        ),
+    );
+
+    const daHashPreimageStep01 = yield* tryBuild(
+      "Failed to build da-hash-preimage step 01",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              DA_HASH_PREIMAGE_FAULT_PROOF_TITLES.step01,
+            ),
+            [
+              daHashPreimageStep02.spendingScriptHash,
+              computationThread.policyId,
+              hubOraclePolicyId,
+            ],
+          ),
+        ),
+    );
+
+    return {
+      firstStep: daHashPreimageStep01,
+      steps: [daHashPreimageStep01, daHashPreimageStep02],
     };
   });
 
@@ -1802,6 +1879,10 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const daHashPreimage = yield* buildDaHashPreimageChain({
+      ...params,
+      ...shared,
+    });
 
     return {
       computationThread: shared.computationThread,
@@ -1812,6 +1893,7 @@ export const buildFaultProofContracts = (
       zeroInput,
       transitionTrace,
       validationTraceDispute,
+      daHashPreimage,
     };
   });
 
@@ -1876,6 +1958,22 @@ export const buildZeroInputFaultProofContracts = (
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
       zeroInput,
+    };
+  });
+
+export const buildDaHashPreimageFaultProofContracts = (
+  params: BuildDaHashPreimageFaultProofContractsParams,
+): Effect.Effect<DaHashPreimageFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const daHashPreimage = yield* buildDaHashPreimageChain({
+      ...params,
+      ...shared,
+    });
+    return {
+      computationThread: shared.computationThread,
+      fraudProof: shared.fraudProof,
+      daHashPreimage,
     };
   });
 
