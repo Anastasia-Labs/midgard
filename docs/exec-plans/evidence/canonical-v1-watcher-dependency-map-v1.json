@@ -32,6 +32,7 @@
       "demo/midgard-watcher/src/proof-thread-indexer.ts",
       "demo/midgard-watcher/src/canonical-block-store.ts",
       "demo/midgard-watcher/src/header-root-reconstruction.ts",
+      "demo/midgard-watcher/src/phase-a-verifier.ts",
       "demo/midgard-watcher/src/public-da-client.ts",
       "demo/midgard-watcher/src/public-da-libp2p-transport.ts",
       "demo/midgard-watcher/src/rollback-engine.ts",
@@ -45,6 +46,7 @@
       "demo/midgard-watcher/tests/canonical-block-store.test.ts",
       "demo/midgard-watcher/tests/deployment-identity.test.ts",
       "demo/midgard-watcher/tests/header-root-reconstruction.test.ts",
+      "demo/midgard-watcher/tests/phase-a-verifier.test.ts",
       "demo/midgard-watcher/tests/durable-store.test.ts",
       "demo/midgard-watcher/tests/finality-engine.test.ts",
       "demo/midgard-watcher/tests/l1-adapter.test.ts",
@@ -334,6 +336,9 @@
     },
     "headerRootReconstruction": {
       "expectedFocusedTestCount": 59
+    },
+    "phaseAVerifier": {
+      "expectedFocusedTestCount": 94
     },
     "scaffold": {
       "expectedFocusedTestCount": 5

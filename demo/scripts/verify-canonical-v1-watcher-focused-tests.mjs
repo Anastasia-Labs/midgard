@@ -71,6 +71,10 @@ const expectedByFile = new Map([
     "header-root-reconstruction.test.ts",
     watcherEvidence.headerRootReconstruction?.expectedFocusedTestCount,
   ],
+  [
+    "phase-a-verifier.test.ts",
+    watcherEvidence.phaseAVerifier?.expectedFocusedTestCount,
+  ],
   ["scaffold.test.ts", watcherEvidence.scaffold?.expectedFocusedTestCount],
 ]);
 
@@ -79,13 +83,13 @@ const fail = (message) => {
 };
 
 if (
-  expectedByFile.size !== 16 ||
+  expectedByFile.size !== 17 ||
   [...expectedByFile.values()].some(
     (count) => !Number.isSafeInteger(count) || count <= 0,
   )
 ) {
   fail(
-    "dependency map must declare a positive expected count for all 16 files",
+    "dependency map must declare a positive expected count for all 17 files",
   );
 }
 
