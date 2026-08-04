@@ -214,6 +214,34 @@ const TEST_DA_PRODUCER_PEER_ID =
 const TEST_DA_COMMITTEE_PEER_ID =
   "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const TEST_DA_DEPLOYMENT_ID = "ab".repeat(32);
+const DA_PUBLIC_RETAINED_PEER_ID =
+  "12D3KooWQYV9dGMFoRzNStwpXztXaBUjtPqi6aU76ZgUriHhKust";
+const publicRetainedDaBlock = () =>
+  ({
+    profile: "public-retained-da-v1",
+    access_policy: "any_noise_authenticated_peer",
+    peer_id: DA_PUBLIC_RETAINED_PEER_ID,
+    listen_multiaddrs: ["/ip4/127.0.0.1/tcp/0"],
+    announce_multiaddrs: [
+      `/dns4/public.example/tcp/4003/p2p/${DA_PUBLIC_RETAINED_PEER_ID}`,
+    ],
+    protocols: [
+      "capabilities",
+      "payload-by-header",
+      "payload-chunk",
+      "metadata-by-header",
+      "proof-bundle-by-header",
+      "trace-step-by-index",
+      "event-to-step-by-event",
+    ],
+    limits: {
+      max_streams_per_peer: 4,
+      max_inflight_requests: 32,
+      max_inflight_requests_per_peer: 2,
+      max_inflight_proof_requests: 1,
+      request_timeout_ms: DA_TRANSPORT_LIMITS_V1.requestTimeoutMs,
+    },
+  }) as const;
 const EMPTY_PROGRAM_MATERIAL_SIDECAR_V1 =
   encodeMidgardCekProgramMaterialSidecarV1([]);
 // This harness exercises the real initialization, deposit submission, deposit
@@ -278,6 +306,7 @@ beforeAll(async () => {
         },
         retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
       },
+      public_retained_da: publicRetainedDaBlock(),
       da_committee: {
         threshold: 1,
         members: [
@@ -2511,6 +2540,7 @@ const configureEmulatorDaRuntimeManifest = async (): Promise<void> => {
       },
       retention_days: DA_TRANSPORT_LIMITS_V1.minimumRetentionDays,
     },
+    public_retained_da: publicRetainedDaBlock(),
     da_committee: {
       threshold: 1,
       members: [

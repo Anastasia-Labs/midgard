@@ -110,17 +110,7 @@ const requiredMetadataById = new Map([
         "Prepare, inspect, submit, reconcile, and remove fault proofs",
       state:
         "selected_families_and_public_transition_trace_ready_total_resumable_api_missing",
-      remainingTasks: [
-        "F20",
-        "Q10",
-        "Q11",
-        "Q12",
-        "Q21",
-        "Q22",
-        "Q51",
-        "W30",
-        "W32",
-      ],
+      remainingTasks: ["Q10", "Q11", "Q12", "Q21", "Q22", "Q51", "W30", "W32"],
       watcherBoundary:
         "Call typed programmatic APIs with persisted authenticated public evidence. Node URL and arbitrary local file modes are diagnostic/import boundaries, not watcher security inputs.",
     },

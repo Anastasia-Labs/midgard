@@ -43,20 +43,12 @@
         {
           "id": "static-git-diff",
           "cwd": ".",
-          "argv": [
-            "git",
-            "diff",
-            "--check"
-          ]
+          "argv": ["git", "diff", "--check"]
         },
         {
           "id": "static-git-status",
           "cwd": ".",
-          "argv": [
-            "git",
-            "status",
-            "--short"
-          ]
+          "argv": ["git", "status", "--short"]
         },
         {
           "id": "static-goal-policy",
@@ -69,33 +61,17 @@
         {
           "id": "static-aiken-check-no-tests",
           "cwd": "onchain/aiken",
-          "argv": [
-            "aiken",
-            "check",
-            "--skip-tests"
-          ]
+          "argv": ["aiken", "check", "--skip-tests"]
         },
         {
           "id": "static-demo-format",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo",
-            "run",
-            "format-check"
-          ]
+          "argv": ["pnpm", "--dir", "demo", "run", "format-check"]
         },
         {
           "id": "static-demo-lint",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo",
-            "run",
-            "lint"
-          ]
+          "argv": ["pnpm", "--dir", "demo", "run", "lint"]
         }
       ]
     },
@@ -117,34 +93,17 @@
         {
           "id": "static-aiken-build-testnet",
           "cwd": "onchain/aiken",
-          "argv": [
-            "aiken",
-            "build",
-            "--env",
-            "testnet"
-          ]
+          "argv": ["aiken", "build", "--env", "testnet"]
         },
         {
           "id": "static-demo-typecheck",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo",
-            "run",
-            "typecheck"
-          ]
+          "argv": ["pnpm", "--dir", "demo", "run", "typecheck"]
         },
         {
           "id": "static-demo-build",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo",
-            "run",
-            "build"
-          ]
+          "argv": ["pnpm", "--dir", "demo", "run", "build"]
         },
         {
           "id": "capability-inventory",
@@ -157,22 +116,12 @@
         {
           "id": "capability-core",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-core",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-core", "test"]
         },
         {
           "id": "capability-validation",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-validation",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-validation", "test"]
         },
         {
           "id": "capability-c26-capacity-aiken",
@@ -219,20 +168,12 @@
         {
           "id": "capability-da",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/da-committee-node",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/da-committee-node", "test"]
         },
         {
           "id": "capability-aiken",
           "cwd": "onchain/aiken",
-          "argv": [
-            "aiken",
-            "check"
-          ],
+          "argv": ["aiken", "check"],
           "timeoutMs": 43200000
         },
         {
@@ -261,32 +202,17 @@
         {
           "id": "fault-proof-package",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-fault-proofs",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-fault-proofs", "test"]
         },
         {
           "id": "fault-proof-sdk",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-sdk",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-sdk", "test"]
         },
         {
           "id": "fault-proof-node",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-node",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-node", "test"]
         },
         {
           "id": "fault-proof-criteria",
@@ -314,35 +240,17 @@
         {
           "id": "watcher-build",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-watcher",
-            "run",
-            "build"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "build"]
         },
         {
           "id": "watcher-typecheck",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-watcher",
-            "run",
-            "typecheck"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "typecheck"]
         },
         {
           "id": "watcher-lint",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-watcher",
-            "run",
-            "lint"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "run", "lint"]
         },
         {
           "id": "watcher-format",
@@ -358,12 +266,7 @@
         {
           "id": "watcher-tests",
           "cwd": ".",
-          "argv": [
-            "pnpm",
-            "--dir",
-            "demo/midgard-watcher",
-            "test"
-          ]
+          "argv": ["pnpm", "--dir", "demo/midgard-watcher", "test"]
         },
         {
           "id": "watcher-criteria",
@@ -377,12 +280,7 @@
       ]
     },
     "local": {
-      "dependsOn": [
-        "static",
-        "capability",
-        "fault-proofs",
-        "watcher"
-      ],
+      "dependsOn": ["static", "capability", "fault-proofs", "watcher"],
       "stateChanging": false,
       "commands": [
         {
@@ -441,10 +339,7 @@
       ]
     },
     "all": {
-      "dependsOn": [
-        "local",
-        "evidence"
-      ],
+      "dependsOn": ["local", "evidence"],
       "stateChanging": false,
       "commands": []
     }

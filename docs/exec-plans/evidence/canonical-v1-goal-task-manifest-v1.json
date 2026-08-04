@@ -139,7 +139,7 @@
       ],
       "evidenceOutputs": [
         "Strict format-registry transcript binding all 132 canonical rows to exact source/symbol, canonical forms/tags/arities, parser/encoder, positive/rejection, cross-language or justified N/A, and obsolete-branch evidence",
-        "Current-truth baseline: the live strict verifier fails on exactly 72 UNVERIFIED rows (60 PASS, 72 UNVERIFIED); the old queue prose claiming 132/132 is not closure evidence",
+        "Current-truth closure: the live strict verifier passes exactly 132 rows with 0 UNVERIFIED after the #476 freshness reconciliation promoted the remaining 72 rows (N, L02-L19, S01, K, V, P) with current-tree source/symbol/test evidence and executed test transcripts",
         "Forbidden-active-pattern scan covering exactly 29 retired/obsolete identity classes with zero live matches at closure"
       ],
       "focusedCommands": [
@@ -148,13 +148,13 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-format-registry-v1.json scripts/verify-canonical-v1-format-registry.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-format-registry-v1.json demo/scripts/verify-canonical-v1-format-registry.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-format-registry.mjs. The source-derived registry contains exactly 132 unique format IDs and 29 forbidden-active-pattern scans; strict closure requires exactly 132 PASS and 0 UNVERIFIED rows, with all 132 crossLanguageEvidence statuses PASS and exactly 0 obsolete-pattern matches. Current baseline is exactly 60 PASS and 72 UNVERIFIED.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-format-registry.mjs. The source-derived registry contains exactly 132 unique format IDs and 29 forbidden-active-pattern scans; strict closure requires exactly 132 PASS and 0 UNVERIFIED rows, with all 132 crossLanguageEvidence statuses PASS and exactly 0 obsolete-pattern matches. Current state is exactly 132 PASS and 0 UNVERIFIED.",
       "invalidationTriggers": [
         "F00 is recaptured or any serialized/authenticated schema, constructor tag, field order/arity, parser, encoder, catalogue index, blueprint identity, or cross-language evidence path changes",
         "A retired identity reappears, a canonical row becomes missing/duplicate/UNVERIFIED, or a source-bound registry family changes cardinality",
         "The format registry, strict verifier, or any source/evidence path named by a registry row changes after verification"
       ],
-      "readyBecause": "F00 is PASS in the authoritative first GOAL_PROGRESS.md queue, so F02 is dependency-ready. F02 is not currently closure-ready: the live strict verifier reports exactly 72 UNVERIFIED rows despite stale queue prose claiming 132/132; the assignment closes only when the strict 132-PASS contract is met."
+      "readyBecause": "F00 is PASS in the authoritative first GOAL_PROGRESS.md queue, so F02 is dependency-ready. F02 is closure-complete on the current tree: the live strict verifier passes exactly 132 rows with 0 UNVERIFIED, eliminating the earlier 72-row status contradiction by executable evidence."
     },
     {
       "id": "F03",
@@ -292,7 +292,7 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json ../docs/exec-plans/templates/README.md ../docs/exec-plans/templates/task-manifest-row.json ../docs/exec-plans/templates/necessity-artifact-template.md ../docs/exec-plans/templates/structural-na-template.md ../docs/exec-plans/templates/subagent-assignment-brief.md scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json docs/exec-plans/templates/README.md docs/exec-plans/templates/task-manifest-row.json docs/exec-plans/templates/necessity-artifact-template.md docs/exec-plans/templates/structural-na-template.md docs/exec-plans/templates/subagent-assignment-brief.md demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 114 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-goal-task-manifest-quality.mjs. Quality closure reports exactly 186 manifest tasks, 186 unique authoritative task IDs, 186 DETAILED rows, 115 authoritative first-queue IDs, and 0 defects; exactly 4 of 4 worked templates validate and blockedOn contains exactly 1 current non-PASS dependency F41 with 0 stale PASS blockers.",
       "invalidationTriggers": [
         "Any F01/F02/F20/F21/F30 inventory/reconciliation finding, F41 closure-schema requirement, GOAL_SPEC §7-§10 task, or authoritative first-queue ID/dependency/status changes",
         "Any manifest row, dependency expansion, lease, anchor, command, count contract, blocker, summary cardinality, template, or quality-verifier rule changes after capture",
@@ -472,7 +472,7 @@
       ],
       "evidenceOutputs": [
         "Machine-readable map resolving all eight required public dependency classes to exact current paths/symbols/replacement tasks and rejecting operator-private DB/admin/mutation authority",
-        "Current-truth failure transcript: the live verifier rejects the map because the validation source path/symbol set no longer matches the exact required set; stale queue PASS prose is not current-tree evidence",
+        "Current-truth pass transcript: the live exact verifier accepts the map on the current tree; the proof_tooling remaining-task set no longer lists completed F20 and all eight class path/symbol sets resolve exactly",
         "Watcher package inventory and trust-boundary report preserving distinct watcher/committee identities, fail-closed start/replay, deferred local_node wire support, and open operational provenance without claiming watcher completion"
       ],
       "focusedCommands": [
@@ -486,7 +486,7 @@
         "A mapped source becomes missing/renamed, an operator-private DB/admin/mutation API becomes a watcher security input, or current validation paths diverge from the required exact set",
         "The dependency map/verifier or any mapped DA/core/validation/fault-proof/SDK/node/watcher source tree changes after capture"
       ],
-      "readyBecause": "F00/F01/F02 are PASS, so F30 is dependency-ready. It is not currently closure-ready: the live exact verifier fails on validation path/symbol drift despite stale queue PASS prose; repairing and passing the 8-class/4-rejection inventory does not imply watcher implementation readiness."
+      "readyBecause": "F00/F01/F02 are PASS, so F30 is dependency-ready. F30 is closure-complete on the current tree: the exact 8-class/4-rejection verifier passes with current proof-tooling boundaries; this does not imply watcher implementation readiness."
     },
     {
       "id": "F40",
@@ -2050,7 +2050,7 @@
         "Guarded 5-test Aiken transcript and exact 7-test TypeScript-file transcript"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/cek-proof-v1.ak lib/midgard/cek-proof-v1.test.ak lib/midgard/cek-data-v1.ak lib/midgard/cek-data-v1.test.ak lib/midgard/validation-resolver-v1.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak validators/fraud-proofs/validation-trace/cek-v1.ak",
+        "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/cek-proof-v1.ak lib/midgard/cek-proof-v1.test.ak lib/midgard/cek-data-v1.ak lib/midgard/cek-data-v1.test.ak lib/midgard/validation-resolver-v1.ak lib/midgard/validation-resolver-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak validators/fraud-proofs/validation-trace/cek-v1.ak",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_proof_v1 canonical_program_envelope_decodes_with_exact_bounds small_canonical_program_envelope_decodes program_envelope_rejects_noncanonical_and_out_of_bounds_claims",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 cek_execution_selection_authenticates_program_and_context_subject maximum_script_program_instruction_evidence_is_bounded",
         "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
@@ -2216,10 +2216,9 @@
         "C24",
         "C25",
         "C26",
-        "C28",
         "C29"
       ],
-      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C30 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C31",
@@ -2303,10 +2302,9 @@
         "C24",
         "C25",
         "C26",
-        "C28",
         "C29"
       ],
-      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C31 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C32",
@@ -2415,12 +2413,11 @@
         "C24",
         "C25",
         "C26",
-        "C28",
         "C29",
         "C30",
         "C31"
       ],
-      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29, C30, C31. PASS dependencies are deliberately omitted."
+      "blockedBecause": "C32 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29, C30, C31. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C33",
@@ -2483,8 +2480,8 @@
         "Any C23 through C28 dependency status/ABI changes, including script/program carriage semantics",
         "CML/emulator version, target protocol parameters, language views, applied validator hash, or signed boundary fixture changes"
       ],
-      "blockedOn": ["C23", "C24", "C25", "C26", "C28"],
-      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25, C26, C28. PASS dependencies are deliberately omitted."
+      "blockedOn": ["C23", "C24", "C25", "C26"],
+      "blockedBecause": "C33 remains dependency-blocked only on current non-PASS queue rows: C23, C24, C25, C26. PASS dependencies are deliberately omitted."
     },
     {
       "id": "CG2",
@@ -2570,14 +2567,13 @@
         "C24",
         "C25",
         "C26",
-        "C28",
         "C29",
         "C30",
         "C31",
         "C32",
         "C33"
       ],
-      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C28, C29, C30, C31, C32, C33. PASS dependencies are deliberately omitted."
+      "blockedBecause": "CG2 remains dependency-blocked only on current non-PASS queue rows: C20-0, C20-1, C20-3, C20-8, C21, C22, C23, C24, C25, C26, C29, C30, C31, C32, C33. PASS dependencies are deliberately omitted."
     },
     {
       "id": "C40",

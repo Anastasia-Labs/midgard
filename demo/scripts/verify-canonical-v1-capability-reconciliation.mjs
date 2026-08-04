@@ -40,10 +40,12 @@ const statusCount = (status) =>
 assert.deepEqual(evidence.p2Summary, {
   tasks: 22,
   // C20-6/C20-7 were promoted 2026-08-03. C20-2/C20-4/C20-5 and C27 were
-  // promoted 2026-08-04 after exact focused boundary/protocol verification.
+  // promoted 2026-08-04 after exact focused boundary/protocol verification,
+  // and C28 was promoted later the same day once complete content-addressed
+  // CEK program material was authenticated and consumed by reference only.
   // CG2 stays OPEN while any P2 task is PARTIAL.
-  pass: 16,
-  partial: 6,
+  pass: 17,
+  partial: 5,
   open: 0,
   authoritativeConflict: 0,
   gate: "OPEN",
