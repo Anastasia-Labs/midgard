@@ -6347,29 +6347,20 @@ export const submitValidationDisputeDirectResolution = async ({
       "CEK direct, single-publication, and minimum-multi routes did not fit; incremental traversal requires an exact receipt-bound necessity set",
     );
   }
-  const incrementalPrepared = await prepareValidationFinalizationTransaction({
-    lucid,
-    contracts,
-    signer,
-    threadUtxo,
-    threadOutRef,
-    token,
-    spendingScript: directContract,
-    spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
-    spendLabel: "Validation-dispute CEK incrementalTraversal",
-    encodeSpendRedeemer: (layout) =>
-      encodeValidationCekSpendRedeemerV1({
-        ...baseAction(layout),
-        material_route: {
-          IncrementalCekMaterial: {
-            program_envelope_hash:
-              routeMaterial.programEnvelopeHash.toString("hex"),
-          },
-        },
-      }),
-    validityRange: range,
-  });
-  return await submitSelectedRoute(incrementalPrepared, "incrementalTraversal");
+  // The incremental route fails closed on L1. `IncrementalCekMaterial` in
+  // `onchain/aiken/lib/midgard/validation-resolver-v1.ak` rejects
+  // unconditionally: its former predicate compared the redeemer's
+  // `program_envelope_hash` against a value derived from the disputer's own
+  // selected envelope, so it verified no program material at all, and the
+  // off-chain grammar it was specified against orders `proofContinuation`
+  // transactions AFTER the `proofConsumption` finalization that mints the
+  // fraud proof. Refuse here rather than construct a finalization that cannot
+  // validate. The receipt-set machinery above and the ABI variant are retained
+  // for the lease that adds the authenticated cross-transaction traversal
+  // accumulator the sound route needs.
+  throw new Error(
+    "CEK incremental traversal is not verifiable on L1: the on-chain IncrementalCekMaterial route fails closed until an authenticated cross-transaction material-traversal accumulator is deployed. Publish the complete program material and resolve through the direct, single-publication, or minimum-multi-output route.",
+  );
 };
 
 export const validationDisputeDescriptorData =

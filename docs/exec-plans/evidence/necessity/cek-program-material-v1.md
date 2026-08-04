@@ -47,7 +47,8 @@ publication until all three complete-graph representations reject.
 | 1 | Direct proof material | Complete envelope + complete encoded sidecar `<= 8,769` bytes | 15,872-byte direct proof transaction; 853,925 lovelace measured publication fee | Does not fit |
 | 2 | Authenticated input inline datum | Complete envelope + sidecar `<= 15,624` datum bytes | 15,872-byte complete-item publication transaction; 853,925 lovelace fee | Does not fit |
 | 3 | Authenticated reference-input inline datum | Same complete datum fit as order 2 | 8,275-byte reference proof transaction, one reference input | Does not fit |
-| 4 | Per-node authenticated publication/receipt | Reached only when 1–3 fail and every entry is independently publishable | 4,268-byte maximum datum; 4,369-byte unsigned publication; 3,398,228 memory and 1,209,745,039 CPU receipt bounds | Necessity-justified fallback |
+| 4 | Per-node authenticated publication + single-transaction reconstruction (`MinimumMultiOutputCekMaterial`) | Reached only when 1–3 fail and every entry is independently publishable | 4,268-byte maximum datum; 4,369-byte unsigned publication; 3,398,228 memory and 1,209,745,039 CPU receipt bounds | Necessity-justified fallback, bounded by the reconstruction transaction (see below) |
+| 5 | Incremental multi-transaction traversal (`IncrementalCekMaterial`) | Reached only when 1–4 fail | **No measurement. The route is CLOSED on L1** — see "Route 5 is closed" | Necessary in the limit, NOT deployed |
 
 The first three maximum cases are byte-impossible before execution: the
 67,108,418-byte material lower bound exceeds the 16,384-byte target L1
@@ -63,10 +64,119 @@ The production submission path in
 (`submitValidationDisputeDirectResolution`) enforces the same order
 executably: it constructs and locally evaluates the direct route first,
 falls back to the caller-confirmed exact single-publication reference, then
-the caller-confirmed exact root-ordered minimum multi-output reconstruction,
-and only enters incremental traversal with a parsed, envelope-bound
-`CekProgramMaterialNecessityReceiptSetV1`. Every rejected local attempt is
-retained in the result's `rejectedLocalRouteAttempts`.
+the caller-confirmed exact root-ordered minimum multi-output reconstruction.
+Every rejected local attempt is retained in the result's
+`rejectedLocalRouteAttempts`. It no longer submits route 5; after parsing the
+envelope-bound `CekProgramMaterialNecessityReceiptSetV1` it refuses with an
+explicit not-verifiable-on-L1 error rather than constructing a finalization
+that the resolver rejects.
+
+## Route 5 is closed: the incremental traversal has no L1 verification
+
+This section is the measured §3.2 record for the incremental route. Its
+honest conclusion is that the route is **necessary in the limit but not
+soundly implementable within C28**, so it fails closed on L1.
+
+**What routes 1–4 prove and route 5 did not.** Each of `DirectCekMaterial`,
+`SinglePublicationCekMaterial`, and `MinimumMultiOutputCekMaterial` reaches
+`cek_proof_v1.verify_complete_program_material_entries_v1`, which walks the
+whole content-addressed DAG from `envelope.term_root`, checks every entry
+`root == hash(preimage)`, and requires the traversal to reproduce
+`envelope.node_count` and `envelope.material_byte_length` exactly with no
+unreachable entry. `IncrementalCekMaterial` reached none of that. Its
+predicate was
+
+    program_envelope_hash == cek_envelope_hash_v1(selected_envelope)
+
+and `cek_envelope_hash_v1` is a pure function of `selected_envelope` alone
+(`inspect_program_envelope_v1` then `hash_program_envelope_v1` over the
+decoded fields). Both sides therefore came from the disputer's own submitted
+evidence: the check was the tautology `f(x) == chosen` satisfied by setting
+`chosen := f(x)`. The branch read neither `reference_inputs` nor
+`cek_program_material_script_hash`, so a CEK finalization could mint its
+fraud proof — slashing the operator and taking the award — with **zero**
+program material published on L1, while `verify_cek_one_step_v1` and
+`challenger_wins_with_valid_successor` were satisfied honestly. The §3.2
+gate and the material publication were enforced off-chain only, which an
+adversarial submitter simply does not run.
+
+**Why the specified design cannot be lifted on-chain.**
+`validateRouteTransactionGrammarV1` in
+`demo/midgard-validation/src/validation-dispute-evidence.ts` requires the
+incremental role order `publication+ , proofConsumption ,
+proofContinuation+` — at least one continuation *after* the consumption. The
+consumption is the resolver finalization that mints the fraud proof. Material
+verified after the dispute has already resolved secures nothing, so the
+design is unsound by construction rather than merely unchecked.
+
+**What a sound route 5 requires, and why it is not present.** An
+authenticated cross-transaction traversal accumulator: a step chain whose
+datum carries the partial material frontier, the reachable-node count, and
+the material byte length, advanced by continuation transactions over
+published entries, which the finalization requires to have already COMPLETED
+against the selected envelope. Measured absence in this tree: program
+material publications are permissionless, self-authenticating, and
+unspendable (`onchain/aiken/validators/user-events/cek-program-material-v1.ak`
+is `spend -> False`) with **no minting policy and no aggregate completion
+commitment**; `onchain/aiken/lib/midgard/cek-blob-frontier-v1.ak` is an MMR
+over the chunks of one blob leaf, not over the material DAG, and is consumed
+only by `cek-source-blob-v1.ak`; no `NecessityReceipt` symbol and no
+necessity verification exists anywhere under `onchain/aiken`.
+
+**Necessity of route 5, honestly stated.** Route 5 IS necessary in the limit.
+Route 4's limit is not publication — publication is permissionless and
+unbounded, so any graph up to the 67,108,418-byte maximum is always
+publishable — it is the single reconstruction transaction, which must carry
+one reference input per entry inside 16,384 bytes and walk the whole DAG
+inside the 13,200,000-memory / 8,000,000,000-CPU reserve, with
+`find_program_material_entry_v1` scanning the entry list per task. So route 4
+covers only small graphs and the 1,597,819-node maximum is far outside it.
+This artifact therefore does **not** claim route 5 is unnecessary.
+
+**Consequence and classification.** With route 5 closed, every accepted CEK
+material route verifies the complete graph on L1, and oversized programs
+cannot be CEK-disputed at all. That is a **liveness** limit on oversized
+programs, not a soundness or data-availability hole: publication remains
+permissionless so the material is always available, only the bounded
+multi-transaction verification is missing. Per the repository tradeoff order
+(correctness, safety, liveness, performance, convenience) a route that
+verifies nothing is strictly worse than a route that rejects, so the closure
+is the correct interim state. It sits alongside the already-recorded
+oversized-validator limit below: `cek_v1` itself is 156,161 applied bytes and
+is likewise not live-network deployable yet.
+
+**Owed to the follow-up lease** (not C28): the authenticated
+cross-transaction material-traversal accumulator, the measured frontier of
+route 4 (the exact node count and material byte length at which the single
+reconstruction transaction crosses 16,384 bytes and the execution reserve),
+and the route-5 receipts that measurement makes meaningful. The ABI variant
+`IncrementalCekMaterial`, the
+`CekProgramMaterialNecessityReceiptSetV1` parser, and its CBOR vectors are
+retained unchanged as that lease's seam.
+
+**Executable pins for the closure**
+(`onchain/aiken/lib/midgard/validation-resolver-v1.test.ak`, module selector
+`aiken check -m 'validation_resolver_v1.{..}'`, 18/18):
+
+- `cek_incremental_route_rejects_zero_published_material` — atomic, single
+  assertion: the exact exploit (self-consistent hash, empty reference inputs).
+- `cek_incremental_route_rejects_complete_published_material` — atomic.
+- `cek_incremental_route_rejects_substituted_published_material` — atomic.
+- `cek_complete_multi_output_route_accepts_the_same_material` — atomic
+  positive control over the same envelope and the same reference input, so the
+  three rejections above are attributable to the route selector alone.
+- `cek_incremental_route_fails_closed_with_self_consistent_hash`,
+  `cek_incremental_route_fails_closed_with_partial_material`,
+  `cek_complete_item_carriage_survives_the_incremental_closure` — grouped
+  cases with paired positive controls, including a two-node graph whose
+  complete reference set is accepted through route 4 and whose partial set is
+  rejected by route 4.
+
+Differential attribution: with the pre-fix resolver and the identical test
+file, the three atomic negatives and the three grouped tests FAIL and the
+atomic positive control plus all eleven unrelated module tests PASS; with the
+fix all 18 PASS. Each atomic negative is a single expression, so its
+pre-fix failure is that assertion and nothing else.
 
 ## Direct-resolver reference-script carriage (measured)
 
@@ -100,6 +210,12 @@ reference-script deployment role:
   `tests/validation-dispute-submit.test.ts`).
 
 ## Preserved fitting paths and integrity
+
+Complete-item carriage is preserved by the route-5 closure and pinned by
+`cek_complete_item_carriage_survives_the_incremental_closure`: for one
+selected envelope, the direct, single-publication, and minimum-multi-output
+routes all accept, and only `IncrementalCekMaterial` and `NoCekMaterial`
+reject. No complete-material route changed and no cap was lowered.
 
 The plan retains every fitting representation: the complete 50-byte envelope
 is never chunked, and it reports direct/input/reference acceptance for every

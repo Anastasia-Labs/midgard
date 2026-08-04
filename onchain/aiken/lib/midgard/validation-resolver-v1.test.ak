@@ -69,7 +69,7 @@ test cek_material_reference_indices_are_unique_reference_selectors() {
   }
 }
 
-test cek_direct_and_incremental_routes_bind_the_selected_envelope() {
+test cek_direct_route_binds_the_selected_envelope() {
   let preimage = #"8106"
   let root = cek_proof_v1.hash_error_term_v1()
   let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
@@ -84,7 +84,6 @@ test cek_direct_and_incremental_routes_bind_the_selected_envelope() {
     |> bytearray.concat(#"00")
     |> bytearray.concat(#"42")
     |> bytearray.concat(preimage)
-  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
   and {
     validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
       envelope,
@@ -113,22 +112,6 @@ test cek_direct_and_incremental_routes_bind_the_selected_envelope() {
       [],
       material_script_hash,
     ),
-    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
-      envelope,
-      validation_resolver_v1.IncrementalCekMaterial {
-        program_envelope_hash: envelope_hash,
-      },
-      [],
-      material_script_hash,
-    ),
-    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
-      envelope,
-      validation_resolver_v1.IncrementalCekMaterial {
-        program_envelope_hash: h_a,
-      },
-      [],
-      material_script_hash,
-    ),
     !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
       envelope,
       validation_resolver_v1.NoCekMaterial,
@@ -147,6 +130,360 @@ fn material_reference_input(datum: Data, hash: ScriptHash) -> Input {
       datum: InlineDatum(datum),
       reference_script: None,
     },
+  }
+}
+
+fn one_node_envelope() -> ByteArray {
+  cek_proof_v1.encode_program_envelope_v1(
+    1,
+    1,
+    0,
+    cek_proof_v1.hash_error_term_v1(),
+    1,
+    2,
+  )
+}
+
+fn one_node_envelope_hash() -> ByteArray {
+  cek_proof_v1.hash_program_envelope_v1(
+    1,
+    1,
+    0,
+    cek_proof_v1.hash_error_term_v1(),
+    1,
+    2,
+  )
+}
+
+fn one_node_material_entry() -> Data {
+  let entry: Data = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root: cek_proof_v1.hash_error_term_v1(),
+    preimage: #"8106",
+  }
+  entry
+}
+
+/// Atomic: the exact exploit. A self-consistent `program_envelope_hash` derived
+/// from the disputer's own selected envelope, published with NO material.
+/// Single assertion, so a failure can only be this assertion.
+test cek_incremental_route_rejects_zero_published_material() {
+  !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+    one_node_envelope(),
+    validation_resolver_v1.IncrementalCekMaterial {
+      program_envelope_hash: one_node_envelope_hash(),
+    },
+    [],
+    material_script_hash,
+  )
+}
+
+/// Atomic: self-consistent hash pair carrying the COMPLETE material as a
+/// reference input. Single assertion.
+test cek_incremental_route_rejects_complete_published_material() {
+  !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+    one_node_envelope(),
+    validation_resolver_v1.IncrementalCekMaterial {
+      program_envelope_hash: one_node_envelope_hash(),
+    },
+    [material_reference_input(one_node_material_entry(), material_script_hash)],
+    material_script_hash,
+  )
+}
+
+/// Atomic: self-consistent hash pair carrying SUBSTITUTED material. Single
+/// assertion.
+test cek_incremental_route_rejects_substituted_published_material() {
+  let substituted: Data = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root: cek_proof_v1.hash_variable_term_v1(0),
+    preimage: #"820000",
+  }
+  !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+    one_node_envelope(),
+    validation_resolver_v1.IncrementalCekMaterial {
+      program_envelope_hash: one_node_envelope_hash(),
+    },
+    [material_reference_input(substituted, material_script_hash)],
+    material_script_hash,
+  )
+}
+
+/// Atomic positive control for the three atomic negatives above: the same
+/// selected envelope and the same reference input are ACCEPTED through the
+/// complete multi-output route, so those rejections are attributable to the
+/// route selector alone.
+test cek_complete_multi_output_route_accepts_the_same_material() {
+  validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+    one_node_envelope(),
+    validation_resolver_v1.MinimumMultiOutputCekMaterial {
+      envelope_cbor: one_node_envelope(),
+      reference_input_indices: [0],
+    },
+    [material_reference_input(one_node_material_entry(), material_script_hash)],
+    material_script_hash,
+  )
+}
+
+/// Pins the closed rejection of the incremental CEK material route against the
+/// exact exploit it used to admit: a self-consistent `program_envelope_hash`
+/// derived from the disputer's own selected envelope, published with no
+/// material at all. Every negative here is attributable, because the same
+/// selected envelope and the same reference inputs are ACCEPTED through a
+/// complete route in the paired positive conjuncts — so the rejection can only
+/// come from the route selector, never from a malformed envelope, a malformed
+/// entry, or an empty reference-input list.
+test cek_incremental_route_fails_closed_with_self_consistent_hash() {
+  let preimage = #"8106"
+  let root = cek_proof_v1.hash_error_term_v1()
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let sidecar = #"820181825820"
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"830100428106")
+  // The honest envelope commitment: exactly what `cek_envelope_hash_v1` derives
+  // from `envelope`, i.e. the value the old tautology compared against itself.
+  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let entry: Data = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
+  let substituted: Data = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root: cek_proof_v1.hash_variable_term_v1(0),
+    preimage: #"820000",
+  }
+  and {
+    // Positive control 1: the complete direct route accepts this envelope with
+    // zero reference inputs, so an empty reference-input list is not what makes
+    // the incremental conjuncts below fail.
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.DirectCekMaterial {
+        envelope_cbor: envelope,
+        sidecar_cbor: sidecar,
+      },
+      [],
+      material_script_hash,
+    ),
+    // Positive control 2: the complete multi-output route accepts this exact
+    // envelope over this exact reference input, so `entry` is well formed,
+    // reachable, and complete for `envelope`.
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    // THE EXPLOIT: self-consistent hash pair, zero published material.
+    // Previously accepted; now rejected.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      [],
+      material_script_hash,
+    ),
+    // Self-consistent hash pair with the COMPLETE material actually referenced.
+    // Still rejected: positive control 2 proves the material and the reference
+    // input are acceptable, so the route selector is the sole cause.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    // Substituted material carried alongside the self-consistent hash pair.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      [material_reference_input(substituted, material_script_hash)],
+      material_script_hash,
+    ),
+    // The substituted entry really is a substitution: the complete route
+    // rejects it for this envelope.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0],
+      },
+      [material_reference_input(substituted, material_script_hash)],
+      material_script_hash,
+    ),
+    // A substituted envelope hash is rejected too, so the closure is not a
+    // hash comparison that a different hash could satisfy.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: h_a,
+      },
+      [],
+      material_script_hash,
+    ),
+    // An empty envelope-hash field is rejected: the closure does not depend on
+    // the redeemer field at all.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: #"",
+      },
+      [],
+      material_script_hash,
+    ),
+  }
+}
+
+/// Partial-material negative on a two-node graph, plus the proof that the
+/// two-node graph and its complete reference set are otherwise acceptable.
+test cek_incremental_route_fails_closed_with_partial_material() {
+  let child_root = cek_proof_v1.hash_error_term_v1()
+  let child_preimage = #"8106"
+  let root_preimage = #"82015820"
+    |> bytearray.concat(child_root)
+  let root = cek_proof_v1.hash_delay_term_v1(child_root)
+  // Two reachable nodes; 36 + 2 material bytes.
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 2, 38)
+  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(
+    1,
+    1,
+    0,
+    root,
+    2,
+    38,
+  )
+  let root_entry: Data = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root,
+    preimage: root_preimage,
+  }
+  let child_entry: Data = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root: child_root,
+    preimage: child_preimage,
+  }
+  // `verify_complete_program_material_entries_v1` requires strictly ascending
+  // roots in index order, so present the two entries sorted by root.
+  let complete_inputs = if bytearray.compare(root, child_root) == Less {
+    [
+      material_reference_input(root_entry, material_script_hash),
+      material_reference_input(child_entry, material_script_hash),
+    ]
+  } else {
+    [
+      material_reference_input(child_entry, material_script_hash),
+      material_reference_input(root_entry, material_script_hash),
+    ]
+  }
+  let partial_inputs = [
+    material_reference_input(root_entry, material_script_hash),
+  ]
+  and {
+    // The two-node graph and its complete reference set are acceptable through
+    // the complete multi-output route.
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0, 1],
+      },
+      complete_inputs,
+      material_script_hash,
+    ),
+    // The partial set is genuinely partial: the complete route rejects it.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0],
+      },
+      partial_inputs,
+      material_script_hash,
+    ),
+    // Incremental with partial material: rejected.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      partial_inputs,
+      material_script_hash,
+    ),
+    // Incremental with COMPLETE material: still rejected, and the first
+    // conjunct proves the completeness of exactly this reference set.
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      complete_inputs,
+      material_script_hash,
+    ),
+  }
+}
+
+/// Ordinary complete-item carriage is preserved: for one selected envelope,
+/// every complete route accepts and only the incremental route is closed.
+test cek_complete_item_carriage_survives_the_incremental_closure() {
+  let preimage = #"8106"
+  let root = cek_proof_v1.hash_error_term_v1()
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let sidecar = #"820181825820"
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"830100428106")
+  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let entry: Data = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
+  let single: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 1,
+    program_envelope_hash: envelope_hash,
+    sidecar_cbor: sidecar,
+  }
+  and {
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.DirectCekMaterial {
+        envelope_cbor: envelope,
+        sidecar_cbor: sidecar,
+      },
+      [],
+      material_script_hash,
+    ),
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(single, material_script_hash)],
+      material_script_hash,
+    ),
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.NoCekMaterial,
+      [],
+      material_script_hash,
+    ),
   }
 }
 

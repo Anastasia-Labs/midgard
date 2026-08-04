@@ -273,11 +273,37 @@ pub fn verify_cek_material_route_for_selected_envelope_v1(
       } else {
         False
       }
-    IncrementalCekMaterial { program_envelope_hash } ->
-      when cek_envelope_hash_v1(selected_envelope) is {
-        Some(expected_hash) -> program_envelope_hash == expected_hash
-        None -> False
-      }
+    // Fails closed on L1. The predicate this branch used to carry was
+    // `program_envelope_hash == cek_envelope_hash_v1(selected_envelope)`, and
+    // `cek_envelope_hash_v1` is a pure function of `selected_envelope` alone,
+    // so both sides came from the disputer's own evidence: the check was the
+    // tautology `f(x) == chosen` with `chosen := f(x)`. It read neither
+    // `reference_inputs` nor `cek_program_material_script_hash`, so a CEK
+    // finalization could mint its fraud proof with ZERO program material
+    // published on L1, while the three complete routes above each reconstruct
+    // the whole content-addressed graph against the selected envelope.
+    //
+    // The off-chain incremental grammar cannot be lifted here as specified:
+    // it orders one or more `proofContinuation` transactions AFTER the
+    // `proofConsumption` transaction, and the consumption is this
+    // finalization. Material verified after the dispute resolves secures
+    // nothing. A sound incremental route needs an authenticated
+    // cross-transaction traversal accumulator — a step chain whose datum
+    // carries the partial material frontier, reachable-node count and
+    // material byte length, advanced over published entries and required by
+    // the finalization to have already completed against the selected
+    // envelope. No such accumulator exists on-chain: program material
+    // publications are permissionless, self-authenticating and unspendable
+    // (`validators/user-events/cek-program-material-v1.ak`) with no minting
+    // policy and no aggregate completion commitment.
+    //
+    // Until that accumulator lands under its own lease this route rejects, so
+    // every accepted CEK material route verifies the complete material graph
+    // on L1. Data availability is unaffected: publication is permissionless,
+    // so the graph is always publishable; only the bounded multi-transaction
+    // VERIFICATION is unavailable, which is a liveness limit on oversized
+    // programs rather than a soundness hole.
+    IncrementalCekMaterial { .. } -> False
     NoCekMaterial -> False
   }
 }
