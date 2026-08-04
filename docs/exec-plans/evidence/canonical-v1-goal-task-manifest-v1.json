@@ -5492,7 +5492,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/double-spend/step-01.ak validators/fraud-proofs/double-spend/step-02.ak validators/fraud-proofs/double-spend/step-03.ak validators/fraud-proofs/double-spend/step-04.ak lib/midgard/fraud-proofs/double-spend/input-witness.ak lib/midgard/fraud-proofs/double-spend/step-01.ak lib/midgard/fraud-proofs/double-spend/step-02.ak lib/midgard/fraud-proofs/double-spend/step-03.ak lib/midgard/fraud-proofs/double-spend/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q10.mjs, prepare-double-spend.test.ts, spend-input-witness.test.ts, canonical-evidence-source-v1.test.ts, submit-init-emulator.test.ts. The family verifier passes exactly 8 required new Aiken selectors (exactly 1 positive and 1 valid-block-negative selector in each of 4 steps) with 0 failures; catalogue binding resolves exactly 1 doubleSpend category at ID 00000000 and exactly 1 deployed first-step hash. Current Aiken baseline is exactly 0 family selectors, so Q10 remains OPEN until all 8 exist and every named off-chain/emulator suite reports its source-derived exact positive total.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q10.mjs, prepare-double-spend.test.ts, spend-input-witness.test.ts, canonical-evidence-source-v1.test.ts, submit-init-emulator.test.ts. The family verifier passes exactly 8 required new Aiken selectors (exactly 1 positive and 1 valid-block-negative selector in each of 4 steps) with 0 failures; catalogue binding resolves exactly 1 doubleSpend category at ID 00000000 and exactly 1 deployed first-step hash. The 8 Aiken selectors are measured PASS at issue #481: exactly 2 selectors in each of fraud_proofs/double_spend/step_01, step_02, step_03 and step_04, exactly 8 of 8 passing with 0 failures. Q10 remains OPEN until every named off-chain/emulator suite reports its source-derived exact positive total.",
       "invalidationTriggers": [
         "any counted-root or native codec change re-runs every selector in the family",
         "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts)",
@@ -5501,7 +5501,7 @@
         "Any Q03 evidence gate, double-spend rule/state/schema/builder/submitter/test, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q10 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q10 dependencies Q00-Q03 are recorded PASS, but Q10 has no PASS queue row and remains OPEN: all 4 deployed steps currently have 0 family tests, so dependency readiness must not be confused with LOCAL_PASS or LIVE_PASS."
+      "schedulingNote": "Q10 dependencies Q00-Q03 are recorded PASS and \u00a79.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass. Q10 still has no PASS queue row and remains OPEN on outputs 5-9 (maximum/adversarial proof-fit fixture, deployment and first-step-hash records, DA-first evidence builder, resumable command, emulator lifecycle) plus the prescribed canonical-v1-proof-family-q10-v1.json and verify-canonical-v1-proof-family-q10.mjs; those surfaces lie outside the #481 proof-family path set and are not claimed here."
     },
     {
       "id": "Q11",
@@ -5573,7 +5573,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/no-input/step-01.ak validators/fraud-proofs/no-input/step-02.ak validators/fraud-proofs/no-input/step-03.ak validators/fraud-proofs/no-input/step-04.ak lib/midgard/fraud-proofs/no-input/step-01.ak lib/midgard/fraud-proofs/no-input/step-02.ak lib/midgard/fraud-proofs/no-input/step-03.ak lib/midgard/fraud-proofs/no-input/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q11.mjs, prepare-non-existent-input.test.ts, canonical-evidence-source-v1.test.ts. The family verifier passes exactly 8 required new Aiken selectors (exactly 1 positive and 1 valid-block-negative selector in each of 4 steps) with 0 failures; catalogue binding resolves exactly 1 nonExistentInput category at ID 00000001 and exactly 1 deployed first-step hash; the shared Q03 canonical-evidence suite remains exactly 32 PASS. Current family-selector baseline is exactly 0, so Q11 remains OPEN until all 8 exist.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q11.mjs, prepare-non-existent-input.test.ts, canonical-evidence-source-v1.test.ts. The family verifier passes exactly 8 required new Aiken selectors (exactly 1 positive and 1 valid-block-negative selector in each of 4 steps) with 0 failures; catalogue binding resolves exactly 1 nonExistentInput category at ID 00000001 and exactly 1 deployed first-step hash; the shared Q03 canonical-evidence suite remains exactly 32 PASS. The 8 Aiken selectors are measured PASS at issue #481: exactly 2 selectors in each of fraud_proofs/no_input/step_01, step_02, step_03 and step_04, exactly 8 of 8 passing with 0 failures. Q11 remains OPEN on its off-chain, proof-fit, deployment and emulator outputs.",
       "invalidationTriggers": [
         "any counted-root or native codec change re-runs every selector in the family",
         "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts)",
@@ -5582,7 +5582,7 @@
         "Any Q03 evidence gate/gated builder, no-input rule/state/schema/builder/submitter/test, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q11 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q11 dependencies Q00-Q03 are recorded PASS and its Q03 gated builder exists, but Q11 has no PASS queue row and remains OPEN: all 4 deployed steps currently have 0 family tests, so dependency readiness is not LOCAL_PASS or LIVE_PASS."
+      "schedulingNote": "Q11 dependencies Q00-Q03 are recorded PASS, its Q03 gated builder exists, and \u00a79.1 output 4 is measured at issue #481: each of the 4 deployed steps now carries exactly 1 positive and 1 valid-block-negative selector and all 8 pass, including both delegated non-membership checks. Q11 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q11-v1.json and verify-canonical-v1-proof-family-q11.mjs."
     },
     {
       "id": "Q12",
@@ -5646,7 +5646,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/invalid-range/step-01.ak validators/fraud-proofs/invalid-range/step-02.ak lib/midgard/fraud-proofs/invalid-range/step-01.ak lib/midgard/fraud-proofs/invalid-range/step-02.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q12.mjs, prepare-invalid-range.test.ts, canonical-evidence-source-v1.test.ts. The family verifier passes exactly 7 required Aiken selectors with 0 failures: step-01 retains exactly 3 range-normalization controls and adds exactly 1 positive plus 1 valid-block-negative family selector (5 total), while step-02 adds exactly 1 positive plus 1 valid-block-negative selector (2 total). Catalogue binding resolves exactly 1 invalidRange category at ID 00000003 and exactly 1 deployed first-step hash; current baseline is exactly 3/7 selectors, so Q12 remains OPEN.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-proof-family-q12.mjs, prepare-invalid-range.test.ts, canonical-evidence-source-v1.test.ts. The family verifier passes exactly 7 required Aiken selectors with 0 failures: step-01 retains exactly 3 range-normalization controls and adds exactly 1 positive plus 1 valid-block-negative family selector (5 total), while step-02 adds exactly 1 positive plus 1 valid-block-negative selector (2 total). Catalogue binding resolves exactly 1 invalidRange category at ID 00000003 and exactly 1 deployed first-step hash; all 7 of 7 Aiken selectors are measured PASS at issue #481 with 0 failures, so Q12 remains OPEN only on its off-chain, proof-fit, deployment and emulator outputs.",
       "invalidationTriggers": [
         "any counted-root or native codec change re-runs every selector in the family",
         "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts)",
@@ -5655,7 +5655,7 @@
         "Any Q03 evidence gate, validity-range rule/state/schema/builder/submitter/test, adjacent F21 regression, catalogue deployment/reachability, first-step hash, proof-fit measurement, emulator lifecycle, or Q12 evidence/verifier changes"
       ],
       "detailStatus": "DETAILED",
-      "schedulingNote": "Q12 dependencies Q00-Q03 are recorded PASS, but Q12 has no PASS queue row and remains OPEN: only 3 range-normalization controls exist, with no step-01 family positive/valid-block-negative pair and 0 step-02 tests; dependency readiness is not LOCAL_PASS or LIVE_PASS."
+      "schedulingNote": "Q12 dependencies Q00-Q03 are recorded PASS and \u00a79.1 output 4 is measured at issue #481: step-01 keeps its 3 range-normalization controls and adds exactly 1 positive plus 1 valid-block-negative family selector, step-02 adds exactly 1 of each, and all 7 pass. The step-01 positive also binds an inverted-interval transaction and the step-02 positive finalizes on InvalidRange, which is the executable disposition of F21 physical structural row L302 (Q49-L302). Q12 still has no PASS queue row and remains OPEN on outputs 5-9 plus the prescribed canonical-v1-proof-family-q12-v1.json and verify-canonical-v1-proof-family-q12.mjs."
     },
     {
       "id": "Q13",
@@ -5790,7 +5790,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/fraud-proofs/zero-input/step-01.ak validators/fraud-proofs/zero-input/step-02.ak lib/midgard/fraud-proofs/zero-input/step-01.ak lib/midgard/fraud-proofs/zero-input/step-02.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/zero_input/step_02, fraud_proofs/zero_input/step_01, prepare-zero-input.test.ts, canonical-evidence-source-v1.test.ts, submit-init-emulator.test.ts, submit-init-emulator-soundness.test.ts. Candidate closure requires exactly 9 Aiken selectors, exactly 3 zero-input prepare tests, exactly 1 emulator lifecycle test, and zero failures; these candidate TypeScript counts are not recorded as measured PASS evidence.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/zero_input/step_02, fraud_proofs/zero_input/step_01, prepare-zero-input.test.ts, canonical-evidence-source-v1.test.ts, submit-init-emulator.test.ts, submit-init-emulator-soundness.test.ts. Candidate closure requires exactly 9 Aiken selectors, exactly 3 zero-input prepare tests, exactly 1 emulator lifecycle test, and zero failures; these candidate TypeScript counts are not recorded as measured PASS evidence. The Aiken half is re-verified at issue #481: exactly 2 selectors in fraud_proofs/zero_input/step_01 and exactly 7 in fraud_proofs/zero_input/step_02, exactly 9 of 9 passing with 0 failures.",
       "invalidationTriggers": [
         "any counted-root or native codec change re-runs every selector in the family",
         "catalogue order or category-id change (demo/midgard-sdk/src/fraud-proof/catalogue.ts)",
@@ -5800,7 +5800,7 @@
       "detailStatus": "DETAILED",
       "blockedOn": [],
       "blockedBecause": "No dependency blocker: Q00-Q03 are recorded PASS, but Q14 itself has no PASS queue row.",
-      "schedulingNote": "NOT_STARTED candidate; dependency readiness is not family completion."
+      "schedulingNote": "Aiken \u00a79.1 output 4 is re-verified at issue #481 (exactly 9 selectors, 9 of 9 passing); every other candidate output remains NOT_STARTED. Dependency readiness and a passing selector set are not family completion: proof-fit, deployment records, emulator lifecycle and closure evidence are still owed."
     },
     {
       "id": "Q15",
@@ -8106,7 +8106,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs validators/state-queue.ak validators/user-events/deposit.ak validators/payout.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: state_queue, user_events/deposit, payout, midgard/validation_machine_v1, payload.test.ts, verify-canonical-v1-q49-structural-handoff.mjs, verify-canonical-v1-fault-proof-reconciliation.mjs. State-queue structural guard: exactly 6 selectors; deposit: exactly 4 selectors; payout: exactly 3 selectors; ResolveInputs adjacent regression: exactly 1 selector; payload duplicate-key fixture: exactly 1 test; handoff: exactly 9 structural rows with partial/open counts exactly 0; parent reconciliation verifier exits 0 after integration, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: state_queue, user_events/deposit, payout, midgard/validation_machine_v1, payload.test.ts, verify-canonical-v1-q49-structural-handoff.mjs, verify-canonical-v1-fault-proof-reconciliation.mjs. State-queue structural guard: exactly 6 selectors; deposit: exactly 4 selectors; payout: exactly 3 selectors; ResolveInputs adjacent regression: exactly 1 selector; payload duplicate-key fixture: exactly 1 test; handoff: exactly 9 structural rows with partial/open counts exactly 0 and exactly 31 resolved executable checks; parent reconciliation verifier exits 0 after integration, all with zero failures.",
       "invalidationTriggers": [
         "coverage matrix claim text/order or reconciliation structural row ids/status/legacy-binding inventory changes",
         "state queue validation scalars/header/operator/previous-confirmed linkage, deposit asset/time, payout destination/value, DA envelope duplicate-key, or ResolveInputs interval semantics change",
@@ -8114,6 +8114,7 @@
         "blueprint regeneration/applied scripts or parent integration revision changes"
       ],
       "detailStatus": "DETAILED",
+      "schedulingNote": "Both F21 partials are closed executably at issue #481: physical L298 (cross-block replay) by the 8 no-input step selectors that prove the reduction to absence from prev_utxos_root and from the block's transactions root, and physical L302 (malformed validity interval) by the invalid-range step-01 inverted-interval binding and the step-02 InvalidRange finalization, replacing the matrix's unverified inference. docs/exec-plans/evidence/canonical-v1-q49-structural-handoff-v1.json and demo/scripts/verify-canonical-v1-q49-structural-handoff.mjs now exist and pass with 9 rows and 0 partial/open. The parent still owns the coverage-matrix.md L298/L302 cells, catalogue-status.md, and the canonical-v1-fault-proof-reconciliation-v1.json structuralAudit dispositions; those edits are enumerated in the handoff artifact's parentIntegration.pendingEdits.",
       "readyBecause": "Q49 has no non-PASS dependency in the authoritative first GOAL_PROGRESS.md task queue as of 2026-08-04; its lease, anchors, evidence outputs, focused gates, count contract, and invalidation triggers are complete."
     },
     {
