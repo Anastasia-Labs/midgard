@@ -1186,8 +1186,13 @@ export const claimBatchLease = ({
         // queued for safe revalidation. A later synchronous terminal commit
         // WAL-orders and flushes this lease transition first.
         yield* sql`SET LOCAL synchronous_commit = off`;
+        // Candidates are identified by tx_id, never by ctid: a duplicate
+        // submission of a still-queued transaction rewrites the row (and so
+        // moves it physically) while leaving it queued and claimable. A ctid
+        // join would then target a tuple version this statement's snapshot
+        // cannot see and silently drop the locked row from the batch.
         return yield* sql<RawClaimedLeaseEntry>`WITH candidates AS (
-          SELECT ctid AS row_ctid
+          SELECT ${sql(Columns.TX_ID)}
           FROM ${sql(tableName)}
           WHERE ${sql(Columns.STATUS)} = 'queued'
             AND ${sql(Columns.NEXT_ATTEMPT_AT)} <= NOW()
@@ -1225,7 +1230,7 @@ export const claimBatchLease = ({
               admissions.${sql(Columns.UPDATED_AT)}
             )
           FROM candidates
-          WHERE admissions.ctid = candidates.row_ctid
+          WHERE admissions.${sql(Columns.TX_ID)} = candidates.${sql(Columns.TX_ID)}
           RETURNING
             admissions.${sql(Columns.TX_ID)},
             admissions.${sql(Columns.ARRIVAL_SEQ)},

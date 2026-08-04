@@ -487,4 +487,179 @@ describe("durable admission lightweight claim and payload load", () => {
         }),
       ),
   );
+
+  // A duplicate submission of a still-queued transaction rewrites that row
+  // (last_seen_at/updated_at/request_count) while leaving it queued and
+  // claimable, which moves the row to a new physical location. The dangerous
+  // interleaving is narrow: the duplicate must commit after the claim
+  // statement has taken its snapshot but before that statement locks the row.
+  // A statement-level gate pins exactly that window here, because the claim's
+  // own UPDATE fires it before any candidate is locked and it parks the claim
+  // on an advisory lock the duplicate submission holds. A claim identifying
+  // its candidates by physical location then joins against a tuple version its
+  // snapshot cannot see and returns nothing while the row stays queued;
+  // identifying them by tx_id claims every row it locked.
+  const GATE_LOCK_KEY = 8_140_255;
+  // Live clock: the gate handshake polls and bounds itself with real timeouts.
+  it.live(
+    "claims a queued row whose duplicate submission moved it after the claim snapshot",
+    () =>
+      isolatedDb(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const inputs = Array.from({ length: 4 }, (_, index) =>
+            admissionInput(`rewrite-race-${index.toString()}`),
+          );
+          yield* insertAdmissions(inputs);
+          const fullHashes = yield* Effect.all(
+            inputs.map((input) =>
+              sql<{
+                readonly tx_full_hash_v1: Buffer;
+              }>`SELECT tx_full_hash_v1
+                  FROM tx_admission_payloads
+                  WHERE tx_id = ${input.txId}`.pipe(
+                Effect.map((rows) => rows[0]!.tx_full_hash_v1),
+              ),
+            ),
+          );
+          const sidecar = encodeMidgardCekProgramMaterialSidecarV1([]);
+
+          const scenario = Effect.gen(function* () {
+            yield* sql.unsafe(
+              `CREATE FUNCTION claim_snapshot_gate() RETURNS trigger
+                 LANGUAGE plpgsql AS $gate$
+                 BEGIN
+                   PERFORM pg_advisory_xact_lock(${GATE_LOCK_KEY.toString()});
+                   RETURN NULL;
+                 END
+                 $gate$`,
+            );
+            yield* sql`CREATE TRIGGER claim_snapshot_gate_trigger
+              BEFORE UPDATE ON tx_admissions
+              FOR EACH STATEMENT EXECUTE FUNCTION claim_snapshot_gate()`;
+
+            const gateHeld = yield* Deferred.make<void>();
+            const releaseGate = yield* Deferred.make<void>();
+            // The duplicate submission holds the gate, waits until the claim
+            // is parked on it, and only then rewrites the queued rows. Its
+            // commit therefore lands strictly inside the claim's window.
+            const duplicate = yield* Effect.fork(
+              sql.withTransaction(
+                Effect.gen(function* () {
+                  yield* sql`SELECT pg_advisory_xact_lock(${GATE_LOCK_KEY})`;
+                  yield* Deferred.succeed(gateHeld, undefined);
+                  yield* Deferred.await(releaseGate);
+                  yield* Effect.forEach(
+                    inputs,
+                    (input, index) =>
+                      // The production duplicate-submission path.
+                      TxAdmissionsDB.touchDuplicate({
+                        txId: input.txId,
+                        txFullHashV1: fullHashes[index]!,
+                        txCanonicalCbor: input.txCanonicalCbor,
+                        programMaterialSidecarCbor: sidecar,
+                      }),
+                    { discard: true },
+                  );
+                }),
+              ),
+            );
+
+            const claimed = yield* Effect.gen(function* () {
+              yield* Deferred.await(gateHeld).pipe(
+                Effect.timeoutFail({
+                  duration: Duration.seconds(10),
+                  onTimeout: () =>
+                    new Error("Timed out holding the statement gate"),
+                }),
+              );
+              const claim = yield* Effect.fork(
+                TxAdmissionsDB.claimBatchLease({
+                  limit: inputs.length,
+                  leaseOwner: "claim-load:rewrite-race",
+                  leaseDurationMs: 30_000,
+                }),
+              );
+              yield* Effect.iterate(false, {
+                while: (parked) => !parked,
+                body: () =>
+                  sql<{
+                    readonly parked: boolean;
+                  }>`SELECT EXISTS (
+                      SELECT 1
+                      FROM pg_locks
+                      WHERE locktype = 'advisory'
+                        AND NOT granted
+                        AND ((classid::bigint << 32) | objid::bigint) =
+                          ${GATE_LOCK_KEY}
+                    ) AS parked`.pipe(
+                    Effect.map((rows) => rows[0]!.parked),
+                    Effect.tap((parked) =>
+                      parked ? Effect.void : Effect.sleep(Duration.millis(5)),
+                    ),
+                  ),
+              }).pipe(
+                Effect.timeoutFail({
+                  duration: Duration.seconds(15),
+                  onTimeout: () =>
+                    new Error("Claim never parked on the statement gate"),
+                }),
+              );
+              yield* Deferred.succeed(releaseGate, undefined);
+              return yield* Fiber.join(claim).pipe(
+                Effect.timeoutFail({
+                  duration: Duration.seconds(15),
+                  onTimeout: () =>
+                    new Error("Claim never resumed after the gate released"),
+                }),
+              );
+            }).pipe(Effect.ensuring(Deferred.succeed(releaseGate, undefined)));
+            yield* Fiber.join(duplicate);
+            return claimed;
+          }).pipe(
+            Effect.ensuring(
+              sql
+                .unsafe(
+                  `DROP TRIGGER IF EXISTS claim_snapshot_gate_trigger
+                     ON tx_admissions`,
+                )
+                .pipe(
+                  Effect.andThen(
+                    sql.unsafe(`DROP FUNCTION IF EXISTS claim_snapshot_gate()`),
+                  ),
+                  Effect.orDie,
+                ),
+            ),
+          );
+
+          const claimed = yield* scenario;
+          expect(claimed.map((entry) => entry.tx_id)).toStrictEqual(
+            inputs.map((input) => input.txId),
+          );
+
+          const rows = yield* sql<{
+            readonly status: string;
+            readonly lease_owner: string | null;
+            readonly request_count: string;
+          }>`SELECT
+              status::text AS status,
+              lease_owner,
+              request_count::text AS request_count
+            FROM tx_admissions
+            ORDER BY arrival_seq`;
+          // Every locked row transitioned, and each carries the duplicate
+          // submission that moved it, so the claim really did resolve rows the
+          // rewrite had relocated.
+          expect(rows.map((row) => row.status)).toStrictEqual(
+            inputs.map(() => "validating"),
+          );
+          expect(rows.map((row) => row.lease_owner)).toStrictEqual(
+            inputs.map(() => "claim-load:rewrite-race"),
+          );
+          expect(rows.map((row) => row.request_count)).toStrictEqual(
+            inputs.map(() => "2"),
+          );
+        }),
+      ),
+  );
 });
