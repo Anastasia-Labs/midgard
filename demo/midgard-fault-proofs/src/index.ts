@@ -5,6 +5,7 @@ export * from "./inspect-contracts.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
+export * from "./prepare-da-hash-preimage.js";
 export * from "./prepare-double-spend.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-non-existent-input.js";

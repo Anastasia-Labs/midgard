@@ -241,6 +241,53 @@ pub fn native_block_fixture_with_withdrawals_v1(
   }
 }
 
+/// Re-commits a block fixture so its single `transactions_root` leaf is the
+/// arbitrary pair `(committed_key, committed_leaf_value)`, then re-derives the
+/// counted root, the header and the header hash.
+///
+/// The key is deliberately **not** required to be the value's canonical
+/// native-V1 transaction id: this is the committed shape the
+/// `da-hash-preimage` family adjudicates (GOAL_SPEC.md Q44). `tx_id` and
+/// `compact_cbor` on the returned fixture carry the committed pair, so
+/// `native_inclusion_args_v1` produces the matching prover arguments.
+pub fn committed_leaf_block_fixture_v1(
+  base: NativeBlockFixtureV1,
+  committed_key: ByteArray,
+  committed_leaf_value: ByteArray,
+) -> NativeBlockFixtureV1 {
+  let transactions_phas_root = mpf.root(
+    mpf.insert(mpf.empty, committed_key, committed_leaf_value, []),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base.header,
+    transactions_root: transition_trace.commit_counted_root(
+      transition_trace.TransactionsV1RootDomain,
+      transactions_phas_root,
+      1,
+    ),
+  }
+  let header_data: Data = header
+  NativeBlockFixtureV1 {
+    ..base,
+    tx_id: committed_key,
+    compact_cbor: committed_leaf_value,
+    transactions_phas_root,
+    header,
+    header_hash: utils.serialise_and_hash_28(header_data),
+  }
+}
+
+/// Single-transaction block whose only committed leaf holds the canonical
+/// compact bytes of `tx` under the foreign key `committed_key` — the
+/// `da-hash-preimage` violation.
+pub fn miskeyed_block_fixture_v1(
+  tx: native_types.MidgardTransaction,
+  committed_key: ByteArray,
+) -> NativeBlockFixtureV1 {
+  let base = native_block_fixture_v1(tx)
+  committed_leaf_block_fixture_v1(base, committed_key, base.compact_cbor)
+}
+
 pub fn ct_token_asset_name(fixture: NativeBlockFixtureV1) -> ByteArray {
   fraud_category_id |> builtin.append_bytearray(fixture.header_hash)
 }

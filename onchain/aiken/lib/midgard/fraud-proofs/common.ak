@@ -130,6 +130,101 @@ pub fn pass_native_tx_to_next_step(
   True
 }
 
+/// First-step helper for fault proofs whose evidence is a **raw committed
+/// leaf** of the block's `transactions_root` rather than a decoded native
+/// transaction.
+///
+/// It is the codec-free twin of
+/// [`pass_native_tx_to_next_step`](#pass_native_tx_to_next_step): identical
+/// computation-thread, hub, state-queue, counted-root and MPF-membership
+/// binding, but the leaf key and leaf value are handed to `validation`
+/// verbatim. Only the `da-hash-preimage` family may use it — every other
+/// family must keep the codec precondition.
+pub fn pass_committed_transactions_leaf_to_next_step(
+  computation_thread_token_policy_id: PolicyId,
+  hub_oracle: ScriptHash,
+  datum: Option<ct.StepDatum<input_state>>,
+  tx_inclusion_args: NativeTxInclusionArgs,
+  own_out_ref: OutputReference,
+  l1_tx: Transaction,
+  validation: fn(
+    ScriptHash,
+    AssetName,
+    VerificationKeyHash,
+    Option<input_state>,
+    ScriptHash,
+    Data<output_state>,
+    HeaderV1,
+    ByteArray,
+    ByteArray,
+  ) ->
+    Bool,
+) -> Bool {
+  let
+      NativeTxInclusionArgs {
+        input_index,
+        output_index,
+        hub_ref_input_index,
+        state_queue_node_ref_input_index,
+        native_tx_id: committed_tx_id,
+        native_tx_compact_cbor: committed_leaf_value,
+        transactions_phas_root,
+        tx_membership_proof,
+        inclusion_proof_script_withdraw_redeemer_index,
+      }
+    = tx_inclusion_args
+
+  let Transaction { inputs, outputs, reference_inputs, redeemers, .. } = l1_tx
+
+  expect Some(step_datum) = datum
+
+  let
+      own_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data
+    <- continue(
+    computation_thread_token_policy_id,
+    step_datum,
+    input_index,
+    output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
+
+  let header <- verify_committed_transactions_leaf_in_state_queue_node(
+    committed_tx_id,
+    committed_leaf_value,
+    transactions_phas_root,
+    tx_membership_proof,
+    computation_thread_token_asset_name,
+    hub_oracle,
+    hub_ref_input_index,
+    state_queue_node_ref_input_index,
+    inclusion_proof_script_withdraw_redeemer_index,
+    reference_inputs,
+    redeemers,
+  )
+
+  expect
+    validation(
+      own_script_hash,
+      computation_thread_token_asset_name,
+      fraud_prover,
+      m_input_state_data,
+      output_script_hash,
+      output_state_data,
+      header,
+      committed_tx_id,
+      committed_leaf_value,
+    )
+
+  True
+}
+
 pub fn cancel(
   computation_thread_token_policy_id: PolicyId,
   m_datum: Option<ct.StepDatum<a>>,
@@ -366,6 +461,76 @@ pub fn finalize(
     fraud_prover,
     m_input_state_data,
   )
+}
+
+/// Authenticates one raw `(key, value)` leaf of a committed block's
+/// `transactions_root` **without** requiring the leaf value to be a
+/// well-formed canonical native-V1 transaction and **without** requiring the
+/// leaf key to be that value's transaction id.
+///
+/// This is the evidence primitive of the `da-hash-preimage` family
+/// (`GOAL_SPEC.md` Q44): the very fault it proves is a committed leaf whose
+/// key is not the hash-preimage commitment of its value, so the codec check
+/// performed by [`verify_native_tx_in_state_queue_node`](#verify_native_tx_in_state_queue_node)
+/// must not be a precondition here. Everything else — hub identity,
+/// state-queue node identity, counted-root authentication and MPF membership —
+/// is identical, so the returned leaf is exactly as trustworthy as the header
+/// commitment.
+pub fn verify_committed_transactions_leaf_in_state_queue_node(
+  committed_tx_id: ByteArray,
+  committed_leaf_value: ByteArray,
+  transactions_phas_root: ByteArray,
+  tx_membership_proof: Proof,
+  computation_thread_token_asset_name: AssetName,
+  hub_oracle: ScriptHash,
+  hub_ref_input_index: Int,
+  state_queue_node_ref_input_index: Int,
+  inclusion_proof_script_withdraw_redeemer_index: Int,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  return: fn(HeaderV1) -> result,
+) -> result {
+  let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
+    reference_inputs,
+    hub_oracle,
+    hub_ref_input_index,
+  )
+
+  let state_queue_datum, state_queue_node_key <- state_queue.get_block_datum_v1(
+    reference_inputs,
+    state_queue_policy,
+    state_queue_node_ref_input_index,
+  )
+
+  expect
+    state_queue_node_key == bytearray.drop(
+      computation_thread_token_asset_name,
+      fraud_proof_catalogue.id_byte_count,
+    )
+
+  // Authenticate the prover-supplied raw phas root against the header's counted
+  // `transactions_root`: only the genuine raw root re-hashes to the committed
+  // value under this block's `l2_transaction_count`. After this check the raw
+  // root is as trustworthy as the header commitment.
+  expect
+    transition_trace.commit_counted_root(
+      transition_trace.TransactionsV1RootDomain,
+      transactions_phas_root,
+      state_queue_datum.l2_transaction_count,
+    ) == state_queue_datum.transactions_root
+
+  // MPF membership check runs against the authenticated raw root.
+  expect
+    plutarch_phas_raw(
+      merkle_root: transactions_phas_root,
+      key_bytes: committed_tx_id,
+      value_bytes: committed_leaf_value,
+      membership_proof: tx_membership_proof,
+      redeemers: redeemers,
+      withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
+    )
+
+  return(state_queue_datum)
 }
 
 pub fn verify_native_tx_in_state_queue_node(
