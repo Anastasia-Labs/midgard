@@ -4914,6 +4914,28 @@ artifact.
 
 ## Q49 parent integration: L298/L302 promoted to PASS (2026-08-04)
 
+> **CORRECTION, same day — the disposition promotion was REVERTED.** The
+> promotion made `verify-canonical-v1-fault-proof-reconciliation.mjs` fail
+> closed (`ERR_ASSERTION`, expected `{pass:7, partial:2}`), because the
+> "7 PASS / 2 PARTIAL" contract is pinned in three coupled places: that
+> verifier (lines ~108, ~131, ~138-142, ~152-166, ~619, ~743), the
+> first-queue F21 ledger record, and the F21 manifest text — while
+> `verify-canonical-v1-goal-task-manifest-quality.mjs`
+> (`f21PhysicalPartialIdentityMismatch`) independently *requires* F21 to keep
+> citing `Q49-L298`/`Q49-L302` as PARTIAL bindings. Promoting the rows
+> therefore needs one coordinated F20/F21-owned change, not a single-artifact
+> edit. `structuralAudit` is back to `{rows:9, pass:7, partial:2, open:0}`
+> with both `remainingTask` bindings restored; the enriched
+> `executableEvidence` selector citations were KEPT, since those are
+> measured and true. Loosening either guard to make the bookkeeping claim
+> pass was explicitly rejected — that is the same "gate that cannot fail"
+> defect class as F20 (#518) and the C20-8 zero-collection selector. The
+> executable closure evidence stands on its own (#481's selectors; Q49
+> handoff verifier PASS, 9 rows / 31 checks); only the disposition
+> bookkeeping is deferred. Verified green after the revert:
+> reconciliation EXIT=0 (70 rows, 53 open), Q49 handoff EXIT=0,
+> manifest quality EXIT=0 (186/186, 0 defects).
+
 Applied the Q49 structural handoff's `parentIntegration.pendingEdits`
 exactly:
 
