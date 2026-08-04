@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 
 import {
   buildMidgardValidationTraceTree,
+  encodeCbor,
+  encodeMidgardCekProgramMaterialSidecarV1,
   MIDGARD_VALIDATION_DISPUTE_RESPONSE_WINDOW_MS,
 } from "@al-ft/midgard-core";
 import {
@@ -13,25 +15,38 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   Proof,
+  ValidationAuxiliaryWitnessV1,
   ValidationAwardSpendRedeemerV1,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
   type ValidationMachineStateV1,
   ValidationOneStepWitnessV1,
   ValidationPrepareSelectedSpendRedeemerV1Schema,
 } from "@al-ft/midgard-sdk";
+import {
+  buildMidgardCanonicalCekProgramV1,
+  type CekProgramMaterialNecessityReceiptSetV1,
+} from "@al-ft/midgard-validation";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { parseExactAikenDataCbor } from "../src/aiken-blueprint-data.js";
-import { readValidationDisputeCborFile } from "../src/validation-dispute/from-files.js";
+import {
+  readValidationDisputeCborFile,
+  validationCekProgramMaterialReferenceOutRefsFromFiles,
+  validationOneStepArgumentFromFiles,
+} from "../src/validation-dispute/from-files.js";
 import {
   encodeScriptSourcesStageOneSpendRedeemerV1,
+  encodeValidationCekSpendRedeemerV1,
   encodeValidationDirectResolveSpendRedeemerV1,
   encodeValidationSemanticResolutionRedeemerV1,
   openValidationDisputeAfterSourceVerification,
   refreshExpiredValidationDisputeValidityRange,
+  requireValidationCekDirectResolverReferenceScriptOutRef,
   requireValidationItemSemanticReferenceScriptOutRef,
   selectValidationCompleteItemCarriageV1,
+  validateCekSubmissionEvidenceV1,
+  VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   VALIDATION_ITEM_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeTimeoutValidityRange,
   validationDisputeValidityRange,
@@ -47,6 +62,317 @@ const encodeRuntimeSchema = Data.to as unknown as (
   value: unknown,
   schema: unknown,
 ) => string;
+
+const cekSelectionFixture = () => {
+  const program = buildMidgardCanonicalCekProgramV1(
+    Buffer.from("010100200101", "hex"),
+  );
+  const programMaterialSidecarCbor = encodeMidgardCekProgramMaterialSidecarV1([
+    ...program.material.values(),
+  ]);
+  const selectedScript = encodeCbor([3n, program.envelopeCbor]);
+  const auxiliaryCbor = Buffer.from(
+    Data.to(
+      {
+        NativeExecutionScanWitness: {
+          execution_index: 0n,
+          language_tag: 3n,
+          purpose_kind: 0n,
+          purpose_index: 0n,
+          script_hash: "11".repeat(28),
+          subject: "22".repeat(32),
+          purpose_siblings: [],
+          source_index: 0n,
+          origin_kind: 0n,
+          source_key: "00",
+          script_total_length: BigInt(selectedScript.length),
+          script_item_commitment: "33".repeat(32),
+          source_siblings: [],
+          redeemer_leaf: "44".repeat(32),
+          execution_siblings: [],
+          first_chunk_proof: {
+            version: 1n,
+            field_index: 6n,
+            item_index: 0n,
+            total_length: BigInt(selectedScript.length),
+            chunk_index: 0n,
+            chunk: selectedScript.toString("hex"),
+            frontier: [],
+            siblings: [],
+          },
+        },
+      },
+      ValidationAuxiliaryWitnessV1,
+    ),
+    "hex",
+  );
+  return {
+    program,
+    programMaterialSidecarCbor,
+    auxiliaryCbor,
+    routeMaterial: {
+      envelopeCbor: program.envelopeCbor,
+      programMaterialSidecarCbor,
+      programEnvelopeHash: Buffer.from(program.envelopeHash),
+    },
+  };
+};
+
+const targetProtocolParameters = {
+  digest: "04".repeat(32),
+  maxTxSize: 16_384,
+  maxValueSize: 5_000,
+  maxExecutionMemoryUnits: "14000000",
+  maxExecutionCpuUnits: "10000000000",
+  coinsPerUtxoByte: "4310",
+  maturityWindowMilliseconds: 300_000,
+} as const;
+
+const concreteTransactionReceipt = <
+  Role extends
+    | "publication"
+    | "proof"
+    | "proofConsumption"
+    | "proofContinuation",
+>({
+  role,
+  seed,
+  transactionBytes = 12_000,
+  maximumValueBytes = 1_000,
+  executionMemoryUnits = "9000000",
+  executionCpuUnits = "3000000000",
+  programMaterialOutputIndices = [],
+  programMaterialConsumedInputOutRefs = [],
+  programMaterialReferenceInputOutRefs = [],
+  confirmationMilliseconds = 10_000,
+}: {
+  readonly role: Role;
+  readonly seed: number;
+  readonly transactionBytes?: number;
+  readonly maximumValueBytes?: number;
+  readonly executionMemoryUnits?: string;
+  readonly executionCpuUnits?: string;
+  readonly programMaterialOutputIndices?: readonly number[];
+  readonly programMaterialConsumedInputOutRefs?: readonly string[];
+  readonly programMaterialReferenceInputOutRefs?: readonly string[];
+  readonly confirmationMilliseconds?: number;
+}) => {
+  const txId = (seed + 0x40).toString(16).padStart(2, "0").repeat(32);
+  return {
+    role,
+    signedTxSha256: seed.toString(16).padStart(2, "0").repeat(32),
+    txId,
+    transactionBytes,
+    transactionByteMargin:
+      targetProtocolParameters.maxTxSize - transactionBytes,
+    maximumValueBytes,
+    maximumValueByteMargin:
+      targetProtocolParameters.maxValueSize - maximumValueBytes,
+    feeLovelace: "500000",
+    minAdaLovelace: "2000000",
+    executionMemoryUnits,
+    executionMemoryMargin: (
+      (BigInt(targetProtocolParameters.maxExecutionMemoryUnits) * 4n) / 5n -
+      BigInt(executionMemoryUnits)
+    ).toString(),
+    executionCpuUnits,
+    executionCpuMargin: (
+      (BigInt(targetProtocolParameters.maxExecutionCpuUnits) * 4n) / 5n -
+      BigInt(executionCpuUnits)
+    ).toString(),
+    inputCount: Math.max(2, programMaterialConsumedInputOutRefs.length),
+    referenceInputCount: Math.max(
+      2,
+      programMaterialReferenceInputOutRefs.length,
+    ),
+    outputCount: role === "publication" ? 3 : 1,
+    programMaterialInputCount: programMaterialConsumedInputOutRefs.length,
+    programMaterialReferenceInputCount:
+      programMaterialReferenceInputOutRefs.length,
+    programMaterialOutputOutRefs: programMaterialOutputIndices.map(
+      (index) => `${txId}#${index.toString()}`,
+    ),
+    programMaterialConsumedInputOutRefs,
+    programMaterialReferenceInputOutRefs,
+    confirmationMilliseconds,
+  };
+};
+
+const routeTimingComponents = {
+  dataAvailabilityFetchMilliseconds: 1_000,
+  evidenceConstructionMilliseconds: 2_000,
+  retryMilliseconds: 3_000,
+  rollbackAllowanceMilliseconds: 4_000,
+  settlementMilliseconds: 5_000,
+  removalMilliseconds: 6_000,
+} as const;
+
+const necessityReceiptSet = (
+  programEnvelopeHash: Uint8Array,
+): CekProgramMaterialNecessityReceiptSetV1 => {
+  const singlePublication = concreteTransactionReceipt({
+    role: "publication",
+    seed: 2,
+    programMaterialOutputIndices: [0],
+  });
+  const multiPublicationA = concreteTransactionReceipt({
+    role: "publication",
+    seed: 4,
+    maximumValueBytes: 5_001,
+    programMaterialOutputIndices: [0, 1],
+  });
+  const multiPublicationB = concreteTransactionReceipt({
+    role: "publication",
+    seed: 5,
+    programMaterialOutputIndices: [0],
+  });
+  const incrementalPublication = concreteTransactionReceipt({
+    role: "publication",
+    seed: 7,
+    programMaterialOutputIndices: [0, 1, 2],
+  });
+  return {
+    schemaVersion: 1,
+    sourceRevision: "01".repeat(20),
+    programEnvelopeHash: Buffer.from(programEnvelopeHash).toString("hex"),
+    validatorIdentities: [
+      {
+        title: "CEK resolver",
+        generatedHash: "02".repeat(28),
+        appliedHash: "03".repeat(28),
+      },
+      {
+        title: "Fraud-proof mint",
+        generatedHash: "04".repeat(28),
+        appliedHash: "05".repeat(28),
+      },
+    ],
+    targetProtocolParameters,
+    routeAttempts: [
+      {
+        route: "directProof",
+        transactions: [
+          concreteTransactionReceipt({
+            role: "proof",
+            seed: 1,
+            transactionBytes: 16_500,
+          }),
+        ],
+        ...routeTimingComponents,
+        maturityWindowMarginMilliseconds: 119_000,
+        fit: false,
+        limitingConstraint: { type: "maxTxSize", measuredMargin: "-116" },
+        minimumMultiOutputCount: null,
+      },
+      {
+        route: "completeSinglePublicationReference",
+        transactions: [
+          singlePublication,
+          concreteTransactionReceipt({
+            role: "proofConsumption",
+            seed: 3,
+            executionMemoryUnits: "11300000",
+            programMaterialReferenceInputOutRefs:
+              singlePublication.programMaterialOutputOutRefs,
+          }),
+        ],
+        ...routeTimingComponents,
+        maturityWindowMarginMilliseconds: 109_000,
+        fit: false,
+        limitingConstraint: {
+          type: "maxExecutionMemoryUnits",
+          measuredMargin: "-100000",
+        },
+        minimumMultiOutputCount: null,
+      },
+      {
+        route: "minimumMultiOutputReconstruction",
+        transactions: [
+          multiPublicationA,
+          multiPublicationB,
+          concreteTransactionReceipt({
+            role: "proofConsumption",
+            seed: 6,
+            programMaterialConsumedInputOutRefs:
+              multiPublicationA.programMaterialOutputOutRefs.slice(0, 1),
+            programMaterialReferenceInputOutRefs: [
+              ...multiPublicationA.programMaterialOutputOutRefs.slice(1),
+              ...multiPublicationB.programMaterialOutputOutRefs,
+            ],
+          }),
+        ],
+        ...routeTimingComponents,
+        maturityWindowMarginMilliseconds: 99_000,
+        fit: false,
+        limitingConstraint: { type: "maxValueSize", measuredMargin: "-1" },
+        minimumMultiOutputCount: 3,
+      },
+      {
+        route: "incrementalTraversal",
+        transactions: [
+          incrementalPublication,
+          concreteTransactionReceipt({
+            role: "proofConsumption",
+            seed: 8,
+            programMaterialReferenceInputOutRefs:
+              incrementalPublication.programMaterialOutputOutRefs.slice(0, 1),
+          }),
+          concreteTransactionReceipt({
+            role: "proofContinuation",
+            seed: 9,
+            programMaterialReferenceInputOutRefs:
+              incrementalPublication.programMaterialOutputOutRefs.slice(1, 2),
+          }),
+          concreteTransactionReceipt({
+            role: "proofContinuation",
+            seed: 10,
+            programMaterialReferenceInputOutRefs:
+              incrementalPublication.programMaterialOutputOutRefs.slice(2),
+          }),
+        ],
+        ...routeTimingComponents,
+        maturityWindowMarginMilliseconds: 89_000,
+        fit: true,
+        limitingConstraint: null,
+        minimumMultiOutputCount: null,
+      },
+    ],
+  };
+};
+
+type MutableNecessityReceiptSetFixture = {
+  validatorIdentities: Array<{
+    title: string;
+    generatedHash: string;
+    appliedHash: string;
+  }>;
+  targetProtocolParameters: Record<string, unknown>;
+  routeAttempts: Array<{
+    route: string;
+    transactions: Array<Record<string, unknown>>;
+    dataAvailabilityFetchMilliseconds: number;
+    evidenceConstructionMilliseconds: number;
+    retryMilliseconds: number;
+    rollbackAllowanceMilliseconds: number;
+    settlementMilliseconds: number;
+    removalMilliseconds: number;
+    maturityWindowMarginMilliseconds: number;
+    fit: boolean;
+    limitingConstraint: Record<string, unknown> | null;
+    minimumMultiOutputCount: number | null;
+  }>;
+} & Record<string, unknown>;
+
+const mutateNecessityReceiptSet = (
+  receiptSet: CekProgramMaterialNecessityReceiptSetV1,
+  mutate: (draft: MutableNecessityReceiptSetFixture) => void,
+): CekProgramMaterialNecessityReceiptSetV1 => {
+  const draft = JSON.parse(
+    JSON.stringify(receiptSet),
+  ) as MutableNecessityReceiptSetFixture;
+  mutate(draft);
+  return draft as unknown as CekProgramMaterialNecessityReceiptSetV1;
+};
 
 describe("validation-dispute transaction validity", () => {
   it("uses a bounded closed range with the validator timestamp at its upper bound", () => {
@@ -147,6 +473,83 @@ describe("validation-dispute transaction validity", () => {
         expectedScriptHash: scriptHash,
       }),
     ).toThrow(/script hash mismatch/u);
+  });
+
+  it("requires the published authenticated CEK direct-resolver reference script from deployment info", () => {
+    const scriptHash = "ab".repeat(28);
+    const otherScriptHash = "cd".repeat(28);
+    const refScriptUTxO = { txHash: "12".repeat(32), outputIndex: 3 };
+    expect(
+      requireValidationCekDirectResolverReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash,
+            refScriptUTxO,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toEqual(refScriptUTxO);
+    expect(() =>
+      requireValidationCekDirectResolverReferenceScriptOutRef({
+        deploymentInfo: {},
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(
+      /missing "validationTraceDisputeCekDirectResolver"; publish the authenticated V1 CEK direct-resolver reference script/u,
+    );
+    expect(() =>
+      requireValidationCekDirectResolverReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash,
+            refScriptUTxO: null,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(
+      /is missing refScriptUTxO; publish the authenticated V1 CEK direct-resolver/u,
+    );
+    expect(() =>
+      requireValidationCekDirectResolverReferenceScriptOutRef({
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash: otherScriptHash,
+            refScriptUTxO,
+          },
+        },
+        expectedScriptHash: scriptHash,
+      }),
+    ).toThrow(/script hash mismatch/u);
+  });
+
+  it("plumbs caller-confirmed CEK publication outrefs through the file-backed tooling", () => {
+    expect(validationCekProgramMaterialReferenceOutRefsFromFiles({})).toBe(
+      undefined,
+    );
+    expect(
+      validationCekProgramMaterialReferenceOutRefsFromFiles({
+        validationCekSinglePublicationOutRef: `${"56".repeat(32)}#0`,
+      }),
+    ).toEqual({ singlePublication: `${"56".repeat(32)}#0` });
+    expect(
+      validationCekProgramMaterialReferenceOutRefsFromFiles({
+        validationCekSinglePublicationOutRef: `${"56".repeat(32)}#0`,
+        validationCekMinimumMultiOutputOutRefs: [
+          `${"57".repeat(32)}#1`,
+          `${"58".repeat(32)}#0`,
+        ],
+      }),
+    ).toEqual({
+      singlePublication: `${"56".repeat(32)}#0`,
+      minimumMultiOutput: [`${"57".repeat(32)}#1`, `${"58".repeat(32)}#0`],
+    });
+    expect(() =>
+      validationCekProgramMaterialReferenceOutRefsFromFiles({
+        validationCekMinimumMultiOutputOutRefs: [],
+      }),
+    ).toThrow(/at least one txHash#outputIndex entry in root order/u);
   });
 
   it("starts the response deadline at the authenticated source upper bound", () => {
@@ -350,6 +753,28 @@ describe("validation-dispute transaction validity", () => {
         }),
       ).toBeInstanceOf(Constr);
     }
+
+    const cekRedeemer = Data.from(
+      encodeValidationCekSpendRedeemerV1({
+        input_index: 0n,
+        output_index: 0n,
+        fraud_proof_mint_redeemer_index: 0n,
+        challenger_evidence: { transition, auxiliary },
+        material_route: {
+          MinimumMultiOutputCekMaterial: {
+            envelope_cbor: "0102",
+            reference_input_indices: [7n, 2n],
+          },
+        },
+      }),
+    ) as Constr<unknown>;
+    expect(cekRedeemer.index).toBe(1);
+    const cekAction = cekRedeemer.fields[0] as Constr<unknown>;
+    expect(cekAction.index).toBe(0);
+    expect(cekAction.fields).toHaveLength(5);
+    const cekRoute = cekAction.fields[4] as Constr<unknown>;
+    expect(cekRoute.index).toBe(3);
+    expect(cekRoute.fields[1]).toEqual([7n, 2n]);
 
     const transitionCbor = Buffer.from(
       Data.to(transition, ValidationOneStepWitnessV1),
@@ -1171,6 +1596,492 @@ describe("validation-dispute transaction validity", () => {
         outputIndex: 7n,
       }),
     ).toThrow(/ResolveInputs auxiliary witness/u);
+  });
+
+  it("validates selection-only CEK route material and necessity receipts", () => {
+    const fixture = cekSelectionFixture();
+    const receiptSet = necessityReceiptSet(fixture.program.envelopeHash);
+    const argument = {
+      resolverIndex: 11,
+      semanticResolverIndex: null,
+      transitionCbor: Buffer.from("d87980", "hex"),
+      auxiliaryCbor: fixture.auxiliaryCbor,
+      cekRouteMaterial: fixture.routeMaterial,
+      cekIncrementalNecessityReceiptSet: receiptSet,
+    } as const;
+    expect(validateCekSubmissionEvidenceV1(argument)).toEqual({
+      cekRouteMaterial: fixture.routeMaterial,
+      cekIncrementalNecessityReceiptSet: receiptSet,
+    });
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekRouteMaterial: undefined,
+        cekIncrementalNecessityReceiptSet: undefined,
+      }),
+    ).toThrow(/requires complete route material/u);
+
+    const noAuxiliaryCbor = Buffer.from(
+      Data.to("NoAuxiliaryWitness", ValidationAuxiliaryWitnessV1),
+      "hex",
+    );
+    expect(
+      validateCekSubmissionEvidenceV1({
+        resolverIndex: 11,
+        semanticResolverIndex: null,
+        transitionCbor: argument.transitionCbor,
+        auxiliaryCbor: noAuxiliaryCbor,
+      }),
+    ).toEqual({});
+    for (const resolverIndex of [11, 12]) {
+      expect(() =>
+        validateCekSubmissionEvidenceV1({
+          ...argument,
+          resolverIndex,
+          auxiliaryCbor:
+            resolverIndex === 11 ? noAuxiliaryCbor : argument.auxiliaryCbor,
+        }),
+      ).toThrow(/permitted only for an exact program-selection witness/u);
+    }
+
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: {
+          ...receiptSet,
+          programEnvelopeHash: "ff".repeat(32),
+        },
+      }),
+    ).toThrow(/another program envelope/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            [draft.routeAttempts[0], draft.routeAttempts[1]] = [
+              draft.routeAttempts[1]!,
+              draft.routeAttempts[0]!,
+            ];
+          },
+        ),
+      }),
+    ).toThrow(/directProof rejected attempt/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.transactions.reverse();
+          },
+        ),
+      }),
+    ).toThrow(/invalid transaction-role grammar/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions.push({
+              ...draft.routeAttempts[0]!.transactions[0]!,
+              signedTxSha256: "19".repeat(32),
+              txId: "59".repeat(32),
+            });
+          },
+        ),
+      }),
+    ).toThrow(/invalid transaction-role grammar/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions[0]!.signedTxSha256 = "01";
+          },
+        ),
+      }),
+    ).toThrow(/32-byte lowercase hex/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions[0]!.programMaterialInputCount = 1;
+          },
+        ),
+      }),
+    ).toThrow(/invalid program-material input counts/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.transactions[0]!.programMaterialOutputOutRefs =
+              [`${"ff".repeat(32)}#0`];
+          },
+        ),
+      }),
+    ).toThrow(/must bind increasing output indices of its txId/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.transactions[1]!.programMaterialReferenceInputOutRefs =
+              [`${"fe".repeat(32)}#0`];
+          },
+        ),
+      }),
+    ).toThrow(/material outrefs do not match/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions[0]!.txId = "01";
+          },
+        ),
+      }),
+    ).toThrow(/32-byte lowercase hex/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions[0]!.transactionByteMargin =
+              -115;
+          },
+        ),
+      }),
+    ).toThrow(/target-inconsistent measured margin/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.transactions[0]!.executionMemoryMargin =
+              "5000000";
+          },
+        ),
+      }),
+    ).toThrow(/target-inconsistent measured margin/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.maturityWindowMarginMilliseconds += 1;
+          },
+        ),
+      }),
+    ).toThrow(/invalid maturity-window margin/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.rollbackAllowanceMilliseconds += 1;
+          },
+        ),
+      }),
+    ).toThrow(/invalid maturity-window margin/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            delete (
+              draft.routeAttempts[1]! as unknown as Record<string, unknown>
+            ).settlementMilliseconds;
+          },
+        ),
+      }),
+    ).toThrow(/must contain exactly/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.limitingConstraint!.measuredMargin = "-115";
+          },
+        ),
+      }),
+    ).toThrow(/invalid limiting measured margin/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[3]!.limitingConstraint = {
+              type: "maxTxSize",
+              measuredMargin: "4384",
+            };
+          },
+        ),
+      }),
+    ).toThrow(/fit attempt contains a failed constraint/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            [
+              draft.routeAttempts[3]!.transactions[1],
+              draft.routeAttempts[3]!.transactions[2],
+            ] = [
+              draft.routeAttempts[3]!.transactions[2]!,
+              draft.routeAttempts[3]!.transactions[1]!,
+            ];
+          },
+        ),
+      }),
+    ).toThrow(/invalid transaction-role grammar/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            const publication = draft.routeAttempts[3]!.transactions[0]!;
+            const finalContinuation =
+              draft.routeAttempts[3]!.transactions.at(-1)!;
+            finalContinuation.programMaterialReferenceInputOutRefs = [
+              (publication.programMaterialOutputOutRefs as string[])[1]!,
+            ];
+          },
+        ),
+      }),
+    ).toThrow(/omit published material sources/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            const publication = draft.routeAttempts[3]!.transactions[0]!;
+            const continuation = draft.routeAttempts[3]!.transactions[2]!;
+            continuation.programMaterialReferenceInputOutRefs = [
+              (publication.programMaterialOutputOutRefs as string[])[0]!,
+              ...(continuation.programMaterialReferenceInputOutRefs as string[]),
+            ];
+            continuation.programMaterialReferenceInputCount = 2;
+          },
+        ),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            const reconstruction = draft.routeAttempts[2]!.transactions[2]!;
+            const referenceOutRefs = [
+              ...(reconstruction.programMaterialReferenceInputOutRefs as string[]),
+            ];
+            referenceOutRefs[0] = (
+              reconstruction.programMaterialConsumedInputOutRefs as string[]
+            )[0]!;
+            reconstruction.programMaterialReferenceInputOutRefs =
+              referenceOutRefs;
+          },
+        ),
+      }),
+    ).toThrow(/consumed and reference inputs must be disjoint/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[2]!.minimumMultiOutputCount = 4;
+          },
+        ),
+      }),
+    ).toThrow(/do not match the exact minimum/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[2]!.minimumMultiOutputCount = 1;
+          },
+        ),
+      }),
+    ).toThrow(/must be at least two/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[0]!.minimumMultiOutputCount = 2;
+          },
+        ),
+      }),
+    ).toThrow(/invalid for the selected route/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.validatorIdentities.reverse();
+          },
+        ),
+      }),
+    ).toThrow(/strictly sorted without duplicates/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.validatorIdentities[1]!.title =
+              draft.validatorIdentities[0]!.title;
+          },
+        ),
+      }),
+    ).toThrow(/strictly sorted without duplicates/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.validatorIdentities.length = 0;
+          },
+        ),
+      }),
+    ).toThrow(/requires validator identities/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.validatorIdentities[0]!.generatedHash = "02".repeat(27);
+          },
+        ),
+      }),
+    ).toThrow(/28-byte lowercase hex/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            draft.routeAttempts[1]!.transactions[0]!.signedTxSha256 =
+              draft.routeAttempts[0]!.transactions[0]!.signedTxSha256;
+          },
+        ),
+      }),
+    ).toThrow(/duplicate transaction identities/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            delete draft.routeAttempts[0]!.transactions[0]!.feeLovelace;
+          },
+        ),
+      }),
+    ).toThrow(/must contain exactly/u);
+    expect(() =>
+      validateCekSubmissionEvidenceV1({
+        ...argument,
+        cekIncrementalNecessityReceiptSet: mutateNecessityReceiptSet(
+          receiptSet,
+          (draft) => {
+            delete draft.targetProtocolParameters.maxValueSize;
+          },
+        ),
+      }),
+    ).toThrow(/target protocol parameters must contain exactly/u);
+  });
+
+  it("reads explicit CEK route files and rejects partial or unexpected fields", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "midgard-cek-route-"));
+    const fixture = cekSelectionFixture();
+    const receiptSet = necessityReceiptSet(fixture.program.envelopeHash);
+    const paths = {
+      transition: join(directory, "transition.cbor"),
+      auxiliary: join(directory, "auxiliary.cbor"),
+      envelope: join(directory, "envelope.cbor"),
+      sidecar: join(directory, "sidecar.cbor"),
+      receipts: join(directory, "receipts.json"),
+    };
+    await Promise.all([
+      writeFile(paths.transition, "d87980\n"),
+      writeFile(paths.auxiliary, `${fixture.auxiliaryCbor.toString("hex")}\n`),
+      writeFile(
+        paths.envelope,
+        `${fixture.program.envelopeCbor.toString("hex")}\n`,
+      ),
+      writeFile(
+        paths.sidecar,
+        `${fixture.programMaterialSidecarCbor.toString("hex")}\n`,
+      ),
+      writeFile(paths.receipts, `${JSON.stringify(receiptSet)}\n`),
+    ]);
+    const base = {
+      validationTransitionCborPath: paths.transition,
+      validationAuxiliaryCborPath: paths.auxiliary,
+      validationResolverIndex: 11,
+      validationSemanticResolverIndex: null,
+    } as const;
+    await expect(
+      validationOneStepArgumentFromFiles({
+        ...base,
+        validationCekEnvelopeCborPath: paths.envelope,
+        validationCekProgramMaterialSidecarCborPath: paths.sidecar,
+        validationCekIncrementalNecessityReceiptSetPath: paths.receipts,
+      }),
+    ).resolves.toMatchObject({
+      resolverIndex: 11,
+      cekRouteMaterial: fixture.routeMaterial,
+      cekIncrementalNecessityReceiptSet: receiptSet,
+    });
+    await expect(
+      validationOneStepArgumentFromFiles({
+        ...base,
+        validationCekEnvelopeCborPath: paths.envelope,
+      }),
+    ).rejects.toThrow(/both explicit envelope and program-material sidecar/u);
+    await expect(
+      validationOneStepArgumentFromFiles({
+        ...base,
+        validationCekIncrementalNecessityReceiptSetPath: paths.receipts,
+      }),
+    ).rejects.toThrow(/require explicit CEK route material paths/u);
+    await expect(validationOneStepArgumentFromFiles(base)).rejects.toThrow(
+      /requires complete route material/u,
+    );
+    await expect(
+      validationOneStepArgumentFromFiles({
+        ...base,
+        validationResolverIndex: 12,
+        validationCekEnvelopeCborPath: paths.envelope,
+        validationCekProgramMaterialSidecarCborPath: paths.sidecar,
+      }),
+    ).rejects.toThrow(/permitted only for an exact program-selection witness/u);
   });
 
   it("reads exact lowercase CBOR files and rejects ambiguous wrappers", async () => {

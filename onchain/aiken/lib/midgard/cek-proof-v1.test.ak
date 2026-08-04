@@ -1,6 +1,7 @@
 use aiken/builtin
 use aiken/primitive/bytearray
 use midgard/cek_proof_v1
+use midgard/ledger_state.{CekProgramMaterialDatumV1}
 
 const h_01 = #"0101010101010101010101010101010101010101010101010101010101010101"
 
@@ -108,6 +109,14 @@ test canonical_program_envelope_decodes_with_exact_bounds() {
     decoded.term_root == h_01,
     decoded.node_count == cek_proof_v1.max_program_node_count,
     decoded.material_byte_length == cek_proof_v1.max_program_material_byte_length,
+    cek_proof_v1.hash_program_envelope_v1(
+      1,
+      1,
+      0,
+      h_01,
+      cek_proof_v1.max_program_node_count,
+      cek_proof_v1.max_program_material_byte_length,
+    ) == #"5d6e5b270acedb1791dcb8a1cd7552efc37be56f8b2370e76f75729700cd9e17",
   }
 }
 
@@ -124,9 +133,12 @@ test program_envelope_rejects_noncanonical_and_out_of_bounds_claims() {
   let unsupported_version = #"8502830101005820"
     |> bytearray.concat(h_01)
     |> bytearray.concat(#"031890")
+  let trailing = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, h_01, 3, 144)
+    |> bytearray.concat(#"00")
   and {
     cek_proof_v1.inspect_program_envelope_v1(noncanonical) == None,
     cek_proof_v1.inspect_program_envelope_v1(unsupported_version) == None,
+    cek_proof_v1.inspect_program_envelope_v1(trailing) == None,
     cek_proof_v1.inspect_program_envelope_v1(
       cek_proof_v1.encode_program_envelope_v1(1, 0, 0, h_01, 3, 144),
     ) == None,
@@ -150,5 +162,145 @@ test program_envelope_rejects_noncanonical_and_out_of_bounds_claims() {
         cek_proof_v1.max_program_material_byte_length + 1,
       ),
     ) == None,
+  }
+}
+
+test complete_program_material_entries_bind_root_counts_and_no_extras() {
+  let preimage = #"8106"
+  let root = cek_proof_v1.hash_error_term_v1()
+  let value_preimage = #"86"
+    |> bytearray.concat(#"00")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_01)
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_02)
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_03)
+    |> bytearray.concat(#"00")
+  let sequence_preimage = #"84"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_01)
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(cek_proof_v1.empty_sequence_root_v1)
+    |> bytearray.concat(#"01")
+  let blob_chunk_preimage = #"42cafe"
+  let blob_branch_preimage = #"83"
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_01)
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(h_02)
+    |> bytearray.concat(#"02")
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let sidecar = #"82"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"81")
+    |> bytearray.concat(#"82")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"00")
+    |> bytearray.concat(#"42")
+    |> bytearray.concat(preimage)
+  let material_entry = sidecar
+    |> bytearray.slice(3, bytearray.length(sidecar) - 1)
+  let duplicate_sidecar = #"82"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"82")
+    |> bytearray.concat(material_entry)
+    |> bytearray.concat(material_entry)
+  let substituted_sidecar = #"82"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"81")
+    |> bytearray.concat(#"82")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"00")
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(#"820000")
+  let noncanonical_sidecar = #"82"
+    |> bytearray.concat(#"1801")
+    |> bytearray.concat(
+        sidecar |> bytearray.slice(2, bytearray.length(sidecar) - 1),
+      )
+  let entry = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
+  let extra = CekProgramMaterialDatumV1 {
+    kind: 0,
+    root: cek_proof_v1.hash_variable_term_v1(0),
+    preimage: #"820000",
+  }
+  let extra_entry = #"82"
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(extra.root)
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"00")
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(extra.preimage)
+  let reordered_sidecar = #"82"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"82")
+    |> bytearray.concat(
+        if bytearray.compare(root, extra.root) == Less {
+          extra_entry |> bytearray.concat(material_entry)
+        } else {
+          material_entry |> bytearray.concat(extra_entry)
+        },
+      )
+  and {
+    cek_proof_v1.inspect_program_envelope_v1(envelope) != None,
+    cek_proof_v1.inspect_program_term_material_v1(preimage) == Some(
+      cek_proof_v1.ErrorTerm,
+    ),
+    cek_proof_v1.inspect_program_value_material_v1(value_preimage) != None,
+    cek_proof_v1.inspect_program_value_material_v1(
+      value_preimage |> bytearray.concat(#"00"),
+    ) == None,
+    cek_proof_v1.inspect_program_sequence_material_v1(sequence_preimage) != None,
+    cek_proof_v1.inspect_program_sequence_material_v1(
+      sequence_preimage |> bytearray.concat(#"00"),
+    ) == None,
+    cek_proof_v1.inspect_program_blob_material_v1(3, blob_chunk_preimage) != None,
+    cek_proof_v1.inspect_program_blob_material_v1(
+      3,
+      blob_chunk_preimage |> bytearray.concat(#"00"),
+    ) == None,
+    cek_proof_v1.inspect_program_blob_material_v1(4, blob_branch_preimage) != None,
+    cek_proof_v1.inspect_program_blob_material_v1(
+      4,
+      blob_branch_preimage |> bytearray.concat(#"00"),
+    ) == None,
+    cek_proof_v1.verify_complete_program_material_entries_v1(envelope, [entry]),
+    cek_proof_v1.verify_complete_program_material_v1(envelope, sidecar),
+    !cek_proof_v1.verify_complete_program_material_v1(
+      envelope,
+      sidecar |> bytearray.concat(#"00"),
+    ),
+    !cek_proof_v1.verify_complete_program_material_v1(envelope, #"820180"),
+    !cek_proof_v1.verify_complete_program_material_v1(
+      envelope,
+      duplicate_sidecar,
+    ),
+    !cek_proof_v1.verify_complete_program_material_v1(
+      envelope,
+      substituted_sidecar,
+    ),
+    !cek_proof_v1.verify_complete_program_material_v1(
+      envelope,
+      noncanonical_sidecar,
+    ),
+    !cek_proof_v1.verify_complete_program_material_v1(
+      envelope,
+      reordered_sidecar,
+    ),
+    !cek_proof_v1.verify_complete_program_material_entries_v1(envelope, []),
+    !cek_proof_v1.verify_complete_program_material_entries_v1(
+      envelope,
+      [entry, extra],
+    ),
   }
 }

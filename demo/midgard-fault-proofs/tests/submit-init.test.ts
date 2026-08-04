@@ -9,6 +9,7 @@ import {
   buildFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
@@ -599,6 +600,7 @@ describe("fault-proof deployment contract resolution", () => {
       ...Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
       ),
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     ]);
     const contracts = await Effect.runPromise(
       buildValidationTraceDisputeFaultProofContracts({
@@ -623,6 +625,11 @@ describe("fault-proof deployment contract resolution", () => {
         scriptHash:
           contracts.validationTraceDispute.firstStep.spendingScriptHash,
       },
+      cekProgramMaterialSpend: {
+        scriptHash:
+          contracts.validationTraceDispute.cekProgramMaterial
+            .spendingScriptHash,
+      },
     });
 
     const resolved = await resolveValidationTraceDisputeDeploymentContracts({
@@ -644,6 +651,23 @@ describe("fault-proof deployment contract resolution", () => {
     expect(resolved.contracts.validationTraceDispute.resolvers).toHaveLength(
       14,
     );
+    expect(resolved.cekProgramMaterialScriptHash).toBe(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
+    );
+    expect(resolved.cekProgramMaterialAddress).toBe(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress,
+    );
+
+    await expect(
+      resolveValidationTraceDisputeDeploymentContracts({
+        blueprint,
+        deploymentInfo: deploymentManifest({
+          ...deploymentInfo.contracts,
+          cekProgramMaterialSpend: { scriptHash: "ff".repeat(28) },
+        }),
+        network: "Preprod",
+      }),
+    ).rejects.toThrow(/cekProgramMaterialSpend script mismatch/u);
 
     const { validationTraceDispute: _omitted, ...incompleteCategories } =
       proofCatalogue.categories;

@@ -289,6 +289,9 @@ export const VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES = {
   },
 } as const;
 
+export const CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1 =
+  "user_events/cek_program_material_v1.spend.spend";
+
 export const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
 
 export const FAULT_PROOF_SHARED_TITLES = {
@@ -402,6 +405,7 @@ export type ValidationTraceDisputeFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly validationTraceDispute: FraudProofChain & {
+    readonly cekProgramMaterial: SpendingValidator;
     readonly opener: SpendingValidator;
     readonly source: SpendingValidator;
     readonly game: SpendingValidator;
@@ -1307,6 +1311,14 @@ const buildValidationTraceDisputeChain = ({
   Error
 > =>
   Effect.gen(function* () {
+    const cekProgramMaterial = yield* tryBuild(
+      "Failed to build immutable CEK program-material validator",
+      () =>
+        makeSpendingValidator(
+          network,
+          getCompiledScript(blueprint, CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1),
+        ),
+    );
     const award = yield* tryBuild(
       "Failed to build validation-trace award validator",
       () =>
@@ -1776,34 +1788,47 @@ const buildValidationTraceDisputeChain = ({
       builtPrepareResolvers[11]!,
     ] as const;
 
-    const directTitles = Object.values(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-    );
-    const builtDirectResolvers: SpendingValidator[] = [];
-    for (const [index, title] of directTitles.entries()) {
-      builtDirectResolvers.push(
-        yield* tryBuild(
-          `Failed to build validation-trace direct resolver ${index.toString()}`,
-          () =>
-            makeSpendingValidator(
-              network,
-              applyParamsToScript(getCompiledScript(blueprint, title), [
-                computationThread.policyId,
-                fraudProof.policyId,
-                fraudProofTokenAddressData,
-              ]),
+    const cekDirectResolver = yield* tryBuild(
+      "Failed to build validation-trace CEK direct resolver",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
             ),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+              cekProgramMaterial.spendingScriptHash,
+            ],
+          ),
         ),
-      );
-    }
-    if (builtDirectResolvers.length !== 2) {
-      return yield* Effect.fail(
-        new Error("Validation-trace direct resolver set is incomplete"),
-      );
-    }
+    );
+    const valueAndMintDirectResolver = yield* tryBuild(
+      "Failed to build validation-trace ValueAndMint direct resolver",
+      () =>
+        makeSpendingValidator(
+          network,
+          applyParamsToScript(
+            getCompiledScript(
+              blueprint,
+              VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
+                .valueAndMint,
+            ),
+            [
+              computationThread.policyId,
+              fraudProof.policyId,
+              fraudProofTokenAddressData,
+            ],
+          ),
+        ),
+    );
     const directResolvers = [
-      builtDirectResolvers[0]!,
-      builtDirectResolvers[1]!,
+      cekDirectResolver,
+      valueAndMintDirectResolver,
     ] as const;
     const resolvers = [
       prepareResolvers[0],
@@ -1953,6 +1978,7 @@ const buildValidationTraceDisputeChain = ({
       timeout,
       award,
       proofItem,
+      cekProgramMaterial,
       canonicalDecodeItemStages,
       scriptSourcesStageOneRedeemerStages,
       prepareResolvers,

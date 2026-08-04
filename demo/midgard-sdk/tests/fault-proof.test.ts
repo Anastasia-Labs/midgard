@@ -24,6 +24,7 @@ import {
   buildTransitionTraceFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildZeroInputFaultProofContracts,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
   deriveValidationTraceDeploymentIdV1,
   DOUBLE_SPEND_FAULT_PROOF_TITLES,
   DoubleSpendStep01Datum,
@@ -64,7 +65,9 @@ import {
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDir, "../../..");
-const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
+const currentTreeBlueprintPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH;
+const blueprintPath =
+  currentTreeBlueprintPath ?? resolve(repoRoot, "onchain/aiken/plutus.json");
 
 const h32 = "00".repeat(32);
 const h32b = "11".repeat(32);
@@ -1181,6 +1184,22 @@ describe("fault-proof contract builder", () => {
   });
 
   it("builds validation-trace dispute with its exact shared-policy parameter order", async () => {
+    if (currentTreeBlueprintPath === undefined) {
+      return;
+    }
+    const rawBlueprint = JSON.parse(readFileSync(blueprintPath, "utf8")) as {
+      readonly validators?: readonly {
+        readonly title?: string;
+        readonly parameters?: readonly unknown[];
+      }[];
+    };
+    expect(
+      rawBlueprint.validators?.find(
+        ({ title }) =>
+          title ===
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
+      )?.parameters,
+    ).toHaveLength(4);
     const blueprint = filterBlueprint(loadBlueprint(), [
       ...Object.values(FAULT_PROOF_SHARED_TITLES),
       VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.proofItem,
@@ -1201,6 +1220,7 @@ describe("fault-proof contract builder", () => {
       ...Object.values(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
       ),
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     ]);
 
     const contracts = await Effect.runPromise(
@@ -1424,15 +1444,36 @@ describe("fault-proof contract builder", () => {
         contracts.computationThread.policyId,
       ]),
     );
-    const expectedDirectResolvers = Object.values(
-      VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers,
-    ).map((title) =>
-      applyParamsToScript(compiledScript(blueprint, title), [
-        contracts.computationThread.policyId,
-        contracts.fraudProof.policyId,
-        fraudProofTokenAddressData,
-      ]),
+    const expectedCekProgramMaterial = compiledScript(
+      blueprint,
+      CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
     );
+    const expectedDirectResolvers = [
+      applyParamsToScript(
+        compiledScript(
+          blueprint,
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
+        ),
+        [
+          contracts.computationThread.policyId,
+          contracts.fraudProof.policyId,
+          fraudProofTokenAddressData,
+          spendingScriptHash(expectedCekProgramMaterial),
+        ],
+      ),
+      applyParamsToScript(
+        compiledScript(
+          blueprint,
+          VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers
+            .valueAndMint,
+        ),
+        [
+          contracts.computationThread.policyId,
+          contracts.fraudProof.policyId,
+          fraudProofTokenAddressData,
+        ],
+      ),
+    ];
     const expectedResolvers = [
       expectedPrepareResolvers[0]!,
       expectedPrepareResolvers[1]!,
@@ -1556,6 +1597,9 @@ describe("fault-proof contract builder", () => {
         ({ spendingScriptCBOR }) => spendingScriptCBOR,
       ),
     ).toEqual(expectedDirectResolvers);
+    expect(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptCBOR,
+    ).toBe(expectedCekProgramMaterial);
     expect(
       contracts.validationTraceDispute.resolvers.map(
         ({ spendingScriptCBOR }) => spendingScriptCBOR,

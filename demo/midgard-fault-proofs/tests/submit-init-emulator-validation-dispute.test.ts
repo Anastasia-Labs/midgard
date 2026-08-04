@@ -16,6 +16,7 @@ import {
   buildValidationTraceDisputeFaultProofContracts,
   createReferenceScriptAuthPolicy,
   parseFaultProofBlueprint,
+  referenceScriptAuthUnit,
   validationMachineStateDataFromCore,
   validationTraceProofDataFromCore,
 } from "@al-ft/midgard-sdk";
@@ -26,11 +27,13 @@ import {
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
   toUnit,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  requireValidationCekDirectResolverReferenceScriptUtxo,
   resolveProverSigner,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
@@ -40,6 +43,7 @@ import {
   submitValidationDisputeReveal,
   submitValidationDisputeSemanticResolution,
   submitValidationDisputeVerifySource,
+  VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
   validationDisputeValidityRange,
 } from "../src/index.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
@@ -56,6 +60,7 @@ import {
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   network,
+  publishAuthenticatedValidationCekDirectResolver,
   publishAuthenticatedValidationDisputeControl,
   publishPlainReferenceScriptUtxo,
   publishValidationDisputeReferenceScript,
@@ -145,6 +150,188 @@ describe("fault-proof emulator integration", () => {
       expect(measurement.plutusV2ScriptCount).toBe(0);
       expect(measurement.plutusV3ScriptCount).toBe(0);
     }
+  }, 300_000);
+
+  it("publishes and verifies the authenticated generated-blueprint CEK direct-resolver reference script", async () => {
+    const realBlueprint = readBlueprint(realBlueprintPath);
+    const publisher = generateEmulatorAccount({
+      lovelace: 4_000_000_000_000n,
+    });
+    // Deployment-time publication of the ~156 KiB applied resolver cannot fit
+    // the 16,384-byte L1 proof envelope; the emulator hosts it under a raised
+    // maxTxSize so the consuming finalization path can stay by-reference.
+    const emulator = new Emulator([publisher], {
+      ...EMULATOR_PROTOCOL_PARAMETERS,
+      maxTxSize: 262_144,
+    });
+    const lucid = await Lucid(emulator, "Custom");
+    lucid.selectWallet.fromSeed(publisher.seedPhrase);
+    const contracts = await Effect.runPromise(
+      buildValidationTraceDisputeFaultProofContracts({
+        blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+        network,
+        hubOraclePolicyId: "11".repeat(28),
+        fraudProofCataloguePolicyId: "22".repeat(28),
+      }),
+    );
+    const directResolver = contracts.validationTraceDispute.directResolvers[0];
+    const appliedResolverBytes =
+      directResolver.spendingScript.script.length / 2;
+    expect(appliedResolverBytes).toBeGreaterThan(
+      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+    );
+
+    const authPolicy = createReferenceScriptAuthPolicy(lucid, emulator.now());
+    const publication = await runEmulatorLifecycleStage(
+      "reference-script.publish-authenticated.cekDirectResolver",
+      () =>
+        publishAuthenticatedValidationCekDirectResolver({
+          lucid,
+          script: directResolver.spendingScript,
+          authPolicy,
+        }),
+    );
+    // Honest deployment-time measurement: the publication itself exceeds the
+    // L1 proof envelope precisely because the resolver body does.
+    expect(publication.publicationMeasurement.l1ByteMargin).toBeLessThan(0);
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify(
+          {
+            cekDirectResolverReferencePublication: {
+              appliedResolverBytes,
+              appliedResolverHash: directResolver.spendingScriptHash,
+              measurement: publication.publicationMeasurement,
+            },
+          },
+          (_key, value: unknown) =>
+            typeof value === "bigint" ? value.toString() : value,
+          2,
+        ),
+      );
+    }
+    expect(publication.utxo.scriptRef).toBeDefined();
+    expect(validatorToScriptHash(publication.utxo.scriptRef!)).toBe(
+      directResolver.spendingScriptHash,
+    );
+    expect(
+      publication.utxo.assets[
+        referenceScriptAuthUnit(
+          authPolicy.policyId,
+          "V1 validation-trace CEK direct resolver",
+        )
+      ],
+    ).toBe(1n);
+
+    const publishedEntry = {
+      scriptHash: directResolver.spendingScriptHash,
+      refScriptUTxO: {
+        txHash: publication.utxo.txHash,
+        outputIndex: publication.utxo.outputIndex,
+      },
+    };
+
+    // Complete verification path used by CEK finalization submission.
+    const verified =
+      await requireValidationCekDirectResolverReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]:
+            publishedEntry,
+        },
+        expectedScriptHash: directResolver.spendingScriptHash,
+        authPolicyId: authPolicy.policyId,
+      });
+    expect(outRefLabel(verified)).toBe(outRefLabel(publication.utxo));
+
+    // Missing registration rejects before any transaction is constructed.
+    await expect(
+      requireValidationCekDirectResolverReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: {},
+        expectedScriptHash: directResolver.spendingScriptHash,
+        authPolicyId: authPolicy.policyId,
+      }),
+    ).rejects.toThrow(/missing "validationTraceDisputeCekDirectResolver"/u);
+
+    // Wrong reference: a UTxO without any reference script rejects.
+    const plainUtxo = (await lucid.wallet().getUtxos()).find(
+      (candidate) => candidate.scriptRef == null,
+    );
+    expect(plainUtxo).toBeDefined();
+    await expect(
+      requireValidationCekDirectResolverReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash: directResolver.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: plainUtxo!.txHash,
+              outputIndex: plainUtxo!.outputIndex,
+            },
+          },
+        },
+        expectedScriptHash: directResolver.spendingScriptHash,
+        authPolicyId: authPolicy.policyId,
+      }),
+    ).rejects.toThrow(/does not carry a reference script/u);
+
+    // Wrong reference: the published award control carries a different
+    // validator, so the resolver-hash check rejects it.
+    const awardPublication = await publishAuthenticatedValidationDisputeControl(
+      {
+        lucid,
+        target: {
+          control: "award",
+          name: "V1 validation-trace award",
+          script: contracts.validationTraceDispute.award.spendingScript,
+        } as ValidationDisputeControlPublicationTarget,
+        authPolicy,
+      },
+    );
+    await expect(
+      requireValidationCekDirectResolverReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash: directResolver.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: awardPublication.utxo.txHash,
+              outputIndex: awardPublication.utxo.outputIndex,
+            },
+          },
+        },
+        expectedScriptHash: directResolver.spendingScriptHash,
+        authPolicyId: authPolicy.policyId,
+      }),
+    ).rejects.toThrow(/reference script hash mismatch/u);
+
+    // Wrong role: the exact resolver published under another role token
+    // rejects, so an attacker cannot substitute a differently-authorized
+    // publication.
+    const wrongRolePublication =
+      await publishAuthenticatedValidationCekDirectResolver({
+        lucid,
+        script: directResolver.spendingScript,
+        authPolicy,
+        roleName: "V1 validation-trace award",
+      });
+    await expect(
+      requireValidationCekDirectResolverReferenceScriptUtxo({
+        lucid,
+        deploymentInfo: {
+          [VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY]: {
+            scriptHash: directResolver.spendingScriptHash,
+            refScriptUTxO: {
+              txHash: wrongRolePublication.utxo.txHash,
+              outputIndex: wrongRolePublication.utxo.outputIndex,
+            },
+          },
+        },
+        expectedScriptHash: directResolver.spendingScriptHash,
+        authPolicyId: authPolicy.policyId,
+      }),
+    ).rejects.toThrow(/must carry exactly one .* auth-role token/u);
   }, 300_000);
 
   it.each([

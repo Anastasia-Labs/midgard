@@ -1982,10 +1982,42 @@
       "writablePaths": [
         "onchain/aiken/lib/midgard/cek-proof-v1.ak",
         "onchain/aiken/lib/midgard/cek-proof-v1.test.ak",
+        "onchain/aiken/lib/midgard/cek-data-v1.ak",
+        "onchain/aiken/lib/midgard/cek-data-v1.test.ak",
+        "onchain/aiken/lib/midgard/validation-resolver-v1.ak",
+        "onchain/aiken/lib/midgard/validation-resolver-v1.test.ak",
         "onchain/aiken/lib/midgard/validation-machine-v1.ak",
         "onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
+        "onchain/aiken/validators/fraud-proofs/validation-trace/cek-v1.ak",
+        "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+        "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+        "demo/midgard-sdk/src/user-events/tx-order.ts",
+        "demo/midgard-sdk/tests/tx-order-v1.test.ts",
+        "demo/midgard-sdk/tests/fault-proof.test.ts",
+        "demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts",
+        "demo/midgard-validation/src/cek-context.ts",
         "demo/midgard-validation/src/cek-program.ts",
-        "demo/midgard-validation/tests/cek-program.test.ts"
+        "demo/midgard-validation/src/validation-machine-data.ts",
+        "demo/midgard-validation/src/validation-dispute-evidence.ts",
+        "demo/midgard-validation/src/validation-machine.ts",
+        "demo/midgard-validation/tests/cek-observer-boundary-v1.test.ts",
+        "demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts",
+        "demo/midgard-validation/tests/cek-program.test.ts",
+        "demo/midgard-validation/tests/validation-machine.test.ts",
+        "demo/midgard-fault-proofs/src/validation-dispute/submit.ts",
+        "demo/midgard-fault-proofs/src/validation-dispute/from-files.ts",
+        "demo/midgard-fault-proofs/src/bin.ts",
+        "demo/midgard-fault-proofs/src/runtime.ts",
+        "demo/midgard-fault-proofs/tests/validation-dispute-submit.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init.test.ts",
+        "demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts",
+        "demo/midgard-fault-proofs/tests/support/submit-init-emulator-shared.ts",
+        "demo/midgard-sdk/src/reference-scripts.ts",
+        "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
+        "demo/midgard-sdk/tests/validation-dispute.test.ts",
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+        "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+        "docs/exec-plans/evidence/necessity/cek-program-material-v1.md"
       ],
       "pathsMustNotTouch": [
         "GOAL_SPEC.md",
@@ -1999,18 +2031,26 @@
       ],
       "sourceAnchors": [
         "GOAL_SPEC.md 8.2 P2 proof-item capability tasks, row C28: Complete material is retained and accepted directly or through authenticated input/reference-input datums wherever it fits; bounded-node traversal requires a §3.2 necessity artifact; terminal binds the canonical program hash.",
-        "onchain/aiken/lib/midgard/cek-proof-v1.ak and cek-proof-v1.test.ak (canonical program envelope and bounded material admission)",
+        "onchain/aiken/lib/midgard/cek-proof-v1.ak, cek-proof-v1.test.ak, cek-data-v1.ak, and cek-data-v1.test.ak (canonical program envelope, all term/value/sequence/blob/data material inspectors, exact child edges, and complete reachable-material admission)",
         "onchain/aiken/lib/midgard/validation-machine-v1.ak and validation-machine-v1.test.ak (authenticated program/context selection and terminal identity)",
-        "demo/midgard-validation/src/cek-program.ts and tests/cek-program.test.ts (deterministic content-addressed graph, exact sidecar, language tag, and mutation rejection)"
+        "onchain/aiken/lib/midgard/validation-resolver-v1.ak, validation-resolver-v1.test.ak, and validators/fraud-proofs/validation-trace/cek-v1.ak (CEK-specific direct, complete-publication reference, minimum ordered multi-output reconstruction, and incremental resolution routes with exact production-path controls)",
+        "demo/midgard-sdk/src/fraud-proof/contracts.ts, tests/fault-proof.test.ts, and tests/validation-resolver-applied-hashes.test.ts (CEK resolver application binds the immutable CEK program-material publication validator identity and regenerated applied hash)",
+        "demo/midgard-sdk/src/user-events/tx-order.ts and tests/tx-order-v1.test.ts (permissionless immutable material publication, concrete min-Ada, and minimum-output construction)",
+        "demo/midgard-validation/src/cek-context.ts, src/validation-machine.ts, and tests/cek-observer-boundary-v1.test.ts (strict 25-field context and 9-field CEK-witness production ABI, with no optional/default compatibility path)",
+        "demo/midgard-validation/src/validation-machine-data.ts, src/validation-dispute-evidence.ts, tests/validation-machine.test.ts, tests/complete-item-proof-fit-emulator-v1.test.ts, and demo/midgard-fault-proofs validation-dispute submit/from-files source/test (cross-language CEK route-material/receipt ABI, file-backed public tooling, and concrete signed-transaction/evaluator receipts)",
+        "demo/midgard-validation/src/cek-program.ts and tests/cek-program.test.ts (deterministic content-addressed graph, exact sidecar, language tag, and mutation rejection)",
+        "demo/midgard-sdk/src/reference-scripts.ts, demo/midgard-fault-proofs/src/{bin,runtime}.ts, src/validation-dispute/{submit,from-files}.ts, and tests/{submit-init-emulator-validation-dispute.test,support/submit-init-emulator-shared}.ts (authenticated direct-resolver-0 reference-script role registration, deployment-entry resolution/verification, readFrom-only CEK finalization, and caller-confirmed publication-outref CLI plumbing)",
+        "docs/exec-plans/evidence/necessity/cek-program-material-v1.md (§3.2 ordered direct/input/reference carriage measurements and incremental-node necessity conclusion)"
       ],
       "evidenceOutputs": [
         "Deterministic content-addressed graph, canonical program envelope, exact sidecar/credential/language tag, and terminal program-hash evidence",
         "Complete material direct/input/reference-input datum fit evidence before any measured §3.2 bounded-node fallback",
         "Unpinned version, noncanonical/out-of-bounds envelope, mutated preimage, unreachable material, force-normalization, and caller-mutation rejection",
+        "Authenticated CEK direct-resolver reference-script registration, measured publication receipts, missing/wrong-reference and wrong-role rejection, and readFrom-only finalization consumption evidence",
         "Guarded 5-test Aiken transcript and exact 7-test TypeScript-file transcript"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/cek-proof-v1.ak lib/midgard/cek-proof-v1.test.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
+        "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/cek-proof-v1.ak lib/midgard/cek-proof-v1.test.ak lib/midgard/cek-data-v1.ak lib/midgard/cek-data-v1.test.ak lib/midgard/validation-resolver-v1.ak lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak validators/fraud-proofs/validation-trace/cek-v1.ak",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_proof_v1 canonical_program_envelope_decodes_with_exact_bounds small_canonical_program_envelope_decodes program_envelope_rejects_noncanonical_and_out_of_bounds_claims",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 cek_execution_selection_authenticates_program_and_context_subject maximum_script_program_instruction_evidence_is_bounded",
         "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
@@ -2020,11 +2060,12 @@
       ],
       "expectedNonzeroCounts": "Counted focused selectors: midgard/cek_proof_v1, midgard/validation_machine_v1, cek-program.test.ts. Exactly 3 guarded cek-proof Aiken tests, exactly 2 guarded validation-machine Aiken tests, and exactly 7 TypeScript tests in 1 exact file; all 12 tests pass with 0 failures.",
       "invalidationTriggers": [
-        "Any listed writable path, canonical program envelope, content graph, sidecar, language tag, credential, or terminal program hash changes",
+        "Any listed writable path, canonical program envelope, content graph, sidecar, language tag, credential, strict TypeScript/Aiken context or CEK-witness ABI, production trace generation, or terminal program-hash authority changes",
         "C27 becomes PASS and changes the admitted script envelope, or complete direct/reference material fit changes",
-        "Applied validator hash, target protocol parameters, maxTxSize, datum carriage, or CEK program bound changes"
+        "Applied validator hash, target protocol parameters, maxTxSize, datum/reference-input/multi-output carriage, or CEK program bound changes",
+        "Any C29/C30/C31/C32 vector, fault-proof submission/resolver, generated blueprint, applied deployment identity, persisted trace identity, or retained-DA fixture changes"
       ],
-      "readyBecause": "C27 is PASS in the authoritative first GOAL_PROGRESS.md queue, so C28 is ready for its exact serialized six-file implementation lease."
+      "readyBecause": "C27 is PASS in the authoritative first GOAL_PROGRESS.md queue. The C28 lease includes every current Aiken and TypeScript constructor/consumer of the replaced 25-field context and 9-field CEK-witness ABI; measurement-path extensions must be registered here before assignment."
     },
     {
       "id": "C29",

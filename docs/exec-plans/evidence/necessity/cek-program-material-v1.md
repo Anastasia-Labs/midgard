@@ -1,97 +1,147 @@
-# §3.2 Necessity artifact — CEK program material and source-blob chunking
+# §3.2 necessity artifact — C28 CEK program material
 
-## Binding
+## Binding and source identities
 
-- Family / item: `cek-program-material` (content-addressed CEK material
-  nodes, `CekSourceBlobControlV1` blob chunks, incremental script-context
-  construction) / one complete canonical CEK program's material graph;
-  maximum shape 67,108,418 structural bytes across at most 1,597,819 nodes
-  within the 64 MiB DA envelope, blob chunks of at most 4,095 bytes.
-- Applied validator hashes measured (re-measured 2026-08-03): the compact
-  50-byte program envelope and material commitments are bound by the deployed
-  validation-machine bundle in blueprint sha256
-  `277b6457197870a9df069ce5c492c166e8d0b4b32fb616294ae12404ecb070b6`
-  (superseded pin, 2026-07-29:
-  `6d23a25f8cb96f62f3e3aeeecb4e1506e8002ac712ae9bcb8873e42b4136ff1a`);
-  publication measurements pinned against
-  `MIDGARD_V1_ENVELOPE_MEASUREMENTS` (`maxProgramMaterialPublicationDatumBytes`
-  4,268, `maxProgramMaterialPublicationUnsignedTransactionBytes` 4,369) by
-  `demo/midgard-sdk/tests/tx-order-v1.test.ts`. Any change invalidates this
-  artifact (GOAL_SPEC.md §3.2).
-- Parameter snapshot digests: profile digest
-  `181730d304796b764c8f657b0ae788b87c6aba9f4491dbfa9ce24d99932911b7`;
-  capability floor per
-  `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
-- Fixture: `deriveCekProgramMaterialPublicationsV1`
-  (`demo/midgard-sdk/src/user-events/tx-order.ts`) with the pinned maximum
-  blob-chunk vector in `demo/midgard-sdk/tests/tx-order-v1.test.ts`
-  (deterministically regenerable).
+- Family/item: `cek-program-material`; one complete canonical CEK material
+  graph, its canonical program envelope, and independently authenticated
+  material entries.
+- Source revision at measurement: worktree over
+  `536b190a6246b0faba53bd43a0c3d3f319e215a6` carrying the complete C28 batch.
+  The C28 source of truth is `demo/midgard-validation/src/cek-program.ts` and
+  `onchain/aiken/lib/midgard/{cek-proof-v1,cek-data-v1,validation-resolver-v1,validation-machine-v1}.ak`
+  plus `onchain/aiken/validators/fraud-proofs/validation-trace/cek-v1.ak`.
+- Protected generated `onchain/aiken/plutus.json` SHA-256
+  `f5ae651e34cf3e1175d928634c002580c4f2af4659a229952007c458945b866b`
+  (provenance only; C28 does not regenerate the protected blueprint). The
+  current-tree disposable blueprint compiled from the changed Aiken sources
+  with pinned `aiken v1.1.22+39d6b04` has SHA-256
+  `6b6422eeb128663495d97272c965faecf77438b5d1e369d742e9f1de46688f20`; its
+  `fraud_proofs/validation_trace/cek_v1.main.spend` is 156,006 compiled bytes
+  with exactly 4 parameters (fraud-proof address, computation-thread policy,
+  award hash, immutable CEK program-material identity), verified by the
+  gated current-tree selector in
+  `demo/midgard-sdk/tests/validation-resolver-applied-hashes.test.ts` (2/2
+  with `MIDGARD_REAL_BLUEPRINT_PATH` set to the disposable blueprint).
+- Applied direct-resolver identities on the measurement deployment
+  (`hub_oracle=11…11`, `catalogue=22…22`):
+  current-tree applied `cek_v1` is 156,161 bytes with hash
+  `827fe0ad74a14400c89c08e4e8c0655d5fc1da85e32d8c21f9bd51f2`; the protected
+  checked-in blueprint's applied `cek_v1` is 141,959 bytes with hash
+  `92c53d4757c14275600484193355f09917437e05e731ba25b935d549`. Any change to
+  either hash invalidates this artifact (GOAL_SPEC.md §3.2).
+- The canonical envelope remains a complete item, at most 50 CBOR bytes.
+  Its maximum claims are 1,597,819 nodes and 67,108,418 material bytes. The
+  maximum Aiken envelope/program-hash vector is
+  `e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697`
+  for UPLC `1.1.0`, term root `aa…aa`, and those maximum claims.
 
-## Measurements (§3.2 order — stop at the first representation that fits)
+## Ordered complete-material attempts
 
-| Representation | Tx bytes / maxTxSize | Mem / limit·0.8 | CPU / limit·0.8 | Fee | Fits §3.3? |
-| --- | --- | --- | --- | --- | --- |
-| 1. Complete material direct in proof tx | 67,108,418 structural bytes against a 16,384-byte envelope — exceeds it by more than three orders of magnitude; even one 16,384-byte slice measures 18,290/16,384 as a publication | — | — | — | NO |
-| 2. Complete material as one inline-datum publication + reference | same bound: no single publication transaction can carry more than the measured 14,396-byte complete-item maximum | — | — | — | NO |
-| 3. Minimum multi-output publication + complete logical reconstruction | deployed: one content-addressed node per publication — measured 4,268-byte datum / 4,369-byte one-input-one-output unsigned transaction per node (pinned); at most 1,597,819 node publications for the maximum program | reconstruction cost concentrates in consumption, see 4 | — | per-node fees | bytes YES, execution NO for one-shot consumption |
-| 4. Incremental node-at-a-time consumption (compact 50-byte envelope + per-step blob/data controls) | each reveal ≤ 4,369-byte publication; consuming steps bounded per node | pinned worst one-shot comparison: a single-step nine-field maximum verification measured 45,154,331 memory — over the raw 16,500,000 limit — while per-receipt steps measure ≤ 3,398,228 / 13,200,000 | one-shot 14,905,078,582 CPU over the raw 10,000,000,000 limit; per-step ≤ 1,209,745,039 / 8,000,000,000 | per pinned receipts | YES |
+`deriveMidgardCekProgramMaterialCarriagePlanV1` derives the complete graph's
+actual sidecar byte length from the canonical material map and tries these
+representations in this exact order. It does not select incremental
+publication until all three complete-graph representations reject.
 
-## Exact limiting constraint
+| Order | Representation | Source-derived fit rule | Executable measurement when it fits | Maximum 67,108,418-byte graph |
+| --- | --- | --- | --- | --- |
+| 1 | Direct proof material | Complete envelope + complete encoded sidecar `<= 8,769` bytes | 15,872-byte direct proof transaction; 853,925 lovelace measured publication fee | Does not fit |
+| 2 | Authenticated input inline datum | Complete envelope + sidecar `<= 15,624` datum bytes | 15,872-byte complete-item publication transaction; 853,925 lovelace fee | Does not fit |
+| 3 | Authenticated reference-input inline datum | Same complete datum fit as order 2 | 8,275-byte reference proof transaction, one reference input | Does not fit |
+| 4 | Per-node authenticated publication/receipt | Reached only when 1–3 fail and every entry is independently publishable | 4,268-byte maximum datum; 4,369-byte unsigned publication; 3,398,228 memory and 1,209,745,039 CPU receipt bounds | Necessity-justified fallback |
 
-Byte fit and execution fit are both broken by simpler representations,
-measured rather than inferred: the maximum canonical material
-(67,108,418 bytes) exceeds any single transaction by construction, and the
-repository-pinned one-shot verification of the staged-receipt protocol's
-worst case measured 45,154,331 memory / 14,905,078,582 CPU — above the raw
-16,500,000 / 10,000,000,000 floors, before applying the 20% reserve
-(docs/consensus-profile-v1.md §10). The reserved per-step ceilings
-(13,200,000 / 8,000,000,000) hold only for node-at-a-time consumption.
+The first three maximum cases are byte-impossible before execution: the
+67,108,418-byte material lower bound exceeds the 16,384-byte target L1
+transaction envelope. No fee or exunit result is invented for an
+unconstructible complete-graph transaction. The order-4 figures are the
+repository's executable per-publication/receipt measurements in
+`MIDGARD_V1_ENVELOPE_MEASUREMENTS`, pinned by
+`demo/midgard-sdk/tests/tx-order-v1.test.ts`; they are not one-shot graph
+measurements.
 
-## Why no simpler authenticated representation closes the gap
+The production submission path in
+`demo/midgard-fault-proofs/src/validation-dispute/submit.ts`
+(`submitValidationDisputeDirectResolution`) enforces the same order
+executably: it constructs and locally evaluates the direct route first,
+falls back to the caller-confirmed exact single-publication reference, then
+the caller-confirmed exact root-ordered minimum multi-output reconstruction,
+and only enters incremental traversal with a parsed, envelope-bound
+`CekProgramMaterialNecessityReceiptSetV1`. Every rejected local attempt is
+retained in the result's `rejectedLocalRouteAttempts`.
 
-The material graph is orders of magnitude larger than the L1 envelope, so
-representations 1 and 2 are byte-impossible; representation 3 (flat
-multi-output publication) is exactly what V1 deploys for carriage, but its
-one-shot logical reconstruction measurably exceeds the raw execution limits,
-so consumption must also be incremental. Content addressing keeps every
-node's publication independently authenticated against the canonical
-program hash bound by the 50-byte envelope, so no additional commitment
-scheme is introduced.
+## Direct-resolver reference-script carriage (measured)
 
-## Preserved complete-item path
+The CEK direct resolver (direct resolver 0, phase 11 `Cek`) can never travel
+inside the 16,384-byte L1 proof envelope: its applied body alone is 156,161
+bytes. C28 therefore registers and consumes it as an authenticated
+reference-script deployment role:
 
-Every individually bounded item in this family that fits the complete-item
-envelope keeps the complete path: constants at or below the 9,215-byte
-direct-constant gate travel whole, single-chunk blobs (≤4,095 bytes) are
-published complete in one 4,268-byte datum, and the 50-byte program
-envelope always travels complete. Duplication and root-substitution of
-material publications reject
-(`demo/midgard-sdk/tests/tx-order-v1.test.ts`), and the chunk commitment
-equals the complete-blob commitment by construction
-(`commitMidgardCekBlobV1` frontier over the same chunk hashes).
+- Role `V1 validation-trace CEK direct resolver` → token
+  `V1ValidationTraceCekResolver0` in `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES`
+  (`demo/midgard-sdk/src/reference-scripts.ts`).
+- Deployment entry `validationTraceDisputeCekDirectResolver`; submission
+  resolves and verifies the UTxO (exact script hash, exactly one role token)
+  and consumes it via `readFrom`, never attaching the resolver body
+  (`requireValidationCekDirectResolverReferenceScriptUtxo`).
+- Measured authenticated publication receipts (real signed emulator
+  transactions through the production publication program,
+  `completeReferenceScriptPublicationTxProgram`): current-tree blueprint
+  156,676 signed bytes (L1 margin −140,292); protected blueprint 142,474
+  signed bytes (L1 margin −126,090). Both are deployment-time-only
+  transactions hosted under a raised 262,144-byte emulator `maxTxSize`; they
+  exceed the mainnet 16,384-byte `maxTxSize`, so the resolver itself remains
+  unpublishable on the live target network until the tracked oversized-
+  validator decomposition program (GOAL_PROGRESS P1 gate: 42 spend handlers
+  over 16,384 bytes, topped by `cek_v1`) closes. The consuming finalization
+  transaction is the artifact-relevant proof transaction and stays inside
+  the envelope by reference-input carriage.
+- Missing-registration, wrong-reference (no script, wrong validator), and
+  wrong-role publications reject before any transaction is constructed
+  (`demo/midgard-fault-proofs/tests/submit-init-emulator-validation-dispute.test.ts`,
+  `tests/validation-dispute-submit.test.ts`).
 
-## Re-measurement 2026-08-03 (task C21-AUDIT)
+## Preserved fitting paths and integrity
 
-Basis, blueprint provenance, and the shared by-reference byte series are
-recorded once in `transaction-field-chunk-v1.md` §"Re-measurement
-2026-08-03"; that section's overlay-build caveat applies to the digest pinned
-above.
+The plan retains every fitting representation: the complete 50-byte envelope
+is never chunked, and it reports direct/input/reference acceptance for every
+complete graph that actually fits. Each independently retained material entry
+must remain within the 4,268-byte publication datum measurement; no source
+constant cap has been reduced. The 9,215-byte direct-constant rule remains a
+per-constant proof envelope rule, not a graph-size compatibility shortcut.
 
-Re-verified unchanged for this family: `maxCekProgramMaterialBytes`
-67,108,418, `maxCekProgramNodeCount` 1,597,819, `maxCekProgramEnvelopeBytes`
-50, `maxTransactionFieldChunkBytes` 4,095, the 9,215-byte direct-constant
-gate (`MIDGARD_CEK_MAX_SOURCE_CONSTANT_PAYLOAD_BYTES_V1`),
-`maxProgramMaterialPublicationDatumBytes` 4,268,
-`maxProgramMaterialPublicationUnsignedTransactionBytes` 4,369, and the
-consensus profile digest. Moved: the blueprint digest only.
+The production selection path derives the canonical envelope hash from
+the decoded envelope and carries it in both `CekContextControlV1` and the
+nine-field CEK work witness while the selected program executes. A modified
+term root, version, node count, material-byte claim, trailing/noncanonical
+encoding, material preimage, unreachable entry, or substituted envelope hash
+cannot produce the same selected-context identity.
 
-Conclusion still supported: YES. The limiting constraint is the ratio between
-the maximum material graph and the L1 envelope, and both terms are unchanged
-(67,108,418 structural bytes against 16,384), as is every per-node
-publication measurement the deployed representation depends on.
+Defect found and closed during C28 finalization: the first 9-field witness
+layout ended with the possibly-empty `program_envelope_hash`, and
+`aiken/cbor.deserialise` (stdlib v3.1.0) rejects any stream whose final item
+is a zero-length bytestring at an exhausted cursor (byte-level probes:
+`89…40` fails, `89…4161` and mid-stream `40` pass). Every pre-selection CEK
+witness was therefore unverifiable on-chain. Both encoders now place the
+hash before the two integer limits so the witness always ends with an
+integer; the guarded Aiken selectors and the cross-language TS vectors pin
+the corrected order.
 
-Carried forward unverified: the one-shot comparison pair 45,154,331 memory /
-14,905,078,582 CPU and the per-step ceiling 3,398,228 / 1,209,745,039 as
-observed receipts (the two envelope constants themselves are re-verified;
-their derivation from a live emulator run is not). Re-running
-`demo/midgard-sdk/tests/tx-order-v1.test.ts` regenerates them.
+## Receipt status and invalidation
+
+Receipts recorded here are real executable measurements: signed emulator
+transactions through the production publication/submission code against the
+applied validators of both the protected and the current-tree disposable
+blueprint, plus the pinned `MIDGARD_V1_ENVELOPE_MEASUREMENTS` publication and
+evaluator receipt bounds. Two receipt classes remain unproducible in this
+environment and are still owed before CG5: live target-network
+fee/exunit/confirmation receipts for the material routes, and a complete
+end-to-end CEK finalization proof transaction (no harness yet drives a
+Cek-phase thread to a direct resolver; the finalization path is exercised at
+the construction/verification boundary instead).
+
+Invalidate this artifact on any change to the canonical envelope, sidecar,
+content graph, script language tag, credential, CEK work-witness tuple,
+target `maxTxSize`, datum/reference-input carriage, applied or generated
+`cek_v1`/`cek_program_material_v1` hash, reference-script role registration,
+or measured transaction profile. The C28 ABI change also invalidates
+C29/C30 resolver vectors and the C32 maximum-terminal agreement matrix until
+they consume the 25-field context and 9-field CEK witness identities.

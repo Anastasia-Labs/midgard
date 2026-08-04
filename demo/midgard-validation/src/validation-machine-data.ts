@@ -20,9 +20,15 @@ import type {
 } from "@al-ft/midgard-core";
 import {
   advanceMidgardRedeemerItemProofV1,
+  decodeMidgardCekProgramEnvelopeV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  hashMidgardCekProgramEnvelopeV1,
   MIDGARD_BOUNDED_ITEM_CHUNK_BYTES_V1,
   MIDGARD_CONSENSUS_LIMITS_V1,
   midgardRedeemerItemDescriptorV1,
+  verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core";
 import {
   asArray,
@@ -1059,6 +1065,176 @@ export type ValidationOneStepArgumentV1 = {
   readonly transitionCbor: Buffer;
   readonly auxiliaryCbor: Buffer;
   readonly evidenceCbor: Buffer;
+  readonly cekRouteMaterial?: CekRouteMaterialV1;
+};
+
+export type CekRouteMaterialV1 = {
+  readonly envelopeCbor: Buffer;
+  readonly programMaterialSidecarCbor: Buffer;
+  readonly programEnvelopeHash: Buffer;
+};
+
+const CEK_ROUTE_MATERIAL_KEYS_V1 = Object.freeze([
+  "envelopeCbor",
+  "programMaterialSidecarCbor",
+  "programEnvelopeHash",
+] as const);
+
+const exactCekRouteMaterialObjectV1 = (
+  value: unknown,
+): Record<(typeof CEK_ROUTE_MATERIAL_KEYS_V1)[number], unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("CEK route material must be an object");
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...CEK_ROUTE_MATERIAL_KEYS_V1].sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(
+      `CEK route material must contain exactly ${CEK_ROUTE_MATERIAL_KEYS_V1.join(", ")}`,
+    );
+  }
+  return value as Record<(typeof CEK_ROUTE_MATERIAL_KEYS_V1)[number], unknown>;
+};
+
+const exactBytesV1 = (value: unknown, label: string): Buffer => {
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`${label} must be bytes`);
+  }
+  return Buffer.from(value);
+};
+
+export const extractCekProgramEnvelopeFromFirstSourceChunkV1 = ({
+  chunk,
+  languageTag,
+}: {
+  readonly chunk: Uint8Array;
+  readonly languageTag: 3 | 128;
+}): Buffer => {
+  const source = Buffer.from(chunk);
+  const outer = readCborArrayHeader(source, 0, "CEK selected versioned script");
+  if (outer.length !== 2) {
+    throw new Error("CEK selected versioned script must contain two fields");
+  }
+  const language = readCborUnsigned(
+    source,
+    outer.nextOffset,
+    "CEK selected versioned script language",
+  );
+  const payload = readCborBytes(
+    source,
+    language.nextOffset,
+    "CEK selected versioned script payload",
+  );
+  if (
+    language.value !== BigInt(languageTag) ||
+    payload.nextOffset !== source.length
+  ) {
+    throw new Error(
+      "CEK selected versioned script language or payload length is invalid",
+    );
+  }
+  return Buffer.from(payload.value);
+};
+
+/**
+ * Validates and defensively copies the complete C28 route material. The
+ * envelope must be the exact selected script payload, both retained forms
+ * must be canonical, and the sidecar must be exactly the complete graph for
+ * that one envelope.
+ */
+export const validateCekRouteMaterialV1 = ({
+  value,
+  firstSourceChunk,
+  languageTag,
+}: {
+  readonly value: unknown;
+  readonly firstSourceChunk: Uint8Array;
+  readonly languageTag: 3 | 128;
+}): CekRouteMaterialV1 => {
+  const routeMaterial = exactCekRouteMaterialObjectV1(value);
+  const envelopeCbor = exactBytesV1(
+    routeMaterial.envelopeCbor,
+    "CEK route envelope CBOR",
+  );
+  const selectedEnvelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunkV1({
+    chunk: firstSourceChunk,
+    languageTag,
+  });
+  if (!envelopeCbor.equals(selectedEnvelopeCbor)) {
+    throw new Error(
+      "CEK route envelope must equal the selected first-source-chunk payload",
+    );
+  }
+  const envelope = decodeMidgardCekProgramEnvelopeV1(envelopeCbor);
+  if (!encodeMidgardCekProgramEnvelopeV1(envelope).equals(envelopeCbor)) {
+    throw new Error("CEK route envelope CBOR is not canonical");
+  }
+  const programMaterialSidecarCbor = exactBytesV1(
+    routeMaterial.programMaterialSidecarCbor,
+    "CEK route program-material sidecar CBOR",
+  );
+  const entries = decodeMidgardCekProgramMaterialSidecarV1(
+    programMaterialSidecarCbor,
+  );
+  if (
+    !encodeMidgardCekProgramMaterialSidecarV1(entries).equals(
+      programMaterialSidecarCbor,
+    )
+  ) {
+    throw new Error("CEK route program-material sidecar CBOR is not canonical");
+  }
+  verifyMidgardCekProgramMaterialBundleV1([envelope], entries);
+  const programEnvelopeHash = exactBytesV1(
+    routeMaterial.programEnvelopeHash,
+    "CEK route program-envelope hash",
+  );
+  const canonicalEnvelopeHash = Buffer.from(
+    hashMidgardCekProgramEnvelopeV1(envelope),
+  );
+  if (
+    programEnvelopeHash.length !== 32 ||
+    !programEnvelopeHash.equals(canonicalEnvelopeHash)
+  ) {
+    throw new Error("CEK route program-envelope hash is invalid");
+  }
+  return Object.freeze({
+    envelopeCbor: Buffer.from(envelopeCbor),
+    programMaterialSidecarCbor: Buffer.from(programMaterialSidecarCbor),
+    programEnvelopeHash: Buffer.from(programEnvelopeHash),
+  });
+};
+
+const buildCekRouteMaterialV1 = ({
+  trace,
+  witness,
+}: {
+  readonly trace: DeterministicValidationMachineTrace;
+  readonly witness: ValidationMachineWorkWitness;
+}): CekRouteMaterialV1 | undefined => {
+  if (
+    witness.phase !== "cek" ||
+    witness.auxiliary?.kind !== "nativeExecutionScan" ||
+    witness.auxiliary.languageTag === 0
+  ) {
+    return undefined;
+  }
+  const envelopeCbor = extractCekProgramEnvelopeFromFirstSourceChunkV1({
+    chunk: witness.auxiliary.firstChunkProof.chunk,
+    languageTag: witness.auxiliary.languageTag,
+  });
+  const envelope = decodeMidgardCekProgramEnvelopeV1(envelopeCbor);
+  return validateCekRouteMaterialV1({
+    value: {
+      envelopeCbor,
+      programMaterialSidecarCbor: trace.programMaterialSidecarCbor,
+      programEnvelopeHash: hashMidgardCekProgramEnvelopeV1(envelope),
+    },
+    firstSourceChunk: witness.auxiliary.firstChunkProof.chunk,
+    languageTag: witness.auxiliary.languageTag,
+  });
 };
 
 export const validationMachineStateDataV1 = (
@@ -1473,11 +1649,13 @@ export const buildValidationOneStepArgumentV1 = ({
       `validation transition ${stateIndex.toString()} exceeds the strict L1 preimage envelope`,
     );
   }
+  const cekRouteMaterial = buildCekRouteMaterialV1({ trace, witness });
   return {
     resolverIndex: resolverPhaseIndex(pre.phase),
     semanticResolverIndex: validationSemanticResolverIndexV1(witness),
     transitionCbor,
     auxiliaryCbor,
     evidenceCbor,
+    ...(cekRouteMaterial === undefined ? {} : { cekRouteMaterial }),
   };
 };

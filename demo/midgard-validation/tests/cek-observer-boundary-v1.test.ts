@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   encodeMidgardCekContextControlV1,
+  encodeMidgardCekValidationWitnessV1,
   finalizeMidgardCekObserverItemsV1,
   initialMidgardCekContextControlV1,
   prependMidgardCekObserverItemV1,
@@ -34,6 +35,7 @@ const initialControl = (languageTag: 3 | 128) =>
   initialMidgardCekContextControlV1({
     languageTag,
     programTermRoot: Buffer.alloc(32, 0xaa),
+    programEnvelopeHash: Buffer.alloc(32, 0xdd),
     purposeKind: 0,
     purposeIndex: 0n,
     scriptHash: Buffer.alloc(28, 0xbb),
@@ -91,6 +93,50 @@ const exactObserverBoundary = () => {
 };
 
 describe("bounded CEK observer context", () => {
+  it("encodes the required canonical envelope identity in the exact V1 tuple positions", () => {
+    const control = initialControl(3);
+    const contextCbor = encodeMidgardCekContextControlV1(control);
+    const activeWitness = encodeMidgardCekValidationWitnessV1({
+      nativeControlCbor: Buffer.from([0x80]),
+      contextControl: control,
+      executionCursor: 7,
+      completedCpu: 11n,
+      completedMemory: 13n,
+      activeStateHash: Buffer.alloc(32, 0xee),
+      executionCpuLimit: 17n,
+      executionMemoryLimit: 19n,
+      programEnvelopeHash: control.programEnvelopeHash,
+    });
+    const inactiveWitness = encodeMidgardCekValidationWitnessV1({
+      nativeControlCbor: Buffer.from([0x80]),
+      contextControl: null,
+      executionCursor: 0,
+      completedCpu: 0n,
+      completedMemory: 0n,
+      activeStateHash: null,
+      executionCpuLimit: 0n,
+      executionMemoryLimit: 0n,
+      programEnvelopeHash: null,
+    });
+
+    expect(contextCbor.subarray(0, 2)).toEqual(Buffer.from([0x98, 0x19]));
+    expect(contextCbor.subarray(38, 72)).toEqual(
+      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    );
+    expect(activeWitness[0]).toBe(0x89);
+    // The possibly-empty program envelope hash sits before the two integer
+    // limits so the witness never ends with a zero-length bytestring, which
+    // the Aiken `cbor.deserialise` consumer rejects at an exhausted cursor.
+    expect(activeWitness.subarray(-36, -2)).toEqual(
+      Buffer.concat([Buffer.from([0x58, 0x20]), Buffer.alloc(32, 0xdd)]),
+    );
+    expect(activeWitness.subarray(-2)).toEqual(Buffer.from([0x11, 0x13]));
+    expect(inactiveWitness[0]).toBe(0x89);
+    expect(inactiveWitness.subarray(-3)).toEqual(
+      Buffer.from([0x40, 0x00, 0x00]),
+    );
+  });
+
   it("folds the exact accepted 224-observer Cardano fixture for both encodings", async () => {
     const boundary = await exactObserverBoundary();
     const hashes = boundary.hashes;
@@ -151,7 +197,7 @@ describe("bounded CEK observer context", () => {
           ...control,
           stage: 5,
         }).subarray(0, 2),
-      ).toEqual(Buffer.from([0x98, 0x18]));
+      ).toEqual(Buffer.from([0x98, 0x19]));
 
       if (languageTag === 3 && process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
         console.info(

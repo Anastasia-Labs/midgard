@@ -1,8 +1,13 @@
 import {
+  decodeMidgardCekProgramEnvelopeV1,
   decodeMidgardCekProgramMaterialEntryV1,
+  decodeMidgardCekProgramMaterialSidecarV1,
   encodeMidgardCekProgramMaterialEntryV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  hashMidgardCekProgramEnvelopeV1,
   type MidgardCekProgramMaterialEntryV1,
   midgardCekProgramMaterialKindTagV1,
+  verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core/cek-proof";
 import {
   computeMidgardNativeTxIdV1,
@@ -10,7 +15,10 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   deriveMidgardTxFieldReceiptAssetNameV1,
   deriveMidgardV1TxFieldChunks,
@@ -19,8 +27,10 @@ import {
 import {
   type Assets,
   type BuildTxWithRedeemer,
+  CML,
   Data,
   LucidEvolution,
+  type ProtocolParameters,
   toUnit,
   TxSignBuilder,
   UTxO,
@@ -160,6 +170,62 @@ export const decodeCekProgramMaterialDatumV1Cbor = (
     CekProgramMaterialDatumV1Schema,
     "CekProgramMaterialDatumV1",
   );
+
+export const CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION = 1n;
+
+/** Exact datum ABI for one immutable, reference-only complete CEK graph. */
+export const CekSinglePublicationDatumV1Schema = Data.Object({
+  version: Data.Integer(),
+  program_envelope_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
+  sidecar_cbor: Data.Bytes(),
+});
+export type CekSinglePublicationDatumV1 = Data.Static<
+  typeof CekSinglePublicationDatumV1Schema
+>;
+export const CekSinglePublicationDatumV1 =
+  CekSinglePublicationDatumV1Schema as unknown as CekSinglePublicationDatumV1;
+
+const assertCekSinglePublicationDatumV1 = (
+  datum: CekSinglePublicationDatumV1,
+): void => {
+  if (datum.version !== CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION) {
+    throw new Error("CEK single-publication datum must use version 1");
+  }
+};
+
+export const encodeCekSinglePublicationDatumV1Cbor = (
+  datum: CekSinglePublicationDatumV1,
+): Buffer => {
+  assertCekSinglePublicationDatumV1(datum);
+  const encoded = encodeCanonicalPlutusDataV1(
+    datum,
+    CekSinglePublicationDatumV1Schema,
+  );
+  if (
+    encoded.length >
+    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes
+  ) {
+    throw new Error(
+      "CEK single-publication datum exceeds the reliable complete-item datum envelope",
+    );
+  }
+  return encoded;
+};
+
+export const decodeCekSinglePublicationDatumV1Cbor = (
+  bytes: Uint8Array,
+): CekSinglePublicationDatumV1 => {
+  const datum = decodeCanonicalPlutusDataV1(
+    bytes,
+    CekSinglePublicationDatumV1Schema,
+    "CekSinglePublicationDatumV1",
+  ) as CekSinglePublicationDatumV1;
+  assertCekSinglePublicationDatumV1(datum);
+  // Reuse the encoder so decoded data is also bounded by the pinned
+  // single-publication datum envelope.
+  encodeCekSinglePublicationDatumV1Cbor(datum);
+  return Object.freeze({ ...datum });
+};
 
 export const TxOrderSpendRedeemerV1Schema = Data.Object({
   input_index: Data.Integer(),
@@ -374,6 +440,151 @@ export type CekProgramMaterialPublicationV1 = {
   readonly entry: MidgardCekProgramMaterialEntryV1;
   readonly datum: CekProgramMaterialDatumV1;
   readonly datumCbor: string;
+};
+
+export type CekSinglePublicationV1 = {
+  readonly programEnvelopeHash: string;
+  readonly datum: CekSinglePublicationDatumV1;
+  readonly datumCbor: string;
+};
+
+/**
+ * Derives the sole immutable datum for a complete CEK graph. Both inputs are
+ * copied before validation so later caller mutation cannot alter publication
+ * identity or bytes.
+ */
+export const deriveCekSinglePublicationV1 = ({
+  envelopeCbor,
+  sidecarCbor,
+}: {
+  readonly envelopeCbor: Uint8Array;
+  readonly sidecarCbor: Uint8Array;
+}): CekSinglePublicationV1 => {
+  const exactEnvelopeCbor = Buffer.from(envelopeCbor);
+  const exactSidecarCbor = Buffer.from(sidecarCbor);
+  const envelope = decodeMidgardCekProgramEnvelopeV1(exactEnvelopeCbor);
+  const material = decodeMidgardCekProgramMaterialSidecarV1(exactSidecarCbor);
+  if (
+    !encodeMidgardCekProgramMaterialSidecarV1(material).equals(exactSidecarCbor)
+  ) {
+    throw new Error("CEK single-publication sidecar CBOR is not canonical");
+  }
+  verifyMidgardCekProgramMaterialBundleV1([envelope], material);
+  const programEnvelopeHash = Buffer.from(
+    hashMidgardCekProgramEnvelopeV1(envelope),
+  ).toString("hex");
+  const datum: CekSinglePublicationDatumV1 = Object.freeze({
+    version: CEK_SINGLE_PUBLICATION_DATUM_V1_VERSION,
+    program_envelope_hash: programEnvelopeHash,
+    sidecar_cbor: exactSidecarCbor.toString("hex"),
+  });
+  return Object.freeze({
+    programEnvelopeHash,
+    datum,
+    datumCbor: encodeCekSinglePublicationDatumV1Cbor(datum).toString("hex"),
+  });
+};
+
+export type PublishCekSinglePublicationV1Config = {
+  readonly envelopeCbor: Uint8Array;
+  readonly sidecarCbor: Uint8Array;
+  /** May increase funding, but cannot underfund the exact minimum Ada. */
+  readonly lovelace?: bigint;
+};
+
+const MIN_ADA_STABILIZATION_LIMIT = 8;
+
+const resolveProtocolParameters = async (
+  lucid: LucidEvolution,
+): Promise<ProtocolParameters> => {
+  const config = lucid.config();
+  if (config.protocolParameters !== undefined) {
+    return config.protocolParameters;
+  }
+  if (config.provider === undefined) {
+    throw new Error("Lucid provider is not configured.");
+  }
+  return await config.provider.getProtocolParameters();
+};
+
+/**
+ * Calculates the exact stabilized minimum Ada for a CEK material UTxO with
+ * its actual script address and inline datum.
+ */
+export const minimumLovelaceForCekProgramMaterialPublicationV1 = ({
+  contracts,
+  publication,
+  coinsPerUtxoByte,
+}: {
+  readonly contracts: Pick<MidgardValidators, "cekProgramMaterial">;
+  readonly publication: CekProgramMaterialPublicationV1;
+  readonly coinsPerUtxoByte: bigint;
+}): bigint => {
+  const address = CML.Address.from_bech32(
+    contracts.cekProgramMaterial.spendingScriptAddress,
+  );
+  const datum = CML.DatumOption.new_datum(
+    CML.PlutusData.from_cbor_hex(publication.datumCbor),
+  );
+  let lovelace = 0n;
+  for (let attempt = 0; attempt < MIN_ADA_STABILIZATION_LIMIT; attempt += 1) {
+    const required = CML.min_ada_required(
+      CML.TransactionOutput.new(
+        address,
+        CML.Value.from_coin(lovelace),
+        datum,
+        undefined,
+      ),
+      coinsPerUtxoByte,
+    );
+    if (required <= lovelace) {
+      return lovelace;
+    }
+    lovelace = required;
+  }
+  throw new Error(
+    "Failed to stabilize CEK program-material publication min-Ada calculation.",
+  );
+};
+
+/**
+ * Calculates the exact stabilized minimum Ada for an immutable complete CEK
+ * material datum at its actual reference-only script address.
+ */
+export const minimumLovelaceForCekSinglePublicationV1 = ({
+  contracts,
+  publication,
+  coinsPerUtxoByte,
+}: {
+  readonly contracts: Pick<MidgardValidators, "cekProgramMaterial">;
+  readonly publication: CekSinglePublicationV1;
+  readonly coinsPerUtxoByte: bigint;
+}): bigint => {
+  const address = CML.Address.from_bech32(
+    contracts.cekProgramMaterial.spendingScriptAddress,
+  );
+  const datum = CML.DatumOption.new_datum(
+    CML.PlutusData.from_cbor_hex(publication.datumCbor),
+  );
+  let lovelace = 0n;
+  for (let attempt = 0; attempt < MIN_ADA_STABILIZATION_LIMIT; attempt += 1) {
+    const required = CML.min_ada_required(
+      CML.TransactionOutput.new(
+        address,
+        CML.Value.from_coin(lovelace),
+        datum,
+        undefined,
+      ),
+      coinsPerUtxoByte,
+    );
+    if (required <= lovelace) {
+      return lovelace;
+    }
+    lovelace = required;
+  }
+  throw new Error(
+    "Failed to stabilize CEK single-publication min-Ada calculation.",
+  );
 };
 
 export const deriveCekProgramMaterialPublicationsV1 = (
@@ -752,13 +963,25 @@ export const buildUnsignedCekProgramMaterialV1Program = (
       const publications = deriveCekProgramMaterialPublicationsV1(
         config.entries,
       );
+      const protocolParameters = await resolveProtocolParameters(lucid);
       let tx = lucid.newTx();
       for (const publication of publications) {
+        const minimumLovelace =
+          minimumLovelaceForCekProgramMaterialPublicationV1({
+            contracts,
+            publication,
+            coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
+          });
         tx = tx.pay.ToAddressWithData(
           contracts.cekProgramMaterial.spendingScriptAddress,
           { kind: "inline", value: publication.datumCbor },
           {
-            lovelace: config.lovelacePerEntry ?? DEFAULT_TX_ORDER_LOVELACE,
+            lovelace:
+              config.lovelacePerEntry === undefined
+                ? minimumLovelace
+                : config.lovelacePerEntry > minimumLovelace
+                  ? config.lovelacePerEntry
+                  : minimumLovelace,
           },
         );
       }
@@ -767,6 +990,48 @@ export const buildUnsignedCekProgramMaterialV1Program = (
     catch: (cause) =>
       new UserEventBuildError({
         message: "Failed to publish V1 CEK program material",
+        cause,
+      }),
+  });
+
+/**
+ * Publishes exactly one complete CEK graph as an immutable reference-only
+ * inline datum. It has no spending path and therefore creates no mutable
+ * state transition.
+ */
+export const buildUnsignedCekSinglePublicationV1Program = (
+  lucid: LucidEvolution,
+  contracts: MidgardValidators,
+  config: PublishCekSinglePublicationV1Config,
+): Effect.Effect<TxSignBuilder, UserEventBuildError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const publication = deriveCekSinglePublicationV1(config);
+      const protocolParameters = await resolveProtocolParameters(lucid);
+      const minimumLovelace = minimumLovelaceForCekSinglePublicationV1({
+        contracts,
+        publication,
+        coinsPerUtxoByte: protocolParameters.coinsPerUtxoByte,
+      });
+      return lucid
+        .newTx()
+        .pay.ToAddressWithData(
+          contracts.cekProgramMaterial.spendingScriptAddress,
+          { kind: "inline", value: publication.datumCbor },
+          {
+            lovelace:
+              config.lovelace === undefined
+                ? minimumLovelace
+                : config.lovelace > minimumLovelace
+                  ? config.lovelace
+                  : minimumLovelace,
+          },
+        )
+        .complete({ localUPLCEval: true });
+    },
+    catch: (cause) =>
+      new UserEventBuildError({
+        message: "Failed to publish V1 complete CEK program material",
         cause,
       }),
   });
@@ -1170,4 +1435,13 @@ export const unsignedCekProgramMaterialV1 = (
 ): Promise<TxSignBuilder> =>
   makeReturn(
     buildUnsignedCekProgramMaterialV1Program(lucid, contracts, config),
+  ).unsafeRun();
+
+export const unsignedCekSinglePublicationV1 = (
+  lucid: LucidEvolution,
+  contracts: MidgardValidators,
+  config: PublishCekSinglePublicationV1Config,
+): Promise<TxSignBuilder> =>
+  makeReturn(
+    buildUnsignedCekSinglePublicationV1Program(lucid, contracts, config),
   ).unsafeRun();

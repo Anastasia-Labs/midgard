@@ -5,9 +5,15 @@ import {
   EMPTY_NULL_ROOT,
   encodeCbor,
   encodeMidgardCekBlobChunkV1,
+  encodeMidgardCekProgramEnvelopeV1,
+  encodeMidgardCekProgramMaterialDaValueV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekTermNodeV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardTxOutput,
+  hashMidgardCekProgramEnvelopeV1,
   hashMidgardCekProgramMaterialPreimageV1,
+  hashMidgardCekTermNodeV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -15,7 +21,12 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core";
-import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import * as SDK from "../src/index.js";
@@ -65,6 +76,78 @@ const transactionCbor = (): Buffer =>
       },
     }),
   );
+
+const cekProgramMaterialAddress = CML.Address.from_raw_bytes(
+  Buffer.concat([Buffer.from([0x70]), Buffer.alloc(28, 0x42)]),
+).to_bech32();
+
+const cekProgramMaterialContracts = {
+  cekProgramMaterial: {
+    spendingScriptAddress: cekProgramMaterialAddress,
+  },
+} as Pick<SDK.MidgardValidators, "cekProgramMaterial">;
+
+const cekProgramMaterialPublication = (bytes: number) => {
+  const preimage = encodeMidgardCekBlobChunkV1(Buffer.alloc(bytes, 0x5a));
+  return SDK.deriveCekProgramMaterialPublicationsV1([
+    {
+      kind: "blobChunk",
+      root: hashMidgardCekProgramMaterialPreimageV1("blobChunk", preimage),
+      preimage,
+    },
+  ])[0]!;
+};
+
+const completeCekPublicationInput = () => {
+  const term = { kind: "error" } as const;
+  const preimage = encodeMidgardCekTermNodeV1(term);
+  const root = hashMidgardCekTermNodeV1(term);
+  const entry = { kind: "term" as const, root, preimage };
+  const envelopeCbor = encodeMidgardCekProgramEnvelopeV1({
+    uplcVersion: [1n, 1n, 0n],
+    termRoot: root,
+    nodeCount: 1n,
+    materialByteLength: BigInt(preimage.length),
+  });
+  return {
+    envelopeCbor,
+    entry,
+    sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([entry]),
+  };
+};
+
+const materialPublicationLucid = ({
+  coinsPerUtxoByte,
+  fundedLovelace,
+  outputs,
+}: {
+  readonly coinsPerUtxoByte: bigint;
+  readonly fundedLovelace: bigint[];
+  readonly outputs?: {
+    address: string;
+    datum: unknown;
+    lovelace: bigint;
+  }[];
+}): LucidEvolution => {
+  const tx = {
+    pay: {
+      ToAddressWithData: (
+        address: string,
+        datum: unknown,
+        assets: { readonly lovelace: bigint },
+      ) => {
+        fundedLovelace.push(assets.lovelace);
+        outputs?.push({ address, datum, lovelace: assets.lovelace });
+        return tx;
+      },
+    },
+    complete: async () => ({}),
+  };
+  return {
+    config: () => ({ protocolParameters: { coinsPerUtxoByte } }),
+    newTx: () => tx,
+  } as unknown as LucidEvolution;
+};
 
 describe("V1 transaction-order fragments", () => {
   it("pins the exact datum, spend, receipt-mint, and forced-key V1 vectors", () => {
@@ -411,6 +494,270 @@ describe("V1 transaction-order fragments", () => {
         { kind: "unknown", root, preimage } as never,
       ]),
     ).toThrow();
+  });
+
+  it("derives the exact stabilized min-Ada vector for CEK material at its actual script address", () => {
+    const publication = cekProgramMaterialPublication(4_095);
+    const minimumLovelace =
+      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+        contracts: cekProgramMaterialContracts,
+        publication,
+        coinsPerUtxoByte: 4_310n,
+      });
+
+    expect(Buffer.byteLength(publication.datumCbor, "hex")).toBe(4_268);
+    expect(minimumLovelace).toBe(19_287_250n);
+  });
+
+  it("raises adjacent underfunded CEK material publication funding to exact min-Ada", async () => {
+    const publication = cekProgramMaterialPublication(64);
+    const minimumLovelace =
+      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+        contracts: cekProgramMaterialContracts,
+        publication,
+        coinsPerUtxoByte: 4_310n,
+      });
+    expect(Buffer.byteLength(publication.datumCbor, "hex")).toBe(110);
+    expect(minimumLovelace).toBe(1_361_960n);
+    const fundedLovelace: bigint[] = [];
+    const lucid = materialPublicationLucid({
+      coinsPerUtxoByte: 4_310n,
+      fundedLovelace,
+    });
+
+    await SDK.unsignedCekProgramMaterialV1(
+      lucid,
+      cekProgramMaterialContracts as SDK.MidgardValidators,
+      {
+        entries: [publication.entry],
+        lovelacePerEntry: minimumLovelace - 1n,
+      },
+    );
+    await SDK.unsignedCekProgramMaterialV1(
+      lucid,
+      cekProgramMaterialContracts as SDK.MidgardValidators,
+      {
+        entries: [publication.entry],
+        lovelacePerEntry: minimumLovelace + 1n,
+      },
+    );
+
+    expect(fundedLovelace).toEqual([minimumLovelace, minimumLovelace + 1n]);
+  });
+
+  it("raises the CEK material min-Ada vector when a canonical datum grows", () => {
+    const small = cekProgramMaterialPublication(0);
+    const maximum = cekProgramMaterialPublication(4_095);
+    const minimum = (publication: typeof small) =>
+      SDK.minimumLovelaceForCekProgramMaterialPublicationV1({
+        contracts: cekProgramMaterialContracts,
+        publication,
+        coinsPerUtxoByte: 4_310n,
+      });
+
+    expect(Buffer.byteLength(small.datumCbor, "hex")).toBe(41);
+    expect(Buffer.byteLength(maximum.datumCbor, "hex")).toBe(4_268);
+    expect(minimum(small)).toBe(1_064_570n);
+    expect(minimum(maximum)).toBe(19_287_250n);
+  });
+
+  it("pins the immutable complete CEK publication datum ABI, hash, and caller copies", () => {
+    const { envelopeCbor, entry, sidecarCbor } = completeCekPublicationInput();
+    const publication = SDK.deriveCekSinglePublicationV1({
+      envelopeCbor,
+      sidecarCbor,
+    });
+    const expectedHash = Buffer.from(
+      hashMidgardCekProgramEnvelopeV1({
+        uplcVersion: [1n, 1n, 0n],
+        termRoot: entry.root,
+        nodeCount: 1n,
+        materialByteLength: BigInt(entry.preimage.length),
+      }),
+    ).toString("hex");
+
+    envelopeCbor[0] = envelopeCbor[0]! ^ 0x01;
+    sidecarCbor[0] = sidecarCbor[0]! ^ 0x01;
+
+    expect(publication.programEnvelopeHash).toBe(expectedHash);
+    expect(publication.datum).toEqual({
+      version: 1n,
+      program_envelope_hash: expectedHash,
+      sidecar_cbor: encodeMidgardCekProgramMaterialSidecarV1([entry]).toString(
+        "hex",
+      ),
+    });
+    expect(publication.datumCbor).toBe(
+      "d8799f015820598a113063682ad2a899e44099a9e1e1b4440603eee17f2a860bab65c10cb0a9582d8201818258204c623a62d6dedf81bb74b1cf56f0b3e8ec85ed24ffb0b821b2d796c4f85a5d3d46830100428106ff",
+    );
+    expect(
+      SDK.decodeCekSinglePublicationDatumV1Cbor(
+        Buffer.from(publication.datumCbor, "hex"),
+      ),
+    ).toEqual(publication.datum);
+    expect(
+      SDK.encodeCekSinglePublicationDatumV1Cbor(publication.datum).toString(
+        "hex",
+      ),
+    ).toBe(publication.datumCbor);
+  });
+
+  it("rejects noncanonical, malformed, and oversized complete-publication datum bytes", () => {
+    const { envelopeCbor, sidecarCbor } = completeCekPublicationInput();
+    const publication = SDK.deriveCekSinglePublicationV1({
+      envelopeCbor,
+      sidecarCbor,
+    });
+    const datumCbor = Buffer.from(publication.datumCbor, "hex");
+
+    expect(() =>
+      SDK.decodeCekSinglePublicationDatumV1Cbor(
+        Buffer.concat([datumCbor, Buffer.from([0])]),
+      ),
+    ).toThrow(/canonical encoding/u);
+    expect(() =>
+      SDK.encodeCekSinglePublicationDatumV1Cbor({
+        ...publication.datum,
+        version: 2n,
+      }),
+    ).toThrow(/version 1/u);
+    expect(() =>
+      SDK.encodeCekSinglePublicationDatumV1Cbor({
+        ...publication.datum,
+        program_envelope_hash: "00".repeat(31),
+      }),
+    ).toThrow();
+    expect(() =>
+      SDK.encodeCekSinglePublicationDatumV1Cbor({
+        ...publication.datum,
+        sidecar_cbor: "00".repeat(
+          MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableCompleteItemPublicationDatumBytes,
+        ),
+      }),
+    ).toThrow(/datum envelope/u);
+  });
+
+  it("rejects incomplete, extra, substituted, unordered, count, byte-length, and trailing complete graph inputs", () => {
+    const { envelopeCbor, entry, sidecarCbor } = completeCekPublicationInput();
+    const extraPreimage = encodeMidgardCekBlobChunkV1(Buffer.from([0x99]));
+    const extra = {
+      kind: "blobChunk" as const,
+      root: hashMidgardCekProgramMaterialPreimageV1("blobChunk", extraPreimage),
+      preimage: extraPreimage,
+    };
+    const reordered = [entry, extra].sort((left, right) =>
+      Buffer.compare(Buffer.from(right.root), Buffer.from(left.root)),
+    );
+    const unorderedSidecar = encodeCbor([
+      1n,
+      reordered.map((item) => [
+        Buffer.from(item.root),
+        encodeMidgardCekProgramMaterialDaValueV1(item),
+      ]),
+    ]);
+    const decodedEnvelope = {
+      uplcVersion: [1n, 1n, 0n] as const,
+      termRoot: entry.root,
+      nodeCount: 1n,
+      materialByteLength: BigInt(entry.preimage.length),
+    };
+
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor,
+        sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([]),
+      }),
+    ).toThrow(/missing/i);
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor,
+        sidecarCbor: encodeMidgardCekProgramMaterialSidecarV1([entry, extra]),
+      }),
+    ).toThrow(/unreachable/i);
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor,
+        sidecarCbor: Buffer.concat([sidecarCbor, Buffer.from([0])]),
+      }),
+    ).toThrow(/trailing/i);
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor,
+        sidecarCbor: unorderedSidecar,
+      }),
+    ).toThrow(/sorted|canonical/i);
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor: encodeMidgardCekProgramEnvelopeV1({
+          ...decodedEnvelope,
+          nodeCount: 2n,
+        }),
+        sidecarCbor,
+      }),
+    ).toThrow(/material nodes.*declares 2/i);
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor: encodeMidgardCekProgramEnvelopeV1({
+          ...decodedEnvelope,
+          materialByteLength: decodedEnvelope.materialByteLength + 1n,
+        }),
+        sidecarCbor,
+      }),
+    ).toThrow(/material bytes.*declares/i);
+    const substituted = Buffer.from(sidecarCbor);
+    substituted[substituted.length - 1] = substituted.at(-1)! ^ 0x01;
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor,
+        sidecarCbor: substituted,
+      }),
+    ).toThrow();
+    expect(() =>
+      SDK.deriveCekSinglePublicationV1({
+        envelopeCbor: Buffer.concat([envelopeCbor, Buffer.from([0])]),
+        sidecarCbor,
+      }),
+    ).toThrow(/trailing/i);
+  });
+
+  it("publishes one immutable complete graph output at exact min-Ada", async () => {
+    const { envelopeCbor, sidecarCbor } = completeCekPublicationInput();
+    const publication = SDK.deriveCekSinglePublicationV1({
+      envelopeCbor,
+      sidecarCbor,
+    });
+    const minimumLovelace = SDK.minimumLovelaceForCekSinglePublicationV1({
+      contracts: cekProgramMaterialContracts,
+      publication,
+      coinsPerUtxoByte: 4_310n,
+    });
+    expect(minimumLovelace).toBe(1_258_520n);
+    const fundedLovelace: bigint[] = [];
+    const outputs: { address: string; datum: unknown; lovelace: bigint }[] = [];
+    const lucid = materialPublicationLucid({
+      coinsPerUtxoByte: 4_310n,
+      fundedLovelace,
+      outputs,
+    });
+
+    await SDK.unsignedCekSinglePublicationV1(
+      lucid,
+      cekProgramMaterialContracts as SDK.MidgardValidators,
+      {
+        envelopeCbor,
+        sidecarCbor,
+        lovelace: minimumLovelace - 1n,
+      },
+    );
+
+    expect(fundedLovelace).toEqual([minimumLovelace]);
+    expect(outputs).toEqual([
+      {
+        address: cekProgramMaterialAddress,
+        datum: { kind: "inline", value: publication.datumCbor },
+        lovelace: minimumLovelace,
+      },
+    ]);
   });
 
   it("derives an exact receipt burn set", () => {

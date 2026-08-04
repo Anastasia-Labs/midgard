@@ -5,6 +5,7 @@ import {
   buildMidgardBoundedItemV1,
   canOpenMidgardValidationDisputeBeforeMaturity,
   computeHash32,
+  decodeMidgardCekProgramMaterialSidecarV1,
   decodeMidgardNativeTxProofFieldLengthsV1,
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeSingleCbor,
@@ -34,6 +35,8 @@ import {
   BoundedCollectionItemProofV1,
   type BoundedCollectionItemProofV1 as BoundedCollectionItemProofV1Data,
   buildUnsignedValidationProofItemPublicationV1Program,
+  deriveCekProgramMaterialPublicationsV1,
+  deriveCekSinglePublicationV1,
   deriveValidationProofItemPublicationV1,
   deriveValidationTraceDeploymentIdV1,
   FraudProofComputationThreadRedeemer,
@@ -62,6 +65,8 @@ import {
   ValidationAwardSpendRedeemerV1,
   ValidationBoundarySpendRedeemerV1,
   ValidationCanonicalDecodePrepareSelectedSpendRedeemerV1Schema,
+  type ValidationCekMaterialRouteV1,
+  ValidationCekSpendRedeemerV1Schema,
   type ValidationClaimWitnessV1,
   ValidationDirectResolveSpendRedeemerV1Schema,
   validationDisputeCoreFromData,
@@ -89,6 +94,12 @@ import {
   WinningValidationResolutionDatumV1,
   type WinningValidationResolutionDatumV1 as WinningValidationResolutionDatumV1Data,
 } from "@al-ft/midgard-sdk";
+import {
+  type CekProgramMaterialNecessityReceiptSetV1,
+  type CekRouteMaterialV1,
+  parseCekProgramMaterialNecessityReceiptSetV1,
+  validateCekRouteMaterialV1,
+} from "@al-ft/midgard-validation";
 import {
   type BuildTxWithRedeemer,
   CML,
@@ -464,6 +475,105 @@ const requireValidationItemSemanticReferenceScriptUtxo = async ({
   return utxo;
 };
 
+/**
+ * Auth-role name minted onto the published CEK direct-resolver
+ * reference-script UTxO (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in
+ * `@al-ft/midgard-sdk`).
+ */
+export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE =
+  "V1 validation-trace CEK direct resolver";
+
+/**
+ * Deployment-info entry that publishes the applied `cek_v1` direct resolver
+ * (direct resolver 0) as an authenticated L1 reference script. Every CEK
+ * finalization transaction must consume the resolver by reference: the
+ * applied resolver body is 156,006 bytes, so embedding it in the proof
+ * transaction can never fit the 16,384-byte L1 envelope
+ * (`MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`).
+ */
+export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY =
+  "validationTraceDisputeCekDirectResolver";
+
+export const requireValidationCekDirectResolverReferenceScriptOutRef = ({
+  deploymentInfo,
+  expectedScriptHash,
+}: {
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+}): { readonly txHash: string; readonly outputIndex: number } => {
+  const entry =
+    deploymentInfo[
+      VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY
+    ];
+  if (entry === undefined) {
+    throw new Error(
+      `Deployment info is missing "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}"; publish the authenticated V1 CEK direct-resolver reference script and regenerate deployment info before submitting a CEK direct resolution`,
+    );
+  }
+  if (entry.refScriptUTxO == null) {
+    throw new Error(
+      `Deployment info entry "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" is missing refScriptUTxO; publish the authenticated V1 CEK direct-resolver reference script and regenerate deployment info before submitting a CEK direct resolution`,
+    );
+  }
+  if (entry.scriptHash !== expectedScriptHash) {
+    throw new Error(
+      `Deployment entry "${VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY}" script hash mismatch: deployment=${entry.scriptHash}, derived=${expectedScriptHash}`,
+    );
+  }
+  return entry.refScriptUTxO;
+};
+
+export const requireValidationCekDirectResolverReferenceScriptUtxo = async ({
+  lucid,
+  deploymentInfo,
+  expectedScriptHash,
+  authPolicyId,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly deploymentInfo: ContractDeploymentInfo;
+  readonly expectedScriptHash: string;
+  readonly authPolicyId: string;
+}): Promise<UTxO> => {
+  const outRef = requireValidationCekDirectResolverReferenceScriptOutRef({
+    deploymentInfo,
+    expectedScriptHash,
+  });
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef,
+    label: "CEK direct-resolver reference-script UTxO",
+  });
+  if (utxo.scriptRef == null) {
+    throw new Error(
+      `CEK direct-resolver reference UTxO ${outRefLabel(utxo)} does not carry a reference script`,
+    );
+  }
+  const actualScriptHash = validatorToScriptHash(utxo.scriptRef);
+  if (actualScriptHash !== expectedScriptHash) {
+    throw new Error(
+      `CEK direct-resolver reference script hash mismatch: actual=${actualScriptHash}, expected=${expectedScriptHash}`,
+    );
+  }
+  const expectedRoleUnit = referenceScriptAuthUnit(
+    authPolicyId,
+    VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE,
+  );
+  const authPolicyAssets = Object.entries(utxo.assets).filter(
+    ([unit, amount]) =>
+      unit.slice(0, authPolicyId.length) === authPolicyId && amount !== 0n,
+  );
+  if (
+    authPolicyAssets.length !== 1 ||
+    authPolicyAssets[0]![0] !== expectedRoleUnit ||
+    authPolicyAssets[0]![1] !== 1n
+  ) {
+    throw new Error(
+      `CEK direct-resolver reference UTxO ${outRefLabel(utxo)} must carry exactly one ${expectedRoleUnit} auth-role token`,
+    );
+  }
+  return utxo;
+};
+
 const VALIDATION_ONE_STEP_EVIDENCE_DOMAIN_V1 = Buffer.from(
   "MidgardValidationOneStepEvidenceV1",
   "ascii",
@@ -487,6 +597,8 @@ type RuntimeSchemaEncoder = (
 const encodeWithRuntimeSchema = Data.to as unknown as RuntimeSchemaEncoder;
 const validationDirectResolveSpendRedeemerV1RuntimeSchema =
   ValidationDirectResolveSpendRedeemerV1Schema as unknown as PlutusDataSchema;
+const validationCekSpendRedeemerV1RuntimeSchema =
+  ValidationCekSpendRedeemerV1Schema as unknown as PlutusDataSchema;
 const validationPrepareSelectedSpendRedeemerV1RuntimeSchema =
   ValidationPrepareSelectedSpendRedeemerV1Schema as unknown as PlutusDataSchema;
 const validationCanonicalDecodePrepareSelectedSpendRedeemerV1RuntimeSchema =
@@ -507,11 +619,32 @@ export const encodeValidationDirectResolveSpendRedeemerV1 = (
     validationDirectResolveSpendRedeemerV1RuntimeSchema,
   );
 
+type ValidationCekResolveActionV1Input =
+  ValidationDirectResolveActionV1Input & {
+    readonly material_route: ValidationCekMaterialRouteV1;
+  };
+
+export const encodeValidationCekSpendRedeemerV1 = (
+  action: ValidationCekResolveActionV1Input,
+): ReturnType<typeof Data.to> =>
+  encodeWithRuntimeSchema(
+    { Continue: [action] },
+    validationCekSpendRedeemerV1RuntimeSchema,
+  );
+
 export type ValidationOneStepSubmissionArgumentV1 = {
   readonly resolverIndex: number;
   readonly semanticResolverIndex: number | null;
   readonly transitionCbor: Uint8Array;
   readonly auxiliaryCbor: Uint8Array;
+  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  /** Presence selects the receipt-justified incremental route. */
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
+};
+
+export type ValidatedCekSubmissionEvidenceV1 = {
+  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
 };
 
 const exactPlutusDataFromCbor = (
@@ -533,6 +666,75 @@ const exactPlutusDataFromCbor = (
     throw new Error(`${label} is not exact canonical V1 Plutus Data`);
   }
   return decoded;
+};
+
+/**
+ * Enforces the selection-only C28 evidence ABI before any transaction builder
+ * uses it. A Plutus/Midgard CEK selection must carry complete route material;
+ * later CEK steps, ValueAndMint, and every staged phase must not carry it.
+ */
+export const validateCekSubmissionEvidenceV1 = (
+  argument: ValidationOneStepSubmissionArgumentV1,
+): ValidatedCekSubmissionEvidenceV1 => {
+  exactPlutusDataFromCbor(
+    argument.auxiliaryCbor,
+    "validation auxiliary witness",
+  );
+  const auxiliaryWitness = Data.from(
+    Buffer.from(argument.auxiliaryCbor).toString("hex"),
+    ValidationAuxiliaryWitnessV1,
+  );
+  const selection =
+    typeof auxiliaryWitness === "object" &&
+    auxiliaryWitness !== null &&
+    "NativeExecutionScanWitness" in auxiliaryWitness
+      ? auxiliaryWitness.NativeExecutionScanWitness
+      : undefined;
+  const isProgramSelection =
+    argument.resolverIndex === 11 &&
+    argument.semanticResolverIndex === null &&
+    selection !== undefined &&
+    (selection.language_tag === 3n || selection.language_tag === 128n);
+  if (!isProgramSelection) {
+    if (
+      argument.cekRouteMaterial !== undefined ||
+      argument.cekIncrementalNecessityReceiptSet !== undefined
+    ) {
+      throw new Error(
+        "CEK route material and necessity receipts are permitted only for an exact program-selection witness",
+      );
+    }
+    return Object.freeze({});
+  }
+  if (argument.cekRouteMaterial === undefined) {
+    throw new Error(
+      "Plutus/Midgard CEK selection requires complete route material",
+    );
+  }
+  const cekRouteMaterial = validateCekRouteMaterialV1({
+    value: argument.cekRouteMaterial,
+    firstSourceChunk: Buffer.from(selection.first_chunk_proof.chunk, "hex"),
+    languageTag: Number(selection.language_tag) as 3 | 128,
+  });
+  if (argument.cekIncrementalNecessityReceiptSet === undefined) {
+    return Object.freeze({ cekRouteMaterial });
+  }
+  const cekIncrementalNecessityReceiptSet =
+    parseCekProgramMaterialNecessityReceiptSetV1(
+      argument.cekIncrementalNecessityReceiptSet,
+    );
+  if (
+    cekIncrementalNecessityReceiptSet.programEnvelopeHash !==
+    cekRouteMaterial.programEnvelopeHash.toString("hex")
+  ) {
+    throw new Error(
+      "CEK incremental necessity receipts are bound to another program envelope",
+    );
+  }
+  return Object.freeze({
+    cekRouteMaterial,
+    cekIncrementalNecessityReceiptSet,
+  });
 };
 
 const requireConstr = ({
@@ -843,6 +1045,7 @@ const requireStagedOneStepArgumentV1 = (
   readonly semanticResolverGlobalIndex: number;
   readonly evidenceHash: string;
 } => {
+  validateCekSubmissionEvidenceV1(argument);
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 0 ||
@@ -994,7 +1197,10 @@ const requireDirectOneStepArgumentV1 = (
   argument: ValidationOneStepSubmissionArgumentV1,
 ): {
   readonly evidence: ValidationOneStepEvidenceV1;
+  readonly cekRouteMaterial?: CekRouteMaterialV1;
+  readonly cekIncrementalNecessityReceiptSet?: CekProgramMaterialNecessityReceiptSetV1;
 } => {
+  const validatedCekEvidence = validateCekSubmissionEvidenceV1(argument);
   if (
     !Number.isSafeInteger(argument.resolverIndex) ||
     argument.resolverIndex < 11 ||
@@ -1021,6 +1227,7 @@ const requireDirectOneStepArgumentV1 = (
   const evidenceCbor = Data.to(evidenceData);
   return {
     evidence: Data.from(evidenceCbor, ValidationOneStepEvidenceV1),
+    ...validatedCekEvidence,
   };
 };
 
@@ -3505,7 +3712,17 @@ type ValidationFinalizationResult = {
   readonly outputIndex: number;
   readonly computationThreadMintRedeemerIndex: number;
   readonly fraudProofMintRedeemerIndex: number;
+  readonly materialReferenceInputOutRefs: readonly string[];
+  readonly materialReferenceInputIndices: readonly number[];
   readonly awaitedConfirmation: boolean;
+};
+
+type ValidationFinalizingSpendLayout = Omit<
+  FinalizeLayout,
+  "computationThreadMintRedeemerIndex"
+> & {
+  /** Supplied order is semantic (root order); values are canonical tx indices. */
+  readonly materialReferenceInputIndices: readonly bigint[];
 };
 
 const makeValidationFinalizingSpendRedeemer = ({
@@ -3514,6 +3731,7 @@ const makeValidationFinalizingSpendRedeemer = ({
   fraudProofPolicyId,
   fraudProofUnit,
   fraudProofDatum,
+  materialReferenceUtxos,
   label,
   encodeRedeemer,
   onLayout,
@@ -3523,13 +3741,10 @@ const makeValidationFinalizingSpendRedeemer = ({
   readonly fraudProofPolicyId: string;
   readonly fraudProofUnit: string;
   readonly fraudProofDatum: string;
+  readonly materialReferenceUtxos: readonly UTxO[];
   readonly label: string;
-  readonly encodeRedeemer: (
-    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
-  ) => string;
-  readonly onLayout: (
-    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
-  ) => void;
+  readonly encodeRedeemer: (layout: ValidationFinalizingSpendLayout) => string;
+  readonly onLayout: (layout: ValidationFinalizingSpendLayout) => void;
 }): BuildTxWithRedeemer =>
   ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, label);
@@ -3549,24 +3764,15 @@ const makeValidationFinalizingSpendRedeemer = ({
         fraudProofPolicyId,
         `${label} fraud-proof mint`,
       ),
+      materialReferenceInputIndices: materialReferenceUtxos.map((utxo) =>
+        requireReferenceInputIndex(ctx, utxo, `${label} CEK material`),
+      ),
     };
     onLayout(layout);
     return encodeRedeemer(layout);
   }) satisfies BuildTxWithRedeemer;
 
-const submitValidationFinalizationTransaction = async ({
-  lucid,
-  contracts,
-  signer,
-  threadUtxo,
-  threadOutRef,
-  token,
-  spendingScript,
-  spendLabel,
-  encodeSpendRedeemer,
-  validityRange,
-  awaitConfirmation,
-}: {
+type ValidationFinalizationTransactionParams = {
   readonly lucid: LucidEvolution;
   readonly contracts: Awaited<
     ReturnType<typeof resolveValidationTraceDisputeDeploymentContracts>
@@ -3578,27 +3784,75 @@ const submitValidationFinalizationTransaction = async ({
   readonly spendingScript: {
     readonly spendingScript: Script;
   };
+  /**
+   * Published authenticated reference-script UTxO carrying the spending
+   * validator. When present the transaction consumes the validator through
+   * `readFrom` and must not embed the validator body inside the L1 proof
+   * envelope.
+   */
+  readonly spendingScriptReferenceUtxo?: UTxO;
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
-    layout: Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">,
+    layout: ValidationFinalizingSpendLayout,
   ) => string;
+  readonly materialReferenceUtxos?: readonly UTxO[];
   readonly validityRange: ValidationDisputeValidityRange;
-  readonly awaitConfirmation: boolean;
-}): Promise<ValidationFinalizationResult> => {
+};
+
+type PreparedValidationFinalizationTransaction = {
+  readonly lucid: LucidEvolution;
+  readonly signed: TxSigned;
+  readonly threadOutRef: string;
+  readonly fraudProofUnit: string;
+  readonly layout: FinalizeLayout;
+  readonly materialReferenceInputOutRefs: readonly string[];
+  readonly materialReferenceInputIndices: readonly number[];
+};
+
+const prepareValidationFinalizationTransaction = async ({
+  lucid,
+  contracts,
+  signer,
+  threadUtxo,
+  threadOutRef,
+  token,
+  spendingScript,
+  spendingScriptReferenceUtxo,
+  spendLabel,
+  encodeSpendRedeemer,
+  materialReferenceUtxos = [],
+  validityRange,
+}: ValidationFinalizationTransactionParams): Promise<PreparedValidationFinalizationTransaction> => {
   const fraudProofUnit = toUnit(contracts.fraudProof.policyId, token.assetName);
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
     FraudProofTokenDatum,
   );
-  let partialLayout:
-    | Omit<FinalizeLayout, "computationThreadMintRedeemerIndex">
-    | undefined;
+  let partialLayout: ValidationFinalizingSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
   const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const tx = lucid
-    .newTx()
-    .collectFrom([feeInput])
+  const materialOutRefs = materialReferenceUtxos.map(outRefLabel);
+  if (new Set(materialOutRefs).size !== materialOutRefs.length) {
+    throw new Error(`${spendLabel} CEK material references must be unique`);
+  }
+  let tx = lucid.newTx().collectFrom([feeInput]);
+  if (spendingScriptReferenceUtxo !== undefined) {
+    if (
+      spendingScriptReferenceUtxo.scriptRef == null ||
+      validatorToScriptHash(spendingScriptReferenceUtxo.scriptRef) !==
+        validatorToScriptHash(spendingScript.spendingScript)
+    ) {
+      throw new Error(
+        `${spendLabel} spending-script reference UTxO ${outRefLabel(spendingScriptReferenceUtxo)} does not carry the exact spending validator`,
+      );
+    }
+    tx = tx.readFrom([spendingScriptReferenceUtxo]);
+  }
+  if (materialReferenceUtxos.length > 0) {
+    tx = tx.readFrom([...materialReferenceUtxos]);
+  }
+  tx = tx
     .collectFrom(
       [threadUtxo],
       makeValidationFinalizingSpendRedeemer({
@@ -3607,6 +3861,7 @@ const submitValidationFinalizationTransaction = async ({
         fraudProofPolicyId: contracts.fraudProof.policyId,
         fraudProofUnit,
         fraudProofDatum,
+        materialReferenceUtxos,
         label: spendLabel,
         encodeRedeemer: encodeSpendRedeemer,
         onLayout: (layout) => {
@@ -3642,9 +3897,14 @@ const submitValidationFinalizationTransaction = async ({
     )
     .validFrom(validityRange.validFrom)
     .validTo(validityRange.validTo)
-    .attach.SpendingValidator(spendingScript.spendingScript)
     .attach.MintingPolicy(contracts.computationThread.mintingScript)
     .attach.MintingPolicy(contracts.fraudProof.mintingScript);
+  // The published reference script supplies the spending validator; the
+  // proof transaction must not embed the validator body inside the
+  // 16,384-byte L1 envelope.
+  if (spendingScriptReferenceUtxo === undefined) {
+    tx = tx.attach.SpendingValidator(spendingScript.spendingScript);
+  }
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
     partialLayout === undefined ||
@@ -3658,24 +3918,57 @@ const submitValidationFinalizationTransaction = async ({
   };
   const signed = await unsigned.sign.withWallet().complete();
   requireL1ProofEnvelope(signed.toCBOR(), spendLabel);
-  const txHash = await signed.submit();
+  return {
+    lucid,
+    signed,
+    threadOutRef,
+    fraudProofUnit,
+    layout,
+    materialReferenceInputOutRefs: materialOutRefs,
+    materialReferenceInputIndices:
+      partialLayout.materialReferenceInputIndices.map(Number),
+  };
+};
+
+const submitPreparedValidationFinalizationTransaction = async ({
+  prepared,
+  awaitConfirmation,
+}: {
+  readonly prepared: PreparedValidationFinalizationTransaction;
+  readonly awaitConfirmation: boolean;
+}): Promise<ValidationFinalizationResult> => {
+  const txHash = await prepared.signed.submit();
   if (awaitConfirmation) {
-    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+    await prepared.lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
   return {
     txHash,
-    threadOutRef,
-    fraudProofOutRef: `${txHash}#${layout.outputIndex.toString()}`,
-    fraudProofUnit,
-    inputIndex: Number(layout.inputIndex),
-    outputIndex: Number(layout.outputIndex),
+    threadOutRef: prepared.threadOutRef,
+    fraudProofOutRef: `${txHash}#${prepared.layout.outputIndex.toString()}`,
+    fraudProofUnit: prepared.fraudProofUnit,
+    inputIndex: Number(prepared.layout.inputIndex),
+    outputIndex: Number(prepared.layout.outputIndex),
     computationThreadMintRedeemerIndex: Number(
-      layout.computationThreadMintRedeemerIndex,
+      prepared.layout.computationThreadMintRedeemerIndex,
     ),
-    fraudProofMintRedeemerIndex: Number(layout.fraudProofMintRedeemerIndex),
+    fraudProofMintRedeemerIndex: Number(
+      prepared.layout.fraudProofMintRedeemerIndex,
+    ),
+    materialReferenceInputOutRefs: prepared.materialReferenceInputOutRefs,
+    materialReferenceInputIndices: prepared.materialReferenceInputIndices,
     awaitedConfirmation: awaitConfirmation,
   };
 };
+
+const submitValidationFinalizationTransaction = async (
+  params: ValidationFinalizationTransactionParams & {
+    readonly awaitConfirmation: boolean;
+  },
+): Promise<ValidationFinalizationResult> =>
+  submitPreparedValidationFinalizationTransaction({
+    prepared: await prepareValidationFinalizationTransaction(params),
+    awaitConfirmation: params.awaitConfirmation,
+  });
 
 export type SubmitValidationDisputePrepareSelectedResult = {
   readonly txHash: string;
@@ -5682,7 +5975,71 @@ export const submitValidationDisputeAward = async ({
 export type SubmitValidationDisputeDirectResolutionResult =
   ValidationFinalizationResult & {
     readonly resolverIndex: number;
+    readonly selectedRoute:
+      | "valueAndMint"
+      | "noCekMaterial"
+      | "directProof"
+      | "completeSinglePublicationReference"
+      | "minimumMultiOutputReconstruction"
+      | "incrementalTraversal";
+    readonly rejectedLocalRouteAttempts: readonly ValidationCekRejectedLocalRouteAttemptV1[];
   };
+
+export type ValidationCekProgramMaterialReferenceOutRefsV1 = {
+  /** Exact immutable complete-material datum outref. */
+  readonly singlePublication?: string;
+  /** Exact entry datums in strict material-root order. */
+  readonly minimumMultiOutput?: readonly string[];
+};
+
+export type ValidationCekRejectedLocalRouteAttemptV1 = {
+  readonly route:
+    | "directProof"
+    | "completeSinglePublicationReference"
+    | "minimumMultiOutputReconstruction";
+  readonly failure: string;
+};
+
+const errorMessageV1 = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
+const isDeterministicLocalCekFitFailureV1 = (cause: unknown): boolean => {
+  const message = errorMessageV1(cause);
+  return /(?:complete signed L1 proof transaction must be no larger|maximum transaction size|maxTxSize|transaction.{0,24}(?:too large|too big)|maxValueSize|maximum value size|value.{0,24}(?:too large|too big)|maximum execution|execution (?:memory|cpu|units).{0,24}(?:exceed|too (?:large|big))|ExUnitsTooBig)/iu.test(
+    message,
+  );
+};
+
+const requireConfirmedCekMaterialReferenceUtxo = async ({
+  lucid,
+  outRef,
+  expectedAddress,
+  expectedDatum,
+  label,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly outRef: string;
+  readonly expectedAddress: string;
+  readonly expectedDatum: string;
+  readonly label: string;
+}): Promise<UTxO> => {
+  const utxo = await fetchUtxoByOutRef({
+    lucid,
+    outRef: parseOutRef(outRef, label),
+    label,
+  });
+  if (utxo.address !== expectedAddress) {
+    throw new Error(
+      `${label} ${outRefLabel(utxo)} is locked at ${utxo.address}, expected immutable CEK material address ${expectedAddress}`,
+    );
+  }
+  if (utxo.datum !== expectedDatum) {
+    throw new Error(
+      `${label} ${outRefLabel(utxo)} does not carry the exact expected inline datum`,
+    );
+  }
+  return utxo;
+};
 
 export const submitValidationDisputeDirectResolution = async ({
   lucid,
@@ -5692,6 +6049,7 @@ export const submitValidationDisputeDirectResolution = async ({
   signer,
   threadOutRef,
   oneStepArgument,
+  cekProgramMaterialReferenceOutRefs,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -5702,17 +6060,22 @@ export const submitValidationDisputeDirectResolution = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly oneStepArgument: ValidationOneStepSubmissionArgumentV1;
+  readonly cekProgramMaterialReferenceOutRefs?: ValidationCekProgramMaterialReferenceOutRefsV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeDirectResolutionResult> => {
   const range = requireValidityRange(validityRange);
-  const { validationTraceDisputeCategory, contracts } =
-    await resolveValidationTraceDisputeDeploymentContracts({
-      blueprint,
-      deploymentInfo,
-      network,
-      requireFraudProofSpend: true,
-    });
+  const {
+    deploymentInfo: parsedDeploymentInfo,
+    referenceScriptAuthPolicyId,
+    validationTraceDisputeCategory,
+    contracts,
+  } = await resolveValidationTraceDisputeDeploymentContracts({
+    blueprint,
+    deploymentInfo,
+    network,
+    requireFraudProofSpend: true,
+  });
   const threadUtxo = await fetchUtxoByOutRef({
     lucid,
     outRef: parseOutRef(threadOutRef, "--thread-out-ref"),
@@ -5751,7 +6114,240 @@ export const submitValidationDisputeDirectResolution = async ({
       `Thread UTxO ${outRefLabel(threadUtxo)} is not locked at direct resolver ${resolverIndex.toString()}`,
     );
   }
-  const finalized = await submitValidationFinalizationTransaction({
+  // Resolver 11 (Cek) is direct resolver 0: its applied validator body can
+  // never fit the L1 proof envelope, so every CEK finalization must consume
+  // the published authenticated reference script instead of attaching it.
+  const cekDirectResolverReferenceUtxo =
+    resolverIndex === 11
+      ? await requireValidationCekDirectResolverReferenceScriptUtxo({
+          lucid,
+          deploymentInfo: parsedDeploymentInfo,
+          expectedScriptHash: directContract.spendingScriptHash,
+          authPolicyId: referenceScriptAuthPolicyId,
+        })
+      : undefined;
+  const baseAction = (layout: ValidationFinalizingSpendLayout) => ({
+    input_index: layout.inputIndex,
+    output_index: layout.outputIndex,
+    fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
+    challenger_evidence: direct.evidence,
+  });
+  if (resolverIndex === 12) {
+    const finalized = await submitValidationFinalizationTransaction({
+      lucid,
+      contracts,
+      signer,
+      threadUtxo,
+      threadOutRef,
+      token,
+      spendingScript: directContract,
+      spendLabel: "Validation-dispute ValueAndMint direct resolution",
+      encodeSpendRedeemer: (layout) =>
+        encodeValidationDirectResolveSpendRedeemerV1(baseAction(layout)),
+      validityRange: range,
+      awaitConfirmation,
+    });
+    return {
+      ...finalized,
+      resolverIndex,
+      selectedRoute: "valueAndMint",
+      rejectedLocalRouteAttempts: [],
+    };
+  }
+  if (direct.cekRouteMaterial === undefined) {
+    const finalized = await submitValidationFinalizationTransaction({
+      lucid,
+      contracts,
+      signer,
+      threadUtxo,
+      threadOutRef,
+      token,
+      spendingScript: directContract,
+      spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
+      spendLabel: "Validation-dispute CEK direct resolution",
+      encodeSpendRedeemer: (layout) =>
+        encodeValidationCekSpendRedeemerV1({
+          ...baseAction(layout),
+          material_route: "NoCekMaterial",
+        }),
+      validityRange: range,
+      awaitConfirmation,
+    });
+    return {
+      ...finalized,
+      resolverIndex,
+      selectedRoute: "noCekMaterial",
+      rejectedLocalRouteAttempts: [],
+    };
+  }
+
+  const routeMaterial = direct.cekRouteMaterial;
+  const rejectedLocalRouteAttempts: ValidationCekRejectedLocalRouteAttemptV1[] =
+    [];
+  const prepareCekRoute = async ({
+    route,
+    materialReferenceUtxos = [],
+    materialRoute,
+  }: {
+    readonly route: ValidationCekRejectedLocalRouteAttemptV1["route"];
+    readonly materialReferenceUtxos?: readonly UTxO[];
+    readonly materialRoute: (
+      layout: ValidationFinalizingSpendLayout,
+    ) => ValidationCekMaterialRouteV1;
+  }): Promise<PreparedValidationFinalizationTransaction | undefined> => {
+    try {
+      return await prepareValidationFinalizationTransaction({
+        lucid,
+        contracts,
+        signer,
+        threadUtxo,
+        threadOutRef,
+        token,
+        spendingScript: directContract,
+        spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
+        spendLabel: `Validation-dispute CEK ${route}`,
+        encodeSpendRedeemer: (layout) =>
+          encodeValidationCekSpendRedeemerV1({
+            ...baseAction(layout),
+            material_route: materialRoute(layout),
+          }),
+        materialReferenceUtxos,
+        validityRange: range,
+      });
+    } catch (cause) {
+      if (!isDeterministicLocalCekFitFailureV1(cause)) {
+        throw cause;
+      }
+      rejectedLocalRouteAttempts.push({
+        route,
+        failure: errorMessageV1(cause),
+      });
+      return undefined;
+    }
+  };
+  const submitSelectedRoute = async (
+    prepared: PreparedValidationFinalizationTransaction,
+    selectedRoute: SubmitValidationDisputeDirectResolutionResult["selectedRoute"],
+  ): Promise<SubmitValidationDisputeDirectResolutionResult> => ({
+    ...(await submitPreparedValidationFinalizationTransaction({
+      prepared,
+      awaitConfirmation,
+    })),
+    resolverIndex,
+    selectedRoute,
+    rejectedLocalRouteAttempts,
+  });
+
+  const directPrepared = await prepareCekRoute({
+    route: "directProof",
+    materialRoute: () => ({
+      DirectCekMaterial: {
+        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+        sidecar_cbor: routeMaterial.programMaterialSidecarCbor.toString("hex"),
+      },
+    }),
+  });
+  if (directPrepared !== undefined) {
+    return await submitSelectedRoute(directPrepared, "directProof");
+  }
+
+  const materialAddress =
+    contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
+  const singlePublication = deriveCekSinglePublicationV1({
+    envelopeCbor: routeMaterial.envelopeCbor,
+    sidecarCbor: routeMaterial.programMaterialSidecarCbor,
+  });
+  const singleOutRef = cekProgramMaterialReferenceOutRefs?.singlePublication;
+  if (singleOutRef === undefined) {
+    throw new Error(
+      "CEK direct proof did not fit; provide an already-confirmed exact single-publication material outref before selecting a more complex route",
+    );
+  }
+  const singleReferenceUtxo = await requireConfirmedCekMaterialReferenceUtxo({
+    lucid,
+    outRef: singleOutRef,
+    expectedAddress: materialAddress,
+    expectedDatum: singlePublication.datumCbor,
+    label: "CEK single-publication reference outref",
+  });
+  const singlePrepared = await prepareCekRoute({
+    route: "completeSinglePublicationReference",
+    materialReferenceUtxos: [singleReferenceUtxo],
+    materialRoute: (layout) => {
+      const reference_input_index = layout.materialReferenceInputIndices[0];
+      if (reference_input_index === undefined) {
+        throw new Error(
+          "CEK single-publication reference is missing from final layout",
+        );
+      }
+      return {
+        SinglePublicationCekMaterial: {
+          envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+          reference_input_index,
+        },
+      };
+    },
+  });
+  if (singlePrepared !== undefined) {
+    return await submitSelectedRoute(
+      singlePrepared,
+      "completeSinglePublicationReference",
+    );
+  }
+
+  const entries = decodeMidgardCekProgramMaterialSidecarV1(
+    routeMaterial.programMaterialSidecarCbor,
+  );
+  const expectedMultiPublications =
+    deriveCekProgramMaterialPublicationsV1(entries);
+  const multiOutRefs = cekProgramMaterialReferenceOutRefs?.minimumMultiOutput;
+  if (multiOutRefs === undefined) {
+    throw new Error(
+      "CEK single-publication route did not fit; provide already-confirmed exact multi-output material outrefs in root order before selecting incremental traversal",
+    );
+  }
+  if (multiOutRefs.length !== expectedMultiPublications.length) {
+    throw new Error(
+      `CEK minimum-multi route requires exactly ${expectedMultiPublications.length.toString()} root-ordered material outrefs, got ${multiOutRefs.length.toString()}`,
+    );
+  }
+  if (new Set(multiOutRefs).size !== multiOutRefs.length) {
+    throw new Error("CEK minimum-multi material outrefs must be unique");
+  }
+  const multiReferenceUtxos = await Promise.all(
+    expectedMultiPublications.map((publication, index) =>
+      requireConfirmedCekMaterialReferenceUtxo({
+        lucid,
+        outRef: multiOutRefs[index]!,
+        expectedAddress: materialAddress,
+        expectedDatum: publication.datumCbor,
+        label: `CEK minimum-multi root-order outref ${index.toString()}`,
+      }),
+    ),
+  );
+  const multiPrepared = await prepareCekRoute({
+    route: "minimumMultiOutputReconstruction",
+    materialReferenceUtxos: multiReferenceUtxos,
+    materialRoute: (layout) => ({
+      MinimumMultiOutputCekMaterial: {
+        envelope_cbor: routeMaterial.envelopeCbor.toString("hex"),
+        reference_input_indices: [...layout.materialReferenceInputIndices],
+      },
+    }),
+  });
+  if (multiPrepared !== undefined) {
+    return await submitSelectedRoute(
+      multiPrepared,
+      "minimumMultiOutputReconstruction",
+    );
+  }
+
+  if (direct.cekIncrementalNecessityReceiptSet === undefined) {
+    throw new Error(
+      "CEK direct, single-publication, and minimum-multi routes did not fit; incremental traversal requires an exact receipt-bound necessity set",
+    );
+  }
+  const incrementalPrepared = await prepareValidationFinalizationTransaction({
     lucid,
     contracts,
     signer,
@@ -5759,18 +6355,21 @@ export const submitValidationDisputeDirectResolution = async ({
     threadOutRef,
     token,
     spendingScript: directContract,
-    spendLabel: "Validation-dispute direct resolution",
+    spendingScriptReferenceUtxo: cekDirectResolverReferenceUtxo,
+    spendLabel: "Validation-dispute CEK incrementalTraversal",
     encodeSpendRedeemer: (layout) =>
-      encodeValidationDirectResolveSpendRedeemerV1({
-        input_index: layout.inputIndex,
-        output_index: layout.outputIndex,
-        fraud_proof_mint_redeemer_index: layout.fraudProofMintRedeemerIndex,
-        challenger_evidence: direct.evidence,
+      encodeValidationCekSpendRedeemerV1({
+        ...baseAction(layout),
+        material_route: {
+          IncrementalCekMaterial: {
+            program_envelope_hash:
+              routeMaterial.programEnvelopeHash.toString("hex"),
+          },
+        },
       }),
     validityRange: range,
-    awaitConfirmation,
   });
-  return { ...finalized, resolverIndex };
+  return await submitSelectedRoute(incrementalPrepared, "incrementalTraversal");
 };
 
 export const validationDisputeDescriptorData =

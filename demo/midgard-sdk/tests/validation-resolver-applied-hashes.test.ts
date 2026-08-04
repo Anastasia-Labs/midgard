@@ -11,7 +11,10 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  AddressData,
+  addressDataFromBech32,
   buildFaultProofContracts,
+  CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,
 } from "../src/index.js";
 
@@ -22,9 +25,14 @@ type BlueprintValidator = Readonly<{
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(moduleDirectory, "../../..");
-const blueprint = JSON.parse(
+const currentTreeBlueprintPath = process.env.MIDGARD_REAL_BLUEPRINT_PATH;
+const protectedBlueprint = JSON.parse(
   readFileSync(resolve(repositoryRoot, "onchain/aiken/plutus.json"), "utf8"),
-) as Readonly<{ validators: readonly BlueprintValidator[] }>;
+) as Readonly<{
+  validators: readonly (BlueprintValidator & {
+    readonly parameters?: readonly unknown[];
+  })[];
+}>;
 const resolverTestSource = readFileSync(
   resolve(
     repositoryRoot,
@@ -52,7 +60,9 @@ const appliedPrepareHash = (
   semanticHashes: readonly string[],
   computationThreadPolicyId: string,
 ): string => {
-  const validator = blueprint.validators.find((entry) => entry.title === title);
+  const validator = protectedBlueprint.validators.find(
+    (entry) => entry.title === title,
+  );
   if (validator === undefined) {
     throw new Error(`Blueprint prepare resolver ${title} is missing`);
   }
@@ -75,7 +85,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
   it("matches the production SDK builder's exact applied semantic hashes", async () => {
     const contracts = await Effect.runPromise(
       buildFaultProofContracts({
-        blueprint,
+        blueprint: protectedBlueprint,
         network: "Preprod",
         hubOraclePolicyId: "bb".repeat(28),
         fraudProofCataloguePolicyId: "cc".repeat(28),
@@ -120,7 +130,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
       ),
     );
 
-    const scriptSourcesNonOutput = blueprint.validators.find(
+    const scriptSourcesNonOutput = protectedBlueprint.validators.find(
       (entry) =>
         entry.title ===
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics
@@ -141,5 +151,77 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
         ]),
       }),
     );
+  });
+
+  it("applies immutable CEK material identity as the exact fourth direct-resolver parameter", async () => {
+    if (currentTreeBlueprintPath === undefined) {
+      return;
+    }
+    const currentTreeBlueprint = JSON.parse(
+      readFileSync(currentTreeBlueprintPath, "utf8"),
+    ) as Readonly<{
+      validators: readonly (BlueprintValidator & {
+        readonly parameters?: readonly unknown[];
+      })[];
+    }>;
+    const cekValidator = currentTreeBlueprint.validators.find(
+      (entry) =>
+        entry.title ===
+        VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.directResolvers.cek,
+    );
+    const materialValidator = currentTreeBlueprint.validators.find(
+      (entry) => entry.title === CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1,
+    );
+    if (cekValidator === undefined || materialValidator === undefined) {
+      throw new Error("CEK direct or program-material validator is missing");
+    }
+    expect(cekValidator.parameters).toHaveLength(4);
+    const contracts = await Effect.runPromise(
+      buildFaultProofContracts({
+        blueprint: currentTreeBlueprint,
+        network: "Preprod",
+        hubOraclePolicyId: "bb".repeat(28),
+        fraudProofCataloguePolicyId: "cc".repeat(28),
+      }),
+    );
+    const fraudProofAddressData = Data.from(
+      Data.to(
+        await Effect.runPromise(
+          addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+        ),
+        AddressData,
+      ),
+    );
+    const materialHash = validatorToScriptHash({
+      type: "PlutusV3",
+      script: materialValidator.compiledCode,
+    });
+    expect(
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
+    ).toBe(materialHash);
+    expect(
+      contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
+    ).toBe(
+      validatorToScriptHash({
+        type: "PlutusV3",
+        script: applyParamsToScript(cekValidator.compiledCode, [
+          contracts.computationThread.policyId,
+          contracts.fraudProof.policyId,
+          fraudProofAddressData,
+          materialHash,
+        ]),
+      }),
+    );
+    const legacyThreeParameterCekHash = validatorToScriptHash({
+      type: "PlutusV3",
+      script: applyParamsToScript(cekValidator.compiledCode, [
+        contracts.computationThread.policyId,
+        contracts.fraudProof.policyId,
+        fraudProofAddressData,
+      ]),
+    });
+    expect(
+      contracts.validationTraceDispute.directResolvers[0].spendingScriptHash,
+    ).not.toBe(legacyThreeParameterCekHash);
   });
 });

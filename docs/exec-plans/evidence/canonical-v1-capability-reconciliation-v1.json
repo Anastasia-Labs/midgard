@@ -54,7 +54,7 @@
     "C25": "PASS",
     "C26": "PARTIAL",
     "C27": "PASS",
-    "C28": "PARTIAL",
+    "C28": "PASS",
     "C29": "PARTIAL",
     "C30": "PARTIAL",
     "C31": "PARTIAL",
@@ -64,8 +64,8 @@
   },
   "p2Summary": {
     "tasks": 22,
-    "pass": 16,
-    "partial": 6,
+    "pass": 17,
+    "partial": 5,
     "open": 0,
     "authoritativeConflict": 0,
     "gate": "OPEN"

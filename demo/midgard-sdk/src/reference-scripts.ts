@@ -62,6 +62,7 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 validation-trace boundary": "V1ValidationTraceBoundary",
   "V1 validation-trace timeout": "V1ValidationTraceTimeout",
   "V1 validation-trace award": "V1ValidationTraceAward",
+  "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

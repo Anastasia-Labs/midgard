@@ -1,12 +1,17 @@
 import { readFile } from "node:fs/promises";
 
 import {
+  decodeMidgardCekProgramEnvelopeV1,
+  hashMidgardCekProgramEnvelopeV1,
+} from "@al-ft/midgard-core";
+import {
   ValidationBoundaryEvidenceV1,
   ValidationClaimWitnessV1,
   ValidationTraceDescriptorV1,
   validationTraceProofCoreFromData,
   ValidationTraceProofV1,
 } from "@al-ft/midgard-sdk";
+import { parseCekProgramMaterialNecessityReceiptSetV1 } from "@al-ft/midgard-validation";
 import { Data, type Network } from "@lucid-evolution/lucid";
 
 import { readJsonFile } from "../json-file.js";
@@ -39,6 +44,7 @@ import {
   type SubmitValidationDisputeTimeoutResult,
   submitValidationDisputeVerifySource,
   type SubmitValidationDisputeVerifySourceResult,
+  validateCekSubmissionEvidenceV1,
   type ValidationOneStepSubmissionArgumentV1,
 } from "./submit.js";
 
@@ -108,14 +114,17 @@ const runtimeFromFiles = async (config: ValidationDisputeFromFilesBase) => {
   };
 };
 
-type ValidationOneStepArgumentFromFiles = {
+export type ValidationOneStepArgumentFromFiles = {
   readonly validationTransitionCborPath: string;
   readonly validationAuxiliaryCborPath: string;
   readonly validationResolverIndex: number;
   readonly validationSemanticResolverIndex: number | null;
+  readonly validationCekEnvelopeCborPath?: string;
+  readonly validationCekProgramMaterialSidecarCborPath?: string;
+  readonly validationCekIncrementalNecessityReceiptSetPath?: string;
 };
 
-const validationOneStepArgumentFromFiles = async (
+export const validationOneStepArgumentFromFiles = async (
   config: ValidationOneStepArgumentFromFiles,
 ): Promise<ValidationOneStepSubmissionArgumentV1> => {
   if (
@@ -136,7 +145,29 @@ const validationOneStepArgumentFromFiles = async (
       "validation semantic resolver index must be null or a non-negative integer",
     );
   }
-  const [transitionCbor, auxiliaryCbor] = await Promise.all([
+  const hasEnvelopePath = config.validationCekEnvelopeCborPath !== undefined;
+  const hasSidecarPath =
+    config.validationCekProgramMaterialSidecarCborPath !== undefined;
+  if (hasEnvelopePath !== hasSidecarPath) {
+    throw new Error(
+      "CEK route material requires both explicit envelope and program-material sidecar paths",
+    );
+  }
+  if (
+    config.validationCekIncrementalNecessityReceiptSetPath !== undefined &&
+    !hasEnvelopePath
+  ) {
+    throw new Error(
+      "CEK incremental necessity receipts require explicit CEK route material paths",
+    );
+  }
+  const [
+    transitionCbor,
+    auxiliaryCbor,
+    envelopeCbor,
+    programMaterialSidecarCbor,
+    necessityReceiptSet,
+  ] = await Promise.all([
     readValidationDisputeCborFile(
       config.validationTransitionCborPath,
       "validation one-step transition",
@@ -145,13 +176,51 @@ const validationOneStepArgumentFromFiles = async (
       config.validationAuxiliaryCborPath,
       "validation one-step auxiliary witness",
     ),
+    config.validationCekEnvelopeCborPath === undefined
+      ? Promise.resolve(undefined)
+      : readValidationDisputeCborFile(
+          config.validationCekEnvelopeCborPath,
+          "CEK route envelope",
+        ),
+    config.validationCekProgramMaterialSidecarCborPath === undefined
+      ? Promise.resolve(undefined)
+      : readValidationDisputeCborFile(
+          config.validationCekProgramMaterialSidecarCborPath,
+          "CEK route program-material sidecar",
+        ),
+    config.validationCekIncrementalNecessityReceiptSetPath === undefined
+      ? Promise.resolve(undefined)
+      : readJsonFile(
+          config.validationCekIncrementalNecessityReceiptSetPath,
+        ).then(parseCekProgramMaterialNecessityReceiptSetV1),
   ]);
-  return {
+  const envelopeBytes =
+    envelopeCbor === undefined ? undefined : Buffer.from(envelopeCbor, "hex");
+  const argument: ValidationOneStepSubmissionArgumentV1 = {
     resolverIndex: config.validationResolverIndex,
     semanticResolverIndex: config.validationSemanticResolverIndex,
     transitionCbor: Buffer.from(transitionCbor, "hex"),
     auxiliaryCbor: Buffer.from(auxiliaryCbor, "hex"),
+    ...(envelopeBytes === undefined || programMaterialSidecarCbor === undefined
+      ? {}
+      : {
+          cekRouteMaterial: {
+            envelopeCbor: envelopeBytes,
+            programMaterialSidecarCbor: Buffer.from(
+              programMaterialSidecarCbor,
+              "hex",
+            ),
+            programEnvelopeHash: hashMidgardCekProgramEnvelopeV1(
+              decodeMidgardCekProgramEnvelopeV1(envelopeBytes),
+            ),
+          },
+        }),
+    ...(necessityReceiptSet === undefined
+      ? {}
+      : { cekIncrementalNecessityReceiptSet: necessityReceiptSet }),
   };
+  validateCekSubmissionEvidenceV1(argument);
+  return argument;
 };
 
 export const submitValidationDisputeOpenFromFiles = async (
@@ -307,9 +376,54 @@ export const submitValidationDisputeAwardFromFiles = async (
   });
 };
 
+export type ValidationCekPublicationOutRefsFromFiles = {
+  /**
+   * Caller-confirmed exact single-publication material outref
+   * (`txHash#outputIndex`), required before the single-publication reference
+   * route may be selected.
+   */
+  readonly validationCekSinglePublicationOutRef?: string;
+  /**
+   * Caller-confirmed exact multi-output material outrefs in strict material
+   * root order, required before minimum multi-output reconstruction may be
+   * selected.
+   */
+  readonly validationCekMinimumMultiOutputOutRefs?: readonly string[];
+};
+
+export const validationCekProgramMaterialReferenceOutRefsFromFiles = (
+  config: ValidationCekPublicationOutRefsFromFiles,
+):
+  | {
+      readonly singlePublication?: string;
+      readonly minimumMultiOutput?: readonly string[];
+    }
+  | undefined => {
+  const singlePublication = config.validationCekSinglePublicationOutRef;
+  const minimumMultiOutput = config.validationCekMinimumMultiOutputOutRefs;
+  if (singlePublication === undefined && minimumMultiOutput === undefined) {
+    return undefined;
+  }
+  if (minimumMultiOutput !== undefined && minimumMultiOutput.length === 0) {
+    throw new Error(
+      "CEK minimum-multi material outrefs must list at least one txHash#outputIndex entry in root order",
+    );
+  }
+  return {
+    ...(singlePublication === undefined ? {} : { singlePublication }),
+    ...(minimumMultiOutput === undefined
+      ? {}
+      : { minimumMultiOutput: [...minimumMultiOutput] }),
+  };
+};
+
 export const submitValidationDisputeDirectResolutionFromFiles = async (
-  config: ValidationDisputeFromFilesBase & ValidationOneStepArgumentFromFiles,
+  config: ValidationDisputeFromFilesBase &
+    ValidationOneStepArgumentFromFiles &
+    ValidationCekPublicationOutRefsFromFiles,
 ): Promise<SubmitValidationDisputeDirectResolutionResult> => {
+  const cekProgramMaterialReferenceOutRefs =
+    validationCekProgramMaterialReferenceOutRefsFromFiles(config);
   const [runtime, oneStepArgument] = await Promise.all([
     runtimeFromFiles(config),
     validationOneStepArgumentFromFiles(config),
@@ -319,6 +433,9 @@ export const submitValidationDisputeDirectResolutionFromFiles = async (
     network: config.network,
     threadOutRef: config.threadOutRef,
     oneStepArgument,
+    ...(cekProgramMaterialReferenceOutRefs === undefined
+      ? {}
+      : { cekProgramMaterialReferenceOutRefs }),
     awaitConfirmation: config.awaitConfirmation,
   });
 };

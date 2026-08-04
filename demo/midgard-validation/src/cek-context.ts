@@ -43,6 +43,14 @@ const hash32 = (bytes: Uint8Array): Buffer =>
 
 const bytes = (value: Uint8Array): Buffer => Buffer.from(value);
 
+const requiredHash32 = (field: string, value: Uint8Array): Buffer => {
+  const exact = bytes(value);
+  if (exact.length !== 32) {
+    throw new Error(`${field} must be exactly 32 bytes`);
+  }
+  return exact;
+};
+
 export const emptyMidgardCekDataSummaryV1 = (): MidgardCekDataSummaryV1 => ({
   root: Buffer.alloc(0),
   cborLength: 0n,
@@ -284,6 +292,7 @@ export type MidgardCekContextControlV1 = {
   readonly stage: number;
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Buffer;
+  readonly programEnvelopeHash: Buffer;
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Buffer;
@@ -310,6 +319,7 @@ export type MidgardCekContextControlV1 = {
 export const initialMidgardCekContextControlV1 = (input: {
   readonly languageTag: 3 | 128;
   readonly programTermRoot: Uint8Array;
+  readonly programEnvelopeHash: Uint8Array;
   readonly purposeKind: 0 | 1 | 2 | 3;
   readonly purposeIndex: bigint;
   readonly scriptHash: Uint8Array;
@@ -319,6 +329,10 @@ export const initialMidgardCekContextControlV1 = (input: {
   stage: 0,
   languageTag: input.languageTag,
   programTermRoot: bytes(input.programTermRoot),
+  programEnvelopeHash: requiredHash32(
+    "CEK program envelope hash",
+    input.programEnvelopeHash,
+  ),
   purposeKind: input.purposeKind,
   purposeIndex: input.purposeIndex,
   scriptHash: bytes(input.scriptHash),
@@ -352,6 +366,7 @@ export const encodeMidgardCekContextControlV1 = (
     BigInt(control.stage),
     BigInt(control.languageTag),
     control.programTermRoot,
+    control.programEnvelopeHash,
     BigInt(control.purposeKind),
     control.purposeIndex,
     control.scriptHash,
@@ -377,27 +392,35 @@ export const encodeMidgardCekContextControlV1 = (
 
 export const encodeMidgardCekValidationWitnessV1 = (input: {
   readonly nativeControlCbor: Uint8Array;
-  readonly contextControl?: MidgardCekContextControlV1;
+  readonly contextControl: MidgardCekContextControlV1 | null;
   readonly executionCursor: number;
   readonly completedCpu: bigint;
   readonly completedMemory: bigint;
-  readonly activeStateHash?: Uint8Array;
-  readonly executionCpuLimit?: bigint;
-  readonly executionMemoryLimit?: bigint;
+  readonly activeStateHash: Uint8Array | null;
+  readonly executionCpuLimit: bigint;
+  readonly executionMemoryLimit: bigint;
+  readonly programEnvelopeHash: Uint8Array | null;
 }): Buffer =>
+  // The witness must never end with a possibly-empty bytestring: the Aiken
+  // `cbor.deserialise` consumer rejects a zero-length final item at an
+  // exhausted cursor, so the possibly-empty program envelope hash sits
+  // before the two integer limits.
   encodeCbor([
     bytes(input.nativeControlCbor),
-    input.contextControl === undefined
+    input.contextControl === null
       ? Buffer.alloc(0)
       : encodeMidgardCekContextControlV1(input.contextControl),
     BigInt(input.executionCursor),
     input.completedCpu,
     input.completedMemory,
-    input.activeStateHash === undefined
+    input.activeStateHash === null
       ? Buffer.alloc(0)
       : bytes(input.activeStateHash),
-    input.executionCpuLimit ?? 0n,
-    input.executionMemoryLimit ?? 0n,
+    input.programEnvelopeHash === null
+      ? Buffer.alloc(0)
+      : bytes(input.programEnvelopeHash),
+    input.executionCpuLimit,
+    input.executionMemoryLimit,
   ]);
 
 export type MidgardCekDecodedContextV1 = {

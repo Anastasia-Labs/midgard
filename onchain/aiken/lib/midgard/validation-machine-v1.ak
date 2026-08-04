@@ -13418,6 +13418,9 @@ pub type CekContextControlV1 {
   stage: Int,
   language_tag: Int,
   program_term_root: ByteArray,
+  /// Canonical V1 envelope identity, distinct from its executable root.
+  /// This keeps version and complete-material claims bound until terminal.
+  program_envelope_hash: ByteArray,
   purpose_kind: Int,
   purpose_index: Int,
   script_hash: ByteArray,
@@ -13442,10 +13445,11 @@ pub type CekContextControlV1 {
 }
 
 pub fn encode_cek_context_control_v1(control: CekContextControlV1) -> ByteArray {
-  encode_definite_array_header(24)
+  encode_definite_array_header(25)
     |> bytearray.concat(cbor.serialise(control.stage))
     |> bytearray.concat(cbor.serialise(control.language_tag))
     |> bytearray.concat(encode_definite_bytes(control.program_term_root))
+    |> bytearray.concat(encode_definite_bytes(control.program_envelope_hash))
     |> bytearray.concat(cbor.serialise(control.purpose_kind))
     |> bytearray.concat(cbor.serialise(control.purpose_index))
     |> bytearray.concat(encode_definite_bytes(control.script_hash))
@@ -13479,8 +13483,9 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
   expect Some(data) = cbor.deserialise(control_cbor)
   expect
       [
-        stage_data, language_tag_data, program_term_root_data, purpose_kind_data,
-        purpose_index_data, script_hash_data, subject_data, redeemer_leaf_data,
+        stage_data, language_tag_data, program_term_root_data,
+        program_envelope_hash_data, purpose_kind_data, purpose_index_data,
+        script_hash_data, subject_data, redeemer_leaf_data,
         redeemer_context_control_hash_data, execution_memory_limit_data,
         execution_cpu_limit_data, reference_items_data, spend_items_data,
         output_items_data, signer_items_data, observer_count_data,
@@ -13493,6 +13498,7 @@ fn cek_context_control_from_cbor(control_cbor: ByteArray) -> CekContextControlV1
     stage: builtin.un_i_data(stage_data),
     language_tag: builtin.un_i_data(language_tag_data),
     program_term_root: builtin.un_b_data(program_term_root_data),
+    program_envelope_hash: builtin.un_b_data(program_envelope_hash_data),
     purpose_kind: builtin.un_i_data(purpose_kind_data),
     purpose_index: builtin.un_i_data(purpose_index_data),
     script_hash: builtin.un_b_data(script_hash_data),
@@ -13794,6 +13800,7 @@ fn cek_context_control_is_well_formed(
       control.language_tag == 128,
     },
     bytearray.length(control.program_term_root) == 32,
+    bytearray.length(control.program_envelope_hash) == 32,
     control.purpose_kind >= 0,
     control.purpose_kind <= 3,
     control.purpose_index >= 0,
@@ -13932,6 +13939,7 @@ pub fn encode_cek_witness_v1(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
+  program_envelope_hash: ByteArray,
 ) -> ByteArray {
   expect execution_cursor >= 0
   expect execution_cursor <= native_control.execution_count
@@ -13943,7 +13951,15 @@ pub fn encode_cek_witness_v1(
     }
   expect execution_cpu_limit >= 0
   expect execution_memory_limit >= 0
-  #"88"
+  expect or {
+      program_envelope_hash == #"",
+      bytearray.length(program_envelope_hash) == 32,
+    }
+  // The witness must never end with a possibly-empty bytestring:
+  // `aiken/cbor.deserialise` rejects a zero-length final item at an
+  // exhausted cursor, so `program_envelope_hash` (empty before program
+  // selection) sits before the two integer limits.
+  #"89"
     |> bytearray.concat(
         encode_definite_bytes(encode_native_scripts_control_v1(native_control)),
       )
@@ -13952,6 +13968,7 @@ pub fn encode_cek_witness_v1(
     |> bytearray.concat(cbor.serialise(completed_cpu))
     |> bytearray.concat(cbor.serialise(completed_memory))
     |> bytearray.concat(encode_definite_bytes(active_state_hash))
+    |> bytearray.concat(encode_definite_bytes(program_envelope_hash))
     |> bytearray.concat(cbor.serialise(execution_cpu_limit))
     |> bytearray.concat(cbor.serialise(execution_memory_limit))
 }
@@ -14648,7 +14665,7 @@ fn verify_script_integrity_finalize(
         witness.claimed_successor.work_root == validation_trace_v1.hash_work_witness(
           validation_trace_v1.Cek,
           pre.program_counter + 1,
-          encode_cek_witness_v1(control, #"", 0, 0, 0, #"", 0, 0),
+          encode_cek_witness_v1(control, #"", 0, 0, 0, #"", 0, 0, #""),
         ),
       }
     },
@@ -14700,6 +14717,7 @@ fn verify_cek_core_step(
   active_state_hash: ByteArray,
   execution_cpu_limit: Int,
   execution_memory_limit: Int,
+  program_envelope_hash: ByteArray,
 ) -> Bool {
   when auxiliary is {
     CekCoreStepWitness { step } -> {
@@ -14711,6 +14729,7 @@ fn verify_cek_core_step(
       }
       and {
         bytearray.length(active_state_hash) == 32,
+        bytearray.length(program_envelope_hash) == 32,
         execution_cursor >= 0,
         execution_cursor < control.execution_count,
         execution_cpu_limit > 0,
@@ -14764,6 +14783,7 @@ fn verify_cek_core_step(
                     #"",
                     0,
                     0,
+                    #"",
                   ),
                 ),
               }
@@ -14786,6 +14806,7 @@ fn verify_cek_core_step(
                 cek_machine_state_hash(step.post),
                 execution_cpu_limit,
                 execution_memory_limit,
+                program_envelope_hash,
               ),
             ),
           }
@@ -14821,6 +14842,7 @@ fn cek_context_successor_is_exact(
         #"",
         0,
         0,
+        context_control.program_envelope_hash,
       ),
     ),
   }
@@ -14840,6 +14862,7 @@ fn cek_selection_successor_is_exact(
   subject: ByteArray,
   redeemer_leaf: ByteArray,
   program_term_root: ByteArray,
+  program_envelope_hash: ByteArray,
 ) -> Bool {
   if and {
     language_tag == 3,
@@ -14880,6 +14903,7 @@ fn cek_selection_successor_is_exact(
             #"",
             0,
             0,
+            #"",
           ),
         ),
       }
@@ -14893,6 +14917,7 @@ fn cek_selection_successor_is_exact(
         stage: 0,
         language_tag,
         program_term_root,
+        program_envelope_hash,
         purpose_kind,
         purpose_index,
         script_hash,
@@ -15059,6 +15084,7 @@ pub fn verify_cek_execution_selection(
           subject,
           redeemer_leaf,
           #"",
+          #"",
         ),
       }
     } else if and {
@@ -15094,6 +15120,14 @@ pub fn verify_cek_execution_selection(
             subject,
             redeemer_leaf,
             envelope.term_root,
+            cek_proof_v1.hash_program_envelope_v1(
+              1,
+              1,
+              0,
+              envelope.term_root,
+              envelope.node_count,
+              envelope.material_byte_length,
+            ),
           )
       }
     } else {
@@ -16120,6 +16154,7 @@ fn cek_context_execution_successor_is_exact(
         cek_machine_v1.hash_state_v1(initial_state),
         context_control.execution_cpu_limit,
         context_control.execution_memory_limit,
+        context_control.program_envelope_hash,
       ),
     ),
   }
@@ -16527,8 +16562,8 @@ fn verify_cek(
       [
         native_control_cbor_data, context_control_cbor_data,
         execution_cursor_data, completed_cpu_data, completed_memory_data,
-        active_state_hash_data, execution_cpu_limit_data,
-        execution_memory_limit_data,
+        active_state_hash_data, program_envelope_hash_data,
+        execution_cpu_limit_data, execution_memory_limit_data,
       ]
     = builtin.un_list_data(data)
   let native_control_cbor = builtin.un_b_data(native_control_cbor_data)
@@ -16539,6 +16574,7 @@ fn verify_cek(
   let active_state_hash = builtin.un_b_data(active_state_hash_data)
   let execution_cpu_limit = builtin.un_i_data(execution_cpu_limit_data)
   let execution_memory_limit = builtin.un_i_data(execution_memory_limit_data)
+  let program_envelope_hash = builtin.un_b_data(program_envelope_hash_data)
   let control = native_scripts_control_from_witness(native_control_cbor)
   let Pair(verified_source, _) = verify_native_tx_proof_source_v1(
     pre.transaction_id,
@@ -16569,12 +16605,14 @@ fn verify_cek(
       active_state_hash,
       execution_cpu_limit,
       execution_memory_limit,
+      program_envelope_hash,
     ),
     if active_state_hash == #"" {
       if context_control_cbor == #"" {
         and {
           execution_cpu_limit == 0,
           execution_memory_limit == 0,
+          program_envelope_hash == #"",
           if or {
             execution_cursor == control.execution_count,
             control.language_bitmap == 0,
@@ -16610,6 +16648,7 @@ fn verify_cek(
           execution_cursor < control.execution_count,
           execution_cpu_limit == 0,
           execution_memory_limit == 0,
+          program_envelope_hash == context_control.program_envelope_hash,
           context_control_cbor == encode_cek_context_control_v1(context_control),
           cek_context_control_is_well_formed(control, context_control),
           verify_cek_context_step(
@@ -16638,6 +16677,7 @@ fn verify_cek(
           active_state_hash,
           execution_cpu_limit,
           execution_memory_limit,
+          program_envelope_hash,
         ),
       }
     },

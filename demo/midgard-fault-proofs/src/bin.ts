@@ -118,6 +118,11 @@ export type ParsedArgs = {
   readonly validationResolverIndex: string | undefined;
   readonly validationSemanticResolverIndex: string | undefined;
   readonly validationDisputeRole: "operator" | "challenger" | undefined;
+  readonly validationCekEnvelopeCborPath: string | undefined;
+  readonly validationCekProgramMaterialSidecarCborPath: string | undefined;
+  readonly validationCekIncrementalNecessityReceiptSetPath: string | undefined;
+  readonly validationCekSinglePublicationOutRef: string | undefined;
+  readonly validationCekMinimumMultiOutputOutRefs: readonly string[];
   readonly scaffoldSpecPath: string | undefined;
   readonly repoRoot: string | undefined;
   readonly dryRun: boolean;
@@ -147,7 +152,7 @@ const usage = `Usage:
   midgard-fault-proofs submit-validation-dispute-prepare-selected --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..10|13> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-semantic-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <0..10|13> --validation-semantic-resolver-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-award --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
-  midgard-fault-proofs submit-validation-dispute-direct-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <11..12> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
+  midgard-fault-proofs submit-validation-dispute-direct-resolution --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --validation-transition-cbor <path> --validation-auxiliary-cbor <path> --validation-resolver-index <11..12> [--validation-cek-envelope-cbor <path> --validation-cek-program-material-sidecar-cbor <path>] [--validation-cek-incremental-necessity-receipt-set <path>] [--validation-cek-single-publication-out-ref <txHash#outputIndex>] [--validation-cek-multi-output-out-ref <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [wallet options]
   midgard-fault-proofs submit-validation-dispute-enter-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-validation-dispute-timeout --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-zero-input-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -244,6 +249,11 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let validationResolverIndex: string | undefined;
   let validationSemanticResolverIndex: string | undefined;
   let validationDisputeRole: "operator" | "challenger" | undefined;
+  let validationCekEnvelopeCborPath: string | undefined;
+  let validationCekProgramMaterialSidecarCborPath: string | undefined;
+  let validationCekIncrementalNecessityReceiptSetPath: string | undefined;
+  let validationCekSinglePublicationOutRef: string | undefined;
+  const validationCekMinimumMultiOutputOutRefs: string[] = [];
   let scaffoldSpecPath: string | undefined;
   let repoRoot: string | undefined;
   let dryRun = false;
@@ -411,6 +421,28 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--validation-semantic-resolver-index":
         validationSemanticResolverIndex = rest[++index];
         break;
+      case "--validation-cek-envelope-cbor":
+        validationCekEnvelopeCborPath = rest[++index];
+        break;
+      case "--validation-cek-program-material-sidecar-cbor":
+        validationCekProgramMaterialSidecarCborPath = rest[++index];
+        break;
+      case "--validation-cek-incremental-necessity-receipt-set":
+        validationCekIncrementalNecessityReceiptSetPath = rest[++index];
+        break;
+      case "--validation-cek-single-publication-out-ref":
+        validationCekSinglePublicationOutRef = rest[++index];
+        break;
+      case "--validation-cek-multi-output-out-ref": {
+        const outRef = rest[++index];
+        if (outRef === undefined) {
+          throw new Error(
+            "--validation-cek-multi-output-out-ref requires a txHash#outputIndex value",
+          );
+        }
+        validationCekMinimumMultiOutputOutRefs.push(outRef);
+        break;
+      }
       case "--validation-dispute-role": {
         const role = rest[++index];
         if (role !== "operator" && role !== "challenger") {
@@ -497,6 +529,11 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     validationResolverIndex,
     validationSemanticResolverIndex,
     validationDisputeRole,
+    validationCekEnvelopeCborPath,
+    validationCekProgramMaterialSidecarCborPath,
+    validationCekIncrementalNecessityReceiptSetPath,
+    validationCekSinglePublicationOutRef,
+    validationCekMinimumMultiOutputOutRefs,
     scaffoldSpecPath,
     repoRoot,
     dryRun,
@@ -582,12 +619,39 @@ const requireValidationOneStepCliArguments = (
       "Direct validation resolution must not select a semantic resolver",
     );
   }
+  if (
+    staged &&
+    (args.validationCekEnvelopeCborPath !== undefined ||
+      args.validationCekProgramMaterialSidecarCborPath !== undefined ||
+      args.validationCekIncrementalNecessityReceiptSetPath !== undefined ||
+      args.validationCekSinglePublicationOutRef !== undefined ||
+      args.validationCekMinimumMultiOutputOutRefs.length > 0)
+  ) {
+    throw new Error(
+      "CEK route material, necessity receipts, and publication outrefs are permitted only for submit-validation-dispute-direct-resolution",
+    );
+  }
   return {
     validationTransitionCborPath: args.validationTransitionCborPath,
     validationAuxiliaryCborPath: args.validationAuxiliaryCborPath,
     validationResolverIndex: resolverIndex,
     validationSemanticResolverIndex:
       semanticText === undefined ? null : Number(semanticText),
+    ...(staged
+      ? {}
+      : {
+          validationCekEnvelopeCborPath: args.validationCekEnvelopeCborPath,
+          validationCekProgramMaterialSidecarCborPath:
+            args.validationCekProgramMaterialSidecarCborPath,
+          validationCekIncrementalNecessityReceiptSetPath:
+            args.validationCekIncrementalNecessityReceiptSetPath,
+          validationCekSinglePublicationOutRef:
+            args.validationCekSinglePublicationOutRef,
+          validationCekMinimumMultiOutputOutRefs:
+            args.validationCekMinimumMultiOutputOutRefs.length === 0
+              ? undefined
+              : args.validationCekMinimumMultiOutputOutRefs,
+        }),
   };
 };
 

@@ -29,6 +29,7 @@ import {
   encodeMidgardMpfProofDescriptorV1,
   finalizeMidgardRedeemerItemProofV1,
   hashMidgardCekMachineStateV1,
+  hashMidgardCekProgramEnvelopeV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputItemLeafV1,
@@ -767,6 +768,8 @@ export type ValidationMachineSignerSetProof =
 
 export type DeterministicValidationMachineTrace = {
   readonly validationContextCbor: Buffer;
+  /** Canonical, immutable input material for the CEK selection transition. */
+  readonly programMaterialSidecarCbor: Buffer;
   readonly states: readonly MidgardValidationMachineStateV1[];
   readonly witnesses: readonly ValidationMachineWorkWitness[];
   readonly tree: MidgardValidationTraceTree;
@@ -1315,6 +1318,18 @@ export const buildDeterministicValidationMachineTrace = (
       queued.programMaterialSidecarCbor ??
         encodeMidgardCekProgramMaterialSidecarV1([]),
     );
+    const canonicalProgramMaterialSidecarCbor = Buffer.from(
+      encodeMidgardCekProgramMaterialSidecarV1(programMaterial),
+    );
+    if (
+      !canonicalProgramMaterialSidecarCbor.equals(
+        queued.programMaterialSidecarCbor ?? Buffer.alloc(0),
+      )
+    ) {
+      return yield* Effect.fail(
+        new Error("program material sidecar must use canonical V1 CBOR"),
+      );
+    }
 
     let rejection: RejectedTx | null = null;
     let ledgerOps: readonly ValidationMachineLedgerOp[] = [];
@@ -5419,17 +5434,31 @@ export const buildDeterministicValidationMachineTrace = (
               ),
             );
           const cekWitness = (input: {
-            readonly contextControl?: MidgardCekContextControlV1;
+            readonly contextControl: MidgardCekContextControlV1 | null;
             readonly executionCursor: number;
             readonly completedCpu: bigint;
             readonly completedMemory: bigint;
-            readonly activeStateHash?: Uint8Array;
-            readonly executionCpuLimit?: bigint;
-            readonly executionMemoryLimit?: bigint;
+            readonly activeStateHash: Uint8Array | null;
+            readonly executionCpuLimit: bigint;
+            readonly executionMemoryLimit: bigint;
+            readonly programEnvelopeHash: Uint8Array | null;
           }): Buffer =>
             encodeMidgardCekValidationWitnessV1({
               nativeControlCbor: authenticatedNativeControlCbor,
               ...input,
+            });
+          const cekContextWitness = (input: {
+            readonly contextControl: MidgardCekContextControlV1;
+            readonly executionCursor: number;
+            readonly completedCpu: bigint;
+            readonly completedMemory: bigint;
+          }): Buffer =>
+            cekWitness({
+              ...input,
+              activeStateHash: null,
+              executionCpuLimit: 0n,
+              executionMemoryLimit: 0n,
+              programEnvelopeHash: input.contextControl.programEnvelopeHash,
             });
           const executionAuxiliary = (
             execution: ScriptExecutionProofEntry,
@@ -5533,9 +5562,14 @@ export const buildDeterministicValidationMachineTrace = (
             pushWitness(
               "cek",
               cekWitness({
+                contextControl: null,
                 executionCursor: executionIndex,
                 completedCpu,
                 completedMemory,
+                activeStateHash: null,
+                executionCpuLimit: 0n,
+                executionMemoryLimit: 0n,
+                programEnvelopeHash: null,
               }),
               executionAuxiliary(executionEntry, executionIndex),
             );
@@ -5585,11 +5619,14 @@ export const buildDeterministicValidationMachineTrace = (
                 memory: selected.value.exUnits.memory,
               },
             });
+            const programEnvelope = decodeMidgardCekProgramEnvelopeV1(
+              executionEntry.source.script.scriptBytes,
+            );
             let contextControl = initialMidgardCekContextControlV1({
               languageTag: executionEntry.languageTag,
-              programTermRoot: decodeMidgardCekProgramEnvelopeV1(
-                executionEntry.source.script.scriptBytes,
-              ).termRoot,
+              programTermRoot: programEnvelope.termRoot,
+              programEnvelopeHash:
+                hashMidgardCekProgramEnvelopeV1(programEnvelope),
               purposeKind: executionEntry.purpose.purposeKind,
               purposeIndex: executionEntry.purpose.purposeIndex,
               scriptHash: executionEntry.purpose.scriptHash,
@@ -5619,7 +5656,7 @@ export const buildDeterministicValidationMachineTrace = (
             });
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -5646,7 +5683,7 @@ export const buildDeterministicValidationMachineTrace = (
             for (const itemStep of selectionTrace.steps) {
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -5700,7 +5737,7 @@ export const buildDeterministicValidationMachineTrace = (
                 decodeMidgardLedgerOutputCommitmentV1(descriptorCbor);
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -5738,7 +5775,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -5775,7 +5812,7 @@ export const buildDeterministicValidationMachineTrace = (
                 decodeMidgardLedgerOutputCommitmentV1(descriptorCbor);
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -5813,7 +5850,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -5844,7 +5881,7 @@ export const buildDeterministicValidationMachineTrace = (
                 decodeMidgardLedgerOutputCommitmentV1(descriptorCbor);
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -5879,7 +5916,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -5906,7 +5943,7 @@ export const buildDeterministicValidationMachineTrace = (
               const signerHash = canonicalSignerHashes[signerIndex]!;
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -5930,7 +5967,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -5976,7 +6013,7 @@ export const buildDeterministicValidationMachineTrace = (
               }
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -6004,7 +6041,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6028,7 +6065,7 @@ export const buildDeterministicValidationMachineTrace = (
 
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6080,7 +6117,7 @@ export const buildDeterministicValidationMachineTrace = (
                 const asset = authenticatedMintAssets[mintIndex]!;
                 pushWitness(
                   "cek",
-                  cekWitness({
+                  cekContextWitness({
                     contextControl,
                     executionCursor: executionIndex,
                     completedCpu,
@@ -6142,7 +6179,7 @@ export const buildDeterministicValidationMachineTrace = (
               }
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -6206,7 +6243,7 @@ export const buildDeterministicValidationMachineTrace = (
               });
               pushWitness(
                 "cek",
-                cekWitness({
+                cekContextWitness({
                   contextControl,
                   executionCursor: executionIndex,
                   completedCpu,
@@ -6255,7 +6292,7 @@ export const buildDeterministicValidationMachineTrace = (
               for (const itemStep of itemTrace.steps) {
                 pushWitness(
                   "cek",
-                  cekWitness({
+                  cekContextWitness({
                     contextControl,
                     executionCursor: executionIndex,
                     completedCpu,
@@ -6391,7 +6428,7 @@ export const buildDeterministicValidationMachineTrace = (
             };
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6422,7 +6459,7 @@ export const buildDeterministicValidationMachineTrace = (
             };
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6446,7 +6483,7 @@ export const buildDeterministicValidationMachineTrace = (
             };
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6480,7 +6517,7 @@ export const buildDeterministicValidationMachineTrace = (
             }
             pushWitness(
               "cek",
-              cekWitness({
+              cekContextWitness({
                 contextControl,
                 executionCursor: executionIndex,
                 completedCpu,
@@ -6513,12 +6550,14 @@ export const buildDeterministicValidationMachineTrace = (
               pushWitness(
                 "cek",
                 cekWitness({
+                  contextControl: null,
                   executionCursor: executionIndex,
                   completedCpu,
                   completedMemory,
                   activeStateHash: hashMidgardCekMachineStateV1(step.pre),
                   executionCpuLimit: selected.value.exUnits.steps,
                   executionMemoryLimit: selected.value.exUnits.memory,
+                  programEnvelopeHash: contextControl.programEnvelopeHash,
                 }),
                 { kind: "cekCoreStep", step },
               );
@@ -6563,9 +6602,14 @@ export const buildDeterministicValidationMachineTrace = (
             pushWitness(
               "cek",
               cekWitness({
+                contextControl: null,
                 executionCursor: 0,
                 completedCpu: 0n,
                 completedMemory: 0n,
+                activeStateHash: null,
+                executionCpuLimit: 0n,
+                executionMemoryLimit: 0n,
+                programEnvelopeHash: null,
               }),
             );
           }
@@ -7502,6 +7546,9 @@ export const buildDeterministicValidationMachineTrace = (
     }
     return {
       validationContextCbor: contextCbor,
+      programMaterialSidecarCbor: Buffer.from(
+        canonicalProgramMaterialSidecarCbor,
+      ),
       states,
       witnesses,
       tree,

@@ -805,6 +805,9 @@ export const buildMinimalFaultProofContracts = async (
 
   return {
     ...withScheduler,
+    cekProgramMaterial:
+      validationTraceDisputeContracts?.validationTraceDispute
+        .cekProgramMaterial ?? withScheduler.cekProgramMaterial,
     stateQueue: {
       ...stateQueueMinting,
       ...stateQueueSpending,
@@ -2703,6 +2706,91 @@ export const publishValidationDisputeReferenceScript = async ({
   });
 };
 
+export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE =
+  "V1 validation-trace CEK direct resolver";
+
+/**
+ * Publishes the applied `cek_v1` direct resolver (direct resolver 0) as an
+ * authenticated reference-script UTxO carrying the
+ * `V1ValidationTraceCekResolver0` role token. Unlike every dispute
+ * control published by `publishAuthenticatedValidationDisputeControl`, the
+ * applied resolver body exceeds the 16,384-byte L1 proof envelope, so this
+ * deployment-time publication cannot fit that envelope; the measurement is
+ * returned unasserted so callers pin the honest publication size while the
+ * consuming finalization transaction stays inside the envelope through
+ * `readFrom`.
+ */
+export const publishAuthenticatedValidationCekDirectResolver = async ({
+  lucid,
+  script,
+  authPolicy,
+  roleName = VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly script: Script;
+  readonly authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
+  /** Test-only override proving wrong-role publications are rejected. */
+  readonly roleName?: string;
+}) => {
+  const target = {
+    name: roleName,
+    script,
+  };
+  // The published output must reach min-Ada for a script-ref output whose
+  // reference script alone is ~156 KiB, far above the fixed
+  // SCRIPT_REF_OUTPUT_LOVELACE floor used by envelope-fitting controls.
+  const scriptRefLovelaceFloor =
+    BigInt(script.script.length / 2) * 8_620n + 100_000_000n;
+  const selectedFundingInputs = selectReferenceScriptFundingUtxos(
+    await lucid.wallet().getUtxos(),
+    referenceScriptPublicationFundingTarget(1) + scriptRefLovelaceFloor,
+  );
+  if (selectedFundingInputs.length === 0) {
+    throw new Error(
+      "Expected plain-Ada inputs funding the authenticated CEK direct-resolver reference-script publication",
+    );
+  }
+  const referenceScriptsAddress = await lucid.wallet().address();
+  const { tx, layout } = await Effect.runPromise(
+    completeReferenceScriptPublicationTxProgram({
+      lucid,
+      selectedFundingInputs,
+      walletAddress: referenceScriptsAddress,
+      referenceScriptsAddress,
+      missingTargets: [target],
+      authPolicy,
+    }),
+  );
+  const localOutput = layout.localReferenceOutputs.get(target.name);
+  if (localOutput === undefined) {
+    throw new Error(
+      "Authenticated publication transaction omitted the CEK direct-resolver reference-script output",
+    );
+  }
+  const signed = await tx.sign.withWallet().complete();
+  const publicationMeasurement = measureCompleteSignedTransaction(
+    signed.toCBOR(),
+  );
+  const txHash = await signed.submit();
+  await lucid.awaitTx(txHash);
+  const outRef = {
+    txHash,
+    outputIndex: localOutput.outputIndex,
+  };
+  const published = await lucid.utxosByOutRef([outRef]);
+  if (published.length !== 1 || published[0]!.scriptRef == null) {
+    throw new Error(
+      `Expected one live CEK direct-resolver reference-script UTxO at ${txHash}#${localOutput.outputIndex.toString()}`,
+    );
+  }
+  return {
+    authPolicyDeploymentInfo:
+      referenceScriptAuthPolicyDeploymentInfo(authPolicy),
+    publicationMeasurement,
+    utxo: published[0]!,
+  };
+};
+
 // Publishes a deployed validator as a plain reference-script UTxO at the
 // publisher wallet address, following the hash-checked deployment
 // consumption pattern (`requireDeploymentReferenceScript`); the consuming
@@ -2961,6 +3049,13 @@ export const buildRemovalDeploymentInfo = (
             .type,
           cborHex:
             contracts.fraudProofs.validationTraceDispute.spendingScript.script,
+        },
+      },
+      cekProgramMaterialSpend: {
+        scriptHash: contracts.cekProgramMaterial.spendingScriptHash,
+        contract: {
+          type: contracts.cekProgramMaterial.spendingScript.type,
+          cborHex: contracts.cekProgramMaterial.spendingScript.script,
         },
       },
       stateQueueMint: deploymentEntry(

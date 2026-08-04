@@ -348,6 +348,8 @@ export type ResolvedTransitionTraceDeploymentContracts = {
 export type ResolvedValidationTraceDisputeDeploymentContracts = {
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly referenceScriptAuthPolicyId: string;
+  readonly cekProgramMaterialScriptHash: string;
+  readonly cekProgramMaterialAddress: string;
   readonly validationTraceDisputeCategory: FraudProofCatalogueCategoryDeploymentInfo;
   readonly stateQueuePolicyId: string | undefined;
   readonly fraudProofCataloguePolicyId: string;
@@ -769,14 +771,41 @@ export const resolveValidationTraceDisputeDeploymentContracts = async (params: {
     ...params,
     categoryName: "validationTraceDispute",
   });
+  const contracts =
+    resolved.contracts as ValidationTraceDisputeFaultProofContracts;
+  const deployedCekProgramMaterialScriptHash = requireDeploymentScriptHash(
+    resolved.deploymentInfo,
+    "cekProgramMaterialSpend",
+  );
+  requireMatchingScriptHash({
+    label: "cekProgramMaterialSpend script",
+    deployed: deployedCekProgramMaterialScriptHash,
+    derived:
+      contracts.validationTraceDispute.cekProgramMaterial.spendingScriptHash,
+  });
+  const cekProgramMaterialAddress =
+    contracts.validationTraceDispute.cekProgramMaterial.spendingScriptAddress;
+  const addressCredential = getAddressDetails(
+    cekProgramMaterialAddress,
+  ).paymentCredential;
+  if (
+    addressCredential?.type !== "Script" ||
+    addressCredential.hash !== deployedCekProgramMaterialScriptHash
+  ) {
+    throw new Error(
+      `Derived CEK program-material address ${cekProgramMaterialAddress} is not locked by deployed script ${deployedCekProgramMaterialScriptHash}.`,
+    );
+  }
   return {
     deploymentInfo: resolved.deploymentInfo,
     referenceScriptAuthPolicyId,
+    cekProgramMaterialScriptHash: deployedCekProgramMaterialScriptHash,
+    cekProgramMaterialAddress,
     validationTraceDisputeCategory: resolved.category,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
     fraudProofCataloguePolicyId: resolved.fraudProofCataloguePolicyId,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
-    contracts: resolved.contracts as ValidationTraceDisputeFaultProofContracts,
+    contracts,
   };
 };
 

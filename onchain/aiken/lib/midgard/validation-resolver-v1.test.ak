@@ -1,7 +1,11 @@
 use aiken/crypto.{ScriptHash}
+use aiken/primitive/bytearray
 use cardano/address.{Address}
-use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/assets.{PolicyId, from_lovelace}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
+use midgard/cek_proof_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/native_tx/compact.{
   encode_native_tx_body_compact, native_tx_id_for_version,
@@ -11,6 +15,7 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, MidgardTransactionWitnessSet,
   MidgardTxInput, TxIsValid, native_tx_version_v1,
 }
+use midgard/ledger_state.{CekProgramMaterialDatumV1}
 use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
@@ -25,6 +30,9 @@ const h_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const h_b = #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 const h_c = #"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+const material_script_hash: ScriptHash =
+  #"77777777777777777777777777777777777777777777777777777777"
 
 const computation_thread_policy: PolicyId =
   #"22222222222222222222222222222222222222222222222222222222"
@@ -48,6 +56,217 @@ const own_out_ref =
 
 const validation_context_cbor =
   #"8701546d6964676172642d636f6e73656e7375732d763118640000001864"
+
+test cek_material_reference_indices_are_unique_reference_selectors() {
+  and {
+    validation_resolver_v1.cek_reference_indices_unique_nonnegative_v1([]),
+    validation_resolver_v1.cek_reference_indices_unique_nonnegative_v1([0]),
+    validation_resolver_v1.cek_reference_indices_unique_nonnegative_v1(
+      [2, 0, 1],
+    ),
+    !validation_resolver_v1.cek_reference_indices_unique_nonnegative_v1([-1]),
+    !validation_resolver_v1.cek_reference_indices_unique_nonnegative_v1([1, 1]),
+  }
+}
+
+test cek_direct_and_incremental_routes_bind_the_selected_envelope() {
+  let preimage = #"8106"
+  let root = cek_proof_v1.hash_error_term_v1()
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let sidecar = #"82"
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"81")
+    |> bytearray.concat(#"82")
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"83")
+    |> bytearray.concat(#"01")
+    |> bytearray.concat(#"00")
+    |> bytearray.concat(#"42")
+    |> bytearray.concat(preimage)
+  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
+  and {
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.DirectCekMaterial {
+        envelope_cbor: envelope,
+        sidecar_cbor: sidecar,
+      },
+      [],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.DirectCekMaterial {
+        envelope_cbor: #"8106",
+        sidecar_cbor: sidecar,
+      },
+      [],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.DirectCekMaterial {
+        envelope_cbor: envelope,
+        sidecar_cbor: sidecar |> bytearray.concat(#"00"),
+      },
+      [],
+      material_script_hash,
+    ),
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: envelope_hash,
+      },
+      [],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.IncrementalCekMaterial {
+        program_envelope_hash: h_a,
+      },
+      [],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.NoCekMaterial,
+      [],
+      material_script_hash,
+    ),
+  }
+}
+
+fn material_reference_input(datum: Data, hash: ScriptHash) -> Input {
+  Input {
+    output_reference: own_out_ref,
+    output: Output {
+      address: script_address(hash),
+      value: from_lovelace(2_000_000),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+test cek_single_and_multi_reference_routes_verify_typed_material() {
+  let preimage = #"8106"
+  let root = cek_proof_v1.hash_error_term_v1()
+  let envelope = cek_proof_v1.encode_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let sidecar = #"820181825820"
+    |> bytearray.concat(root)
+    |> bytearray.concat(#"830100428106")
+  let envelope_hash = cek_proof_v1.hash_program_envelope_v1(1, 1, 0, root, 1, 2)
+  let single: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 1,
+    program_envelope_hash: envelope_hash,
+    sidecar_cbor: sidecar,
+  }
+  let bad_version: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 2,
+    program_envelope_hash: envelope_hash,
+    sidecar_cbor: sidecar,
+  }
+  let bad_hash: Data = validation_resolver_v1.CekSinglePublicationDatumV1 {
+    version: 1,
+    program_envelope_hash: h_a,
+    sidecar_cbor: sidecar,
+  }
+  let entry: Data = CekProgramMaterialDatumV1 { kind: 0, root, preimage }
+  and {
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(single, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 1,
+      },
+      [material_reference_input(single, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(bad_version, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(bad_hash, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.SinglePublicationCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_index: 0,
+      },
+      [material_reference_input(single, prepare_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0, 0],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [1],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [0],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+    !validation_resolver_v1.verify_cek_material_route_for_selected_envelope_v1(
+      envelope,
+      validation_resolver_v1.MinimumMultiOutputCekMaterial {
+        envelope_cbor: envelope,
+        reference_input_indices: [],
+      },
+      [material_reference_input(entry, material_script_hash)],
+      material_script_hash,
+    ),
+  }
+}
 
 // Bound by the SDK cross-language test to buildFaultProofContracts over a
 // freshly generated, compiler-pinned testnet plutus.json and deterministic

@@ -1,5 +1,6 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/primitive/bytearray
 use midgard/cek_data_v1
 
 test canonical_signed_integer_boundaries_match_the_evidence_constructor() {
@@ -70,6 +71,54 @@ test semantic_data_summary_drift_is_rejected() {
     memory: 69,
   }
   !cek_data_v1.verify_data_node_v1(bytes, None, None)
+}
+
+test data_material_preimage_inspectors_reject_noncanonical_and_extract_edges() {
+  let head_root = #"e727db15461df0c95814206c4df3ca7397b8bdeab92da97eb2e87141dd3cd178"
+  let head = cek_data_v1.IntegerData {
+    cbor_root: head_root,
+    cbor_length: 1,
+    memory: 5,
+  }
+  let list = cek_data_v1.DataListNodeV1 {
+    head: cek_data_v1.hash_data_node_v1(head),
+    head_cbor_length: 1,
+    head_memory: 5,
+    tail: cek_data_v1.empty_data_list_root_v1(),
+    length: 1,
+    payload_cbor_length: 1,
+    memory: 5,
+  }
+  let pair = cek_data_v1.DataPairNodeV1 {
+    key: cek_data_v1.hash_data_node_v1(head),
+    key_cbor_length: 1,
+    key_memory: 5,
+    value: cek_data_v1.hash_data_node_v1(head),
+    value_cbor_length: 1,
+    value_memory: 5,
+    tail: cek_data_v1.empty_data_pair_root_v1(),
+    length: 1,
+    payload_cbor_length: 2,
+    memory: 10,
+  }
+  let head_preimage = cek_data_v1.encode_data_node_preimage_v1(head)
+  let list_preimage = cek_data_v1.encode_data_list_node_preimage_v1(list)
+  let pair_preimage = cek_data_v1.encode_data_pair_node_preimage_v1(pair)
+  and {
+    cek_data_v1.inspect_data_node_preimage_v1(head_preimage) == Some(head),
+    cek_data_v1.inspect_data_list_node_preimage_v1(list_preimage) == Some(list),
+    cek_data_v1.inspect_data_pair_node_preimage_v1(pair_preimage) == Some(pair),
+    cek_data_v1.data_node_child_roots_v1(head) == [head_root],
+    cek_data_v1.data_list_node_child_roots_v1(list) == [list.head, list.tail],
+    cek_data_v1.data_pair_node_child_roots_v1(pair) == [
+      pair.key,
+      pair.value,
+      pair.tail,
+    ],
+    cek_data_v1.inspect_data_node_preimage_v1(
+      head_preimage |> bytearray.concat(#"00"),
+    ) == None,
+  }
 }
 
 test offchain_ordered_map_root_vector() {

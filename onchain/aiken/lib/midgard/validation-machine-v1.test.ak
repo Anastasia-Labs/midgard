@@ -1777,6 +1777,11 @@ fn cek_state_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
+  let program_envelope_hash = if context_control_cbor == #"" {
+    #""
+  } else {
+    h_b
+  }
   let work_witness_cbor = validation_machine_v1.encode_cek_witness_v1(
     control,
     context_control_cbor,
@@ -1786,6 +1791,7 @@ fn cek_state_fixture(
     #"",
     0,
     0,
+    program_envelope_hash,
   )
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
@@ -1823,6 +1829,7 @@ fn empty_cek_context_control_fixture(
     stage,
     language_tag: 3,
     program_term_root: h_a,
+    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -8852,6 +8859,7 @@ test script_integrity_is_recomputed_before_cek() {
         #"",
         0,
         0,
+        #"",
       ),
     ),
   }
@@ -9069,9 +9077,17 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
   )
 }
 
-test cek_execution_selection_authenticates_program_and_context_subject() {
+fn maximum_program_envelope_selection_is_exact() -> Bool {
   let tx = empty_v1_transaction()
   let maximum_program_envelope = cek_proof_v1.encode_program_envelope_v1(
+    1,
+    1,
+    0,
+    h_a,
+    cek_proof_v1.max_program_node_count,
+    cek_proof_v1.max_program_material_byte_length,
+  )
+  let maximum_program_envelope_hash = cek_proof_v1.hash_program_envelope_v1(
     1,
     1,
     0,
@@ -9126,6 +9142,7 @@ test cek_execution_selection_authenticates_program_and_context_subject() {
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
+    program_envelope_hash: maximum_program_envelope_hash,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash,
@@ -9157,13 +9174,54 @@ test cek_execution_selection_authenticates_program_and_context_subject() {
     },
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 40)
-  let Pair(post, _) = cek_state_fixture(
+  let Pair(post_base, _) = cek_state_fixture(
     tx,
     control,
     validation_machine_v1.encode_cek_context_control_v1(context_control),
     0,
     41,
   )
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..post_base,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      41,
+      validation_machine_v1.encode_cek_witness_v1(
+        control,
+        validation_machine_v1.encode_cek_context_control_v1(context_control),
+        0,
+        0,
+        0,
+        #"",
+        0,
+        0,
+        maximum_program_envelope_hash,
+      ),
+    ),
+  }
+  let tampered_post = validation_trace_v1.ValidationMachineStateV1 {
+    ..post,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.Cek,
+      41,
+      validation_machine_v1.encode_cek_witness_v1(
+        control,
+        validation_machine_v1.encode_cek_context_control_v1(
+          validation_machine_v1.CekContextControlV1 {
+            ..context_control,
+            program_envelope_hash: h_b,
+          },
+        ),
+        0,
+        0,
+        0,
+        #"",
+        0,
+        0,
+        h_b,
+      ),
+    ),
+  }
   let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
     transition: validation_machine_v1.ValidationOneStepWitnessV1 {
       work_witness_cbor,
@@ -9190,17 +9248,24 @@ test cek_execution_selection_authenticates_program_and_context_subject() {
   }
   and {
     bytearray.length(maximum_program_envelope) == 50,
+    maximum_program_envelope_hash == #"e4fe7f19ef343b55fef5a5c4a80383dd4bbe4bc7009db0a3214bfec086584697",
     bytearray.length(cbor.serialise(evidence)) < 16_384,
-    validation_machine_v1.verify_cek_execution_selection(
+    validation_machine_v1.verify_one_step_evidence(pre, evidence),
+    !validation_machine_v1.verify_one_step_evidence(
       pre,
-      evidence.transition,
-      evidence.auxiliary,
-      control,
-      0,
-      0,
-      0,
+      validation_machine_v1.ValidationOneStepEvidenceV1 {
+        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+          work_witness_cbor,
+          claimed_successor: tampered_post,
+        },
+        auxiliary: evidence.auxiliary,
+      },
     ),
   }
+}
+
+test cek_execution_selection_authenticates_program_and_context_subject() {
+  maximum_program_envelope_selection_is_exact()
 }
 
 test cek_effectful_selection_rejects_a_51_byte_program_envelope() {
@@ -9387,6 +9452,7 @@ test cross_language_cek_context_control_vectors() {
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
+    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_b,
@@ -9765,6 +9831,7 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     stage: 2,
     language_tag: 3,
     program_term_root: h_a,
+    program_envelope_hash: h_b,
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -11650,6 +11717,7 @@ test cek_context_seed_fits_one_step() {
     cek_machine_v1.hash_state_v1(initial_state),
     context_control.execution_cpu_limit,
     context_control.execution_memory_limit,
+    context_control.program_envelope_hash,
   )
   let post = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -12497,6 +12565,7 @@ test cek_active_core_step_replays_exact_machine_transition() {
     active_pre_hash,
     1000000,
     1000000,
+    h_b,
   )
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
@@ -12541,6 +12610,7 @@ test cek_active_core_step_replays_exact_machine_transition() {
         active_post_hash,
         1000000,
         1000000,
+        h_b,
       ),
     ),
     execution_cpu: 16010,
@@ -14079,7 +14149,10 @@ test maximum_script_program_instruction_evidence_is_bounded() {
       siblings: list.repeat(zero, 4),
     },
   }
-  bytearray.length(cbor.serialise(evidence)) < 16_384
+  and {
+    bytearray.length(cbor.serialise(evidence)) < 16_384,
+    maximum_program_envelope_selection_is_exact(),
+  }
 }
 
 fn stage_zero_script_sources_control(

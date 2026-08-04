@@ -1,9 +1,8 @@
 use aiken/builtin
 use aiken/cbor
 use aiken/primitive/bytearray
-use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/codec.{
-  encode_definite_array_header, encode_definite_bytes,
+  encode_definite_array_header, encode_definite_bytes, slice_len,
 }
 
 const data_node_domain = #"4d69646761726443656b446174614e6f64655631"
@@ -17,6 +16,69 @@ const data_pair_node_domain =
 const uint32_max = 4294967295
 
 const uint64_max = 18446744073709551615
+
+const blob_chunk_domain = #"4d69646761726443656b426c6f624368756e6b5631"
+
+const blob_branch_domain = #"4d69646761726443656b426c6f624272616e63685631"
+
+const max_blob_chunk_bytes = 4095
+
+const max_bounded_blob_bytes = 9215
+
+fn hash_blob_chunk_v1(chunk: ByteArray) -> ByteArray {
+  expect bytearray.length(chunk) <= max_blob_chunk_bytes
+  blob_chunk_domain
+    |> bytearray.concat(encode_definite_bytes(chunk))
+    |> builtin.blake2b_256
+}
+
+fn hash_blob_branch_v1(
+  left: ByteArray,
+  right: ByteArray,
+  byte_length: Int,
+) -> ByteArray {
+  blob_branch_domain
+    |> bytearray.concat(
+        #"83"
+          |> bytearray.concat(encode_definite_bytes(expect_hash(left)))
+          |> bytearray.concat(encode_definite_bytes(expect_hash(right)))
+          |> bytearray.concat(cbor.serialise(expect_uint64(byte_length))),
+      )
+    |> builtin.blake2b_256
+}
+
+fn bounded_blob_root_v1(bytes: ByteArray) -> ByteArray {
+  let length = bytearray.length(bytes)
+  expect length <= max_bounded_blob_bytes
+  if length <= max_blob_chunk_bytes {
+    hash_blob_chunk_v1(bytes)
+  } else {
+    let first = slice_len(bytes, 0, max_blob_chunk_bytes)
+    let remaining = length - max_blob_chunk_bytes
+    let second_length = if remaining <= max_blob_chunk_bytes {
+      remaining
+    } else {
+      max_blob_chunk_bytes
+    }
+    let second = slice_len(bytes, max_blob_chunk_bytes, second_length)
+    let left = hash_blob_branch_v1(
+      hash_blob_chunk_v1(first),
+      hash_blob_chunk_v1(second),
+      max_blob_chunk_bytes + second_length,
+    )
+    if remaining <= max_blob_chunk_bytes {
+      left
+    } else {
+      let third_length = remaining - second_length
+      let third = slice_len(
+        bytes,
+        max_blob_chunk_bytes + second_length,
+        third_length,
+      )
+      hash_blob_branch_v1(left, hash_blob_chunk_v1(third), length)
+    }
+  }
+}
 
 pub type DataNodeV1 {
   ConstrSmallData {
@@ -125,7 +187,7 @@ fn hash_data_pair_preimage(preimage: ByteArray) -> ByteArray {
     |> builtin.blake2b_256
 }
 
-pub fn hash_data_node_v1(node: DataNodeV1) -> ByteArray {
+pub fn encode_data_node_preimage_v1(node: DataNodeV1) -> ByteArray {
   when node is {
     ConstrSmallData {
       constructor,
@@ -135,15 +197,13 @@ pub fn hash_data_node_v1(node: DataNodeV1) -> ByteArray {
       memory,
     } -> {
       expect constructor >= 0 && constructor <= 127
-      hash_data_node_preimage(
-        encode_definite_array_header(6)
-          |> bytearray.concat(cbor.serialise(0))
-          |> bytearray.concat(cbor.serialise(constructor))
-          |> bytearray.concat(cbor.serialise(expect_uint32(fields_count)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(fields_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(6)
+        |> bytearray.concat(cbor.serialise(0))
+        |> bytearray.concat(cbor.serialise(constructor))
+        |> bytearray.concat(cbor.serialise(expect_uint32(fields_count)))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(fields_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
     }
     ConstrLargeData {
       constructor_cbor_root,
@@ -154,90 +214,472 @@ pub fn hash_data_node_v1(node: DataNodeV1) -> ByteArray {
       cbor_length,
       memory,
     } ->
-      hash_data_node_preimage(
-        encode_definite_array_header(8)
-          |> bytearray.concat(cbor.serialise(1))
-          |> bytearray.concat(
-              encode_definite_bytes(expect_hash(constructor_cbor_root)),
-            )
-          |> bytearray.concat(
-              cbor.serialise(expect_uint32(constructor_cbor_length)),
-            )
-          |> bytearray.concat(cbor.serialise(expect_uint64(constructor_memory)))
-          |> bytearray.concat(cbor.serialise(expect_uint32(fields_count)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(fields_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(8)
+        |> bytearray.concat(cbor.serialise(1))
+        |> bytearray.concat(
+            encode_definite_bytes(expect_hash(constructor_cbor_root)),
+          )
+        |> bytearray.concat(
+            cbor.serialise(expect_uint32(constructor_cbor_length)),
+          )
+        |> bytearray.concat(cbor.serialise(expect_uint64(constructor_memory)))
+        |> bytearray.concat(cbor.serialise(expect_uint32(fields_count)))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(fields_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
     MapData { entries_count, entries_root, cbor_length, memory } ->
-      hash_data_node_preimage(
-        encode_definite_array_header(5)
-          |> bytearray.concat(cbor.serialise(2))
-          |> bytearray.concat(cbor.serialise(expect_uint32(entries_count)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(entries_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(5)
+        |> bytearray.concat(cbor.serialise(2))
+        |> bytearray.concat(cbor.serialise(expect_uint32(entries_count)))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(entries_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
     ListData { items_count, items_root, cbor_length, memory } ->
-      hash_data_node_preimage(
-        encode_definite_array_header(5)
-          |> bytearray.concat(cbor.serialise(3))
-          |> bytearray.concat(cbor.serialise(expect_uint32(items_count)))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(items_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(5)
+        |> bytearray.concat(cbor.serialise(3))
+        |> bytearray.concat(cbor.serialise(expect_uint32(items_count)))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(items_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
     IntegerData { cbor_root, cbor_length, memory } ->
-      hash_data_node_preimage(
-        encode_definite_array_header(4)
-          |> bytearray.concat(cbor.serialise(4))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(cbor_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint32(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(4)
+        |> bytearray.concat(cbor.serialise(4))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(cbor_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint32(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
     BytesData { bytes_root, bytes_length, cbor_length, memory } ->
-      hash_data_node_preimage(
-        encode_definite_array_header(5)
-          |> bytearray.concat(cbor.serialise(5))
-          |> bytearray.concat(encode_definite_bytes(expect_hash(bytes_root)))
-          |> bytearray.concat(cbor.serialise(expect_uint32(bytes_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint32(cbor_length)))
-          |> bytearray.concat(cbor.serialise(expect_uint64(memory))),
-      )
+      encode_definite_array_header(5)
+        |> bytearray.concat(cbor.serialise(5))
+        |> bytearray.concat(encode_definite_bytes(expect_hash(bytes_root)))
+        |> bytearray.concat(cbor.serialise(expect_uint32(bytes_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint32(cbor_length)))
+        |> bytearray.concat(cbor.serialise(expect_uint64(memory)))
   }
 }
 
+pub fn hash_data_node_v1(node: DataNodeV1) -> ByteArray {
+  hash_data_node_preimage(encode_data_node_preimage_v1(node))
+}
+
+pub fn encode_data_list_node_preimage_v1(node: DataListNodeV1) -> ByteArray {
+  encode_definite_array_header(7)
+    |> bytearray.concat(encode_definite_bytes(expect_hash(node.head)))
+    |> bytearray.concat(cbor.serialise(expect_uint32(node.head_cbor_length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.head_memory)))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(node.tail)))
+    |> bytearray.concat(cbor.serialise(expect_uint32(node.length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.payload_cbor_length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.memory)))
+}
+
 pub fn hash_data_list_node_v1(node: DataListNodeV1) -> ByteArray {
-  hash_data_list_preimage(
-    encode_definite_array_header(7)
-      |> bytearray.concat(encode_definite_bytes(expect_hash(node.head)))
-      |> bytearray.concat(cbor.serialise(expect_uint32(node.head_cbor_length)))
-      |> bytearray.concat(cbor.serialise(expect_uint64(node.head_memory)))
-      |> bytearray.concat(encode_definite_bytes(expect_hash(node.tail)))
-      |> bytearray.concat(cbor.serialise(expect_uint32(node.length)))
-      |> bytearray.concat(
-          cbor.serialise(expect_uint64(node.payload_cbor_length)),
-        )
-      |> bytearray.concat(cbor.serialise(expect_uint64(node.memory))),
-  )
+  hash_data_list_preimage(encode_data_list_node_preimage_v1(node))
+}
+
+pub fn encode_data_pair_node_preimage_v1(node: DataPairNodeV1) -> ByteArray {
+  encode_definite_array_header(10)
+    |> bytearray.concat(encode_definite_bytes(expect_hash(node.key)))
+    |> bytearray.concat(cbor.serialise(expect_uint32(node.key_cbor_length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.key_memory)))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(node.value)))
+    |> bytearray.concat(cbor.serialise(expect_uint32(node.value_cbor_length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.value_memory)))
+    |> bytearray.concat(encode_definite_bytes(expect_hash(node.tail)))
+    |> bytearray.concat(cbor.serialise(expect_uint32(node.length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.payload_cbor_length)))
+    |> bytearray.concat(cbor.serialise(expect_uint64(node.memory)))
 }
 
 pub fn hash_data_pair_node_v1(node: DataPairNodeV1) -> ByteArray {
-  hash_data_pair_preimage(
-    encode_definite_array_header(10)
-      |> bytearray.concat(encode_definite_bytes(expect_hash(node.key)))
-      |> bytearray.concat(cbor.serialise(expect_uint32(node.key_cbor_length)))
-      |> bytearray.concat(cbor.serialise(expect_uint64(node.key_memory)))
-      |> bytearray.concat(encode_definite_bytes(expect_hash(node.value)))
-      |> bytearray.concat(cbor.serialise(expect_uint32(node.value_cbor_length)))
-      |> bytearray.concat(cbor.serialise(expect_uint64(node.value_memory)))
-      |> bytearray.concat(encode_definite_bytes(expect_hash(node.tail)))
-      |> bytearray.concat(cbor.serialise(expect_uint32(node.length)))
-      |> bytearray.concat(
-          cbor.serialise(expect_uint64(node.payload_cbor_length)),
-        )
-      |> bytearray.concat(cbor.serialise(expect_uint64(node.memory))),
-  )
+  hash_data_pair_preimage(encode_data_pair_node_preimage_v1(node))
+}
+
+fn data_is_list(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, True, False, False)
+}
+
+fn data_is_integer(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, False, True, False)
+}
+
+fn data_is_bytes(data: Data) -> Bool {
+  builtin.choose_data(data, False, False, False, False, True)
+}
+
+fn list_data(data: Data) -> Option<List<Data>> {
+  if data_is_list(data) {
+    Some(builtin.un_list_data(data))
+  } else {
+    None
+  }
+}
+
+fn uint32(value: Int) -> Bool {
+  value >= 0 && value <= uint32_max
+}
+
+fn uint64(value: Int) -> Bool {
+  value >= 0 && value <= uint64_max
+}
+
+/// Parses one exact canonical data-node preimage. Re-encoding equality makes
+/// indefinite, trailing, reordered, and non-minimal CBOR fail closed.
+pub fn inspect_data_node_preimage_v1(preimage: ByteArray) -> Option<DataNodeV1> {
+  when cbor.deserialise(preimage) is {
+    Some(data) ->
+      when list_data(data) is {
+        Some([
+          kind_data, constructor_data, fields_count_data, fields_root_data,
+          cbor_length_data, memory_data,
+        ]) ->
+          if and {
+            data_is_integer(kind_data),
+            data_is_integer(constructor_data),
+            data_is_integer(fields_count_data),
+            data_is_bytes(fields_root_data),
+            data_is_integer(cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let kind = builtin.un_i_data(kind_data)
+            let constructor = builtin.un_i_data(constructor_data)
+            let fields_count = builtin.un_i_data(fields_count_data)
+            let fields_root = builtin.un_b_data(fields_root_data)
+            let cbor_length = builtin.un_i_data(cbor_length_data)
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              kind == 0,
+              constructor >= 0,
+              constructor <= 127,
+              uint32(fields_count),
+              bytearray.length(fields_root) == 32,
+              uint64(cbor_length),
+              uint64(memory),
+            } {
+              let node = ConstrSmallData {
+                constructor,
+                fields_count,
+                fields_root,
+                cbor_length,
+                memory,
+              }
+              if encode_data_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        Some([
+          kind_data, constructor_root_data, constructor_length_data,
+          constructor_memory_data, fields_count_data, fields_root_data,
+          cbor_length_data, memory_data,
+        ]) ->
+          if and {
+            data_is_integer(kind_data),
+            data_is_bytes(constructor_root_data),
+            data_is_integer(constructor_length_data),
+            data_is_integer(constructor_memory_data),
+            data_is_integer(fields_count_data),
+            data_is_bytes(fields_root_data),
+            data_is_integer(cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let kind = builtin.un_i_data(kind_data)
+            let constructor_cbor_root = builtin.un_b_data(constructor_root_data)
+            let constructor_cbor_length = builtin.un_i_data(
+              constructor_length_data,
+            )
+            let constructor_memory = builtin.un_i_data(constructor_memory_data)
+            let fields_count = builtin.un_i_data(fields_count_data)
+            let fields_root = builtin.un_b_data(fields_root_data)
+            let cbor_length = builtin.un_i_data(cbor_length_data)
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              kind == 1,
+              bytearray.length(constructor_cbor_root) == 32,
+              uint32(constructor_cbor_length),
+              uint64(constructor_memory),
+              uint32(fields_count),
+              bytearray.length(fields_root) == 32,
+              uint64(cbor_length),
+              uint64(memory),
+            } {
+              let node = ConstrLargeData {
+                constructor_cbor_root,
+                constructor_cbor_length,
+                constructor_memory,
+                fields_count,
+                fields_root,
+                cbor_length,
+                memory,
+              }
+              if encode_data_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        Some([kind_data,
+          count_data, root_data, cbor_length_data, memory_data]) ->
+          if and {
+            data_is_integer(kind_data),
+            data_is_integer(count_data),
+            data_is_bytes(root_data),
+            data_is_integer(cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let kind = builtin.un_i_data(kind_data)
+            let count = builtin.un_i_data(count_data)
+            let root = builtin.un_b_data(root_data)
+            let cbor_length = builtin.un_i_data(cbor_length_data)
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              kind == 2 || kind == 3 || kind == 5,
+              uint32(count),
+              bytearray.length(root) == 32,
+              if kind == 5 {
+                uint32(cbor_length)
+              } else {
+                uint64(cbor_length)
+              },
+              uint64(memory),
+            } {
+              let node = if kind == 2 {
+                MapData {
+                  entries_count: count,
+                  entries_root: root,
+                  cbor_length,
+                  memory,
+                }
+              } else if kind == 3 {
+                ListData {
+                  items_count: count,
+                  items_root: root,
+                  cbor_length,
+                  memory,
+                }
+              } else {
+                BytesData {
+                  bytes_root: root,
+                  bytes_length: count,
+                  cbor_length,
+                  memory,
+                }
+              }
+              if encode_data_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        Some([kind_data, root_data, cbor_length_data, memory_data]) ->
+          if and {
+            data_is_integer(kind_data),
+            data_is_bytes(root_data),
+            data_is_integer(cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let kind = builtin.un_i_data(kind_data)
+            let root = builtin.un_b_data(root_data)
+            let cbor_length = builtin.un_i_data(cbor_length_data)
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              kind == 4,
+              bytearray.length(root) == 32,
+              uint32(cbor_length),
+              uint64(memory),
+            } {
+              let node = IntegerData { cbor_root: root, cbor_length, memory }
+              if encode_data_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        _ -> None
+      }
+    _ -> None
+  }
+}
+
+pub fn data_node_child_roots_v1(node: DataNodeV1) -> List<ByteArray> {
+  when node is {
+    ConstrSmallData { fields_root, .. } -> [fields_root]
+    ConstrLargeData { constructor_cbor_root, fields_root, .. } ->
+      [constructor_cbor_root, fields_root]
+    MapData { entries_root, .. } -> [entries_root]
+    ListData { items_root, .. } -> [items_root]
+    IntegerData { cbor_root, .. } -> [cbor_root]
+    BytesData { bytes_root, .. } -> [bytes_root]
+  }
+}
+
+pub fn inspect_data_list_node_preimage_v1(
+  preimage: ByteArray,
+) -> Option<DataListNodeV1> {
+  when cbor.deserialise(preimage) is {
+    Some(data) ->
+      when list_data(data) is {
+        Some([
+          head_data, head_cbor_length_data, head_memory_data, tail_data,
+          length_data, payload_cbor_length_data, memory_data,
+        ]) ->
+          if and {
+            data_is_bytes(head_data),
+            data_is_integer(head_cbor_length_data),
+            data_is_integer(head_memory_data),
+            data_is_bytes(tail_data),
+            data_is_integer(length_data),
+            data_is_integer(payload_cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let head = builtin.un_b_data(head_data)
+            let head_cbor_length = builtin.un_i_data(head_cbor_length_data)
+            let head_memory = builtin.un_i_data(head_memory_data)
+            let tail = builtin.un_b_data(tail_data)
+            let length = builtin.un_i_data(length_data)
+            let payload_cbor_length = builtin.un_i_data(
+              payload_cbor_length_data,
+            )
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              bytearray.length(head) == 32,
+              uint32(head_cbor_length),
+              uint64(head_memory),
+              bytearray.length(tail) == 32,
+              length > 0,
+              uint32(length),
+              uint64(payload_cbor_length),
+              uint64(memory),
+            } {
+              let node = DataListNodeV1 {
+                head,
+                head_cbor_length,
+                head_memory,
+                tail,
+                length,
+                payload_cbor_length,
+                memory,
+              }
+              if encode_data_list_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        _ -> None
+      }
+    _ -> None
+  }
+}
+
+pub fn data_list_node_child_roots_v1(node: DataListNodeV1) -> List<ByteArray> {
+  [node.head, node.tail]
+}
+
+pub fn inspect_data_pair_node_preimage_v1(
+  preimage: ByteArray,
+) -> Option<DataPairNodeV1> {
+  when cbor.deserialise(preimage) is {
+    Some(data) ->
+      when list_data(data) is {
+        Some([
+          key_data, key_cbor_length_data, key_memory_data, value_data,
+          value_cbor_length_data, value_memory_data, tail_data, length_data,
+          payload_cbor_length_data, memory_data,
+        ]) ->
+          if and {
+            data_is_bytes(key_data),
+            data_is_integer(key_cbor_length_data),
+            data_is_integer(key_memory_data),
+            data_is_bytes(value_data),
+            data_is_integer(value_cbor_length_data),
+            data_is_integer(value_memory_data),
+            data_is_bytes(tail_data),
+            data_is_integer(length_data),
+            data_is_integer(payload_cbor_length_data),
+            data_is_integer(memory_data),
+          } {
+            let key = builtin.un_b_data(key_data)
+            let key_cbor_length = builtin.un_i_data(key_cbor_length_data)
+            let key_memory = builtin.un_i_data(key_memory_data)
+            let value = builtin.un_b_data(value_data)
+            let value_cbor_length = builtin.un_i_data(value_cbor_length_data)
+            let value_memory = builtin.un_i_data(value_memory_data)
+            let tail = builtin.un_b_data(tail_data)
+            let length = builtin.un_i_data(length_data)
+            let payload_cbor_length = builtin.un_i_data(
+              payload_cbor_length_data,
+            )
+            let memory = builtin.un_i_data(memory_data)
+            if and {
+              bytearray.length(key) == 32,
+              uint32(key_cbor_length),
+              uint64(key_memory),
+              bytearray.length(value) == 32,
+              uint32(value_cbor_length),
+              uint64(value_memory),
+              bytearray.length(tail) == 32,
+              length > 0,
+              uint32(length),
+              uint64(payload_cbor_length),
+              uint64(memory),
+            } {
+              let node = DataPairNodeV1 {
+                key,
+                key_cbor_length,
+                key_memory,
+                value,
+                value_cbor_length,
+                value_memory,
+                tail,
+                length,
+                payload_cbor_length,
+                memory,
+              }
+              if encode_data_pair_node_preimage_v1(node) == preimage {
+                Some(node)
+              } else {
+                None
+              }
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        _ -> None
+      }
+    _ -> None
+  }
+}
+
+pub fn data_pair_node_child_roots_v1(node: DataPairNodeV1) -> List<ByteArray> {
+  [node.key, node.value, node.tail]
 }
 
 pub fn empty_data_list_root_v1() -> ByteArray {
@@ -847,9 +1289,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
         let constructor_data = builtin.i_data(constructor)
         let constructor_cbor = cbor.serialise(constructor_data)
         ConstrLargeData {
-          constructor_cbor_root: cek_proof_v1.bounded_blob_root_v1(
-            constructor_cbor,
-          ),
+          constructor_cbor_root: bounded_blob_root_v1(constructor_cbor),
           constructor_cbor_length: bytearray.length(constructor_cbor),
           constructor_memory: 4 + integer_memory_size(constructor),
           fields_count: summary.length,
@@ -880,7 +1320,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
     {
       let integer = builtin.un_i_data(data)
       IntegerData {
-        cbor_root: cek_proof_v1.bounded_blob_root_v1(cbor.serialise(data)),
+        cbor_root: bounded_blob_root_v1(cbor.serialise(data)),
         cbor_length,
         memory: 4 + integer_memory_size(integer),
       }
@@ -888,7 +1328,7 @@ pub fn semantic_data_summary_v1(data: Data) -> DataSummaryV1 {
     {
       let bytes = builtin.un_b_data(data)
       BytesData {
-        bytes_root: cek_proof_v1.bounded_blob_root_v1(bytes),
+        bytes_root: bounded_blob_root_v1(bytes),
         bytes_length: bytearray.length(bytes),
         cbor_length,
         memory: 4 + if bytearray.length(bytes) == 0 {

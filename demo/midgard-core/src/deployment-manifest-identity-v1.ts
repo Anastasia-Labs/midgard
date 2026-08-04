@@ -192,6 +192,7 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 validation-trace boundary": "V1ValidationTraceBoundary",
     "V1 validation-trace timeout": "V1ValidationTraceTimeout",
     "V1 validation-trace award": "V1ValidationTraceAward",
+    "V1 validation-trace CEK direct resolver": "V1ValidationTraceCekResolver0",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([

@@ -270,9 +270,18 @@ describe("V1 deployment manifest", () => {
   //     8th category (`00000007`), which also moves the derived catalogue root
   //     and every membership proof. Both are append-only, so no existing
   //     category ID shifts. `68c2a3ae...` -> `a9219993...`.
+  //  5. Goal task `C28` appended the `V1 validation-trace CEK direct resolver`
+  //     role token (`V1ValidationTraceCekResolver0`) to
+  //     `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` so the ~156 KiB applied `cek_v1`
+  //     direct resolver is consumed only through an authenticated reference
+  //     script. Token names feed the manifest identity, so the pin moved
+  //     `a9219993...` -> `c9cb35df...`. The role deliberately does NOT join
+  //     `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE`: its
+  //     publication exceeds the L1 envelope and stays a fault-proofs
+  //     deployment entry (`validationTraceDisputeCekDirectResolver`).
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "a9219993bbb9327711c9ef33152abd76971b12d953e92931da046e00907a2aeb",
+      "c9cb35dfd464466be640a874f9eb80fcb3cb55e204ded5e18f997c6dc359de1c",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

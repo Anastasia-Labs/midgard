@@ -1,10 +1,16 @@
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
-use cardano/address.{Address}
+use aiken/primitive/bytearray
+use cardano/address.{Address, Credential}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
+}
+use midgard/cek_proof_v1
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue, finalize}
+use midgard/ledger_state.{CekProgramMaterialDatumV1}
+use midgard/native_script_scan_v1
 use midgard/validation_machine_v1
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
@@ -27,6 +33,272 @@ pub type ResolveActionV1 {
 
 pub type SpendRedeemer =
   ct.StepRedeemer<ResolveActionV1>
+
+/// Complete CEK material is resolver evidence, never a machine auxiliary.
+pub type CekMaterialRouteV1 {
+  NoCekMaterial
+  DirectCekMaterial { envelope_cbor: ByteArray, sidecar_cbor: ByteArray }
+  SinglePublicationCekMaterial {
+    envelope_cbor: ByteArray,
+    reference_input_index: Int,
+  }
+  MinimumMultiOutputCekMaterial {
+    envelope_cbor: ByteArray,
+    reference_input_indices: List<Int>,
+  }
+  IncrementalCekMaterial { program_envelope_hash: ByteArray }
+}
+
+pub type CekSinglePublicationDatumV1 {
+  version: Int,
+  program_envelope_hash: ByteArray,
+  sidecar_cbor: ByteArray,
+}
+
+pub type CekResolveActionV1 {
+  ResolveCek {
+    input_index: Int,
+    output_index: Int,
+    fraud_proof_mint_redeemer_index: Int,
+    challenger_evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+    material_route: CekMaterialRouteV1,
+  }
+}
+
+pub type CekSpendRedeemer =
+  ct.StepRedeemer<CekResolveActionV1>
+
+fn cek_selection_envelope_cbor_v1(
+  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+) -> Option<ByteArray> {
+  when evidence.auxiliary is {
+    validation_machine_v1.NativeExecutionScanWitness {
+      language_tag,
+      script_total_length,
+      first_chunk_proof,
+      ..
+    } ->
+      if ( language_tag == 3 || language_tag == 128 ) && first_chunk_proof.chunk_index == 0 && first_chunk_proof.total_length == script_total_length {
+        when
+          native_script_scan_v1.versioned_script_header_v1(
+            first_chunk_proof.chunk,
+            script_total_length,
+          )
+        is {
+          Some(header) ->
+            if header.language_tag == language_tag && header.payload_offset >= 0 && header.payload_length > 0 && header.payload_offset + header.payload_length <= bytearray.length(
+              first_chunk_proof.chunk,
+            ) {
+              Some(
+                bytearray.slice(
+                  first_chunk_proof.chunk,
+                  header.payload_offset,
+                  header.payload_offset + header.payload_length - 1,
+                ),
+              )
+            } else {
+              None
+            }
+          None -> None
+        }
+      } else {
+        None
+      }
+    _ -> None
+  }
+}
+
+fn cek_envelope_hash_v1(envelope_cbor: ByteArray) -> Option<ByteArray> {
+  when cek_proof_v1.inspect_program_envelope_v1(envelope_cbor) is {
+    Some(envelope) ->
+      Some(
+        cek_proof_v1.hash_program_envelope_v1(
+          1,
+          1,
+          0,
+          envelope.term_root,
+          envelope.node_count,
+          envelope.material_byte_length,
+        ),
+      )
+    None -> None
+  }
+}
+
+fn material_reference_input_at(
+  reference_inputs: List<Input>,
+  index: Int,
+  cek_program_material_script_hash: ScriptHash,
+) -> Option<Data> {
+  when list.at(reference_inputs, index) is {
+    Some(Input {
+      output: Output {
+        address: Address {
+          payment_credential: Credential.Script(script_hash),
+          ..
+        },
+        datum: InlineDatum(datum),
+        ..
+      },
+      ..
+    }) ->
+      if script_hash == cek_program_material_script_hash {
+        Some(datum)
+      } else {
+        None
+      }
+    _ -> None
+  }
+}
+
+fn verify_single_publication_route_v1(
+  envelope_cbor: ByteArray,
+  reference_inputs: List<Input>,
+  reference_input_index: Int,
+  cek_program_material_script_hash: ScriptHash,
+) -> Bool {
+  when
+    material_reference_input_at(
+      reference_inputs,
+      reference_input_index,
+      cek_program_material_script_hash,
+    )
+  is {
+    Some(datum_data) -> {
+      expect
+          CekSinglePublicationDatumV1 {
+            version,
+            program_envelope_hash,
+            sidecar_cbor,
+          }
+        = datum_data
+      when cek_envelope_hash_v1(envelope_cbor) is {
+        Some(expected_hash) -> and {
+            version == 1,
+            program_envelope_hash == expected_hash,
+            cek_proof_v1.verify_complete_program_material_v1(
+              envelope_cbor,
+              sidecar_cbor,
+            ),
+          }
+        None -> False
+      }
+    }
+    None -> False
+  }
+}
+
+pub fn cek_reference_indices_unique_nonnegative_v1(indices: List<Int>) -> Bool {
+  when indices is {
+    [] -> True
+    [first, ..rest] ->
+      first >= 0 && !list.has(rest, first) && cek_reference_indices_unique_nonnegative_v1(
+        rest,
+      )
+  }
+}
+
+fn material_entries_from_references_v1(
+  reference_inputs: List<Input>,
+  indices: List<Int>,
+  cek_program_material_script_hash: ScriptHash,
+) -> Option<List<CekProgramMaterialDatumV1>> {
+  when indices is {
+    [] -> Some([])
+    [index, ..rest] ->
+      when
+        material_reference_input_at(
+          reference_inputs,
+          index,
+          cek_program_material_script_hash,
+        )
+      is {
+        Some(datum_data) -> {
+          expect entry: CekProgramMaterialDatumV1 = datum_data
+          when
+            material_entries_from_references_v1(
+              reference_inputs,
+              rest,
+              cek_program_material_script_hash,
+            )
+          is {
+            Some(entries) -> Some([entry, ..entries])
+            None -> None
+          }
+        }
+        None -> None
+      }
+  }
+}
+
+pub fn verify_cek_material_route_for_selected_envelope_v1(
+  selected_envelope: ByteArray,
+  material_route: CekMaterialRouteV1,
+  reference_inputs: List<Input>,
+  cek_program_material_script_hash: ScriptHash,
+) -> Bool {
+  when material_route is {
+    DirectCekMaterial { envelope_cbor, sidecar_cbor } ->
+      envelope_cbor == selected_envelope && cek_proof_v1.verify_complete_program_material_v1(
+        envelope_cbor,
+        sidecar_cbor,
+      )
+    SinglePublicationCekMaterial { envelope_cbor, reference_input_index } ->
+      envelope_cbor == selected_envelope && verify_single_publication_route_v1(
+        envelope_cbor,
+        reference_inputs,
+        reference_input_index,
+        cek_program_material_script_hash,
+      )
+    MinimumMultiOutputCekMaterial { envelope_cbor, reference_input_indices } ->
+      if and {
+        envelope_cbor == selected_envelope,
+        list.length(reference_input_indices) > 0,
+        cek_reference_indices_unique_nonnegative_v1(reference_input_indices),
+      } {
+        when
+          material_entries_from_references_v1(
+            reference_inputs,
+            reference_input_indices,
+            cek_program_material_script_hash,
+          )
+        is {
+          Some(entries) ->
+            cek_proof_v1.verify_complete_program_material_entries_v1(
+              envelope_cbor,
+              entries,
+            )
+          None -> False
+        }
+      } else {
+        False
+      }
+    IncrementalCekMaterial { program_envelope_hash } ->
+      when cek_envelope_hash_v1(selected_envelope) is {
+        Some(expected_hash) -> program_envelope_hash == expected_hash
+        None -> False
+      }
+    NoCekMaterial -> False
+  }
+}
+
+fn verify_cek_route_v1(
+  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  material_route: CekMaterialRouteV1,
+  reference_inputs: List<Input>,
+  cek_program_material_script_hash: ScriptHash,
+) -> Bool {
+  when cek_selection_envelope_cbor_v1(evidence) is {
+    Some(selected_envelope) ->
+      verify_cek_material_route_for_selected_envelope_v1(
+        selected_envelope,
+        material_route,
+        reference_inputs,
+        cek_program_material_script_hash,
+      )
+    None -> material_route == NoCekMaterial
+  }
+}
 
 pub type PrepareActionV1 {
   Prepare {
@@ -258,6 +530,80 @@ pub fn validate(
               state,
               challenger_evidence.transition.claimed_successor,
               verify_one_step(state.pre_state, challenger_evidence),
+            ),
+          }
+        },
+      )
+    }
+  }
+}
+
+/// CEK finalization keeps the ordinary computation-thread cancellation and
+/// award economics, while admitting complete program material only at the
+/// authenticated CEK selection boundary.
+pub fn validate_cek(
+  cek_program_material_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
+  fraud_proof_token_policy_id: PolicyId,
+  fraud_proof_token_address: Address,
+  datum: Option<Datum>,
+  redeemer: CekSpendRedeemer,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  when redeemer is {
+    ct.Cancel { input_index, computation_thread_mint_redeemer_index } ->
+      cancel(
+        computation_thread_token_policy_id,
+        datum,
+        input_index,
+        own_out_ref,
+        computation_thread_mint_redeemer_index,
+        tx,
+      )
+    ct.Continue(ResolveCek {
+      input_index,
+      output_index,
+      fraud_proof_mint_redeemer_index,
+      challenger_evidence,
+      material_route,
+    }) -> {
+      let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
+      expect Some(step_datum) = datum
+      finalize(
+        computation_thread_token_policy_id,
+        fraud_proof_token_policy_id,
+        fraud_proof_token_address,
+        step_datum,
+        input_index,
+        output_index,
+        fraud_proof_mint_redeemer_index,
+        own_out_ref,
+        inputs,
+        outputs,
+        redeemers,
+        fn(
+          _input_script_hash,
+          _computation_thread_token_asset_name,
+          _fraud_prover,
+          input_state,
+        ) {
+          expect Some(state) = input_state
+          and {
+            state.pre_state.phase == validation_trace_v1.Cek,
+            verify_cek_route_v1(
+              challenger_evidence,
+              material_route,
+              reference_inputs,
+              cek_program_material_script_hash,
+            ),
+            validation_resolution_v1.challenger_wins_with_valid_successor(
+              state,
+              challenger_evidence.transition.claimed_successor,
+              validation_machine_v1.verify_cek_one_step_v1(
+                state.pre_state,
+                challenger_evidence,
+              ),
             ),
           }
         },
