@@ -789,22 +789,11 @@ describe("validation-dispute transaction validity", () => {
       0n,
       new Constr(0, [traversalControl]),
     ]);
-    const foldMapAction = new Constr(7, [
-      frame,
-      0n,
-      summary,
-      summary,
-      [],
-      [],
-    ]);
+    const foldMapAction = new Constr(7, [frame, 0n, summary, summary, [], []]);
     const auxiliary = new Constr(18, [
       none,
       itemControl,
-      new Constr(0, [
-        new Constr(2, [foldMapAction]),
-        none,
-        none,
-      ]),
+      new Constr(0, [new Constr(2, [foldMapAction]), none, none]),
     ]);
     if (!(transitionData instanceof Constr)) {
       throw new Error("test transition must be a constructor");
@@ -879,10 +868,9 @@ describe("validation-dispute transaction validity", () => {
           stage: "executor",
           inputIndex: 0n,
           outputIndex: 0n,
-          traversalAction:
-            module.includes("fold_map")
-              ? foldMapAction
-              : new Constr(8, [frame, none]),
+          traversalAction: module.includes("fold_map")
+            ? foldMapAction
+            : new Constr(8, [frame, none]),
         }),
       })),
       {

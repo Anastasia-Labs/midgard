@@ -703,10 +703,7 @@ const auxiliaryShapeV1 = ({
       auxiliary,
       VALIDATION_AUXILIARY_SHAPES_V1.redeemerItemStep,
     );
-    if (
-      semanticResolverIndex === 28 &&
-      !isRedeemerItemStage
-    ) {
+    if (semanticResolverIndex === 28 && !isRedeemerItemStage) {
       throw new Error(
         "validation auxiliary witness does not match the selected ScriptSources split stage-one proof family",
       );
@@ -952,7 +949,9 @@ export const encodeScriptSourcesStageOneSpendRedeemerV1 = ({
   if (stage === "envelope") {
     const selectedFamily = required(family, "ScriptSources action family");
     if (selectedFamily !== 0 && selectedFamily !== 1) {
-      throw new Error("ScriptSources action family must be FoldMap or FinalizeFrame");
+      throw new Error(
+        "ScriptSources action family must be FoldMap or FinalizeFrame",
+      );
     }
     fields = [
       inputIndex,
@@ -3897,10 +3896,7 @@ const exactSafeCborInteger = (value: unknown, label: string): number => {
 
 const SCRIPT_SOURCES_REDEEMER_DOMAINS_V1 = {
   envelope: Buffer.from("MidgardScriptSourcesRedeemerEnvelopeV1", "ascii"),
-  traversal: Buffer.from(
-    "MidgardScriptSourcesTraversalNormalizedV1",
-    "ascii",
-  ),
+  traversal: Buffer.from("MidgardScriptSourcesTraversalNormalizedV1", "ascii"),
   outer: Buffer.from("MidgardScriptSourcesOuterNormalizedV1", "ascii"),
   attested: Buffer.from(
     "MidgardScriptSourcesRedeemerExecutionAttestedV1",
@@ -3946,12 +3942,10 @@ const exactCborBigIntV1 = (
   return value;
 };
 
-const hashDomainDataV1 = (
-  domain: Uint8Array,
-  value: PlutusDataValue,
-): string =>
-  computeHash32(Buffer.concat([Buffer.from(domain), plutusDataCbor(value)]))
-    .toString("hex");
+const hashDomainDataV1 = (domain: Uint8Array, value: PlutusDataValue): string =>
+  computeHash32(
+    Buffer.concat([Buffer.from(domain), plutusDataCbor(value)]),
+  ).toString("hex");
 
 const requireOptionDataV1 = (
   value: PlutusDataValue,
@@ -4045,7 +4039,12 @@ const dataFrameCoreV1 = (
     },
   } as const;
   const kind = exactSafeCborInteger(frame.fields[0], `${label}.kind`);
-  if (kind === 0) return { ...common, kind: "constrSmall", constructor: integer(1, "constructor") };
+  if (kind === 0)
+    return {
+      ...common,
+      kind: "constrSmall",
+      constructor: integer(1, "constructor"),
+    };
   if (kind === 1) {
     return {
       ...common,
@@ -4087,11 +4086,21 @@ const stageOneActionCoreV1 = ({
     return {
       kind: "foldMap",
       frame: dataFrameCoreV1(action.fields[0]!, "ScriptSources FoldMap frame"),
-      pairIndex: exactSafeCborInteger(action.fields[1], "ScriptSources FoldMap pair index"),
+      pairIndex: exactSafeCborInteger(
+        action.fields[1],
+        "ScriptSources FoldMap pair index",
+      ),
       key: dataSummaryCoreV1(action.fields[2]!, "ScriptSources FoldMap key"),
-      value: dataSummaryCoreV1(action.fields[3]!, "ScriptSources FoldMap value"),
-      keySiblings: keySiblings.map((sibling) => Buffer.from(sibling as string, "hex")),
-      valueSiblings: valueSiblings.map((sibling) => Buffer.from(sibling as string, "hex")),
+      value: dataSummaryCoreV1(
+        action.fields[3]!,
+        "ScriptSources FoldMap value",
+      ),
+      keySiblings: keySiblings.map((sibling) =>
+        Buffer.from(sibling as string, "hex"),
+      ),
+      valueSiblings: valueSiblings.map((sibling) =>
+        Buffer.from(sibling as string, "hex"),
+      ),
     };
   }
   const parent = requireOptionDataV1(
@@ -4100,7 +4109,10 @@ const stageOneActionCoreV1 = ({
   );
   return {
     kind: "finalizeFrame",
-    frame: dataFrameCoreV1(action.fields[0]!, "ScriptSources FinalizeFrame frame"),
+    frame: dataFrameCoreV1(
+      action.fields[0]!,
+      "ScriptSources FinalizeFrame frame",
+    ),
     parent:
       parent === null
         ? null
@@ -4144,8 +4156,15 @@ const stageOneControlCoreV1 = (
     [7, "integer"],
     [8, "bytes"],
   ] as const) {
-    if (requireOptionDataV1(traversal.fields[index]!, `ScriptSources traversal ${label}`) !== null) {
-      throw new Error(`ScriptSources fold-stage traversal ${label} must be absent`);
+    if (
+      requireOptionDataV1(
+        traversal.fields[index]!,
+        `ScriptSources traversal ${label}`,
+      ) !== null
+    ) {
+      throw new Error(
+        `ScriptSources fold-stage traversal ${label} must be absent`,
+      );
     }
   }
   const resultData = requireOptionDataV1(
@@ -4153,19 +4172,38 @@ const stageOneControlCoreV1 = (
     "ScriptSources traversal result",
   );
   const traversalCore: MidgardCekDataTraverseControlV1 = {
-    version: integerFromDataV1(traversal.fields[0], "ScriptSources traversal version") as 1,
-    stage: integerFromDataV1(traversal.fields[1], "ScriptSources traversal stage") as MidgardCekDataTraverseControlV1["stage"],
-    sourceStart: integerFromDataV1(traversal.fields[2], "ScriptSources traversal source start"),
-    sourceLength: integerFromDataV1(traversal.fields[3], "ScriptSources traversal source length"),
-    offset: integerFromDataV1(traversal.fields[4], "ScriptSources traversal offset"),
+    version: integerFromDataV1(
+      traversal.fields[0],
+      "ScriptSources traversal version",
+    ) as 1,
+    stage: integerFromDataV1(
+      traversal.fields[1],
+      "ScriptSources traversal stage",
+    ) as MidgardCekDataTraverseControlV1["stage"],
+    sourceStart: integerFromDataV1(
+      traversal.fields[2],
+      "ScriptSources traversal source start",
+    ),
+    sourceLength: integerFromDataV1(
+      traversal.fields[3],
+      "ScriptSources traversal source length",
+    ),
+    offset: integerFromDataV1(
+      traversal.fields[4],
+      "ScriptSources traversal offset",
+    ),
     frameRoot: (() => {
-      if (typeof traversal.fields[5] !== "string") throw new Error("ScriptSources traversal frame root must be bytes");
+      if (typeof traversal.fields[5] !== "string")
+        throw new Error("ScriptSources traversal frame root must be bytes");
       return Buffer.from(traversal.fields[5], "hex");
     })(),
     pendingLargeExpectedChildren: null,
     integer: null,
     bytes: null,
-    result: resultData === null ? null : dataSummaryCoreV1(resultData, "ScriptSources traversal result"),
+    result:
+      resultData === null
+        ? null
+        : dataSummaryCoreV1(resultData, "ScriptSources traversal result"),
   };
   return {
     version: integer(0, "version") as 1,
@@ -4193,8 +4231,10 @@ const stageOneControlCoreV1 = (
   };
 };
 
-const integerFromDataV1 = (value: PlutusDataValue | undefined, label: string): number =>
-  exactSafeCborInteger(value, label);
+const integerFromDataV1 = (
+  value: PlutusDataValue | undefined,
+  label: string,
+): number => exactSafeCborInteger(value, label);
 
 const deriveScriptSourcesStageOneRouteDataV1 = ({
   preparedResolution,
@@ -4208,7 +4248,9 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   finalizeFrameScriptHash,
   settlementScriptHash,
 }: {
-  readonly preparedResolution: NonNullable<PreparedValidationResolutionDatumV1Data["data"]>;
+  readonly preparedResolution: NonNullable<
+    PreparedValidationResolutionDatumV1Data["data"]
+  >;
   readonly fraudProver: string;
   readonly auxiliary: Constr<PlutusDataValue>;
   readonly deploymentId: string;
@@ -4249,8 +4291,14 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     label: "ScriptSources stage-one item action",
   });
   if (
-    requireOptionDataV1(itemWitness.fields[1]!, "ScriptSources stage-one chunk proof") !== null ||
-    requireOptionDataV1(itemWitness.fields[2]!, "ScriptSources stage-one next chunk proof") !== null
+    requireOptionDataV1(
+      itemWitness.fields[1]!,
+      "ScriptSources stage-one chunk proof",
+    ) !== null ||
+    requireOptionDataV1(
+      itemWitness.fields[2]!,
+      "ScriptSources stage-one next chunk proof",
+    ) !== null
   ) {
     throw new Error(
       "ScriptSources split stage-one route forbids chunk proofs during a fold-stage action",
@@ -4258,9 +4306,16 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
   }
   const traversalActionData = itemAction.fields[0]!;
   if (!(traversalActionData instanceof Constr)) {
-    throw new Error("ScriptSources stage-one traversal action must be a constructor");
+    throw new Error(
+      "ScriptSources stage-one traversal action must be a constructor",
+    );
   }
-  const family = traversalActionData.index === 7 ? 0 : traversalActionData.index === 8 ? 1 : -1;
+  const family =
+    traversalActionData.index === 7
+      ? 0
+      : traversalActionData.index === 8
+        ? 1
+        : -1;
   if (family < 0) {
     throw new Error(
       "ScriptSources split stage-one route only accepts FoldMap or FinalizeFrame",
@@ -4279,17 +4334,19 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
       nextChunkProof: null,
     },
   });
-  if (nextControl === null || currentControl.traversal === null || nextControl.traversal === null) {
+  if (
+    nextControl === null ||
+    currentControl.traversal === null ||
+    nextControl.traversal === null
+  ) {
     throw new Error(
       "ScriptSources split stage-one traversal action has no valid canonical successor",
     );
   }
-  const currentPendingItemControlHash = hashMidgardRedeemerItemProofControlV1(
-    currentControl,
-  ).toString("hex");
-  const expectedNextItemControlHash = hashMidgardRedeemerItemProofControlV1(
-    nextControl,
-  ).toString("hex");
+  const currentPendingItemControlHash =
+    hashMidgardRedeemerItemProofControlV1(currentControl).toString("hex");
+  const expectedNextItemControlHash =
+    hashMidgardRedeemerItemProofControlV1(nextControl).toString("hex");
   const checkedTraversalControlCbor = encodeMidgardCekDataTraverseControlV1(
     currentControl.traversal,
   );
@@ -4406,7 +4463,10 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     label: "ScriptSources stage-one traversal option",
   });
   const traversalControlData = traversalOption.fields[0]!;
-  const outerFieldsData = new Constr(0, currentControlRecord.fields.slice(0, 15));
+  const outerFieldsData = new Constr(
+    0,
+    currentControlRecord.fields.slice(0, 15),
+  );
   const traversalData = new Constr(0, [
     1n,
     SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.traversal.toString("hex"),
@@ -4428,9 +4488,8 @@ const deriveScriptSourcesStageOneRouteDataV1 = ({
     traversalControlData,
     checkedTraversalControlCbor.toString("hex"),
   ]);
-  const encodedCurrentControl = encodeMidgardRedeemerItemProofControlV1(
-    currentControl,
-  );
+  const encodedCurrentControl =
+    encodeMidgardRedeemerItemProofControlV1(currentControl);
   const nextItemControlHashPrefix = Buffer.concat([
     SCRIPT_SOURCES_REDEEMER_DOMAINS_V1.itemControl,
     encodedCurrentControl.subarray(
@@ -4941,8 +5000,10 @@ export const submitValidationDisputeSemanticResolution = async ({
     const stages =
       contracts.validationTraceDispute.scriptSourcesStageOneRedeemerStages;
     if (
-      semanticContract.spendingScriptHash !== stages.envelope.spendingScriptHash ||
-      semanticContract.spendingScriptAddress !== stages.envelope.spendingScriptAddress
+      semanticContract.spendingScriptHash !==
+        stages.envelope.spendingScriptHash ||
+      semanticContract.spendingScriptAddress !==
+        stages.envelope.spendingScriptAddress
     ) {
       throw new Error(
         "ScriptSources split stage-one semantic resolver is not the deployed envelope validator",

@@ -115,10 +115,7 @@ describe("validation resolver production-builder applied-hash Aiken fixture", ()
     ).toBe(
       appliedPrepareHash(
         VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.prepares.scriptSources,
-        [
-          ...deployedSemanticHashes.slice(32, 60),
-          deployedSemanticHashes[75]!,
-        ],
+        [...deployedSemanticHashes.slice(32, 60), deployedSemanticHashes[75]!],
         contracts.computationThread.policyId,
       ),
     );
