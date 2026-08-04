@@ -17,6 +17,7 @@ import {
   ForcedInclusionTxV1,
   HubOracleDatum,
   MerkleRoot,
+  type MidgardTxValidity,
   outputReferenceToPlutusDataCbor,
   PayoutDatum,
   PayoutMintRedeemer,
@@ -1720,6 +1721,7 @@ export type GenuineW15AuthorityFixtureSetV1 = Readonly<{
   deposit: W15AcceptedAuthorityScenarioV1;
   withdrawal: W15AcceptedAuthorityScenarioV1;
   forced: W15AcceptedAuthorityScenarioV1;
+  forcedVariants: Readonly<Record<string, W15AcceptedAuthorityScenarioV1>>;
   dispose: () => Promise<void>;
 }>;
 
@@ -1729,6 +1731,14 @@ export type GenuineW15AuthorityFixtureInputV1 = Readonly<{
   forcedPayloadOverride?: GenuineW15ForcedPayloadV1;
   /** Required when the forced proof source is non-empty. */
   forcedCanonicalNativeTxCbor?: Buffer;
+  forcedOperatorValidity?: MidgardTxValidity;
+  forcedVariants?: readonly Readonly<{
+    key: string;
+    payload: GenuineW15ForcedPayloadV1;
+    canonicalNativeTxCbor: Buffer;
+    operatorValidity: MidgardTxValidity;
+    nonceByte?: string;
+  }>[];
   depositL2Address?: AddressData;
   withdrawalL2OutRef?: Readonly<{
     transactionId: string;
@@ -1801,6 +1811,10 @@ const acceptedAuthority = (
 const forcedReceiptFixture = (input: {
   readonly payload: GenuineW15ForcedPayloadV1;
   readonly canonicalNativeTxCbor: Buffer;
+  readonly txOrderId?: Readonly<{
+    transactionId: string;
+    outputIndex: bigint;
+  }>;
 }): Readonly<{
   payload: GenuineW15ForcedPayloadV1;
   store: WatcherDurableStoreV1;
@@ -1809,7 +1823,10 @@ const forcedReceiptFixture = (input: {
 }> => {
   const receiptTransactionId = h32("f0");
   const receiptOutRef = `${receiptTransactionId}#0`;
-  const txOrderId = { transactionId: h32("9c"), outputIndex: 0n };
+  const txOrderId = input.txOrderId ?? {
+    transactionId: h32("9c"),
+    outputIndex: 0n,
+  };
   const terminal = deriveMidgardV1TxFieldChunks(input.canonicalNativeTxCbor).at(
     -1,
   );
@@ -1978,53 +1995,85 @@ export const createGenuineW15DepositWithdrawalAuthoritiesV1 = async (
       ),
       "withdrawal",
     );
-    const forcedReceipt =
-      input.forcedPayloadOverride === undefined ||
-      input.forcedCanonicalNativeTxCbor === undefined
-        ? null
-        : forcedReceiptFixture({
-            payload: input.forcedPayloadOverride,
-            canonicalNativeTxCbor: input.forcedCanonicalNativeTxCbor,
-          });
-    const forcedPolicy = forcedReceipt?.policy ?? policy;
-    const forcedCreation = blockBundle(
-      [
-        makeEventFixture(
-          "forced_order",
-          "9c",
-          0,
-          1_000n,
-          0n,
-          undefined,
-          undefined,
-          forcedReceipt?.payload ?? input.forcedPayloadOverride,
-          forcedReceipt === null ? [] : [forcedReceipt.receiptOutRef],
-        ),
-      ],
-      forcedReceipt?.store ?? null,
-      100,
-      1,
-    );
-    const forcedActive = acceptedAuthority(
-      null,
-      forcedCreation,
-      "forced_order",
-      forcedPolicy,
-    );
-    const forcedTerminalBundle = nonDepositSpendBundle(
-      forcedActive.parsed.state!,
-      forcedCreation.store,
-    );
-    const forced = replayGenuineForcedTerminalAuthorityScenarioV1({
-      policy: forcedPolicy,
-      previousState: forcedActive.parsed.state!,
-      publicContext: forcedTerminalBundle.context,
-      transportAttestations: Object.freeze([...watcherTransportContexts]),
+    const buildForcedAuthority = (forcedInput: {
+      readonly payload?: GenuineW15ForcedPayloadV1;
+      readonly canonicalNativeTxCbor?: Buffer;
+      readonly operatorValidity?: MidgardTxValidity;
+      readonly nonceByte?: string;
+    }): W15AcceptedAuthorityScenarioV1 => {
+      const forcedReceipt =
+        forcedInput.payload === undefined ||
+        forcedInput.canonicalNativeTxCbor === undefined
+          ? null
+          : forcedReceiptFixture({
+              payload: forcedInput.payload,
+              canonicalNativeTxCbor: forcedInput.canonicalNativeTxCbor,
+              txOrderId: {
+                transactionId: h32(forcedInput.nonceByte ?? "9c"),
+                outputIndex: 0n,
+              },
+            });
+      const forcedPolicy = forcedReceipt?.policy ?? policy;
+      const forcedCreation = blockBundle(
+        [
+          makeEventFixture(
+            "forced_order",
+            forcedInput.nonceByte ?? "9c",
+            0,
+            1_000n,
+            0n,
+            undefined,
+            undefined,
+            forcedReceipt?.payload ?? forcedInput.payload,
+            forcedReceipt === null ? [] : [forcedReceipt.receiptOutRef],
+          ),
+        ],
+        forcedReceipt?.store ?? null,
+        100,
+        1,
+      );
+      const forcedActive = acceptedAuthority(
+        null,
+        forcedCreation,
+        "forced_order",
+        forcedPolicy,
+      );
+      const forcedTerminalBundle = nonDepositSpendBundle(
+        forcedActive.parsed.state!,
+        forcedCreation.store,
+        undefined,
+        forcedInput.operatorValidity,
+      );
+      return replayGenuineForcedTerminalAuthorityScenarioV1({
+        policy: forcedPolicy,
+        previousState: forcedActive.parsed.state!,
+        publicContext: forcedTerminalBundle.context,
+        transportAttestations: Object.freeze([...watcherTransportContexts]),
+      });
+    };
+    const forced = buildForcedAuthority({
+      payload: input.forcedPayloadOverride,
+      canonicalNativeTxCbor: input.forcedCanonicalNativeTxCbor,
+      operatorValidity: input.forcedOperatorValidity,
     });
+    const forcedVariants = Object.freeze(
+      Object.fromEntries(
+        (input.forcedVariants ?? []).map((variant) => [
+          variant.key,
+          buildForcedAuthority({
+            payload: variant.payload,
+            canonicalNativeTxCbor: variant.canonicalNativeTxCbor,
+            operatorValidity: variant.operatorValidity,
+            nonceByte: variant.nonceByte,
+          }),
+        ]),
+      ),
+    );
     return Object.freeze({
       deposit,
       withdrawal,
       forced,
+      forcedVariants,
       dispose: () => disposeOpaqueAuthorityTransports(leaseOwner),
     });
   } catch (error) {
@@ -2137,6 +2186,7 @@ const nonDepositSpendBundle = (
   state: WatcherUserEventIndexerStateV1,
   priorStore: ReturnType<typeof makeWatcherDurableStoreV1>,
   mutateRedeemers?: (redeemers: MutableRecord[]) => void,
+  forcedOperatorValidity: MidgardTxValidity = "TxIsValid",
 ): BlockBundle => {
   const event = state.snapshot.activeEvents[0]!;
   if (event.kind === "deposit") {
@@ -2269,7 +2319,7 @@ const nonDepositSpendBundle = (
       };
     };
   };
-  const validity = "TxIsValid" as const;
+  const validity = forcedOperatorValidity;
   const value =
     event.kind === "withdrawal"
       ? eventFieldsData.get(1).to_cbor_hex()

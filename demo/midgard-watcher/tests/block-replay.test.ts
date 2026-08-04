@@ -59,6 +59,7 @@ import {
   WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1,
   watcherBlockReplayCommittedStepsV1,
   type WatcherBlockReplayEventAuthorityV1,
+  watcherBlockReplayForcedValidityForRejectCodeV1,
   watcherBlockReplayPriorStateV1,
   type WatcherBlockReplayPriorUtxoV1,
   watcherBlockReplayRejectionProjectionV1,
@@ -133,6 +134,61 @@ const FORCED_FLOW_NATIVE = makeNativeTx({
   outputs: [FLOW_OUTPUT],
   privateKey: FIXED_KEY,
 });
+const FORCED_INVALID_CASES = Object.freeze({
+  NonExistentInputUtxo: Object.freeze({
+    input: outRefFromByte(0x72),
+    native: makeNativeTx({
+      spendInputs: [outRefFromByte(0x72)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+    }),
+    operatorValidity: "NonExistentInputUtxo" as const,
+  }),
+  InvalidSignature: Object.freeze({
+    input: outRefFromByte(0x73),
+    native: makeNativeTx({
+      spendInputs: [outRefFromByte(0x73)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      invalidVkeyWitness: true,
+    }),
+    operatorValidity: "InvalidSignature" as const,
+  }),
+  FailedScript: Object.freeze({
+    input: outRefFromByte(0x74),
+    native: makeNativeTx({
+      spendInputs: [outRefFromByte(0x74)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      scriptWitnesses: [
+        nativeScriptWitness({
+          type: "sig",
+          keyHash: Buffer.alloc(28, 0x06),
+        }),
+      ],
+    }),
+    operatorValidity: "FailedScript" as const,
+  }),
+  FeeTooLow: Object.freeze({
+    input: outRefFromByte(0x75),
+    native: makeNativeTx({
+      spendInputs: [outRefFromByte(0x75)],
+      outputs: [FLOW_OUTPUT],
+      privateKey: FIXED_KEY,
+      fee: 0n,
+    }),
+    operatorValidity: "FeeTooLow" as const,
+  }),
+  UnbalancedTx: Object.freeze({
+    input: outRefFromByte(0x76),
+    native: makeNativeTx({
+      spendInputs: [outRefFromByte(0x76)],
+      outputs: [makeOutput(9n, FIXED_ADDRESS)],
+      privateKey: FIXED_KEY,
+    }),
+    operatorValidity: "UnbalancedTx" as const,
+  }),
+});
 
 const forcedPayloadForNative = (native: ReturnType<typeof makeNativeTx>) => {
   const source = deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
@@ -190,6 +246,24 @@ const genuineW15Input = () => ({
   },
   forcedPayloadOverride: forcedPayloadForNative(FORCED_FLOW_NATIVE),
   forcedCanonicalNativeTxCbor: FORCED_FLOW_NATIVE.txCbor,
+  forcedVariants: [
+    ...Object.entries(FORCED_INVALID_CASES).map(
+      ([key, invalidCase], index) => ({
+        key,
+        nonceByte: ["9d", "9e", "9f", "aa", "ab"][index]!,
+        payload: forcedPayloadForNative(invalidCase.native),
+        canonicalNativeTxCbor: invalidCase.native.txCbor,
+        operatorValidity: invalidCase.operatorValidity,
+      }),
+    ),
+    {
+      key: "Mismatch",
+      nonceByte: "ac",
+      payload: forcedPayloadForNative(FORCED_INVALID_CASES.UnbalancedTx.native),
+      canonicalNativeTxCbor: FORCED_INVALID_CASES.UnbalancedTx.native.txCbor,
+      operatorValidity: "TxIsValid" as const,
+    },
+  ],
 });
 
 const settlementRecord = (authority: W15AcceptedAuthorityScenarioV1) => ({
@@ -644,6 +718,12 @@ const publicEventFromW15 = (
       readonly source: SDK.L2TransactionSourceV1["source"];
     };
   };
+  if (
+    !("terminalClassification" in event) ||
+    event.terminalClassification === undefined
+  ) {
+    throw new Error("forced W15 event lacks terminal classification");
+  }
   return Object.freeze({
     eventKey: {
       ForcedTransactionEventKey: {
@@ -662,7 +742,7 @@ const publicEventFromW15 = (
           tx_id: decoded.tx.tx_id,
           transaction_commitment: decoded.tx.transaction_commitment,
           source: decoded.tx.source,
-          operator_validity: "TxIsValid",
+          operator_validity: event.terminalClassification.operatorValidity,
         },
         SDK.ForcedInclusionTxV1Schema,
       ),
@@ -935,6 +1015,7 @@ const buildPublicReplayFixture = async (input: {
     readonly value: SDK.EventToStepValue;
   }[];
   readonly requireAcceptedBindings?: boolean;
+  readonly minFeeB?: bigint;
 }): Promise<PublicReplayFixture> => {
   const txCbors = input.txCbors ?? [];
   const events = input.events ?? [];
@@ -1083,7 +1164,7 @@ const buildPublicReplayFixture = async (input: {
     blockSlot: 0n,
     expectedNetworkId: 0n,
     minFeeA: 0n,
-    minFeeB: 0n,
+    minFeeB: input.minFeeB ?? 0n,
     prevHeaderHash: h28(90),
     operatorVkey: h28(91),
     protocolVersion: BigInt(RULE_BUNDLE.protocolVersion),
@@ -1165,6 +1246,37 @@ describe("W25 published rejection-code partition", () => {
       [...WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1].sort(),
     );
     expect(WATCHER_BLOCK_REPLAY_PROTOCOL_MINUS_UNCLAIMED_V1).toHaveLength(39);
+    const expectedForcedValidity = (
+      code: (typeof RejectCodes)[keyof typeof RejectCodes],
+    ): SDK.MidgardTxValidity => {
+      if (code === RejectCodes.InputNotFound) return "NonExistentInputUtxo";
+      if (
+        code === RejectCodes.InvalidSignature ||
+        code === RejectCodes.MissingRequiredWitness
+      ) {
+        return "InvalidSignature";
+      }
+      if (
+        code === RejectCodes.NativeScriptInvalid ||
+        code === RejectCodes.PlutusScriptInvalid ||
+        code === RejectCodes.PlutusEvaluationUnavailable
+      ) {
+        return "FailedScript";
+      }
+      if (code === RejectCodes.MinFee) return "FeeTooLow";
+      return "UnbalancedTx";
+    };
+    expect(
+      Object.values(RejectCodes).map((code) => ({
+        code,
+        validity: watcherBlockReplayForcedValidityForRejectCodeV1(code),
+      })),
+    ).toStrictEqual(
+      Object.values(RejectCodes).map((code) => ({
+        code,
+        validity: expectedForcedValidity(code),
+      })),
+    );
     expect(WATCHER_PHASE_A_CANONICAL_REJECT_CODES_V1).toStrictEqual(
       WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1,
     );
@@ -1607,6 +1719,27 @@ describe("W25 roots and deterministic replay", () => {
     const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
     expect(result.action).toBe("accept");
     expect(result.reasonCodes).toStrictEqual([]);
+    if (!("ForcedTransactionEventKey" in authority.eventKey)) {
+      throw new Error("forced authority key narrowed to another event kind");
+    }
+    const forcedOrderId =
+      authority.eventKey.ForcedTransactionEventKey.tx_order_id;
+    expect(result.forcedValidationFacts).toStrictEqual([
+      {
+        eventKeyFingerprint: `ForcedTransaction:${forcedOrderId.transactionId}:${forcedOrderId.outputIndex.toString()}`,
+        stepIndex: 0,
+        authenticatedOperatorValidity: "TxIsValid",
+        canonicalOperatorValidity: "TxIsValid",
+        phaseAStatus: "accepted",
+        phaseARejectCode: null,
+        phaseBStatus: "accepted",
+        phaseBRejectCode: null,
+        canonicalEffectDigest: forcedEffect.digest,
+        canonicalEffectMutationCount: 2,
+      },
+    ]);
+    expect(Object.isFrozen(result.forcedValidationFacts)).toBe(true);
+    expect(Object.isFrozen(result.forcedValidationFacts[0])).toBe(true);
     expect(result.eventRoots).toMatchObject([
       {
         stepIndex: 0,
@@ -1674,6 +1807,245 @@ describe("W25 roots and deterministic replay", () => {
       action: "error",
       reasonCodes: ["transition_effect_semantics_mismatch"],
     });
+
+    const noOpEffect = buildCanonicalTransitionEffectV1([]);
+    const expectedOutcomes = {
+      NonExistentInputUtxo: {
+        phaseAStatus: "accepted",
+        phaseARejectCode: null,
+        phaseBStatus: "rejected",
+        phaseBRejectCode: RejectCodes.InputNotFound,
+      },
+      InvalidSignature: {
+        phaseAStatus: "rejected",
+        phaseARejectCode: RejectCodes.InvalidSignature,
+        phaseBStatus: "not_run",
+        phaseBRejectCode: null,
+      },
+      FailedScript: {
+        phaseAStatus: "rejected",
+        phaseARejectCode: RejectCodes.NativeScriptInvalid,
+        phaseBStatus: "not_run",
+        phaseBRejectCode: null,
+      },
+      FeeTooLow: {
+        phaseAStatus: "rejected",
+        phaseARejectCode: RejectCodes.MinFee,
+        phaseBStatus: "not_run",
+        phaseBRejectCode: null,
+      },
+      UnbalancedTx: {
+        phaseAStatus: "accepted",
+        phaseARejectCode: null,
+        phaseBStatus: "rejected",
+        phaseBRejectCode: RejectCodes.ValueNotPreserved,
+      },
+    } as const;
+    const invalidReplayEvidence: Partial<
+      Record<
+        keyof typeof FORCED_INVALID_CASES,
+        Readonly<{
+          fixture: PublicReplayFixture;
+          authority: WatcherBlockReplayEventAuthorityV1;
+          event: PublicFixtureEvent;
+          result: Awaited<ReturnType<typeof evaluateWatcherBlockReplayV1>>;
+        }>
+      >
+    > = {};
+    for (const [category, invalidCase] of Object.entries(
+      FORCED_INVALID_CASES,
+    ) as [
+      keyof typeof FORCED_INVALID_CASES,
+      (typeof FORCED_INVALID_CASES)[keyof typeof FORCED_INVALID_CASES],
+    ][]) {
+      expect(
+        decodeMidgardNativeTxFullV1FromCanonicalCbor(invalidCase.native.txCbor)
+          .validity,
+      ).toBe("TxIsValid");
+      const invalidUserEvent = genuineW15.forcedVariants[category]!;
+      const invalidEvent = publicEventFromW15(
+        invalidUserEvent,
+        invalidCase.native,
+      );
+      const invalidPriorState =
+        category === "NonExistentInputUtxo"
+          ? []
+          : entries([[invalidCase.input, FLOW_OUTPUT]]);
+      const invalidSteps = await committedStepsForEffects(invalidPriorState, [
+        {
+          eventKey: invalidEvent.eventKey,
+          phase: "ForcedTransaction",
+          effect: noOpEffect,
+        },
+      ]);
+      const invalidAuthority = eventAuthority({
+        event: invalidEvent,
+        userEvent: invalidUserEvent,
+        effect: noOpEffect,
+        forcedNative: invalidCase.native,
+      });
+      const invalidFixture = await buildPublicReplayFixture({
+        events: [invalidEvent],
+        steps: invalidSteps,
+        priorState: invalidPriorState,
+        postState: invalidPriorState,
+        eventAuthorities: [invalidAuthority],
+        ...(category === "FeeTooLow" ? { minFeeB: 1n } : {}),
+      });
+      const invalidResult = await evaluateWatcherBlockReplayV1(
+        publicInput(invalidFixture),
+      );
+      expect(invalidResult.action, category).toBe("accept");
+      expect(invalidResult.intermediateRoots, category).toStrictEqual([]);
+      expect(invalidResult.eventRoots, category).toMatchObject([
+        { stepIndex: 0, mutationCount: 0 },
+      ]);
+      expect(invalidResult.forcedValidationFacts, category).toMatchObject([
+        {
+          stepIndex: 0,
+          authenticatedOperatorValidity: invalidCase.operatorValidity,
+          canonicalOperatorValidity: invalidCase.operatorValidity,
+          ...expectedOutcomes[category],
+          canonicalEffectDigest: noOpEffect.digest,
+          canonicalEffectMutationCount: 0,
+        },
+      ]);
+      invalidReplayEvidence[category] = Object.freeze({
+        fixture: invalidFixture,
+        authority: invalidAuthority,
+        event: invalidEvent,
+        result: invalidResult,
+      });
+    }
+
+    const restartEvidence = invalidReplayEvidence.UnbalancedTx!;
+    const restarted = await evaluateWatcherBlockReplayV1(
+      publicInput(restartEvidence.fixture),
+    );
+    expect(restarted).toStrictEqual(restartEvidence.result);
+    expect(restarted.resultDigest).toBe(restartEvidence.result.resultDigest);
+
+    const omittedAuthority = await evaluateWatcherBlockReplayV1({
+      ...publicInput(restartEvidence.fixture),
+      eventAuthorities: [],
+    });
+    expect(omittedAuthority).toMatchObject({
+      action: "error",
+      reasonCodes: ["missing_event_authority"],
+    });
+    const duplicateAuthority = await evaluateWatcherBlockReplayV1({
+      ...publicInput(restartEvidence.fixture),
+      eventAuthorities: [restartEvidence.authority, restartEvidence.authority],
+    });
+    expect(duplicateAuthority).toMatchObject({
+      action: "error",
+      reasonCodes: ["duplicate_event_authority"],
+    });
+
+    const mismatchUserEvent = genuineW15.forcedVariants.Mismatch!;
+    const mismatchEvent = publicEventFromW15(
+      mismatchUserEvent,
+      FORCED_INVALID_CASES.UnbalancedTx.native,
+    );
+    const mismatchPriorState = entries([
+      [FORCED_INVALID_CASES.UnbalancedTx.input, FLOW_OUTPUT],
+    ]);
+    const mismatchSteps = await committedStepsForEffects(mismatchPriorState, [
+      {
+        eventKey: mismatchEvent.eventKey,
+        phase: "ForcedTransaction",
+        effect: noOpEffect,
+      },
+    ]);
+    const mismatchAuthority = eventAuthority({
+      event: mismatchEvent,
+      userEvent: mismatchUserEvent,
+      effect: noOpEffect,
+      forcedNative: FORCED_INVALID_CASES.UnbalancedTx.native,
+    });
+    const mismatchFixture = await buildPublicReplayFixture({
+      events: [mismatchEvent],
+      steps: mismatchSteps,
+      priorState: mismatchPriorState,
+      postState: mismatchPriorState,
+      eventAuthorities: [mismatchAuthority],
+    });
+    expect(
+      await evaluateWatcherBlockReplayV1(publicInput(mismatchFixture)),
+    ).toMatchObject({
+      action: "error",
+      reasonCodes: ["transition_effect_semantics_mismatch"],
+    });
+
+    const tamperedFactResult = {
+      ...restartEvidence.result,
+      forcedValidationFacts: restartEvidence.result.forcedValidationFacts.map(
+        (fact) => ({ ...fact, canonicalEffectMutationCount: 1 }),
+      ),
+    };
+    const { resultDigest: _tamperedDigest, ...tamperedFactMaterial } =
+      tamperedFactResult;
+    expect(watcherSha256CanonicalJsonV1(tamperedFactMaterial)).not.toBe(
+      restartEvidence.result.resultDigest,
+    );
+
+    const inputNotFoundEvidence = invalidReplayEvidence.NonExistentInputUtxo!;
+    const invalidSignatureEvidence = invalidReplayEvidence.InvalidSignature!;
+    const orderedGroups: readonly CommittedEffectGroup[] = [
+      {
+        eventKey: inputNotFoundEvidence.event.eventKey,
+        phase: "ForcedTransaction",
+        effect: noOpEffect,
+      },
+      {
+        eventKey: invalidSignatureEvidence.event.eventKey,
+        phase: "ForcedTransaction",
+        effect: noOpEffect,
+      },
+    ];
+    const orderedPriorState = entries([
+      [FORCED_INVALID_CASES.InvalidSignature.input, FLOW_OUTPUT],
+    ]);
+    const orderedFixture = await buildPublicReplayFixture({
+      events: [inputNotFoundEvidence.event, invalidSignatureEvidence.event],
+      steps: await committedStepsForEffects(orderedPriorState, orderedGroups),
+      priorState: orderedPriorState,
+      postState: orderedPriorState,
+      eventAuthorities: [
+        invalidSignatureEvidence.authority,
+        inputNotFoundEvidence.authority,
+      ],
+    });
+    const orderedResult = await evaluateWatcherBlockReplayV1(
+      publicInput(orderedFixture),
+    );
+    expect(
+      orderedResult.forcedValidationFacts.map(
+        ({ authenticatedOperatorValidity }) => authenticatedOperatorValidity,
+      ),
+    ).toStrictEqual(["NonExistentInputUtxo", "InvalidSignature"]);
+    const reversedGroups = [...orderedGroups].reverse();
+    const reversedFixture = await buildPublicReplayFixture({
+      events: [inputNotFoundEvidence.event, invalidSignatureEvidence.event],
+      steps: await committedStepsForEffects(orderedPriorState, reversedGroups),
+      priorState: orderedPriorState,
+      postState: orderedPriorState,
+      eventAuthorities: [
+        inputNotFoundEvidence.authority,
+        invalidSignatureEvidence.authority,
+      ],
+    });
+    const reversedResult = await evaluateWatcherBlockReplayV1(
+      publicInput(reversedFixture),
+    );
+    expect(
+      reversedResult.forcedValidationFacts.map(
+        ({ authenticatedOperatorValidity }) => authenticatedOperatorValidity,
+      ),
+    ).toStrictEqual(["InvalidSignature", "NonExistentInputUtxo"]);
+    expect(reversedResult.downstreamPrerequisite.inputDigest).not.toBe(
+      orderedResult.downstreamPrerequisite.inputDigest,
+    );
   });
 
   it("binds accepted W21/W22/W23/W24 evidence through the public replay entry point", async () => {

@@ -3038,6 +3038,88 @@ describe("canonical authenticated user-event indexer", () => {
           terminalFinalityStatus: "pending",
         },
       ]);
+      const terminalEvent = terminal.snapshot.terminalEvents[0]!;
+      if (kind === "forced_order") {
+        expect(terminalEvent.terminalClassification).toStrictEqual({
+          schemaVersion: "midgard-watcher-forced-terminal-classification-v1",
+          operatorValidity: "TxIsValid",
+          terminalTransactionHash: terminalEvent.terminalTransactionHash,
+          terminalPointDigest: terminalEvent.terminalPointDigest,
+        });
+        expect(Object.isFrozen(terminalEvent.terminalClassification)).toBe(
+          true,
+        );
+        for (const mutate of [
+          (candidate: Record<string, unknown>) => {
+            delete candidate.terminalClassification;
+          },
+          (candidate: Record<string, unknown>) => {
+            const classification = candidate.terminalClassification as Record<
+              string,
+              unknown
+            >;
+            classification.operatorValidity = "WrongValidity";
+          },
+          (candidate: Record<string, unknown>) => {
+            const classification = candidate.terminalClassification as Record<
+              string,
+              unknown
+            >;
+            classification.terminalTransactionHash = "00";
+          },
+          (candidate: Record<string, unknown>) => {
+            const classification = candidate.terminalClassification as Record<
+              string,
+              unknown
+            >;
+            classification.extra = true;
+          },
+        ]) {
+          const hostile = structuredClone(terminal) as unknown as Record<
+            string,
+            unknown
+          >;
+          const snapshot = hostile.snapshot as Record<string, unknown>;
+          const events = snapshot.terminalEvents as Record<string, unknown>[];
+          mutate(events[0]!);
+          expect(
+            parseWatcherUserEventIndexerStateV1(hostile, policy),
+          ).toBeNull();
+        }
+
+        const hostileActive = structuredClone(active) as unknown as Record<
+          string,
+          unknown
+        >;
+        const activeSnapshot = hostileActive.snapshot as Record<
+          string,
+          unknown
+        >;
+        const activeEvents = activeSnapshot.activeEvents as Record<
+          string,
+          unknown
+        >[];
+        activeEvents[0]!.terminalClassification =
+          terminalEvent.terminalClassification;
+        expect(
+          parseWatcherUserEventIndexerStateV1(hostileActive, policy),
+        ).toBeNull();
+      } else {
+        expect(terminalEvent).not.toHaveProperty("terminalClassification");
+        const hostile = structuredClone(terminal) as unknown as Record<
+          string,
+          unknown
+        >;
+        const snapshot = hostile.snapshot as Record<string, unknown>;
+        const events = snapshot.terminalEvents as Record<string, unknown>[];
+        events[0]!.terminalClassification = Object.freeze({
+          schemaVersion: "midgard-watcher-forced-terminal-classification-v1",
+          operatorValidity: "TxIsValid",
+          terminalTransactionHash: terminalEvent.terminalTransactionHash,
+          terminalPointDigest: terminalEvent.terminalPointDigest,
+        });
+        expect(parseWatcherUserEventIndexerStateV1(hostile, policy)).toBeNull();
+      }
     }
   });
 

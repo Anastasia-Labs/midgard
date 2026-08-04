@@ -97,6 +97,7 @@ import type {
   EventToStepValue,
   EvidenceProvenanceV1,
   HeaderV1,
+  MidgardTxValidity,
   TransitionStep,
 } from "@al-ft/midgard-sdk";
 import {
@@ -166,6 +167,7 @@ import {
 } from "./settlement-indexer.js";
 import {
   parseWatcherUserEventIndexerResultV1,
+  type WatcherForcedTerminalClassificationV1,
   type WatcherIndexedUserEventV1,
   type WatcherTerminalUserEventV1,
   type WatcherUserEventIndexerResultV1,
@@ -558,6 +560,19 @@ export type WatcherBlockReplayTransactionRootV1 = Readonly<{
   committedPostRoot: string | null;
 }>;
 
+export type WatcherBlockReplayForcedValidationFactV1 = Readonly<{
+  eventKeyFingerprint: string;
+  stepIndex: number;
+  authenticatedOperatorValidity: MidgardTxValidity;
+  canonicalOperatorValidity: MidgardTxValidity;
+  phaseAStatus: "accepted" | "rejected";
+  phaseARejectCode: RejectCode | null;
+  phaseBStatus: "not_run" | "accepted" | "rejected";
+  phaseBRejectCode: RejectCode | null;
+  canonicalEffectDigest: string;
+  canonicalEffectMutationCount: number;
+}>;
+
 export type WatcherBlockReplayStageMismatchV1 = Readonly<{
   stage: WatcherBlockReplayStageV1;
   reasonCode: WatcherBlockReplayReasonCodeV1;
@@ -611,6 +626,8 @@ export type WatcherBlockReplayResultV1 = Readonly<{
   transactionRoots: readonly WatcherBlockReplayTransactionRootV1[];
   /** Exact canonical root boundary around every authenticated non-L2 event. */
   eventRoots: readonly WatcherBlockReplayEventRootV1[];
+  /** Canonical validity/effect evidence for forced steps, in step order. */
+  forcedValidationFacts: readonly WatcherBlockReplayForcedValidationFactV1[];
   /** Ordered by replay stage, then by `field`. */
   stageMismatches: readonly WatcherBlockReplayStageMismatchV1[];
   /** Rejections in canonical block order (ascending `index`). */
@@ -637,6 +654,7 @@ const digestResult = (
         authorityManifestDigest: result.authorityManifestDigest,
         sourceManifestDigest: result.sourceManifestDigest,
         effectManifestDigest: result.effectManifestDigest,
+        forcedValidationFacts: result.forcedValidationFacts,
         priorStateRoot: result.priorStateRoot,
         postStateRoot: result.postStateRoot,
       });
@@ -686,6 +704,7 @@ const EMPTY_CORE = {
   intermediateRoots: Object.freeze([]),
   transactionRoots: Object.freeze([]),
   eventRoots: Object.freeze([]),
+  forcedValidationFacts: Object.freeze([]),
   stageMismatches: Object.freeze([]),
   rejections: Object.freeze([]),
   selectedRejection: null,
@@ -728,6 +747,32 @@ const ZERO_ROOT = "00".repeat(32);
  */
 const normalizeRootHex = (root: string): string =>
   root === ZERO_ROOT ? EMPTY_MERKLE_TREE_ROOT : root;
+
+/** Exact canonical rejection-to-forced-validity partition consumed by W26. */
+export const watcherBlockReplayForcedValidityForRejectCodeV1 = (
+  code: RejectCode,
+): MidgardTxValidity => {
+  if (code === RejectCodes.InputNotFound) {
+    return "NonExistentInputUtxo";
+  }
+  if (
+    code === RejectCodes.InvalidSignature ||
+    code === RejectCodes.MissingRequiredWitness
+  ) {
+    return "InvalidSignature";
+  }
+  if (
+    code === RejectCodes.NativeScriptInvalid ||
+    code === RejectCodes.PlutusScriptInvalid ||
+    code === RejectCodes.PlutusEvaluationUnavailable
+  ) {
+    return "FailedScript";
+  }
+  if (code === RejectCodes.MinFee) {
+    return "FeeTooLow";
+  }
+  return "UnbalancedTx";
+};
 
 /**
  * Attributes one canonical rejection to a replay stage.
@@ -1045,6 +1090,7 @@ type ValidatedEventAuthorityV1 = Readonly<{
   effect: CanonicalTransitionEffectV1;
   canonicalNativeTxCbor: Buffer | null;
   programMaterialSidecarCbor: Buffer | null;
+  terminalClassification: WatcherForcedTerminalClassificationV1 | null;
   userEvent: WatcherIndexedUserEventV1 | WatcherTerminalUserEventV1;
   authorityManifest: Readonly<Record<string, unknown>>;
   effectManifest: Readonly<Record<string, unknown>>;
@@ -1354,11 +1400,31 @@ const validateEventAuthorityV1 = (
   }
   if (
     authority.phase === "ForcedTransaction" &&
-    (!("terminalStatus" in event) || event.terminalStatus !== "processed")
+    (!("terminalStatus" in event) ||
+      event.terminalStatus !== "processed" ||
+      event.terminalClassification === undefined)
   ) {
     return fail(
       "user_event_authority_identity_mismatch",
       "$.userEvent.result.state.snapshot.terminalStatus",
+    );
+  }
+  const terminalEvent = "terminalStatus" in event ? event : null;
+  const terminalClassification =
+    authority.phase === "ForcedTransaction" && terminalEvent !== null
+      ? (terminalEvent.terminalClassification ?? null)
+      : null;
+  if (
+    authority.phase === "ForcedTransaction" &&
+    (terminalClassification === null ||
+      terminalClassification.terminalTransactionHash !==
+        terminalEvent?.terminalTransactionHash ||
+      terminalClassification.terminalPointDigest !==
+        terminalEvent?.terminalPointDigest)
+  ) {
+    return fail(
+      "user_event_authority_identity_mismatch",
+      "$.userEvent.result.state.snapshot.terminalClassification",
     );
   }
   const historyEntryDigests = authoritativeHistoryDigests(parsed, event);
@@ -1553,6 +1619,9 @@ const validateEventAuthorityV1 = (
           terminalSlot: event.terminalSlot,
           terminalBlockNo: event.terminalBlockNo,
           terminalFinalityStatus: event.terminalFinalityStatus,
+          ...(event.terminalClassification === undefined
+            ? {}
+            : { terminalClassification: event.terminalClassification }),
         }
       : {}),
     ...(settlementManifest === null ? {} : { settlementManifest }),
@@ -1576,6 +1645,7 @@ const validateEventAuthorityV1 = (
     effect,
     canonicalNativeTxCbor,
     programMaterialSidecarCbor,
+    terminalClassification,
     userEvent: event,
     authorityManifest,
     effectManifest,
@@ -1603,6 +1673,7 @@ type ReplayCore = {
   readonly intermediateRoots: WatcherBlockReplayIntermediateRootV1[];
   readonly transactionRoots: WatcherBlockReplayTransactionRootV1[];
   readonly eventRoots: WatcherBlockReplayEventRootV1[];
+  readonly forcedValidationFacts: WatcherBlockReplayForcedValidationFactV1[];
   readonly priorStateRoot: string;
   readonly postStateRoot: string;
   readonly authorityManifestDigest: string | null;
@@ -1691,6 +1762,7 @@ const replayCandidates = async (
       intermediateRoots: [],
       transactionRoots: [],
       eventRoots: [],
+      forcedValidationFacts: [],
       priorStateRoot: prior.root,
       postStateRoot: prior.root,
       authorityManifestDigest: null,
@@ -1799,6 +1871,7 @@ const replayCandidates = async (
     intermediateRoots,
     transactionRoots,
     eventRoots: [],
+    forcedValidationFacts: [],
     priorStateRoot: prior.root,
     postStateRoot,
     authorityManifestDigest: null,
@@ -1867,12 +1940,19 @@ const bindForcedTransitionEffectV1 = async (input: {
   readonly state: ReadonlyMap<string, Buffer>;
   readonly phaseAConfig: PhaseAConfig;
   readonly phaseBConfig: PhaseBConfig;
-}): Promise<void> => {
+  readonly step: WatcherBlockReplayCommittedStepV1;
+}): Promise<WatcherBlockReplayForcedValidationFactV1 | null> => {
   if (
     input.authority.phase !== "ForcedTransaction" ||
     input.authority.canonicalNativeTxCbor === null
   ) {
-    return;
+    return null;
+  }
+  if (input.authority.terminalClassification === null) {
+    return fail(
+      "user_event_authority_identity_mismatch",
+      "$.userEvent.result.state.snapshot.terminalClassification",
+    );
   }
   const nativeTx = decodeMidgardNativeTxFullV1FromCanonicalCbor(
     input.authority.canonicalNativeTxCbor,
@@ -1886,7 +1966,20 @@ const bindForcedTransitionEffectV1 = async (input: {
   };
   const phaseA = validatePhaseASingle(queued, input.phaseAConfig);
   let derived = buildCanonicalTransitionEffectV1([]);
-  if (!("code" in phaseA)) {
+  let phaseAStatus: WatcherBlockReplayForcedValidationFactV1["phaseAStatus"] =
+    "accepted";
+  let phaseARejectCode: RejectCode | null = null;
+  let phaseBStatus: WatcherBlockReplayForcedValidationFactV1["phaseBStatus"] =
+    "not_run";
+  let phaseBRejectCode: RejectCode | null = null;
+  let canonicalOperatorValidity: MidgardTxValidity;
+  if ("code" in phaseA) {
+    phaseAStatus = "rejected";
+    phaseARejectCode = phaseA.code;
+    canonicalOperatorValidity = watcherBlockReplayForcedValidityForRejectCodeV1(
+      phaseA.code,
+    );
+  } else {
     const phaseB = await makeReturn(
       runPhaseBValidationWithPatch(
         [phaseA],
@@ -1899,9 +1992,31 @@ const bindForcedTransitionEffectV1 = async (input: {
         input.phaseBConfig,
       ),
     ).unsafeRun();
-    if (phaseB.rejected.length === 0) {
+    if (phaseB.rejected.length > 0) {
+      if (phaseB.rejected.length !== 1 || phaseB.accepted.length !== 0) {
+        return fail("canonical_validation_threw", "$.phaseB.forced");
+      }
+      phaseBStatus = "rejected";
+      phaseBRejectCode = phaseB.rejected[0]!.code;
+      canonicalOperatorValidity =
+        watcherBlockReplayForcedValidityForRejectCodeV1(phaseBRejectCode);
+    } else {
+      if (phaseB.accepted.length !== 1) {
+        return fail("canonical_validation_threw", "$.phaseB.forced");
+      }
+      phaseBStatus = "accepted";
+      canonicalOperatorValidity = "TxIsValid";
       derived = canonicalTransitionEffectFromStatePatchV1(phaseB.statePatch);
     }
+  }
+  if (
+    input.authority.terminalClassification.operatorValidity !==
+    canonicalOperatorValidity
+  ) {
+    return fail(
+      "transition_effect_semantics_mismatch",
+      "$.transitionEffect.forced.operatorValidity",
+    );
   }
   if (
     derived.digest !== input.authority.effect.digest ||
@@ -1912,6 +2027,19 @@ const bindForcedTransitionEffectV1 = async (input: {
       "$.transitionEffect.forced",
     );
   }
+  return Object.freeze({
+    eventKeyFingerprint: input.authority.eventKeyFingerprint,
+    stepIndex: input.step.stepIndex,
+    authenticatedOperatorValidity:
+      input.authority.terminalClassification.operatorValidity,
+    canonicalOperatorValidity,
+    phaseAStatus,
+    phaseARejectCode,
+    phaseBStatus,
+    phaseBRejectCode,
+    canonicalEffectDigest: derived.digest,
+    canonicalEffectMutationCount: derived.operations.length,
+  });
 };
 
 /**
@@ -1949,6 +2077,7 @@ const replayCommittedBlockV1 = async (input: {
       intermediateRoots: [],
       transactionRoots: [],
       eventRoots: [],
+      forcedValidationFacts: [],
       priorStateRoot: prior.root,
       postStateRoot: prior.root,
       authorityManifestDigest: null,
@@ -1998,6 +2127,7 @@ const replayCommittedBlockV1 = async (input: {
   const acceptedTxIds: string[] = [];
   const seenCandidateIds = new Set<string>();
   const seenEventFingerprints = new Set<string>();
+  const forcedValidationFacts: WatcherBlockReplayForcedValidationFactV1[] = [];
 
   let pendingL2: WatcherBlockReplayCommittedStepV1[] = [];
   const flushL2 = async (): Promise<void> => {
@@ -2087,12 +2217,29 @@ const replayCommittedBlockV1 = async (input: {
         `$.eventAuthorities[${step.eventKeyFingerprint}].phase`,
       );
     }
-    await bindForcedTransitionEffectV1({
+    const forcedValidationFact = await bindForcedTransitionEffectV1({
       authority,
       state,
       phaseAConfig: input.phaseAConfig,
       phaseBConfig: input.config,
+      step,
     });
+    if (forcedValidationFact !== null) {
+      if (
+        forcedValidationFacts.some(
+          (fact) =>
+            fact.eventKeyFingerprint ===
+              forcedValidationFact.eventKeyFingerprint ||
+            fact.stepIndex === forcedValidationFact.stepIndex,
+        )
+      ) {
+        return fail(
+          "duplicate_event_authority",
+          `$.forcedValidationFacts[${step.stepIndex.toString()}]`,
+        );
+      }
+      forcedValidationFacts.push(forcedValidationFact);
+    }
     seenEventFingerprints.add(step.eventKeyFingerprint);
     groups.push({
       step,
@@ -2211,6 +2358,7 @@ const replayCommittedBlockV1 = async (input: {
     intermediateRoots,
     transactionRoots,
     eventRoots,
+    forcedValidationFacts,
     priorStateRoot: prior.root,
     postStateRoot,
     authorityManifestDigest: watcherSha256CanonicalJsonV1(
@@ -2430,6 +2578,7 @@ const finalizeResult = (input: {
     intermediateRoots: Object.freeze([...core.intermediateRoots]),
     transactionRoots: Object.freeze([...transactionRoots]),
     eventRoots: Object.freeze([...core.eventRoots]),
+    forcedValidationFacts: Object.freeze([...core.forcedValidationFacts]),
     stageMismatches: orderStageMismatches(stageMismatches),
     rejections: Object.freeze([...core.rejections]),
     selectedRejection: selectRejection(core.rejections),

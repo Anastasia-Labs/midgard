@@ -74,10 +74,10 @@ const requiredMetadataById = new Map([
     {
       capability:
         "Deployment-bound payload retrieval with exact V1 framing, limits, hashes, and strict decoding",
-      state: "server_and_wire_ready_client_missing_for_watcher",
-      remainingTasks: ["Q03", "Q54", "W20", "W21"],
+      state: "public_server_and_strict_identity_bound_watcher_client_ready",
+      remainingTasks: ["Q58", "W27"],
       watcherBoundary:
-        "Implement a client in demo/midgard-watcher that dials configured public peers, verifies deployment fingerprint/header/payload hashes and strict envelope/body bytes, and persists bytes before verification.",
+        "Use the strict public watcher client and libp2p transport to verify deployment fingerprint, header and payload hashes, bounded framing, and strict body bytes; persist through W21 before W27 verification.",
     },
   ],
   [
@@ -86,7 +86,7 @@ const requiredMetadataById = new Map([
       capability:
         "Deployment-bound proof-bundle, indexed trace-step, and event-to-step retrieval",
       state: "public_protocol_and_existing_challenger_client_ready",
-      remainingTasks: ["Q03", "W20", "W21", "W27"],
+      remainingTasks: ["Q58", "W27"],
       watcherBoundary:
         "Reuse the exact transport codecs and public challenger request path; never read the committee store directly. Verify returned deployment/header/index/event identities before persistence.",
     },
@@ -96,8 +96,9 @@ const requiredMetadataById = new Map([
     {
       capability:
         "Canonical native transaction decoding, Phase A/B validation, CEK/script execution, evidence, and one-step semantics",
-      state: "shared_library_and_rule_bundle_ready_total_replay_open",
-      remainingTasks: ["CG3", "Q00", "W23", "W24", "W25", "W26"],
+      state:
+        "shared_library_rule_bundle_total_replay_and_event_classification_ready_CG3_open",
+      remainingTasks: ["CG3"],
       watcherBoundary:
         "Import shared production semantics and the deployment-bound rule/profile identity; a watcher-specific folklore validator is forbidden.",
     },
@@ -111,7 +112,6 @@ const requiredMetadataById = new Map([
         "selected_families_and_public_transition_trace_ready_total_resumable_api_missing",
       remainingTasks: [
         "F20",
-        "Q03",
         "Q10",
         "Q11",
         "Q12",
@@ -155,7 +155,7 @@ const requiredMetadataById = new Map([
         "Decode, sort, authenticate, and traverse canonical state-queue nodes and headers",
       state:
         "read_helpers_strict_durable_schema_finality_automated_rollback_recovery_and_protocol_index_library_ready_live_provenance_open",
-      remainingTasks: ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE", "W20"],
+      remainingTasks: ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"],
       watcherBoundary:
         "Reuse canonical SDK datum/header decoding, persist supplied W10 observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14's library state machine consumes the canonical observation and automated rollback/replay pipeline, derives durable roles from deployed policy and actual output bytes, and does not reimplement the on-chain state-queue validator. Actual node-accepted transaction/output/datum provenance remains open until the operational W10 adapter supplies every observation directly from the configured live transport.",
     },
@@ -183,6 +183,8 @@ const requiredSourcesById = new Map([
         "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
         "demo/da-committee-node/src/da/payload.ts",
         "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts",
+        "demo/midgard-watcher/src/public-da-client.ts",
+        "demo/midgard-watcher/src/public-da-libp2p-transport.ts",
       ],
       symbols: [
         "DaRequestResponseProtocol",
@@ -190,6 +192,8 @@ const requiredSourcesById = new Map([
         "decodeDaPayloadByHeaderResponseV1Cbor",
         "decodeDaPayloadV1Strict",
         "DaLibp2pNode.request",
+        "WatcherPublicDaClientV1",
+        "createWatcherPublicDaLibp2pTransportV1",
       ],
     },
   ],
@@ -365,6 +369,14 @@ const requiredSymbolBindingsById = new Map([
         path: "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts",
         owner: "DaLibp2pNode",
         member: "request",
+      },
+      {
+        symbol: "WatcherPublicDaClientV1",
+        path: "demo/midgard-watcher/src/public-da-client.ts",
+      },
+      {
+        symbol: "createWatcherPublicDaLibp2pTransportV1",
+        path: "demo/midgard-watcher/src/public-da-libp2p-transport.ts",
       },
     ],
   ],
@@ -579,6 +591,7 @@ const classBindingKeys = new Set([
   "demo/midgard-fault-proofs/src/transition-trace/fetch.ts#DaLibp2pRetainedDaSource",
   "demo/da-committee-node/src/l1/provider.ts#LucidStateQueueProvider",
   "demo/da-committee-node/src/l1/provider.ts#MultiStateQueueProvider",
+  "demo/midgard-watcher/src/public-da-client.ts#WatcherPublicDaClientV1",
 ]);
 const interfaceBindingKeys = new Set([
   "demo/da-committee-node/src/l1/state-queue-scanner.ts#StateQueueProvider",
@@ -750,7 +763,7 @@ if (
     status: "pass",
     reason:
       "Every required dependency class is resolved to current source, each permitted watcher boundary is explicit, and operator-private surfaces are rejected and mapped to concrete replacement tasks.",
-    nextTasks: ["W04", "W20", "Q03", "Q52"],
+    nextTasks: ["W04", "W27", "Q52"],
   })
 ) {
   fail("F30 conclusion and next tasks must remain exact");
@@ -1245,6 +1258,12 @@ const blockReplayBytes = readIndexedFile(
 const blockReplayTestBytes = readIndexedFile(
   "demo/midgard-watcher/tests/block-replay.test.ts",
 );
+const eventClassificationVerifierBytes = readIndexedFile(
+  "demo/midgard-watcher/src/event-classification-verifier.ts",
+);
+const eventClassificationVerifierTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/event-classification-verifier.test.ts",
+);
 const w15AuthorityScenariosBytes = readIndexedFile(
   "demo/midgard-watcher/tests/support/w15-authority-scenarios.ts",
 );
@@ -1363,6 +1382,7 @@ if (
       "transitionTrace",
       "zeroInput",
       "validationTraceDispute",
+      "daHashPreimage",
     ]) ||
   deploymentIdentity.catalogueContractBinding !==
     "exact_category_id_order_and_deployed_script_hash" ||
@@ -2056,6 +2076,96 @@ for (const requiredAuthoritySymbol of [
     fail(`W25 opaque authority harness is missing ${requiredAuthoritySymbol}`);
   }
 }
+const eventClassificationVerifier =
+  dependencyMap.requiredWatcherPackage?.eventClassificationVerifier;
+if (
+  eventClassificationVerifier?.status !== "PASS" ||
+  eventClassificationVerifier.schemaVersion !==
+    "midgard-watcher-event-classification-verifier-v1" ||
+  eventClassificationVerifier.authorityPolicy !==
+    "exact_W15_event_id_nonce_identity_and_terminal_classification_W16_settlement_and_genuine_W25_replay_outputs_are_reverified" ||
+  eventClassificationVerifier.timingPolicy !==
+    "timed_L1_events_are_due_in_open_start_closed_end_and_forced_intervals_must_intersect_the_block_window" ||
+  eventClassificationVerifier.classificationPolicy !==
+    "due_omitted_out_of_window_fabricated_duplicate_withdrawal_and_six_way_forced_classification_match_canonical_root_mutation_semantics" ||
+  eventClassificationVerifier.identityPolicy !==
+    "W25_event_key_fingerprint_equals_decoded_W15_event_id_and_exact_nonce_out_ref_never_the_created_event_output_ref" ||
+  eventClassificationVerifier.downstreamPolicy !==
+    "W26_accept_is_required_but_never_implies_W29_verified" ||
+  eventClassificationVerifier.unknownBehavior !== "fail_closed" ||
+  eventClassificationVerifier.diagnostics !==
+    "deterministic_value_free_codes_and_schema_paths" ||
+  eventClassificationVerifier.expectedFocusedTestCount !== 15
+) {
+  fail("W26 event-classification-verifier evidence is incomplete or stale");
+}
+const eventClassificationVerifierSource =
+  eventClassificationVerifierBytes.toString("utf8");
+const eventClassificationVerifierTestSource =
+  eventClassificationVerifierTestBytes.toString("utf8");
+for (const requiredSymbol of [
+  "WATCHER_EVENT_CLASSIFICATION_VERIFIER_V1_SCHEMA_VERSION",
+  "WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1",
+  "EvaluateWatcherEventClassificationInputV1",
+  "WatcherEventClassificationResultV1",
+  "evaluateWatcherEventClassificationV1",
+]) {
+  if (
+    !eventClassificationVerifierSource.includes(requiredSymbol) ||
+    !watcherIndexSource.includes(requiredSymbol)
+  ) {
+    fail(`W26 event-classification symbol ${requiredSymbol} is not public`);
+  }
+}
+for (const requiredSourceAnchor of [
+  "authenticatedEventFingerprint",
+  "Data.from(event.eventId, OutputReference)",
+  "fingerprint(phase, event.nonceOutRef)",
+  "parseWatcherUserEventIndexerResultV1",
+  "parseWatcherSettlementIndexerResultV1",
+  "forcedValidationFacts.filter",
+  "evaluateWatcherEventClassificationRulesV1",
+  "w26_accepted_not_w29_verified",
+]) {
+  if (!eventClassificationVerifierSource.includes(requiredSourceAnchor)) {
+    fail(`W26 source lost ${requiredSourceAnchor}`);
+  }
+}
+for (const requiredTestAnchor of [
+  "makeGenuineW25PublicReplayFixtureV1",
+  "evaluateWatcherBlockReplayV1",
+  "valid mutation and all five invalid no-op categories",
+  "decodeMidgardNativeTxFullV1FromCanonicalCbor",
+  ".validity",
+  'toBe("TxIsValid")',
+  "genuine withdrawal initialize/refund authorities",
+  "createdOutputFingerprint",
+  "mismatchedNonce",
+  "forcedValidationFacts",
+]) {
+  if (!eventClassificationVerifierTestSource.includes(requiredTestAnchor)) {
+    fail(`W26 tests do not cover ${requiredTestAnchor}`);
+  }
+}
+for (const forbiddenTestAnchor of [
+  "acceptedW25ForAuthority",
+  "REVIEWED_FORCED_OUTCOMES",
+  "forcedFact",
+]) {
+  if (eventClassificationVerifierTestSource.includes(forbiddenTestAnchor)) {
+    fail(`W26 genuine tests recreate W25 authority via ${forbiddenTestAnchor}`);
+  }
+}
+for (const requiredFixtureAnchor of [
+  "GENUINE_W25_DA_PROVENANCE_V1",
+  "makeGenuineW25PublicReplayFixtureV1",
+  "evaluateWatcherHeaderRootReconstructionV1",
+  "makeWatcherCanonicalRuleBundleV1",
+]) {
+  if (!w25AuthorityFixturesSource.includes(requiredFixtureAnchor)) {
+    fail(`W26 genuine W25 fixture support is missing ${requiredFixtureAnchor}`);
+  }
+}
 const ruleBundleSource = ruleBundleBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_RULE_BUNDLE_V1_SCHEMA_VERSION",
@@ -2097,14 +2207,28 @@ if (
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W15") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W16") ||
   dependencyMap.requiredWatcherPackage.remainingTasks.includes("W17") ||
-  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W23")
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W20") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W21") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W22") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W23") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W24") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W25") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W26") ||
+  dependencyMap.requiredWatcherPackage.remainingTasks.includes("W24-W46") ||
+  !dependencyMap.requiredWatcherPackage.remainingTasks.includes("W27-W46")
 ) {
   fail(
-    "W01-W03, W11-W17 library surfaces, and W23 must be complete while W10 operational wire provenance remains explicitly open",
+    "W01-W03, W11-W17, and W20-W26 must be complete while W10 operational wire provenance and W27-W46 remain explicitly open",
   );
 }
 if (dependencyMap.f30Conclusion?.status !== "pass") {
   fail("F30 conclusion must pass");
+}
+if (
+  JSON.stringify(dependencyMap.f30Conclusion.nextTasks) !==
+  JSON.stringify(["W04", "W27", "Q52"])
+) {
+  fail("F30 next tasks must omit completed Q03/W20 and retain open work");
 }
 
 console.log(

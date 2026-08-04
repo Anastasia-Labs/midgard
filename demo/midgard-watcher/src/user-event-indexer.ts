@@ -9,6 +9,7 @@ import {
   ForcedInclusionTxV1Schema,
   HubOracleDatumSchema,
   MerkleRoot,
+  type MidgardTxValidity,
   outputReferenceToPlutusDataCbor,
   PayoutDatumSchema,
   PayoutMintRedeemerSchema,
@@ -98,6 +99,8 @@ export const WATCHER_USER_EVENT_INDEXER_RESULT_V1_SCHEMA_VERSION =
   "midgard-watcher-user-event-indexer-result-v1" as const;
 export const WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION =
   "midgard-watcher-user-event-public-context-v1" as const;
+export const WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION =
+  "midgard-watcher-forced-terminal-classification-v1" as const;
 
 export const WATCHER_USER_EVENT_INDEXER_V1_BOUNDS = Object.freeze({
   activeEvents: 4_096,
@@ -228,7 +231,15 @@ export type WatcherTerminalUserEventV1 = WatcherIndexedUserEventV1 &
     terminalSlot: string;
     terminalBlockNo: string;
     terminalFinalityStatus: WatcherUserEventFinalityStatusV1;
+    terminalClassification?: WatcherForcedTerminalClassificationV1;
   }>;
+
+export type WatcherForcedTerminalClassificationV1 = Readonly<{
+  schemaVersion: typeof WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION;
+  operatorValidity: MidgardTxValidity;
+  terminalTransactionHash: string;
+  terminalPointDigest: string;
+}>;
 
 export type WatcherUserEventSnapshotV1 = Readonly<{
   schemaVersion: typeof WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION;
@@ -533,6 +544,96 @@ const isNatural = (value: unknown): value is string =>
 const isNetwork = (value: unknown): value is WatcherUserEventNetworkV1 =>
   typeof value === "string" &&
   NETWORKS.includes(value as WatcherUserEventNetworkV1);
+
+const MIDGARD_TX_VALIDITIES = Object.freeze([
+  "TxIsValid",
+  "NonExistentInputUtxo",
+  "InvalidSignature",
+  "FailedScript",
+  "FeeTooLow",
+  "UnbalancedTx",
+] as const satisfies readonly MidgardTxValidity[]);
+
+const isMidgardTxValidity = (value: unknown): value is MidgardTxValidity =>
+  typeof value === "string" &&
+  (MIDGARD_TX_VALIDITIES as readonly string[]).includes(value);
+
+const parseForcedTerminalClassification = (
+  value: unknown,
+): WatcherForcedTerminalClassificationV1 | null => {
+  const record = exactRecord(value, [
+    "schemaVersion",
+    "operatorValidity",
+    "terminalTransactionHash",
+    "terminalPointDigest",
+  ]);
+  if (
+    record === null ||
+    record.schemaVersion !==
+      WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION ||
+    !isMidgardTxValidity(record.operatorValidity) ||
+    !isHex32(record.terminalTransactionHash) ||
+    !isHex32(record.terminalPointDigest)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    schemaVersion: WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION,
+    operatorValidity: record.operatorValidity,
+    terminalTransactionHash: record.terminalTransactionHash,
+    terminalPointDigest: record.terminalPointDigest,
+  });
+};
+
+const snapshotTerminalClassificationsAreExact = (value: unknown): boolean => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const snapshot = value as PlainRecord;
+  if (
+    !Array.isArray(snapshot.activeEvents) ||
+    !Array.isArray(snapshot.terminalEvents)
+  ) {
+    return false;
+  }
+  for (const event of snapshot.activeEvents) {
+    if (
+      typeof event !== "object" ||
+      event === null ||
+      Object.hasOwn(event, "terminalClassification")
+    ) {
+      return false;
+    }
+  }
+  for (const event of snapshot.terminalEvents) {
+    if (typeof event !== "object" || event === null) {
+      return false;
+    }
+    const terminal = event as PlainRecord;
+    const mustHaveClassification =
+      terminal.kind === "forced_order" &&
+      terminal.terminalStatus === "processed";
+    const hasClassification = Object.hasOwn(terminal, "terminalClassification");
+    if (mustHaveClassification !== hasClassification) {
+      return false;
+    }
+    if (!hasClassification) {
+      continue;
+    }
+    const classification = parseForcedTerminalClassification(
+      terminal.terminalClassification,
+    );
+    if (
+      classification === null ||
+      classification.terminalTransactionHash !==
+        terminal.terminalTransactionHash ||
+      classification.terminalPointDigest !== terminal.terminalPointDigest
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
 
 const cloneMarker = (value: unknown): DeploymentMarkerV1 | null => {
   const record = exactRecord(value, ["schemaVersion", "manifestId"]);
@@ -2185,6 +2286,15 @@ const scanConsumedEvents = (
       ) {
         return null;
       }
+      const forcedOperatorValidity =
+        event.kind === "forced_order"
+          ? isMidgardTxValidity(terminalSpend.purpose)
+            ? terminalSpend.purpose
+            : null
+          : null;
+      if (event.kind === "forced_order" && forcedOperatorValidity === null) {
+        return null;
+      }
       active.delete(event.outRef);
       terminal.push(
         Object.freeze({
@@ -2196,6 +2306,17 @@ const scanConsumedEvents = (
           terminalSlot: block.chainPoint.slot,
           terminalBlockNo: block.chainPoint.blockNo,
           terminalFinalityStatus: "pending",
+          ...(forcedOperatorValidity === null
+            ? {}
+            : {
+                terminalClassification: Object.freeze({
+                  schemaVersion:
+                    WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION,
+                  operatorValidity: forcedOperatorValidity,
+                  terminalTransactionHash: transaction.txHash,
+                  terminalPointDigest: block.chainPoint.pointDigest,
+                }),
+              }),
         }),
       );
     }
@@ -3736,7 +3857,8 @@ const parseObservationStructural = (
     !isNatural(record.sourceDurableStoreRevision) ||
     !isHex32(record.durableStoreDigest) ||
     !isNatural(record.durableStoreRevision) ||
-    !isHex32(record.observationDigest)
+    !isHex32(record.observationDigest) ||
+    !snapshotTerminalClassificationsAreExact(record.snapshot)
   ) {
     return null;
   }
@@ -3786,7 +3908,8 @@ export const parseWatcherUserEventIndexerStateV1 = (
     record.policyDigest !== policy.policyDigest ||
     record.network !== policy.network ||
     record.releaseEvidenceDigest !== policy.releaseEvidenceDigest ||
-    !same(record.deploymentMarker, policy.deploymentMarker)
+    !same(record.deploymentMarker, policy.deploymentMarker) ||
+    !snapshotTerminalClassificationsAreExact(record.snapshot)
   ) {
     return null;
   }

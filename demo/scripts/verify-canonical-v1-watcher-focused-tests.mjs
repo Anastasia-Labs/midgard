@@ -79,6 +79,10 @@ const expectedByFile = new Map([
     "block-replay.test.ts",
     watcherEvidence.blockReplay?.expectedFocusedTestCount,
   ],
+  [
+    "event-classification-verifier.test.ts",
+    watcherEvidence.eventClassificationVerifier?.expectedFocusedTestCount,
+  ],
   ["scaffold.test.ts", watcherEvidence.scaffold?.expectedFocusedTestCount],
 ]);
 
@@ -87,13 +91,13 @@ const fail = (message) => {
 };
 
 if (
-  expectedByFile.size !== 18 ||
+  expectedByFile.size !== 19 ||
   [...expectedByFile.values()].some(
     (count) => !Number.isSafeInteger(count) || count <= 0,
   )
 ) {
   fail(
-    "dependency map must declare a positive expected count for all 18 files",
+    "dependency map must declare a positive expected count for all 19 files",
   );
 }
 

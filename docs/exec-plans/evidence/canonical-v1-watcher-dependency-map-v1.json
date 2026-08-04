@@ -26,6 +26,7 @@
       "demo/midgard-watcher/src/config.ts",
       "demo/midgard-watcher/src/deployment-identity.ts",
       "demo/midgard-watcher/src/durable-store.ts",
+      "demo/midgard-watcher/src/event-classification-verifier.ts",
       "demo/midgard-watcher/src/finality-engine.ts",
       "demo/midgard-watcher/src/index.ts",
       "demo/midgard-watcher/src/l1-adapter.ts",
@@ -50,6 +51,7 @@
       "demo/midgard-watcher/tests/header-root-reconstruction.test.ts",
       "demo/midgard-watcher/tests/phase-a-verifier.test.ts",
       "demo/midgard-watcher/tests/durable-store.test.ts",
+      "demo/midgard-watcher/tests/event-classification-verifier.test.ts",
       "demo/midgard-watcher/tests/finality-engine.test.ts",
       "demo/midgard-watcher/tests/l1-adapter.test.ts",
       "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
@@ -115,7 +117,8 @@
         "invalidRange",
         "transitionTrace",
         "zeroInput",
-        "validationTraceDispute"
+        "validationTraceDispute",
+        "daHashPreimage"
       ],
       "catalogueContractBinding": "exact_category_id_order_and_deployed_script_hash",
       "bindings": [
@@ -331,6 +334,18 @@
       "unknownBehavior": "fail_closed",
       "expectedFocusedTestCount": 20
     },
+    "eventClassificationVerifier": {
+      "status": "PASS",
+      "schemaVersion": "midgard-watcher-event-classification-verifier-v1",
+      "authorityPolicy": "exact_W15_event_id_nonce_identity_and_terminal_classification_W16_settlement_and_genuine_W25_replay_outputs_are_reverified",
+      "timingPolicy": "timed_L1_events_are_due_in_open_start_closed_end_and_forced_intervals_must_intersect_the_block_window",
+      "classificationPolicy": "due_omitted_out_of_window_fabricated_duplicate_withdrawal_and_six_way_forced_classification_match_canonical_root_mutation_semantics",
+      "identityPolicy": "W25_event_key_fingerprint_equals_decoded_W15_event_id_and_exact_nonce_out_ref_never_the_created_event_output_ref",
+      "downstreamPolicy": "W26_accept_is_required_but_never_implies_W29_verified",
+      "unknownBehavior": "fail_closed",
+      "diagnostics": "deterministic_value_free_codes_and_schema_paths",
+      "expectedFocusedTestCount": 15
+    },
     "scaffold": {
       "expectedFocusedTestCount": 5
     },
@@ -338,8 +353,7 @@
       "W04",
       "W10-OPERATIONAL-WIRE",
       "W14-LIVE-PROVENANCE",
-      "W22",
-      "W24-W46",
+      "W27-W46",
       "WG1",
       "WG2"
     ]
@@ -363,24 +377,28 @@
     {
       "id": "public_da",
       "capability": "Deployment-bound payload retrieval with exact V1 framing, limits, hashes, and strict decoding",
-      "state": "server_and_wire_ready_client_missing_for_watcher",
+      "state": "public_server_and_strict_identity_bound_watcher_client_ready",
       "trust": "public_protocol",
       "sourcePaths": [
         "demo/midgard-core/src/da-transport.ts",
         "demo/midgard-core/src/da-payload-envelope.ts",
         "demo/da-committee-node/src/da/libp2p/payload-protocols.ts",
         "demo/da-committee-node/src/da/payload.ts",
-        "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts"
+        "demo/da-committee-node/src/da/libp2p/DaLibp2pNode.ts",
+        "demo/midgard-watcher/src/public-da-client.ts",
+        "demo/midgard-watcher/src/public-da-libp2p-transport.ts"
       ],
       "sourceSymbols": [
         "DaRequestResponseProtocol",
         "DaLibp2pPayloadProtocolHandlers",
         "decodeDaPayloadByHeaderResponseV1Cbor",
         "decodeDaPayloadV1Strict",
-        "DaLibp2pNode.request"
+        "DaLibp2pNode.request",
+        "WatcherPublicDaClientV1",
+        "createWatcherPublicDaLibp2pTransportV1"
       ],
-      "watcherBoundary": "Implement a client in demo/midgard-watcher that dials configured public peers, verifies deployment fingerprint/header/payload hashes and strict envelope/body bytes, and persists bytes before verification.",
-      "remainingTasks": ["Q03", "Q54", "W20", "W21"]
+      "watcherBoundary": "Use the strict public watcher client and libp2p transport to verify deployment fingerprint, header and payload hashes, bounded framing, and strict body bytes; persist through W21 before W27 verification.",
+      "remainingTasks": ["Q58", "W27"]
     },
     {
       "id": "proof_bundle",
@@ -401,12 +419,12 @@
         "reconstructDaPayloadV1"
       ],
       "watcherBoundary": "Reuse the exact transport codecs and public challenger request path; never read the committee store directly. Verify returned deployment/header/index/event identities before persistence.",
-      "remainingTasks": ["Q03", "W20", "W21", "W27"]
+      "remainingTasks": ["Q58", "W27"]
     },
     {
       "id": "validation",
       "capability": "Canonical native transaction decoding, Phase A/B validation, CEK/script execution, evidence, and one-step semantics",
-      "state": "shared_library_and_rule_bundle_ready_total_replay_open",
+      "state": "shared_library_rule_bundle_total_replay_and_event_classification_ready_CG3_open",
       "trust": "deterministic_local",
       "sourcePaths": [
         "demo/midgard-validation/src/index.ts",
@@ -426,7 +444,7 @@
         "validateMidgardConsensusV1Tx"
       ],
       "watcherBoundary": "Import shared production semantics and the deployment-bound rule/profile identity; a watcher-specific folklore validator is forbidden.",
-      "remainingTasks": ["CG3", "Q00", "W23", "W24", "W25", "W26"]
+      "remainingTasks": ["CG3"]
     },
     {
       "id": "proof_tooling",
@@ -455,7 +473,6 @@
       "watcherBoundary": "Call typed programmatic APIs with persisted authenticated public evidence. Node URL and arbitrary local file modes are diagnostic/import boundaries, not watcher security inputs.",
       "remainingTasks": [
         "F20",
-        "Q03",
         "Q10",
         "Q11",
         "Q12",
@@ -539,7 +556,7 @@
         "evaluateWatcherStateQueueIndexerV1"
       ],
       "watcherBoundary": "Reuse canonical SDK datum/header decoding, persist supplied W10 observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14's library state machine consumes the canonical observation and automated rollback/replay pipeline, derives durable roles from deployed policy and actual output bytes, and does not reimplement the on-chain state-queue validator. Actual node-accepted transaction/output/datum provenance remains open until the operational W10 adapter supplies every observation directly from the configured live transport.",
-      "remainingTasks": ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE", "W20"]
+      "remainingTasks": ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"]
     },
     {
       "id": "correction_removal",
@@ -587,6 +604,6 @@
   "f30Conclusion": {
     "status": "pass",
     "reason": "Every required dependency class is resolved to current source, each permitted watcher boundary is explicit, and operator-private surfaces are rejected and mapped to concrete replacement tasks.",
-    "nextTasks": ["W04", "W20", "Q03", "Q52"]
+    "nextTasks": ["W04", "W27", "Q52"]
   }
 }

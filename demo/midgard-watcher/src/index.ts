@@ -33,6 +33,7 @@ export {
   WatcherBlockReplayError,
   type WatcherBlockReplayEventAuthorityV1,
   type WatcherBlockReplayEventRootV1,
+  type WatcherBlockReplayForcedValidationFactV1,
   type WatcherBlockReplayIntermediateRootV1,
   watcherBlockReplayPriorStateV1,
   type WatcherBlockReplayPriorUtxoV1,
@@ -173,6 +174,19 @@ export {
   type WatcherSpentProtocolUtxoV1,
   type WatcherSubmissionV1,
 } from "./durable-store.js";
+export {
+  type EvaluateWatcherEventClassificationInputV1,
+  evaluateWatcherEventClassificationV1,
+  WATCHER_EVENT_CLASSIFICATION_REASON_CODES_V1,
+  WATCHER_EVENT_CLASSIFICATION_VERIFIER_V1_SCHEMA_VERSION,
+  type WatcherEventClassificationActionV1,
+  type WatcherEventClassificationFindingV1,
+  type WatcherEventClassificationReasonCodeV1,
+  type WatcherEventClassificationResultV1,
+  type WatcherEventClassificationSettlementAuthorityV1,
+  type WatcherEventClassificationUserAuthorityV1,
+  type WatcherForcedEventNativeTransactionV1,
+} from "./event-classification-verifier.js";
 export {
   evaluateWatcherFinalityV1,
   makeWatcherFinalityPolicyV1,
@@ -538,6 +552,7 @@ export {
   parseWatcherUserEventIndexerPolicyV1,
   parseWatcherUserEventIndexerResultV1,
   parseWatcherUserEventIndexerStateV1,
+  WATCHER_FORCED_TERMINAL_CLASSIFICATION_V1_SCHEMA_VERSION,
   WATCHER_USER_EVENT_HISTORY_ENTRY_V1_SCHEMA_VERSION,
   WATCHER_USER_EVENT_INDEXER_ALERT_CODES_V1,
   WATCHER_USER_EVENT_INDEXER_POLICY_V1_SCHEMA_VERSION,
@@ -548,6 +563,7 @@ export {
   WATCHER_USER_EVENT_OBSERVATION_V1_SCHEMA_VERSION,
   WATCHER_USER_EVENT_PUBLIC_CONTEXT_V1_SCHEMA_VERSION,
   WATCHER_USER_EVENT_SNAPSHOT_V1_SCHEMA_VERSION,
+  type WatcherForcedTerminalClassificationV1,
   type WatcherIndexedUserEventV1,
   type WatcherTerminalUserEventV1,
   type WatcherUserEventDeploymentAuthorityV1,
