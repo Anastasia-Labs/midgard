@@ -77,7 +77,6 @@
       "finding": "eight compiled standalone families still bind legacy PlutusData and uncounted roots; only three use canonical native V1",
       "sources": ["onchain/aiken/lib/midgard/fraud-proofs/common.ak"],
       "remainingTasks": [
-        "Q00",
         "Q13",
         "Q14",
         "Q15",
