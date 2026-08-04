@@ -522,6 +522,23 @@ export class PostgresWatcherStore implements WatcherStore {
     );
   }
 
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]> {
+    return this.listParsedRecords(
+      "SELECT header_hash, record FROM watcher_da_payloads ORDER BY header_hash",
+      [],
+      parseDaStoredPayloadRecordV1,
+      assertPayloadRowIdentity,
+    );
+  }
+
+  async deleteDaPayload(headerHash: string): Promise<boolean> {
+    const result = await this.pool.query(
+      "DELETE FROM watcher_da_payloads WHERE header_hash = $1",
+      [headerHash],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
     const canonicalRecord = parseDaSignatureRecordV1(record);
     await this.withClient(async (client) => {

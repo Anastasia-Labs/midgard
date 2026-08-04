@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
+import { assertRetentionWindowCoversDeploymentV1 } from "@al-ft/midgard-core";
 import {
   assertMidgardConsensusV1ReleaseReady,
   isMidgardConsensusProfileV1,
@@ -280,6 +281,7 @@ export const loadWatcherConfig = async (
     manifestId: contractDeploymentManifestId,
     consensusProfile,
     network: contractDeploymentNetwork,
+    daRetentionDays: manifestDaRetentionDays,
   } = contractDeploymentManifestConfig(
     contractDeploymentInfo,
     contractDeploymentInfoPath,
@@ -303,6 +305,10 @@ export const loadWatcherConfig = async (
     env,
     runtimeManifest,
     deploymentFingerprint,
+  });
+  assertLibp2pDaRetentionDaysV1({
+    runtimeRetentionDays: libp2pDaTransport.retentionDays,
+    manifestRetentionDays: manifestDaRetentionDays,
   });
   const libp2pPrivateKeySource = libp2pPrivateKeySourceConfig(env);
   rejectPublicRetainedDaCoHosting(env);
@@ -1228,6 +1234,7 @@ const contractDeploymentManifestConfig = (
   readonly manifestId: string;
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly network: string;
+  readonly daRetentionDays: number;
 } => {
   const verified = verifyFinalizedDeploymentManifestV1(contractDeploymentInfo);
   const exactProfile = verified.consensusProfile;
@@ -1240,6 +1247,9 @@ const contractDeploymentManifestConfig = (
   if (typeof network !== "string" || network.length === 0) {
     throw new Error(`${path} does not contain a deployment network`);
   }
+  // Q54: the retention window is part of deployment identity, so read it from
+  // the *verified* deployment manifest rather than from the runtime manifest.
+  const daRetentionDays = assertRetentionWindowCoversDeploymentV1(verified);
   return {
     manifestId: normalizeHex(manifestId, {
       fieldName: "contract deployment manifestId",
@@ -1247,7 +1257,41 @@ const contractDeploymentManifestConfig = (
     }),
     consensusProfile: exactProfile,
     network,
+    daRetentionDays,
   };
+};
+
+export class DaRetentionWindowConfigError extends Error {
+  public override readonly name = "DaRetentionWindowConfigError";
+}
+
+/**
+ * Fail-closed startup binding of the committee's configured retention window
+ * (GOAL_SPEC 9.4 / Q54). The runtime manifest's `da_transport.retention_days`
+ * must both clear the canonical floor and exactly equal the verified deployment
+ * manifest's `da.transportProfile.retentionDays`.
+ */
+export const assertLibp2pDaRetentionDaysV1 = (args: {
+  readonly runtimeRetentionDays: number;
+  readonly manifestRetentionDays: number;
+}): number => {
+  const { runtimeRetentionDays, manifestRetentionDays } = args;
+  if (!Number.isSafeInteger(runtimeRetentionDays) || runtimeRetentionDays < 0) {
+    throw new DaRetentionWindowConfigError(
+      "da_transport.retention_days must be a non-negative safe integer",
+    );
+  }
+  if (runtimeRetentionDays < LIBP2P_DA_MIN_RETENTION_DAYS) {
+    throw new DaRetentionWindowConfigError(
+      `da_transport.retention_days must be at least ${LIBP2P_DA_MIN_RETENTION_DAYS.toString()} days, got ${runtimeRetentionDays.toString()}`,
+    );
+  }
+  if (runtimeRetentionDays !== manifestRetentionDays) {
+    throw new DaRetentionWindowConfigError(
+      `da_transport.retention_days must exactly equal the verified deployment manifest da.transportProfile.retentionDays: runtime=${runtimeRetentionDays.toString()}, manifest=${manifestRetentionDays.toString()}`,
+    );
+  }
+  return runtimeRetentionDays;
 };
 
 const deploymentFingerprintConfig = (

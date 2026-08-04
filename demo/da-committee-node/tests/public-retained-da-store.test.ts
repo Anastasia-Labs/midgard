@@ -178,6 +178,111 @@ describe("PostgresPublicRetainedDaStore", () => {
     }
   });
 
+  it("rejects a role granted DELETE on watcher_da_payloads at open()", async () => {
+    // Q54 adversarial: the public retained-DA plane must be structurally
+    // incapable of pruning still-challengeable evidence. A login that merely
+    // *holds* DELETE (even without exercising it) is refused at open().
+    const fake = fakePool({
+      access: readOnlyAccess({ payload_write: true }),
+    });
+    await expect(openWith(fake.pool)).rejects.toThrow(/SELECT-only role/u);
+    expect(fake.end).toHaveBeenCalledOnce();
+    // The privilege probe never issues DML of its own.
+    expect(
+      fake.queries.some((query) =>
+        /^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/imu.test(query),
+      ),
+    ).toBe(false);
+    // A DELETE grant on the header table is refused the same way.
+    await expect(
+      openWith(
+        fakePool({ access: readOnlyAccess({ header_write: true }) }).pool,
+      ),
+    ).rejects.toThrow(/SELECT-only role/u);
+  });
+
+  it("cannot delete inside BEGIN READ ONLY even with a compliant role", async () => {
+    // Second, independent barrier: every statement runs in a read-only
+    // transaction, so a DELETE would be rejected by the server. Assert both
+    // that the store never emits one and that the read-only transaction frames
+    // every single query it does emit.
+    const fake = fakePool({
+      payload: payloadRecord(),
+      header: { headerHash: HEADER_HASH },
+    });
+    const store = await openWith(fake.pool);
+    await store.getDaPayload(HEADER_HASH);
+    await store.getStateQueueHeader(HEADER_HASH);
+
+    const beginIndexes = fake.queries
+      .map((query, index) => (query === "BEGIN READ ONLY" ? index : -1))
+      .filter((index) => index >= 0);
+    expect(beginIndexes).toHaveLength(3);
+    expect(fake.queries.filter((query) => query === "COMMIT")).toHaveLength(3);
+    // No statement escapes a BEGIN READ ONLY frame.
+    expect(beginIndexes[0]).toBe(0);
+    for (const query of fake.queries) {
+      expect(
+        /\b(?:DELETE|TRUNCATE|DROP)\s+(?:FROM\s+)?watcher_/iu.test(query),
+      ).toBe(false);
+    }
+    await store.close();
+  });
+
+  it("surfaces the read-only transaction rejection when DML is attempted", async () => {
+    // Simulates PostgreSQL's own barrier: once BEGIN READ ONLY is in effect,
+    // any DELETE raises 25006. The store still completes its reads, proving the
+    // read-only frame is real rather than cosmetic.
+    let readOnly = false;
+    const release = vi.fn();
+    const client: PublicRetainedDaPoolClient = {
+      query: async <T extends Record<string, unknown>>(
+        query: string,
+      ): Promise<{ readonly rows: readonly T[] }> => {
+        if (query === "BEGIN READ ONLY") {
+          readOnly = true;
+          return { rows: [] };
+        }
+        if (query === "COMMIT" || query === "ROLLBACK") {
+          readOnly = false;
+          return { rows: [] };
+        }
+        if (
+          readOnly &&
+          /^\s*(?:INSERT|UPDATE|DELETE|TRUNCATE)\b/imu.test(query)
+        ) {
+          throw new Error(
+            "cannot execute DELETE in a read-only transaction (25006)",
+          );
+        }
+        if (query.includes("FROM pg_roles role")) {
+          return { rows: [readOnlyAccess() as unknown as T] };
+        }
+        if (query.includes("FROM watcher_da_payloads")) {
+          return {
+            rows: [{ record: payloadRecord() }] as unknown as readonly T[],
+          };
+        }
+        return { rows: [] };
+      },
+      release,
+    };
+    const pool: PublicRetainedDaPool = {
+      connect: async (): Promise<PublicRetainedDaPoolClient> => client,
+      end: async (): Promise<void> => undefined,
+    };
+    const store = await openWith(pool);
+    await expect(store.getDaPayload(HEADER_HASH)).resolves.toMatchObject({
+      headerHash: HEADER_HASH,
+    });
+    await client.query("BEGIN READ ONLY");
+    await expect(
+      client.query("DELETE FROM watcher_da_payloads"),
+    ).rejects.toThrow(/read-only transaction/u);
+    await client.query("ROLLBACK");
+    await store.close();
+  });
+
   it("rejects malformed payloads and row-key mismatches", async () => {
     const malformed = await openWith(
       fakePool({ payload: { headerHash: HEADER_HASH } }).pool,

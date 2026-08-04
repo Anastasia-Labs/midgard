@@ -20,6 +20,10 @@ import {
   buildMidgardMpfProofFoldTraceV1,
   type MidgardMpfProofStepV1,
 } from "./mpf-proof-fold-v1.js";
+import {
+  MIDGARD_RETENTION_WINDOW_V1,
+  retentionDaysCoverWindowV1,
+} from "./retention-window-v1.js";
 
 export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "referenceScriptAuthMint",
@@ -1208,9 +1212,25 @@ const validateFinalizedDa = (value: unknown): void => {
     "da.transportProfile.retentionDays",
     1,
   );
+  // Existing >= 15-day transport-profile floor: never weakened.
   if (retentionDays < DA_TRANSPORT_LIMITS_V1.minimumRetentionDays) {
     throw new Error(
       "Deployment manifest da.transportProfile.retentionDays is too short",
+    );
+  }
+  // Q54: additionally bind the window to the derived challengeability horizon
+  // (block maturity + worst-case proof-time bound), so deployment identity -
+  // not a literal - is what the DA and proof stores enforce against.
+  if (
+    !retentionDaysCoverWindowV1(
+      retentionDays,
+      "Deployment manifest da.transportProfile.retentionDays",
+    )
+  ) {
+    throw new Error(
+      `Deployment manifest da.transportProfile.retentionDays must cover the canonical V1 retention window (requiredRetentionMs=${String(
+        MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs,
+      )})`,
     );
   }
 };

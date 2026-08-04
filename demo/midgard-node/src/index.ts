@@ -45,6 +45,7 @@ import * as PrepareHubOracleNonce from "@/commands/prepare-hub-oracle-nonce.js";
 import * as ReconcileCommand from "@/commands/reconcile.js";
 import * as ReserveInspectionCommand from "@/commands/reserve-inspection.js";
 import * as ReservePayoutCommand from "@/commands/reserve-payout.js";
+import * as RetentionCheck from "@/commands/retention-check.js";
 import * as StressCorpusCommand from "@/commands/stress-corpus-generate.js";
 import { collectGroundTruthMetricsFromSql } from "@/commands/stress-db-metrics.js";
 import { collectEnvironmentFingerprint } from "@/commands/stress-environment-fingerprint.js";
@@ -2130,6 +2131,71 @@ reconcile
     const mainEffect = provideDatabaseTxServices(
       ReconcileCommand.reconcileBlockCommittedProgram({ headerHash }).pipe(
         tapJson(),
+      ),
+    );
+
+    runCliEffect(mainEffect);
+  });
+
+reconcile
+  .command("retention-check")
+  .description(
+    "Check retained DA payload retention deadlines; exits nonzero when any still-challengeable record is inside its alert threshold",
+  )
+  .option(
+    "--alert-threshold-ms <ms>",
+    "Alert headroom in milliseconds (defaults to the derived canonical V1 retention margin)",
+  )
+  .option("--json", "Print machine-readable JSON output", true)
+  .action(async (options: { readonly alertThresholdMs?: string }) => {
+    let alertThresholdMs: number | undefined;
+    try {
+      alertThresholdMs =
+        options.alertThresholdMs === undefined
+          ? undefined
+          : parseNonNegativeIntegerOption(
+              options.alertThresholdMs,
+              "--alert-threshold-ms",
+            );
+    } catch (error) {
+      failCli("reconcile retention-check", error);
+      return;
+    }
+    const mainEffect = provideDatabaseServices(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        // A DA payload whose header no longer sits in the local state-queue
+        // mirror has reached a terminal L1 outcome; anything still queued is
+        // attested-but-not-terminal. Unknown rows fail closed inside the
+        // evaluator.
+        const rows = yield* sql<{
+          readonly header_hash: Buffer;
+          readonly block_end_time: Date | null;
+          readonly still_queued: boolean;
+        }>`
+          SELECT payload.header_hash,
+                 payload.block_end_time,
+                 EXISTS (
+                   SELECT 1 FROM blocks
+                   WHERE blocks.header_hash = payload.header_hash
+                 ) AS still_queued
+          FROM da_payloads payload`;
+        const result = RetentionCheck.evaluateRetentionCheck({
+          nowMillis: Date.now(),
+          alertThresholdMs,
+          records: rows.map((row) => ({
+            headerHash: row.header_hash.toString("hex"),
+            blockEndTimeMs: row.block_end_time?.getTime() ?? null,
+            headerStatus: row.still_queued ? "attested" : "merged",
+          })),
+        });
+        return result;
+      }).pipe(tapJson()),
+    ).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          process.exitCode = RetentionCheck.retentionCheckExitCode(result);
+        }),
       ),
     );
 

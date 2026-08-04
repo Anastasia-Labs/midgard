@@ -2,6 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-p
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { computeChallengeableCutoff } from "@/database/retention-policy.js";
 import {
   clearTable,
   DatabaseError,
@@ -235,15 +236,32 @@ export const retrieveByHeaderHash = (
     sqlErrorToDatabaseError(tableName, "Failed to retrieve DA payload"),
   );
 
+/**
+ * Challengeability-aware retention prune (GOAL_SPEC 9.4 / Q54).
+ *
+ * A DA payload may only be removed when BOTH hold:
+ *   - its block END TIME is strictly older than `challengeableCutoff`
+ *     (now - block maturity - worst-case proof-time bound), so no fault or
+ *     validation proof can still reference it; and
+ *   - its local `created_at` is strictly older than the wall-clock retention
+ *     cutoff derived from the deployed RETENTION_DAYS.
+ *
+ * A NULL `block_end_time` is never prunable: an unknown challengeability
+ * horizon fails closed. `challengeableCutoff` defaults to the derived value so
+ * a caller cannot accidentally fall back to a created_at-only predicate.
+ */
 export const pruneOlderThan = (
   cutoff: Date,
+  challengeableCutoff: Date = computeChallengeableCutoff(new Date()),
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ readonly deleted_count: string }>`
       WITH deleted AS (
         DELETE FROM ${sql(tableName)}
-        WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
+        WHERE ${sql(Columns.BLOCK_END_TIME)} IS NOT NULL
+          AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
+          AND ${sql(Columns.CREATED_AT)} < ${cutoff}
         RETURNING 1
       )
       SELECT COUNT(*)::text AS deleted_count FROM deleted`;

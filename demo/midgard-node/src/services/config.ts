@@ -14,7 +14,10 @@ import { Network, UTxO, walletFromSeed } from "@lucid-evolution/lucid";
 import { Config, Context, Data, Effect, Layer, Option } from "effect";
 
 import { readDaHardeningConfig } from "@/da/hardening-config.js";
-import { validateRetentionDays } from "@/database/retention-policy.js";
+import {
+  assertRetentionDaysMatchesDeploymentV1,
+  validateRetentionDays,
+} from "@/database/retention-policy.js";
 
 /**
  * Configuration loading for the Midgard node process.
@@ -667,6 +670,10 @@ const makeConfig = Effect.gen(function* () {
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
     Config.mapAttempt(validateRetentionDays),
+    // Q54: enabled pruning must cover the deployment manifest's
+    // da.transportProfile.retentionDays window; a shorter env value fails the
+    // config load rather than silently pruning challengeable evidence.
+    Config.mapAttempt((value) => assertRetentionDaysMatchesDeploymentV1(value)),
   );
   const waitBetweenRetentionSweeps = yield* Config.integer(
     "WAIT_BETWEEN_RETENTION_SWEEPS",

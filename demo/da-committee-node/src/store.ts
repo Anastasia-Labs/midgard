@@ -150,6 +150,13 @@ export interface WatcherStore {
   ): Promise<StateQueueHeaderRecord | undefined>;
   saveDaPayload(record: DaPayloadRecord): Promise<DaPayloadRecord>;
   getDaPayload(headerHash: string): Promise<DaPayloadRecord | undefined>;
+  /** Q54 retention enforcement: full retained DA payload set. */
+  listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]>;
+  /**
+   * Q54 retention enforcement: removes one retained DA payload. Returns whether
+   * a row existed. Callers must consult `daRetentionPruneDecisionV1` first.
+   */
+  deleteDaPayload(headerHash: string): Promise<boolean>;
   saveDaSignature(record: DaSignatureRecord): Promise<void>;
   getDaSignature(args: {
     readonly headerHash: string;
@@ -575,6 +582,27 @@ export class JsonFileWatcherStore implements WatcherStore {
   ): Promise<DaStoredPayloadRecordV1 | undefined> {
     const data = await this.read();
     return data.daPayloads[headerHash];
+  }
+
+  async listDaPayloads(): Promise<readonly DaStoredPayloadRecordV1[]> {
+    const data = await this.read();
+    return Object.values(data.daPayloads).sort((left, right) =>
+      left.headerHash.localeCompare(right.headerHash),
+    );
+  }
+
+  async deleteDaPayload(headerHash: string): Promise<boolean> {
+    let deleted = false;
+    await this.mutate((data) => {
+      if (data.daPayloads[headerHash] === undefined) {
+        return data;
+      }
+      deleted = true;
+      const daPayloads = { ...data.daPayloads };
+      delete daPayloads[headerHash];
+      return { ...data, daPayloads };
+    });
+    return deleted;
   }
 
   async saveDaSignature(record: DaSignatureRecord): Promise<void> {
