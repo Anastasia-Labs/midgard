@@ -145,10 +145,38 @@ const verifyFileBinding = (binding, owner) => {
   }
 };
 
-for (const entry of manifest.dirtyBaseline.protectedPaths) {
-  if (!existsSync(safeAbsolutePath(entry.path))) {
-    throw new Error(`recorded dirty-baseline path is missing: ${entry.path}`);
+// A path Git tracks is evidence: if the manifest records it as part of the
+// dirty baseline and it is gone, something deleted recorded evidence and the
+// gate must fail. A path recorded as PROTECTED_EXTERNAL_UNTRACKED was never in
+// the index — it is local scratch that only ever existed in the owner's
+// worktree — so a fresh clone (CI) legitimately does not have it. Absence of a
+// never-tracked file is not evidence loss. The exemption is confirmed against
+// Git, not taken on the manifest's word: if the recorded path IS tracked, the
+// untracked disposition is a mislabel and the missing file still fails.
+const isTrackedPath = (path) => {
+  try {
+    execFileSync("git", ["ls-files", "--error-unmatch", "--", path], {
+      cwd: repoRoot,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    return true;
+  } catch {
+    return false;
   }
+};
+const isExemptAbsentUntrackedPath = (entry) =>
+  entry.disposition === "PROTECTED_EXTERNAL_UNTRACKED" &&
+  !existsSync(safeAbsolutePath(entry.path)) &&
+  !isTrackedPath(entry.path);
+
+for (const entry of manifest.dirtyBaseline.protectedPaths) {
+  if (existsSync(safeAbsolutePath(entry.path))) {
+    continue;
+  }
+  if (isExemptAbsentUntrackedPath(entry)) {
+    continue;
+  }
+  throw new Error(`recorded dirty-baseline path is missing: ${entry.path}`);
 }
 
 verifyFileBinding(manifest.parameterSnapshot, "parameterSnapshot");
@@ -305,7 +333,12 @@ if (releaseMode) {
       `release digest mismatch: expected ${expectedDigest}, received ${manifest.release.digest}`,
     );
   }
+  // Same exemption as the existence check above: a never-tracked scratch path
+  // that is absent from this checkout cannot appear in `git status`, so it is
+  // not expected in the dirty set either. Every other recorded path must still
+  // be dirty, and any unrecorded dirty path still fails.
   const allowedDirty = manifest.dirtyBaseline.protectedPaths
+    .filter((entry) => !isExemptAbsentUntrackedPath(entry))
     .map(({ path }) => path)
     .sort();
   const actualDirty = parseDirtyPaths();

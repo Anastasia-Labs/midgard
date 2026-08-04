@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -275,11 +284,147 @@ mustNotBeReleaseReady(releaseReadyCandidate);
 // add to that set, never replace it.
 assert.ok(hostileMutations >= 11);
 
+// The dirty-baseline existence rule lives in the CLI verifier rather than the
+// decoder, so it is exercised end to end against a synthetic repository whose
+// tracked/untracked state is built on purpose. A PROTECTED_EXTERNAL_UNTRACKED
+// path was never in the index, so a fresh clone legitimately lacks it; every
+// other missing recorded path — including a tracked path mislabelled as
+// untracked — must still fail the gate.
+const scriptsDirectory = dirname(fileURLToPath(import.meta.url));
+const evidenceDirectory = "docs/exec-plans/evidence";
+const fixtureManifestPath = `${evidenceDirectory}/canonical-v1-goal-closure-v1.json`;
+const fixturePrimaryEvidence = `${evidenceDirectory}/self-test-evidence-a.json`;
+const fixtureSecondaryEvidence = `${evidenceDirectory}/self-test-evidence-b.json`;
+
+const rebindEvidencePaths = (value) => {
+  if (Array.isArray(value)) {
+    value.forEach(rebindEvidencePaths);
+    return;
+  }
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  const keys = Object.keys(value).sort();
+  if (keys.length === 2 && keys[0] === "path" && keys[1] === "status") {
+    value.path = fixturePrimaryEvidence;
+    return;
+  }
+  Object.values(value).forEach(rebindEvidencePaths);
+};
+
+let dirtyBaselineCases = 0;
+const runFixtureVerifier = ({ protectedPaths, tracked, deleted }) => {
+  const fixtureRoot = mkdtempSync(resolve(tmpdir(), "midgard-goal-closure-"));
+  try {
+    mkdirSync(resolve(fixtureRoot, "demo/scripts"), { recursive: true });
+    mkdirSync(resolve(fixtureRoot, evidenceDirectory), { recursive: true });
+    for (const script of [
+      "canonical-v1-goal-closure-v1.mjs",
+      "verify-canonical-v1-goal-closure.mjs",
+    ]) {
+      copyFileSync(
+        resolve(scriptsDirectory, script),
+        resolve(fixtureRoot, "demo/scripts", script),
+      );
+    }
+    writeFileSync(resolve(fixtureRoot, fixturePrimaryEvidence), "{}\n");
+    writeFileSync(resolve(fixtureRoot, fixtureSecondaryEvidence), "{}\n");
+    for (const path of tracked) {
+      writeFileSync(resolve(fixtureRoot, path), "baseline\n");
+    }
+    const fixtureManifest = clone(manifest);
+    rebindEvidencePaths(fixtureManifest);
+    fixtureManifest.targetTestnetParameterSnapshot.path =
+      fixtureSecondaryEvidence;
+    fixtureManifest.revision.releaseCommit = null;
+    fixtureManifest.dirtyBaseline.protectedPaths = protectedPaths;
+    const writeFixtureManifest = () =>
+      writeFileSync(
+        resolve(fixtureRoot, fixtureManifestPath),
+        `${JSON.stringify(fixtureManifest, null, 2)}\n`,
+      );
+    const git = (...gitArgs) =>
+      execFileSync("git", gitArgs, {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim();
+    writeFixtureManifest();
+    git("init", "-b", fixtureManifest.revision.branch);
+    git("config", "user.email", "closure-self-test@example.invalid");
+    git("config", "user.name", "closure self-test");
+    git("config", "commit.gpgsign", "false");
+    git("add", "-A");
+    git("commit", "-m", "closure self-test fixture");
+    fixtureManifest.revision.headCommit = git("rev-parse", "HEAD");
+    fixtureManifest.dirtyBaseline.startingRevision =
+      fixtureManifest.revision.headCommit;
+    writeFixtureManifest();
+    for (const path of deleted) {
+      rmSync(resolve(fixtureRoot, path), { force: true });
+    }
+    const result = spawnSync(
+      process.execPath,
+      ["demo/scripts/verify-canonical-v1-goal-closure.mjs", "--schema-only"],
+      { cwd: fixtureRoot, encoding: "utf8" },
+    );
+    dirtyBaselineCases += 1;
+    return result;
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+};
+
+// A recorded-untracked path that a clean checkout never had passes the gate.
+const absentUntracked = runFixtureVerifier({
+  protectedPaths: [
+    { path: "tracked-present.txt", disposition: "PROTECTED_EXACT_BASELINE" },
+    { path: "scratch-note.md", disposition: "PROTECTED_EXTERNAL_UNTRACKED" },
+  ],
+  tracked: ["tracked-present.txt"],
+  deleted: [],
+});
+assert.equal(absentUntracked.status, 0, absentUntracked.stderr);
+assert.match(absentUntracked.stdout, /"status":"schema-valid"/u);
+
+// A recorded TRACKED path that is missing is deleted evidence: still fatal.
+const absentTracked = runFixtureVerifier({
+  protectedPaths: [
+    { path: "tracked-absent.txt", disposition: "PROTECTED_EXACT_BASELINE" },
+  ],
+  tracked: ["tracked-absent.txt"],
+  deleted: ["tracked-absent.txt"],
+});
+assert.equal(absentTracked.status, 1);
+assert.match(
+  absentTracked.stderr,
+  /recorded dirty-baseline path is missing: tracked-absent\.txt/u,
+);
+
+// The untracked disposition is checked against Git, not believed: a tracked
+// path mislabelled PROTECTED_EXTERNAL_UNTRACKED cannot buy its way out.
+const mislabelledTracked = runFixtureVerifier({
+  protectedPaths: [
+    {
+      path: "tracked-absent.txt",
+      disposition: "PROTECTED_EXTERNAL_UNTRACKED",
+    },
+  ],
+  tracked: ["tracked-absent.txt"],
+  deleted: ["tracked-absent.txt"],
+});
+assert.equal(mislabelledTracked.status, 1);
+assert.match(
+  mislabelledTracked.stderr,
+  /recorded dirty-baseline path is missing: tracked-absent\.txt/u,
+);
+
 process.stdout.write(
   `${JSON.stringify({
     status: "PASS",
     hostileMutations,
     releaseGateRejections,
+    dirtyBaselineCases,
     criteria: manifest.acceptanceCriteria.length,
   })}\n`,
 );
