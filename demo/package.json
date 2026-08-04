@@ -30,6 +30,7 @@
     "goal:verify:evidence": "node scripts/run-canonical-v1-goal-verification.mjs evidence",
     "goal:verify:all": "node scripts/run-canonical-v1-goal-verification.mjs all",
     "goal:tasks:ready": "node scripts/canonical-v1-goal-tasks-ready.mjs",
+    "goal:tasks:quality:verify": "node scripts/verify-canonical-v1-goal-task-manifest-quality.mjs",
     "clean": "pnpm -r --if-present --workspace-concurrency=1 run clean && rm -rf node_modules",
     "install-sdk": "pnpm --filter midgard-sdk install",
     "repack-sdk": "pnpm --filter midgard-sdk repack"

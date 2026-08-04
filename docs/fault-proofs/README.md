@@ -10,14 +10,14 @@ plus its contemporaneous working tree. Reconstructed on `tx-validation` HEAD
 `55afdc54`; paths were reconciled to that clean base, but line anchors must be
 rechecked when implementing an item.
 
-Documentation and top-level conclusions revalidated **2026-07-22** against
-the PR #461 production-readiness tree. The zero-input family is now
-catalogue-registered, bound to native-v1 counted roots, CLI-complete, and
-emulator-proven through faulty-block removal. Its preparer requires the authoritative
-header `transactions_root` and fails closed on a mismatch. The remaining catalogue,
-binding, fee, economics, DA-remedy, and system-wide preprod-acceptance gaps remain.
-This was not a replacement for the full line-by-line audit, so historical line
-anchors remain advisory.
+Current-tree reconciliation: **2026-08-04**, after Q13 commit `823b2d16`.
+Q00/Q02/Q03 and Q13 are complete in their assigned scope: all twelve compiled
+standalone families use the native V1 counted-root binding, and Q13 supplies
+the `input-no-idx` prepare/submit/CLI/emulator lifecycle. The current catalogue,
+`submit-init`, and manifest inspector each enumerate the same **eight**
+categories. This is an inventory refresh, not a launch claim: Q14–Q20,
+Q49-L298/Q49-L302, the missing-family/catalogue work, Q50+, economics, availability,
+and preprod gates remain open.
 
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
@@ -69,16 +69,16 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
   exact rejected no-op. Wrong verdicts, wrong roots, and either source-phase
   misclassification direction are represented. Concrete validator-hash-bound
   release evidence remains pending.
-- Offchain tooling for 5 legacy families (double-spend, invalid-range,
-  non-existent-input, transition-trace, zero-input); all five are
-  **emulator-proven end-to-end** through faulty-block removal, although
-  transition-trace remains library-only rather than CLI-wired. Canonical V1
-  validation-trace dispute construction is additionally implemented.
-- ⚠️ Reachability caveat: the deployment catalogue has 7 entries: 6 of the 12
-  legacy proof types plus `validationTraceDispute` (canonical IDs:
-  `zeroInput = 5`, `validationTraceDispute = 6`). The other 6 legacy proof types
-  compile but cannot `Init` a computation thread against a deployed instance.
-  See [`catalogue-status.md`](catalogue-status.md).
+- Q13 adds the full `input-no-idx` lifecycle: canonical-evidence preparation,
+  `submit-init`, four step commands (including resumable fold), inspection,
+  and an emulator chain through faulty-block removal. The remaining Q14–Q20
+  family-closure tasks are not promoted by that result.
+- The positional deployment catalogue has **eight** categories:
+  `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
+  `transitionTrace`, `zeroInput`, `validationTraceDispute`, and
+  `daHashPreimage`. `submit-init` and `inspect-contracts` use the same eight.
+  This is only the initial §9.1 launch-scope inventory; Q50/Q55 must still
+  settle the final enabled routes.
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
 
@@ -93,11 +93,15 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 
 **3. Missing but documented** (spec/gap-reports define it as fault; no working verifier):
 
-- Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
+- Value conservation (`VALUE-NOT-PRESERVED`), required-signer-set correctness
+  (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw,
+  reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada,
+  and network-id. Q24/Q25 establish executable structural N/A for ADA minting and
+  negative output value.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 7 of the 12 already-implemented onchain types; CLI wiring for
-  `transition-trace`.
+- Atomic closure for Q14–Q20, CLI wiring for `transition-trace`, and the
+  missing-family routes remain open despite the complete native-V1 binding.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR
   #458 and the MPF rewrite of the proof builders; readiness remains unconfirmed until a
@@ -112,7 +116,9 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Maximum transaction/value/reference-script size rules (spec sections are commented out) — and, more fundamentally, **provability under adversarial sizing**: no family except double-spend has a worst-case argument that its evidence fits L1 tx-size/ex-unit limits (coverage-matrix §11b).
 - Non-ADA **mint authorization** (no rule for disputing an unauthorized token mint) and **output well-formedness** (malformed outputs committed into `utxos_root`).
 - Event **content fidelity** for deposits/withdrawals (an event whose value/address misstates the real L1 UTxO — distinct from the fabricated-event existence case).
-- On-chain remedy for **data unavailability** after a DA attestation (no fault proof, no rollback), and nothing binding retention windows to the on-chain challenge deadline.
+- On-chain remedy for **data unavailability** after a DA attestation (no fault proof or
+  rollback). Q54 now enforces the retention window; the committee-pruner residual is
+  routed to Q58 rather than reopening Q54.
 - Cross-operator descendant rollback — `RemoveFaultyBlocksLink` requires the descendant's own `operator_vkey` to equal the faulty block's operator (`onchain/aiken/validators/state-queue.ak:661`), so with scheduler rotation the cascade deadlocks; the adjacent comment (`:633-636`) documents the opposite intent.
 
 See [`coverage-matrix.md`](coverage-matrix.md) for the class-by-class table and severity ranking, and [`execution-plan.md`](execution-plan.md) for how to close all of it.

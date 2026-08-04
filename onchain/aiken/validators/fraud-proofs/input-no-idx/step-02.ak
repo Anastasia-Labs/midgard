@@ -724,7 +724,7 @@ fn three_input_opening(
         frontier,
         siblings: [first_leaf],
       }
-    _ ->
+    2 ->
       bounded_collection_v1.ItemProofV1 {
         version: 1,
         field_index: 0,
@@ -735,6 +735,7 @@ fn three_input_opening(
         frontier,
         siblings: [],
       }
+    _ -> fail
   }
 }
 

@@ -1,33 +1,38 @@
 {
-  "id": "QNN",
-  "section": "9.3 Independently assignable proof-family closures",
-  "title": "`example-family`",
-  "dependsOnRaw": "Q00–Q03, C41",
-  "dependsOn": ["Q00–Q03", "C41"],
-  "acceptance": "One-sentence acceptance quoted or referenced from GOAL_SPEC.md.",
+  "id": "F05",
+  "section": "7. Foundation work packages",
+  "title": "Machine-readable task manifest",
+  "dependsOnRaw": "F01, F02, F03, F20, F21, F30, F41",
+  "dependsOn": ["F01", "F02", "F03", "F20", "F21", "F30", "F41"],
+  "acceptance": "The canonical task manifest contains the exact GOAL_SPEC.md sections 7, 8, 9, and 10 task set and every row passes the strict assignment-quality verifier.",
   "size": "M",
   "risk": "medium",
-  "detailStatus": "READY",
+  "detailStatus": "DETAILED",
   "writablePaths": [
-    "onchain/aiken/validators/fraud-proofs/example-family/**",
-    "demo/midgard-fault-proofs/src/example-family/**",
-    "demo/midgard-fault-proofs/tests/example-family.test.ts"
+    "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json",
+    "demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
+  ],
+  "pathsMustNotTouch": [
+    "GOAL_SPEC.md",
+    "GOAL_PROGRESS.md",
+    "onchain/aiken/plutus.json"
   ],
   "sourceAnchors": [
-    "GOAL_SPEC.md §9.1 (closure contract), §9.3 row QNN",
-    "onchain/aiken/lib/midgard/fraud-proofs/common.ak pass_native_tx_to_next_step"
+    "GOAL_SPEC.md:712 defines F05 and its exact assignment-quality fields.",
+    "demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs is the strict manifest and template gate."
   ],
   "evidenceOutputs": [
-    "positive + valid-block-negative Aiken selector results",
-    "emulator lifecycle result recorded in GOAL_PROGRESS.md validation ledger"
+    "A JSON quality report proving all 186 authoritative task IDs and every assignment-quality invariant pass with zero defects.",
+    "Adversarial temporary-mutation transcripts proving each verifier rule rejects its targeted invalid manifest or template."
   ],
   "focusedCommands": [
-    "cd onchain/aiken && node scripts/run-focused-check.mjs <module> <tests...>",
-    "pnpm --dir demo/midgard-fault-proofs test -- example-family"
+    "node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs --json",
+    "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json scripts/verify-canonical-v1-goal-task-manifest-quality.mjs"
   ],
-  "expectedNonzeroCounts": "each selector collects its exact requested count",
+  "expectedNonzeroCounts": "verify-canonical-v1-goal-task-manifest-quality.mjs: exactly 186 of 186 authoritative task IDs and exactly 4 of 4 worked templates validate, with exactly 0 defects and 0 evidence records sourced from templates.",
   "invalidationTriggers": [
-    "counted-root/codec ABI change",
-    "catalogue order change"
-  ]
+    "Any task ID in GOAL_SPEC.md sections 7, 8, 9, or 10, manifest assignment field, authoritative queue status, template contract, or verifier rule changes after validation."
+  ],
+  "blockedOn": ["F41"],
+  "blockedBecause": "F05 remains blocked only on current non-PASS dependency F41; recorded PASS dependencies remain dependency history and are omitted from blockedOn."
 }

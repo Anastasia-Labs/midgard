@@ -15,20 +15,22 @@
 | `demo/da-committee-node`    | DA payload verification, attestation signing, retention store, libp2p payload + proof-artifact serving.                                                                                                                                                      |
 | `demo/midgard-validation`   | Phase A/B local tx validation (mempool admission) — _not_ part of the L1 dispute path.                                                                                                                                                                       |
 | `demo/midgard-node`         | Operator node; consumes validation; deploys contracts; hosts `/stateQueueMutationLease`; persists evidence-relevant data. Never imports `@al-ft/midgard-fault-proofs`.                                                                                       |
-| `demo/midgard-watcher`      | **Docs only** (`midgard-watcher-architecture.md`, `watcher-plan-adversarial-review.md`). Zero code.                                                                                                                                                          |
+| `demo/midgard-watcher`      | Implemented ingestion, indexing, finality, rollback, and durable-state foundations; autonomous detection/proof/removal remains an acceptance gap.                                                                                                            |
 
-## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts:441-462`)
+## 2. CLI surface (`demo/midgard-fault-proofs/src/bin.ts`)
 
 `prepare-double-spend` · `prepare-invalid-range` · `prepare-non-existent-input` · `prepare-zero-input` ·
 `inspect-contracts` · `submit-init` · `submit-step-01..04` ·
 `submit-invalid-range-step-01..02` · `submit-non-existent-input-step-01..04` ·
-`submit-zero-input-step-01..02` ·
+`submit-zero-input-step-01..02` · `submit-da-hash-preimage-step-01..02` ·
+`submit-input-no-idx-step-01..04` (and `submit-input-no-idx-fold`) ·
 `remove-fraudulent-block`.
 
-`submit-init --fraud-category` accepts five values — `doubleSpend | nonExistentInput |
-invalidRange | transitionTrace | zeroInput`; `nonExistentInputNoIndex` is
-registered in the catalogue but rejected by the CLI parser) — and
-**no transition-trace proof-submission command exists** — `bin.ts` never imports
+`submit-init --fraud-category` accepts exactly eight values — `doubleSpend |
+nonExistentInput | nonExistentInputNoIndex | invalidRange | transitionTrace |
+zeroInput | validationTraceDispute | daHashPreimage` — matching the catalogue and
+inspector. Q13 added the `nonExistentInputNoIndex` lifecycle. **No
+transition-trace proof-submission command exists** — `bin.ts` never imports
 `./transition-trace/`; `submitTransitionTraceProofFromFiles`
 (`src/transition-trace/submit.ts:421-439`) is library-only.
 
@@ -72,6 +74,15 @@ the counted/domain-tagged root using the block transaction count and fails befor
 writing submit-ready artifacts if it differs from the authoritative header root.
 `submit-init --fraud-category zeroInput` → `submit-zero-input-step-01` →
 `submit-zero-input-step-02` concludes the thread and mints the fault-proof token.
+
+### input-no-idx (Q13 lifecycle)
+
+`prepare-input-no-idx` consumes canonical block evidence and emits the exact
+inclusion/output artifacts → `submit-init --fraud-category
+nonExistentInputNoIndex` → `submit-input-no-idx-step-01` → `-02` or resumable
+`submit-input-no-idx-fold` → `-03` → `-04`, which concludes the thread and
+mints the fault-proof token. The emulator lifecycle reaches faulty-block
+removal. This does not claim the still-open Q14–Q20 family closures.
 
 ### transition-trace (library-only)
 
@@ -131,15 +142,13 @@ datum in the same txs; non-tail removals require the node's admin-gated
 - **Client**: `DaLibp2pPayloadSource.fetchPayloadCandidates()` dials
   retrieval/bootstrap/committee peers, verifies every chunk hash and payload hash
   (`payload-source.ts:64-93,176-220,442-449`).
-- **Committee store**: single JSON file, atomic tmp+rename
-  (`src/store.ts:87-371`); Postgres variant exists; **no delete/expiry capability**
-  (`WatcherStore` interface `store.ts:43-85`). The 14-day retention promise is
-  documentation, not code
-  (`demo/da-committee-node/docs/da-committee-node-architecture.md:72,166-167,199`).
+- **Retention (Q54 PASS)**: the derived 15-day deployment window is bound through the
+  manifest, node/committee configuration, pruning predicate, readiness, and
+  `retention-check`. The committee-store pruner remains deliberately inert and is a
+  Q58/W-O7 residual, not an absence of retention enforcement.
 - **Node DB**: raw tx CBOR in `immutable` (never pruned,
   `demo/midgard-node/src/database/immutable.ts:120-131`); payload bytes + roots in
-  `da_payloads` (prunable — hourly sweeper, off unless `RETENTION_DAYS > 0`, floor 8 days:
-  `src/fibers/retention-sweeper.ts:24-61`, `src/database/retention-policy.ts:3-27`);
+  `da_payloads` are pruned only through the Q54-derived policy;
   `blocks` (header→tx_ids) deleted at merge and unordered
   (`TX_VALIDATION_TABLE_ROLES.md:91-95,150-151,168-175`) — after merge, DA payloads are
   the only ordered per-block evidence source.
@@ -171,14 +180,14 @@ datum in the same txs; non-tail removals require the node's admin-gated
 
 ## 7. Manual-effort summary
 
-| Family             | Commands to conclude a proof                   | Then removal                    |
-| ------------------ | ---------------------------------------------- | ------------------------------- |
-| double-spend       | 6 (prepare + init + 4 steps)                   | +1 per descendant link +1 final |
-| invalid-range      | 4                                              | same                            |
-| non-existent-input | 6                                              | same                            |
-| zero-input         | 4 (prepare + init + 2 steps)                   | same                            |
-| transition-trace   | not possible via CLI (library calls only)      | same                            |
-| other 7 types      | not possible (no tooling; 6 also unregistered) | —                               |
+| Family             | Commands to conclude a proof                                       | Then removal                    |
+| ------------------ | ------------------------------------------------------------------ | ------------------------------- |
+| double-spend       | 6 (prepare + init + 4 steps)                                       | +1 per descendant link +1 final |
+| invalid-range      | 4                                                                  | same                            |
+| non-existent-input | 6                                                                  | same                            |
+| zero-input         | 4 (prepare + init + 2 steps)                                       | same                            |
+| transition-trace   | not possible via CLI (library calls only)                          | same                            |
+| Q14–Q20 families   | atomic closure remains task-specific; Q13 is no longer in this set | —                               |
 
 Each command needs env/config (Blockfrost or Kupmios keys, deployment-info JSON, out-ref
 plumbing between steps via JSON files). There is no single-command orchestration.

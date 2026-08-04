@@ -1,27 +1,35 @@
-# Subagent assignment brief — <TASK-ID>
+# Task assignment brief — F05
 
-TEMPLATE (GOAL_SPEC.md §5.1). Quote the task's manifest row; the brief must
-be self-contained — the agent has no other context.
+WORKED TEMPLATE ARTIFACT (GOAL_SPEC.md §5.1). This concrete structure example
+is excluded from evidence aggregation. A dispatched brief must quote the
+validated manifest row and remain self-contained.
 
 ## Task
 
-- Manifest row: `<paste the READY row from canonical-v1-goal-task-manifest-v1.json>`
-- Acceptance (verbatim from GOAL_SPEC.md): `<...>`
-- Current state (from GOAL_PROGRESS.md): `<what exists, what remains>`
+- Manifest row: `F05`, `detailStatus: DETAILED`, from
+  `canonical-v1-goal-task-manifest-v1.json`
+- Acceptance: the canonical manifest has the exact 186-task GOAL_SPEC set and
+  passes the strict assignment-quality verifier.
+- Current state: the manifest and verifier exist; F41 remains the only current
+  non-PASS dependency recorded by the F05 row.
 
 ## Lease
 
-- Writable paths: `<exact list>` — edit nothing else.
+- Writable paths:
+  `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` and
+  `demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs` — edit
+  nothing else.
 - Prohibited: GOAL_SPEC.md, GOAL_PROGRESS.md, onchain/aiken/plutus.json,
   registries/matrices/manifests, package manifests/lockfiles, any path
   outside the lease. Never stage, commit, or push.
 
-## Verification you must run
+## Required verification
 
-- `<focused commands>` — report exact collected/passed counts; a filter that
+- `node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs --json`
+  — report exact collected/passed counts; a filter that
   collects zero is a failure, not a pass.
 
-## Return format
+## Return
 
 1. What changed (per file, one line each).
 2. Exact test/command results (counts, durations, exit codes).

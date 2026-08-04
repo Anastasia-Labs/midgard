@@ -73,8 +73,9 @@ insufficient.
                                             └─────────────────────────┘   └──────────────────────────┘
 ```
 
-1. **Detection** — today entirely manual or library-level. `demo/midgard-watcher/` contains
-   two design docs and zero code; `demo/midgard-node` never imports
+1. **Detection** — watcher code now exists for ingestion, indexing, finality, rollback,
+   and durable-state foundations, but it has not closed the autonomous
+   detect→prove→remove acceptance gap. `demo/midgard-node` never imports
    `@al-ft/midgard-fault-proofs`. The closest challenger logic is
    `demo/midgard-fault-proofs/src/transition-trace/detect.ts`, a pure function library with
    no polling loop. Mempool rejections (`RejectCodes`) are deliberately **not** mapped to
@@ -127,10 +128,11 @@ insufficient.
   (`onchain/aiken/env/default.ak:21-35`, `env/testnet.ak:20-26`); the penalty is enforced
   only as `fee >= env.slashing_penalty`, and nothing on-chain routes the bond remainder to
   the prover.
-- **Catalogue registration ≠ compiled validators.** The deployment layer registers only 6
-  categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`) of the 12 compiled
-  proof-type families — the other 6 cannot `Init`
-  a thread against a deployed instance. The `FaultProofs` type also carries a TODO that
+- **Catalogue registration ≠ compiled validators.** The deployment layer now registers
+  eight positional categories (`demo/midgard-sdk/src/fraud-proof/catalogue.ts`), and
+  `submit-init`/inspection enforce that same eight-category inventory. This does not
+  close the six unregistered deployed validator directories or settle the final §9.1
+  launch scope; Q50/Q55 own that integration. The `FaultProofs` type also carries a TODO that
   multi-step registration needs "a more elaborate design" (`common.ts:160-161`).
 - **`Success` trusts the terminal step.** `computation-thread.ak`'s `Success` branch only
   checks its own burn (`validators/computation-thread.ak:130-139`); thread/step-sequence
@@ -191,15 +193,12 @@ there is no Plutus-script concept in the L1-disputable format
   roots in `da_payloads` (prunable), `blocks` mapping deleted at merge
   (`demo/midgard-node/TX_VALIDATION_TABLE_ROLES.md:91-95,150-151`).
 
-### Retention vs the challenge window (disagreement)
+### Retention vs the challenge window
 
-Spec expects a 3–7 day maturity window; the DA architecture doc promises ≥14 days
-retention with a 15-day config floor (`demo/da-committee-node/docs/da-committee-node-architecture.md:72,591-593`;
-`DA_TRANSPORT_LIMITS_V1.minimumRetentionDays = 15`, `demo/midgard-core/src/da-transport.ts:34`);
-the node enforces an 8-day floor but pruning is **disabled by default**
-(`demo/midgard-node/src/database/retention-policy.ts:3,11`); the DA committee store has
-**no deletion capability at all** (`demo/da-committee-node/src/store.ts:43-85`). No code
-ties any retention deadline to the actual on-chain maturity deadline.
+Q54 binds the seven-day maturity plus proof-time margin to a 15-day deployed retention
+window, manifest identity, node/committee configuration, pruning predicate, readiness,
+and alert surface. The deliberately inert committee-pruner remains a Q58/W-O7 residual;
+it is not evidence that Q54's retention-enforcement task is open.
 
 ## 5. Trust assumptions (current implementation)
 
@@ -210,7 +209,8 @@ ties any retention deadline to the actual on-chain maturity deadline.
    the soundness argument but is off-chain and unslashable.
 2. **An active challenger exists** — no autonomous watcher exists; detection and the
    multi-step submission chains are manual.
-3. **Economics parameters will be set** — with zeroed bond/penalty/reward and a 30 ms
-   maturity window, a successful proof currently neither deters nor compensates.
+3. **Economics parameters will be set** — with zeroed bond/penalty/reward, a successful
+   proof currently neither deters nor compensates. The canonical maturity window is seven
+   days (`604,800,000` ms), not 30 ms.
 4. **Operator monotonicity for cascades** — descendant removal currently assumes the
    descendant shares the faulty block's operator (see §3 seams).
