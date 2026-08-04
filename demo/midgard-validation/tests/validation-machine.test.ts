@@ -1,9 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
   buildMidgardValidationTraceTree,
+  computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
   encodeCbor,
   encodeMidgardCekProgramMaterialSidecarV1,
@@ -11,6 +13,7 @@ import {
   hashMidgardValidationMachineStateV1,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
+  verifyMidgardV1TxFieldItem,
   verifyMidgardValidationTraceProofV1,
 } from "@al-ft/midgard-core";
 import {
@@ -49,6 +52,7 @@ import {
   type ValidationMachineWorkWitness,
   validationSemanticResolverIndexV1,
 } from "../src/index.js";
+import { exerciseMidgardRetainedDaCanonicalBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 import {
   hashScriptWitness,
   makeNativeTx,
@@ -2187,5 +2191,397 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
         }),
       ),
     ).rejects.toThrow(/ledger delta differs/u);
+  });
+
+  // ==========================================================================
+  // C29 — canonical retained CBOR verification.
+  //
+  // The maximum retained canonical source in this suite is the 300-output
+  // aggregate whose outputs preimage exceeds 8 KiB while every individual item
+  // stays inside the complete-item publication bound, so canonical decode
+  // reaches its exact terminal through complete-item-first staging rather than
+  // an incremental scan.
+  // ==========================================================================
+
+  const buildMaximumRetainedCanonicalSourceV1 = () => {
+    const spent = outRefFromByte(0x12);
+    const spentOutput = makeOutput(10n);
+    const protectedRecipient = Buffer.from(TEST_ADDRESS_BYTES);
+    protectedRecipient[1] = protectedRecipient[1]! ^ 0x01;
+    const outputs = [
+      ...Array.from({ length: 299 }, (_, index) =>
+        makeOutput(BigInt(index + 1)),
+      ),
+      makeOutput(300n, protectMidgardAddress(protectedRecipient)),
+    ];
+    const transaction = makeNativeTx({
+      version: 1n,
+      spendInputs: [spent],
+      outputs,
+    });
+    return {
+      spent,
+      spentOutput,
+      outputCount: outputs.length,
+      transaction,
+      replayBase: {
+        ...context,
+        transactionId: transaction.txId,
+        canonicalTransactionCbor: transaction.txCbor,
+        priorUtxosRoot: root(3),
+        postUtxosRoot: root(3),
+        ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+        expectedLedgerOps: [],
+        expectedVerdict: "rejected" as const,
+        expectedRejectionCode: RejectCodes.MissingRequiredWitness,
+      },
+    };
+  };
+
+  const canonicalDecodeWorkTranscript = (
+    trace: DeterministicValidationMachineTrace,
+  ): readonly string[] =>
+    trace.witnesses
+      .filter((witness) => witness.phase === "canonicalDecode")
+      .map(
+        (witness) =>
+          `${witness.programCounter.toString()}:${witness.cbor.toString("hex")}`,
+      );
+
+  it("reaches one byte-identical canonical decode terminal from normal and forced retained sources", async () => {
+    const fixture = buildMaximumRetainedCanonicalSourceV1();
+
+    // Both retained DA classifications carry the same canonical bytes, and
+    // each independently folds back to them.
+    const retained = await exerciseMidgardRetainedDaCanonicalBoundaryV1({
+      canonicalTransactionCbor: fixture.transaction.txCbor,
+    });
+    expect(retained.normal.retainedPreimageBytes).toBeGreaterThan(8 * 1024);
+    expect(retained.normal.retainedPreimageDigestHex).toBe(
+      retained.forced.retainedPreimageDigestHex,
+    );
+    for (const measurement of [retained.normal, retained.forced]) {
+      expect(measurement.reconstructedCanonicalDigestHex).toBe(
+        measurement.retainedPreimageDigestHex,
+      );
+      expect(measurement.reconstructedCanonicalBytes).toBe(
+        measurement.retainedPreimageBytes,
+      );
+      expect(measurement.transactionIdHex).toBe(retained.transactionIdHex);
+      expect(measurement.transactionCommitmentHex).toBe(
+        retained.transactionCommitmentHex,
+      );
+    }
+    expect(retained.normal.revealStepCount).toBe(
+      retained.forced.revealStepCount,
+    );
+    expect(retained.normal.revealStepCount).toBeGreaterThan(0);
+
+    // Both source classifications reach one identical canonical-decode work
+    // transcript; only the state's source-kind discriminant differs.
+    const [normalTrace, forcedTrace] = await Promise.all([
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...fixture.replayBase,
+          sourceKind: "normal",
+        }),
+      ),
+      Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...fixture.replayBase,
+          sourceKind: "forced",
+        }),
+      ),
+    ]);
+    const normalTranscript = canonicalDecodeWorkTranscript(normalTrace);
+    expect(normalTranscript.length).toBeGreaterThan(fixture.outputCount);
+    expect(normalTranscript).toEqual(
+      canonicalDecodeWorkTranscript(forcedTrace),
+    );
+    expect(normalTrace.validationContextCbor.toString("hex")).toBe(
+      forcedTrace.validationContextCbor.toString("hex"),
+    );
+    expect(normalTrace.states.map((state) => state.sourceKind)).toEqual(
+      normalTrace.states.map(() => "normal"),
+    );
+    expect(forcedTrace.states.map((state) => state.sourceKind)).toEqual(
+      forcedTrace.states.map(() => "forced"),
+    );
+    // The source kind is authenticated into the trace, so the same work
+    // transcript still commits to two distinct terminals.
+    expect(
+      normalTrace.tree.descriptor.terminalStateHash.toString("hex"),
+    ).not.toBe(forcedTrace.tree.descriptor.terminalStateHash.toString("hex"));
+
+    // Complete-item-first staging: every ordered outputs item is carried whole.
+    const completeItems = normalTrace.witnesses.flatMap((witness) =>
+      witness.phase === "canonicalDecode" &&
+      witness.auxiliary?.kind === "transactionFieldItem" &&
+      witness.auxiliary.collectionProof.fieldIndex === 2
+        ? [witness.auxiliary]
+        : [],
+    );
+    expect(completeItems).toHaveLength(fixture.outputCount);
+    const chunkedOutputItems = normalTrace.witnesses.filter(
+      (witness) =>
+        witness.phase === "canonicalDecode" &&
+        witness.auxiliary?.kind === "transactionFieldChunk" &&
+        witness.auxiliary.collectionProof.fieldIndex === 2,
+    );
+    expect(chunkedOutputItems).toHaveLength(0);
+  }, 120_000);
+
+  it("rejects malformed, trailing, and noncanonical retained transaction CBOR at the exact decode terminal", () => {
+    const fixture = buildMaximumRetainedCanonicalSourceV1();
+    const canonical = Buffer.from(fixture.transaction.txCbor);
+
+    // The pristine canonical source decodes to the authenticated identity.
+    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+    expect(computeMidgardNativeTxIdV1(decoded).toString("hex")).toBe(
+      Buffer.from(fixture.transaction.txId).toString("hex"),
+    );
+
+    // Malformed: the last byte of the definite-length encoding is missing.
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical.subarray(0, -1)),
+    ).toThrow();
+
+    // Trailing: one extra byte after the complete top-level item.
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        Buffer.concat([canonical, Buffer.from([0x00])]),
+      ),
+    ).toThrow();
+
+    // Noncanonical: the top-level array count re-encoded in non-minimal form.
+    const head = canonical[0]!;
+    expect(head).toBeGreaterThanOrEqual(0x80);
+    expect(head).toBeLessThan(0x98);
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        Buffer.concat([
+          Buffer.from([0x98, head - 0x80]),
+          canonical.subarray(1),
+        ]),
+      ),
+    ).toThrow();
+
+    // Indefinite-length top-level array is not a canonical V1 source either.
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(
+        Buffer.concat([
+          Buffer.from([0x9f]),
+          canonical.subarray(1),
+          Buffer.from([0xff]),
+        ]),
+      ),
+    ).toThrow();
+  });
+
+  it("rejects count, ordering, and substitution mutations of the authenticated complete items", async () => {
+    const fixture = buildMaximumRetainedCanonicalSourceV1();
+    const trace = await Effect.runPromise(
+      buildDeterministicValidationMachineTrace({
+        ...fixture.replayBase,
+        sourceKind: "forced",
+      }),
+    );
+    const decoded = decodeMidgardNativeTxFullV1FromCanonicalCbor(
+      Buffer.from(fixture.transaction.txCbor),
+    );
+    const source = deriveMidgardNativeTxProofSourceV1(decoded);
+    const identity = {
+      transactionId: computeMidgardNativeTxIdV1(decoded),
+      transactionCommitment: computeMidgardNativeTxProofCommitmentV1(source),
+      source,
+    };
+    const items = trace.witnesses.flatMap((witness) =>
+      witness.phase === "canonicalDecode" &&
+      witness.auxiliary?.kind === "transactionFieldItem" &&
+      witness.auxiliary.collectionProof.fieldIndex === 2
+        ? [witness.auxiliary]
+        : [],
+    );
+    expect(items).toHaveLength(fixture.outputCount);
+    const first = items[0]!;
+    const second = items[1]!;
+
+    // Positive control: the pristine complete item authenticates.
+    expect(
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: first.collectionProof,
+        itemCbor: first.itemCbor,
+      }).toString("hex"),
+    ).toBe(first.itemCbor.toString("hex"));
+
+    // Count mutation: a claimed item count that is not the authenticated one.
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: {
+          ...first.collectionProof,
+          itemCount: first.collectionProof.itemCount + 1,
+        },
+        itemCbor: first.itemCbor,
+      }),
+    ).toThrow();
+
+    // Ordering mutation: the authenticated item re-indexed to another slot.
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: {
+          ...first.collectionProof,
+          itemIndex: second.collectionProof.itemIndex,
+        },
+        itemCbor: first.itemCbor,
+      }),
+    ).toThrow();
+
+    // Ordering mutation: two authenticated items swapped against each other.
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: first.collectionProof,
+        itemCbor: second.itemCbor,
+      }),
+    ).toThrow();
+
+    // Substitution mutation: same length, one flipped byte, so the failure is
+    // the item commitment rather than the declared length.
+    const substituted = Buffer.from(first.itemCbor);
+    substituted[substituted.length - 1] =
+      substituted[substituted.length - 1]! ^ 0xff;
+    expect(substituted.length).toBe(first.itemCbor.length);
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: first.collectionProof,
+        itemCbor: substituted,
+      }),
+    ).toThrow(/does not match its authenticated commitment/u);
+
+    // Trailing bytes inside a complete item contradict its declared length.
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: first.collectionProof,
+        itemCbor: Buffer.concat([first.itemCbor, Buffer.from([0x00])]),
+      }),
+    ).toThrow(/length does not match its collection proof/u);
+
+    // Field substitution: the same item claimed under a different field index.
+    expect(() =>
+      verifyMidgardV1TxFieldItem({
+        ...identity,
+        collectionProof: { ...first.collectionProof, fieldIndex: 6 },
+        itemCbor: first.itemCbor,
+      }),
+    ).toThrow();
+  }, 120_000);
+
+  it("confines the incremental CBOR scanner to consumers carrying measured §3.2 necessity evidence", () => {
+    const aikenRoot = resolve(process.cwd(), "../../onchain/aiken");
+    const aikenSources = ((): readonly string[] => {
+      const collected: string[] = [];
+      const walk = (directory: string): void => {
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+          const path = resolve(directory, entry.name);
+          if (entry.isDirectory()) {
+            walk(path);
+          } else if (entry.name.endsWith(".ak")) {
+            collected.push(path);
+          }
+        }
+      };
+      walk(resolve(aikenRoot, "lib"));
+      walk(resolve(aikenRoot, "validators"));
+      return collected;
+    })();
+    expect(aikenSources.length).toBeGreaterThan(0);
+
+    // Every on-chain module that performs an incremental canonical-CBOR scan.
+    const scannerConsumers = aikenSources
+      .filter((path) => {
+        const relative = path.slice(aikenRoot.length + 1);
+        if (relative === "lib/midgard/canonical-cbor-scan-v1.ak") {
+          return false;
+        }
+        return readFileSync(path, "utf8").includes("canonical_cbor_scan_v1");
+      })
+      .map((path) => path.slice(aikenRoot.length + 1))
+      .sort();
+
+    // Each consumer must be backed by a measured §3.2 necessity artifact that
+    // records the fitting representations it ruled out.
+    const necessityByConsumer: Record<string, string> = {
+      "lib/midgard/redeemer-item-proof-v1.ak": "redeemer-item-traversal-v1.md",
+      "lib/midgard/ledger-output-scan-v1.ak":
+        "ledger-output-incremental-proof-v1.md",
+    };
+    expect(scannerConsumers).toEqual(Object.keys(necessityByConsumer).sort());
+    for (const artifact of Object.values(necessityByConsumer)) {
+      const necessity = readFileSync(
+        resolve(
+          process.cwd(),
+          "../../docs/exec-plans/evidence/necessity",
+          artifact,
+        ),
+        "utf8",
+      );
+      expect(necessity).toContain("§3.2 Necessity artifact");
+      // §3.2 requires the cheaper complete-item routes to be measured and
+      // shown not to fit before an incremental route may be taken.
+      expect(necessity).toMatch(/Complete[^|\n]*direct in proof tx/u);
+      expect(necessity).toMatch(/inline-datum publication/u);
+      expect(necessity).toContain("| NO above ");
+    }
+
+    // The canonical decode item path itself must stay complete-item staged: no
+    // incremental scanner may appear in its staging module or its validators.
+    const stagingSource = readFileSync(
+      resolve(aikenRoot, "lib/midgard/canonical-decode-item-staging-v1.ak"),
+      "utf8",
+    );
+    expect(stagingSource).not.toContain("canonical_cbor_scan_v1");
+    // Staging is the complete-item ladder: authenticate → prepare → observe →
+    // verify, each gated on the predecessor being well formed.
+    for (const stage of [
+      "pub fn authenticate(",
+      "pub fn prepare(",
+      "pub fn observe(",
+      "pub fn verify(",
+    ]) {
+      expect(stagingSource).toContain(stage);
+    }
+    const canonicalDecodeValidators = [
+      "canonical-decode-item-source-v1.ak",
+      "canonical-decode-item-observe-v1.ak",
+      "canonical-decode-item-semantic-v1.ak",
+      "canonical-decode-item-proof-v1.ak",
+      "canonical-decode-item-settlement-v1.ak",
+    ];
+    for (const validator of canonicalDecodeValidators) {
+      const contents = readFileSync(
+        resolve(
+          aikenRoot,
+          "validators/fraud-proofs/validation-trace",
+          validator,
+        ),
+        "utf8",
+      );
+      expect(contents).not.toContain("canonical_cbor_scan_v1");
+      expect(contents).toContain("canonical_decode_item_staging_v1");
+    }
+
+    // Hostile negative control: the consumer predicate fires on a source that
+    // takes the scanner, so an unbacked new consumer reopens this row.
+    const takesScanner = (source: string): boolean =>
+      source.includes("canonical_cbor_scan_v1");
+    expect(takesScanner(stagingSource)).toBe(false);
+    expect(
+      takesScanner(`${stagingSource}\nuse midgard/canonical_cbor_scan_v1\n`),
+    ).toBe(true);
   });
 });

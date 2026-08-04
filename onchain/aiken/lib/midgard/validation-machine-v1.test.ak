@@ -2220,7 +2220,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
 }
 
-test canonical_decode_rejects_a_legacy_field_seven_script_proof() fail {
+test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
   let base = empty_v1_transaction()
   let script = MidgardVersionedScript {
     language: PlutusV3Script,
@@ -2327,9 +2327,18 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() fail {
     frontier: collection_frontier,
     siblings: [],
   }
+  // C29: every conjunct below is pinned to its own measured disposition. The
+  // earlier form was `test ... fail` over this same `and {}`, which went green
+  // as soon as ANY conjunct was false and therefore could not distinguish a
+  // legacy field-7 substitution from a wholly unauthenticated proof. Measured
+  // dispositions: the field-7 chunk frontier poisons the field-6 commitment,
+  // so the recomputed commitment, the chunk semantics, and the item semantics
+  // all reject, and the substituted item bytes reject as well.
   and {
-    bounded_item_v1.from_bytes(6, 0, item_cbor) == item_commitment,
-    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    // Legacy field-7 chunk hashing does not reproduce the field-6 commitment.
+    bounded_item_v1.from_bytes(6, 0, item_cbor) != item_commitment,
+    // ... so no field-6 chunk proof over the legacy frontier authenticates.
+    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       collection_proof,
@@ -2344,12 +2353,14 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() fail {
         siblings: [],
       },
     ),
-    validation_machine_v1.verify_canonical_decode_item_semantics_v1(
+    // ... and the correct item bytes still fail under the poisoned proof.
+    !validation_machine_v1.verify_canonical_decode_item_semantics_v1(
       pre,
       transition,
       collection_proof,
       item_cbor,
     ),
+    // Substituted item bytes reject independently.
     !validation_machine_v1.verify_canonical_decode_item_semantics_v1(
       pre,
       transition,
