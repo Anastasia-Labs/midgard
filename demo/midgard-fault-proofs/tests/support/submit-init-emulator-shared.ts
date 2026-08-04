@@ -37,6 +37,7 @@ import {
   AddressData,
   addressDataFromBech32,
   type AuthenticatedValidator,
+  buildDaHashPreimageFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
@@ -544,6 +545,7 @@ export const buildMinimalFaultProofContracts = async (
     realInvalidRange = false,
     realTransitionTrace = false,
     realZeroInput = false,
+    realDaHashPreimage = false,
     realValidationTraceDispute = false,
     alwaysFraudProofCatalogue = false,
   }: {
@@ -551,6 +553,7 @@ export const buildMinimalFaultProofContracts = async (
     readonly realInvalidRange?: boolean;
     readonly realTransitionTrace?: boolean;
     readonly realZeroInput?: boolean;
+    readonly realDaHashPreimage?: boolean;
     readonly realValidationTraceDispute?: boolean;
     readonly alwaysFraudProofCatalogue?: boolean;
   } = {},
@@ -713,6 +716,21 @@ export const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
     );
   }
+  const daHashPreimageContracts = realDaHashPreimage
+    ? await Effect.runPromise(
+        buildDaHashPreimageFaultProofContracts({
+          blueprint: parseFaultProofBlueprint(cloneBlueprint(realBlueprint)),
+          network,
+          hubOraclePolicyId: hubOracle.policyId,
+          fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        }),
+      )
+    : undefined;
+  if (daHashPreimageContracts !== undefined) {
+    expect(daHashPreimageContracts.fraudProof.policyId).toBe(
+      doubleSpendContracts.fraudProof.policyId,
+    );
+  }
   const activeOperatorsAddressData = await Effect.runPromise(
     addressDataFromBech32(
       withActiveOperators.activeOperators.spendingScriptAddress,
@@ -794,6 +812,9 @@ export const buildMinimalFaultProofContracts = async (
       zeroInput:
         zeroInputContracts?.zeroInput.firstStep ??
         withActiveOperators.fraudProofs.zeroInput,
+      daHashPreimage:
+        daHashPreimageContracts?.daHashPreimage.firstStep ??
+        withActiveOperators.fraudProofs.daHashPreimage,
       validationTraceDispute:
         validationTraceDisputeContracts === undefined
           ? withActiveOperators.fraudProofs.validationTraceDispute
@@ -2890,6 +2911,9 @@ export const buildRemovalDeploymentInfo = (
       },
       fraudProofZeroInput: {
         scriptHash: contracts.fraudProofs.zeroInput.spendingScriptHash,
+      },
+      fraudProofDaHashPreimage: {
+        scriptHash: contracts.fraudProofs.daHashPreimage.spendingScriptHash,
       },
       validationTraceDispute: {
         scriptHash:
