@@ -4375,3 +4375,55 @@ off-chain builders plus the min-fee formula. Parent dispositions:
   input-no-idx off-chain builder (first of the seven), Q23–Q48 triage. Q15–Q20
   follow as capacity frees; Q51a journal substrate and Q58a design artifact
   queue behind them.
+
+## Q23–Q48 structural triage (2026-08-03)
+
+A source-verified triage classified every proposed row Q23–Q43/Q45–Q48
+against current deployed semantics. Governing insight: the stale
+catalogue-status/coverage-matrix analyses ignore the deployed
+validation-trace interactive dispute — an 18,253-line 14-phase on-chain
+re-execution of canonical phase-A/B validation with production rejection
+terminals (E_VALUE_NOT_PRESERVED, E_DUPLICATE_INPUT_IN_TX,
+E_MISSING_REQUIRED_WITNESS, E_INPUT_NOT_FOUND, …), mandatory and
+permissionless (every normal L2 source commits an Accepted claim;
+dispute opens against any committed claim; the off-chain builder covers
+every resolver phase). Classification rule applied: a row is
+structural-N/A when the violating state is unrepresentable OR an
+existing family's on-chain verifier already convicts it; a cheaper
+unilateral variant of an already-convictable violation is an
+optimization, not a §9.1 completeness requirement.
+
+**Totals: 14 structural-N/A** (Q23 value→ValueAndMint, Q24 ada-minted
+unrepresentable, Q25 negative-value unrepresentable, Q26 mint-auth→Cek,
+Q30 input-set-uniqueness→InputSets single descending previous_key chain
+covers all three sub-cases, Q31→ResolveInputs, Q33→ScriptSources,
+Q34→PhaseANativeScripts, Q36→LedgerDelta/ResolveInputs, Q38 size-limits
++ provability obligation, Q45 script-failure→Cek resolver 11, Q46 forced
+inclusion both directions, Q47 omitted/out-of-window, Q48 duplicate of
+Q21); **8 needs-family** (Q28 withdrawn-input [verify the
+transition-trace reduction first], Q29 double-withdraw, Q35 output-side
+network-id, Q37 aux-data-hash half, Q39/Q40 fabricated deposit/
+withdrawal [shared machinery, L], Q41 withdrawal-mistag [XL, interacts
+with Q27], Q42 cross-block duplicate event); **3 OWNER-DECIDE**:
+
+- **Q27 (min-ada):** zero `min_ada` hits in onchain/aiken/lib and the
+  spec carries a `\todo` — does canonical V1 have a min-ada rule at all?
+  (D-S4; GOAL_SPEC §3.1.4 requires the applicable target ledger rule.)
+- **Q32 (NON-REQ-SIGNER):** fund-theft directions are covered
+  (ResolveInputs/Signatures); an unbacked required_signer_hashes entry
+  only tightens the transaction — family or executable N/A?
+- **Q43 (no-op'd valid L2 tx):** likely already convicted via the
+  mandatory Accepted claim + AcceptedTransactionTransitionMismatch, but
+  claim-totality per tx was not verified — settle by source before
+  classifying.
+
+Each structural-N/A still owes its §9.1 executable adversarial test
+(prose is insufficient) — those are S/M-sized dispute drills and
+negative-decode tests enumerated in the triage table. Planning number
+for Q50's positional catalogue layout: **19–22 families** (Q35+Q37 may
+merge; Q39/Q40 share machinery). Separately confirmed Q50 finding: only
+8 categories are registered in FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER
+against 14 on-chain validator directories — six deployed families are
+unregistered. Shallow-treatment caveats recorded by the triage (Q28,
+Q31/Q33/Q36 reduction confidence, Q41 sizing, Q38 fixture audit) must be
+re-verified at implementation.
