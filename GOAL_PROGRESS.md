@@ -370,7 +370,7 @@
 | C20-1           | F10               | issue #480 implementation context; parent integration                                                | `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`; `demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts` | PASS        | `ba238d6b`                         | Genuine signed boundary is 433 reference inputs plus one disjoint spend input at 16,380 bytes; adjacent 434 is 16,418 and rejects. Both bounds are pinned as exact literals on the TypeScript side and the field-1 terminal fold vector is byte-identical in `maximum_reference_input_field_terminal_matches_typescript`; mixed spend/reference disjointness and unilateral overlap rejection are unchanged. Replay: guarded Aiken 6/6, TS 1/1, all hygiene gates PASS. |
 | C20-3           | F10               | issue #480 implementation context; parent integration                                                | `onchain/aiken/lib/midgard/validation-machine-v1.test.ak`; `demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts` | PASS        | `ba238d6b`                         | Genuine signed boundary is 224 observers, each coupled to one real field-6 native script, at 16,338 bytes; adjacent 225 is 16,410 and rejects. The 224/225 pair was previously asserted only in Aiken while the TypeScript search asserted relative properties alone; both bounds and the field-3 terminal fold vector are now pinned identically on both sides (`maximum_observer_field_terminal_matches_typescript` shares the exact source transaction with `cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree`). Replay: guarded Aiken 7/7, TS 1/1, all hygiene gates PASS. |
 | C20-8           | F10               | issue #480 implementation context; parent integration                                                | `docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` (C20-8 focused selector); inherited `onchain/aiken/lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak`, `redeemer-item-proof-v1.test.ak`, `validation-machine-v1.test.ak`, and the three `demo/midgard-validation/tests` redeemer files | PASS        | `ba238d6b`                         | The field-8 evidence itself was already complete, but its declared focused selector `midgard/fraud_proofs/native_tx/max_redeemers` collected 0 tests and could never pass: the tests live in the dotted module `midgard/fraud_proofs/native_tx.max_redeemers.test`, and Aiken’s `-m` matcher splits a pattern at its first `.`, so the only reachable module prefix is `midgard/fraud_proofs/native_tx`. Selector corrected; no source semantics changed. Replay: guarded Aiken 9/9 (2 fragment-envelope, 2 max-redeemer, 3 redeemer-item-proof, 2 validation-machine), TS 4/4 across 3 files, all hygiene gates PASS. |
-| C26             | F10, C20-2/C20-8  | parent reconciliation; implementation lease required                                               | `demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts`; `onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak`; exact datum/redeemer maximum source fixtures                                                                                                                                                                                                                                                                                                                                                        | PARTIAL     | `8ddb14dc`                          | Corrected 2026-08-04: the prior PASS promotion proved maximum-depth host traversal but did not satisfy the full Goal acceptance. Current evidence has a genuine inline-datum boundary (depth 4,043 at 16,384 bytes; adjacent 4,044 at 16,388) and exact TS/Aiken terminal, but lacks a genuine field-8 unary redeemer maximum, canonical maximum signed-byte/digest identity through retained reconstruction, and malformed focused controls. Do not promote until those residuals pass from the final source tree. |
+| C26             | F10, C20-2/C20-8  | parent reconciliation; implementation lease required                                               | `demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts`; `onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak`; exact datum/redeemer maximum source fixtures                                                                                                                                                                                                                                                                                                                                                        | PARTIAL     | `8ddb14dc`                          | Corrected 2026-08-04: the prior PASS promotion proved maximum-depth host traversal but did not satisfy the full Goal acceptance. Current evidence has a genuine inline-datum boundary (depth 4,043 at 16,384 bytes; adjacent 4,044 at 16,388) and exact TS/Aiken terminal, but lacks a genuine field-8 unary redeemer maximum, canonical maximum signed-byte/digest identity through retained reconstruction, and malformed focused controls. Do not promote until those residuals pass from the final source tree. **Narrowed 2026-08-04 by issue #484 (`140f0a83`), still PARTIAL:** canonical maximum signed-byte/blake2b-256 digest identity across both normal and forced classifications (16,470-byte canonical transaction, with transaction-id/commitment identity) and the depth-4,043 malformed/noncanonical focused controls now pass, and maximum-depth emulator admission passes via the `--stack-size=2000` child-process runner. The sole remaining residual is the genuine field-8 unary redeemer maximum, blocked on a raw redeemer/script-data-hash builder plus the out-of-process patched-stack CML runner because `buildSignedCardanoSpendRedeemersCandidateV1` routes through `CML.PlutusData.from_cbor_hex` and `CML.calc_script_data_hash`, both of which trap on deep Data. |
 | C27             | C20-6             | `/root/f20_current_tree_reconcile`; immediate shared-protocol review `/root/f20_independent_review` | `onchain/aiken/lib/midgard/script-proof-v1.ak`; `onchain/aiken/lib/midgard/script-proof-v1.test.ak`; `demo/midgard-core/src/script-proof.ts`; `demo/midgard-core/tests/script-proof.test.ts`                                                                                                                                                                                                                                                                                                                                                        | PASS        | `6a019777`                          | TS/Aiken agree on tags Native=0, PlutusV3=3, MidgardV1=128 and exact BLAKE2b-224 prefix hashing. Reference keys are exact definite CBOR `[txid32,uint16]` with canonical re-encoding in both high/low APIs; field 6 binds inline scripts and field 7 rejects. Raw native/Plutus/unknown/trailing inputs cannot become Midgard program credentials. Complete attached and historical-reference envelopes agree. A compile-blocking pipeline parse defect found by immediate protocol review was repaired and then proved by direct pinned compile exit 0 and guarded Aiken 5/5 with structured report; TS 5/5, format 2/2, skip-tests, typecheck, lint, Prettier, diff/name/protected gates PASS. |
 | C28             | C27               | issue #477 implementation context; parent integration                                              | C28 manifest lease: `onchain/aiken/lib/midgard/{cek-proof-v1,cek-data-v1,validation-resolver-v1,validation-machine-v1}{,.test}.ak`, `onchain/aiken/validators/fraud-proofs/validation-trace/cek-v1.ak`, `demo/midgard-sdk` fraud-proof/tx-order/reference-scripts sources+tests, `demo/midgard-validation` cek-context/machine/dispute-evidence sources+tests, `demo/midgard-fault-proofs` validation-dispute submit/from-files/bin/runtime sources+tests, `docs/exec-plans/evidence/necessity/cek-program-material-v1.md` | PASS        | `0acf2f48` + #476 vector repair | Complete content-addressed CEK material agrees TS/Aiken (envelope, sidecar, 25-field context, 9-field CEK work witness); production `submitValidationDisputeDirectResolution` measures direct, caller-confirmed single-publication reference, and root-ordered minimum multi-output routes before receipt-bound incremental traversal. Direct resolver 0 (`cek_v1`, applied body 156,161 bytes current-tree / 141,959 protected) is now a registered authenticated reference-script role (`V1 validation-trace CEK direct resolver` -> `V1ValidationTraceCekResolver0`, deployment entry `validationTraceDisputeCekDirectResolver`); every CEK finalization resolves and verifies the published UTxO (exact hash + exactly one role token) and consumes it via `readFrom` with no inline attachment. Missing-registration, no-script, wrong-validator, and wrong-role publications reject (emulator 4/4 incl. generated-blueprint publication receipts: 156,676-byte signed current-tree publication, L1 margin -140,292; 142,474-byte protected). CLI plumbs CEK route material, necessity receipts, and caller-confirmed publication outrefs for direct resolution only. The role token joins both the SDK and midgard-core deployment-manifest rosters (token names feed the manifest identity, moving the pinned manifestId a9219993... -> c9cb35df... with an appended audit note) but deliberately NOT the required referenceScripts publication set, because the resolver body exceeds the L1 publication envelope; node/core/watcher roster consumers replay green (node 41/41 + 28/28, core identity 9/9, watcher 111/111) and the 8 pre-existing da-committee-node failures were baseline-confirmed with the roster change stashed. Gates: normalized format 8/8, guarded cek-proof Aiken 3/3, guarded validation-machine Aiken 2/2 (green only after the witness-tail fix below), cek-program TS 7/7, submit tests 19/19, submit-init 14/14, sdk fault-proof/applied-hashes 22/22 plus current-tree disposable-blueprint selector 2/2 (blueprint sha256 6b6422ee...88f20, aiken v1.1.22+39d6b04), tx-order/dispute 16/16, validation machine/boundary 27/27, typechecks, eslint, Prettier all PASS. Finalization diagnosis found and closed a real cross-language defect: the first 9-field CEK work-witness layout ended with the possibly-empty program envelope hash, and stdlib `aiken/cbor.deserialise` rejects a zero-length final item at an exhausted cursor (byte-level probe evidence), so every pre-selection CEK witness was unverifiable; both encoders now end with the integer limits, the guarded selectors and cross-language vectors pin the corrected order, and the disposable blueprint/applied hash were re-generated and re-pinned (sha256 6b6422ee...88f20; applied cek_v1 827fe0ad...51f2). Necessity artifact repinned to both applied hashes with real emulator receipts; still owed before CG5 (not C28 gates): live target-network fee/exunit receipts and an end-to-end Cek-phase finalization drive; resolver publication itself exceeds mainnet maxTxSize and stays tracked by the P1 oversized-validator gate. |
 | C26-FIX         | C26 investigation | acceleration agent D (resumed); parent integration                                                  | `demo/midgard-core/src/codec/datum.ts`, the `plutus-data-cbor` module for the new gate, `demo/midgard-core/src/codec/native-redeemer.ts`, direct `demo/midgard-core/tests/**` additions                                                                                                                                                                                                                                                                                                                                                             | PASS        | Goal worktree                       | Replace the discarded recursive `Data.from` probe with an iterative `assertMidgardPlutusDataWellFormedV1` that preserves the normalizer's wider tag acceptance (120/128/1000/1401) and allows zero-chunk `5fff`; audit the same pattern at `native-redeemer.ts:77` (shared C20-8 ceiling). Acceptance: depth-4,043 retained reconstruction passes with stock CML, depth-1,024 output hash unchanged, full midgard-core suite green. Completed 2026-07-29: gate added in `plutus-data-cbor.ts` with two empirically pinned corrections beyond the prototype (tag-102 definite-head uint alternatives; chunked tag-2/3 bignum payloads), `datum.ts` probe replaced, `native-redeemer.ts` split so only the reverse bridge materializes CML. 13 new ungated tests; 6,054-case differential vs live `Data.from` with zero divergence; depth-4,043 full retained path ~0.5 s default-run on stock CML; both depth-1,024 sha256 pins byte-identical (`006323b1…`, `ae9f29c7…`). Parent independent replay: 6/6, 4/4, 3/3 new suites plus untouched boundary 2/2. midgard-core full suite 287/288 — the single failure (`deployment-manifest-identity-v1` full-manifest identity) is pre-existing worktree drift, parent-confirmed on the untouched baseline, and is ledgered as its own reconciliation item. Reverse Midgard→Cardano bridge still ceilings at ~1,522 at the unavoidable CML materialization — closed only by the Step-2 wasm patch awaiting owner approval.                                                                                                                                                                                                    |
@@ -5023,3 +5023,124 @@ Stabilize review anchor advanced to `e00cd216`; the reviewed range is
   Mitigation that worked: run Aiken gates in a throwaway `git worktree`.
   Also: `aiken check` emits zero diagnostics and exits 1 when stdout is
   not a TTY — wrap with `script -qec "..." /dev/null`.
+
+## #484 — C21–C26 complete-item Value and Data carriage closures (2026-08-04)
+
+Batch commit `140f0a83` (`test(validation): close complete-item Value and Data
+carriage`, 14 files, +790/−3). The lane's final consolidated validation gate was
+31/31 across 7 files, exit 0, and `aiken check --skip-tests` on stock Aiken
+`v1.1.22+39d6b04` gave 0 errors / 7 warnings / exit 0.
+
+**C22 → PASS.** 5 guarded Aiken tests (`ledger_output_value_v1` 4/4, including
+the newly added `maximum_nested_value_terminal_agrees_with_typescript`;
+`ledger_output_proof_v1` 1/1) and 2 TypeScript tests, 0 failures. The new
+selector replays the producer's own finalize transition from its pre-terminal
+control over its exact 1,592-leaf asset frontier, pinning root `35df7dc7…`,
+`cbor_length` 5,002, and memory 16,198, with `finalize_v1(pre_terminal) == None`
+and a lovelace-mutation control. The complete 5,034-byte maximum-Value output
+item measures `carriage: "direct"`, fits the publication route, and reports
+`requiresBoundedFallback: false`; an item at
+`maxSinglePublicationCompleteItemBytes + 1` has no complete route, which is the
+non-vacuity control.
+
+**C23/C24/C25 → PASS.** 12 guarded Aiken tests (`cek_data_breadth_v1`, all 12
+datum/redeemer frontier+terminal selectors) and 7 TypeScript tests, 0 failures.
+Measured carriage boundary per kind: direct carriage admits complete items
+through exactly **8,273** item bytes (constructor breadth 8,221 / list 8,226 /
+map 2,126); reference publication through **14,396** item bytes at a
+**16,238**-byte signed publication (breadth 14,344 / 14,349 / 3,657), with the
+adjacent breadth overflowing; and the genuine Cardano Data maximum (breadth
+16,166 / 16,171 / 4,112 → a **16,222**-byte item) produces an **18,122**-byte
+publication, overshooting 16,384 by **1,738** bytes.
+
+**C26 → PARTIAL (narrowed; does not clear).** 2 guarded Aiken tests
+(`fraud_proofs/c26_unary_depth_v1`) and 5 TypeScript tests pass. Closed in this
+batch: canonical-maximum signed-byte and blake2b-256 digest identity across both
+normal and forced classifications for the 16,470-byte canonical transaction,
+plus transaction-id/commitment identity; and malformed/noncanonical focused
+controls at depth 4,043 (truncated breaks, missing leaf, trailing byte, extra
+break, two children, definite-length constructor body, bytestring leaf), each
+refused by the production `assertMidgardPlutusDataWellFormedV1` gate where
+applicable and by the exact unary measurement in every case, with the adjacent
+depth shown structurally valid and rejected only by byte count. **Sole remaining
+residual:** the genuine field-8 unary redeemer maximum, which needs a raw
+redeemer/script-data-hash builder plus the out-of-process patched-stack CML
+runner, because `buildSignedCardanoSpendRedeemersCandidateV1` routes through
+`CML.PlutusData.from_cbor_hex` and `CML.calc_script_data_hash`, both of which
+trap on deep Data.
+
+**C21-AUDIT → still IN_PROGRESS.** Three of four whole-carrier residuals are
+closed: complete-item direct and inline-datum input/reference-input proof-fit
+9/9; production searches 6/6; semantic equivalence 2/2; supporting Aiken 6/6,
+SDK `validation-proof-item-v1` 6/6, and fault-proofs 21/21. **Residual 4 remains
+open:** a fresh applied re-measurement against the current blueprint. The
+hash-level re-verification, recorded honestly: six of the eight §3.2 necessity
+artifacts pin blueprint `277b6457…` while the tree's
+`onchain/aiken/plutus.json` is `f5ae651e…` (380 validators,
+`v1.1.22+39d6b04`), so by each artifact's own "any change invalidates" clause
+they were stale. However both bound validators are byte-identical in the current
+blueprint — `canonical_decode_item_semantic_v1.main.spend` unapplied
+`62501cfe…` and `proof_item_v1.main.else` `22c9a103…` — so applied hash
+`983051b4…` follows from the unchanged script plus the pinned parameter
+snapshot, and the measurement tables stay bound. A fresh applied re-measurement
+before CG5 remains OPEN; regenerating the parent-owned blueprint was outside
+that lane's scope.
+
+**`retainedDaExactVerifier` → PASS.**
+`pnpm --dir demo/midgard-fault-proofs run test:cardano-capability-p2-retained-da`
+exits 0 end to end: producer 13/13 files, regenerated corpus `cmp`-identical to
+the checked-in fixture, da-committee consumer 20/20, fault-proof consumer 3/3.
+The historical `FAIL: producer 13/14` shape could not be reproduced, so it is
+recorded as a **stale recorded string refreshed by measurement — not a defect
+that was fixed**. Corrected in
+`docs/exec-plans/evidence/canonical-v1-capability-reconciliation-v1.json`
+(`freshChecks.retainedDaExactVerifier`), whose `freshChecks.c26UnaryDepth`
+blocker text was refreshed in the same edit: maximum emulator admission no
+longer requires the owner-approval-gated CML wasm stack patch, because
+`admits the exact maximum-depth candidate through the real emulator` passes
+today via the `--stack-size=2000` child-process runner.
+
+Declared out-of-lease writes: the #484 lane edited two files outside its
+declared `writablePaths` — the retained-DA producer verifier and the
+data-breadth exact-count gate — because its prescribed test additions broke
+those two closed. Declared, not hidden.
+
+### Manifest row-text corrections applied in this sync
+
+Text-level edits to
+`docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` only; the
+file was never reserialized (8 changed lines total).
+
+- **C23/C24/C25 `expectedNonzeroCounts`** prescribed a case proving the complete
+  maximum Data "fits direct and reference carriage". Measurement **refutes**
+  that: the complete item is bound by the 16,384-byte signed transaction, so the
+  maximum item is ~16.2 KB and fits **neither** complete route. All three rows
+  now prescribe what §3.2 actually requires — construct and measure both
+  complete routes first, then pin the exact overshoot that makes the bounded
+  traversal necessity-driven — with the per-kind 8,273 / 14,396 / 16,222 /
+  18,122 / 1,738 figures and the corroborating
+  `necessity/transaction-field-chunk-v1.md` and
+  `necessity/ledger-output-incremental-proof-v1.md` pointers. The test was
+  right and the manifest sentence was wrong; the measurement was not touched.
+- **C21 `expectedNonzeroCounts`**: the fault-proof contract read 14 tests across
+  2 files; the same two files measure 21, so the total moves 35 → 42. A stale
+  count, not a stale suite.
+- **C10 `expectedNonzeroCounts`/`invalidationTriggers`/`readyBecause`**:
+  midgard-validation moves 15 → 19 (nested-value 1 → 2, data-breadth 4 → 7), so
+  the focused TypeScript inventory moves 23 → 27.
+- **C26 `expectedNonzeroCounts`**: TypeScript count 4 → 5, and the residual list
+  is narrowed to the single genuine field-8 unary redeemer maximum, since
+  retained canonical-byte/digest identity and the malformed controls now pass.
+
+No `docs/fault-proofs/coverage-matrix.md` or `docs/fault-proofs/catalogue-status.md`
+edit was made: neither file contains any C21–C26 or breadth/unary-depth content
+to refresh (searched for `C21`–`C26`, "breadth", "unary depth", "nested Value" —
+zero hits in both).
+
+Verifiers re-run after every edit and again at the end, all exit 0:
+`verify-canonical-v1-goal-task-manifest-quality.mjs`,
+`verify-canonical-v1-fault-proof-reconciliation.mjs`,
+`verify-canonical-v1-q49-structural-handoff.mjs`, and
+`verify-canonical-v1-capability-reconciliation.mjs`. The "7 PASS / 2 PARTIAL"
+`structuralAudit` contract and the F21 PARTIAL bindings were deliberately left
+untouched — see the 2026-08-04 correction above; no verifier guard was loosened.
