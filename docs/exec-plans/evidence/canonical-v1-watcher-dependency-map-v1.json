@@ -22,6 +22,7 @@
       "demo/midgard-watcher/midgard-watcher-architecture.md",
       "demo/midgard-watcher/package.json",
       "demo/midgard-watcher/src/cli.ts",
+      "demo/midgard-watcher/src/block-replay.ts",
       "demo/midgard-watcher/src/config.ts",
       "demo/midgard-watcher/src/deployment-identity.ts",
       "demo/midgard-watcher/src/durable-store.ts",
@@ -42,6 +43,7 @@
       "demo/midgard-watcher/src/state-queue-indexer.ts",
       "demo/midgard-watcher/src/user-event-indexer.ts",
       "demo/midgard-watcher/tests/config.test.ts",
+      "demo/midgard-watcher/tests/block-replay.test.ts",
       "demo/midgard-watcher/tests/canonical-fraud-proof-catalogue.ts",
       "demo/midgard-watcher/tests/canonical-block-store.test.ts",
       "demo/midgard-watcher/tests/deployment-identity.test.ts",
@@ -58,6 +60,10 @@
       "demo/midgard-watcher/tests/scaffold.test.ts",
       "demo/midgard-watcher/tests/settlement-indexer.test.ts",
       "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
+      "demo/midgard-watcher/tests/support/w15-authority-scenarios.ts",
+      "demo/midgard-watcher/tests/support/w16-authority-scenarios.ts",
+      "demo/midgard-watcher/tests/support/w25-authority-fixtures.ts",
+      "demo/midgard-watcher/tests/support/watcher-opaque-authority-harness.ts",
       "demo/midgard-watcher/tests/user-event-indexer.test.ts",
       "demo/midgard-watcher/tsconfig.json",
       "demo/midgard-watcher/vitest.config.ts",
@@ -71,41 +77,21 @@
       "reason": "The committee and independent watcher now have distinct package and executable identities."
     },
     "foundationStatus": "W01_W03_and_W11_W17_library_surfaces_pass_operational_W10_wire_binding_open",
-    "failClosedCommands": [
-      "start",
-      "replay"
-    ],
+    "failClosedCommands": ["start", "replay"],
     "strictConfiguration": {
       "schemaVersion": "midgard-watcher-config-v1",
-      "modes": [
-        "development",
-        "acceptance"
-      ],
-      "networks": [
-        "Mainnet",
-        "Preprod",
-        "Preview"
-      ],
-      "l1SourceModes": [
-        "local_node",
-        "external_providers"
-      ],
-      "selectableL1SourceModes": [
-        "external_providers"
-      ],
-      "deferredL1SourceModes": [
-        "local_node"
-      ],
+      "modes": ["development", "acceptance"],
+      "networks": ["Mainnet", "Preprod", "Preview"],
+      "l1SourceModes": ["local_node", "external_providers"],
+      "selectableL1SourceModes": ["external_providers"],
+      "deferredL1SourceModes": ["local_node"],
       "discriminatorPolicy": "explicit_source_mode_required_without_compatibility_inference",
       "wireSourceConfigPolicy": "external_providers_only_local_node_pure_state_vocabulary_not_public_wire_config",
       "localNodePolicy": "deferred_until_peer_authenticated_native_adapter_no_pathname_authority",
       "externalProviderPolicy": "two_to_four_operationally_independent_provider_operator_endpoint_identities",
       "endpointBindingPolicy": "exact_configured_https_provider_endpoints_only_local_node_wire_rejected_before_socket_processing",
       "rollbackAuthorityKeyPolicy": "separate_required_key_source_not_inline_and_not_reused_from_prover_credentials",
-      "secretSources": [
-        "environment",
-        "file"
-      ],
+      "secretSources": ["environment", "file"],
       "finalityPolicy": {
         "beforeFinality": "rewind",
         "afterFinality": "quarantine",
@@ -180,12 +166,8 @@
       "providerSchemaVersion": "midgard-watcher-authenticated-l1-provider-v1",
       "observationSchemaVersion": "midgard-watcher-l1-block-observation-v1",
       "normalizedSchemaVersion": "midgard-watcher-normalized-l1-block-v1",
-      "sourceModes": [
-        "external_providers"
-      ],
-      "deferredSourceModes": [
-        "local_node"
-      ],
+      "sourceModes": ["external_providers"],
+      "deferredSourceModes": ["local_node"],
       "identityPolicy": "external_provider_tls_bound_observation_with_provider_neutral_block_content_local_node_deferred_until_native_peer_binding",
       "inputPolicy": "exact_configured_tls_transport_capability_with_in_process_observation_boundary_operational_wire_adapter_required_local_node_rejected_before_socket_processing",
       "totalCollectionMembers": 65536,
@@ -195,10 +177,7 @@
     },
     "multiProviderConsistency": {
       "schemaVersion": "midgard-watcher-multi-provider-consistency-v1",
-      "sourceModes": [
-        "local_node",
-        "external_providers"
-      ],
+      "sourceModes": ["local_node", "external_providers"],
       "minimumChainAuthoritiesByMode": {
         "local_node": 1,
         "external_providers": 2
@@ -340,6 +319,18 @@
     "phaseAVerifier": {
       "expectedFocusedTestCount": 94
     },
+    "blockReplay": {
+      "status": "PASS",
+      "schemaVersion": "midgard-watcher-block-replay-v1",
+      "authorityPolicy": "parser_recomputed_W15_and_applicable_W16_authorities_plus_accepted_W21_W22_W23_W24_records_only",
+      "rootPolicy": "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed",
+      "rejectionPolicy": "canonical_49_code_vocabulary_is_disjointly_partitioned_12_phase_b_27_phase_a_owned_10_unclaimed",
+      "eventPolicy": "shared_canonical_raw_effects_are_derived_or_rebuilt_from_recomputed_authorities_and_applied_in_exact_dense_W22_source_order_W26_retains_classification",
+      "orderingPolicy": "exact_W22_EventKey_phase_step_order_then_canonical_phase_priority_for_rejections_with_restart_replay_digest_determinism",
+      "downstreamPolicy": "machine_prerequisite_requires_W26_accept_and_action_accept_alone_never_implies_W29_verified",
+      "unknownBehavior": "fail_closed",
+      "expectedFocusedTestCount": 20
+    },
     "scaffold": {
       "expectedFocusedTestCount": 5
     },
@@ -389,12 +380,7 @@
         "DaLibp2pNode.request"
       ],
       "watcherBoundary": "Implement a client in demo/midgard-watcher that dials configured public peers, verifies deployment fingerprint/header/payload hashes and strict envelope/body bytes, and persists bytes before verification.",
-      "remainingTasks": [
-        "Q03",
-        "Q54",
-        "W20",
-        "W21"
-      ]
+      "remainingTasks": ["Q03", "Q54", "W20", "W21"]
     },
     {
       "id": "proof_bundle",
@@ -415,12 +401,7 @@
         "reconstructDaPayloadV1"
       ],
       "watcherBoundary": "Reuse the exact transport codecs and public challenger request path; never read the committee store directly. Verify returned deployment/header/index/event identities before persistence.",
-      "remainingTasks": [
-        "Q03",
-        "W20",
-        "W21",
-        "W27"
-      ]
+      "remainingTasks": ["Q03", "W20", "W21", "W27"]
     },
     {
       "id": "validation",
@@ -429,6 +410,7 @@
       "trust": "deterministic_local",
       "sourcePaths": [
         "demo/midgard-validation/src/index.ts",
+        "demo/midgard-validation/src/transition-effect-v1.ts",
         "demo/midgard-validation/src/phase-a.ts",
         "demo/midgard-validation/src/phase-b.ts",
         "demo/midgard-validation/src/validation-machine.ts",
@@ -439,17 +421,12 @@
         "runPhaseAValidation",
         "runPhaseBValidationWithPatch",
         "buildDeterministicValidationMachineTrace",
+        "buildCanonicalTransitionEffectV1",
+        "deriveCanonicalDepositTransitionEffectV1",
         "validateMidgardConsensusV1Tx"
       ],
       "watcherBoundary": "Import shared production semantics and the deployment-bound rule/profile identity; a watcher-specific folklore validator is forbidden.",
-      "remainingTasks": [
-        "CG3",
-        "Q00",
-        "W23",
-        "W24",
-        "W25",
-        "W26"
-      ]
+      "remainingTasks": ["CG3", "Q00", "W23", "W24", "W25", "W26"]
     },
     {
       "id": "proof_tooling",
@@ -507,11 +484,7 @@
         "verifyWatcherDeploymentIdentityV1"
       ],
       "watcherBoundary": "Use the strict signed-identity verifier and persist its exact durable marker through W03 before accepting observations; C70/C75/F41 must replace placeholder release and deployment inputs with final-tree/live evidence.",
-      "remainingTasks": [
-        "C70",
-        "C75",
-        "F41"
-      ]
+      "remainingTasks": ["C70", "C75", "F41"]
     },
     {
       "id": "l1_provider",
@@ -540,11 +513,7 @@
         "evaluateWatcherStateQueueIndexerV1"
       ],
       "watcherBoundary": "The current wire path selects external_providers and requires at least two operationally independent provider/operator/endpoint identities; disagreement is quarantined. local_node remains pure state vocabulary but is deferred until a native adapter binds peer identity to the connected socket, and the wire parser rejects it before socket-path processing. W10 proves exact configured TLS transport capability and normalizes supplied observations, but the operational adapter that obtains every observation from those live transports remains open and start/replay remain fail closed. W12 preserves the finalized binding during transient source non-agreement; only a mode-valid agreed canonical replacement opens an incident. W13 automatically rewinds and resumes replay from persisted W10 bytes and W11 agreement within Cardano k=2160. W14-W17 library state machines consume that authorized recovery without duplicating Cardano validator semantics; node-accepted byte provenance is not claimed until the operational W10 adapter is complete.",
-      "remainingTasks": [
-        "C70",
-        "W10-OPERATIONAL-WIRE",
-        "W14-LIVE-PROVENANCE"
-      ]
+      "remainingTasks": ["C70", "W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE"]
     },
     {
       "id": "state_queue",
@@ -570,11 +539,7 @@
         "evaluateWatcherStateQueueIndexerV1"
       ],
       "watcherBoundary": "Reuse canonical SDK datum/header decoding, persist supplied W10 observations through the strict atomic W03 schema, and gate irreversible interpretation through source-mode-bound W11-W13. W14's library state machine consumes the canonical observation and automated rollback/replay pipeline, derives durable roles from deployed policy and actual output bytes, and does not reimplement the on-chain state-queue validator. Actual node-accepted transaction/output/datum provenance remains open until the operational W10 adapter supplies every observation directly from the configured live transport.",
-      "remainingTasks": [
-        "W10-OPERATIONAL-WIRE",
-        "W14-LIVE-PROVENANCE",
-        "W20"
-      ]
+      "remainingTasks": ["W10-OPERATIONAL-WIRE", "W14-LIVE-PROVENANCE", "W20"]
     },
     {
       "id": "correction_removal",
@@ -594,17 +559,11 @@
       ],
       "prohibitedSurface": {
         "symbol": "createHttpStateQueueMutationLeaseCoordinator",
-        "inputs": [
-          "midgardNodeUrl",
-          "midgardNodeAdminKey"
-        ],
+        "inputs": ["midgardNodeUrl", "midgardNodeAdminKey"],
         "reason": "Non-tail removal currently requires an operator-node admin lease to pause commit/merge workers; this violates the independent watcher trust boundary."
       },
       "watcherBoundary": "The watcher may reuse public L1 topology/refetch and transaction construction only after Q52/W35 replace operator-admin coordination with a protocol-safe public concurrency strategy.",
-      "remainingTasks": [
-        "Q52",
-        "W35"
-      ]
+      "remainingTasks": ["Q52", "W35"]
     }
   ],
   "explicitlyRejectedDependencies": [
@@ -628,11 +587,6 @@
   "f30Conclusion": {
     "status": "pass",
     "reason": "Every required dependency class is resolved to current source, each permitted watcher boundary is explicit, and operator-private surfaces are rejected and mapped to concrete replacement tasks.",
-    "nextTasks": [
-      "W04",
-      "W20",
-      "Q03",
-      "Q52"
-    ]
+    "nextTasks": ["W04", "W20", "Q03", "Q52"]
   }
 }

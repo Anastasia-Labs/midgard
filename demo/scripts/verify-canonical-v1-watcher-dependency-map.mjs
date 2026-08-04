@@ -216,6 +216,7 @@ const requiredSourcesById = new Map([
     {
       paths: [
         "demo/midgard-validation/src/index.ts",
+        "demo/midgard-validation/src/transition-effect-v1.ts",
         "demo/midgard-validation/src/phase-a.ts",
         "demo/midgard-validation/src/phase-b.ts",
         "demo/midgard-validation/src/validation-machine.ts",
@@ -226,6 +227,8 @@ const requiredSourcesById = new Map([
         "runPhaseAValidation",
         "runPhaseBValidationWithPatch",
         "buildDeterministicValidationMachineTrace",
+        "buildCanonicalTransitionEffectV1",
+        "deriveCanonicalDepositTransitionEffectV1",
         "validateMidgardConsensusV1Tx",
       ],
     },
@@ -400,6 +403,14 @@ const requiredSymbolBindingsById = new Map([
       {
         symbol: "buildDeterministicValidationMachineTrace",
         path: "demo/midgard-validation/src/validation-machine.ts",
+      },
+      {
+        symbol: "buildCanonicalTransitionEffectV1",
+        path: "demo/midgard-validation/src/transition-effect-v1.ts",
+      },
+      {
+        symbol: "deriveCanonicalDepositTransitionEffectV1",
+        path: "demo/midgard-validation/src/transition-effect-v1.ts",
       },
       {
         symbol: "validateMidgardConsensusV1Tx",
@@ -906,10 +917,7 @@ const exactActiveStepCount = (lines, name, command) => {
       continue;
     }
     let end = index + 1;
-    while (
-      end < lines.length &&
-      lines[end].indent > 6
-    ) {
+    while (end < lines.length && lines[end].indent > 6) {
       end += 1;
     }
     const step = lines.slice(index, end);
@@ -1230,6 +1238,24 @@ const proofThreadIndexerTestBytes = readIndexedFile(
 const watcherIndexSource = readIndexedFile(
   "demo/midgard-watcher/src/index.ts",
   "utf8",
+);
+const blockReplayBytes = readIndexedFile(
+  "demo/midgard-watcher/src/block-replay.ts",
+);
+const blockReplayTestBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/block-replay.test.ts",
+);
+const w15AuthorityScenariosBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/support/w15-authority-scenarios.ts",
+);
+const w16AuthorityScenariosBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/support/w16-authority-scenarios.ts",
+);
+const w25AuthorityFixturesBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/support/w25-authority-fixtures.ts",
+);
+const watcherOpaqueAuthorityHarnessBytes = readIndexedFile(
+  "demo/midgard-watcher/tests/support/watcher-opaque-authority-harness.ts",
 );
 // GOAL_SPEC §13.4 / §0 Integrity (owner amendment 2026-08-01): the staged-tree
 // identity that used to live here recomputed a SHA-256 over every tracked file
@@ -1896,6 +1922,139 @@ if (
   ruleBundle.expectedFocusedTestCount !== 9
 ) {
   fail("W23 rule-bundle evidence is incomplete or stale");
+}
+const blockReplay = dependencyMap.requiredWatcherPackage?.blockReplay;
+if (
+  blockReplay?.status !== "PASS" ||
+  blockReplay.schemaVersion !== "midgard-watcher-block-replay-v1" ||
+  blockReplay.authorityPolicy !==
+    "parser_recomputed_W15_and_applicable_W16_authorities_plus_accepted_W21_W22_W23_W24_records_only" ||
+  blockReplay.rootPolicy !==
+    "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed" ||
+  blockReplay.rejectionPolicy !==
+    "canonical_49_code_vocabulary_is_disjointly_partitioned_12_phase_b_27_phase_a_owned_10_unclaimed" ||
+  blockReplay.eventPolicy !==
+    "shared_canonical_raw_effects_are_derived_or_rebuilt_from_recomputed_authorities_and_applied_in_exact_dense_W22_source_order_W26_retains_classification" ||
+  blockReplay.orderingPolicy !==
+    "exact_W22_EventKey_phase_step_order_then_canonical_phase_priority_for_rejections_with_restart_replay_digest_determinism" ||
+  blockReplay.downstreamPolicy !==
+    "machine_prerequisite_requires_W26_accept_and_action_accept_alone_never_implies_W29_verified" ||
+  blockReplay.unknownBehavior !== "fail_closed" ||
+  blockReplay.expectedFocusedTestCount !== 20
+) {
+  fail("W25 block-replay evidence is incomplete or stale");
+}
+const blockReplaySource = blockReplayBytes.toString("utf8");
+const blockReplayTestSource = blockReplayTestBytes.toString("utf8");
+for (const requiredSymbol of [
+  "WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION",
+  "WATCHER_BLOCK_REPLAY_VERIFIED_CONTRACT_V1",
+  "WATCHER_BLOCK_REPLAY_DOWNSTREAM_PREREQUISITE_V1_SCHEMA_VERSION",
+  "WATCHER_BLOCK_REPLAY_STAGES_V1",
+  "WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1",
+  "WATCHER_BLOCK_REPLAY_PHASE_A_OWNED_REJECT_CODES_V1",
+  "WATCHER_BLOCK_REPLAY_UNCLAIMED_REJECT_CODES_V1",
+  "watcherBlockReplayPriorStateV1",
+  "evaluateWatcherBlockReplayCandidatesV1",
+  "evaluateWatcherBlockReplayV1",
+  "makeWatcherBlockReplayReconstructedStateV1",
+  "WatcherBlockReplayEventAuthorityV1",
+  "WatcherBlockReplayUserEventAuthorityV1",
+  "WatcherBlockReplaySettlementAuthorityV1",
+  "WatcherBlockReplayEventRootV1",
+]) {
+  if (
+    !blockReplaySource.includes(requiredSymbol) ||
+    !watcherIndexSource.includes(requiredSymbol)
+  ) {
+    fail(`W25 block-replay symbol ${requiredSymbol} is not public`);
+  }
+}
+for (const requiredTestSymbol of [
+  "evaluateWatcherBlockReplayCandidatesV1",
+  "watcherBlockReplayPriorStateV1",
+  "watcherBlockReplayCommittedStepsV1",
+  "WATCHER_BLOCK_REPLAY_REACHABLE_REJECT_CODES_V1",
+  "evaluateWatcherBlockReplayV1",
+  "makeWatcherBlockReplayReconstructedStateV1",
+  "FIXED_TWO_TX_ROOTS",
+  "reconstruction_unsupported_schema",
+  "phase_a_digest_mismatch",
+  "canonical_reconstruction_failed",
+  "unknown_reject_code",
+  "replays a Deposit before an L2 spend",
+  "replays a Withdrawal after an L2 transaction",
+  "replays a ForcedTransaction before a later L2 spend",
+  "trace substitution, omission, duplication/reorder, trailing steps",
+  "deterministic corpus for every evidenced Phase-B rejection code",
+  "createGenuineW15DepositWithdrawalAuthoritiesV1",
+  "createGenuineW16SettlementAuthoritiesV1",
+  "genuineW16.spawn",
+  "genuineW16.absorbToReserve",
+  "genuineW16.initializePayout",
+  "genuineW16.refundWithdrawal",
+  "forcedCanonicalNativeTxCbor",
+]) {
+  if (!blockReplayTestSource.includes(requiredTestSymbol)) {
+    fail(`W25 block-replay test does not cover ${requiredTestSymbol}`);
+  }
+}
+const w15AuthorityScenariosSource = w15AuthorityScenariosBytes.toString("utf8");
+const w16AuthorityScenariosSource = w16AuthorityScenariosBytes.toString("utf8");
+const w25AuthorityFixturesSource = w25AuthorityFixturesBytes.toString("utf8");
+const watcherOpaqueAuthorityHarnessSource =
+  watcherOpaqueAuthorityHarnessBytes.toString("utf8");
+for (const requiredAuthoritySymbol of [
+  "deriveWatcherUserEventObservationV1",
+  "evaluateWatcherUserEventIndexerV1",
+  "parseWatcherUserEventIndexerResultV1",
+  "replayGenuineForcedTerminalAuthorityScenarioV1",
+  "createGenuineW15DepositWithdrawalAuthoritiesV1",
+  "forcedReceiptFixture",
+  "deriveMidgardV1TxFieldChunks",
+  "deriveMidgardTxFieldReceiptAssetNameV1",
+]) {
+  if (!w15AuthorityScenariosSource.includes(requiredAuthoritySymbol)) {
+    fail(`W25 W15 authority support is missing ${requiredAuthoritySymbol}`);
+  }
+}
+for (const requiredAuthoritySymbol of [
+  "makeWatcherSettlementObservationV1",
+  "evaluateWatcherSettlementIndexerV1",
+  "parseWatcherSettlementIndexerResultV1",
+  "replayGenuineSpawnSettlementAuthorityScenarioV1",
+  "replayGenuineAbsorbToReserveAuthorityScenarioV1",
+  "replayGenuineRefundWithdrawalAuthorityScenarioV1",
+  "createGenuineW16SettlementAuthoritiesV1",
+  "absorbToReserveAuthority",
+  "initializePayoutAuthority",
+  "refundWithdrawalAuthority",
+]) {
+  if (!w16AuthorityScenariosSource.includes(requiredAuthoritySymbol)) {
+    fail(`W25 W16 authority support is missing ${requiredAuthoritySymbol}`);
+  }
+}
+for (const requiredAuthoritySymbol of [
+  "makeAcceptedW25DepositAuthorityFixtureV1",
+  "makeAcceptedW25WithdrawalAuthorityFixtureV1",
+  "makeAcceptedW25ForcedAuthorityFixtureV1",
+  "makeAcceptedW25SpawnSettlementAuthorityFixtureV1",
+  "makeAcceptedW25AbsorbToReserveAuthorityFixtureV1",
+  "makeAcceptedW25InitializePayoutAuthorityFixtureV1",
+  "makeAcceptedW25RefundWithdrawalAuthorityFixtureV1",
+]) {
+  if (!w25AuthorityFixturesSource.includes(requiredAuthoritySymbol)) {
+    fail(`W25 authority fixture facade is missing ${requiredAuthoritySymbol}`);
+  }
+}
+for (const requiredAuthoritySymbol of [
+  "createWatcherOpaqueAuthorityHarnessV1",
+  "establishWatcherExternalProviderTransportV1",
+  "closeWatcherL1TransportAttestationContextV1",
+]) {
+  if (!watcherOpaqueAuthorityHarnessSource.includes(requiredAuthoritySymbol)) {
+    fail(`W25 opaque authority harness is missing ${requiredAuthoritySymbol}`);
+  }
 }
 const ruleBundleSource = ruleBundleBytes.toString("utf8");
 for (const requiredSymbol of [
