@@ -16,8 +16,11 @@ use midgard/cek_data_v1
 use midgard/cek_machine_v1
 use midgard/cek_proof_v1
 use midgard/fraud_proofs/native_tx/compact.{
+  decode_native_tx_compact_v1, decode_native_tx_field_preimage_lengths_v1,
   decode_native_tx_witness_set_compact, encode_native_tx_body_compact,
-  native_tx_id_for_version,
+  encode_native_tx_compact_v1, encode_native_tx_field_preimage_lengths_v1,
+  encode_native_tx_witness_set_compact, native_tx_id_for_version,
+  native_tx_proof_commitment_v1,
 }
 use midgard/fraud_proofs/native_tx/components.{
   encode_midgard_address_witness, encode_midgard_redeemer_witness,
@@ -29,15 +32,16 @@ use midgard/fraud_proofs/native_tx/preimages.{
 }
 use midgard/fraud_proofs/native_tx/transaction.{
   midgard_transaction_proof_commitment_v1, midgard_transaction_proof_source_v1,
-  midgard_transaction_to_compact,
+  midgard_transaction_to_compact, verify_midgard_transaction_field_chunk_v1,
 }
 use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardAddressWitness, MidgardExecutionUnits,
   MidgardRedeemerWitness, MidgardTransaction, MidgardTransactionBody,
   MidgardTransactionWitnessSet, MidgardTxInput, MidgardTxOutput, MidgardValue,
-  MidgardVersionedScript, NativeCardanoScript, PlutusV3Script, PubKeyCredential,
-  RewardRedeemer, ScriptCredential, SpendRedeemer, TxIsValid,
-  native_tx_version_v1,
+  MidgardVersionedScript, NativeCardanoScript, NativeTxBodyCompact,
+  NativeTxCompact, NativeTxFieldPreimageLengthsV1, NativeTxWitnessSetCompact,
+  PlutusV3Script, PubKeyCredential, RewardRedeemer, ScriptCredential,
+  SpendRedeemer, TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_proof_v1
@@ -10054,6 +10058,411 @@ test cek_context_output_item_uses_authenticated_descriptor_frontier() {
   }
 }
 
+type MaximumFieldTerminalFixtureV1 {
+  transaction_id: ByteArray,
+  transaction_commitment: ByteArray,
+  compact_cbor: ByteArray,
+  witness_set_compact_cbor: ByteArray,
+  field_preimage_lengths_cbor: ByteArray,
+  field_index: Int,
+  item_count: Int,
+  item_index: Int,
+  encoded_length_before_item: Int,
+  expected_pre_work_root: ByteArray,
+  expected_post_work_root: ByteArray,
+  collection_proof: bounded_collection_v1.ItemProofV1,
+  chunk_proof: bounded_item_v1.ChunkProofV1,
+}
+
+fn verify_maximum_field_terminal_fixture_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> Bool {
+  let derived_source_commitment = native_tx_proof_commitment_v1(
+    fixture.compact_cbor,
+    fixture.witness_set_compact_cbor,
+    fixture.field_preimage_lengths_cbor,
+  )
+  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+    fixture.compact_cbor,
+    fixture.witness_set_compact_cbor,
+    fixture.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    fixture.field_index,
+    fixture.item_index,
+    fixture.chunk_proof.chunk_index,
+    fixture.item_count,
+    fixture.encoded_length_before_item,
+  )
+  let successor_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+    fixture.compact_cbor,
+    fixture.witness_set_compact_cbor,
+    fixture.field_preimage_lengths_cbor,
+    validation_context_cbor,
+    fixture.field_index + 1,
+    0,
+    0,
+    -1,
+    0,
+  )
+  let pre = validation_trace_v1.ValidationMachineStateV1 {
+    machine_version: validation_trace_v1.machine_version,
+    event_key_hash: fixture.transaction_id,
+    transaction_id: fixture.transaction_id,
+    transaction_commitment: fixture.transaction_commitment,
+    validation_context_hash: validation_trace_v1.hash_validation_context(
+      validation_context_cbor,
+    ),
+    source_kind: validation_trace_v1.Forced,
+    prior_ledger_root: fixture.transaction_commitment,
+    phase: validation_trace_v1.CanonicalDecode,
+    program_counter: 40,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      40,
+      work_witness_cbor,
+    ),
+    execution_cpu: 0,
+    execution_memory: 0,
+    verdict: validation_trace_v1.Pending,
+    rejection_code_hash: zero,
+    ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
+  }
+  let post = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    program_counter: 41,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      41,
+      successor_witness_cbor,
+    ),
+  }
+  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor,
+    claimed_successor: post,
+  }
+  let compact = decode_native_tx_compact_v1(fixture.compact_cbor)
+  let compact_body = compact.body
+  let alternate_id_body = NativeTxBodyCompact {
+    ..compact_body,
+    fee: compact_body.fee + 1,
+  }
+  let alternate_id_compact = NativeTxCompact {
+    ..compact,
+    body: alternate_id_body,
+  }
+  let alternate_id_compact_cbor = encode_native_tx_compact_v1(
+    alternate_id_compact,
+  )
+  let alternate_transaction_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(alternate_id_body),
+  )
+  let alternate_id_commitment = native_tx_proof_commitment_v1(
+    alternate_id_compact_cbor,
+    fixture.witness_set_compact_cbor,
+    fixture.field_preimage_lengths_cbor,
+  )
+  let witness_set = decode_native_tx_witness_set_compact(
+    fixture.witness_set_compact_cbor,
+  )
+  let alternate_witness_set = NativeTxWitnessSetCompact {
+    ..witness_set,
+    addr_tx_wits_hash: h_b,
+  }
+  let alternate_witness_set_cbor = encode_native_tx_witness_set_compact(
+    alternate_witness_set,
+  )
+  let alternate_witness_compact = NativeTxCompact {
+    ..compact,
+    witness_set_hash: blake2b_256(alternate_witness_set_cbor),
+  }
+  let alternate_witness_compact_cbor = encode_native_tx_compact_v1(
+    alternate_witness_compact,
+  )
+  let alternate_witness_commitment = native_tx_proof_commitment_v1(
+    alternate_witness_compact_cbor,
+    alternate_witness_set_cbor,
+    fixture.field_preimage_lengths_cbor,
+  )
+  let field_lengths = decode_native_tx_field_preimage_lengths_v1(
+    fixture.field_preimage_lengths_cbor,
+  )
+  let alternate_field_lengths = when fixture.field_index is {
+    2 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        outputs: field_lengths.outputs + 1,
+      }
+    4 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        required_signers: field_lengths.required_signers + 1,
+      }
+    5 ->
+      NativeTxFieldPreimageLengthsV1 {
+        ..field_lengths,
+        mint: field_lengths.mint + 1,
+      }
+    _ -> field_lengths
+  }
+  let alternate_field_lengths_cbor = encode_native_tx_field_preimage_lengths_v1(
+    alternate_field_lengths,
+  )
+  let alternate_length_commitment = native_tx_proof_commitment_v1(
+    fixture.compact_cbor,
+    fixture.witness_set_compact_cbor,
+    alternate_field_lengths_cbor,
+  )
+  let alternate_length_work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+    fixture.compact_cbor,
+    fixture.witness_set_compact_cbor,
+    alternate_field_lengths_cbor,
+    validation_context_cbor,
+    fixture.field_index,
+    fixture.item_index,
+    fixture.chunk_proof.chunk_index,
+    fixture.item_count,
+    fixture.encoded_length_before_item,
+  )
+  let alternate_length_pre = validation_trace_v1.ValidationMachineStateV1 {
+    ..pre,
+    transaction_commitment: alternate_length_commitment,
+    work_root: validation_trace_v1.hash_work_witness(
+      validation_trace_v1.CanonicalDecode,
+      pre.program_counter,
+      alternate_length_work_witness_cbor,
+    ),
+  }
+  let field_size_rejection = #"455f4649454c445f505245494d4147455f53495a45"
+  let alternate_length_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+    work_witness_cbor: alternate_length_work_witness_cbor,
+    claimed_successor: exact_rejection_post(
+      alternate_length_pre,
+      field_size_rejection,
+    ),
+  }
+
+  and {
+    derived_source_commitment == fixture.transaction_commitment,
+    pre.work_root == fixture.expected_pre_work_root,
+    post.work_root == fixture.expected_post_work_root,
+    fixture.collection_proof.item_index + 1 == fixture.item_count,
+    fixture.chunk_proof.chunk_index + 1 == bounded_item_v1.chunk_count(
+      fixture.chunk_proof.total_length,
+    ),
+    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      pre,
+      transition,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      fixture.transaction_commitment,
+      fixture.compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    alternate_transaction_id != fixture.transaction_id,
+    verify_midgard_transaction_field_chunk_v1(
+      alternate_transaction_id,
+      alternate_id_commitment,
+      alternate_id_compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    !verify_midgard_transaction_field_chunk_v1(
+      alternate_transaction_id,
+      fixture.transaction_commitment,
+      alternate_id_compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    alternate_witness_set_cbor != fixture.witness_set_compact_cbor,
+    verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      alternate_witness_commitment,
+      alternate_witness_compact_cbor,
+      alternate_witness_set_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    !verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      fixture.transaction_commitment,
+      alternate_witness_compact_cbor,
+      alternate_witness_set_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+      alternate_length_pre,
+      alternate_length_transition,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+  }
+}
+
+fn maximum_output_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 2,
+    item_count: 438,
+    item_index: 437,
+    item_length: 45,
+    item_commitment: #"0597306fb7c06665c796780ac8c2c3dff11acb9d8081451b0b6841225b66502e",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 1,
+        hash: #"603f5cf5dfedbc32a9328b2dfe2229daebd97e00b6756614b6899268d5747194",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 2,
+        hash: #"e95bebbf7cce121543e7466c88586ea885fe8c0c99de76cc6cc48bae690c9d43",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"e753575ac7a8c06a27eef2344a3285467598b0c729a765ffd3e32611c0716c96",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"4d9b3fd0b424101091fc3ab48971affc2e4175bb453e1689eafee7536c927e8b",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"584997780ccd6abd1945725ef648852655a35c32ceb034331a238c9553e7b33e",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 8,
+        hash: #"a44f00d0abbdb4e8898c53b61abcd9843747bd08a27b6cb7eb83997649b5e109",
+      },
+    ],
+    siblings: [
+      #"471ddd2fe200fcacca47dfcab169d7a4a18309ba64e17771302b51785dc68b78",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 2,
+    item_index: 437,
+    total_length: 45,
+    chunk_index: 0,
+    chunk: #"a200581d605ae193abe694a607531e20f85d8358ade9a474a4f45ac4e15e962da101821b000000091c0a049ba0",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"877b968e1a24a48a08d35b9abed8cd49537127d4dd1fc1adb183d3ba2ceddedf",
+      },
+    ],
+    siblings: [],
+  }
+
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"851486b3f437bcae3712e1a2f0dbfab86062e4f0e8a3ed207607e1c0581c29e3",
+    transaction_commitment: #"23ad248d5c89787009031bf83f08588bf60d221f57370f8e3bb99b35e3d5fa2a",
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f5820171d600ea53700101a59de7d6eb4b7c321fcc68f0e73c7952b0b18a266128e501a000d5ce520205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff582017cc85b1ee02772972e50a3306e76f232174a2ad9c1e108f257a1f0204b4455800",
+    witness_set_compact_cbor: #"835820f2556fc5ee4526e1b69dd8bcf77c5dbc7cab7187bbaec526c0d69004ecc8c0d95820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"8918270119499901010101186801",
+    field_index: 2,
+    item_count: 438,
+    item_index: 437,
+    encoded_length_before_item: 18794,
+    expected_pre_work_root: #"dbff2136c653b5f01f9cc44095f2d9e72e93bbf5f87791c978c7424e2cad6030",
+    expected_post_work_root: #"3e54da6a779af01fccaba5ffe794ec0f678f22c415bf5a7c3309b3726ab5ff5c",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+test maximum_output_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_output_field_terminal_fixture_v1()),
+) {
+  verify_maximum_field_terminal_fixture_v1(fixture)
+}
+
+fn maximum_required_signer_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 4,
+    item_count: 124,
+    item_index: 123,
+    item_length: 28,
+    item_commitment: #"feb8f7de321dc04604f1f371dbb874ae0937cb89cbc9b3725f65b394f66ba84c",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 2,
+        hash: #"e5016ee8c62694b78e233d759c1f54ecde200985d94499af5f2500a3f101b57f",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 3,
+        hash: #"1bca74d8d5ff0a6459d8244e030e1b389887d60bc07bfad14910aa7a785cb39b",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 4,
+        hash: #"fe5959d59591a8e3e3f8b26a17fd836db4581e8f12cd3e35cce3f7dd1e9dfe49",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 5,
+        hash: #"6962c3759551b9b2ddad0e534754ac08b55ccfd284d8655fa6883138a8fcf418",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 6,
+        hash: #"680d5c5c242fc8a1d04d9ab55fa448e1bb43fecb5216067c636794c56c32dd65",
+      },
+    ],
+    siblings: [
+      #"599aac19a5434816ee7892b6f6e6874b812b77f395d7a4c5bc26faa0f4ed3c45",
+      #"e0fb7274ace519849848f853a11596545a2f0fa28045a6e79daca66443e1d91a",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 4,
+    item_index: 123,
+    total_length: 28,
+    chunk_index: 0,
+    chunk: #"38abf94805d076d7253d8386794096ec3d48fe233bc45d5edf97ab19",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"a413f53279be814fc18bb395723dbf929bddfb04c628af191ff9adebc0fa282a",
+      },
+    ],
+    siblings: [],
+  }
+
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"0297901027ac0e7df5aeefe14961ca4fcebcdf27d69bc9d9ab2638ee2c86b71e",
+    transaction_commitment: #"c0ef3ffbbef5147e9ebc16ace943689df4f1ba1ef4521fc62af33fc8bb0d4b67",
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582010b1e0f0eedf2fd59f6e885d21a7291fbeeaa435b794343c0d44c6222886d53f1a000d594920205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820df206ad9e3c76e42f59400a5bf8ffb6d74ef4d4c82dad8b11b36df6de3db39325820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820a41a40b9671b9e0bf7705ea9fe39e4ff4162d25391a7837f17ee3c48aaf446b700",
+    witness_set_compact_cbor: #"8358206368be82071b67667a46025edba8a97b1311d8f561553682bd05d001c1d4492f5820ae7b18490f716b798eb0871325c96023e7e8ba472b7aa0cedcd75cd05f66f76c5820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"89182701183001190e8a01011931e601",
+    field_index: 4,
+    item_count: 124,
+    item_index: 123,
+    encoded_length_before_item: 3692,
+    expected_pre_work_root: #"a9daba44283f35f0f8bd4a463aab8de3a8004e0c25518ed8fae31f0c8459a61d",
+    expected_post_work_root: #"2645969168012ec73dacba2a2fad3932d0af7eb0ee6721a5050d2eb21783e160",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+test maximum_required_signer_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_required_signer_field_terminal_fixture_v1()),
+) {
+  verify_maximum_field_terminal_fixture_v1(fixture)
+}
+
 test cek_context_signer_item_uses_authenticated_signer_frontier() {
   let tx = empty_v1_transaction()
   let signer_hash = h_28_b
@@ -11435,6 +11844,472 @@ test cek_context_tx_info_finalize_fits_one_step() {
       },
     },
   )
+}
+
+fn maximum_mint_field_terminal_fixture_v1() -> MaximumFieldTerminalFixtureV1 {
+  let collection_proof = bounded_collection_v1.ItemProofV1 {
+    version: bounded_collection_v1.version,
+    field_index: 5,
+    item_count: 130,
+    item_index: 129,
+    item_length: 43,
+    item_commitment: #"534ff6685dd10a576be7dec4ecb1cf2f239a5fdcb751db98ccc1b93ebd4e5c04",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 1,
+        hash: #"ce7d37cda58da9e9e61128e546de8b86657a6ba8b3412ff6b0ac9768220facc1",
+      },
+      validation_merkle_v1.FrontierPeak {
+        height: 7,
+        hash: #"a4e70fd3e6e67a34ff688b3ee548e87d066c538c85340620668e3b53e09d7110",
+      },
+    ],
+    siblings: [
+      #"7dee9561c439c28a1058042f1cccd273783fe91f56440e1b9c44e306d0aee12b",
+    ],
+  }
+  let chunk_proof = bounded_item_v1.ChunkProofV1 {
+    version: bounded_item_v1.version,
+    field_index: 5,
+    item_index: 129,
+    total_length: 43,
+    chunk_index: 0,
+    chunk: #"82581cffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167a1494d696467617264563101",
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"ae892cdb843a795de543205f99a43ea2d0f946bcab042d2c405bd786dbad75da",
+      },
+    ],
+    siblings: [],
+  }
+  MaximumFieldTerminalFixtureV1 {
+    transaction_id: #"fb8384370f1f3b2c4543567ee9d2bd0d3c9a4152b505c8eecd540cf99e78bcd2",
+    transaction_commitment: #"346193b5f63533c46919d8dddd78bcb99777a9a5d87c00ca49a26242c0e4e086",
+    compact_cbor: #"84018c5820114094118138473ad4d828ed3aa3b5767604cf846235863510ded7f7fb5d36655820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f582077da2ade1bedecb84bafe4fabaefeccaf5da90cd82634773f3626f2ad5e92e291a000d5d95201927105820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea7458207dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820cfe3cf8c48a624b593eb8f53bdf83543b3db912f088fbc07b40d2b800cbf6efd00",
+    witness_set_compact_cbor: #"8358205a38624e9c4dd250767e307ff82f25d727953cbe76e83ed2361505d1bfde4e2658201ae334ef559fb72274ae60b8a4b57232ad0bc17b9fcbb6c4cc51aef26774c6e65820196ccfc47d922bafc8abf3a727aa1afba83b8583e2063c5d281f5d2b60b62ef3",
+    field_preimage_lengths_cbor: #"891827011915b2010119155619165a186801",
+    field_index: 5,
+    item_count: 130,
+    item_index: 129,
+    encoded_length_before_item: 5420,
+    expected_pre_work_root: #"fb84741314c90a947da6e44eee2d225d2f80a61bf0ab36e84b378f41881ad49a",
+    expected_post_work_root: #"9c2c4e915e7d0f502fa3070c90c9eafb2f59526f9e02c21e8a2cbf756457e83a",
+    collection_proof,
+    chunk_proof,
+  }
+}
+
+fn verify_maximum_mint_field_terminal_fixture_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> Bool {
+  let terminal = fixture.chunk_proof.chunk
+  let chunk_length = bytearray.length(terminal)
+  let policy_mutation = replace_byte_v1(terminal, 3, #"fe")
+  let asset_name_mutation = replace_byte_v1(terminal, 33, #"4e")
+  let sign_mutation = replace_byte_v1(terminal, 42, #"20")
+
+  and {
+    verify_maximum_field_terminal_fixture_v1(fixture),
+    chunk_length == 43,
+    builtin.slice_bytearray(3, 1, terminal) == #"ff",
+    builtin.slice_bytearray(33, 1, terminal) == #"4d",
+    builtin.slice_bytearray(42, 1, terminal) == #"01",
+    verify_terminal_substitution_control_v1(fixture, policy_mutation),
+    verify_terminal_substitution_control_v1(fixture, asset_name_mutation),
+    verify_terminal_substitution_control_v1(fixture, sign_mutation),
+    verify_terminal_reorder_control_v1(fixture),
+    verify_terminal_omission_control_v1(fixture),
+    verify_terminal_duplicate_control_v1(fixture),
+  }
+}
+
+fn replace_byte_v1(
+  bytes: ByteArray,
+  offset: Int,
+  replacement: ByteArray,
+) -> ByteArray {
+  expect bytearray.length(replacement) == 1
+  expect offset >= 0
+  expect offset < bytearray.length(bytes)
+  builtin.slice_bytearray(0, offset, bytes)
+    |> bytearray.concat(replacement)
+    |> bytearray.concat(
+        builtin.slice_bytearray(
+          offset + 1,
+          bytearray.length(bytes) - offset - 1,
+          bytes,
+        ),
+      )
+}
+
+fn verify_terminal_substitution_control_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+  alternate_item: ByteArray,
+) -> Bool {
+  expect [_, history_peak] = fixture.collection_proof.frontier
+  expect [left_leaf] = fixture.collection_proof.siblings
+  let alternate_item_commitment = bounded_item_v1.from_bytes(
+    fixture.field_index,
+    fixture.item_index,
+    alternate_item,
+  )
+  let alternate_leaf = bounded_collection_v1.hash_item(
+    fixture.field_index,
+    fixture.item_index,
+    bytearray.length(alternate_item),
+    alternate_item_commitment,
+  )
+  let alternate_frontier = [
+    validation_merkle_v1.FrontierPeak {
+      height: 1,
+      hash: validation_merkle_v1.hash_branch(left_leaf, alternate_leaf),
+    },
+    history_peak,
+  ]
+  let alternate_field_commitment = bounded_collection_v1.commitment(
+    fixture.field_index,
+    fixture.item_count,
+    alternate_frontier,
+  )
+  let alternate_collection_proof = bounded_collection_v1.ItemProofV1 {
+    ..fixture.collection_proof,
+    item_commitment: alternate_item_commitment,
+    frontier: alternate_frontier,
+  }
+  let alternate_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    ..fixture.chunk_proof,
+    chunk: alternate_item,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(
+          fixture.field_index,
+          fixture.item_index,
+          0,
+          alternate_item,
+        ),
+      },
+    ],
+  }
+  and {
+    alternate_item != fixture.chunk_proof.chunk,
+    alternate_item_commitment != fixture.collection_proof.item_commitment,
+    alternate_field_commitment != bounded_collection_v1.commitment(
+      fixture.field_index,
+      fixture.item_count,
+      fixture.collection_proof.frontier,
+    ),
+    bounded_collection_v1.verify_item(
+      alternate_field_commitment,
+      alternate_collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      alternate_item_commitment,
+      alternate_chunk_proof,
+    ),
+    !verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      fixture.transaction_commitment,
+      fixture.compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      alternate_collection_proof,
+      alternate_chunk_proof,
+    ),
+  }
+}
+
+fn verify_terminal_reorder_control_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> Bool {
+  expect [original_pair_peak, history_peak] = fixture.collection_proof.frontier
+  expect [original_penultimate_leaf] = fixture.collection_proof.siblings
+  let penultimate_item = #"82581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573fa1494d696467617264563101"
+  let terminal_at_128_commitment = bounded_item_v1.from_bytes(
+    fixture.field_index,
+    128,
+    fixture.chunk_proof.chunk,
+  )
+  let terminal_at_128_leaf = bounded_collection_v1.hash_item(
+    fixture.field_index,
+    128,
+    bytearray.length(fixture.chunk_proof.chunk),
+    terminal_at_128_commitment,
+  )
+  let penultimate_at_129_commitment = bounded_item_v1.from_bytes(
+    fixture.field_index,
+    129,
+    penultimate_item,
+  )
+  let penultimate_at_129_leaf = bounded_collection_v1.hash_item(
+    fixture.field_index,
+    129,
+    bytearray.length(penultimate_item),
+    penultimate_at_129_commitment,
+  )
+  let reordered_frontier = [
+    validation_merkle_v1.FrontierPeak {
+      height: 1,
+      hash: validation_merkle_v1.hash_branch(
+        terminal_at_128_leaf,
+        penultimate_at_129_leaf,
+      ),
+    },
+    history_peak,
+  ]
+  let reordered_commitment = bounded_collection_v1.commitment(
+    fixture.field_index,
+    fixture.item_count,
+    reordered_frontier,
+  )
+  let reordered_collection_proof = bounded_collection_v1.ItemProofV1 {
+    ..fixture.collection_proof,
+    item_commitment: penultimate_at_129_commitment,
+    frontier: reordered_frontier,
+    siblings: [terminal_at_128_leaf],
+  }
+  let reordered_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    ..fixture.chunk_proof,
+    chunk: penultimate_item,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(
+          fixture.field_index,
+          fixture.item_index,
+          0,
+          penultimate_item,
+        ),
+      },
+    ],
+  }
+  and {
+    penultimate_item != fixture.chunk_proof.chunk,
+    original_pair_peak.height == 1,
+    history_peak.height == 7,
+    original_penultimate_leaf == bounded_collection_v1.hash_item(
+      fixture.field_index,
+      128,
+      bytearray.length(penultimate_item),
+      bounded_item_v1.from_bytes(fixture.field_index, 128, penultimate_item),
+    ),
+    original_pair_peak.hash == validation_merkle_v1.hash_branch(
+      original_penultimate_leaf,
+      bounded_collection_v1.hash_item(
+        fixture.field_index,
+        fixture.item_index,
+        bytearray.length(fixture.chunk_proof.chunk),
+        fixture.collection_proof.item_commitment,
+      ),
+    ),
+    reordered_commitment != bounded_collection_v1.commitment(
+      fixture.field_index,
+      fixture.item_count,
+      fixture.collection_proof.frontier,
+    ),
+    bounded_collection_v1.verify_item(
+      reordered_commitment,
+      reordered_collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(
+      penultimate_at_129_commitment,
+      reordered_chunk_proof,
+    ),
+    !verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      fixture.transaction_commitment,
+      fixture.compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      reordered_collection_proof,
+      reordered_chunk_proof,
+    ),
+  }
+}
+
+fn verify_terminal_omission_control_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> Bool {
+  expect [original_pair_peak, history_peak] = fixture.collection_proof.frontier
+  expect [original_penultimate_leaf] = fixture.collection_proof.siblings
+  let penultimate_item = #"82581cfd3452414d0f1a97c2224438290268bf6c263151dc73e7c2fa0a573fa1494d696467617264563101"
+  let penultimate_commitment = bounded_item_v1.from_bytes(
+    fixture.field_index,
+    128,
+    penultimate_item,
+  )
+  let penultimate_leaf = bounded_collection_v1.hash_item(
+    fixture.field_index,
+    128,
+    bytearray.length(penultimate_item),
+    penultimate_commitment,
+  )
+  let omission_frontier = [
+    validation_merkle_v1.FrontierPeak { height: 0, hash: penultimate_leaf },
+    history_peak,
+  ]
+  let omission_commitment = bounded_collection_v1.commitment(
+    fixture.field_index,
+    129,
+    omission_frontier,
+  )
+  let omission_collection_proof = bounded_collection_v1.ItemProofV1 {
+    ..fixture.collection_proof,
+    item_count: 129,
+    item_index: 128,
+    item_commitment: penultimate_commitment,
+    frontier: omission_frontier,
+    siblings: [],
+  }
+  let omission_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    ..fixture.chunk_proof,
+    item_index: 128,
+    chunk: penultimate_item,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(
+          fixture.field_index,
+          128,
+          0,
+          penultimate_item,
+        ),
+      },
+    ],
+  }
+  let compact = decode_native_tx_compact_v1(fixture.compact_cbor)
+  let compact_body = compact.body
+  let omission_body = NativeTxBodyCompact {
+    ..compact_body,
+    mint_hash: omission_commitment,
+  }
+  let omission_compact = NativeTxCompact { ..compact, body: omission_body }
+  let omission_compact_cbor = encode_native_tx_compact_v1(omission_compact)
+  let omission_transaction_id = native_tx_id_for_version(
+    native_tx_version_v1,
+    encode_native_tx_body_compact(omission_body),
+  )
+  let omission_source_commitment = native_tx_proof_commitment_v1(
+    omission_compact_cbor,
+    fixture.witness_set_compact_cbor,
+    fixture.field_preimage_lengths_cbor,
+  )
+  and {
+    omission_commitment != compact.body.mint_hash,
+    original_pair_peak.height == 1,
+    history_peak.height == 7,
+    penultimate_leaf == original_penultimate_leaf,
+    original_pair_peak.hash == validation_merkle_v1.hash_branch(
+      penultimate_leaf,
+      bounded_collection_v1.hash_item(
+        fixture.field_index,
+        fixture.item_index,
+        bytearray.length(fixture.chunk_proof.chunk),
+        fixture.collection_proof.item_commitment,
+      ),
+    ),
+    bounded_collection_v1.verify_item(
+      omission_commitment,
+      omission_collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(penultimate_commitment, omission_chunk_proof),
+    verify_midgard_transaction_field_chunk_v1(
+      omission_transaction_id,
+      omission_source_commitment,
+      omission_compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      omission_collection_proof,
+      omission_chunk_proof,
+    ),
+    !verify_midgard_transaction_field_chunk_v1(
+      omission_transaction_id,
+      omission_source_commitment,
+      omission_compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      fixture.collection_proof,
+      fixture.chunk_proof,
+    ),
+  }
+}
+
+fn verify_terminal_duplicate_control_v1(
+  fixture: MaximumFieldTerminalFixtureV1,
+) -> Bool {
+  let duplicate_index = fixture.item_count
+  let duplicate_commitment = bounded_item_v1.from_bytes(
+    fixture.field_index,
+    duplicate_index,
+    fixture.chunk_proof.chunk,
+  )
+  let duplicate_leaf = bounded_collection_v1.hash_item(
+    fixture.field_index,
+    duplicate_index,
+    bytearray.length(fixture.chunk_proof.chunk),
+    duplicate_commitment,
+  )
+  let duplicate_frontier = validation_merkle_v1.append_leaf(
+    fixture.item_count,
+    fixture.collection_proof.frontier,
+    duplicate_leaf,
+  )
+  let duplicate_field_commitment = bounded_collection_v1.commitment(
+    fixture.field_index,
+    fixture.item_count + 1,
+    duplicate_frontier,
+  )
+  let duplicate_collection_proof = bounded_collection_v1.ItemProofV1 {
+    ..fixture.collection_proof,
+    item_count: fixture.item_count + 1,
+    item_index: duplicate_index,
+    item_commitment: duplicate_commitment,
+    frontier: duplicate_frontier,
+    siblings: [],
+  }
+  let duplicate_chunk_proof = bounded_item_v1.ChunkProofV1 {
+    ..fixture.chunk_proof,
+    item_index: duplicate_index,
+    frontier: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: bounded_item_v1.hash_chunk(
+          fixture.field_index,
+          duplicate_index,
+          0,
+          fixture.chunk_proof.chunk,
+        ),
+      },
+    ],
+  }
+  and {
+    duplicate_field_commitment != bounded_collection_v1.commitment(
+      fixture.field_index,
+      fixture.item_count,
+      fixture.collection_proof.frontier,
+    ),
+    bounded_collection_v1.verify_item(
+      duplicate_field_commitment,
+      duplicate_collection_proof,
+    ),
+    bounded_item_v1.verify_chunk(duplicate_commitment, duplicate_chunk_proof),
+    !verify_midgard_transaction_field_chunk_v1(
+      fixture.transaction_id,
+      fixture.transaction_commitment,
+      fixture.compact_cbor,
+      fixture.witness_set_compact_cbor,
+      fixture.field_preimage_lengths_cbor,
+      duplicate_collection_proof,
+      duplicate_chunk_proof,
+    ),
+  }
+}
+
+test maximum_mint_field_terminal_matches_typescript(
+  fixture via fuzz.constant(maximum_mint_field_terminal_fixture_v1()),
+) {
+  verify_maximum_mint_field_terminal_fixture_v1(fixture)
 }
 
 test cek_context_maximum_mint_initializes_from_authenticated_frontier() {

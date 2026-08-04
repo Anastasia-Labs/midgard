@@ -1,3 +1,7 @@
+import {
+  decodeSingleCbor,
+  deriveMidgardNativeFieldItemBytesV1,
+} from "@al-ft/midgard-core";
 import { CML, Emulator } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +18,59 @@ import {
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
+
+const maximumMintTerminalFoldVectorV1 = {
+  fieldCommitmentHex:
+    "7dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32",
+  transactionIdHex:
+    "fb8384370f1f3b2c4543567ee9d2bd0d3c9a4152b505c8eecd540cf99e78bcd2",
+  transactionCommitmentHex:
+    "346193b5f63533c46919d8dddd78bcb99777a9a5d87c00ca49a26242c0e4e086",
+  preWorkRootHex:
+    "fb84741314c90a947da6e44eee2d225d2f80a61bf0ab36e84b378f41881ad49a",
+  postWorkRootHex:
+    "9c2c4e915e7d0f502fa3070c90c9eafb2f59526f9e02c21e8a2cbf756457e83a",
+  encodedLengthBeforeItem: 5_420,
+  collectionProof: {
+    fieldIndex: 5,
+    itemCount: 130,
+    itemIndex: 129,
+    itemLength: 43,
+    itemCommitmentHex:
+      "534ff6685dd10a576be7dec4ecb1cf2f239a5fdcb751db98ccc1b93ebd4e5c04",
+    frontier: [
+      {
+        height: 1,
+        hashHex:
+          "ce7d37cda58da9e9e61128e546de8b86657a6ba8b3412ff6b0ac9768220facc1",
+      },
+      {
+        height: 7,
+        hashHex:
+          "a4e70fd3e6e67a34ff688b3ee548e87d066c538c85340620668e3b53e09d7110",
+      },
+    ],
+    siblingHexes: [
+      "7dee9561c439c28a1058042f1cccd273783fe91f56440e1b9c44e306d0aee12b",
+    ],
+  },
+  chunkProof: {
+    fieldIndex: 5,
+    itemIndex: 129,
+    totalLength: 43,
+    chunkIndex: 0,
+    chunkHex:
+      "82581cffab1dd64f82b6991818c1ecc5047d52ce5d00f6fdbc5023e2980167a1494d696467617264563101",
+    frontier: [
+      {
+        height: 0,
+        hashHex:
+          "ae892cdb843a795de543205f99a43ea2d0f946bcab042d2c405bd786dbad75da",
+      },
+    ],
+    siblingHexes: [],
+  },
+} as const;
 
 describe("canonical V1 mint Cardano boundary", () => {
   it("packs field-5 assets under maxValueSize and authorizes every policy with a field-6 native script", async () => {
@@ -204,6 +261,62 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(mintField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
+    const nativeMintItems = deriveMidgardNativeFieldItemBytesV1({
+      fieldIndex: 5,
+      preimageCbor: Buffer.from(mintField.fieldPreimageCborHex, "hex"),
+    });
+    const nativeMintEntries = nativeMintItems.map((item, itemIndex) => {
+      const decoded = decodeSingleCbor(item);
+      if (
+        !Array.isArray(decoded) ||
+        decoded.length !== 2 ||
+        !(decoded[0] instanceof Uint8Array) ||
+        !(decoded[1] instanceof Map) ||
+        decoded[1].size !== 1
+      ) {
+        throw new Error(
+          `Canonical native mint item ${itemIndex.toString()} is not one exact policy/asset pair`,
+        );
+      }
+      const [[assetName, quantity]] = decoded[1].entries();
+      if (
+        !(assetName instanceof Uint8Array) ||
+        (typeof quantity !== "bigint" &&
+          (typeof quantity !== "number" || !Number.isSafeInteger(quantity)))
+      ) {
+        throw new Error(
+          `Canonical native mint item ${itemIndex.toString()} changed asset identity or signed quantity`,
+        );
+      }
+      return {
+        policyIdHex: Buffer.from(decoded[0]).toString("hex"),
+        assetNameHex: Buffer.from(assetName).toString("hex"),
+        quantity: BigInt(quantity),
+      };
+    });
+    expect(nativeMintEntries.map(({ policyIdHex }) => policyIdHex)).toEqual(
+      acceptedCardano.mintPolicyHashHexes,
+    );
+    expect(nativeMintEntries.map(({ assetNameHex }) => assetNameHex)).toEqual(
+      Array.from({ length: acceptedCardano.mintPolicyCount }, () =>
+        CARDANO_BOUNDARY_MINT_ASSET_NAME_V1.toString("hex"),
+      ),
+    );
+    expect(nativeMintEntries.map(({ quantity }) => quantity)).toEqual(
+      acceptedCardano.mintQuantities,
+    );
+    expect({
+      fieldCommitmentHex: mintField.fieldCommitmentHex,
+      transactionIdHex: mintField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        mintField.terminalFoldVector.transactionCommitmentHex,
+      preWorkRootHex: mintField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: mintField.terminalFoldVector.postWorkRootHex,
+      encodedLengthBeforeItem:
+        mintField.terminalFoldVector.encodedLengthBeforeItem,
+      collectionProof: mintField.terminalFoldVector.collectionProof,
+      chunkProof: mintField.terminalFoldVector.chunkProof,
+    }).toEqual(maximumMintTerminalFoldVectorV1);
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
@@ -254,6 +367,10 @@ describe("canonical V1 mint Cardano boundary", () => {
               mintMaxRevealBytes: mintField.maxRevealBytes,
               scriptWitnessItems: scriptField.itemCount,
               completeFoldSteps: mintField.completeFoldStepCount,
+              penultimateMintItemHex: Buffer.from(
+                nativeMintItems.at(-2) ?? Buffer.alloc(0),
+              ).toString("hex"),
+              terminalFoldVector: mintField.terminalFoldVector,
               adjacentRequestedPolicyCount:
                 boundary.adjacent.requestedItemCount,
               adjacentMintPolicyCount: adjacentCardano.mintPolicyCount,

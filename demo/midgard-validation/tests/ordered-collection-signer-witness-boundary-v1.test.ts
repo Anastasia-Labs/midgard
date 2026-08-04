@@ -12,6 +12,33 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
+const maximumRequiredSignerTerminalFoldVectorV1 = {
+  transactionIdHex:
+    "0297901027ac0e7df5aeefe14961ca4fcebcdf27d69bc9d9ab2638ee2c86b71e",
+  transactionCommitmentHex:
+    "c0ef3ffbbef5147e9ebc16ace943689df4f1ba1ef4521fc62af33fc8bb0d4b67",
+  preWorkRootHex:
+    "a9daba44283f35f0f8bd4a463aab8de3a8004e0c25518ed8fae31f0c8459a61d",
+  postWorkRootHex:
+    "2645969168012ec73dacba2a2fad3932d0af7eb0ee6721a5050d2eb21783e160",
+  encodedLengthBeforeItem: 3_692,
+  collectionProof: {
+    fieldIndex: 4,
+    itemCount: 124,
+    itemIndex: 123,
+    itemLength: 28,
+    itemCommitmentHex:
+      "feb8f7de321dc04604f1f371dbb874ae0937cb89cbc9b3725f65b394f66ba84c",
+  },
+  chunkProof: {
+    fieldIndex: 4,
+    itemIndex: 123,
+    totalLength: 28,
+    chunkIndex: 0,
+    chunkHex: "38abf94805d076d7253d8386794096ec3d48fe233bc45d5edf97ab19",
+  },
+} as const;
+
 describe("canonical V1 coupled signer/witness Cardano boundary", () => {
   it("derives and reveals fields 4 and 7 from one exact signed transaction", async () => {
     const spendingKey = deterministicCardanoBoundaryPrivateKeyV1(0);
@@ -129,6 +156,30 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     expect(witnessField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
+    expect({
+      transactionIdHex: signerField.terminalFoldVector.transactionIdHex,
+      transactionCommitmentHex:
+        signerField.terminalFoldVector.transactionCommitmentHex,
+      preWorkRootHex: signerField.terminalFoldVector.preWorkRootHex,
+      postWorkRootHex: signerField.terminalFoldVector.postWorkRootHex,
+      encodedLengthBeforeItem:
+        signerField.terminalFoldVector.encodedLengthBeforeItem,
+      collectionProof: {
+        fieldIndex: signerField.terminalFoldVector.collectionProof.fieldIndex,
+        itemCount: signerField.terminalFoldVector.collectionProof.itemCount,
+        itemIndex: signerField.terminalFoldVector.collectionProof.itemIndex,
+        itemLength: signerField.terminalFoldVector.collectionProof.itemLength,
+        itemCommitmentHex:
+          signerField.terminalFoldVector.collectionProof.itemCommitmentHex,
+      },
+      chunkProof: {
+        fieldIndex: signerField.terminalFoldVector.chunkProof.fieldIndex,
+        itemIndex: signerField.terminalFoldVector.chunkProof.itemIndex,
+        totalLength: signerField.terminalFoldVector.chunkProof.totalLength,
+        chunkIndex: signerField.terminalFoldVector.chunkProof.chunkIndex,
+        chunkHex: signerField.terminalFoldVector.chunkProof.chunkHex,
+      },
+    }).toEqual(maximumRequiredSignerTerminalFoldVectorV1);
 
     const txHash = await emulator.submitTx(boundary.accepted.cborHex);
     await expect(emulator.awaitTx(txHash)).resolves.toBe(true);
@@ -164,6 +215,7 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
                 maxRevealBytes: witnessField.maxRevealBytes,
               },
               completeFoldSteps: signerField.completeFoldStepCount,
+              terminalFoldVector: signerField.terminalFoldVector,
               adjacentRequestedSignerCount:
                 boundary.adjacent.requestedItemCount,
               adjacentRequiredSignerCount: adjacentCardano.requiredSignerCount,

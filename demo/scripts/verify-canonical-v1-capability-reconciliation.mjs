@@ -39,12 +39,11 @@ const statusCount = (status) =>
   taskEntries.filter(([, disposition]) => disposition === status).length;
 assert.deepEqual(evidence.p2Summary, {
   tasks: 22,
-  // C20-6/C20-7 promoted 2026-08-03: the five VM-MODULE-FAILURES selectors
-  // pass (verified twice by independent `aiken check -m` runs, total 5
-  // passed 5) and field order is source-complete across transaction.ak and
-  // native-witness.ts. CG2 stays OPEN while any P2 task is PARTIAL.
-  pass: 12,
-  partial: 10,
+  // C20-6/C20-7 were promoted 2026-08-03. C20-2/C20-4/C20-5 were promoted
+  // 2026-08-04 after independent exact Aiken/TypeScript boundary and terminal
+  // replay. CG2 stays OPEN while any P2 task is PARTIAL.
+  pass: 15,
+  partial: 7,
   open: 0,
   authoritativeConflict: 0,
   gate: "OPEN",
