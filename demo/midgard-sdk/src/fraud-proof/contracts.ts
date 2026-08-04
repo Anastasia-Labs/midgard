@@ -7,9 +7,9 @@ import {
   mintingPolicyToId,
   Network,
   SpendingValidator as LucidSpendingValidator,
+  toHex,
   validatorToAddress,
   validatorToScriptHash,
-  toHex,
 } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
