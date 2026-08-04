@@ -80,7 +80,11 @@
       ],
       "size": "S",
       "risk": "medium",
-      "detailStatus": "PENDING_ASSIGNMENT"
+      "detailStatus": "DETAILED",
+      "readyBecause": "F04 §2.1 launch economics, §3 finality rows, and §5.2 hardware floor are owner-ACCEPTED (decision record :11-15; GOAL_PROGRESS.md:793-804). Per the row's own acceptance text, PROVISIONAL values unblock local work; owner approval is required only before CG5 binds them into the release identity - recorded as a CG5 invalidation trigger. Queue row promoted to scoped PASS 2026-08-03.",
+      "invalidationTriggers": [
+        "Any F04 value leaving PROVISIONAL or changing before CG5 re-runs every consumer's focused suite (Q53, Q61, Q63, W04, W12, C74, C80, Q54)"
+      ]
     },
     {
       "id": "F05",
@@ -4341,9 +4345,6 @@
         "Q55",
         "Q58",
         "Q59",
-        "QG1",
-        "QG2",
-        "QG3",
         "Q60",
         "Q61",
         "Q62",
@@ -4351,7 +4352,8 @@
       ],
       "size": "L",
       "risk": "medium",
-      "detailStatus": "PENDING_ASSIGNMENT"
+      "detailStatus": "PENDING_ASSIGNMENT",
+      "schedulingNote": "2026-08-03 parent correction (D8): the earlier dependsOn expansion included QG1-QG3, but QG2 itself depends on Q51-Q56, making Q56 permanently unreachable; the spec text (GOAL_SPEC §9.4) lists only Q50-Q55, Q58-Q63."
     },
     {
       "id": "Q57",
