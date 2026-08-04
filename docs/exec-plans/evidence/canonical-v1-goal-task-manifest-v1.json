@@ -4184,7 +4184,89 @@
       ],
       "size": "L",
       "risk": "medium",
-      "detailStatus": "PENDING_ASSIGNMENT"
+      "detailStatus": "DETAILED",
+      "writablePaths": [
+        "demo/midgard-core/src/retention-window-v1.ts",
+        "demo/midgard-core/src/index.ts",
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+        "demo/midgard-core/tests/retention-window-v1.test.ts",
+        "demo/midgard-node/src/database/retention-policy.ts",
+        "demo/midgard-node/src/database/daPayloads.ts",
+        "demo/midgard-node/src/fibers/retention-sweeper.ts",
+        "demo/midgard-node/src/services/config.ts",
+        "demo/midgard-node/src/commands/retention-check.ts",
+        "demo/midgard-node/src/commands/readiness.ts",
+        "demo/midgard-node/src/index.ts",
+        "demo/midgard-node/tests/retention-policy.test.ts",
+        "demo/midgard-node/tests/retention-enforcement-v1.test.ts",
+        "demo/midgard-node/.env.example",
+        "demo/da-committee-node/src/config.ts",
+        "demo/da-committee-node/src/store/retention.ts",
+        "demo/da-committee-node/src/store.ts",
+        "demo/da-committee-node/src/store/postgres.ts",
+        "demo/da-committee-node/tests/store-retention.test.ts",
+        "demo/da-committee-node/tests/public-retained-da-store.test.ts"
+      ],
+      "pathsMustNotTouch": [
+        "GOAL_PROGRESS.md",
+        "GOAL_SPEC.md",
+        "docs/exec-plans/evidence/**",
+        "docs/fault-proofs/**",
+        "docs/midgard/decisions/**",
+        "onchain/**",
+        "demo/package.json",
+        "demo/pnpm-lock.yaml",
+        ".github/**",
+        "demo/midgard-watcher/**",
+        "demo/midgard-node/src/database/txAdmissions.ts",
+        "demo/midgard-node/tests/tx-admissions-claim-load.test.ts",
+        "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs",
+        "demo/da-committee-node/src/store/public-retained-da.ts",
+        "demo/midgard-core/src/da-transport.ts",
+        "demo/midgard-core/src/consensus-profile-v1.ts"
+      ],
+      "sourceAnchors": [
+        "GOAL_SPEC.md §9.4 Q54 row; §2.2; §3.1.5; §3.3 clause 3",
+        "docs/midgard/decisions/0002-canonical-v1-goal-economics-and-margins.md:21-28,75-78 (maturity 604800000 ms; half-maturity bound 302400000 ms; RETENTION_DAYS 15; PROVISIONAL status)",
+        "demo/midgard-core/src/da-transport.ts:50-58 minimumRetentionDays=15",
+        "demo/midgard-core/src/consensus-profile-v1.ts:140,142-146,252-253",
+        "demo/midgard-core/src/deployment-manifest-identity-v1.ts:1197-1215,1489-1499",
+        "demo/midgard-node/src/database/retention-policy.ts:3 (8-day floor to replace)",
+        "demo/midgard-node/src/database/daPayloads.ts:238-254 pruneOlderThan",
+        "demo/da-committee-node/src/config.ts:247,1320 (LIBP2P_DA_MIN_RETENTION_DAYS unenforced)",
+        "demo/da-committee-node/src/store/public-retained-da.ts:113-202 (read-only proof surface)"
+      ],
+      "evidenceOutputs": [
+        "Derived retention window constants (requiredRetentionMs=907200000, deployedRetentionMs=1296000000, marginMs=388800000) asserted in tests",
+        "Deployment-identity window binding: config-load failure below manifest window in node and committee",
+        "Challengeability-aware prune predicate: block_end_time + terminal header status; NULL/unknown retains",
+        "Executable deadline alert: retention-check CLI verb exit codes plus Prometheus gauge plus readiness reason",
+        "Adversarial structural proof that the public retained-DA role cannot prune"
+      ],
+      "focusedCommands": [
+        "pnpm --dir demo/midgard-core exec vitest run tests/retention-window-v1.test.ts",
+        "pnpm --dir demo/midgard-core exec vitest run tests/da-transport.test.ts tests/da-transport-vectors.test.ts",
+        "pnpm --dir demo/midgard-core exec tsc --noEmit",
+        "pnpm --dir demo/midgard-node exec vitest run tests/retention-policy.test.ts tests/retention-enforcement-v1.test.ts",
+        "pnpm --dir demo/midgard-node exec vitest run tests/deployment-manifest-v1.test.ts tests/contract-deployment-info.test.ts",
+        "pnpm --dir demo/midgard-node exec tsc --noEmit",
+        "pnpm --dir demo/da-committee-node exec vitest run tests/store-retention.test.ts tests/public-retained-da-store.test.ts tests/store-factory.test.ts tests/config.test.ts tests/startup-release-gate.test.ts",
+        "pnpm --dir demo/da-committee-node exec tsc --noEmit",
+        "pnpm --dir demo run goal:verify:static"
+      ],
+      "expectedNonzeroCounts": [
+        "retention-policy.test.ts rises above measured 4 and drops the 8-day string",
+        "retention-window-v1.test.ts new suite > 0 with the four F04 arithmetic assertions",
+        "retention-enforcement-v1.test.ts new suite > 0 with one case per Q54 clause",
+        "store-retention.test.ts new suite > 0",
+        "public-retained-da-store.test.ts rises above measured 5",
+        "store-factory.test.ts stays exactly 12"
+      ],
+      "invalidationTriggers": [
+        "Q44 closure adds fields/tables/record versions to retained DA artifacts (re-derive daRetentionPruneDecisionV1 input and re-run committee retention suite at Q44 integration revision)",
+        "F04 section 3 retention row leaves PROVISIONAL status or changes RETENTION_DAYS",
+        "W04/C74 measured worst-case correction path exceeds the half-maturity bound"
+      ]
     },
     {
       "id": "Q55",
