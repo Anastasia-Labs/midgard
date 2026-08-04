@@ -31,6 +31,7 @@
       "demo/midgard-watcher/src/multi-provider-consistency.ts",
       "demo/midgard-watcher/src/proof-thread-indexer.ts",
       "demo/midgard-watcher/src/public-da-client.ts",
+      "demo/midgard-watcher/src/public-da-libp2p-transport.ts",
       "demo/midgard-watcher/src/rollback-engine.ts",
       "demo/midgard-watcher/src/rule-bundle-v1.ts",
       "demo/midgard-watcher/src/scaffold.ts",
