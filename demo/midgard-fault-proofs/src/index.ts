@@ -7,6 +7,7 @@ export * from "./inspect-contracts.js";
 // the same retirement guard until an authenticated canonical submitter exists.
 export * from "./prepare-da-hash-preimage.js";
 export * from "./prepare-double-spend.js";
+export * from "./prepare-input-no-idx.js";
 export * from "./prepare-invalid-range.js";
 export * from "./prepare-non-existent-input.js";
 export * from "./prepare-zero-input.js";

@@ -5,6 +5,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
 use midgard/fraud_proofs/input_no_idx/step_03.{Datum, SpendRedeemer, State}
 use midgard/fraud_proofs/input_no_idx/step_04
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -80,4 +81,62 @@ validator main(
   else(_) {
     fail
   }
+}
+
+// ## Selectors
+//
+// Step-03 re-enters the block binding for a second committed transaction: the
+// producing transaction of the input forwarded by step-02. It may only forward
+// the outputs commitment of a transaction whose canonical id is exactly the
+// forwarded `bad_input_tx_id`.
+
+fn run_step_03(
+  producing: fixture.NativeBlockFixtureV1,
+  bad_input_tx_id: ByteArray,
+  bad_input_output_index: Int,
+) -> Bool {
+  let expected_output_state: Data = step_04.State {
+    producing_tx_outputs_hash: producing.compact.body.outputs_hash,
+    bad_input_output_index,
+  }
+  let l1_tx = fixture.continue_step_l1_tx_v1(
+    producing,
+    expected_output_state,
+    producing.transactions_phas_root,
+    producing.tx_id,
+    producing.compact_cbor,
+  )
+  main.spend(
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    fixture.hub_oracle_script_hash,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(State { bad_input_tx_id, bad_input_output_index }),
+      },
+    ),
+    ct.Continue(fixture.native_inclusion_args_v1(producing)),
+    fixture.own_out_ref(),
+    l1_tx,
+  )
+}
+
+/// Positive selector: the producing transaction named by the forwarded input
+/// is genuinely committed under the same block's counted `transactions_root`,
+/// so its canonical outputs commitment and the challenged output index reach
+/// step-04.
+test input_no_idx_step_03_forwards_the_producing_tx_outputs_hash() {
+  let producing = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  run_step_03(producing, producing.tx_id, 7)
+}
+
+/// Valid-block negative selector: in a valid block every spend input names its
+/// true producing transaction. A prover who binds some other committed
+/// transaction to the forwarded input id is stopped here, so an input that
+/// really exists cannot be walked towards a non-existence verdict.
+test input_no_idx_step_03_rejects_a_substituted_producing_transaction() fail {
+  let producing = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let other_tx_id = #"3131313131313131313131313131313131313131313131313131313131313131"
+  run_step_03(producing, other_tx_id, 7)
 }

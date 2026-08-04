@@ -12,6 +12,8 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import * as SDK from "@/index.js";
+
 import {
   AddressData,
   addressDataFromBech32,
@@ -334,6 +336,138 @@ describe("fault-proof ABI", () => {
       ),
     ).toMatchObject({
       Continue: [{ fraud_proof_mint_redeemer_index: 1n }],
+    });
+  });
+
+  it("round-trips input-no-idx step datums and redeemers", () => {
+    expect(
+      roundTrip({ fraud_prover: h28, data: null }, SDK.InputNoIdxStep01Datum),
+    ).toEqual({ fraud_prover: h28, data: null });
+    expect(
+      roundTrip(
+        { Continue: [txInclusionArgs] },
+        SDK.InputNoIdxStep01SpendRedeemer,
+      ),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step02Datum = {
+      fraud_prover: h28,
+      data: { verified_tx_inputs_hash: h32 },
+    };
+    expect(roundTrip(step02Datum, SDK.InputNoIdxStep02Datum)).toEqual(
+      step02Datum,
+    );
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              input_index: 0n,
+              output_index: 0n,
+              inputs_preimage: [{ tx_id: h32b, output_index: 7n }],
+              bad_inputs_index: 0n,
+            },
+          ],
+        },
+        SDK.InputNoIdxStep02SpendRedeemer,
+      ),
+    ).toMatchObject({
+      Continue: [{ inputs_preimage: [{ output_index: 7n }] }],
+    });
+
+    const step03Datum = {
+      fraud_prover: h28,
+      data: { bad_input_tx_id: h32b, bad_input_output_index: 7n },
+    };
+    expect(roundTrip(step03Datum, SDK.InputNoIdxStep03Datum)).toEqual(
+      step03Datum,
+    );
+    expect(
+      roundTrip(
+        { Continue: [txInclusionArgs] },
+        SDK.InputNoIdxStep03SpendRedeemer,
+      ),
+    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+
+    const step04Datum = {
+      fraud_prover: h28,
+      data: { producing_tx_outputs_hash: h32, bad_input_output_index: 7n },
+    };
+    expect(roundTrip(step04Datum, SDK.InputNoIdxStep04Datum)).toEqual(
+      step04Datum,
+    );
+    const output = {
+      address: {
+        protected: false,
+        network_id: 0n,
+        payment_credential: { PubKeyCredential: [h28] },
+        stake_credential: null,
+      },
+      value: { lovelace: 5_000_000n, assets: new Map<string, bigint>() },
+      datum_cbor: null,
+      script_ref: null,
+    };
+    expect(
+      roundTrip(
+        {
+          Continue: [
+            {
+              input_index: 0n,
+              output_index: 0n,
+              fraud_proof_mint_redeemer_index: 1n,
+              outputs_preimage: [output],
+            },
+          ],
+        },
+        SDK.InputNoIdxStep04SpendRedeemer,
+      ),
+    ).toEqual({
+      Continue: [
+        {
+          input_index: 0n,
+          output_index: 0n,
+          fraud_proof_mint_redeemer_index: 1n,
+          outputs_preimage: [output],
+        },
+      ],
+    });
+  });
+
+  it("detects an input-no-idx violation from the producing outputs count", () => {
+    expect(
+      SDK.isInputNoIdxViolationV1({
+        badInputOutputIndex: 7n,
+        producingTxOutputCount: 1,
+      }),
+    ).toBe(true);
+    // A valid block: the spent index exists in its producing transaction.
+    expect(
+      SDK.isInputNoIdxViolationV1({
+        badInputOutputIndex: 0n,
+        producingTxOutputCount: 1,
+      }),
+    ).toBe(false);
+    const evidence = SDK.inputNoIdxEvidenceFromCommittedTransactionsV1({
+      badTxId: h32,
+      badInputsIndex: 0,
+      badInput: { tx_id: h32b, output_index: 7n },
+      producingTxOutputCount: 1,
+    });
+    expect(evidence.violationId).toBe(SDK.INPUT_NO_IDX_VIOLATION_ID_V1);
+    expect(evidence.producingTxId).toBe(h32b);
+    expect(evidence.isViolation).toBe(true);
+    expect(SDK.inputNoIdxStep03StateFromEvidenceV1(evidence)).toEqual({
+      bad_input_tx_id: h32b,
+      bad_input_output_index: 7n,
+    });
+    expect(
+      SDK.inputNoIdxStep04StateFromEvidenceV1({
+        evidence,
+        producingTxOutputsHash: h32,
+      }),
+    ).toEqual({
+      producing_tx_outputs_hash: h32,
+      bad_input_output_index: 7n,
     });
   });
 
