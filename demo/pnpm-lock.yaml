@@ -515,6 +515,9 @@ importers:
       '@al-ft/midgard-core':
         specifier: workspace:*
         version: link:../midgard-core
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
       '@al-ft/midgard-sdk':
         specifier: workspace:*
         version: link:../midgard-sdk

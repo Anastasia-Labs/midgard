@@ -31,6 +31,7 @@ describe("W00 watcher package identity", () => {
     });
     expect(watcherPackage.dependencies).toEqual({
       "@al-ft/midgard-core": "workspace:*",
+      "@al-ft/midgard-fault-proofs": "workspace:*",
       "@al-ft/midgard-sdk": "workspace:*",
       "@chainsafe/libp2p-noise": "17.0.0",
       "@chainsafe/libp2p-yamux": "8.0.1",

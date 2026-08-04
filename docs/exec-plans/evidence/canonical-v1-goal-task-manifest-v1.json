@@ -4947,11 +4947,7 @@
         "a change to demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts semantics puts the ported copy out of agreement and must be re-differentialed"
       ],
       "detailStatus": "DETAILED",
-      "blockedOn": [
-        "W20",
-        "W21"
-      ],
-      "blockedBecause": "GOAL_SPEC.md §10.3 gives W22 dependencies W14 and W20-W21. W14 is PASS (GOAL_PROGRESS.md line 292) but W20 is PENDING and W21 is not enqueued."
+      "readyBecause": "W20 PASS (e1cc8509), W21 PASS (67132a52), Q54 PASS (a593e4f7). Parent decision R1 (2026-08-03, GOAL_PROGRESS.md 'W21/W22 assignment decisions'): the reconstruction is REUSED from @al-ft/midgard-fault-proofs (declared workspace dependency; lockfile and scaffold mirror updated by the parent), superseding any earlier port-the-algorithm instruction."
     },
     {
       "id": "W23",
