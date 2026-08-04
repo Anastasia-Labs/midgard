@@ -1,6 +1,8 @@
 import {
+  assertMidgardPlutusDataWellFormedV1,
   buildMidgardCekDataTraverseTraceV1,
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  computeHash32,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardTxOutput,
@@ -427,7 +429,125 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
     expect(retained.forced.reconstructedCanonicalBytes).toBe(canonical.length);
     expect(retained.normal.revealStepCount).toBe(completeFoldStepCount);
     expect(retained.forced.revealStepCount).toBe(completeFoldStepCount);
+    // Canonical maximum signed-byte and digest identity, not only byte counts:
+    // both retained classifications must store and rebuild the exact same
+    // canonical bytes, with the same transaction identity and commitment.
+    const canonicalDigestHex = computeHash32(canonical).toString("hex");
+    expect({
+      normalRetained: retained.normal.retainedPreimageDigestHex,
+      normalReconstructed: retained.normal.reconstructedCanonicalDigestHex,
+      forcedRetained: retained.forced.retainedPreimageDigestHex,
+      forcedReconstructed: retained.forced.reconstructedCanonicalDigestHex,
+    }).toEqual({
+      normalRetained: canonicalDigestHex,
+      normalReconstructed: canonicalDigestHex,
+      forcedRetained: canonicalDigestHex,
+      forcedReconstructed: canonicalDigestHex,
+    });
+    expect(retained.normal.transactionIdHex).toBe(
+      retained.forced.transactionIdHex,
+    );
+    expect(retained.normal.transactionCommitmentHex).toBe(
+      retained.forced.transactionCommitmentHex,
+    );
+    expect(retained.normal.transactionIdHex).toBe(retained.transactionIdHex);
   }, 300_000);
+
+  /**
+   * Focused malformed and noncanonical controls at the exact maximum depth.
+   *
+   * The boundary above is only meaningful if the accepted shape is the *only*
+   * accepted shape at that size. Every mutation here keeps the depth-4,043
+   * envelope and breaks exactly one structural property, and each must be
+   * refused by both the production iterative well-formedness gate and the
+   * exact unary measurement — no CML recursion involved on either side.
+   */
+  it("rejects malformed and noncanonical unary Data at the exact maximum depth", () => {
+    const { acceptedDepth, acceptedDatumCborBytes } =
+      maximumUnaryDepthTerminalVectorV1.cardanoSignedCapacityCandidate;
+    const acceptedHex = cardanoUnaryConstructorDataCborV1(acceptedDepth);
+    const accepted = Buffer.from(acceptedHex, "hex");
+    expect(accepted.length).toBe(acceptedDatumCborBytes);
+    // Control: the accepted maximum passes both gates.
+    expect(() => {
+      assertMidgardPlutusDataWellFormedV1(accepted);
+    }).not.toThrow();
+    expect(measureExactUnaryConstructorDataV1(acceptedHex)).toEqual({
+      depth: acceptedDepth,
+      nodeCount: acceptedDepth + 1,
+      scalarCount: 1,
+    });
+
+    const controls = [
+      {
+        label: "truncated break markers",
+        hex: acceptedHex.slice(0, acceptedHex.length - 2),
+        wellFormed: false,
+      },
+      {
+        label: "missing innermost leaf",
+        hex: "d8799f".repeat(acceptedDepth) + "ff".repeat(acceptedDepth),
+        wellFormed: true,
+      },
+      {
+        label: "trailing byte after the closing sequence",
+        hex: `${acceptedHex}00`,
+        wellFormed: false,
+      },
+      {
+        label: "extra break marker",
+        hex: `${acceptedHex}ff`,
+        wellFormed: false,
+      },
+      {
+        label: "two children in the innermost constructor",
+        hex:
+          "d8799f".repeat(acceptedDepth) + "0000" + "ff".repeat(acceptedDepth),
+        wellFormed: true,
+      },
+      {
+        label: "noncanonical definite-length constructor body",
+        hex:
+          "d8799f".repeat(acceptedDepth - 1) +
+          "d87981" +
+          "00" +
+          "ff".repeat(acceptedDepth - 1),
+        wellFormed: true,
+      },
+      {
+        label: "noncanonical bytestring leaf in place of integer zero",
+        hex:
+          "d8799f".repeat(acceptedDepth) + "4100" + "ff".repeat(acceptedDepth),
+        wellFormed: true,
+      },
+    ] as const;
+
+    for (const control of controls) {
+      expect(control.hex).not.toBe(acceptedHex);
+      // The exact unary measurement must refuse every one of them: it is the
+      // predicate the boundary claim is stated in.
+      expect(
+        () => measureExactUnaryConstructorDataV1(control.hex),
+        control.label,
+      ).toThrow();
+      if (!control.wellFormed) {
+        expect(() => {
+          assertMidgardPlutusDataWellFormedV1(Buffer.from(control.hex, "hex"));
+        }, control.label).toThrow();
+      }
+    }
+
+    // The adjacent depth is well formed and exactly unary — it is rejected by
+    // the signed byte count, never by structure. Recorded so the malformed
+    // controls above are not confused with the capacity boundary.
+    const adjacentHex = cardanoUnaryConstructorDataCborV1(acceptedDepth + 1);
+    expect(() => {
+      assertMidgardPlutusDataWellFormedV1(Buffer.from(adjacentHex, "hex"));
+    }).not.toThrow();
+    expect(measureExactUnaryConstructorDataV1(adjacentHex).depth).toBe(
+      acceptedDepth + 1,
+    );
+  }, 120_000);
 
   /**
    * Genuine emulator admission at the exact derived maximum.

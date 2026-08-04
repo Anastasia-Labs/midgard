@@ -7,6 +7,23 @@ use midgard/validation_merkle_v1
 const terminal_control =
   #"8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f835820f6d68f04ebaaf198c28e605965e60a233a8a46428e2284e19f344f6290e7464d18591888ff"
 
+/// Terminal control emitted by the TypeScript producer for the exact
+/// 5,000-byte maximum nested Cardano Value (1,592 assets across seven
+/// policies). Pinned from `maximumNestedValueTerminalVectorV1` in
+/// `demo/midgard-validation/tests/nested-value-boundary-v1.test.ts`
+/// (`terminalControlCborHex`); regenerate with
+/// `MIDGARD_PRINT_AIKEN_VECTOR=1`.
+const typescript_maximum_value_terminal_control =
+  #"8701020040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000d8799f83582035df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb419138a193f46ff"
+
+/// Pre-terminal (finalize-stage) control for the same maximum Value, so the
+/// agreement covers the last real transition and not only the fixed point.
+const typescript_maximum_value_pre_terminal_control =
+  #"87010100581c1111111111111111111111111111111111111111111111111111111184582018a9e6706a9c0f115695a7d384af88baa135d31fa409e78ee3ab09ca6fe4cf8f18e41902ab1908e8845820ae48ba80db2f915cc4653c8bfd3a3394d4fe56f340dbe7cf66225478a2a93a65061910b6193620d87a80"
+
+const typescript_maximum_value_root =
+  #"35df7dc7ebdd5dba96f45ab79dbf23ba6a6325fc3b51f99b7c0cf62c8a31efb4"
+
 fn policy(byte: Int) -> ByteArray {
   builtin.replicate_byte(28, byte)
 }
@@ -120,6 +137,75 @@ test terminal_cross_language_control_decodes_canonically() {
   and {
     control.stage == ledger_output_value_v1.stage_terminal,
     ledger_output_value_v1.encode_control_v1(control) == terminal_control,
+  }
+}
+
+/// C22 cross-language terminal agreement at the genuine maximum nested Value.
+///
+/// The 5,000-byte Value boundary is measured off-chain against the real
+/// `validateOutputTooBigUTxO` predicate; this pins the on-chain fold's terminal
+/// against that producer's exact bytes so a representation change in either
+/// language breaks the gate. The finalize transition is replayed from the
+/// producer's own pre-terminal control over the producer's exact 1,592-leaf
+/// asset frontier, so agreement covers the last real step, not only the fixed
+/// point.
+test maximum_nested_value_terminal_agrees_with_typescript() {
+  let asset_count = 1592
+  let lovelace = 30000000
+  let asset_peaks = [
+    validation_merkle_v1.FrontierPeak {
+      height: 3,
+      hash: #"d7186f5f4ba03f35771f5fe9a2bb1d98c1b6647fdb307a3a990674bdef9f44eb",
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 4,
+      hash: #"3b64e0dee5d4fb8dea89b2e43cec29e9d042e70855235cdf5ee5dfba032370c8",
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 5,
+      hash: #"99005b0619518750da865e276edd6ded5162e42e975b84ca5a0b39e2106d0c04",
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 9,
+      hash: #"e140a7bcc4ae85c668a78b45e94afac7712d80519d9d4e1ad42c1e09afd56c71",
+    },
+    validation_merkle_v1.FrontierPeak {
+      height: 10,
+      hash: #"d0f89d5bf0b4028db4ba39470ca2ff296bc5733936ddfef6beb77278f1003833",
+    },
+  ]
+  let pre_terminal = ledger_output_value_v1.decode_control_v1(
+    typescript_maximum_value_pre_terminal_control,
+  )
+  expect Some(terminal) = ledger_output_value_v1.step_v1(
+    pre_terminal,
+    asset_count,
+    asset_peaks,
+    lovelace,
+    ledger_output_value_v1.LedgerOutputValueNoWitness,
+  )
+  let decoded = ledger_output_value_v1.decode_control_v1(
+    typescript_maximum_value_terminal_control,
+  )
+  expect Some(result) = ledger_output_value_v1.finalize_v1(terminal)
+  and {
+    validation_merkle_v1.frontier_is_well_formed(asset_count, asset_peaks),
+    pre_terminal.stage == ledger_output_value_v1.stage_finalize,
+    pre_terminal.asset_remaining == 0,
+    pre_terminal.current_policy == policy(17),
+    terminal == decoded,
+    ledger_output_value_v1.encode_control_v1(terminal) == typescript_maximum_value_terminal_control,
+    result.root == typescript_maximum_value_root,
+    result.cbor_length == 5002,
+    result.memory == 16198,
+    ledger_output_value_v1.finalize_v1(pre_terminal) == None,
+    ledger_output_value_v1.step_v1(
+      pre_terminal,
+      asset_count,
+      asset_peaks,
+      lovelace + 1,
+      ledger_output_value_v1.LedgerOutputValueNoWitness,
+    ) != Some(decoded),
   }
 }
 

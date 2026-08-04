@@ -184,11 +184,15 @@ try {
       "tests/ordered-collection-mint-boundary-v1.test.ts": 1,
       "tests/ordered-collection-redeemer-boundary-v1.test.ts": 1,
       "tests/blob-chunk-boundary-v1.test.ts": 1,
-      "tests/nested-value-boundary-v1.test.ts": 1,
+      // C22 closure: the boundary case plus the complete-Value carriage-fit
+      // case that must be measured before any incremental Value fallback.
+      "tests/nested-value-boundary-v1.test.ts": 2,
       "tests/nested-data-boundary-v1.test.ts": 1,
       "tests/nested-redeemer-data-boundary-v1.test.ts": 1,
       "tests/retained-da-boundary-v1.test.ts": 1,
-      "tests/data-breadth-boundary-v1.test.ts": 4,
+      // C23/C24/C25 closure: three inline-datum breadth maxima, the genuine
+      // redeemer projection, and one complete-Data carriage-fit case per kind.
+      "tests/data-breadth-boundary-v1.test.ts": 7,
     },
     extraArguments: ["--testTimeout=360000", "--hookTimeout=60000"],
     timeout: 1_800_000,

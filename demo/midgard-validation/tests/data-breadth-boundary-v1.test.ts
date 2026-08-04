@@ -33,6 +33,7 @@ import {
   validateMidgardConsensusV1Tx,
   verifyMidgardCekProgramMaterialBundleV1,
 } from "@al-ft/midgard-core";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import {
   applyDoubleCborEncoding,
   CML,
@@ -55,6 +56,7 @@ import {
   deterministicCardanoBoundaryPrivateKeyV1,
   findSignedCardanoCollectionBoundaryV1,
   measureCollateralizedPlutusFeasibilityCandidateV1,
+  measureMidgardCompleteItemCarriageFitV1,
   measureSignedCardanoNestedDatumV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
@@ -793,6 +795,202 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
         console.info(
           JSON.stringify({
             dataBreadthBoundaryV1: { [`datum_${kind}`]: vector },
+          }),
+        );
+      }
+    },
+    600_000,
+  );
+
+  /**
+   * §3.2 complete-item-first ordering for C23/C24/C25.
+   *
+   * Before any bounded Data traversal is admitted as a fallback, the complete
+   * proof item carrying the maximum Data must be constructed and measured on
+   * both complete routes: direct carriage in the proof transaction, and
+   * single-publication inline-datum carriage consumed as a reference input.
+   *
+   * The measured outcome is recorded as found, not as hoped. Each maximum
+   * breadth is bound by the 16,384-byte signed Cardano transaction, so the
+   * complete item is itself ~16 KB and overflows both complete routes — which
+   * is precisely the necessity that `transaction-field-chunk-v1.md` and
+   * `ledger-output-incremental-proof-v1.md` record. The case therefore pins
+   * both sides of the real carriage boundary per kind: the largest complete
+   * Data item that both complete routes admit, its adjacent overflow, and the
+   * maximum shape's exact overshoot.
+   */
+  it.each(["constructor", "list", "map"] as const)(
+    "measures complete %s Data direct and reference carriage before any bounded fallback",
+    async (kind) => {
+      const privateKey = deterministicCardanoBoundaryPrivateKeyV1(0);
+      const addressBytes = Buffer.from(
+        CML.EnterpriseAddress.new(
+          0,
+          CML.Credential.new_pub_key(privateKey.to_public().hash()),
+        )
+          .to_address()
+          .to_raw_bytes(),
+      );
+      const outputItemForBreadth = (breadth: number): Buffer =>
+        encodeMidgardTxOutput({
+          address: addressBytes,
+          value: { lovelace: 30_000_000n, assets: new Map() },
+          datum: {
+            kind: "inline",
+            cbor: Buffer.from(cardanoBreadthDataCborV1(kind, breadth), "hex"),
+          },
+        });
+      const fitForBreadth = (breadth: number) =>
+        measureMidgardCompleteItemCarriageFitV1({
+          fieldIndex: 2,
+          itemIndex: 0,
+          itemCbor: outputItemForBreadth(breadth),
+        });
+
+      // Largest complete Data item both complete routes admit, found by
+      // bisection on the exact encoded item length.
+      const publicationBound =
+        fitForBreadth(1).maxSinglePublicationCompleteItemBytes;
+      let low = 1;
+      let high = 32_768;
+      while (low + 1 < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (outputItemForBreadth(middle).length <= publicationBound) {
+          low = middle;
+        } else {
+          high = middle;
+        }
+      }
+      const acceptedBreadth = low;
+      const adjacentBreadth = low + 1;
+      const acceptedFit = fitForBreadth(acceptedBreadth);
+      const adjacentFit = fitForBreadth(adjacentBreadth);
+      expect(acceptedFit.itemBytes).toBeLessThanOrEqual(publicationBound);
+      expect(adjacentFit.itemBytes).toBeGreaterThan(publicationBound);
+      expect(acceptedFit).toMatchObject({
+        carriage: "reference",
+        fitsSinglePublicationCarriage: true,
+        requiresBoundedFallback: false,
+      });
+      expect(acceptedFit.publicationTransactionBytes).toBeLessThanOrEqual(
+        acceptedFit.maxL1TransactionBytes,
+      );
+      // Above 8,273 bytes the applied direct route is measured out, so the
+      // complete item survives only through reference carriage — this is the
+      // "reference before fallback" step, not a fallback.
+      expect(acceptedFit.fitsDirectCarriage).toBe(false);
+      expect(adjacentFit).toMatchObject({
+        fitsDirectCarriage: false,
+        fitsSinglePublicationCarriage: false,
+        requiresBoundedFallback: true,
+      });
+
+      // The direct route is not vacuous either: a smaller complete Data item
+      // of the same kind is admitted directly, so both complete routes are
+      // exercised before any bounded traversal is considered.
+      let directLow = 1;
+      let directHigh = acceptedBreadth;
+      const directBound = acceptedFit.maxReliableDirectCompleteItemBytes;
+      while (directLow + 1 < directHigh) {
+        const middle = Math.floor((directLow + directHigh) / 2);
+        if (outputItemForBreadth(middle).length <= directBound) {
+          directLow = middle;
+        } else {
+          directHigh = middle;
+        }
+      }
+      const directFit = fitForBreadth(directLow);
+      expect(directFit).toMatchObject({
+        carriage: "direct",
+        fitsDirectCarriage: true,
+        fitsSinglePublicationCarriage: true,
+        requiresBoundedFallback: false,
+      });
+
+      // The genuine Cardano maximum for this kind, measured against both
+      // complete routes. Its overflow is the §3.2 necessity for the bounded
+      // Data traversal the sibling cases exercise.
+      const buildCandidate = (breadth: number) =>
+        buildSignedCardanoNestedDatumCandidateV1({
+          privateKeyBech32: privateKey.to_bech32(),
+          inputTransactionId: "00".repeat(32),
+          inputOutputIndex: 0n,
+          inputLovelace: 40_000_000_000n,
+          recipientAddress: CML.EnterpriseAddress.new(
+            0,
+            CML.Credential.new_pub_key(privateKey.to_public().hash()),
+          )
+            .to_address()
+            .to_bech32(),
+          requestedNestedLeafCount: breadth,
+          nestedDatumCborHex: cardanoBreadthDataCborV1(kind, breadth),
+          minFeeA: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeA,
+          minFeeB: PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeB,
+          minFeeRefScriptCostPerByte:
+            PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.minFeeRefScriptCostPerByte,
+        });
+      const boundary = await findSignedCardanoCollectionBoundaryV1({
+        maxTxSize: CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+        buildSignedCandidate: buildCandidate,
+      });
+      const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+        Buffer.from(boundary.accepted.cborHex, "hex"),
+      );
+      const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+      expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+      const outputCbors = decodeMidgardNativeByteListPreimage(
+        native.body.outputsPreimageCbor,
+        "native.outputs",
+      );
+      expect(outputCbors).toHaveLength(1);
+      expect(
+        decodeMidgardTxOutput(outputCbors[0]!).datum?.cbor.toString("hex"),
+      ).toBe(
+        cardanoBreadthDataCborV1(kind, boundary.accepted.requestedItemCount),
+      );
+      const maximumFit = measureMidgardCompleteItemCarriageFitV1({
+        fieldIndex: 2,
+        itemIndex: 0,
+        itemCbor: outputCbors[0]!,
+      });
+      expect(maximumFit).toMatchObject({
+        fitsDirectCarriage: false,
+        fitsSinglePublicationCarriage: false,
+        requiresBoundedFallback: true,
+      });
+      expect(maximumFit.itemBytes).toBeGreaterThan(
+        maximumFit.maxSinglePublicationCompleteItemBytes,
+      );
+      expect(maximumFit.publicationTransactionBytes).toBeGreaterThan(
+        maximumFit.maxL1TransactionBytes,
+      );
+      // Bounded chunk fallback is the only remaining representation, and it is
+      // the one the deployed traversal uses.
+      expect(maximumFit.boundedFallbackChunkCount).toBeGreaterThan(1);
+
+      if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+        console.info(
+          JSON.stringify({
+            dataBreadthCompleteItemFitV1: {
+              [kind]: {
+                directCarriageBreadth: directLow,
+                directCarriageItemBytes: directFit.itemBytes,
+                referenceCarriageBreadth: acceptedBreadth,
+                referenceCarriageItemBytes: acceptedFit.itemBytes,
+                referenceCarriagePublicationTransactionBytes:
+                  acceptedFit.publicationTransactionBytes,
+                adjacentBreadth,
+                adjacentItemBytes: adjacentFit.itemBytes,
+                cardanoMaximumBreadth: boundary.accepted.requestedItemCount,
+                cardanoMaximumItemBytes: maximumFit.itemBytes,
+                cardanoMaximumPublicationTransactionBytes:
+                  maximumFit.publicationTransactionBytes,
+                cardanoMaximumOvershootBytes:
+                  maximumFit.publicationTransactionBytes -
+                  maximumFit.maxL1TransactionBytes,
+                boundedFallbackChunkCount: maximumFit.boundedFallbackChunkCount,
+              },
+            },
           }),
         );
       }

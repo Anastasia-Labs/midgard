@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_TEST_COUNT = 4;
+// C23/C24/C25 closure: three inline-datum breadth maxima, one genuine
+// redeemer projection, and one complete-Data carriage-fit case per kind that
+// measures direct and reference carriage before any bounded fallback.
+const EXPECTED_TEST_COUNT = 7;
 const REQUIRED_SUITE = "tests/data-breadth-boundary-v1.test.ts";
 const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
 const reportDirectory = mkdtempSync(

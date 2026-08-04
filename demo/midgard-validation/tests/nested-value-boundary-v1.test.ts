@@ -27,6 +27,7 @@ import {
   cardanoBoundaryNestedValueAssetsV1,
   deterministicCardanoBoundaryPrivateKeyV1,
   exerciseMidgardOrderedCollectionBoundaryV1,
+  measureMidgardCompleteItemCarriageFitV1,
   measureSignedCardanoNestedValueV1,
   PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1,
 } from "./helpers/ordered-collection-boundary-v1.js";
@@ -551,6 +552,93 @@ describe("canonical V1 nested Cardano Value boundary", () => {
         JSON.stringify({
           nestedValueBoundaryV1: terminalVector,
         }),
+      );
+    }
+  }, 300_000);
+
+  // §3.2 complete-item-first ordering for C22. The maximum nested Value is a
+  // whole output item, so its proof carriage must be measured complete —
+  // direct and single-publication reference — before any incremental Value
+  // fallback is even considered. The incremental Value fold above stays a
+  // capability, not a necessity: this case proves both complete routes admit
+  // the exact 5,000-byte Value, so no §3.2 necessity artifact is owed for it.
+  it("fits the complete maximum-Value output item into direct and reference carriage before any fallback", async () => {
+    const environment = makeBoundaryEmulator(
+      CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
+    );
+    const candidate = await buildCandidate({
+      requestedValueCborBytes: CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1,
+      funder: environment.funder,
+    });
+    const canonical = cardanoTxBytesToMidgardNativeTxCanonicalCborV1(
+      Buffer.from(candidate.cborHex, "hex"),
+    );
+    const native = decodeMidgardNativeTxFullV1FromCanonicalCbor(canonical);
+    expect(validateMidgardConsensusV1Tx(native, canonical.length)).toBeNull();
+    const outputCbors = decodeMidgardNativeByteListPreimage(
+      native.body.outputsPreimageCbor,
+      "native.outputs",
+    );
+    const outputItem = outputCbors[0]!;
+    // The complete item is the whole output, Value included, at the exact
+    // 5,000-byte Value maximum pinned by the boundary case above.
+    expect(
+      midgardValueToCmlValue(
+        decodeMidgardTxOutput(outputItem).value,
+      ).to_cbor_bytes().length,
+    ).toBe(CARDANO_BOUNDARY_MAX_VALUE_SIZE_V1);
+    expect(outputItem.length).toBe(
+      maximumNestedValueTerminalVectorV1.outputItemBytes,
+    );
+
+    const fit = measureMidgardCompleteItemCarriageFitV1({
+      fieldIndex: 2,
+      itemIndex: 0,
+      itemCbor: outputItem,
+    });
+    expect(fit).toMatchObject({
+      fieldIndex: 2,
+      itemIndex: 0,
+      itemBytes: maximumNestedValueTerminalVectorV1.outputItemBytes,
+      carriage: "direct",
+      fitsDirectCarriage: true,
+      fitsSinglePublicationCarriage: true,
+      requiresBoundedFallback: false,
+    });
+    expect(fit.itemBytes).toBeLessThanOrEqual(
+      fit.maxReliableDirectCompleteItemBytes,
+    );
+    expect(fit.itemBytes).toBeLessThanOrEqual(
+      fit.maxSinglePublicationCompleteItemBytes,
+    );
+    expect(fit.publicationTransactionBytes).toBeLessThanOrEqual(
+      fit.maxL1TransactionBytes,
+    );
+    expect(fit.publicationDatumBytes).toBeGreaterThan(fit.itemBytes);
+    // A bounded fallback would have to split the same item; it is available
+    // but unnecessary, which is exactly what §3.2 requires us to measure.
+    expect(fit.boundedFallbackChunkCount).toBeGreaterThan(1);
+    expect(fit.commitmentHex).toMatch(/^[0-9a-f]{64}$/u);
+
+    // Control: the item bound is not vacuous. An item one byte above the
+    // measured single-publication envelope has no complete route at all.
+    const oversized = measureMidgardCompleteItemCarriageFitV1({
+      fieldIndex: 2,
+      itemIndex: 0,
+      itemCbor: Buffer.alloc(
+        fit.maxSinglePublicationCompleteItemBytes + 1,
+        0xa5,
+      ),
+    });
+    expect(oversized).toMatchObject({
+      fitsDirectCarriage: false,
+      fitsSinglePublicationCarriage: false,
+      requiresBoundedFallback: true,
+    });
+
+    if (process.env.MIDGARD_PRINT_PROOF_FIT === "1") {
+      console.info(
+        JSON.stringify({ maximumNestedValueCompleteItemFitV1: fit }),
       );
     }
   }, 300_000);

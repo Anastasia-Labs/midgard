@@ -1,6 +1,8 @@
 import {
   aikenSerialisedPlutusDataCborPreservingMapOrder,
+  buildMidgardBoundedItemV1,
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  commitMidgardBoundedItemV1,
   computeHash32,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
@@ -10,9 +12,15 @@ import {
   deriveMidgardV1TxFieldPreimages,
   encodeCbor,
   hashMidgardValidationWorkWitnessV1,
+  midgardBoundedItemChunkCountV1,
   reconstructMidgardTransactionV1FromChunks,
   verifyMidgardV1TxFieldChunk,
 } from "@al-ft/midgard-core";
+import {
+  MIDGARD_CONSENSUS_LIMITS_V1,
+  MIDGARD_V1_ENVELOPE_MEASUREMENTS,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
 import {
   CML,
   createCostModels,
@@ -20,6 +28,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { selectValidationCompleteItemCarriageV1 } from "../../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
 
 export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;
@@ -2385,6 +2394,171 @@ export const measureSignedCardanoMintNativePoliciesV1 = (
     hasRedeemers: witnessSet.redeemers() !== undefined,
     hasDatums: witnessSet.plutus_datums() !== undefined,
     collateralInputCount: body.collateral_inputs()?.len() ?? 0,
+  };
+};
+
+export type MidgardCompleteItemCarriageFitV1 = {
+  readonly fieldIndex: number;
+  readonly itemIndex: number;
+  readonly itemBytes: number;
+  readonly commitmentHex: string;
+  /** Production carriage decision for the complete item. */
+  readonly carriage: "direct" | "reference";
+  /** Chunks a bounded fallback would need if the complete item did not fit. */
+  readonly boundedFallbackChunkCount: number;
+  readonly maxReliableDirectCompleteItemBytes: number;
+  readonly maxSinglePublicationCompleteItemBytes: number;
+  readonly maxL1TransactionBytes: number;
+  readonly publicationDatumBytes: number;
+  readonly publicationTransactionBytes: number;
+  readonly fitsDirectCarriage: boolean;
+  readonly fitsSinglePublicationCarriage: boolean;
+  /** True only when neither complete route admits the item. */
+  readonly requiresBoundedFallback: boolean;
+};
+
+/**
+ * Measures whether a complete canonical proof item fits direct carriage and
+ * single-publication reference carriage, before any bounded fallback is
+ * considered. This is the §3.2 complete-item-first ordering: a fallback is
+ * necessary only when both complete routes are measured to overflow.
+ *
+ * The publication side builds a real signed Conway transaction carrying the
+ * complete item as the published inline datum, using the same framing as
+ * `complete-item-proof-fit-v1.test.ts`. The collection proof is sized at the
+ * deepest admissible shape (14 frontier peaks and 14 siblings under the
+ * 16,384-item guardrail), so a reported fit is conservative: real shallower
+ * collections can only produce a smaller transaction.
+ *
+ * Direct carriage is decided by the production selector
+ * `selectValidationCompleteItemCarriageV1`, whose bound is the applied
+ * deployed-validator measurement pinned in `MIDGARD_V1_ENVELOPE_MEASUREMENTS`.
+ */
+export const measureMidgardCompleteItemCarriageFitV1 = ({
+  fieldIndex,
+  itemIndex,
+  itemCbor,
+}: {
+  readonly fieldIndex: number;
+  readonly itemIndex: number;
+  readonly itemCbor: Buffer;
+}): MidgardCompleteItemCarriageFitV1 => {
+  const maxL1TransactionBytes =
+    MIDGARD_CONSENSUS_LIMITS_V1.minSupportedL1MaxTxBytes;
+  const maxSinglePublicationCompleteItemBytes =
+    MIDGARD_CONSENSUS_LIMITS_V1.maxSinglePublicationCompleteItemBytes;
+  const maxReliableDirectCompleteItemBytes =
+    MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;
+  const bounded = buildMidgardBoundedItemV1({
+    fieldIndex,
+    itemIndex,
+    bytes: itemCbor,
+  });
+  const commitment = commitMidgardBoundedItemV1({
+    fieldIndex,
+    itemIndex,
+    totalLength: itemCbor.length,
+    frontier: bounded.frontier,
+  });
+  if (!commitment.equals(bounded.commitment)) {
+    throw new Error(
+      "Complete proof item commitment disagrees with its own bounded frontier",
+    );
+  }
+  const fitsDirectCarriage =
+    itemCbor.length <= maxReliableDirectCompleteItemBytes;
+  const fitsItemPublicationBound =
+    itemCbor.length <= maxSinglePublicationCompleteItemBytes;
+  const publication = deriveValidationProofItemPublicationV1({
+    transactionId: "44".repeat(32),
+    transactionCommitment: "55".repeat(32),
+    collectionProof: {
+      version: 1n,
+      field_index: BigInt(fieldIndex),
+      item_count: 16_384n,
+      item_index: BigInt(itemIndex),
+      item_length: BigInt(itemCbor.length),
+      item_commitment: commitment.toString("hex"),
+      frontier: Array.from({ length: 14 }, (_, height) => ({
+        height: BigInt(height),
+        hash: "22".repeat(32),
+      })),
+      siblings: Array.from({ length: 14 }, () => "33".repeat(32)),
+    },
+    itemCbor: itemCbor.toString("hex"),
+  });
+  const signingKey = CML.PrivateKey.from_normal_bytes(Buffer.alloc(32, 4));
+  const address = CML.Address.from_raw_bytes(
+    Buffer.concat([
+      Buffer.from([0x60]),
+      Buffer.from(signingKey.to_public().hash().to_raw_bytes()),
+    ]),
+  );
+  const scriptAddress = CML.Address.from_raw_bytes(
+    Buffer.concat([Buffer.from([0x70]), Buffer.alloc(28, 0x66)]),
+  );
+  const inputs = CML.TransactionInputList.new();
+  inputs.add(
+    CML.TransactionInput.new(
+      CML.TransactionHash.from_raw_bytes(Buffer.alloc(32, 1)),
+      0n,
+    ),
+  );
+  const outputs = CML.TransactionOutputList.new();
+  outputs.add(
+    CML.TransactionOutput.new(
+      scriptAddress,
+      CML.Value.from_coin(70_000_000n),
+      CML.DatumOption.new_datum(
+        CML.PlutusData.from_cbor_hex(publication.datumCbor),
+      ),
+      undefined,
+    ),
+  );
+  outputs.add(
+    CML.TransactionOutput.new(
+      address,
+      CML.Value.from_coin(1_000_000_000n),
+      undefined,
+      undefined,
+    ),
+  );
+  const witnessSet = CML.TransactionWitnessSet.new();
+  const vkeys = CML.VkeywitnessList.new();
+  vkeys.add(
+    CML.Vkeywitness.new(
+      signingKey.to_public(),
+      signingKey.sign(Buffer.alloc(32, 5)),
+    ),
+  );
+  witnessSet.set_vkeywitnesses(vkeys);
+  const publicationTransactionBytes = CML.Transaction.new(
+    CML.TransactionBody.new(inputs, outputs, 1_000_000n),
+    witnessSet,
+    true,
+    undefined,
+  ).to_cbor_bytes().length;
+  const fitsSinglePublicationCarriage =
+    fitsItemPublicationBound &&
+    publicationTransactionBytes <= maxL1TransactionBytes;
+  return {
+    fieldIndex,
+    itemIndex,
+    itemBytes: itemCbor.length,
+    commitmentHex: commitment.toString("hex"),
+    carriage: fitsItemPublicationBound
+      ? selectValidationCompleteItemCarriageV1(itemCbor.length)
+      : "reference",
+    boundedFallbackChunkCount: midgardBoundedItemChunkCountV1(itemCbor.length),
+    maxReliableDirectCompleteItemBytes,
+    maxSinglePublicationCompleteItemBytes,
+    maxL1TransactionBytes,
+    publicationDatumBytes: publication.datumCbor.length / 2,
+    publicationTransactionBytes,
+    fitsDirectCarriage,
+    fitsSinglePublicationCarriage,
+    requiresBoundedFallback:
+      !fitsDirectCarriage && !fitsSinglePublicationCarriage,
   };
 };
 

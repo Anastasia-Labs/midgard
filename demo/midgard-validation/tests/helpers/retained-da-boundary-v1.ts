@@ -4,6 +4,7 @@ import { isAbsolute } from "node:path";
 import {
   aikenSerialisedPlutusDataCbor,
   cardanoTxBytesToMidgardNativeTxCanonicalCborV1,
+  computeHash32,
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   computeScriptIntegrityHashForLanguages,
@@ -94,6 +95,16 @@ type RetainedClassificationMeasurementV1 = {
   readonly retainedPreimageBytes: number;
   readonly revealStepCount: number;
   readonly reconstructedCanonicalBytes: number;
+  /**
+   * Blake2b-256 digests of the retained preimage and of the transaction
+   * rebuilt by the terminal fold. Byte equality is already enforced inside
+   * this harness; exposing both digests lets a boundary case assert canonical
+   * signed-byte identity explicitly instead of only counting bytes.
+   */
+  readonly retainedPreimageDigestHex: string;
+  readonly reconstructedCanonicalDigestHex: string;
+  readonly transactionIdHex: string;
+  readonly transactionCommitmentHex: string;
 };
 
 export type RetainedDaBoundaryMeasurementV1 = {
@@ -321,6 +332,13 @@ const reconstructRetainedClassificationV1 = ({
     retainedPreimageBytes: retainedCanonicalCbor.length,
     revealStepCount: chunkProofs.length,
     reconstructedCanonicalBytes: reconstructed.length,
+    retainedPreimageDigestHex: computeHash32(retainedCanonicalCbor).toString(
+      "hex",
+    ),
+    reconstructedCanonicalDigestHex:
+      computeHash32(reconstructed).toString("hex"),
+    transactionIdHex: retainedTransactionId.toString("hex"),
+    transactionCommitmentHex: retainedTransactionCommitment.toString("hex"),
   };
 };
 
