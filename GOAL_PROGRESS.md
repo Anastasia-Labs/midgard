@@ -4864,3 +4864,140 @@ the upstream aiken-lang/stdlib `cbor.deserialise` zero-length-final-item
 defect remains worth an upstream report (repo avoids the shape by
 construction); resolver publication deployability remains gated on the
 P1 oversized-validator program.
+
+## #481 — Q10-Q12, Q14, Q49 foundational proof-family closures (2026-08-04)
+
+32 Aiken family selectors run, 32 passing, 0 failures: 20 newly added (8
+double-spend, 8 no-input, 4 invalid-range) plus 9 pre-existing zero-input
+selectors re-verified unchanged. The new Q49 structural handoff artifact
+(`docs/exec-plans/evidence/canonical-v1-q49-structural-handoff-v1.json`)
+and its verifier (`demo/scripts/verify-canonical-v1-q49-structural-handoff.mjs`)
+report PASS: 9 rows, 31 executable checks, 0 partial, 0 open.
+
+**Q10/Q11/Q12 remain OPEN, not LOCAL_PASS.** Recorded honestly rather than
+rounded up: GOAL_SPEC.md §9.1 outputs 5-9 (maximum/adversarial proof-fit
+fixture, deployment/first-step-hash records, DA-first evidence builder,
+resumable command, emulator lifecycle) are unwritten for all three
+families, and the prescribed
+`canonical-v1-proof-family-q1x-v1.json` / `verify-canonical-v1-proof-family-q1x.mjs`
+pair does not exist. Q14's proof-fit/deployment/emulator work is also
+unstarted. The triage's shallow-treatment caveats on Q28, Q31/Q33/Q36,
+Q41, and Q38 were NOT re-verified in this batch and are not cleared.
+
+## #480 — C20-0,1,3,8 ordered-field terminal closures (2026-08-04)
+
+26 guarded Aiken tests across 10 selectors plus 7 TypeScript tests, 0
+failures. Exact pinned boundaries: 434 spend inputs @ 16,379 signed bytes
+(adjacent rejection at 435 @ 16,417); 433 reference inputs @ 16,380
+(adjacent 434 @ 16,418); 224 observers @ 16,338 (adjacent 225 @ 16,410).
+
+Two real defects closed:
+
+- (a) fields 0/1/3 previously had only a one-sided/relative TS↔Aiken
+  agreement; the exact cardinalities plus the complete field-terminal fold
+  vector are now pinned byte-identically in both languages.
+- (b) C20-8's declared focused selector collected 0 tests and could never
+  pass, because Aiken's `-m` matcher splits a pattern at its first `.` —
+  corrected to the reachable prefix, with no source semantics changed.
+
+Also closed: a latent blocker in `verify_maximum_field_terminal_fixture_v1`
+— an alternate field-preimage-length encoding existed only for fields 2/4/5,
+so fields 0/1/3 could never satisfy the exact-rejection control.
+
+C20-6/C20-7 remain closed by field-order/commitment evidence rather than a
+terminal fold vector, so coverage is **7 of 9**, not 9/9.
+
+`canonical-v1-capability-reconciliation-v1.json` had carried C20-0/1/3/8 as
+PASS with no ledger row before `8ddb14dc`. This batch's work makes those
+claims true, and the corrected provenance is now recorded in that
+artifact.
+
+## Q49 parent integration: L298/L302 promoted to PASS (2026-08-04)
+
+Applied the Q49 structural handoff's `parentIntegration.pendingEdits`
+exactly:
+
+- `docs/fault-proofs/coverage-matrix.md` L298 evidence cell now cites the
+  four executable no-input step selectors (steps 01-04, positive and
+  negative each) instead of the bare "no-input proof" reference.
+- `docs/fault-proofs/coverage-matrix.md` L302 no longer reads "believed
+  provable ... **unverified inference**" / "needs a W-T8 test"; it now
+  cites the five executable invalid-range selectors (step-01 range
+  normalization plus the native-block bind/forgery-rejection pair, step-02
+  accept/reject pair).
+- `docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json`
+  `structuralAudit`: L298 and L302 moved PARTIAL → PASS, `remainingTask`
+  cleared to `null` for both, and `summary` set to
+  `{rows: 9, pass: 9, partial: 0, open: 0}`.
+
+Declined: promoting the F21 task row's prose
+(`evidenceOutputs`/`expectedNonzeroCounts`/`invalidationTriggers`/
+`readyBecause`) in
+`docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json` to match.
+That text is not in the handoff's `pendingEdits` list, and
+`demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs`
+hard-requires the F21 row to keep citing `Q49-L298` and `Q49-L302` as
+exact PARTIAL bindings (`f21PhysicalPartialIdentityMismatch`) against the
+unchanged `Cross-block replay` / `Malformed validity interval` coverage-matrix
+concern text — editing it would fail an owned verifier outside this
+lease. Left as-is; both prescribed verifiers (`verify-canonical-v1-q49-structural-handoff.mjs`,
+`verify-canonical-v1-goal-task-manifest-quality.mjs`) still report PASS
+with 0 defects after the edits above.
+`docs/fault-proofs/catalogue-status.md` was searched for L298/L302-specific
+content; none exists there to update, and no catalogue-status pendingEdit
+was listed, so it is unchanged.
+
+Known follow-up NOT fixed here (outside this lease's owned files):
+`demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs` hardcodes
+an expectation of `structuralAudit.summary = {pass: 7, partial: 2}` and
+per-row `PARTIAL`/`Q49-L298`/`Q49-L302` dispositions (lines ~108, ~128-166,
+~743); it was not run and not edited, but it will now fail against the
+promoted `canonical-v1-fault-proof-reconciliation-v1.json` until its
+owner updates it to match the new 9/9/0/0 disposition.
+
+## Review dispositions and new leases (2026-08-04)
+
+Stabilize review anchor advanced to `e00cd216`; the reviewed range is
+**not** cleared for release — the P1s below remain open.
+
+- **C28 incremental-CEK fail-open.**
+  `onchain/aiken/lib/midgard/validation-resolver-v1.ak:276-280`'s
+  `IncrementalCekMaterial` branch accepts iff
+  `program_envelope_hash == cek_envelope_hash_v1(selected_envelope)` with
+  BOTH values supplied by the disputer, and no necessity verification
+  exists anywhere under `onchain/aiken` — the §3.2 gate is off-chain only,
+  and the route can be taken with zero material published. Owned by C28 →
+  issue #477, which remains OPEN with that acceptance criterion unmet.
+  This is a **gate prerequisite for #486 (CG2)**, whose acceptance
+  requires every bounded fallback to have a measured §3.2 necessity
+  artifact.
+- New leases opened for previously unowned Goal IDs:
+  - **W25 → issue #517** — block-replay acceptance with both bindings
+    unrun (`demo/midgard-watcher/src/block-replay.ts:1663,2541` accepts
+    with the post-state-root binding disabled whenever the field is
+    omitted, and `index.ts` passes `committedSteps: null`).
+  - **F20 → issue #518** — self-fulfilling reconciliation gate at
+    `demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs:808`,
+    which asserts tests exist (matching the `it(` selector count) and
+    never spawns the run, yet publishes them as "45/45 focused checks
+    passed".
+- Routed to **#502 (Q54/Q61)**: DA prune-path fail-open; retention
+  manifest cross-check gap, at its corrected narrower severity — the
+  canonical floor IS enforced via the fail-closed derived default in
+  `MIDGARD_RETENTION_WINDOW_V1`; the real gap is that the deployment
+  manifest's `da.transportProfile.retentionDays` is never cross-checked at
+  `demo/midgard-node/src/services/config.ts:676`; and unknown-header-
+  terminality coerced to the prunable value
+  (`demo/midgard-node/src/index.ts:2189`).
+- Unbacked-PASS provenance: `canonical-v1-capability-reconciliation-v1.json`
+  had carried C20-0/1/3/8 as PASS with no ledger row before `8ddb14dc`.
+  #480's work (recorded above) makes those claims true, and the corrected
+  provenance is now in that artifact.
+- Known process hazard for future parallel work: the manifest's "one
+  shared Aiken compiler lease" is not enforced by any mechanism; two
+  concurrent lanes running `aiken check` against the same `onchain/aiken`
+  project and shared `build/` destroyed two gate attempts, and a
+  repo-wide `pkill -f "aiken check"` killed another lane's children.
+  Mitigation that worked: run Aiken gates in a throwaway `git worktree`.
+  Also: `aiken check` emits zero diagnostics and exits 1 when stdout is
+  not a TTY — wrap with `script -qec "..." /dev/null`.

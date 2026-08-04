@@ -233,8 +233,8 @@
     "status": "PASS",
     "summary": {
       "rows": 9,
-      "pass": 7,
-      "partial": 2,
+      "pass": 9,
+      "partial": 0,
       "open": 0
     },
     "rows": {
@@ -260,10 +260,13 @@
         "executableEvidence": ["deposit token-count boundary selectors"]
       },
       "L298": {
-        "disposition": "PARTIAL",
-        "remainingTask": "Q49-L298",
+        "disposition": "PASS",
+        "remainingTask": null,
         "executableEvidence": [
-          "no-input reduction; adversarial structural proof still required"
+          "onchain/aiken/validators/fraud-proofs/no-input/step-01.ak: no_input_step_01_binds_native_v1_block_fixture, no_input_step_01_rejects_forged_transactions_root",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-02.ak: no_input_step_02_forwards_the_challenged_spend_input, no_input_step_02_rejects_a_substituted_inputs_preimage",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-03.ak: no_input_step_03_excludes_the_input_from_the_initial_ledger, no_input_step_03_rejects_a_non_membership_claim_for_another_key",
+          "onchain/aiken/validators/fraud-proofs/no-input/step-04.ak: no_input_step_04_excludes_the_producing_transaction, no_input_step_04_rejects_valid_block_challenge"
         ]
       },
       "L299": {
@@ -291,10 +294,11 @@
         ]
       },
       "L302": {
-        "disposition": "PARTIAL",
-        "remainingTask": "Q49-L302",
+        "disposition": "PASS",
+        "remainingTask": null,
         "executableEvidence": [
-          "invalid-range route is asserted but has no executable structural proof"
+          "onchain/aiken/validators/fraud-proofs/invalid-range/step-01.ak: normalize_native_validity_range_rejects_empty_interval, invalid_range_step_01_binds_native_v1_block_fixture, invalid_range_step_01_rejects_forged_transactions_root",
+          "onchain/aiken/validators/fraud-proofs/invalid-range/step-02.ak: invalid_range_step_02_accepts_uncovered_and_inverted_intervals, invalid_range_step_02_rejects_valid_block_challenge"
         ]
       },
       "L303": {
@@ -313,7 +317,7 @@
       "status": "PASS",
       "note": "The canonical empty ledger-delta frontier fixture preserves rejection-state immutability; the exact guarded selector passes 1/1."
     },
-    "note": "F21 records the nine physical semantic rows L295-L303. L295-L297, L299-L301, and L303 are executable PASS; L298/Q49-L298 and L302/Q49-L302 are PARTIAL. No row is OPEN."
+    "note": "F21 records the nine physical semantic rows L295-L303. All nine are executable PASS; Q49-L298 and Q49-L302 closed the two remaining PARTIAL rows (cross-block replay and malformed validity interval) with executable no-input and invalid-range selectors. No row is OPEN."
   },
   "acceptance": {
     "F20": "PASS",
