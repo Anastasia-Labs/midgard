@@ -75,6 +75,7 @@ export type FamilyScaffoldRejectionCodeV1 =
   | "invalid_task_id"
   | "invalid_identifier"
   | "invalid_text"
+  | "unsafe_text"
   | "invalid_step_sequence"
   | "invalid_state_shape"
   | "unknown_field_type"
@@ -134,11 +135,27 @@ const requireExactKeys = (
   }
 };
 
+/**
+ * Free text (`summary`, `violationId`, a step `rule`, a field `doc`) is copied
+ * verbatim into the comment blocks the emitters open in Aiken and TypeScript.
+ * A line break or a comment delimiter would close that comment and let spec
+ * prose become emitted *code* -- the escape hatch through which an "accept
+ * any" construct could enter a generated family without ever being declared as
+ * a schema. The line-based permissive-dispatch scanner catches the constructs
+ * it enumerates, but an injected multi-line body spans lines and slips past it,
+ * so the injection is closed here, at the parser, rather than downstream.
+ */
+const UNSAFE_TEXT = /[\u0000-\u001F\u007F]|\/\/|\/\*|\*\//u;
+
 const requireText = (value: unknown, path: string): string => {
   if (typeof value !== "string" || value.trim().length === 0) {
     reject("invalid_text", path);
   }
-  return (value as string).trim();
+  const text = (value as string).trim();
+  if (UNSAFE_TEXT.test(text)) {
+    reject("unsafe_text", path);
+  }
+  return text;
 };
 
 const parseField = (value: unknown, path: string): ScaffoldFieldV1 => {

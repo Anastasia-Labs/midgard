@@ -412,6 +412,56 @@ describe("Q02 spec parsing is strict and fail-closed", () => {
     ).toBe("missing_key");
   });
 
+  it("refuses free text that could break out of an emitted comment", () => {
+    // Every emitter copies `summary`, `violationId`, a step `rule`, and a field
+    // `doc` verbatim into a comment. A line break or a comment delimiter would
+    // close that comment and turn spec prose into emitted code — the one way an
+    // accept-anything construct could reach a generated family without being
+    // declared as a schema. A multi-line injected body spans lines, so the
+    // line-based permissive-dispatch scanner alone would not stop it.
+    const injections = [
+      "ok\npub fn accept_any(_x: Data) -> Bool {\n  True\n}\n////",
+      "ok */ injected: any, /*",
+      "ok // trailing",
+      "ok\tstill one line",
+    ];
+    for (const injection of injections) {
+      expect(
+        rejectionCode(
+          mutatedSpec((spec) => {
+            spec.summary = injection;
+          }),
+        ),
+      ).toBe("unsafe_text");
+      expect(
+        rejectionCode(
+          mutatedSpec((spec) => {
+            spec.violationId = injection;
+          }),
+        ),
+      ).toBe("unsafe_text");
+      expect(
+        rejectionCode(
+          mutatedSpec((spec) => {
+            (spec.steps as Record<string, unknown>[])[1].rule = injection;
+          }),
+        ),
+      ).toBe("unsafe_text");
+      expect(
+        rejectionCode(
+          mutatedSpec((spec) => {
+            (
+              (spec.steps as Record<string, unknown>[])[1].inputState as Record<
+                string,
+                unknown
+              >[]
+            )[0].doc = injection;
+          }),
+        ),
+      ).toBe("unsafe_text");
+    }
+  });
+
   it("refuses a family that does not declare all four mandatory test classes", () => {
     for (const testClass of [
       "positive",
