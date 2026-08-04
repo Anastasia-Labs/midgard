@@ -17,6 +17,8 @@ import {
 
 const committeePeerId = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const producerPeerId = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";
+const publicRetainedDaPeerId =
+  "12D3KooWCQ8WRN84GxEkR7k8dV6gb4ca3bNqM5LmT3evQVfBPGwv";
 
 describe("canonical V1 startup release gate", () => {
   it("fails closed while validator-hash-bound release evidence is unavailable", async () => {
@@ -65,6 +67,31 @@ describe("canonical V1 startup release gate", () => {
               LIBP2P_DA_TRANSPORT_LIMITS.maxInlineResponseBytes,
             max_chunk_bytes: LIBP2P_DA_TRANSPORT_LIMITS.maxChunkBytes,
             max_streams_per_peer: LIBP2P_DA_TRANSPORT_LIMITS.maxStreamsPerPeer,
+            request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
+          },
+        },
+        public_retained_da: {
+          profile: "public-retained-da-v1",
+          access_policy: "any_noise_authenticated_peer",
+          peer_id: publicRetainedDaPeerId,
+          listen_multiaddrs: ["/ip4/0.0.0.0/tcp/0"],
+          announce_multiaddrs: [
+            `/dns4/public-da.example/tcp/4002/p2p/${publicRetainedDaPeerId}`,
+          ],
+          protocols: [
+            "capabilities",
+            "payload-by-header",
+            "payload-chunk",
+            "metadata-by-header",
+            "proof-bundle-by-header",
+            "trace-step-by-index",
+            "event-to-step-by-event",
+          ],
+          limits: {
+            max_streams_per_peer: 4,
+            max_inflight_requests: 32,
+            max_inflight_requests_per_peer: 2,
+            max_inflight_proof_requests: 1,
             request_timeout_ms: LIBP2P_DA_TRANSPORT_LIMITS.requestTimeoutMs,
           },
         },
