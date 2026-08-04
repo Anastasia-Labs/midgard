@@ -1,33 +1,54 @@
-import { Database } from "@/services/database.js";
 import { SqlClient } from "@effect/sql";
-import { Effect } from "effect";
+import { Address } from "@lucid-evolution/lucid";
+import { Duration, Effect, Metric } from "effect";
+
+import * as ImmutableDB from "@/database/immutable.js";
+import * as MempoolDB from "@/database/mempool.js";
 import {
-  DatabaseError,
   clearTable,
+  DatabaseError,
+  logDatabaseError,
   sqlErrorToDatabaseError,
 } from "@/database/utils/common.js";
-import { Address } from "@lucid-evolution/lucid";
-import * as MempoolDB from "@/database/mempool.js";
-import * as ImmutableDB from "@/database/immutable.js";
-import * as Tx from "@/database/utils/tx.js";
 import * as Ledger from "@/database/utils/ledger.js";
-import { MempoolLedgerDB } from "./index.js";
+import * as Tx from "@/database/utils/tx.js";
+import { Database } from "@/services/database.js";
 
 const tableName = "address_history";
+
+enum Columns {
+  CREATED_AT = "created_at",
+}
 
 export type Entry = {
   [Ledger.Columns.TX_ID]: Buffer;
   [Ledger.Columns.ADDRESS]: Address;
 };
 
+export const addressHistoryInsertSqlDurationTimer = Metric.timer(
+  "address_history_insert_sql_duration",
+  "Duration of the address-history insert SQL statement",
+);
+
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
-      ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
-      ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
-      UNIQUE (tx_id, address)
-    );`;
+    yield* sql.withTransaction(
+      Effect.gen(function* () {
+        yield* sql`CREATE TABLE IF NOT EXISTS ${sql(tableName)} (
+          ${sql(Ledger.Columns.TX_ID)} BYTEA NOT NULL,
+          ${sql(Ledger.Columns.ADDRESS)} TEXT NOT NULL,
+          ${sql(Columns.CREATED_AT)} TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (tx_id, address)
+        );`;
+        yield* sql`ALTER TABLE ${sql(tableName)}
+          ADD COLUMN IF NOT EXISTS ${sql(Columns.CREATED_AT)}
+          TIMESTAMPTZ NOT NULL DEFAULT NOW();`;
+        yield* sql`CREATE INDEX IF NOT EXISTS ${sql(
+          `idx_${tableName}_${Columns.CREATED_AT}`,
+        )} ON ${sql(tableName)} (${sql(Columns.CREATED_AT)});`;
+      }),
+    );
   }).pipe(
     Effect.withLogSpan(`creating table ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to create the table"),
@@ -37,43 +58,23 @@ export const insertEntries = (
   entries: Entry[],
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
-    if (entries.length > 0) {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
-        ON CONFLICT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}) DO NOTHING`;
+    if (entries.length <= 0) {
+      return;
     }
+    const sql = yield* SqlClient.SqlClient;
+    const sqlStartedAt = performance.now();
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(entries)}
+      ON CONFLICT (${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}) DO NOTHING`;
+    yield* addressHistoryInsertSqlDurationTimer(
+      Effect.succeed(Duration.millis(performance.now() - sqlStartedAt)),
+    );
   }).pipe(
     Effect.withLogSpan(`entries ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: insert entries: ${JSON.stringify(e)}`),
+      logDatabaseError(tableName, "insert entries", e),
     ),
     sqlErrorToDatabaseError(tableName, "Failed to insert given entries"),
   );
-
-export const insert = (
-  spent: Buffer[],
-  produced: Ledger.Entry[],
-): Effect.Effect<void, DatabaseError, Database> =>
-  Effect.gen(function* () {
-    if (spent.length > 0 || produced.length > 0) {
-      const sql = yield* SqlClient.SqlClient;
-
-      const inputEntriesProgram = sql<Entry>`SELECT ${sql(Ledger.Columns.TX_ID)}, ${sql(Ledger.Columns.ADDRESS)}
-      FROM ${sql(MempoolLedgerDB.tableName)}
-      WHERE ${sql(Ledger.Columns.TX_ID)} IN ${sql.in(spent)}`;
-
-      const inputEntries: readonly Entry[] = yield* inputEntriesProgram.pipe(
-        Effect.catchAllCause((_) => Effect.succeed([])),
-      );
-
-      const outputEntries: Entry[] = produced.map((e) => ({
-        [Ledger.Columns.TX_ID]: e[Ledger.Columns.TX_ID],
-        [Ledger.Columns.ADDRESS]: e[Ledger.Columns.ADDRESS],
-      }));
-
-      yield* insertEntries([...inputEntries, ...outputEntries]);
-    }
-  }).pipe(Effect.withLogSpan(`entries ${tableName}`));
 
 export const delTxHash = (
   tx_hash: Buffer,
@@ -111,9 +112,9 @@ export const retrieve = (
       `${tableName} db: attempt to retrieve value with address ${address}`,
     );
 
-    const result = yield* sql<
-      Pick<Tx.Entry, Tx.Columns.TX>
-    >`SELECT ${sql(Tx.Columns.TX)} FROM (
+    const result = yield* sql<Pick<Tx.Entry, Tx.Columns.TX>>`SELECT ${sql(
+      Tx.Columns.TX,
+    )} FROM (
       SELECT ${sql(Tx.Columns.TX_ID)}, ${sql(Tx.Columns.TX)}
       FROM ${sql(MempoolDB.tableName)}
       UNION
@@ -129,14 +130,26 @@ export const retrieve = (
   }).pipe(
     Effect.withLogSpan(`retrieve value ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving value error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving value error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
       "Failed to retrieve entries of the given address",
     ),
+  );
+
+export const pruneOlderThan = (
+  cutoff: Date,
+): Effect.Effect<number, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const deleted = yield* sql`DELETE FROM ${sql(tableName)}
+      WHERE ${sql(Columns.CREATED_AT)} < ${cutoff}
+      RETURNING ${sql(Ledger.Columns.TX_ID)}`;
+    return deleted.length;
+  }).pipe(
+    Effect.withLogSpan(`pruneOlderThan ${tableName}`),
+    sqlErrorToDatabaseError(tableName, "Failed to prune address history"),
   );
 
 export const clear = clearTable(tableName);

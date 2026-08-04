@@ -1,0 +1,104 @@
+---
+title: "On-Chain Overview"
+description: "How Midgard's on-chain code is laid out across Aiken and Plutarch, how to build the plutus.json blueprint, and a map of the top-level validators."
+---
+
+Midgard is Cardano's first optimistic rollup protocol. Its on-chain layer is the
+set of Cardano validators that anchor the rollup to the L1: they gate the block
+state queue, the operator directory, user-visible deposit/withdrawal events, data
+availability, and the fraud-proof machinery that resolves challenges against
+invalid blocks.
+
+The on-chain code lives under `onchain/` and is split across two languages.
+
+<Cards>
+  <Card title="onchain/aiken" href="/docs/onchain/conventions" description="Primary Aiken validators, minting policies, and shared protocol libraries. This is the source of the plutus.json blueprint." />
+  <Card title="onchain/plutarch" href="/docs/onchain/merkle-plutarch" description="Plutarch models and validators that mirror important protocol logic, focused on Merkle Patricia Forestry proofs for the fraud-proof system." />
+</Cards>
+
+## Layout
+
+The Aiken project is organized "vertically": each file targets one concrete
+purpose rather than grouping by language construct, and most validators have a
+one-to-one library counterpart under `lib/` that defines their `Datum`,
+`SpendRedeemer`, `MintRedeemer`, and helpers. See
+[Conventions](/docs/onchain/conventions) for the full rules.
+
+The Plutarch package (`onchain/plutarch`) provides utilities for constructing and
+verifying the Merkle proofs that the fraud-proof system relies on. It is built
+independently via Nix. See [Merkle proofs (Plutarch)](/docs/onchain/merkle-plutarch).
+
+## Building the blueprint
+
+Install [Aiken](https://aiken-lang.org/) and, from `onchain/aiken`, run:
+
+```sh
+aiken build
+```
+
+This compiles every validator into `onchain/aiken/plutus.json`, a CIP-57 blueprint
+containing the compiled code, parameters, and datum/redeemer schemas for each
+validator entrypoint. The project pins its toolchain in `aiken.toml`:
+
+```toml
+name = "al-ft/midgard"
+compiler = "v1.1.21"
+plutus = "v3"
+```
+
+It depends on `aiken-lang/stdlib`, `aiken-lang/fuzz`,
+`anastasia-labs/aiken-design-patterns`, `keyan-m/aiken-scott-utils`, and
+`aiken-lang/merkle-patricia-forestry`.
+
+<Callout type="info" title="Blueprint entrypoint naming">
+  In `plutus.json`, each validator entrypoint is titled `<module>.<purpose>`, for example `state_queue.spend.spend`, `hub_oracle.mint.mint`, or
+  `phas.membership.withdraw`. The trailing `.else` entries are the fallback
+  handlers that reject every other script purpose.
+</Callout>
+
+## Top-level validators
+
+The following validators live under `onchain/aiken/validators/`. Purposes are
+summarized at a high level from each file; follow the linked pages for the
+datum/redeemer intent.
+
+| Validator (module) | Purpose | Details |
+|---|---|---|
+| `hub_oracle` | Mints the singleton hub NFT that anchors protocol-wide parameters (policy IDs, addresses). | [Consensus](/docs/onchain/consensus-validators) |
+| `state_queue` | Linked-list queue of committed block headers; the spine of the rollup's confirmed state. | [Consensus](/docs/onchain/consensus-validators) |
+| `scheduler` | Tracks the active operator's shift and enforces operator rotation. | [Consensus](/docs/onchain/consensus-validators) |
+| `settlement` | Settlement queue nodes and resolution claims for maturing blocks. | [Consensus](/docs/onchain/consensus-validators) |
+| `reserve` | Protocol reserve UTxO feeding the payout mechanism. | [Consensus](/docs/onchain/consensus-validators) |
+| `payout` | Accumulates and disburses funds owed to users (e.g. withdrawals). | [Consensus](/docs/onchain/consensus-validators) |
+| `operator_directory/registered_operators` | Linked list of registered (bonded) operators. | [Operator directory](/docs/onchain/operator-directory) |
+| `operator_directory/active_operators` | Linked list of currently active operators. | [Operator directory](/docs/onchain/operator-directory) |
+| `operator_directory/retired_operators` | Linked list of retired operators awaiting bond recovery. | [Operator directory](/docs/onchain/operator-directory) |
+| `user_events/deposit` | L1 deposit events entering the rollup. | [User events](/docs/onchain/user-events) |
+| `user_events/withdrawal` | L1 withdrawal events leaving the rollup. | [User events](/docs/onchain/user-events) |
+| `user_events/tx_order` | Forced-inclusion transaction orders. | [User events](/docs/onchain/user-events) |
+| `user_events/witness` | Per-event parameterized staking script used as an inclusion witness. | [User events](/docs/onchain/user-events) |
+| `da_attestation` | DA committee attestation control plane (threshold signatures). | [DA validators](/docs/onchain/da-validators) |
+| `da_params_governor` | Governance of the DA committee parameters. | [DA validators](/docs/onchain/da-validators) |
+| `fraud_proof` | Mints the permanent fraud-proof token when a computation thread succeeds. | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
+| `fraud_proof_catalogue` | Publishes the Merkle root of admissible fraud categories. | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
+| `computation_thread` | Step-machine token that drives a fraud proof from its first step to success. | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
+| `fraud_proofs/<category>/step-0N` | Per-category multi-step fraud-proof validators. | [Fraud-proof machines](/docs/onchain/fraud-proof-machines) |
+| `phas` | PHAS membership staking validator (Merkle membership check). | [PHAS membership](/docs/onchain/phas-membership) |
+
+<Callout type="info" title="DA validators and the committed blueprint">
+  `da_attestation` and `da_params_governor` are present in the source tree under
+  `onchain/aiken/validators/` and their entrypoints are present in the checked-in
+  `onchain/aiken/plutus.json`. Rebuild the blueprint after any validator or
+  parameter change and review the generated diff before deployment.
+</Callout>
+
+## Reading order
+
+Start with the [Conventions](/docs/onchain/conventions) and
+[ScriptContext invariants](/docs/onchain/script-context-invariants) so the
+per-validator pages read cleanly, then work through the domain groups. The
+[protocol specification](/docs/spec/building) is the normative design target for
+the consensus rules. Code, generated blueprints, and acceptance tests show current
+conformance, and
+[Fault proofs](/docs/fault-proofs/overview) explains the dispute game at the protocol
+level.

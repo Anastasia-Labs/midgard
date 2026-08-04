@@ -1,15 +1,28 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-// Get the directory path relative to the project
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+/**
+ * Filesystem-backed wallet storage used by the manager CLI.
+ *
+ * The interactive and command-based wallet flows both converge on this module,
+ * so keeping the path resolution and persistence rules documented here reduces
+ * the risk of accidentally diverging wallet formats across entrypoints.
+ */
+
+/**
+ * Resolve the manager package root from the compiled module location so wallet
+ * storage works regardless of the current working directory.
+ */
 const PROJECT_ROOT = join(__dirname, '../../../..'); // Simplified path to project root
 const CONFIG_DIR = join(PROJECT_ROOT, 'config/wallets');
 const WALLET_CONFIG_PATH = join(CONFIG_DIR, 'default.json');
 
+/**
+ * On-disk wallet map keyed by the operator-facing wallet name.
+ */
 export interface WalletConfig {
   [name: string]: {
     name?: string;
@@ -22,8 +35,11 @@ export interface WalletConfig {
 }
 
 /**
- * Load wallet configuration from disk
- * Creates default config if it doesn't exist
+ * Loads the wallet configuration file from disk.
+ *
+ * The directory is created eagerly so later write paths can assume the storage
+ * location exists. Errors are surfaced as a single stable message because the
+ * calling CLI flows already provide user-facing context.
  */
 export const loadWallets = async (): Promise<WalletConfig> => {
   try {
@@ -39,7 +55,10 @@ export const loadWallets = async (): Promise<WalletConfig> => {
 };
 
 /**
- * Save wallet configuration to disk
+ * Persists the full wallet map to disk.
+ *
+ * Writes are whole-file updates so callers operate on a simple read-modify-
+ * write model instead of reasoning about partial updates.
  */
 const saveWallets = async (wallets: WalletConfig): Promise<void> => {
   await mkdir(CONFIG_DIR, { recursive: true });
@@ -47,7 +66,10 @@ const saveWallets = async (wallets: WalletConfig): Promise<void> => {
 };
 
 /**
- * Add a test wallet to the configuration
+ * Adds or replaces a wallet entry in the local wallet store.
+ *
+ * Default wallets are protected from modification because other local manager
+ * workflows may assume their presence and semantics.
  */
 export const addWallet = async (
   name: string,
@@ -73,7 +95,10 @@ export const addWallet = async (
 };
 
 /**
- * Remove a test wallet from the configuration
+ * Removes a wallet entry from the local wallet store.
+ *
+ * Default wallets are protected for the same reason they cannot be mutated:
+ * they act as stable fixtures for local tooling.
  */
 export const removeWallet = async (name: string): Promise<void> => {
   const wallets = await loadWallets();
@@ -88,15 +113,15 @@ export const removeWallet = async (name: string): Promise<void> => {
 };
 
 /**
- * Get a wallet by name
+ * Looks up one wallet entry by its configured name.
  */
 export const getWallet = async (name: string): Promise<WalletConfig[string] | null> => {
   const wallets = await loadWallets();
-  return wallets[name] || null;
+  return wallets[name] ?? null;
 };
 
 /**
- * List all wallet names
+ * Lists the currently configured wallet names.
  */
 export const listWallets = async (): Promise<string[]> => {
   const wallets = await loadWallets();

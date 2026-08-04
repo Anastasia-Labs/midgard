@@ -1,0 +1,88 @@
+---
+title: "Background Fibers"
+description: "The fifteen long-running fibers exported by the Midgard node, what each one drives, when conditional fibers start, and how a stalled fiber shows up in readiness and logs."
+---
+
+When the node runs `listen`, it starts a set of **background fibers** that drive the
+protocol forward without manual intervention. The fifteen long-running fibers
+documented here are defined in `src/fibers/`, exported through
+`src/fibers/index.ts`, and launched together near the end of
+`src/commands/listen.ts`.
+
+Twelve run on every node. `monitor-mempool` runs only when the node is started
+with `-m` / `--with-monitoring`. `speculative-commit-builder` and
+`user-event-barrier-refresher` run only with `SPECULATIVE_COMMIT_BUILD=true`;
+that setting is disabled by default and cannot be combined with the legacy MPF
+engine. The speculative-commit module also starts its companion submitter loop
+under the same flag.
+
+## The fibers
+
+| Fiber | Drives | One-shot equivalent |
+| --- | --- | --- |
+| `admission-backlog-gauge` | Refreshes the hybrid durable-admission backlog count used for admission-cap decisions and metrics. | None |
+| `block-commitment` | Batches mempool activity and commits a block header to the L1 state queue. | `commit-explicit-block-header` |
+| `block-confirmation` | Advances committed block headers through confirmation. | `block-committed` |
+| `da-publication-reconciler` | Seeds and retries durable per-peer DA payload deliveries, then publishes announcements after the committee threshold accepts the payload. It remains idle when no DA publication manifest is configured. | None |
+| `merge` | Merges matured, DA-attested blocks into confirmed state. | `merge-complete` |
+| `tx-queue-processor` | Drains the durable admission queue into validation and the mempool. | None |
+| `fetch-and-insert-deposit-utxos` | Reads L1 deposit UTxOs and records them locally. | None |
+| `fetch-and-insert-withdrawal-utxos` | Reads L1 withdrawal-order UTxOs and records them locally. | `fetch-withdrawals-once` |
+| `fetch-and-insert-tx-order-utxos` | Reads L1 transaction-order UTxOs and records them locally. | None |
+| `project-deposits-to-mempool-ledger` | Projects confirmed deposits into the mempool ledger once their inclusion time is due. | `project-deposits-once` |
+| `retention-sweeper` | Removes retention-expired data, subject to the DA retention guards. | None |
+| `monitor-mempool` | Emits mempool metrics. Started only with `--with-monitoring`. | None |
+| `mpf-payload-audit` | Runs a confirmed-ledger MPF root audit when its block-or-time interval is due; a divergence records the sticky commit halt. Legacy-engine audits are skipped. | `mpf-audit` |
+| `speculative-commit-builder` | With `SPECULATIVE_COMMIT_BUILD=true`, prebuilds the next block candidate while the current block confirms; its companion submitter uses the normal mutation lease after confirmation. | None |
+| `user-event-barrier-refresher` | With `SPECULATIVE_COMMIT_BUILD=true`, reconciles deposits, withdrawals, and transaction orders into monotone barrier watermarks used by speculative builds. | None |
+
+Each fiber runs on its own schedule, configured through the node's environment (for
+example `WAIT_BETWEEN_MERGE_TXS` for `merge`). By default,
+`tx-queue-processor` polls every 250 ms and `admission-backlog-gauge` every 500 ms,
+`monitor-mempool` every second, `user-event-barrier-refresher` every two seconds,
+and `da-publication-reconciler` every 30 seconds. The speculative builder and its
+submitter are queue-driven. `mpf-payload-audit` wakes at the shorter of the MPF
+audit time interval and the block-commitment interval, then audits only when the
+configured block-or-time threshold is due.
+
+<Callout type="warn" title="attest-state-queue-once is not a fiber">
+DA attestation is not driven by a background fiber. `attest-state-queue-once` is an
+operator-local shortcut that signs, submits, and applies an attestation with a
+single-key committee. It is not the acceptance path: a real deployment attests
+through the [DA committee node](/docs/watchers/da-committee-node). See the
+[end-to-end testing flow](/docs/operators/node/e2e-testing-flow).
+</Callout>
+
+## How the fibers relate
+
+<Mermaid chart={`flowchart LR
+  Q["durable admission queue"] --> TQ["tx-queue-processor"]
+  TQ --> MP["mempool"]
+  MP --> C["block-commitment"]
+  C --> SQ["state queue (L1)"]
+  SQ --> CF["block-confirmation"]
+  CF --> MG["merge"]
+  D["L1 deposit UTxOs"] --> FD["fetch-and-insert-deposit-utxos"]
+  FD --> PD["project-deposits-to-mempool-ledger"]
+  PD --> MP
+  W["L1 withdrawal orders"] --> FW["fetch-and-insert-withdrawal-utxos"]
+  T["L1 tx orders"] --> FT["fetch-and-insert-tx-order-utxos"]
+  RS["retention-sweeper"] --> PG[("PostgreSQL")]`} />
+
+## When a fiber stalls
+
+A stalled fiber does not crash the process. It shows up in two places:
+
+- `GET /readyz` checks worker heartbeats and returns `503` with a readiness reason
+  when a fiber stops reporting. This is the signal to watch, not `/healthz`.
+- The node log records the fiber's own error before it backs off and retries.
+
+A stuck `merge` is most often the state-queue mutation lease rather than the fiber
+itself. Inspect `GET /stateQueueMutationLease` before restarting anything. See
+[Server HTTP API](/docs/operators/node/server-http-api).
+
+## Related
+
+- [Server &amp; HTTP API](/docs/operators/node/server-http-api)
+- [Database &amp; State](/docs/operators/node/database)
+- [Runtime Overview](/docs/operators/node/overview)

@@ -2,7 +2,7 @@ name: Latex CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main", "staging" ]
     paths: [ 'technical-spec/**' ]
   workflow_dispatch:  # For manual testing
   # TODO: Change to release trigger later
@@ -39,14 +39,11 @@ jobs:
           echo "No PDFs found - check if LaTeX compilation succeeded"
         fi
 
-    # Deploy to GitHub Pages (for direct URL access)
-    - name: Setup GitHub Pages
-      uses: actions/configure-pages@v4
-      
-    - name: Upload to GitHub Pages
-      uses: actions/upload-pages-artifact@v3
+    # Pages deployment is owned by pages-deploy.yml, which serves the docs
+    # site and this PDF from one artifact. This workflow only validates the
+    # LaTeX build and keeps the PDF downloadable per run.
+    - name: Upload PDF artifact
+      uses: actions/upload-artifact@v4
       with:
+        name: midgard-pdf
         path: pdfs/
-        
-    - name: Deploy to GitHub Pages
-      uses: actions/deploy-pages@v4

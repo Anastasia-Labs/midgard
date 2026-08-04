@@ -1,0 +1,168 @@
+# Adversarial Review Of Watcher Implementation Plan
+
+Status: Historical review input. Its findings were incorporated into
+`midgard-watcher-architecture.md`; it is not a current implementation plan.
+
+Last reviewed: 2026-07-22
+
+Reviewer: historical adversarial production-readiness review
+
+Reviewed files:
+
+- `demo/midgard-watcher/midgard-watcher-architecture.md`
+- the former watcher implementation plan, which is not retained as a current
+  repository artifact
+
+Additional context consulted by reviewer:
+
+- `public_testnet_readiness.md`
+- `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`
+- `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md`
+- `technical-spec`
+- `demo/midgard-validation/src`
+- `demo/midgard-node/src/workers/utils/mpf.ts`
+- `onchain/aiken/lib/midgard`
+
+## Verdict
+
+No-go as a production-ready plan in its first draft.
+The watcher docs identify many right launch gates, but several were not concrete, testable, or aligned tightly enough with the current Midgard repo.
+The Midgard readiness doc is already explicit that public testnet is no-go because fraud-proof/proof-data availability, deterministic deployment identity, finality/rollback, CI, and acceptance gates remain blockers.
+
+## Findings
+
+### 1. Critical: State-transition proofs were not a first-class launch gate
+
+The first plan verified final `utxos_root`, but did not require a committed transition trace, step index, exact-once coverage, or per-step challenge path.
+Local transaction faults are insufficient because an operator can commit individually valid transactions with a wrong post-state root.
+
+Recommendation:
+
+- Add a milestone before verifier/proof implementation for `transition_trace_root`, `transition_trace_index_root`, step schema, exact-once challenges, ordering challenges, and Aiken/TypeScript conformance/budget tests.
+
+Disposition:
+
+- Incorporated into Task 0.4 and referenced from root reconstruction and critical path.
+
+### 2. Critical: DA was under-specified for independent challengers
+
+The first DA task defined a payload, but did not require deterministic state-queue header reconstruction from public payload bytes, non-circular header/payload binding, certificate contents, or a rule that missing DA blocks append/merge or are directly slashable.
+The technical spec's DA section remains aspirational Leios/Mithril design.
+
+Recommendation:
+
+- Make DA security mode, retention, permissionless retrieval, `challenge_window + finality + proof_margin`, and missing-DA challenge semantics launch blockers.
+
+Disposition:
+
+- Incorporated into Task 0.6 and strengthened Task 4.1.
+
+### 3. Critical: Consensus feature gating was missing
+
+The plan could exclude features from the security claim, but that is not enough if the deployed protocol still admits unprovable features.
+Current validation accepts or evaluates mint, Plutus/MidgardV1 scripts, observers, redeemers, protected receives, budgets, and value preservation.
+
+Recommendation:
+
+- Add a manifest-enforced feature matrix: every enabled ledger feature must have end-to-end proof support, or be rejected/disabled in consensus.
+
+Disposition:
+
+- Incorporated into Task 0.5, manifest criteria, and block decision criteria.
+
+### 4. Critical: L1 finality and provider consistency were not strong enough
+
+The first plan accepted "at least one provider, with a path to multiple", conflicting with the architecture's production requirement for at least two independent L1 sources and Midgard readiness requirements around first-visibility finalization.
+
+Recommendation:
+
+- Make multi-provider same-chain-point validation, explicit finality depth, rollback quarantine, and provider disagreement tests mandatory for production.
+
+Disposition:
+
+- Incorporated into Tasks 2.1 and 2.2.
+
+### 5. High: Spec, implementation, and proof roots required one conformance rule
+
+The original review found divergent transition order and root representations.
+The current TeX block spec and node agree on withdrawals, forced transaction
+orders, normal L2 transactions, then deposits; same-block deposit spending is
+rejected. Aiken proof binding to the current typed/counted roots is still
+incomplete.
+
+Recommendation:
+
+- Keep Milestone 0 stronger than "document exists": require generated
+  TypeScript/Aiken/live-block golden vectors and clean redeploy criteria so
+  transition order and roots cannot drift again.
+
+Disposition:
+
+- Incorporated into Tasks 0.2 and 0.3.
+
+### 6. High: Double-spend E2E can pass without proving acceptedness
+
+Phase A rejects non-`TxIsValid`.
+The current native compact verifier checks that the validity code is well formed, but does not necessarily assert that it equals `TxIsValid`.
+
+Recommendation:
+
+- Task 7.3 must require `TxIsValid` assertions in all accepted-transaction proof helpers and mutation tests with invalid validity codes.
+
+Disposition:
+
+- Incorporated into Tasks 5.3 and 7.3.
+
+### 7. High: Acceptance gate was too narrow
+
+The first Task 10.2 required only one proof-covered invalid block.
+That proves a demo path, not production coverage.
+
+Recommendation:
+
+- Require E2E emulator tests for every claimed proof family, gated preprod tests for all launch-scope families, negative tests proving valid blocks cannot be challenged, and artifacts from public DA/proof bundles.
+
+Disposition:
+
+- Incorporated into Task 10.2.
+
+### 8. High: Fraudulent-header removal concurrency was under-specified
+
+The first plan covered tail/non-tail tests, but not live state-queue races, refetch-after-each-confirmation, successor pruning order, or per-removed-block slashing under concurrent commits/merges.
+
+Recommendation:
+
+- Add adversarial removal orchestration tests against changing topology, stale UTxOs, concurrent append/merge attempts, and active/retired/already-slashed operators.
+
+Disposition:
+
+- Incorporated into Task 8.3.
+
+### 9. High: Protocol economics and timing were not production-planned
+
+Current parameters still include TODOs, very short `maturity_duration`, and zero slash/reward values in testnet settings.
+
+Recommendation:
+
+- Add a quantitative proof-deadline model: worst-case proof steps, L1 confirmation depth, retries, fee congestion, DA fetch, and rollback margin must fit inside maturity with measurable slack.
+
+Disposition:
+
+- Incorporated into Task 0.7.
+
+### 10. Medium: Manifest trust and provenance were incomplete
+
+The manifest task listed many fields, but not a full script parameterization graph, DA mode, feature gates, release commit, signer trust root, threshold/rotation policy, or manifest signing authority.
+
+Recommendation:
+
+- Treat manifest generation, signing, verification, and key custody as a dedicated release-security milestone.
+
+Disposition:
+
+- Incorporated into Tasks 1.1 and 1.3.
+
+## Reviewer Summary
+
+The strongest immediate correction is to move proof coverage, DA/header binding, transition trace design, consensus feature gates, and finality/provider policy into Milestone 0/1.
+Building a broad verifier before those are frozen risks producing a watcher that can detect real faults it cannot prove or stop.

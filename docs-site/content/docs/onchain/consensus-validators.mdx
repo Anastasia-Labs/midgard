@@ -1,0 +1,35 @@
+---
+title: "Consensus Validators"
+description: "The validators that run Midgard's consensus on L1, from the hub oracle to reserve and payout."
+---
+
+These validators, under
+[`onchain/aiken/validators/`](https://github.com/Anastasia-Labs/midgard/tree/main/onchain/aiken/validators),
+enforce the consensus and settlement machinery described in the
+[Consensus Protocol](/docs/spec/consensus-protocol) chapter. Each has a matching
+`lib/` module following the repository's
+[one-to-one convention](/docs/onchain/conventions).
+
+## Validators
+
+- **`hub-oracle`**: the central hub / oracle authority. Holds protocol-level
+  configuration and nonce authority that other validators reference.
+- **`state-queue`**: the on-chain queue of committed block headers. Governs the
+  commit → confirm → merge lifecycle of blocks awaiting settlement.
+- **`scheduler`**: rotates block-production duty between operators and advances
+  shifts according to the protocol's time model.
+- **`settlement`**: handles settlement claims for confirmed state.
+- **`reserve`**: governs the protocol reserve funds.
+- **`payout`**: governs withdrawal payout minting and spending.
+
+<Callout type="info" title="Datums and redeemers">
+Each validator defines its own datum (the state it protects) and redeemer (the
+allowed transitions). For exact type definitions and validation logic, read the
+corresponding `.ak` file and its `lib/` module.
+</Callout>
+
+## Related
+
+- Operator-facing builders: [`midgard-sdk`](/docs/sdk/midgard-sdk/blocks-and-scheduling)
+- Node lifecycle: [background fibers](/docs/operators/node/background-fibers)
+- Operator registry: [Operator Directory](/docs/onchain/operator-directory)

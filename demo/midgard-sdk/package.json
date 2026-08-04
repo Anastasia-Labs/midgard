@@ -1,7 +1,7 @@
 {
   "name": "@al-ft/midgard-sdk",
   "version": "0.1.0",
-  "description": "https://docs.github.com/en/packages/quickstart",
+  "description": "Midgard TypeScript library for building operator and watcher transactions",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "type": "module",
@@ -12,39 +12,47 @@
     "clean": "rimraf dist",
     "reset": "rimraf dist node_modules *.tgz",
     "build": "tsup src/index.ts --minify --format esm,cjs --dts --clean",
-    "lint": "eslint",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
     "repack": "pnpm run build  && pnpm pack",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\"",
     "ts-node": "ts-node",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain",
+    "@al-ft/midgard-core": "workspace:*",
     "@effect/vitest": "^0.17.8",
+    "@lucid-evolution/lucid": "0.6.0",
     "@sinclair/typebox": "^0.34.28",
     "@types/node": "^22.13.5",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
+    "effect": "^3.14.22",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.5.2",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "2.1.8",
-    "rimraf": "^6.0.1"
+    "vitest": "2.1.8"
   },
   "directories": {
     "test": "test"
   },
   "dependencies": {
+    "@harmoniclabs/cbor": "1.6.6",
     "@harmoniclabs/crypto": "^0.3.0",
-    "@lucid-evolution/lucid": "^0.4.29",
-    "@noble/hashes": "^1.7.1",
-    "effect": "^3.14.22"
+    "@noble/hashes": "^2.0.1"
   },
-  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0"
+  "peerDependencies": {
+    "@lucid-evolution/lucid": "0.6.0",
+    "effect": "^3.14.22"
+  }
 }

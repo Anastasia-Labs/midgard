@@ -1,0 +1,107 @@
+---
+title: "Submission & Observability"
+description: "How lucid-midgard submits a native transaction, what durable admission means, and how to await a terminal status without treating a 202 as acceptance."
+---
+
+Submitting a Midgard native transaction is not a single event. The node first **admits**
+the transaction durably, then validates it. `lucid-midgard` models this as an admission
+flow rather than a one-shot call, so you can distinguish "the node has taken
+responsibility for this transaction" from "the node has accepted it."
+
+## Submit, then observe
+
+`submit()` returns a `SubmittedTx` carrying durable admission metadata. Status is
+observed on that object, not on the signed transaction.
+
+```ts twoslash
+import type { CompleteTx } from "@al-ft/lucid-midgard";
+declare const tx: CompleteTx;
+// ---cut---
+const signed = await tx.sign.withWallet().complete();
+const submitted = await signed.submit();
+
+await submitted.awaitStatus({ until: "accepted" });
+```
+
+Three stages, in order. `sign.withWallet()` returns a partial-sign builder;
+`.complete()` assembles the submit-capable `CompleteTx`. Only then does `submit()`
+post the canonical CBOR.
+
+<Callout type="warn" title="Admission is not acceptance">
+A `202` response means the transaction is **queued**, not accepted. `200` means it was
+a duplicate of one already admitted. Neither says the transaction is valid. Call
+`status()` or `awaitStatus()` before telling a user their transfer succeeded.
+</Callout>
+
+## The status lifecycle
+
+`TxStatus` has eight kinds, reported by `GET /tx-status` and normalized in
+`src/builder/status.ts`:
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Durably admitted. Not yet validated. |
+| `validating` | Being validated by the node's Phase A / Phase B pipeline. |
+| `accepted` | Validated and admitted into the mempool ledger. |
+| `committed` | Included in a block header committed to L1. |
+| `pending_commit` | Selected for a block whose commitment is still in flight. |
+| `awaiting_local_recovery` | The node is reconciling local state and cannot answer authoritatively yet. |
+| `not_found` | The node has no record of this transaction id. |
+| `rejected` | Validation failed. Carries the node's `code` and a nullable `detail`. |
+
+Only the `rejected` variant carries `code` and `detail`. The other kinds carry the
+transaction id alone.
+
+## Awaiting a status
+
+`awaitStatus(options?)` polls until the status reaches one of a target set. By default
+that set is `accepted`, `committed`, and `rejected`, so the call resolves on the first
+outcome that settles the question. Polling defaults to a 1 second interval and a
+60 second timeout.
+
+```ts twoslash
+import type { SubmittedTx } from "@al-ft/lucid-midgard";
+declare const submitted: SubmittedTx;
+// ---cut---
+// Resolve once the node has validated and accepted the transaction.
+await submitted.awaitStatus({ until: "accepted" });
+
+// Or inspect the current status once, without polling.
+const current = await submitted.status();
+if (current.kind === "rejected") {
+  console.error(current.code, current.detail);
+}
+```
+
+<Callout type="warn" title="A rejection is a value, not a thrown error">
+`awaitStatus` resolves with a `rejected` status; it does not throw. Branch on
+`status.kind` rather than relying on `try` / `catch`. Errors are thrown only when the
+provider itself misbehaves, for example a malformed response
+(`ProviderPayloadError`).
+</Callout>
+
+Each of `submit`, `status`, and `awaitStatus` has `Safe` and `Program` variants. The
+`Safe` form returns `MidgardResult<T, LucidMidgardError>` instead of throwing; the
+`Program` form returns a lazy `Effect` that performs no work until run. See
+[Public API](/docs/sdk/lucid-midgard/public-api).
+
+## Rejections
+
+When the node rejects a transaction, `lucid-midgard` preserves the node's stable reject
+code rather than translating it into a library-specific one. `E_DOUBLE_SPEND` from the
+[validation engine](/docs/validation/overview) reaches your handler as
+`E_DOUBLE_SPEND`, on the `code` field of the `rejected` status. This is deliberate:
+the node persists these codes for observability and replay, and a client that renames
+them breaks that trail.
+
+A locally valid transaction can still be rejected. Inputs the builder selected from a
+provider snapshot may be spent before the node validates, producing `E_INPUT_NOT_FOUND`
+or `E_DOUBLE_SPEND`. Local validation is a preflight, never an authority. See
+[Validation &amp; Simulation](/docs/sdk/lucid-midgard/validation-simulation).
+
+## Related
+
+- [Quickstart](/docs/sdk/lucid-midgard/quickstart), the end-to-end transfer flow.
+- [Provider &amp; Wallet](/docs/sdk/lucid-midgard/provider-and-wallet)
+- Node side: [Server &amp; HTTP API](/docs/operators/node/server-http-api)
+- Reject codes: [Validation Engine](/docs/validation/overview)

@@ -1,0 +1,23 @@
+---
+title: "Reserve & Payout"
+description: "Building reserve and withdrawal-payout transactions, with their datum and redeemer types."
+---
+
+These modules build the transactions that manage the protocol reserve and pay out
+withdrawals, enforced on-chain by the
+[`reserve` and `payout` validators](/docs/onchain/consensus-validators).
+
+## Modules
+
+- **`reserve`**: manage the protocol reserve funds. Exports `ReserveSpendRedeemer`.
+- **`payout`**: withdrawal payout minting and spending. Exports `PayoutDatum`,
+  `PayoutSpendRedeemer`, and `PayoutMintRedeemer`.
+- **`reserve-payout`** (`reserve-payout.ts` plus the `reserve-payout/` directory): the
+  combined reserve-to-payout flow.
+
+## Related
+
+- Node commands: `initialize-payout`, `add-reserve-funds-to-payout`, `conclude-payout`,
+  `reserve-utxos`, `payout-status`, see the
+  [CLI reference](/docs/operators/node/cli-reference)
+- Node ops page: [Reserve and payout](/docs/operators/node/reserve-payout)

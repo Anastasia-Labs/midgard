@@ -1,0 +1,30 @@
+---
+title: "Off-Chain Data Architecture"
+description: "The data-availability layer (committee-retained payloads, Leios blobs, Mithril) and the archive node."
+---
+
+Chapter 6 specifies how Midgard makes block data **available** off-chain. The
+optimistic model only works if the data behind a block can be retrieved, so anyone
+can reconstruct state and build a fraud proof.
+
+## Data-availability layer
+
+The chapter describes how block payloads are published, retained, and attested:
+
+- **Committee-retained payload**: the payload the DA committee holds and attests to.
+  Current implementation: committee-retained payloads.
+- **Data availability via Leios blobs**: publishing payloads as Leios blobs.
+- **Data availability via Mithril**: using Mithril for availability guarantees.
+
+## Archive node
+
+The **archive node** provides long-term storage and retrieval of historical block
+data beyond what the committee retains live.
+
+## In the codebase
+
+The committee-retained path is implemented by the libp2p-based
+[data-availability committee node](/docs/watchers/da-committee-node) (attestation,
+payload exchange, and on-chain reconciliation), with the DA control plane enforced on L1
+by the [`da-attestation` validator](/docs/onchain/da-validators). Leios-backed DA,
+Mithril-backed DA, and the archive node are specified but not implemented here.

@@ -1,0 +1,81 @@
+---
+title: "Primitives"
+description: "The small shared building blocks midgard-core exports alongside the codec, from asset arithmetic to error formatting."
+---
+
+Beyond the codec, `midgard-core` exports small, dependency-light primitives that
+both the SDK and the node reuse. Each is available as its own subpath so
+consumers pull in only what they need.
+
+## Assets: `@al-ft/midgard-core/assets`
+
+An `Assets` map is `Readonly<Record<AssetUnit, bigint>>`, where a unit is either
+`"lovelace"` or a policy/asset-name string. The module provides normalized
+arithmetic that always drops zero-quantity units:
+
+- `normalizeAssets`: coerces values to `bigint` and removes zero entries.
+- `addAssets` / `subtractAssetsDelta`, add or subtract maps, dropping units that
+  net to zero.
+- `negateAssets`: negate every quantity.
+- `assetsEqual`: normalized equality.
+
+It also exports the constants `LOVELACE_UNIT`, `ADA_POLICY_ID` (empty string),
+and `ADA_ASSET_NAME` (empty string).
+
+## Hex: `@al-ft/midgard-core/hex`
+
+`normalizeHex` validates and lowercases a hex string, with options for an
+expected `byteLength`, whether an empty string is allowed, and whether to trim.
+`hexToBytes` returns a `Buffer`, and `compareHex` compares two hex strings under
+the same normalization rules. Invalid input throws with a field-scoped message.
+
+## Output references: `@al-ft/midgard-core/out-ref`
+
+An `OutRefLike` is `{ txHash, outputIndex }`. Helpers:
+
+- `normalizeTxHash`: validates a 32-byte hex transaction hash.
+- `normalizeOutRef`: validates the hash and a non-negative safe-integer index.
+- `outRefLabel`: renders the canonical `<txHash>#<outputIndex>` label.
+- `parseOutRefLabel`: parses that label back into an `OutRefLike`.
+
+## Plutus data CBOR: `@al-ft/midgard-core/plutus-data-cbor`
+
+Low-level Plutus data CBOR handling built on a `CborNode` model
+(`uint`, `nint`, `bytes`, `array`, `map`, `tag`) with Lucid CML interop. Use this
+when you need to inspect or produce the exact CBOR bytes of a Plutus datum or
+redeemer rather than a decoded value.
+
+## DA transport: `@al-ft/midgard-core/da-transport`
+
+Constants and limits for the Midgard data-availability transport layer
+(libp2p-based). Highlights:
+
+- Protocol/version constants: `DA_TRANSPORT_PROTOCOL_VERSION`, hash and witness
+  lengths, and the libp2p runtime-manifest schema/identity constants.
+- `DA_TRANSPORT_LIMITS_V1`: payload, response, chunk, and gossip size caps,
+  stream limits, request timeout, and minimum retention days.
+- Signing domains (`DaTransportSigningDomain`), gossip topics (`DaGossipTopic`),
+  and the on-chain attestation domain (`DA_ON_CHAIN_ATTESTATION_V1_DOMAIN`).
+
+<Callout type="info">
+These are transport-layer constants shared by the node's DA components. The
+transaction-building side of DA attestations lives in the SDK, see
+[DA attestation & payload](/docs/sdk/midgard-sdk/da-and-oracle).
+</Callout>
+
+## Error formatting: `@al-ft/midgard-core/error-format`
+
+`formatUnknownError` converts any thrown value into a stable, human-readable
+string, with options to include the `cause` chain or a stack trace. It keeps
+logs and operator-facing failure messages consistent without scattering ad hoc
+stringification across the codebase.
+
+```ts
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
+
+try {
+  // ...
+} catch (err) {
+  console.error(formatUnknownError(err, { includeCause: true }));
+}
+```

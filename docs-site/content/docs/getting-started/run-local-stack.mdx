@@ -1,0 +1,120 @@
+---
+title: "Tutorial: Run a Local Stack"
+description: "A guided path from a fresh checkout to a running Midgard node: L1 backend, builds, protocol initialization, operator activation, and a ready /readyz."
+---
+
+One guided happy path from a fresh checkout to a running local Midgard node;
+each step links the page that owns the details. For the acceptance-grade
+version of this flow, with run modes, evidence artifacts, and failure routing,
+use the [End-to-End Testing Flow](/docs/operators/node/e2e-testing-flow) instead.
+
+## What you will have at the end
+
+A local Cardano preprod backend (node, Ogmios, Kupo), an initialized Midgard
+deployment on it, one registered and active operator, and a Midgard node
+answering on its readiness endpoint.
+
+<Steps>
+
+<Step>
+### Get the code and toolchain
+
+Follow [Getting the code](/docs/getting-started/local-dev): clone the
+repository and install Node.js, `pnpm`, Docker with Compose v2, and Aiken.
+</Step>
+
+<Step>
+### Bring up the L1 backend
+
+Follow [L1 Backend](/docs/getting-started/l1-backend): copy `.env.example` to
+`.env` in `l1-services/`, fill in the two Mithril verification keys, and run:
+
+```sh
+cd l1-services
+docker compose up -d
+```
+
+The first start downloads a Cardano DB snapshot; wait until Ogmios (port 1337)
+and Kupo (port 1442) respond before continuing.
+</Step>
+
+<Step>
+### Build the on-chain code and the workspace
+
+Compile the Aiken contracts with the `testnet` environment, then build the
+TypeScript workspace:
+
+```sh
+cd onchain/aiken && aiken build --env testnet
+cd ../../demo && pnpm install && pnpm run build
+```
+
+See [Local Development](/docs/getting-started/local-dev) for the full command
+reference.
+</Step>
+
+<Step>
+### Initialize the protocol
+
+Configure the node (see
+[Initialization &amp; Deployment](/docs/operators/node/initialization-deployment);
+keep `RUN_GENESIS_ON_STARTUP=false`), then initialize protocol state on L1 from
+`demo/midgard-node`:
+
+```sh
+node dist/index.js init \
+  --contract-deployment-info-output deploymentInfo/contract-deployment-info.json
+```
+
+`init` is one-time per deployment: it refuses to run over an existing or
+partially initialized topology. If it refuses, run `deployment-status` and
+attach to what exists instead of redeploying.
+</Step>
+
+<Step>
+### Register and activate an operator
+
+```sh
+node dist/index.js register-active-operator
+node dist/index.js activate-operator
+```
+
+The [CLI Reference](/docs/operators/node/cli-reference) documents both commands
+and the operator lifecycle around them.
+</Step>
+
+<Step>
+### Start the node and confirm readiness
+
+```sh
+node dist/index.js listen
+```
+
+The node is up when `/readyz` reports ready with no readiness reasons and
+`/healthz` reports healthy. The
+[Server &amp; HTTP API](/docs/operators/node/server-http-api) page lists both
+endpoints.
+</Step>
+
+</Steps>
+
+<Callout type="warn" title="Demo parameters, local guarantees">
+This stack runs with demo parameters against a local L1. It demonstrates the
+happy path; it is not a public deployment. See
+[Project Status](/docs/getting-started/status) for what remains open.
+</Callout>
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Your first transaction"
+    href="/docs/getting-started/first-transaction"
+    description="Deposit onto L2 and move funds with lucid-midgard against this stack."
+  />
+  <Card
+    title="End-to-End Testing Flow"
+    href="/docs/operators/node/e2e-testing-flow"
+    description="The acceptance-grade version of this run, with artifacts and failure routing."
+  />
+</Cards>

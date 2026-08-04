@@ -5,8 +5,9 @@
 \section{Protocol invariants}
 \label{h:protocol-invariants}
 
-Midgard's design must ensure that the following protocol invariants always hold.
+Midgard's design must ensure that the following target protocol invariants hold for every enabled feature.
 Auditors of the Midgard protocol are strongly encouraged to consider these invariants in their analysis.
+An invariant listed here is not a conformance claim; a deployment must demonstrate the corresponding validators, offchain recovery behavior, proof coverage, and acceptance evidence as described in the specification status and conformance notice.
 \begin{description}
   \item[Block merging order.] Each valid block is merged to the confirmed state before its descendants.
 
@@ -30,8 +31,8 @@ Auditors of the Midgard protocol are strongly encouraged to consider these invar
     Suppose this invariant fails to hold for any violation type. In that case, dishonest operators can exploit the violation with impunity, and no one can prevent the invalid state from being merged to the confirmed state.
     Depending on the violation type, dishonest operators may use various exploits to steal user funds.
 
-    Midgard enforces this invariant by defining an onchain verification script for every possible violation of Midgard's ledger rules.
-    Furthermore, Midgard ensures that these scripts can always succeed when targeting invalid blocks containing their corresponding violation type.
+    A conformant deployment enforces this invariant only if every enabled violation has an onchain verification path that is correctly bound to the deployed block and root formats, and that path can complete within the challenge deadline.
+    Unsupported violation families must be rejected by consensus rather than silently admitted.
     See \cref{h:fraud-proof-catalogue}, \cref{h:fraud-proof-computation-threads}, and \cref{h:ledger-rules-and-fraud-proofs}.
 
   \item[Registered and active operators.] Anyone with a sufficient ADA bond can eventually become an active operator, and every active operator will eventually get a shift to commit blocks.
@@ -62,9 +63,8 @@ Auditors of the Midgard protocol are strongly encouraged to consider these invar
     The event intervals are non-overlapping between blocks and have no gaps.
     This means that every L1 user event must eventually be included in a valid block unless block production halts.
 
-    Meanwhile, the "registered and active operators" invariant and the escape hatch mechanism (see \cref{h:escape-hatch}) mitigate the possibility that block production stops indefinitely.
-    Thus, Midgard user events are protected from censorship.
+    The target "registered and active operators" invariant and escape-hatch mechanism (see \cref{h:escape-hatch}) mitigate, but do not eliminate, the possibility that block production stops indefinitely.
+    A deployment must separately state and test the liveness and fund-recovery assumptions that apply during a complete operator halt.
 \end{description}
 
 \end{document}
-

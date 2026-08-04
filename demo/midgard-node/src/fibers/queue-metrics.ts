@@ -1,0 +1,83 @@
+import { Effect, Metric, Ref } from "effect";
+
+import { Globals } from "@/services/index.js";
+
+/**
+ * Background metrics emission for queue-related in-memory node state.
+ *
+ * These gauges expose the operational backlog between processed L2 work and
+ * eventual L1 commitment so on-call operators can see pressure building before
+ * it turns into liveness issues.
+ */
+const blocksInQueueGauge = Metric.gauge("blocks_in_queue", {
+  description: "Current in-memory count of unmerged blocks in state queue",
+  bigint: true,
+});
+
+const processedUnsubmittedTxsCountGauge = Metric.gauge(
+  "processed_unsubmitted_txs_count",
+  {
+    description:
+      "Processed L2 tx count waiting to be committed in a future L1 block",
+    bigint: true,
+  },
+);
+
+const processedUnsubmittedTxsSizeGauge = Metric.gauge(
+  "processed_unsubmitted_txs_size_bytes",
+  {
+    description:
+      "Total size of processed L2 tx payloads waiting for future commitment",
+    bigint: true,
+  },
+);
+
+const unconfirmedSubmittedBlockGauge = Metric.gauge(
+  "unconfirmed_submitted_block_pending",
+  {
+    description: "1 when an L1 block submission is pending confirmation",
+    bigint: true,
+  },
+);
+
+const unconfirmedSubmittedBlockAgeGauge = Metric.gauge(
+  "unconfirmed_submitted_block_age_ms",
+  {
+    description:
+      "Age of the currently pending unconfirmed block submission in milliseconds",
+  },
+);
+
+/**
+ * Samples the queue-related global refs and publishes them as metrics.
+ */
+export const emitQueueStateMetrics = Effect.gen(function* () {
+  const globals = yield* Globals;
+  const blocksInQueue = yield* Ref.get(globals.BLOCKS_IN_QUEUE);
+  const processedCount = yield* Ref.get(
+    globals.PROCESSED_UNSUBMITTED_TXS_COUNT,
+  );
+  const processedSize = yield* Ref.get(globals.PROCESSED_UNSUBMITTED_TXS_SIZE);
+  const unconfirmedHash = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_TX_HASH,
+  );
+  const unconfirmedSince = yield* Ref.get(
+    globals.UNCONFIRMED_SUBMITTED_BLOCK_SINCE_MS,
+  );
+
+  const hasUnconfirmed = unconfirmedHash !== "";
+  const unconfirmedAgeMs =
+    hasUnconfirmed && unconfirmedSince > 0 ? Date.now() - unconfirmedSince : 0;
+
+  yield* blocksInQueueGauge(Effect.succeed(BigInt(blocksInQueue)));
+  yield* processedUnsubmittedTxsCountGauge(
+    Effect.succeed(BigInt(processedCount)),
+  );
+  yield* processedUnsubmittedTxsSizeGauge(
+    Effect.succeed(BigInt(processedSize)),
+  );
+  yield* unconfirmedSubmittedBlockGauge(
+    Effect.succeed(hasUnconfirmed ? 1n : 0n),
+  );
+  yield* unconfirmedSubmittedBlockAgeGauge(Effect.succeed(unconfirmedAgeMs));
+});

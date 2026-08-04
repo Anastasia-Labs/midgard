@@ -1,0 +1,4 @@
+interface:
+  display_name: "Midgard E2E Acceptance"
+  short_description: "Run or diagnose Midgard live acceptance safely."
+  default_prompt: "Use $midgard-e2e-acceptance to choose the safe run mode, run or resume Midgard live acceptance, and produce structured evidence."

@@ -1,0 +1,30 @@
+---
+title: "User-Event Protocol"
+description: "How deposits, transaction orders, withdrawal orders, transaction requests, and the witness staking script enter the Midgard ledger."
+---
+
+Chapter 2 specifies the **user events**, the ways users and L1 interact with the
+rollup, and the on-chain scripts that gate each one. Most events are specified as a
+**minting policy** plus a **spending validator** pair, with staking scripts where a
+withdrawal-style witness is needed.
+
+## Events and their scripts
+
+- **Deposit (L1)**: a minting policy and spending validator governing funds moving
+  from L1 into the L2 ledger.
+- **Transaction order (L1)**: the ordered form in which transactions are sequenced
+  into blocks.
+- **Withdrawal order (L1)**: a minting policy, spending validator, and **staking
+  script** governing funds moving from L2 back to L1.
+- **Transaction request (L2)**: a user's intent to transact on L2, prior to ordering.
+- **Witness staking script**: the staking-script mechanism used to witness user
+  events on-chain.
+
+## In the codebase
+
+These events are built and submitted through the SDK and node: the
+[`midgard-sdk` user events](/docs/sdk/midgard-sdk/user-events) builders and the
+node's [deposits and withdrawals](/docs/operators/node/deposits-withdrawals) flows.
+On L1 they are enforced by the
+[user-event validators](/docs/onchain/user-events) (`deposit`, `withdrawal`,
+`tx-order`, `witness`).

@@ -1,5 +1,4 @@
-import { Effect, pipe } from "effect";
-import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyDoubleCborEncoding,
   MintingPolicy,
@@ -10,15 +9,26 @@ import {
   validatorToScriptHash,
   WithdrawalValidator,
 } from "@lucid-evolution/lucid";
-import * as SDK from "@al-ft/midgard-sdk";
+import { Effect, pipe } from "effect";
 import { NoSuchElementException } from "effect/Cause";
 
+import * as scripts from "../../blueprints/always-succeeds/plutus.json" with { type: "json" };
+
+/**
+ * Always-succeeds contract loader used for local development and testing.
+ *
+ * This service resolves validators from the blueprint bundle and converts them
+ * into the SDK shapes expected by the rest of the node.
+ */
 const NETWORK: Network = "Preprod";
 
 type Category = "midgard" | "fraud_proofs";
 
 type Purpose = "spend" | "mint" | "withdraw";
 
+/**
+ * Builds the validator title used inside the blueprint JSON bundle.
+ */
 const makeValidatorTitle = (
   category: Category,
   baseName: string,
@@ -28,6 +38,9 @@ const makeValidatorTitle = (
     ? `${category}.${baseName}_${type}.else`
     : `${category}.${baseName}.else`;
 
+/**
+ * Looks up a compiled validator script by title inside the blueprint bundle.
+ */
 const getValidatorScript = (title: string) =>
   pipe(
     Effect.fromNullable(
@@ -36,6 +49,9 @@ const getValidatorScript = (title: string) =>
     Effect.andThen((script) => script.compiledCode),
   );
 
+/**
+ * Constructs an SDK spending validator from the blueprint bundle.
+ */
 const makeSpendingValidator = (
   category: Category,
   baseName: string,
@@ -66,6 +82,9 @@ const makeSpendingValidator = (
     ),
   );
 
+/**
+ * Constructs an SDK minting validator from the blueprint bundle.
+ */
 const makeMintingValidator = (
   category: Category,
   baseName: string,
@@ -93,6 +112,9 @@ const makeMintingValidator = (
     ),
   );
 
+/**
+ * Constructs an SDK withdrawal validator from the blueprint bundle.
+ */
 const makeWithdrawalValidator = (
   category: Category,
   baseName: string,
@@ -119,21 +141,19 @@ const makeWithdrawalValidator = (
       Effect.logError(`Failed to load validator: ${baseName}`),
     ),
   );
+
+/**
+ * Builds the authenticated validator bundle used by most Midgard state
+ * machines.
+ */
 const makeAuthenticatedValidator = (
   baseName: string,
   network: Network,
 ): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
   Effect.gen(function* () {
-    const spendingValidator = yield* makeSpendingValidator(
-      "midgard",
-      baseName,
-      network,
-    );
-    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
-
     return {
-      ...spendingValidator,
-      ...mintingValidator,
+      ...(yield* makeSpendingValidator("midgard", baseName, network)),
+      ...(yield* makeMintingValidator("midgard", baseName)),
     };
   }).pipe(
     Effect.tapError((_e) =>
@@ -141,18 +161,56 @@ const makeAuthenticatedValidator = (
     ),
   );
 
+const makeMintOnlyAuthenticatedValidator = (
+  baseName: string,
+  network: Network,
+): Effect.Effect<SDK.AuthenticatedValidator, NoSuchElementException> =>
+  Effect.gen(function* () {
+    const mintingValidator = yield* makeMintingValidator("midgard", baseName);
+    const spendingScript: SpendingValidator = {
+      type: "PlutusV3",
+      script: mintingValidator.mintingScript.script,
+    };
+
+    return {
+      spendingScriptCBOR: mintingValidator.mintingScriptCBOR,
+      spendingScript,
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      ...mintingValidator,
+    };
+  });
+
+/**
+ * Resolves the full always-succeeds validator set used by test environments.
+ */
 const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
   Effect.gen(function* () {
     // Helpers
+    /**
+     * Builds the authenticated always-succeeds validator reference.
+     */
     const mkAuthVal = (contract: string) =>
       makeAuthenticatedValidator(contract, NETWORK);
+    /**
+     * Builds the always-succeeds fraud-proof validator reference.
+     */
     const mkFP = (fp: string) =>
       makeSpendingValidator("fraud_proofs", fp, NETWORK);
 
     // Midgard Contracts
-    const hubOracle = yield* mkAuthVal("hub_oracle");
+    const hubOracle = yield* makeMintOnlyAuthenticatedValidator(
+      "hub_oracle",
+      NETWORK,
+    );
+    const referenceScriptAuth = yield* makeMintingValidator(
+      "midgard",
+      "state_queue",
+    );
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
+    const daParamsGovernor = stateQueue;
+    const daAttestation = stateQueue;
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
@@ -186,16 +244,23 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const nonExistentInput = yield* mkFP("non_existent_input");
     const nonExistentInputNoIndex = yield* mkFP("non_existent_input_no_index");
     const invalidRange = yield* mkFP("invalid_range");
+    const transitionTrace = yield* mkFP("transition_trace");
+    const zeroInput = yield* mkFP("zero_input");
 
     const fraudProofs: SDK.FraudProofs = {
       doubleSpend,
       nonExistentInput,
       nonExistentInputNoIndex,
       invalidRange,
+      transitionTrace,
+      zeroInput,
     };
 
     return {
+      referenceScriptAuth,
       hubOracle,
+      daParamsGovernor,
+      daAttestation,
       stateQueue,
       scheduler,
       registeredOperators,

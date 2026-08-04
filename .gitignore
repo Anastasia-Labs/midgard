@@ -2,7 +2,24 @@
 artifacts/
 # Aiken's project working directory
 build/
-# Aiken's default documentation export
-docs/
+# Aiken documentation exports are ignored by each Aiken project's local
+# .gitignore; repository documentation directories remain trackable here.
+.env
 .direnv
 utils.log
+.codex
+deploymentInfo/
+demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md
+demo/midgard-node/docs/FAULT_PROOF_SUPPORT_IMPLEMENTATION_APPROACH.md
+demo/midgard-node/docs/MPF_MIGRATION_PLAN.md
+demo/midgard-node/docs/PREPROD_DEPOSIT_SEND_WITHDRAW_BLOCKER_FIX_PLAN.md
+demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md
+demo/midgard-node/docs/tasks/MPF_MIGRATION_A_WRAPPER_PERSISTENCE.md
+demo/midgard-node/docs/tasks/MPF_MIGRATION_B_ROOT_REGISTRY_TX_ID.md
+demo/midgard-node/docs/tasks/MPF_MIGRATION_C_NODE_INTEGRATION.md
+demo/midgard-node/docs/tasks/MPF_MIGRATION_D_ACCEPTANCE_TESTS.md
+.agents/skills/midgard-e2e-acceptance/SKILL.md
+
+# Point-in-time local review artifacts (durable policy/status docs stay tracked)
+/docs/DOCUMENTATION_AUDIT_*.md
+/MIDGARD_PR_*_DIFFERENTIAL_REVIEW_*.md

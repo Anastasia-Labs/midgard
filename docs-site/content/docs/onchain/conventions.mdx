@@ -1,0 +1,99 @@
+---
+title: "Conventions"
+description: "Vertical file layout, one-to-one library-to-validator mapping, naming rules, and the review workflow that all Midgard Aiken code follows."
+---
+
+These conventions are defined in the repository's
+[`CONTRIBUTING.md`](https://github.com/Anastasia-Labs/midgard/blob/main/CONTRIBUTING.md). They keep the
+Aiken codebase consistent and make it possible for one validator to reason about
+another's redeemers and endpoints.
+
+## Vertical file layout
+
+Files are organized "vertically": each file is dedicated to a concrete
+purpose or piece of logic rather than to a language construct such as "all the
+types" or "all the constants". A handful of exceptions exist for files that are
+likely to be edited by many developers at once. Preserve this style for any new
+module or validator.
+
+## One-to-one library mapping
+
+Library modules generally map to validators one-to-one. Almost every library
+counterpart defines dedicated `Datum`, `SpendRedeemer`, `MintRedeemer`, and
+related types for its validator.
+
+The convention is deliberate: types are named generically (`Datum`, not
+`SettlementDatum`) so that validators expose a **consistent interface**. This is
+what lets one validator rely on a specific endpoint of another, for example a
+spend validator asserting that a particular `MintRedeemer` of another policy is
+being invoked at a given redeemer index.
+
+<Callout type="info" title="Import style">
+  Library counterparts define logically related datatypes and helper functions.
+  Import a validator's own library and its contents **directly** (unqualified)
+  into that validator. Do not import a validator's dedicated library in a
+  qualified manner.
+</Callout>
+
+## Naming
+
+- **Avoid acronyms.** Use them only for qualified imports or short-lived
+  temporary variables (e.g. inside a small anonymous function). Prefer explicit,
+  readable names.
+- **Filenames:** `kebab-case` only.
+
+<Callout type="info" title="Filenames are kebab-case; blueprint entries are snake_case">
+Aiken module names come from the filename, but the compiled blueprint reports them with
+underscores. The validator in `validators/state-queue.ak` appears in `plutus.json` as
+`state_queue.spend.spend`, and `validators/fraud-proof.ak` as `fraud_proof.*`.
+
+These docs use the **filename** when pointing at a file and the **blueprint title** when
+naming an entrypoint. A blueprint entrypoint is titled `<module>.<validator>.<purpose>`,
+and the trailing `.else` entries are the fallback handlers that reject every other
+purpose.
+</Callout>
+- **Types and data constructors:** `PascalCase`, and avoid `_`. If you find
+  yourself wanting a prefix or postfix, that is a signal to split the file.
+- **Variables, constants, functions, field names:** `snake_case`.
+- In Cardano, "asset name" and "token name" are used interchangeably. For
+  consistency with Aiken, use **"asset name"** everywhere in code and docs.
+
+## Validation style
+
+- When pattern matching on a record type, always use curly-bracket syntax
+  (`Datum { field, .. }`), never positional parentheses. Curly brackets let the
+  compiler catch field-name changes.
+- Perform `expect`s **as early as possible** rather than collecting them all in
+  one large `and { }` at the end of a validator or function.
+- Put an enumerated comment directly above each `expect` / validation describing
+  its purpose. Comments can go stale, but numbered checks make it far easier to
+  discuss a specific piece of logic during review.
+
+The following excerpt from `settlement.ak` shows the numbered-check style in
+practice:
+
+```rust
+// 1. The spent input must not have a resolution claim.
+expect resolution_claim == None
+
+// 2. The transaction must be signed by the resolution claim's operator.
+expect operator |> utils.has_signed(extra_signatories)
+```
+
+## Review workflow
+
+All contributors must enable the project's standardized git hooks before working
+on the repository:
+
+```sh
+make enable-git-hooks
+```
+
+The hooks enforce the repository's formatting and pre-commit checks so review can
+focus on logic. See [`CONTRIBUTING.md`](https://github.com/Anastasia-Labs/midgard/blob/main/CONTRIBUTING.md)
+for the authoritative list.
+
+<Cards>
+  <Card title="ScriptContext invariants" href="/docs/onchain/script-context-invariants" description="What validators may safely assume about Aiken's Transaction / ScriptContext." />
+  <Card title="On-Chain Overview" href="/docs/onchain/overview" description="Build the blueprint and see the validator map." />
+</Cards>

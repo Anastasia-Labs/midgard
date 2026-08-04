@@ -10,8 +10,13 @@ Midgard's payout accumulators collect funds from Midgard's reserve in order to p
 
 When a deposit is absorbed into Midgard's reserve, its funds (excluding the deposit ID token) are sent to a single utxo at the reserve address without a datum, without a reference script attached, and without being merged with the funds from any other deposits (see \cref{h:deposit-spending-validator}).
 In other words, the deposit utxo is reproduced one-to-one at the reserve address after removing the datum and ID token that identified the deposit.
+Because reserve utxos are datumless and do not carry a reserve NFT, arbitrary users can also send funds to \code{reserve\_addr}.
+Unsolicited reserve-address utxos are usable donated liquidity only when they have the same datumless and scriptless shape as protocol-created reserve utxos.
+They are not evidence that a deposit has been processed, they have no special reclaim path, and they can only leave the reserve by satisfying the reserve and payout validators.
 
 Each payout accumulator utxo is initialized by proving that its corresponding withdrawal order is present in a settlement utxo's withdrawals tree (marked as valid), burning the withdrawal order's ID token, and minting the corresponding payout ID token (see \cref{h:withdrawal-order-spending-validator}).
+This settlement proof is provided once, when the payout accumulator is initialized.
+Subsequent reserve-collection and payout-completion transactions authenticate the withdrawal target by preserving and reading the payout datum, not by re-proving settlement membership.
 The payout accumulator's datum is:
 \begin{equation*}
   \T{PayoutDatum} \coloneq \left\{
@@ -22,8 +27,9 @@ The payout accumulator's datum is:
   \end{array}\right\}
 \end{equation*}
 
-The payout accumulator collects funds from the reserve until it contains sufficient funds for the withdrawal's payout, sending any excess funds back to the reserve.
-When the payout accumulator contains sufficient funds, it sends the funds to the withdrawal's destination address and datum.
+The payout accumulator collects funds from the reserve until it contains exactly the funds required for the withdrawal's payout, sending any excess reserve input back to the reserve.
+When the payout accumulator contains exactly the required funds, it sends the funds to the withdrawal's destination address and datum.
+Transaction fees for reserve collection and payout completion must be paid by non-reserve, non-payout inputs.
 
 \subsection{Reserve spending validator}%
 \label{h:reserve-spending-validator}%
@@ -34,6 +40,9 @@ Redeemers:
   \item[Spend.] Spend a reserve utxo to transfer some of its funds into a payout accumulator.
     \begin{enumerate}
       \item The transaction must spend an input from the \code{payout\_addr} via the \code{Collect\_Reserve\_Funds} redeemer.
+      \item The payout redeemer must identify this exact reserve input.
+      \item The spent reserve input must not have a datum or reference script attached.
+      \item The transaction must not mint or burn any tokens.
     \end{enumerate}
 \end{description}
 
@@ -70,14 +79,24 @@ The spending validator of \code{payout\_addr} is responsible for collecting fund
       \item Let \code{payout\_input} be the transaction input being spent.
         Let \code{payout\_datum} be its datum.
       \item Let \code{reserve\_input} be the sole transaction input from \code{reserve\_addr}.
+        It must not have a datum or reference script attached.
       \item Let \code{payout\_output} be a transaction output.
       \item \code{payout\_input} and \code{payout\_output} must each hold exactly one \code{payout} token and it must match between them.
-      \item Let \code{value\_diff} be the sum of values of \code{payout\_input} and \code{reserve\_input}, minus the value of \code{payout}.
-      \item \code{value\_diff} must not be negative.
-      \item If \code{value\_diff} is positive:
+      \item \code{payout\_output.address} must be \code{payout\_addr}.
+      \item \code{payout\_output.datum} must exactly match \code{payout\_datum}.
+      \item \code{payout\_output} must not have a reference script attached.
+      \item Let \code{current} be the value of \code{payout\_input}, excluding the \code{payout} token.
+      \item Let \code{needed = payout\_datum.l2\_value - current}, calculated per asset.
+      \item \code{current} must not exceed \code{payout\_datum.l2\_value} for any asset.
+      \item Let \code{taken = min(reserve\_input.value, needed)}, calculated per asset.
+      \item \code{taken} must be positive for at least one still-needed asset.
+      \item The value of \code{payout\_output}, excluding the \code{payout} token, must equal \code{current + taken}.
+      \item If \code{reserve\_input.value - taken} is non-zero:
         \begin{itemize}
-          \item The transaction must send a change output to \code{reserve\_addr} with a value that matches or exceeds \code{value\_diff}.
+          \item The transaction must send a change output to \code{reserve\_addr} with value exactly equal to \code{reserve\_input.value - taken}.
+          \item The change output must have no datum and no reference script.
         \end{itemize}
+      \item Otherwise, no reserve-change output for \code{reserve\_input} may be produced.
       \item The transaction must not mint or burn any tokens.
     \end{enumerate}
   \item[Complete Payout.] When the payout accumulator contains sufficient funds, complete the payout to the destination address and datum.
@@ -89,7 +108,9 @@ The spending validator of \code{payout\_addr} is responsible for collecting fund
       \item Let \code{payout\_output} be a transaction output.
       \item \code{payout\_output.address} must match \code{payout\_datum.l1\_address}.
       \item \code{payout\_output.datum} must match \code{payout\_datum.l1\_datum}.
-      \item \code{payout\_output.value} must match or exceed \code{payout\_datum.l2\_value}, excluding the burned token.
+      \item The value of \code{payout\_input}, excluding the burned \code{payout} token, must exactly equal \code{payout\_datum.l2\_value}.
+      \item \code{payout\_output.value} must exactly equal \code{payout\_datum.l2\_value}.
+      \item The transaction must not produce a continuing payout accumulator for the same payout token or datum.
       \item The transaction must not mint or burn any other tokens.
     \end{enumerate}
 \end{description}

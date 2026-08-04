@@ -1,71 +1,109 @@
-import { Effect, Data as EffectData } from "effect";
 import {
-  GenericErrorFields,
-  LucidError,
-  AddressSchema,
-  PolicyIdSchema,
-  makeReturn,
+  Address,
+  Assets,
+  Constr,
+  credentialToAddress,
+  Data,
+  fromText,
+  LucidEvolution,
+  PolicyId,
+  scriptHashToCredential,
+  toUnit,
+  TxBuilder,
+  UTxO,
+} from "@lucid-evolution/lucid";
+import { Data as EffectData, Effect } from "effect";
+
+import {
   addressDataFromBech32,
-  Bech32DeserializationError,
-  MidgardValidators,
+  AddressSchema,
   AuthenticatedValidator,
+  Bech32DeserializationError,
+  GenericErrorFields,
+  isHexString,
+  LucidError,
+  makeReturn,
+  MidgardValidators,
+  MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
 } from "@/common.js";
 import {
-  Address,
-  LucidEvolution,
-  PolicyId,
-  toUnit,
-  TxBuilder,
-  UTxO,
-  Data,
-  Assets,
-} from "@lucid-evolution/lucid";
-import { HUB_ORACLE_ASSET_NAME } from "@/constants.js";
+  authenticateUTxOs,
+  AuthenticUTxO,
+  fetchSingleAuthenticUTxOProgram,
+} from "@/internals.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
   hubOraclePolicyId: PolicyId;
 };
 
-// TODO: This should ideally come from Aiken env directory.
-export const hubOracleAssetName = "";
+export const HUB_ORACLE_ASSET_NAME = fromText("MIDGARD_HUB_ORACLE");
+export const HUB_ORACLE_ONE_SHOT_NONCE_DATUM_DOMAIN =
+  "MidgardHubOracleOneShotNonceV1";
+
+export type HubOracleOneShotNonceDatumParams = {
+  readonly markerHex: string;
+};
+
+export type HubOracleOneShotNonceTxParams = {
+  readonly address: Address;
+  readonly amountLovelace: bigint;
+  readonly markerHex: string;
+};
+
+export type IncompleteHubOracleOneShotNonceTx = {
+  readonly txBuilder: TxBuilder;
+  readonly inlineDatum: string;
+};
 
 export const HubOracleDatumSchema = Data.Object({
-  registeredOperators: PolicyIdSchema,
-  activeOperators: PolicyIdSchema,
-  retiredOperators: PolicyIdSchema,
-  scheduler: PolicyIdSchema,
-  stateQueue: PolicyIdSchema,
-  fraudProofCatalogue: PolicyIdSchema,
-  fraudProof: PolicyIdSchema,
-  deposit: PolicyIdSchema,
-  withdrawal: PolicyIdSchema,
-  txOrder: PolicyIdSchema,
-  settlement: PolicyIdSchema,
-  payout: PolicyIdSchema,
-  registeredOperatorsAddr: AddressSchema,
-  activeOperatorsAddr: AddressSchema,
-  retiredOperatorsAddr: AddressSchema,
-  schedulerAddr: AddressSchema,
-  stateQueueAddr: AddressSchema,
-  fraudProofCatalogueAddr: AddressSchema,
-  fraudProofAddr: AddressSchema,
-  depositAddr: AddressSchema,
-  withdrawalAddr: AddressSchema,
-  txOrderAddr: AddressSchema,
-  settlementAddr: AddressSchema,
-  payoutAddr: AddressSchema,
-  reserveAddr: AddressSchema,
-  reserveObserver: ScriptHashSchema,
+  registered_operators: ScriptHashSchema,
+  active_operators: ScriptHashSchema,
+  retired_operators: ScriptHashSchema,
+  scheduler: ScriptHashSchema,
+  state_queue: ScriptHashSchema,
+  fraud_proof_catalogue: ScriptHashSchema,
+  fraud_proof: ScriptHashSchema,
+  deposit: ScriptHashSchema,
+  withdrawal: ScriptHashSchema,
+  tx_order: ScriptHashSchema,
+  settlement: ScriptHashSchema,
+  payout: ScriptHashSchema,
+  registered_operators_addr: AddressSchema,
+  active_operators_addr: AddressSchema,
+  retired_operators_addr: AddressSchema,
+  scheduler_addr: AddressSchema,
+  state_queue_addr: AddressSchema,
+  fraud_proof_catalogue_addr: AddressSchema,
+  fraud_proof_addr: AddressSchema,
+  deposit_addr: AddressSchema,
+  withdrawal_addr: AddressSchema,
+  tx_order_addr: AddressSchema,
+  settlement_addr: AddressSchema,
+  reserve_addr: AddressSchema,
+  payout_addr: AddressSchema,
+  reserve_observer: ScriptHashSchema,
 });
 export type HubOracleDatum = Data.Static<typeof HubOracleDatumSchema>;
 export const HubOracleDatum = HubOracleDatumSchema as unknown as HubOracleDatum;
 
+export type HubOracleUTxO = AuthenticUTxO<HubOracleDatum>;
+
+export const utxosToHubOracleUTxOs = (
+  utxos: UTxO[],
+  nftPolicy: PolicyId,
+): Effect.Effect<HubOracleUTxO[], LucidError> =>
+  authenticateUTxOs<HubOracleDatum>(utxos, nftPolicy, HubOracleDatum);
+
+/**
+ * Parameters for the init transaction.
+ */
 export type HubOracleInitParams = {
-  hubOracleValidator: AuthenticatedValidator;
+  hubOracleMintValidator: MintingValidator;
   validators: HubOracleValidators;
+  oneShotNonceUTxO: UTxO;
 };
 
 export type HubOracleValidators = Omit<
@@ -115,32 +153,32 @@ export const makeHubOracleDatum = (
     );
 
     return {
-      registeredOperators: validators.registeredOperators.policyId,
-      activeOperators: validators.activeOperators.policyId,
-      retiredOperators: validators.retiredOperators.policyId,
+      registered_operators: validators.registeredOperators.policyId,
+      active_operators: validators.activeOperators.policyId,
+      retired_operators: validators.retiredOperators.policyId,
       scheduler: validators.scheduler.policyId,
-      stateQueue: validators.stateQueue.policyId,
-      fraudProofCatalogue: validators.fraudProofCatalogue.policyId,
-      fraudProof: validators.fraudProof.policyId,
+      state_queue: validators.stateQueue.policyId,
+      fraud_proof_catalogue: validators.fraudProofCatalogue.policyId,
+      fraud_proof: validators.fraudProof.policyId,
       deposit: validators.deposit.policyId,
       withdrawal: validators.withdrawal.policyId,
-      txOrder: validators.txOrder.policyId,
+      tx_order: validators.txOrder.policyId,
       settlement: validators.settlement.policyId,
       payout: validators.payout.policyId,
-      registeredOperatorsAddr,
-      activeOperatorsAddr,
-      retiredOperatorsAddr,
-      schedulerAddr,
-      stateQueueAddr,
-      fraudProofCatalogueAddr,
-      fraudProofAddr,
-      depositAddr,
-      withdrawalAddr,
-      txOrderAddr,
-      settlementAddr,
-      payoutAddr,
-      reserveAddr,
-      reserveObserver: validators.reserve.withdrawalScriptHash,
+      registered_operators_addr: registeredOperatorsAddr,
+      active_operators_addr: activeOperatorsAddr,
+      retired_operators_addr: retiredOperatorsAddr,
+      scheduler_addr: schedulerAddr,
+      state_queue_addr: stateQueueAddr,
+      fraud_proof_catalogue_addr: fraudProofCatalogueAddr,
+      fraud_proof_addr: fraudProofAddr,
+      deposit_addr: depositAddr,
+      withdrawal_addr: withdrawalAddr,
+      tx_order_addr: txOrderAddr,
+      settlement_addr: settlementAddr,
+      reserve_addr: reserveAddr,
+      payout_addr: payoutAddr,
+      reserve_observer: validators.reserve.withdrawalScriptHash,
     };
   });
 
@@ -165,18 +203,23 @@ export const incompleteHubOracleInitTxProgram = (
       const encodedDatum = Data.to<HubOracleDatum>(datum, HubOracleDatum);
 
       const assets: Assets = {
-        [toUnit(params.hubOracleValidator.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
+        [toUnit(params.hubOracleMintValidator.policyId, HUB_ORACLE_ASSET_NAME)]:
+          1n,
       };
 
       return lucid
         .newTx()
+        .collectFrom([params.oneShotNonceUTxO])
         .mintAssets(assets, Data.void())
         .pay.ToAddressWithData(
-          params.hubOracleValidator.spendingScriptAddress,
+          credentialToAddress(
+            network,
+            scriptHashToCredential(params.hubOracleMintValidator.policyId),
+          ),
           { kind: "inline", value: encodedDatum },
           assets,
         )
-        .attach.MintingPolicy(params.hubOracleValidator.mintingScript);
+        .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {
       return yield* new UnspecifiedNetworkError({
         message: "",
@@ -189,59 +232,86 @@ export class HubOracleError extends EffectData.TaggedError(
   "HubOracleError",
 )<GenericErrorFields> {}
 
-export const fetchHubOracleUTxOProgram = (
-  lucid: LucidEvolution,
-  config: HubOracleConfig,
-): Effect.Effect<
-  { utxo: UTxO; datum: HubOracleDatum },
-  HubOracleError | LucidError
-> =>
+const validateHubOracleOneShotNonceMarkerHex = (
+  markerHex: string,
+): Effect.Effect<string, HubOracleError> => {
+  if (markerHex.length === 0) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must be non-empty hex bytes",
+      }),
+    );
+  }
+  if (markerHex.length % 2 !== 0) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must contain an even number of hex characters",
+      }),
+    );
+  }
+  if (!isHexString(markerHex)) {
+    return Effect.fail(
+      new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce marker",
+        cause: "markerHex must contain only hex characters",
+      }),
+    );
+  }
+  return Effect.succeed(markerHex);
+};
+
+export const makeHubOracleOneShotNonceDatum = (
+  params: HubOracleOneShotNonceDatumParams,
+): Effect.Effect<string, HubOracleError> =>
   Effect.gen(function* () {
-    const errorMessage = "Failed to fetch the hub oracle UTxO";
-    const hubOracleUTxOs: UTxO[] = yield* Effect.tryPromise({
-      try: async () => {
-        return await lucid.utxosAtWithUnit(
-          config.hubOracleAddress,
-          toUnit(config.hubOraclePolicyId, hubOracleAssetName),
-        );
-      },
-      catch: (e) =>
-        new LucidError({
-          message: errorMessage,
-          cause: e,
+    const markerHex = yield* validateHubOracleOneShotNonceMarkerHex(
+      params.markerHex,
+    );
+    return yield* Effect.try({
+      try: () => Data.to(new Constr(0, [markerHex])),
+      catch: (cause) =>
+        new HubOracleError({
+          message: "Failed to encode hub-oracle one-shot nonce datum",
+          cause,
         }),
     });
-    if (hubOracleUTxOs.length === 1) {
-      const utxo = hubOracleUTxOs[0];
-      const datum = yield* Effect.try({
-        try: () => {
-          if (utxo.datum) {
-            const coerced = Data.from(utxo.datum, HubOracleDatum);
-            return coerced;
-          } else {
-            throw new HubOracleError({
-              message: errorMessage,
-              cause: "Hub oracle UTxO datum is missing",
-            });
-          }
-        },
-        catch: (e) => {
-          return new HubOracleError({
-            message: errorMessage,
-            cause: `Failed to parse the hub oracle datum: ${e}`,
-          });
-        },
+  });
+
+export const incompleteHubOracleOneShotNonceTxProgram = (
+  lucid: LucidEvolution,
+  params: HubOracleOneShotNonceTxParams,
+): Effect.Effect<IncompleteHubOracleOneShotNonceTx, HubOracleError> =>
+  Effect.gen(function* () {
+    if (params.amountLovelace <= 0n) {
+      return yield* new HubOracleError({
+        message: "Invalid hub-oracle one-shot nonce amount",
+        cause: "amountLovelace must be greater than zero",
       });
-      return { utxo, datum };
-    } else {
-      return yield* Effect.fail(
-        new HubOracleError({
-          message: errorMessage,
-          cause:
-            "Exactly one hub oracle UTxO was expected, but none or more were found",
-        }),
-      );
     }
+
+    const inlineDatum = yield* makeHubOracleOneShotNonceDatum({
+      markerHex: params.markerHex,
+    });
+    const txBuilder = yield* Effect.try({
+      try: () =>
+        lucid
+          .newTx()
+          .pay.ToAddressWithData(
+            params.address,
+            { kind: "inline", value: inlineDatum },
+            { lovelace: params.amountLovelace },
+          ),
+      catch: (cause) =>
+        new HubOracleError({
+          message:
+            "Failed to build hub-oracle one-shot nonce preparation transaction",
+          cause,
+        }),
+    });
+
+    return { txBuilder, inlineDatum };
   });
 
 /**
@@ -251,6 +321,26 @@ export const fetchHubOracleUTxOProgram = (
  * @param config - Configuration values required to know where to look for which NFT.
  * @returns {UTxO} - The authentic hub oracle UTxO.
  */
+export const fetchHubOracleUTxOProgram = (
+  lucid: LucidEvolution,
+  config: HubOracleConfig,
+): Effect.Effect<HubOracleUTxO, HubOracleError | LucidError> =>
+  fetchSingleAuthenticUTxOProgram<HubOracleUTxO, LucidError, HubOracleError>(
+    lucid,
+    {
+      address: config.hubOracleAddress,
+      policyId: config.hubOraclePolicyId,
+      utxoLabel: "hub oracle",
+      conversionFunction: utxosToHubOracleUTxOs,
+      onUnexpectedAuthenticUTxOCount: () =>
+        new HubOracleError({
+          message: "Failed to fetch the hub oracle UTxO",
+          cause:
+            "Exactly one hub oracle UTxO was expected, but none or more were found",
+        }),
+    },
+  );
+
 export const fetchHubOracleUTxO = (
   lucid: LucidEvolution,
   config: HubOracleConfig,

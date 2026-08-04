@@ -1,0 +1,47 @@
+---
+title: "Removing Fraudulent Blocks"
+description: "Removing a proven-fraudulent block from the state queue, who may do it, when it is allowed, and how to inspect a deployment before starting a proof."
+---
+
+Once a computation thread has succeeded and minted a `fraud_proof` token, the offending
+block is removed from the state queue and its operator is slashed.
+
+## When removal is allowed
+
+Removal requires a `fraud_proof` token for the target block. In practice the watcher who
+drove the proof holds it. The block must still be **in the state queue**: a block that
+has already merged into confirmed state cannot be removed this way, which is why the
+challenge window exists.
+
+Removing a header also prunes its descendants, because every block committed after it
+built on a state root that is now void.
+
+## Commands
+
+- **`remove-fraudulent-block`**: removes a proven-fraudulent block from the state queue
+  and slashes the operator's bond. Requires the
+  [computation thread](/docs/onchain/fraud-proof-machines) to have concluded and the
+  `fraud_proof` token to exist.
+- **`inspect-contracts`**: resolves a blueprint and deployment against the fraud-proof
+  catalogue and reports policy IDs, addresses, step hashes, and init-readiness.
+  Read-only. Run it before initializing a thread, not only when removing.
+
+<Callout type="error" title="Terminal on-chain action">
+Removal is the terminal, state-changing outcome of the fraud-proof process, and it
+settles on Cardano L1. It removes an on-chain header and slashes a bond. It does not
+delete any local node state.
+</Callout>
+
+<Callout type="warn" title="Removal needs the state-queue mutation lease">
+Removing a header mutates the state queue, which the node's own fibers also mutate. An
+external mutator must `acquire` the
+[state-queue mutation lease](/docs/operators/node/server-http-api), do its work, and
+`release` it. A busy lease returns `409`. Do not work around a busy lease; find the job
+holding it.
+</Callout>
+
+## Related
+
+- [Submitting Proof Steps](/docs/fault-proofs/submitting-steps), which produces the token.
+- [Proof Protocol (spec)](/docs/spec/proof-protocol)
+- [Fraud-Proof Machines](/docs/onchain/fraud-proof-machines)

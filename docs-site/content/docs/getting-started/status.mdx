@@ -1,0 +1,71 @@
+---
+title: "Project Status"
+description: "Midgard's readiness against a public-testnet bar: the go/no-go verdict and the launch blockers, as of the 2026-07-22 review."
+---
+
+Midgard's readiness is tracked in
+[`public_testnet_readiness.md`](https://github.com/Anastasia-Labs/midgard/blob/main/public_testnet_readiness.md)
+in the repository root. That checklist is the single source of truth: it holds the per-area feature
+matrix, the evidence index, the implementation waves, and the per-area acceptance
+criteria. Below are only the verdict and the headline blockers.
+
+The checklist reviews the repository against an *externally reachable public
+testnet* and treats Midgard as a production-grade L2, so its bar includes
+adversarial safety, deterministic deployment identity, restart and recovery
+behavior, public client ergonomics, monitoring, and runbooks. It is deliberately
+stricter than "the local happy path works."
+
+<Callout type="warn" title="Verdict: no-go for an open public testnet">
+As of the 2026-07-22 review, the decision is **no-go for an open public testnet.** The core happy-path
+L2 pipeline is materially implemented, but public readiness blockers remain:
+complete and correctly bound fraud proofs, permissionless data retrieval and
+retention, production challenge timing/economics, L1 finality and rollback,
+ingress and ops hardening, full public acceptance, and operator-halt recovery. Public
+messaging must not claim full fraud-proof readiness until the proof families and
+proof-bundle / data-availability surfaces are complete.
+</Callout>
+
+## What already works
+
+The checklist confirms the core happy-path L2 pipeline is materially implemented:
+node startup, schema migrations, protocol initialization, operator
+registration/activation, `/submit`, admission/validation, mempool processing,
+deposit projection, block commitment, confirmation, merge, reserve/payout
+builders, and SDK/provider primitives.
+
+## Headline launch blockers
+
+The checklist enumerates the blockers that keep the decision at no-go. In brief:
+
+- **Deployment provenance hardening**: the v2 manifest identity and fail-closed
+  node/DA attachment are implemented; compiler, lock, blueprint, protocol-
+  parameter and release provenance hashes plus signing/rotation policy remain.
+- **Public fraud-proof / proof-DA milestone**: at least the intended public
+  fraud-proof family must run end-to-end on preprod, with persisted proof bundles
+  and public endpoints an external watcher can use without privileged DB access.
+- **Ingress and ops hardening**: TLS, rate limiting, private admin endpoints, and
+  a mandatory `ADMIN_API_KEY` in public profiles.
+- **L1 finality / rollback / provider-consistency policy**: protocol-affecting L1
+  observations must not finalize from first provider visibility alone.
+- **Key custody and admin authority model**: separated key ownership, rotation,
+  and attributable, replay-protected admin identities.
+- **Operator liveness, Sybil, and incentives**: either permissionless operation
+  with slashing/inactivity enforcement, or an explicitly declared curated model.
+- **A clean public-testnet acceptance gate** covering restart/rollback and a real
+  preprod challenge. Package-level CI is broad, but does not prove that gate.
+- **Removing placeholder economics / demo parameters** from public-testnet config.
+- **Public release, support, and data-retention posture** (SBOMs, `SECURITY.md`,
+  status surfaces, retention policy).
+
+## Per-area status
+
+For the feature-by-feature matrix (native transaction submit/admission, Phase A/B
+validation, deposits, withdrawals, reserve/payout, commit/confirm/merge, operator
+lifecycle, fraud proofs and DA, contract deployment, node operations, SDK/provider,
+and CI/acceptance), read `public_testnet_readiness.md` directly.
+
+<Callout type="info" title="This status is a snapshot">
+The checklist is dated and evidence-backed against a specific repository state.
+Treat it as a point-in-time assessment and check `public_testnet_readiness.md`
+for the most recent reviewed state.
+</Callout>

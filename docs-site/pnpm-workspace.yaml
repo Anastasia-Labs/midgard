@@ -1,0 +1,4 @@
+# pnpm 10 reads overrides from here, not from package.json.
+overrides:
+  "next>postcss": "^8.5.10"
+  "fumadocs-mdx>esbuild": "^0.28.1"

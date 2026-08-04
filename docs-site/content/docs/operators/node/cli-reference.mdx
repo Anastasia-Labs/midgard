@@ -1,0 +1,77 @@
+---
+title: "CLI Reference"
+description: "The midgard-node command-line interface, grouped by function."
+---
+
+`midgard-node` is a Commander CLI (`bin: midgard-node`). Run `midgard-node --help`
+for the authoritative, version-specific list. The 69 commands below are grouped
+by function.
+
+<Callout type="info" title="The server">
+`listen` is the long-running command that starts the HTTP API server and the
+[background fibers](/docs/operators/node/background-fibers). See
+[Server &amp; HTTP API](/docs/operators/node/server-http-api).
+</Callout>
+
+## Initialization & deployment
+
+`init` · `export-contract-deployment-info` · `deployment-manifest` ·
+`deployment-status` · `reference-scripts-complete` ·
+`reference-script-wallet-status` · `sweep-reference-script-wallet`
+
+## Database
+
+`db:migrate` · `db:status` · `db:verify` · `db:checksum` ·
+`db:backfill-da-payloads`, see [Database &amp; State](/docs/operators/node/database).
+
+## Operators & PHAS
+
+`register-active-operator` · `activate-operator` ·
+`register-phas-membership-reward-account` · `phas-registered`
+
+## L2 transactions, deposits & withdrawals
+
+`submit-l2-transfer` · `submit-deposit` · `submit-withdrawal` ·
+`withdrawal-status` · `project-deposits-once` · `deposit-projected` ·
+`fetch-withdrawals-once` · `absorb-confirmed-deposit-to-reserve` ·
+`reconcile-deposit-submission`, see
+[Deposits &amp; Withdrawals](/docs/operators/node/deposits-withdrawals).
+
+## Blocks, attestation & settlement
+
+`commit-explicit-block-header` · `block-committed` · `tx-committed` ·
+`attest-state-queue-once` · `da-attested` · `merge-complete` ·
+`resolve-event-settlement-proof` · `reconcile` · `local-finalization`
+
+## Reserve & payout
+
+`initialize-payout` · `add-reserve-funds-to-payout` · `conclude-payout` ·
+`payout-status` · `reserve-utxos`, see
+[Reserve &amp; Payout](/docs/operators/node/reserve-payout).
+
+## Hub oracle & wallets
+
+`prepare-hub-oracle-one-shot-nonce` · `create-l2-wallet` · `address-from-seed` ·
+`utxos` · `l1-utxos` · `l1-provider-preflight`
+
+## Stress wallets & corpus
+
+`stress-wallets:prepare` · `stress-wallets:fanout` ·
+`stress-wallets:consolidate` · `stress-wallets:terminal-drain` ·
+`stress-wallets:consolidate-verify-legacy-state` ·
+`stress-wallets:consolidate-upgrade-state` · `stress-corpus-generate` ·
+`stress-corpus-historical-extension` · `stress-corpus-verify`, see
+[Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).
+
+## Audit & DA transport
+
+`audit-blocks-immutable` · `mpf-audit` · `mpf-replay` ·
+`da-libp2p-preflight` · `da-libp2p-generate-manifest`
+
+## E2E & local-devnet acceptance
+
+`e2e-start-service` · `e2e-run-step` · `e2e-finalize-summary` ·
+`e2e-stress-l2-throughput` · `e2e-clean-owned-process-group` ·
+`phase4-genesis-ledger` · `phase4-t1-probe` · `phase4-t1-advance` ·
+`e2e-pipelined-commit-process-acceptance`, see
+[Benchmarks &amp; Stress Testing](/docs/operators/node/benchmarks).

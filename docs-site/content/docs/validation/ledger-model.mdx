@@ -1,0 +1,130 @@
+---
+title: "Ledger Model"
+description: "The MidgardLedgerTx semantic transaction model, the LedgerEntry UTxO rows, and the canonical CBOR codec that Phase A and Phase B validate against."
+---
+
+The validation engine operates on two distinct data models: a **semantic
+transaction model** (`MidgardLedgerTx`, in `src/ledger-tx/`) that the validation
+rules read, and a **ledger row model** (`LedgerEntry`, in `src/ledger.ts`) that
+represents UTxO state. This page describes both, plus the codec that bridges
+canonical CBOR to the semantic model.
+
+## Semantic transaction: `MidgardLedgerTx`
+
+`MidgardLedgerTx` (in `ledger-tx/types.ts`) is the fully decoded semantic
+transaction used by Midgard ledger validation. It is deliberately **not** the
+canonical codec/proof representation: it holds the facts Phase A and Phase B
+validate against (body fields, inputs, outputs, witnesses, scripts, redeemers,
+and minting information), while exact CBOR bytes, hex encodings, queue metadata,
+and persistence rows are modeled by adjacent boundary types.
+
+Key fields:
+
+| Field | Meaning |
+| --- | --- |
+| `txId` | Blake2b-256 id of the compact transaction body. |
+| `validity` | Submitted validity flag; Phase A admits only `TxIsValid`. |
+| `fee` | Fee in lovelace. |
+| `networkId?` | Optional; absent when the native sentinel means "no network". |
+| `validityIntervalStart?` / `validityIntervalEnd?` | Inclusive validity bounds, absent when unbounded. |
+| `auxiliaryDataHash` | Auxiliary-data commitment from the body. |
+| `scriptIntegrityHash` | Script-data commitment from the body. |
+| `spendInputs` | UTxOs consumed (`MidgardOutRef[]`). |
+| `referenceInputs` | UTxOs read without spending, including reference-script sources. |
+| `outputs` | Created outputs in index order (`MidgardLedgerOutput[]`). |
+| `requiredSignerHashes` / `requiredObserverHashes` | Authorization requirements. |
+| `vkeyWitnesses` / `witnessKeyHashes` | Submitted key witnesses and their credential hashes. |
+| `scriptWitnesses` / `nativeScriptHashes` / `plutusScriptHashes` | Inline script material. |
+| `redeemers` | Decoded redeemers with data and ex-units. |
+| `mint` | Signed per-asset mint deltas. |
+| `requiresPlutusEvaluation` | True when witnesses/redeemers/script-data require script eval. |
+
+### Semantic type aliases
+
+`ledger-tx/types.ts` names the hash types precisely rather than passing raw
+`Buffer`s around:
+
+- `Blake2b256Hash` (= `Hash32`), a 32-byte Blake2b digest.
+- `MidgardTxId`: Blake2b-256 over the canonical compact transaction body; it
+  "identifies the transaction body, not the witness set."
+- `MidgardScriptIntegrityHash`: recomputed from the redeemer witness root and
+  the required script languages when script execution is required.
+- `MidgardCredentialHash` / `MidgardScriptHash`, 28-byte credential and script
+  hashes; `MidgardPolicyId` aliases the script hash for mint fields.
+
+### Inputs and outputs
+
+`MidgardOutRef` is the decoded input reference, `{ txId, index }`, with
+encoding details (CBOR, hex) deliberately kept out of the semantic model.
+`MidgardLedgerOutput` is the ledger-facing output shape used for value
+accounting, address authorization, datum lookup, and reference-script discovery;
+it holds `address`, `value`, optional `datum`, and optional `scriptRef`, and
+"deliberately avoids retaining the output's original CBOR bytes."
+
+### Witnesses, redeemers, mint
+
+- `MidgardLedgerVKeyWitness` keeps the raw `vkey` and `signature` bytes (needed
+  for verification) alongside the `keyHash` credential.
+- `MidgardLedgerScriptWitness` covers scripts carried directly in the witness
+  set; reference scripts live on resolved outputs instead.
+- `MidgardLedgerRedeemer` carries the purpose pointer (`tag`, `index`), the
+  **decoded** Plutus `data` (not CBOR/hex), and declared `exUnits`.
+- `MidgardLedgerMintAsset` holds a *signed* `quantity`, positive mints, negative
+  burns; zero is not valid in the mint encoding.
+
+## Submitted transaction: `MidgardSubmittedTx`
+
+The decoder returns a `MidgardSubmittedTx`, which pairs the pure `ledgerTx` with
+proof material so Phase A does not have to traffic in low-level preimages on its
+normal path:
+
+- `txCbor`: canonical submitted bytes retained for persistence.
+- `ledgerTx`: the semantic `MidgardLedgerTx`.
+- `commitments`: the `transactionCompact` (whose body hash is the tx id), the
+  `witnessSetCompact` roots, and the `redeemerWitnessHash` committed by
+  script-integrity validation.
+
+## Canonical codec: `ledger-tx/codec.ts`
+
+`ledger-tx/codec.ts` decodes canonical Midgard CBOR into the semantic model.
+Phase A calls `decodeMidgardSubmittedTxFromCanonicalCbor`, and decode failures
+surface as `MidgardLedgerTxDecodeError` (with a `stage` and `invalidOutput`
+flag), which Phase A maps to `E_CBOR_DESERIALIZATION`, `E_INVALID_OUTPUT`, or
+`E_INVALID_FIELD_TYPE`. The codec is published as its own subpath export
+(`@al-ft/midgard-validation/ledger-tx/codec`).
+
+## UTxO ledger rows: `ledger.ts`
+
+Ledger state is stored as rows keyed by column name (`LedgerColumns`):
+
+```ts
+enum LedgerColumns {
+  TX_ID = "tx_id",
+  OUTREF = "outref",
+  OUTPUT = "output",
+  ADDRESS = "address",
+  TIMESTAMPTZ = "time_stamp_tz",
+}
+```
+
+A `LedgerEntry` is a `LedgerEntryNoTimeStamp` (with `tx_id`, `outref`, `output`
+bytes, and a decoded `address`) optionally extended with a `time_stamp_tz`. A
+`ProcessedTx` bundles what a validated transaction changed, `txId`, `txCbor`,
+the `spent` out-refs, and the `produced` ledger entries.
+
+<Callout type="info">
+`buildPhaseAValidatedTx` (in `validation-candidate.ts`) materializes the
+`produced` `LedgerEntry` rows from `ledgerTx.outputs`, encoding each output back
+to CBOR and its address to text. This is what lets
+[Phase B](/docs/validation/phase-b) treat a candidate's outputs as spendable
+state for later transactions in the same batch.
+</Callout>
+
+## Boundary discipline
+
+The recurring design rule across these types: the semantic `MidgardLedgerTx`
+stays pure (facts to validate), while CBOR bytes, hex encodings, queue metadata,
+and persistence rows are modeled by adjacent boundary types
+(`QueuedTx`, `MidgardSubmittedTx`, `LedgerEntry`, the derived projections on
+`PhaseAValidatedTx`). Keeping these separate is why the same `ledgerTx` can be
+the single source of truth for both validation phases.

@@ -1,51 +1,80 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Midgard.Types.ActiveOperators (Datum (..), SpendRedeemer (..), MintRedeemer (..), rootKey, nodeKeyPrefix, nodeKeyPrefixLen) where
+module Midgard.Types.ActiveOperators (
+  NodeData (..),
+  OperatorRemovalSchedulerSync (..),
+  Datum,
+  SpendRedeemer (..),
+  MintRedeemer (..),
+  rootAssetName,
+  nodeAssetNamePrefix,
+  nodeAssetNamePrefixLen,
+) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as BS8
 import GHC.Generics (Generic)
 
 import Cardano.Api qualified as C
-import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime)
+import PlutusLedgerApi.V3 (BuiltinByteString, POSIXTime, PubKeyHash, TxOutRef)
 import PlutusTx.Blueprint (HasBlueprintDefinition, definitionRef)
 import PlutusTx.Blueprint.TH (makeIsDataSchemaIndexed)
 
 import Ply (PlyArg)
 
-rootKey :: C.AssetName
-rootKey = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
+import Midgard.Types.LinkedList qualified as LinkedList
+import Midgard.Types.OperatorDirectory (SlashingArguments)
 
-nodeKeyPrefix :: C.AssetName
-nodeKeyPrefix = C.UnsafeAssetName $ BS8.pack "MACT"
+rootAssetName :: C.AssetName
+rootAssetName = C.UnsafeAssetName $ BS8.pack "MIDGARD_ACTIVE_OPERATORS"
 
-nodeKeyPrefixLen :: Int
-nodeKeyPrefixLen = BS8.length $ C.serialiseToRawBytes nodeKeyPrefix
+nodeAssetNamePrefix :: ByteString
+nodeAssetNamePrefix = BS8.pack "MACT"
 
-newtype Datum = Datum
+nodeAssetNamePrefixLen :: Int
+nodeAssetNamePrefixLen = BS8.length nodeAssetNamePrefix
+
+data NodeData = NodeData
   { bondUnlockTime :: Maybe POSIXTime
+  , inactivityStrikes :: Integer
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
 
 $( makeIsDataSchemaIndexed
-     ''Datum
-     [ ('Datum, 0)
+     ''NodeData
+     [ ('NodeData, 0)
      ]
  )
+
+type Datum = LinkedList.Element BuiltinByteString NodeData
 
 data SpendRedeemer
   = ListStateTransition
   | UpdateBondHoldNewState
-      { activeNodeOutputIndex :: Integer
+      { activeOperator :: PubKeyHash
+      , activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
-      , stateQueueRedeemerIndex :: Integer
+      , stateQueueMintRedeemerIndex :: Integer
       }
   | UpdateBondHoldNewSettlement
-      { activeNodeOutputIndex :: Integer
+      { activeOperator :: PubKeyHash
+      , activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
       , hubOracleRefInputIndex :: Integer
       , settlementInputIndex :: Integer
       , settlementRedeemerIndex :: Integer
-      , newBondUnlockTime :: POSIXTime
+      , resolutionTime :: POSIXTime
+      }
+  | StrikeForInactivity
+      { activeNodeInputIndex :: Integer
+      , activeNodeOutputIndex :: Integer
+      , operator :: PubKeyHash
+      , activeNodeLink :: Maybe LinkedList.NodeKey
+      , schedulerInputIndex :: Integer
+      , schedulerRedeemerIndex :: Integer
+      , hubOracleRefInputIndex :: Integer
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -55,45 +84,56 @@ $( makeIsDataSchemaIndexed
      [ ('ListStateTransition, 0)
      , ('UpdateBondHoldNewState, 1)
      , ('UpdateBondHoldNewSettlement, 2)
+     , ('StrikeForInactivity, 3)
      ]
  )
 
 instance PlyArg SpendRedeemer
 
+data OperatorRemovalSchedulerSync
+  = ShowOperatorIsInactive
+      { schedulerRefInputIndex :: Integer
+      }
+  | ShowSchedulerIsAdvancing
+      { schedulerInputIndex :: Integer
+      , schedulerRedeemerIndex :: Integer
+      , removingOperatorsAnchorElementKey :: Maybe LinkedList.NodeKey
+      , removingOperatorIsTheLastMember :: Bool
+      }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (HasBlueprintDefinition)
+
+$( makeIsDataSchemaIndexed
+     ''OperatorRemovalSchedulerSync
+     [ ('ShowOperatorIsInactive, 0)
+     , ('ShowSchedulerIsAdvancing, 1)
+     ]
+ )
+
 -- Mint redeemer
 
 data MintRedeemer
-  = Init
+  = Init {outputIndex :: Integer}
   | Deinit
   | ActivateOperator
-      { newActiveOperatorKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorAppendedNodeOutputIndex :: Integer
-      , activeOperatorAnchorNodeOutputIndex :: Integer
+      { newActiveOperatorKey :: PubKeyHash
+      , activeOperatorAnchorElementOutputIndex :: Integer
+      , activeOperatorInsertedNodeOutputIndex :: Integer
       , registeredOperatorsRedeemerIndex :: Integer
-      }
-  | RemoveOperatorBadState
-      { slashedActiveOperatorKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
-      , stateQueueRedeemerIndex :: Integer
-      }
-  | RemoveOperatorBadSettlement
-      { slashedActiveOperatorKey :: BuiltinByteString
-      , hubOracleRefInputIndex :: Integer
-      , activeOperatorSlashedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
-      , settlementInputIndex :: Integer
-      , settlementRedeemerIndex :: Integer
+      , activeOperatorsSetWasEmpty :: Bool
       }
   | RetireOperator
-      { activeOperatorKey :: BuiltinByteString
+      { activeOperatorKey :: PubKeyHash
       , hubOracleRefInputIndex :: Integer
-      , activeOperatorRemovedNodeInputIndex :: Integer
-      , activeOperatorAnchorNodeInputIndex :: Integer
-      , retiredOperatorInsertedNodeOutputIndex :: Integer
+      , activeOperatorAnchorElementInputOutRef :: TxOutRef
+      , activeOperatorAnchorElementOutputIndex :: Integer
       , retiredOperatorsRedeemerIndex :: Integer
+      , penalizeForInactivity :: Bool
+      , operatorRemovalSchedulerSync :: OperatorRemovalSchedulerSync
+      }
+  | SlashOperator
+      { slashingArguments :: SlashingArguments
+      , operatorRemovalSchedulerSync :: OperatorRemovalSchedulerSync
       }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (HasBlueprintDefinition)
@@ -103,9 +143,8 @@ $( makeIsDataSchemaIndexed
      [ ('Init, 0)
      , ('Deinit, 1)
      , ('ActivateOperator, 2)
-     , ('RemoveOperatorBadState, 3)
-     , ('RemoveOperatorBadSettlement, 4)
-     , ('RetireOperator, 5)
+     , ('RetireOperator, 3)
+     , ('SlashOperator, 4)
      ]
  )
 

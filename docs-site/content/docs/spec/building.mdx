@@ -1,0 +1,40 @@
+---
+title: "Building the Specification"
+description: "How the Midgard normative design specification is assembled from LaTeX sources into midgard.pdf."
+---
+
+The Midgard normative protocol design target lives under
+[`technical-spec/`](https://github.com/Anastasia-Labs/midgard/tree/main/technical-spec)
+as a set of numbered LaTeX chapters that are assembled, in order, into a single
+`midgard.pdf`. The build is driven by `latexmk` (packaged with Nix); see
+[`technical-spec/README.md`](https://github.com/Anastasia-Labs/midgard/blob/main/technical-spec/README.md)
+for the exact invocation.
+
+<Callout type="warn" title="Design target is not conformance evidence">
+For intended definitions, equations, and transaction diagrams, read the compiled
+`midgard.pdf`. The document contains unfinished sections and future mechanisms.
+Current implementation and launch claims must also be checked against
+[Project Status](/docs/getting-started/status), the
+[fault-proof audit](/docs/fault-proofs/overview), code, generated blueprints, and
+acceptance evidence.
+</Callout>
+
+## Chapter layout
+
+The spec is organized into a numbered main body and lettered appendices:
+
+| Part | Chapter | Docs |
+|------|---------|------|
+| 1 | Ledger state | [Ledger State](/docs/spec/ledger-state) |
+| 2 | User-event protocol | [User-Event Protocol](/docs/spec/user-event-protocol) |
+| 3 | Consensus protocol | [Consensus Protocol](/docs/spec/consensus-protocol) |
+| 4 | Proof protocol | [Proof Protocol](/docs/spec/proof-protocol) |
+| 5 | Ledger rules | [Ledger Rules](/docs/spec/ledger-rules) |
+| 6 | Off-chain data architecture | [Off-Chain Data Architecture](/docs/spec/offchain-data-architecture) |
+| 7 | Phase-two validation | [Phase-Two Validation](/docs/spec/phase-two-validation) |
+| A | General data structures | [Data Structures](/docs/spec/data-structures) |
+| B | L1 transactions | [L1 Transactions](/docs/spec/l1-transactions) |
+| C | Considerations | [Considerations](/docs/spec/considerations) |
+
+The [formal-models page](/docs/spec/formal-models) tracks a planned Lean 4
+formalization. No Lean source files are currently tracked in the repository.

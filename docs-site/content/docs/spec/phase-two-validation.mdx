@@ -1,0 +1,45 @@
+---
+title: "Phase-Two Validation"
+description: "How fraud proofs execute disputed transactions in UPLC: state representation, decoding, and execution steps."
+---
+
+Chapter 7 specifies **phase-two validation**, the deep validation of L2 state and
+script execution that fraud proofs rely on. It is the most involved part of the
+protocol because it must be reproducible both off-chain (to detect fraud) and on-chain
+(to adjudicate a single step of it cheaply).
+
+## State representation
+
+- **Term Representation**: how UPLC terms and state are represented for verification.
+- **Decoding Steps**, **Execution Steps**, **Execution Trace**: how off-chain data is
+  decoded and executed to reconstruct the exact evaluation, producing a trace that a
+  proof can index into.
+
+## Fraud proofs in UPLC evaluation
+
+- **Types of Fraud Proofs**: the categories that reduce to a UPLC-evaluation
+  disagreement.
+- **Single-Step Verification** and **Proof Data Structure**: a proof isolates a
+  single execution step so the on-chain validator only has to check that one step,
+  not re-run the whole evaluation.
+- **Verification Process**: how the on-chain check consumes the proof data structure
+  to reach a verdict.
+- **Security Considerations**: the assumptions that make single-step verification
+sound.
+
+<Callout type="warn" title="Design coverage is incomplete">
+This chapter describes the target proof architecture. The current on-chain
+catalogue covers only part of the required violation surface, and several
+compiled families do not bind to the current native-v1 counted-root block format.
+See the [fault-proof audit](/docs/fault-proofs/overview) before relying on a
+single-step proof claim.
+</Callout>
+
+## In the codebase
+
+The off-chain counterpart is the [validation engine](/docs/validation/overview): its Phase B
+stage (`local-script-eval`, `script-context`) performs local UPLC evaluation, and
+[`midgard-validation`](/docs/validation/overview) exposes the public validation
+surface. On L1, the reconstructed step is adjudicated by the
+[computation-thread fraud-proof machines](/docs/onchain/fraud-proof-machines), using
+[Merkle proofs](/docs/onchain/merkle-plutarch) to reference committed state.

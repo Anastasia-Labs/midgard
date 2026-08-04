@@ -1,8 +1,55 @@
-import { AuthenticatedValidator } from "@/common.js";
-import { FRAUD_PROOF_CATALOGUE_ASSET_NAME } from "@/constants.js";
-import { Assets, Data, toUnit } from "@lucid-evolution/lucid";
-import { LucidEvolution, TxBuilder } from "@lucid-evolution/lucid";
+import {
+  Assets,
+  Data,
+  fromText,
+  LucidEvolution,
+  toUnit,
+  TxBuilder,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
+
+import type {
+  AuthenticatedValidator,
+  FraudProofs,
+  MerkleRoot,
+} from "@/common.js";
+
+export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
+  "MIDGARD_FRAUD_PROOF_CATALOGUE",
+);
+
+export const FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT = 4;
+
+// Category IDs are the positional index in this list (see
+// `fraudProofsToIndexedValidators`), so new categories must be appended:
+// inserting one shifts the ID of every category after it.
+export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
+  "doubleSpend",
+  "nonExistentInput",
+  "nonExistentInputNoIndex",
+  "invalidRange",
+  "transitionTrace",
+  "zeroInput",
+] as const satisfies readonly (keyof FraudProofs)[];
+
+export type FraudProofCatalogueCategoryName =
+  (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+export type FraudProofCatalogueCategoryDeploymentInfo = {
+  readonly categoryId: string;
+  readonly scriptHash: string;
+  readonly membershipProofCbor: string;
+};
+
+export type FraudProofCatalogueDeploymentInfo = {
+  readonly root: MerkleRoot;
+  readonly categories: Readonly<
+    Record<
+      FraudProofCatalogueCategoryName,
+      FraudProofCatalogueCategoryDeploymentInfo
+    >
+  >;
+};
 
 export const FraudProofCatalogueDatumSchema = Data.Bytes();
 
@@ -38,10 +85,6 @@ export type FraudProofCatalogueInitParams = {
   mptRootHash: string;
 };
 
-export type FraudProofCatalogueDeinitParams = {};
-export type FraudProofCatalogueNewCategoryParams = {};
-export type FraudProofCatalogueRemoveCategoryParams = {};
-
 /**
  * Init
  *
@@ -58,61 +101,16 @@ export const incompleteFraudProofCatalogueInitTxProgram = (
       [toUnit(params.validator.policyId, FRAUD_PROOF_CATALOGUE_ASSET_NAME)]: 1n,
     };
 
-    const datum = Data.to(params.mptRootHash, FraudProofCatalogueDatum);
-
-    const tx = lucid
+    return lucid
       .newTx()
       .mintAssets(assets, Data.to("Init", FraudProofCatalogueMintRedeemer))
       .pay.ToAddressWithData(
         params.validator.spendingScriptAddress,
-        { kind: "inline", value: datum },
+        {
+          kind: "inline",
+          value: Data.to(params.mptRootHash, FraudProofCatalogueDatum),
+        },
         assets,
       )
       .attach.Script(params.validator.mintingScript);
-
-    return tx;
   });
-/**
- * Deinit
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofDeinitTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueDeinitParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * NewCategory
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofNewCategoryTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueNewCategoryParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};
-
-/**
- * RemoveCategory
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteFraudProofRemoveCategoryTxProgram = (
-  lucid: LucidEvolution,
-  params: FraudProofCatalogueRemoveCategoryParams,
-): TxBuilder => {
-  const tx = lucid.newTx();
-  return tx;
-};

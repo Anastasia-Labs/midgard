@@ -1,0 +1,6 @@
+services:
+  midgard-node:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${DA_PRODUCER_LIBP2P_PORT:-39002}:${DA_PRODUCER_LIBP2P_PORT:-39002}"

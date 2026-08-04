@@ -1,8 +1,13 @@
-import { Effect } from "effect";
-import { clearTable, DatabaseError } from "@/database/utils/common.js";
 import { SqlClient, SqlError } from "@effect/sql";
+import { Effect } from "effect";
+
+import {
+  clearTable,
+  DatabaseError,
+  logDatabaseError,
+  sqlErrorToDatabaseError,
+} from "@/database/utils/common.js";
 import { Database } from "@/services/database.js";
-import { sqlErrorToDatabaseError } from "@/database/utils/common.js";
 
 export const tableName = "blocks";
 
@@ -27,6 +32,30 @@ type Entry = EntryNoHeightAndTS & {
   [Columns.HEIGHT]: number;
   [Columns.TIMESTAMPTZ]: Date;
 };
+
+const assertNoConflictingHeaderHashes = (
+  headerHash: Buffer,
+  txHashes: readonly Buffer[],
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+
+    const existingRows = yield* sql<
+      Pick<Entry, Columns.TX_ID | Columns.HEADER_HASH>
+    >`SELECT ${sql(Columns.TX_ID)}, ${sql(Columns.HEADER_HASH)} FROM ${sql(
+      tableName,
+    )} WHERE ${sql.in(Columns.TX_ID, txHashes)}`;
+
+    for (const row of existingRows) {
+      if (!row[Columns.HEADER_HASH].equals(headerHash)) {
+        yield* Effect.fail(
+          new SqlError.SqlError({
+            cause: `${tableName} integrity violation: tx_id=${row[Columns.TX_ID].toString("hex")} is already linked to header=${row[Columns.HEADER_HASH].toString("hex")}`,
+          }),
+        );
+      }
+    }
+  });
 
 export const createTable: Effect.Effect<void, DatabaseError, Database> =
   Effect.gen(function* () {
@@ -59,16 +88,17 @@ export const insert = (
       yield* Effect.logDebug("No txHashes provided, skipping block insertion.");
       return;
     }
-    const rowsToInsert: EntryNoHeightAndTS[] = txHashes.map(
-      (txHash: Buffer) => ({
-        [Columns.HEADER_HASH]: headerHash,
-        [Columns.TX_ID]: txHash,
-      }),
-    );
-    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}`;
+    yield* assertNoConflictingHeaderHashes(headerHash, txHashes);
+
+    const rowsToInsert: EntryNoHeightAndTS[] = txHashes.map((txHash) => ({
+      [Columns.HEADER_HASH]: headerHash,
+      [Columns.TX_ID]: txHash,
+    }));
+    yield* sql`INSERT INTO ${sql(tableName)} ${sql.insert(rowsToInsert)}
+      ON CONFLICT (${sql(Columns.TX_ID)}) DO NOTHING`;
   }).pipe(
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(`${tableName} db: inserting error: ${e}`),
+      logDatabaseError(tableName, "inserting error", e),
     ),
     Effect.withLogSpan(`insert ${tableName}`),
     sqlErrorToDatabaseError(tableName, "Failed to insert the given block"),
@@ -96,9 +126,7 @@ export const retrieveTxHashesByHeaderHash = (
   }).pipe(
     Effect.withLogSpan(`retrieveTxHashesByHeaderHash ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving txHashes error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving txHashes error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -132,9 +160,7 @@ export const retrieveHeaderHashByTxHash = (
   }).pipe(
     Effect.withLogSpan(`retrieveBlockHashByTxHash ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: retrieving headerHash error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "retrieving headerHash error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -153,16 +179,10 @@ export const clearBlock = (
     yield* sql`DELETE FROM ${sql(
       tableName,
     )} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
-    // yield* Effect.logInfo(
-    //   `${tableName} db: cleared ${result.entries()} rows for block ${toHex(headerHash)}`,
-    // );
-    return Effect.void;
   }).pipe(
     Effect.withLogSpan(`clearBlock ${tableName}`),
     Effect.tapErrorTag("SqlError", (e) =>
-      Effect.logError(
-        `${tableName} db: clearing block error: ${JSON.stringify(e)}`,
-      ),
+      logDatabaseError(tableName, "clearing block error", e),
     ),
     sqlErrorToDatabaseError(
       tableName,
@@ -183,7 +203,7 @@ export const retrieve: Effect.Effect<
 }).pipe(
   Effect.withLogSpan(`retrieve ${tableName}`),
   Effect.tapErrorTag("SqlError", (e) =>
-    Effect.logError(`${tableName} db: retrieving error: ${JSON.stringify(e)}`),
+    logDatabaseError(tableName, "retrieving error", e),
   ),
   sqlErrorToDatabaseError(
     tableName,

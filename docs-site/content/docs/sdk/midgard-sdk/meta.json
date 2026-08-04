@@ -1,0 +1,13 @@
+{
+  "title": "midgard-sdk",
+  "pages": [
+    "overview",
+    "operator-lifecycle",
+    "blocks-and-scheduling",
+    "settlement-and-proofs",
+    "user-events",
+    "reserve-and-payout",
+    "da-and-oracle",
+    "protocol-primitives"
+  ]
+}

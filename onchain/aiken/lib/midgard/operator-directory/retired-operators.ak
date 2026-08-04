@@ -2,8 +2,9 @@ use aiken/crypto.{VerificationKeyHash}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
+use cardano/transaction.{OutputReference}
 use midgard/common/types.{PosixTime}
-use midgard/operator_directory
+use midgard/operator_directory.{SlashingArguments}
 
 /// TODO: Refer to state queue's library module.
 pub const root_asset_name: AssetName = "MIDGARD_RETIRED_OPERATORS"
@@ -28,47 +29,29 @@ pub type Datum =
 
 pub type MintRedeemer {
   Init { output_index: Int }
-  Deinit { input_index: Int }
+  Deinit
   RetireOperator {
     new_retired_operator_key: VerificationKeyHash,
     bond_unlock_time: Option<PosixTime>,
     hub_oracle_ref_input_index: Int,
-    retired_operator_anchor_element_input_index: Int,
     retired_operator_anchor_element_output_index: Int,
     retired_operator_inserted_node_output_index: Int,
     active_operators_redeemer_index: Int,
   }
   RecoverOperatorBond {
     retired_operator_key: VerificationKeyHash,
-    retired_operator_anchor_element_input_index: Int,
-    retired_operator_removed_node_input_index: Int,
+    retired_operator_anchor_element_input_outref: OutputReference,
     retired_operator_anchor_element_output_index: Int,
   }
-  RemoveOperatorBadState {
-    slashed_retired_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    retired_operator_anchor_element_input_index: Int,
-    retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_element_output_index: Int,
-    state_queue_redeemer_index: Int,
-  }
-  RemoveOperatorBadSettlement {
-    slashed_retired_operator_key: VerificationKeyHash,
-    hub_oracle_ref_input_index: Int,
-    retired_operator_anchor_element_input_index: Int,
-    retired_operator_slashed_node_input_index: Int,
-    retired_operator_anchor_element_output_index: Int,
-    settlement_input_index: Int,
-    settlement_redeemer_index: Int,
-  }
+  SlashOperator { slashing_arguments: SlashingArguments }
 }
 
 pub fn finalize_linked_list(
-  eval: linked_list.Eval,
+  eval: linked_list.ElementEval<Bool>,
   nft_policy_id: PolicyId,
 ) -> Bool {
   eval
-    |> linked_list.run_eval_with(
+    |> linked_list.run_element_with(
         nft_policy_id,
         root_asset_name,
         node_asset_name_prefix,

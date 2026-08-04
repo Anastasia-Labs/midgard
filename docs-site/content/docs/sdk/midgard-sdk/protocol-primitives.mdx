@@ -1,0 +1,24 @@
+---
+title: "Protocol Primitives"
+description: "Reference scripts, PHAS membership, protocol parameters, ledger state/constants, and the linked-list helper."
+---
+
+These modules provide the shared protocol building blocks the other transaction
+families rely on.
+
+## Modules
+
+- **`reference-scripts`**: publishing and referencing on-chain reference scripts.
+- **`phas-membership`**: PHAS staking-reward-account membership registration
+  (on-chain: [`phas`](/docs/onchain/phas-membership)).
+- **`protocol-parameters`**: the protocol parameters used across transaction
+  builders.
+- **`ledger-state`** / **`ledger-constants`**, L2 ledger-state representation and
+  shared constants.
+- **`linked-list`**: the on-chain linked-list helper used by the
+  [operator directory](/docs/onchain/operator-directory) and other list-backed state.
+
+## Related
+
+- Node commands: `reference-scripts-complete`, `register-phas-membership-reward-account`, [CLI reference](/docs/operators/node/cli-reference)
+- Spec: [Data Structures](/docs/spec/data-structures)

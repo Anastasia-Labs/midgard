@@ -1,0 +1,61 @@
+---
+title: "PHAS Membership"
+description: "The phas validator: a reusable Merkle membership check that other validators invoke through a staking withdrawal."
+---
+
+`phas` is a reusable **membership check**. It proves that a key/value pair belongs to a
+Merkle Patricia Forestry commitment, and it is invoked through a staking withdrawal
+rather than by spending a UTxO.
+
+<Callout type="info" title="On the name">
+`PHAS` is an opaque validator name in Midgard; the acronym is not expanded in the
+codebase (`onchain/aiken/validators/phas.ak`) or the specification.
+</Callout>
+
+## What the validator checks
+
+The validator is named `membership` and exposes a single `withdraw` handler. Its
+blueprint entrypoint is `phas.membership.withdraw`. Every other script purpose fails.
+
+The redeemer is a four-element list: a Merkle root, a key, a value, and an MPF proof.
+The validator decodes them and asserts that the proof shows the key maps to the value
+under that root:
+
+```rust
+validator membership {
+  withdraw(redeemer: Data, _own_credential: Credential, _tx: Transaction) {
+    expect [root_data, key_data, value_data, proof_data] =
+      builtin.un_list_data(redeemer)
+    expect root: ByteArray = root_data
+    expect key: ByteArray = key_data
+    expect value: ByteArray = value_data
+    expect proof: mpf.Proof = proof_data
+
+    mpf.has(mpf.from_root(root), key, value, proof)
+  }
+}
+```
+
+It inspects neither the transaction nor its own credential. The check is purely about
+the proof it is handed.
+
+## Why a withdrawal
+
+Cardano runs a staking script when its reward account appears in the transaction's
+withdrawals, even for a withdrawal of zero lovelace. This makes a `withdraw` handler a
+cheap, shared place to run a check once per transaction, which any number of spending
+validators can then rely on by confirming the withdrawal is present.
+
+The reward account must be registered on-chain before it can be withdrawn from, which is
+what the node's `register-phas-membership-reward-account` command does.
+`phas-registered` reports whether that registration exists.
+
+## Related
+
+- Off-chain builder: `midgard-sdk` (`phas-membership`), see
+  [Protocol primitives](/docs/sdk/midgard-sdk/protocol-primitives)
+- Node commands: `register-phas-membership-reward-account`, `phas-registered`, see the
+  [CLI reference](/docs/operators/node/cli-reference)
+- The Merkle proofs it verifies: [Merkle proofs](/docs/onchain/merkle-plutarch)
+- Withdrawal ordering in script context:
+  [ScriptContext invariants](/docs/onchain/script-context-invariants)

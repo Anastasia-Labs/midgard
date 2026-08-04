@@ -1,0 +1,30 @@
+---
+title: "Midgard Manager"
+description: "Management tools for Midgard L2, an interactive CLI and a transaction generator for load testing."
+---
+
+`midgard-manager` is what an operator uses to drive a node interactively and to put it
+under load. It does not run the protocol; it talks to a node that does.
+
+It is a nested pnpm workspace with two packages plus generated fixtures:
+
+- **`@midgard-manager/cli`**: an interactive management CLI. Launch it with
+  `pnpm start interactive`.
+- **`@midgard-manager/tx-generator`**: a transaction generator for **load testing**
+  a node.
+- **`packages/generated-transactions`** and `config/settings.json`: generated
+  fixtures and configuration.
+
+## Transaction generation
+
+The generator produces L2 transactions to drive a node under load. Its
+configuration (see `config/settings.json` and the tx-generator package) covers
+transaction type (for example `one-to-one` and `mixed`), batch size, interval, and
+concurrency.
+
+<Callout type="info" title="Pairing with the node">
+Use the manager against a running node's [`listen`](/docs/operators/node/server-http-api)
+server; pair it with the node's own
+[benchmark/stress commands](/docs/operators/node/benchmarks) for end-to-end
+throughput testing.
+</Callout>

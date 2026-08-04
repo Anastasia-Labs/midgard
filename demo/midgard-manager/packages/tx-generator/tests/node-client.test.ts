@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { CML } from '@lucid-evolution/lucid';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
@@ -57,6 +57,21 @@ describe('MidgardNodeClient', () => {
     expect(isAvailable).toBe(false);
   });
 
+  it('should treat non-404 http responses as reachable node', async () => {
+    mockFetch.mockResolvedValueOnce({
+      status: 500,
+    });
+
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 1,
+      retryDelay: 10,
+    });
+
+    const isAvailable = await client.isAvailable();
+    expect(isAvailable).toBe(true);
+  });
+
   it('should submit a transaction correctly', async () => {
     // First mock the availability check (404 means node is up but tx not found)
     mockFetch
@@ -76,11 +91,7 @@ describe('MidgardNodeClient', () => {
       retryDelay: 10,
     });
 
-    // Submit the transaction - the client returns an Effect
-    const effectResult = client.submitTransaction('test_cbor_hex');
-
-    // Run the effect to get the result
-    const result = await Effect.runPromise(effectResult);
+    const result = await client.submitTransaction('test_cbor_hex');
 
     // Check the result
     expect(result).toEqual({ txId: 'test_tx_id' });
@@ -88,12 +99,13 @@ describe('MidgardNodeClient', () => {
     // Verify fetch was called with the correct arguments (second call)
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
-      'http://localhost:3000/submit?tx_cbor=test_cbor_hex',
+      'http://localhost:3000/submit',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          'Content-Type': 'text/plain',
+          'Content-Type': 'application/json',
         }),
+        body: JSON.stringify({ tx_cbor: 'test_cbor_hex' }),
       })
     );
   });
@@ -113,21 +125,83 @@ describe('MidgardNodeClient', () => {
       retryDelay: 10,
     });
 
-    // Submit the transaction - this returns an Effect
-    const effectResult = client.submitTransaction('test_cbor_hex');
+    const result = await client.submitTransaction('test_cbor_hex');
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: 'ERROR',
+      })
+    );
+    expect(String((result as { error?: unknown }).error)).toContain('error');
+  });
 
-    // Set up a flag to check if the error was caught
-    let errorCaught = false;
+  it('should retry submit failures up to the configured attempt count', async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        status: 404,
+      })
+      .mockRejectedValueOnce(new Error('first submit failure'))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ txId: 'retried_tx_id' }),
+      });
 
-    try {
-      // Try to run the effect - this should fail
-      await Effect.runPromise(effectResult);
-    } catch (error) {
-      // Just verify an error was thrown without checking its structure
-      errorCaught = true;
-    }
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 2,
+      retryDelay: 0,
+      enableLogs: false,
+    });
 
-    // Assert that an error was caught
-    expect(errorCaught).toBe(true);
+    const result = await client.submitTransaction('test_cbor_hex');
+    expect(result).toEqual({ txId: 'retried_tx_id' });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('should reject zero retry attempts instead of relying on retry-loop fallthrough', () => {
+    expect(
+      () =>
+        new MidgardNodeClient({
+          baseUrl: 'http://localhost:3000',
+          retryAttempts: 0,
+        })
+    ).toThrow('Node retry attempts must be a positive integer');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('should decode spendable utxos from node response', async () => {
+    const txHash = CML.TransactionHash.from_hex('11'.repeat(32));
+    const outRef = CML.TransactionInput.new(txHash, 0n);
+    const address =
+      'addr_test1qzyem8ex0v9v76q0u52x3t2xmj5rkhjd9rsd44kx3klsut4qga2669x30zsng46mhfrrk4ngylfnnlda7rkfvxq5fywqvurkrs';
+    const addressBytes = Buffer.from(CML.Address.from_bech32(address).to_raw_bytes()).toString(
+      'hex'
+    );
+    const outputCbor = `a2005839${addressBytes}01821a0016e360a0`;
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        utxos: [
+          {
+            outref: Buffer.from(outRef.to_cbor_bytes()).toString('hex'),
+            outputCbor,
+          },
+        ],
+      }),
+    });
+
+    const client = new MidgardNodeClient({
+      baseUrl: 'http://localhost:3000',
+      retryAttempts: 1,
+      retryDelay: 10,
+    });
+
+    const utxos = await client.getSpendableUtxos(address);
+    expect(utxos).toHaveLength(1);
+    expect(utxos[0].txHash).toBe('11'.repeat(32));
+    expect(utxos[0].outputIndex).toBe(0);
+    expect(utxos[0].assets.lovelace).toBe(1_500_000n);
   });
 });

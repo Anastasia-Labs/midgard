@@ -1,0 +1,20 @@
+---
+title: "User Events"
+description: "Building deposit, withdrawal, and transaction-order user-event transactions."
+---
+
+The `user-events/` module builds the L1 transactions for the
+[user-event protocol](/docs/spec/user-event-protocol):
+
+- **`deposit`**: deposit funds from L1 into the L2 ledger.
+- **`withdrawal`**: withdrawal orders moving funds from L2 back to L1.
+- **`tx-order`**: transaction-order events used to sequence L2 transactions.
+
+(Shared helpers live in `user-events/internals.ts`, re-exported via
+`user-events/index.ts`.)
+
+## Related
+
+- On-chain: [user-event validators](/docs/onchain/user-events)
+- Node flows: [deposits &amp; withdrawals](/docs/operators/node/deposits-withdrawals)
+- Developer-facing L2 transfers use [`lucid-midgard`](/docs/sdk/lucid-midgard/quickstart)

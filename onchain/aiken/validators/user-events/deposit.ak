@@ -7,10 +7,11 @@ use cardano/transaction.{
   Input, Mint, NoDatum, Output, OutputReference, Transaction,
 }
 use env
-use midgard/common/utils.{plutarch_phas}
+use midgard/common/utils
 use midgard/hub_oracle as hub
 use midgard/ledger_state
 use midgard/settlement
+use midgard/transition_trace
 use midgard/user_events
 use midgard/user_events/deposit.{Datum, SpendRedeemer}
 
@@ -95,17 +96,20 @@ validator spend(hub_oracle: ScriptHash) {
 
     let Pair(deposit_event_id, deposit_event_info) =
       ledger_state.unsafe_event_to_key_value_pair(deposit_event)
+    expect deposit_id: ledger_state.DepositId = deposit_event_id
+    expect deposit_info: ledger_state.DepositInfo = deposit_event_info
 
     // 4. The referenced settlement utxo's deposit tree must contain the
     //    subject deposit event.
     expect
-      plutarch_phas(
-        deposits_root,
-        deposit_event_id,
-        deposit_event_info,
-        membership_proof,
-        redeemers,
-        inclusion_proof_script_withdraw_redeemer_index,
+      settlement.valid_counted_membership(
+        expected_domain: transition_trace.DepositsRootDomain,
+        expected_root: deposits_root,
+        witness: membership_proof,
+        key: deposit_id,
+        value: deposit_info,
+        redeemers: redeemers,
+        inclusion_proof_script_withdraw_redeemer_index: inclusion_proof_script_withdraw_redeemer_index,
       )
 
     // 5. Assert no datum is attached to the produced UTxO.

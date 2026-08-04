@@ -1,0 +1,108 @@
+---
+title: "Scripts, Redeemers & Indexing"
+description: "Attaching scripts, choosing script purposes, how redeemer indexes are derived from validator ordering, and how the script integrity hash is computed."
+---
+
+Scripts are the highest-risk part of building a Midgard transaction. A redeemer points
+at its script by **position**, and those positions are derived from validator ordering,
+not from the order you called the builder. Get the derivation wrong and the transaction
+fails on-chain rather than locally.
+
+`lucid-midgard` derives every index for you. This page explains the rules it applies, so
+you can reason about a transaction that does not validate.
+
+## Script purposes
+
+Phase B discovers script executions for four purposes:
+
+| Purpose | Triggered by |
+| --- | --- |
+| `spend` | A script payment credential on a spent output. |
+| `mint` | A policy id in the native mint map. |
+| `observe` | A required observer hash in the transaction body. |
+| `receive` | A protected script output. |
+
+`receive` is Midgard-specific. It requires a MidgardV1 script context, and a PlutusV3
+`receive` is rejected locally before submission because Cardano's context cannot express
+it. See [Value Accounting](/docs/validation/value-accounting).
+
+Redeemer tags follow Cardano's, plus one: `spend`, `mint`, `observe` (the reward tag),
+and `receive`, which is tag `6`.
+
+## Index derivation
+
+Each redeemer index is the position of its target in a **sorted** list:
+
+- **Spend**: position of the spent out-ref in the lexicographically sorted spend-input
+  list.
+- **Mint**: position of the policy id in the sorted policy id list.
+- **Observe**: position of the observer hash in the sorted observer list.
+- **Receive**: position of the protected receiving script hash in the sorted, unique
+  receiving-hash list.
+
+<Callout type="warn" title="Outputs are the exception">
+Outputs are never sorted for context construction. They stay in authored order. Every
+other derived index uses validator ordering, which is why balancing can reorder inputs
+without invalidating your redeemers, but reordering outputs changes the transaction.
+</Callout>
+
+## Datums
+
+Inline datum outputs and datum witnesses for script spends are both supported. Datum
+witnesses must decode as CML Plutus data. Witness de-duplication is keyed on the datum
+hash, and duplicates are rejected rather than merged. Current validation rejects
+MidgardV1 datum-hash spends.
+
+## Script integrity hash
+
+`scriptIntegrityHash` is **not** a Cardano `script_data_hash`. It commits to the
+redeemer witness hash and the language views actually required:
+
+```text
+scriptIntegrityHash = blake2b256(cbor([
+  redeemerTxWitsHash,
+  scriptLanguageViews
+]))
+```
+
+`scriptLanguageViews` is a canonical CBOR map from a stable numeric language tag to that
+language's frozen, ordered cost-model array. The tags are `2` for `PlutusV3` and `128`
+for `MidgardV1`. The value carries the cost model only; Phase B dispatches on the tag.
+
+The map contains **only** the non-native languages the transaction actually requires,
+after Phase B resolves inline and reference script sources. Native-only and no-script
+transactions use `EMPTY_NULL_ROOT`, which is `blake2b256(cbor(null))`.
+
+Phase A checks presence only: if redeemers or non-native inline witnesses exist, the
+hash must be non-empty. It cannot verify the language views, because reference scripts
+may need Phase B state to resolve. Phase B rebuilds the views, recomputes the hash, and
+rejects on mismatch. A missing language view and an extraneous one are both mismatches.
+
+<Callout type="error" title="Cost models are protocol constants">
+The `PlutusV3` and `MidgardV1` cost-model views are frozen Midgard constants. A
+dependency bump must not change these arrays. Changing them is a protocol migration.
+</Callout>
+
+## Reference scripts
+
+Resolving a reference script depends on the reference input existing in Phase B state,
+which the builder cannot guarantee. So the builder **refuses to finalize** a script
+transaction when it cannot know a required reference-script language locally, unless you
+supply explicit trusted metadata.
+
+Trusted metadata is keyed by the reference out-ref and declares the exact script
+language branch and the hash in that branch. If the local output CBOR contains a script
+reference, the builder verifies your declaration against the decoded bytes and rejects a
+mismatch. A CML PlutusV3 reference script is treated as PlutusV3 by default; using the
+same bytes in the MidgardV1 hash domain requires explicit trusted `MidgardV1` metadata.
+
+Metadata supplied without local script bytes is accepted as caller-trusted input, and
+remains subject to the node recomputing it in Phase B. Trust here buys you local
+completion, not validity.
+
+## Related
+
+- [Native Transaction Model](/docs/sdk/lucid-midgard/native-transaction-model)
+- [Builder State Machine](/docs/sdk/lucid-midgard/builder-state-machine), the ordering rules.
+- [Phase B](/docs/validation/phase-b), where the hash is recomputed.
+- [ScriptContext Invariants](/docs/onchain/script-context-invariants), the same assumptions on-chain.

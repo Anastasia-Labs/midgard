@@ -1,0 +1,32 @@
+---
+title: "DA & Oracle"
+description: "Building data-availability attestation/payload, hub-oracle, initialization, and escape-hatch transactions."
+---
+
+These modules cover data availability, the hub oracle, and protocol bootstrap/escape
+flows. As elsewhere in `midgard-sdk`, each module exports its datum/redeemer Schema
+types together with the transaction-builder programs.
+
+## Data availability
+
+- **`da-attestation`**: build DA attestation transactions recording that block data is
+  available. Exports `DaParamsDatum`, `DaAttestationDatum`, and constants such as
+  `DA_ATTESTATION_ASSET_NAME_PREFIX`, `DA_ATTESTATION_MESSAGE_PREFIX`, and
+  `EMPTY_ATTESTED_SIGNER_BITMAP`. Enforced on L1 by the
+  [`da-attestation` validator](/docs/onchain/da-validators).
+- **`da-payload`**: build and handle the DA payload transactions.
+
+## Hub oracle and bootstrap
+
+- **`hub-oracle`**: transactions against the central config/nonce authority. Exports
+  `HubOracleDatum`, the `makeHubOracleDatum` / `makeHubOracleOneShotNonceDatum`
+  helpers, `utxosToHubOracleUTxOs`, and `incompleteHubOracleInitTxProgram`.
+- **`initialization`**: one-time protocol initialization, via
+  `incompleteInitializationTxProgram` and `unsignedInitializationTx`.
+- **`escape-hatch`**: the escape-hatch flow that lets users exit if operators stall.
+
+## Related
+
+- Implementation: [DA committee node](/docs/watchers/da-committee-node)
+- Node commands: `da-attested`, `prepare-hub-oracle-one-shot-nonce`, `init`, see the
+  [CLI reference](/docs/operators/node/cli-reference)

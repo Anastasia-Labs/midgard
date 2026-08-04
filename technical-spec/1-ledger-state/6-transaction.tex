@@ -5,17 +5,25 @@
 \section{Transaction}
 \label{h:transaction}
 
-A transaction set in Midgard is a finite map from transaction ID to Midgard L2 transaction, where the ID is also constrained to be the Blake2b-256 hash of the transaction:
+A transaction set in Midgard is a finite map from transaction ID to accepted L2 transaction request.
+The ID is the Blake2b-256 hash of the transaction body; equivalently, the map key must match the transaction's \code{body} field.
+The witness-set hash and validity tag are authenticated by the block's \code{transactions\_root} through the map value, but they are not part of the transaction ID:
 \begin{align*}
-    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTx)} \\
+    \T{TxSet} &\coloneq \T{Map(TxId, MidgardTxCompact)} \\
       &\coloneq \Bigl\{
-        (k_i: \T{TxId}, v_i: \T{MidgardTx}) \mid 
-        k_i \equiv \mathcal{H}_\T{Blake2b-256}(v_i) ,\;
+        (k_i: \T{TxId}, v_i: \T{MidgardTxCompact}) \mid
+        k_i \equiv v_i.\T{body} ,\;
         \forall i \neq j.\; k_i \neq k_j
     \Bigr\}
 \end{align*}
 
-An L2 transaction in a Midgard block is an endogenous event.
+The \code{transactions\_root} is the source root for normal L2 transaction requests.
+Forced L1 transaction orders are committed separately in \code{forced\_transactions\_root}, keyed by their L1 order identity.
+Only accepted normal L2 transaction requests may appear in \code{transactions\_root}.
+Invalid normal L2 transaction requests are excluded before commitment; they do not become no-op source events in the transition trace.
+If two accepted normal L2 transactions share the same \code{TxId}, the block body is not canonical because \code{transactions\_root} is keyed by \code{TxId}; production block construction fails closed rather than choosing one silently.
+
+An L2 transaction request in a Midgard block is an endogenous event.
 Its corresponding utxo set transition is validated purely based on the information contained in the utxo set.
 This contrasts with deposit and withdrawal events, which create and spend utxos (respectively) based on information observed outside the L2 ledger.
 
@@ -63,7 +71,7 @@ We also simplify the script types.}
     \end{array} \right\}\\
     \T{CardanoTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature, VKeyHash)} \\
+        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature)} \\
         \T{boot\_addr\_tx\_wits} : & \quad?\;\T{Set(BootstrapWitness)} \\
         \T{script\_tx\_wits} : & \quad?\;\T{Map(ScriptHash, CardanoScript)} \\
         \T{data\_tx\_wits} : & \quad?\;\T{TxDats} \\
@@ -91,7 +99,9 @@ Midgard's transaction types deviate from Cardano's in the following ways:
       Public key hash credentials, native scripts, and Plutus scripts at or above V3 are allowed.
     \item[No transaction metadata.] Midgard prohibits using metadata in L2 transactions but allows users to set the \code{auxiliary\_data\_hash} to any arbitrary hash, which Midgard's ledger's rules do not require to match the empty transaction metadata field.
       This preserves users' ability to pin metadata content via a hash in Midgard's ledger, but they are expected to store the actual metadata offchain.
-    \item[No datum hashes in outputs.] Midgard requires all utxo datums to be inline, which avoids the need to index the datum-hash to datum map from transactions' datum witnesses.
+    \item[No datum hashes in outputs.] Midgard output datums are either absent or inline.
+      Datum-hash outputs are invalid in Midgard L2 transactions and deposits, and transactions do not carry a datum-witness bucket.
+      This avoids maintaining a datum-hash to datum witness map and makes each UTxO's script-visible datum fully determined by the UTxO itself.
     \item[CIPs 112 and 128.] Midgard has adopted \href{https://github.com/cardano-foundation/CIPs/tree/master/CIP-0112}{CIP-112} and \href{https://github.com/cardano-foundation/CIPs/tree/master/CIP-0128}{CIP 128} ahead of Cardano mainnet, which we expect to merge them in 2025.
       CIP-112 provides a new ``Observe'' script purpose, a more principled and streamlined alternative to the ``Withdraw 0'' trick widely used by most Cardano dApps.
       It also allows native scripts to conditionally forward their logic to an observer script.
@@ -145,7 +155,7 @@ We use the empty set symbol \code{$\varnothing$} to indicate fields required to 
     \end{array} \right\}\\
     \T{MidgardSTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature, VKeyHash)} \\
+        \T{addr\_tx\_wits} : & \quad?\;\T{Set(VKey, Signature)} \\
         \varnothing\;\T{boot\_addr\_tx\_wits} : & \quad?\;\T{Set(BootstrapWitness)} \\
         \T{script\_tx\_wits} : & \quad?\;\T{Map(ScriptHash, MidgardSScript)} \\
         \varnothing\;\T{data\_tx\_wits} : & \quad?\;\T{TxDats} \\
@@ -167,9 +177,15 @@ The data availability layer is responsible for confirming that the hashes corres
 \begingroup
 \allowdisplaybreaks
 \begin{align*}
-    \T{MidgardTx} \coloneq\;& \left\{
+    \T{TxId} \coloneq\;& \mathcal{H}_\T{Blake2b-256}(\T{MidgardTxBody}) \\
+    \T{MidgardTxCompactWithoutValidity} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{body} : & \mathcal{H}(\T{MidgardTxBody}) \\
+        \T{body} : & \T{TxId} \\
+        \T{wits} : & \mathcal{H}(\T{MidgardTxWits})
+    \end{array} \right\} \\
+    \T{MidgardTxCompact} \coloneq\;& \left\{
+    \begin{array}{ll}
+        \T{body} : & \T{TxId} \\
         \T{wits} : & \mathcal{H}(\T{MidgardTxWits}) \\
         \T{validity} : & \T{MidgardTxValidity} \\
     \end{array} \right\} \\
@@ -189,7 +205,7 @@ The data availability layer is responsible for confirming that the hashes corres
     \end{array} \right\}\\
     \T{MidgardTxWits} \coloneq\;& \left\{
     \begin{array}{ll}
-        \T{addr\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Set(VKey, Signature, VKeyHash)}) \\
+        \T{addr\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Set(VKey, Signature)}) \\
         \T{script\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Map(ScriptHash, MidgardSScript)}) \\
         \T{redeemer\_tx\_wits} : & \quad?\;\mathcal{H}(\T{Redeemers})
     \end{array} \right\}\\
@@ -202,5 +218,74 @@ The data availability layer is responsible for confirming that the hashes corres
                               \mid\;& \T{etc.}
 \end{align*}
 \endgroup
+
+\subsection{Midgard-native wire format (v1)}
+\label{h:midgard-native-transaction-wire-format}
+
+Midgard's canonical transaction wire format is \emph{not} Cardano's transaction type.
+Instead, Midgard serializes transactions as versioned, fixed-order tuples designed for fast decoding and fraud-proof construction.
+Ledger validation accepts only this Midgard-native format; Cardano transaction payloads are rejected.
+
+The compact form is the commitment committed in blocks:
+\begin{equation*}
+\begin{split}
+  \T{MidgardTxCompactV1} \coloneq (&\T{version}=1,\; \T{body\_hash},\; \T{wits\_hash},\; \T{validity\_code}) \\
+  \T{body\_hash} \coloneq&\; \mathcal{H}_{\text{Blake2b-256}}(\T{MidgardTxBodyCompactV1}) \\
+  \T{wits\_hash} \coloneq&\; \mathcal{H}_{\text{Blake2b-256}}(\T{MidgardTxWitsCompactV1})
+\end{split}
+\end{equation*}
+
+The body compact contains only fixed-size commitments and scalar fields:
+\begin{equation*}
+\small
+\begin{split}
+\T{MidgardTxBodyCompactV1} \coloneq (&
+\T{spend\_inputs\_root},\;
+\T{reference\_inputs\_root},\;
+\T{outputs\_root},\;
+\T{fee},\\
+&\T{valid\_from},\;
+\T{valid\_to},\;
+\T{required\_observers\_root},\;
+\T{required\_signers\_root},\\
+&\T{mint\_root},\;
+\T{script\_integrity\_hash},\;
+\T{auxiliary\_data\_hash},\;
+\T{network\_id})
+\end{split}
+\end{equation*}
+
+where \code{valid\_from} and \code{valid\_to} use \code{-1} as the sentinel for an unbounded side of the validity interval.
+
+The full form reveals preimages needed for offchain checks and proof generation while preserving the same compact commitments:
+\begin{equation*}
+\small
+\begin{split}
+\T{MidgardTxBodyFullV1} \coloneq (&
+\T{spend\_inputs\_root},\;
+\T{spend\_inputs\_preimage},\;
+\T{reference\_inputs\_root},\;
+\T{reference\_inputs\_preimage},\\
+&\T{outputs\_root},\;
+\T{outputs\_preimage},\;
+\T{fee},\;
+\T{valid\_from},\;
+\T{valid\_to},\\
+&\T{required\_observers\_root},\;
+\T{required\_observers\_preimage},\;
+\T{required\_signers\_root},\\
+&\T{required\_signers\_preimage},\;
+\T{mint\_root},\;
+\T{mint\_preimage},\;
+\T{script\_integrity\_hash},\\
+&\T{auxiliary\_data\_hash},\;
+\T{network\_id})
+\end{split}
+\end{equation*}
+
+and analogously for witnesses with three \code{(root, preimage)} pairs:
+\code{addr\_tx\_wits}, \code{script\_tx\_wits}, and \code{redeemer\_tx\_wits}.
+
+This layout keeps fraud-proof-critical roots directly accessible, avoids map-key scanning during decoding, and cleanly separates block commitments (compact) from data-availability payloads (full).
 
 \end{document}

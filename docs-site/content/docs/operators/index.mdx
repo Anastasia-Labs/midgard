@@ -1,0 +1,95 @@
+---
+title: "Overview"
+description: "Operating a Midgard deployment: the node, the management CLI, and the flows from initialization to recovery."
+---
+
+An operator runs the off-chain machinery that keeps a Midgard L2 deployment
+progressing: it serves the HTTP API, validates and enqueues L2 transactions,
+maintains PostgreSQL-backed views and LevelDB Merkle Patricia Forestry (MPF)
+state, and runs the background fibers that commit block headers to L1, confirm
+those commitments, and merge matured blocks into confirmed state.
+
+This section documents the two off-chain components in the repository:
+
+<Cards>
+  <Card
+    title="Running a Node"
+    href="/docs/operators/node/overview"
+    description="The demo/midgard-node runtime: HTTP API, database, MPF state, background fibers, and the full CLI."
+  />
+  <Card
+    title="Management CLI"
+    href="/docs/operators/manager"
+    description="demo/midgard-manager: interactive node management plus the transaction generator for load testing."
+  />
+</Cards>
+
+## What operating a deployment involves
+
+`demo/midgard-node` is the demo off-chain runtime that ties the protocol
+together. A running node is responsible for:
+
+- serving the HTTP API used by wallets, tests, and local tooling,
+- validating and enqueuing submitted Midgard-native transactions,
+- maintaining PostgreSQL-backed views of mempool, latest-ledger, immutable
+  history, and auxiliary indexes,
+- maintaining LevelDB-backed Merkle Patricia Forestry state for ledger and
+  transaction roots,
+- running background fibers that monitor mempool state, commit blocks, confirm
+  block commitments, merge confirmed state, fetch deposit and withdrawal UTxOs,
+  and sweep old retention data.
+
+Operating a deployment is therefore more than "start the server": it includes a
+one-time deployment flow (preparing a hub-oracle nonce, publishing reference
+scripts, initializing protocol state), ongoing operator lifecycle actions
+(registering and activating an operator), and recovery procedures for
+interrupted flows.
+
+## Three rules that constrain operations
+
+These rules are load-bearing for anyone running a node against real or
+persistent Cardano state. Each has its own reference in the
+[compatibility rules](/docs/operators/node/compatibility-rules) page.
+
+<Cards>
+  <Card
+    title="No local wipe without on-chain redeploy"
+    href="/docs/operators/node/compatibility-rules"
+    description="Never reset local durable state without a full, explicit on-chain redeploy. A clean DB over live on-chain state creates unauditable split-brain."
+  />
+  <Card
+    title="Always local UPLC evaluation"
+    href="/docs/operators/node/compatibility-rules"
+    description="Finalize transactions with .complete({ localUPLCEval: true }). Never disable it."
+  />
+  <Card
+    title="No backward compatibility"
+    href="/docs/operators/node/compatibility-rules"
+    description="Midgard has not launched; the node ships no compatibility modes, fallback paths, or legacy-format support."
+  />
+</Cards>
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Runtime overview"
+    href="/docs/operators/node/overview"
+    description="How the HTTP server, PostgreSQL views, LevelDB MPF state, and fibers fit together."
+  />
+  <Card
+    title="CLI reference"
+    href="/docs/operators/node/cli-reference"
+    description="Every real commander subcommand, grouped by theme."
+  />
+  <Card
+    title="Initialization & deployment"
+    href="/docs/operators/node/initialization-deployment"
+    description="The one-time flow that stands up a fresh protocol deployment."
+  />
+  <Card
+    title="Benchmarks & stress"
+    href="/docs/operators/node/benchmarks"
+    description="Throughput, nominal, and parallel-fanout load testing."
+  />
+</Cards>

@@ -6,4 +6,10 @@ export default defineConfig({
   dts: true,
   clean: false,
   sourcemap: true,
+  esbuildOptions(options) {
+    options.loader = {
+      ...(options.loader ?? {}),
+      ".sql": "text",
+    };
+  },
 });
