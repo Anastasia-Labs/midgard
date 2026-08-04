@@ -37,6 +37,7 @@ import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
@@ -177,6 +178,7 @@ const canonicalData = (hex: string): string =>
   CML.PlutusData.from_cbor_hex(hex).to_canonical_cbor_hex();
 
 const familyNames = [
+  ["da-hash-preimage", "daHashPreimage"],
   ["double-spend", "doubleSpend"],
   ["invalid-range", "invalidRange"],
   ["non-existent-input", "nonExistentInput"],
@@ -2629,8 +2631,19 @@ describe("W17 public proof/computation-thread indexer", () => {
       }),
     ).not.toBeNull();
     expect(policy).not.toBeNull();
-    expect(policy.families).toHaveLength(7);
-    expect(policy.families[0]!.familyId).toBe("double-spend");
+    expect(policy.families).toHaveLength(
+      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length,
+    );
+    expect(
+      [...policy.families.map(({ catalogueCategory }) => catalogueCategory)]
+        .sort()
+        .join(","),
+    ).toBe(
+      [...DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER]
+        .sort()
+        .join(","),
+    );
+    expect(policy.families[0]!.familyId).toBe("da-hash-preimage");
 
     const hostile = structuredClone(authority.deploymentAuthority);
     (hostile.policy.programCommitments as Mutable)[
