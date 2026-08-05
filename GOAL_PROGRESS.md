@@ -5579,3 +5579,47 @@ reconciliation (115/115 widened), Q47 dual-compiler, Q1x (16 LOCAL_PASS /
 asserted), unary-depth suite 6/6, C26 selector 4/4 both compilers,
 manifest quality 186/186 with 0 defects + self-test, verification plan,
 status-role control.
+
+## Citation executability and pin currency — wave 6 (2026-08-05)
+
+- **#540** — the stem-citation sweep's true count was **80** run-focused-check
+  citations across 55 rows and 20 modules (the issue said ~10, the #538
+  comment 57); all corrected to the `.test` module the tests live in.
+  **68/69 distinct commands re-run green on stock v1.1.22** (sharded across
+  10 isolated copies): 357 selectors collected == passed, 0 failures. The
+  one non-green command is C49's — correctly spelled, exits 1 because 4 of
+  its 10 selectors are the row's documented "prescribed missing" forward
+  contract (collected 6/6 pass); the planned-citation gate rightly forbids
+  quarantining a command whose module exists. C10's stale pins corrected by
+  measurement: midgard-validation 19 → **24** (six suites enumerated
+  inline), total 27/27 → **32/32**. The quality gate's count-contract rule
+  was satisfied by retargeting 29 contracts to the `.test` module — the pin
+  moved, the gate did not loosen. Capability gate re-run after the repairs:
+  115/115 unchanged (identity is spelling-independent), 473 s.
+- **#542** `abbe5251` — the drifted COMPLETE_PUBLISHED_CANONICAL pins are
+  attributed by measurement, not assumption: the pre-rename (`84aa1ce3`)
+  stock testnet blueprint (sha `991da062…`) reproduces the OLD tuple
+  verbatim; the post-rename tree builds byte-identically to the installed
+  `c682cc69` blueprint (`76f9e53d…`) and produces the NEW values — the
+  #521 renames moved the applied step scripts, signature exact
+  (ex-units/fee/tx-hash moved, layout unchanged). Re-pinned under the Q13
+  two-fresh-process discipline: fee 542,885 → 543,115; exec-mem 521,130 →
+  523,998; exec-cpu 209,629,043 → 210,521,290; signed CBOR sha
+  `8ec9d1…3ff2` → `e6936871…c5bb`; bytes 7,771 unchanged. Producing runs
+  recorded with CML serializer provenance (patched 6.2.0-1 wasm, sha
+  `cd96b005…`; no assertion pinned to either 6.2.0-1 hash per the CML
+  6.2.0-2 go-forward — see #543). Whole emulator family green (8 files /
+  27 tests). Residual: the Q13 `evidenceOutputs` blueprint SHA
+  (`f5ae651e…`) and four applied step hashes date from the original
+  measurement epoch and need their own post-#521 currency check.
+
+CML context recorded (cross-session, at the owner's request): the upstream
+shadow-stack fix merged (CML PR #6, `0f02b369`, cml/wasm 6.2.0-2, 16 MiB
+stack, closes C26 root-cause-A at source); 6.2.0-2 is not yet on npm, the
+installed 6.2.0-1 binary is the in-place-patched one and a fresh
+`pnpm install` silently reverts to the trapping stock build. Bump-and-
+retire tracked as #543; no new evidence may pin either 6.2.0-1 hash.
+
+Gates on the final tree: manifest quality 186/186 with 0 defects +
+self-test (13 mutations), verification plan PASS, capability 115/115,
+input-no-idx 4/4, emulator family 8 files / 27 tests.
