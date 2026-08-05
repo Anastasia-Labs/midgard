@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 // Negative self-test for the F05 manifest-quality gate's blocked-on
-// reconciliation. The gate is tested by behavior, not by reading its source:
+// reconciliation and for its focused-citation resolution rules (issue #534).
+// The gate is tested by behavior, not by reading its source:
 // each hostile mutation is written to a throwaway copy of the manifest, the
 // real gate is invoked against that copy through its `--manifest-under-test=`
 // hook, and the run must exit non-zero with the expected diagnostic category.
@@ -184,6 +185,81 @@ mustReject(
   "missingAuthoritativeTaskId",
   (candidate) => {
     candidate.tasks = candidate.tasks.filter((task) => task.id !== "C30");
+  },
+);
+
+// Issue #534. Focused citations are evidence only when the module they name
+// exists. The exact defect: C61's citation lost its `.test` suffix, so it
+// named nothing, collected nothing, and still read as a green focused gate.
+mustReject(
+  "an executable focused command cites a module absent from the tree",
+  "unresolvableFocusedModuleCitation",
+  (candidate) => {
+    const c61 = rowOf(candidate, "C61");
+    c61.focusedCommands = c61.focusedCommands.map((command) =>
+      command.replace(
+        "midgard/transaction_root_v1_golden.test",
+        "midgard/transaction_root_v1_golden",
+      ),
+    );
+  },
+);
+
+// The planned/executable split must be one-way: a prescription for an unbuilt
+// module may never also be published as an executable binding.
+mustReject(
+  "a planned citation is republished as an executable focused command",
+  "plannedFocusedCommandCountedAsEvidence",
+  (candidate) => {
+    const q42 = rowOf(candidate, "Q42");
+    q42.focusedCommands = [
+      ...q42.focusedCommands,
+      q42.plannedFocusedCommands[0],
+    ];
+  },
+);
+
+// Once the row is built, the prescription must be promoted rather than left
+// parked where no gate executes it.
+mustReject(
+  "a planned citation names a module that now exists in the tree",
+  "plannedFocusedCommandModuleExists",
+  (candidate) => {
+    const q42 = rowOf(candidate, "Q42");
+    q42.plannedFocusedCommands = q42.plannedFocusedCommands.map((command) =>
+      command.replace(
+        "fraud_proofs/cross_block_duplicate_event/step_01",
+        "midgard/transaction_root_v1_golden.test",
+      ),
+    );
+  },
+);
+
+// A planned citation is still a lease claim: a row may only prescribe an
+// unbuilt module it actually owns in writablePaths.
+mustReject(
+  "a planned citation names a module the row does not own",
+  "plannedFocusedCommandOutsideLease",
+  (candidate) => {
+    const q42 = rowOf(candidate, "Q42");
+    q42.plannedFocusedCommands = q42.plannedFocusedCommands.map((command) =>
+      command.replace(
+        "fraud_proofs/cross_block_duplicate_event/step_01",
+        "fraud_proofs/invented_family/step_09",
+      ),
+    );
+  },
+);
+
+// The convention only protects readers who are told about it.
+mustReject(
+  "the manifest carries planned citations without documenting the convention",
+  "undocumentedPlannedFocusedCommandConvention",
+  (candidate) => {
+    candidate.note = candidate.note.replaceAll(
+      "plannedFocusedCommands",
+      "focused prescriptions",
+    );
   },
 );
 

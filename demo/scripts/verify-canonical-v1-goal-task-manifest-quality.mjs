@@ -95,6 +95,42 @@ const watcherDependencyMap = JSON.parse(
 const w26FocusedTestText = readFileSync(w26FocusedTestPath, "utf8");
 const watcherFocusedGateText = readFileSync(watcherFocusedGatePath, "utf8");
 
+// Aiken compiles every `.ak` file under these roots and derives each module's
+// name from its source path with hyphens folded to underscores, so
+// `lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak` is the module
+// `midgard/fraud_proofs/native_tx.max_redeemers.test`. Focused-check citations
+// may be written in either spelling (issue #524), so both are accepted here.
+const aikenProjectRoot = resolve(repoRoot, "onchain/aiken");
+const collectAikenModules = (directory, prefix, found) => {
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      collectAikenModules(
+        resolve(directory, entry.name),
+        `${prefix}${entry.name}/`,
+        found,
+      );
+    } else if (entry.isFile() && entry.name.endsWith(".ak")) {
+      found.push(`${prefix}${entry.name.slice(0, -".ak".length)}`);
+    }
+  }
+  return found;
+};
+const aikenSourceModules = ["lib", "validators"].flatMap((root) =>
+  collectAikenModules(resolve(aikenProjectRoot, root), "", []),
+);
+const exactAikenModules = new Set(
+  aikenSourceModules.flatMap((module) => [module, module.replaceAll("-", "_")]),
+);
+const foldedAikenModules = aikenSourceModules.map((module) =>
+  module.replaceAll("-", "_"),
+);
+
 const sectionSevenStart = goalSpecLines.findIndex((line) =>
   /^##\s+7\./.test(line),
 );
@@ -303,6 +339,62 @@ const primaryCommandBindings = (command) =>
     if (taskSelector !== undefined) bindings.push(taskSelector);
     return bindings;
   });
+// The Aiken modules a focused command actually addresses. `run-focused-check`
+// and a raw `aiken check -m` name one exact module; `guard-focused-selector`
+// forwards its selectors to `aiken check -m`, which matches the module part as
+// a substring, so those resolve against any module name that contains them.
+const focusedModuleCitations = (command) =>
+  commandClauses(command).flatMap((clause) => {
+    const citations = [];
+    const focusedModule = clause.match(
+      /\bscripts\/run-focused-check\.mjs\s+(\S+)/,
+    )?.[1];
+    if (focusedModule !== undefined) {
+      citations.push({ selector: focusedModule, kind: "exact" });
+    }
+    const aikenModule = clause.match(/\baiken\s+check\s+-m\s+(\S+)/)?.[1];
+    if (aikenModule !== undefined) {
+      citations.push({
+        selector: aikenModule.replace(/\..*$/, ""),
+        kind: "exact",
+      });
+    }
+    const guardedModules = clause.match(
+      /\bscripts\/guard-focused-selector\.mjs\s+([^|]+)/,
+    )?.[1];
+    if (guardedModules !== undefined) {
+      for (const selector of guardedModules.match(/[a-z0-9_][a-z0-9_/]*/g) ??
+        []) {
+        citations.push({ selector, kind: "substring" });
+      }
+    }
+    return citations;
+  });
+const citationResolves = ({ selector, kind }) =>
+  kind === "exact"
+    ? exactAikenModules.has(selector)
+    : foldedAikenModules.some((module) => module.includes(selector));
+// A row may only prescribe an unbuilt module it actually owns, so a planned
+// citation must correspond to an `onchain/aiken` path in its own writablePaths.
+const leasedAikenSelectors = (task) =>
+  (Array.isArray(task?.writablePaths) ? task.writablePaths : [])
+    .filter((path) => typeof path === "string")
+    .map(normalizePath)
+    .filter((path) => path.startsWith("onchain/aiken/") && path.endsWith(".ak"))
+    .map((path) =>
+      path
+        .slice("onchain/aiken/".length)
+        .replace(/^(?:lib|validators)\//, "")
+        .replace(/\.ak$/, "")
+        .replaceAll("-", "_"),
+    );
+const leaseCoversSelector = (leased, selector) =>
+  leased.some(
+    (path) =>
+      path === selector ||
+      path === `${selector}.test` ||
+      path.includes(selector),
+  );
 const hasExactSourceAnchor = (anchor, taskId) =>
   hasText(anchor) &&
   ((/GOAL_SPEC\.md(?::\d+|\s+(?:§\s*)?\d+(?:\.\d+)?)/.test(anchor) &&
@@ -609,6 +701,100 @@ for (const [index, task] of tasks.entries()) {
       );
     }
   }
+  // Issue #534. A focused command that names a module absent from the tree can
+  // never have executed, and before #524 it collected nothing while exiting 0.
+  // Executable citations must therefore resolve against the real module tree;
+  // a row's still-unbuilt prescriptions belong in plannedFocusedCommands, which
+  // no rule above treats as a primary binding or as evidence.
+  const executableCitations = focusedCommands.flatMap(focusedModuleCitations);
+  for (const citation of executableCitations) {
+    if (citationResolves(citation)) continue;
+    add(
+      "unresolvableFocusedModuleCitation",
+      id,
+      `${citation.selector} names no Aiken module under onchain/aiken/lib or onchain/aiken/validators`,
+    );
+  }
+  const plannedField = task?.plannedFocusedCommands;
+  if (plannedField !== undefined) {
+    const plannedCommands = Array.isArray(plannedField)
+      ? plannedField.filter(
+          (command) => typeof command === "string" && command.trim() !== "",
+        )
+      : [];
+    if (!Array.isArray(plannedField) || plannedField.length === 0) {
+      add(
+        "invalidPlannedFocusedCommands",
+        id,
+        "plannedFocusedCommands must be a non-empty array of commands",
+      );
+    } else if (plannedCommands.length !== plannedField.length) {
+      add(
+        "invalidPlannedFocusedCommands",
+        id,
+        "plannedFocusedCommands has a non-text entry",
+      );
+    }
+    for (const command of plannedCommands) {
+      if (placeholderToken.test(command) || contentPlaceholder.test(command)) {
+        add(
+          "placeholderToken",
+          id,
+          "plannedFocusedCommands contains unresolved template content",
+        );
+      }
+    }
+    const executableCommands = new Set(focusedCommands);
+    const executableSelectors = new Set(
+      executableCitations.map((citation) => citation.selector),
+    );
+    const leased = leasedAikenSelectors(task);
+    for (const command of plannedCommands) {
+      const citations = focusedModuleCitations(command);
+      if (citations.length === 0) {
+        add("plannedFocusedCommandWithoutModuleCitation", id, command);
+        continue;
+      }
+      if (executableCommands.has(command)) {
+        add("plannedFocusedCommandCountedAsEvidence", id, command);
+      }
+      for (const citation of citations) {
+        if (executableSelectors.has(citation.selector)) {
+          add(
+            "plannedFocusedCommandCountedAsEvidence",
+            id,
+            `${citation.selector} is also cited by an executable focused command`,
+          );
+        } else if (citationResolves(citation)) {
+          // The module now exists: the row was built, so the prescription must
+          // be promoted to an executable citation rather than parked here.
+          add(
+            "plannedFocusedCommandModuleExists",
+            id,
+            `${citation.selector} now exists and must move to focusedCommands`,
+          );
+        } else if (!leaseCoversSelector(leased, citation.selector)) {
+          add(
+            "plannedFocusedCommandOutsideLease",
+            id,
+            `${citation.selector} is not an onchain/aiken path this row leases`,
+          );
+        }
+      }
+    }
+    for (const { selector, repoRelative } of plannedCommands.flatMap(
+      commandFileSelectors,
+    )) {
+      if (existsSync(resolve(repoRoot, repoRelative))) continue;
+      if (!allPlannedWritablePaths.has(repoRelative)) {
+        add(
+          "missingPlannedCommandSelectorOutsideLease",
+          id,
+          `${selector} resolves to missing ${repoRelative}, which is not writablePaths`,
+        );
+      }
+    }
+  }
   const exactAikenPaths = Array.isArray(task?.writablePaths)
     ? task.writablePaths
         .filter((path) => typeof path === "string")
@@ -758,6 +944,21 @@ for (const [index, task] of tasks.entries()) {
       }
     }
   }
+}
+
+// The planned/executable split only protects a reader who is told about it, so
+// the manifest may not carry planned citations without naming the convention.
+if (
+  tasks.some((task) => task?.plannedFocusedCommands !== undefined) &&
+  !(typeof manifest.note === "string"
+    ? manifest.note.includes("plannedFocusedCommands")
+    : false)
+) {
+  add(
+    "undocumentedPlannedFocusedCommandConvention",
+    "manifest",
+    "note does not explain plannedFocusedCommands",
+  );
 }
 
 const actualTemplateFiles = readdirSync(templatesRoot).sort();
