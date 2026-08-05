@@ -1399,14 +1399,14 @@ for (const line of queueSource.split(/\r?\n/u)) {
     firstQueueDetails.set(taskId, cells.at(-2) ?? "");
   }
 }
-// GOAL_PROGRESS.md is the orchestrator-owned ledger and is not writable from
-// here, so this pin still reads its captured wording — "five locally complete,
-// 12 structural/N/A, 53 open" — which #528 re-derived to 8/13/49. The pin is
-// deliberately exact so that the ledger's next sync trips this gate rather
-// than passing silently in either direction.
+// GOAL_PROGRESS.md is the orchestrator-owned ledger; its F20 record was
+// synced to the #528 re-derivation (eight locally complete, 13
+// structural/N/A, 49 open) in the same commit that updated this pin. The pin
+// stays deliberately exact so any future drift between the ledger and the
+// reconciled matrix trips this gate rather than passing silently.
 assert.match(
   firstQueueDetails.get("F20") ?? "",
-  /61 coverage rows and nine (?:physical )?structural claims: five locally complete, 12 structural\/N\/A, 53 open/u,
+  /61 coverage rows and nine (?:physical )?structural claims: eight locally complete, 13 structural\/N\/A, 49 open/u,
   "first F20 queue record retained stale reconciliation totals",
 );
 assert.match(
