@@ -39,6 +39,7 @@ import {
   type WatcherPublicDaAttemptV1,
   WatcherPublicDaClientErrorV1,
   WatcherPublicDaClientV1,
+  type WatcherPublicDaClockV1,
   type WatcherPublicDaLibp2pTransportV1,
   type WatcherPublicDaRequestV1,
 } from "../src/public-da-client.js";
@@ -263,6 +264,69 @@ class ScriptedTransport implements WatcherPublicDaLibp2pTransportV1 {
   }
 }
 
+/**
+ * A deterministic replacement for the real clock and timer queue.
+ *
+ * Deadline behaviour must be decided by state, not by racing wall-clock
+ * timers against peer failures: under full-suite load real timers drift in
+ * both directions, and a fetch that has actually spent its budget can still
+ * observe a sliver of remaining time and burn another peer on a clamped
+ * 1ms dial (see #535). Virtual time only ever moves when the earliest pending
+ * timer fires, so elapsed time is exactly the sum of the deadlines the client
+ * itself chose. The drain runs on `setImmediate` so every pending microtask
+ * settles between two firings — real time is used for ordering only, never
+ * for measurement.
+ */
+const makeVirtualClock = (): WatcherPublicDaClockV1 => {
+  type VirtualTimer = { readonly dueAt: number; readonly callback: () => void };
+  const timers = new Map<number, VirtualTimer>();
+  let now = 0;
+  let nextId = 0;
+  let scheduled = false;
+
+  const drain = (): void => {
+    if (scheduled) {
+      return;
+    }
+    scheduled = true;
+    setImmediate(step);
+  };
+
+  const step = (): void => {
+    scheduled = false;
+    let dueId: number | undefined;
+    let due: VirtualTimer | undefined;
+    // Earliest deadline first; ties break on insertion order, which the Map
+    // preserves, so the firing order is a pure function of the schedule.
+    for (const [id, timer] of timers) {
+      if (due === undefined || timer.dueAt < due.dueAt) {
+        dueId = id;
+        due = timer;
+      }
+    }
+    if (dueId === undefined || due === undefined) {
+      return;
+    }
+    timers.delete(dueId);
+    now = Math.max(now, due.dueAt);
+    due.callback();
+    drain();
+  };
+
+  return {
+    now: () => now,
+    setTimeout: (callback: () => void, delayMs: number) => {
+      const id = (nextId += 1);
+      timers.set(id, { dueAt: now + delayMs, callback });
+      drain();
+      return id;
+    },
+    clearTimeout: (handle: unknown) => {
+      timers.delete(handle as number);
+    },
+  };
+};
+
 /** A transport call that never settles until the peer aborts it. */
 const hangUntilAborted: ProtocolHandler = async (request) =>
   new Promise<Uint8Array>((_, reject) => {
@@ -342,11 +406,13 @@ const chunksOf = (
 const clientWith = (
   transport: WatcherPublicDaLibp2pTransportV1,
   configOptions?: Parameters<typeof rawConfig>[0],
+  clock?: WatcherPublicDaClockV1,
 ): WatcherPublicDaClientV1 =>
   new WatcherPublicDaClientV1({
     config: configOf(configOptions),
     deploymentIdentity: identityOf(),
     transport,
+    ...(clock === undefined ? {} : { clock }),
   });
 
 const expectClientError = async (
@@ -1702,17 +1768,22 @@ describe("WatcherPublicDaClientV1 deadline and permit control", () => {
       [PEERS[2]!]: { capabilities: hangUntilAborted },
     });
     await expectClientError(
-      clientWith(transport, {
-        peerCount: 3,
-        requestTimeoutMs: 400,
-        daFetchMs: 1_000,
-      }).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
+      clientWith(
+        transport,
+        {
+          peerCount: 3,
+          requestTimeoutMs: 400,
+          daFetchMs: 1_000,
+        },
+        makeVirtualClock(),
+      ).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
     );
 
     expect(transport.calls).toHaveLength(3);
     expect(transport.calls[0]!.timeoutMs).toBe(400);
-    // Third dial can only receive whatever is left of the 1s fetch budget.
-    expect(transport.calls[2]!.timeoutMs).toBeLessThan(400);
+    // Third dial can only receive whatever is left of the 1s fetch budget:
+    // two 400ms dials are spent, so exactly 200ms remain.
+    expect(transport.calls[2]!.timeoutMs).toBe(200);
   });
 
   it("aborts the in-flight transport call when a request times out", async () => {
@@ -1729,10 +1800,14 @@ describe("WatcherPublicDaClientV1 deadline and permit control", () => {
       },
     });
     const error = await expectClientError(
-      clientWith(transport, {
-        requestTimeoutMs: 120,
-        daFetchMs: 5_000,
-      }).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
+      clientWith(
+        transport,
+        {
+          requestTimeoutMs: 120,
+          daFetchMs: 5_000,
+        },
+        makeVirtualClock(),
+      ).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
     );
     expect(statuses(error.attempts)).toEqual(["timeout"]);
     expect(aborted).toBe(true);
@@ -1744,19 +1819,32 @@ describe("WatcherPublicDaClientV1 deadline and permit control", () => {
         PEERS.map((peer) => [peer, { capabilities: hangUntilAborted }]),
       ),
     );
+    // Virtual time, so the budget is spent by the dials the client itself
+    // chose (400 + 400 + 200 = the whole 1s), not by whatever the host
+    // scheduler happened to do under load. Without it the last sliver of the
+    // budget can be handed to another peer as a clamped sub-millisecond dial,
+    // and the fetch reports the peer failure instead of the deadline (#535).
     const error = await expectClientError(
-      clientWith(transport, {
-        peerCount: 5,
-        requestTimeoutMs: 400,
-        daFetchMs: 1_000,
-      }).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
+      clientWith(
+        transport,
+        {
+          peerCount: 5,
+          requestTimeoutMs: 400,
+          daFetchMs: 1_000,
+        },
+        makeVirtualClock(),
+      ).fetchPayloadByHeader({ headerHash: HEADER_HASH }),
     );
 
     expect(error.code).toBe("deadline_exceeded");
-    expect(statuses(error.attempts).at(-1)).toBe("deadline_exceeded");
+    expect(statuses(error.attempts)).toEqual([
+      "timeout",
+      "timeout",
+      "timeout",
+      "deadline_exceeded",
+    ]);
     // The budget is spent before every peer is dialed.
     expect(error.attempts.length).toBeLessThan(PEERS.length + 1);
-    expect(statuses(error.attempts).slice(0, -1)).toContain("timeout");
   });
 });
 

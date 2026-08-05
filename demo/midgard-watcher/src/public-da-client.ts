@@ -208,10 +208,32 @@ class PeerFailure extends Error {
   }
 }
 
+/**
+ * The only clock this client reads. Production wiring keeps the real
+ * monotonic clock and the real timer queue; the seam exists so that deadline
+ * behaviour can be exercised as state instead of as a race between wall-clock
+ * timers, which is not decidable under load.
+ */
+export type WatcherPublicDaClockV1 = Readonly<{
+  /** Monotonic milliseconds. Must never move backwards. */
+  now: () => number;
+  setTimeout: (callback: () => void, delayMs: number) => unknown;
+  clearTimeout: (handle: unknown) => void;
+}>;
+
+const REAL_PUBLIC_DA_CLOCK_V1: WatcherPublicDaClockV1 = Object.freeze({
+  now: () => performance.now(),
+  setTimeout: (callback: () => void, delayMs: number) =>
+    setTimeout(callback, delayMs),
+  clearTimeout: (handle: unknown) => {
+    clearTimeout(handle as ReturnType<typeof setTimeout>);
+  },
+});
+
 type PermitWaiter = {
   readonly resolve: () => void;
   readonly reject: (error: WatcherPublicDaClientErrorV1) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: unknown;
 };
 
 export class WatcherPublicDaClientV1 {
@@ -220,6 +242,7 @@ export class WatcherPublicDaClientV1 {
   private readonly config: WatcherConfig;
   private readonly deploymentFingerprintBytes: Buffer;
   private readonly transport: WatcherPublicDaLibp2pTransportV1;
+  private readonly clock: WatcherPublicDaClockV1;
   private activeRequests = 0;
   private readonly permitWaiters: PermitWaiter[] = [];
 
@@ -227,6 +250,8 @@ export class WatcherPublicDaClientV1 {
     readonly config: WatcherConfig;
     readonly deploymentIdentity: VerifiedWatcherDeploymentIdentityV1;
     readonly transport: WatcherPublicDaLibp2pTransportV1;
+    /** Test seam. Omitted in production, where the real clock is used. */
+    readonly clock?: WatcherPublicDaClockV1;
   }) {
     try {
       this.config = parseWatcherConfig(options.config);
@@ -249,6 +274,14 @@ export class WatcherPublicDaClientV1 {
       ) {
         throw new Error("invalid libp2p transport");
       }
+      if (
+        options.clock !== undefined &&
+        (typeof options.clock.now !== "function" ||
+          typeof options.clock.setTimeout !== "function" ||
+          typeof options.clock.clearTimeout !== "function")
+      ) {
+        throw new Error("invalid clock");
+      }
     } catch (cause) {
       // Never swallow the cause: network mismatch, a rejected deployment
       // marker, an unusable transport, and an outright bug in this constructor
@@ -259,6 +292,7 @@ export class WatcherPublicDaClientV1 {
       });
     }
     this.transport = options.transport;
+    this.clock = options.clock ?? REAL_PUBLIC_DA_CLOCK_V1;
   }
 
   async fetchPayloadByHeader(input: {
@@ -689,6 +723,16 @@ export class WatcherPublicDaClientV1 {
         }
       }
     }
+    // Tie-break: the peer list can run out in the same instant the fetch
+    // budget does — the last dial only ever gets `min(remaining, timeout)`, so
+    // a peer failure and an exhausted deadline can both hold at once. A spent
+    // budget is the stronger fact: it says the caller's deadline contract was
+    // violated, which is actionable (raise `daFetchMs`, or shorten the peer
+    // list), whereas `all_peers_failed` would claim the peer set was fully and
+    // fairly evaluated when the deadline is exactly what stopped it.
+    if (this.clock.now() >= deadlineAt) {
+      throw new WatcherPublicDaClientErrorV1("deadline_exceeded", attempts);
+    }
     throw new WatcherPublicDaClientErrorV1("all_peers_failed", attempts);
   }
 
@@ -817,8 +861,15 @@ export class WatcherPublicDaClientV1 {
     requestCbor: Buffer,
     deadlineAt: number,
   ): Promise<Buffer> {
-    const remainingMs = deadlineAt - performance.now();
-    if (remainingMs <= 0) {
+    // A dial needs at least a whole millisecond of budget to be worth making:
+    // the transport timeout is expressed in whole milliseconds, so anything
+    // shorter would have to be rounded UP into budget the fetch does not own.
+    // Spending that sliver on another peer is also how an exhausted fetch used
+    // to end up reporting a peer failure instead of its deadline — the peer
+    // list could run out before the budget check ever saw a non-positive
+    // remainder (#535).
+    const remainingMs = deadlineAt - this.clock.now();
+    if (remainingMs < 1) {
       throw new PeerFailure("deadline_exceeded", protocol);
     }
     const timeoutMs = Math.max(
@@ -832,10 +883,10 @@ export class WatcherPublicDaClientV1 {
       ),
     );
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer: unknown;
     try {
       const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
+        timer = this.clock.setTimeout(() => {
           controller.abort();
           reject(new PeerFailure("timeout", protocol));
         }, timeoutMs);
@@ -877,7 +928,7 @@ export class WatcherPublicDaClientV1 {
       );
     } finally {
       if (timer !== undefined) {
-        clearTimeout(timer);
+        this.clock.clearTimeout(timer);
       }
     }
   }
@@ -885,10 +936,10 @@ export class WatcherPublicDaClientV1 {
   private async withPermit<T>(
     task: (deadlineAt: number) => Promise<T>,
   ): Promise<T> {
-    const deadlineAt = performance.now() + this.config.deadlines.daFetchMs;
+    const deadlineAt = this.clock.now() + this.config.deadlines.daFetchMs;
     await this.acquirePermit(deadlineAt);
     try {
-      if (performance.now() >= deadlineAt) {
+      if (this.clock.now() >= deadlineAt) {
         throw new WatcherPublicDaClientErrorV1("deadline_exceeded");
       }
       return await task(deadlineAt);
@@ -902,7 +953,7 @@ export class WatcherPublicDaClientV1 {
       this.activeRequests += 1;
       return;
     }
-    const remainingMs = deadlineAt - performance.now();
+    const remainingMs = deadlineAt - this.clock.now();
     if (remainingMs <= 0) {
       throw new WatcherPublicDaClientErrorV1("deadline_exceeded");
     }
@@ -910,7 +961,7 @@ export class WatcherPublicDaClientV1 {
       const waiter: PermitWaiter = {
         resolve,
         reject,
-        timer: setTimeout(() => {
+        timer: this.clock.setTimeout(() => {
           const index = this.permitWaiters.indexOf(waiter);
           if (index >= 0) {
             this.permitWaiters.splice(index, 1);
@@ -926,7 +977,7 @@ export class WatcherPublicDaClientV1 {
     this.activeRequests -= 1;
     const waiter = this.permitWaiters.shift();
     if (waiter !== undefined) {
-      clearTimeout(waiter.timer);
+      this.clock.clearTimeout(waiter.timer);
       this.activeRequests += 1;
       waiter.resolve();
     }
