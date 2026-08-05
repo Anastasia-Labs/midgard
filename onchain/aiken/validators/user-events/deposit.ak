@@ -19,12 +19,12 @@ use midgard/ledger_state
 use midgard/settlement
 use midgard/transition_trace
 use midgard/user_events
-use midgard/user_events/deposit.{Datum, SpendRedeemer}
+use midgard/user_events/deposit.{DepositDatum, SpendRedeemer}
 use midgard/user_events/witness as event_witness
 
 validator spend(hub_oracle: ScriptHash) {
   spend(
-    datum: Option<Datum>,
+    datum: Option<DepositDatum>,
     redeemer: SpendRedeemer,
     own_out_ref: OutputReference,
     tx: Transaction,
@@ -52,7 +52,7 @@ validator spend(hub_oracle: ScriptHash) {
       |> settlement.get_datum(settlement_policy_id, settlement_ref_input_index)
 
     expect Some(deposit_datum) = datum
-    let Datum { event: deposit_event, .. } = deposit_datum
+    let DepositDatum { event: deposit_event, .. } = deposit_datum
 
     // 1. Spending a deposit UTxO must also be accompanied by the burning of its
     //    NFT (and consequently deregistration of its witness staking script).
@@ -290,9 +290,9 @@ fn test_deposit_value(include_eleventh_non_nft_asset: Bool) {
       )
 }
 
-fn test_deposit_datum(inclusion_time: Int) -> Datum {
+fn test_deposit_datum(inclusion_time: Int) -> DepositDatum {
   let nonce = user_events.out_ref_to_nonce(test_nonce_ref)
-  Datum {
+  DepositDatum {
     event: ledger_state.DepositEvent {
       id: test_nonce_ref,
       info: ledger_state.DepositInfo {

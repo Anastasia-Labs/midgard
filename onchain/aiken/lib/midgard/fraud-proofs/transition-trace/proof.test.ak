@@ -444,7 +444,7 @@ fn deposit_reference_input(
   info: ledger_state.DepositInfo,
   event_asset_name: ByteArray,
 ) -> Input {
-  let deposit_datum = deposit.Datum {
+  let deposit_datum = deposit.DepositDatum {
     event: ledger_state.DepositEvent { id: deposit_id, info },
     inclusion_time: 15,
     witness: h28_a,
@@ -1975,7 +1975,7 @@ test accepts_count_fault() {
 
 test accepts_omitted_due_deposit_fault() {
   let deposit_info = sample_deposit_info(0)
-  let deposit_datum = deposit.Datum {
+  let deposit_datum = deposit.DepositDatum {
     event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
     inclusion_time: 15,
     witness: h28_a,
@@ -2056,7 +2056,7 @@ test accepts_late_forced_order_as_out_of_window_source_event() {
 
 test accepts_out_of_window_deposit_fault() {
   let deposit_info = sample_deposit_info(0)
-  let deposit_datum = deposit.Datum {
+  let deposit_datum = deposit.DepositDatum {
     event: ledger_state.DepositEvent { id: out_ref(0), info: deposit_info },
     inclusion_time: 30,
     witness: h28_a,

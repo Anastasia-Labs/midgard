@@ -6,7 +6,7 @@ use midgard/common/utils
 use midgard/ledger_state
 use midgard/transition_trace
 
-pub type Datum {
+pub type DepositDatum {
   event: ledger_state.DepositEvent,
   inclusion_time: PosixTime,
   witness: ScriptHash,
@@ -26,7 +26,7 @@ pub fn get_datum(
   reference_inputs: List<Input>,
   deposit_policy_id: PolicyId,
   deposit_input_index: Int,
-) -> Datum {
+) -> DepositDatum {
   expect
       Input {
         output: Output { datum: InlineDatum(deposit_datum_data), .. },
@@ -37,6 +37,6 @@ pub fn get_datum(
     deposit_policy_id,
     deposit_input_index,
   )
-  expect deposit_datum: Datum = deposit_datum_data
+  expect deposit_datum: DepositDatum = deposit_datum_data
   deposit_datum
 }

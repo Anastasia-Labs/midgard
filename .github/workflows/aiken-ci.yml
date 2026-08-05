@@ -93,5 +93,18 @@ jobs:
         run: aiken check --skip-tests
       - name: Run the Aiken test suite with the patched compiler
         run: ~/.aiken-fork/bin/aiken check
+      # Issue #521. The released compiler keys generated expect-decoders by
+      # local type name only, so two same-named types in different modules
+      # share one decoder and the shipped blueprint silently gets a decoder
+      # that is wrong in both directions. Neither step above can see that
+      # class: `aiken check` compiles every test as its own program, so
+      # colliding types never co-occur there, and the suite runs on the
+      # patched compiler anyway. Building the blueprint with BOTH compilers
+      # and requiring byte-identical validators is what makes it visible.
+      - name: Assert both compilers agree on the blueprint
+        run: |
+          MIDGARD_STOCK_AIKEN_BIN=aiken \
+          MIDGARD_FORK_AIKEN_BIN="$HOME/.aiken-fork/bin/aiken" \
+          node scripts/verify-dual-compiler-blueprint-agreement.mjs
       - name: Check that aiken.lock is up-to-date
         run: git diff --name-only --exit-code aiken.lock

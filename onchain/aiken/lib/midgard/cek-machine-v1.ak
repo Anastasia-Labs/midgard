@@ -87,7 +87,7 @@ pub type MapConversionStartWitnessV1 {
   result_pairs: Option<cek_data_v1.DataPairNodeV1>,
 }
 
-pub type ValueWitnessV1 {
+pub type MachineValueWitnessV1 {
   ConstantValue {
     type_root: ByteArray,
     payload_root: ByteArray,
@@ -130,7 +130,7 @@ pub type CoreStepWitnessV1 {
   }
   LookupEnvironment { value: ByteArray, tail: ByteArray, length: Int }
   LookupEmptyEnvironment
-  ReturnEmptyContinuation { value: ValueWitnessV1 }
+  ReturnEmptyContinuation { value: MachineValueWitnessV1 }
   ReturnApplyArgument {
     argument: ByteArray,
     captured_environment: ByteArray,
@@ -149,7 +149,7 @@ pub type CoreStepWitnessV1 {
     arguments_root: ByteArray,
     tail: ByteArray,
   }
-  ReturnApplyInvalid { function: ValueWitnessV1, tail: ByteArray }
+  ReturnApplyInvalid { function: MachineValueWitnessV1, tail: ByteArray }
   ReturnApplyValueLambda {
     argument: ByteArray,
     body: ByteArray,
@@ -167,7 +167,7 @@ pub type CoreStepWitnessV1 {
   }
   ReturnApplyValueInvalid {
     argument: ByteArray,
-    function: ValueWitnessV1,
+    function: MachineValueWitnessV1,
     tail: ByteArray,
   }
   ReturnForceDelay {
@@ -182,7 +182,7 @@ pub type CoreStepWitnessV1 {
     arguments_root: ByteArray,
     tail: ByteArray,
   }
-  ReturnForceInvalid { value: ValueWitnessV1, tail: ByteArray }
+  ReturnForceInvalid { value: MachineValueWitnessV1, tail: ByteArray }
   ReturnConstrNext {
     tag: Int,
     remaining_terms_count: Int,
@@ -210,7 +210,7 @@ pub type CoreStepWitnessV1 {
     tail: ByteArray,
   }
   ReturnCaseInvalid {
-    value: ValueWitnessV1,
+    value: MachineValueWitnessV1,
     branches_count: Int,
     branches_root: ByteArray,
     captured_environment: ByteArray,
@@ -415,7 +415,7 @@ pub fn builtin_argument_count(tag: Int) -> Int {
   }
 }
 
-fn value_witness_hash(value: ValueWitnessV1) -> ByteArray {
+fn value_witness_hash(value: MachineValueWitnessV1) -> ByteArray {
   when value is {
     ConstantValue {
       type_root,
@@ -449,14 +449,14 @@ fn value_witness_hash(value: ValueWitnessV1) -> ByteArray {
   }
 }
 
-fn value_is_constant(value: ValueWitnessV1) -> Bool {
+fn value_is_constant(value: MachineValueWitnessV1) -> Bool {
   when value is {
     ConstantValue { .. } -> True
     _ -> False
   }
 }
 
-fn value_is_lambda_or_builtin(value: ValueWitnessV1) -> Bool {
+fn value_is_lambda_or_builtin(value: MachineValueWitnessV1) -> Bool {
   when value is {
     LambdaValue { .. } -> True
     BuiltinValue { .. } -> True
@@ -464,7 +464,7 @@ fn value_is_lambda_or_builtin(value: ValueWitnessV1) -> Bool {
   }
 }
 
-fn value_is_delay_or_forceable_builtin(value: ValueWitnessV1) -> Bool {
+fn value_is_delay_or_forceable_builtin(value: MachineValueWitnessV1) -> Bool {
   when value is {
     DelayValue { .. } -> True
     BuiltinValue { forces_remaining, .. } -> forces_remaining > 0
@@ -472,7 +472,7 @@ fn value_is_delay_or_forceable_builtin(value: ValueWitnessV1) -> Bool {
   }
 }
 
-fn value_is_constr(value: ValueWitnessV1) -> Bool {
+fn value_is_constr(value: MachineValueWitnessV1) -> Bool {
   when value is {
     ConstrValue { .. } -> True
     _ -> False
@@ -976,7 +976,7 @@ fn verify_lookup_step(
 fn verify_return_empty(
   pre: MachineStateV1,
   post: MachineStateV1,
-  value: ValueWitnessV1,
+  value: MachineValueWitnessV1,
 ) -> Bool {
   and {
     pre.continuation_root == cek_proof_v1.empty_continuation_root_v1,
@@ -1116,7 +1116,7 @@ fn verify_return_apply_builtin(
 fn verify_return_apply_invalid(
   pre: MachineStateV1,
   post: MachineStateV1,
-  function: ValueWitnessV1,
+  function: MachineValueWitnessV1,
   tail: ByteArray,
 ) -> Bool {
   let function_value = value_witness_hash(function)
@@ -1227,7 +1227,7 @@ fn verify_return_apply_value_invalid(
   pre: MachineStateV1,
   post: MachineStateV1,
   argument: ByteArray,
-  function: ValueWitnessV1,
+  function: MachineValueWitnessV1,
   tail: ByteArray,
 ) -> Bool {
   and {
@@ -1309,7 +1309,7 @@ fn verify_return_force_builtin(
 fn verify_return_force_invalid(
   pre: MachineStateV1,
   post: MachineStateV1,
-  value: ValueWitnessV1,
+  value: MachineValueWitnessV1,
   tail: ByteArray,
 ) -> Bool {
   and {
@@ -1480,7 +1480,7 @@ fn verify_return_case_constr(
 fn verify_return_case_invalid(
   pre: MachineStateV1,
   post: MachineStateV1,
-  value: ValueWitnessV1,
+  value: MachineValueWitnessV1,
   branches_count: Int,
   branches_root: ByteArray,
   captured_environment: ByteArray,

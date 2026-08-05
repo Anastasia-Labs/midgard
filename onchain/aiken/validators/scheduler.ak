@@ -674,7 +674,7 @@ fn validate_operator_inactivity_and_get_its_link(
           NoNeglectedUserEvent ->
             last_state_queue_elements_end_time + env.max_inactivity_between_block_commitments
           NeglectedDeposit { deposit_ref_input_index } -> {
-            let deposit.Datum { inclusion_time, .. } = reference_inputs
+            let deposit.DepositDatum { inclusion_time, .. } = reference_inputs
               |> deposit.get_datum(hub_datum.deposit, deposit_ref_input_index)
 
             inclusion_time

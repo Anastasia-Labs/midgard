@@ -1250,3 +1250,53 @@ test case_selection_and_constructor_argument_application_are_streamed() {
     ),
   }
 }
+
+// Issue #521 regression pins. `cek_machine_v1.MachineValueWitnessV1` used to be
+// named `ValueWitnessV1`, colliding with `cek_builtin_v1.ValueWitnessV1` in
+// stock aiken v1.1.22's generated-decoder cache, which is keyed by the local
+// type name only. The two acceptance sets are arity-disjoint at every shared
+// constructor tag, so the shared decoder was wrong in both directions: it
+// admitted malformed machine witnesses and rejected well-formed ones. This
+// first test forces both decoders into one compiled program, which is the
+// only shape in which `aiken check` can observe the collision at all.
+test machine_and_builtin_value_witness_decoders_stay_distinct() {
+  expect Some(machine_data) = cbor.deserialise(#"d87b9f41004111ff")
+  expect machine_value: cek_machine_v1.MachineValueWitnessV1 = machine_data
+  expect Some(builtin_data) = cbor.deserialise(#"d87b9f4100ff")
+  expect builtin_value: cek_builtin_v1.ValueWitnessV1 = builtin_data
+  and {
+    machine_value == cek_machine_v1.DelayValue {
+      body: #"00",
+      environment: #"11",
+    },
+    builtin_value == cek_builtin_v1.OpaqueValue(#"00"),
+  }
+}
+
+test machine_value_witness_accepts_a_well_formed_delay_value() {
+  expect Some(data) = cbor.deserialise(#"d87b9f41004111ff")
+  expect decoded: cek_machine_v1.MachineValueWitnessV1 = data
+  decoded == cek_machine_v1.DelayValue { body: #"00", environment: #"11" }
+}
+
+test machine_value_witness_accepts_a_well_formed_constr_value() {
+  expect Some(data) = cbor.deserialise(#"d87c9f010241aaff")
+  expect decoded: cek_machine_v1.MachineValueWitnessV1 = data
+  decoded == cek_machine_v1.ConstrValue {
+    tag: 1,
+    values_count: 2,
+    values_root: #"aa",
+  }
+}
+
+test machine_value_witness_rejects_a_one_field_delay_value() fail {
+  expect Some(data) = cbor.deserialise(#"d87b9f4100ff")
+  expect decoded: cek_machine_v1.MachineValueWitnessV1 = data
+  cbor.serialise(decoded) == cbor.serialise(decoded)
+}
+
+test machine_value_witness_rejects_a_one_field_constr_value() fail {
+  expect Some(data) = cbor.deserialise(#"d87c9f4100ff")
+  expect decoded: cek_machine_v1.MachineValueWitnessV1 = data
+  cbor.serialise(decoded) == cbor.serialise(decoded)
+}

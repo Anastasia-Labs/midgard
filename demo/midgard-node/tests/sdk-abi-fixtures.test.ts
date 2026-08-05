@@ -874,7 +874,9 @@ describe("SDK canonical ABI fixtures", () => {
       "resolution_claim",
     ]);
     expect(
-      fields(constructor("midgard/user_events/deposit/Datum", "Datum")),
+      fields(
+        constructor("midgard/user_events/deposit/DepositDatum", "DepositDatum"),
+      ),
     ).toEqual(["event", "inclusion_time", "witness"]);
     expect(
       fields(

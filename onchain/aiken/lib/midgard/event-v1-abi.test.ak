@@ -1,7 +1,7 @@
 use aiken/cbor
 use aiken_design_patterns/linked_list
 use cardano/address
-use cardano/transaction.{NoDatum, OutputReference}
+use cardano/transaction.{Datum, InlineDatum, NoDatum, OutputReference}
 use midgard/ledger_state
 use midgard/operator_directory
 use midgard/operator_directory/active_operators as active
@@ -48,8 +48,8 @@ fn raw_membership_proof(
   }
 }
 
-fn deposit_datum() -> deposit.Datum {
-  deposit.Datum {
+fn deposit_datum() -> deposit.DepositDatum {
+  deposit.DepositDatum {
     event: ledger_state.DepositEvent {
       id: output_reference(),
       info: ledger_state.DepositInfo {
@@ -527,7 +527,7 @@ test event_v1_rejects_an_adjacent_user_event_witness_tag() fail {
 
 test event_v1_rejects_a_wrong_deposit_datum_arity() fail {
   expect Some(data) = cbor.deserialise(#"d87980")
-  expect decoded: deposit.Datum = data
+  expect decoded: deposit.DepositDatum = data
   cbor.serialise(decoded) == cbor.serialise(decoded)
 }
 
@@ -554,5 +554,38 @@ test event_v1_rejects_an_arbitrary_retired_slashing_payload() fail {
 test event_v1_rejects_an_adjacent_settlement_event_tag() fail {
   expect Some(data) = cbor.deserialise(#"d87c80")
   expect decoded: settlement.EventType = data
+  cbor.serialise(decoded) == cbor.serialise(decoded)
+}
+
+// Issue #521 regression pins. `deposit.DepositDatum` used to be named `Datum`,
+// colliding with stdlib `cardano/transaction.Datum` in stock aiken v1.1.22's
+// generated-decoder cache. `transaction.Datum` won, so `scheduler.spend`'s
+// `NeglectedDeposit` branch admitted `NoDatum`/`InlineDatum` shapes and could
+// not decode a well-formed deposit datum at all. This first test forces both
+// decoders into one compiled program, the only shape in which `aiken check`
+// can observe the collision.
+test event_v1_deposit_and_transaction_datum_decoders_stay_distinct() {
+  expect Some(deposit_data) = cbor.deserialise(cbor.serialise(deposit_datum()))
+  expect decoded_deposit: deposit.DepositDatum = deposit_data
+  expect Some(no_datum_data) = cbor.deserialise(#"d87980")
+  expect decoded_no_datum: Datum = no_datum_data
+  expect Some(inline_datum_data) = cbor.deserialise(#"d87b9f182aff")
+  expect decoded_inline_datum: Datum = inline_datum_data
+  and {
+    decoded_deposit == deposit_datum(),
+    decoded_no_datum == NoDatum,
+    decoded_inline_datum == InlineDatum(42),
+  }
+}
+
+test event_v1_accepts_a_well_formed_deposit_datum() {
+  expect Some(data) = cbor.deserialise(cbor.serialise(deposit_datum()))
+  expect decoded: deposit.DepositDatum = data
+  decoded == deposit_datum()
+}
+
+test event_v1_rejects_a_deposit_datum_with_an_inline_datum_tag() fail {
+  expect Some(data) = cbor.deserialise(#"d87b9f182aff")
+  expect decoded: deposit.DepositDatum = data
   cbor.serialise(decoded) == cbor.serialise(decoded)
 }
