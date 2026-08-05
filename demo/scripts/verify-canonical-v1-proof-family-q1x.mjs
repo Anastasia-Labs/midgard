@@ -6,20 +6,51 @@
 // must say why it is open and who owns it. Every catalogue index, category id,
 // blueprint title, builder name, CLI verb, module resumability shape, vitest
 // title and proof-fit threshold this artifact names is re-read out of its
-// source file, so the artifact cannot drift away from the code. Existence is
-// never accepted in place of passage: the byte and execution thresholds are
-// re-checked against the helper the tests actually apply.
+// source file, so the artifact cannot drift away from the code.
+//
+// Issue #533 (finding V-2 of #519). Existence used to be accepted in place of
+// passage for every test this artifact cites: the shared DA-first gate's
+// `{tests: 32, passed: 32, failed: 0}` was validated by `assert.equal(passed,
+// tests)` — two fields of the same JSON object, true by construction — with the
+// denominator itself substituted by counting `it("` occurrences in the suite
+// source, and each output-9 emulator lifecycle was credited to a family purely
+// because `it("<title>"` appeared in the file. A throwing body, an `it.skip`,
+// or a deleted assertion left all of it untouched.
+//
+// Every published count and every cited lifecycle now comes from a Vitest JSON
+// report produced by spawning the owning package's own runner: a test that
+// fails, never executes, or is no longer collected under its cited title fails
+// this gate closed with a distinct diagnostic. Source scanning survives only
+// where it backs no count — the builder, verb, resumability and proof-fit
+// structural claims.
 //
 // usage: node demo/scripts/verify-canonical-v1-proof-family-q1x.mjs [--json]
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const emitJson = process.argv.slice(2).includes("--json");
+import { runFixtureMode } from "./lib/runner-fixtures.mjs";
+import {
+  deriveVitestOutcome,
+  runVitest,
+  vitestPublishedCommand,
+} from "./lib/runner-reports.mjs";
+
 const demoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repositoryRoot = resolve(demoRoot, "..");
+
+// Fixture mode runs one seeded defect and nothing else, so the negative
+// self-tests at the bottom can spawn this very gate and observe its real exit
+// code. It must run before any artifact is read.
+runFixtureMode({
+  argv: process.argv.slice(2),
+  packageRoot: resolve(repositoryRoot, "demo/midgard-fault-proofs"),
+});
+
+const emitJson = process.argv.slice(2).includes("--json");
 
 const fileCache = new Map();
 const readRepositoryFile = async (relativePath) => {
@@ -162,6 +193,21 @@ let familyChecks = 0;
 let measuredStages = 0;
 let worstByteMargin = Number.POSITIVE_INFINITY;
 
+// Declarations only: which titles each suite is claimed to contain. Nothing
+// here decides whether any of them passed; the runner does that below.
+const declaredVitestFiles = new Map();
+const declareVitest = (file, titles) => {
+  const existing = declaredVitestFiles.get(file) ?? {
+    file,
+    packageDirectory: file.split("/").slice(0, 2).join("/"),
+    testFile: file.split("/").slice(2).join("/"),
+    titles: [],
+  };
+  existing.titles.push(...titles);
+  declaredVitestFiles.set(file, existing);
+  return existing;
+};
+
 for (const family of evidence.families) {
   const where = `${family.goalId} (${family.family})`;
 
@@ -244,12 +290,10 @@ for (const family of evidence.families) {
     family.emulator.titles.includes(family.emulator.measuredLifecycleTitle),
     `${where} measured lifecycle title is not among its declared titles`,
   );
-  for (const title of family.emulator.titles) {
-    assert.ok(
-      emulatorSource.includes(`it("${title}"`),
-      `${where} claims emulator test "${title}", which ${family.emulator.file} does not declare`,
-    );
-  }
+  // The cited lifecycles are executed below; citing them here only schedules
+  // the run. A title the runner never collects, or collects and does not pass,
+  // fails this gate closed.
+  declareVitest(family.emulator.file, family.emulator.titles);
   if (family.emulator.hasValidBlockNegative) {
     assert.ok(
       typeof family.emulator.validBlockNegativeTitle === "string" &&
@@ -343,26 +387,67 @@ for (const assertion of gate.assertions) {
     `the DA-first gate no longer applies ${assertion}`,
   );
 }
-const gateSuiteSource = await readRepositoryFile(gate.suite);
-assert.equal(
-  gate.measured.passed,
-  gate.measured.tests,
-  "the canonical-evidence suite must be measured fully passing",
-);
-assert.equal(gate.measured.failed, 0, "canonical-evidence failures must be 0");
-const gateSuiteTitleCount = [...gateSuiteSource.matchAll(/\n\s+it\("/gu)]
-  .length;
-assert.equal(
-  gateSuiteTitleCount,
-  gate.measured.tests,
-  `${gate.suite} declares ${String(gateSuiteTitleCount)} tests but the artifact records ${String(gate.measured.tests)}`,
-);
-for (const title of gate.familyGateTitles) {
-  assert.ok(
-    gateSuiteSource.includes(`it("${title}"`),
-    `${gate.suite} no longer declares the family gate test "${title}"`,
+const gateDeclaration = declareVitest(gate.suite, gate.familyGateTitles);
+
+// ---------------------------------------------------------------------------
+// Execute. Each cited suite is run once by its own package's Vitest CLI, and
+// every published count below is read out of the resulting JSON report.
+// ---------------------------------------------------------------------------
+
+const vitestOutcomes = new Map();
+for (const declaration of declaredVitestFiles.values()) {
+  vitestOutcomes.set(
+    declaration.file,
+    deriveVitestOutcome({
+      label: `Q1x proof family ${declaration.file}`,
+      requiredTitles: declaration.titles,
+      ...runVitest({
+        packageRoot: resolve(repositoryRoot, declaration.packageDirectory),
+        testFile: declaration.testFile,
+      }),
+    }),
   );
 }
+assert.deepEqual(
+  evidence.runners,
+  [...declaredVitestFiles.values()].map((declaration) =>
+    vitestPublishedCommand({
+      packageDirectory: declaration.packageDirectory,
+      testFile: declaration.testFile,
+    }),
+  ),
+  "published runner commands drifted from the commands this gate executes",
+);
+
+const gateOutcome = vitestOutcomes.get(gate.suite);
+assert.equal(
+  gate.command,
+  vitestPublishedCommand({
+    packageDirectory: gateDeclaration.packageDirectory,
+    testFile: gateDeclaration.testFile,
+  }),
+  "the gate command recorded in the artifact is not the command this gate runs",
+);
+assert.equal(
+  gate.measured.tests,
+  gateOutcome.collected,
+  "published canonical-evidence test count is not the number the runner collected",
+);
+assert.equal(
+  gate.measured.passed,
+  gateOutcome.passed,
+  "published canonical-evidence pass count is not the number the runner passed",
+);
+assert.equal(
+  gate.measured.failed,
+  gateOutcome.collected - gateOutcome.passed,
+  "published canonical-evidence failure count is not the number the runner did not pass",
+);
+
+const emulatorLifecyclesExecuted = evidence.families.reduce(
+  (total, family) => total + family.emulator.titles.length,
+  0,
+);
 
 // ## Output status matrix
 
@@ -489,7 +574,8 @@ const recomputed = {
   openCells,
   measuredProofFitStages: measuredStages,
   worstByteMarginAcrossFamilies: worstByteMargin,
-  canonicalEvidenceSuiteTests: gate.measured.tests,
+  canonicalEvidenceSuiteTests: gateOutcome.passed,
+  emulatorLifecyclesExecuted,
   residualFindings: evidence.residualFindings.length,
 };
 assert.deepEqual(
@@ -510,6 +596,64 @@ assert.ok(
   "the parent-owned edits this artifact supports must be listed explicitly",
 );
 
+// ---------------------------------------------------------------------------
+// Negative self-tests: spawn this gate against seeded fixtures and require a
+// non-zero exit carrying the specific diagnostic. Without these, a future edit
+// could reintroduce existence-as-passage and nothing would notice.
+// ---------------------------------------------------------------------------
+
+const runSelfTest = (flag) =>
+  spawnSync(process.execPath, [fileURLToPath(import.meta.url), flag], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+  });
+
+const selfTests = [
+  [
+    "--vitest-fixture=failing",
+    /ERR_FOCUSED_CHECK_FAILED: .*executes and fails/su,
+  ],
+  [
+    "--vitest-fixture=zero-collection",
+    /ERR_FOCUSED_CHECK_ZERO_COLLECTION: .*collected 0 tests/su,
+  ],
+  [
+    "--vitest-fixture=skipped",
+    /ERR_FOCUSED_CHECK_NOT_EXECUTED: .*never executed/su,
+  ],
+  [
+    "--vitest-fixture=renamed-title",
+    /ERR_FOCUSED_CHECK_TITLE_NOT_COLLECTED: .*executes and passes/su,
+  ],
+  [
+    "--vitest-fixture=missing-file",
+    /ERR_FOCUSED_CHECK_NO_FILES: .*matched no test file/su,
+  ],
+];
+for (const [flag, expectedDiagnostic] of selfTests) {
+  const selfTest = runSelfTest(flag);
+  assert.notEqual(
+    selfTest.status,
+    0,
+    `Q1x proof-family gate accepted the seeded defect ${flag}`,
+  );
+  assert.match(
+    selfTest.stderr,
+    expectedDiagnostic,
+    `Q1x proof-family gate rejected ${flag} without its specific diagnostic`,
+  );
+}
+// Positive control: the same harness must still accept a real passing run, so
+// the rejections above cannot be a gate that rejects everything.
+const control = runSelfTest("--vitest-fixture=passing");
+assert.equal(
+  control.status,
+  0,
+  `Q1x proof-family gate rejected a passing fixture: ${control.stderr}`,
+);
+assert.match(control.stdout, /vitest fixture passing: 1\/1 passed/u);
+
 const report = {
   status: "PASS",
   families: evidence.summary.families,
@@ -519,9 +663,11 @@ const report = {
   measuredProofFitStages: evidence.summary.measuredProofFitStages,
   worstByteMarginAcrossFamilies: evidence.summary.worstByteMarginAcrossFamilies,
   canonicalEvidenceSuiteTests: evidence.summary.canonicalEvidenceSuiteTests,
+  emulatorLifecyclesExecuted: evidence.summary.emulatorLifecyclesExecuted,
   residualFindings: evidence.summary.residualFindings,
   familyChecks,
   thresholdEnforcementChecks,
+  vitestSuitesExecuted: vitestOutcomes.size,
 };
 
 if (emitJson) {

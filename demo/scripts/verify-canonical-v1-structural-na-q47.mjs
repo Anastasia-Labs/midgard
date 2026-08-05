@@ -3,23 +3,61 @@
 //
 // The rule enforced here: a structural N/A may be recorded only when (a) every
 // violation variant it disclaims resolves to at least one EXECUTABLE selector
-// that exists in the tree, (b) the standalone family surface it claims not to
-// need genuinely does not exist, and (c) no closure output is marked N/A
-// without a named owner and a justification. Prose is never sufficient, and an
-// existence assertion is never accepted where a passage claim is published:
-// every selector and vitest title named by the artifact is re-read out of its
-// source file and matched, so the artifact cannot drift away from the tree.
+// that really passes, (b) the standalone family surface it claims not to need
+// genuinely does not exist, and (c) no closure output is marked N/A without a
+// named owner and a justification. Prose is never sufficient.
+//
+// Issue #533 (finding V-2 of #519). This gate used to publish its passage
+// claims by reading the artifact back to itself — `assert.equal(measured.passed,
+// measured.selectors)` compares two fields of the same JSON object and holds
+// for `{selectors: 8, passed: 8}` whether or not aiken ever ran — and backed
+// "N executable checks" with `^test <name>(` / `it("<title>"` declaration
+// regexes over test source. A throwing test body, an `it.skip`, or a selector
+// that collects nothing left every one of those numbers untouched.
+//
+// Every published count now comes from a runner report instead. All thirteen
+// cited on-chain selectors are executed in one `aiken check -e` invocation
+// (compilation dominates its cost, so batching is both faster and exactly as
+// strict) and the TypeScript twins by spawning the owning package's own Vitest
+// CLI. The artifact's `measured` blocks are pins asserted against those runner
+// results, never operands of each other. Source scanning survives only where it
+// backs no count at all: the constructor/entry-point structural claims, and the
+// exhaustiveness check that the Q47 module declares no selector the artifact
+// omits.
 //
 // usage: node demo/scripts/verify-canonical-v1-structural-na-q47.mjs [--json]
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const emitJson = process.argv.slice(2).includes("--json");
+import { runFixtureMode } from "./lib/runner-fixtures.mjs";
+import {
+  aikenModuleName,
+  aikenPublishedCommand,
+  deriveAikenOutcome,
+  deriveVitestOutcome,
+  runAikenCheck,
+  runVitest,
+  vitestPublishedCommand,
+} from "./lib/runner-reports.mjs";
+
 const demoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repositoryRoot = resolve(demoRoot, "..");
+const aikenProjectDirectory = "onchain/aiken";
+const aikenProjectRoot = resolve(repositoryRoot, aikenProjectDirectory);
+
+// Fixture mode runs one seeded defect and nothing else, so the negative
+// self-tests at the bottom can spawn this very gate and observe its real exit
+// code. It must run before any artifact is read.
+runFixtureMode({
+  argv: process.argv.slice(2),
+  packageRoot: resolve(repositoryRoot, "demo/midgard-fault-proofs"),
+});
+
+const emitJson = process.argv.slice(2).includes("--json");
 
 const fileCache = new Map();
 const readRepositoryFile = async (relativePath) => {
@@ -114,13 +152,29 @@ assert.equal(
   "transitionTrace catalogue index drifted from the pinned append-only index",
 );
 
-// ## Every one of the six variants must resolve to an existing selector
+// ---------------------------------------------------------------------------
+// Phase 1 — collect what the artifact declares. Nothing here decides whether a
+// check passed; the declarations are only the plan the runners execute.
+// ---------------------------------------------------------------------------
 
-const aikenSelectorNames = async (file) => {
-  const source = await readRepositoryFile(file);
-  return new Set(
-    [...source.matchAll(/^test\s+([a-z0-9_]+)\(/gmu)].map((match) => match[1]),
+const selectorSafe = (name) =>
+  assert.ok(
+    /^[a-z0-9_]+$/u.test(name),
+    `selector ${String(name)} is not a focused-check-safe name`,
   );
+
+// The artifact names its modules in compiler form minus the `.test` suffix the
+// compiler appends for a `*.test.ak` file; pinning the derived name here keeps
+// the declared module honest and gives `deriveAikenOutcome` the exact module a
+// selector must have been collected from.
+const declaredModuleOf = ({ module, file }) => {
+  const derived = aikenModuleName(file);
+  assert.equal(
+    derived,
+    `${module}.test`,
+    `${file} compiles to module ${derived}, which is not the ${module} the artifact declares`,
+  );
+  return derived;
 };
 
 const REQUIRED_VARIANTS = [
@@ -137,7 +191,7 @@ assert.deepEqual(
   "the six omitted/out-of-window variants must be enumerated exactly once, in order",
 );
 
-let variantSelectorChecks = 0;
+const variantChecks = new Map();
 for (const row of evidence.variantMatrix) {
   assert.ok(
     proofSource.includes(`    ${row.constructor} {`),
@@ -156,67 +210,30 @@ for (const row of evidence.variantMatrix) {
     row.aiken.selectors.length > 0,
     `variant ${row.variant} has no executable selector; a structural N/A may not rest on prose`,
   );
-  const declared = await aikenSelectorNames(row.aiken.file);
+  const module = declaredModuleOf(row.aiken);
   for (const selector of row.aiken.selectors) {
-    assert.ok(
-      /^[a-z0-9_]+$/u.test(selector),
-      `selector ${selector} is not a focused-check-safe name`,
-    );
-    assert.ok(
-      declared.has(selector),
-      `variant ${row.variant} claims Aiken selector ${selector}, which is not declared in ${row.aiken.file}`,
-    );
-    variantSelectorChecks += 1;
+    selectorSafe(selector);
   }
+  variantChecks.set(
+    row.variant,
+    row.aiken.selectors.map((selector) => ({ module, selector })),
+  );
 }
-
-// ## Inherited Q21 guard and the new Q47 selector set
 
 const inherited = evidence.inheritedEventWindowGuard;
-const inheritedDeclared = await aikenSelectorNames(inherited.file);
-assert.equal(
-  inherited.selectors.length,
-  inherited.measured.selectors,
-  "inherited selector list length must equal the measured selector count",
-);
-assert.equal(
-  inherited.measured.passed,
-  inherited.measured.selectors,
-  "every inherited selector must be measured passing",
-);
-assert.equal(inherited.measured.failed, 0, "inherited failures must be zero");
+const inheritedModule = declaredModuleOf(inherited);
 for (const selector of inherited.selectors) {
-  assert.ok(
-    inheritedDeclared.has(selector),
-    `inherited selector ${selector} is not declared in ${inherited.file}`,
-  );
+  selectorSafe(selector);
 }
+const inheritedChecks = inherited.selectors.map((selector) => ({
+  module: inheritedModule,
+  selector,
+}));
 
 const q47 = evidence.q47AikenSelectors;
-const q47Declared = await aikenSelectorNames(q47.file);
-assert.equal(
-  q47.selectors.length,
-  q47.measured.selectors,
-  "Q47 selector list length must equal the measured selector count",
-);
-assert.equal(
-  q47.measured.passed,
-  q47.measured.selectors,
-  "every Q47 selector must be measured passing",
-);
-assert.equal(q47.measured.failed, 0, "Q47 failures must be zero");
-// The module must contain EXACTLY the claimed selectors: an unlisted extra
-// selector would make the measured count unverifiable.
-assert.deepEqual(
-  [...q47Declared].sort(),
-  q47.selectors.map((selector) => selector.name).sort(),
-  `${q47.file} declares a different selector set than the artifact claims`,
-);
+const q47Module = declaredModuleOf(q47);
 for (const selector of q47.selectors) {
-  assert.ok(
-    /^[a-z0-9_]+$/u.test(selector.name),
-    `selector ${selector.name} is not a focused-check-safe name`,
-  );
+  selectorSafe(selector.name);
   assert.ok(
     typeof selector.claim === "string" && selector.claim.length > 0,
     `selector ${selector.name} must state what it proves`,
@@ -226,6 +243,10 @@ for (const selector of q47.selectors) {
     `selector ${selector.name} has an unknown class ${String(selector.class)}`,
   );
 }
+const q47Checks = q47.selectors.map((selector) => ({
+  module: q47Module,
+  selector: selector.name,
+}));
 const selectorClassCounts = q47.selectors.reduce((counts, selector) => {
   counts[selector.class] = (counts[selector.class] ?? 0) + 1;
   return counts;
@@ -236,32 +257,167 @@ assert.deepEqual(
   "Q47 requires four positives, two adjacent valid-block negatives and two controls",
 );
 
-// ## TypeScript twins
+// Exhaustiveness, not passage: a selector living in the Q47 module that the
+// artifact does not list would make the published set incomplete. This scan
+// backs no count — every count below comes from the runner.
+const q47ModuleSource = await readRepositoryFile(q47.file);
+assert.deepEqual(
+  [...q47ModuleSource.matchAll(/^test\s+([a-z0-9_]+)\(/gmu)]
+    .map((match) => match[1])
+    .sort(),
+  q47Checks.map(({ selector }) => selector).sort(),
+  `${q47.file} declares a different selector set than the artifact claims`,
+);
 
 const twins = evidence.q47TypeScriptTwins;
-const twinSource = await readRepositoryFile(twins.file);
+const twinsPackageDirectory = twins.file.split("/").slice(0, 2).join("/");
+const twinsTestFile = twins.file.split("/").slice(2).join("/");
+
+// ---------------------------------------------------------------------------
+// Phase 2 — execute. One `aiken check` invocation covers every cited on-chain
+// selector; the TypeScript twins are run by their own package's Vitest CLI.
+// ---------------------------------------------------------------------------
+
+const declaredAikenChecks = [];
+const seenChecks = new Set();
+for (const check of [
+  ...inheritedChecks,
+  ...q47Checks,
+  ...[...variantChecks.values()].flat(),
+]) {
+  const key = `${check.module}#${check.selector}`;
+  if (!seenChecks.has(key)) {
+    seenChecks.add(key);
+    declaredAikenChecks.push(check);
+  }
+}
+const aikenSelectors = [
+  ...new Set(declaredAikenChecks.map(({ selector }) => selector)),
+];
+const aikenOutcome = deriveAikenOutcome({
+  label: "Q47 structural N/A on-chain selectors",
+  declared: declaredAikenChecks,
+  ...runAikenCheck({
+    projectRoot: aikenProjectRoot,
+    selectors: aikenSelectors,
+  }),
+});
 assert.equal(
-  twins.titles.length,
+  aikenOutcome.passed,
+  declaredAikenChecks.length,
+  "every cited on-chain selector must be measured as passing",
+);
+const measuredSelectors = new Set(
+  aikenOutcome.measured.map(({ module, selector }) => `${module}#${selector}`),
+);
+const measuredPassed = (checks) =>
+  checks.filter(({ module, selector }) =>
+    measuredSelectors.has(`${module}#${selector}`),
+  ).length;
+
+const twinsRun = runVitest({
+  packageRoot: resolve(repositoryRoot, twinsPackageDirectory),
+  testFile: twinsTestFile,
+});
+const twinsOutcome = deriveVitestOutcome({
+  label: `Q47 TypeScript twins ${twins.file}`,
+  requiredTitles: twins.titles,
+  ...twinsRun,
+});
+const collectedTwinTitles = twinsRun.report.testResults
+  .flatMap((file) => file.assertionResults ?? [])
+  .map((assertion) => assertion.title);
+
+// ---------------------------------------------------------------------------
+// Phase 3 — the artifact's published numbers are pins, checked against what the
+// runners measured. No `measured` field is ever compared to another field of
+// the same object.
+// ---------------------------------------------------------------------------
+
+for (const [variant, checks] of variantChecks) {
+  assert.equal(
+    measuredPassed(checks),
+    checks.length,
+    `variant ${variant} cites ${String(checks.length)} selector(s) but only ${String(measuredPassed(checks))} were measured passing`,
+  );
+}
+
+const inheritedPassed = measuredPassed(inheritedChecks);
+assert.equal(
+  inherited.measured.selectors,
+  inheritedChecks.length,
+  "published inherited selector count drifted from the artifact's selector list",
+);
+assert.equal(
+  inherited.measured.passed,
+  inheritedPassed,
+  "published inherited pass count is not the number of inherited selectors the runner passed",
+);
+assert.equal(
+  inherited.measured.failed,
+  inheritedChecks.length - inheritedPassed,
+  "published inherited failure count is not the number the runner did not pass",
+);
+
+const q47Passed = measuredPassed(q47Checks);
+assert.equal(
+  q47.measured.selectors,
+  q47Checks.length,
+  "published Q47 selector count drifted from the artifact's selector list",
+);
+assert.equal(
+  q47.measured.passed,
+  q47Passed,
+  "published Q47 pass count is not the number of Q47 selectors the runner passed",
+);
+assert.equal(
+  q47.measured.failed,
+  q47Checks.length - q47Passed,
+  "published Q47 failure count is not the number the runner did not pass",
+);
+
+assert.equal(
   twins.measured.tests,
-  "twin title list length must equal the measured test count",
+  twinsOutcome.collected,
+  "published twin test count is not the number of tests the runner collected",
 );
 assert.equal(
   twins.measured.passed,
-  twins.measured.tests,
-  "every twin must be measured passing",
+  twinsOutcome.passed,
+  "published twin pass count is not the number of tests the runner passed",
 );
-assert.equal(twins.measured.failed, 0, "twin failures must be zero");
-const declaredTitles = [...twinSource.matchAll(/\n\s+it\("([^"]+)"/gu)].map(
-  (match) => match[1],
+assert.equal(
+  twins.measured.failed,
+  twinsOutcome.collected - twinsOutcome.passed,
+  "published twin failure count is not the number the runner did not pass",
 );
 assert.deepEqual(
-  declaredTitles,
+  collectedTwinTitles,
   twins.titles,
-  `${twins.file} declares a different test title list than the artifact claims`,
+  `${twins.file} ran a different test title list than the artifact claims`,
 );
-assert.ok(
-  !/\b(it|test|describe)\.skip\s*\(/u.test(twinSource),
-  "no Q47 twin may be skipped",
+
+assert.deepEqual(
+  evidence.runners,
+  [
+    aikenPublishedCommand({
+      projectDirectory: aikenProjectDirectory,
+      selectors: aikenSelectors,
+    }),
+    vitestPublishedCommand({
+      packageDirectory: twinsPackageDirectory,
+      testFile: twinsTestFile,
+    }),
+  ],
+  "published runner commands drifted from the commands this gate executes",
+);
+assert.equal(
+  twins.command,
+  vitestPublishedCommand({
+    packageDirectory: twinsPackageDirectory,
+    testFile: twinsTestFile,
+  }),
+  "the twin command recorded in the artifact is not the command this gate runs",
 );
 
 // ## The standalone surface must genuinely not exist
@@ -354,6 +510,28 @@ for (const output of [1, 2, 3, 4]) {
     `closure output ${String(output)} is owned by this disposition and cannot be waived`,
   );
 }
+// Output 4's evidence prose states pass ratios in words. Prose that states a
+// number is still a published count, so the numbers are parsed back out and
+// held to the same runner results as the `measured` blocks.
+const output4 = evidence.closureOutputs.find((row) => row.output === 4);
+const prosePassRatios = [
+  ...output4.evidence.matchAll(/(\d+) of (\d+) passing/gu),
+].map((match) => [Number(match[1]), Number(match[2])]);
+assert.deepEqual(
+  prosePassRatios,
+  [
+    [q47Passed, q47Checks.length],
+    [inheritedPassed, inheritedChecks.length],
+  ],
+  "closure output 4 states pass ratios that the runners did not measure",
+);
+assert.ok(
+  /0 failures/u.test(output4.evidence) &&
+    q47Passed === q47Checks.length &&
+    inheritedPassed === inheritedChecks.length,
+  "closure output 4 claims zero failures, which the runner results do not support",
+);
+
 // No LIVE_PASS may ever be claimed from a family-local artifact. Only a
 // *status* is checked, so the note may still say the artifact disclaims it.
 const statusValues = [];
@@ -396,13 +574,15 @@ for (const finding of evidence.residualFindings) {
   );
 }
 
-// ## The summary is recomputed, so it cannot lie
+// ## The summary is recomputed from measured results, so it cannot lie
 
+const executedChecks = aikenOutcome.passed + twinsOutcome.passed;
 const recomputed = {
   variants: evidence.variantMatrix.length,
-  inheritedSelectors: inherited.selectors.length,
-  q47AikenSelectors: q47.selectors.length,
-  q47TypeScriptTwins: twins.titles.length,
+  inheritedSelectors: inheritedPassed,
+  q47AikenSelectors: q47Passed,
+  q47TypeScriptTwins: twinsOutcome.passed,
+  executedChecks,
   closureOutputs: evidence.closureOutputs.length,
   localPass: evidence.closureOutputs.filter(
     (row) => row.status === "LOCAL_PASS",
@@ -422,7 +602,7 @@ const recomputed = {
 assert.deepEqual(
   evidence.summary,
   recomputed,
-  "the recorded summary disagrees with the rows it summarizes",
+  "the recorded summary disagrees with what the runners measured",
 );
 assert.equal(evidence.summary.standalonePaths, 0, "standalone paths must be 0");
 assert.equal(
@@ -443,11 +623,81 @@ assert.ok(
   "the parent-owned edits this artifact supports must be listed explicitly",
 );
 
-const executableChecks =
-  variantSelectorChecks +
-  inherited.selectors.length +
-  q47.selectors.length +
-  twins.titles.length;
+// ---------------------------------------------------------------------------
+// Negative self-tests: spawn this gate against seeded fixtures and require a
+// non-zero exit carrying the specific diagnostic. Without these, a future edit
+// could reintroduce existence-as-passage and nothing would notice.
+// ---------------------------------------------------------------------------
+
+const runSelfTest = (flag) =>
+  spawnSync(process.execPath, [fileURLToPath(import.meta.url), flag], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+  });
+
+const selfTests = [
+  [
+    "--vitest-fixture=failing",
+    /ERR_FOCUSED_CHECK_FAILED: .*executes and fails/su,
+  ],
+  [
+    "--vitest-fixture=zero-collection",
+    /ERR_FOCUSED_CHECK_ZERO_COLLECTION: .*collected 0 tests/su,
+  ],
+  [
+    "--vitest-fixture=skipped",
+    /ERR_FOCUSED_CHECK_NOT_EXECUTED: .*never executed/su,
+  ],
+  [
+    "--vitest-fixture=renamed-title",
+    /ERR_FOCUSED_CHECK_TITLE_NOT_COLLECTED: .*executes and passes/su,
+  ],
+  [
+    "--vitest-fixture=missing-file",
+    /ERR_FOCUSED_CHECK_NO_FILES: .*matched no test file/su,
+  ],
+  ["--aiken-fixture=failing", /ERR_AIKEN_CHECK_FAILED: .*selftest_probe/su],
+  [
+    "--aiken-fixture=zero-collection",
+    /ERR_AIKEN_ZERO_COLLECTION: .*collected 0 tests/su,
+  ],
+  [
+    "--aiken-fixture=missing-selector",
+    /ERR_AIKEN_SELECTOR_NOT_COLLECTED: .*selftest_probe_absent/su,
+  ],
+  [
+    "--aiken-fixture=module-mismatch",
+    /ERR_AIKEN_SELECTOR_MODULE_MISMATCH: .*selftest\/elsewhere/su,
+  ],
+];
+for (const [flag, expectedDiagnostic] of selfTests) {
+  const selfTest = runSelfTest(flag);
+  assert.notEqual(
+    selfTest.status,
+    0,
+    `Q47 structural-N/A gate accepted the seeded defect ${flag}`,
+  );
+  assert.match(
+    selfTest.stderr,
+    expectedDiagnostic,
+    `Q47 structural-N/A gate rejected ${flag} without its specific diagnostic`,
+  );
+}
+// Positive controls: the same harness must still accept real passing runs, so
+// the rejections above cannot be a gate that rejects everything.
+for (const [flag, expectedStdout] of [
+  ["--vitest-fixture=passing", /vitest fixture passing: 1\/1 passed/u],
+  ["--aiken-fixture=passing", /aiken fixture passing: 1\/1 passed/u],
+]) {
+  const control = runSelfTest(flag);
+  assert.equal(
+    control.status,
+    0,
+    `Q47 structural-N/A gate rejected a passing fixture (${flag}): ${control.stderr}`,
+  );
+  assert.match(control.stdout, expectedStdout);
+}
 
 const report = {
   status: "PASS",
@@ -461,7 +711,9 @@ const report = {
   parentPending: evidence.summary.parentPending,
   standalonePaths: evidence.summary.standalonePaths,
   standaloneCategories: evidence.summary.standaloneCategories,
-  executableChecks,
+  executedChecks,
+  aikenSelectorsCollected: aikenOutcome.collected,
+  twinTestsCollected: twinsOutcome.collected,
   inventoryPathsScanned: inventoryChecks,
 };
 
@@ -470,7 +722,7 @@ if (emitJson) {
 } else {
   console.log(
     `Q47 structural N/A: PASS (${String(evidence.summary.variants)} variants, ${String(
-      executableChecks,
-    )} executable checks, ${String(inventoryChecks)} paths scanned, 0 standalone paths, 0 standalone categories)`,
+      executedChecks,
+    )} runner-executed checks, ${String(inventoryChecks)} paths scanned, 0 standalone paths, 0 standalone categories)`,
   );
 }

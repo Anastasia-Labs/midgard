@@ -272,11 +272,16 @@
       "owner": "parent"
     }
   ],
+  "runners": [
+    "cd onchain/aiken && aiken check -e -m accepts_omitted_due_deposit_fault -m accepts_omitted_forced_order_at_authenticated_end_time_boundary -m rejects_omitted_forced_order_at_excluded_start_time_boundary -m rejects_omitted_forced_order_published_after_challenged_block -m accepts_out_of_window_deposit_fault -m q47_omitted_due_withdrawal_accepts -m q47_out_of_window_withdrawal_accepts -m q47_omitted_due_forced_accepts -m q47_out_of_window_forced_accepts -m q47_in_window_withdrawal_rejects -m q47_in_window_forced_rejects -m q47_wrong_domain_rejects -m q47_wrong_event_id_rejects",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/structural-na-q47-event-window-variants.test.ts"
+  ],
   "summary": {
     "variants": 6,
     "inheritedSelectors": 5,
     "q47AikenSelectors": 8,
     "q47TypeScriptTwins": 8,
+    "executedChecks": 21,
     "closureOutputs": 10,
     "localPass": 4,
     "structuralNa": 5,

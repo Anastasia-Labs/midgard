@@ -435,6 +435,11 @@
       "owner": "Q10/Q11/Q12/Q14"
     }
   ],
+  "runners": [
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-ledger-rules.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts"
+  ],
   "summary": {
     "families": 4,
     "outputsBound": 5,
@@ -443,6 +448,7 @@
     "measuredProofFitStages": 20,
     "worstByteMarginAcrossFamilies": 6000,
     "canonicalEvidenceSuiteTests": 32,
+    "emulatorLifecyclesExecuted": 7,
     "residualFindings": 4
   },
   "parentIntegration": {
