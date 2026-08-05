@@ -18,7 +18,7 @@
       "validate_l1_event_fault_proof",
       "validate_transition_fault_proof"
     ],
-    "publicationWindow": "(start_time, end_time] — start_time is excluded and end_time is included, per timed_l1_event_is_due in proof.ak"
+    "publicationWindow": "(start_time, end_time] \u2014 start_time is excluded and end_time is included, per timed_l1_event_is_due in proof.ak"
   },
   "variantMatrix": [
     {
@@ -108,7 +108,7 @@
       "selectors": 5,
       "passed": 5,
       "failed": 0,
-      "compiler": "aiken v1.1.23+2a78108"
+      "compiler": "aiken v1.1.23+2a78108 (patched fork, fast iteration)"
     },
     "selectors": [
       "accepts_omitted_due_deposit_fault",
@@ -125,7 +125,7 @@
       "selectors": 8,
       "passed": 8,
       "failed": 0,
-      "compiler": "aiken v1.1.23+2a78108"
+      "compiler": "aiken v1.1.22+39d6b04 (stock, authoritative) and aiken v1.1.23+2a78108 (patched fork); 8 of 8 passing under both"
     },
     "selectors": [
       {
@@ -173,7 +173,11 @@
   "q47TypeScriptTwins": {
     "file": "demo/midgard-fault-proofs/tests/structural-na-q47-event-window-variants.test.ts",
     "command": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/structural-na-q47-event-window-variants.test.ts",
-    "measured": { "tests": 8, "passed": 8, "failed": 0 },
+    "measured": {
+      "tests": 8,
+      "passed": 8,
+      "failed": 0
+    },
     "titles": [
       "encodes the omitted-due deposit variant exactly as the Aiken constructor",
       "encodes the omitted-due withdrawal variant exactly as the Aiken constructor",
