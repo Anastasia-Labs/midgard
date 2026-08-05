@@ -5518,3 +5518,64 @@ Integration gates on `59b65206`, all green: finality-engine 25/25, watcher
 focused tests 19 files 599/599, dependency map 8 classes, manifest quality
 186/186 with 0 defects, public-da-client 102/102, tsc/eslint/prettier/diff
 clean on both lanes.
+
+
+## Proof-fit adversary, C21/C26 residuals, and gate widening — wave 5 (2026-08-05)
+
+- **#484 residuals** `e4335bbd` — C26's sole remaining residual (the genuine
+  field-8 unary redeemer maximum) is closed by measurement: a new CML-free
+  raw redeemer/script-data-hash builder is pinned byte-identical (fee
+  included) to the production CML path at depth 1, then measures the
+  boundary — **accepted depth 3,995 at 16,381 signed bytes, adjacent 3,996
+  at 16,385** (the redeemer envelope costs 189 bytes more than the datum
+  maximum 4,043/16,384); field-8 projection, retained reconstruction, and
+  terminal vector all pinned; two mirroring Aiken tests added (C26 selector
+  4/4 under both compilers). C21's stale module citation corrected
+  (validation_machine_v1 → .test; the published command previously exited 1
+  on module identity while 6/6 passed) and the row's 42-count re-measured
+  exactly (6+9+6+21, 0 failures). C26 stays PARTIAL — statuses join from
+  this ledger's first queue and promotion is the ledger owner's call. Open:
+  C21 residual 4 (applied re-measurement needs the parent-owned blueprint).
+  Systemic findings ticketed as **#540**: ~10 more rows carry the same
+  stale module selector (plus 54 stem-spelled per-task citations found by
+  the #538 lane), and C10's pinned counts are stale (measured 24 vs pinned
+  19/27 subtotal).
+- **#481 residual — maximum/adversarial proof-fit fixture** `(impl/481,
+  integrated this batch)` — the owed fixture exists, is runner-measured,
+  and what it measures is a **defect, not a closure**: adversarially
+  ground MPF sibling keys force the largest branch shape at every level at
+  a measured marginal cost of **276 complete-signed-transaction bytes per
+  level** (48,139 exec-mem, 14,961,967 exec-steps; validated at two real
+  depths, submitted instance depth 5). Byte fit is the binding envelope:
+  Q10/Q11/Q12/Q14 exhaust the 16,384-byte L1 envelope at branch level
+  **22/22/21/23**. Forcing level i costs ≈2^(4i), so the cheapest family
+  is exhaustible at **≈2^84 work** against the 2^128 reference adversary
+  reaching level 32 — a block producer paying that makes their own
+  fraudulent block unprovable on L1. Recorded executably as **Q1X-F5**
+  (severity defect, protocol decision) and ticketed as **#541**; all four
+  output-5 cells deliberately stay OPEN, and the verifier now refuses
+  LOCAL_PASS while the envelope is exhaustible AND fails if that condition
+  clears without the cells being re-decided. Q1X-F6 (spend-input preimage
+  cardinality axis) remains unexercised, tracked in the artifact.
+  Pre-existing failure surfaced and ticketed as **#542**: the
+  COMPLETE_PUBLISHED_CANONICAL pinned measurement (input-no-idx suite) has
+  drifted at HEAD (ex-units/fee/tx-hash; bytes unchanged).
+- **#538 widening** `4eec5b05` + fix-up `(impl/538-fixup)` — the capability
+  gate now executes **all 115 distinct per-task Aiken selectors** (124
+  citations, 17 PASS-declared P2 tasks, 12 modules) in one batched fork
+  invocation (~72 s), zero exclusions, every artifact number a pin
+  asserted against the runner report; Q47 measures **both compilers**
+  (13/13 stock v1.1.22+39d6b04 and 13/13 fork v1.1.23+6d14ab2, identical
+  sets), replacing prose that had also pinned a never-validated fork rev
+  (+2a78108 → +6d14ab2). The fix-up corrected a real integration defect
+  the gate itself caught: two citation spellings of the same three
+  validation-machine tests over-declared the set as 118; selector identity
+  is now the source-pair stem with the stricter .test citation winning.
+  Full capability gate 7 m 1 s, 17/22 PASS measured.
+
+Integration gates on the final wave tree, all exit 0: capability
+reconciliation (115/115 widened), Q47 dual-compiler, Q1x (16 LOCAL_PASS /
+4 OPEN, 20 minimal + 16 maximum stages, envelope-exhaustion facts
+asserted), unary-depth suite 6/6, C26 selector 4/4 both compilers,
+manifest quality 186/186 with 0 defects + self-test, verification plan,
+status-role control.
