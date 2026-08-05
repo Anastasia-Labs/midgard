@@ -212,7 +212,7 @@
     "cd onchain/aiken && aiken check -e -m script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
   ],
   "p2PerTaskAikenCoverage": {
-    "note": "Issue #538. p2TaskWitnesses is one focused verification per PASS task; canonical-v1-goal-task-manifest-v1.json declares more for every one of them — the per-task `node scripts/run-focused-check.mjs <module> <selector> ...` citations covering the heavier maximum_*/CEK/boundary selectors — and nothing replayed those, so the gate's scope was a strict subset of the scope its own authority declares. The verifier now derives this plan from the manifest's focusedCommands (never from plannedFocusedCommands, which commit 6e805a78 quarantined as planned rather than executable, and never from this artifact), executes every distinct selector in one batched `check -e` invocation of the patched fork, and refuses to publish a task as PASS unless each selector the manifest binds to it was collected from its declared module and passed. The counts below are pins asserted against that runner report; they are not compared to each other.",
+    "note": "Issue #538. p2TaskWitnesses is one focused verification per PASS task; canonical-v1-goal-task-manifest-v1.json declares more for every one of them — the per-task `node scripts/run-focused-check.mjs <module> <selector> ...` citations covering the heavier maximum_*/CEK/boundary selectors — and nothing replayed those, so the gate's scope was a strict subset of the scope its own authority declares. The verifier now derives this plan from the manifest's focusedCommands (never from plannedFocusedCommands, which commit 6e805a78 quarantined as planned rather than executable, and never from this artifact), executes every distinct selector in one batched `check -e` invocation of the patched fork, and refuses to publish a task as PASS unless each selector the manifest binds to it was collected from its declared module and passed. The counts below are pins asserted against that runner report; they are not compared to each other. A selector's identity is its source pair, not the spelling a citation happens to use: `lib/midgard/x-v1.ak` and `lib/midgard/x-v1.test.ak` are one pair addressed by one `aiken check -m` prefix, and the manifest cites it both ways (commit e4335bbd corrected C21 to the `.test` form while C20-0/C20-1/C20-2 still name the stem). `selectors` therefore counts distinct source-pair selectors, `citations` counts every manifest mention of one, and `modules` lists the module names the runner reported collecting from rather than either citation spelling.",
     "tasks": 17,
     "citations": 124,
     "selectors": 115,
@@ -226,17 +226,17 @@
     },
     "modules": [
       "midgard/cek_data_breadth_v1.test",
-      "midgard/cek_proof_v1",
+      "midgard/cek_proof_v1.test",
       "midgard/fraud_proofs/native_tx.max_redeemers.test",
       "midgard/fraud_proofs/native_tx_v1.test",
       "midgard/fraud_proofs/proof_v1_fragment_envelope.test",
-      "midgard/ledger_output_proof_v1",
-      "midgard/ledger_output_value_v1",
-      "midgard/redeemer_item_proof_v1",
-      "midgard/script_language_views_v1",
-      "midgard/script_proof_v1",
-      "midgard/user_events/tx_order_v1",
-      "midgard/validation_machine_v1"
+      "midgard/ledger_output_proof_v1.test",
+      "midgard/ledger_output_value_v1.test",
+      "midgard/redeemer_item_proof_v1.test",
+      "midgard/script_language_views_v1.test",
+      "midgard/script_proof_v1.test",
+      "midgard/user_events/tx_order_v1.test",
+      "midgard/validation_machine_v1.test"
     ],
     "byTask": {
       "C20-0": 4,

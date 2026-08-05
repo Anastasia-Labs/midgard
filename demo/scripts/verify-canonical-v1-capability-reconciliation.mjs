@@ -158,6 +158,16 @@ const focusedCheckPattern = new RegExp(
   "u",
 );
 
+// A `lib/midgard/x-v1.ak` module and its `lib/midgard/x-v1.test.ak` sibling are
+// one source pair addressed by one `aiken check -m` prefix, and the manifest
+// cites that pair in either spelling — commit e4335bbd corrected C21 to the
+// `.test` form while C20-0/C20-1/C20-2 still name the stem. The stem is
+// therefore the selector's identity: keying on the literal spelling instead made
+// three tests cited by both spellings into six declarations against three
+// collected results.
+const aikenModuleStem = (module) =>
+  module.endsWith(".test") ? module.slice(0, -".test".length) : module;
+
 // Pure: turns one task's declared focused commands into the (module, selector)
 // pairs a runner must be shown to have passed. It never silently drops a
 // citation — a `run-focused-check` command it cannot parse, or one naming a
@@ -185,6 +195,7 @@ export const perTaskAikenCitations = ({ taskId, commands, moduleIndex }) => {
       citations.push({
         task: taskId,
         module,
+        stem: aikenModuleStem(module),
         // A citation that names the `midgard/x_v1` stem selects both that module
         // and its `midgard/x_v1.test` sibling, because `aiken check -m` matches
         // the module part as a prefix. Both spellings name the same source pair;
@@ -280,15 +291,23 @@ const perTaskCitationsByTask = new Map(
   ]),
 );
 const perTaskCitations = [...perTaskCitationsByTask.values()].flat();
-const perTaskDeclared = [];
-const seenPerTaskPairs = new Set();
+// One declaration per (source pair, selector). When two tasks cite the same test
+// in different spellings the strictest accepted-module set wins, so a precise
+// `.test` citation is never loosened by a stem citation of the same test.
+const perTaskKey = ({ stem, selector }) => `${stem}#${selector}`;
+const perTaskDeclaredByKey = new Map();
 for (const citation of perTaskCitations) {
-  const key = `${citation.module}#${citation.selector}`;
-  if (!seenPerTaskPairs.has(key)) {
-    seenPerTaskPairs.add(key);
-    perTaskDeclared.push(citation);
+  const key = perTaskKey(citation);
+  const existing = perTaskDeclaredByKey.get(key);
+  if (existing === undefined) {
+    perTaskDeclaredByKey.set(key, citation);
+    continue;
+  }
+  if (citation.modules.length < existing.modules.length) {
+    perTaskDeclaredByKey.set(key, citation);
   }
 }
+const perTaskDeclared = [...perTaskDeclaredByKey.values()];
 assert.ok(
   perTaskDeclared.length > 0,
   "the per-task Aiken plan is empty; the widened leg would measure nothing",
@@ -357,14 +376,13 @@ assert.equal(
   "the batched per-task run collected tests the manifest did not declare",
 );
 const measuredPerTaskSelectors = new Set(
-  perTaskOutcome.measured.map(
-    ({ module, selector }) => `${module}#${selector}`,
+  perTaskOutcome.measured.map(({ module, selector }) =>
+    perTaskKey({ stem: aikenModuleStem(module), selector }),
   ),
 );
 for (const [taskId, citations] of perTaskCitationsByTask) {
   const unmeasured = citations.filter(
-    ({ module, selector }) =>
-      !measuredPerTaskSelectors.has(`${module}#${selector}`),
+    (citation) => !measuredPerTaskSelectors.has(perTaskKey(citation)),
   );
   assert.deepEqual(
     unmeasured,
@@ -378,8 +396,8 @@ const measuredPassTasks = declaredPassTasks.filter((taskId) => {
   return (
     plan.vitest.every((file) => vitestResults.get(file)?.passed > 0) &&
     plan.aiken.every((identifier) => measuredAikenSelectors.has(identifier)) &&
-    (perTaskCitationsByTask.get(taskId) ?? []).every(({ module, selector }) =>
-      measuredPerTaskSelectors.has(`${module}#${selector}`),
+    (perTaskCitationsByTask.get(taskId) ?? []).every((citation) =>
+      measuredPerTaskSelectors.has(perTaskKey(citation)),
     )
   );
 });
@@ -433,8 +451,11 @@ assert.deepEqual(
 // The widened coverage is a pin, checked against the runner result. Its *scope*
 // is derived from the task manifest, never from this artifact, so the numbers
 // below cannot be widened or narrowed by editing the file they live in.
+// The modules published are the ones the runner reported collecting from, not
+// the spellings the manifest happens to cite: the same source pair is cited both
+// ways, so only the collected name is a single fact about the run.
 const perTaskModules = [
-  ...new Set(perTaskDeclared.map(({ module }) => module)),
+  ...new Set(perTaskOutcome.measured.map(({ collectedFrom }) => collectedFrom)),
 ].sort();
 const perTaskByTask = Object.fromEntries(
   [...perTaskCitationsByTask]
@@ -594,11 +615,44 @@ assert.deepEqual(
     {
       task: "SELFTEST",
       module: "midgard/script_proof_v1",
+      stem: "midgard/script_proof_v1",
       modules: ["midgard/script_proof_v1", "midgard/script_proof_v1.test"],
       selector: "redeemer_purpose_tags_are_stable",
     },
   ],
   "the per-task plan builder did not produce the citation its input declares",
+);
+// Two tasks citing one test in the two spellings of the same source pair are one
+// declaration against one collected result, and the precise `.test` citation is
+// the one that survives. Keying on the literal spelling instead is what made the
+// declared total outrun what a batch can collect once e4335bbd corrected C21.
+const selftestSpellings = [
+  ...perTaskAikenCitations({
+    taskId: "SELFTEST_STEM",
+    commands: [
+      "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1 redeemer_purpose_tags_are_stable",
+    ],
+    moduleIndex,
+  }),
+  ...perTaskAikenCitations({
+    taskId: "SELFTEST_TEST",
+    commands: [
+      "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1.test redeemer_purpose_tags_are_stable",
+    ],
+    moduleIndex,
+  }),
+];
+assert.deepEqual(
+  [...new Set(selftestSpellings.map((citation) => perTaskKey(citation)))],
+  ["midgard/script_proof_v1#redeemer_purpose_tags_are_stable"],
+  "the two spellings of one source pair did not resolve to one selector identity",
+);
+assert.deepEqual(
+  selftestSpellings
+    .map((citation) => citation.modules)
+    .sort((left, right) => left.length - right.length)[0],
+  ["midgard/script_proof_v1.test"],
+  "the precise `.test` citation did not survive as the strictest accepted module set",
 );
 
 const runSelfTest = (flag) =>
