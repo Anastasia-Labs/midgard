@@ -487,7 +487,7 @@ export const VALIDATION_CEK_DIRECT_RESOLVER_REFERENCE_SCRIPT_ROLE =
  * Deployment-info entry that publishes the applied `cek_v1` direct resolver
  * (direct resolver 0) as an authenticated L1 reference script. Every CEK
  * finalization transaction must consume the resolver by reference: the
- * applied resolver body is 156,006 bytes, so embedding it in the proof
+ * applied resolver body is 156,467 bytes, so embedding it in the proof
  * transaction can never fit the 16,384-byte L1 envelope
  * (`MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES`).
  */

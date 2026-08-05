@@ -6,7 +6,17 @@
   graph, its canonical program envelope, and independently authenticated
   material entries.
 - Source revision at measurement: worktree over
-  `536b190a6246b0faba53bd43a0c3d3f319e215a6` carrying the complete C28 batch.
+  `84aa1ce3931ed67d241ca2ffd9e93671bc45d4c5` carrying the complete C28 batch
+  plus the issue #521 duplicate-type-name renames
+  (`cek_machine_v1.ValueWitnessV1` -> `MachineValueWitnessV1`,
+  `midgard/user_events/deposit.Datum` -> `DepositDatum`). The renames change
+  no constructor tag, field order, or CBOR encoding; they remove the stock
+  `aiken v1.1.22` generated-decoder collision, so `cek_v1` and
+  `scheduler.spend` now compile to identical bytes under the released and the
+  patched compiler. The blueprint SHA-256, the `cek_v1` byte counts, and the
+  applied `cek_v1` hash below were re-measured after those renames and
+  supersede the earlier values taken over
+  `536b190a6246b0faba53bd43a0c3d3f319e215a6`.
   The C28 source of truth is `demo/midgard-validation/src/cek-program.ts` and
   `onchain/aiken/lib/midgard/{cek-proof-v1,cek-data-v1,validation-resolver-v1,validation-machine-v1}.ak`
   plus `onchain/aiken/validators/fraud-proofs/validation-trace/cek-v1.ak`.
@@ -15,8 +25,8 @@
   (provenance only; C28 does not regenerate the protected blueprint). The
   current-tree disposable blueprint compiled from the changed Aiken sources
   with pinned `aiken v1.1.22+39d6b04` has SHA-256
-  `6b6422eeb128663495d97272c965faecf77438b5d1e369d742e9f1de46688f20`; its
-  `fraud_proofs/validation_trace/cek_v1.main.spend` is 156,006 compiled bytes
+  `b1c79edca9b305f4000a3116d73ba998687ea95aa5d1a9091de544218449937a`; its
+  `fraud_proofs/validation_trace/cek_v1.main.spend` is 156,312 compiled bytes
   with exactly 4 parameters (fraud-proof address, computation-thread policy,
   award hash, immutable CEK program-material identity), verified by the
   gated current-tree selector in
@@ -24,8 +34,8 @@
   with `MIDGARD_REAL_BLUEPRINT_PATH` set to the disposable blueprint).
 - Applied direct-resolver identities on the measurement deployment
   (`hub_oracle=11…11`, `catalogue=22…22`):
-  current-tree applied `cek_v1` is 156,161 bytes with hash
-  `827fe0ad74a14400c89c08e4e8c0655d5fc1da85e32d8c21f9bd51f2`; the protected
+  current-tree applied `cek_v1` is 156,467 bytes with hash
+  `f5d6395c562f2c0e1dc76582e2b1f2ba3e287345ab4abcd8cceb6666`; the protected
   checked-in blueprint's applied `cek_v1` is 141,959 bytes with hash
   `92c53d4757c14275600484193355f09917437e05e731ba25b935d549`. Any change to
   either hash invalidates this artifact (GOAL_SPEC.md §3.2).
@@ -142,7 +152,7 @@ multi-transaction verification is missing. Per the repository tradeoff order
 (correctness, safety, liveness, performance, convenience) a route that
 verifies nothing is strictly worse than a route that rejects, so the closure
 is the correct interim state. It sits alongside the already-recorded
-oversized-validator limit below: `cek_v1` itself is 156,161 applied bytes and
+oversized-validator limit below: `cek_v1` itself is 156,467 applied bytes and
 is likewise not live-network deployable yet.
 
 **Owed to the follow-up lease** (not C28): the authenticated
@@ -181,7 +191,7 @@ pre-fix failure is that assertion and nothing else.
 ## Direct-resolver reference-script carriage (measured)
 
 The CEK direct resolver (direct resolver 0, phase 11 `Cek`) can never travel
-inside the 16,384-byte L1 proof envelope: its applied body alone is 156,161
+inside the 16,384-byte L1 proof envelope: its applied body alone is 156,467
 bytes. C28 therefore registers and consumes it as an authenticated
 reference-script deployment role:
 
