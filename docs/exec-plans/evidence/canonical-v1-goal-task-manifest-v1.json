@@ -1579,7 +1579,7 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/validation-machine-v1.ak lib/midgard/validation-machine-v1.test.ak",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_native_then_effectful_cek_selection_is_bounded cek_context_spend_item_uses_authenticated_descriptor_frontier cek_context_reference_item_uses_authenticated_descriptor_frontier cek_context_output_item_uses_authenticated_descriptor_frontier cek_spend_finalize_authenticates_descriptor_datum_summary maximum_general_field_bounded_chunk_instruction_evidence_is_bounded",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1.test maximum_native_then_effectful_cek_selection_is_bounded cek_context_spend_item_uses_authenticated_descriptor_frontier cek_context_reference_item_uses_authenticated_descriptor_frontier cek_context_output_item_uses_authenticated_descriptor_frontier cek_spend_finalize_authenticates_descriptor_datum_summary maximum_general_field_bounded_chunk_instruction_evidence_is_bounded",
         "pnpm --dir demo/midgard-validation exec vitest run tests/complete-item-proof-fit-v1.test.ts tests/complete-item-proof-fit-emulator-v1.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts",
@@ -1588,7 +1588,7 @@
         "pnpm --dir demo/midgard-sdk typecheck",
         "pnpm --dir demo/midgard-fault-proofs typecheck"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts, validation-proof-item-v1.test.ts, validation-dispute-submit.test.ts, submit-init-emulator-validation-dispute.test.ts. Fresh collection contract after the Option A repin: exactly 6 guarded Aiken tests, exactly 9 validation tests across 2 files, exactly 6 SDK tests in 1 file, and exactly 21 fault-proof tests across 2 files; exactly 42 tests total, all passing with 0 failures. The fault-proof contract read 14 across 2 files until issue #484 re-measured the same two files at 21; that was a stale recorded count, not a stale suite. Older pre-repin transcripts do not satisfy this contract.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, complete-item-proof-fit-v1.test.ts, complete-item-proof-fit-emulator-v1.test.ts, validation-proof-item-v1.test.ts, validation-dispute-submit.test.ts, submit-init-emulator-validation-dispute.test.ts. Fresh collection contract after the Option A repin: exactly 6 guarded Aiken tests, exactly 9 validation tests across 2 files, exactly 6 SDK tests in 1 file, and exactly 21 fault-proof tests across 2 files; exactly 42 tests total, all passing with 0 failures. The fault-proof contract read 14 across 2 files until issue #484 re-measured the same two files at 21; that was a stale recorded count, not a stale suite. Re-measured 2026-08-05 for issue #484 on the current tree: 6/6, 9/9, 6/6, 21/21 — exactly 42, 0 failures, with the 6 guarded Aiken tests identical on stock Aiken v1.1.22+39d6b04 and on the fork. The same re-measurement corrected the guarded Aiken command, which named module midgard/validation_machine_v1 while all six selectors live in midgard/validation_machine_v1.test, so run-focused-check.mjs exited 1 on a module-identity mismatch even though every selector passed; the command now exits 0. Older pre-repin transcripts do not satisfy this contract.",
       "invalidationTriggers": [
         "Option A auxiliary tags/shape, proof-item datum, stage-4 semantics, carriage selector, or any writable path changes",
         "Any applied validator hash, deployment reference-script identity, consensus profile, protocol parameter, cost model, maxTxSize, or min-Ada input changes",
@@ -1884,30 +1884,36 @@
       "sourceAnchors": [
         "GOAL_SPEC.md §8.2 row C26",
         "GOAL_PROGRESS.md authoritative first task-queue row C26 (PARTIAL; corrected 2026-08-04)",
-        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:56 maximum_unary_depth_is_bound_by_signed_cardano_capacity",
-        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:68 maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation",
-        "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:335 exact maximum-depth normal/forced retained reconstruction",
-        "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:441 exact maximum-depth emulator admission"
+        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:108 maximum_unary_depth_is_bound_by_signed_cardano_capacity",
+        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:120 maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation",
+        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:150 maximum_unary_redeemer_depth_is_bound_by_signed_cardano_capacity",
+        "onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:164 maximum_unary_redeemer_depth_terminal_agrees_with_typescript_and_rejects_mutation",
+        "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:451 exact maximum-depth normal/forced retained reconstruction",
+        "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:675 exact maximum-depth emulator admission",
+        "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:778 genuine field-8 unary redeemer maximum and its normal/forced retained reconstruction",
+        "demo/midgard-validation/tests/helpers/unary-depth-candidate-v1.ts:305 buildRawSignedCardanoUnaryRedeemersCandidateV1 raw redeemer/script-data-hash builder"
       ],
       "evidenceOutputs": [
-        "Exact depth 4,043 accepted at 16,384 signed bytes and adjacent depth 4,044 rejected at 16,388 bytes",
-        "Exact 4,044-node/16,191-step terminal agreement and mutation rejection across TypeScript/Aiken",
+        "Exact inline-datum depth 4,043 accepted at 16,384 signed bytes and adjacent depth 4,044 rejected at 16,388 bytes",
+        "Exact field-8 redeemer depth 3,995 accepted at 16,381 signed bytes and adjacent depth 3,996 rejected at 16,385 bytes, from a raw builder pinned byte-identical to the CML spend-redeemer builder at depth one",
+        "Exact 4,044-node/16,191-step datum and 3,996-node/15,999-step redeemer terminal agreement and mutation rejection across TypeScript/Aiken",
         "Normal and forced exact-maximum retained reconstruction preserving canonical signed bytes and digest identity for both datum and redeemer maxima",
         "Malformed/noncanonical focused controls plus fresh guarded Aiken and TypeScript transcripts"
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/c26_unary_depth_v1.test maximum_unary_depth_is_bound_by_signed_cardano_capacity maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/c26_unary_depth_v1.test maximum_unary_depth_is_bound_by_signed_cardano_capacity maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation maximum_unary_redeemer_depth_is_bound_by_signed_cardano_capacity maximum_unary_redeemer_depth_terminal_agrees_with_typescript_and_rejects_mutation",
         "pnpm --dir demo/midgard-validation exec vitest run tests/plutus-data-unary-depth-boundary-v1.test.ts",
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-validation typecheck",
         "pnpm --dir demo/midgard-validation exec eslint tests/helpers/unary-depth-candidate-v1.ts tests/plutus-data-unary-depth-boundary-v1.test.ts"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/c26_unary_depth_v1.test, plutus-data-unary-depth-boundary-v1.test.ts. Current evidence passes exactly 2 guarded Aiken tests and exactly 5 TypeScript tests in 1 file. Narrowed 2026-08-04 for issue #484: retained canonical maximum signed-byte and blake2b-256 digest identity across both normal and forced classifications (plus transaction-id/commitment identity for the 16,470-byte canonical transaction) and the focused malformed/noncanonical controls at depth 4,043 now pass, and maximum-depth emulator admission passes through the --stack-size=2000 child-process runner rather than any owner-approval-gated CML wasm stack patch. Full C26 acceptance remains PARTIAL for exactly 1 residual: the genuine field-8 unary redeemer maximum, which needs a raw redeemer/script-data-hash builder plus the out-of-process patched-stack CML runner, because buildSignedCardanoSpendRedeemersCandidateV1 routes through CML.PlutusData.from_cbor_hex and CML.calc_script_data_hash and both trap on deep Data.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/c26_unary_depth_v1.test, plutus-data-unary-depth-boundary-v1.test.ts. Current evidence passes exactly 4 guarded Aiken tests and exactly 6 TypeScript tests in 1 file, 0 failures, with identical 4/4 guarded results on stock Aiken v1.1.22+39d6b04 and on the fork. Narrowed 2026-08-04 for issue #484: retained canonical maximum signed-byte and blake2b-256 digest identity across both normal and forced classifications (plus transaction-id/commitment identity for the 16,470-byte canonical transaction) and the focused malformed/noncanonical controls at depth 4,043 pass, and maximum-depth emulator admission passes through the --stack-size=2000 child-process runner rather than any owner-approval-gated CML wasm stack patch. Closed 2026-08-05 for issue #484: the single named remaining residual, the genuine field-8 unary redeemer maximum, is now measured. buildRawSignedCardanoUnaryRedeemersCandidateV1 assembles the Conway spend-redeemer transaction and its blake2b-256(redeemers || language_views) script-data hash without CML.PlutusData.from_cbor_hex or CML.calc_script_data_hash, is byte-identical to buildSignedCardanoSpendRedeemersCandidateV1 at depth one including the fee, and yields accepted depth 3,995 at 16,381 signed bytes against adjacent depth 3,996 at 16,385, projected into field 8 at 15,997 preimage bytes across 4 chunks of an 8-step complete fold with normal/forced retained reconstruction and digest, transaction-id, and commitment identity on the 16,273-byte canonical transaction. Promotion out of PARTIAL belongs to the authoritative first GOAL_PROGRESS.md queue owner; this row records the measurement only.",
       "invalidationTriggers": [
         "CML, datum/native-redeemer well-formedness, unary candidate construction, or any writable path changes",
         "Target protocol parameters, maxTxSize, canonical Data encoding, retained reconstruction, or emulator admission changes",
         "The 4,043/4,044 boundary, 16,384/16,388 signed sizes, 4,044-node/16,191-step terminal, or normal/forced classification changes",
+        "The 3,995/3,996 field-8 redeemer boundary, 16,381/16,385 signed sizes, 3,996-node/15,999-step redeemer terminal, the Plutus V3 cost model or language-views encoding feeding the raw script-data hash, or the always-succeeds blueprint witness changes",
         "The authoritative first GOAL_PROGRESS.md C26 status or any dependency status/ABI changes"
       ],
       "detailStatus": "DETAILED",

@@ -27,6 +27,32 @@ const terminal_post_control =
 const terminal_root =
   #"db84befa89735cb7e184bc06890e5b922bcb7e2550caffdff82dcec934fdd723"
 
+const accepted_unary_redeemer_depth = 3_995
+
+const accepted_unary_redeemer_data_bytes = 15_981
+
+const adjacent_unary_redeemer_depth = 3_996
+
+const adjacent_unary_redeemer_data_bytes = 15_985
+
+/// A spend redeemer pays for the Plutus script witness, the redeemer pointer
+/// and its execution units, the collateral input/return/total, and the
+/// script-data hash, so its envelope is larger than an output datum option and
+/// its unary capacity is correspondingly smaller.
+const signed_redeemer_transaction_overhead_bytes = 400
+
+const redeemer_terminal_pre_control =
+  #"8a010600193e6d193e6d582023fabfae62d51cba8147f76aef6c613f4f3525e8257361873c678e77aa750929d87a80d87a80d87a80d87a80"
+
+const redeemer_terminal_frame_cbor =
+  #"8b000040000040010181820058202e255919cf99b2743582ee389fb462ccb7562cf0a614647a01d9ce9fb14000bc0184582003a6eed9be7ce3bf1e01f104842a3b8fc33bfb24f5941e2fc84019a4bdce9c2001193e69193e6d"
+
+const redeemer_terminal_post_control =
+  #"8a010700193e6d193e6d40d87a80d87a80d87a80d8799f8358207102b7fc9525a54adf2b32de87dfc544c46f2cf275bd45bfa794dbb518f4fa1e193e6d193e71ff"
+
+const redeemer_terminal_root =
+  #"7102b7fc9525a54adf2b32de87dfc544c46f2cf275bd45bfa794dbb518f4fa1e"
+
 fn maximum_terminal_frame() -> cek_data_frame_v1.DataFrameV1 {
   cek_data_frame_v1.DataFrameV1 {
     kind: cek_data_frame_v1.constr_small_frame,
@@ -49,6 +75,32 @@ fn maximum_terminal_frame() -> cek_data_frame_v1.DataFrameV1 {
       length: 1,
       payload_cbor_length: 16_169,
       memory: 16_173,
+    },
+  }
+}
+
+fn maximum_redeemer_terminal_frame() -> cek_data_frame_v1.DataFrameV1 {
+  cek_data_frame_v1.DataFrameV1 {
+    kind: cek_data_frame_v1.constr_small_frame,
+    constructor: 0,
+    constructor_cbor_root: #"",
+    constructor_cbor_length: 0,
+    constructor_memory: 0,
+    tail: #"",
+    expected_children: 1,
+    child_count: 1,
+    child_peaks: [
+      validation_merkle_v1.FrontierPeak {
+        height: 0,
+        hash: #"2e255919cf99b2743582ee389fb462ccb7562cf0a614647a01d9ce9fb14000bc",
+      },
+    ],
+    fold_cursor: 1,
+    sequence: cek_data_v1.DataSequenceSummaryV1 {
+      root: #"03a6eed9be7ce3bf1e01f104842a3b8fc33bfb24f5941e2fc84019a4bdce9c20",
+      length: 1,
+      payload_cbor_length: 15_977,
+      memory: 15_981,
     },
   }
 }
@@ -87,6 +139,52 @@ test maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation() 
     summary.root == terminal_root,
     summary.cbor_length == accepted_unary_datum_bytes,
     summary.memory == 16_177,
+    cek_data_traverse_v1.step_v1(
+      pre,
+      None,
+      cek_data_traverse_v1.FinalizeFrame { frame: mutated_frame, parent: None },
+    ) == None,
+  }
+}
+
+test maximum_unary_redeemer_depth_is_bound_by_signed_cardano_capacity() {
+  let accepted_signed_bytes = accepted_unary_redeemer_data_bytes + signed_redeemer_transaction_overhead_bytes
+  let adjacent_signed_bytes = adjacent_unary_redeemer_data_bytes + signed_redeemer_transaction_overhead_bytes
+  and {
+    accepted_unary_redeemer_data_bytes == accepted_unary_redeemer_depth * 4 + 1,
+    adjacent_unary_redeemer_depth == accepted_unary_redeemer_depth + 1,
+    adjacent_unary_redeemer_data_bytes == accepted_unary_redeemer_data_bytes + 4,
+    accepted_signed_bytes <= maximum_cardano_transaction_bytes,
+    adjacent_signed_bytes > maximum_cardano_transaction_bytes,
+    signed_redeemer_transaction_overhead_bytes > signed_transaction_overhead_bytes,
+    accepted_unary_redeemer_depth < accepted_unary_depth,
+  }
+}
+
+test maximum_unary_redeemer_depth_terminal_agrees_with_typescript_and_rejects_mutation() {
+  let pre = cek_data_traverse_v1.decode_control_v1(
+    redeemer_terminal_pre_control,
+  )
+  let frame = maximum_redeemer_terminal_frame()
+  expect Some(post) = cek_data_traverse_v1.step_v1(
+    pre,
+    None,
+    cek_data_traverse_v1.FinalizeFrame { frame, parent: None },
+  )
+  expect Some(summary) = cek_data_traverse_v1.finalize_v1(post)
+  let mutated_frame = cek_data_frame_v1.DataFrameV1 {
+    ..frame,
+    sequence: cek_data_v1.DataSequenceSummaryV1 {
+      ..frame.sequence,
+      root: #"02a6eed9be7ce3bf1e01f104842a3b8fc33bfb24f5941e2fc84019a4bdce9c20",
+    },
+  }
+  and {
+    cek_data_frame_v1.encode_frame_v1(frame) == redeemer_terminal_frame_cbor,
+    cek_data_traverse_v1.encode_control_v1(post) == redeemer_terminal_post_control,
+    summary.root == redeemer_terminal_root,
+    summary.cbor_length == accepted_unary_redeemer_data_bytes,
+    summary.memory == 15_985,
     cek_data_traverse_v1.step_v1(
       pre,
       None,
