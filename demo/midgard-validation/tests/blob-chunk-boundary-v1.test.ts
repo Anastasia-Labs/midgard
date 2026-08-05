@@ -19,6 +19,17 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
+// The exact genuine signed-Cardano inline-datum blob boundary. The terminal
+// vector below is the Aiken-replayed half; these four numbers pin the payload
+// size and byte count the search must land on, so a silently shrunk blob can no
+// longer satisfy the relative bounds alone.
+const MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES_V1 = 15_680;
+const MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES_V1 = 16_383;
+const MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES_V1 = 15_681;
+const MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES_V1 = 16_385;
+const MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES_V1 = 16_172;
+const MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES_V1 = 16_174;
+
 const maximumInlineDatumBlobTerminalVectorV1 = {
   transactionIdHex:
     "112edbb37e44d39825d1e33830c942032ecbaca605ddc11c3931cc948a8d02f2",
@@ -113,6 +124,27 @@ describe("canonical V1 byte-blob Cardano boundary", () => {
     expect(accepted.datumCborBytes).toBeGreaterThan(accepted.datumPayloadBytes);
     expect(adjacent.datumCborBytes).toBeGreaterThan(adjacent.datumPayloadBytes);
     expect(adjacent.datumCborBytes).toBeGreaterThan(accepted.datumCborBytes);
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(boundary.accepted.requestedItemCount).toBe(
+      MAXIMUM_INLINE_DATUM_ACCEPTED_PAYLOAD_BYTES_V1,
+    );
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_INLINE_DATUM_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(boundary.adjacent.requestedItemCount).toBe(
+      MAXIMUM_INLINE_DATUM_ADJACENT_PAYLOAD_BYTES_V1,
+    );
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_INLINE_DATUM_ADJACENT_SIGNED_BYTES_V1,
+    );
+    expect(accepted.datumCborBytes).toBe(
+      MAXIMUM_INLINE_DATUM_ACCEPTED_DATUM_CBOR_BYTES_V1,
+    );
+    expect(adjacent.datumCborBytes).toBe(
+      MAXIMUM_INLINE_DATUM_ADJACENT_DATUM_CBOR_BYTES_V1,
+    );
 
     const midgard = exerciseMidgardOrderedCollectionBoundaryV1({
       signedCardanoCborHex: boundary.accepted.cborHex,

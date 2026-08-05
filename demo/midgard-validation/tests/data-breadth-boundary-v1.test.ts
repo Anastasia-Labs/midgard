@@ -622,6 +622,68 @@ const maximumRedeemerChunkBytes = (
     0,
   );
 
+/**
+ * The exact genuine signed-Cardano breadth boundaries, per Data kind and per
+ * carriage path. Before these pins the two searches were only bounded relative
+ * to `maxTxSize`, and the measured vectors were printed rather than asserted —
+ * a silently shrunk collection kept the suite green. Each entry is the maximum
+ * breadth the search must land on, its adjacent overflow, and both signed
+ * transaction sizes and Data CBOR sizes.
+ */
+const MAXIMUM_DATUM_BREADTH_BOUNDARY_V1 = {
+  constructor: {
+    acceptedBreadth: 16_166,
+    acceptedDataCborBytes: 16_173,
+    acceptedSignedBytes: 16_384,
+    adjacentBreadth: 16_167,
+    adjacentDataCborBytes: 16_174,
+    adjacentSignedBytes: 16_385,
+  },
+  list: {
+    acceptedBreadth: 16_171,
+    acceptedDataCborBytes: 16_173,
+    acceptedSignedBytes: 16_384,
+    adjacentBreadth: 16_172,
+    adjacentDataCborBytes: 16_174,
+    adjacentSignedBytes: 16_385,
+  },
+  map: {
+    acceptedBreadth: 4_112,
+    acceptedDataCborBytes: 16_171,
+    acceptedSignedBytes: 16_382,
+    adjacentBreadth: 4_113,
+    adjacentDataCborBytes: 16_175,
+    adjacentSignedBytes: 16_386,
+  },
+} as const;
+
+const MAXIMUM_REDEEMER_BREADTH_BOUNDARY_V1 = {
+  constructor: {
+    acceptedBreadth: 15_977,
+    acceptedDataCborBytes: 15_984,
+    acceptedSignedBytes: 16_384,
+    adjacentBreadth: 15_978,
+    adjacentDataCborBytes: 15_985,
+    adjacentSignedBytes: 16_385,
+  },
+  list: {
+    acceptedBreadth: 15_982,
+    acceptedDataCborBytes: 15_984,
+    acceptedSignedBytes: 16_384,
+    adjacentBreadth: 15_983,
+    adjacentDataCborBytes: 15_985,
+    adjacentSignedBytes: 16_385,
+  },
+  map: {
+    acceptedBreadth: 4_065,
+    acceptedDataCborBytes: 15_983,
+    acceptedSignedBytes: 16_383,
+    adjacentBreadth: 4_066,
+    adjacentDataCborBytes: 15_987,
+    adjacentSignedBytes: 16_387,
+  },
+} as const;
+
 describe("canonical V1 Cardano Data breadth boundaries", () => {
   it.each(["constructor", "list", "map"] as const)(
     "retains maximum %s breadth through the inline-datum path",
@@ -680,6 +742,17 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(boundary.adjacent.requestedItemCount).toBe(
         boundary.accepted.requestedItemCount + 1,
       );
+
+      // The genuine maximum and its immediately adjacent control are exact, not
+      // merely "whatever the search returned".
+      expect({
+        acceptedBreadth: boundary.accepted.requestedItemCount,
+        acceptedDataCborBytes: acceptedDataCborHex.length / 2,
+        acceptedSignedBytes: boundary.accepted.signedBytes,
+        adjacentBreadth: boundary.adjacent.requestedItemCount,
+        adjacentDataCborBytes: adjacentDataCborHex.length / 2,
+        adjacentSignedBytes: boundary.adjacent.signedBytes,
+      }).toEqual(MAXIMUM_DATUM_BREADTH_BOUNDARY_V1[kind]);
       expect(accepted.datumCborHex).toBe(acceptedDataCborHex);
       expect(adjacent.datumCborHex).toBe(adjacentDataCborHex);
       assertExactBreadthSemantics(
@@ -1106,6 +1179,17 @@ describe("canonical V1 Cardano Data breadth boundaries", () => {
       expect(boundary.adjacent.requestedItemCount).toBe(
         boundary.accepted.requestedItemCount + 1,
       );
+
+      // The genuine maximum and its immediately adjacent control are exact, not
+      // merely "whatever the search returned".
+      expect({
+        acceptedBreadth: boundary.accepted.requestedItemCount,
+        acceptedDataCborBytes: acceptedDataCborHex.length / 2,
+        acceptedSignedBytes: boundary.accepted.signedBytes,
+        adjacentBreadth: boundary.adjacent.requestedItemCount,
+        adjacentDataCborBytes: adjacentDataCborHex.length / 2,
+        adjacentSignedBytes: boundary.adjacent.signedBytes,
+      }).toEqual(MAXIMUM_REDEEMER_BREADTH_BOUNDARY_V1[kind]);
       expect(accepted.redeemerCount).toBe(1);
       expect(adjacent.redeemerCount).toBe(1);
       expect(accepted.redeemerTags).toEqual([CML.RedeemerTag.Spend]);

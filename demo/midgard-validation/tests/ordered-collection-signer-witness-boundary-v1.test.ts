@@ -12,6 +12,15 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
+// The exact genuine signed-Cardano field-4/field-7 boundary. The terminal fold
+// vector below is the Aiken-replayed half; these four numbers pin the coupled
+// signer/witness cardinality and byte count the search must land on, so a
+// silently shrunk collection can no longer satisfy the relative bounds alone.
+const MAXIMUM_SIGNER_WITNESS_ACCEPTED_COUNT_V1 = 124;
+const MAXIMUM_SIGNER_WITNESS_ACCEPTED_SIGNED_BYTES_V1 = 16_351;
+const MAXIMUM_SIGNER_WITNESS_ADJACENT_COUNT_V1 = 125;
+const MAXIMUM_SIGNER_WITNESS_ADJACENT_SIGNED_BYTES_V1 = 16_482;
+
 const maximumRequiredSignerTerminalFoldVectorV1 = {
   transactionIdHex:
     "0297901027ac0e7df5aeefe14961ca4fcebcdf27d69bc9d9ab2638ee2c86b71e",
@@ -155,6 +164,27 @@ describe("canonical V1 coupled signer/witness Cardano boundary", () => {
     );
     expect(witnessField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+    );
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(boundary.accepted.requestedItemCount).toBe(
+      MAXIMUM_SIGNER_WITNESS_ACCEPTED_COUNT_V1,
+    );
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_SIGNER_WITNESS_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(boundary.adjacent.requestedItemCount).toBe(
+      MAXIMUM_SIGNER_WITNESS_ADJACENT_COUNT_V1,
+    );
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_SIGNER_WITNESS_ADJACENT_SIGNED_BYTES_V1,
+    );
+    expect(signerField.itemCount).toBe(
+      MAXIMUM_SIGNER_WITNESS_ACCEPTED_COUNT_V1,
+    );
+    expect(witnessField.itemCount).toBe(
+      MAXIMUM_SIGNER_WITNESS_ACCEPTED_COUNT_V1,
     );
     expect({
       transactionIdHex: signerField.terminalFoldVector.transactionIdHex,

@@ -11,6 +11,15 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
+// The exact genuine signed-Cardano field-2 boundary. The terminal fold vector
+// below is the Aiken-replayed half; these four numbers pin the cardinality and
+// byte count the search must land on, so a silently shrunk outputs collection
+// can no longer satisfy the relative bounds alone.
+const MAXIMUM_OUTPUT_ACCEPTED_COUNT_V1 = 437;
+const MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES_V1 = 16_372;
+const MAXIMUM_OUTPUT_ADJACENT_COUNT_V1 = 438;
+const MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES_V1 = 16_409;
+
 const maximumOutputTerminalFoldVectorV1 = {
   transactionIdHex:
     "851486b3f437bcae3712e1a2f0dbfab86062e4f0e8a3ed207607e1c0581c29e3",
@@ -138,6 +147,21 @@ describe("canonical V1 ordered-collection Cardano boundaries", () => {
     );
     expect(midgardMeasurement.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
+    );
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(boundary.accepted.requestedItemCount).toBe(
+      MAXIMUM_OUTPUT_ACCEPTED_COUNT_V1,
+    );
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_OUTPUT_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(boundary.adjacent.requestedItemCount).toBe(
+      MAXIMUM_OUTPUT_ADJACENT_COUNT_V1,
+    );
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_OUTPUT_ADJACENT_SIGNED_BYTES_V1,
     );
     expect({
       transactionIdHex: midgardMeasurement.terminalFoldVector.transactionIdHex,

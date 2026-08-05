@@ -19,6 +19,15 @@ import {
 } from "./helpers/ordered-collection-boundary-v1.js";
 import { exerciseMidgardRetainedDaBoundaryV1 } from "./helpers/retained-da-boundary-v1.js";
 
+// The exact genuine signed-Cardano field-5/field-6 boundary. The terminal fold
+// vector below is the Aiken-replayed half; these four numbers pin the policy
+// cardinality and byte count the search must land on, so a silently shrunk mint
+// collection can no longer satisfy the relative bounds alone.
+const MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1 = 130;
+const MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES_V1 = 16_376;
+const MAXIMUM_MINT_POLICY_ADJACENT_COUNT_V1 = 131;
+const MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES_V1 = 16_500;
+
 const maximumMintTerminalFoldVectorV1 = {
   fieldCommitmentHex:
     "7dc0480f6a10748bc18aed966ef23ca7dd70cd929f5a88b056d427e2f9453c32",
@@ -261,6 +270,23 @@ describe("canonical V1 mint Cardano boundary", () => {
     expect(mintField.maxRevealBytes).toBeLessThan(
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(boundary.accepted.requestedItemCount).toBe(
+      MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1,
+    );
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_MINT_POLICY_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(boundary.adjacent.requestedItemCount).toBe(
+      MAXIMUM_MINT_POLICY_ADJACENT_COUNT_V1,
+    );
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_MINT_POLICY_ADJACENT_SIGNED_BYTES_V1,
+    );
+    expect(mintField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
+    expect(scriptField.itemCount).toBe(MAXIMUM_MINT_POLICY_ACCEPTED_COUNT_V1);
     const nativeMintItems = deriveMidgardNativeFieldItemBytesV1({
       fieldIndex: 5,
       preimageCbor: Buffer.from(mintField.fieldPreimageCborHex, "hex"),

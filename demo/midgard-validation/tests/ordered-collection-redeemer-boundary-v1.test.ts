@@ -65,6 +65,15 @@ const spendingScript: SpendingValidator = {
   script: applyDoubleCborEncoding(alwaysSucceedsCompiledCode),
 };
 
+// The exact genuine signed-Cardano field-8 boundary. The terminal fold vector
+// below is the Aiken-replayed half; these four numbers pin the redeemer
+// cardinality and byte count the search must land on, so a silently shrunk
+// redeemer collection can no longer satisfy the relative bounds alone.
+const MAXIMUM_REDEEMER_ACCEPTED_COUNT_V1 = 296;
+const MAXIMUM_REDEEMER_ACCEPTED_SIGNED_BYTES_V1 = 16_377;
+const MAXIMUM_REDEEMER_ADJACENT_COUNT_V1 = 297;
+const MAXIMUM_REDEEMER_ADJACENT_SIGNED_BYTES_V1 = 16_433;
+
 const maximumRedeemerTerminalFoldVectorV1 = {
   fieldCommitmentHex:
     "07da3c8aea4dd252510b18f872268ea7b7d752fe9d6874f3321286ec6d8c4133",
@@ -272,6 +281,17 @@ describe("canonical V1 spend-redeemer Cardano boundary", () => {
     expect(adjacentCount).toBe(acceptedCount + 1);
     expect(adjacentCount).toBeLessThanOrEqual(maxByMemory);
     expect(adjacentCount).toBeLessThanOrEqual(maxBySteps);
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(acceptedCount).toBe(MAXIMUM_REDEEMER_ACCEPTED_COUNT_V1);
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_REDEEMER_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(adjacentCount).toBe(MAXIMUM_REDEEMER_ADJACENT_COUNT_V1);
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_REDEEMER_ADJACENT_SIGNED_BYTES_V1,
+    );
     expect(accepted.redeemerCount).toBe(acceptedCount);
     expect(adjacent.redeemerCount).toBe(adjacentCount);
     expect(accepted.inputCount).toBe(acceptedCount + 1);

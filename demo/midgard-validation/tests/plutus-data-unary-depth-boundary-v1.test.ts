@@ -43,6 +43,15 @@ import {
 
 const productionRuntimeUnaryDepthWitnessV1 = 1_024;
 
+// The exact genuine signed-Cardano unary-depth boundary. The terminal vector
+// below carries the same numbers inside one large object comparison; these four
+// pins state the cardinality and byte count directly at the search site, so a
+// silently shrunk depth can no longer satisfy the relative bounds alone.
+const MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT_V1 = 4_043;
+const MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES_V1 = 16_384;
+const MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT_V1 = 4_044;
+const MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES_V1 = 16_388;
+
 const maximumUnaryDepthTerminalVectorV1 = {
   maxTxSize: 16_384,
   cardanoSignedCapacityCandidate: {
@@ -139,6 +148,18 @@ describe("canonical V1 Plutus Data unary-depth boundary", () => {
       CARDANO_BOUNDARY_MAX_TX_SIZE_V1,
     );
     expect(adjacentShape.depth).toBe(acceptedShape.depth + 1);
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(acceptedShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ACCEPTED_COUNT_V1);
+    expect(accepted.signedBytes).toBe(
+      MAXIMUM_UNARY_DEPTH_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(adjacentShape.depth).toBe(MAXIMUM_UNARY_DEPTH_ADJACENT_COUNT_V1);
+    expect(adjacent.signedBytes).toBe(
+      MAXIMUM_UNARY_DEPTH_ADJACENT_SIGNED_BYTES_V1,
+    );
+
     expect(accepted.requestedItemCount).toBe(acceptedShape.depth);
     expect(adjacent.requestedItemCount).toBe(adjacentShape.depth);
     expect(acceptedShape.nodeCount).toBe(acceptedShape.depth + 1);

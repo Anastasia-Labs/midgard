@@ -71,6 +71,16 @@ const jsonDataFrame = (
   },
 });
 
+// The exact genuine signed-Cardano nested-datum boundary. The terminal vector
+// below carries the same numbers, but its comparison is skipped while an Aiken
+// vector is being regenerated; these four pins are unconditional, so a silently
+// shrunk datum can no longer satisfy the relative bounds alone.
+const MAXIMUM_NESTED_DATA_ACCEPTED_LEAF_COUNT_V1 = 5_387;
+const MAXIMUM_NESTED_DATA_ACCEPTED_SIGNED_BYTES_V1 = 16_382;
+const MAXIMUM_NESTED_DATA_ADJACENT_LEAF_COUNT_V1 = 5_388;
+const MAXIMUM_NESTED_DATA_ADJACENT_SIGNED_BYTES_V1 = 16_385;
+const MAXIMUM_NESTED_DATA_DATUM_TRAVERSE_STEP_COUNT_V1 = 129_311;
+
 const maximumNestedDataTerminalVectorV1 = {
   maxTxSize: 16_384,
   nestedLeafCount: 5_387,
@@ -161,6 +171,21 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     expect(boundary.adjacent.requestedItemCount).toBe(
       boundary.accepted.requestedItemCount + 1,
     );
+
+    // The genuine maximum and its immediately adjacent control are exact, not
+    // merely "whatever the search returned".
+    expect(boundary.accepted.requestedItemCount).toBe(
+      MAXIMUM_NESTED_DATA_ACCEPTED_LEAF_COUNT_V1,
+    );
+    expect(boundary.accepted.signedBytes).toBe(
+      MAXIMUM_NESTED_DATA_ACCEPTED_SIGNED_BYTES_V1,
+    );
+    expect(boundary.adjacent.requestedItemCount).toBe(
+      MAXIMUM_NESTED_DATA_ADJACENT_LEAF_COUNT_V1,
+    );
+    expect(boundary.adjacent.signedBytes).toBe(
+      MAXIMUM_NESTED_DATA_ADJACENT_SIGNED_BYTES_V1,
+    );
     expect(accepted.datumCborHex).toBe(acceptedDatumCborHex);
     expect(adjacent.datumCborHex).toBe(adjacentDatumCborHex);
     expect(accepted.datumCborBytes).toBe(
@@ -212,6 +237,9 @@ describe("canonical V1 nested Cardano Data boundary", () => {
     );
     expect(datumSteps.length).toBeGreaterThan(
       boundary.accepted.requestedItemCount,
+    );
+    expect(datumSteps.length).toBe(
+      MAXIMUM_NESTED_DATA_DATUM_TRAVERSE_STEP_COUNT_V1,
     );
     expect(
       datumSteps.map(({ witness }) =>
