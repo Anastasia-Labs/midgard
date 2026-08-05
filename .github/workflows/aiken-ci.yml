@@ -87,6 +87,13 @@ jobs:
           # Normalize only that formatter artifact before comparing sources.
           git ls-files -z '*.ak' | xargs -0 sed -i 's/[[:space:]]\+$//'
           git diff --name-only --exit-code -- '*.ak'
+      # Issue #523. A focused `aiken check -m <selector>` whose selector matches
+      # nothing prints an empty report and exits 0, so every gate citing it
+      # reports success while running no tests. scripts/guard-focused-selector.mjs
+      # turns that into a nonzero exit naming the selector; its self-test
+      # includes the negative case, and an unguarded guard is worth nothing.
+      - name: Self-test the fail-closed focused-selector guard
+        run: node --test scripts/guard-focused-selector.test.mjs
       # Type/compile check with the released authority compiler, then execute
       # the suite with the patched one. Both must pass.
       - name: Compile Aiken code with the released compiler
