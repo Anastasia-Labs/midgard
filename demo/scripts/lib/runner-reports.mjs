@@ -19,7 +19,7 @@
 // may not be published as a pass.
 
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -224,6 +224,84 @@ export const deriveVitestOutcome = ({
 
 export const aikenBinary = () => process.env.MIDGARD_AIKEN_BIN ?? "aiken";
 
+// `.github/workflows/aiken-ci.yml` runs two compilers and names them with these
+// two variables: the released v1.1.22 build is the authority for compilation and
+// every applied validator hash, and the patched v1.1.23 fork is what actually
+// executes the test suite (upstream aiken#1389 makes a full stock `aiken check`
+// take ~485 minutes on this tree). A gate that publishes a claim about one of
+// them must spawn that one, so both are resolved by name here instead of being
+// left to whatever `aiken` happens to be first on PATH.
+export const stockAikenBinary = () =>
+  process.env.MIDGARD_STOCK_AIKEN_BIN ?? aikenBinary();
+export const forkAikenBinary = () =>
+  process.env.MIDGARD_FORK_AIKEN_BIN ?? "aiken-fork";
+
+// The compiler identity is measured, never assumed: a cached or shadowed binary
+// that is not the pinned build must fail the gate that cites it rather than
+// silently supplying the result under another compiler's name.
+export const aikenCompilerVersion = (binary) => {
+  const run = spawnSync(binary, ["--version"], { encoding: "utf8" });
+  if (run.error !== undefined || run.status !== 0) {
+    throw new RunnerCheckError(
+      "ERR_AIKEN_BINARY_UNAVAILABLE",
+      `${binary} could not report its version (${
+        run.error === undefined
+          ? `exit ${String(run.status)}`
+          : run.error.message
+      }); set MIDGARD_STOCK_AIKEN_BIN / MIDGARD_FORK_AIKEN_BIN to the two compilers .github/workflows/aiken-ci.yml pins`,
+    );
+  }
+  return (run.stdout ?? "").trim();
+};
+
+// Aiken derives a module's name from its source path under `lib/` or
+// `validators/`, with hyphens folded to underscores: `lib/midgard/x-v1.test.ak`
+// is the module `midgard/x_v1.test`. The task manifest cites modules in either
+// spelling, so an index of both is what turns a citation into the exact module
+// a selector must have been collected from.
+export const aikenModuleIndex = (projectRoot) => {
+  const collect = (directory, prefix, found) => {
+    let entries;
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      return found;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        collect(
+          resolve(directory, entry.name),
+          `${prefix}${entry.name}/`,
+          found,
+        );
+      } else if (entry.isFile() && entry.name.endsWith(".ak")) {
+        found.push(`${prefix}${entry.name.slice(0, -".ak".length)}`);
+      }
+    }
+    return found;
+  };
+  const index = new Map();
+  for (const root of ["lib", "validators"]) {
+    for (const found of collect(resolve(projectRoot, root), "", [])) {
+      const module = found.replaceAll("-", "_");
+      for (const alias of [found, module]) {
+        if (!index.has(alias)) {
+          index.set(alias, module);
+        }
+      }
+    }
+  }
+  return index;
+};
+
+// `aiken check -m` splits its selector on the first `.` to separate the module
+// from the `{test}` list, so a module whose own name contains a `.` — every
+// `*.test.ak` file — cannot be spelled out in full. The prefix up to the first
+// `.` still selects it, which is what `onchain/aiken/scripts/run-focused-check.mjs`
+// passes and therefore what a manifest citation means.
+export const aikenSelectorPattern = ({ module, selector }) =>
+  `${module.split(".")[0]}.{${selector}}`;
+
 // `onchain/aiken/validators/fraud-proofs/no-input/step-01.ak` is the module
 // `fraud_proofs/no_input/step_01` to the compiler; `lib/midgard/x-v1.test.ak`
 // is `midgard/x_v1.test`. Deriving the name lets the gate insist that a cited
@@ -235,14 +313,18 @@ export const aikenModuleName = (modulePath) =>
     .replace(/\.ak$/u, "")
     .replaceAll("-", "_");
 
-export const aikenPublishedCommand = ({ projectDirectory, selectors }) =>
-  `cd ${projectDirectory} && aiken check -e ${selectors
+export const aikenPublishedCommand = ({
+  projectDirectory,
+  selectors,
+  command = "aiken",
+}) =>
+  `cd ${projectDirectory} && ${command} check -e ${selectors
     .map((selector) => `-m ${selector}`)
     .join(" ")}`;
 
-export const runAikenCheck = ({ projectRoot, selectors }) => {
+export const runAikenCheck = ({ projectRoot, selectors, binary }) => {
   const run = spawnSync(
-    aikenBinary(),
+    binary ?? aikenBinary(),
     [
       "check",
       "-e",
@@ -264,7 +346,7 @@ export const runAikenCheck = ({ projectRoot, selectors }) => {
   } catch (error) {
     throw new RunnerCheckError(
       "ERR_AIKEN_NO_REPORT",
-      `aiken produced no readable structured report (exit ${String(
+      `${binary ?? aikenBinary()} produced no readable structured report (exit ${String(
         run.status,
       )}): ${error instanceof Error ? error.message : String(error)}\n${
         run.stderr ?? ""
@@ -276,6 +358,13 @@ export const runAikenCheck = ({ projectRoot, selectors }) => {
 
 // Pure: takes an `aiken check` JSON report plus the (module, selector) pairs the
 // artifact declares and returns the measured per-selector results, or throws.
+//
+// A declaration may carry `modules: [...]` instead of relying on `module` alone
+// when the citation it comes from names a source-path stem that two compiled
+// modules share — `lib/midgard/x-v1.ak` and its `lib/midgard/x-v1.test.ak`
+// sibling both answer to the `midgard/x_v1` prefix that `aiken check -m` matches.
+// The accepted set is always an explicit, bounded list; anything outside it is
+// still an ERR_AIKEN_SELECTOR_MODULE_MISMATCH.
 //
 // `aiken check -m <selector>` exits 0 when the selector matches nothing — the
 // zero-collection shape that put 17 declared tests behind a `midgard/` prefix
@@ -306,7 +395,8 @@ export const deriveAikenOutcome = ({ label, report, status, declared }) => {
   const ambiguous = [];
   const misplaced = [];
   const failed = [];
-  for (const { module, selector } of declared) {
+  for (const { module, modules, selector } of declared) {
+    const acceptedModules = modules ?? [module];
     const matches = byTitle.get(selector) ?? [];
     if (matches.length === 0) {
       missing.push(`${module}.{${selector}}`);
@@ -321,9 +411,9 @@ export const deriveAikenOutcome = ({ label, report, status, declared }) => {
       continue;
     }
     const [match] = matches;
-    if (match.module !== module) {
+    if (!acceptedModules.includes(match.module)) {
       misplaced.push(
-        `${selector} is declared in ${module} but was collected from ${match.module}`,
+        `${selector} is declared in ${acceptedModules.join(" or ")} but was collected from ${match.module}`,
       );
       continue;
     }
@@ -331,7 +421,7 @@ export const deriveAikenOutcome = ({ label, report, status, declared }) => {
       failed.push(`${module}.{${selector}} (${match.status})`);
       continue;
     }
-    measured.push({ module, selector });
+    measured.push({ module, selector, collectedFrom: match.module });
   }
   if (missing.length > 0) {
     throw new RunnerCheckError(

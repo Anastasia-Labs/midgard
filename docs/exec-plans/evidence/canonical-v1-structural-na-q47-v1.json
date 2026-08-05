@@ -4,6 +4,22 @@
   "goalIds": ["Q47"],
   "issue": 482,
   "note": "Q47 (omitted / out-of-window deposit, withdrawal and forced-event variants) is structurally N/A as a standalone proof family: all six violation variants are constructors of the shared transitionTrace family. GOAL_SPEC.md 9.1 requires an adversarial EXECUTABLE proof of that fact plus a precise matrix N/A; prose is insufficient. This artifact binds the executable disposition only. It records LOCAL_PASS for the Q47 disposition and claims no Q57/QG3 LIVE_PASS.",
+  "compilers": {
+    "note": "Issue #538. The measured blocks below used to carry a free-text `compiler` line asserting the selectors pass under stock v1.1.22 and the patched fork, while the verifier spawned exactly one compiler — whatever `aiken` resolved to, which is the stock one. The gate now executes every cited selector under both, requires the two to pass the identical selector set, and reads each compiler's identity from the binary it spawned instead of describing it. The fork pin is bound to AIKEN_FORK_REV in .github/workflows/aiken-ci.yml, so a fork built from another revision cannot answer to it.",
+    "stock": {
+      "version": "aiken v1.1.22+39d6b04",
+      "role": "released authority: compilation and every applied validator hash",
+      "binaryEnv": "MIDGARD_STOCK_AIKEN_BIN",
+      "binaryDefault": "aiken"
+    },
+    "fork": {
+      "version": "aiken v1.1.23+6d14ab2",
+      "rev": "6d14ab2dd63633db6a7d626c4ad129d87c0f108c",
+      "role": "patched test executor: the compiler CI uses to run the suite (upstream aiken#1389)",
+      "binaryEnv": "MIDGARD_FORK_AIKEN_BIN",
+      "binaryDefault": "aiken-fork"
+    }
+  },
   "structuralClaim": {
     "sharedFamily": "transitionTrace",
     "catalogueCategoryIndex": 4,
@@ -108,7 +124,8 @@
       "selectors": 5,
       "passed": 5,
       "failed": 0,
-      "compiler": "aiken v1.1.23+2a78108 (patched fork, fast iteration)"
+      "stockPassed": 5,
+      "forkPassed": 5
     },
     "selectors": [
       "accepts_omitted_due_deposit_fault",
@@ -125,7 +142,8 @@
       "selectors": 8,
       "passed": 8,
       "failed": 0,
-      "compiler": "aiken v1.1.22+39d6b04 (stock, authoritative) and aiken v1.1.23+2a78108 (patched fork); 8 of 8 passing under both"
+      "stockPassed": 8,
+      "forkPassed": 8
     },
     "selectors": [
       {
@@ -227,7 +245,7 @@
       "output": 4,
       "title": "Aiken proof steps with positive and valid-block negative tests",
       "status": "LOCAL_PASS",
-      "evidence": "Four positive selectors, two adjacent valid-block negatives and two controls, measured 8 of 8 passing with 0 failures, plus the 5 inherited Q21 event-window selectors measured 5 of 5 passing."
+      "evidence": "Four positive selectors, two adjacent valid-block negatives and two controls, measured 8 of 8 passing with 0 failures, plus the 5 inherited Q21 event-window selectors measured 5 of 5 passing. Every one of those selectors was executed under both compilers and the two passed the identical set."
     },
     {
       "output": 5,
@@ -274,6 +292,7 @@
   ],
   "runners": [
     "cd onchain/aiken && aiken check -e -m accepts_omitted_due_deposit_fault -m accepts_omitted_forced_order_at_authenticated_end_time_boundary -m rejects_omitted_forced_order_at_excluded_start_time_boundary -m rejects_omitted_forced_order_published_after_challenged_block -m accepts_out_of_window_deposit_fault -m q47_omitted_due_withdrawal_accepts -m q47_out_of_window_withdrawal_accepts -m q47_omitted_due_forced_accepts -m q47_out_of_window_forced_accepts -m q47_in_window_withdrawal_rejects -m q47_in_window_forced_rejects -m q47_wrong_domain_rejects -m q47_wrong_event_id_rejects",
+    "cd onchain/aiken && aiken-fork check -e -m accepts_omitted_due_deposit_fault -m accepts_omitted_forced_order_at_authenticated_end_time_boundary -m rejects_omitted_forced_order_at_excluded_start_time_boundary -m rejects_omitted_forced_order_published_after_challenged_block -m accepts_out_of_window_deposit_fault -m q47_omitted_due_withdrawal_accepts -m q47_out_of_window_withdrawal_accepts -m q47_omitted_due_forced_accepts -m q47_out_of_window_forced_accepts -m q47_in_window_withdrawal_rejects -m q47_in_window_forced_rejects -m q47_wrong_domain_rejects -m q47_wrong_event_id_rejects",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/structural-na-q47-event-window-variants.test.ts"
   ],
   "summary": {

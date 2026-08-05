@@ -19,7 +19,16 @@
 // cited on-chain selectors are executed in one `aiken check -e` invocation
 // (compilation dominates its cost, so batching is both faster and exactly as
 // strict) and the TypeScript twins by spawning the owning package's own Vitest
-// CLI. The artifact's `measured` blocks are pins asserted against those runner
+// CLI.
+//
+// Issue #538. That invocation used to be a single compiler while the artifact
+// claimed passage "under both stock v1.1.22 and fork v1.1.23". Batching makes
+// the second measurement cheap, so it is taken rather than asserted: the same
+// thirteen selectors run under the released authority compiler and under the
+// patched fork, both must pass the identical set, and each compiler's identity
+// is read from the binary that produced the result.
+//
+// The artifact's `measured` blocks are pins asserted against those runner
 // results, never operands of each other. Source scanning survives only where it
 // backs no count at all: the constructor/entry-point structural claims, and the
 // exhaustiveness check that the Q47 module declares no selector the artifact
@@ -35,12 +44,15 @@ import { fileURLToPath } from "node:url";
 
 import { runFixtureMode } from "./lib/runner-fixtures.mjs";
 import {
+  aikenCompilerVersion,
   aikenModuleName,
   aikenPublishedCommand,
   deriveAikenOutcome,
   deriveVitestOutcome,
+  forkAikenBinary,
   runAikenCheck,
   runVitest,
+  stockAikenBinary,
   vitestPublishedCommand,
 } from "./lib/runner-reports.mjs";
 
@@ -294,26 +306,106 @@ for (const check of [
 const aikenSelectors = [
   ...new Set(declaredAikenChecks.map(({ selector }) => selector)),
 ];
-const aikenOutcome = deriveAikenOutcome({
-  label: "Q47 structural N/A on-chain selectors",
-  declared: declaredAikenChecks,
-  ...runAikenCheck({
-    projectRoot: aikenProjectRoot,
-    selectors: aikenSelectors,
-  }),
-});
+// Issue #538. The artifact claimed these selectors pass "under both stock
+// v1.1.22 and fork v1.1.23" while this gate spawned whatever `aiken` resolved to
+// — one compiler, and by default the stock one. A dual-compiler claim needs two
+// measurements, so both are taken here: the released authority compiler and the
+// patched fork `.github/workflows/aiken-ci.yml` uses to execute the suite. Each
+// compiler's identity is read from the binary itself and pinned, so a shadowed
+// or stale build cannot supply a result under the other's name.
+const stockAiken = stockAikenBinary();
+const forkAiken = forkAikenBinary();
+const measuredCompilerVersions = {
+  stock: aikenCompilerVersion(stockAiken),
+  fork: aikenCompilerVersion(forkAiken),
+};
+const runDeclaredSelectors = (binary, role) =>
+  deriveAikenOutcome({
+    label: `Q47 structural N/A on-chain selectors (${role})`,
+    declared: declaredAikenChecks,
+    ...runAikenCheck({
+      projectRoot: aikenProjectRoot,
+      selectors: aikenSelectors,
+      binary,
+    }),
+  });
+const measuredKeys = (outcome) =>
+  outcome.measured
+    .map(({ module, selector }) => `${module}#${selector}`)
+    .sort();
+
+const aikenOutcome = runDeclaredSelectors(stockAiken, "released authority");
+const forkOutcome = runDeclaredSelectors(forkAiken, "patched fork");
 assert.equal(
   aikenOutcome.passed,
   declaredAikenChecks.length,
-  "every cited on-chain selector must be measured as passing",
+  "every cited on-chain selector must be measured as passing under the released compiler",
 );
-const measuredSelectors = new Set(
-  aikenOutcome.measured.map(({ module, selector }) => `${module}#${selector}`),
+assert.equal(
+  forkOutcome.passed,
+  declaredAikenChecks.length,
+  "every cited on-chain selector must be measured as passing under the patched fork",
 );
-const measuredPassed = (checks) =>
-  checks.filter(({ module, selector }) =>
-    measuredSelectors.has(`${module}#${selector}`),
-  ).length;
+// The two compilers must agree selector for selector, not merely in total: a
+// dual-compiler claim that rests on two different passing subsets is not the
+// claim the artifact makes.
+assert.deepEqual(
+  measuredKeys(forkOutcome),
+  measuredKeys(aikenOutcome),
+  "the two compilers did not pass the same set of cited selectors",
+);
+assert.equal(
+  forkOutcome.collected,
+  aikenOutcome.collected,
+  "the two compilers collected different numbers of tests from the same selectors",
+);
+const measuredSelectors = new Set(measuredKeys(aikenOutcome));
+const forkMeasuredSelectors = new Set(measuredKeys(forkOutcome));
+const passedIn = (measured) => (checks) =>
+  checks.filter(({ module, selector }) => measured.has(`${module}#${selector}`))
+    .length;
+const measuredPassed = passedIn(measuredSelectors);
+const forkPassed = passedIn(forkMeasuredSelectors);
+
+// The compiler identities the artifact publishes are the ones just spawned, and
+// the fork pin is bound to the exact revision CI installs — a fork built from a
+// different commit is a different compiler and may not answer to this pin.
+const workflowSource = await readRepositoryFile(
+  ".github/workflows/aiken-ci.yml",
+);
+assert.equal(
+  evidence.compilers.stock.version,
+  measuredCompilerVersions.stock,
+  "published released-compiler identity is not the compiler this gate spawned",
+);
+assert.equal(
+  evidence.compilers.fork.version,
+  measuredCompilerVersions.fork,
+  "published patched-fork identity is not the compiler this gate spawned",
+);
+assert.equal(
+  stockAiken,
+  process.env[evidence.compilers.stock.binaryEnv] ??
+    process.env.MIDGARD_AIKEN_BIN ??
+    evidence.compilers.stock.binaryDefault,
+  "the released compiler this gate spawned is not the one the published selection rule names",
+);
+assert.equal(
+  forkAiken,
+  process.env[evidence.compilers.fork.binaryEnv] ??
+    evidence.compilers.fork.binaryDefault,
+  "the patched fork this gate spawned is not the one the published selection rule names",
+);
+assert.ok(
+  evidence.compilers.fork.version.endsWith(
+    `+${evidence.compilers.fork.rev.slice(0, 7)}`,
+  ),
+  "the patched fork reported a build that is not the revision the artifact pins",
+);
+assert.ok(
+  workflowSource.includes(`AIKEN_FORK_REV: ${evidence.compilers.fork.rev}`),
+  "the pinned fork revision is not the one .github/workflows/aiken-ci.yml installs",
+);
 
 const twinsRun = runVitest({
   packageRoot: resolve(repositoryRoot, twinsPackageDirectory),
@@ -358,6 +450,16 @@ assert.equal(
   inheritedChecks.length - inheritedPassed,
   "published inherited failure count is not the number the runner did not pass",
 );
+assert.equal(
+  inherited.measured.stockPassed,
+  inheritedPassed,
+  "published inherited released-compiler pass count is not what that compiler passed",
+);
+assert.equal(
+  inherited.measured.forkPassed,
+  forkPassed(inheritedChecks),
+  "published inherited patched-fork pass count is not what that compiler passed",
+);
 
 const q47Passed = measuredPassed(q47Checks);
 assert.equal(
@@ -374,6 +476,16 @@ assert.equal(
   q47.measured.failed,
   q47Checks.length - q47Passed,
   "published Q47 failure count is not the number the runner did not pass",
+);
+assert.equal(
+  q47.measured.stockPassed,
+  q47Passed,
+  "published Q47 released-compiler pass count is not what that compiler passed",
+);
+assert.equal(
+  q47.measured.forkPassed,
+  forkPassed(q47Checks),
+  "published Q47 patched-fork pass count is not what that compiler passed",
 );
 
 assert.equal(
@@ -403,6 +515,12 @@ assert.deepEqual(
     aikenPublishedCommand({
       projectDirectory: aikenProjectDirectory,
       selectors: aikenSelectors,
+      command: evidence.compilers.stock.binaryDefault,
+    }),
+    aikenPublishedCommand({
+      projectDirectory: aikenProjectDirectory,
+      selectors: aikenSelectors,
+      command: evidence.compilers.fork.binaryDefault,
     }),
     vitestPublishedCommand({
       packageDirectory: twinsPackageDirectory,
@@ -530,6 +648,16 @@ assert.ok(
     q47Passed === q47Checks.length &&
     inheritedPassed === inheritedChecks.length,
   "closure output 4 claims zero failures, which the runner results do not support",
+);
+// The dual-compiler sentence is a published claim like any other, so it holds
+// only while both compilers really were run over the identical selector set.
+assert.ok(
+  /executed under both compilers and the two passed the identical set/u.test(
+    output4.evidence,
+  ) &&
+    forkPassed(q47Checks) === q47Passed &&
+    forkPassed(inheritedChecks) === inheritedPassed,
+  "closure output 4 claims both compilers passed the same selectors, which the runner results do not support",
 );
 
 // No LIVE_PASS may ever be claimed from a family-local artifact. Only a
@@ -670,6 +798,12 @@ const selfTests = [
     "--aiken-fixture=module-mismatch",
     /ERR_AIKEN_SELECTOR_MODULE_MISMATCH: .*selftest\/elsewhere/su,
   ],
+  // Issue #538: a per-compiler claim needs the named compiler, so an
+  // unresolvable binary must fail the gate rather than fall through to PATH.
+  [
+    "--compiler-fixture=missing",
+    /ERR_AIKEN_BINARY_UNAVAILABLE: .*MIDGARD_FORK_AIKEN_BIN/su,
+  ],
 ];
 for (const [flag, expectedDiagnostic] of selfTests) {
   const selfTest = runSelfTest(flag);
@@ -689,6 +823,13 @@ for (const [flag, expectedDiagnostic] of selfTests) {
 for (const [flag, expectedStdout] of [
   ["--vitest-fixture=passing", /vitest fixture passing: 1\/1 passed/u],
   ["--aiken-fixture=passing", /aiken fixture passing: 1\/1 passed/u],
+  // The identity is read from the spawned binary, not from a constant …
+  [
+    "--compiler-fixture=stub-version",
+    /compiler fixture stub-version: 1\/1 passed/u,
+  ],
+  // … and both pinned compilers really run and agree on a real project.
+  ["--compiler-fixture=dual", /compiler fixture dual: 2\/2 passed/u],
 ]) {
   const control = runSelfTest(flag);
   assert.equal(
@@ -712,7 +853,9 @@ const report = {
   standalonePaths: evidence.summary.standalonePaths,
   standaloneCategories: evidence.summary.standaloneCategories,
   executedChecks,
+  compilers: measuredCompilerVersions,
   aikenSelectorsCollected: aikenOutcome.collected,
+  aikenSelectorsCollectedUnderFork: forkOutcome.collected,
   twinTestsCollected: twinsOutcome.collected,
   inventoryPathsScanned: inventoryChecks,
 };
@@ -724,5 +867,12 @@ if (emitJson) {
     `Q47 structural N/A: PASS (${String(evidence.summary.variants)} variants, ${String(
       executedChecks,
     )} runner-executed checks, ${String(inventoryChecks)} paths scanned, 0 standalone paths, 0 standalone categories)`,
+  );
+  console.log(
+    `Q47 dual-compiler leg: ${String(aikenOutcome.passed)}/${String(
+      declaredAikenChecks.length,
+    )} selectors passed under ${measuredCompilerVersions.stock} and ${String(
+      forkOutcome.passed,
+    )}/${String(declaredAikenChecks.length)} under ${measuredCompilerVersions.fork}, identical selector sets`,
   );
 }
