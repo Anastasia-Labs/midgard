@@ -19,6 +19,14 @@ binding, fee, economics, DA-remedy, and system-wide preprod-acceptance gaps rema
 This was not a replacement for the full line-by-line audit, so historical line
 anchors remain advisory.
 
+Update **2026-07-27** (branch `fp/no-reference-input`): the `no-reference-input`
+family reached the same bar as zero-input — catalogue-registered (`noReferenceInput`),
+ported to the native counted-root binding path, CLI-complete
+(`prepare-no-reference-input` + `submit-no-reference-input-step-01..04`), and
+emulator-proven through faulty-block removal. The status buckets below and the
+`catalogue-status.md`/`coverage-matrix.md`/`testing-status.md` counts are updated
+accordingly; all other rows still reflect the 2026-07-10 audit.
+
 Terminology note: these were historically called **fraud proofs**. Public-facing
 documentation now generally says **fault proofs**, while the clean source tree still
 contains historical `fraud-proof` path names. They are the same mechanism. This
@@ -64,12 +72,12 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Generic machinery: catalogue, computation-thread minting policy (`Init`/`Success`/`BurnForCancellation`), step transition helpers, permanent fault-proof token, state-queue removal + operator slashing wiring, Plutarch MPF membership/non-membership (`phas`/`pexcludes`) primitives, counted/domain-tagged roots.
 - 10 of 12 proof types with real verification logic: `zero-input`, `no-input`, `double-spend`, `input-no-idx`, `invalid-range`, `invalid-signature`, `missing-native-script-tx`, `missing-signature`, `no-reference-input`, `withdrawn-reference-input`.
 - The `transition-trace` state-transition engine (9 top-level fault families: boundary, link, event-to-step, source-membership — incl. its phase-mismatch sub-variant — invalid one-step transition, duplicate-event, count, omitted-due-L1-event, out-of-window).
-- Offchain tooling for 5 families (double-spend, invalid-range, non-existent-input,
-  transition-trace, zero-input); all five are **emulator-proven end-to-end** through
-  faulty-block removal, although transition-trace remains library-only rather than
-  CLI-wired.
-- ⚠️ Reachability caveat: only **6 of the 12** proof types are registered in the
-  deployment catalogue — the other 6 compile but cannot `Init` a computation thread
+- Offchain tooling for 6 families (double-spend, invalid-range, non-existent-input,
+  transition-trace, zero-input, no-reference-input); all six are **emulator-proven
+  end-to-end** through faulty-block removal, although transition-trace remains
+  library-only rather than CLI-wired.
+- ⚠️ Reachability caveat: only **7 of the 12** proof types are registered in the
+  deployment catalogue — the other 5 compile but cannot `Init` a computation thread
   against a deployed instance. See [`catalogue-status.md`](catalogue-status.md).
 
 **2. Delivered but _not_ functional** (present but stubbed/inert/disabled):
@@ -88,7 +96,7 @@ several are directly exploitable for **fund theft** in an adversarial setting. S
 - Value conservation (`VALUE-NOT-PRESERVED`), ADA minting (`ADA-MINTED`), negative output value (`NEGATIVE-OUTPUT-VALUE`), required-signer-set correctness (`MISSING-REQ-SIGNER-*`, `NON-REQ-SIGNER`), spend-side withdrawn/double-withdraw, reference-input-no-idx, missing-native-script-utxo, native-script-invalid, min-ada, network-id.
 - Fabricated deposit / fabricated withdrawal (spec asserts "detectable" but provides no construction).
 - Mis-tagged (valid→invalid) withdrawal proof.
-- Offchain tooling for 7 of the 12 already-implemented onchain types; CLI wiring for
+- Offchain tooling for 6 of the 12 already-implemented onchain types; CLI wiring for
   `transition-trace`.
 - Preprod end-to-end (an operator-local 2026-05-08 report recorded a canonical-root
   mismatch, but it is intentionally untracked and predates the counted-root work of PR

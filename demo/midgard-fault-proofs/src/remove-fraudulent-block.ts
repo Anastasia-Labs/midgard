@@ -7,6 +7,7 @@ import {
   buildDoubleSpendFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
+  buildNoReferenceInputFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
   buildZeroInputFaultProofContracts,
   type DoubleSpendFaultProofContracts,
@@ -23,6 +24,7 @@ import {
   type InvalidRangeFaultProofContracts,
   type LinkedListNodeView,
   type NonExistentInputFaultProofContracts,
+  type NoReferenceInputFaultProofContracts,
   type OutputReference,
   outputReferenceFromUTxO,
   parseFaultProofBlueprint,
@@ -274,6 +276,7 @@ export type RemoveFraudulentBlockFraudCategory = Extract<
   | "invalidRange"
   | "transitionTrace"
   | "zeroInput"
+  | "noReferenceInput"
 >;
 
 export type StateQueueMutationLease = {
@@ -551,13 +554,15 @@ const buildRemovalContracts = async ({
     | NonExistentInputFaultProofContracts
     | InvalidRangeFaultProofContracts
     | TransitionTraceFaultProofContracts
-    | ZeroInputFaultProofContracts;
+    | ZeroInputFaultProofContracts
+    | NoReferenceInputFaultProofContracts;
   let expectedCategoryDeploymentEntry:
     | "fraudProofDoubleSpend"
     | "fraudProofNonExistentInput"
     | "fraudProofInvalidRange"
     | "fraudProofTransitionTrace"
-    | "fraudProofZeroInput";
+    | "fraudProofZeroInput"
+    | "fraudProofNoReferenceInput";
   let derivedCategoryFirstStepHash: string;
   if (fraudCategory === "doubleSpend") {
     const doubleSpendContracts = await Effect.runPromise(
@@ -611,7 +616,7 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofTransitionTrace";
     derivedCategoryFirstStepHash =
       transitionTraceContracts.transitionTrace.firstStep.spendingScriptHash;
-  } else {
+  } else if (fraudCategory === "zeroInput") {
     const zeroInputContracts = await Effect.runPromise(
       buildZeroInputFaultProofContracts({
         blueprint: parsedBlueprint,
@@ -624,6 +629,19 @@ const buildRemovalContracts = async ({
     expectedCategoryDeploymentEntry = "fraudProofZeroInput";
     derivedCategoryFirstStepHash =
       zeroInputContracts.zeroInput.firstStep.spendingScriptHash;
+  } else {
+    const noReferenceInputContracts = await Effect.runPromise(
+      buildNoReferenceInputFaultProofContracts({
+        blueprint: parsedBlueprint,
+        network,
+        hubOraclePolicyId,
+        fraudProofCataloguePolicyId,
+      }),
+    );
+    categoryContracts = noReferenceInputContracts;
+    expectedCategoryDeploymentEntry = "fraudProofNoReferenceInput";
+    derivedCategoryFirstStepHash =
+      noReferenceInputContracts.noReferenceInput.firstStep.spendingScriptHash;
   }
   requireMatchingScriptHash({
     label: "fraudProofMint policy",

@@ -4,6 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/common/utils
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
+use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/no_reference_input/step_03.{
   Args, Datum, SpendRedeemer, State,
 }
@@ -59,17 +60,21 @@ validator main(
           )
 
         expect Some(State {
-          missing_reference_input_outref,
+          missing_reference_input,
           blocks_prev_utxos_root,
           blocks_transactions_root,
         }) = m_input_state_data
 
         // 2. Target reference input must be absent from the verified block's
-        //    prev ledger.
+        //    prev ledger. The ledger MPF is keyed by the node's
+        //    `CML.TransactionInput` CBOR (a definite 2-element array), so the
+        //    non-membership key must be `encode_midgard_tx_input`, NOT
+        //    `cbor.serialise` of an aiken `OutputReference` (which serialises as
+        //    a constructor).
         expect
-          utils.plutarch_pexcludes(
+          utils.plutarch_pexcludes_raw(
             merkle_root: blocks_prev_utxos_root,
-            key: missing_reference_input_outref,
+            key_bytes: encode_midgard_tx_input(missing_reference_input),
             non_membership_proof: non_membership_proof_in_ledger,
             redeemers: redeemers,
             withdraw_redeemer_index: non_membership_proof_script_redeemer_index,
@@ -80,7 +85,7 @@ validator main(
         expect output_script_hash == step_04_validator_script_hash
         let expected_output_state: Data =
           step_04.State {
-            missing_reference_input_tx_id: missing_reference_input_outref.transaction_id,
+            missing_reference_input_tx_id: missing_reference_input.tx_id,
             blocks_transactions_root,
           }
         expect output_state_data == expected_output_state

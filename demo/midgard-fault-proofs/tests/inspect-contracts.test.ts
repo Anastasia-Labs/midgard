@@ -28,6 +28,7 @@ const placeholderDoubleSpend = "00".repeat(28);
 const placeholderNonExistentInput = "02".repeat(28);
 const placeholderInvalidRange = "01".repeat(28);
 const placeholderZeroInput = "03".repeat(28);
+const placeholderNoReferenceInput = "04".repeat(28);
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -121,6 +122,7 @@ const buildInspectionFixture = async () => {
   const fraudProofCatalogue = await buildCatalogueFixture({
     doubleSpend: contracts.doubleSpend.firstStep.spendingScriptHash,
     nonExistentInput: contracts.nonExistentInput.firstStep.spendingScriptHash,
+    noReferenceInput: contracts.noReferenceInput.firstStep.spendingScriptHash,
     invalidRange: contracts.invalidRange.firstStep.spendingScriptHash,
     zeroInput: contracts.zeroInput.firstStep.spendingScriptHash,
     transitionTrace: contracts.transitionTrace.firstStep.spendingScriptHash,
@@ -140,6 +142,8 @@ const deploymentInfoFor = (
   nonExistentInputScriptHash = contracts.nonExistentInput.firstStep
     .spendingScriptHash,
   zeroInputScriptHash = contracts.zeroInput.firstStep.spendingScriptHash,
+  noReferenceInputScriptHash = contracts.noReferenceInput.firstStep
+    .spendingScriptHash,
 ) => ({
   referenceScriptAuthPolicy: {},
   contracts: {
@@ -155,6 +159,9 @@ const deploymentInfoFor = (
     fraudProofDoubleSpend: { scriptHash: doubleSpendScriptHash },
     fraudProofNonExistentInput: {
       scriptHash: nonExistentInputScriptHash,
+    },
+    fraudProofNoReferenceInput: {
+      scriptHash: noReferenceInputScriptHash,
     },
     fraudProofInvalidRange: { scriptHash: invalidRangeScriptHash },
     fraudProofZeroInput: { scriptHash: zeroInputScriptHash },
@@ -207,6 +214,21 @@ describe("inspect-contracts", () => {
     );
     expect(
       output.nonExistentInput.deploymentNonExistentInputMatchesFirstStep,
+    ).toBe(true);
+    expect(output.noReferenceInput.categoryFirstStepHash).toBe(
+      contracts.noReferenceInput.firstStep.spendingScriptHash,
+    );
+    expect(output.noReferenceInput.steps.map((step) => step.name)).toEqual([
+      "step01",
+      "step02",
+      "step03",
+      "step04",
+    ]);
+    expect(output.noReferenceInput.deploymentNoReferenceInputScriptHash).toBe(
+      contracts.noReferenceInput.firstStep.spendingScriptHash,
+    );
+    expect(
+      output.noReferenceInput.deploymentNoReferenceInputMatchesFirstStep,
     ).toBe(true);
     expect(output.invalidRange.categoryFirstStepHash).toBe(
       contracts.invalidRange.firstStep.spendingScriptHash,
@@ -276,6 +298,22 @@ describe("inspect-contracts", () => {
       output.fraudProofCatalogue.nonExistentInput.membershipProofMatchesDerived,
     ).toBe(true);
     expect(output.fraudProofCatalogue.nonExistentInput.ready).toBe(true);
+    expect(output.fraudProofCatalogue.noReferenceInput.categoryId).toBe(
+      "00000006",
+    );
+    expect(output.fraudProofCatalogue.noReferenceInput.expectedCategoryId).toBe(
+      "00000006",
+    );
+    expect(
+      output.fraudProofCatalogue.noReferenceInput.categoryIdMatchesExpected,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.noReferenceInput.scriptHashMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.noReferenceInput.membershipProofMatchesDerived,
+    ).toBe(true);
+    expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(true);
     expect(output.fraudProofCatalogue.invalidRange.categoryId).toBe("00000003");
     expect(output.fraudProofCatalogue.invalidRange.expectedCategoryId).toBe(
       "00000003",
@@ -339,6 +377,7 @@ describe("inspect-contracts", () => {
     );
     expect(output.fraudProofCatalogue.doubleSpend.ready).toBe(false);
     expect(output.fraudProofCatalogue.nonExistentInput.ready).toBe(true);
+    expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(true);
     expect(output.fraudProofCatalogue.invalidRange.ready).toBe(true);
     expect(output.fraudProofCatalogue.zeroInput.ready).toBe(true);
     expect(output.fraudProofCatalogue.transitionTrace.ready).toBe(true);
@@ -423,6 +462,98 @@ describe("inspect-contracts", () => {
     expect(output.zeroInput.deploymentZeroInputScriptHash).toBeNull();
     expect(output.zeroInput.deploymentZeroInputMatchesFirstStep).toBeNull();
     expect(output.fraudProofCatalogue.zeroInput.ready).toBe(false);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("marks catalogue init as not ready when no-reference-input deployment is stale", async () => {
+    const fixture = await buildInspectionFixture();
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: deploymentInfoFor(
+          fixture,
+          fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
+          fixture.contracts.invalidRange.firstStep.spendingScriptHash,
+          fixture.contracts.transitionTrace.firstStep.spendingScriptHash,
+          fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
+          fixture.contracts.zeroInput.firstStep.spendingScriptHash,
+          placeholderNoReferenceInput,
+        ),
+      }),
+    );
+
+    expect(
+      output.noReferenceInput.deploymentNoReferenceInputMatchesFirstStep,
+    ).toBe(false);
+    expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(false);
+    expect(output.fraudProofCatalogue.nonExistentInput.ready).toBe(true);
+    expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("marks catalogue init as not ready when no-reference-input catalogue authorization is stale", async () => {
+    const fixture = await buildInspectionFixture();
+    const staleCatalogue = await buildCatalogueFixture({
+      doubleSpend: fixture.contracts.doubleSpend.firstStep.spendingScriptHash,
+      nonExistentInput:
+        fixture.contracts.nonExistentInput.firstStep.spendingScriptHash,
+      noReferenceInput: placeholderNoReferenceInput,
+      invalidRange: fixture.contracts.invalidRange.firstStep.spendingScriptHash,
+      zeroInput: fixture.contracts.zeroInput.firstStep.spendingScriptHash,
+      transitionTrace:
+        fixture.contracts.transitionTrace.firstStep.spendingScriptHash,
+    });
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: deploymentInfoFor({
+          ...fixture,
+          fraudProofCatalogue: staleCatalogue,
+        }),
+      }),
+    );
+
+    expect(
+      output.noReferenceInput.deploymentNoReferenceInputMatchesFirstStep,
+    ).toBe(true);
+    expect(
+      output.fraudProofCatalogue.noReferenceInput.scriptHashMatchesFirstStep,
+    ).toBe(false);
+    expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(false);
+    expect(output.fraudProofCatalogue.rootMatchesDerived).toBe(true);
+    expect(output.fraudProofCatalogue.initReady).toBe(false);
+  });
+
+  it("marks catalogue init as not ready when no-reference-input deployment is missing", async () => {
+    const fixture = await buildInspectionFixture();
+    const deploymentInfo = deploymentInfoFor(fixture);
+    const {
+      fraudProofNoReferenceInput: _omitted,
+      ...contractsWithoutNoReferenceInput
+    } = deploymentInfo.contracts;
+
+    const output = await Effect.runPromise(
+      inspectContracts({
+        blueprint: fixture.blueprintJson,
+        network: "Preprod",
+        deploymentInfo: {
+          ...deploymentInfo,
+          contracts: contractsWithoutNoReferenceInput,
+        },
+      }),
+    );
+
+    expect(
+      output.noReferenceInput.deploymentNoReferenceInputScriptHash,
+    ).toBeNull();
+    expect(
+      output.noReferenceInput.deploymentNoReferenceInputMatchesFirstStep,
+    ).toBeNull();
+    expect(output.fraudProofCatalogue.noReferenceInput.ready).toBe(false);
     expect(output.fraudProofCatalogue.initReady).toBe(false);
   });
 
