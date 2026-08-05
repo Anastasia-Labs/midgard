@@ -1,10 +1,301 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const demoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repositoryRoot = resolve(demoRoot, "..");
+
+// ---------------------------------------------------------------------------
+// Focused-check execution gate (F20, issue #518)
+//
+// The published `focusedChecksPassed` count used to be the number of `it(`
+// lines in the cited test source, so existence was reported as passage: the
+// row could publish "45/45 passed" while every one of those tests failed, was
+// skipped, or was never collected at all. Everything below derives the count
+// from a machine-readable runner report instead — the test runner is spawned,
+// its JSON report is parsed, and a selector that collects nothing, a test that
+// fails, and a test that never executed each fail the gate closed with a
+// distinct diagnostic code.
+//
+// This is the runner-backed pattern the sibling evidence verifiers copy. To
+// reuse it, change `focusedCheckPlan` and the two `assert.equal` calls that
+// bind the artifact counts; the runner, the outcome derivation, and the
+// negative self-tests are subject-independent.
+// ---------------------------------------------------------------------------
+
+const focusedCheckPlan = {
+  name: "family-scaffold-v1.test.ts strict scanner",
+  packageDirectory: "demo/midgard-fault-proofs",
+  testFile: "tests/family-scaffold-v1.test.ts",
+};
+const focusedCheckPackageRoot = resolve(
+  repositoryRoot,
+  focusedCheckPlan.packageDirectory,
+);
+// The published command is the human-reproducible form. The gate executes that
+// same Vitest CLI out of the package's own dependency tree rather than through
+// a package-manager shim, so the measurement cannot silently become a PATH
+// lookup that resolves to a different runner (or to nothing at all).
+const focusedCheckPublishedCommand = `pnpm --dir ${focusedCheckPlan.packageDirectory} exec vitest run ${focusedCheckPlan.testFile}`;
+const focusedCheckRunnerCli = resolve(
+  dirname(
+    createRequire(resolve(focusedCheckPackageRoot, "package.json")).resolve(
+      "vitest/package.json",
+    ),
+  ),
+  "vitest.mjs",
+);
+
+class FocusedCheckError extends Error {
+  constructor(code, detail) {
+    super(`${code}: ${detail}`);
+    this.name = "FocusedCheckError";
+    this.code = code;
+  }
+}
+
+const runFocusedCheck = ({ testFile, root }) => {
+  const reportDirectory = mkdtempSync(join(tmpdir(), "midgard-focused-check-"));
+  const reportPath = join(reportDirectory, "vitest-report.json");
+  try {
+    const run = spawnSync(
+      process.execPath,
+      [
+        focusedCheckRunnerCli,
+        "run",
+        testFile,
+        ...(root === undefined ? [] : [`--root=${root}`]),
+        "--pool=forks",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--reporter=json",
+        `--outputFile=${reportPath}`,
+      ],
+      {
+        cwd: focusedCheckPackageRoot,
+        encoding: "utf8",
+        maxBuffer: 128 * 1024 * 1024,
+      },
+    );
+    if (run.error !== undefined) {
+      throw run.error;
+    }
+    let report = null;
+    try {
+      report = JSON.parse(readFileSync(reportPath, "utf8"));
+    } catch (error) {
+      throw new FocusedCheckError(
+        "ERR_FOCUSED_CHECK_NO_REPORT",
+        `${testFile} produced no readable runner report (runner exit ${String(
+          run.status,
+        )}): ${error instanceof Error ? error.message : String(error)}\n${
+          run.stdout ?? ""
+        }${run.stderr ?? ""}`,
+      );
+    }
+    return { report, status: run.status };
+  } finally {
+    rmSync(reportDirectory, { recursive: true, force: true });
+  }
+};
+
+// Pure: takes a Vitest JSON report and returns the measured {collected, passed}
+// pair, or throws with the exact reason the run may not be published as a pass.
+const deriveFocusedCheckOutcome = ({ label, report, status }) => {
+  const files = Array.isArray(report.testResults) ? report.testResults : [];
+  if (files.length === 0) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_NO_FILES",
+      `${label}: the declared selector matched no test file, so nothing could have passed`,
+    );
+  }
+  const assertions = files.flatMap((file) =>
+    Array.isArray(file.assertionResults) ? file.assertionResults : [],
+  );
+  if (assertions.length === 0) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_ZERO_COLLECTION",
+      `${label}: the declared selector collected 0 tests from ${String(
+        files.length,
+      )} matched file(s) — ${files
+        .map(
+          (file) =>
+            `${file.name ?? "<unnamed>"} (${file.status ?? "<no status>"}${
+              file.message ? `: ${file.message}` : ""
+            })`,
+        )
+        .join("; ")}`,
+    );
+  }
+  const named = (assertion) =>
+    assertion.fullName ?? assertion.title ?? "<unnamed test>";
+  const failed = assertions.filter(({ status: result }) => result === "failed");
+  if (failed.length > 0) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_FAILED",
+      `${label}: ${String(failed.length)} of ${String(
+        assertions.length,
+      )} collected tests failed — ${failed
+        .map(
+          (assertion) =>
+            `${named(assertion)}: ${
+              (assertion.failureMessages ?? []).join(" | ") ||
+              "failed without a diagnostic"
+            }`,
+        )
+        .join("; ")}`,
+    );
+  }
+  // A skipped or todo test is a declaration, not a result. Counting one as a
+  // pass is exactly the defect this gate exists to prevent, so it is rejected
+  // rather than quietly excluded from the denominator.
+  const notExecuted = assertions.filter(
+    ({ status: result }) => result !== "passed",
+  );
+  if (notExecuted.length > 0) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_NOT_EXECUTED",
+      `${label}: ${String(
+        notExecuted.length,
+      )} collected tests never executed and may not be published as passing — ${notExecuted
+        .map(
+          (assertion) =>
+            `${named(assertion)} (${assertion.status ?? "<no status>"})`,
+        )
+        .join("; ")}`,
+    );
+  }
+  const collected = assertions.length;
+  if (
+    report.numTotalTests !== collected ||
+    report.numPassedTests !== collected ||
+    report.numFailedTests !== 0 ||
+    report.success !== true
+  ) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_REPORT_INCONSISTENT",
+      `${label}: the runner report totals contradict its own per-test results (total ${String(
+        report.numTotalTests,
+      )}, passed ${String(report.numPassedTests)}, failed ${String(
+        report.numFailedTests,
+      )}, success ${String(report.success)}, collected ${String(collected)})`,
+    );
+  }
+  if (status !== 0) {
+    throw new FocusedCheckError(
+      "ERR_FOCUSED_CHECK_NONZERO_EXIT",
+      `${label}: every collected test passed but the runner exited ${String(
+        status,
+      )}`,
+    );
+  }
+  return { collected, passed: collected };
+};
+
+// Seeded-defect fixtures. Each one is a real Vitest run against a mutated copy
+// of the focused-check shape, executed through the identical spawn path, so the
+// negative self-tests measure the gate rather than describing it.
+const focusedCheckFixtures = {
+  passing: {
+    file: "tests/self-test.test.ts",
+    source: `import { describe, expect, it } from "vitest";
+
+describe("focused-check self-test", () => {
+  it("executes and passes", () => {
+    expect(1).toBe(1);
+  });
+});
+`,
+  },
+  failing: {
+    file: "tests/self-test.test.ts",
+    source: `import { describe, expect, it } from "vitest";
+
+describe("focused-check self-test", () => {
+  it("executes and passes", () => {
+    expect(1).toBe(1);
+  });
+  it("executes and fails", () => {
+    expect(1).toBe(2);
+  });
+});
+`,
+  },
+  "zero-collection": {
+    file: "tests/self-test.test.ts",
+    source: `import { describe } from "vitest";
+
+describe("focused-check self-test declaring no test", () => {});
+`,
+  },
+  skipped: {
+    file: "tests/self-test.test.ts",
+    source: `import { describe, it } from "vitest";
+
+describe("focused-check self-test", () => {
+  it.skip("is declared but never executed", () => {});
+});
+`,
+  },
+  "missing-file": {
+    file: "tests/self-test.test.ts",
+    source: null,
+  },
+};
+
+const evaluateFocusedCheckFixture = (fixtureName) => {
+  const fixture = focusedCheckFixtures[fixtureName];
+  assert.ok(fixture, `unknown focused-check fixture ${fixtureName}`);
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "midgard-focused-fixture-"));
+  try {
+    if (fixture.source !== null) {
+      const fixturePath = resolve(fixtureRoot, fixture.file);
+      mkdirSync(dirname(fixturePath), { recursive: true });
+      writeFileSync(fixturePath, fixture.source);
+    }
+    return deriveFocusedCheckOutcome({
+      label: `focused-check fixture ${fixtureName}`,
+      ...runFocusedCheck({ testFile: fixture.file, root: fixtureRoot }),
+    });
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+};
+
+// Fixture mode: run one seeded fixture and nothing else, so the negative
+// self-tests below can spawn this very gate and observe its real exit code.
+const fixtureArgument = process.argv
+  .slice(2)
+  .find((argument) => argument.startsWith("--focused-check-fixture="));
+if (fixtureArgument !== undefined) {
+  const fixtureName = fixtureArgument.slice("--focused-check-fixture=".length);
+  try {
+    const outcome = evaluateFocusedCheckFixture(fixtureName);
+    process.stdout.write(
+      `focused-check fixture ${fixtureName}: ${String(
+        outcome.passed,
+      )}/${String(outcome.collected)} passed\n`,
+    );
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exit(1);
+  }
+}
+
 const evidencePath = resolve(
   repositoryRoot,
   "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json",
@@ -536,7 +827,6 @@ const [
   inputNoIdxSource,
   inputNoIdxEmulatorTest,
   inputNoIdxPreparationTest,
-  familyScaffoldTestSource,
   deployedValidatorEntries,
 ] = await Promise.all([
   readFile(resolve(repositoryRoot, "GOAL_PROGRESS.md"), "utf8"),
@@ -577,13 +867,6 @@ const [
     resolve(
       repositoryRoot,
       "demo/midgard-fault-proofs/tests/prepare-input-no-idx.test.ts",
-    ),
-    "utf8",
-  ),
-  readFile(
-    resolve(
-      repositoryRoot,
-      "demo/midgard-fault-proofs/tests/family-scaffold-v1.test.ts",
     ),
     "utf8",
   ),
@@ -796,23 +1079,78 @@ assert.ok(
   inputNoIdxPreparationTest.includes("Q13 input-no-idx canonical evidence"),
   "Q13 preparation evidence test is absent",
 );
-const familyScaffoldSelectors = [
-  ...familyScaffoldTestSource.matchAll(/^\s*it\(/gmu),
-];
+// The focused counts are measured, not counted from declarations: the runner is
+// spawned and its JSON report is the only source of `focusedChecksTotal` and
+// `focusedChecksPassed`.
 assert.equal(
-  familyScaffoldSelectors.length,
-  evidence.summary.focusedChecksTotal,
-  "focused family-scaffold total no longer derives from the full test file",
+  evidence.summary.focusedCheckName,
+  focusedCheckPlan.name,
+  "focused check identity drifted from the executed plan",
 );
 assert.equal(
-  evidence.summary.focusedChecksPassed,
-  familyScaffoldSelectors.length,
-  "evidence may not bless a focused pass count that the full test file does not collect",
+  evidence.summary.focusedCommand,
+  focusedCheckPublishedCommand,
+  "published focused command drifted from the command this gate executes",
 );
 assert.ok(
   taskManifestSource.includes(evidence.summary.focusedCommand),
-  "focused 45/45 external gate is not named by the task authority",
+  "focused external gate is not named by the task authority",
 );
+const focusedCheckOutcome = deriveFocusedCheckOutcome({
+  label: focusedCheckPlan.name,
+  ...runFocusedCheck({ testFile: focusedCheckPlan.testFile }),
+});
+assert.equal(
+  evidence.summary.focusedChecksTotal,
+  focusedCheckOutcome.collected,
+  "published focused total is not the number of tests the runner collected",
+);
+assert.equal(
+  evidence.summary.focusedChecksPassed,
+  focusedCheckOutcome.passed,
+  "published focused pass count is not the number of tests the runner passed",
+);
+
+// Negative self-tests: spawn this gate against seeded fixtures and require a
+// non-zero exit carrying the specific diagnostic. Without these, a future edit
+// could reintroduce existence-as-passage and nothing would notice.
+const focusedCheckSelfTests = [
+  ["failing", /ERR_FOCUSED_CHECK_FAILED: .*executes and fails/su],
+  [
+    "zero-collection",
+    /ERR_FOCUSED_CHECK_ZERO_COLLECTION: .*collected 0 tests/su,
+  ],
+  ["skipped", /ERR_FOCUSED_CHECK_NOT_EXECUTED: .*never executed/su],
+  ["missing-file", /ERR_FOCUSED_CHECK_NO_FILES: .*matched no test file/su],
+];
+const runFocusedCheckSelfTest = (fixtureName) =>
+  spawnSync(
+    process.execPath,
+    [fileURLToPath(import.meta.url), `--focused-check-fixture=${fixtureName}`],
+    { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 },
+  );
+for (const [fixtureName, expectedDiagnostic] of focusedCheckSelfTests) {
+  const selfTest = runFocusedCheckSelfTest(fixtureName);
+  assert.notEqual(
+    selfTest.status,
+    0,
+    `focused-check gate accepted the seeded ${fixtureName} defect`,
+  );
+  assert.match(
+    selfTest.stderr,
+    expectedDiagnostic,
+    `focused-check gate rejected the seeded ${fixtureName} defect without its specific diagnostic`,
+  );
+}
+// Positive control: the same harness must still accept a real passing run, so
+// the four rejections above cannot be a gate that rejects everything.
+const focusedCheckControl = runFocusedCheckSelfTest("passing");
+assert.equal(
+  focusedCheckControl.status,
+  0,
+  `focused-check gate rejected a passing fixture: ${focusedCheckControl.stderr}`,
+);
+assert.match(focusedCheckControl.stdout, /passing: 1\/1 passed/u);
 const parsedCliCategoryNames = [
   ...binSource
     .slice(
