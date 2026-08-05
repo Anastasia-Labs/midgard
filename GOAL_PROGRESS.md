@@ -5412,3 +5412,67 @@ Follow-ups owed from this wave: settlement mint/spend handler test
 coverage; the unfalsifiable independentAudit/§0 bindings (owner decision);
 Q47's dual-compiler prose claim; the capability gate's unexecuted ~120
 Aiken selectors; plus the wave-1 items (#534, #535) already filed.
+
+
+## Watcher fail-open closure and coverage landings — wave 3 (2026-08-05)
+
+- **#517 (W25)** `c7be7b04` — the block-replay fail-open is closed:
+  `finalizeResult` derived accept from an empty reason-code set while both
+  committed bindings (transition trace, header utxosRoot) were conditional,
+  so a caller omitting them got accept with neither evaluated — and that
+  accept minted a durable W03 replayed-state record. Accept is now gated on
+  both bindings having actually run (receipts set inside each branch); two
+  new reason codes name an unrun binding; the candidate-level entry point
+  can no longer return accept by construction. Adversarial test drives the
+  previously-accepting unrun case against a byte-identical accepted
+  control: reject with exactly the two new codes (pre-fix module: the test
+  correctly reports accept — the defect reproduced). Adjacent terminality
+  sweep: `bindForcedTransitionEffectV1`'s null-canonical-tx skip now fails
+  closed; six other watcher surfaces checked and confirmed fail-closed.
+  Pins moved coherently: block-replay 20 → 21 tests, watcher aggregate
+  **595 → 596** (dependency map, focused-tests verifier, quality gate, and
+  26 manifest claims all updated together; measured 19 files, 596/596).
+  The earlier W25 "20/20" and aggregate-595 ledger citations are
+  superseded by this entry. **New fail-open found and NOT fixed here
+  (different owner, W12):** finality-engine's external-provider binding
+  check is a vacuous `.every()` over a list bounded only from above, so an
+  empty binding list plus an agreed consistency record can reach
+  `finality_granted` with zero provider bindings evaluated; the local-node
+  branch pins exact length and is sound. Ticketed.
+- **#534 (planned citations)** `6e805a78` — re-derived sweep: the absent
+  population is **44, not 42** (two guard-selector citations — Q53
+  fraud_claim_lock, Q58 availability_challenge_v1 — also resolve to
+  nothing). The 12 suffix-fixable citations now resolve and collect
+  (26 fork invocations, 26 green; one needed a real module correction, not
+  just a suffix: C20-8's max_redeemers tests live in
+  `native_tx.max_redeemers.test`). The 44 unbuilt citations moved to a new
+  `plannedFocusedCommands` array — structurally invisible to every
+  evidence-binding rule — with four new quality-gate rules: an executable
+  citation naming no module fails; a planned citation republished as
+  executable fails; a planned citation whose module NOW EXISTS fails
+  (forced promotion); a planned citation outside the row's lease fails.
+  Self-test: 13 hostile mutations rejected. Post-fix invariant: 55/55
+  executable Aiken citations resolve, 0 unresolved.
+- **#536 (settlement coverage)** — `settlement-handlers.test.ak`: 56 tests
+  (one honest-acceptance builder per redeemer variant + one guard per fail
+  test, attribution by crash trace) covering spend
+  AttachResolutionClaim/DisproveResolutionClaim/Resolve and mint
+  Spawn/Remove. **Stock 56/56 in 60.0 s and fork 56/56 in 6.6 s, per-test
+  results identical** — the #521 dual-compiler discipline applied to new
+  code. Zero new types (no duplicate-local-name risk). Stated gaps,
+  recorded honestly: the `else { fail }` fallbacks need a script-context
+  harness; DisproveResolutionClaim's Withdrawal/TxOrder event arms are
+  untested; Spawn pins the merge-redeemer ABI, not state-queue semantics.
+  Suggested manifest binding (not wired; owner decision): selector
+  `settlement_handler_` at 56/56 under both compilers.
+
+Environment observation for future lanes: when stdout is not a TTY, both
+aiken binaries keep correct non-zero exit codes on compile errors but emit
+almost no diagnostic detail (38 bytes); failures in piped CI logs are
+fail-closed but near-silent — run under a pty when debugging.
+
+Integration gates on `HEAD` after these landings, all green: watcher
+focused tests 19 files 596/596; dependency map 8 classes; block-replay
+21/21; manifest quality 0 defects + self-test 13 mutations; verification
+plan PASS; reconciliation 70 rows/49 open; status-role control PASS; fork
+settlement_handler_ 56/56.
