@@ -5321,3 +5321,94 @@ deadline flake (#527), and the C32 42-vs-43 arithmetic (#523).
 
 Working-tree note: the unprovenanced 246-row "(live-verified on preprod)"
 promotion remains uncommitted and excluded, as recorded on 2026-08-04.
+
+
+## #519 evidence-integrity remediation — wave 2 landings (2026-08-05)
+
+The remaining four split tickets are implemented, gated, and integrated
+(#529, #531, #532, #533), completing the #522 spec's ticket set:
+
+- **#529 (V-2 class remainder)** `439c80f4` — Q49 structural-handoff and
+  capability-reconciliation counts are runner-derived via a new shared
+  library (`demo/scripts/lib/runner-reports.mjs`: batched
+  `aiken check -e -m … --plain-numbers` structured reports plus per-package
+  Vitest JSON; `runner-fixtures.mjs`; `evidence-status.mjs`). Q49's
+  published "31 executable checks" corrects **downward to 30
+  runner-executed + 1 static structural** (the source-absence check is not
+  an execution and is now published separately) — supersedes the 2026-08-04
+  "9 rows, 31 executable checks" narrative above. Capability "17 pass" is
+  confirmed, now measured from 15 Vitest reports + 1 collected Aiken
+  selector, with every witness required to appear in the manifest's own
+  focusedCommands (anti-self-scoping). Decorated-status misclassification:
+  the live defect was in `canonical-v1-goal-tasks-ready.mjs`; fixing it
+  moves ready derivation **46 → 49 complete / 117 → 114 blocked** (Q24,
+  Q25, Q44 decorated PASS rows now govern their 6 dependents). V-2's
+  "101/112" figure does not reproduce on the current tree — it predates
+  `aea33532`. New standing gate:
+  `verify-canonical-v1-status-role-control.mjs`. 11 behavioral fixture
+  self-tests across both runners. Honest bound: the capability gate
+  executes one TS witness set per PASS task plus the C20-6/7 selector; the
+  ~120 heavier per-task Aiken selectors the manifest also names remain
+  unexecuted by this gate (widening is a possible follow-up).
+- **#531 (V-8)** `fbe40786` — the header-v1-abi gate's `run()` (registry vs
+  REAL generated blueprint vs REAL built SDK schema) is now invoked by a
+  new `header-v1-abi` CI job in evidence-integrity-ci.yml (aiken build +
+  core/SDK build + gate + node:test suite + self-test). The single
+  verifier-output-string citation (L01) is re-pointed at a real executed
+  test, and the MECHANISM is now gated: the format-registry verifier
+  rejects any testNames entry that only occurs inside an output-call
+  argument in the cited file. The companion test now consumes the real
+  blueprint and real SDK schema and fails closed if either is absent.
+  Self-tests: ABI 2 controls / 14 mutations; registry suite extended.
+- **#533 (sweep gap)** `66ca8c6a` — Q47 structural-NA and Q1x proof-family
+  verifiers now derive every published count from runner reports using the
+  #529 shared library unchanged. Q47's "27 executable checks" corrects
+  **downward to 21** (the six variant-matrix citations double-counted
+  selectors already in the inherited and Q47 sets); its 5/5, 8/8, 8/8
+  measured blocks are confirmed by execution (13 selectors in one batched
+  aiken run, 49.4 s). Q1x's 32/32 is confirmed and its four cited emulator
+  lifecycles are now executed (7/7 titles, 30.6 s). Residual flagged: the
+  Q47 artifact's "passing under both stock and fork" prose was measured
+  under stock only by the gate; and Q1x's proof-fit stage arithmetic
+  remains artifact-internal (fixture-provenance question, out of scope).
+- **#532 (V-9/V-10/V-11 + residuals)** `e0cf8a4c` — firing guards
+  established by single-conjunct mutation for the top three
+  fail-over-conjunction tests, each now pinned bidirectionally with
+  differentials: cek-builtin (C3 well-typedness is the sole falsifier;
+  C1/C2 pinned satisfied), validation-machine (M14 claimed-successor
+  exactness), and native-tx C20-6/C20-7 — where mutation showed the
+  published rejections rested on SHAPE ONLY (constructor tag / array
+  header), never on the per-field commitments; two new fail tests present
+  equal-length canonically-shaped wrong-content preimages and are each
+  flipped by exactly their own field's commitment guard. V-10 sentinel
+  test now invokes the production decoder (both sites + positive control).
+  All 9 self-equal serialise round-trips now compare against source bytes
+  (well-formed and discriminating-power controls run and reverted).
+  Residuals fixed: P05 scans real Rust sources (0 → 4 files; target/
+  excluded; zero-file scans fail closed), the 0-iteration assert.ok gate
+  is now an unconditional fail with fail-closed scope counters, and the
+  registry self-test gained the missing strict-mode UNVERIFIED rejection
+  mutation (13 hostile total in its lane; 15 after merge with #531's).
+  Renamed the four `exact_settlement_policy_mint_*` tests to
+  `stdlib_token_shape_*` — they never executed settlement code (V-22
+  shape); the ~460-line settlement mint/spend handler coverage gap is OPEN
+  and ticket-worthy. Reported for owner decision: six watcher
+  `independentAudit` strings compared only to hardcoded copies of
+  themselves, W25/W26/F30 cited audit fields that do not exist, and the
+  §0-integrity binding never asks git (exemplar to copy:
+  format-registry's ancestry-checked byte-exact git binding). Touched
+  modules verified under both compilers: 30/30 targeted both sides;
+  whole-module fork sweeps 34/34, 14/14, 61/61, 8/8, 160/160, 19/19.
+
+Integration verification on the final tree (`e0cf8a4c`), all exit 0:
+format registry strict (132 rows) + self-test (2 controls / 15 mutations),
+fault-proof reconciliation (70 rows, 49 open), header-v1-abi self-test
+(2/14), manifest quality (0 defects) + self-test, status-role control,
+Q49 handoff (30+1), capability reconciliation (17 measured), Q47 (21
+runner-executed), Q1x (32/32 + 7 lifecycles), fork checks of all touched
+Aiken modules at exact-selector counts.
+
+Follow-ups owed from this wave: settlement mint/spend handler test
+coverage; the unfalsifiable independentAudit/§0 bindings (owner decision);
+Q47's dual-compiler prose claim; the capability gate's unexecuted ~120
+Aiken selectors; plus the wave-1 items (#534, #535) already filed.
