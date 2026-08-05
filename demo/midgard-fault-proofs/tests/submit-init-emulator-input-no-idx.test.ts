@@ -359,16 +359,51 @@ const setupFraudulentBlock = async ({
 const STEP02_RELEASE_MEMORY_LIMIT = 13_200_000n;
 const STEP02_RELEASE_CPU_LIMIT = 8_000_000_000n;
 const HALF_CANONICAL_MATURITY_MS = 302_400_000;
+/**
+ * Pinned `CompletePublished` measurement, re-derived at `7fd434a7` (#542).
+ *
+ * The previous pin (fee `542_885`, mem `521_130`, cpu `209_629_043`, CBOR sha
+ * `8ec9d1d8…`) was taken against the **pre-#521** blueprint. #521's decoder
+ * remediation (`a954669f`, blueprint re-pinned in `c682cc69`) renamed
+ * `cek_machine_v1.ValueWitnessV1` -> `MachineValueWitnessV1` and
+ * `user_events/deposit.Datum` -> `DepositDatum`, which moved the compiled
+ * bytes of 8 validators; the applied step scripts therefore changed size
+ * slightly while the transaction layout stayed identical — exactly the
+ * observed signature of drifted ex-units/fee/tx-hash with an unchanged
+ * `signedTxBytes` (7_771) and unchanged structural counts.
+ *
+ * Attribution (both `aiken v1.1.22+39d6b04`, `aiken build --env testnet`):
+ *   - pre-rename blueprint built from `84aa1ce3` (plutus.json sha256
+ *     `991da062…`) reproduces the OLD pin verbatim — this case passes when the
+ *     suite is pointed at it via `MIDGARD_REAL_BLUEPRINT_PATH`;
+ *   - post-rename blueprint built from `7fd434a7` (plutus.json sha256
+ *     `76f9e53d…`, byte-identical to the `c682cc69` build) yields the values
+ *     pinned below.
+ *
+ * Determinism (Q13 discipline — deterministic test wallets, fixed emulator
+ * clock, two fresh `vitest run --pool=forks` processes on `7fd434a7` with the
+ * `7fd434a7` blueprint): both producing runs emitted identical fee, ex-units,
+ * and CBOR sha256 `e6936871…`.
+ *
+ * Serializer provenance (prose, deliberately not asserted anywhere): the
+ * producing runs used `@anastasia-labs/cardano-multiplatform-lib-nodejs`
+ * `6.2.0-1` with the locally shadow-stack-patched
+ * `cardano_multiplatform_lib_bg.wasm` (sha256 `cd96b005…`; pristine npm
+ * `6.2.0-1` is `91b38c8e…`). The patch only raises the wasm shadow stack, so
+ * byte-identical transactions serialize identically under either binary; the
+ * line exists so the pending `6.2.0-2` bump — the go-forward artifact, after
+ * which the patcher is retired — can re-verify these pins cheaply.
+ */
 const COMPLETE_PUBLISHED_CANONICAL_PROOF = {
   signedTxBytes: 7_771,
   signedTxSha256:
-    "8ec9d1d8155b6dad39504584dfcede987848328d01662d342e611a7b7d2f3ff2",
+    "e6936871f8af8a158052230ee32f845bc878f75b52aa7aa10f06efb06696c5bb",
   txByteMargin: 8_613,
-  fee: 542_885n,
-  executionMemory: 521_130n,
-  executionCpu: 209_629_043n,
-  releaseMemoryMargin: 12_678_870n,
-  releaseCpuMargin: 7_790_370_957n,
+  fee: 543_115n,
+  executionMemory: 523_998n,
+  executionCpu: 210_521_290n,
+  releaseMemoryMargin: 12_676_002n,
+  releaseCpuMargin: 7_789_478_710n,
   inputCount: 2,
   referenceInputCount: 1,
   outputCount: 2,

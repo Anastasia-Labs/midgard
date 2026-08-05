@@ -134,10 +134,10 @@ while preserving the publication as one exact reference input:
 | Measurement                          |                                                        Exact value |
 | ------------------------------------ | -----------------------------------------------------------------: |
 | signed bytes / byte margin           |                                                      7,771 / 8,613 |
-| signed CBOR SHA-256                  | `8ec9d1d8155b6dad39504584dfcede987848328d01662d342e611a7b7d2f3ff2` |
-| fee                                  |                                                            542,885 |
-| execution memory / CPU               |                                              521,130 / 209,629,043 |
-| reserve margins memory / CPU         |                                         12,678,870 / 7,790,370,957 |
+| signed CBOR SHA-256                  | `e6936871f8af8a158052230ee32f845bc878f75b52aa7aa10f06efb06696c5bb` |
+| fee                                  |                                                            543,115 |
+| execution memory / CPU               |                                              523,998 / 210,521,290 |
+| reserve margins memory / CPU         |                                         12,676,002 / 7,789,478,710 |
 | inputs / refs / outputs / collateral |                                                      2 / 1 / 2 / 1 |
 | vkeys / redeemers                    |                                                              1 / 1 |
 | output lovelace / required min-Ada   |                                              1,512,810 / 1,499,880 |
@@ -150,6 +150,20 @@ CBOR digest. Their paired witnessed publication wall times were 19.133 ms and
 19.636 ms. Wall times differ with host scheduling and are evidence that the
 operation completed within the timing envelope, not exact reproducibility
 claims. The confirmed publication output remained unspent after consumption.
+
+The canonical tuple above was re-derived at `7fd434a7` (#542) after #521's
+decoder-collision remediation (`a954669f`, blueprint re-pin `c682cc69`) moved
+the compiled bytes of the applied step validators. The pre-rename blueprint
+(built from `84aa1ce3`, `plutus.json` sha256 `991da062…`) still reproduces the
+superseded tuple (fee 542,885; 521,130 / 209,629,043; CBOR sha
+`8ec9d1d8…`); the post-rename blueprint (`7fd434a7`, sha256 `76f9e53d…`)
+reproduces the values tabled above in two fresh Vitest processes. The
+transaction layout did not move: signed bytes stayed 7,771 and every
+structural count is unchanged. Both producing runs serialized through
+`@anastasia-labs/cardano-multiplatform-lib-nodejs` `6.2.0-1` with the locally
+shadow-stack-patched `cardano_multiplatform_lib_bg.wasm` (sha256
+`cd96b005…`); the patch only raises the wasm shadow stack, so the pending
+`6.2.0-2` bump should reproduce the same tuple.
 
 ### 3. Minimum transparent multi-output publication
 

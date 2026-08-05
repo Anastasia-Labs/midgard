@@ -5715,7 +5715,7 @@
         "GOAL_PROGRESS.md:386 records Q13 PASS at commit 823b2d16 with independent review P0=0, P1=0, P2=0.",
         "docs/exec-plans/evidence/necessity/input-no-idx-spend-input-proof-v1.md records direct Complete limits 19 inputs at 12839676 memory and 5674387119 CPU, 20 inputs at 13366688 memory, and the 296-input boundary at 186032040 memory and 77853784762 CPU.",
         "docs/exec-plans/evidence/necessity/input-no-idx-spend-input-proof-v1.md records signed publication sizes 1188, 1227, and 12305 bytes for 19, 20, and 296 inputs; the true 20-input fold worst envelope is 8029 bytes with 729467 memory and 273306168 CPU.",
-        "The deterministic genuine CompletePublished consuming proof has CBOR SHA 8ec9d1d8155b6dad39504584dfcede987848328d01662d342e611a7b7d2f3ff2, 7771 bytes, fee 542885, ex-units 521130 and 209629043, proof shape 2/1/2/1, one vkey, and one redeemer.",
+        "The deterministic genuine CompletePublished consuming proof has CBOR SHA e6936871f8af8a158052230ee32f845bc878f75b52aa7aa10f06efb06696c5bb, 7771 bytes, fee 543115, ex-units 523998 and 210521290, proof shape 2/1/2/1, one vkey, and one redeemer.",
         "onchain/aiken/validators/fraud-proofs/input-no-idx/step-01.ak is the exact implementation/current-tree anchor for Q13."
       ],
       "evidenceOutputs": [
