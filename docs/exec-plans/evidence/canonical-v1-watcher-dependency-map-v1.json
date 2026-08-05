@@ -204,10 +204,10 @@
       "preFinalityRollbackPolicy": "deterministic_release_bound_rewind",
       "postFinalityRollbackPolicy": "mode_valid_agreed_point_replacement_opens_recoverable_incident_while_transient_same_point_content_mismatch_or_depth_regression_preserves_finalized_binding",
       "consistencyPolicy": "exact_source_mode_bound_W11_agreement_required",
-      "externalProviderPolicy": "exact_W01_policy_match_for_every_W11_external_provider_binding",
+      "externalProviderPolicy": "exact_W01_policy_match_for_every_W11_external_provider_binding_and_an_agreed_record_must_bind_every_configured_provider",
       "unknownBehavior": "fail_closed",
       "diagnostics": "deterministic_value_free_codes",
-      "expectedFocusedTestCount": 22
+      "expectedFocusedTestCount": 25
     },
     "rollbackEngine": {
       "status": "PASS",

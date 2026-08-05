@@ -68,6 +68,7 @@ export const WATCHER_FINALITY_REASON_CODES_V1 = [
   "source_mode_mismatch",
   "source_authority_mismatch",
   "source_provider_mismatch",
+  "source_provider_binding_unrun",
   "malformed_policy",
   "malformed_state",
   "invalid_state_semantics",
@@ -1517,21 +1518,41 @@ const bindingFailure = (
   return state.policyDigest === policy.policyDigest ? null : "stale_state";
 };
 
+/**
+ * Compares a W11 record's external-provider bindings against the W01
+ * allowlist. `identity_mismatch` means some binding names a provider the
+ * policy does not configure, or contradicts the configured operator identity,
+ * authentication kind, or endpoint. `binding_unrun` means every binding
+ * present agrees with the policy but the policy configures a provider the
+ * record never bound at all.
+ *
+ * #539: the identity check alone is a `.every` over a list the W11 parser
+ * bounds only from above (`bindings.length <= observationCount`), so it is
+ * vacuously true for any strict subset of the configured providers - and for
+ * the empty list. A record binding two of three configured providers reached
+ * `finality_granted` with the third provider's operator/TLS/endpoint binding
+ * never evaluated. The coverage bound below is the missing lower bound, and
+ * mirrors the local-node branch's `bindings.length === localQueryServices
+ * .length` exact-length pin; it is set-valued rather than positional because
+ * the W11 parser sorts bindings by `providerId` while the policy keeps its
+ * own configured order.
+ */
 const externalProviderBindingsMatchPolicy = (
   policy: WatcherFinalityPolicyV1,
   bindings: readonly ExternalProviderBinding[],
-): boolean => {
+  requireEveryConfiguredProvider: boolean,
+): "matched" | "identity_mismatch" | "binding_unrun" => {
   if (policy.sourceMode !== "external_providers") {
-    return bindings.length === 0;
+    return bindings.length === 0 ? "matched" : "identity_mismatch";
   }
   const configured = policy.externalProviders;
   if (configured === null) {
-    return false;
+    return "identity_mismatch";
   }
   const byProviderId = new Map(
     configured.map((provider) => [provider.providerId, provider] as const),
   );
-  return bindings.every((binding) => {
+  const identitiesMatch = bindings.every((binding) => {
     const provider = byProviderId.get(binding.providerId);
     return (
       provider !== undefined &&
@@ -1540,6 +1561,20 @@ const externalProviderBindingsMatchPolicy = (
       binding.endpoint === provider.endpoint
     );
   });
+  if (!identitiesMatch) {
+    return "identity_mismatch";
+  }
+  if (!requireEveryConfiguredProvider) {
+    return "matched";
+  }
+  const boundProviderIds = new Set(
+    bindings.map(({ providerId }) => providerId),
+  );
+  return bindings.length === configured.length &&
+    boundProviderIds.size === configured.length &&
+    configured.every(({ providerId }) => boundProviderIds.has(providerId))
+    ? "matched"
+    : "binding_unrun";
 };
 
 const localQueryServiceBindingsMatchPolicy = (
@@ -1602,6 +1637,53 @@ const configuredSourceForPolicy = (
           ),
         ),
       });
+
+/**
+ * The exact source binding a W11 record must satisfy before its verdict is
+ * read at all. Provider coverage is required only of an `agreed` record: a
+ * pending or quarantined record legitimately omits a provider that was
+ * unavailable, and is refused a line later by its own kind.
+ */
+const sourceBindingFailureFor = (
+  policy: WatcherFinalityPolicyV1,
+  consistency: ParsedConsistency,
+): WatcherFinalityReasonCodeV1 | null => {
+  if (consistency.sourceMode !== policy.sourceMode) {
+    return "source_mode_mismatch";
+  }
+  if (
+    consistency.configuredSourceDigest !==
+    sha256Canonical(configuredSourceForPolicy(policy))
+  ) {
+    return "source_authority_mismatch";
+  }
+  if (
+    !localQueryServiceBindingsMatchPolicy(
+      policy,
+      consistency.localQueryServiceBindings,
+    )
+  ) {
+    return "source_authority_mismatch";
+  }
+  if (policy.sourceMode === "external_providers") {
+    const providerBinding = externalProviderBindingsMatchPolicy(
+      policy,
+      consistency.externalProviderBindings,
+      consistency.kind === "agreed",
+    );
+    if (providerBinding === "identity_mismatch") {
+      return "source_provider_mismatch";
+    }
+    if (providerBinding === "binding_unrun") {
+      return "source_provider_binding_unrun";
+    }
+  }
+  return consistency.authorityNodeId !== policy.authorityNodeId ||
+    consistency.authorityGenesisIdentitySha256 !==
+      policy.authorityGenesisIdentitySha256
+    ? "source_authority_mismatch"
+    : null;
+};
 
 export const watcherFinalityConfiguredSourceV1 = configuredSourceForPolicy;
 
@@ -1686,28 +1768,7 @@ export const evaluateWatcherFinalityV1 = (
       state,
     );
   }
-  const sourceBindingFailure =
-    consistency.sourceMode !== policy.sourceMode
-      ? "source_mode_mismatch"
-      : consistency.configuredSourceDigest !==
-          sha256Canonical(configuredSourceForPolicy(policy))
-        ? "source_authority_mismatch"
-        : !localQueryServiceBindingsMatchPolicy(
-              policy,
-              consistency.localQueryServiceBindings,
-            )
-          ? "source_authority_mismatch"
-          : policy.sourceMode === "external_providers" &&
-              !externalProviderBindingsMatchPolicy(
-                policy,
-                consistency.externalProviderBindings,
-              )
-            ? "source_provider_mismatch"
-            : consistency.authorityNodeId !== policy.authorityNodeId ||
-                consistency.authorityGenesisIdentitySha256 !==
-                  policy.authorityGenesisIdentitySha256
-              ? "source_authority_mismatch"
-              : null;
+  const sourceBindingFailure = sourceBindingFailureFor(policy, consistency);
   if (sourceBindingFailure !== null) {
     return result(
       "reject",

@@ -1599,14 +1599,15 @@ if (
   finalityEngine.consistencyPolicy !==
     "exact_source_mode_bound_W11_agreement_required" ||
   finalityEngine.externalProviderPolicy !==
-    "exact_W01_policy_match_for_every_W11_external_provider_binding" ||
+    "exact_W01_policy_match_for_every_W11_external_provider_binding_and_an_agreed_record_must_bind_every_configured_provider" ||
   finalityEngine.unknownBehavior !== "fail_closed" ||
   finalityEngine.diagnostics !== "deterministic_value_free_codes" ||
-  finalityEngine.expectedFocusedTestCount !== 22
+  finalityEngine.expectedFocusedTestCount !== 25
 ) {
   fail("W12 finality-engine evidence is incomplete or stale");
 }
 const finalityEngineSource = finalityEngineBytes.toString("utf8");
+const finalityEngineTestSource = finalityEngineTestBytes.toString("utf8");
 for (const requiredSymbol of [
   "WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION",
   "WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION",
@@ -1626,6 +1627,34 @@ for (const requiredSymbol of [
 }
 if (!finalityEngineSource.includes("externalProviderBindingsMatchPolicy")) {
   fail("W12 finality must match W11 provider bindings to W01 policy");
+}
+// #539: the provider-binding predicate used to be a bare `.every` over a list
+// the W11 parser bounds only from above, so a record binding a strict subset
+// of the configured providers reached `finality_granted` with the unbound
+// providers' operator/TLS/endpoint binding never evaluated. Both the lower
+// bound and the reason code it reports are pinned here, with the adversarial
+// selector and the fully bound control that separates them.
+for (const requiredFinalitySymbol of [
+  "source_provider_binding_unrun",
+  "requireEveryConfiguredProvider",
+]) {
+  if (!finalityEngineSource.includes(requiredFinalitySymbol)) {
+    fail(
+      `W12 finality provider-coverage symbol ${requiredFinalitySymbol} is absent`,
+    );
+  }
+}
+for (const requiredFinalityTestSymbol of [
+  "refuses finality while a configured external provider is unbound",
+  "refuses finality when only part of the configured provider set ran",
+  "grants finality when every configured external provider is bound",
+  "source_provider_binding_unrun",
+]) {
+  if (!finalityEngineTestSource.includes(requiredFinalityTestSymbol)) {
+    fail(
+      `W12 finality provider-coverage case ${requiredFinalityTestSymbol} is not pinned`,
+    );
+  }
 }
 const rollbackEngine = dependencyMap.requiredWatcherPackage?.rollbackEngine;
 if (
@@ -2183,7 +2212,7 @@ for (const requiredSymbol of [
   }
 }
 // #519 finding V-4 (#527): publicDaClient, canonicalBlockStore,
-// headerRootReconstruction, and phaseAVerifier — 301 of the published 596
+// headerRootReconstruction, and phaseAVerifier — 301 of the published 599
 // watcher tests — had no literal pin anywhere in this verifier, so the map
 // could declare any number for them and both watcher gates stayed green. These
 // pins were measured from a package-local Vitest 3.0.7 JSON report and are

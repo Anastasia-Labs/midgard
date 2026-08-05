@@ -101,12 +101,12 @@ if (
   );
 }
 
-// #519 finding V-4 (#527): the published 19-file/596-test total used to be a
+// #519 finding V-4 (#527): the published 19-file/599-test total used to be a
 // `reduce` over the dependency map's own numbers compared against the runner —
 // but the per-file expectations came from the same map, so editing the artifact
 // under audit moved both sides of every comparison at once. Four suites
 // (publicDaClient, canonicalBlockStore, headerRootReconstruction,
-// phaseAVerifier — 301 of the 596) additionally had no literal pin in
+// phaseAVerifier — 301 of the 599) additionally had no literal pin in
 // verify-canonical-v1-watcher-dependency-map.mjs, so their counts were
 // self-declared end to end.
 //
@@ -124,7 +124,7 @@ const pinnedByFile = new Map([
   ["durable-store.test.ts", 12],
   ["l1-adapter.test.ts", 23],
   ["multi-provider-consistency.test.ts", 18],
-  ["finality-engine.test.ts", 22],
+  ["finality-engine.test.ts", 25],
   ["rollback-engine.test.ts", 26],
   ["state-queue-indexer.test.ts", 19],
   ["user-event-indexer.test.ts", 23],
@@ -139,7 +139,7 @@ const pinnedByFile = new Map([
   ["event-classification-verifier.test.ts", 15],
   ["scaffold.test.ts", 5],
 ]);
-const pinnedTotal = 596;
+const pinnedTotal = 599;
 const sumCounts = (counts) => counts.reduce((sum, count) => sum + count, 0);
 if (
   pinnedByFile.size !== expectedByFile.size ||

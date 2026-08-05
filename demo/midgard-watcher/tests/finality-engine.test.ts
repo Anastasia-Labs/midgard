@@ -23,6 +23,7 @@ import {
   WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
   WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
   WATCHER_FINALITY_STATE_V1_SCHEMA_VERSION,
+  watcherFinalityConfiguredSourceV1,
   type WatcherFinalityPolicyV1,
   type WatcherFinalityStateV1,
 } from "../src/finality-engine.js";
@@ -372,6 +373,55 @@ const policy = (
   return value as WatcherFinalityPolicyV1;
 };
 
+// A policy over an explicit configured provider set, so a test can name a
+// provider allowlist that is strictly wider than the set a W11 record binds.
+const policyOverProviders = (
+  providers: readonly (readonly [string, string])[],
+  depth = 3,
+): WatcherFinalityPolicyV1 => {
+  const base = config(depth, depth);
+  const value = makeWatcherFinalityPolicyV1(
+    {
+      ...base,
+      l1: {
+        ...base.l1,
+        source: {
+          sourceMode: "external_providers",
+          providers: providers.map(([identity, identityByte]) => ({
+            identity,
+            operatorIdentitySha256: hex32(identityByte),
+            endpoint: externalEndpoints.get(
+              `${identity}:${identityByte}:${identityByte}`,
+            )!,
+          })),
+        },
+      },
+    },
+    deploymentIdentity(),
+  );
+  expect(value).not.toBeNull();
+  return value as WatcherFinalityPolicyV1;
+};
+
+// Re-stamps a genuine W11 record onto another policy's configured source, so
+// the source-authority binding cannot mask the provider-coverage question.
+// Everything else in the record - bindings, counts, evidence, agreement - is
+// exactly what W11 produced. Against a policy the record already matches this
+// is the identity function, which the fully bound control asserts.
+const rebindConsistencyToPolicy = (
+  record: unknown,
+  targetPolicy: WatcherFinalityPolicyV1,
+): Record<string, unknown> => {
+  const rebound: Record<string, unknown> = {
+    ...(record as Record<string, unknown>),
+    configuredSourceDigest: sha256CanonicalForTest(
+      watcherFinalityConfiguredSourceV1(targetPolicy),
+    ),
+  };
+  delete rebound.consistencyDigest;
+  return { ...rebound, consistencyDigest: sha256CanonicalForTest(rebound) };
+};
+
 const provider = (
   providerId: string,
   identityByte: string,
@@ -683,6 +733,114 @@ describe("canonical release-bound watcher finality", () => {
       action: "reject",
       protocolDecision: "quarantined",
       reasonCodes: ["source_authority_mismatch"],
+    });
+  });
+
+  it("refuses finality while a configured external provider is unbound", () => {
+    // provider-c is in the W01 allowlist and never observed. The W11 record is
+    // a genuine two-provider agreement over provider-a/provider-b; every
+    // binding it carries matches the policy, so `.every` over the binding list
+    // is true and used to say nothing at all about provider-c.
+    const finalityPolicy = policyOverProviders([
+      ["provider-a", "a1"],
+      ["provider-b", "b2"],
+      ["provider-c", "c3"],
+    ]);
+    const belowThreshold = rebindConsistencyToPolicy(
+      agreement("2"),
+      finalityPolicy,
+    );
+    const atThreshold = rebindConsistencyToPolicy(
+      agreement("3"),
+      finalityPolicy,
+    );
+    expect(belowThreshold.status).toBe("agreed");
+    expect((belowThreshold.externalProviderBindings as unknown[]).length).toBe(
+      2,
+    );
+    expect(finalityPolicy.externalProviders).toHaveLength(3);
+
+    const first = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      null,
+      belowThreshold,
+    );
+    const second = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      first.state,
+      atThreshold,
+    );
+
+    expect(second.protocolDecision).toBe("quarantined");
+    expect(second.action).toBe("reject");
+    expect(second.reasonCodes).toEqual(["source_provider_binding_unrun"]);
+    expect(first).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["source_provider_binding_unrun"],
+      alertCodes: [
+        "watcher_finality_input_rejected",
+        "watcher_finality_configuration_mismatch",
+      ],
+    });
+    expect(first.state?.phase).toBe("unobserved");
+    expect(second.state?.phase).toBe("unobserved");
+  });
+
+  it("refuses finality when only part of the configured provider set ran", () => {
+    // Half the allowlist - provider-c and provider-d - never ran, so the
+    // operator, TLS-identity, and endpoint binding for both is unevaluated.
+    const finalityPolicy = policyOverProviders([
+      ["provider-a", "a1"],
+      ["provider-b", "b2"],
+      ["provider-c", "c3"],
+      ["provider-d", "d4"],
+    ]);
+    const partial = rebindConsistencyToPolicy(agreement("8"), finalityPolicy);
+
+    expect(finalityPolicy.externalProviders).toHaveLength(4);
+    expect(
+      evaluateWatcherFinalityV1(finalityPolicy, null, partial),
+    ).toMatchObject({
+      action: "reject",
+      protocolDecision: "quarantined",
+      reasonCodes: ["source_provider_binding_unrun"],
+    });
+  });
+
+  it("grants finality when every configured external provider is bound", () => {
+    const finalityPolicy = policyOverProviders([
+      ["provider-a", "a1"],
+      ["provider-b", "b2"],
+    ]);
+    const belowThreshold = agreement("2");
+    const atThreshold = agreement("3");
+
+    // The re-stamp is the identity function on a record the policy already
+    // matches: the rejections above differ only in the configured provider set.
+    expect(rebindConsistencyToPolicy(atThreshold, finalityPolicy)).toEqual(
+      atThreshold,
+    );
+    expect(finalityPolicy.policyDigest).toBe(policy().policyDigest);
+
+    const first = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      null,
+      belowThreshold,
+    );
+    const second = evaluateWatcherFinalityV1(
+      finalityPolicy,
+      first.state,
+      atThreshold,
+    );
+
+    expect(first.action).toBe("observe_pending");
+    expect(second).toMatchObject({
+      action: "finalize",
+      protocolDecision: "finality_granted",
+      reasonCodes: ["confirmation_depth_reached"],
+      alertCodes: [],
+      state: { phase: "finalized" },
     });
   });
 
