@@ -1170,12 +1170,12 @@ const watcherFocusedGateAggregate = watcherFocusedCounts.reduce(
 if (
   watcherFocusedGateCardinality !== watcherFocusedCounts.length ||
   watcherFocusedGateCardinality !== 19 ||
-  watcherFocusedGateAggregate !== 595
+  watcherFocusedGateAggregate !== 596
 ) {
   add(
     "watcherFocusedGateContractMismatch",
     "watcher-focused-gate",
-    `source cardinality=${watcherFocusedGateCardinality}, dependency-map files=${watcherFocusedCounts.length}, aggregate=${watcherFocusedGateAggregate}; expected exact 19/595`,
+    `source cardinality=${watcherFocusedGateCardinality}, dependency-map files=${watcherFocusedCounts.length}, aggregate=${watcherFocusedGateAggregate}; expected exact 19/596`,
   );
 }
 const taskStringValues = (value) => {

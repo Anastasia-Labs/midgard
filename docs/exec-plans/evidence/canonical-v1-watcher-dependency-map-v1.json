@@ -326,13 +326,13 @@
       "status": "PASS",
       "schemaVersion": "midgard-watcher-block-replay-v1",
       "authorityPolicy": "parser_recomputed_W15_and_applicable_W16_authorities_plus_accepted_W21_W22_W23_W24_records_only",
-      "rootPolicy": "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed",
+      "rootPolicy": "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed_and_accept_requires_both_committed_bindings_to_have_run",
       "rejectionPolicy": "canonical_49_code_vocabulary_is_disjointly_partitioned_12_phase_b_27_phase_a_owned_10_unclaimed",
       "eventPolicy": "shared_canonical_raw_effects_are_derived_or_rebuilt_from_recomputed_authorities_and_applied_in_exact_dense_W22_source_order_W26_retains_classification",
       "orderingPolicy": "exact_W22_EventKey_phase_step_order_then_canonical_phase_priority_for_rejections_with_restart_replay_digest_determinism",
       "downstreamPolicy": "machine_prerequisite_requires_W26_accept_and_action_accept_alone_never_implies_W29_verified",
       "unknownBehavior": "fail_closed",
-      "expectedFocusedTestCount": 20
+      "expectedFocusedTestCount": 21
     },
     "eventClassificationVerifier": {
       "status": "PASS",

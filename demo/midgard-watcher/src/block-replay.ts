@@ -77,6 +77,18 @@
  * reason code. Like W22 and W24, the result is frozen, versioned, and
  * digest-bound with `watcherSha256CanonicalJsonV1`, so two runs over the same
  * bytes produce the same `resultDigest`.
+ *
+ * An *unrun* binding is fail-closed too, which is a separate statement from
+ * the one above (#517). Acceptance compares the recomputed roots against the
+ * operator's committed values in exactly two places - the committed
+ * transition trace and the header's `utxosRoot` - and both are conditional on
+ * the caller supplying that committed material. `finalizeResult` therefore
+ * gates `accept` on a receipt from each binding rather than on the absence of
+ * reason codes, and reports `committed_trace_binding_unrun` /
+ * `post_state_binding_unrun` for whichever did not run. The candidate-level
+ * entry point (`evaluateWatcherBlockReplayCandidatesV1`), which has no
+ * committed trace by construction, consequently can never return `accept`: it
+ * is an evaluation surface, not an acceptance authority.
  */
 
 import { createHash } from "node:crypto";
@@ -467,8 +479,10 @@ export const WATCHER_BLOCK_REPLAY_REASON_CODES_V1 = [
   "missing_event_authority",
   "duplicate_event_authority",
   "event_authority_identity_mismatch",
+  "committed_trace_binding_unrun",
   "transition_trace_mismatch",
   "intermediate_root_mismatch",
+  "post_state_binding_unrun",
   "post_state_root_mismatch",
 ] as const;
 
@@ -1942,11 +1956,22 @@ const bindForcedTransitionEffectV1 = async (input: {
   readonly phaseBConfig: PhaseBConfig;
   readonly step: WatcherBlockReplayCommittedStepV1;
 }): Promise<WatcherBlockReplayForcedValidationFactV1 | null> => {
-  if (
-    input.authority.phase !== "ForcedTransaction" ||
-    input.authority.canonicalNativeTxCbor === null
-  ) {
+  if (input.authority.phase !== "ForcedTransaction") {
     return null;
+  }
+  // #517, same class as the acceptance gate above: this used to be a second
+  // disjunct of the early `return null`, so a forced step whose canonical
+  // native transaction was missing skipped the canonical Phase A/B rerun and
+  // the terminal-validity comparison entirely, and the caller applied the
+  // authority's effect as if the terminality binding had passed.
+  // `validateEventAuthorityV1` already refuses such an authority, so this is
+  // unreachable today - which is exactly why it must fail closed rather than
+  // silently skip if that invariant is ever relaxed.
+  if (input.authority.canonicalNativeTxCbor === null) {
+    return fail(
+      "transition_effect_semantics_mismatch",
+      "$.canonicalNativeTxCbor",
+    );
   }
   if (input.authority.terminalClassification === null) {
     return fail(
@@ -2523,6 +2548,19 @@ const finalizeResult = (input: {
 
   const priorStateFailed = reasonCodes.has("prior_state_root_mismatch");
 
+  // #517. The two bindings below are the only places a recomputed root is
+  // compared against something the operator committed, and both are
+  // conditional. Deriving `accept` from an empty `reasonCodes` alone was
+  // therefore fail-open: a caller that supplied neither a committed transition
+  // trace nor an expected post-state root skipped both comparisons, left
+  // `reasonCodes` empty, and was stamped `accept` without one committed value
+  // ever being checked. These receipts are set only from inside the branch that
+  // actually performs each binding, and `accept` is gated on both, so an unrun
+  // binding cannot be an acceptance regardless of what the reason-code set
+  // happens to contain.
+  let committedTraceBound = false;
+  let postStateRootBound = false;
+
   if (!priorStateFailed && input.committedSteps !== null) {
     const bound = bindCommittedSteps({
       core,
@@ -2534,28 +2572,37 @@ const finalizeResult = (input: {
     for (const code of bound.reasonCodes) {
       reasonCodes.add(code);
     }
+    committedTraceBound = true;
   }
 
-  if (
-    !priorStateFailed &&
-    input.expectedPostStateRoot !== null &&
-    core.postStateRoot !== input.expectedPostStateRoot
-  ) {
-    reasonCodes.add("post_state_root_mismatch");
-    stageMismatches.push({
-      stage: "post_state",
-      reasonCode: "post_state_root_mismatch",
-      field: "$.header.utxosRoot",
-      expected: input.expectedPostStateRoot,
-      actual: core.postStateRoot,
-    });
+  if (!priorStateFailed && input.expectedPostStateRoot !== null) {
+    postStateRootBound = true;
+    if (core.postStateRoot !== input.expectedPostStateRoot) {
+      reasonCodes.add("post_state_root_mismatch");
+      stageMismatches.push({
+        stage: "post_state",
+        reasonCode: "post_state_root_mismatch",
+        field: "$.header.utxosRoot",
+        expected: input.expectedPostStateRoot,
+        actual: core.postStateRoot,
+      });
+    }
+  }
+
+  if (!committedTraceBound) {
+    reasonCodes.add("committed_trace_binding_unrun");
+  }
+  if (!postStateRootBound) {
+    reasonCodes.add("post_state_binding_unrun");
   }
 
   // `accept` means root-exact replay only. W26 remains mandatory downstream
   // before classification/decision readiness; W25 does not adjudicate whether
   // an authenticated event was due, omitted, fabricated, or duplicated.
   const action: WatcherBlockReplayActionV1 =
-    reasonCodes.size === 0 ? "accept" : "reject";
+    committedTraceBound && postStateRootBound && reasonCodes.size === 0
+      ? "accept"
+      : "reject";
 
   return digestResult({
     schemaVersion: WATCHER_BLOCK_REPLAY_V1_SCHEMA_VERSION,

@@ -2246,8 +2246,12 @@ describe("W25 roots and deterministic replay", () => {
       [secondInput, output],
     ]);
 
+    // #517: the candidate-level entry point recomputes every root but binds
+    // none of them to a committed value, so it is never an acceptance. The
+    // roots below are still the point of this case; the verdict is pinned by
+    // the adversarial case that follows.
     const unbound = await replay([first, second], priorState);
-    expect(unbound.action).toBe("accept");
+    expect(unbound.action).toBe("reject");
     expect(unbound.priorStateRoot).toBe(
       "5d87f0b3546eb29ae65c0b701ef75f48b87569a9c0fca93e194daa11bfb2ca46",
     );
@@ -2277,11 +2281,97 @@ describe("W25 roots and deterministic replay", () => {
       unbound.postStateRoot!,
     );
     expect(bound).toMatchObject({
-      action: "accept",
+      action: "reject",
       priorStateRoot: unbound.priorStateRoot,
       postStateRoot: unbound.postStateRoot,
       intermediateRoots: unbound.intermediateRoots,
     });
+  });
+
+  it("refuses acceptance while either committed binding is unrun", async () => {
+    // #517. Before this case, `finalizeResult` derived `accept` from an empty
+    // `reasonCodes` set while both bindings that compare a recomputed root
+    // against an operator commitment - the committed transition trace and the
+    // header `utxosRoot` - were skipped whenever the caller supplied neither.
+    // A replayed block was therefore accepted with nothing compared at all.
+    const spent = outRefFromByte(0x11);
+    const output = makeOutput(10n, FIXED_ADDRESS);
+    const native = makeNativeTx({
+      spendInputs: [spent],
+      outputs: [output],
+      privateKey: FIXED_KEY,
+    });
+    const txId = native.txId.toString("hex");
+    const committedPriorRoot =
+      "b7746ddeeb13a562b5b7156c22cb6282132b02ede1b44e4cbe4e6ad674f38212";
+    const committedPostRoot =
+      "ebb8a86be0410b3f734c9935bfa530bf10c477b7435608aa489c6bbc1f8e0710";
+    const priorState = entries([[spent, output]]);
+    const postState = entries([[outRefFromTxId(native.txId), output]]);
+
+    // Control: the same block through the fully bound public entry point,
+    // where both bindings run against the L1-committed material.
+    const fixture = await buildPublicReplayFixture({
+      txCbors: [native.txCbor],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: { L2TransactionEventKey: { tx_id: txId } },
+          phase: "L2Transaction",
+          pre_utxos_root: committedPriorRoot,
+          post_utxos_root: committedPostRoot,
+        },
+      ],
+      priorState,
+      postState,
+    });
+    const accepted = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    expect(accepted).toMatchObject({
+      action: "accept",
+      reasonCodes: [],
+      postStateRoot: committedPostRoot,
+    });
+
+    // The adversarial case: the identical transaction over the identical prior
+    // state, replayed with neither committed binding supplied. The recomputed
+    // roots are byte-identical to the accepted control, so the binding gate is
+    // the only thing separating the two verdicts.
+    const candidate = makePhaseBCandidate({
+      spent: [spent],
+      outputs: [output],
+      privateKey: FIXED_KEY,
+    });
+    const unrun = await replay([candidate], priorState);
+    expect(unrun.acceptedTxIds).toStrictEqual([txId]);
+    expect(unrun.priorStateRoot).toBe(committedPriorRoot);
+    expect(unrun.postStateRoot).toBe(committedPostRoot);
+    expect(unrun.action).toBe("reject");
+    expect(unrun.reasonCodes).toStrictEqual([
+      "committed_trace_binding_unrun",
+      "post_state_binding_unrun",
+    ]);
+
+    // Half the bindings is still not acceptance: supplying the *correct*
+    // committed post-state root leaves the transition trace unbound, and the
+    // remaining reason code names exactly which binding never ran.
+    const halfBound = await replay([candidate], priorState, committedPostRoot);
+    expect(halfBound.action).toBe("reject");
+    expect(halfBound.reasonCodes).toStrictEqual([
+      "committed_trace_binding_unrun",
+    ]);
+    expect(halfBound.stageMismatches).toStrictEqual([]);
+
+    // And the durable W03 record cannot be minted from an unbound replay.
+    for (const result of [unrun, halfBound]) {
+      expect(() =>
+        makeWatcherBlockReplayReconstructedStateV1({
+          result,
+          chainPointId: `${CHAIN_POINT.slot.toString()}:${CHAIN_POINT.blockHash}`,
+          inputIds: [h32(0x5a)],
+        }),
+      ).toThrow("result_not_accepted");
+    }
   });
 
   it("fails closed on trace substitution, omission, duplication/reorder, trailing steps, wrong roots, and event_to_step drift", async () => {

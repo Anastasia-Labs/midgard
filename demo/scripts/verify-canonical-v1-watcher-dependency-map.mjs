@@ -1940,7 +1940,7 @@ if (
   blockReplay.authorityPolicy !==
     "parser_recomputed_W15_and_applicable_W16_authorities_plus_accepted_W21_W22_W23_W24_records_only" ||
   blockReplay.rootPolicy !==
-    "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed" ||
+    "prior_state_every_ledger_mutation_transition_event_and_post_state_are_recomputed_or_fail_closed_and_accept_requires_both_committed_bindings_to_have_run" ||
   blockReplay.rejectionPolicy !==
     "canonical_49_code_vocabulary_is_disjointly_partitioned_12_phase_b_27_phase_a_owned_10_unclaimed" ||
   blockReplay.eventPolicy !==
@@ -1950,7 +1950,7 @@ if (
   blockReplay.downstreamPolicy !==
     "machine_prerequisite_requires_W26_accept_and_action_accept_alone_never_implies_W29_verified" ||
   blockReplay.unknownBehavior !== "fail_closed" ||
-  blockReplay.expectedFocusedTestCount !== 20
+  blockReplay.expectedFocusedTestCount !== 21
 ) {
   fail("W25 block-replay evidence is incomplete or stale");
 }
@@ -1996,6 +1996,9 @@ for (const requiredTestSymbol of [
   "replays a Withdrawal after an L2 transaction",
   "replays a ForcedTransaction before a later L2 spend",
   "trace substitution, omission, duplication/reorder, trailing steps",
+  "refuses acceptance while either committed binding is unrun",
+  "committed_trace_binding_unrun",
+  "post_state_binding_unrun",
   "deterministic corpus for every evidenced Phase-B rejection code",
   "createGenuineW15DepositWithdrawalAuthoritiesV1",
   "createGenuineW16SettlementAuthoritiesV1",
@@ -2180,7 +2183,7 @@ for (const requiredSymbol of [
   }
 }
 // #519 finding V-4 (#527): publicDaClient, canonicalBlockStore,
-// headerRootReconstruction, and phaseAVerifier — 301 of the published 595
+// headerRootReconstruction, and phaseAVerifier — 301 of the published 596
 // watcher tests — had no literal pin anywhere in this verifier, so the map
 // could declare any number for them and both watcher gates stayed green. These
 // pins were measured from a package-local Vitest 3.0.7 JSON report and are
