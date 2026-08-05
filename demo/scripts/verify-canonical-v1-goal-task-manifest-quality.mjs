@@ -278,10 +278,24 @@ const primaryCommandBindings = (command) =>
     if (focusedModule !== undefined) bindings.push(focusedModule);
     const aikenModule = clause.match(/\baiken\s+check\s+-m\s+(\S+)/)?.[1];
     if (aikenModule !== undefined) bindings.push(aikenModule);
+    // scripts/guard-focused-selector.mjs is the fail-closed form of
+    // `aiken check -m <selector>` (issue #523): it binds exactly the same
+    // module selectors, so the count contract must still name them rather than
+    // the wrapper's own filename.
+    const guardedModules = clause.match(
+      /\bscripts\/guard-focused-selector\.mjs\s+([^|]+)/,
+    )?.[1];
+    if (guardedModules !== undefined) {
+      for (const selector of guardedModules.match(/[a-z0-9_][a-z0-9_/]*/g) ??
+        []) {
+        bindings.push(selector);
+      }
+    }
     const nodeScript = clause.match(/\bnode\s+([A-Za-z0-9_./-]+\.mjs)\b/)?.[1];
     if (
       nodeScript !== undefined &&
       !nodeScript.endsWith("run-focused-check.mjs") &&
+      !nodeScript.endsWith("guard-focused-selector.mjs") &&
       !nodeScript.endsWith("verify-normalized-format.mjs")
     ) {
       bindings.push(nodeScript.split("/").at(-1));

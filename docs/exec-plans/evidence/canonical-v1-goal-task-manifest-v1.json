@@ -2354,8 +2354,8 @@
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 maximum_spend_input_schedule_terminal_matches_typescript maximum_reference_input_schedule_terminal_matches_typescript maximum_native_then_effectful_cek_selection_is_bounded cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree cek_context_maximum_mint_initializes_from_authenticated_frontier cek_context_maximum_mint_authenticates_last_asset_membership maximum_general_field_bounded_chunk_instruction_evidence_is_bounded maximum_script_program_instruction_evidence_is_bounded maximum_output_field_terminal_matches_typescript maximum_required_signer_field_terminal_matches_typescript maximum_mint_field_terminal_matches_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_value_v1 folds_the_exact_plutus_value_from_reverse_memberships terminal_cross_language_control_decodes_canonically substituted_asset_facts_fail_closed maximum_nested_value_terminal_agrees_with_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_data_breadth_v1 datum_constructor_frontier_agrees datum_constructor_terminal_agrees redeemer_constructor_frontier_agrees redeemer_constructor_terminal_agrees datum_list_frontier_agrees datum_list_terminal_agrees redeemer_list_frontier_agrees redeemer_list_terminal_agrees datum_map_frontier_agrees datum_map_terminal_agrees redeemer_map_frontier_agrees redeemer_map_terminal_agrees",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_data_traverse_max_cardano maximum_cardano_nested_data_applies_real_head_controls maximum_cardano_nested_data_applies_real_fold_controls maximum_cardano_nested_data_terminal_matches_typescript maximum_cardano_nested_redeemer_terminal_matches_typescript",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_value_max_cardano maximum_cardano_value_terminal_fold_matches_typescript maximum_cardano_value_policy_transition_matches_typescript",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_data_traverse maximum_cardano_nested_data_applies_real_head_controls maximum_cardano_nested_data_applies_real_fold_controls maximum_cardano_nested_data_terminal_matches_typescript maximum_cardano_nested_redeemer_terminal_matches_typescript",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/ledger_output_value maximum_cardano_value_terminal_fold_matches_typescript maximum_cardano_value_policy_transition_matches_typescript",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/c26_unary_depth_v1 maximum_unary_depth_is_bound_by_signed_cardano_capacity maximum_unary_depth_terminal_agrees_with_typescript_and_rejects_mutation",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/script_proof_v1 midgard_v1_script_tag_and_hash_prefix_vector_is_stable script_proof_source_and_redeemer_vectors_are_stable signer_leaf_and_seven_leaf_frontier_root_match_typescript inline_script_source_binds_raw_field_six_and_rejects_field_seven redeemer_purpose_tags_are_stable",
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/cek_proof_v1 canonical_program_envelope_decodes_with_exact_bounds small_canonical_program_envelope_decodes program_envelope_rejects_noncanonical_and_out_of_bounds_claims",
@@ -2367,7 +2367,7 @@
         "pnpm --dir demo/midgard-core typecheck",
         "pnpm --dir demo/midgard-fault-proofs typecheck"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, midgard/ledger_output_value_v1, midgard/cek_data_breadth_v1, midgard/cek_data_traverse_max_cardano, midgard/ledger_output_value_max_cardano, midgard/fraud_proofs/c26_unary_depth_v1, midgard/script_proof_v1, midgard/cek_proof_v1, nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. Current tracked aggregate collects exactly 42 guarded Aiken tests and exactly 26 TypeScript tests across 8 exact files. Closure adds the remaining C22 Aiken terminal selector and 4 prescribed complete-item TypeScript cases, for exactly 43 guarded Aiken tests and exactly 30 TypeScript tests; all 73 closure tests pass with 0 failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, midgard/ledger_output_value_v1, midgard/cek_data_breadth_v1, midgard/cek_data_traverse, midgard/ledger_output_value, midgard/fraud_proofs/c26_unary_depth_v1, midgard/script_proof_v1, midgard/cek_proof_v1, nested-value-boundary-v1.test.ts, data-breadth-boundary-v1.test.ts, nested-redeemer-data-boundary-v1.test.ts, plutus-data-unary-depth-boundary-v1.test.ts, cek-program.test.ts, retained-da-boundary-v1.test.ts, script-proof.test.ts, cardano-capability-retained-da-v1.test.ts. Current tracked aggregate collects exactly 42 guarded Aiken tests and exactly 26 TypeScript tests across 8 exact files. Closure adds the remaining C22 Aiken terminal selector and 4 prescribed complete-item TypeScript cases, for exactly 43 guarded Aiken tests and exactly 30 TypeScript tests; all 73 closure tests pass with 0 failures.",
       "invalidationTriggers": [
         "Any listed writable path, maximum accepted/adjacent fixture, applied/terminal vector, proof representation, or guarded selector changes",
         "Any C20-0 through C31 dependency status/ABI changes, C21 Option B-prime is reconsidered, or C21-AUDIT evidence is repinned",
@@ -6709,7 +6709,7 @@
         "append-only minAda catalogue-category and CLI/API integration proposals for parent merge; registration is REQUIRED rather than N/A"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/min_ada/step_01 accepts_one_lovelace_below_minimum rejects_exact_minimum rejects_valid_output_above_minimum binds_coins_per_utxo_byte_parameter rejects_parameter_mutation rejects_malformed_output rejects_forged_native_root",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/min_ada/step_01 accepts_one_lovelace_below_minimum rejects_exact_minimum rejects_valid_output_above_minimum binds_coins_per_utxo_byte_parameter rejects_parameter_mutation rejects_malformed_output rejects_forged_native_root",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/min-ada.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/min-ada-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-min-ada.test.ts",
@@ -6718,7 +6718,7 @@
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-fault-proofs typecheck && pnpm --dir demo/midgard-sdk typecheck"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/min_ada/step_01, min-ada.test.ts, min-ada-v1.test.ts, submit-init-emulator-min-ada.test.ts, verify-canonical-v1-proof-family-q27.mjs. Q27 guarded Aiken module: exactly 7 selectors; min-ada.test.ts: exactly 7 tests; SDK min-ada-v1.test.ts: exactly 5 tests; emulator suite: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory: exactly 8 source/test paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/min_ada/step_01, min-ada.test.ts, min-ada-v1.test.ts, submit-init-emulator-min-ada.test.ts, verify-canonical-v1-proof-family-q27.mjs. Q27 guarded Aiken module: exactly 7 selectors; min-ada.test.ts: exactly 7 tests; SDK min-ada-v1.test.ts: exactly 5 tests; emulator suite: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory: exactly 8 source/test paths, all with zero failures.",
       "invalidationTriggers": [
         "C42/C49 target-snapshot coinsPerUtxoByte/applicable min-UTxO rule, canonical output codec/bytes, stable rejection code, validation state, or TypeScript twin changes",
         "catalogue order/category id, CLI/API union, native inclusion binding, blueprint/applied validator hash, deployment identity, or reward/removal lifecycle changes",
@@ -6779,9 +6779,9 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/transition_trace/proof accepts_valid_withdrawal_delete_transition_fault rejects_valid_withdrawal_delete_when_trace_matches_expected_post_root accepts_invalid_withdrawal_no_op_transition_fault rejects_invalid_withdrawal_no_op_when_trace_does_not_mutate_root",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawn_input/step_01 accepts_authenticated_withdrawn_spend rejects_unwithdrawn_input rejects_forged_native_root rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawn_input/step_02 accepts_exact_spend_input_preimage rejects_wrong_input_index rejects_wrong_input_hash rejects_duplicate_preimage",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawn_input/step_03 accepts_prior_withdrawal_membership rejects_wrong_withdrawal_id rejects_wrong_withdrawal_root rejects_valid_unwithdrawn_input_block",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawn_input/step_01 accepts_authenticated_withdrawn_spend rejects_unwithdrawn_input rejects_forged_native_root rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawn_input/step_02 accepts_exact_spend_input_preimage rejects_wrong_input_index rejects_wrong_input_hash rejects_duplicate_preimage",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawn_input/step_03 accepts_prior_withdrawal_membership rejects_wrong_withdrawal_id rejects_wrong_withdrawal_root rejects_valid_unwithdrawn_input_block",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/withdrawn-input.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/withdrawn-input-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-withdrawn-input.test.ts",
@@ -6789,7 +6789,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/withdrawn-input/step-01.ak lib/midgard/fraud-proofs/withdrawn-input/step-02.ak lib/midgard/fraud-proofs/withdrawn-input/step-03.ak validators/fraud-proofs/withdrawn-input/step-01.ak validators/fraud-proofs/withdrawn-input/step-02.ak validators/fraud-proofs/withdrawn-input/step-03.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/transition_trace/proof, midgard/fraud_proofs/withdrawn_input/step_01, midgard/fraud_proofs/withdrawn_input/step_02, midgard/fraud_proofs/withdrawn_input/step_03, withdrawn-input.test.ts, withdrawn-input-v1.test.ts, submit-init-emulator-withdrawn-input.test.ts, verify-canonical-v1-proof-family-q28.mjs. Transition-reduction gate: exactly 4 selectors; Q28 step guards: exactly 4, 4, and 4 selectors; withdrawn-input.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory after non-reduction: exactly 14 source/test paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/transition_trace/proof, fraud_proofs/withdrawn_input/step_01, fraud_proofs/withdrawn_input/step_02, fraud_proofs/withdrawn_input/step_03, withdrawn-input.test.ts, withdrawn-input-v1.test.ts, submit-init-emulator-withdrawn-input.test.ts, verify-canonical-v1-proof-family-q28.mjs. Transition-reduction gate: exactly 4 selectors; Q28 step guards: exactly 4, 4, and 4 selectors; withdrawn-input.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory after non-reduction: exactly 14 source/test paths, all with zero failures.",
       "invalidationTriggers": [
         "C41 input/withdrawal identity, counted-root, spend authorization, transition semantics, or TypeScript codec changes",
         "transitionTrace begins convicting the exact spend-side withdrawn-input fixture; this forces structural-N/A reclassification and forbids the standalone family",
@@ -6858,10 +6858,10 @@
         "append-only doubleWithdraw category plus prepare/submit CLI/API proposals for parent merge; catalogue status remains OPEN/unregistered until Q50 integration and registration is REQUIRED rather than N/A"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/double_withdraw/step_01 accepts_first_withdrawal_membership rejects_forged_withdrawals_root rejects_wrong_withdrawal_count rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/double_withdraw/step_02 accepts_distinct_second_withdrawal_membership rejects_equal_event_id rejects_wrong_second_membership_path rejects_reordered_memberships",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/double_withdraw/step_03 accepts_equal_l2_outref_in_distinct_valid_withdrawals rejects_different_l2_outrefs rejects_nonvalid_withdrawal_tag rejects_wrong_body_bytes",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/double_withdraw/step_04 accepts_exact_double_withdraw_fault rejects_spent_withdrawal_utxo_tag rejects_valid_distinct_withdrawals rejects_forged_native_binding",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_withdraw/step_01 accepts_first_withdrawal_membership rejects_forged_withdrawals_root rejects_wrong_withdrawal_count rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_withdraw/step_02 accepts_distinct_second_withdrawal_membership rejects_equal_event_id rejects_wrong_second_membership_path rejects_reordered_memberships",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_withdraw/step_03 accepts_equal_l2_outref_in_distinct_valid_withdrawals rejects_different_l2_outrefs rejects_nonvalid_withdrawal_tag rejects_wrong_body_bytes",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/double_withdraw/step_04 accepts_exact_double_withdraw_fault rejects_spent_withdrawal_utxo_tag rejects_valid_distinct_withdrawals rejects_forged_native_binding",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/double-withdraw.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/double-withdraw-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-double-withdraw.test.ts",
@@ -6870,7 +6870,7 @@
         "cd onchain/aiken && aiken check --skip-tests",
         "pnpm --dir demo/midgard-fault-proofs typecheck && pnpm --dir demo/midgard-sdk typecheck"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/double_withdraw/step_01, midgard/fraud_proofs/double_withdraw/step_02, midgard/fraud_proofs/double_withdraw/step_03, midgard/fraud_proofs/double_withdraw/step_04, double-withdraw.test.ts, double-withdraw-v1.test.ts, submit-init-emulator-double-withdraw.test.ts, verify-canonical-v1-proof-family-q29.mjs. Q29 step guards: exactly 4, 4, 4, and 4 selectors; double-withdraw.test.ts: exactly 16 tests; SDK byte twin: exactly 8 tests; emulator: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 source/test paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/double_withdraw/step_01, fraud_proofs/double_withdraw/step_02, fraud_proofs/double_withdraw/step_03, fraud_proofs/double_withdraw/step_04, double-withdraw.test.ts, double-withdraw-v1.test.ts, submit-init-emulator-double-withdraw.test.ts, verify-canonical-v1-proof-family-q29.mjs. Q29 step guards: exactly 4, 4, 4, and 4 selectors; double-withdraw.test.ts: exactly 16 tests; SDK byte twin: exactly 8 tests; emulator: exactly 1 lifecycle test; evidence disposition: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 source/test paths, all with zero failures.",
       "invalidationTriggers": [
         "C41 or ledger-state changes WithdrawalId, WithdrawalInfo/body.l2_outref, validity tags, withdrawals counted-root membership, input-consumption identity, or TypeScript codec",
         "transitionTrace gains executable conviction of the exact two-distinct-events/same-l2-outref violation; re-triage before retaining a redundant standalone family",
@@ -7196,9 +7196,9 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 static_rules_prove_a_network_mismatch_is_an_exact_no_op",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/network_id/step_01 accepts_authenticated_output_schedule rejects_forged_native_root rejects_wrong_output_index rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/network_id/step_02 accepts_wrong_network_output rejects_matching_network rejects_malformed_address rejects_wrong_output_bytes",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/network_id/step_03 accepts_exact_network_fault rejects_valid_block rejects_parameter_mutation rejects_forged_handoff",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/network_id/step_01 accepts_authenticated_output_schedule rejects_forged_native_root rejects_wrong_output_index rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/network_id/step_02 accepts_wrong_network_output rejects_matching_network rejects_malformed_address rejects_wrong_output_bytes",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/network_id/step_03 accepts_exact_network_fault rejects_valid_block rejects_parameter_mutation rejects_forged_handoff",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/network-id.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/network-id-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-network-id.test.ts",
@@ -7206,7 +7206,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/network-id/step-01.ak lib/midgard/fraud-proofs/network-id/step-02.ak lib/midgard/fraud-proofs/network-id/step-03.ak validators/fraud-proofs/network-id/step-01.ak validators/fraud-proofs/network-id/step-02.ak validators/fraud-proofs/network-id/step-03.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, midgard/fraud_proofs/network_id/step_01, midgard/fraud_proofs/network_id/step_02, midgard/fraud_proofs/network_id/step_03, network-id.test.ts, network-id-v1.test.ts, submit-init-emulator-network-id.test.ts, verify-canonical-v1-proof-family-q35.mjs. StaticRules control: exactly 1 selector; Q35 step guards: exactly 4, 4, and 4 selectors; network-id.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 14 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, fraud_proofs/network_id/step_01, fraud_proofs/network_id/step_02, fraud_proofs/network_id/step_03, network-id.test.ts, network-id-v1.test.ts, submit-init-emulator-network-id.test.ts, verify-canonical-v1-proof-family-q35.mjs. StaticRules control: exactly 1 selector; Q35 step guards: exactly 4, 4, and 4 selectors; network-id.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 14 paths, all with zero failures.",
       "invalidationTriggers": [
         "C42 changes address/output codec, expectedNetworkId target snapshot, supported sentinel semantics, output schedule, or TS twin",
         "StaticRules or transitionTrace expands to convict arbitrary output-side mismatches; re-triage redundant family before retaining it",
@@ -7321,9 +7321,9 @@
       ],
       "focusedCommands": [
         "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/validation_machine_v1 script_integrity_is_recomputed_before_cek",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/hash_field_consistency/step_01 accepts_authenticated_auxiliary_hash rejects_forged_native_root rejects_wrong_body_index rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/hash_field_consistency/step_02 accepts_nonempty_auxiliary_hash_fault rejects_empty_null_hash rejects_malformed_hash rejects_wrong_body_bytes",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/hash_field_consistency/step_03 accepts_exact_auxiliary_hash_fault rejects_valid_block rejects_script_integrity_duplicate_route rejects_forged_handoff",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/hash_field_consistency/step_01 accepts_authenticated_auxiliary_hash rejects_forged_native_root rejects_wrong_body_index rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/hash_field_consistency/step_02 accepts_nonempty_auxiliary_hash_fault rejects_empty_null_hash rejects_malformed_hash rejects_wrong_body_bytes",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/hash_field_consistency/step_03 accepts_exact_auxiliary_hash_fault rejects_valid_block rejects_script_integrity_duplicate_route rejects_forged_handoff",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/hash-field-consistency.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/hash-field-consistency-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-hash-field-consistency.test.ts",
@@ -7331,7 +7331,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/hash-field-consistency/step-01.ak lib/midgard/fraud-proofs/hash-field-consistency/step-02.ak lib/midgard/fraud-proofs/hash-field-consistency/step-03.ak validators/fraud-proofs/hash-field-consistency/step-01.ak validators/fraud-proofs/hash-field-consistency/step-02.ak validators/fraud-proofs/hash-field-consistency/step-03.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, midgard/fraud_proofs/hash_field_consistency/step_01, midgard/fraud_proofs/hash_field_consistency/step_02, midgard/fraud_proofs/hash_field_consistency/step_03, hash-field-consistency.test.ts, hash-field-consistency-v1.test.ts, submit-init-emulator-hash-field-consistency.test.ts, verify-canonical-v1-proof-family-q37.mjs. ScriptIntegrity control: exactly 1 selector; Q37 step guards: exactly 4, 4, and 4 selectors; hash-field-consistency.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 14 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: midgard/validation_machine_v1, fraud_proofs/hash_field_consistency/step_01, fraud_proofs/hash_field_consistency/step_02, fraud_proofs/hash_field_consistency/step_03, hash-field-consistency.test.ts, hash-field-consistency-v1.test.ts, submit-init-emulator-hash-field-consistency.test.ts, verify-canonical-v1-proof-family-q37.mjs. ScriptIntegrity control: exactly 1 selector; Q37 step guards: exactly 4, 4, and 4 selectors; hash-field-consistency.test.ts: exactly 12 tests; SDK twin: exactly 6 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 14 paths, all with zero failures.",
       "invalidationTriggers": [
         "C46 changes auxiliary_data_hash/empty-null encoding, supported auxiliary policy, body codec, ScriptIntegrity semantics, or TS twin",
         "validation-trace gains on-chain auxiliary-hash conviction or script-integrity ceases exact conviction; re-triage family boundary",
@@ -7450,10 +7450,10 @@
         "required append-only fabricatedDeposit category plus CLI/API proposals; catalogue remains OPEN/unregistered until parent integration"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_deposit/step_01 accepts_committed_deposit_membership rejects_forged_deposits_root rejects_wrong_deposit_count rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_deposit/step_02 accepts_authenticated_l1_deposit_evidence rejects_wrong_nft_policy rejects_wrong_event_outref rejects_untrusted_evidence",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_deposit/step_03 accepts_deposit_content_mismatch rejects_exact_info_match rejects_wrong_datum_bytes rejects_forged_handoff",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_deposit/step_04 accepts_exact_fabricated_deposit_fault rejects_authentic_valid_deposit rejects_stale_evidence rejects_wrong_source_identity",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_deposit/step_01 accepts_committed_deposit_membership rejects_forged_deposits_root rejects_wrong_deposit_count rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_deposit/step_02 accepts_authenticated_l1_deposit_evidence rejects_wrong_nft_policy rejects_wrong_event_outref rejects_untrusted_evidence",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_deposit/step_03 accepts_deposit_content_mismatch rejects_exact_info_match rejects_wrong_datum_bytes rejects_forged_handoff",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_deposit/step_04 accepts_exact_fabricated_deposit_fault rejects_authentic_valid_deposit rejects_stale_evidence rejects_wrong_source_identity",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/fabricated-deposit.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/fabricated-deposit-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-fabricated-deposit.test.ts",
@@ -7461,7 +7461,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/fabricated-deposit/step-01.ak lib/midgard/fraud-proofs/fabricated-deposit/step-02.ak lib/midgard/fraud-proofs/fabricated-deposit/step-03.ak lib/midgard/fraud-proofs/fabricated-deposit/step-04.ak validators/fraud-proofs/fabricated-deposit/step-01.ak validators/fraud-proofs/fabricated-deposit/step-02.ak validators/fraud-proofs/fabricated-deposit/step-03.ak validators/fraud-proofs/fabricated-deposit/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/fabricated_deposit/step_01, midgard/fraud_proofs/fabricated_deposit/step_02, midgard/fraud_proofs/fabricated_deposit/step_03, midgard/fraud_proofs/fabricated_deposit/step_04, fabricated-deposit.test.ts, fabricated-deposit-v1.test.ts, submit-init-emulator-fabricated-deposit.test.ts, verify-canonical-v1-proof-family-q39.mjs. Q39 step guards: exactly 4, 4, 4, and 4 selectors; fabricated-deposit.test.ts: exactly 16 tests; SDK byte twin: exactly 8 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/fabricated_deposit/step_01, fraud_proofs/fabricated_deposit/step_02, fraud_proofs/fabricated_deposit/step_03, fraud_proofs/fabricated_deposit/step_04, fabricated-deposit.test.ts, fabricated-deposit-v1.test.ts, submit-init-emulator-fabricated-deposit.test.ts, verify-canonical-v1-proof-family-q39.mjs. Q39 step guards: exactly 4, 4, 4, and 4 selectors; fabricated-deposit.test.ts: exactly 16 tests; SDK byte twin: exactly 8 tests; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
       "invalidationTriggers": [
         "DepositId/Info/event datum, NFT/policy/source identity, deposits counted root, retained evidence trust/retention, or TS codec changes",
         "Q03 evidence gate, Q40 shared machinery contract, event consumption/settlement semantics, or source availability changes",
@@ -7523,10 +7523,10 @@
         "required append-only fabricatedWithdrawal catalogue/CLI/API proposals; status OPEN/unregistered until parent integration"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_withdrawal/step_01 accepts_committed_withdrawal_membership rejects_forged_root rejects_wrong_count rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_withdrawal/step_02 accepts_authenticated_l1_withdrawal_evidence rejects_wrong_nft_policy rejects_wrong_event_outref rejects_untrusted_evidence",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_withdrawal/step_03 accepts_withdrawal_content_mismatch rejects_exact_info_match rejects_wrong_body_bytes rejects_forged_handoff",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/fabricated_withdrawal/step_04 accepts_exact_fabricated_withdrawal_fault rejects_authentic_valid_withdrawal rejects_stale_evidence rejects_wrong_source_identity",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_withdrawal/step_01 accepts_committed_withdrawal_membership rejects_forged_root rejects_wrong_count rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_withdrawal/step_02 accepts_authenticated_l1_withdrawal_evidence rejects_wrong_nft_policy rejects_wrong_event_outref rejects_untrusted_evidence",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_withdrawal/step_03 accepts_withdrawal_content_mismatch rejects_exact_info_match rejects_wrong_body_bytes rejects_forged_handoff",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/fabricated_withdrawal/step_04 accepts_exact_fabricated_withdrawal_fault rejects_authentic_valid_withdrawal rejects_stale_evidence rejects_wrong_source_identity",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/fabricated-withdrawal.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/fabricated-withdrawal-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-fabricated-withdrawal.test.ts",
@@ -7534,7 +7534,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/fabricated-withdrawal/step-01.ak lib/midgard/fraud-proofs/fabricated-withdrawal/step-02.ak lib/midgard/fraud-proofs/fabricated-withdrawal/step-03.ak lib/midgard/fraud-proofs/fabricated-withdrawal/step-04.ak validators/fraud-proofs/fabricated-withdrawal/step-01.ak validators/fraud-proofs/fabricated-withdrawal/step-02.ak validators/fraud-proofs/fabricated-withdrawal/step-03.ak validators/fraud-proofs/fabricated-withdrawal/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/fabricated_withdrawal/step_01, midgard/fraud_proofs/fabricated_withdrawal/step_02, midgard/fraud_proofs/fabricated_withdrawal/step_03, midgard/fraud_proofs/fabricated_withdrawal/step_04, fabricated-withdrawal.test.ts, fabricated-withdrawal-v1.test.ts, submit-init-emulator-fabricated-withdrawal.test.ts, verify-canonical-v1-proof-family-q40.mjs. Q40 step guards: exactly 4, 4, 4, and 4 selectors; family tests: exactly 16; SDK twins: exactly 8; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/fabricated_withdrawal/step_01, fraud_proofs/fabricated_withdrawal/step_02, fraud_proofs/fabricated_withdrawal/step_03, fraud_proofs/fabricated_withdrawal/step_04, fabricated-withdrawal.test.ts, fabricated-withdrawal-v1.test.ts, submit-init-emulator-fabricated-withdrawal.test.ts, verify-canonical-v1-proof-family-q40.mjs. Q40 step guards: exactly 4, 4, 4, and 4 selectors; family tests: exactly 16; SDK twins: exactly 8; emulator: exactly 1 lifecycle test; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
       "invalidationTriggers": [
         "WithdrawalId/Info/event NFT/policy/datum, counted root, retained evidence trust/retention, or TS codec changes",
         "Q03 gate, Q39 shared machinery contract, consumption/settlement, catalogue/CLI/API, native binding, blueprint/deployment/proof-fit/correction changes",
@@ -7599,11 +7599,11 @@
         "Aiken/TS twins, maximum proof-fit, scripts/hashes, both emulator correction outcomes, and required catalogue/CLI/API proposals"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawal_mistag/step_01 accepts_authenticated_withdrawal rejects_forged_root rejects_wrong_count rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawal_mistag/step_02 accepts_authenticated_utxo_state rejects_wrong_outref rejects_wrong_owner rejects_wrong_value",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawal_mistag/step_03 accepts_valid_marked_invalid accepts_invalid_marked_valid rejects_correct_valid_tag rejects_correct_invalid_tag",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawal_mistag/step_04 binds_parameterized_payability accepts_unpayable_mistag rejects_exact_minimum rejects_parameter_mutation",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/withdrawal_mistag/step_05 accepts_exact_mistag_fault rejects_valid_block rejects_malformed_handoff rejects_wrong_terminal",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawal_mistag/step_01 accepts_authenticated_withdrawal rejects_forged_root rejects_wrong_count rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawal_mistag/step_02 accepts_authenticated_utxo_state rejects_wrong_outref rejects_wrong_owner rejects_wrong_value",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawal_mistag/step_03 accepts_valid_marked_invalid accepts_invalid_marked_valid rejects_correct_valid_tag rejects_correct_invalid_tag",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawal_mistag/step_04 binds_parameterized_payability accepts_unpayable_mistag rejects_exact_minimum rejects_parameter_mutation",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/withdrawal_mistag/step_05 accepts_exact_mistag_fault rejects_valid_block rejects_malformed_handoff rejects_wrong_terminal",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/withdrawal-mistag.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/withdrawal-mistag-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-withdrawal-mistag.test.ts",
@@ -7611,7 +7611,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/withdrawal-mistag/step-01.ak lib/midgard/fraud-proofs/withdrawal-mistag/step-02.ak lib/midgard/fraud-proofs/withdrawal-mistag/step-03.ak lib/midgard/fraud-proofs/withdrawal-mistag/step-04.ak lib/midgard/fraud-proofs/withdrawal-mistag/step-05.ak validators/fraud-proofs/withdrawal-mistag/step-01.ak validators/fraud-proofs/withdrawal-mistag/step-02.ak validators/fraud-proofs/withdrawal-mistag/step-03.ak validators/fraud-proofs/withdrawal-mistag/step-04.ak validators/fraud-proofs/withdrawal-mistag/step-05.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/withdrawal_mistag/step_01, midgard/fraud_proofs/withdrawal_mistag/step_02, midgard/fraud_proofs/withdrawal_mistag/step_03, midgard/fraud_proofs/withdrawal_mistag/step_04, midgard/fraud_proofs/withdrawal_mistag/step_05, withdrawal-mistag.test.ts, withdrawal-mistag-v1.test.ts, submit-init-emulator-withdrawal-mistag.test.ts, verify-canonical-v1-proof-family-q41.mjs. Q41 step guards: exactly 4, 4, 4, 4, and 4 selectors; family tests: exactly 24; SDK twins: exactly 10; emulator: exactly 2 lifecycle tests; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 20 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/withdrawal_mistag/step_01, fraud_proofs/withdrawal_mistag/step_02, fraud_proofs/withdrawal_mistag/step_03, fraud_proofs/withdrawal_mistag/step_04, fraud_proofs/withdrawal_mistag/step_05, withdrawal-mistag.test.ts, withdrawal-mistag-v1.test.ts, submit-init-emulator-withdrawal-mistag.test.ts, verify-canonical-v1-proof-family-q41.mjs. Q41 step guards: exactly 4, 4, 4, 4, and 4 selectors; family tests: exactly 24; SDK twins: exactly 10; emulator: exactly 2 lifecycle tests; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 20 paths, all with zero failures.",
       "invalidationTriggers": [
         "WithdrawalValidity/body/signature/UTxO state, settlement/refund, payout destination/value, or TS twin changes",
         "Q27/C42/C49 coinsPerUtxoByte, min-UTxO rule, canonical output bytes, or stable min-Ada terminal changes invalidate payability vectors/proof-fit",
@@ -7672,10 +7672,10 @@
         "required append-only category and CLI/API proposals; status OPEN/unregistered until parent integration"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/cross_block_duplicate_event/step_01 accepts_first_header_event_membership rejects_forged_first_header rejects_wrong_domain rejects_wrong_category",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/cross_block_duplicate_event/step_02 accepts_ancestor_related_second_header rejects_nonancestor_header rejects_same_header rejects_forged_link",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/cross_block_duplicate_event/step_03 accepts_equal_typed_event_id rejects_distinct_event_id rejects_domain_mismatch rejects_wrong_second_membership",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/cross_block_duplicate_event/step_04 accepts_exact_cross_block_duplicate rejects_valid_blocks rejects_stale_evidence rejects_forged_handoff",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/cross_block_duplicate_event/step_01 accepts_first_header_event_membership rejects_forged_first_header rejects_wrong_domain rejects_wrong_category",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/cross_block_duplicate_event/step_02 accepts_ancestor_related_second_header rejects_nonancestor_header rejects_same_header rejects_forged_link",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/cross_block_duplicate_event/step_03 accepts_equal_typed_event_id rejects_distinct_event_id rejects_domain_mismatch rejects_wrong_second_membership",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/cross_block_duplicate_event/step_04 accepts_exact_cross_block_duplicate rejects_valid_blocks rejects_stale_evidence rejects_forged_handoff",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cross-block-duplicate-event.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/cross-block-duplicate-event-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-cross-block-duplicate-event.test.ts",
@@ -7683,7 +7683,7 @@
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/cross-block-duplicate-event/step-01.ak lib/midgard/fraud-proofs/cross-block-duplicate-event/step-02.ak lib/midgard/fraud-proofs/cross-block-duplicate-event/step-03.ak lib/midgard/fraud-proofs/cross-block-duplicate-event/step-04.ak validators/fraud-proofs/cross-block-duplicate-event/step-01.ak validators/fraud-proofs/cross-block-duplicate-event/step-02.ak validators/fraud-proofs/cross-block-duplicate-event/step-03.ak validators/fraud-proofs/cross-block-duplicate-event/step-04.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/cross_block_duplicate_event/step_01, midgard/fraud_proofs/cross_block_duplicate_event/step_02, midgard/fraud_proofs/cross_block_duplicate_event/step_03, midgard/fraud_proofs/cross_block_duplicate_event/step_04, cross-block-duplicate-event.test.ts, cross-block-duplicate-event-v1.test.ts, submit-init-emulator-cross-block-duplicate-event.test.ts, verify-canonical-v1-proof-family-q42.mjs. Q42 step guards: exactly 4, 4, 4, and 4 selectors; family tests: exactly 16; SDK twins: exactly 8; emulator: exactly 3 typed-event lifecycles; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/cross_block_duplicate_event/step_01, fraud_proofs/cross_block_duplicate_event/step_02, fraud_proofs/cross_block_duplicate_event/step_03, fraud_proofs/cross_block_duplicate_event/step_04, cross-block-duplicate-event.test.ts, cross-block-duplicate-event-v1.test.ts, submit-init-emulator-cross-block-duplicate-event.test.ts, verify-canonical-v1-proof-family-q42.mjs. Q42 step guards: exactly 4, 4, 4, and 4 selectors; family tests: exactly 16; SDK twins: exactly 8; emulator: exactly 3 typed-event lifecycles; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 17 paths, all with zero failures.",
       "invalidationTriggers": [
         "typed event ids/domains/source roots, header ancestry/linkage, event NFT consumption, retained evidence trust/retention, or TS codec changes",
         "Q03 gate, descendant removal semantics, catalogue/CLI/API, native binding, blueprint/deployment/proof-fit/reward lifecycle changes",
@@ -7790,15 +7790,15 @@
         "explicit residual exclusions for canonical undecodability, payload-source convention, devnet stub identity, and LIVE evidence ownership"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/da_hash_preimage/step_01 da_hash_preimage_rule_frame_matches_the_canonical_encoder da_hash_preimage_rule_recovers_the_committed_body_preimage da_hash_preimage_rule_holds_at_the_maximum_cardano_transaction da_hash_preimage_rule_head_covers_the_canonical_version_byte da_hash_preimage_step_01_binds_a_miskeyed_committed_leaf da_hash_preimage_step_01_binds_a_non_transaction_committed_leaf da_hash_preimage_step_01_binds_a_valid_block_leaf_without_convicting da_hash_preimage_step_01_rejects_a_fabricated_derived_id da_hash_preimage_step_01_rejects_a_fabricated_leaf_byte_count da_hash_preimage_step_01_rejects_a_forged_transactions_root",
-        "cd onchain/aiken && node scripts/run-focused-check.mjs midgard/fraud_proofs/da_hash_preimage/step_02 da_hash_preimage_step_02_convicts_a_miskeyed_committed_leaf da_hash_preimage_step_02_convicts_a_non_transaction_committed_leaf da_hash_preimage_step_02_convicts_an_underframed_committed_leaf da_hash_preimage_step_02_rejects_valid_block_challenge da_hash_preimage_step_02_rejects_the_maximum_valid_transaction da_hash_preimage_step_02_convicts_the_maximum_transaction_miskeyed da_hash_preimage_rule_predicate_is_exact",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/da_hash_preimage/step_01 da_hash_preimage_rule_frame_matches_the_canonical_encoder da_hash_preimage_rule_recovers_the_committed_body_preimage da_hash_preimage_rule_holds_at_the_maximum_cardano_transaction da_hash_preimage_rule_head_covers_the_canonical_version_byte da_hash_preimage_step_01_binds_a_miskeyed_committed_leaf da_hash_preimage_step_01_binds_a_non_transaction_committed_leaf da_hash_preimage_step_01_binds_a_valid_block_leaf_without_convicting da_hash_preimage_step_01_rejects_a_fabricated_derived_id da_hash_preimage_step_01_rejects_a_fabricated_leaf_byte_count da_hash_preimage_step_01_rejects_a_forged_transactions_root",
+        "cd onchain/aiken && node scripts/run-focused-check.mjs fraud_proofs/da_hash_preimage/step_02 da_hash_preimage_step_02_convicts_a_miskeyed_committed_leaf da_hash_preimage_step_02_convicts_a_non_transaction_committed_leaf da_hash_preimage_step_02_convicts_an_underframed_committed_leaf da_hash_preimage_step_02_rejects_valid_block_challenge da_hash_preimage_step_02_rejects_the_maximum_valid_transaction da_hash_preimage_step_02_convicts_the_maximum_transaction_miskeyed da_hash_preimage_rule_predicate_is_exact",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/prepare-da-hash-preimage.test.ts tests/submit-init-emulator-da-hash-preimage.test.ts",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/da-hash-preimage-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-proof-family-q44.mjs --json",
         "cd onchain/aiken && node scripts/verify-normalized-format.mjs lib/midgard/fraud-proofs/da-hash-preimage/rule.ak lib/midgard/fraud-proofs/da-hash-preimage/step-01.ak lib/midgard/fraud-proofs/da-hash-preimage/step-02.ak validators/fraud-proofs/da-hash-preimage/step-01.ak validators/fraud-proofs/da-hash-preimage/step-02.ak",
         "cd onchain/aiken && aiken check --skip-tests"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: midgard/fraud_proofs/da_hash_preimage/step_01, midgard/fraud_proofs/da_hash_preimage/step_02, prepare-da-hash-preimage.test.ts, submit-init-emulator-da-hash-preimage.test.ts, da-hash-preimage-v1.test.ts, verify-canonical-v1-proof-family-q44.mjs. Step-01: exactly 10 selectors; step-02: exactly 7 selectors; prepare suite: exactly 9 tests; SDK twin: exactly 10 tests; emulator: exactly 2 lifecycle tests; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 12 paths, all with zero failures.",
+      "expectedNonzeroCounts": "Counted focused selectors: fraud_proofs/da_hash_preimage/step_01, fraud_proofs/da_hash_preimage/step_02, prepare-da-hash-preimage.test.ts, submit-init-emulator-da-hash-preimage.test.ts, da-hash-preimage-v1.test.ts, verify-canonical-v1-proof-family-q44.mjs. Step-01: exactly 10 selectors; step-02: exactly 7 selectors; prepare suite: exactly 9 tests; SDK twin: exactly 10 tests; emulator: exactly 2 lifecycle tests; evidence: exactly 10 §9.1 outputs; owned executable inventory: exactly 12 paths, all with zero failures.",
       "invalidationTriggers": [
         "fixed compact framing/version/id derivation, transactions counted root, native binding, retained DA provenance, or maximum tx bytes changes",
         "category id/order, CLI/API/deployment manifest, blueprint/applied hashes, emulator correction, or source inventory changes",
@@ -8401,8 +8401,8 @@
         "Event re-inclusion evidence proving every still-valid due event survives descendant pruning exactly once and no already-consumed event is recreated"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m midgard/state_queue",
-        "cd onchain/aiken && aiken check -m state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs midgard/state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/state-queue-removal-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/remove-fraudulent-block.test.ts tests/submit-init-emulator-cross-operator-removal.test.ts",
         "node demo/scripts/verify-canonical-v1-q52-removal-cascade.mjs",
@@ -8466,11 +8466,11 @@
         "Gap check proving no accepted F04 decision text is treated as Q53 implementation evidence"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m operator_directory",
-        "cd onchain/aiken && aiken check -m computation_thread",
-        "cd onchain/aiken && aiken check -m fraud_proof",
-        "cd onchain/aiken && aiken check -m state_queue",
-        "cd onchain/aiken && aiken check -m fraud_claim_lock",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs operator_directory",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs computation_thread",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs fraud_proof",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs fraud_claim_lock",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/fraud-proof-claim-lock-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-economics-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-q53-economics.mjs",
@@ -8879,8 +8879,8 @@
       ],
       "focusedCommands": [
         "node demo/scripts/verify-canonical-v1-q58a-availability-publication-necessity.mjs",
-        "cd onchain/aiken && aiken check -m availability_challenge_v1",
-        "cd onchain/aiken && aiken check -m state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs availability_challenge_v1",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/availability-challenge-v1.test.ts",
         "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/availability-challenge-emulator-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-q58-availability-challenge.mjs",
@@ -9255,7 +9255,7 @@
         "Queue/merge liveness control using the maximum accepted end_time"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
         "pnpm --dir demo/midgard-node exec vitest run tests/commit-block-header-state-queue-tail.test.ts",
         "node demo/scripts/verify-canonical-v1-q60-commit-end-time-bound.mjs",
         "pnpm --dir demo/midgard-node exec tsc --noEmit",
@@ -9309,7 +9309,7 @@
         "Q51-backed permissionless command, default operator scheduler, near-timeout metric/alert, restart/reconcile, and watcher non-ownership proof"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
         "pnpm --dir demo/midgard-node exec vitest run tests/unattested-block-timeout-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-q61-attestation-timeout.mjs",
         "pnpm --dir demo/midgard-node exec tsc --noEmit",
@@ -9362,8 +9362,8 @@
         "Structural evidence that Q62 is a non-catalogue apply-time safety fix with no standalone family ID"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m da_attestation",
-        "cd onchain/aiken && aiken check -m state_queue",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs da_attestation",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs state_queue",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/da-attestation-rotation-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-q62-da-rotation.mjs",
         "pnpm --dir demo/midgard-sdk exec tsc --noEmit",
@@ -9415,8 +9415,8 @@
         "Structural evidence that Q63 is a governed DA safety/liveness fix with no standalone catalogue family or live-readiness claim"
       ],
       "focusedCommands": [
-        "cd onchain/aiken && aiken check -m da_params_governor",
-        "cd onchain/aiken && aiken check -m da_attestation",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs da_params_governor",
+        "cd onchain/aiken && node scripts/guard-focused-selector.mjs da_attestation",
         "pnpm --dir demo/midgard-sdk exec vitest run tests/da-governor-safety-v1.test.ts",
         "node demo/scripts/verify-canonical-v1-q63-da-governor-safety.mjs",
         "pnpm --dir demo/midgard-sdk exec tsc --noEmit",
