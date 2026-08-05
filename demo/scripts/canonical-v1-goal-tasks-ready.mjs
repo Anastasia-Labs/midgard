@@ -16,6 +16,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isPassStatus } from "./lib/evidence-status.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const manifestPath = resolve(
   repoRoot,
@@ -100,7 +102,13 @@ for (const row of queueRows.slice(1)) {
 }
 
 const statusOf = (id) => ledgerStatusById.get(id) ?? "UNLISTED";
-const isComplete = (id) => statusOf(id) === "PASS";
+// Issue #529 / finding V-2 of #519: queue statuses carry the reason the claim
+// holds (`PASS (structural N/A)`, `PASS (LOCAL_PASS; Q57/QG3 owns LIVE)`), so
+// `statusOf(id) === "PASS"` classified every decorated row as incomplete. Q24,
+// Q25 and Q44 were therefore reported as outstanding and their dependents
+// Q50/Q51/Q54/Q55/Q58/QG1 as blocked on tasks the ledger records as passing.
+// Classification is by base role, matching the F05 quality gate.
+const isComplete = (id) => isPassStatus(statusOf(id));
 
 const rows = tasks.map((task) => {
   const dependsOn = Array.isArray(task.dependsOn) ? task.dependsOn : [];
@@ -116,7 +124,7 @@ const rows = tasks.map((task) => {
     detailStatus: task.detailStatus ?? "UNKNOWN",
     dependsOn,
     blockedBy,
-    ready: ledgerStatus !== "PASS" && blockedBy.length === 0,
+    ready: !isPassStatus(ledgerStatus) && blockedBy.length === 0,
     ownedPaths: Array.isArray(task.writablePaths) ? task.writablePaths : [],
     focusedCommands: Array.isArray(task.focusedCommands)
       ? task.focusedCommands
@@ -131,13 +139,15 @@ const ready = rows.filter(({ ready: isReady }) => isReady);
 const shown = limit === null ? ready : ready.slice(0, Math.max(limit, 0));
 const summary = {
   tasks: rows.length,
-  complete: rows.filter(({ ledgerStatus }) => ledgerStatus === "PASS").length,
+  complete: rows.filter(({ ledgerStatus }) => isPassStatus(ledgerStatus))
+    .length,
   ready: ready.length,
   readyAwaitingDetail: ready.filter(
     ({ detailingRequired }) => detailingRequired,
   ).length,
   blocked: rows.filter(
-    ({ ready: isReady, ledgerStatus }) => !isReady && ledgerStatus !== "PASS",
+    ({ ready: isReady, ledgerStatus }) =>
+      !isReady && !isPassStatus(ledgerStatus),
   ).length,
   shown: shown.length,
 };

@@ -9,6 +9,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isPassStatus, statusRole } from "./lib/evidence-status.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const args = process.argv.slice(2);
 const manifestArgument = args.find((argument) =>
@@ -152,14 +154,9 @@ for (const row of queueRows.slice(1)) {
 // `PASS (LOCAL_PASS; Q57/QG3 owns LIVE)`), so every status-keyed rule below
 // classifies by the leading role token instead of comparing the whole cell to
 // "PASS" — string equality silently excludes decorated rows from the rules
-// that are supposed to constrain them.
-const statusRole = (status) =>
-  (status ?? "")
-    .replace(/[`*]/g, "")
-    .trim()
-    .split(/[\s(;,]/)[0]
-    .toUpperCase();
-const isPassStatus = (status) => statusRole(status) === "PASS";
+// that are supposed to constrain them. The classifier moved to
+// `lib/evidence-status.mjs` under issue #529 so the sibling evidence gates
+// share this one convention rather than each inventing its own.
 // A dependency is a *current* non-PASS blocker only when the authoritative
 // first queue actually records a non-PASS status for it. IDs with no queue row
 // are unscheduled, not measured, and are not counted as current blockers.

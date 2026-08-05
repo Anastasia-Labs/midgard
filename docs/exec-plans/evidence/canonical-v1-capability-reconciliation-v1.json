@@ -5,7 +5,7 @@
   "updateContract": {
     "verifier": "demo/scripts/verify-canonical-v1-capability-reconciliation.mjs",
     "generator": "none - this artifact is hand-maintained; the verifier is the only contract",
-    "note": "The verifier asserts p2Summary by deepEqual against literal counts {tasks:22,pass:16,partial:6,open:0,authoritativeConflict:0,gate:'OPEN'} AND cross-checks them against p2Tasks. Any promotion or demotion of a P2 task therefore requires editing the verifier's literals in the same change; editing p2Tasks alone makes the check fail. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
+    "note": "Issue #529: p2Summary.pass is no longer established by counting 'PASS' strings in p2Tasks. Every task published as PASS must appear in p2TaskWitnesses with at least one executable witness; the verifier spawns those witnesses (each package's own Vitest CLI, plus one `aiken check -e` invocation) and derives the pass count from the runner reports alone. A witness that collects nothing, fails, or is skipped fails the gate closed. Each witness must additionally be declared as that task's focused verification in canonical-v1-goal-task-manifest-v1.json, so this artifact cannot supply its own audit scope. The p2Summary literal {tasks:22,pass:17,partial:5,open:0,authoritativeConflict:0,gate:'OPEN'} is still pinned in the verifier and is cross-checked against both the measured result and the base-role classification of p2Tasks, so promoting or demoting a task requires editing p2Tasks, p2TaskWitnesses, p2WitnessCommands and the verifier literals together — and the promotion only holds if the new witness actually passes. acceptance.CG2 and p2Tasks.CG2 are separately pinned to OPEN, and authorityConflict.tasks/disposition are pinned to ['C20-6','C20-7'] / 'RESOLVED'."
   },
   "sources": {
     "goalSpec": {
@@ -62,6 +62,155 @@
     "C33": "PASS",
     "CG2": "OPEN"
   },
+  "p2TaskWitnesses": {
+    "C20-0": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts"
+      }
+    ],
+    "C20-1": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts"
+      }
+    ],
+    "C20-2": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-boundary-v1.test.ts"
+      }
+    ],
+    "C20-3": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts"
+      }
+    ],
+    "C20-4": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts"
+      }
+    ],
+    "C20-5": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts"
+      }
+    ],
+    "C20-6": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts"
+      },
+      {
+        "kind": "aiken",
+        "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
+        "selectors": [
+          "script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
+        ]
+      }
+    ],
+    "C20-7": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts"
+      },
+      {
+        "kind": "aiken",
+        "module": "onchain/aiken/lib/midgard/user-events/tx-order-v1.test.ak",
+        "selectors": [
+          "script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
+        ]
+      }
+    ],
+    "C20-8": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary-v1.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/redeemer-item-proof-v1.test.ts"
+      },
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary-v1.test.ts"
+      }
+    ],
+    "C21": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-sdk/tests/validation-proof-item-v1.test.ts"
+      }
+    ],
+    "C22": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/nested-value-boundary-v1.test.ts"
+      }
+    ],
+    "C23": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+      }
+    ],
+    "C24": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+      }
+    ],
+    "C25": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+      }
+    ],
+    "C27": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-core/tests/script-proof.test.ts"
+      }
+    ],
+    "C28": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/cek-program.test.ts"
+      }
+    ],
+    "C33": [
+      {
+        "kind": "vitest",
+        "file": "demo/midgard-validation/tests/redeemer-collateral-schema-feasibility-v1.test.ts"
+      }
+    ]
+  },
+  "p2WitnessNote": "Executable witnesses for every P2 task published as PASS. The verifier runs these and derives p2Summary.pass from the runner reports; a task with no passing witness cannot be counted. Each witness must also appear as that task's focused verification in docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json, so this artifact cannot widen or narrow its own audit scope.",
+  "p2WitnessCommands": [
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-signer-witness-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-mint-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-redeemer-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-item-proof-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-redeemer-data-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/data-breadth-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility-v1.test.ts",
+    "cd onchain/aiken && aiken check -e -m script_field_6_precedes_address_field_7_with_exact_receipt_sizes"
+  ],
   "p2Summary": {
     "tasks": 22,
     "pass": 17,

@@ -3,7 +3,7 @@
   "version": 1,
   "goalIds": ["Q49"],
   "issue": 481,
-  "note": "Q49 supplies the executable selector inventory for every F21 physical structural row (coverage-matrix.md L295-L303). The parent alone edits docs/fault-proofs/coverage-matrix.md, docs/fault-proofs/catalogue-status.md and docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json; this artifact is the handoff those edits consume. GOAL_SPEC.md 9.1 closing rule: a structurally enforced rule closes with an adversarial EXECUTABLE proof, never prose.",
+  "note": "Q49 supplies the executable selector inventory for every F21 physical structural row (coverage-matrix.md L295-L303). The parent alone edits docs/fault-proofs/coverage-matrix.md, docs/fault-proofs/catalogue-status.md and docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json; this artifact is the handoff those edits consume. GOAL_SPEC.md 9.1 closing rule: a structurally enforced rule closes with an adversarial EXECUTABLE proof, never prose. Issue #529: the verifier no longer resolves this evidence by string-matching test source. summary.executedChecks is the number of cited checks a runner report shows as collected and passing (28 Aiken selectors executed in one `aiken check -e` invocation, plus 2 Vitest titles), and summary.staticStructuralChecks counts source-absence evidence, which is a static structural check and is never added to the executed total. The previously published figure of 31 'executable checks' summed both kinds, so it is corrected here to 30 executed plus 1 static.",
   "source": {
     "path": "docs/fault-proofs/coverage-matrix.md",
     "separatorLine": 294,
@@ -14,7 +14,14 @@
     "rows": 9,
     "pass": 9,
     "partial": 0,
-    "open": 0
+    "open": 0,
+    "executedChecks": 30,
+    "staticStructuralChecks": 1,
+    "runners": [
+      "cd onchain/aiken && aiken check -e -m q49_l295_header_shape_control_and_interval_mutations -m q49_l295_validation_context_scalar_control_and_mutations -m q49_l295_scheduled_operator_control_and_independent_mutations -m q49_l295_previous_header_control_and_independent_mutations -m q49_l295_confirmed_genesis_control_and_independent_mutations -m q49_l295_confirmed_ordinary_control_and_independent_mutations -m deposit_mint_accepts_exactly_ten_non_nft_assets_across_ada_and_multiple_policies -m deposit_mint_rejects_eleven_non_nft_assets_across_ada_and_multiple_policies -m no_input_step_01_binds_native_v1_block_fixture -m no_input_step_01_rejects_forged_transactions_root -m no_input_step_02_forwards_the_challenged_spend_input -m no_input_step_02_rejects_a_substituted_inputs_preimage -m no_input_step_03_excludes_the_input_from_the_initial_ledger -m no_input_step_03_rejects_a_non_membership_claim_for_another_key -m no_input_step_04_excludes_the_producing_transaction -m no_input_step_04_rejects_valid_block_challenge -m payout_conclude_accepts_exact_burn_and_destination -m payout_conclude_rejects_wrong_destination_datum -m payout_conclude_rejects_underfunded_target_output -m payout_conclude_rejects_surplus_accumulator_value -m deposit_mint_rejects_inclusion_time_minus_one -m deposit_mint_rejects_inclusion_time_plus_one -m normalize_native_validity_range_rejects_empty_interval -m invalid_range_step_01_binds_native_v1_block_fixture -m invalid_range_step_01_rejects_forged_transactions_root -m invalid_range_step_02_accepts_uncovered_and_inverted_intervals -m invalid_range_step_02_rejects_valid_block_challenge -m resolve_inputs_rejects_an_invalid_validity_interval_exactly",
+      "pnpm --dir demo/da-committee-node exec vitest run tests/payload.test.ts",
+      "pnpm --dir demo/midgard-validation exec vitest run tests/phase-b.test.ts"
+    ]
   },
   "rows": [
     {
