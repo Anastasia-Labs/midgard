@@ -1,0 +1,456 @@
+{
+  "schema": "midgard.canonical-v1-proof-family-q1x.v1",
+  "version": 1,
+  "goalIds": ["Q10", "Q11", "Q12", "Q14"],
+  "issue": 482,
+  "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 is reported OPEN for all four families: a threshold-enforcing measurement of the complete correction path now exists, but it measures the minimal fixture, not a maximum/adversarial one, and 9.1 output 5 asks for the maximum. That gap is stated rather than papered over.",
+  "inheritedOutputs": {
+    "outputs": [1, 2, 3, 4],
+    "closedBy": 481,
+    "measured": {
+      "Q10": "8 of 8 Aiken selectors (1 positive + 1 valid-block negative in each of 4 steps), 0 failures",
+      "Q11": "8 of 8 Aiken selectors (1 positive + 1 valid-block negative in each of 4 steps), 0 failures",
+      "Q12": "7 of 7 Aiken selectors (3 range-normalization controls + 1 positive + 1 valid-block negative in step-01, 1 positive + 1 valid-block negative in step-02), 0 failures",
+      "Q14": "9 of 9 Aiken selectors (2 in step-01, 7 in step-02), 0 failures"
+    },
+    "note": "Inherited PASS, not reopened at issue #482."
+  },
+  "proofFitThresholds": {
+    "source": "GOAL_SPEC.md 3.3",
+    "byteFit": {
+      "limit": 16384,
+      "limitSource": "PROTOCOL_PARAMETERS_DEFAULT.maxTxSize, which is what CompleteSignedTransactionMeasurement.l1ByteMargin is computed against; the emulator's own relaxed maxTxSize of 65536 is deliberately NOT the pass criterion",
+      "rule": "l1ByteMargin >= 0"
+    },
+    "executionFit": {
+      "reservePercent": 20,
+      "rule": "executionMemory <= maxTxExMem * 80 / 100 and executionSteps <= maxTxExSteps * 80 / 100; a path that fits the raw limit but not the reserve is a failing result, not a smaller margin"
+    },
+    "enforcedBy": [
+      {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+        "helper": "expectProofFitV1",
+        "families": ["Q10"]
+      },
+      {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "helper": "expectProofFitV1",
+        "families": ["Q12", "Q14", "Q11"]
+      }
+    ]
+  },
+  "families": [
+    {
+      "goalId": "Q10",
+      "family": "double-spend",
+      "proofFitLabel": "double-spend",
+      "catalogueCategory": "doubleSpend",
+      "categoryIndex": 0,
+      "categoryId": "00000000",
+      "stepCount": 4,
+      "blueprintTitles": [
+        "fraud_proofs/double_spend/step_01.main.spend",
+        "fraud_proofs/double_spend/step_02.main.spend",
+        "fraud_proofs/double_spend/step_03.main.spend",
+        "fraud_proofs/double_spend/step_04.main.spend"
+      ],
+      "titlesConstant": "DOUBLE_SPEND_FAULT_PROOF_TITLES",
+      "daFirstBuilder": "prepareDoubleSpendFromCanonicalEvidenceV1",
+      "prepareVerb": "prepare-double-spend",
+      "submitVerbs": [
+        "submit-step-01",
+        "submit-step-02",
+        "submit-step-03",
+        "submit-step-04"
+      ],
+      "resumableStepModules": [
+        "demo/midgard-fault-proofs/src/submit-step-01.ts",
+        "demo/midgard-fault-proofs/src/submit-step-02.ts",
+        "demo/midgard-fault-proofs/src/submit-step-03.ts"
+      ],
+      "terminalStepModule": "demo/midgard-fault-proofs/src/submit-step-04.ts",
+      "emulator": {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator.test.ts",
+        "titles": [
+          "proves and removes a non-tail double-spend block by pruning successors first",
+          "removes a tail double-spend block without acquiring a lease",
+          "removes a non-tail double-spend block with multiple successors in queue order"
+        ],
+        "measuredLifecycleTitle": "proves and removes a non-tail double-spend block by pruning successors first",
+        "hasValidBlockNegative": false
+      },
+      "measuredProofFit": {
+        "fixture": "minimal",
+        "stages": [
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 10224,
+            "l1ByteMargin": 6160
+          },
+          {
+            "stage": "step-02",
+            "bytes": 10269,
+            "l1ByteMargin": 6115
+          },
+          {
+            "stage": "step-03",
+            "bytes": 4244,
+            "l1ByteMargin": 12140
+          },
+          {
+            "stage": "step-04",
+            "bytes": 9295,
+            "l1ByteMargin": 7089
+          },
+          {
+            "stage": "remove",
+            "bytes": 1315,
+            "l1ByteMargin": 15069
+          }
+        ],
+        "worstByteMargin": 6115,
+        "worstByteMarginStage": "step-02",
+        "removalTransactionBytes": [2167, 1315],
+        "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage. Exact removal execution units vary run to run because the removal validity interval is derived from emulator.now(), so they are not pinned as fixed numbers here; the threshold assertion is the binding claim."
+      }
+    },
+    {
+      "goalId": "Q11",
+      "family": "no-input",
+      "proofFitLabel": "non-existent-input",
+      "catalogueCategory": "nonExistentInput",
+      "categoryIndex": 1,
+      "categoryId": "00000001",
+      "stepCount": 4,
+      "blueprintTitles": [
+        "fraud_proofs/no_input/step_01.main.spend",
+        "fraud_proofs/no_input/step_02.main.spend",
+        "fraud_proofs/no_input/step_03.main.spend",
+        "fraud_proofs/no_input/step_04.main.spend"
+      ],
+      "titlesConstant": "NON_EXISTENT_INPUT_FAULT_PROOF_TITLES",
+      "daFirstBuilder": "prepareNonExistentInputFromCanonicalEvidenceV1",
+      "prepareVerb": "prepare-non-existent-input",
+      "submitVerbs": [
+        "submit-non-existent-input-step-01",
+        "submit-non-existent-input-step-02",
+        "submit-non-existent-input-step-03",
+        "submit-non-existent-input-step-04"
+      ],
+      "resumableStepModules": [
+        "demo/midgard-fault-proofs/src/ne-submit-step-01.ts",
+        "demo/midgard-fault-proofs/src/ne-submit-step-02.ts",
+        "demo/midgard-fault-proofs/src/ne-submit-step-03.ts"
+      ],
+      "terminalStepModule": "demo/midgard-fault-proofs/src/ne-submit-step-04.ts",
+      "emulator": {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "titles": [
+          "proves and removes a tail non-existent-input block end to end"
+        ],
+        "measuredLifecycleTitle": "proves and removes a tail non-existent-input block end to end",
+        "hasValidBlockNegative": false
+      },
+      "measuredProofFit": {
+        "fixture": "minimal",
+        "stages": [
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 10281,
+            "l1ByteMargin": 6103
+          },
+          {
+            "stage": "step-02",
+            "bytes": 4212,
+            "l1ByteMargin": 12172
+          },
+          {
+            "stage": "step-03",
+            "bytes": 3455,
+            "l1ByteMargin": 12929
+          },
+          {
+            "stage": "step-04",
+            "bytes": 8560,
+            "l1ByteMargin": 7824
+          },
+          {
+            "stage": "remove",
+            "bytes": 1867,
+            "l1ByteMargin": 14517
+          }
+        ],
+        "worstByteMargin": 6103,
+        "worstByteMarginStage": "step-01",
+        "removalTransactionBytes": [1867],
+        "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      }
+    },
+    {
+      "goalId": "Q12",
+      "family": "invalid-range",
+      "proofFitLabel": "invalid-range",
+      "catalogueCategory": "invalidRange",
+      "categoryIndex": 3,
+      "categoryId": "00000003",
+      "stepCount": 2,
+      "blueprintTitles": [
+        "fraud_proofs/invalid_range/step_01.main.spend",
+        "fraud_proofs/invalid_range/step_02.main.spend"
+      ],
+      "titlesConstant": "INVALID_RANGE_FAULT_PROOF_TITLES",
+      "daFirstBuilder": "prepareInvalidRangeFromCanonicalEvidenceV1",
+      "prepareVerb": "prepare-invalid-range",
+      "submitVerbs": [
+        "submit-invalid-range-step-01",
+        "submit-invalid-range-step-02"
+      ],
+      "resumableStepModules": [
+        "demo/midgard-fault-proofs/src/submit-invalid-range-step-01.ts"
+      ],
+      "terminalStepModule": "demo/midgard-fault-proofs/src/submit-invalid-range-step-02.ts",
+      "emulator": {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "titles": ["proves and removes a tail invalid-range block end to end"],
+        "measuredLifecycleTitle": "proves and removes a tail invalid-range block end to end",
+        "hasValidBlockNegative": false
+      },
+      "measuredProofFit": {
+        "fixture": "minimal",
+        "stages": [
+          {
+            "stage": "init",
+            "bytes": 7862,
+            "l1ByteMargin": 8522
+          },
+          {
+            "stage": "step-01",
+            "bytes": 10384,
+            "l1ByteMargin": 6000
+          },
+          {
+            "stage": "step-02",
+            "bytes": 7399,
+            "l1ByteMargin": 8985
+          },
+          {
+            "stage": "remove",
+            "bytes": 1867,
+            "l1ByteMargin": 14517
+          }
+        ],
+        "worstByteMargin": 6000,
+        "worstByteMarginStage": "step-01",
+        "removalTransactionBytes": [1867],
+        "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      }
+    },
+    {
+      "goalId": "Q14",
+      "family": "zero-input",
+      "proofFitLabel": "zero-input",
+      "catalogueCategory": "zeroInput",
+      "categoryIndex": 5,
+      "categoryId": "00000005",
+      "stepCount": 2,
+      "blueprintTitles": [
+        "fraud_proofs/zero_input/step_01.main.spend",
+        "fraud_proofs/zero_input/step_02.main.spend"
+      ],
+      "titlesConstant": "ZERO_INPUT_FAULT_PROOF_TITLES",
+      "daFirstBuilder": "prepareZeroInputFromCanonicalEvidenceV1",
+      "prepareVerb": "prepare-zero-input",
+      "submitVerbs": ["submit-zero-input-step-01", "submit-zero-input-step-02"],
+      "resumableStepModules": [
+        "demo/midgard-fault-proofs/src/submit-zero-input-step-01.ts"
+      ],
+      "terminalStepModule": "demo/midgard-fault-proofs/src/submit-zero-input-step-02.ts",
+      "emulator": {
+        "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-ledger-rules.test.ts",
+        "titles": [
+          "proves and removes a tail zero-input block end to end",
+          "rejects a spending transaction before a zero-input thread can advance"
+        ],
+        "measuredLifecycleTitle": "proves and removes a tail zero-input block end to end",
+        "hasValidBlockNegative": true,
+        "validBlockNegativeTitle": "rejects a spending transaction before a zero-input thread can advance",
+        "validBlockNegativeScope": "step-advance negative: a transaction that spends at least one input cannot advance a zero-input thread. This is a genuine adjacent negative but it is not a full valid-block finalization negative."
+      },
+      "measuredProofFit": {
+        "fixture": "minimal",
+        "stages": [
+          {
+            "stage": "init",
+            "bytes": 7718,
+            "l1ByteMargin": 8666
+          },
+          {
+            "stage": "step-01",
+            "bytes": 10020,
+            "l1ByteMargin": 6364
+          },
+          {
+            "stage": "step-02",
+            "bytes": 7309,
+            "l1ByteMargin": 9075
+          },
+          {
+            "stage": "remove",
+            "bytes": 1867,
+            "l1ByteMargin": 14517
+          }
+        ],
+        "worstByteMargin": 6364,
+        "worstByteMarginStage": "step-01",
+        "removalTransactionBytes": [1867],
+        "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      }
+    }
+  ],
+  "sharedDaFirstEvidenceGate": {
+    "module": "demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts",
+    "admissionGate": "admitCanonicalEvidenceForProofBuildV1",
+    "assertions": [
+      "assertSecurityGradeEvidenceV1",
+      "assertNativeInclusionRootAuthenticatedV1"
+    ],
+    "suite": "demo/midgard-fault-proofs/tests/canonical-evidence-source-v1.test.ts",
+    "command": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts",
+    "measured": {
+      "tests": 32,
+      "passed": 32,
+      "failed": 0
+    },
+    "familyGateTitles": [
+      "refuses to emit a double-spend proof whose inclusion root cannot be authenticated",
+      "refuses to emit zero-input and invalid-range proofs on the same gate",
+      "emits each family artifact only from native-root-authenticated canonical evidence",
+      "rejects diagnostic grade before every gated builder can emit proof material",
+      "valid-block control: a block with no double spend yields no proof"
+    ]
+  },
+  "outputStatus": [
+    {
+      "output": 5,
+      "title": "Maximum/adversarial proof-fit fixture",
+      "Q10": "OPEN",
+      "Q11": "OPEN",
+      "Q12": "OPEN",
+      "Q14": "OPEN",
+      "evidence": "Issue #482 added the first threshold-enforcing proof-fit measurement for these four families: every transaction of the complete correction path (init, every step, and every removal transaction) is now measured for bytes, execution memory and execution steps, and asserted against the GOAL_SPEC.md 3.3 byte-fit limit and 20% execution reserve. Before this, no test measured bytes or execution units for any of the four. Measured worst byte margins: Q10 6115 bytes at step-02, Q11 6103 at step-01, Q12 6000 at step-01, Q14 6364 at step-01.",
+      "whyOpen": "The measured fixture is the MINIMAL one already used by each lifecycle (a single-transaction block, an MPF membership proof of depth 1, and no high-cardinality spend inputs). 9.1 output 5 requires the MAXIMUM/adversarial fixture, so this baseline does not close the output. The two adversarial axes that actually grow these transactions are identified in adversarialAxes below; neither is exercised yet.",
+      "owner": "Q10/Q11/Q12/Q14, remaining work for issue #483"
+    },
+    {
+      "output": 6,
+      "title": "Catalogue identifier, first-step hash, membership proof, deployment and reference-script records",
+      "Q10": "LOCAL_PASS",
+      "Q11": "LOCAL_PASS",
+      "Q12": "LOCAL_PASS",
+      "Q14": "LOCAL_PASS",
+      "evidence": "Each family's append-only catalogue index and 4-byte id are pinned in this artifact and re-derived by the verifier from FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER. Every blueprint step title is pinned and re-read from its *_FAULT_PROOF_TITLES constant in demo/midgard-sdk/src/fraud-proof/contracts.ts. The measured emulator lifecycle for each family asserts initResult.fraudCategoryId against the catalogue deployment for Q11, Q12 and Q14, and asserts the computation-thread asset name equals categoryId ++ headerHash for all four, which binds the deployed first-step address reached by init through the catalogue membership proof. Removal reference-script publication is exercised by publishRemovalReferenceScripts in every measured lifecycle and its own measurement refuses a non-positive byte margin.",
+      "owner": "Q10/Q11/Q12/Q14"
+    },
+    {
+      "output": 7,
+      "title": "DA-first evidence builder using retained authenticated material",
+      "Q10": "LOCAL_PASS",
+      "Q11": "LOCAL_PASS",
+      "Q12": "LOCAL_PASS",
+      "Q14": "LOCAL_PASS",
+      "evidence": "All four prepare*FromCanonicalEvidenceV1 builders exist and route through admitCanonicalEvidenceForProofBuildV1, which calls assertNativeInclusionRootAuthenticatedV1 and (via blockTransactionsFromCanonicalEvidenceV1) assertSecurityGradeEvidenceV1 on both the DA and L1 provenance legs. The shared 32-test canonical-evidence suite is measured 32 of 32 passing and includes explicit refusals for diagnostic grade and unauthenticated inclusion roots on every gated builder plus a valid-block control.",
+      "owner": "Q03/Q10/Q11/Q12/Q14"
+    },
+    {
+      "output": 8,
+      "title": "One resumable prepare/submit command, with no hidden manual state",
+      "Q10": "LOCAL_PASS",
+      "Q11": "LOCAL_PASS",
+      "Q12": "LOCAL_PASS",
+      "Q14": "LOCAL_PASS",
+      "evidence": "Each family exposes exactly one prepare verb and one submit verb per step in demo/midgard-fault-proofs/src/bin.ts. Resumability carries no hidden state: every non-terminal step module returns nextThreadOutRef, so the next step is addressable purely from the previous submission's result, and prepare writes tx-inclusion.json plus plan.json rather than retaining process state. The terminal step of every family deliberately returns no nextThreadOutRef because nothing follows it on the thread; it returns the permanent fraudProofUnit instead. The verifier re-reads each module to confirm this shape.",
+      "owner": "Q10/Q11/Q12/Q14"
+    },
+    {
+      "output": 9,
+      "title": "Emulator lifecycle: init, every step, permanent proof token, fraudulent header removal, correct slashing/reward",
+      "Q10": "LOCAL_PASS",
+      "Q11": "LOCAL_PASS",
+      "Q12": "LOCAL_PASS",
+      "Q14": "LOCAL_PASS",
+      "evidence": "Each family has a measured end-to-end journey asserting init, every step's thread hand-off and datum, the previous step address emptying, the permanent fraud-proof token minted at the terminal step with its FraudProofTokenDatum, removal of the fraudulent header from the state queue, and retention of the proof token after removal. Q10, Q12 and Q14 additionally assert slashingApproach == SlashActiveOperator.",
+      "residual": "Q11's journey does not assert slashingApproach, and only Q14 carries an adjacent negative (a step-advance negative, not a full valid-block finalization negative). Q10, Q11 and Q12 have no emulator valid-block negative at all. These residuals are recorded in residualFindings rather than silently absorbed into the LOCAL_PASS.",
+      "owner": "Q10/Q11/Q12/Q14"
+    }
+  ],
+  "adversarialAxes": [
+    {
+      "axis": "MPF membership proof depth",
+      "growsWith": "the challenged block's l2_transaction_count",
+      "affects": "every step-01 transaction of all four families, which carries tx_membership_proof",
+      "measuredToday": "depth 1 (a single-transaction block)",
+      "note": "This is the dominant adversarial axis and is unexercised. The step-01 byte margins above (6000 to 6364 bytes) are the entire headroom available to a deeper proof."
+    },
+    {
+      "axis": "spend-input preimage cardinality",
+      "growsWith": "the number of inputs the challenged transaction spends",
+      "affects": "double-spend step-03 (spend-input witnesses) and no-input step-02/step-03",
+      "measuredToday": "the minimal input set of each fixture",
+      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow."
+    }
+  ],
+  "residualFindings": [
+    {
+      "id": "Q1X-F1",
+      "severity": "gap",
+      "finding": "Output 5 is not closed for any of the four families: the measurement is of the minimal fixture, not a maximum/adversarial one. Recorded OPEN, not LOCAL_PASS.",
+      "owner": "issue #483"
+    },
+    {
+      "id": "Q1X-F2",
+      "severity": "gap",
+      "finding": "Q10, Q11 and Q12 have no emulator valid-block negative, and Q14's is a step-advance negative rather than a full valid-block finalization negative. True valid-block emulator negatives exist for other families (input-no-idx and da-hash-preimage), so the pattern is available and the omission is a breadth gap, not a structural impossibility.",
+      "owner": "issue #483"
+    },
+    {
+      "id": "Q1X-F3",
+      "severity": "observation",
+      "finding": "Q11's emulator journey does not assert slashingApproach, unlike Q10, Q12 and Q14. The removal still executes, but the correct-slashing half of 9.1 output 9 is asserted only indirectly for Q11.",
+      "owner": "issue #483"
+    },
+    {
+      "id": "Q1X-F4",
+      "severity": "observation",
+      "finding": "The emulator runs at maxTxSize 65536 while proof fit is judged against the real 16384-byte L1 limit through l1ByteMargin. The two are deliberately different: the relaxed emulator ceiling lets a would-be-oversize transaction be built and then measured rather than failing opaquely during construction. Any future change to EMULATOR_PROTOCOL_PARAMETERS.maxTxSize must not be mistaken for a change in the pass criterion.",
+      "owner": "Q10/Q11/Q12/Q14"
+    }
+  ],
+  "summary": {
+    "families": 4,
+    "outputsBound": 5,
+    "localPassCells": 16,
+    "openCells": 4,
+    "measuredProofFitStages": 20,
+    "worstByteMarginAcrossFamilies": 6000,
+    "canonicalEvidenceSuiteTests": 32,
+    "residualFindings": 4
+  },
+  "parentIntegration": {
+    "owner": "parent",
+    "pendingEdits": [
+      "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at OPEN, with the measured numbers in this artifact.",
+      "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 must remain OPEN.",
+      "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent."
+    ]
+  }
+}

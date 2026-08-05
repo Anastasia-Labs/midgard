@@ -70,6 +70,8 @@ import {
   alwaysSucceedsBlueprintPath,
   buildCatalogueDeploymentInfo,
   buildMinimalFaultProofContracts,
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
   deploymentManifest,
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
@@ -82,6 +84,48 @@ import {
   type RemovalReferenceScriptName,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
+
+/**
+ * GOAL_SPEC.md 3.3 proof-fit thresholds for the double-spend correction path.
+ *
+ * 1. Byte fit: `l1ByteMargin` is computed against the real
+ *    `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` (16,384), not the emulator's
+ *    relaxed 65,536 ceiling, so a non-negative margin is exactly the 3.3
+ *    item-1 check.
+ * 2. Execution fit: memory and CPU must leave at least a 20% reserve against
+ *    the deployment's measured limits. Fitting the raw limit but not the
+ *    reserve is a FAILING result.
+ */
+const EXECUTION_RESERVE_FRACTION = 20n;
+
+const expectProofFitV1 = ({
+  stage,
+  measurement,
+  maxTxExMem,
+  maxTxExSteps,
+}: {
+  readonly stage: string;
+  readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly maxTxExMem: bigint;
+  readonly maxTxExSteps: bigint;
+}): void => {
+  expect(
+    measurement.l1ByteMargin,
+    `${stage} exceeds the 16,384-byte L1 envelope`,
+  ).toBeGreaterThanOrEqual(0);
+  const memoryCeiling =
+    (maxTxExMem * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
+  const stepCeiling =
+    (maxTxExSteps * (100n - EXECUTION_RESERVE_FRACTION)) / 100n;
+  expect(
+    measurement.executionMemory <= memoryCeiling,
+    `${stage} execution memory ${measurement.executionMemory.toString()} exceeds the 20%-reserve ceiling ${memoryCeiling.toString()}`,
+  ).toBe(true);
+  expect(
+    measurement.executionSteps <= stepCeiling,
+    `${stage} execution steps ${measurement.executionSteps.toString()} exceeds the 20%-reserve ceiling ${stepCeiling.toString()}`,
+  ).toBe(true);
+};
 
 describe("fault-proof emulator integration", () => {
   it("proves and removes a non-tail double-spend block by pruning successors first", async () => {
@@ -263,15 +307,21 @@ describe("fault-proof emulator integration", () => {
       settlementMint: { scriptHash: contracts.settlement.policyId },
     });
 
-    const result = await submitInit({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      fraudulentBlockOutRef,
-      awaitConfirmation: true,
-    });
+    const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
+    const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
+    const resultCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudulentBlockOutRef,
+        awaitConfirmation: true,
+      }),
+    );
+    const result = resultCapture.result;
+    proofFit["init"] = resultCapture.measurement;
 
     expect(result.txHash).toHaveLength(64);
     expect(result.fraudulentHeaderHash).toBe(headerHash);
@@ -301,19 +351,25 @@ describe("fault-proof emulator integration", () => {
       [result.computationThreadUnit, 1n],
     ]);
 
-    const step01Result = await submitStep01({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: fraudulentBlockOutRef,
-      txInclusion: parseSubmitStep01TxInclusion(
-        transactionInclusion.tx1.inclusion,
-      ),
-      awaitConfirmation: true,
-    });
+    const step01ResultCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        submitStep01({
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(firstStepUtxo),
+          stateQueueBlockOutRef: fraudulentBlockOutRef,
+          txInclusion: parseSubmitStep01TxInclusion(
+            transactionInclusion.tx1.inclusion,
+          ),
+          awaitConfirmation: true,
+        }),
+    );
+    const step01Result = step01ResultCapture.result;
+    proofFit["step-01"] = step01ResultCapture.measurement;
 
     expect(step01Result.txHash).toHaveLength(64);
     expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
@@ -342,19 +398,25 @@ describe("fault-proof emulator integration", () => {
     });
     expect(secondStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
-    const step02Result = await submitStep02({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(secondStepUtxo),
-      stateQueueBlockOutRef: fraudulentBlockOutRef,
-      txInclusion: parseSubmitStep01TxInclusion(
-        transactionInclusion.tx2.inclusion,
-      ),
-      awaitConfirmation: true,
-    });
+    const step02ResultCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        submitStep02({
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(secondStepUtxo),
+          stateQueueBlockOutRef: fraudulentBlockOutRef,
+          txInclusion: parseSubmitStep01TxInclusion(
+            transactionInclusion.tx2.inclusion,
+          ),
+          awaitConfirmation: true,
+        }),
+    );
+    const step02Result = step02ResultCapture.result;
+    proofFit["step-02"] = step02ResultCapture.measurement;
 
     expect(step02Result.txHash).toHaveLength(64);
     expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
@@ -390,20 +452,26 @@ describe("fault-proof emulator integration", () => {
     });
     expect(thirdStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
-    const step03Result = await submitStep03({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(thirdStepUtxo),
-      tx1SpendInputCbors: parseSpendInputCbors(
-        transactionInclusion.tx1SpendInputCbors,
-        "--tx1-inputs",
-      ),
-      doubleSpentInputIndex: 1n,
-      awaitConfirmation: true,
-    });
+    const step03ResultCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        submitStep03({
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(thirdStepUtxo),
+          tx1SpendInputCbors: parseSpendInputCbors(
+            transactionInclusion.tx1SpendInputCbors,
+            "--tx1-inputs",
+          ),
+          doubleSpentInputIndex: 1n,
+          awaitConfirmation: true,
+        }),
+    );
+    const step03Result = step03ResultCapture.result;
+    proofFit["step-03"] = step03ResultCapture.measurement;
 
     expect(step03Result.txHash).toHaveLength(64);
     expect(step03Result.verifiedTx1SpendInputsHash).toBe(
@@ -450,20 +518,26 @@ describe("fault-proof emulator integration", () => {
     });
     expect(fourthStepUtxo.assets[result.computationThreadUnit]).toBe(1n);
 
-    const step04Result = await submitStep04({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(fourthStepUtxo),
-      tx2SpendInputCbors: parseSpendInputCbors(
-        transactionInclusion.tx2SpendInputCbors,
-        "--tx2-inputs",
-      ),
-      doubleSpentInputIndex: 1n,
-      awaitConfirmation: true,
-    });
+    const step04ResultCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        submitStep04({
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          threadOutRef: outRefLabel(fourthStepUtxo),
+          tx2SpendInputCbors: parseSpendInputCbors(
+            transactionInclusion.tx2SpendInputCbors,
+            "--tx2-inputs",
+          ),
+          doubleSpentInputIndex: 1n,
+          awaitConfirmation: true,
+        }),
+    );
+    const step04Result = step04ResultCapture.result;
+    proofFit["step-04"] = step04ResultCapture.measurement;
 
     expect(step04Result.txHash).toHaveLength(64);
     expect(step04Result.verifiedTx2SpendInputsHash).toBe(
@@ -514,27 +588,33 @@ describe("fault-proof emulator integration", () => {
     ]);
 
     const removeNow = BigInt(emulator.now());
-    const removeResult = await submitRemoveFraudulentBlock({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      fraudulentHeaderHash: headerHash,
-      awaitConfirmation: true,
-      requireReferenceScripts: true,
-      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
-      validTo: removeNow + 300_000n,
-      stateQueueMutationLeaseCoordinator: {
-        acquire: async () => ({
-          token: "emulator-fault-proof-removal",
-          source: "emulator",
-          renew: async () => {},
-          release: async () => {},
-          fail: async () => {},
+    const removeResultCapture = await captureEmulatorSubmission(
+      emulator,
+      async () =>
+        submitRemoveFraudulentBlock({
+          lucid: proverLucid,
+          blueprint: realBlueprint,
+          deploymentInfo,
+          network,
+          signer: proverSigner,
+          fraudulentHeaderHash: headerHash,
+          awaitConfirmation: true,
+          requireReferenceScripts: true,
+          validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+          validTo: removeNow + 300_000n,
+          stateQueueMutationLeaseCoordinator: {
+            acquire: async () => ({
+              token: "emulator-fault-proof-removal",
+              source: "emulator",
+              renew: async () => {},
+              release: async () => {},
+              fail: async () => {},
+            }),
+          },
         }),
-      },
-    });
+    );
+    const removeResult = removeResultCapture.result;
+    proofFit["remove"] = removeResultCapture.measurement;
     expect(removeResult.fraudulentHeaderHash).toBe(headerHash);
     expect(removeResult.fraudProver).toBe(proverPaymentCredential!.hash);
     expect(removeResult.stateQueueMutationLease).toEqual({
@@ -607,6 +687,64 @@ describe("fault-proof emulator integration", () => {
     );
     expect(outRefLabel(retainedFraudProof)).toBe(outRefLabel(fraudProofUtxo));
     expect(retainedFraudProof.assets[step04Result.fraudProofUnit]).toBe(1n);
+
+    // Q10 double-spend proof fit (GOAL_SPEC.md 3.3). Every transaction of the
+    // complete correction path is measured, not just the largest one. Note the
+    // removal here prunes a successor first, so "remove" is the last submitted
+    // transaction of that multi-transaction removal.
+    expect(Object.keys(proofFit)).toEqual([
+      "init",
+      "step-01",
+      "step-02",
+      "step-03",
+      "step-04",
+      "remove",
+    ]);
+    for (const [stage, measurement] of Object.entries(proofFit)) {
+      expectProofFitV1({
+        stage: `double-spend ${stage}`,
+        measurement,
+        maxTxExMem,
+        maxTxExSteps,
+      });
+    }
+    for (const measurement of removeResultCapture.measurements) {
+      expectProofFitV1({
+        stage: "double-spend removal transaction",
+        measurement,
+        maxTxExMem,
+        maxTxExSteps,
+      });
+    }
+    if (process.env["MIDGARD_PRINT_PROOF_FIT"] === "1") {
+      console.log(
+        `double-spend proof fit: ${JSON.stringify(
+          {
+            ...Object.fromEntries(
+              Object.entries(proofFit).map(([stage, measurement]) => [
+                stage,
+                {
+                  bytes: measurement.completeSignedBytes,
+                  l1ByteMargin: measurement.l1ByteMargin,
+                  memory: measurement.executionMemory.toString(),
+                  steps: measurement.executionSteps.toString(),
+                },
+              ]),
+            ),
+            removalTransactions: removeResultCapture.measurements.map(
+              (measurement) => ({
+                bytes: measurement.completeSignedBytes,
+                l1ByteMargin: measurement.l1ByteMargin,
+                memory: measurement.executionMemory.toString(),
+                steps: measurement.executionSteps.toString(),
+              }),
+            ),
+          },
+          null,
+          2,
+        )}`,
+      );
+    }
   }, 180_000);
 
   it("removes a tail double-spend block without acquiring a lease", async () => {
