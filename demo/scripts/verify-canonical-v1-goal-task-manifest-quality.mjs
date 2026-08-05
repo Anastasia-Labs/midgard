@@ -148,6 +148,45 @@ for (const row of queueRows.slice(1)) {
   }
 }
 
+// Queue statuses are decorated in the ledger (`PASS (structural N/A)`,
+// `PASS (LOCAL_PASS; Q57/QG3 owns LIVE)`), so every status-keyed rule below
+// classifies by the leading role token instead of comparing the whole cell to
+// "PASS" — string equality silently excludes decorated rows from the rules
+// that are supposed to constrain them.
+const statusRole = (status) =>
+  (status ?? "")
+    .replace(/[`*]/g, "")
+    .trim()
+    .split(/[\s(;,]/)[0]
+    .toUpperCase();
+const isPassStatus = (status) => statusRole(status) === "PASS";
+// A dependency is a *current* non-PASS blocker only when the authoritative
+// first queue actually records a non-PASS status for it. IDs with no queue row
+// are unscheduled, not measured, and are not counted as current blockers.
+const isCurrentNonPassId = (id) =>
+  ledgerStatus.has(id) && !isPassStatus(ledgerStatus.get(id));
+// Derived blocked-on authority: the manifest's own blockedOn contents joined
+// against those queue statuses. Published claims about the blocked-on set are
+// reconciled against this derivation rather than trusted as prose.
+const currentNonPassBlockers = [
+  ...new Set(
+    tasks.flatMap((task) =>
+      (Array.isArray(task?.blockedOn) ? task.blockedOn : []).filter(
+        isCurrentNonPassId,
+      ),
+    ),
+  ),
+].sort();
+const currentNonPassDependenciesOf = (task) =>
+  [
+    ...new Set([
+      ...(Array.isArray(task?.dependsOn) ? task.dependsOn : []),
+      ...(Array.isArray(task?.blockedOn) ? task.blockedOn : []),
+    ]),
+  ]
+    .filter(isCurrentNonPassId)
+    .sort();
+
 const findings = new Map();
 const add = (category, taskId, detail) => {
   const entries = findings.get(category) ?? [];
@@ -636,21 +675,42 @@ for (const [index, task] of tasks.entries()) {
   if (blockedOn !== undefined && !Array.isArray(blockedOn)) {
     add("missingOrNonArrayField", id, "blockedOn");
   }
-  if (Array.isArray(blockedOn)) {
-    for (const dependency of blockedOn) {
-      const status = ledgerStatus.get(dependency);
-      if (status === "PASS") {
-        add(
-          "staleBlockedOnPass",
-          id,
-          `${dependency} is PASS in first task queue`,
-        );
-      }
+  const declaredBlockers = Array.isArray(blockedOn) ? blockedOn : [];
+  for (const dependency of declaredBlockers) {
+    const status = ledgerStatus.get(dependency);
+    if (status !== undefined && isPassStatus(status)) {
+      add(
+        "staleBlockedOnPass",
+        id,
+        `${dependency} is ${status} in first task queue`,
+      );
+    }
+  }
+  // The mirror rule: blockedOn must also be complete. A dependency the first
+  // queue currently records as non-PASS cannot be dropped from blockedOn, so a
+  // row cannot publish a smaller blocked-on set than its own dependencies and
+  // the ledger jointly establish.
+  for (const dependency of Array.isArray(task?.dependsOn)
+    ? task.dependsOn
+    : []) {
+    if (
+      isCurrentNonPassId(dependency) &&
+      !declaredBlockers.includes(dependency)
+    ) {
+      add(
+        "omittedCurrentBlocker",
+        id,
+        `${dependency} is ${ledgerStatus.get(dependency)} in first task queue but is absent from blockedOn`,
+      );
     }
   }
   if (hasText(task?.blockedBecause)) {
     for (const [dependency, status] of ledgerStatus) {
-      if (status !== "PASS") continue;
+      if (!isPassStatus(status)) continue;
+      // A row's prose about its own queue status is never a blocker claim: no
+      // task blocks itself, and self-referential notes legitimately discuss a
+      // decorated status such as `PASS (LOCAL_PASS; Q57/QG3 owns LIVE)`.
+      if (dependency === task?.id) continue;
       const dependencyPattern = new RegExp(
         `\\b${quoteForRegex(dependency)}\\b`,
       );
@@ -1121,7 +1181,7 @@ for (const id of ["W24", "W25", "W26"]) {
   }
 }
 const w25 = byId.get("W25");
-if (ledgerStatus.get("W25") === "IN_PROGRESS") {
+if (statusRole(ledgerStatus.get("W25")) === "IN_PROGRESS") {
   const schedulingText = [
     w25?.readyBecause,
     w25?.blockedBecause,
@@ -1142,7 +1202,7 @@ if (!Array.isArray(w26?.dependsOn) || !w26.dependsOn.includes("W25")) {
   add("w26MissingW25Dependency", "W26", "W26 must depend on W25");
 }
 if (
-  ledgerStatus.get("W25") !== "PASS" &&
+  !isPassStatus(ledgerStatus.get("W25")) &&
   (!Array.isArray(w26?.blockedOn) || !w26.blockedOn.includes("W25"))
 ) {
   add(
@@ -1157,7 +1217,7 @@ for (const dependency of ["W25", "W26"]) {
     add("w27MissingSerialDependency", "W27", `missing ${dependency}`);
   }
   if (
-    ledgerStatus.get(dependency) !== "PASS" &&
+    !isPassStatus(ledgerStatus.get(dependency)) &&
     (!Array.isArray(w27?.blockedOn) || !w27.blockedOn.includes(dependency))
   ) {
     add(
@@ -1176,6 +1236,85 @@ if (
     "w27MissingCg3Recheck",
     "W27",
     "schedulingNote must require CG3 re-evaluation after W26",
+  );
+}
+
+// Blocked-on claim reconciliation. Every published sentence that quantifies or
+// names a blocked-on set is checked against the derivation above, so a claim
+// like "blockedOn contains exactly 1 current non-PASS dependency F41" fails
+// closed the moment a second dependency (C26) goes non-PASS. Deleting the
+// claim is not an escape: the manifest-wide claim is required to exist.
+const knownTaskId = (token) => ledgerStatus.has(token) || taskIds.has(token);
+const namedTaskIds = (text) =>
+  [
+    ...new Set(
+      (text.match(/\b[A-Z][A-Z0-9]*(?:-[0-9])?\b/g) ?? []).filter(knownTaskId),
+    ),
+  ].sort();
+const describeSet = (ids) => (ids.length === 0 ? "none" : ids.join(", "));
+let manifestWideBlockedOnClaims = 0;
+for (const [index, task] of tasks.entries()) {
+  const id = idOf(task, index);
+  const derivedForTask = currentNonPassDependenciesOf(task);
+  for (const value of taskStringValues(task)) {
+    for (const claim of value.matchAll(
+      /blockedOn contains exactly (\d+) current non-PASS dependenc(?:y|ies)([^.;]*)/gi,
+    )) {
+      manifestWideBlockedOnClaims += 1;
+      const claimedCount = Number(claim[1]);
+      const claimedIds = namedTaskIds(claim[2]);
+      if (
+        claimedCount !== currentNonPassBlockers.length ||
+        claimedIds.join(",") !== currentNonPassBlockers.join(",")
+      ) {
+        add(
+          "blockedOnClaimMismatch",
+          id,
+          `claims ${claimedCount} current non-PASS blockedOn dependencies (${describeSet(claimedIds)}); the manifest joined against the first queue has ${currentNonPassBlockers.length} (${describeSet(currentNonPassBlockers)})`,
+        );
+      }
+    }
+    for (const claim of value.matchAll(
+      /\b([A-Z][A-Z0-9]*(?:-[0-9])?) has no (?:remaining )?non-PASS dependenc(?:y|ies)/g,
+    )) {
+      if (claim[1] !== task?.id) continue;
+      if (derivedForTask.length > 0) {
+        add(
+          "noBlockerClaimMismatch",
+          id,
+          `claims no current non-PASS dependency, but the first queue records ${describeSet(derivedForTask)}`,
+        );
+      }
+    }
+    for (const claim of value.matchAll(
+      /\b([A-Z][A-Z0-9]*(?:-[0-9])?) remains dependency-blocked only on current non-PASS([^.;]*)/g,
+    )) {
+      if (claim[1] !== task?.id) continue;
+      // "only on X" is checked for understatement, not for exact equality:
+      // rows may legitimately name dependencies that have no first-queue row
+      // yet (unscheduled, therefore not recorded PASS). What the row may never
+      // do is leave out a dependency the queue currently records as non-PASS.
+      const claimedIds = namedTaskIds(claim[2]).filter(
+        (token) => token !== task.id,
+      );
+      const understated = derivedForTask.filter(
+        (dependency) => !claimedIds.includes(dependency),
+      );
+      if (understated.length > 0) {
+        add(
+          "blockedOnlyClaimMismatch",
+          id,
+          `names ${describeSet(claimedIds)} as its only current non-PASS dependencies, omitting ${describeSet(understated)} which the first queue records as non-PASS`,
+        );
+      }
+    }
+  }
+}
+if (manifestWideBlockedOnClaims === 0) {
+  add(
+    "missingBlockedOnReconciliationClaim",
+    "F05",
+    "no manifest row publishes the reconciled 'blockedOn contains exactly N current non-PASS dependencies' claim, so the reconciliation rule has nothing to check",
   );
 }
 

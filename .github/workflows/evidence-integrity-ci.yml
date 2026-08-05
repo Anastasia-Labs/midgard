@@ -37,6 +37,18 @@ jobs:
           node-version-file: demo/.nvmrc
           cache: pnpm
           cache-dependency-path: demo/pnpm-lock.yaml
+      # #519 V-7: the F05 task-manifest quality gate was referenced by nothing
+      # automated, so a published dependency claim ("blockedOn contains exactly
+      # 1 current non-PASS dependency") stayed false until a manual audit found
+      # it. These two steps run before the workspace install because both are
+      # pure-node and need no dependencies; the workflow's unfiltered
+      # `pull_request` trigger means every change to the manifest, its
+      # templates, or the GOAL_PROGRESS.md queue it is reconciled against is
+      # gated here.
+      - name: Verify canonical V1 Goal task-manifest quality
+        run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality.mjs
+      - name: Self-test the task-manifest blocked-on reconciliation
+        run: node demo/scripts/verify-canonical-v1-goal-task-manifest-quality-self-test.mjs
       - name: Install evidence-verifier dependencies
         run: pnpm --dir demo install --frozen-lockfile --ignore-scripts
       - name: Build focused-test workspace dependencies
