@@ -3,7 +3,7 @@
   "version": 1,
   "goalIds": ["Q10", "Q11", "Q12", "Q14"],
   "issue": 482,
-  "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 is reported OPEN for all four families: a threshold-enforcing measurement of the complete correction path now exists, but it measures the minimal fixture, not a maximum/adversarial one, and 9.1 output 5 asks for the maximum. That gap is stated rather than papered over.",
+  "note": "Binds GOAL_SPEC.md 9.1 outputs 5 through 9 for the four foundational proof families whose outputs 1 through 4 were measured PASS at issue #481. Outputs 1 through 4 are inherited and are NOT re-claimed here. This artifact records LOCAL_PASS or OPEN per family per output and claims no Q57/QG3 LIVE_PASS. Output 5 remains OPEN for all four families, but for a different and far more specific reason than before: the maximum/adversarial fixture now EXISTS and is runner-measured (issue #481 residual), and what it measures is that the L1 envelope is exhaustible. Forcing branch levels into the step-01 membership proof costs a measured 276 complete-signed-transaction bytes per level, which exhausts the 16,384-byte envelope at branch level 21 to 23 depending on family, and reaching that depth costs about 2^84 fixed-target digest searches. That is expensive but inside a 2^128 adversary, so 'maximum fit' is not true at the structural maximum and may not be published as a pass. The second adversarial axis, spend-input preimage cardinality, is still unexercised.",
   "inheritedOutputs": {
     "outputs": [1, 2, 3, 4],
     "closedBy": 481,
@@ -117,6 +117,26 @@
         "worstByteMarginStage": "step-02",
         "removalTransactionBytes": [2167, 1315],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage. Exact removal execution units vary run to run because the removal validity interval is derived from emulator.now(), so they are not pinned as fixed numbers here; the threshold assertion is the binding claim."
+      },
+      "maximumProofFit": {
+        "fixture": "maximum",
+        "branchLevels": 5,
+        "l2TransactionCount": 22,
+        "membershipProofCborBytes": 697,
+        "stages": [
+          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
+          { "stage": "step-01", "bytes": 11460, "l1ByteMargin": 4924 },
+          { "stage": "step-02", "bytes": 11505, "l1ByteMargin": 4879 },
+          { "stage": "step-03", "bytes": 4244, "l1ByteMargin": 12140 },
+          { "stage": "step-04", "bytes": 9295, "l1ByteMargin": 7089 }
+        ],
+        "worstByteMargin": 4879,
+        "worstByteMarginStage": "step-02",
+        "largestStageBytes": 11505,
+        "envelopeExhaustionBranchLevel": 22,
+        "log2WorkToExhaustEnvelope": 88,
+        "removalMeasured": true,
+        "removalNote": "The removal transactions carry no membership proof and are therefore invariant in this axis; they are measured against the same thresholds by the same runner-executed helper but their exact byte count varies by one byte run to run with the emulator-derived validity interval, so it is not pinned here."
       }
     },
     {
@@ -194,6 +214,26 @@
         "worstByteMarginStage": "step-01",
         "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      },
+      "maximumProofFit": {
+        "fixture": "maximum",
+        "branchLevels": 5,
+        "l2TransactionCount": 22,
+        "membershipProofCborBytes": 697,
+        "stages": [
+          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
+          { "stage": "step-01", "bytes": 11517, "l1ByteMargin": 4867 },
+          { "stage": "step-02", "bytes": 4212, "l1ByteMargin": 12172 },
+          { "stage": "step-03", "bytes": 3455, "l1ByteMargin": 12929 },
+          { "stage": "step-04", "bytes": 9652, "l1ByteMargin": 6732 }
+        ],
+        "worstByteMargin": 4867,
+        "worstByteMarginStage": "step-01",
+        "largestStageBytes": 11517,
+        "envelopeExhaustionBranchLevel": 22,
+        "log2WorkToExhaustEnvelope": 88,
+        "removalMeasured": true,
+        "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This family is the only one whose maximum fixture also deepens a NON-membership proof: the step-04 txs-non-membership proof is grinded against the phantom input's producing transaction id and reaches the same 697 CBOR bytes."
       }
     },
     {
@@ -253,6 +293,24 @@
         "worstByteMarginStage": "step-01",
         "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      },
+      "maximumProofFit": {
+        "fixture": "maximum",
+        "branchLevels": 5,
+        "l2TransactionCount": 11,
+        "membershipProofCborBytes": 697,
+        "stages": [
+          { "stage": "init", "bytes": 7862, "l1ByteMargin": 8522 },
+          { "stage": "step-01", "bytes": 11766, "l1ByteMargin": 4618 },
+          { "stage": "step-02", "bytes": 7399, "l1ByteMargin": 8985 }
+        ],
+        "worstByteMargin": 4618,
+        "worstByteMarginStage": "step-01",
+        "largestStageBytes": 11766,
+        "envelopeExhaustionBranchLevel": 21,
+        "log2WorkToExhaustEnvelope": 84,
+        "removalMeasured": true,
+        "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This is the tightest of the four families and is the one the two-depth marginal measurement in adversarialDepthBound is taken from."
       }
     },
     {
@@ -314,9 +372,52 @@
         "worstByteMarginStage": "step-01",
         "removalTransactionBytes": [1867],
         "executionUnitsNote": "Execution memory and steps are asserted against the 20%-reserve ceiling on every stage."
+      },
+      "maximumProofFit": {
+        "fixture": "maximum",
+        "branchLevels": 5,
+        "l2TransactionCount": 11,
+        "membershipProofCborBytes": 697,
+        "stages": [
+          { "stage": "init", "bytes": 7718, "l1ByteMargin": 8666 },
+          { "stage": "step-01", "bytes": 11402, "l1ByteMargin": 4982 },
+          { "stage": "step-02", "bytes": 7309, "l1ByteMargin": 9075 }
+        ],
+        "worstByteMargin": 4982,
+        "worstByteMarginStage": "step-01",
+        "largestStageBytes": 11402,
+        "envelopeExhaustionBranchLevel": 23,
+        "log2WorkToExhaustEnvelope": 92,
+        "removalMeasured": true,
+        "removalNote": "Depth-invariant; measured against the same thresholds but not byte-pinned. This family has the most headroom of the four because its challenged transaction spends nothing."
       }
     }
   ],
+  "adversarialDepthBound": {
+    "axis": "MPF membership proof depth",
+    "measuredFamily": "Q12",
+    "suite": "demo/midgard-fault-proofs/tests/submit-init-emulator-max-proof-fit.test.ts",
+    "measuredTitle": "bounds the membership-depth axis with a measured marginal cost per level",
+    "construction": "Two siblings are deterministically grinded per level so that the challenged transaction's hashed path branches at every nibble 0..N-1, each into a DISTINCT nibble slot. Distinct slots are what force a three-child node, which is what makes every on-path proof step serialize as MPF's largest `branch` shape rather than the cheaper `fork` or `leaf`. Candidate keys are a counter written into a fixed buffer, so the fixture is byte-for-byte reproducible.",
+    "shallowBranchLevels": 1,
+    "deepBranchLevels": 5,
+    "shallowStep01Bytes": 10662,
+    "deepStep01Bytes": 11766,
+    "mpfBranchProofStepCborBytes": 139,
+    "proofTransactionBranchLevelBytes": 276,
+    "cborVersusTransactionNote": "The 139-byte figure is the MPF library's own compact CBOR cost per branch step, measured separately at levels 1 through 5 with exactly constant differences. The 276-byte figure is the cost in the COMPLETE SIGNED transaction, which is what the L1 envelope measures, and is roughly double because the proof reaches the chain as Plutus data in the step redeemer. Using the smaller number for envelope arithmetic would understate the exposure by a factor of two; both are pinned so that substitution cannot happen silently.",
+    "marginalExecutionMemoryPerBranchLevel": 48139.25,
+    "marginalExecutionStepsPerBranchLevel": 14961966.75,
+    "byteCeiling": 21,
+    "executionMemoryCeiling": 215,
+    "executionStepCeiling": 516,
+    "bindingEnvelope": "bytes",
+    "log2WorkToExhaustEnvelope": 84,
+    "referenceAdversaryLog2Work": 128,
+    "referenceAdversaryBranchLevelReach": 32,
+    "envelopeExhaustibleByReferenceAdversary": true,
+    "workModel": "Forcing a branch at level i requires a transaction whose hashed path agrees with the challenged transaction's path on i chosen nibbles. That is a fixed-target search, not a birthday search, so it costs about 16^i = 2^(4i) candidate hashings, and the whole ladder is dominated by its last rung."
+  },
   "sharedDaFirstEvidenceGate": {
     "module": "demo/midgard-fault-proofs/src/evidence/prepare-from-evidence-v1.ts",
     "admissionGate": "admitCanonicalEvidenceForProofBuildV1",
@@ -347,8 +448,8 @@
       "Q11": "OPEN",
       "Q12": "OPEN",
       "Q14": "OPEN",
-      "evidence": "Issue #482 added the first threshold-enforcing proof-fit measurement for these four families: every transaction of the complete correction path (init, every step, and every removal transaction) is now measured for bytes, execution memory and execution steps, and asserted against the GOAL_SPEC.md 3.3 byte-fit limit and 20% execution reserve. Before this, no test measured bytes or execution units for any of the four. Measured worst byte margins: Q10 6115 bytes at step-02, Q11 6103 at step-01, Q12 6000 at step-01, Q14 6364 at step-01.",
-      "whyOpen": "The measured fixture is the MINIMAL one already used by each lifecycle (a single-transaction block, an MPF membership proof of depth 1, and no high-cardinality spend inputs). 9.1 output 5 requires the MAXIMUM/adversarial fixture, so this baseline does not close the output. The two adversarial axes that actually grow these transactions are identified in adversarialAxes below; neither is exercised yet.",
+      "evidence": "Two measurements now exist. Issue #482 added the first threshold-enforcing measurement of the complete correction path on the MINIMAL fixture (worst byte margins Q10 6115 at step-02, Q11 6103 at step-01, Q12 6000 at step-01, Q14 6364 at step-01). The #481 residual added the MAXIMUM/adversarial fixture: a deterministically grinded block that forces five all-`branch` levels into each family's step-01 membership proof, and for Q11 into the step-04 non-membership proof as well, run through the real prepare/submit pipeline end to end. Measured worst byte margins at that depth: Q10 4879 at step-02, Q11 4867 at step-01, Q12 4618 at step-01, Q14 4982 at step-01, with every stage inside the 20% execution reserve. The marginal cost of one further level is measured at two real depths: 276 complete-signed-transaction bytes, 48,139 execution memory units and 14,961,967 execution steps.",
+      "whyOpen": "The fixture exists now, and what it measures is that the maximum does NOT fit. Byte fit is the binding envelope (byte ceiling 21 versus execution-memory ceiling 215 and execution-step ceiling 516, all measured), and it is exhausted at branch level 21 to 23 depending on family. Reaching that depth is a fixed-target search costing about 2^84 to 2^92 candidate hashings, which is expensive but inside the 2^128 reference adversary that reaches level 32. Publishing LOCAL_PASS would assert a maximum fit that the measurement contradicts. The second axis in adversarialAxes, spend-input preimage cardinality, is separately still unexercised.",
       "owner": "Q10/Q11/Q12/Q14, remaining work for issue #483"
     },
     {
@@ -398,22 +499,22 @@
       "axis": "MPF membership proof depth",
       "growsWith": "the challenged block's l2_transaction_count",
       "affects": "every step-01 transaction of all four families, which carries tx_membership_proof",
-      "measuredToday": "depth 1 (a single-transaction block)",
-      "note": "This is the dominant adversarial axis and is unexercised. The step-01 byte margins above (6000 to 6364 bytes) are the entire headroom available to a deeper proof."
+      "measuredToday": "five forced all-branch levels, run end to end through the real pipeline for every family; the marginal cost of a sixth is measured at two depths and the resulting envelope ceiling is 21 to 23 levels",
+      "note": "This is the dominant adversarial axis and it is now exercised and bounded. The bound is not a pass: see adversarialDepthBound and finding Q1X-F5. Note that the lever is not block size — a larger random block deepens the path only logarithmically — but grinding transactions whose hashed paths branch at consecutive nibbles of the challenged transaction's own path."
     },
     {
       "axis": "spend-input preimage cardinality",
       "growsWith": "the number of inputs the challenged transaction spends",
       "affects": "double-spend step-03 (spend-input witnesses) and no-input step-02/step-03",
-      "measuredToday": "the minimal input set of each fixture",
-      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow."
+      "measuredToday": "the minimal input set of each fixture; still unexercised",
+      "note": "Enlarging a native transaction's OUTPUTS does not grow these transactions, because the step redeemer carries native_tx_compact_cbor, whose fields are hashes rather than preimages. Only the paths that carry actual preimages grow. This axis is expected to bind on the spend-inputs WITNESS publication transaction and on execution units rather than on the step transaction itself, because the witness reaches the step as a reference input whose datum is not part of the step transaction's bytes; that expectation is unmeasured, which is precisely why it is still an open axis and not a closed one. See finding Q1X-F6."
     }
   ],
   "residualFindings": [
     {
       "id": "Q1X-F1",
       "severity": "gap",
-      "finding": "Output 5 is not closed for any of the four families: the measurement is of the minimal fixture, not a maximum/adversarial one. Recorded OPEN, not LOCAL_PASS.",
+      "finding": "Output 5 is not closed for any of the four families. The maximum/adversarial fixture that #482 recorded as missing now exists and is runner-measured, so the reason has changed: the measurement shows the maximum does not fit (Q1X-F5) and one adversarial axis is still unexercised (Q1X-F6). Recorded OPEN, not LOCAL_PASS.",
       "owner": "issue #483"
     },
     {
@@ -433,28 +534,63 @@
       "severity": "observation",
       "finding": "The emulator runs at maxTxSize 65536 while proof fit is judged against the real 16384-byte L1 limit through l1ByteMargin. The two are deliberately different: the relaxed emulator ceiling lets a would-be-oversize transaction be built and then measured rather than failing opaquely during construction. Any future change to EMULATOR_PROTOCOL_PARAMETERS.maxTxSize must not be mistaken for a change in the pass criterion.",
       "owner": "Q10/Q11/Q12/Q14"
+    },
+    {
+      "id": "Q1X-F5",
+      "severity": "defect",
+      "finding": "The 16,384-byte L1 envelope on the step-01 proof transaction is exhaustible by a block producer willing to grind. Each forced MPF branch level costs a measured 276 bytes of complete signed transaction, so the envelope runs out at branch level 22 (Q10), 22 (Q11), 21 (Q12) and 23 (Q14). Forcing level i is a fixed-target search costing about 2^(4i) candidate hashings, so the cheapest of the four is exhaustible at roughly 2^84 work — expensive, but well inside the 2^128 reference adversary, which reaches level 32. A malicious operator who pays that cost makes their own fraudulent block unprovable on L1, which is a griefing vector against the correction path itself rather than a test-fixture gap. Byte fit is the binding envelope: the execution-memory ceiling is 215 levels and the execution-step ceiling 516, both measured, so no amount of execution headroom helps. This is asserted executably by the emulator suite, which fails if the ceiling ever moves.",
+      "owner": "issue #483, and a protocol decision rather than a test fix"
+    },
+    {
+      "id": "Q1X-F6",
+      "severity": "gap",
+      "finding": "The second adversarial axis, spend-input preimage cardinality, is still unexercised for Q10 and Q11. Its expected binding constraint is different from the membership-depth axis (the spend-inputs witness publication transaction and step execution units, not the step transaction's own bytes) so the membership-depth bound above says nothing about it. Q12 and Q14 do not carry this axis at all: the invalid-range steps operate on the compact transaction and the zero-input family's challenged transaction spends nothing by construction.",
+      "owner": "issue #483"
     }
   ],
   "runners": [
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-ledger-rules.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/submit-init-emulator-max-proof-fit.test.ts",
     "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/canonical-evidence-source-v1.test.ts"
   ],
+  "maximumFixtureSuite": {
+    "file": "demo/midgard-fault-proofs/tests/submit-init-emulator-max-proof-fit.test.ts",
+    "titles": [
+      "fits a maximum-depth double-spend proof inside the L1 envelope",
+      "fits a maximum-depth non-existent-input proof inside the L1 envelope",
+      "fits a maximum-depth invalid-range proof inside the L1 envelope",
+      "fits a maximum-depth zero-input proof inside the L1 envelope",
+      "charges a constant 139 bytes for every additional forced branch level",
+      "bounds the membership-depth axis with a measured marginal cost per level"
+    ],
+    "familyTitles": {
+      "Q10": "fits a maximum-depth double-spend proof inside the L1 envelope",
+      "Q11": "fits a maximum-depth non-existent-input proof inside the L1 envelope",
+      "Q12": "fits a maximum-depth invalid-range proof inside the L1 envelope",
+      "Q14": "fits a maximum-depth zero-input proof inside the L1 envelope"
+    }
+  },
   "summary": {
     "families": 4,
     "outputsBound": 5,
     "localPassCells": 16,
     "openCells": 4,
     "measuredProofFitStages": 20,
+    "measuredMaximumProofFitStages": 16,
     "worstByteMarginAcrossFamilies": 6000,
+    "worstMaximumByteMarginAcrossFamilies": 4618,
+    "lowestEnvelopeExhaustionBranchLevel": 21,
     "canonicalEvidenceSuiteTests": 32,
     "emulatorLifecyclesExecuted": 7,
-    "residualFindings": 4
+    "maximumFixtureLifecyclesExecuted": 6,
+    "residualFindings": 6
   },
   "parentIntegration": {
     "owner": "parent",
     "pendingEdits": [
       "GOAL_PROGRESS.md: bind Q10/Q11/Q12/Q14 rows for 9.1 outputs 6 to 9 at LOCAL_PASS and output 5 at OPEN, with the measured numbers in this artifact.",
+      "Finding Q1X-F5 is a protocol exposure, not a bookkeeping item: the L1 envelope on the step-01 proof transaction is exhaustible at roughly 2^84 grinding work. It needs an owner outside this artifact — either a bound on admissible membership-proof depth, a proof-transaction split, or an accepted risk with the number written down.",
       "docs/fault-proofs/coverage-matrix.md: the four families' rows may cite this artifact for outputs 6 to 9; output 5 must remain OPEN.",
       "docs/exec-plans/evidence/canonical-v1-goal-task-manifest-v1.json: the Q10/Q11/Q12 schedulingNote text still says outputs 5 to 9 are all unreached; outputs 6 to 9 are now bound here. Q14's writablePaths do not include this artifact or its verifier, so the Q14 row needs its path set widened by the parent."
     ]

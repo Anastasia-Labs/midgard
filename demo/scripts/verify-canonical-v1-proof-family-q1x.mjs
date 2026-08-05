@@ -191,7 +191,86 @@ assert.deepEqual(
 
 let familyChecks = 0;
 let measuredStages = 0;
+let maximumStages = 0;
 let worstByteMargin = Number.POSITIVE_INFINITY;
+let worstMaximumByteMargin = Number.POSITIVE_INFINITY;
+let lowestExhaustionLevel = Number.POSITIVE_INFINITY;
+
+// ## The adversarial depth bound
+//
+// The maximum-fixture arithmetic below is only as good as the marginal cost it
+// extrapolates, so that constant is checked against the two-depth measurement
+// it comes from before any family is allowed to use it. The distinction
+// between the MPF library's own CBOR cost and the cost in the complete signed
+// transaction is enforced here too: substituting the smaller number would
+// halve the reported exposure.
+const bound = evidence.adversarialDepthBound;
+assert.ok(
+  bound !== undefined && typeof bound === "object",
+  "the maximum fixture's depth bound must be recorded, not left implicit",
+);
+const ADVERSARIAL_BRANCH_LEVELS = bound.deepBranchLevels;
+assert.ok(
+  Number.isInteger(ADVERSARIAL_BRANCH_LEVELS) &&
+    ADVERSARIAL_BRANCH_LEVELS > bound.shallowBranchLevels,
+  "the depth bound must be measured at two distinct depths",
+);
+assert.equal(
+  bound.proofTransactionBranchLevelBytes,
+  (bound.deepStep01Bytes - bound.shallowStep01Bytes) /
+    (bound.deepBranchLevels - bound.shallowBranchLevels),
+  "the pinned per-level transaction cost is not the difference between the two measured depths",
+);
+assert.ok(
+  bound.proofTransactionBranchLevelBytes > bound.mpfBranchProofStepCborBytes,
+  "the transaction-level cost must exceed the MPF CBOR cost; if they were equal the Plutus-data expansion would have been silently dropped",
+);
+assert.equal(
+  bound.byteCeiling,
+  ADVERSARIAL_BRANCH_LEVELS +
+    Math.floor(
+      (L1_MAX_TX_SIZE - bound.deepStep01Bytes) /
+        bound.proofTransactionBranchLevelBytes,
+    ),
+  "the published byte ceiling is not the one its own measured transaction implies",
+);
+assert.equal(
+  bound.bindingEnvelope,
+  "bytes",
+  "the binding envelope must be named explicitly",
+);
+assert.ok(
+  bound.byteCeiling < bound.executionMemoryCeiling &&
+    bound.byteCeiling < bound.executionStepCeiling,
+  "byte fit is published as the binding envelope but is not the smallest of the three measured ceilings",
+);
+assert.equal(
+  bound.referenceAdversaryBranchLevelReach,
+  Math.floor(bound.referenceAdversaryLog2Work / 4),
+  "the reference adversary's reach is not 2^(4i) work per level",
+);
+assert.equal(
+  bound.log2WorkToExhaustEnvelope,
+  4 * bound.byteCeiling,
+  "the work needed to exhaust the envelope is not 4 bits per forced level",
+);
+assert.equal(
+  bound.envelopeExhaustibleByReferenceAdversary,
+  bound.byteCeiling < bound.referenceAdversaryBranchLevelReach,
+  "the exhaustibility claim disagrees with the ceilings it is drawn from",
+);
+
+const maximumSuite = evidence.maximumFixtureSuite;
+assert.ok(
+  maximumSuite !== undefined,
+  "the maximum-fixture suite must be named so the runner can execute it",
+);
+for (const goalId of GOAL_IDS) {
+  assert.ok(
+    maximumSuite.titles.includes(maximumSuite.familyTitles[goalId]),
+    `the maximum-fixture suite does not declare a lifecycle title for ${goalId}`,
+  );
+}
 
 // Declarations only: which titles each suite is claimed to contain. Nothing
 // here decides whether any of them passed; the runner does that below.
@@ -319,16 +398,13 @@ for (const family of evidence.families) {
   assert.equal(
     fit.fixture,
     "minimal",
-    `${where} records fixture "${String(fit.fixture)}"; only a "minimal" fixture may be published while output 5 is OPEN`,
+    `${where} records measuredProofFit fixture "${String(fit.fixture)}"; that block is the minimal baseline and the adversarial one belongs in maximumProofFit`,
   );
-  const expectedStages = [
-    "init",
-    ...Array.from(
-      { length: family.stepCount },
-      (_unused, index) => `step-0${String(index + 1)}`,
-    ),
-    "remove",
-  ];
+  const stepStages = Array.from(
+    { length: family.stepCount },
+    (_unused, index) => `step-0${String(index + 1)}`,
+  );
+  const expectedStages = ["init", ...stepStages, "remove"];
   assert.deepEqual(
     fit.stages.map((stage) => stage.stage),
     expectedStages,
@@ -366,8 +442,108 @@ for (const family of evidence.families) {
     );
   }
   worstByteMargin = Math.min(worstByteMargin, computedWorst);
+
+  // -- output 5, adversarial half: the maximum fixture. Every number below is
+  //    recomputed from the recorded stages and the pinned marginal cost, so the
+  //    ceiling that keeps this cell OPEN cannot be asserted by hand.
+  const maximum = family.maximumProofFit;
+  assert.ok(
+    maximum !== undefined,
+    `${where} must record a maximumProofFit block; a minimal-only measurement is what left output 5 unowned`,
+  );
+  assert.equal(
+    maximum.fixture,
+    "maximum",
+    `${where} maximumProofFit must declare fixture "maximum"`,
+  );
+  assert.equal(
+    maximum.branchLevels,
+    ADVERSARIAL_BRANCH_LEVELS,
+    `${where} maximum fixture branch levels drifted from the constructed depth`,
+  );
+  // Removal carries no membership proof, so it is depth-invariant and is
+  // measured but not byte-pinned; the proof-carrying path is what is pinned.
+  assert.deepEqual(
+    maximum.stages.map((stage) => stage.stage),
+    ["init", ...stepStages],
+    `${where} maximum fixture must measure init and every step`,
+  );
+  assert.equal(
+    maximum.removalMeasured,
+    true,
+    `${where} maximum fixture must still measure the removal transactions`,
+  );
+  for (const stage of maximum.stages) {
+    assert.equal(
+      stage.l1ByteMargin,
+      L1_MAX_TX_SIZE - stage.bytes,
+      `${where} maximum stage ${stage.stage} margin ${String(stage.l1ByteMargin)} does not equal 16384 - ${String(stage.bytes)}`,
+    );
+    assert.ok(
+      stage.l1ByteMargin >= 0,
+      `${where} maximum stage ${stage.stage} exceeds the L1 envelope`,
+    );
+    maximumStages += 1;
+  }
+  const maximumWorst = Math.min(
+    ...maximum.stages.map((stage) => stage.l1ByteMargin),
+  );
+  assert.equal(
+    maximum.worstByteMargin,
+    maximumWorst,
+    `${where} maximum worstByteMargin disagrees with its own stage list`,
+  );
+  assert.equal(
+    maximum.stages.find((stage) => stage.l1ByteMargin === maximumWorst).stage,
+    maximum.worstByteMarginStage,
+    `${where} maximum worstByteMarginStage disagrees with its own stage list`,
+  );
+  const largestStageBytes = Math.max(
+    ...maximum.stages.map((stage) => stage.bytes),
+  );
+  assert.equal(
+    maximum.largestStageBytes,
+    largestStageBytes,
+    `${where} maximum largestStageBytes disagrees with its own stage list`,
+  );
+  assert.ok(
+    maximum.worstByteMargin < fit.worstByteMargin,
+    `${where} the maximum fixture must be tighter than the minimal one; ${String(maximum.worstByteMargin)} is not below ${String(fit.worstByteMargin)}`,
+  );
+  const derivedCeiling =
+    maximum.branchLevels +
+    Math.floor(
+      (L1_MAX_TX_SIZE - largestStageBytes) /
+        bound.proofTransactionBranchLevelBytes,
+    );
+  assert.equal(
+    maximum.envelopeExhaustionBranchLevel,
+    derivedCeiling,
+    `${where} envelopeExhaustionBranchLevel ${String(maximum.envelopeExhaustionBranchLevel)} is not the level derived from its own measured bytes and the pinned marginal cost (${String(derivedCeiling)})`,
+  );
+  assert.equal(
+    maximum.log2WorkToExhaustEnvelope,
+    4 * derivedCeiling,
+    `${where} log2WorkToExhaustEnvelope must be 4 times the exhaustion level, because forcing level i is a fixed-target search over i nibbles`,
+  );
+  // The claim that keeps output 5 OPEN, restated per family so no family can
+  // be quietly promoted while the exposure stands.
+  assert.ok(
+    maximum.envelopeExhaustionBranchLevel <
+      bound.referenceAdversaryBranchLevelReach,
+    `${where} the L1 envelope is no longer exhaustible by the reference adversary; finding Q1X-F5 must be re-stated rather than left stale`,
+  );
+  lowestExhaustionLevel = Math.min(
+    lowestExhaustionLevel,
+    maximum.envelopeExhaustionBranchLevel,
+  );
+  worstMaximumByteMargin = Math.min(worstMaximumByteMargin, maximumWorst);
   familyChecks += 1;
 }
+
+// The maximum-fixture suite is scheduled here; the runner below decides whether
+// any of it passed.
+declareVitest(maximumSuite.file, maximumSuite.titles);
 
 // ## Shared DA-first evidence gate
 
@@ -449,6 +625,15 @@ const emulatorLifecyclesExecuted = evidence.families.reduce(
   0,
 );
 
+// The maximum-fixture suite's own passage, read out of the runner report rather
+// than from the artifact that cites it.
+const maximumOutcome = vitestOutcomes.get(maximumSuite.file);
+assert.equal(
+  maximumOutcome.collected,
+  maximumSuite.titles.length,
+  "the maximum-fixture suite collected a different number of tests than the artifact cites",
+);
+
 // ## Output status matrix
 
 assert.deepEqual(
@@ -486,17 +671,32 @@ for (const row of evidence.outputStatus) {
     );
   }
 }
-// Output 5 must remain OPEN for every family while only a minimal fixture is
-// measured. Publishing LOCAL_PASS there would be the exact defect this
-// program has been bitten by: a passage claim on an existence-grade fixture.
+// Output 5 must remain OPEN for every family while the maximum fixture's own
+// measurement says the envelope is exhaustible, or while an adversarial axis is
+// still unexercised. Publishing LOCAL_PASS on the strength of a fixture that
+// merely fits at the depth someone chose to build would be the exact defect
+// this program has been bitten by: a passage claim an adversary can falsify.
 const output5 = evidence.outputStatus.find((row) => row.output === 5);
+const unexercisedAxes = evidence.adversarialAxes.filter((axis) =>
+  axis.measuredToday.includes("unexercised"),
+);
+const output5MayClose =
+  !evidence.adversarialDepthBound.envelopeExhaustibleByReferenceAdversary &&
+  unexercisedAxes.length === 0;
 for (const goalId of GOAL_IDS) {
   assert.equal(
     output5[goalId],
     "OPEN",
-    `output 5 / ${goalId} may not be LOCAL_PASS while every measured fixture is "minimal"`,
+    `output 5 / ${goalId} may not be LOCAL_PASS while the L1 envelope is exhaustible at branch level ${String(
+      evidence.adversarialDepthBound.byteCeiling,
+    )} and ${String(unexercisedAxes.length)} adversarial axis/axes remain unexercised`,
   );
 }
+assert.equal(
+  output5MayClose,
+  false,
+  "the conditions that keep output 5 OPEN have been cleared; the cells must be re-decided deliberately rather than left OPEN by inertia",
+);
 
 // Adversarial axes must be enumerated, not hand-waved.
 assert.ok(
@@ -573,9 +773,13 @@ const recomputed = {
   localPassCells,
   openCells,
   measuredProofFitStages: measuredStages,
+  measuredMaximumProofFitStages: maximumStages,
   worstByteMarginAcrossFamilies: worstByteMargin,
+  worstMaximumByteMarginAcrossFamilies: worstMaximumByteMargin,
+  lowestEnvelopeExhaustionBranchLevel: lowestExhaustionLevel,
   canonicalEvidenceSuiteTests: gateOutcome.passed,
   emulatorLifecyclesExecuted,
+  maximumFixtureLifecyclesExecuted: maximumOutcome.passed,
   residualFindings: evidence.residualFindings.length,
 };
 assert.deepEqual(
@@ -661,9 +865,16 @@ const report = {
   localPassCells: evidence.summary.localPassCells,
   openCells: evidence.summary.openCells,
   measuredProofFitStages: evidence.summary.measuredProofFitStages,
+  measuredMaximumProofFitStages: evidence.summary.measuredMaximumProofFitStages,
   worstByteMarginAcrossFamilies: evidence.summary.worstByteMarginAcrossFamilies,
+  worstMaximumByteMarginAcrossFamilies:
+    evidence.summary.worstMaximumByteMarginAcrossFamilies,
+  lowestEnvelopeExhaustionBranchLevel:
+    evidence.summary.lowestEnvelopeExhaustionBranchLevel,
   canonicalEvidenceSuiteTests: evidence.summary.canonicalEvidenceSuiteTests,
   emulatorLifecyclesExecuted: evidence.summary.emulatorLifecyclesExecuted,
+  maximumFixtureLifecyclesExecuted:
+    evidence.summary.maximumFixtureLifecyclesExecuted,
   residualFindings: evidence.summary.residualFindings,
   familyChecks,
   thresholdEnforcementChecks,
@@ -676,8 +887,14 @@ if (emitJson) {
   console.log(
     `Q10/Q11/Q12/Q14 outputs 5-9: PASS (${String(evidence.summary.localPassCells)} LOCAL_PASS cells, ${String(
       evidence.summary.openCells,
-    )} OPEN cells, ${String(evidence.summary.measuredProofFitStages)} measured proof-fit stages, worst L1 byte margin ${String(
+    )} OPEN cells, ${String(evidence.summary.measuredProofFitStages)} minimal + ${String(
+      evidence.summary.measuredMaximumProofFitStages,
+    )} maximum proof-fit stages, worst L1 byte margin ${String(
       evidence.summary.worstByteMarginAcrossFamilies,
+    )} minimal / ${String(
+      evidence.summary.worstMaximumByteMarginAcrossFamilies,
+    )} maximum, envelope exhausted at branch level ${String(
+      evidence.summary.lowestEnvelopeExhaustionBranchLevel,
     )})`,
   );
 }
