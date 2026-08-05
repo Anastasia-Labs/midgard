@@ -5476,3 +5476,45 @@ focused tests 19 files 596/596; dependency map 8 classes; block-replay
 21/21; manifest quality 0 defects + self-test 13 mutations; verification
 plan PASS; reconciliation 70 rows/49 open; status-role control PASS; fork
 settlement_handler_ 56/56.
+
+
+## Watcher determinism and W12 finality coverage — wave 4 (2026-08-05)
+
+- **#535 (public-DA deadline flake)** `15b30754` — root cause was a real
+  production misclassification, not merely a flaky test:
+  `Math.max(1, floor(min(remaining, …)))` spent sub-millisecond budget
+  slivers as 1 ms dials that failed as `timeout`, so under load the peer
+  list could exhaust before the budget check fired and the fetch reported
+  `all_peers_failed` when the deadline was what stopped it. Fixes: an
+  injectable clock seam (`WatcherPublicDaClockV1`, production default
+  identical); `remaining < 1 ms` now classifies as `deadline_exceeded`;
+  and an explicit tie-break — a fetch whose deadline has passed by its own
+  clock reports `deadline_exceeded`, never `all_peers_failed` (the spent
+  budget is the actionable fact; the alternative falsely asserts a
+  complete peer evaluation). Test assertions strengthened (exact status
+  sequence, exact 200 ms remainder) under a virtual clock; determinism
+  proven 5× isolated and 2× full-suite under saturating load (102/102
+  every run; in-file time 2.4 s → 0.2 s). No pin surfaces moved. Follow-up
+  owed: the new tie-break and the <1 ms rule have no dedicated tests (a
+  coherent pin move is required to add them).
+- **#539 (W12 finality fail-open)** `59b65206` — an agreed
+  external-providers record must now bind **exactly** the configured
+  provider set (set identity, not the previous vacuous `.every()` that a
+  strict subset satisfied); unbound providers yield the new reason code
+  `source_provider_binding_unrun` and the record is refused at first
+  visibility and at threshold. Correction to the ticket's reachability
+  claim: the EMPTY list is unreachable (the W11 parser pins agreed
+  cardinality ≥ 2, sorted-unique); the reachable form was the strict
+  subset, reproduced pre-fix (`finality_granted` on a 2-of-3-provider
+  agreement) and rejected post-fix. Pending/quarantined records keep their
+  own rejection paths (no reclassification). Vacuous-quantifier sweep of
+  the file: one in-scope instance (this one) fixed; five others confirmed
+  sound. Pins moved coherently: finality-engine 22 → 25 tests, watcher
+  aggregate **596 → 599** (all six surfaces in one commit; measured
+  19 files, 599/599). W25/W26-era aggregate citations (595, 596) are
+  superseded by 599.
+
+Integration gates on `59b65206`, all green: finality-engine 25/25, watcher
+focused tests 19 files 599/599, dependency map 8 classes, manifest quality
+186/186 with 0 defects, public-da-client 102/102, tsc/eslint/prettier/diff
+clean on both lanes.
