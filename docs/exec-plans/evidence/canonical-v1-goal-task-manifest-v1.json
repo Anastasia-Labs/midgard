@@ -378,7 +378,7 @@
         "demo/midgard-node/src/deployment-manifest-v1.ts, demo/midgard-watcher/src/deployment-identity.ts, onchain/aiken fraud-proof/catalogue tree, checked-in blueprint, and docs-site/content/docs/fault-proofs public documentation tree"
       ],
       "evidenceOutputs": [
-        "Audited fault-proof reconciliation preserving the current 70-row partition of 5 locally complete, 12 structural/N/A, 53 open, and 0 preprod-complete rows, with every residual mapped to an exact task without promoting QG1, QG2, or QG3",
+        "Audited fault-proof reconciliation preserving the current 70-row partition of 8 locally complete, 13 structural/N/A, 49 open, and 0 preprod-complete rows, with every residual mapped to an exact task without promoting QG1, QG2, or QG3",
         "Catalogue/docs/tree synchronization report proving the identical append-only 8-category ID/order vocabulary across SDK catalogue, init/CLI tooling, node deployment manifest, watcher deployment identity, coverage/catalogue docs, blueprint-backed contracts, and public docs wherever categories are enumerated",
         "Current binding inventory proving 12 compiled standalone families and the identical append-only 8-category vocabulary across catalogue registration, initialization CLI, and inspection tooling",
         "Prescribed missing surfaces: docs/exec-plans/evidence/canonical-v1-fault-proof-tree-sync-v1.json and demo/scripts/verify-canonical-v1-fault-proof-tree-sync.mjs"
@@ -389,13 +389,13 @@
         "pnpm --dir demo exec prettier --check ../docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json ../docs/exec-plans/evidence/canonical-v1-fault-proof-tree-sync-v1.json scripts/verify-canonical-v1-fault-proof-reconciliation.mjs scripts/verify-canonical-v1-fault-proof-tree-sync.mjs",
         "git diff --check -- docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json docs/exec-plans/evidence/canonical-v1-fault-proof-tree-sync-v1.json demo/scripts/verify-canonical-v1-fault-proof-reconciliation.mjs demo/scripts/verify-canonical-v1-fault-proof-tree-sync.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-fault-proof-reconciliation.mjs, verify-canonical-v1-fault-proof-tree-sync.mjs. Exactly 70 reconciled rows comprise 61 coverage rows and 9 structural rows, partitioned as 5 locally complete, 12 structural/N/A, and 53 open, with exactly 0 preprod-complete rows and 45 of 45 focused checks passing; the audited inventory records exactly 8 append-only catalogue/init/CLI categories in identical order with 8 unique IDs and exactly 0 catalogue/docs/tree divergences.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-fault-proof-reconciliation.mjs, verify-canonical-v1-fault-proof-tree-sync.mjs. Exactly 70 reconciled rows comprise 61 coverage rows and 9 structural rows, partitioned as 8 locally complete, 13 structural/N/A, and 49 open, with exactly 0 preprod-complete rows and 45 of 45 focused checks passing; the audited inventory records exactly 8 append-only catalogue/init/CLI categories in identical order with 8 unique IDs and exactly 0 catalogue/docs/tree divergences.",
       "invalidationTriggers": [
         "F01/F02 changes or any coverage-matrix/catalogue-status/public-doc row, launch-scope family, rule enabled state, binding, reachability, tooling, test, emulator/preprod evidence, or remaining task changes",
         "Any SDK/init/CLI/node/watcher catalogue vocabulary or order, fraud-proof source/test tree, Aiken contract/schema, blueprint/deployment identity, generated docs, or docs-site fault-proof content changes; both reconciliation and tree-sync artifacts must regenerate",
-        "A reconciliation/tree-sync owned artifact or verifier changes, an exact source path becomes missing, or any of the 53 open/zero-preprod residual claims changes after capture"
+        "A reconciliation/tree-sync owned artifact or verifier changes, an exact source path becomes missing, or any of the 49 open/zero-preprod residual claims changes after capture"
       ],
-      "readyBecause": "F01/F02 and F20 are PASS in the authoritative queue, and the audited 70-row reconciliation verifier passes 45/45 focused checks against the current 8/8/8 catalogue/init/inspection inventory. The physical partition remains 5 locally complete, 12 structural/N/A, 53 open, and 0 preprod-complete, so this completed F20 inventory does not promote QG1 or any unresolved proof family."
+      "readyBecause": "F01/F02 and F20 are PASS in the authoritative queue, and the audited 70-row reconciliation verifier passes 45/45 focused checks against the current 8/8/8 catalogue/init/inspection inventory. The physical partition remains 8 locally complete, 13 structural/N/A, 49 open, and 0 preprod-complete, so this completed F20 inventory does not promote QG1 or any unresolved proof family."
     },
     {
       "id": "F21",
@@ -4186,7 +4186,7 @@
       "sourceAnchors": [
         "GOAL_SPEC.md 8.4 P4 forced execution and classification, row CG4: No missing or partial fund-safety/classification row for canonical V1.",
         "GOAL_SPEC.md dependency graph: C60-C68 and QG1 must close before CG4; C70 trusted/target snapshots begin only afterward",
-        "QG1 is OPEN with the current reconciliation baseline of 70 rows, 5 local-complete, 12 structural/N/A, 53 open, and 0 preprod-complete; C60-C68 remain non-PASS",
+        "QG1 is OPEN with the current reconciliation baseline of 70 rows, 8 local-complete, 13 structural/N/A, 49 open, and 0 preprod-complete; C60-C68 remain non-PASS",
         "demo/scripts/verify-canonical-v1-cg4-fund-safety-classification-gate.mjs is the exact implementation/current-tree anchor for CG4."
       ],
       "evidenceOutputs": [
@@ -8649,7 +8649,7 @@
       "sourceAnchors": [
         "GOAL_SPEC.md 9.4 Shared correction lifecycle, row Q55: Every enabled violation maps deterministically to exactly one primary proof route or an explicitly ordered equivalent; unknown/unprovable maps to `unprovable_gap`, never `verified`.",
         "GOAL_SPEC.md §§1 and 9.4: only verified is healthy; unsupported evidence maps to unprovable_gap",
-        "Current F20 reconciliation: 70 rows partition as 5 local-complete, 12 structural/N/A, 53 open, and 0 preprod-complete; Q55 consumes this audited inventory without promoting QG1",
+        "Current F20 reconciliation: 70 rows partition as 8 local-complete, 13 structural/N/A, 49 open, and 0 preprod-complete; Q55 consumes this audited inventory without promoting QG1",
         "GOAL_PROGRESS.md Q23-Q48 triage: 14 structural/N/A routes, 8 needs-family routes, accepted Q27/Q32/Q43 dispositions, and current Q50 planning inventory of 19-22 families",
         "demo/midgard-core/src/violation-family-map-v1.ts is the exact implementation/current-tree anchor for Q55."
       ],
@@ -9026,8 +9026,8 @@
       "sourceAnchors": [
         "GOAL_SPEC.md 9.4 Shared correction lifecycle, row QG1: No `PARTIAL`, documented-missing, required-undocumented, unreachable, stub, untooled, or untested fund-safety row remains. QG1 is the local-closure gate: it requires §9.1 `LOCAL_PASS`, never live evidence.",
         "GOAL_SPEC.md §§9.1 and 9.4: QG1 requires LOCAL_PASS for every launch-scope family or executable structural N/A and never requires live evidence",
-        "canonical-v1-fault-proof-reconciliation-v1.json: current baseline contains exactly 70 reconciled rows, 5 locally complete, 12 structural/N/A, 53 open, and 0 preprod complete; QG1/QG2/QG3 remain OPEN",
-        "F05 current reconciliation proves the fault-proof inventory and physical structural-row identities are current; the 53 open rows still prevent gate promotion",
+        "canonical-v1-fault-proof-reconciliation-v1.json: current baseline contains exactly 70 reconciled rows, 8 locally complete, 13 structural/N/A, 49 open, and 0 preprod complete; QG1/QG2/QG3 remain OPEN",
+        "F05 current reconciliation proves the fault-proof inventory and physical structural-row identities are current; the 49 open rows still prevent gate promotion",
         "demo/scripts/verify-canonical-v1-qg1-local-coverage-gate.mjs is the exact implementation/current-tree anchor for QG1."
       ],
       "evidenceOutputs": [
@@ -9041,7 +9041,7 @@
         "node demo/scripts/verify-canonical-v1-q55-violation-family-map.mjs",
         "node demo/scripts/verify-canonical-v1-qg1-local-coverage-gate.mjs"
       ],
-      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-fault-proof-reconciliation.mjs, verify-canonical-v1-q50-catalogue-integration.mjs, verify-canonical-v1-q55-violation-family-map.mjs, verify-canonical-v1-qg1-local-coverage-gate.mjs. The current baseline is exactly 70 reconciliation rows: 5 local-complete, 12 structural/N/A, 53 open, and 0 preprod-complete, so QG1 must refuse PASS. Final capture records one exact positive row total with exactly 0 PARTIAL, documented-missing, required-undocumented, unreachable, stub, untooled, untested, duplicate-ID, or stale-hash rows and exactly 0 live-readiness claims.",
+      "expectedNonzeroCounts": "Counted focused selectors: verify-canonical-v1-fault-proof-reconciliation.mjs, verify-canonical-v1-q50-catalogue-integration.mjs, verify-canonical-v1-q55-violation-family-map.mjs, verify-canonical-v1-qg1-local-coverage-gate.mjs. The current baseline is exactly 70 reconciliation rows: 8 local-complete, 13 structural/N/A, 49 open, and 0 preprod-complete, so QG1 must refuse PASS. Final capture records one exact positive row total with exactly 0 PARTIAL, documented-missing, required-undocumented, unreachable, stub, untooled, untested, duplicate-ID, or stale-hash rows and exactly 0 live-readiness claims.",
       "invalidationTriggers": [
         "Any Q10-Q50, Q55, or Q58-Q63 status/evidence changes; Q50 order/root/hash/reference-script identity or Q55 mapping changes",
         "Executable proof tree, structural/N/A inventory, coverage/catalogue documentation, tooling route, focused test result, emulator result, or reconciliation verifier changes after capture"

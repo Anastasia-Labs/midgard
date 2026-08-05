@@ -300,6 +300,377 @@ const evidencePath = resolve(
   repositoryRoot,
   "docs/exec-plans/evidence/canonical-v1-fault-proof-reconciliation-v1.json",
 );
+
+// ---------------------------------------------------------------------------
+// Coverage-matrix content reconciliation (V-5, issue #528)
+//
+// The coverage rows used to be checked by shape alone: every published line
+// number had to start with "| " and carry enough pipe characters. Nothing ever
+// read a cell, so flipping every ✅ in the matrix to ❌ was undetected, and
+// nothing tied `summary.open` to the row arrays, so moving rows out of
+// `openRows` published a smaller open count than the document supports.
+//
+// Everything below derives each row's disposition from the document itself:
+// the matrix's own status legend supplies the glyph → disposition mapping, each
+// row's status cell supplies its glyph, and the artifact's arrays and summary
+// are reconciled against that derivation. A flipped glyph, a row moved between
+// arrays, an unreconciled row, and a wrong summary each fail the gate closed
+// with a distinct diagnostic naming the offending row.
+// ---------------------------------------------------------------------------
+
+class CoverageMatrixError extends Error {
+  constructor(code, detail) {
+    super(`${code}: ${detail}`);
+    this.name = "CoverageMatrixError";
+    this.code = code;
+  }
+}
+
+// Pure: the legend row of the column table is the document's own definition of
+// what each status glyph means, so the classification rule is read out of the
+// matrix rather than hard-coded here. "Complete & verified" is the only locally
+// complete state and "N/A" the only structural/N/A one; every other declared
+// glyph is an open state.
+const parseCoverageStatusLegend = (matrixLines) => {
+  const legendLine = matrixLines.find((line) =>
+    line.startsWith("| **Status**"),
+  );
+  if (legendLine === undefined) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_LEGEND_MISSING",
+      "the matrix no longer declares a `**Status**` column legend, so no row disposition can be derived from it",
+    );
+  }
+  const legendCell = legendLine
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim())[1];
+  const legend = new Map();
+  for (const entry of (legendCell ?? "")
+    .split("·")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)) {
+    const [glyph] = [...entry];
+    const meaning = entry.slice(glyph.length).trim();
+    legend.set(
+      glyph,
+      meaning.startsWith("Complete & verified")
+        ? "locallyComplete"
+        : meaning === "N/A"
+          ? "structuralOrNA"
+          : "open",
+    );
+  }
+  const dispositions = [...legend.values()];
+  const countOf = (disposition) =>
+    dispositions.filter((value) => value === disposition).length;
+  if (
+    legend.size < 3 ||
+    countOf("locallyComplete") !== 1 ||
+    countOf("structuralOrNA") !== 1 ||
+    countOf("open") === 0
+  ) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_LEGEND_AMBIGUOUS",
+      `the status legend must declare exactly one "Complete & verified" glyph, exactly one "N/A" glyph, and at least one open glyph — read ${JSON.stringify(
+        Object.fromEntries(legend),
+      )}`,
+    );
+  }
+  return legend;
+};
+
+// The §8 removal/correction table carries six columns; every earlier table
+// carries ten. `split("|")` counts the empty fragments either side of a Markdown
+// row, hence the +2.
+const requiredCoverageColumns = (lineNumber) => (lineNumber >= 182 ? 7 : 11);
+
+const readMatrixRowCells = ({ matrixLines, lineNumber, kind }) => {
+  const row = matrixLines[lineNumber - 1];
+  if (row === undefined || !row.startsWith("| ")) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_ROW_MISSING",
+      `${kind} row ${String(lineNumber)} is not a matrix row: ${JSON.stringify(
+        row ?? null,
+      )}`,
+    );
+  }
+  const columns = row.split("|");
+  const required =
+    kind === "structural" ? 5 : requiredCoverageColumns(lineNumber);
+  if (columns.length < required) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_ROW_SHAPE",
+      `${kind} row ${String(lineNumber)} lost required reconciliation columns (${String(
+        columns.length,
+      )} < ${String(required)}): ${row.slice(0, 96)}`,
+    );
+  }
+  return columns.slice(1, -1).map((cell) => cell.trim());
+};
+
+const coverageRowIdentity = (cells) =>
+  (cells[0] ?? "").replace(/\s+/gu, " ").trim().slice(0, 64);
+
+// Pure: matrix text plus the artifact's row inventory in, the document-derived
+// disposition of every reconciled row out.
+const deriveCoverageDispositions = ({ matrixLines, evidence: artifact }) => {
+  const legend = parseCoverageStatusLegend(matrixLines);
+  const derived = new Map();
+  const identities = new Map();
+  for (const lineNumber of artifact.coverageRows) {
+    const cells = readMatrixRowCells({
+      matrixLines,
+      lineNumber,
+      kind: "coverage",
+    });
+    identities.set(lineNumber, coverageRowIdentity(cells));
+    const status = cells.at(-2) ?? "";
+    if (status.length === 0) {
+      throw new CoverageMatrixError(
+        "ERR_COVERAGE_STATUS_EMPTY",
+        `coverage row ${String(lineNumber)} (${identities.get(
+          lineNumber,
+        )}) publishes an empty status cell, so no disposition is claimed`,
+      );
+    }
+    const [glyph] = [...status];
+    if (!legend.has(glyph)) {
+      throw new CoverageMatrixError(
+        "ERR_COVERAGE_STATUS_UNKNOWN_GLYPH",
+        `coverage row ${String(lineNumber)} (${identities.get(
+          lineNumber,
+        )}) opens its status with ${JSON.stringify(
+          glyph,
+        )}, which the column legend does not define`,
+      );
+    }
+    derived.set(lineNumber, { disposition: legend.get(glyph), glyph, status });
+  }
+  for (const lineNumber of artifact.structuralRows) {
+    const cells = readMatrixRowCells({
+      matrixLines,
+      lineNumber,
+      kind: "structural",
+    });
+    identities.set(lineNumber, coverageRowIdentity(cells));
+    // Structural claims live in their own table and are reconciled by the
+    // structural audit below; the partition counts them as structural/N/A.
+    derived.set(lineNumber, {
+      disposition: "structuralOrNA",
+      glyph: null,
+      status: null,
+    });
+  }
+  return { derived, identities };
+};
+
+// Pure: throws unless the artifact's three disposition arrays and its summary
+// are exactly what the matrix content supports.
+const reconcileCoverageMatrix = ({ matrixLines, evidence: artifact }) => {
+  const { derived, identities } = deriveCoverageDispositions({
+    matrixLines,
+    evidence: artifact,
+  });
+  const published = new Map();
+  for (const [bucket, rows] of [
+    ["locallyComplete", artifact.locallyCompleteRows],
+    ["structuralOrNA", artifact.structuralOrNARows],
+    ["open", artifact.openRows],
+  ]) {
+    for (const lineNumber of rows) {
+      if (published.has(lineNumber)) {
+        throw new CoverageMatrixError(
+          "ERR_COVERAGE_ROW_DOUBLE_DISPOSITION",
+          `row ${String(lineNumber)} is published under both ${published.get(
+            lineNumber,
+          )} and ${bucket}`,
+        );
+      }
+      published.set(lineNumber, bucket);
+      if (!derived.has(lineNumber)) {
+        throw new CoverageMatrixError(
+          "ERR_COVERAGE_ROW_UNRECONCILED",
+          `row ${String(
+            lineNumber,
+          )} is published under ${bucket} but is not one of the reconciled coverage or structural rows`,
+        );
+      }
+    }
+  }
+  const mismatches = [...derived.keys()]
+    .sort((left, right) => left - right)
+    .flatMap((lineNumber) => {
+      const { disposition, status } = derived.get(lineNumber);
+      const publishedBucket = published.get(lineNumber);
+      if (publishedBucket === disposition) return [];
+      return [
+        `row ${String(lineNumber)} (${identities.get(lineNumber)}) reads ${
+          status === null
+            ? "as a structural claim"
+            : JSON.stringify(status.slice(0, 48))
+        } in the matrix, which is ${disposition}, but the artifact publishes it as ${
+          publishedBucket ?? "no disposition at all"
+        }`,
+      ];
+    });
+  if (mismatches.length > 0) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_DISPOSITION_MISMATCH",
+      `${String(
+        mismatches.length,
+      )} reconciled row(s) contradict the matrix — ${mismatches.join("; ")}`,
+    );
+  }
+  const counts = {
+    locallyComplete: 0,
+    structuralOrNA: 0,
+    open: 0,
+  };
+  for (const { disposition } of derived.values()) counts[disposition] += 1;
+  const expectedSummary = {
+    ...counts,
+    total: artifact.coverageRows.length + artifact.structuralRows.length,
+    coverageRows: artifact.coverageRows.length,
+    structuralRows: artifact.structuralRows.length,
+  };
+  const summaryMismatches = Object.entries(expectedSummary).flatMap(
+    ([key, value]) =>
+      artifact.summary?.[key] === value
+        ? []
+        : [
+            `summary.${key} publishes ${JSON.stringify(
+              artifact.summary?.[key] ?? null,
+            )} where the reconciled matrix supports ${String(value)}`,
+          ],
+  );
+  if (summaryMismatches.length > 0) {
+    throw new CoverageMatrixError(
+      "ERR_COVERAGE_SUMMARY_MISMATCH",
+      summaryMismatches.join("; "),
+    );
+  }
+  return counts;
+};
+
+// Seeded-defect fixtures. Each one mutates a deep copy of the real matrix and
+// the real artifact — the exact mutations V-5 demonstrated were invisible — and
+// is evaluated through the identical reconciliation path, so the negative
+// self-tests measure the gate rather than describing it.
+const coverageMatrixFixtureRows = {
+  flippedComplete: 94,
+  forgedComplete: 84,
+  unknownGlyph: 86,
+  truncatedRow: 105,
+  movedRowCount: 5,
+};
+
+const replaceMatrixStatusGlyph = (row, replacement) => {
+  const columns = row.split("|");
+  const index = columns.length - 3;
+  const [glyph] = [...columns[index].trim()];
+  columns[index] = columns[index].replace(glyph, replacement);
+  return columns.join("|");
+};
+
+const coverageMatrixFixtures = {
+  // Positive control: the untouched pair must reconcile, so the rejections
+  // below cannot be a gate that rejects everything.
+  passing: () => {},
+  // V-5's headline mutation: a published ✅ silently becomes a ❌.
+  "flipped-status": ({ matrixLines }) => {
+    const lineNumber = coverageMatrixFixtureRows.flippedComplete;
+    matrixLines[lineNumber - 1] = replaceMatrixStatusGlyph(
+      matrixLines[lineNumber - 1],
+      "❌",
+    );
+  },
+  // The same hole in the other direction: an open row is upgraded in the
+  // document without the artifact ever noticing.
+  "forged-complete": ({ matrixLines }) => {
+    const lineNumber = coverageMatrixFixtureRows.forgedComplete;
+    matrixLines[lineNumber - 1] = replaceMatrixStatusGlyph(
+      matrixLines[lineNumber - 1],
+      "✅",
+    );
+  },
+  "unknown-glyph": ({ matrixLines }) => {
+    const lineNumber = coverageMatrixFixtureRows.unknownGlyph;
+    matrixLines[lineNumber - 1] = replaceMatrixStatusGlyph(
+      matrixLines[lineNumber - 1],
+      "🚀",
+    );
+  },
+  "truncated-row": ({ matrixLines }) => {
+    const lineNumber = coverageMatrixFixtureRows.truncatedRow;
+    const columns = matrixLines[lineNumber - 1].split("|");
+    matrixLines[lineNumber - 1] = [...columns.slice(0, 4), ""].join("|");
+  },
+  // V-5's second mutation: five rows move out of the open set, shrinking the
+  // published open count without touching the document.
+  "moved-row": ({ evidence: artifact }) => {
+    const moved = artifact.openRows.slice(
+      0,
+      coverageMatrixFixtureRows.movedRowCount,
+    );
+    artifact.openRows = artifact.openRows.filter(
+      (lineNumber) => !moved.includes(lineNumber),
+    );
+    artifact.structuralOrNARows = [
+      ...artifact.structuralOrNARows,
+      ...moved,
+    ].sort((left, right) => left - right);
+    artifact.summary.open -= moved.length;
+    artifact.summary.structuralOrNA += moved.length;
+  },
+  // The arrays stay honest but the published headline count does not.
+  "wrong-summary": ({ evidence: artifact }) => {
+    artifact.summary.open -= 1;
+  },
+};
+
+const evaluateCoverageMatrixFixture = (fixtureName) => {
+  const mutate = coverageMatrixFixtures[fixtureName];
+  assert.ok(mutate, `unknown coverage-matrix fixture ${fixtureName}`);
+  const fixtureEvidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+  const fixtureMatrixLines = readFileSync(
+    resolve(repositoryRoot, fixtureEvidence.source.path),
+    "utf8",
+  ).split(/\r?\n/u);
+  mutate({ matrixLines: fixtureMatrixLines, evidence: fixtureEvidence });
+  return reconcileCoverageMatrix({
+    matrixLines: fixtureMatrixLines,
+    evidence: fixtureEvidence,
+  });
+};
+
+// Fixture mode: reconcile one seeded fixture and nothing else, so the negative
+// self-tests below can spawn this very gate and observe its real exit code.
+const coverageFixtureArgument = process.argv
+  .slice(2)
+  .find((argument) => argument.startsWith("--coverage-matrix-fixture="));
+if (coverageFixtureArgument !== undefined) {
+  const fixtureName = coverageFixtureArgument.slice(
+    "--coverage-matrix-fixture=".length,
+  );
+  try {
+    const counts = evaluateCoverageMatrixFixture(fixtureName);
+    process.stdout.write(
+      `coverage-matrix fixture ${fixtureName}: ${String(
+        counts.open,
+      )} open, ${String(counts.locallyComplete)} locally complete, ${String(
+        counts.structuralOrNA,
+      )} structural/N/A\n`,
+    );
+    process.exit(0);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exit(1);
+  }
+}
+
 const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
 const matrixPath = resolve(repositoryRoot, evidence.source.path);
 const matrixBytes = await readFile(matrixPath);
@@ -309,13 +680,21 @@ assert.equal(
   evidence.schema,
   "midgard.canonical-v1-fault-proof-reconciliation.v1",
 );
+
+// Content reconciliation, first: every published row's disposition and every
+// partition count must be exactly what the matrix cells say. This subsumes the
+// former shape-only loops — a row that is missing, truncated, re-glyphed, moved
+// between arrays, or miscounted fails here with a diagnostic naming it, before
+// any literal pin below can report the same drift as an opaque diff.
+const coverageCounts = reconcileCoverageMatrix({ matrixLines, evidence });
+
 assert.deepEqual(evidence.summary, {
   total: 70,
   coverageRows: 61,
   structuralRows: 9,
-  locallyComplete: 5,
-  structuralOrNA: 12,
-  open: 53,
+  locallyComplete: 8,
+  structuralOrNA: 13,
+  open: 49,
   preprodComplete: 0,
   focusedChecksPassed: 45,
   focusedChecksTotal: 45,
@@ -345,32 +724,10 @@ assert.deepEqual(
   "dispositions must cover the reconciled row set",
 );
 
-for (const lineNumber of evidence.coverageRows) {
-  const row = matrixLines[lineNumber - 1];
-  assert.ok(
-    row?.startsWith("| "),
-    `missing coverage row at line ${lineNumber}`,
-  );
-  const requiredColumns = lineNumber >= 182 ? 7 : 11;
-  assert.ok(
-    row.split("|").length >= requiredColumns,
-    `coverage row ${lineNumber} lost required reconciliation columns`,
-  );
-}
-
-for (const lineNumber of evidence.structuralRows) {
-  const row = matrixLines[lineNumber - 1];
-  assert.ok(
-    row?.startsWith("| "),
-    `missing structural row at line ${lineNumber}`,
-  );
-  assert.ok(
-    row.split("|").length >= 5,
-    `structural row ${lineNumber} lost its executable-evidence contract`,
-  );
-}
-
-assert.deepEqual(evidence.locallyCompleteRows, [94, 95, 96, 137, 182]);
+assert.deepEqual(
+  evidence.locallyCompleteRows,
+  [93, 94, 95, 96, 137, 174, 176, 182],
+);
 assert.deepEqual(
   evidence.structuralRows,
   [295, 296, 297, 298, 299, 300, 301, 302, 303],
@@ -892,6 +1249,11 @@ for (const line of queueSource.split(/\r?\n/u)) {
     firstQueueDetails.set(taskId, cells.at(-2) ?? "");
   }
 }
+// GOAL_PROGRESS.md is the orchestrator-owned ledger and is not writable from
+// here, so this pin still reads its captured wording — "five locally complete,
+// 12 structural/N/A, 53 open" — which #528 re-derived to 8/13/49. The pin is
+// deliberately exact so that the ledger's next sync trips this gate rather
+// than passing silently in either direction.
 assert.match(
   firstQueueDetails.get("F20") ?? "",
   /61 coverage rows and nine (?:physical )?structural claims: five locally complete, 12 structural\/N\/A, 53 open/u,
@@ -1011,14 +1373,21 @@ const f20Manifest = manifestTaskById.get("F20");
 const f21Manifest = manifestTaskById.get("F21");
 const f20ManifestText = JSON.stringify(f20Manifest);
 const f21ManifestText = JSON.stringify(f21Manifest);
+// The manifest prose must republish the partition the matrix actually
+// supports, not the pre-#528 shape-only numbers.
 assert.match(
   f20ManifestText,
-  /5 locally complete, 12 structural\/N\/A, and 53 open/u,
+  new RegExp(
+    `${String(evidence.summary.locallyComplete)} locally complete, ${String(
+      evidence.summary.structuralOrNA,
+    )} structural/N/A, and ${String(evidence.summary.open)} open`,
+    "u",
+  ),
   "F20 manifest retained stale reconciliation totals",
 );
 assert.doesNotMatch(
   f20ManifestText,
-  /6 registered|5 initialization|54 open|44 of 45/u,
+  /6 registered|5 initialization|53 open|54 open|44 of 45/u,
   "F20 manifest retained stale completed-task mismatch wording",
 );
 assert.match(
@@ -1151,6 +1520,75 @@ assert.equal(
   `focused-check gate rejected a passing fixture: ${focusedCheckControl.stderr}`,
 );
 assert.match(focusedCheckControl.stdout, /passing: 1\/1 passed/u);
+
+// Negative self-tests for the coverage-matrix reconciliation: spawn this gate
+// against each seeded mutation of the real matrix/artifact pair and require a
+// non-zero exit carrying the specific diagnostic. The first two are the exact
+// mutations V-5 showed the shape-only check could not see.
+const coverageMatrixSelfTests = [
+  [
+    "flipped-status",
+    /ERR_COVERAGE_DISPOSITION_MISMATCH: 1 reconciled row\(s\).*row 94 \(Input exists \(NO-INPUT\)\).*which is open, but the artifact publishes it as locallyComplete/su,
+  ],
+  [
+    "forged-complete",
+    /ERR_COVERAGE_DISPOSITION_MISMATCH:.*row 84 .*which is locallyComplete, but the artifact publishes it as open/su,
+  ],
+  [
+    "moved-row",
+    /ERR_COVERAGE_DISPOSITION_MISMATCH: 5 reconciled row\(s\).*publishes it as structuralOrNA/su,
+  ],
+  [
+    "wrong-summary",
+    /ERR_COVERAGE_SUMMARY_MISMATCH: summary\.open publishes 48 where the reconciled matrix supports 49/su,
+  ],
+  [
+    "unknown-glyph",
+    /ERR_COVERAGE_STATUS_UNKNOWN_GLYPH: coverage row 86 .*which the column legend does not define/su,
+  ],
+  [
+    "truncated-row",
+    /ERR_COVERAGE_ROW_SHAPE: coverage row 105 lost required reconciliation columns/su,
+  ],
+];
+const runCoverageMatrixSelfTest = (fixtureName) =>
+  spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(import.meta.url),
+      `--coverage-matrix-fixture=${fixtureName}`,
+    ],
+    { cwd: repositoryRoot, encoding: "utf8", maxBuffer: 128 * 1024 * 1024 },
+  );
+for (const [fixtureName, expectedDiagnostic] of coverageMatrixSelfTests) {
+  const selfTest = runCoverageMatrixSelfTest(fixtureName);
+  assert.notEqual(
+    selfTest.status,
+    0,
+    `coverage-matrix gate accepted the seeded ${fixtureName} defect`,
+  );
+  assert.match(
+    selfTest.stderr,
+    expectedDiagnostic,
+    `coverage-matrix gate rejected the seeded ${fixtureName} defect without its specific diagnostic`,
+  );
+}
+// Positive control: the unmutated pair must still reconcile.
+const coverageMatrixControl = runCoverageMatrixSelfTest("passing");
+assert.equal(
+  coverageMatrixControl.status,
+  0,
+  `coverage-matrix gate rejected the unmutated matrix: ${coverageMatrixControl.stderr}`,
+);
+assert.match(
+  coverageMatrixControl.stdout,
+  new RegExp(
+    `passing: ${String(coverageCounts.open)} open, ${String(
+      coverageCounts.locallyComplete,
+    )} locally complete, ${String(coverageCounts.structuralOrNA)} structural/N/A`,
+    "u",
+  ),
+);
 const parsedCliCategoryNames = [
   ...binSource
     .slice(
