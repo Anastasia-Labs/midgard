@@ -5144,3 +5144,69 @@ Verifiers re-run after every edit and again at the end, all exit 0:
 `verify-canonical-v1-capability-reconciliation.mjs`. The "7 PASS / 2 PARTIAL"
 `structuralAudit` contract and the F21 PARTIAL bindings were deliberately left
 untouched — see the 2026-08-04 correction above; no verifier guard was loosened.
+
+
+## #521 — decoder-collision remediation reviewed and checkpointed (2026-08-04)
+
+**Chosen remediation, recorded for the durable ledger:** rename the losing
+sides of both duplicate-type-name pairs (`cek_machine_v1.ValueWitnessV1` →
+`MachineValueWitnessV1`, `midgard/user_events/deposit.Datum` →
+`DepositDatum`) **plus** a mandatory cross-compiler blueprint-equality gate
+(`onchain/aiken/scripts/verify-dual-compiler-blueprint-agreement.mjs`, wired
+into Aiken CI). The gate makes both compilers agree by construction and
+reddens CI on any future duplicate name. This is *not* a claim that the
+released compiler is more trustworthy than the patched fork — the released
+v1.1.22 remains the blueprint/evidence authority solely by pin, and the fork
+remains the test-suite executor; the equality gate is what removes the
+compiler choice from the trust surface.
+
+**Independent review reproductions** (2026-08-04 session; stock
+`aiken v1.1.22+39d6b04`, fork `aiken v1.1.23+6d14ab2`):
+
+- Pre-rename control: on a worktree at `84aa1ce3` carrying only the guard
+  script, the guard exits 1 naming exactly 16 differing entries (8
+  validators × spend/else: `cek_v1`, the six script-sources/value_and_mint
+  semantic validators, `scheduler.spend`) and lists
+  `ValueWitnessV1 (2 modules)` among the fewest-sharer suspects.
+- At `c682cc69` the guard exits 0: 380 validators, all compiled bytes and
+  hashes identical across both compilers, `definitions` identical.
+- Byte-neutrality of the rename: fork-built blueprints at `84aa1ce3` vs
+  `c682cc69` differ in **0 of 380** validators' `compiledCode`/`hash`; the
+  only `definitions` change is the two retitled entries (outer and inner
+  constructor `title` only — constructor index 0, field names, field order,
+  and every `$ref` unchanged), so no CBOR encoding moves.
+- Honest/malformed controls: old-name collision tests appended to the
+  pre-rename tree fail 2/2 under stock (the shared decoder crashes on
+  honest `DelayValue`/`deposit.Datum` input) and pass 2/2 under the fork; at
+  `c682cc69` the committed regression tests pass under both compilers —
+  `value_witness` 5/5 ×2 (including both malformed-arity `fail` controls)
+  and deposit-datum 3/3 ×2.
+- CI wiring: `aiken-ci.yml` runs the guard in the `build` job
+  (working-directory `onchain/aiken`) after hard-asserting both compiler
+  identities; the guard itself refuses a same-version (vacuous) comparison.
+  The job triggers on every pull request touching `onchain/aiken/**`.
+- C28 re-pin reproduced: a fresh stock build of `c682cc69` yields disposable
+  blueprint SHA-256
+  `b1c79edca9b305f4000a3116d73ba998687ea95aa5d1a9091de544218449937a` and
+  `cek_v1.main.spend` at 156,312 compiled bytes, matching the values
+  re-pinned in `c682cc69`.
+
+**§4.4 checkpoint journey regression (2026-08-04):** fresh isolated
+PostgreSQL database `midgard_test_521review` (goal-test container, port
+5433); pinned Node v22.22.2; package-local vitest 3.0.7; committed-tree
+(`c682cc69`) stock `aiken build --env testnet` blueprint SHA-256
+`76f9e53de7c55fc741dcbf03d63dd218ebd20024062ed7029c6b8cf1f4436372`
+(380 validators) installed at `onchain/aiken/plutus.json`, replacing a stale
+pre-rename local install per the committed-tree-parity standing rule. The
+exact named selector `runs deposit, reserve absorption, withdrawal
+commitment, and payout to conclusion` PASSES 1/1 in 200.1 s (203.5 s
+process). Satisfies the §4.4 pre-push journey requirement for this
+checkpoint batch.
+
+**Excluded from this checkpoint:** the working tree carried an uncommitted
+GOAL_PROGRESS.md bulk edit appending "(live-verified on preprod)" to 246
+rows whose committed status is plain `PASS`. No session evidence, ledger
+entry, or GOAL_ASSIST.md handoff substantiates a 246-gate preprod
+live-verification, so the edit is excluded from this commit and left in the
+working tree pending provenance. It must not be committed without the
+producing run's evidence.
