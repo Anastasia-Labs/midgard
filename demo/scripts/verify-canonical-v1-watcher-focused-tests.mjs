@@ -101,6 +101,67 @@ if (
   );
 }
 
+// #519 finding V-4 (#527): the published 19-file/595-test total used to be a
+// `reduce` over the dependency map's own numbers compared against the runner —
+// but the per-file expectations came from the same map, so editing the artifact
+// under audit moved both sides of every comparison at once. Four suites
+// (publicDaClient, canonicalBlockStore, headerRootReconstruction,
+// phaseAVerifier — 301 of the 595) additionally had no literal pin in
+// verify-canonical-v1-watcher-dependency-map.mjs, so their counts were
+// self-declared end to end.
+//
+// The literals below are pins measured from a package-local Vitest 3.0.7 JSON
+// report (`node node_modules/vitest/vitest.mjs run --pool=forks
+// --no-file-parallelism --maxWorkers=1 --reporter=json` in
+// demo/midgard-watcher). Every published count is now checked three ways: the
+// runner report against these pins, the dependency map against these pins, and
+// the aggregate against the runner's own numTotalTests. Changing a watcher test
+// count requires editing this pin table, and the change only holds if a real
+// run agrees.
+const pinnedByFile = new Map([
+  ["config.test.ts", 42],
+  ["deployment-identity.test.ts", 18],
+  ["durable-store.test.ts", 12],
+  ["l1-adapter.test.ts", 23],
+  ["multi-provider-consistency.test.ts", 18],
+  ["finality-engine.test.ts", 22],
+  ["rollback-engine.test.ts", 26],
+  ["state-queue-indexer.test.ts", 19],
+  ["user-event-indexer.test.ts", 23],
+  ["settlement-indexer.test.ts", 25],
+  ["proof-thread-indexer.test.ts", 17],
+  ["rule-bundle-v1.test.ts", 9],
+  ["public-da-client.test.ts", 102],
+  ["canonical-block-store.test.ts", 46],
+  ["header-root-reconstruction.test.ts", 59],
+  ["phase-a-verifier.test.ts", 94],
+  ["block-replay.test.ts", 20],
+  ["event-classification-verifier.test.ts", 15],
+  ["scaffold.test.ts", 5],
+]);
+const pinnedTotal = 595;
+const sumCounts = (counts) => counts.reduce((sum, count) => sum + count, 0);
+if (
+  pinnedByFile.size !== expectedByFile.size ||
+  [...pinnedByFile.keys()].some((name) => !expectedByFile.has(name)) ||
+  sumCounts([...pinnedByFile.values()]) !== pinnedTotal
+) {
+  fail(
+    `pinned focused-test counts must cover the same ${String(expectedByFile.size)} files and sum to the pinned total ${String(pinnedTotal)}`,
+  );
+}
+const declarationDrift = [...pinnedByFile]
+  .filter(([name, pinned]) => expectedByFile.get(name) !== pinned)
+  .map(
+    ([name, pinned]) =>
+      `${name} declares ${String(expectedByFile.get(name))} against pin ${String(pinned)}`,
+  );
+if (declarationDrift.length !== 0) {
+  fail(
+    `dependency map focused-test counts drift from the runner-measured pins: ${declarationDrift.join("; ")}`,
+  );
+}
+
 const temporaryDirectory = mkdtempSync(
   join(tmpdir(), "midgard-watcher-focused-tests-"),
 );
@@ -183,6 +244,14 @@ try {
   }
 
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  // A skipped or todo test still counts toward numTotalTests, so a `.skip`
+  // would otherwise keep a pinned count green while running nothing. Checked
+  // before the all-passing assertion so the diagnostic names the real cause.
+  if (report.numPendingTests !== 0 || report.numTodoTests !== 0) {
+    fail(
+      `Vitest reported ${String(report.numPendingTests)} skipped and ${String(report.numTodoTests)} todo tests; every pinned test must actually execute`,
+    );
+  }
   if (
     !Array.isArray(report.testResults) ||
     report.numFailedTests !== 0 ||
@@ -212,18 +281,38 @@ try {
     }
     actualByFile.set(name, collected);
   }
+  const measuredDrift = [...pinnedByFile]
+    .filter(([name, pinned]) => actualByFile.get(name) !== pinned)
+    .map(
+      ([name, pinned]) =>
+        `${name} collected ${String(actualByFile.get(name) ?? 0)} against pin ${String(pinned)}`,
+    );
+  const unpinnedFiles = [...actualByFile.keys()].filter(
+    (name) => !pinnedByFile.has(name),
+  );
+  if (measuredDrift.length !== 0 || unpinnedFiles.length !== 0) {
+    fail(
+      `Vitest collected counts do not match the runner-measured pins: ${[
+        ...measuredDrift,
+        ...unpinnedFiles.map((name) => `${name} has no pinned count`),
+      ].join("; ")}`,
+    );
+  }
+  // The published aggregate is the runner's own total, cross-checked against
+  // the sum of the per-file results it reported and against the pin. It is
+  // never a reduce over the dependency map's numbers.
+  const measuredTotal = sumCounts([...actualByFile.values()]);
   if (
-    actualByFile.size !== expectedByFile.size ||
-    [...expectedByFile].some(
-      ([name, expected]) => actualByFile.get(name) !== expected,
-    ) ||
-    report.numTotalTests !==
-      [...expectedByFile.values()].reduce((sum, count) => sum + count, 0)
+    report.numTotalTests !== measuredTotal ||
+    report.numPassedTests !== measuredTotal ||
+    measuredTotal !== pinnedTotal
   ) {
-    fail("Vitest collected counts do not match the dependency map");
+    fail(
+      `runner aggregate ${String(report.numPassedTests)}/${String(report.numTotalTests)} (per-file sum ${String(measuredTotal)}) does not equal the pinned total ${String(pinnedTotal)}`,
+    );
   }
   process.stdout.write(
-    `Canonical V1 watcher focused tests verified: ${String(actualByFile.size)} files, ${String(report.numPassedTests)}/${String(report.numTotalTests)} passed.\n`,
+    `Canonical V1 watcher focused tests verified: ${String(actualByFile.size)} files, ${String(report.numPassedTests)}/${String(report.numTotalTests)} passed (runner-measured aggregate equals the pinned total ${String(pinnedTotal)}).\n`,
   );
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });

@@ -2179,6 +2179,29 @@ for (const requiredSymbol of [
     fail(`W23 rule-bundle symbol ${requiredSymbol} is not public or invoked`);
   }
 }
+// #519 finding V-4 (#527): publicDaClient, canonicalBlockStore,
+// headerRootReconstruction, and phaseAVerifier — 301 of the published 595
+// watcher tests — had no literal pin anywhere in this verifier, so the map
+// could declare any number for them and both watcher gates stayed green. These
+// pins were measured from a package-local Vitest 3.0.7 JSON report and are
+// re-checked against a live run by
+// demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs, whose pin table
+// must stay identical to these values.
+for (const [evidenceKey, testFile, pinnedFocusedTestCount] of [
+  ["publicDaClient", "public-da-client.test.ts", 102],
+  ["canonicalBlockStore", "canonical-block-store.test.ts", 46],
+  ["headerRootReconstruction", "header-root-reconstruction.test.ts", 59],
+  ["phaseAVerifier", "phase-a-verifier.test.ts", 94],
+]) {
+  if (
+    dependencyMap.requiredWatcherPackage?.[evidenceKey]
+      ?.expectedFocusedTestCount !== pinnedFocusedTestCount
+  ) {
+    fail(
+      `${evidenceKey} must declare the runner-measured pin of ${String(pinnedFocusedTestCount)} focused tests for ${testFile}`,
+    );
+  }
+}
 if (
   dependencyMap.requiredWatcherPackage.foundationStatus !==
     "W01_W03_and_W11_W17_library_surfaces_pass_operational_W10_wire_binding_open" ||
