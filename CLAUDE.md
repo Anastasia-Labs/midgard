@@ -7,3 +7,22 @@ changes.
 
 For Goal-program work, `GOAL_SPEC.md` is the authoritative execution
 specification and `GOAL_PROGRESS.md` is the durable execution ledger.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as GitHub issues on `Anastasia-Labs/midgard` via the `gh`
+CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles use their default label strings
+(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` and `docs/adr/` at the repo root
+(created lazily by `/domain-modeling`; proceed silently while absent). See
+`docs/agents/domain.md`.
